@@ -1,0 +1,10 @@
+# There is no build step and no package manager here, so this file only keeps
+# OS and editor cruft out of a repo that is otherwise three text files.
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+*.swp
+
+# Wrangler writes this if the CLI route in deploy.md is used.
+.wrangler/
