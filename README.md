@@ -99,13 +99,29 @@ gated on a decision. 🔴 = owner only; a session cannot do these.
 | # | Action | Owner? | Blocked on |
 |---|---|---|---|
 | 1 | 🔴 `www` → apex `301` redirect rule | yes, dashboard | Deciding apex-vs-`www` as canonical (`HEYGABI_LAYOUT.md` §7 q3 — the recommendation is **apex**, since every other host is a bare subdomain of it) |
-| 2 | 🔴 Remove Cloudflare Access from the board game Worker | yes | `PLATFORM.md` §4.1 checklist. **Do this before 3** |
-| 3 | 🔴 Add `boardgames.heygabi.ai` to Firebase authorised domains | yes | Step 2. Sign-in fails with `auth/unauthorized-domain` if the order is reversed |
-| 4 | Remove the "Owner only" pill from the board games card | no — a one-line edit here | Steps 2–3 actually landing. The pill is honest today |
+| 2 | 🔴 Add `boardgames.heygabi.ai` to Firebase authorised domains | yes, console | Nothing. Harmless while Access is still up — it only permits OAuth redirects from that origin |
+| 3 | **Move the board game Worker off Access onto Firebase ID tokens** — a code change, not a toggle | mostly **no**; only the final "delete the Access application" is 🔴 | Step 2, and the three `PLATFORM.md` §4.1 preconditions |
+| 4 | Remove the "Owner only" pill from the board games card | no — a one-line edit here | Step 3 actually landing. The pill is honest today |
 | 5 | The `?format=ebook` filter (`HEYGABI_LAYOUT.md` §4 Track B) | no | Nothing. It is code in `bookbuddy/library_catalog`, not in this repo, and it is the item with the real deadline — §5.3 explains why |
 
-⚠️ **Steps 2→3→4 are an order, not a list.** 2 before 3 or sign-in breaks; 4
-before either and the front door advertises open access to a gated host.
+⚠️ **Step 3 is not a dashboard toggle, and an earlier version of this table said
+it was.** `Board_Game_Catalog/apps/worker/src/middleware/auth.ts:38-46` reads
+identity out of the `Cf-Access-Jwt-Assertion` header (or the `CF_Authorization`
+cookie) and verifies it against `https://<team>/cdn-cgi/access/certs` (`:25-31`).
+The Worker does not merely *sit behind* Access — it **takes every identity from
+it**. Delete the Access application first and the Worker has no identity source
+at all: `resolveIdentity` returns `null` for everyone, or throws outright if the
+vars are removed with it (`:65-69`). The replacement is the Firebase ID token
+verification in `PLATFORM.md` §4, and it ships **before** Access comes off.
+
+⚠️ **2 → 3 → 4 is an order, not a list** — and it is the reverse of what this
+table said before 2026-08-10. Authorise the domain *first*: it changes nothing
+while Access is up, whereas removing Access before that host can complete a
+Firebase sign-in leaves a gate nobody can pass. That is the pattern
+`HEYGABI_LAYOUT.md` §4 Track C steps 9–10 already uses for `library.` — *"add to
+authorised domains **before** step 10, or sign-in fails with
+`auth/unauthorized-domain`"* — which the board-games rows had inverted. Step 4
+comes last, or the front door advertises open access to a gated host.
 
 Remaining open questions for the owner are in `HEYGABI_LAYOUT.md` §7. Two of
 them have since been answered by events rather than by a decision: **q1**
