@@ -6,6 +6,7 @@
 <title>heygabi.ai — our catalogues</title>
 <meta name="description" content="A personal catalogue of what this household owns: audiobooks, books and board games.">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#12140f">
 
 <!--
   ============================================================================
@@ -26,312 +27,609 @@
 
   So: no Firebase SDK, no Google sign-in, no session cookie, no /login, no
   "my ratings", no personalisation. Every catalog does its own sign-in on its
-  own host. If something here ever appears to need a logged-in user, that
-  feature belongs on a catalog host, not on the apex.
+  own host.
 
   Corollary — DO NOT add heygabi.ai to Firebase → Authentication → Settings →
-  Authorised domains. (HEYGABI_LAYOUT.md §1 marks the apex "yes — IF anything
-  there signs in". Nothing here signs in, so the answer stays no.)
+  Authorised domains.
 
   ---------------------------------------------------------------------------
-  ALSO: zero external requests. No CDN, no web fonts, no analytics, no remote
-  images, no favicon file. System fonts and one inline SVG data URI only. This
-  page must render identically with the network cut after first byte, and it
-  must set no third-party cookies.
+  ZERO EXTERNAL REQUESTS, and zero JavaScript. public/_headers ships
+  `default-src 'none'` with no script-src at all, so a <script> of any kind is
+  blocked outright — this page cannot be made interactive with JS even by
+  accident. Everything below is therefore CSS-only: the drifting background, the
+  entrance stagger and the card sheen are all keyframes, and every glyph is
+  inline SVG markup. System fonts only.
+
+  That constraint is the reason for the shape of this file, not an obstacle to
+  it. If you want motion here, it is a @keyframes; if you want an icon, it is an
+  <svg> in the markup.
   ---------------------------------------------------------------------------
 
   GROWING INTO THE CROSS-FORMAT INDEX (catalog-platform/docs/PLATFORM.md §5):
-  this page is eventually the combined view — "do we own this in any format?"
-  across all three catalogs, served by index.heygabi.ai. That is designed here
-  as an ADDITIVE change, not a rewrite:
+  <section id="find"> is the reserved slot — drop a search input and results
+  list in there; the catalogue cards sit below it and do not move. That will be
+  the first feature needing JS, and it needs BOTH `script-src 'self'` and
+  `connect-src https://index.heygabi.ai` added to _headers. Widen it for that
+  host and nothing else.
 
-    * The <section id="find"> slot below is reserved for it and currently holds
-      only a one-line note. Drop a search input + results list in there.
-    * The catalogue links are a plain <ul class="catalogues"> — the index does
-      not replace them, it sits above them.
-    * The one thing that would break the no-auth rule is a personalised index.
-      It must stay a public, default-deny projection (PLATFORM.md §5.2: no
-      prices, no lent_to, no per-person ratings, no email addresses). Public
-      projection => still no auth here.
-    * A fetch() to https://index.heygabi.ai would be the FIRST external request
-      this page makes. That is an allowed, deliberate exception when the index
-      exists — it is same-site and first-party. It does not open the door to
-      fonts, analytics or CDNs.
+  ⚠️ NO INVENTED NUMBERS. An earlier version of this page displayed a game count
+  that was not measured and was wrong by a wide margin. This page has no live
+  data source, so it states no totals. If counts ever appear here they come from
+  the index API, not from a person's memory.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
 
 <style>
 /*
- * Visual language deliberately echoes library_catalog/apps/web/src/styles.css —
- * same palette tokens (--bg/--fg/--muted/--line/--accent/--panel), same warm
- * paper-and-ink feel, same system-font stack — but NOTHING is imported from it.
- * That app is a Worker-served SPA; this is one static file. If the palette there
- * changes, this drifts, and that is fine: the goal is "same family", not "one
- * stylesheet in two places".
+ * heygabi.ai — the front door.
  *
- * Phone first. The whole page is one column; the desktop treatment is a wider
- * max-width and a two-column card grid, nothing more.
+ * Warm paper by day, a lamp-lit library at night. The palette still echoes
+ * library_catalog/apps/web/src/styles.css (same family, nothing imported), but
+ * this page is allowed more theatre than an app screen: it is read once, for
+ * about four seconds, and its whole job is to make three links feel like a
+ * place rather than a list.
+ *
+ * Phone first throughout. Desktop gets a wider measure and a 3-up grid.
  */
 
+/* ---- tokens ------------------------------------------------------------- */
+
 :root {
-  --bg: #fbfaf7;
-  --fg: #1b1a17;
-  --muted: #6b6862;
-  --line: #e2ded4;
+  --bg: #f7f4ed;
+  --bg-2: #efe9dc;
+  --fg: #17150f;
+  --muted: #6b6559;
+  --line: #e0d9c9;
+  --panel: #fffdf8;
+  --panel-edge: #ffffff;
+
   --accent: #3a5a40;
-  --panel: #fff;
-  --gold: #d9a441;
+  --gold: #b3822c;
+  --clay: #b1533c;
+
+  --shadow: 0 1px 2px rgba(23, 21, 15, .05), 0 8px 24px -12px rgba(23, 21, 15, .18);
+  --shadow-lift: 0 2px 4px rgba(23, 21, 15, .06), 0 20px 40px -16px rgba(23, 21, 15, .28);
+
+  /* Aurora blobs. Kept as tokens so dark mode restates only these. */
+  --blob-1: rgba(58, 90, 64, .20);
+  --blob-2: rgba(217, 164, 65, .18);
+  --blob-3: rgba(177, 83, 60, .12);
+  --grain-opacity: .035;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16150f;
-    --fg: #ece8de;
-    --muted: #98938a;
-    --line: #322f27;
+    /* Near-black with a green undertone rather than a mid olive: the aurora
+       blobs are what should carry the colour, and a lighter base muddied them
+       into a single flat wash. */
+    --bg: #0a0b09;
+    --bg-2: #121610;
+    --fg: #ece7d9;
+    --muted: #9a948a;
+    --line: #2a2c22;
+    --panel: #171a13;
+    --panel-edge: #22261c;
+
     --accent: #8fbc8f;
-    --panel: #1e1c16;
     --gold: #d9a441;
+    --clay: #d97e63;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px -14px rgba(0, 0, 0, .8);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, .5), 0 26px 50px -18px rgba(0, 0, 0, .9);
+
+    --blob-1: rgba(143, 188, 143, .16);
+    --blob-2: rgba(217, 164, 65, .16);
+    --blob-3: rgba(217, 126, 99, .11);
+    --grain-opacity: .05;
   }
 }
 
 * { box-sizing: border-box; }
-
 html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--fg);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  /* Keep content clear of the notch and the home bar when pinned to a phone. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x: hidden;
 }
 
+/* ---- the drifting background -------------------------------------------- */
+/*
+ * Three soft colour fields on a fixed layer, plus a fine grain overlay so the
+ * gradients do not band on cheap panels. Both are decorative and inert:
+ * position:fixed + pointer-events:none, aria-hidden on the element.
+ *
+ * The blobs move on a very long loop (40s+) with large, slow translations. Fast
+ * or tight motion here reads as a broken page rather than as atmosphere.
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, var(--bg-2) 0%, var(--bg) 60%);
+  overflow: hidden;
+}
+
+.backdrop span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(60px);
+  will-change: transform;
+}
+
+.backdrop .b1 {
+  width: 60vmax; height: 60vmax;
+  top: -22vmax; left: -18vmax;
+  background: var(--blob-1);
+  animation: drift-a 44s ease-in-out infinite;
+}
+.backdrop .b2 {
+  width: 46vmax; height: 46vmax;
+  top: 10vmax; right: -20vmax;
+  background: var(--blob-2);
+  animation: drift-b 58s ease-in-out infinite;
+}
+.backdrop .b3 {
+  width: 40vmax; height: 40vmax;
+  bottom: -18vmax; left: 25%;
+  background: var(--blob-3);
+  animation: drift-c 52s ease-in-out infinite;
+}
+
+/* Grain. An inline SVG feTurbulence — no image request, and it tiles for free. */
+.backdrop .grain {
+  position: absolute;
+  inset: -50%;
+  width: 200%; height: 200%;
+  border-radius: 0;
+  filter: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-7vmax, 6vmax, 0) scale(1.08); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4vmax, -5vmax, 0) scale(1.15); }
+}
+
+/* ---- layout -------------------------------------------------------------- */
+
+/*
+ * Centred vertically when the viewport has room to spare, top-aligned when it
+ * does not. `justify-content: center` on a flex column with min-height does
+ * exactly that and, unlike a transform or absolute positioning, never clips the
+ * top of overflowing content on a short window.
+ */
 main {
-  max-width: 44rem;
+  max-width: 60rem;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 2.5rem 1rem 3rem;
+  padding: clamp(2.5rem, 9vw, 4.5rem) 1.15rem 3.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-header { margin-bottom: 2rem; }
+/* Entrance stagger. Each piece declares its own delay; nothing is scripted. */
+.rise {
+  animation: rise .7s cubic-bezier(.22, .8, .3, 1) backwards;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- masthead ------------------------------------------------------------ */
+
+header { margin-bottom: clamp(2.25rem, 6vw, 3.5rem); }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  margin: 0 0 1rem;
+  padding: .3rem .7rem .3rem .5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+/* A slow pulse on the dot — the only thing on the page that says "live". */
+.eyebrow .dot-live {
+  width: .5rem; height: .5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 3.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1;  transform: scale(1); }
+  50%      { opacity: .45; transform: scale(.82); }
+}
 
 h1 {
-  margin: 0 0 0.35rem;
-  font-size: 2rem;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
+  margin: 0 0 .6rem;
+  font-size: clamp(2.6rem, 11vw, 5rem);
+  line-height: .98;
+  letter-spacing: -.035em;
+  font-weight: 800;
 }
-h1 .dot { color: var(--accent); }
+
+/*
+ * The wordmark gradient sweeps very slowly left to right. background-clip:text
+ * needs the -webkit- prefix to work in Safari and in Chrome on iOS; the plain
+ * property alone is not enough there, so both are set.
+ */
+h1 .mark {
+  background: linear-gradient(100deg,
+              var(--fg) 0%, var(--fg) 28%,
+              var(--accent) 46%, var(--gold) 60%,
+              var(--fg) 78%, var(--fg) 100%);
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sweep 14s ease-in-out infinite;
+}
+@keyframes sweep {
+  0%, 100% { background-position: 100% 50%; }
+  50%      { background-position: 0% 50%; }
+}
+
+h1 .tld { color: var(--accent); -webkit-text-fill-color: var(--accent); }
 
 .tagline {
   margin: 0;
+  max-width: 34rem;
   color: var(--muted);
-  font-size: 1.0625rem;
+  font-size: clamp(1rem, 2.6vw, 1.1875rem);
+  text-wrap: pretty;
 }
 
+/* ---- section headings ---------------------------------------------------- */
+
 h2 {
-  margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: 0 0 1rem;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--muted);
 }
+/* The rule that trails the heading. Pure decoration, so it is a pseudo-element
+   rather than a <hr> a screen reader would announce. */
+h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line), transparent);
+}
 
-/* --- the three catalogues ------------------------------------------------ */
+/* ---- reserved slot for the cross-format index ---------------------------- */
+
+#find { margin-bottom: clamp(2rem, 5vw, 3rem); }
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: 0;
+  padding: 1rem 1.15rem;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 45%, transparent);
+  color: var(--muted);
+  font-size: .9375rem;
+  text-wrap: pretty;
+}
+.slot svg { flex: none; opacity: .65; }
+
+/* ---- the catalogue cards -------------------------------------------------- */
 
 ul.catalogues {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-@media (min-width: 34rem) {
-  ul.catalogues { grid-template-columns: 1fr 1fr; }
-  ul.catalogues li:first-child { grid-column: 1 / -1; }
+@media (min-width: 52rem) {
+  ul.catalogues { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* The whole card is the tap target — a link inside a card is a miss on a phone
-   (same reasoning as button.row-open in the library app). */
+/*
+ * The whole card is the tap target — a small link inside a big card is a miss on
+ * a phone. Same reasoning as button.row-open in the library app.
+ */
 .card {
-  display: block;
+  position: relative;
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  padding: 1rem 1.1rem;
+  padding: 1.35rem 1.3rem 1.2rem;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--panel-edge), var(--panel));
+  box-shadow: var(--shadow);
   color: inherit;
   text-decoration: none;
+  isolation: isolate;
+  overflow: hidden;
   min-height: 44px;
 }
 
-a.card { transition: border-color 0.15s ease, transform 0.15s ease; }
-a.card:hover { border-color: var(--accent); }
-a.card:active { transform: scale(0.995); }
-a.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-@media (prefers-reduced-motion: reduce) {
-  a.card { transition: none; }
-  a.card:active { transform: none; }
+/* The spine: a coloured edge down the left, like a book on a shelf. Each card
+   sets --hue; everything else here is shared. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--hue);
+  opacity: .85;
 }
+
+a.card {
+  transition: transform .22s cubic-bezier(.22, .8, .3, 1),
+              box-shadow .22s ease,
+              border-color .22s ease;
+}
+a.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+  border-color: color-mix(in srgb, var(--hue) 45%, var(--line));
+}
+a.card:active { transform: translateY(-1px) scale(.995); }
+a.card:focus-visible { outline: 2px solid var(--hue); outline-offset: 3px; }
+
+/* A sheen that crosses the card on hover. ::after so it sits above the
+   background but below the text (which is z-indexed up). */
+a.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(105deg, transparent 35%,
+              color-mix(in srgb, var(--hue) 16%, transparent) 50%, transparent 65%);
+  background-size: 280% 100%;
+  background-position: 130% 0;
+  opacity: 0;
+  transition: opacity .2s ease;
+  pointer-events: none;
+}
+a.card:hover::after {
+  opacity: 1;
+  animation: sheen .8s ease-out;
+}
+@keyframes sheen {
+  from { background-position: 130% 0; }
+  to   { background-position: -30% 0; }
+}
+
+.card > * { position: relative; z-index: 2; }
+
+.glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: .9rem;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--hue) 13%, transparent);
+  color: var(--hue);
+}
+.glyph svg { display: block; }
 
 .card .name {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 1.1875rem;
-  font-weight: 600;
+  gap: .5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
 }
-a.card .name { color: var(--accent); }
+a.card .name { color: var(--fg); }
 
 .card .what {
-  margin: 0.2rem 0 0;
+  margin: .35rem 0 0;
   color: var(--muted);
-  font-size: 0.9375rem;
+  font-size: .9375rem;
+  text-wrap: pretty;
 }
 
+/* Pushed to the bottom so hosts line up across cards of unequal text length. */
 .card .host {
-  margin: 0.5rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: 1.1rem 0 0;
+  padding-top: .85rem;
+  border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: .78125rem;
   font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
   word-break: break-all;
 }
+.card .host .arrow {
+  margin-left: auto;
+  flex: none;
+  transition: transform .22s ease;
+}
+a.card:hover .host .arrow { transform: translateX(3px); }
 
-/* Not-yet-live catalogue: rendered as a <li> with no <a>, so it cannot be
-   tapped, cannot be focused, and cannot 404. */
-.card.soon { border-style: dashed; background: transparent; }
+/* Not-yet-live catalogue: a <li> with no <a>, so it cannot be tapped, focused
+   or crawled. Retained (unused right now) because a fourth shelf is plausible
+   and this is the pattern for it. */
+.card.soon {
+  border-style: dashed;
+  background: none;
+  box-shadow: none;
+}
 .card.soon .name { color: var(--fg); }
 
 .pill {
-  padding: 0.15rem 0.5rem;
+  padding: .15rem .5rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg);
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: .6875rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: .06em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-/* --- reserved slot for the cross-format index ---------------------------- */
-
-#find { margin-bottom: 2rem; }
-
-.slot {
-  padding: 0.85rem 1.1rem;
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 0.9375rem;
+/* Access-gated shelf. Says so plainly rather than letting a stranger discover it
+   by bouncing off a login wall. */
+.pill.locked {
+  border-color: color-mix(in srgb, var(--hue) 35%, var(--line));
+  color: color-mix(in srgb, var(--hue) 70%, var(--muted));
 }
 
-/* --- footer -------------------------------------------------------------- */
+/* ---- footer -------------------------------------------------------------- */
 
 footer {
-  margin-top: 2.5rem;
-  padding-top: 1.25rem;
+  margin-top: clamp(2.5rem, 7vw, 4rem);
+  padding-top: 1.4rem;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: .8125rem;
+  text-wrap: pretty;
 }
-footer p { margin: 0 0 0.4rem; }
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
 footer p:last-child { margin-bottom: 0; }
+
+/* ---- motion off ---------------------------------------------------------- */
+/*
+ * One block, everything. A drifting background is exactly the kind of ambient
+ * motion this setting exists to stop, so the blobs are parked rather than merely
+ * slowed, and the wordmark gradient is frozen mid-sweep at a readable position.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .backdrop span,
+  .eyebrow .dot-live,
+  h1 .mark,
+  .rise,
+  a.card,
+  a.card::after,
+  .card .host .arrow {
+    animation: none !important;
+    transition: none !important;
+  }
+  .rise { opacity: 1; transform: none; }
+  h1 .mark { background-position: 50% 50%; }
+  a.card:hover { transform: none; }
+}
 </style>
 </head>
 
 <body>
+
+<div class="backdrop" aria-hidden="true">
+  <span class="b1"></span>
+  <span class="b2"></span>
+  <span class="b3"></span>
+  <span class="grain"></span>
+</div>
+
 <main>
 
-  <header>
-    <h1>heygabi<span class="dot">.ai</span></h1>
-    <p class="tagline">A personal catalogue of what this household owns — audiobooks, books and board games.</p>
+  <header class="rise" style="animation-delay:.02s">
+    <p class="eyebrow"><span class="dot-live"></span> Three shelves, one household</p>
+    <h1><span class="mark">heygabi</span><span class="tld">.ai</span></h1>
+    <p class="tagline">A record of what we actually own — audiobooks, books and board games — kept because we kept losing track.</p>
   </header>
 
   <!--
-    RESERVED: the cross-format index (PLATFORM.md §5). When index.heygabi.ai
-    exists, replace the .slot below with a search field and a results list.
-    Nothing else on this page has to move.
+    RESERVED: the cross-format index (PLATFORM.md §5). Replace the .slot below
+    with a search field and a results list. Nothing else on this page moves.
   -->
-  <section id="find" aria-labelledby="find-h">
+  <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
     <h2 id="find-h">One question, three shelves</h2>
-    <p class="slot">Searching everything at once is coming. For now, pick a shelf.</p>
+    <p class="slot">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Searching everything at once — “do we own this in any format?” — is coming. For now, pick a shelf.
+    </p>
   </section>
 
-  <section aria-labelledby="cat-h">
+  <section class="rise" style="animation-delay:.18s" aria-labelledby="cat-h">
     <h2 id="cat-h">The catalogues</h2>
 
     <ul class="catalogues">
 
       <li>
-        <a class="card" href="https://audiobooks.heygabi.ai">
+        <a class="card" style="--hue: var(--gold)" href="https://audiobooks.heygabi.ai">
+          <span class="glyph" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M20 14h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1H19a1 1 0 0 0 1-1z"/></svg>
+          </span>
           <span class="name">Audiobooks</span>
-          <p class="what">Everything on Audible, with reviews, ratings and book clubs.</p>
-          <p class="host">audiobooks.heygabi.ai</p>
+          <p class="what">Everything on Audible, with reviews, ratings, book clubs and a guessing game.</p>
+          <p class="host">audiobooks.heygabi.ai
+            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+          </p>
         </a>
       </li>
 
       <li>
-        <a class="card" href="https://library.heygabi.ai">
+        <a class="card" style="--hue: var(--accent)" href="https://library.heygabi.ai">
+          <span class="glyph" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
+          </span>
           <span class="name">Books</span>
-          <p class="what">Print and ebook in one place — on the shelf and on the Kindle.</p>
-          <p class="host">library.heygabi.ai</p>
+          <p class="what">Print and ebook in one place — what is on the shelf and what is on the Kindle.</p>
+          <p class="host">library.heygabi.ai
+            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+          </p>
         </a>
       </li>
 
-      <!--
-        BOARD GAMES — DECISION: not linked. Rendered as a plain <li> with no
-        <a>, so it is not clickable, not keyboard-focusable and not crawlable.
-
-        Why not-clickable rather than a live link we accept as dead:
-          1. boardgames.heygabi.ai does not exist yet. HEYGABI_LAYOUT.md §4
-             Track C step 14 puts it LAST, and gates it behind removing
-             Cloudflare Access from the Board_Game_Catalog Worker
-             (PLATFORM.md §4.1) — the one step in the whole plan that reduces
-             security. That is not days away.
-          2. A dead link on the front door is a bug report waiting to happen,
-             and the failure a visitor sees is an unbranded Cloudflare error
-             page, not "not ready yet".
-          3. Worse: while the host is unclaimed, a link is a promise about a
-             name nobody controls. Saying "coming soon" costs nothing and
-             cannot mislead.
-
-        TO GO LIVE: delete the <li> below, uncomment the linked one under it,
-        and delete this comment. No CSS change needed — .card.soon and .pill
-        become unused, and can be swept then.
-      -->
       <li>
-        <div class="card soon">
-          <span class="name">Board games <span class="pill">Coming soon</span></span>
-          <p class="what">Owner-only behind Cloudflare Access.</p>
-          <p class="host">boardgames.heygabi.ai</p>
-        </div>
-      </li>
-
-      <!--
-      <li>
-        <a class="card" href="https://boardgames.heygabi.ai">
-          <span class="name">Board games</span>
-          <p class="what">The shelf, with player counts, weights and who has played what.</p>
-          <p class="host">boardgames.heygabi.ai</p>
+        <a class="card" style="--hue: var(--clay)" href="https://boardgames.heygabi.ai">
+          <span class="glyph" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
+          </span>
+          <span class="name">Board games <span class="pill locked">Owner only</span></span>
+          <p class="what">The shelf, with player counts, weights and who has actually played what.</p>
+          <p class="host">boardgames.heygabi.ai
+            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+          </p>
         </a>
       </li>
-      -->
 
     </ul>
   </section>
 
-  <footer>
-    <p>Not a shop and not a library — nothing here is for sale or for loan. It is a record of what we own, kept because we kept losing track.</p>
-    <p>No accounts, no tracking, no cookies on this page. Each catalogue handles its own sign-in.</p>
+  <footer class="rise" style="animation-delay:.26s">
+    <p>Not a shop and not a library — nothing here is for sale or for loan.</p>
+    <p>No accounts, no tracking and no cookies on this page. Each catalogue handles its own sign-in; board games is gated by Cloudflare Access and will ask before it shows you anything.</p>
   </footer>
 
 </main>
