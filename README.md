@@ -24,6 +24,7 @@ features exist for.
 | Doc | Covers |
 |---|---|
 | [`docs/PLATFORM.md`](docs/PLATFORM.md) | The combined site: hosting move, shared index, auth, sequencing |
+| [`docs/DOMAIN_AND_HOSTING.md`](docs/DOMAIN_AND_HOSTING.md) | Which domain shape, whether GitHub Pages retires, migration steps, costs. Answers `PLATFORM.md` §8 q1 and q2 |
 | [`docs/LIBRARY_CATALOG.md`](docs/LIBRARY_CATALOG.md) | The new books + ebooks catalog |
 | [`docs/diagrams/architecture.md`](docs/diagrams/architecture.md) | All diagrams in one place |
 
