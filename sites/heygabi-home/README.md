@@ -1,7 +1,13 @@
 # heygabi-home
 
-> **Audience:** Claude sessions and the owner. **Status:** BUILT, NOT DEPLOYED.
-> Last verified: **2026-08-09**.
+> **Audience:** Claude sessions and the owner. **Status:** **LIVE** at
+> <https://heygabi.ai>. Last verified: **2026-08-10** (apex and `www` both
+> answered `200`).
+>
+> ⚠️ **This used to be its own repo, `vs-code-repos/heygabi-home`. It moved here
+> on 2026-08-10** — see the root [`README.md`](../../README.md) for why. Paths in
+> this file and in `deploy.md` are relative to `sites/heygabi-home/`; the
+> **deploy command now runs from the repo root and names `sites/heygabi-home/public`**.
 
 The landing page for the apex domain **`heygabi.ai`** (and `www.heygabi.ai`).
 
@@ -17,26 +23,25 @@ catalogue of what this household owns — and links the three catalogues:
 
 | Catalogue | Host | State |
 |---|---|---|
-| Audiobooks | `audiobooks.heygabi.ai` | linked |
-| Books (print **and** ebook) | `library.heygabi.ai` | linked |
-| Board games | `boardgames.heygabi.ai` | **not linked** — rendered as "Coming soon", not clickable |
+| Audiobooks | `audiobooks.heygabi.ai` | linked (`index.html:589`) |
+| Books (print **and** ebook) | `library.heygabi.ai` | linked (`index.html:602`) |
+| Board games | `boardgames.heygabi.ai` | linked, badged **"Owner only"** (`index.html:615-619`) |
 
-### Why board games is not a link
+### Board games is a link now, and says so
 
-`boardgames.heygabi.ai` does not exist yet.
-`catalog-platform/docs/HEYGABI_LAYOUT.md` §4 Track C puts it **last** (step 14),
-gated behind removing Cloudflare Access from the `Board_Game_Catalog` Worker
-(`PLATFORM.md` §4.1). So the choice was between a link that 404s and an honest
-"coming soon".
+An earlier version rendered board games as an unclickable "Coming soon" card,
+because the host did not exist and a link would have been a promise about a name
+nobody controlled. `boardgames.heygabi.ai` went live on 2026-08-09 (Worker
+`custom_domain` route, inheriting the existing Cloudflare Access application's
+audience), so both reasons lapsed and the card became a real `<a>`.
 
-It is rendered as a `<div>` inside the `<li>` with **no `<a>`** — not clickable,
-not keyboard-focusable, not crawlable. A dead link on the front door produces an
-unbranded Cloudflare error page rather than "not ready yet", and while the host
-is unclaimed a link is a promise about a name nobody controls.
+⚠️ **It is still behind Cloudflare Access**, which is why it carries an "Owner
+only" pill rather than looking like the other two. That is deliberate: a
+stranger should learn the gate exists from the card, not by bouncing off a login
+wall. `docs/HEYGABI_LAYOUT.md` §4 Track C step 14 removes Access; when it does,
+**delete the pill** — not the link.
 
-**To go live:** in `public/index.html`, delete the `<li>` holding `.card.soon`,
-uncomment the linked `<li>` directly below it, and delete the explanatory
-comment. No CSS change is needed.
+The `.card.soon` pattern is kept in the stylesheet, unused, for the next shelf.
 
 ---
 
@@ -111,19 +116,25 @@ and storage this page does not otherwise have.
 
 ## Files
 
+All paths are under `sites/heygabi-home/`.
+
 | File | Purpose |
 |---|---|
 | `public/index.html` | The entire site. Inline CSS, inline SVG favicon, no JS |
 | `public/_headers` | Cloudflare Pages headers — CSP that forbids external requests |
 | `deploy.md` | Exact steps to create the Pages project and attach the domains |
 | `README.md` | This file |
+| `.gitattributes` | Pins this subtree to LF. `_headers` is parsed by Cloudflare, not git, and `core.autocrlf` is on globally on this machine |
+| `.gitignore` | Keeps OS cruft and wrangler's `.wrangler/` cache out. Scoped to this directory |
 
 ⚠️ **`public/` is the deploy root, and that split is deliberate.** A Pages direct
-upload publishes every file in the uploaded directory. Deploying the repo root
-would put `README.md` and `deploy.md` — which describe the internal architecture
-— at `https://heygabi.ai/README.md`. Keeping the site in `public/` means the docs
-cannot be published by accident. There is still no build step: `public/` is
-uploaded as-is.
+upload publishes every file in the uploaded directory. Deploying
+`sites/heygabi-home/` would put `README.md` and `deploy.md` — which describe the
+internal architecture — at `https://heygabi.ai/README.md`. Keeping the site in
+`public/` means the docs cannot be published by accident, and **that now guards
+the whole platform repo**: the upload root is one named directory, so nothing in
+`docs/` can reach the public site either. There is still no build step:
+`public/` is uploaded as-is.
 
 ## Local preview
 
@@ -140,5 +151,18 @@ the commit silently not happening.
 
 ## Repo state
 
-Local only. `git init`, no remote, never deployed by a session. Deployment is the
-owner's, per `deploy.md`.
+Lives in **`catalog-platform`**, under `sites/heygabi-home/`, pushed to
+`github.com/skymitch9/catalog-platform`.
+
+The standalone `heygabi-home` repo that used to hold this — locally at
+`vs-code-repos/heygabi-home`, remote `github.com/skymitch9/heygabi-home` — was
+retired on 2026-08-10 and its three commits were merged here with their history
+intact. ⚠️ **Do not re-create it.** The page is governed by `docs/HEYGABI_LAYOUT.md`
+and `docs/PLATFORM.md`, which live in this repo; the split meant every change to
+the front door had to be reasoned about in one repo and made in another.
+
+Deployment is still the owner's, per [`deploy.md`](deploy.md). The Pages project
+is `heygabi-home` in Cloudflare account `Nbaslamking@gmail.com's Account`
+(`113be82b840c956b8378a187047ab3ea`) — **the project name did not change with
+the repo**, and renaming it would mint a new `*.pages.dev` and re-issue certs
+for no gain.

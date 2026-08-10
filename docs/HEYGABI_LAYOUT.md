@@ -1,5 +1,13 @@
 # heygabi.ai — Hostname Layout, and the Ebook Question
 
+> 📍 **Much of §4 has since been executed. This document is the reasoning; the
+> [root `README.md`](../README.md) § Status is the current state**, measured
+> 2026-08-10. In short: the apex and all three catalog hosts are live, the
+> landing page is in this repo at [`sites/heygabi-home/`](../sites/heygabi-home/),
+> board games kept its Access gate, and the `www` → apex redirect (§4 / `deploy.md`
+> §2.1) is still outstanding. Where the two disagree, believe the README — it
+> was measured against the running hosts, this was reasoned from files.
+
 > ✅ **Confirmed by the owner 2026-08-10: `heygabi.ai` IS registered at Cloudflare Registrar**, in the same account as the two Workers. The inference below that `.ai` is not a Cloudflare TLD was **wrong**. There is no nameserver change and no zone transfer — the zone is already there, so Workers custom domains, R2 custom domains and redirect rules can all be attached directly.
 
 > **Audience:** Claude sessions and the owner. **Status:** DECISION — no code

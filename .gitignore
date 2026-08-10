@@ -1,0 +1,15 @@
+# Wrangler writes its cache (account id, project name) next to wherever the
+# command was run. deploy.md tells you to run from this root:
+#
+#     npx wrangler pages deploy sites/heygabi-home/public --project-name heygabi-home
+#
+# so the cache lands here, not in sites/heygabi-home/ where that site's own
+# .gitignore would have caught it.
+.wrangler/
+
+# OS and editor cruft.
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+*.swp

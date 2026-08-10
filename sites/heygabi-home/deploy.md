@@ -1,14 +1,26 @@
 # heygabi.ai — Deploy Reference
 
-> **Audience:** Claude sessions and the owner. **Status:** NOT YET RUN — no
-> Cloudflare object exists for this project. Last verified: **2026-08-09**.
+> **Audience:** Claude sessions and the owner. **Status:** **RUN, and live.**
+> Pages project `heygabi-home` exists; `heygabi.ai` and `www.heygabi.ai` both
+> answered `200` on **2026-08-10** (`curl -s -D - -o /dev/null`). Last verified:
+> **2026-08-10**.
 >
-> Steps written from `catalog-platform/docs/HEYGABI_LAYOUT.md` §1 and §4 (which
-> records the apex as **Pages, direct upload**, and confirms the zone is already
-> in the Cloudflare account because `heygabi.ai` is registered at **Cloudflare
-> Registrar**). ⚠️ **Not verified against a live dashboard by the session that
-> wrote this** — the dashboard's menu labels drift, so read the step's intent,
-> not its exact wording.
+> §1 and §2 are therefore **history** — kept because they are the record of how
+> the objects were made, and the rebuild instructions if the project is ever
+> lost. **§4 is the section you want for a routine deploy.**
+>
+> ⚠️ **The deploy path gained a segment** when this site moved into
+> `catalog-platform` on 2026-08-10. Commands below run from the **repo root** and
+> name `sites/heygabi-home/public`. A stale `wrangler pages deploy public` from
+> the root will fail on a missing directory — which is the safe failure; the
+> dangerous typo is deploying a directory that *does* exist and contains docs.
+>
+> Steps written from [`../../docs/HEYGABI_LAYOUT.md`](../../docs/HEYGABI_LAYOUT.md)
+> §1 and §4 (which records the apex as **Pages, direct upload**, and confirms the
+> zone is already in the Cloudflare account because `heygabi.ai` is registered at
+> **Cloudflare Registrar**). ⚠️ Menu labels below were **not** re-checked against
+> the dashboard on 2026-08-10 — they drift, so read a step's intent, not its
+> exact wording.
 
 🔴 = owner only. A session must not run these.
 
@@ -20,7 +32,7 @@
 |---|---|
 | The `heygabi.ai` zone shows **Active** in Cloudflare | `HEYGABI_LAYOUT.md` §4 Track A step 3. Nothing below works until it is |
 | You are in the **same Cloudflare account** as the two Workers | Registrar, zone and Pages project must share an account or the custom-domain step cannot see the zone |
-| ⚠️ You are deploying **`public/`**, not the repo root | Uploading the root publishes `README.md` and `deploy.md` at `https://heygabi.ai/README.md` |
+| ⚠️ You are deploying **`sites/heygabi-home/public`**, not the repo root and not `sites/heygabi-home` | Either wrong root publishes `README.md` and `deploy.md` at `https://heygabi.ai/README.md`; the repo root would also publish all of `docs/` |
 
 **Nothing here touches Firebase.** Do **not** add `heygabi.ai` or
 `www.heygabi.ai` to Firebase authorised domains — see the no-auth rule in
@@ -37,9 +49,12 @@ Two equivalent routes. Pick one; do not do both.
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** tab →
    **Upload assets**.
 2. Project name: **`heygabi-home`**.
-   ⚠️ This name is permanent-ish and mints `heygabi-home.pages.dev`. Keep it
-   matching the repo name.
-3. Drag the **`public/`** folder (not the repo root, not the zip of the repo).
+   ⚠️ This name is permanent-ish and mints `heygabi-home.pages.dev`. It **no
+   longer matches a repo name** — the repo is `catalog-platform` now — and that
+   is fine. Renaming the project would mint a new `*.pages.dev` and re-issue
+   certificates to buy tidiness.
+3. Drag the **`sites/heygabi-home/public`** folder (not the repo root, not
+   `sites/heygabi-home`, not a zip).
 4. **Deploy site**.
 5. Confirm `https://heygabi-home.pages.dev` loads before touching DNS.
 
@@ -49,11 +64,11 @@ Runs from the repo root. Requires a login already in place
 (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` in the environment).
 
 ```bash
-# once
+# once — already done; here for a rebuild
 npx wrangler pages project create heygabi-home --production-branch main
 
 # every deploy
-npx wrangler pages deploy public --project-name heygabi-home
+npx wrangler pages deploy sites/heygabi-home/public --project-name heygabi-home
 ```
 
 Notes:
@@ -64,7 +79,12 @@ Notes:
 - ⚠️ **On Windows, wrangler sometimes prints success then exits 255** — a libuv
   teardown quirk seen repeatedly in the sibling repos. Read the output, not the
   exit code.
-- Deploying `public` (not `.`) is what keeps the docs off the public site.
+- Naming `sites/heygabi-home/public` (not `.`, not `sites/heygabi-home`) is what
+  keeps the docs off the public site.
+- `.wrangler/` is written wherever the command is run from. The `.gitignore` in
+  `sites/heygabi-home/` only covers that directory, so running from the repo
+  root leaves an **untracked** `catalog-platform/.wrangler/`. Ignore it at the
+  root, or run the command from `sites/heygabi-home/` with `public` as the path.
 
 ---
 
@@ -82,6 +102,11 @@ itself — there is no record to create by hand and no nameserver change.
    two; it can take longer on a first-ever cert for the zone.
 
 ### 2.1 Pick a canonical host and redirect the other
+
+> 🔶 **NOT DONE — measured 2026-08-10.** `curl -s -D - -o /dev/null
+> https://www.heygabi.ai` returns **`200`**, not a `301`. Both hosts serve the
+> page today, so the rule below is still outstanding. It is cosmetic, not
+> broken; nothing depends on it.
 
 Attaching both means both serve the page, which is duplicate content and — more
 importantly — means two names for one thing. `HEYGABI_LAYOUT.md` §7 open
@@ -112,16 +137,24 @@ record and a cert to be reachable at all.
 
 ## 3. Verify
 
+⚠️ **`curl -I` and `curl -o /dev/null` both misreport in Git Bash on this
+machine** — `-o /dev/null` exits **43** with status `000` on a host that is
+plainly up, and `-o NUL` did the same thing here on 2026-08-10. Use `-D -` and
+read the status line out of the dumped headers; it is the one form that has been
+observed to work.
+
 ```bash
-# 200, and the HTML actually contains the catalogue links
-curl -sI https://heygabi.ai | head -20
-curl -s  https://heygabi.ai | grep -c "library.heygabi.ai"
+# status line + headers, without the -I / -o pitfalls above
+curl -s -D - -o /dev/null --max-time 15 https://heygabi.ai | head -3
+
+# the HTML actually contains the catalogue links
+curl -s --max-time 15 https://heygabi.ai | grep -c "library.heygabi.ai"
 
 # the CSP arrived from _headers
-curl -sI https://heygabi.ai | grep -i "content-security-policy"
+curl -s -D - -o /dev/null --max-time 15 https://heygabi.ai | grep -i "content-security-policy"
 
-# www redirects with a 301 to the apex
-curl -sI https://www.heygabi.ai | grep -i -E "^(HTTP|location)"
+# www: expect 301 + location once §2.1 is done. Today it answers 200
+curl -s -D - -o /dev/null --max-time 15 https://www.heygabi.ai | grep -i -E "^(HTTP|location)"
 ```
 
 Then in a browser:
@@ -134,27 +167,34 @@ Then in a browser:
       no image, no beacon. This is the whole no-external-requests rule, checked
       in one glance.
 - [ ] **Console is empty** — a CSP violation would print here.
-- [ ] Board games card is **not** clickable and shows "Coming soon".
-- [ ] Audiobooks and Books links go to the right hosts. ⚠️ If those hosts are not
-      yet attached, these links 404 — that is expected and is a reason to
-      sequence the apex **after** them, not a bug in this page.
+- [ ] Board games card **is** a link and carries the "Owner only" pill. (It was
+      an unclickable "Coming soon" card until 2026-08-09; `README.md` records
+      why it changed and when the pill comes off.)
+- [ ] All three catalogue links go to the right hosts. Board games sits behind
+      Cloudflare Access, so a signed-out browser gets the Access login — that is
+      the gate working, not a broken link.
 
 ---
 
 ## 4. Subsequent deploys
 
-Edit `public/index.html`, commit (`git commit -F <file>`, **never `-m`**), then
-re-upload:
+Edit `sites/heygabi-home/public/index.html`, commit (`git commit -F <file>`,
+**never `-m`**), then re-upload — **from the `catalog-platform` repo root**:
 
 ```bash
-npx wrangler pages deploy public --project-name heygabi-home
+npx wrangler pages deploy sites/heygabi-home/public --project-name heygabi-home
 ```
 
-There is no build, no preview lane and no promote step. This repo deliberately
+There is no build, no preview lane and no promote step. This site deliberately
 does **not** copy the audiobook catalog's two-lane `main` → `/dev/`, `prod` →
 root architecture: that exists to protect a 42,000-line generated site fed by a
 pipeline. One hand-edited static file does not need it, and the rollback is
 Pages' own deployment history (project → **Deployments** → ⋯ → **Rollback**).
+
+⚠️ **A deploy here publishes only this directory, and that is now load-bearing.**
+`catalog-platform` holds design documents that were written for sessions and the
+owner, not for the public. The upload root is the single defence; there is no
+`.pagesignore`, no build step and nothing else filtering what ships.
 
 ---
 
