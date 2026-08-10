@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — our catalogues</title>
+<meta name="description" content="A personal catalogue of what this household owns: audiobooks, books and board games.">
+<meta name="color-scheme" content="light dark">
+
+<!--
+  ============================================================================
+  ⚠️  NO AUTHENTICATION ON THIS HOST. EVER. DO NOT ADD A SIGN-IN BUTTON.
+  ============================================================================
+
+  The apex (heygabi.ai / www.heygabi.ai) is a static, public, read-only signpost.
+  It must never become a Firebase Auth origin for the shared `audiobook-catalog`
+  Firebase project.
+
+  Why, concretely: audiobook_catalog/site/identity.js calls signOut() on the
+  SHARED Firebase Auth instance on page load. A second auth origin for the same
+  project is therefore actively hostile — one host can sign the user out from
+  under another. catalog-platform/docs/HEYGABI_LAYOUT.md §1.3 and §6 make the
+  same argument for the redirect-only hosts: a host that never runs a sign-in
+  never needs to be an authorised domain, and adding one "just in case" is the
+  failure mode.
+
+  So: no Firebase SDK, no Google sign-in, no session cookie, no /login, no
+  "my ratings", no personalisation. Every catalog does its own sign-in on its
+  own host. If something here ever appears to need a logged-in user, that
+  feature belongs on a catalog host, not on the apex.
+
+  Corollary — DO NOT add heygabi.ai to Firebase → Authentication → Settings →
+  Authorised domains. (HEYGABI_LAYOUT.md §1 marks the apex "yes — IF anything
+  there signs in". Nothing here signs in, so the answer stays no.)
+
+  ---------------------------------------------------------------------------
+  ALSO: zero external requests. No CDN, no web fonts, no analytics, no remote
+  images, no favicon file. System fonts and one inline SVG data URI only. This
+  page must render identically with the network cut after first byte, and it
+  must set no third-party cookies.
+  ---------------------------------------------------------------------------
+
+  GROWING INTO THE CROSS-FORMAT INDEX (catalog-platform/docs/PLATFORM.md §5):
+  this page is eventually the combined view — "do we own this in any format?"
+  across all three catalogs, served by index.heygabi.ai. That is designed here
+  as an ADDITIVE change, not a rewrite:
+
+    * The <section id="find"> slot below is reserved for it and currently holds
+      only a one-line note. Drop a search input + results list in there.
+    * The catalogue links are a plain <ul class="catalogues"> — the index does
+      not replace them, it sits above them.
+    * The one thing that would break the no-auth rule is a personalised index.
+      It must stay a public, default-deny projection (PLATFORM.md §5.2: no
+      prices, no lent_to, no per-person ratings, no email addresses). Public
+      projection => still no auth here.
+    * A fetch() to https://index.heygabi.ai would be the FIRST external request
+      this page makes. That is an allowed, deliberate exception when the index
+      exists — it is same-site and first-party. It does not open the door to
+      fonts, analytics or CDNs.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<style>
+/*
+ * Visual language deliberately echoes library_catalog/apps/web/src/styles.css —
+ * same palette tokens (--bg/--fg/--muted/--line/--accent/--panel), same warm
+ * paper-and-ink feel, same system-font stack — but NOTHING is imported from it.
+ * That app is a Worker-served SPA; this is one static file. If the palette there
+ * changes, this drifts, and that is fine: the goal is "same family", not "one
+ * stylesheet in two places".
+ *
+ * Phone first. The whole page is one column; the desktop treatment is a wider
+ * max-width and a two-column card grid, nothing more.
+ */
+
+:root {
+  --bg: #fbfaf7;
+  --fg: #1b1a17;
+  --muted: #6b6862;
+  --line: #e2ded4;
+  --accent: #3a5a40;
+  --panel: #fff;
+  --gold: #d9a441;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16150f;
+    --fg: #ece8de;
+    --muted: #98938a;
+    --line: #322f27;
+    --accent: #8fbc8f;
+    --panel: #1e1c16;
+    --gold: #d9a441;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Keep content clear of the notch and the home bar when pinned to a phone. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 3rem;
+}
+
+header { margin-bottom: 2rem; }
+
+h1 {
+  margin: 0 0 0.35rem;
+  font-size: 2rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+h1 .dot { color: var(--accent); }
+
+.tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.0625rem;
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- the three catalogues ------------------------------------------------ */
+
+ul.catalogues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 34rem) {
+  ul.catalogues { grid-template-columns: 1fr 1fr; }
+  ul.catalogues li:first-child { grid-column: 1 / -1; }
+}
+
+/* The whole card is the tap target — a link inside a card is a miss on a phone
+   (same reasoning as button.row-open in the library app). */
+.card {
+  display: block;
+  height: 100%;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+a.card { transition: border-color 0.15s ease, transform 0.15s ease; }
+a.card:hover { border-color: var(--accent); }
+a.card:active { transform: scale(0.995); }
+a.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  a.card { transition: none; }
+  a.card:active { transform: none; }
+}
+
+.card .name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+a.card .name { color: var(--accent); }
+
+.card .what {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.card .host {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
+  word-break: break-all;
+}
+
+/* Not-yet-live catalogue: rendered as a <li> with no <a>, so it cannot be
+   tapped, cannot be focused, and cannot 404. */
+.card.soon { border-style: dashed; background: transparent; }
+.card.soon .name { color: var(--fg); }
+
+.pill {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* --- reserved slot for the cross-format index ---------------------------- */
+
+#find { margin-bottom: 2rem; }
+
+.slot {
+  padding: 0.85rem 1.1rem;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+/* --- footer -------------------------------------------------------------- */
+
+footer {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+footer p { margin: 0 0 0.4rem; }
+footer p:last-child { margin-bottom: 0; }
+</style>
+</head>
+
+<body>
+<main>
+
+  <header>
+    <h1>heygabi<span class="dot">.ai</span></h1>
+    <p class="tagline">A personal catalogue of what this household owns — audiobooks, books and board games.</p>
+  </header>
+
+  <!--
+    RESERVED: the cross-format index (PLATFORM.md §5). When index.heygabi.ai
+    exists, replace the .slot below with a search field and a results list.
+    Nothing else on this page has to move.
+  -->
+  <section id="find" aria-labelledby="find-h">
+    <h2 id="find-h">One question, three shelves</h2>
+    <p class="slot">Searching everything at once is coming. For now, pick a shelf.</p>
+  </section>
+
+  <section aria-labelledby="cat-h">
+    <h2 id="cat-h">The catalogues</h2>
+
+    <ul class="catalogues">
+
+      <li>
+        <a class="card" href="https://audiobooks.heygabi.ai">
+          <span class="name">Audiobooks</span>
+          <p class="what">Everything on Audible, with reviews, ratings and book clubs.</p>
+          <p class="host">audiobooks.heygabi.ai</p>
+        </a>
+      </li>
+
+      <li>
+        <a class="card" href="https://library.heygabi.ai">
+          <span class="name">Books</span>
+          <p class="what">Print and ebook in one place — on the shelf and on the Kindle.</p>
+          <p class="host">library.heygabi.ai</p>
+        </a>
+      </li>
+
+      <!--
+        BOARD GAMES — DECISION: not linked. Rendered as a plain <li> with no
+        <a>, so it is not clickable, not keyboard-focusable and not crawlable.
+
+        Why not-clickable rather than a live link we accept as dead:
+          1. boardgames.heygabi.ai does not exist yet. HEYGABI_LAYOUT.md §4
+             Track C step 14 puts it LAST, and gates it behind removing
+             Cloudflare Access from the Board_Game_Catalog Worker
+             (PLATFORM.md §4.1) — the one step in the whole plan that reduces
+             security. That is not days away.
+          2. A dead link on the front door is a bug report waiting to happen,
+             and the failure a visitor sees is an unbranded Cloudflare error
+             page, not "not ready yet".
+          3. Worse: while the host is unclaimed, a link is a promise about a
+             name nobody controls. Saying "coming soon" costs nothing and
+             cannot mislead.
+
+        TO GO LIVE: delete the <li> below, uncomment the linked one under it,
+        and delete this comment. No CSS change needed — .card.soon and .pill
+        become unused, and can be swept then.
+      -->
+      <li>
+        <div class="card soon">
+          <span class="name">Board games <span class="pill">Coming soon</span></span>
+          <p class="what">775 games, currently owner-only behind Cloudflare Access.</p>
+          <p class="host">boardgames.heygabi.ai</p>
+        </div>
+      </li>
+
+      <!--
+      <li>
+        <a class="card" href="https://boardgames.heygabi.ai">
+          <span class="name">Board games</span>
+          <p class="what">The shelf, with player counts, weights and who has played what.</p>
+          <p class="host">boardgames.heygabi.ai</p>
+        </a>
+      </li>
+      -->
+
+    </ul>
+  </section>
+
+  <footer>
+    <p>Not a shop and not a library — nothing here is for sale or for loan. It is a record of what we own, kept because we kept losing track.</p>
+    <p>No accounts, no tracking, no cookies on this page. Each catalogue handles its own sign-in.</p>
+  </footer>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Keep LF in the working copy on Windows too.
+#
+# core.autocrlf is on globally on this machine, so a fresh clone would check
+# public/_headers out with CRLF — and _headers is a line-oriented format parsed
+# by Cloudflare, not by git. Rather than find out whether its parser tolerates
+# stray \r in a header VALUE, pin the whole repo to LF. Nothing here is edited by
+# a tool that needs CRLF.
+* text=auto eol=lf

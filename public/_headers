@@ -1,0 +1,27 @@
+# Cloudflare Pages headers file. Has no effect locally — Pages applies it at the
+# edge. Syntax: a path pattern on its own line, then indented "Name: value" lines.
+#
+# The CSP is the enforcement half of this repo's "zero external requests" rule.
+# default-src 'none' means a stray <script src>, web font, CDN stylesheet,
+# analytics beacon or remote <img> fails visibly in the console instead of
+# quietly phoning home.
+#
+#   img-src 'self' data:   — the inline SVG favicon is a data: URI.
+#   style-src 'unsafe-inline' — the whole stylesheet is one inline <style>.
+#     ⚠️ This is NOT a hole worth closing with a nonce: Pages serves a static
+#     file and cannot mint a per-response nonce without a Worker. With
+#     script-src blocked entirely there is no injection vector to leverage it.
+#   script-src is absent, so default-src 'none' applies: NO JavaScript at all.
+#
+# ⚠️ When the cross-format index (PLATFORM.md §5) lands, this page will fetch
+# https://index.heygabi.ai. That needs BOTH:
+#     connect-src https://index.heygabi.ai;
+#     script-src 'self';        (and the script moved out to its own .js file)
+# Widen it for that host and nothing else.
+
+/*
+  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
