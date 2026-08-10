@@ -22,7 +22,7 @@
 | Books host | **`library.heygabi.ai`** — one host, print *and* ebook |
 | **Does `ebooks.heygabi.ai` exist as an app?** | **No.** Not option (a), not option (b) |
 | **What is it then?** | **Option (c): a view.** `library.heygabi.ai/?format=ebook`. Optionally a 301-only subdomain that is never an auth origin |
-| Board games | **`boardgame.heygabi.ai`** — the owner's own name, kept |
+| Board games | **`boardgames.heygabi.ai`** — the owner's own name, kept |
 | Audiobooks | **The apex**, `heygabi.ai`. It is also the combined public view |
 | Firebase authorised domains | **Three**: apex, `library.`, `boardgame.` Plus the two existing `*.workers.dev` |
 | Is now the moment to fork? | **Now is the cheap moment to fork, and forking is still wrong.** §5 |
@@ -38,16 +38,33 @@ key. Splitting the catalog spends the design's central asset to buy a hostname.
 
 ## 1. The hostname map
 
+> **Revised 2026-08-10 by the owner: every catalog host is PLURAL.** The earlier
+> draft mixed `boardgame.` (singular) with `audiobooks.` (plural) and put the
+> audiobook site on the apex. One rule now — plural, one per catalog — and that
+> frees the apex for the combined view rather than having it double as the
+> audiobook site.
+
 | Host | Serves | Cloudflare object | Firebase authorised domain? |
 |---|---|---|---|
-| `heygabi.ai` (+ `www`) | Audiobook catalog, its `/dev/` lane, and the combined public read view | **Pages**, direct upload | ✅ **yes** — Google popup runs here |
-| `library.heygabi.ai` | `library_catalog` Worker + D1 + React PWA. **Print and ebook, one app** | **Worker** custom domain | ✅ **yes** — Firebase ID tokens |
-| `boardgame.heygabi.ai` | `Board_Game_Catalog` Worker + D1 + React PWA | **Worker** custom domain | ✅ **yes**, once it moves off Access (`PLATFORM.md` §4) |
-| `covers.heygabi.ai` | 243 MB of audiobook cover art | **R2** public bucket custom domain | ❌ **never** — nothing signs in |
-| `index.heygabi.ai` | Cross-format index Worker (`PLATFORM.md` §5, unbuilt) | **Worker** custom domain | ❌ **never** |
-| `ebooks.heygabi.ai` | *(optional)* **301 → `https://library.heygabi.ai/?format=ebook`** | DNS record + a Single Redirect Rule. **No Worker, no app** | ❌ **never** — see §1.3 |
-| `audiobooks.heygabi.ai` | *(optional)* **301 → the apex** | Same mechanism | ❌ **never** |
+| `heygabi.ai` (+ `www`) | **The combined view / landing page.** Links the three catalogs; eventually the cross-format index (`PLATFORM.md` §5) | **Pages**, direct upload | ✅ **yes** — if anything there signs in |
+| `audiobooks.heygabi.ai` | Audiobook catalog and its `/dev/` lane | **Pages** | ✅ **yes** — Google popup runs here |
+| `library.heygabi.ai` | `library_catalog` Worker + D1 + PWA. **Print and ebook, one app** | **Worker** custom domain | ✅ **yes** — live |
+| `boardgames.heygabi.ai` | `Board_Game_Catalog` Worker + D1 + PWA | **Worker** custom domain | ✅ **yes**, once it moves off Access |
+| `ebooks.heygabi.ai` | **301 → `library.heygabi.ai/?format=ebook`** | DNS + Single Redirect Rule. **No Worker, no app** | ❌ **never** — see §1.3 |
+| `covers.heygabi.ai` | Audiobook cover art | **R2** public bucket | ❌ never |
+| `index.heygabi.ai` | Cross-format index Worker (unbuilt) | **Worker** custom domain | ❌ never |
 | `books.heygabi.ai` | **Not created.** `library.` is the books host | — | — |
+
+⚠️ **`library.` stays singular and that is not an inconsistency.** It is not a
+plural of a content type like the others — it is the name of the *place* that
+holds both print and ebooks. Renaming it `books.` would reintroduce exactly the
+problem §1.1 warns about: `books.` implies a sibling `ebooks.` app, and once both
+names look like apps someone eventually builds the second one.
+
+⚠️ **`ebooks.` is a redirect and must never become an auth origin.** The moment
+it serves the app directly it is a second Firebase origin for the same data, and
+`identity.js`'s `signOut()`-on-load behaviour makes multi-origin auth for one app
+actively hostile. A 301 costs nothing and cannot drift.
 
 ### 1.1 Why the books host is called `library.` and not `books.`
 
@@ -66,7 +83,7 @@ Two changes, both small.
 
 | That doc | Here | Why |
 |---|---|---|
-| `games.<domain>` | **`boardgame.heygabi.ai`** | The owner named it. Its §1.5 criterion was "typeable on a phone", and that criterion applies to `library.` — the one used standing at a bookshelf — not to the games host. If the owner prefers `games.`, take it and make `boardgame.` a redirect; **only one of the two goes in Firebase authorised domains** |
+| `games.<domain>` | **`boardgames.heygabi.ai`** | The owner named it. Its §1.5 criterion was "typeable on a phone", and that criterion applies to `library.` — the one used standing at a bookshelf — not to the games host. If the owner prefers `games.`, take it and make `boardgame.` a redirect; **only one of the two goes in Firebase authorised domains** |
 | Track A steps 2–3 assume **Cloudflare Registrar** | ✅ **Correct as written.** `heygabi.ai` is registered at Cloudflare Registrar, in the same account as the two Workers — confirmed by the owner 2026-08-10. An earlier inference here that `.ai` was not a Cloudflare TLD was **wrong**. | Nothing to do. No zone transfer, no nameserver change. The zone is already in the account, so Workers custom domains, R2 custom domains and redirect rules attach directly. |
 
 Also worth one line: `DOMAIN_AND_HOSTING.md` §4.1 budgeted **~$11–13/yr** for a
@@ -360,7 +377,7 @@ instinct is pointing at.
 | 11 | Verify: sign in completes, `/api/health` answers, the collection loads, `?format=ebook` filters | ⚠️ Confirm reviews land in `reviews`, **not** `reviews_dev` — §3.2 |
 | 12 | 🔴 *(optional)* Create `ebooks.heygabi.ai` → DNS + a **Single Redirect Rule** to `https://library.heygabi.ai/?format=ebook`, 301 | ⚠️ **Do not add it to Firebase authorised domains.** §1.3 |
 | 13 | The audiobook site to the apex | `DOMAIN_AND_HOSTING.md` §3 Tracks B and C, unchanged. Independent of everything above |
-| 14 | 🔴 Board games last: `PLATFORM.md` §4.1 checklist → remove Access → add `boardgame.heygabi.ai` to Firebase → attach it | Order matters. §4.1 is a prerequisite, not a nicety — it is the only step in the whole plan that reduces security |
+| 14 | 🔴 Board games last: `PLATFORM.md` §4.1 checklist → remove Access → add `boardgames.heygabi.ai` to Firebase → attach it | Order matters. §4.1 is a prerequisite, not a nicety — it is the only step in the whole plan that reduces security |
 
 `*.workers.dev` stays live throughout and afterwards. It costs nothing and it is
 the rollback.
