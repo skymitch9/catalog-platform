@@ -1,8 +1,11 @@
 # heygabi-home
 
 > **Audience:** Claude sessions and the owner. **Status:** **LIVE** at
-> <https://heygabi.ai>. Last verified: **2026-08-10** (apex and `www` both
-> answered `200`).
+> <https://heygabi.ai>. Last verified: **2026-08-10** — apex and `www` both
+> answered `200`, the CSP arrived from `_headers`, and the deployed HTML is
+> **byte-identical** to `public/index.html` here (21,931 bytes). **No deploy is
+> pending.** Outstanding owner actions are listed in the root
+> [`README.md`](../../README.md) § What is left.
 >
 > ⚠️ **This used to be its own repo, `vs-code-repos/heygabi-home`. It moved here
 > on 2026-08-10** — see the root [`README.md`](../../README.md) for why. Paths in

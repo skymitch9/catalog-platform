@@ -81,10 +81,33 @@ host:
 | | State |
 |---|---|
 | `heygabi.ai` + `www` | **Live**, both `200`, served by Pages project `heygabi-home` from `sites/heygabi-home/public` |
+| Live page vs this repo | ✅ **Byte-identical** — 21,931 bytes both sides. The move changed no deployed bytes, so **no redeploy is pending** |
+| CSP from `_headers` | ✅ **Arriving at the edge**, `default-src 'none'` and all. The zero-external-requests rule is enforced, not just documented |
 | The three catalog hosts | **All live** — see the table above |
-| `www` → apex `301` | ⚠️ **Not done.** `www` answers `200`, so both names serve the page. Cosmetic; `sites/heygabi-home/deploy.md` §2.1 has the rule to add |
+| `covers.heygabi.ai` | ✅ **Live and in use.** A real object returned `200`; the audiobook page references this host 7,536 times. Its root `404`s, which is just an R2 bucket with no object at `/` |
+| `www` → apex `301` | 🔶 **Not done.** `www` answers `200`, so both names serve the page. Cosmetic; `sites/heygabi-home/deploy.md` §2.1 has the rule |
 | Cloudflare Access on board games | **Still on** — the reason the front-door card is badged "Owner only". `PLATFORM.md` §4.1 is the checklist to remove it, and it is the one step in the plan that reduces security |
-| The cross-format index at `index.heygabi.ai` | **Unbuilt.** `PLATFORM.md` §5. `<section id="find">` in the landing page is the reserved slot |
-| Firebase authorised domains | ⚠️ **Not verified here** — the console is owner-only and unscriptable. The apex must **never** be added: `HEYGABI_LAYOUT.md` §1.3 |
+| `ebooks.heygabi.ai` | **Does not resolve** — never created. It was always optional (`HEYGABI_LAYOUT.md` §7 q4); if it is ever made, it is a `301` and **never** a Firebase authorised domain |
+| The cross-format index at `index.heygabi.ai` | **Does not resolve — unbuilt.** `PLATFORM.md` §5. `<section id="find">` in the landing page is the reserved slot |
+| Firebase authorised domains | ⚠️ **Not verified here** — the console is owner-only and unscriptable. Sign-in working on `library.` and `audiobooks.` implies they are listed. The apex must **never** be added: `HEYGABI_LAYOUT.md` §1.3 |
 
-Open questions for the owner are collected in `HEYGABI_LAYOUT.md` §7.
+## What is left, and who does it
+
+**Nothing is required to keep the site up.** Everything below is optional or
+gated on a decision. 🔴 = owner only; a session cannot do these.
+
+| # | Action | Owner? | Blocked on |
+|---|---|---|---|
+| 1 | 🔴 `www` → apex `301` redirect rule | yes, dashboard | Deciding apex-vs-`www` as canonical (`HEYGABI_LAYOUT.md` §7 q3 — the recommendation is **apex**, since every other host is a bare subdomain of it) |
+| 2 | 🔴 Remove Cloudflare Access from the board game Worker | yes | `PLATFORM.md` §4.1 checklist. **Do this before 3** |
+| 3 | 🔴 Add `boardgames.heygabi.ai` to Firebase authorised domains | yes | Step 2. Sign-in fails with `auth/unauthorized-domain` if the order is reversed |
+| 4 | Remove the "Owner only" pill from the board games card | no — a one-line edit here | Steps 2–3 actually landing. The pill is honest today |
+| 5 | The `?format=ebook` filter (`HEYGABI_LAYOUT.md` §4 Track B) | no | Nothing. It is code in `bookbuddy/library_catalog`, not in this repo, and it is the item with the real deadline — §5.3 explains why |
+
+⚠️ **Steps 2→3→4 are an order, not a list.** 2 before 3 or sign-in breaks; 4
+before either and the front door advertises open access to a gated host.
+
+Remaining open questions for the owner are in `HEYGABI_LAYOUT.md` §7. Two of
+them have since been answered by events rather than by a decision: **q1**
+(registrar — Cloudflare) and **q2** (`boardgame.` vs `games.` — neither; it went
+live as the plural `boardgames.`).
