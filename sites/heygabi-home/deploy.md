@@ -207,6 +207,24 @@ root architecture: that exists to protect a 42,000-line generated site fed by a
 pipeline. One hand-edited static file does not need it, and the rollback is
 Pages' own deployment history (project → **Deployments** → ⋯ → **Rollback**).
 
+### 4.1 Rollback points
+
+The owner permits pushing straight to `main` here **on condition that a rollback
+id is recorded**. There are two independent rollbacks and they are not the same
+lever: git undoes the source, the Pages dashboard undoes what is *served*.
+
+| Date | Pushed | Roll back the code to | Roll back the site by |
+|---|---|---|---|
+| 2026-08-10 | `cd53dcd..main` — the `/todo` board, the front-door link to it, and this record | **`cd53dcd`** | Pages → project `heygabi-home` → **Deployments** → ⋯ → **Rollback** to the deployment before this one |
+
+⚠️ The "Pushed" column names a **range, not a head sha**, on purpose: the commit
+that records a rollback point cannot name its own hash, and every attempt to fix
+that up mints another commit the table does not mention.
+
+Undoing the code: `git reset --hard cd53dcd && git push --force-with-lease`.
+⚠️ That alone leaves the *deployed* site unchanged — Pages serves the last
+upload, not the last commit. Roll the deployment back too, or re-upload.
+
 ⚠️ **A deploy here publishes only this directory, and that is now load-bearing.**
 `catalog-platform` holds design documents that were written for sessions and the
 owner, not for the public. The upload root is the single defence; there is no
