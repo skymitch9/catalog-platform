@@ -7,6 +7,15 @@
 # .gitignore would have caught it.
 .wrangler/
 
+# tools/universes.mjs has zero dependencies on purpose, so a fresh checkout can
+# run it with no install. Nothing here should ever need node_modules — but if
+# something does, it does not belong in git.
+node_modules/
+
+# ⚠️ data/universes.json is NOT ignored and never should be. It is the ONE copy
+# of the shared universe list; library_catalog and audiobook_catalog both read
+# it at build time. Ignoring it breaks two builds in another repo, silently.
+
 # OS and editor cruft.
 Thumbs.db
 desktop.ini

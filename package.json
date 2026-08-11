@@ -1,0 +1,14 @@
+{
+  "name": "catalog-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Platform-level docs, the heygabi.ai front door, and the shared universe list that both book catalogs read at build time.",
+  "scripts": {
+    "universes": "node tools/universes.mjs",
+    "validate": "node tools/universes.mjs validate && node tools/universes.mjs fixtures"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

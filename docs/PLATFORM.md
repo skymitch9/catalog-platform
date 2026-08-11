@@ -1,8 +1,9 @@
 # The Combined Site — System Design
 
-> **Audience:** Claude sessions. **Status:** PLANNING — nothing built.
-> Last verified: **2026-08-07**. Measurements in §1 were taken that day against
-> the live repos. Everything describing the target state is proposed, not built.
+> **Audience:** Claude sessions. **Status:** PLANNING, with **one piece built** —
+> §5.4, the shared universe list, which makes this repo a code dependency of two
+> catalogs. Everything else describing the target state is proposed, not built.
+> Last verified: **2026-08-11**; measurements in §1 are from **2026-08-07**.
 > Diagrams: [`diagrams/architecture.md`](diagrams/architecture.md).
 
 Three catalogs, presented as one site, without merging any of them.
@@ -217,6 +218,31 @@ strings — `Broccoli Lion, Matthew Jackson - Translator` and friends — that a
 three must reduce identically, checked in each repo's CI.
 
 This is the direct answer to the drift bug in §2.3, and it is cheap.
+
+### 5.4 ⚠️ This repo became a code dependency on 2026-08-11
+
+Nothing above required a consumer to *import* anything from here. The shared
+universe list does.
+
+`data/universes.json` is read at build time by **both** book catalogs —
+`library_catalog` bundles it into its Worker, `audiobook_catalog` reads it from
+disk during the Python pipeline. Neither keeps a copy in git.
+
+**So this is no longer a docs-and-a-landing-page repo.** Move `data/`, rename
+it, or clone this repo to an unexpected path, and two builds elsewhere are
+affected. `library_catalog` fails loudly; `audiobook_catalog` warns and
+continues with no universes. Both accept a `CATALOG_PLATFORM_DIR` override.
+
+It is a **file and not a table**, decided deliberately: ~33 series and ~13 book
+overrides changing maybe monthly is reference data, the value is version control
+over the decisions — including the refusals, which a table would lose — and the
+audiobook side cannot reach D1 at all, so a table would have needed an export
+step and a second copy. That is the drift this section spends its length trying
+to avoid.
+
+Full design: [`UNIVERSES.md`](UNIVERSES.md). ⚠️ The lookup exists twice, in
+TypeScript and in Python, and is pinned by `data/universes.fixtures.json` — the
+shared-fixture mechanism §5.3 prescribes, applied to its first real case.
 
 ---
 

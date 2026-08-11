@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "_doc": "The shared universe list. A series or book belongs to a fictional universe ONLY where that says something the series name does not already say.",
+  "_home": "catalog-platform/data/universes.json — the ONE copy, moved here from library_catalog/data/universes.json on 2026-08-11. Both catalogs read this path; neither keeps a copy in git. ⚠️ This makes catalog-platform a CODE dependency of library_catalog and audiobook_catalog, not a docs repo. Deleting or moving this file breaks their builds.",
+  "_scope": "⚠️ This list is SHARED BY BOTH CATALOGS and is not library_catalog data. It is keyed on series + author, which both sides can compute, because the same series exists in both collections under different rows and often in only one of them. Do not copy it into either catalog; a copy is how two lists drift. A build may materialise a gitignored copy as a build artifact (library_catalog does), but nothing tracked in git may hold a second version of these decisions.",
+  "_decided": {
+    "canonicalNames": "The owner's spellings win. 'Cosmere' normalises to 'The Cosmere'. The model tends to answer 'Arand multiverse'; that renames to 'Runnerverse'. The machine-readable form of this rule is the top-level `canonicalNames` map below; this sentence is the reasoning, that map is what the validator enforces.",
+    "confidence": "high applies automatically; medium and low go to the owner. Measured on a 15-case probe: 13 right, 0 false positives.",
+    "provenance": "Every entry records how it was decided — seed (hand-curated), human (owner confirmed), llm (proposed). A machine guess and a confirmed fact must stay distinguishable, following decided_how, cover_status and read_state_how.",
+    "whyAFileAndNotATable": "~33 series and ~13 book overrides, changing maybe monthly. This is reference data, not user data. A file puts the DECISIONS under version control — including the refusals, which is where most of the value is — and costs nothing, because a consumer can hold the whole list in memory and answer 'show me all Cosmere books' without a query. The audiobook side is a Python static build that cannot reach D1 at all, so a table would have needed an export step and a second copy anyway."
+  },
+  "_theHardPart": "⚠️ A series→universe mapping is NOT sufficient, and this was found before spending anything on the API. Two real counterexamples in this collection, from opposite directions: 'Secret Projects' is a MIXED series — Tress, Yumi, The Sunlit Man and Isles of the Emberdark are Cosmere, The Frugal Wizard's Handbook is not — so a series-level answer would be wrong for one of five. And Arand's Otherlife / Selfless Hero Trilogy carries NO series value at all, so a series-keyed lookup misses it entirely. Both cases need per-book overrides, which also means the auto-assign-on-add path cannot read the series and stop.",
+  "_lookup": {
+    "order": "Both consumers MUST resolve in this order, and data/universes.fixtures.json pins it: (1) a bookExclusions title match returns NO universe and stops — an exclusion beats every other signal; (2) a bookOverrides title match returns that universe; (3) a series match against a universe's `series` list returns that universe; (4) otherwise no universe. `notSeries` never returns a universe, it only records a deliberate refusal for that universe.",
+    "whyExclusionsFirst": "The Frugal Wizard's Handbook and Lux - A Texas Reckoners Novel both sit next to titles that would otherwise sweep them in. Checking exclusions last would make the answer depend on which rule happened to fire first.",
+    "matching": "Titles and series are compared after normalising: lowercase, curly apostrophes folded to straight, whitespace collapsed, trimmed. ⚠️ Curly-apostrophe folding is load-bearing — the Frugal Wizard row in site/catalog.csv carries U+2019.",
+    "exactTitlesOnly": "⚠️ Title matching is EXACT after normalising, never prefix or substring. A row whose title carries a subtitle — measured example: 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' in the audiobook catalog — will NOT match the override 'Isles of the Emberdark'. That is deliberate. Substring matching would make 'Elantris' match 'The Hope of Elantris'. Rows with damaged titles are fixed in the owning catalog's corrections layer (audiobook_catalog scripts/catalog_overrides.json), not by loosening the match here."
+  },
+  "_pinnedCanonicalNames": {
+    "_why": "⚠️ The owner's two explicit spelling decisions, asserted as ANSWERS. Validation checks these separately from canonicalNames because internal consistency is not enough: renaming 'The Cosmere' to 'Cosmere' and updating every alias to match would leave the map perfectly consistent while quietly reversing the decision. These two lines are what make that a failure instead of a clean diff. Adding a pin is an owner decision; the CLI never writes here.",
+    "cosmere": "The Cosmere",
+    "arand multiverse": "Runnerverse"
+  },
+  "canonicalNames": {
+    "the cosmere": "The Cosmere",
+    "cosmere": "The Cosmere",
+    "cosmere universe": "The Cosmere",
+    "the cosmere universe": "The Cosmere",
+    "runnerverse": "Runnerverse",
+    "the runnerverse": "Runnerverse",
+    "arand multiverse": "Runnerverse",
+    "the arand multiverse": "Runnerverse",
+    "arandverse": "Runnerverse",
+    "cal verse": "CAL Verse",
+    "calverse": "CAL Verse",
+    "the cal verse": "CAL Verse",
+    "divine dungeon universe": "CAL Verse",
+    "maasverse": "Maasverse",
+    "the maasverse": "Maasverse",
+    "riordanverse": "Riordanverse",
+    "the riordanverse": "Riordanverse",
+    "solaria": "Solaria",
+    "zodiac academy universe": "Solaria",
+    "_note": "Lowercased-and-normalised alias → the owner's canonical spelling. Shape follows audiobook_catalog scripts/catalog_overrides.json `canonical_series`, which does the same job for series names. ⚠️ Two entries are required by the owner's rule and are not cosmetic: 'cosmere' → 'The Cosmere' and 'arand multiverse' → 'Runnerverse'. 'divine dungeon universe' and 'zodiac academy universe' are evidenced by this file's own CAL Verse and Solaria `naming` notes, which record that both were named for the shared world rather than for one series inside it. No other alias is guessed; add one only with a reason.",
+    "_namespace": "⚠️ These are UNIVERSE names, not series names. 'Cosmere' is also a stray SERIES value on two library works — that is the data problem recorded under The Cosmere `notes`, and it is a different namespace from this map."
+  },
+  "universes": [
+    {
+      "name": "The Cosmere",
+      "decidedHow": "human",
+      "series": [
+        "Cosmere",
+        "The Cosmere",
+        "Elantris",
+        "The Mistborn Saga",
+        "The Stormlight Archive"
+      ],
+      "notSeries": [
+        "Legion",
+        "Reckoners",
+        "The Skyward Series"
+      ],
+      "notes": "⚠️ 'Cosmere' and 'The Cosmere' currently exist as SERIES values on two different works — a universe masquerading as a series, spelled two ways. Those two works need a real series (or none) once this lands. Reckoners and Skyward are the same author and deliberately excluded; Skyward is the Cytoverse.",
+      "confirmed": "Owner approved 2026-08-11, series and book-level, after reviewing all 19 unclassified titles.",
+      "bookOverrides": [
+        {
+          "title": "Warbreaker",
+          "why": "Nalthis"
+        },
+        {
+          "title": "Elantris",
+          "why": "Sel — an audio row filed with no series, duplicating the Elantris series entry"
+        },
+        {
+          "title": "The Hope of Elantris",
+          "why": "Sel, short story"
+        },
+        {
+          "title": "Sixth of the Dusk",
+          "why": "First of the Sun"
+        },
+        {
+          "title": "Dragonsteel Prime",
+          "why": "early Cosmere novel"
+        },
+        {
+          "title": "Tress of the Emerald Sea",
+          "why": "Secret Projects 1"
+        },
+        {
+          "title": "Yumi and the Nightmare Painter",
+          "why": "Secret Projects 3"
+        },
+        {
+          "title": "The Sunlit Man",
+          "why": "Secret Projects 4"
+        },
+        {
+          "title": "Isles of the Emberdark",
+          "why": "Secret Projects 5"
+        },
+        {
+          "title": "Fires of December",
+          "why": "⚠️ Standalone with NO series, narrated by Hoid. Publisher copy via Books-A-Million (9781250462657) calls it 'a standalone Cosmere novel'; the owner's Hoid's Storybook Collection pledge corroborates it — chasmfiend plush, The Girl Who Looked Up figurine, Hoid's Flute. THE example of the owner's own rule: in a universe, not connected by series."
+        }
+      ],
+      "bookExclusions": [
+        {
+          "title": "The Frugal Wizard’s Handbook for Surviving Medieval England",
+          "why": "⚠️ Secret Projects 2 — the one of five that is NOT Cosmere. This single row is the proof that a series-level mapping cannot work."
+        },
+        {
+          "title": "Snapshot",
+          "why": "standalone thriller"
+        },
+        {
+          "title": "Perfect State",
+          "why": "standalone novella"
+        },
+        {
+          "title": "Dreamer",
+          "why": "short story"
+        },
+        {
+          "title": "Long Chills and Case Dough",
+          "why": "noir short"
+        },
+        {
+          "title": "The Most Boring Book Ever",
+          "why": "children's picture book"
+        },
+        {
+          "title": "Firstborn / Defending Elysium",
+          "why": "⚠️ An OMNIBUS, not a data error — corrected by the owner. It is a real published two-novella volume: one file (firstborn_defendingelysium.epub), and the audiobook catalog's own description enumerates its contents as bullets, one of which reads '(from the world of Skyward)'. NEITHER novella is Cosmere. Belongs in edition.collects (migration 0060), the same shape as the White Sand omnibus — not split into two works."
+        },
+        {
+          "title": "Lux - A Texas Reckoners Novel",
+          "why": "Reckoners spin-off. Also note 'Texas Reckoners series' is a separate series value from 'Reckoners' — likely the same thing split in two."
+        }
+      ]
+    },
+    {
+      "name": "Runnerverse",
+      "decidedHow": "human",
+      "penNames": [
+        "William D. Arand",
+        "Randi Darren"
+      ],
+      "evidence": "Fostering Faust is credited to BOTH names in the owner's own data, which is direct evidence the two identities are one author rather than an outside assertion.",
+      "series": [
+        "Super Sales on Super Heroes",
+        "Wild Wastes",
+        "Fostering Faust",
+        "Incubus Inc.",
+        "Remnant",
+        "System Overclocked",
+        "Dungeon Deposed Series",
+        "Monster's Mercy",
+        "Right of Retribution",
+        "Swing Shift",
+        "Save State Hero Series"
+      ],
+      "bookOverrides": [
+        {
+          "title": "Otherlife Dreams - The Selfless Hero Trilogy",
+          "series": "The Selfless Hero Trilogy",
+          "volume": 1,
+          "why": "⚠️ Carries no series value at all — the trilogy name is inside the title. One of the two cases that prove a series-keyed lookup is insufficient; see `seriesToCreate` below and `_theHardPart`. Measured in site/catalog.csv 2026-08-11: series is blank on all three."
+        },
+        {
+          "title": "Otherlife Nightmares - The Selfless Hero Trilogy",
+          "series": "The Selfless Hero Trilogy",
+          "volume": 2,
+          "why": "⚠️ Carries no series value at all — the trilogy name is inside the title. See `seriesToCreate`. Volume 2 is publication order, not alphabetical."
+        },
+        {
+          "title": "Otherlife Awakenings - The Selfless Hero Trilogy",
+          "series": "The Selfless Hero Trilogy",
+          "volume": 3,
+          "why": "⚠️ Carries no series value at all — the trilogy name is inside the title. See `seriesToCreate`. Volume 3 despite sorting first alphabetically, which is how it currently sorts and is wrong."
+        }
+      ],
+      "seriesToCreate": {
+        "name": "The Selfless Hero Trilogy",
+        "why": "⚠️ All three Otherlife books carry the series name INSIDE their title and have no series field, so they read as three unrelated standalones. Grouping them is a fix to the audiobook catalog's data, not to this list — recorded here so the universe entry does not have to name three loose books forever.",
+        "note": "Reading order is Dreams, Nightmares, Awakenings — NOT alphabetical, which is how they currently sort."
+      },
+      "confirmed": "Owner confirmed 2026-08-11, after reviewing the full list, with three held out for verification."
+    },
+    {
+      "name": "CAL Verse",
+      "decidedHow": "human",
+      "series": [
+        "The Completionist Chronicles",
+        "The Divine Dungeon",
+        "Artorian's Archives",
+        "Full Murderhobo",
+        "Chance Encounter",
+        "Year of the Sword",
+        "Cooking with Disaster",
+        "Damsels of Distress",
+        "Wolfman Warlock"
+      ],
+      "notes": "Krout's shared world. Chance Encounter, Cooking with Disaster, Damsels of Distress, Full Murderhobo and Year of the Sword are also his and NOT included — unconfirmed, so left out rather than swept in.",
+      "confirmed": "Owner, 2026-08-11: 'everything Krout has written to this point that is a litrpg has been tied to the CAL Verse so for now, group them all together. I can tell you if we need to ungroup them later.' Grouped broadly by instruction; over-inclusion is accepted and reversible.",
+      "evidence": "Artorian's Archives is the strongest evidence in the whole list and it comes from the owner's own catalog, not recall: every volume is literally subtitled 'A Divine Dungeon Series' — Alumni, Anima, Annex, Axiom.",
+      "watch": [
+        "Damsels of Distress — fairy-tale retellings; the least obviously LitRPG of the nine and the first candidate to ungroup.",
+        "Wolfman Warlock — co-authored with James Hunter, same caution as Turncoat's Truth."
+      ],
+      "seriesToFix": {
+        "series": "The Completionist Chronicles",
+        "shouldBe": 15,
+        "why": "⚠️ The m4b `trkn` TAGS were correct on all 14; the FILENAMES were the unreliable source. Untapped's filename says Book 11 while its tag says 12 — Goodreads confirms 12. Implode's filename carries no series at all while its tag knows both the series and track 8. So there was never a volume-11 collision, and the sweep does NOT need to reconstruct ordering. The only damaged field is the album/series string: four spellings, one of them ('Uncapped') holding the title instead of the series.",
+        "add": [
+          "Implode",
+          "Tenacity",
+          "Thesaurize",
+          "Thunderplump",
+          "Uncapped",
+          "Unmapped",
+          "Untapped"
+        ],
+        "alsoCheck": "'Invent' (audio) and 'Invent Short Story' (library) are probably the same book under two names.",
+        "confirmedAgainst": "https://www.goodreads.com/series/229735-the-completionist-chronicles",
+        "order": "1 Ritualist, 2 Regicide, 3 Rexus: Side Quest, 4 Raze, 5 Ruthless, 6 Inflame, 7 Invent, 7.75 Invent Short Story (assigned), 8 Implode, 9 Tenacity, 10 Thesaurize, 11 Thunderplump, 12 Untapped, 13 Unmapped, 14 Uncapped",
+        "assignedIndex": {
+          "title": "Invent Short Story",
+          "index": 7.75,
+          "why": "⚠️ ASSIGNED, not official. A Patreon exclusive, so it is unlisted on Goodreads and no canonical index exists. 6.5 and 7.5 already flank Invent, so 7.75 sorts after both and before Implode without colliding. Measured 12,029 words / ~44 pages against Krout novels of 116k-176k, which is what settles it as a genuine short story rather than a mislabelled copy of Invent."
+        },
+        "notOwned": [
+          "6.5 Havoc in the Deathyards",
+          "11.5 Jaxon's New Clients",
+          "13.5 Poppy's Promise"
+        ]
+      },
+      "notThisSeries": [
+        {
+          "title": "Everything",
+          "belongsTo": "Full Murderhobo",
+          "why": "sits alongside Anything and Something"
+        },
+        {
+          "title": "World's Only Hero",
+          "belongsTo": "Chance Encounter",
+          "why": "the library files it there; the audio row is seriesless"
+        }
+      ],
+      "collectsCases": [
+        {
+          "title": "The Divine Dungeon Complete Series",
+          "why": "564k words / ~2,053 pages — an OMNIBUS of all five Dungeon books, not a sixth book. Same shape as White Sand; belongs in edition.collects."
+        }
+      ]
+    },
+    {
+      "name": "Maasverse",
+      "decidedHow": "human",
+      "series": [
+        "A Court of Thorns and Roses",
+        "Throne of Glass",
+        "Crescent City"
+      ],
+      "notes": "Canon, not fan inference: Crescent City book 2 (House of Sky and Breath) has an explicit, plot-critical ACOTAR crossover, carried further in House of Flame and Shadow. 19 rows across 3 series, all audiobooks — none in the library catalog.",
+      "confirmed": "Owner approved 2026-08-11.",
+      "dataProblems": [
+        "⚠️ ACOTAR's 11 rows are inflated. Duplicates: A Court of Thorns and Roses x3, A Court of Wings and Ruin x3, A Court of Mist and Fury x2. Some are legitimately different recordings (dramatized full-cast editions) but 11 is not 11 distinct books.",
+        "Part-files sit alongside their whole counterparts: 'A Court of Silver Flames (2 of 2)' and 'A Court of Wings and Ruin (1 of 3) []' — note the stray brackets in the latter.",
+        "Throne of Glass has 5 of 8 plus The Assassin's Blade — Empire of Storms, Tower of Dawn and Kingdom of Ash are genuine gaps, not data problems."
+      ]
+    },
+    {
+      "name": "Riordanverse",
+      "decidedHow": "human",
+      "series": [
+        "Percy Jackson and the Olympians",
+        "Heroes Of Olympus",
+        "From the World of Percy Jackson"
+      ],
+      "notes": "Camp Half-Blood continuity. 'From the World of Percy Jackson' is Sun and the Star, the Nico di Angelo novel co-written with Mark Oshiro — same continuity, found during review rather than in the first proposal.",
+      "confirmed": "Owner approved 2026-08-11, including the third series found during review.",
+      "watch": [
+        "⚠️ The ONLY universe spanning both catalogs. 13 Percy Jackson rows are 5 library (the Illumicrate exclusives) + 8 audio, and the five OVERLAP — the same books in two formats, not 13 titles. Counting them needs the catalogs reconciled, not summed.",
+        "⚠️ MORE PHYSICAL COPIES ARE COMING — the owner has a lot more Percy Jackson to scan. This is the first place the x2 'owned more than once' mark will legitimately fire, since today's five candidates were all children's books. It is also the free case for auto-assign: a known series mapping means every future scan lands in the universe with zero lookups.",
+        "Naming: the audio row 'Percy Jackson & the Olympians - The Demigod Files' uses '&' where every other row uses 'and'. A corrections-layer job — exactly the class of drift that splits a series under a text key, like the four Completionist Chronicles spellings."
+      ]
+    },
+    {
+      "name": "Solaria",
+      "decidedHow": "human",
+      "series": [
+        "Zodiac Academy",
+        "Ruthless Boys of the Zodiac"
+      ],
+      "notes": "Peckham and Valenti's shared realm. Structural rather than a cameo: Ruthless Boys of the Zodiac (the Dark Fae books) runs in PARALLEL with Zodiac Academy in Solaria, sharing characters and timeline, and the two are usually read interleaved. A stronger link than Maasverse, where one crossover scene does the work.",
+      "confirmed": "Owner approved 2026-08-11.",
+      "naming": "Named for the in-world realm rather than 'Zodiac Academy universe', which would elevate one series over the other — the same reason Divine Dungeon became CAL Verse.",
+      "dataProblems": [
+        "⚠️ Zodiac Academy has no consistent index: 'Zodiac Academy 8' and 'Zodiac Academy 8.5: Beyond the Veil' are numbered while everything else is titled.",
+        "Side stories sit inline with the main run: Live and Let Lionel, The Awakening as Told by the Boys, Origins of an Academy Bully, The Big A.S.S. Party.",
+        "'Zodiac Academy 2 - Ruthless Fae' carries its volume in the title — and is Ruthless FAE, not the separate Ruthless BOYS series."
+      ]
+    }
+  ],
+  "_refused": [
+    {
+      "subject": "Will Wight — Cradle, The Last Horizon",
+      "decidedHow": "human",
+      "decision": "LEAVE BLANK",
+      "why": "⚠️ Owner's explicit call, 2026-08-11: 'Will wight leave blank for now.' The author has hinted at a shared multiverse but nothing is established, and a hinted universe is exactly the kind of plausible-but-unconfirmed claim that nobody re-checks once it is filled in. Recorded so it is not re-litigated by the next pass.",
+      "heldOutSeries": [
+        "Cradle",
+        "The Last Horizon"
+      ],
+      "heldOutSeriesEvidence": "'The Last Horizon' is the exact series value on three audiobook rows (The Captain, The Engineer, The Knight), measured in site/catalog.csv 2026-08-11. 'Cradle' is taken from the owner's wording — it has NO row in the audiobook catalog and the library catalog was not queried, so that spelling is asserted, not measured."
+    },
+    {
+      "subject": "Children's picture-book lines — Bizzy Bear, Brown Bear and Friends, Baby University, The Pigeon, Elephant and Piggie, First 100",
+      "decidedHow": "seed",
+      "decision": "never a universe",
+      "why": "A brand or an imprint, not a fictional continuity. This is the LOUDEST possible false positive here: the library catalog is mostly children's books, so a rule that fires on these would bury the real answers."
+    },
+    {
+      "subject": "Same author, different world",
+      "decidedHow": "seed",
+      "decision": "never sufficient on its own",
+      "why": "Reckoners and the Cosmere share an author and nothing else. Author is not a universe."
+    },
+    {
+      "subject": "Turncoat's Truth — William D. Arand with Victor E. Krabin",
+      "decidedHow": "human",
+      "decision": "LEAVE OUT for now",
+      "why": "Owner's call, 2026-08-11: 'Turncoat leave out for now while I verify.' Co-authored, and co-authored work does not always sit inside an author's shared continuity. Held out rather than swept in with the other 14 series.",
+      "heldOutSeries": [
+        "Turncoat's Truth"
+      ],
+      "heldOutSeriesEvidence": "Exact series value measured in site/catalog.csv 2026-08-11, on \"Turncoat's Truth - Turncoat's Truth, Book 1\", authors 'William D. Arand, Victor E. Krabin'."
+    },
+    {
+      "subject": "Cultivating Chaos and The Axe Falls — William D. Arand",
+      "decidedHow": "human",
+      "decision": "LEAVE OUT until verified",
+      "why": "Owner's call: 'Cultivating and axe falls should be excluded until I can verify.' ⚠️ Both are SINGLE-BOOK series, so there is no internal evidence of a shared world — only the author, and author alone is never sufficient here. That is the same reasoning that keeps Reckoners out of the Cosmere.",
+      "heldOutSeries": [
+        "Cultivating Chaos",
+        "The Axe Falls Series"
+      ],
+      "heldOutSeriesEvidence": "⚠️ Both measured in site/catalog.csv 2026-08-11, and the second one is NOT spelled the way the refusal reads: the series value is 'The Axe Falls Series', not 'The Axe Falls'. The book is 'The Axe Falls - The Axe Falls Series, Book 1'. Cultivating Chaos is 'Cultivating Chaos - VeilVerse: Cultivating Chaos, Book 1', series 'Cultivating Chaos' — note the row title mentions a 'VeilVerse', which is the sort of hint that is NOT evidence and is exactly what the owner is holding this back to verify."
+    },
+    {
+      "subject": "Tailored Realities — Brandon Sanderson",
+      "decidedHow": "human",
+      "decision": "LEAVE BLANK pending owner check",
+      "why": "Believed to be a short-fiction collection, which would make it a mixed bag rather than a clean yes or no. Flagged rather than guessed, same treatment as Will Wight.",
+      "heldOutTitles": [
+        "Tailored Realities"
+      ],
+      "heldOutSeriesEvidence": "It is a TITLE, not a series — measured in site/catalog.csv 2026-08-11: one row 'Tailored Realities', Brandon Sanderson, series blank. So it is held out as a title, which is why it uses heldOutTitles."
+    }
+  ],
+  "_shapeNotes": [
+    {
+      "note": "A universe flag belongs on the WORK, never on the edition",
+      "why": "An omnibus is one object holding several works, and nothing stops a bind-up collecting works from different universes. Firstborn / Defending Elysium does not bite — neither novella is Cosmere — but a Cosmere-plus-non-Cosmere bind-up would make an edition-level flag simply wrong. edition.collects records what is inside; the universe answers per work."
+    },
+    {
+      "note": "Every edit goes through tools/universes.mjs, never a text editor",
+      "why": "The CLI refuses an addition that carries no reason. Hand-editing the JSON is the one way to land a bare mapping, which destroys the property that makes this file worth keeping — that every entry says how it was decided and on what evidence. Run `node tools/universes.mjs validate` after any hand edit anyway; it is what CI-equivalent checks in both catalogs run."
+    },
+    {
+      "note": "Consumers hold this in memory; nothing queries it",
+      "why": "Six universes, ~33 series, ~13 book overrides. library_catalog materialises a gitignored copy at build time and bundles it into the Worker; audiobook_catalog reads it from disk during the Python build. Neither writes to it — writes happen here, through the CLI, in a commit."
+    }
+  ]
+}

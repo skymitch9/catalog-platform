@@ -1,25 +1,46 @@
 # catalog-platform
 
-> **Audience:** Claude sessions and the owner. **Status:** the plan, **plus one
-> deployed site** — the `heygabi.ai` front door, live and serving. Last
-> verified: **2026-08-10**.
+> **Audience:** Claude sessions and the owner. **Status:** the plan, **one
+> deployed site** — the `heygabi.ai` front door, live and serving — **and shared
+> data two other repos build against.** Last verified: **2026-08-11**.
 
 Design documents for presenting three separate catalogs as one site on one
 domain — and, since 2026-08-10, the code for the pages that belong to the
 platform itself rather than to any one catalog. It exists because the plan
 governs three codebases and belongs inside none of them.
 
+## ⚠️ This is a CODE DEPENDENCY of two catalogs, not a docs repo
+
+Since **2026-08-11** this repo ships `data/universes.json`, the shared
+fictional-universe list. **`bookbuddy/library_catalog` and
+`bookbuddy/audiobook_catalog` both read it as part of their builds.**
+
+| If you | Then |
+|---|---|
+| Move, rename or delete `data/` | Two builds in other repos break |
+| Change the shape of `universes.json` | Bump `schemaVersion`; both consumers check it |
+| Clone this repo somewhere unusual | Set `CATALOG_PLATFORM_DIR` in the catalogs, or their resolvers will not find it |
+| Assume "it's just docs, nothing runs" | ⚠️ Wrong since 2026-08-11. That assumption is exactly what this box is here to stop |
+
+`library_catalog` **fails its build loudly** if it cannot find this repo;
+`audiobook_catalog` warns and carries on. Design and reasoning:
+[`docs/UNIVERSES.md`](docs/UNIVERSES.md).
+
 ## Layout
 
 | Path | What |
 |---|---|
 | [`docs/`](docs/) | The plan. Governs three other repos; nothing here is deployed |
+| [`data/`](data/) | ⚠️ **Shared data, READ BY OTHER REPOS' BUILDS.** The universe list and its fixtures. Not documentation |
+| [`tools/`](tools/) | The local CLI that edits `data/`. Zero dependencies — `node tools/universes.mjs` works in a fresh checkout |
 | [`sites/heygabi-home/`](sites/heygabi-home/) | **The `heygabi.ai` apex landing page, and the cross-project board at `/todo`. Live.** Two static HTML files, no build step, no JS |
 
 ⚠️ **The three catalogs keep their own repos.** `sites/` is not a monorepo
 staging area — it is for things that are *about the platform*: the front door
 today, the cross-format index at `index.heygabi.ai` (`PLATFORM.md` §5) if it
 ever gets built. An audiobook or library change still belongs in its own repo.
+`data/` is the one exception, and it earns it: a fact both catalogs need, that
+is data for neither.
 
 ### Why the apex page lives here
 
@@ -53,6 +74,8 @@ features exist for.
 | [`docs/DOMAIN_AND_HOSTING.md`](docs/DOMAIN_AND_HOSTING.md) | Which domain shape, whether GitHub Pages retires, migration steps, costs. Answers `PLATFORM.md` §8 q1 and q2 |
 | [`docs/LIBRARY_CATALOG.md`](docs/LIBRARY_CATALOG.md) | The new books + ebooks catalog |
 | [`docs/HEYGABI_LAYOUT.md`](docs/HEYGABI_LAYOUT.md) | The hostname map for `heygabi.ai`, and why there is no separate ebooks app. Revises `DOMAIN_AND_HOSTING.md` |
+| [`docs/UNIVERSES.md`](docs/UNIVERSES.md) | ⚠️ The shared universe list: why a file and not a table, the resolution order both catalogs implement, the editor CLI, and what each consumer does when it cannot find this repo |
+| [`data/README.md`](data/README.md) | What is in `data/` and who reads it |
 | [`docs/diagrams/architecture.md`](docs/diagrams/architecture.md) | All diagrams in one place |
 | [`sites/heygabi-home/README.md`](sites/heygabi-home/README.md) | The landing page: its two hard rules (no auth, no external requests) and how it grows into the index |
 | [`sites/heygabi-home/deploy.md`](sites/heygabi-home/deploy.md) | How the apex is deployed. **Read §4 for a routine deploy** |
@@ -70,6 +93,7 @@ Recorded here so they are not re-litigated. Full reasoning in `PLATFORM.md` §2.
 | Google SSO | **Stays.** Not up for discussion |
 | Editor auth | **Firebase ID tokens** — one sign-in across the whole site |
 | Joining the catalogs | A **shared D1 index**, not static JSON exports |
+| Where the universe list lives | **`data/universes.json` in this repo — a versioned file, no database table.** ~33 series changing monthly is reference data; the value is version control over the *decisions*, refusals included, and the audiobook side is a Python build that cannot reach D1 at all. `docs/UNIVERSES.md` §1 |
 | Order of work | **Finish the Board Game Catalog first** |
 
 ## Status

@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "_doc": "Shared lookup fixtures for data/universes.json. BOTH catalogs run these against their OWN implementation of the lookup, and both must return the same answer. This is the mechanism PLATFORM.md §5.3 prescribes for a rule that has to exist in Python and in TypeScript: pin it with one fixture file rather than hope two implementations agree.",
+  "_whyThisExists": "§2.3 of PLATFORM.md records the drift bug this repo has already shipped once — resolve_author_link (Python) and _resolveAuthorFolder (JS) split author strings the same way until they did not, and a promote failed silently. The universe lookup is the same shape of hazard: a pure function that must give one answer in a Python static build and in a TypeScript Worker. There is no shared runtime, so there is no shared implementation; the fixtures are what keeps them honest.",
+  "_contract": "Each case gives `title` and `series` exactly as a catalog row carries them, and `expect` is the canonical universe name or null. The resolution order under test is data/universes.json `_lookup.order`. `author` is informational and is NOT part of the key today — recorded because the pen-name evidence under Runnerverse may make it part of the key later.",
+  "_runners": [
+    "catalog-platform — node tools/universes.mjs fixtures",
+    "library_catalog  — npm test (packages/core/test/universes.test.ts)",
+    "audiobook_catalog — python -m pytest tests/test_universes.py"
+  ],
+  "cases": [
+    {
+      "name": "the mixed series, the member that IS in the universe",
+      "title": "Tress of the Emerald Sea",
+      "series": "",
+      "author": "Brandon Sanderson",
+      "expect": "The Cosmere",
+      "why": "Secret Projects 1. Answered by a bookOverride, not by a series — the row carries no series at all.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11: series is blank."
+    },
+    {
+      "name": "⚠️ the mixed series, the member that is NOT — the case that kills series-keying",
+      "title": "The Frugal Wizard’s Handbook for Surviving Medieval England",
+      "series": "",
+      "author": "Brandon Sanderson",
+      "expect": null,
+      "why": "Secret Projects 2, the one of five that is not Cosmere. A bookExclusion. ⚠️ The title carries a CURLY apostrophe (U+2019) — a lookup that does not fold it returns the wrong answer here and nowhere else, which is the worst possible place for a normalisation bug.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11: title exactly 'The Frugal Wizard’s Handbook for Surviving Medieval England', series blank."
+    },
+    {
+      "name": "the same exclusion written with a straight apostrophe still excludes",
+      "title": "The Frugal Wizard's Handbook for Surviving Medieval England",
+      "series": "",
+      "author": "Brandon Sanderson",
+      "expect": null,
+      "why": "Pins the apostrophe folding in the other direction. The library catalog and the audiobook catalog do not agree about quote characters, so both spellings must resolve identically."
+    },
+    {
+      "name": "⚠️ the seriesless trilogy — Otherlife 1",
+      "title": "Otherlife Dreams - The Selfless Hero Trilogy",
+      "series": "",
+      "author": "William D. Arand",
+      "expect": "Runnerverse",
+      "why": "The second case that kills series-keying, from the opposite direction: the trilogy name lives inside the title and the series field is empty, so a series-keyed lookup misses it entirely.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11: all three Otherlife rows have a blank series."
+    },
+    {
+      "name": "the seriesless trilogy — Otherlife 2",
+      "title": "Otherlife Nightmares - The Selfless Hero Trilogy",
+      "series": "",
+      "author": "William D. Arand",
+      "expect": "Runnerverse",
+      "why": "Same as Otherlife 1."
+    },
+    {
+      "name": "the seriesless trilogy — Otherlife 3",
+      "title": "Otherlife Awakenings - The Selfless Hero Trilogy",
+      "series": "",
+      "author": "William D. Arand",
+      "expect": "Runnerverse",
+      "why": "Same as Otherlife 1. Sorts first alphabetically and is volume 3, which is why seriesToCreate records the reading order."
+    },
+    {
+      "name": "⚠️ the seriesless standalone that IS in a universe — Fires of December",
+      "title": "Fires of December",
+      "series": "",
+      "author": "Brandon Sanderson",
+      "expect": "The Cosmere",
+      "why": "The third case. No series, not part of any series, and unambiguously Cosmere — publisher copy calls it 'a standalone Cosmere novel'. THE example of the owner's rule that a universe says something the series name does not.",
+      "measured": "No row in audiobook_catalog site/catalog.csv as of 2026-08-11 — it is a library/pledge item. The lookup must still answer correctly for a title that only one catalog holds, which is the whole reason the list is shared."
+    },
+    {
+      "name": "a plain series match",
+      "title": "The Way of Kings",
+      "series": "The Stormlight Archive",
+      "author": "Brandon Sanderson",
+      "expect": "The Cosmere",
+      "why": "The ordinary path — step 3 of the resolution order. Most rows land here."
+    },
+    {
+      "name": "⚠️ Secret Projects as a series value resolves to NOTHING",
+      "title": "Some Secret Project",
+      "series": "Secret Projects",
+      "expect": null,
+      "why": "'Secret Projects' is a real series value in the audiobook catalog and is deliberately absent from The Cosmere's series list, because four of its five members are Cosmere and one is not. If it ever appears in a series list, this case fails and the Frugal Wizard becomes wrong.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11: series 'Secret Projects' exists on one row."
+    },
+    {
+      "name": "an exclusion beats a series that would otherwise sweep it in",
+      "title": "Lux - A Texas Reckoners Novel",
+      "series": "Reckoners",
+      "author": "Brandon Sanderson",
+      "expect": null,
+      "why": "Reckoners is in The Cosmere's notSeries, and this title is an explicit exclusion. Both must say no; the order (exclusions first) is what makes the answer independent of which rule fires."
+    },
+    {
+      "name": "same author is not a universe",
+      "title": "Steelheart",
+      "series": "Reckoners",
+      "author": "Brandon Sanderson",
+      "expect": null,
+      "why": "The seed refusal 'Same author, different world'. notSeries records it; the lookup must return nothing rather than falling back to the author."
+    },
+    {
+      "name": "a held-out series stays held out — Will Wight",
+      "title": "The Captain - The Last Horizon, Book 1",
+      "series": "The Last Horizon",
+      "author": "Will Wight",
+      "expect": null,
+      "why": "Owner's explicit 'leave blank for now'. A refusal is a decision and must be as testable as an inclusion.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11."
+    },
+    {
+      "name": "a held-out series stays held out — Turncoat's Truth",
+      "title": "Turncoat's Truth - Turncoat's Truth, Book 1",
+      "series": "Turncoat's Truth",
+      "author": "William D. Arand, Victor E. Krabin",
+      "expect": null,
+      "why": "Co-authored Arand, held out pending owner verification. It must NOT be swept in by the Runnerverse pen-name evidence.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11."
+    },
+    {
+      "name": "⚠️ a held-out series stays held out — The Axe Falls, under its REAL series spelling",
+      "title": "The Axe Falls - The Axe Falls Series, Book 1",
+      "series": "The Axe Falls Series",
+      "author": "William D. Arand",
+      "expect": null,
+      "why": "The refusal names the book 'The Axe Falls'; the series value is 'The Axe Falls Series'. Testing the refusal under the wrong spelling would pass while protecting nothing.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11."
+    },
+    {
+      "name": "children's picture-book lines are never a universe",
+      "title": "Bizzy Bear: Fire Rescue",
+      "series": "Bizzy Bear",
+      "expect": null,
+      "why": "The loudest possible false positive — the library catalog is mostly children's books. A brand is not a continuity."
+    },
+    {
+      "name": "cross-catalog: the only universe present in both",
+      "title": "The Lightning Thief",
+      "series": "Percy Jackson and the Olympians",
+      "author": "Rick Riordan",
+      "expect": "Riordanverse",
+      "why": "The one universe that spans both catalogs. The same title exists as an audiobook and as an Illumicrate hardcover; both must resolve to the same universe, which is the point of one shared list."
+    },
+    {
+      "name": "an unknown series is not a universe",
+      "title": "Something Nobody Catalogued",
+      "series": "A Series Nobody Has Heard Of",
+      "expect": null,
+      "why": "Default-deny. An absent answer is the correct answer; guessing is what the whole file exists to prevent."
+    },
+    {
+      "name": "an empty row resolves to nothing rather than throwing",
+      "title": "",
+      "series": "",
+      "expect": null,
+      "why": "Both pipelines hand rows in with blank fields routinely. A crash in the universe layer would take a build down over a field nobody asked about."
+    }
+  ],
+  "canonicalNameCases": [
+    {
+      "input": "Cosmere",
+      "expect": "The Cosmere",
+      "why": "The owner's spelling wins. Required by _decided.canonicalNames."
+    },
+    {
+      "input": "the cosmere",
+      "expect": "The Cosmere",
+      "why": "Case and article folding."
+    },
+    {
+      "input": "Arand multiverse",
+      "expect": "Runnerverse",
+      "why": "The name the model reaches for. Required by _decided.canonicalNames."
+    },
+    {
+      "input": "CALVERSE",
+      "expect": "CAL Verse",
+      "why": "Spacing and case."
+    },
+    {
+      "input": "Zodiac Academy universe",
+      "expect": "Solaria",
+      "why": "Evidenced by Solaria's own `naming` note — naming it after one of its two series was considered and rejected."
+    },
+    {
+      "input": "Cytoverse",
+      "expect": null,
+      "why": "Named in The Cosmere's notes as a real but UNLISTED universe. An unknown name normalises to nothing; it must not be invented, and it must not fold into The Cosmere just because that entry mentions it."
+    }
+  ],
+  "_knownGaps": [
+    {
+      "gap": "⚠️ 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' does not resolve",
+      "detail": "The audiobook catalog holds TWO rows for this book — 'Isles of the Emberdark' (series blank) and 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' (series 'Secret Projects'). The bookOverride matches the short title only, because title matching is exact by design (see _lookup.exactTitlesOnly). The long row therefore resolves to no universe.",
+      "whyNotFixedHere": "Two candidate fixes and both belong elsewhere. Adding a second override would put a damaged row title into the decisions file and would change the owner's stated count of ten Cosmere overrides. Loosening to substring matching would make 'Elantris' match 'The Hope of Elantris'. The right fix is an entry in audiobook_catalog scripts/catalog_overrides.json correcting the row's title — the layer that exists for exactly this — after which the override matches with no change here.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11.",
+      "notAsserted": "Deliberately NOT a fixture case, because a case asserting null here would enshrine an answer that is wrong about the book."
+    },
+    {
+      "gap": "The library catalog's own rows were not measured",
+      "detail": "Every `measured` note above cites audiobook_catalog site/catalog.csv, which is a file on disk. library_catalog's rows live in remote D1 and were not queried while this file was written, so the exact series spellings on the library side — 'Cradle' in particular — are asserted from the owner's wording, not observed."
+    }
+  ]
+}
