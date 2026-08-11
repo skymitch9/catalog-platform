@@ -520,6 +520,20 @@ a.card:hover .host .arrow { transform: translateX(3px); }
   color: color-mix(in srgb, var(--hue) 70%, var(--muted));
 }
 
+/* Read aloud, never drawn. The three cards open in a new tab, and a link that
+   does that without saying so is a WCAG 3.2.5 snag: sighted users get the tab
+   strip as a cue, screen-reader users get nothing and press Back into a page
+   that did not move. Cheaper than the alternative of an aria-label on the <a>,
+   which would replace the card's whole readout with one flat string. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* ---- footer -------------------------------------------------------------- */
 
 footer {
@@ -592,39 +606,39 @@ footer p:last-child { margin-bottom: 0; }
     <ul class="catalogues">
 
       <li>
-        <a class="card" style="--hue: var(--gold)" href="https://audiobooks.heygabi.ai">
+        <a class="card" style="--hue: var(--gold)" href="https://audiobooks.heygabi.ai" target="_blank" rel="noopener">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M20 14h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1H19a1 1 0 0 0 1-1z"/></svg>
           </span>
           <span class="name">Audiobooks</span>
           <p class="what">Everything on Audible, with reviews, ratings, book clubs and a guessing game.</p>
-          <p class="host">audiobooks.heygabi.ai
+          <p class="host">audiobooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
       </li>
 
       <li>
-        <a class="card" style="--hue: var(--accent)" href="https://library.heygabi.ai">
+        <a class="card" style="--hue: var(--accent)" href="https://library.heygabi.ai" target="_blank" rel="noopener">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
           </span>
           <span class="name">Books</span>
           <p class="what">Print and ebook in one place — what is on the shelf and what is on the Kindle.</p>
-          <p class="host">library.heygabi.ai
+          <p class="host">library.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
       </li>
 
       <li>
-        <a class="card" style="--hue: var(--clay)" href="https://boardgames.heygabi.ai">
+        <a class="card" style="--hue: var(--clay)" href="https://boardgames.heygabi.ai" target="_blank" rel="noopener">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
           </span>
           <span class="name">Board games</span>
           <p class="what">The shelf, with player counts, weights and who has actually played what.</p>
-          <p class="host">boardgames.heygabi.ai
+          <p class="host">boardgames.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
