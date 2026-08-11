@@ -507,8 +507,14 @@ a.card:hover .host .arrow { transform: translateX(3px); }
   white-space: nowrap;
 }
 
-/* Access-gated shelf. Says so plainly rather than letting a stranger discover it
-   by bouncing off a login wall. */
+/* Unused since 2026-08-10, kept with .pill and .card.soon for the next shelf.
+   It carried "Owner only" on the board games card while Cloudflare Access
+   turned strangers away at the edge — saying so was kinder than letting someone
+   discover it by bouncing off a login wall they could do nothing about.
+   Access is gone: that card now behaves exactly like Books, which asks for a
+   sign-in and has never worn a pill. Signing in no longer means being let in,
+   it means joining a queue, and a badge saying "Owner only" would now be
+   turning away the very people the change was made for. */
 .pill.locked {
   border-color: color-mix(in srgb, var(--hue) 35%, var(--line));
   color: color-mix(in srgb, var(--hue) 70%, var(--muted));
@@ -616,7 +622,7 @@ footer p:last-child { margin-bottom: 0; }
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
           </span>
-          <span class="name">Board games <span class="pill locked">Owner only</span></span>
+          <span class="name">Board games</span>
           <p class="what">The shelf, with player counts, weights and who has actually played what.</p>
           <p class="host">boardgames.heygabi.ai
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>

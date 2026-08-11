@@ -35,7 +35,7 @@ move brought all three of its commits across with their history intact.
 | Catalog | Repo | Host (all live, checked 2026-08-10) | Role |
 |---|---|---|---|
 | Audiobooks | `bookbuddy/audiobook_catalog` | `audiobooks.heygabi.ai` — `200` | **Read-only** — pipeline-fed, 1,073 books |
-| Board games | `boardbuddy/Board_Game_Catalog` | `boardgames.heygabi.ai` — `302` to the Cloudflare Access login, i.e. the gate is up | **Manual add** — 775 items, scanning |
+| Board games | `boardbuddy/Board_Game_Catalog` | `boardgames.heygabi.ai` — `200`; signed-out `/api/me` is `401`, no longer an Access redirect | **Manual add** — 775 items, scanning |
 | Books & ebooks | `bookbuddy/library_catalog` | `library.heygabi.ai` — `200` | **Manual add** — scanning |
 
 Status codes above are measured. Counts and roles are quoted from the catalogs'
@@ -86,7 +86,7 @@ host:
 | The three catalog hosts | **All live** — see the table above |
 | `covers.heygabi.ai` | ✅ **Live and in use.** A real object returned `200`; the audiobook page references this host 7,536 times. Its root `404`s, which is just an R2 bucket with no object at `/` |
 | `www` → apex `301` | 🔶 **Not done.** `www` answers `200`, so both names serve the page. Cosmetic; `sites/heygabi-home/deploy.md` §2.1 has the rule |
-| Cloudflare Access on board games | **Still on** — the reason the front-door card is badged "Owner only". `PLATFORM.md` §4.1 is the checklist to remove it, and it is the one step in the plan that reduces security |
+| Cloudflare Access on board games | ✅ **Removed 2026-08-10.** `boardgames.heygabi.ai/api/me` answers `401` instead of redirecting to the Access login, so the Worker's own Firebase check is the gate. A stranger can now sign in, lands as `pending`, and sees a waiting screen — which is what the viewer role was built for and could never reach while Access stood in front |
 | `ebooks.heygabi.ai` | **Does not resolve** — never created. It was always optional (`HEYGABI_LAYOUT.md` §7 q4); if it is ever made, it is a `301` and **never** a Firebase authorised domain |
 | The cross-format index at `index.heygabi.ai` | **Does not resolve — unbuilt.** `PLATFORM.md` §5. `<section id="find">` in the landing page is the reserved slot |
 | Firebase authorised domains | ⚠️ **Never verifiable from here** — the console is owner-only and the list is not readable from outside it. Sign-in working on `library.` and `audiobooks.` implies they are listed; `boardgames.heygabi.ai` was added by the owner on **2026-08-10**. The apex must **never** be added: `HEYGABI_LAYOUT.md` §1.3 |
@@ -100,8 +100,8 @@ gated on a decision. 🔴 = owner only; a session cannot do these.
 |---|---|---|---|
 | 1 | 🔴 `www` → apex `301` redirect rule | yes, dashboard | Deciding apex-vs-`www` as canonical (`HEYGABI_LAYOUT.md` §7 q3 — the recommendation is **apex**, since every other host is a bare subdomain of it) |
 | 2 | ✅ **Done 2026-08-10** — `boardgames.heygabi.ai` added to Firebase authorised domains (owner-confirmed; the list is not readable from outside the console, so this is reported, not measured) | 🔴 was owner, console | — |
-| 3 | **Move the board game Worker off Access onto Firebase ID tokens** — a code change, not a toggle | mostly **no**; only the final "delete the Access application" is 🔴 | Step 2, and the three `PLATFORM.md` §4.1 preconditions |
-| 4 | Remove the "Owner only" pill from the board games card | no — a one-line edit here | Step 3 actually landing. The pill is honest today |
+| 3 | ✅ **Done 2026-08-10** — board game Worker moved off Access onto Firebase ID tokens, deployed, and the Access application deleted. `Board_Game_Catalog` `ae36104` + `c04041c`; runbook and measurements in that repo's `docs/access/firebase-auth.md` | — | — |
+| 4 | ✅ **Done 2026-08-10** — "Owner only" pill removed from the board games card and deployed | — | — |
 | 5 | The `?format=ebook` filter (`HEYGABI_LAYOUT.md` §4 Track B) | no | Nothing. It is code in `bookbuddy/library_catalog`, not in this repo, and it is the item with the real deadline — §5.3 explains why |
 
 ⚠️ **Step 3 is not a dashboard toggle, and an earlier version of this table said

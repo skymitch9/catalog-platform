@@ -28,23 +28,29 @@ catalogue of what this household owns — and links the three catalogues:
 |---|---|---|
 | Audiobooks | `audiobooks.heygabi.ai` | linked (`index.html:589`) |
 | Books (print **and** ebook) | `library.heygabi.ai` | linked (`index.html:602`) |
-| Board games | `boardgames.heygabi.ai` | linked, badged **"Owner only"** (`index.html:615-619`) |
+| Board games | `boardgames.heygabi.ai` | linked, no badge (`index.html:615-619`) |
 
-### Board games is a link now, and says so
+### The board games card has changed twice, and both times for the same reason
 
-An earlier version rendered board games as an unclickable "Coming soon" card,
-because the host did not exist and a link would have been a promise about a name
-nobody controlled. `boardgames.heygabi.ai` went live on 2026-08-09 (Worker
-`custom_domain` route, inheriting the existing Cloudflare Access application's
-audience), so both reasons lapsed and the card became a real `<a>`.
+**Coming soon → link (2026-08-09).** It was rendered as an unclickable card
+because the host did not exist, and a link would have been a promise about a
+name nobody controlled. `boardgames.heygabi.ai` went live, so it became a real
+`<a>`.
 
-⚠️ **It is still behind Cloudflare Access**, which is why it carries an "Owner
-only" pill rather than looking like the other two. That is deliberate: a
-stranger should learn the gate exists from the card, not by bouncing off a login
-wall. `docs/HEYGABI_LAYOUT.md` §4 Track C step 14 removes Access; when it does,
-**delete the pill** — not the link.
+**"Owner only" → no badge (2026-08-10).** The pill was honest while Cloudflare
+Access turned strangers away at the edge: telling someone the door is shut beats
+letting them find out by bouncing off a login wall they can do nothing about.
+Access was deleted that day, so the badge stopped being honest — signing in now
+means *joining a queue*, not being refused, and "Owner only" would turn away
+precisely the people the change was made for. The card behaves like Books now,
+which also asks for a sign-in and has never worn a pill.
 
-The `.card.soon` pattern is kept in the stylesheet, unused, for the next shelf.
+⚠️ The catalog is **not** public. A stranger reaches its sign-in screen, signs
+in, lands as `pending`, and sees a waiting screen — never the collection. See
+`Board_Game_Catalog/docs/access/firebase-auth.md`.
+
+The `.pill.locked` and `.card.soon` rules are kept in the stylesheet, unused,
+for the next shelf.
 
 ---
 
