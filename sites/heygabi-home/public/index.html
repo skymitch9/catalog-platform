@@ -547,6 +547,23 @@ footer {
 footer p { margin: 0 0 .5rem; max-width: 46rem; }
 footer p:last-child { margin-bottom: 0; }
 
+/* The one internal link on the page. Given the 44px floor because it is the
+   only thing in the footer anyone taps, and a footer is where thumbs are least
+   accurate. */
+footer a.more {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 44px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+footer a.more:hover { text-decoration: underline; }
+footer a.more:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+footer a.more svg { flex: none; transition: transform .22s ease; }
+footer a.more:hover svg { transform: translateX(3px); }
+
 /* ---- motion off ---------------------------------------------------------- */
 /*
  * One block, everything. A drifting background is exactly the kind of ambient
@@ -649,7 +666,12 @@ footer p:last-child { margin-bottom: 0; }
 
   <footer class="rise" style="animation-delay:.26s">
     <p>Not a shop and not a library — nothing here is for sale or for loan.</p>
-    <p>No accounts, no tracking and no cookies on this page. Each catalogue handles its own sign-in; board games is gated by Cloudflare Access and will ask before it shows you anything.</p>
+    <p>No accounts, no tracking and no cookies on this page. Each catalogue handles its own sign-in and will ask before it shows you anything.</p>
+    <p>
+      <a class="more" href="/todo">What we are working on next
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </p>
   </footer>
 
 </main>
