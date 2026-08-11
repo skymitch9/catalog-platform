@@ -14,7 +14,7 @@ governs three codebases and belongs inside none of them.
 | Path | What |
 |---|---|
 | [`docs/`](docs/) | The plan. Governs three other repos; nothing here is deployed |
-| [`sites/heygabi-home/`](sites/heygabi-home/) | **The `heygabi.ai` apex landing page. Live.** One static HTML file, no build step, no JS |
+| [`sites/heygabi-home/`](sites/heygabi-home/) | **The `heygabi.ai` apex landing page, and the cross-project board at `/todo`. Live.** Two static HTML files, no build step, no JS |
 
 ⚠️ **The three catalogs keep their own repos.** `sites/` is not a monorepo
 staging area — it is for things that are *about the platform*: the front door
@@ -81,7 +81,8 @@ host:
 | | State |
 |---|---|
 | `heygabi.ai` + `www` | **Live**, both `200`, served by Pages project `heygabi-home` from `sites/heygabi-home/public` |
-| Live page vs this repo | ✅ **Byte-identical** — 21,931 bytes both sides. The move changed no deployed bytes, so **no redeploy is pending** |
+| Live page vs this repo | ⚠️ **A DEPLOY IS PENDING** as of 2026-08-10. It was byte-identical (21,931 bytes both sides) until `/todo` was added and the front door gained a footer link to it. One command, `sites/heygabi-home/deploy.md` §4 |
+| `heygabi.ai/todo` | **Written, not yet deployed.** The cross-project board — every open item across the three catalogs and this site, tagged one / some / all / landing site. CSS-only filter, no JS. ⚠️ It is **public and authored by hand**: no secrets, no security posture, no purchase detail. `sites/heygabi-home/README.md` § `/todo` |
 | CSP from `_headers` | ✅ **Arriving at the edge**, `default-src 'none'` and all. The zero-external-requests rule is enforced, not just documented |
 | The three catalog hosts | **All live** — see the table above |
 | `covers.heygabi.ai` | ✅ **Live and in use.** A real object returned `200`; the audiobook page references this host 7,536 times. Its root `404`s, which is just an R2 bucket with no object at `/` |

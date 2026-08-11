@@ -2,9 +2,12 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** **LIVE** at
 > <https://heygabi.ai>. Last verified: **2026-08-10** — apex and `www` both
-> answered `200`, the CSP arrived from `_headers`, and the deployed HTML is
-> **byte-identical** to `public/index.html` here (21,931 bytes). **No deploy is
-> pending.** Outstanding owner actions are listed in the root
+> answered `200` and the CSP arrived from `_headers`.
+>
+> ⚠️ **A DEPLOY IS PENDING (2026-08-10).** The `/todo` board was added and the
+> front door gained a footer link to it, so the deployed HTML is **no longer
+> byte-identical** to this directory. `deploy.md` §4 is the one command.
+> Outstanding owner actions are listed in the root
 > [`README.md`](../../README.md) § What is left.
 >
 > ⚠️ **This used to be its own repo, `vs-code-repos/heygabi-home`. It moved here
@@ -12,10 +15,11 @@
 > this file and in `deploy.md` are relative to `sites/heygabi-home/`; the
 > **deploy command now runs from the repo root and names `sites/heygabi-home/public`**.
 
-The landing page for the apex domain **`heygabi.ai`** (and `www.heygabi.ai`).
+The landing page for the apex domain **`heygabi.ai`** (and `www.heygabi.ai`),
+plus the cross-project board at **`heygabi.ai/todo`**.
 
-One static HTML file. No build step, no dependencies, no framework, no package
-manager. `public/index.html` is the whole site.
+Two static HTML files. No build step, no dependencies, no framework, no package
+manager. `public/index.html` and `public/todo/index.html` are the whole site.
 
 ---
 
@@ -51,6 +55,69 @@ in, lands as `pending`, and sees a waiting screen — never the collection. See
 
 The `.pill.locked` and `.card.soon` rules are kept in the stylesheet, unused,
 for the next shelf.
+
+---
+
+## `/todo` — the cross-project board
+
+Added **2026-08-10**. `public/todo/index.html`, linked from the front door's
+footer. It lists work that is agreed but not built across all three catalogues
+*and* this site, and tags each item by how far it reaches.
+
+**The taxonomy.** Every item declares which projects it touches
+(`p-audio` / `p-books` / `p-games` / `p-landing`) and carries **one** derived
+scope class:
+
+| Scope | Means |
+|---|---|
+| `s-landing` | `p-landing` only — this site |
+| `s-one` | exactly one catalogue |
+| `s-some` | more than one catalogue, not all three |
+| `s-all` | all three catalogues (`p-landing` may ride along) |
+
+⚠️ **Scope is derived, not independent.** It is written out as a class and as a
+visible badge purely because CSS cannot compute it; if the projects change, the
+scope and the badge change with them. Two fields free to disagree is how a board
+starts lying.
+
+**The filter is CSS-only** — six visually-hidden radios, `<label>` chips, and
+`:checked ~` rules. There is no JavaScript here and there cannot be: `_headers`
+sets `default-src 'none'` with no `script-src`. ⚠️ The `<input>`s **must stay
+direct siblings** of `.filters` and `.board`; wrapping them in a `<fieldset>`
+for tidiness kills every `~` rule and the filter fails **silently**. `deploy.md`
+§3 has the tap-test that catches it.
+
+A project filter matches on **membership**, so an all-projects item appears
+under Audiobooks *and* Books *and* Board games. That is the honest answer to
+"what is coming for this shelf?".
+
+### ⚠️ It is authored here, not aggregated — and it is public
+
+The three projects' work logs (`library_catalog/docs/TODO.md`,
+`Board_Game_Catalog/docs/TODO.md` + `open-questions.md`,
+`audiobook_catalog/docs/TODO.md`) stay authoritative. This page is a **curated
+summary** of them, retyped by hand.
+
+Aggregating was rejected on three grounds, and the third is the one that
+matters: the page cannot fetch (CSP), the site has no build step to bake them in
+at, the files share no parsable shape — and **anything aggregated would be
+published verbatim**. Those logs contain token names, auth weaknesses, purchase
+history and prices. None of that may appear on a host with no authentication.
+
+**So: no secrets, no security posture, no order detail.** Restate an item as a
+feature or a chore, or leave it in the project's own docs. If it cannot be
+phrased safely, it does not go on the board.
+
+The cost of authoring here is duplication — closing something in a project's log
+does not close it here. That is paid by hand, deliberately. **Delete finished
+items** rather than striking them through; the project's own log is the
+historical record.
+
+`noindex` is set on this page: public and linkable, but not a search result.
+
+⚠️ **No counts.** CSS cannot count what a filter matched and a typed total goes
+stale on the next edit — the same rule the front door learned from an invented
+game count.
 
 ---
 
@@ -129,7 +196,8 @@ All paths are under `sites/heygabi-home/`.
 
 | File | Purpose |
 |---|---|
-| `public/index.html` | The entire site. Inline CSS, inline SVG favicon, no JS |
+| `public/index.html` | The front door. Inline CSS, inline SVG favicon, no JS |
+| `public/todo/index.html` | The cross-project board at `/todo`. Same rules; its filter is CSS-only radios |
 | `public/_headers` | Cloudflare Pages headers — CSP that forbids external requests |
 | `deploy.md` | Exact steps to create the Pages project and attach the domains |
 | `README.md` | This file |
@@ -147,9 +215,15 @@ the whole platform repo**: the upload root is one named directory, so nothing in
 
 ## Local preview
 
-Open `public/index.html` in a browser. There is nothing to install and nothing to
-serve. (`_headers` is a Pages-only file and has no effect locally, so a local
-preview does **not** verify the CSP — check that on the deployed site.)
+Open `public/index.html` or `public/todo/index.html` in a browser. There is
+nothing to install and nothing to serve. (`_headers` is a Pages-only file and has
+no effect locally, so a local preview does **not** verify the CSP — check that on
+the deployed site.)
+
+⚠️ Opened as a `file://` URL, the footer link `/todo` and the board's back link
+`/` both resolve against the filesystem root and 404. That is the local preview
+being local, not a broken link — serve the directory or check them on the
+deployed site.
 
 ## Committing on Windows
 

@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>What's next — heygabi.ai</title>
+<meta name="description" content="Work in progress across the three catalogues and the front door itself.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#12140f">
+<meta name="robots" content="noindex, nofollow">
+
+<!--
+  ============================================================================
+  THE CROSS-PROJECT TODO BOARD.  Served at https://heygabi.ai/todo
+  ============================================================================
+
+  Every rule from ../index.html applies here unchanged, and two of them decide
+  the whole shape of this file:
+
+  ⚠️  NO AUTHENTICATION ON THIS HOST. EVER.  See ../index.html and
+      ../../README.md § The one rule. This page is public, and that is the
+      constraint that governs what may be written on it — see NO SECRETS below.
+
+  ⚠️  ZERO EXTERNAL REQUESTS, AND ZERO JAVASCRIPT. public/_headers ships
+      `default-src 'none'` with no script-src, so a <script> is blocked outright.
+      The filter below is therefore CSS-only: hidden radio inputs, visible
+      <label> chips, and `:checked ~` sibling rules. No JS, no CSP change.
+
+  ---------------------------------------------------------------------------
+  ⚠️  NO SECRETS, NO SECURITY POSTURE, NO ORDER HISTORY.
+  ---------------------------------------------------------------------------
+  The three projects' own work logs are private and contain things that must
+  never appear on a public page: token names, auth weaknesses, purchase and
+  order detail, email addresses, prices. This page is a CURATED SUMMARY, not a
+  mirror. When you copy an item across, restate it as a feature or a chore.
+  "Bring the audiobook catalogue onto the shared roles" is publishable. The
+  paragraph in its work log explaining why it cannot join yet is NOT.
+
+  If an item cannot be phrased without disclosing one of those things, it does
+  not belong here. It stays in the project's own docs/TODO.md.
+
+  ---------------------------------------------------------------------------
+  AUTHORED HERE, NOT AGGREGATED — and this was a decision, not an oversight.
+  ---------------------------------------------------------------------------
+  The full detail for every item lives in the project that owns it:
+
+      bookbuddy/library_catalog/docs/TODO.md          (books)
+      boardbuddy/Board_Game_Catalog/docs/TODO.md      (board games)
+      boardbuddy/Board_Game_Catalog/docs/open-questions.md
+      bookbuddy/audiobook_catalog/docs/TODO.md        (audiobooks)
+      catalog-platform/README.md § What is left       (this site)
+
+  Those files stay authoritative. This page is a hand-written cross-project
+  view over them, for three reasons:
+
+    1. It cannot read them. They live in private repos with no public API, and
+       this page may not fetch anything at all (CSP above). Baking them in at
+       build time is not available either: this site has no build step, no
+       package manager and no dependencies — Pages uploads public/ as-is.
+    2. They have no common shape. One is a table of marks, one is prose under
+       headings, one is a 688-line living doc with dated handoffs. There is no
+       item schema to parse, and the books file was reorganised on 2026-08-10 —
+       a scraper would already be broken.
+    3. Aggregation would publish the source text verbatim, which is exactly
+       what the NO SECRETS rule forbids. Authoring here forces the pass that
+       decides what is safe to say.
+
+  The cost is duplication: closing something in a project's work log does not
+  close it here. That is the price, it is paid by hand, and it is cheaper than
+  the alternatives above. Delete finished items rather than striking them
+  through — the project's own log is the historical record, not this page.
+
+  ---------------------------------------------------------------------------
+  ADDING AN ITEM
+  ---------------------------------------------------------------------------
+  Copy an <li> and set two kinds of class on it:
+
+    which projects   p-audio  p-books  p-games  p-landing   (one or more)
+    how wide it is   s-one    s-some   s-all    s-landing   (exactly one)
+
+  The scope class is DERIVED from the project classes and must agree with them:
+    s-landing  = p-landing only
+    s-one      = exactly one catalogue
+    s-some     = more than one catalogue, but not all three
+    s-all      = all three catalogues (p-landing may ride along)
+  Two fields that can disagree is how a board starts lying. If you change the
+  projects, change the scope, and change the visible badges to match.
+
+  Order is broadest first: all → some → one → landing. There are no group
+  headings on purpose; a heading would need its own filter classes and one more
+  thing to keep in step for no gain over the badges each item already carries.
+
+  ⚠️ NO COUNTS. CSS cannot count what a filter matched, and a hand-typed "12
+  open" goes stale on the next edit. The front door already learned this — see
+  the invented game count in ../index.html. State no totals here either.
+
+  ---------------------------------------------------------------------------
+  WHY THE STYLESHEET IS DUPLICATED FROM ../index.html
+  ---------------------------------------------------------------------------
+  Not laziness, and not fixable by a <link>: style-src is 'unsafe-inline' with
+  no 'self', so an external stylesheet is blocked BY THIS SITE'S OWN CSP even
+  same-origin. Sharing one would mean widening the CSP, which is the thing the
+  CSP exists to stop. The tokens below are copied from ../index.html; if that
+  palette changes, this drifts, and that is accepted — same family, not one
+  stylesheet in two places.
+
+  noindex is set above deliberately: the page is public and linkable, but a
+  household's rolling work list does not need to be a search result.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<style>
+/*
+ * heygabi.ai/todo — the cross-project board.
+ *
+ * Phone first, and that is load-bearing rather than a slogan: the filter chips
+ * are the only interactive thing on the page and they are sized to be tapped at
+ * 360px with a thumb. Everything below 34rem is one column.
+ */
+
+/* ---- tokens (copied from ../index.html — see the header comment) --------- */
+
+:root {
+  --bg: #f7f4ed;
+  --bg-2: #efe9dc;
+  --fg: #17150f;
+  --muted: #6b6559;
+  --line: #e0d9c9;
+  --panel: #fffdf8;
+  --panel-edge: #ffffff;
+
+  --accent: #3a5a40;
+  --gold: #b3822c;
+  --clay: #b1533c;
+
+  --shadow: 0 1px 2px rgba(23, 21, 15, .05), 0 8px 24px -12px rgba(23, 21, 15, .18);
+
+  --blob-1: rgba(58, 90, 64, .20);
+  --blob-2: rgba(217, 164, 65, .18);
+  --blob-3: rgba(177, 83, 60, .12);
+  --grain-opacity: .035;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0b09;
+    --bg-2: #121610;
+    --fg: #ece7d9;
+    --muted: #9a948a;
+    --line: #2a2c22;
+    --panel: #171a13;
+    --panel-edge: #22261c;
+
+    --accent: #8fbc8f;
+    --gold: #d9a441;
+    --clay: #d97e63;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px -14px rgba(0, 0, 0, .8);
+
+    --blob-1: rgba(143, 188, 143, .16);
+    --blob-2: rgba(217, 164, 65, .16);
+    --blob-3: rgba(217, 126, 99, .11);
+    --grain-opacity: .05;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x: hidden;
+}
+
+/* ---- the drifting background (same as the front door) -------------------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, var(--bg-2) 0%, var(--bg) 60%);
+  overflow: hidden;
+}
+.backdrop span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(60px);
+  will-change: transform;
+}
+.backdrop .b1 {
+  width: 60vmax; height: 60vmax;
+  top: -26vmax; left: -20vmax;
+  background: var(--blob-1);
+  animation: drift-a 44s ease-in-out infinite;
+}
+.backdrop .b2 {
+  width: 46vmax; height: 46vmax;
+  top: 6vmax; right: -22vmax;
+  background: var(--blob-2);
+  animation: drift-b 58s ease-in-out infinite;
+}
+.backdrop .b3 {
+  width: 40vmax; height: 40vmax;
+  bottom: -20vmax; left: 20%;
+  background: var(--blob-3);
+  animation: drift-c 52s ease-in-out infinite;
+}
+.backdrop .grain {
+  position: absolute;
+  inset: -50%;
+  width: 200%; height: 200%;
+  border-radius: 0;
+  filter: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-7vmax, 6vmax, 0) scale(1.08); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4vmax, -5vmax, 0) scale(1.15); }
+}
+
+/* ---- layout -------------------------------------------------------------- */
+
+/*
+ * Top-aligned, unlike the front door. That page is four seconds of reading and
+ * looks best optically centred; this one is a list that grows, and a centred
+ * list jumps down the screen every time an item is added.
+ */
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 7vw, 3.5rem) 1.15rem 3.5rem;
+}
+
+.rise { animation: rise .7s cubic-bezier(.22, .8, .3, 1) backwards; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- masthead ------------------------------------------------------------ */
+
+header { margin-bottom: clamp(1.75rem, 5vw, 2.5rem); }
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;              /* tap target, same floor as the cards */
+  margin: 0 0 .35rem;
+  color: var(--muted);
+  font-size: .8125rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.back:hover { color: var(--fg); }
+.back:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.back svg { flex: none; transition: transform .2s ease; }
+.back:hover svg { transform: translateX(-3px); }
+
+h1 {
+  margin: 0 0 .6rem;
+  font-size: clamp(2.1rem, 8.5vw, 3.5rem);
+  line-height: 1.02;
+  letter-spacing: -.03em;
+  font-weight: 800;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 40rem;
+  color: var(--muted);
+  font-size: clamp(1rem, 2.6vw, 1.0625rem);
+  text-wrap: pretty;
+}
+
+/* ---- the filter ----------------------------------------------------------
+ *
+ * Six radios, one per view, hidden with the .sr-only clip pattern so they stay
+ * focusable and keep native radio-group arrow-key behaviour. The visible chips
+ * are <label for>. The radios must be DIRECT SIBLINGS of .board, preceding it,
+ * or the `~` rules below cannot reach the items.
+ *
+ * Selecting a filter does not change the URL, so a filtered view is not
+ * shareable. `:target` would give that, and was rejected: it needs an anchor
+ * per view, it scrolls the page on every tap, and "Everything" stops being a
+ * clean default. Nobody has asked to share a filtered board.
+ */
+
+.filters {
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;              /* ⚠️ the 360px thumb rule. Do not shrink. */
+  padding: .4rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--muted);
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .18s ease, color .18s ease, background .18s ease;
+}
+.chip:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 25%, var(--line)); }
+
+/* At 360px the six chips take three rows, which is a lot of screen before the
+   first item. Tighten the horizontal padding — never the 44px height, which is
+   the thumb, not the decoration. */
+@media (max-width: 26rem) {
+  .chip { padding: .4rem .7rem; font-size: .8125rem; }
+  .filters { gap: .4rem; }
+}
+
+.filter-radio {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Checked and focus states. One pair of rules per radio because a label can
+   only be matched by its `for`; there is no parent selector shortcut that
+   keeps the inputs outside the chip row. */
+#f-all:checked   ~ .filters [for="f-all"],
+#f-audio:checked ~ .filters [for="f-audio"],
+#f-books:checked ~ .filters [for="f-books"],
+#f-games:checked ~ .filters [for="f-games"],
+#f-home:checked  ~ .filters [for="f-home"],
+#f-cross:checked ~ .filters [for="f-cross"] {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--bg);
+}
+
+#f-all:focus-visible   ~ .filters [for="f-all"],
+#f-audio:focus-visible ~ .filters [for="f-audio"],
+#f-books:focus-visible ~ .filters [for="f-books"],
+#f-games:focus-visible ~ .filters [for="f-games"],
+#f-home:focus-visible  ~ .filters [for="f-home"],
+#f-cross:focus-visible ~ .filters [for="f-cross"] {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* ---- the filtering itself ------------------------------------------------
+ *
+ * "Everything" needs no rule: it is the state where nothing is hidden.
+ *
+ * A project filter matches on MEMBERSHIP, not on scope — so an all-projects
+ * item shows under Audiobooks and under Books and under Board games, which is
+ * the honest answer to "what is coming for this shelf?".
+ */
+
+#f-audio:checked ~ .board .item:not(.p-audio)   { display: none; }
+#f-books:checked ~ .board .item:not(.p-books)   { display: none; }
+#f-games:checked ~ .board .item:not(.p-games)   { display: none; }
+#f-home:checked  ~ .board .item:not(.p-landing) { display: none; }
+#f-cross:checked ~ .board .item:not(.s-some):not(.s-all) { display: none; }
+
+/* ---- the list ------------------------------------------------------------ */
+
+.board { position: relative; }
+
+ul.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .85rem;
+}
+
+@media (min-width: 52rem) {
+  ul.items { grid-template-columns: repeat(2, 1fr); }
+}
+
+.item {
+  padding: 1.05rem 1.15rem 1rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--hue, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-edge), var(--panel));
+  box-shadow: var(--shadow);
+}
+
+.item h3 {
+  margin: 0 0 .35rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.3;
+  text-wrap: pretty;
+}
+
+.item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .9375rem;
+  text-wrap: pretty;
+}
+
+/* `.item p` sets margin:0 and is the more specific selector, so this has to be
+   qualified rather than left as a bare .meta — the alternative was !important. */
+.item .meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .8rem;
+}
+
+.item code {
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
+  font-size: .875em;
+  word-break: break-word;
+}
+
+.tag {
+  padding: .18rem .55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Project tags carry the shelf colour; the scope tag stays neutral so the two
+   kinds of badge never compete for the same glance. */
+.t-audio   { --hue: var(--gold);   color: var(--gold);   border-color: color-mix(in srgb, var(--gold) 40%, var(--line));   background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.t-books   { --hue: var(--accent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.t-games   { --hue: var(--clay);   color: var(--clay);   border-color: color-mix(in srgb, var(--clay) 40%, var(--line));   background: color-mix(in srgb, var(--clay) 10%, transparent); }
+.t-landing { color: var(--muted); background: color-mix(in srgb, var(--muted) 8%, transparent); }
+
+.scope {
+  margin-left: auto;             /* pushed right; wraps under on a narrow phone */
+  padding: .18rem .55rem;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+/* "Needs you" — an item a session cannot finish because it wants a dashboard,
+   a physical count or a decision. Kept visually quiet: it is a fact about who
+   acts next, not a priority. */
+.owner {
+  padding: .18rem .55rem;
+  border: 1px solid color-mix(in srgb, var(--clay) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--clay) 10%, transparent);
+  color: var(--clay);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The spine colour of the whole card follows its first project. */
+.item.p-audio   { --hue: var(--gold); }
+.item.p-books   { --hue: var(--accent); }
+.item.p-games   { --hue: var(--clay); }
+.item.p-landing { --hue: var(--line); }
+.item.s-all     { --hue: var(--fg); }
+.item.s-some    { --hue: var(--muted); }
+
+/* ---- the empty state ------------------------------------------------------
+ *
+ * A hand-edited list can lose its last item for a filter, and a silently blank
+ * board looks like a broken page. :has() lets CSS answer "did this filter match
+ * anything?" without JS. In a browser without :has() the whole selector is
+ * invalid and ignored, so the message simply never appears — no worse than not
+ * having written it.
+ */
+
+.empty {
+  display: none;
+  margin: 0;
+  padding: 1.1rem 1.2rem;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: .9375rem;
+}
+
+#f-audio:checked ~ .board:not(:has(.item.p-audio))   .empty,
+#f-books:checked ~ .board:not(:has(.item.p-books))   .empty,
+#f-games:checked ~ .board:not(:has(.item.p-games))   .empty,
+#f-home:checked  ~ .board:not(:has(.item.p-landing)) .empty,
+#f-cross:checked ~ .board:not(:has(.item.s-some)):not(:has(.item.s-all)) .empty {
+  display: block;
+}
+
+/* ---- footer -------------------------------------------------------------- */
+
+footer {
+  margin-top: clamp(2.25rem, 6vw, 3.25rem);
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .8125rem;
+  text-wrap: pretty;
+}
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
+footer p:last-child { margin-bottom: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- motion off ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop span,
+  .rise,
+  .chip,
+  .back svg {
+    animation: none !important;
+    transition: none !important;
+  }
+  .rise { opacity: 1; transform: none; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="backdrop" aria-hidden="true">
+  <span class="b1"></span>
+  <span class="b2"></span>
+  <span class="b3"></span>
+  <span class="grain"></span>
+</div>
+
+<main>
+
+  <header class="rise" style="animation-delay:.02s">
+    <a class="back" href="/">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+      heygabi.ai
+    </a>
+    <h1>What&rsquo;s next</h1>
+    <p class="tagline">Work that is agreed but not built, across the three catalogues and the front door itself. Each item says how far it reaches: one shelf, a few, all of them, or this site.</p>
+  </header>
+
+  <section class="rise" style="animation-delay:.1s">
+    <h2 class="sr-only">The board</h2>
+
+    <!--
+      ⚠️ The six radios must stay DIRECT SIBLINGS of .filters and .board, in
+      this order. Wrapping them in a <fieldset> for tidiness breaks every
+      `~` rule in the stylesheet and silently disables the filter.
+    -->
+    <input class="filter-radio" type="radio" name="view" id="f-all" checked>
+    <input class="filter-radio" type="radio" name="view" id="f-audio">
+    <input class="filter-radio" type="radio" name="view" id="f-books">
+    <input class="filter-radio" type="radio" name="view" id="f-games">
+    <input class="filter-radio" type="radio" name="view" id="f-home">
+    <input class="filter-radio" type="radio" name="view" id="f-cross">
+
+    <div class="filters" role="group" aria-label="Filter the board">
+      <label class="chip" for="f-all">Everything</label>
+      <label class="chip" for="f-audio">Audiobooks</label>
+      <label class="chip" for="f-books">Books</label>
+      <label class="chip" for="f-games">Board games</label>
+      <label class="chip" for="f-home">Landing site</label>
+      <label class="chip" for="f-cross">Cross&#8209;project</label>
+    </div>
+
+    <div class="board">
+
+      <ul class="items">
+
+        <!-- ===== ALL PROJECTS ============================================ -->
+
+        <li class="item p-audio p-books p-games p-landing s-all">
+          <h3>One search across all three shelves</h3>
+          <p>&ldquo;Do we own this in any format?&rdquo; answered once, instead of three times. Needs a public, read-only projection out of each catalogue and a search box on the front door.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="tag t-books">Books</span>
+            <span class="tag t-games">Board games</span>
+            <span class="tag t-landing">Landing site</span>
+            <span class="scope">All projects</span>
+          </p>
+        </li>
+
+        <li class="item p-audio p-books p-games s-all">
+          <h3>One sign-in and one set of roles everywhere</h3>
+          <p>Books and board games already share the same accounts and the same owner / manager / reader / waiting-list roles. The audiobook catalogue is the one left to bring across.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="tag t-books">Books</span>
+            <span class="tag t-games">Board games</span>
+            <span class="scope">All projects</span>
+          </p>
+        </li>
+
+        <!-- ===== SOME PROJECTS =========================================== -->
+
+        <li class="item p-books p-games s-some">
+          <h3>Keep the two scanning catalogues in step</h3>
+          <p>Books borrowed its scan queue, its barcode lookup and its arrival flow from board games. Fixes found on one side should travel to the other rather than quietly forking.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="tag t-games">Board games</span>
+            <span class="scope">Some projects</span>
+          </p>
+        </li>
+
+        <li class="item p-audio p-books s-some">
+          <h3>Match books to their audiobooks</h3>
+          <p>A book and its audiobook are the same story on two shelves, and only some of them are joined up so far. Long series with many volumes are the group worth chasing first.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="tag t-books">Books</span>
+            <span class="scope">Some projects</span>
+          </p>
+        </li>
+
+        <!-- ===== ONE PROJECT — BOOKS ===================================== -->
+
+        <li class="item p-books s-one">
+          <h3>Mark a preordered book as arrived</h3>
+          <p>Preorders and crowdfunding pledges sit in the catalogue as promises. There is no way yet to say &ldquo;this one is on the shelf now&rdquo;, which is the single transition most of them are waiting on.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-books s-one">
+          <h3>An ebooks view of the library</h3>
+          <p>Print and ebook live in one catalogue on purpose. What is missing is the filter that shows just one of them &mdash; a link you can bookmark or pin to a home screen.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-books s-one">
+          <h3>Twelve books still have no cover</h3>
+          <p>Every automatic source has been tried and come back empty for these. Filling them needs a genuinely different source, not another pass over the same ones.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-books s-one">
+          <h3>Five pledged books need creating by hand</h3>
+          <p>A campaign&rsquo;s spelling of a title is exactly what mints a duplicate, so the importer deliberately never invents a book. These five have to exist first, then their pledges attach themselves.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-books s-one">
+          <h3>Check the series pages on a real phone</h3>
+          <p>The series list, the format chips and the newer panels have been built and read on a desktop. None of them has been looked at on a 390px screen, which is where they will actually be used.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <!-- ===== ONE PROJECT — BOARD GAMES =============================== -->
+
+        <li class="item p-games s-one">
+          <h3>Fill in what is missing from each box</h3>
+          <p>&ldquo;Which pieces am I short?&rdquo; has no data behind it yet. A weekly job will fill it unattended; doing it by hand is only worth it to get the shopping list sooner.</p>
+          <p class="meta">
+            <span class="tag t-games">Board games</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-games s-one">
+          <h3>Count the Dice Throne playmats</h3>
+          <p>Eleven are confirmed bought, twenty-one provably were not, and twenty-two came through a channel no pledge record can speak to. A physical count is the only thing that settles it.</p>
+          <p class="meta">
+            <span class="tag t-games">Board games</span>
+            <span class="owner">Needs you</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-games s-one">
+          <h3>Name the HELLDIVERS 2 mystery box</h3>
+          <p>A deliberate placeholder for content the campaign has not revealed. Rename it from whatever is actually in the box when it turns up.</p>
+          <p class="meta">
+            <span class="tag t-games">Board games</span>
+            <span class="owner">Needs you</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <!-- ===== ONE PROJECT — AUDIOBOOKS ================================ -->
+
+        <li class="item p-audio s-one">
+          <h3>Reading schedules for book clubs</h3>
+          <p>Checkpoints with target dates, and an on-track or behind chip against them. The milestones already exist; what they lack is a calendar.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-audio s-one">
+          <h3>Announce club events to Discord</h3>
+          <p>Comments already post through. Starting a book, finishing one and a new leader on the to-be-read list do not.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-audio s-one">
+          <h3>Polls inside a club</h3>
+          <p>Free-form questions a club can vote on, taggable to a chapter so they sit behind the same spoiler shield as everything else.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <!-- ===== THE LANDING SITE ======================================== -->
+
+        <li class="item p-landing s-landing">
+          <h3>Pick one name for the front door</h3>
+          <p>Both <code>heygabi.ai</code> and <code>www.heygabi.ai</code> serve this page today. One of them should redirect to the other; the recommendation is the bare name, because every catalogue is a subdomain of it.</p>
+          <p class="meta">
+            <span class="tag t-landing">Landing site</span>
+            <span class="owner">Needs you</span>
+            <span class="scope">Landing site</span>
+          </p>
+        </li>
+
+        <li class="item p-landing s-landing">
+          <h3>Decide whether <code>ebooks.heygabi.ai</code> should exist</h3>
+          <p>Only ever as a redirect into the library&rsquo;s ebook view &mdash; never as a second app. It is free and reversible, and it is also one more name to remember.</p>
+          <p class="meta">
+            <span class="tag t-landing">Landing site</span>
+            <span class="owner">Needs you</span>
+            <span class="scope">Landing site</span>
+          </p>
+        </li>
+
+      </ul>
+
+      <p class="empty">Nothing on the board matches that filter right now. Choose <strong>Everything</strong> to see the whole list.</p>
+
+    </div>
+  </section>
+
+  <footer class="rise" style="animation-delay:.18s">
+    <p>Each project keeps its own full work log; this is the view across all of them, kept by hand. Finished work is deleted rather than crossed out.</p>
+    <p>No accounts, no tracking and no cookies on this page &mdash; same as <a href="/">the front door</a>.</p>
+  </footer>
+
+</main>
+</body>
+</html>

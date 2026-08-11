@@ -167,23 +167,39 @@ Then in a browser:
       no image, no beacon. This is the whole no-external-requests rule, checked
       in one glance.
 - [ ] **Console is empty** — a CSP violation would print here.
-- [ ] Board games card **is** a link and carries the "Owner only" pill. (It was
-      an unclickable "Coming soon" card until 2026-08-09; `README.md` records
-      why it changed and when the pill comes off.)
-- [ ] All three catalogue links go to the right hosts. Board games sits behind
-      Cloudflare Access, so a signed-out browser gets the Access login — that is
-      the gate working, not a broken link.
+- [ ] Board games card **is** a link and wears **no pill**. (It was an
+      unclickable "Coming soon" card until 2026-08-09 and carried an "Owner
+      only" pill until 2026-08-10; `README.md` records why each changed.)
+- [ ] All three catalogue links go to the right hosts. Each asks for a sign-in
+      of its own — a signed-out browser reaching a sign-in screen is the gate
+      working, not a broken link.
+
+And for `/todo` (added 2026-08-10):
+
+- [ ] `https://heygabi.ai/todo` loads, and the footer link on the front door
+      reaches it.
+- [ ] **Tap each of the six filter chips.** They are CSS-only radios; if the
+      board stops filtering, something reordered the `<input>`s away from being
+      direct siblings of `.filters` and `.board` and every `~` rule died
+      silently. Nothing logs when this breaks.
+- [ ] Still **exactly one network request** and an **empty console** on this
+      page too. It has no JS and must never acquire any.
+- [ ] At 360px wide: chips wrap, no horizontal scroll, every chip is tappable.
 
 ---
 
 ## 4. Subsequent deploys
 
-Edit `sites/heygabi-home/public/index.html`, commit (`git commit -F <file>`,
+Edit `sites/heygabi-home/public/index.html` or
+`sites/heygabi-home/public/todo/index.html`, commit (`git commit -F <file>`,
 **never `-m`**), then re-upload — **from the `catalog-platform` repo root**:
 
 ```bash
 npx wrangler pages deploy sites/heygabi-home/public --project-name heygabi-home
 ```
+
+One upload covers the whole directory, so the front door and `/todo` always
+ship together. There is no way to deploy one without the other, and no need.
 
 There is no build, no preview lane and no promote step. This site deliberately
 does **not** copy the audiobook catalog's two-lane `main` → `/dev/`, `prod` →
