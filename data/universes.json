@@ -42,7 +42,11 @@
     "solaria": "Solaria",
     "zodiac academy universe": "Solaria",
     "_note": "Lowercased-and-normalised alias → the owner's canonical spelling. Shape follows audiobook_catalog scripts/catalog_overrides.json `canonical_series`, which does the same job for series names. ⚠️ Two entries are required by the owner's rule and are not cosmetic: 'cosmere' → 'The Cosmere' and 'arand multiverse' → 'Runnerverse'. 'divine dungeon universe' and 'zodiac academy universe' are evidenced by this file's own CAL Verse and Solaria `naming` notes, which record that both were named for the shared world rather than for one series inside it. No other alias is guessed; add one only with a reason.",
-    "_namespace": "⚠️ These are UNIVERSE names, not series names. 'Cosmere' is also a stray SERIES value on two library works — that is the data problem recorded under The Cosmere `notes`, and it is a different namespace from this map."
+    "_namespace": "⚠️ These are UNIVERSE names, not series names. 'Cosmere' is also a stray SERIES value on two library works — that is the data problem recorded under The Cosmere `notes`, and it is a different namespace from this map.",
+    "willverse": "Willverse",
+    "the willverse": "Willverse",
+    "will wight multiverse": "Willverse",
+    "wightverse": "Willverse"
   },
   "universes": [
     {
@@ -301,20 +305,27 @@
         "Side stories sit inline with the main run: Live and Let Lionel, The Awakening as Told by the Boys, Origins of an Academy Bully, The Big A.S.S. Party.",
         "'Zodiac Academy 2 - Ruthless Fae' carries its volume in the title — and is Ruthless FAE, not the separate Ruthless BOYS series."
       ]
+    },
+    {
+      "name": "Willverse",
+      "decidedHow": "human",
+      "series": [
+        "Cradle",
+        "The Last Horizon",
+        "The Elder Empire",
+        "The Traveler's Gate"
+      ],
+      "notes": "Will Wight's shared multiverse. Each series is a distinct world — an 'Iteration' — and they are connected by the Way, a branching river of reality monitored by the Abidan Court. Cradle and The Last Horizon (Iteration 119, Fathom) are the two the household owns; The Elder Empire and The Traveler's Gate are listed so a future purchase files itself.",
+      "confirmed": "Owner approved 2026-08-12, and it was REFUSED twice before that on purpose. First pass: 'Will wight leave blank for now' — the author had only hinted. Second pass: the named continuity was established but the owner appeared to hold just ONE member series, and a universe covering one series says nothing the series name does not. It qualified only once The Last Horizon was confirmed as Iteration 119, giving it two owned series to span.",
+      "evidence": "The owner, 2026-08-12: 'each of Wight's series, including Cradle, Traveler's Gate, and Elder Empire, takes place on a different Iteration (a distinct universe) connected by a metaphysical network called the Way', and 'last horizon is connected... Iteration 119 (Fathom), a distinct world within Will Wight's shared multiverse'.",
+      "naming": "'Willverse' follows this list's own convention — Maasverse, Riordanverse, Runnerverse — and is the word the owner's own source used. The in-world name for the connecting network is 'the Way', and the worlds are 'Iterations'; neither is the right shelf label, because the Way is the mechanism rather than the setting. Renaming is an owner decision and a guarded one: `canonicalNames` and `_pinnedCanonicalNames` exist so a rename cannot happen by accident.",
+      "watch": [
+        "⚠️ Holdings are 12 Cradle (ebook) + 3 The Last Horizon (3 audio, 3 library rows). NOT a 15-title universe if the two catalogs are ever summed — the same reconciliation trap Riordanverse carries.",
+        "The Elder Empire and The Traveler's Gate are claimed but NOT owned. They exist here so a future scan files itself with zero lookups; they should not be read as holdings."
+      ]
     }
   ],
   "_refused": [
-    {
-      "subject": "Will Wight — Cradle, The Last Horizon",
-      "decidedHow": "human",
-      "decision": "LEAVE BLANK",
-      "why": "⚠️ Owner's explicit call, 2026-08-11: 'Will wight leave blank for now.' The author has hinted at a shared multiverse but nothing is established, and a hinted universe is exactly the kind of plausible-but-unconfirmed claim that nobody re-checks once it is filled in. Recorded so it is not re-litigated by the next pass.",
-      "heldOutSeries": [
-        "Cradle",
-        "The Last Horizon"
-      ],
-      "heldOutSeriesEvidence": "'The Last Horizon' is the exact series value on three audiobook rows (The Captain, The Engineer, The Knight), measured in site/catalog.csv 2026-08-11. 'Cradle' is taken from the owner's wording — it has NO row in the audiobook catalog and the library catalog was not queried, so that spelling is asserted, not measured."
-    },
     {
       "subject": "Children's picture-book lines — Bizzy Bear, Brown Bear and Friends, Baby University, The Pigeon, Elephant and Piggie, First 100",
       "decidedHow": "seed",
