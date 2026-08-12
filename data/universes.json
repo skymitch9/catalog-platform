@@ -364,12 +364,16 @@
     {
       "subject": "Tailored Realities — Brandon Sanderson",
       "decidedHow": "human",
-      "decision": "LEAVE BLANK pending owner check",
-      "why": "Believed to be a short-fiction collection, which would make it a mixed bag rather than a clean yes or no. Flagged rather than guessed, same treatment as Will Wight.",
+      "decision": "SETTLED — not the Cosmere",
+      "why": "⚠️ SETTLED 2026-08-12, no longer pending. The owner: 'tailored realities is not a cosmere book, its pecifically non cosmere short stories' — the collection is defined by what it is NOT, so this is a firm answer rather than an absence of one. Sanderson being the author is the whole of the case for including it, and author alone is never sufficient: the same rule that keeps The Reckoners out.",
       "heldOutTitles": [
         "Tailored Realities"
       ],
-      "heldOutSeriesEvidence": "It is a TITLE, not a series — measured in site/catalog.csv 2026-08-11: one row 'Tailored Realities', Brandon Sanderson, series blank. So it is held out as a title, which is why it uses heldOutTitles."
+      "heldOutSeriesEvidence": "It is a TITLE, not a series — measured in site/catalog.csv 2026-08-11: one row 'Tailored Realities', Brandon Sanderson, series blank. So it is held out as a title, which is why it uses heldOutTitles.",
+      "doNotReRaise": "Verified and refused, not skipped. Do NOT re-propose it as Cosmere on the strength of 'Brandon Sanderson' or of sitting beside Cosmere rows in the catalog. ⚠️ It is exactly the shape of The Frugal Wizard's Handbook, which is a bookExclusion for the same reason — a Sanderson title adjacent to Cosmere work that is not Cosmere.",
+      "aDifferentVerse": "The owner adds that it belongs to a different verse. That is recorded and NOT acted on: no universe is named, and a universe earns a place here only when it is named, spans more than one series, and the household owns more than one member. If that verse is ever identified and a second member owned, it becomes a NEW universe — never a reassignment of this one row.",
+      "shape": "A short-fiction COLLECTION including the novella 'Moment Zero'. Measured in site/catalog.csv 2026-08-11 as a single row with a BLANK series, which is why it is held out by title rather than by series.",
+      "settledBy": "the owner, 2026-08-12"
     }
   ],
   "_shapeNotes": [
