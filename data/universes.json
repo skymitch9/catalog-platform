@@ -162,7 +162,8 @@
         "Monster's Mercy",
         "Right of Retribution",
         "Swing Shift",
-        "Save State Hero Series"
+        "Save State Hero Series",
+        "Turncoat's Truth"
       ],
       "bookOverrides": [
         {
@@ -343,10 +344,8 @@
       "decidedHow": "human",
       "decision": "LEAVE OUT for now",
       "why": "Owner's call, 2026-08-11: 'Turncoat leave out for now while I verify.' Co-authored, and co-authored work does not always sit inside an author's shared continuity. Held out rather than swept in with the other 14 series.",
-      "heldOutSeries": [
-        "Turncoat's Truth"
-      ],
-      "heldOutSeriesEvidence": "Exact series value measured in site/catalog.csv 2026-08-11, on \"Turncoat's Truth - Turncoat's Truth, Book 1\", authors 'William D. Arand, Victor E. Krabin'."
+      "heldOutSeriesEvidence": "Exact series value measured in site/catalog.csv 2026-08-11, on \"Turncoat's Truth - Turncoat's Truth, Book 1\", authors 'William D. Arand, Victor E. Krabin'.",
+      "overturned": "2026-08-12: fully overturned — \"Turncoat's Truth\" restored into Runnerverse. Owner confirmed 2026-08-12: it IS in the Runnerverse. Held out on 2026-08-11 ('Turncoat leave out for now while I verify') because it is co-authored with Victor E. Krabin, and a collaboration does not reliably sit inside an author's own continuity — the same rule that keeps The Reckoners out of the Cosmere. The owner verified and it does."
     },
     {
       "subject": "Cultivating Chaos and The Axe Falls — William D. Arand",
@@ -382,6 +381,17 @@
     {
       "note": "Consumers hold this in memory; nothing queries it",
       "why": "Six universes, ~33 series, ~13 book overrides. library_catalog materialises a gitignored copy at build time and bundles it into the Worker; audiobook_catalog reads it from disk during the Python build. Neither writes to it — writes happen here, through the CLI, in a commit."
+    }
+  ],
+  "_changelogDoc": "Every mutation made through tools/universes.mjs, newest last. Git records WHAT changed; this records WHY a thing was removed, which a deleted line cannot.",
+  "_changelog": [
+    {
+      "date": "2026-08-12",
+      "action": "restore",
+      "universe": "Runnerverse",
+      "series": "Turncoat's Truth",
+      "why": "Owner confirmed 2026-08-12: it IS in the Runnerverse. Held out on 2026-08-11 ('Turncoat leave out for now while I verify') because it is co-authored with Victor E. Krabin, and a collaboration does not reliably sit inside an author's own continuity — the same rule that keeps The Reckoners out of the Cosmere. The owner verified and it does.",
+      "decidedHow": "human"
     }
   ]
 }

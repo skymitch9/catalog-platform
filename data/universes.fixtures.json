@@ -111,13 +111,13 @@
       "measured": "audiobook_catalog site/catalog.csv 2026-08-11; owner confirmation 2026-08-12."
     },
     {
-      "name": "a held-out series stays held out — Turncoat's Truth",
+      "name": "Turncoat's Truth IS in the Runnerverse — co-authored, and still inside it",
       "title": "Turncoat's Truth - Turncoat's Truth, Book 1",
       "series": "Turncoat's Truth",
       "author": "William D. Arand, Victor E. Krabin",
-      "expect": null,
-      "why": "Co-authored Arand, held out pending owner verification. It must NOT be swept in by the Runnerverse pen-name evidence.",
-      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11."
+      "expect": "Runnerverse",
+      "why": "⚠️ This case ASSERTED NULL until 2026-08-12. It was held out because the book is CO-AUTHORED with Victor E. Krabin, and a collaboration does not reliably sit inside an author's own continuity — the same rule that keeps The Reckoners out of the Cosmere. The owner verified and it does. Kept as a case precisely because the co-author makes it the one Arand series a reader would expect to be excluded.",
+      "measured": "audiobook_catalog site/catalog.csv 2026-08-11; owner confirmation 2026-08-12."
     },
     {
       "name": "⚠️ a held-out series stays held out — The Axe Falls, under its REAL series spelling",
