@@ -120,12 +120,12 @@
       "measured": "audiobook_catalog site/catalog.csv 2026-08-11; owner confirmation 2026-08-12."
     },
     {
-      "name": "⚠️ a held-out series stays held out — The Axe Falls, under its REAL series spelling",
+      "name": "The Axe Falls stays OUT — settled, and under its REAL series spelling",
       "title": "The Axe Falls - The Axe Falls Series, Book 1",
       "series": "The Axe Falls Series",
       "author": "William D. Arand",
       "expect": null,
-      "why": "The refusal names the book 'The Axe Falls'; the series value is 'The Axe Falls Series'. Testing the refusal under the wrong spelling would pass while protecting nothing.",
+      "why": "⚠️ SETTLED 2026-08-12, not pending: the owner looked for a link and found none — 'leave both out, i cant find any connections.' A single-book series offers no cross-series evidence, leaving only the author, which is never sufficient here. ⚠️ Keyed on 'The Axe Falls Series', which is the actual value in site/catalog.csv — the refusal prose says 'The Axe Falls', and a held-out series keyed on the wrong string would hold nothing out.",
       "measured": "audiobook_catalog site/catalog.csv, 2026-08-11."
     },
     {
@@ -165,6 +165,15 @@
       "expect": "Willverse",
       "why": "The second owned member series. Cradle alone would not have earned the universe — this pairing with The Last Horizon is what did.",
       "measured": "library_catalog, 12 Cradle works, 2026-08-12."
+    },
+    {
+      "name": "Cultivating Chaos stays OUT — the VeilVerse in its title is a hint, not evidence",
+      "title": "Cultivating Chaos - VeilVerse: Cultivating Chaos, Book 1",
+      "series": "Cultivating Chaos",
+      "author": "William D. Arand",
+      "expect": null,
+      "why": "⚠️ SETTLED 2026-08-12, not pending: the owner looked for a link and found none — 'leave both out, i cant find any connections.' A single-book series offers no cross-series evidence, leaving only the author, which is never sufficient here. ⚠️ Its title names a 'VeilVerse', which is NOT the Runnerverse. That is exactly the kind of plausible-looking label this list refuses to act on unverified — and if the VeilVerse is ever confirmed it would be a NEW universe, not an addition to an existing one.",
+      "measured": "audiobook_catalog site/catalog.csv 2026-08-11; owner settled it 2026-08-12."
     }
   ],
   "canonicalNameCases": [

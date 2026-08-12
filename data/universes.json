@@ -350,13 +350,16 @@
     {
       "subject": "Cultivating Chaos and The Axe Falls — William D. Arand",
       "decidedHow": "human",
-      "decision": "LEAVE OUT until verified",
-      "why": "Owner's call: 'Cultivating and axe falls should be excluded until I can verify.' ⚠️ Both are SINGLE-BOOK series, so there is no internal evidence of a shared world — only the author, and author alone is never sufficient here. That is the same reasoning that keeps Reckoners out of the Cosmere.",
+      "decision": "SETTLED — not in any universe",
+      "why": "⚠️ SETTLED 2026-08-12, no longer pending. The owner looked and found nothing: 'leave both out, i cant find any connections.' Both are SINGLE-BOOK series, so the cross-series evidence that proved the Runnerverse for its other twelve does not exist here — all that remains is the author, and author alone is never sufficient. Same rule that keeps The Reckoners out of the Cosmere.",
       "heldOutSeries": [
         "Cultivating Chaos",
         "The Axe Falls Series"
       ],
-      "heldOutSeriesEvidence": "⚠️ Both measured in site/catalog.csv 2026-08-11, and the second one is NOT spelled the way the refusal reads: the series value is 'The Axe Falls Series', not 'The Axe Falls'. The book is 'The Axe Falls - The Axe Falls Series, Book 1'. Cultivating Chaos is 'Cultivating Chaos - VeilVerse: Cultivating Chaos, Book 1', series 'Cultivating Chaos' — note the row title mentions a 'VeilVerse', which is the sort of hint that is NOT evidence and is exactly what the owner is holding this back to verify."
+      "heldOutSeriesEvidence": "⚠️ Both measured in site/catalog.csv 2026-08-11, and the second one is NOT spelled the way the refusal reads: the series value is 'The Axe Falls Series', not 'The Axe Falls'. The book is 'The Axe Falls - The Axe Falls Series, Book 1'. Cultivating Chaos is 'Cultivating Chaos - VeilVerse: Cultivating Chaos, Book 1', series 'Cultivating Chaos' — note the row title mentions a 'VeilVerse', which is the sort of hint that is NOT evidence and is exactly what the owner is holding this back to verify.",
+      "doNotReRaise": "This was verified and refused, not skipped. Do not re-propose either series on the strength of 'same author as the Runnerverse'. It becomes worth revisiting only if a SECOND book appears in either series and links to something, or if the VeilVerse below turns out to be a real continuity the household owns more than one member of.",
+      "veilVerse": "⚠️ The row title is 'Cultivating Chaos - VeilVerse: Cultivating Chaos, Book 1' — it names a VeilVerse, which is NOT the Runnerverse. That is a hint, and a hint is not evidence: the owner could find no connection. If VeilVerse is ever confirmed as a real shared continuity, it would be a NEW universe rather than an addition to an existing one — and it would still need the household to own more than one member to earn a place.",
+      "settledBy": "the owner, 2026-08-12"
     },
     {
       "subject": "Tailored Realities — Brandon Sanderson",
