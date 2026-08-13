@@ -172,6 +172,29 @@ The *authorization* posture is unchanged: a signed-in stranger still lands as
 
 ---
 
+## 4a. ⚠️ DECIDED: the `reviews` collection stays shape-only
+
+**Owner's decision, 2026-08-13.** `firestore.rules` checks the *shape* of a review
+document and does **not** check `request.auth`, so any signed-in client can merge
+fields onto any review document. **That posture is now a deliberate, recorded
+decision rather than an accident of history.**
+
+⚠️ **Why it had to be decided rather than left alone.** The `work_key` carry
+procedure in `library_catalog/docs/info/edit-and-audit-design.md` §5.3 **depends on
+it**: when a book is retitled, the ceremony restamps `workKey` onto every review
+document for that book — including other people's. If these rules were hardened to
+require `request.auth`, that restamp would **fail silently for other people's docs**
+and a retitle would orphan their reviews with nothing reporting it.
+
+The appetite for hardening demonstrably exists — `/users` was hardened on
+2026-08-10 — which is exactly why this is written down instead of assumed.
+
+**If this is ever revisited**, hardening `reviews` is not a rules edit; it is a
+feature with a real trade-off: the carry has to move server-side, behind a Firestore
+service account **this estate has so far deliberately refused to hold** (§2.1, §4).
+Argue that trade-off on the day; do not tighten the rules and discover the carry
+afterwards.
+
 ## 5. The index
 
 A thin Worker over a D1 database. Three writers, one reader.
