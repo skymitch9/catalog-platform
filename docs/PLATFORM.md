@@ -14,6 +14,16 @@ Three catalogs, presented as one site, without merging any of them.
 
 Measured 2026-08-07, not estimated.
 
+> **Update 2026-08-13:** the table below is the 2026-08-07 snapshot and three of
+> its facts have since moved. The domain is **`heygabi.ai`**; the audiobook site
+> serves from **Cloudflare** (Pages died with the repo-visibility episode and was
+> never the publisher again); covers live in **R2** (`bookcovers.heygabi.ai`);
+> the third column exists now — **`bookbuddy/library_catalog`**, Worker + D1,
+> built and deployed 2026-08-09, 341 works; games are at **836 items**
+> (read live 2026-08-13). Stage 2 steps 1–3 in §7 have therefore all landed;
+> step 4 (the index Worker) is designed at
+> [`info/index-worker-design.md`](info/index-worker-design.md).
+
 | | Audiobooks | Board games | Books & ebooks |
 |---|---|---|---|
 | Repo | `bookbuddy/audiobook_catalog` | `boardbuddy/Board_Game_Catalog` | — |
@@ -332,7 +342,7 @@ Shared theme, cross-format view, one nav.
 
 | # | Question | Blocks |
 |---|---|---|
-| 1 | Which domain? | Stage 2 |
+| 1 | ~~Which domain?~~ **Answered: `heygabi.ai`** — live since early August (`library.heygabi.ai`, `bookcovers.heygabi.ai` serve today) | — |
 | 2 | Does the public site get its own repo, or is it the audiobook repo re-pointed? | Stage 2 step 2 |
 | 3 | Do games and books get public *browse*, or only the cross-format signal? §5.2's field list assumes browse | Stage 2 step 4 |
 | 4 | Is the rebuild-to-fix-metadata friction actually a problem worth solving? If so it changes the audiobook design independently of any of this | — |
