@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-default-theme="apple">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -26,137 +26,168 @@
   regardless of table state, and the Cloudflare D1 console can edit the
   directory directly. If this page is broken, nothing is locked.
 
-  Same CSP regime as the front door (_headers /admin rules): external
-  same-origin scripts only, allow-listed hosts, no analytics.
+  Styling: the estate theme system (assets/estate-theme.css + theme.js) —
+  tokens only; same cog, same localStorage keys as the front door (one
+  origin, so the choice carries). CSP: _headers /admin rules.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
 
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- Classic script on purpose: stamps theme/mode before first paint. -->
+<script src="/assets/theme.js"></script>
+
 <style>
-/* Same token family as the front door — same palette, deliberately less
-   theatre: this is a working page. */
-:root {
-  --bg: #f7f4ed;
-  --fg: #17150f;
-  --muted: #6b6559;
-  --line: #e0d9c9;
-  --panel: #fffdf8;
-  --accent: #3a5a40;
-  --gold: #b3822c;
-  --clay: #b1533c;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0b09;
-    --fg: #ece7d9;
-    --muted: #9a948a;
-    --line: #2a2c22;
-    --panel: #171a13;
-    --accent: #8fbc8f;
-    --gold: #d9a441;
-    --clay: #d97e63;
-  }
-}
+/* Working page, same language: tokens only, hairlines, one accent. */
 
 * { box-sizing: border-box; }
 body {
   margin: 0;
   min-height: 100dvh;
-  background: var(--bg);
-  color: var(--fg);
-  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--et-bg);
+  background-image: var(--et-bg-texture);
+  background-size: var(--et-bg-texture-size);
+  color: var(--et-fg);
+  font: var(--et-text-body)/1.55 var(--et-font);
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
-main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.15rem 3.5rem; }
+main { max-width: 44rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
 
-h1 { margin: 0 0 .3rem; font-size: 1.6rem; letter-spacing: -.02em; }
-.sub { margin: 0 0 1.4rem; color: var(--muted); font-size: .9375rem; text-wrap: pretty; }
-.sub a { color: var(--accent); }
+h1 {
+  margin: 0 0 .3rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-title);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  text-transform: var(--et-title-case);
+  color: var(--et-heading-color);
+  text-shadow: var(--et-glow-title);
+}
+.sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+.sub a { color: var(--et-accent); }
 
 .bar {
   display: flex;
   align-items: center;
   gap: .8rem;
   flex-wrap: wrap;
-  margin-bottom: 1.2rem;
+  margin-bottom: var(--et-space-2);
 }
+
+/* admin.js mints buttons with these classes — styled from the tokens. */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
-  padding: .5rem 1.05rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
-  color: var(--fg);
-  font: inherit;
-  font-weight: 600;
+  padding: .5em 1.2em;
+  border: var(--et-btn-border);
+  border-radius: var(--et-radius-pill);
+  background: var(--et-btn-bg);
+  color: var(--et-btn-fg);
+  box-shadow: var(--et-btn-shadow);
+  font: 600 var(--et-text-body)/1.2 var(--et-font);
   cursor: pointer;
+  transition: transform var(--et-dur-fast) var(--et-ease),
+              filter var(--et-dur-fast) var(--et-ease);
 }
-.btn:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
-.btn:disabled { opacity: .55; cursor: default; }
-.btn.small { min-height: 34px; padding: .25rem .7rem; font-size: .8125rem; font-weight: 600; }
-.btn.danger { border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); background: color-mix(in srgb, var(--clay) 10%, var(--panel)); }
-.btn.quiet { border-color: var(--line); background: var(--panel); }
+.btn:hover { filter: brightness(1.06); }
+.btn:active { transform: scale(.965); }
+.btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; }
+.btn:disabled { opacity: .5; cursor: default; transform: none; }
+.btn.small { min-height: 34px; padding: .25em .8em; font-size: var(--et-text-small); }
+.btn.quiet { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-fg); }
+.btn.danger { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-danger); }
+
 .linkbtn {
   border: 0; padding: 0; background: none;
-  color: var(--accent); font: inherit; font-weight: 600;
-  cursor: pointer; text-decoration: underline;
+  color: var(--et-accent); font: inherit; font-weight: 600;
+  cursor: pointer; text-decoration: none;
 }
-.who { color: var(--muted); font-size: .875rem; }
+.linkbtn:hover { text-decoration: underline; }
+.who { color: var(--et-muted); font-size: var(--et-text-small); }
 
 #status {
-  margin: 0 0 1.2rem;
-  padding: .6rem .85rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  color: var(--muted);
-  font-size: .875rem;
+  margin: 0 0 var(--et-space-2);
+  padding: .7em 1em;
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
   text-wrap: pretty;
 }
-#status[data-tone="warn"] { border-color: color-mix(in srgb, var(--clay) 45%, var(--line)); color: var(--fg); }
-#status[data-tone="owner"] { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); color: var(--fg); }
+#status[data-tone="warn"] { color: var(--et-warn); }
+#status[data-tone="owner"] { color: var(--et-accent); }
 
 ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 .user {
-  padding: .8rem .95rem;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+  padding: .85rem 1rem;
+  border: var(--et-border-w) solid var(--et-panel-border);
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
 }
+
 .user-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
 .user-name { font-weight: 700; }
-.user-email { color: var(--muted); font-size: .875rem; word-break: break-all; }
+.user-email { color: var(--et-muted); font-size: var(--et-text-small); word-break: break-all; }
+
 .badge {
-  padding: .1rem .5rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: .6875rem;
+  padding: .1em .6em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  font-size: var(--et-text-micro);
   font-weight: 700;
   letter-spacing: .05em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--et-muted);
   white-space: nowrap;
 }
-.badge.pending  { border-color: color-mix(in srgb, var(--gold) 60%, var(--line)); color: var(--gold); }
-.badge.approved { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); color: var(--accent); }
-.badge.revoked  { border-color: color-mix(in srgb, var(--clay) 60%, var(--line)); color: var(--clay); }
-.user-meta { margin: .3rem 0 .55rem; color: var(--muted); font-size: .8125rem; }
+.badge.pending  { border-color: var(--et-warn); color: var(--et-warn); }
+.badge.approved { border-color: var(--et-ok); color: var(--et-ok); }
+.badge.revoked  { border-color: var(--et-danger); color: var(--et-danger); }
+
+.user-meta { margin: .3rem 0 .55rem; color: var(--et-muted); font-size: var(--et-text-small); }
 .user-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 
 footer {
-  margin-top: 2.5rem;
-  padding-top: 1.2rem;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: .8125rem;
+  margin-top: var(--et-space-4);
+  padding-top: var(--et-space-2);
+  border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
   text-wrap: pretty;
 }
-footer a { color: var(--accent); }
+footer a { color: var(--et-accent); }
+footer code { font-family: var(--et-font-mono); font-size: .9em; }
 </style>
 </head>
 
 <body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select">
+      <option value="apple">Apple</option>
+      <option value="cyberpunk">Cyberpunk</option>
+      <option value="retro">Retro</option>
+    </select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+</div>
+
 <main>
   <h1>Estate members</h1>
   <p class="sub">

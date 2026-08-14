@@ -202,19 +202,22 @@ Worker needs no Firebase authorised-domain entry of its own).
 
 ---
 
-## Visual language
+## Visual language (retheme 2026-08-13: the estate THEME SYSTEM)
 
-The palette and type deliberately echo
-`bookbuddy/library_catalog/apps/web/src/styles.css` — same tokens
-(`--bg` / `--fg` / `--muted` / `--line` / `--accent` / `--panel`), same warm
-paper-and-ink feel, same system-font stack, same 44px minimum tap target — but
-**nothing is imported from it**. If that app's palette changes, this drifts, and
-that is acceptable: the goal is "same family", not one stylesheet in two places.
+The page runs `assets/estate-theme.css` + `assets/theme.js` — **three
+user-selectable themes** (apple = default here, cyberpunk extracted from the
+audiobook site, retro extracted from the games app) **× light/dark**, chosen
+in the settings cog (top-right) and persisted per site in localStorage
+`hg_theme`/`hg_mode`. This is a **platform asset**, canonical in this
+directory; `docs/info/estate-themes.md` is the adoption guide (per-site
+defaults are identity — audiobooks stays cyberpunk, games stays retro, the
+library adopts apple next). Page CSS styles against `--et-*` tokens ONLY — a
+raw color in `index.html`'s stylesheet is a bug.
 
-Phone first. Single column; above 34rem the cards become a two-column grid with
-Audiobooks spanning both. Dark and light via `prefers-color-scheme` only — there
-is no theme toggle and no stored preference, because that would need JavaScript
-and storage this page does not otherwise have.
+Phone first, full-width stacked sections, 44px minimum tap targets. Motion
+(viewport reveals, hero recede, the apple-scoped cursor tilt, the cog's
+quarter-turn) lives in `assets/motion.js` and dies entirely under
+`prefers-reduced-motion`.
 
 ---
 
@@ -224,12 +227,16 @@ All paths are under `sites/heygabi-home/`.
 
 | File | Purpose |
 |---|---|
-| `public/index.html` | The front door: cards, and the `#find` search. Inline CSS, inline SVG favicon; its one script is `/assets/find.js` |
+| `public/index.html` | The front door: hero, the `#find` search, the three shelf tiles (Audio / Books / Games), the settings cog. Tokens-only page CSS |
+| `public/assets/estate-theme.css` | ⚠️ **The estate THEME SYSTEM — a platform asset, canonical here** (`docs/info/estate-themes.md` is the adoption guide). Three themes × light/dark on one `--et-*` contract, the primitives, the cog styling, the motion machinery |
+| `public/assets/theme.js` | The switcher: classic pre-paint script stamping `data-theme`/`data-mode`; localStorage `hg_theme`/`hg_mode`; `window.estateTheme`; wires the cog |
+| `public/assets/motion.js` | The motion vocabulary: viewport reveals, hero recede, apple-scoped cursor tilt. All dead under `prefers-reduced-motion` |
+| `public/assets/fonts/` | Self-hosted theme faces (OFL latin subsets): Rajdhani + Share Tech Mono (cyberpunk), Bangers + Luckiest Guy (retro, copied from the games repo with its licence). Keeps `font-src 'self'` true |
 | `public/assets/estate-auth.js` | Firebase sign-in, ported (minimum) from audiobook `identity.js` — popup-first, redirect fallback, `auth/unauthorized-domain` → owner-action message. ⚠️ Keeps the session (unlike identity.js): its job is minting bearer tokens |
 | `public/assets/find.js` | The search UI: lookup + universe queries, two-tier rendering, the in-catalog-not-owned caveat |
-| `public/admin/index.html` + `admin.js` | The estate member directory at `/admin` — approve / revoke / promote against `auth.heygabi.ai`'s admin API |
-| `public/todo/index.html` | The cross-project board at `/todo`. Still no-JS; its filter is CSS-only radios |
-| `public/_headers` | Cloudflare Pages headers — per-path CSPs: allow-listed hosts on `/` and `/admin`, `default-src 'none'` on `/todo` |
+| `public/admin/index.html` + `admin.js` | The estate member directory at `/admin` — approve / revoke / promote against `auth.heygabi.ai`'s admin API. Same theme system, same cog |
+| `public/todo/index.html` | The cross-project board at `/todo`. Still no-JS (and therefore unthemed — its CSP forbids the switcher); its filter is CSS-only radios |
+| `public/_headers` | Cloudflare Pages headers — per-path CSPs: allow-listed hosts on `/` and `/admin` (style-src + font-src `'self'` for the theme system), `default-src 'none'` on `/todo` |
 | `deploy.md` | Exact steps to create the Pages project and attach the domains |
 | `README.md` | This file |
 | `.gitattributes` | Pins this subtree to LF. `_headers` is parsed by Cloudflare, not git, and `core.autocrlf` is on globally on this machine |

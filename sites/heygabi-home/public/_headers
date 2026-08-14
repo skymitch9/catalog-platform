@@ -28,10 +28,16 @@
 #               thumbnails for games) + Google avatars. A cover on any other
 #               host renders blank (find.js hides broken images) — add the
 #               host here if that starts mattering.
-#   style-src   'unsafe-inline' — the stylesheets are inline <style> blocks;
-#               with inline SCRIPT still blocked there is no injection vector
-#               to leverage a nonce against (unchanged reasoning).
-# Still absolutely absent: analytics, web fonts, CDN frameworks.
+#   style-src   'self' (assets/estate-theme.css — the theme system) +
+#               'unsafe-inline' for the per-page <style> blocks; with inline
+#               SCRIPT still blocked there is no injection vector to
+#               leverage a nonce against (unchanged reasoning).
+#   font-src    'self' ONLY — every theme font (Rajdhani, Share Tech Mono,
+#               Bangers, Luckiest Guy) is a committed woff2 under
+#               assets/fonts/, the same no-third-party reasoning the games
+#               repo used when it committed its own. Google Fonts hosts stay
+#               OFF this list on purpose.
+# Still absolutely absent: analytics, third-party font requests, CDN frameworks.
 #
 # /todo KEEPS THE ORIGINAL default-src 'none' NO-JS POLICY. Its filter is
 # CSS-only radios and its README says it must never acquire JavaScript; the
@@ -44,11 +50,11 @@
 
 /
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /admin
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /todo
   X-Frame-Options: DENY

@@ -182,6 +182,12 @@ Then in a browser:
 - [ ] **`/admin`, signed in as the owner:** the member list loads; approve /
       revoke / promote buttons act and re-render. From `www.heygabi.ai/admin`
       it will NOT work (CORS names the apex) — the page says so.
+- [ ] **The cog (2026-08-13):** theme dropdown switches Apple → Cyberpunk →
+      Retro live (fonts arrive from `/assets/fonts/`, no third-party font
+      request in the Network tab); Appearance Auto/Light/Dark composes with
+      each theme; both choices survive a reload; `/admin` wears the same
+      choice (one origin). With OS reduced-motion ON: no reveals, no tilt,
+      no cog spin, content all simply visible.
 - [ ] ⚠️ **The §15 two-tab test (estate-auth-design.md — OWNER-ATTENDED, due
       on first deploy of the sign-in):** sign in on `heygabi.ai`, then in a
       second tab load `audiobooks.heygabi.ai` (which calls `signOut()` on its
