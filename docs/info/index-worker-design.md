@@ -203,9 +203,19 @@ games. The two bridges keep running untouched meanwhile.
 
 - **No auto-merge, no machine action on any index match.** Reader surfaces are
   human-facing lists.
-- **No second matcher.** The index does exact fold-joins only; fuzzy matching
-  (containment, thresholds) stays in the catalogs' own `matching.ts`, where
-  its gates live.
+- **No second matcher** — *scoped, 2026-08-14, to what it always meant.* The
+  rule exists so the estate never grows a second IDENTITY function: a
+  similarity score whose thresholds could disagree with the catalogs'
+  `matching.ts` about what is the same work, feeding an auto-acting join.
+  `/api/lookup` stays exact fold-joins only, and containment/thresholds stay
+  in the catalogs. The carve-out: **`/api/search` (src/search.ts) is a ranked
+  partial-match search for humans typing** — exact > prefix >
+  all-tokens-prefix > substring across title/creator/series, reasons carried
+  matched_via-style, nothing machine-actionable downstream (§3.3's own
+  test). It claims resemblance, never identity; anything that needs an
+  identity claim uses `/api/lookup`. Owner-forced, 2026-08-14: "it needed an
+  exact match … we need a much better search algorithm" — the rule was never
+  meant to make a human's search box require exact titles.
 - **No public browse decision.** `PLATFORM.md` §8 Q3 stays open; the
   projection's field list is browse-safe either way because it is default-deny.
 - **No games `work_fold` "for consistency".** NULL is the design.

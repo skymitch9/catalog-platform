@@ -18,15 +18,18 @@ same settings cog as darkmode … and let the end user select a theme per site."
 
 | File (under `sites/heygabi-home/public/assets/`) | What |
 |---|---|
-| `estate-theme.css` | THE asset: the `--et-*` token contract, three theme token sets (each light + dark), shared primitives (`.et-btn`, `.et-input`, `.et-tile`, the cog), the motion machinery |
+| `estate-theme.css` | THE asset: the `--et-*` token contract, four theme token sets (each light + dark), shared primitives (`.et-btn`, `.et-input`, `.et-tile`, the cog), the motion machinery |
 | `theme.js` | The switcher: classic pre-paint script; stamps `<html data-theme data-mode>`; persists; exposes `window.estateTheme`; wires the standard cog markup when present |
 | `motion.js` | The motion vocabulary (reveal / hero recede / apple-scoped tilt), all dead under `prefers-reduced-motion` |
 | `fonts/*.woff2` + OFL | Self-hosted latin subsets: Rajdhani ×3 + Share Tech Mono (cyberpunk), Bangers + Luckiest Guy (retro, copied from the games repo with its licence) |
 
 ## 2. The contract in one paragraph
 
-Three themes — `apple`, `cyberpunk`, `retro` — each defined in light and dark;
-theme × mode COMPOSE. A page styles against `--et-*` tokens only (the full
+Four themes — `classic`, `apple`, `cyberpunk`, `retro` — each defined in light
+and dark; theme × mode COMPOSE. (`classic` joined 2026-08-14: the apex's
+ORIGINAL pre-retheme look — warm paper / lamp-lit library, green + gold +
+clay, the aurora-blob backdrop — extracted faithfully from git `3b9c6b3`'s
+inline styles and promoted to a theme by owner ruling.) A page styles against `--et-*` tokens only (the full
 list and role definitions live at the top of `estate-theme.css`); **if a page
 needs a `[data-theme=…]` selector, a token is missing — add one to the
 contract, never fork.** `theme.js` stamps `<html data-theme="…"
@@ -40,7 +43,8 @@ nothing. `document` fires **`hg-themechange`** on every change;
 
 | Site | Default theme | Why |
 |---|---|---|
-| `heygabi.ai` (+ `/admin`) | `apple` | The new front-door language |
+| `heygabi.ai` | `classic` | Owner ruling 2026-08-14: the front door boots its original look |
+| `/admin` | `apple` | Unchanged; flipping it to classic is a one-attribute change if asked |
 | `library.heygabi.ai` | `apple` | Owner: "make the apple theme persist on the books site too" |
 | `audiobooks.heygabi.ai` | `cyberpunk` | Its existing identity, kept |
 | `boardgames.heygabi.ai` | `retro` | Its existing identity, kept |
@@ -90,6 +94,13 @@ only; no layout-thrashing scroll handlers.
 
 ## 6. What a consumer must NOT do
 
+- ⚠️ **THEMES MAY NOT CHANGE PAGE STRUCTURE** (owner ruling, 2026-08-14,
+  after the apex's full-bleed tile experiment was rejected — "what you
+  swapped to for the boxes is terrible"). A theme restates palette,
+  typography, shadows, radii, glows, motion tempo — SKIN. The page's bones
+  (its boxes, its grid, its sections) are the LAYOUT, one per page, worn by
+  every theme. If a theme seems to need different markup or a different
+  grid, that is a redesign wearing a theme's name — take it to the owner.
 - **No second accent.** `--et-accent` is interactivity, `--et-accent-2` is the
   theme's second voice; minting a third color is how themes rot.
 - **No webfonts beyond the theme's own faces**, and no Google Fonts links —
