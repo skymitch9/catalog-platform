@@ -15,6 +15,10 @@ compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
+# Added at deploy time by the dispatcher, 2026-08-13, per the header's gate —
+# reads went members-only first (§14.3), so going live no longer leaks titles.
+routes = [{ pattern = "index.heygabi.ai", custom_domain = true }]
+
 [vars]
 # Explicit, affirmative value — the canonical verifier's dev bypass requires
 # ENVIRONMENT === 'development', so anything else gets real authentication
