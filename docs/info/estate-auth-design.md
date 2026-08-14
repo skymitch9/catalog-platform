@@ -306,6 +306,11 @@ CREATE TABLE estate_user (
 deletion (rows are never deleted) and distinct from `pending` (a revoked
 person re-appearing must not look like a newcomer).
 
+*Amended 2026-08-13:* migration `0002_visibility.sql` adds three flag columns
+(`vis_audiobook`, `vis_library`, `vis_games` — INTEGER 0|1, DEFAULT 1) — the
+per-member **visibility set**, §4.5. The encoding argument lives in the
+migration header.
+
 ### 4.3 ⚠️ No first-sign-in-claims bootstrap — deliberately unlike the apps
 
 The apps' "empty table → first sign-in becomes owner" rule is correct for a
@@ -324,8 +329,8 @@ being changed — recommendation 4, extended to the auth service itself.
 
 | Route | Auth | Behaviour |
 |---|---|---|
-| `POST /api/estate/seen` | **Per-app bearer token** (`ESTATE_APP_TOKEN_LIBRARY` / `_GAMES` / `_INDEX` — Worker secrets, one per consumer, the index-push pattern reused) | Body `{email, firebase_uid?, display_name?}`. Upserts: unknown email → create `pending` with `origin='seen:<app>'`; known → refresh uid/name only. **Never changes `status`.** Returns `{status}`. One endpoint does both jobs: answer the check *and* put newcomers in the queue |
-| `GET /api/estate/users` · `POST /api/estate/users/:id/status` | **Firebase ID token of an approver** — the auth Worker verifies tokens with the same vendored middleware as everyone else (it eats its own dog food), then requires `is_approver` or `OWNER_EMAILS` | The admin surface: list (pending first), approve / revoke / grant-approver. Every status change stamps `decided_at`/`decided_by` |
+| `POST /api/estate/seen` | **Per-app bearer token** (`ESTATE_APP_TOKEN_LIBRARY` / `_GAMES` / `_INDEX` — Worker secrets, one per consumer, the index-push pattern reused) | Body `{email, firebase_uid?, display_name?}`. Upserts: unknown email → create `pending` with `origin='seen:<app>'`; known → refresh uid/name only. **Never changes `status`.** Returns `{status, visibility}` (§4.5). One endpoint does both jobs: answer the check *and* put newcomers in the queue |
+| `GET /api/estate/users` · `POST /api/estate/users/:id/status` · `POST /api/estate/users/:id/visibility` | **Firebase ID token of an approver** — the auth Worker verifies tokens with the same vendored middleware as everyone else (it eats its own dog food), then requires `is_approver` or `OWNER_EMAILS` | The admin surface: list (pending first), approve / revoke / grant-approver / set visibility (§4.5). Every decision stamps `decided_at`/`decided_by` |
 | `GET /api/health` | none | Row counts by status, no emails. Same stance as the index's health route |
 | `/` | — | A minimal static admin page (list + approve/revoke buttons), served by the Worker, sign-in via the shared Firebase project. Requires `auth.heygabi.ai` in Firebase authorised domains — an owner console step, §9 step 2 |
 
@@ -340,6 +345,86 @@ bounded, revocable by rotating one secret, and visible in the queue.
 Rate limiting on the unauthenticated surface (`/api/health`, bad-token
 attempts): port the games `rate-limit.ts` middleware. `PLATFORM.md` §4.1
 already requires this posture wherever the Worker is the only gate.
+
+### 4.5 Visibility — which catalogs a member may SEE (added 2026-08-13)
+
+The owner's feature, their words: *"as a user is granted permission to other
+sites the search bar populates more things from those catalogs… assigning
+people roles and which catalogs they can see."*
+
+Each directory row carries a **visibility set** — a subset of
+`{audiobook, library, games}` naming the catalogs this person may **see** on
+the estate's own surfaces (today: index search scope; later, a federated
+admin view). ⚠️ **This must NOT become a role system — each app still owns
+what a person may DO there (§1.2/§1.3 stand).** The estate now answers *in or
+out* and *which shelves are in the room*; what a person may do at any shelf
+stays app-local forever.
+
+**Encoding** (`0002_visibility.sql`): three flag columns
+(`vis_audiobook`/`vis_library`/`vis_games`, INTEGER 0|1, DEFAULT 1), not a
+CSV/JSON set column — argued in the migration header: a new catalog is one
+ADD COLUMN, where a set column's CHECK would cost the full table rebuild
+SQLite CHECKs always cost (the 0008/0023/0024 lesson); and SQLite has no set
+type, so a TEXT set invites canonicalization bugs no expressible CHECK can
+forbid.
+
+**Defaults**: every already-approved member holds all three (ADD COLUMN's
+DEFAULT 1 backfills, and the seed re-asserts it explicitly) — the current
+household expectation; nothing changes for them. New approvals grant all
+three unless the approver narrows, at approval time or after.
+
+**The `/seen` response — the consumer contract:**
+
+```json
+{ "status": "pending" | "approved" | "revoked",
+  "visibility": ["audiobook", "library", "games"] }
+```
+
+`visibility` is the **EFFECTIVE** set, already combined with status — a
+consumer applies it as-is and never recomputes it from `status`:
+
+| Caller | Effective visibility |
+|---|---|
+| `approved` | the STORED set — all three unless narrowed; an approver may narrow to `{}` (the estate's surfaces then show nothing, mirroring the revoked rule) |
+| `pending` | `{audiobook}` — a pending member sees what the anonymous internet sees, nothing more |
+| `revoked` | `{}` — **revocation beats the public slice** on the estate's own surfaces |
+| `OWNER_EMAILS` | all three, computed not stored (§4.3 — break-glass must not be narrowable into lockout) |
+
+Array order is canonical (`audiobook, library, games`), never duplicated.
+`status` keeps its exact prior meaning; the field is **additive** — a
+consumer that reads only `status` (today's `postSeen` client) is untouched.
+
+**The anonymous rule — stated here for the index to implement, because an
+absent token means no `/seen` call ever happens:** an ABSENT or invalid
+Firebase token ⇒ visibility = `{audiobook}` — the world-readable catalog per
+the estate's recorded posture (the audiobook surface declares
+`public: true`). The index's read scope is therefore:
+
+- no token / invalid token → serve the `audiobook` slice only
+- valid token → `/seen` (per §5.2's cache); scope = the answer's
+  `visibility` array, verbatim — including `{}` for the revoked
+- estate unreachable → a cached answer's visibility rides with its cached
+  status; with no cache, treat the caller as anonymous (`{audiobook}`) —
+  fail closed to the public slice, never open (§6 row 1's shape)
+
+A consumer that caches `/seen` (the §5.2 columns, the index's
+`estate_cache`) caches the visibility **with** the status — the two are one
+answer and must not age separately.
+
+**Admin API** (owner-gated like the rest, §4.4; `is_approver` and the status
+flows untouched):
+
+- `GET /api/estate/users` — each user carries `visibility` (the STORED set;
+  for a `pending` row this shows what approval would grant). The raw `vis_`
+  flags never appear in JSON; the array is the one representation.
+- `POST /api/estate/users/:id/status` body
+  `{"status": "approved", "visibility": ["audiobook", ...]}` — approval-time
+  narrowing, optional. `visibility` alongside `"revoked"` is refused 400: a
+  revoked person sees `{}` regardless, and a stored narrow set on a
+  revocation would only mislead a later re-approval.
+- `POST /api/estate/users/:id/visibility` body
+  `{"visibility": ["audiobook", ...]}` — narrow or re-widen after approval;
+  stamps `decided_at`/`decided_by` like every decision. `[]` is legal.
 
 ---
 
