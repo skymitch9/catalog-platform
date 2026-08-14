@@ -246,7 +246,12 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 }
 .ctl-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
 .ctl-input:disabled { opacity: .5; }
-.chipset { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+/* A horizontal row of chips sitting where a .ctl-input would — same 34px line
+   so the bar reads as one row of fields. (The chips once stacked vertically:
+   the container carried .ctl, whose flex-direction:column applied to the chips
+   themselves — owner-flagged, 2026-08-14. The chipset is now nested INSIDE the
+   .ctl, beside its label, like every other field.) */
+.chipset { display: flex; flex-direction: row; align-items: center; gap: .35rem; flex-wrap: wrap; min-height: 34px; }
 .chip {
   min-height: 30px;
   padding: .2em .7em;
@@ -354,11 +359,13 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
           <option value="only">only approvers</option>
         </select>
       </label>
-      <div class="ctl chipset" role="group" aria-label="Sees catalog">
+      <div class="ctl" role="group" aria-label="Sees catalog">
         <span class="ctl-label">Sees</span>
-        <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
-        <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
-        <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+        <div class="chipset">
+          <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
+          <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
+          <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+        </div>
       </div>
       <label class="ctl">
         <span class="ctl-label">Library role</span>
