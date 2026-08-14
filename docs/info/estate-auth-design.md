@@ -1,0 +1,425 @@
+# Estate-Wide Auth — Information Reference (design)
+
+> **Audience:** Claude sessions and the owner. **Status:** TRACKED — **DESIGN
+> ONLY, nothing built, nothing deployed, no migration applied.** Written by
+> Fable 5, 2026-08-13, for owner approval before any build starts.
+> Last verified: **2026-08-13** — every "measured" claim below was read out of
+> the named file or grep that day. §15 lists what was NOT verified.
+> Companions: `PLATFORM.md` §4 (the sketch this replaces), §4a (the Firestore
+> rules decision this must not violate), `info/index-worker-design.md` §9 Q3
+> (the open question this answers),
+> `library_catalog/docs/info/identity-and-reviews.md` (the identity ground).
+
+The owner's requirements, verbatim:
+
+1. **"heygabi.ai stays open, but using the global search requires a login."**
+2. **"Login becomes app-wide."**
+3. **"Take the audiobook catalog's users and move them onto the global auth."**
+4. **"New users are approval-only."**
+5. **"A way that when we bring new sites into the catalog they inherit auth."**
+
+Requirement 5 drives the design. It is the only requirement that is a *shape*
+rather than a feature, and designing for it first is what produces the other
+four as consequences instead of four separate bolt-ons. §11 argues this
+explicitly.
+
+---
+
+## 1. Where auth actually stands — measured, and better than the brief said
+
+The single most important fact, and it changes the size of this project:
+
+> ⚠️ **Identity is already global. Approval is not.**
+
+Both editor Workers verify the **same Firebase ID tokens from the same
+project** today:
+
+| App | Verifier | Project pinned | Measured |
+|---|---|---|---|
+| `library.heygabi.ai` | `apps/worker/src/middleware/auth.ts` — jose, JWKS, iss+aud asserted | `FIREBASE_PROJECT_ID = "audiobook-catalog"` | `wrangler.toml:91` |
+| `boardgames.heygabi.ai` | same file shape, near-identical | `FIREBASE_PROJECT_ID = "audiobook-catalog"` | `wrangler.toml:125` |
+
+**`PLATFORM.md` §1's "Auth: Cloudflare Access" row for board games is stale.**
+Access was deleted 2026-08-10 (`sites/heygabi-home/README.md` records it), and
+the games `auth.ts` header explains the move in its own words. `PLATFORM.md`
+§4 — "both editor Workers move to Firebase ID tokens" — has already **happened**.
+One Google sign-in already covers both Workers; the same email lands in both
+`app_user` tables as one person.
+
+What is *not* global:
+
+| Gap | Today |
+|---|---|
+| **Approval** | Per-app. Approved into the library ≠ approved into games; the same person queues twice, and an owner approves twice |
+| **Revocation** | Per-app, by hand, in each People page |
+| **The audiobook site** | No real auth at all — Google is used to *capture* a name/email into localStorage, then `signOut()` immediately; its own `isAdmin()` says "PRESENTATION ONLY … not, and cannot be, an access control" |
+| **The index Worker** | Built, undeployed, no auth — deployment is gated on exactly this design (`index-worker-design.md` §9 Q3) |
+| **Global search** | Does not exist yet; the apex reserves `<section id="find">` for it |
+| **New sites** | Nothing to inherit but a file to copy — and the copies have **already drifted** (§1.1) |
+
+### 1.1 ⚠️ Exhibit A: the two copies of `auth.ts` have already diverged
+
+Measured 2026-08-13. The games copy hardened its dev bypass to
+`ENVIRONMENT === 'development'`, with a comment warning that the old test —
+`!== 'production'` — silently enables the bypass for *any unrecognised value*
+("a typo, a new named environment, an unset var in some future preview lane").
+**The library copy still ships `!== 'production'`** (`middleware/auth.ts:80`).
+
+The library's exposure is real but bounded: `wrangler.toml` sets
+`ENVIRONMENT = "production"` explicitly, so the bypass needs both a config
+regression *and* `DEV_EMAIL` set in production. But the drift itself is the
+point: the estate's most security-critical file exists as two copies, one of
+which received a hardening the other never heard about. That is the exact
+failure mode this design must make structurally impossible for site four, five
+and six — and it is why §8's inheritance contract centres on **one canonical
+implementation**, not a checklist that says "copy the file".
+
+### 1.2 The role vocabularies diverged on purpose, and stay diverged
+
+| App | Roles (CHECK constraint, measured) |
+|---|---|
+| library | `owner \| manager \| reader \| pending` (0001 + 0008 — the brief's `owner\|reader\|pending` was stale) |
+| games | `owner \| manager \| rater \| viewer \| pending` (0001 + 0023 + 0024) |
+
+`reader` deliberately folds rating into reading; games deliberately splits
+`rater` from `viewer` ("that is the whole difference between the two
+read-capable guest roles"). A global role set is **lossy for games** and would
+erase a distinction an owner explicitly built two migrations to create. So this
+design does not unify roles — see §4's three-layer split.
+
+### 1.3 The local user rows are load-bearing and cannot move
+
+**12 foreign keys reference `app_user(id)` in the library alone** (grep over
+`migrations/`, 2026-08-13): `user_book.user_id`, `research_run.triggered_by`,
+`research_finding.reviewed_by`, `scan_job.created_by`, `gap_verdict.decided_by`,
+`cover_watch.raised_by`/`resolved_by`, `series_gap_skip.decided_by`,
+`audiobook_series_link.confirmed_by`, `change_log.changed_by`,
+`app_user.approved_by` (self), plus 0008's rebuild. Games carries five more of
+the same shape. The audit log's *actor* is one of them: delete a user row and
+`change_log` loses who did things.
+
+**Therefore "moving users onto global auth" is a mapping exercise, never a row
+migration.** Local `app_user` rows survive untouched as the anchor their FKs
+need; the global layer joins to them by email. Any design that replaces or
+renumbers them is wrong before it starts.
+
+### 1.4 Email is already the join key everywhere
+
+- library `app_user.email` — `NOT NULL UNIQUE`, lowercased on write (measured,
+  `users.ts:82`)
+- games `app_user.email` — same
+- audiobook — stores `ab_identity_email` in localStorage; its `isAdmin()` keys
+  on email *deliberately*, because display names change
+- both verifiers **refuse unverified emails** — Firebase happily mints tokens
+  for unverified addresses, and both `auth.ts` files reject them because email
+  is the join key ("the difference between 'cannot sign in' and 'signed in as
+  somebody else'")
+
+Nothing needs renumbering. `firebase_uid` is recorded where available but
+nothing joins on it (the audiobook side has no uid to join to — it signs out
+before one is kept), which is the recorded stance in
+`identity-and-reviews.md` §2 and is kept here.
+
+### 1.5 The audiobook "users", precisely — because requirement 3 needs the real list
+
+Measured population (from `identity-and-reviews.md` §7.5, live Firestore reads
+2026-08-11, plus `identity.js` and `firestore.rules` read 2026-08-13):
+
+| Population | Count | Has an email anywhere? | Can move to global auth? |
+|---|---|---|---|
+| Signed into the **library** with Google (Skylar, Amber Mitchell) | 2 | ✅ in library `app_user` | ✅ trivially — they are already on the shared Firebase project |
+| Review authors never signed in anywhere (Samantha Hardman, Jamie Jeremiah Lievertz, Sparkling Ember, Solomon Hardman) | 4 (457 reviews) | ❌ — the audiobook site writes **no email on reviews** and keeps identity only in that person's own browser | ⚠️ **Not by us.** They enter the directory the first time they sign in with Google anywhere on the estate, landing `pending`. Their reviews keep rendering regardless — attribution is by display name and does not depend on auth |
+| Legacy passphrase accounts in Firestore `/users` | 3 docs (`!sky`, `divaelf`, `test`), **frozen** — update/delete refused since the takeover hardening | ❌ no email at all | ❌ — already settled in `identity-and-reviews.md` §2: "migrating them means asking those people to sign in with Google once, which is a conversation, not a code change" |
+
+So requirement 3, honestly stated: **seed the global directory from the two D1
+`app_user` tables (union by email, both already Google-verified) plus the
+audiobook `ADMIN_EMAILS` list; everyone else is met at the door** — first
+Google sign-in anywhere creates their `pending` row for an approver to act on.
+There is no user store to migrate that contains more than that; the rest of the
+audiobook's "users" are browser-local strings and review bylines.
+
+---
+
+## 2. Threat model — who this defends against, and who it does not
+
+A household catalog is not a bank. Saying so prevents both over-building and
+false comfort.
+
+### 2.1 Defended against
+
+| Adversary / event | Defence |
+|---|---|
+| **A stranger who finds a hostname** (URLs leak: shared links, browser history, referrer headers) | Every Worker route behind blanket `requireAuth`; no token → 401 before any handler runs |
+| **A stranger with a Google account** — anyone on Earth can *authenticate*; approval is the actual gate | Lands `pending` estate-wide, sees a request screen, never data. Requirement 4 |
+| **An ex-guest** (revoked household member, ended friendship) | Estate revocation propagates to every app within the cache TTL (§5.3) without touching any app's code |
+| **Token forgery / tampering** | RS256 signature against Google's JWKS; expiry enforced by `jose` |
+| **Cross-project token confusion** — any Firebase project's tokens are validly Google-signed | `iss` AND `aud` pinned to `audiobook-catalog` in every verifier; a token from any other project fails closed. Removing either pin "is not a smaller check — it is no check" (games `auth.ts:44`) |
+| **Unverified-email takeover of the join key** | `email_verified === false` refused in every verifier |
+| **A new site shipped half-configured** | Layered design: a site missing its estate integration degrades to *local-only approval* (today's posture), never to open; §8's contract makes deny-by-default a conformance probe, not a hope |
+| **Probing the directory** ("is alice@… a member?") | The status endpoint requires a per-app bearer token; anonymous callers learn nothing |
+
+### 2.2 Explicitly NOT defended against
+
+| Out of scope | Why, and what covers it instead |
+|---|---|
+| **Compromise of a member's Google account** | Google's 2FA is the control. Our response is estate revocation + Firebase console user-disable, not prevention |
+| **The Cloudflare or Firebase account owner** | Whoever holds those consoles owns the substrate — D1 is editable, rules are deployable. There is no defending an estate against its own foundation, and pretending otherwise is false comfort |
+| ⚠️ **The audiobook site's open Firestore writes** | `PLATFORM.md` §4a is a **recorded owner decision**: `reviews` rules stay shape-only because the `work_key` carry ceremony depends on it. **Nothing in this design changes that, and login-gating search must not be mistaken for fixing it.** Any signed-in-to-nothing visitor can still merge fields onto review documents. Reopening that is §4a's trade-off (a server-side carry behind a service account this estate refuses to hold), not this design's |
+| **Privacy of audiobook *titles*** | The audiobook site is world-readable by long-standing decision (~1,073 titles). Gating global search protects the **cross-catalog aggregation** and the library/games titles — it cannot protect what another public page already shows |
+| **DoS / volumetric abuse** | Cloudflare's layer. Rate limiting on unauthenticated surfaces (games already has `rate-limit.ts`; `PLATFORM.md` §4.1 requires it estate-wide) bounds the cheap-junk problem |
+| **A determined, targeted attacker** | The estate's secrets protect a book list. Proportionality is a design input: the expensive failure here is a *locked-out household* or a *silently open door*, not industrial espionage |
+
+The two failures this design treats as most expensive, in order:
+1. **Failing open** — a route or site reachable without approval.
+2. **Locking the household out** — the auth layer down taking every catalog
+   with it.
+
+Every choice in §5 and §6 is stated with its direction against these two.
+
+---
+
+## 3. The design in one paragraph
+
+Three layers, each answering one question, each living where that question's
+facts live. **Identity** — *who are you?* — is a Firebase ID token from the
+shared `audiobook-catalog` project, verified **locally** in every app against
+Google's JWKS (already built in two apps; zero change to how it works).
+**Membership** — *are you approved into the estate?* — is one row in a new,
+tiny **auth Worker + its own D1** (`auth.heygabi.ai`), consulted after token
+verification and cached per-app with a deliberate TTL. **Authorization** —
+*what may you do here?* — stays exactly where it is: each app's own `app_user`
+row and capability matrix, untouched, keeping all 17 foreign keys and both
+role vocabularies intact. A new site inherits auth by taking the canonical
+verifier, pointing at the same three answers, and passing a conformance
+checklist — §8.
+
+```
+            ┌────────────────────────────────────────────────────┐
+            │  IDENTITY — Firebase project "audiobook-catalog"    │
+            │  Google sign-in → ID token (RS256, 1h)              │
+            └───────────────┬────────────────────────────────────┘
+                            │  verified LOCALLY (JWKS) in every consumer
+      ┌─────────────────────┼──────────────────────┬──────────────────┐
+      ▼                     ▼                      ▼                  ▼
+ library Worker        games Worker          index Worker        (site N…)
+ app_user: roles       app_user: roles       search: approved    local table:
+ reader|manager|…      rater|viewer|…        members only        its own roles
+      │                     │                      │                  │
+      └───────────┬─────────┴──────────┬───────────┘                  │
+                  ▼                    ▼                              ▼
+            ┌────────────────────────────────────────────────────┐
+            │  MEMBERSHIP — auth Worker + estate_auth D1          │
+            │  pending | approved | revoked   (status, not role)  │
+            │  POST /api/estate/seen  → cached per app, TTL 10min │
+            └────────────────────────────────────────────────────┘
+```
+
+The estate answers **in or out**. The apps answer **what, here**. That split is
+what makes the diverged role vocabularies a non-problem, the 17 FKs a
+non-problem, and a new site a checklist instead of a negotiation.
+
+### 3.1 The one sentence that defines the semantics
+
+> **The estate gates newcomers and enforces revocations; it never overrules a
+> standing local approval except by explicit revocation.**
+
+Concretely, after an app has verified a token and loaded/created its local
+`app_user` row, the estate status combines with the local role like this:
+
+| Estate says | Local row says | Result |
+|---|---|---|
+| `revoked` | anything, even `owner` | **403, always.** Computed, not stored — the local role is left intact so a later re-approval restores the person exactly as they were |
+| `approved` | active role (`reader`, `manager`, …) | Proceed; local capabilities govern, as today |
+| `approved` | `pending`, **never locally decided** (`approved_at IS NULL`) | **Auto-grant the app's configured default role** (§5.4) — this is what makes one approval estate-wide |
+| `approved` | `pending`, locally *demoted* (`approved_at` stamped) | Stays pending. A local owner's explicit demotion is a standing decision; the estate does not overrule it |
+| `pending` | active role | **Proceed — local wins.** This combination means the seed missed someone (§9 step 2) or an app admitted someone locally; either way a household member with a standing approval must not be locked out by directory lag. The `/seen` call has already surfaced them in the estate queue for an approver to regularise |
+| `pending` | `pending` | Request screen, as today |
+| unreachable (no fresh cache) | active role | **Proceed on the stale cache / local approval** — availability for the household (§6 row 1) |
+| unreachable (no fresh cache) | `pending` / unknown | **Refused, fail closed**, with a named error so an outage is distinguishable from a denial |
+
+Every row of that table fails in the direction §2.2 chose: closed for
+strangers and the revoked, open for the already-admitted household.
+
+---
+
+## 4. The estate directory — the auth Worker and its D1
+
+### 4.1 Why a dedicated Worker with its own D1 — and why not the alternatives
+
+| Alternative considered | Why rejected |
+|---|---|
+| **Firestore** (`/users` or a new collection) | The estate deliberately holds **no Firestore service account in any Worker** — `identity-and-reviews.md` §3 calls putting "the most powerful credential in the household behind the least important endpoint" a bad trade, and `PLATFORM.md` §4a leans on that refusal. A Worker-readable directory in Firestore requires exactly that credential. Also: the audiobook `/users` collection is three frozen passphrase docs, not a user store |
+| **Inside the index Worker** | Identity inside "what do I own"'s blast radius — against the separate-blast-radius rule the index design itself used (`DESIGN.md` §3, quoted in `index-worker-design.md` §7). Sharper: the index D1's write protocol is **snapshot DELETE+insert by design**. Putting the one table that must never be bulk-deleted next to a table whose whole protocol is bulk deletion is asking one bug to be catastrophic |
+| **One app's `app_user` as canonical** (e.g. the library's) | Couples every app — and every future site — to the library's schema, deploys and outages. "New sites inherit auth" degenerates to "new sites depend on the library app". Also circular: the library would consult itself |
+| **No service at all** — keep per-app approval, ship only the §8 contract | The honest fallback, and it satisfies requirement 5 alone. But it fails requirements 2 and 4's spirit: every person queues per app forever, and revocation stays a manual sweep of N People pages that will one day miss one. Named here so the owner can choose it deliberately if the service feels heavy — §13 Q7 |
+
+So: `catalog-platform/apps/auth-worker/`, sibling of `apps/index-worker/`, own
+`wrangler.toml`, own D1 (`estate_auth`), custom domain `auth.heygabi.ai`. Small
+on purpose — one table, four routes, and the same vendored verifier every other
+consumer uses.
+
+### 4.2 Schema
+
+```sql
+-- One row per person the estate has ever seen. Rows are never deleted:
+-- a revoked person who re-signs-in must meet their revocation, not a fresh
+-- 'pending' row that an approver might wave through by mistake. (Same
+-- reasoning as change_log keeping no FK on entity_id: accountability
+-- survives the object.)
+CREATE TABLE estate_user (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  email          TEXT    NOT NULL UNIQUE,        -- lowercased on write; THE join key (§1.4)
+  firebase_uid   TEXT    UNIQUE,                 -- recorded when seen; nothing joins on it (§1.4)
+  display_name   TEXT,
+  status         TEXT    NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','approved','revoked')),
+  -- Approvers manage the guest list. Deliberately a flag, not a role
+  -- vocabulary: the estate answers in/out, apps answer what/here (§3).
+  is_approver    INTEGER NOT NULL DEFAULT 0,
+  -- Where this row came from: 'seed:library' | 'seed:games' | 'seed:admin'
+  -- | 'seen:library' | 'seen:games' | 'seen:index' | 'manual'.
+  -- The honesty column, house style (decided_how / changed_how / read_state_how).
+  origin         TEXT    NOT NULL,
+  note           TEXT,
+  first_seen_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  decided_at     TEXT,
+  decided_by     INTEGER REFERENCES estate_user(id) ON DELETE SET NULL
+);
+```
+
+**Status is a three-value fact, not a role.** `revoked` is distinct from
+deletion (rows are never deleted) and distinct from `pending` (a revoked
+person re-appearing must not look like a newcomer).
+
+### 4.3 ⚠️ No first-sign-in-claims bootstrap — deliberately unlike the apps
+
+The apps' "empty table → first sign-in becomes owner" rule is correct for a
+fresh app whose URL nobody has. It is **wrong for the directory that gates the
+whole estate**: the deploy-to-seed window would mean *first to knock owns
+everything*. The auth Worker has exactly one bootstrap path: **`OWNER_EMAILS`**
+(same env-var pattern as both apps, same value today —
+`nbaslamking@gmail.com`). An email on that list is treated as
+`approved` + `is_approver` regardless of table state. The seed (§9 step 2)
+runs before anything consumes the directory, so the empty-table case never
+carries traffic; if it somehow did, everyone lands `pending` and the
+`OWNER_EMAILS` holder lets them in. The way in does not depend on the thing
+being changed — recommendation 4, extended to the auth service itself.
+
+### 4.4 API
+
+| Route | Auth | Behaviour |
+|---|---|---|
+| `POST /api/estate/seen` | **Per-app bearer token** (`ESTATE_APP_TOKEN_LIBRARY` / `_GAMES` / `_INDEX` — Worker secrets, one per consumer, the index-push pattern reused) | Body `{email, firebase_uid?, display_name?}`. Upserts: unknown email → create `pending` with `origin='seen:<app>'`; known → refresh uid/name only. **Never changes `status`.** Returns `{status}`. One endpoint does both jobs: answer the check *and* put newcomers in the queue |
+| `GET /api/estate/users` · `POST /api/estate/users/:id/status` | **Firebase ID token of an approver** — the auth Worker verifies tokens with the same vendored middleware as everyone else (it eats its own dog food), then requires `is_approver` or `OWNER_EMAILS` | The admin surface: list (pending first), approve / revoke / grant-approver. Every status change stamps `decided_at`/`decided_by` |
+| `GET /api/health` | none | Row counts by status, no emails. Same stance as the index's health route |
+| `/` | — | A minimal static admin page (list + approve/revoke buttons), served by the Worker, sign-in via the shared Firebase project. Requires `auth.heygabi.ai` in Firebase authorised domains — an owner console step, §9 step 2 |
+
+**Why the check carries a per-app bearer and not the user's token:** the app
+has *already verified* the token locally — re-verification centrally adds
+coupling, latency and nothing else; forwarding live user tokens to a second
+service widens where tokens travel for no gain; and an unauthenticated check
+endpoint would let anyone probe membership by email and spray `pending` rows.
+Cost, named: a leaked app token can probe status and create pending spam —
+bounded, revocable by rotating one secret, and visible in the queue.
+
+Rate limiting on the unauthenticated surface (`/api/health`, bad-token
+attempts): port the games `rate-limit.ts` middleware. `PLATFORM.md` §4.1
+already requires this posture wherever the Worker is the only gate.
+
+---
+
+## 5. The check protocol — verify locally, ask centrally, cache deliberately
+
+### 5.1 What does NOT change
+
+Token verification stays **local and per-app**, exactly as both `auth.ts`
+files do it today: JWKS fetch (cached per isolate, rotation handled by
+`jose`), `iss`+`aud` pinned, unverified emails refused. **No request to any
+app waits on the auth Worker for identity.** This is recommendation 3, and it
+is the property that keeps the auth Worker off the whole-estate critical path:
+if it vanishes, every app still knows *who* everyone is and (from cache +
+local roles) *what standing members may do*.
+
+### 5.2 What is added
+
+One step inside `requireAuth`, after the existing local `upsertUserOnLogin`:
+
+```
+if (user.estate_checked_at is NULL or older than TTL):
+    resp = POST auth.heygabi.ai/api/estate/seen   (app bearer, {email, uid, name})
+    on success: store estate_status + estate_checked_at on the app_user row
+    on failure: keep the stale values; count the failure (log line)
+apply the §3.1 combination table
+```
+
+Each app adds **two nullable columns** to `app_user` — `estate_status TEXT`,
+`estate_checked_at TEXT` — an additive migration with no rebuild (both repos'
+CHECK-constraint rebuilds in 0008/0023/0024 were needed because CHECKs can't
+be altered; plain ADD COLUMN carries no such cost). The cache living **in the
+app's own D1** rather than memory or KV matters: Workers isolates recycle
+constantly, an in-memory cache would re-call on every cold start, and a KV
+namespace is a new moving part per app. The row is already loaded on every
+request — the cache rides for free.
+
+The index Worker has no `app_user`; it gets a two-column `estate_cache(email,
+status, checked_at)` table folded into its **still-unapplied** initial
+migration (measured: the remote `index_catalog` migration is deliberately
+pending, so this costs zero extra migrations if done before first deploy).
+
+### 5.3 ⚠️ The TTL is the revocation delay — chosen out loud
+
+**Proposed: 10 minutes.** The trade, stated rather than buried:
+
+- Smaller TTL → faster revocation, more subrequests (1 per user per app per
+  TTL — at household scale, single-digit calls per 10 minutes across the whole
+  estate; negligible either way).
+- Larger TTL → longer window in which a just-revoked person can keep using
+  apps they had recently touched.
+
+10 minutes bounds an ex-guest's residual access to shorter than the Firebase
+token's own 1-hour lifetime, at a request cost that rounds to zero. During an
+**auth-Worker outage** the delay becomes unbounded *for people approved before
+the outage* — that is §6 row 1's deliberate availability choice. Two instant
+kill paths exist independently of the TTL and should be written into the
+runbook: an app owner demotes the person locally (immediate, per app, works
+today), and the Firebase console disables the Google account (stops token
+refresh; existing tokens die within the hour).
+
+### 5.4 The default-grant — what makes one approval "app-wide"
+
+When the estate says `approved` and the local row is `pending` with
+`approved_at IS NULL` (never locally decided), the app assigns its configured
+default role and stamps `approved_at` with a recognisable actor convention
+(`approved_by NULL` + the estate origin noted — apps that have `change_log`
+write an audit row, `changed_how='auto'`):
+
+| App | Proposed default | Why this one |
+|---|---|---|
+| library | `reader` | Its designed guest role: read + own read-state + rate |
+| games | `viewer` | The *smaller* of its two guest roles, deliberately — rating rights stay a local, per-person upgrade, preserving exactly the distinction migrations 0023/0024 built |
+
+⚠️ **This flattens a privacy boundary that technically exists today** — a
+person approved only into games could not previously see the library's
+locations, prices and `lent_to`. In practice both guest lists are the same
+household, but the flattening is real and is the owner's to confirm — §13 Q2.
+If declined, the estate still delivers requirements 1, 3, 4 and 5; requirement
+2 weakens to "one sign-in, per-app admission" (today's posture with a shared
+queue view).
+
+---
+
+## 6. Failure modes — each with the chosen behaviour and its direction
+
+The table the brief demanded. "Direction" is against §2.2's two expensive
+failures: never open to strangers; never a locked-out household.
+
+| # | Failure | Chosen behaviour | Direction |
+|---|---|---|---|
+| 1 | **Auth Worker down / unreachable** | Apps verify tokens locally as always. Standing members (fresh-or-stale `approved` cache, or an active local role) **keep working**. Unknown or `pending` people are **refused** with a named `estate_unreachable` detail so an outage never reads as a denial. Approvals pause until it returns. The failure is *loud in logs, invisible to the household* | Open for the admitted, closed for everyone else. The auth Worker is a SPOF for *admitting*, never for *using* |
+| 2 | **Token valid, approval unknown** (never seen before) | `/seen` creates `pending`; request screen. If `/seen` itself fails, refused | Closed |
+| 3 | **Revoked mid-session** | Next request after the holder's cache expires → 403, ≤ 10 minutes (§5.3). Local role untouched (§3.1). Instant paths: local demotion; Firebase account disable | Closed within TTL |
+| 4 | **Owner locked out** (bad deploy of the auth Worker, corrupted directory, self-revocation mishap) | Three independent ways back, none passing through the broken thing: (a) `OWNER_EMAILS` in **every** app *and* the auth Worker — §3.1's local-wins rows mean the apps keep serving their owner on local roles alone; (b) the Cloudflare dashboard's D1 console edits `estate_user` directly; (c) `*.workers.dev` hostnames stay bound as the domain-independent route (existing estate practice) | Recovery never depends on the thing being recovered |
+| 5 | **A new site misconfigured** | Layering bounds the damage: skipping the estate call entirely degrades to local-only approval (today's posture — closed); the genuinely dangerous miss is **no blanket `requireAuth`**, which is why §8 makes "blanket middleware before any route" a conformance *probe* (curl six routes tokenless, expect six 401s) rather than a sentence in a doc | The only failing-open path is the one the checklist exists to catch; it is testable in one minute |
+| 6 | **Estate D1 lost or corrupted** | Apps continue on caches + local roles (degraded = per-app posture). The directory is **reconstructible by re-running the seed** (§9 step 2 is idempotent and its inputs — the two `app_user` tables — still exist). Deliberate property: the directory holds no fact that lives nowhere else, *except* revocations and approver flags — after a rebuild, re-check those two by hand against the short list of humans involved | Closed for new, open for standing; recoverable by design |
+| 7 | **Apex CSP or Firebase misconfig breaks search sign-in** | Search visibly broken; the page (a static signpost) is untouched. Nothing else on the estate shares the apex's sign-in | Closed, contained |
+| 8 | **The shared Firebase project itself breaks** (deleted authorised domain, quota, config) | The whole estate's sign-in dies at once. This concentration **already exists today** (both Workers + audiobook sign-in pin the same project) and is accepted — it is the price of "one account everywhere" chosen on 2026-08-09. Mitigations: existing tokens live ≤ 1h; authorised-domain edits are console-only (owner); `*.workers.dev` entries stay on the authorised list as the escape hatch (existing practice, `HEYGABI_LAYOUT.md` Track A) | Closed. Named SPOF, inherited not introduced |
