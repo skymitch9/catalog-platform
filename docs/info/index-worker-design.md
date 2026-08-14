@@ -1,5 +1,14 @@
 # Shared Index Worker — Information Reference (design)
 
+> **STATUS UPDATE 2026-08-14 (status lines only; the header below predates the
+> deploy):** the Worker is **LIVE at `index.heygabi.ai`** — remote 0001 + 0002
+> applied, `ESTATE_APP_TOKEN_INDEX` + all three `INDEX_PUSH_TOKEN_*` secrets
+> set, and **all three sources pushed** (game 836 / library 346 / audiobook
+> 1077 rows, curled that day). §7 step 4 has therefore happened. Remote
+> migration 0003 (visibility cache) is pending with the in-flight
+> visibility-aware-search work. Runbook:
+> `library_catalog/docs/access/index-worker.md`.
+>
 > **Audience:** Claude sessions. **Status:** TRACKED. **BUILT games-first,
 > 2026-08-13** — §7 steps 1–3 landed (`apps/index-worker/` here; pusher in
 > `Board_Game_Catalog`; 836 items pushed and looked up against local dev).
@@ -240,3 +249,15 @@ games. The two bridges keep running untouched meanwhile.
    FIRST auth consumer (zero users — the protocol is proven where nobody can
    be locked out). `/api/health` stays open; push keeps its per-source
    bearers.
+   *Amended 2026-08-13, when §4.5 (visibility) landed:* **`/api/search` is
+   the one named carve-out** — it answers everyone, scoped by the caller's
+   effective **visibility set** per `estate-auth-design.md` §4.5's anonymous
+   rule: absent/invalid token ⇒ the public slice (`{audiobook}`, the one
+   catalog that is world-readable anyway), member ⇒ their `/seen` visibility
+   verbatim, revoked ⇒ `{}` (an honest empty answer, not a 401). The scope
+   is the SQL (`WHERE source IN (…)`, `search-route.ts`), so out-of-scope
+   titles never reach the ranker, the universe counts, or the wire — the
+   members-only rationale ("aggregates titles across the private catalogs")
+   is preserved because the private catalogs are exactly what an unscoped
+   caller never gets. `/api/lookup` stays members-only and unscoped;
+   `/api/universe` stays members-only and is scoped to the member's set.

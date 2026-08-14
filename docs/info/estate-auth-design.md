@@ -1,5 +1,14 @@
 # Estate-Wide Auth — Information Reference (design)
 
+> **STATUS UPDATE 2026-08-14 (status lines only; the header below predates the
+> deploys):** §14.1–14.4 are **LIVE** — `auth.heygabi.ai` deployed + seeded
+> (health: 2 approved / 1 approver; remote 0001 + 0002 applied),
+> `index.heygabi.ai` deployed with all three sources pushed, apex search +
+> `/admin` deployed. §14.5: library adopted in **shadow** (`ESTATE_CHECK=shadow`
+> deployed; enforcement not built), games flipped to **enforce** and deployed
+> 2026-08-14T05:07Z. Verified by curl/probe that day; every "deploy pending"
+> phrase below is stale. Runbook: `library_catalog/docs/access/estate-auth.md`.
+>
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED — §14.1 +
 > §14.2 **BUILT 2026-08-13** (auth Worker `apps/auth-worker/`, D1 `estate_auth`
 > created id `d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb`, canonical module
@@ -547,11 +556,22 @@ the **index Worker's read surface**, which gains auth:
   private ones. The index Worker becomes consumer #3 of the auth contract, and
   deliberately the *first* to adopt it (§9 step 3) — it has zero existing
   users, so the protocol is proven where nobody can be locked out.
+- *Amended when §4.5 landed:* **`GET /api/search` is the one carve-out from
+  members-only** — it answers every caller, scoped by the effective
+  **visibility set** per §4.5's anonymous rule: absent/invalid token ⇒
+  `{audiobook}` (the world-readable slice), member ⇒ their `/seen` visibility
+  verbatim, `pending` ⇒ `{audiobook}`, `revoked` ⇒ `{}` — never a 401 on
+  search. The members-only rationale survives intact: the private catalogs
+  are precisely what an out-of-scope caller's results never contain, because
+  the scope is applied in the SQL before ranking. Lookup stays members-only
+  untouched; universe stays members-only and scoped.
 
-The page itself stays fully public and readable signed-out; the search slot
-renders a "sign in to search" affordance instead of results. Signed-in but
-`pending` gets the honest state: "your account is awaiting approval" — the
-same posture as the apps' request screens, and the same words.
+The page itself stays fully public and readable signed-out; since §4.5 the
+search slot WORKS signed-out — it live-searches the public audiobook slice
+tokenless, with a quiet "sign in to search everything" affordance rather than
+a wall. Signed-in but `pending` searches the same public slice (§4.5's
+pending rule); the request-screen wording appears only where a members-only
+surface (the universe view) actually refuses.
 
 ### 7.2 ⚠️ This deliberately overturns a standing rule, and here is the arguing
 

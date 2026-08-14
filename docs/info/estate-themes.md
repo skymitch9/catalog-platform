@@ -2,8 +2,10 @@
 
 > **Audience:** Claude sessions (especially the agents theming the library and,
 > later, wiring the audiobook/games cogs). **Status:** TRACKED — asset BUILT
-> 2026-08-13 in `sites/heygabi-home/public/assets/` (the canonical copy), live
-> on the apex + `/admin` once the pending deploy lands.
+> 2026-08-13 in `sites/heygabi-home/public/assets/` (the canonical copy);
+> **LIVE on the apex + `/admin` since 2026-08-14** (status updated that day —
+> the deployed apex `theme.js` is still pre-v2; per-surface live state:
+> `library_catalog/docs/access/themes.md`).
 > Last verified: **2026-08-13** — cyberpunk/retro values extracted from the two
 > sites' real stylesheets that day (extraction notes were audited against the
 > sources, not trusted blind). Companion: `estate-auth-design.md` (the
