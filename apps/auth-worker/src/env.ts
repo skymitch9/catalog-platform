@@ -49,6 +49,15 @@ export interface Env {
   ESTATE_APP_TOKEN_GAMES?: string;
   ESTATE_APP_TOKEN_INDEX?: string;
 
+  /**
+   * The audiobook catalog's Firebase service-account JSON, whole — the
+   * credential behind /api/estate/site-roles (the three-tier grant path;
+   * WebCrypto RS256 → OAuth2 → Firestore/identitytoolkit REST, see
+   * firebase-sa.ts). `wrangler secret put FIREBASE_SERVICE_ACCOUNT`, piped
+   * from the key file — never committed, never logged, never echoed.
+   */
+  FIREBASE_SERVICE_ACCOUNT?: string;
+
   /** Cloudflare rate-limiting binding; optional so wrangler dev runs without it. */
   RATE_LIMITER?: RateLimiter;
 }

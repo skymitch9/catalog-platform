@@ -170,6 +170,35 @@ export async function setApprover(
 }
 
 /**
+ * Manual pre-seed (owner UI-first rule, 2026-08-14): an approver adds a
+ * person BY EMAIL from the /admin page before their first sign-in, so no
+ * people-operation needs a script. Origin 'manual', status pending (the
+ * approver then approves them — two visible decisions, like every other
+ * admission). Idempotent on conflict: an existing row (any status) is
+ * returned untouched — pre-seeding must never resurrect a revocation or
+ * demote an approval.
+ */
+export async function manualCreate(
+  db: D1Database,
+  input: { email: string; actorId: number },
+): Promise<{ row: EstateUserRow; created: boolean }> {
+  const email = normalizeEmail(input.email);
+  const existing = await getUserByEmail(db, email);
+  if (existing) return { row: existing, created: false };
+  const row = await db
+    .prepare(
+      `INSERT INTO estate_user (email, origin, note)
+       VALUES (?, 'manual', ?)
+       ON CONFLICT(email) DO UPDATE SET email = estate_user.email
+       RETURNING ${COLS}`,
+    )
+    .bind(email, `added by estate admin (actor id ${input.actorId})`)
+    .first<EstateUserRow>();
+  if (!row) throw new Error('manualCreate returned no row');
+  return { row, created: true };
+}
+
+/**
  * Materialize a row for an `OWNER_EMAILS` actor acting on a directory that
  * has never seen them (§4.3's bootstrap meeting the table). Approved +
  * approver because OWNER_EMAILS IS that authority; origin 'manual' and the

@@ -18,8 +18,16 @@
  *     vocabulary, verbatim: library `owner|manager|reader|pending`, games
  *     `owner|manager|rater|viewer|pending`. ⚠️ `reader` ≠ `viewer` — the
  *     dropdowns list what each endpoint answers and never translate. The
- *     audiobook catalog has no roles by design (world-readable site), so its
- *     cell says so instead of pretending.
+ *     AUDIOBOOK catalog (world-readable site) grew rules-enforced site
+ *     roles 2026-08-14 (three-tier model: `admin` = everything incl.
+ *     site-wide review removal; `moderator` = the operational club subset).
+ *     They live in ITS system — Firestore site_roles docs — federated here
+ *     through the auth Worker's /api/estate/site-roles (the Worker holds
+ *     the service account; browsers can neither list nor write those docs).
+ *
+ * The page also offers ADD MEMBER BY EMAIL (POST /api/estate/users, origin
+ * 'manual') so pre-seeding a person before their first sign-in never needs
+ * a script — the owner's UI-first rule, 2026-08-14.
  *
  * A per-app fetch failure degrades to that app's cell reading "unreachable";
  * the directory and every other column keep working.
@@ -61,7 +69,9 @@ const APPS = [
  * ask: "sort on who has access to what catalogs, who's an admin in what
  * spaces"). Household scale — no server round-trip, no pagination.
  */
-const NO_ACCOUNT = '__none__'; // per-app role filter: "no row in that app's roster yet"
+const NO_ACCOUNT = '__none__'; // per-app role filter: "no row in that app's roster yet" (audiobook: "no site role")
+/** Every column with a role filter: the audiobook site-roles federation + the two app Workers. */
+const ROLE_FILTER_KEYS = ['audiobook', 'library', 'games'];
 const SORT_KEYS = ['name', 'email', 'status', 'first_seen', 'decided', 'breadth'];
 const STATUS_RANK = { pending: 0, approved: 1, revoked: 2 }; // the existing pending-first instinct, made sortable
 const DEFAULT_DIR_FOR_KEY = { // the sensible starting direction when a sort key is first picked
@@ -90,6 +100,18 @@ let currentUser = null;
  *   { ok: false, why }                    — degraded; why is shown in-cell
  */
 let appDirs = { library: null, games: null };
+
+/**
+ * Audiobook site-roles state, same shape contract as appDirs entries:
+ *   null | { ok: true, roles, byEmail } | { ok: false, why }
+ * byEmail maps lowercased email → { role, uid, ... } so the filter logic
+ * can treat all three role columns uniformly (roleDirFor).
+ */
+let siteRolesDir = null;
+
+function roleDirFor(key) {
+  return key === 'audiobook' ? siteRolesDir : appDirs[key];
+}
 
 /** The full directory as last loaded — filters/sort run over this, it is never re-fetched for a view change. */
 let allEstateUsers = [];
@@ -229,17 +251,90 @@ async function patchAppRole(app, appUserId, role) {
 }
 
 // ---------------------------------------------------------------------------
-// Loading — the directory and both app lists, in parallel
+// API calls — the audiobook site-roles federation (auth Worker holds the
+// service account; this page holds nothing)
+// ---------------------------------------------------------------------------
+
+/** The site-roles roster + vocabulary, or the reason the cell degrades. */
+async function fetchSiteRoles() {
+  const token = await idToken();
+  if (!token) return { ok: false, why: 'sign-in lapsed' };
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/site-roles`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return { ok: false, why: 'unreachable' };
+  }
+  if (res.status === 401) return { ok: false, why: 'token refused' };
+  if (res.status === 403) return { ok: false, why: 'needs an approver account' };
+  if (res.status === 503) return { ok: false, why: 'service account not configured on the auth Worker' };
+  if (!res.ok) return { ok: false, why: `error ${res.status}` };
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return { ok: false, why: 'unreadable answer' };
+  }
+  const byEmail = new Map();
+  for (const h of data.holders ?? []) {
+    if (h.email) byEmail.set(String(h.email).toLowerCase(), h);
+  }
+  return { ok: true, roles: Array.isArray(data.roles) ? data.roles : [], byEmail };
+}
+
+/** POST one grant/revoke. role null = revoke. True on success; failures explain themselves. */
+async function postSiteRole(email, role) {
+  const token = await idToken();
+  if (!token) {
+    setStatus('Sign-in lapsed — sign in again.', 'warn');
+    return false;
+  }
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/site-roles`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ email, role }),
+    });
+  } catch (e) {
+    setStatus('The auth Worker did not answer — the audiobook role is unchanged.', 'warn');
+    return false;
+  }
+  if (res.ok) {
+    setStatus('');
+    return true;
+  }
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (e) { /* the status code still speaks */ }
+  const detail = typeof body?.detail === 'string' ? body.detail : null;
+  setStatus(`audiobook: ${detail || `role change refused (${res.status}${body?.error ? `: ${body.error}` : ''})`}`, 'warn');
+  return false;
+}
+
+/** Add-member-by-email (POST /api/estate/users, origin 'manual'). */
+async function createMember(email) {
+  const data = await api('/api/estate/users', { method: 'POST', body: JSON.stringify({ email }) });
+  return data; // null on failure (api() already said why)
+}
+
+// ---------------------------------------------------------------------------
+// Loading — the directory, both app lists and the site-roles roster, in parallel
 // ---------------------------------------------------------------------------
 
 async function loadDirectory() {
   setStatus('Loading…');
-  const [estate, library, games] = await Promise.all([
+  const [estate, library, games, sroles] = await Promise.all([
     api('/api/estate/users'),
     fetchAppDirectory(APPS[0]),
     fetchAppDirectory(APPS[1]),
+    fetchSiteRoles(),
   ]);
   appDirs = { library, games };
+  siteRolesDir = sroles;
   if (!estate) {
     // api() already said why. The app lists are useless without the spine.
     usersEl.innerHTML = '';
@@ -273,7 +368,9 @@ function defaultFilters() {
     status: 'all',       // all | pending | approved | revoked
     approverOnly: false,
     visCats: [],          // subset of CATALOGS the member must SEE (AND semantics)
-    appRoles: { library: 'any', games: 'any' }, // 'any' | NO_ACCOUNT | a role from that app's own vocab
+    // 'any' | NO_ACCOUNT | a role from that column's own vocab. audiobook =
+    // the site-roles federation (NO_ACCOUNT there means "no site role").
+    appRoles: { audiobook: 'any', library: 'any', games: 'any' },
     q: '',
   };
 }
@@ -296,8 +393,8 @@ function loadPersistedView() {
         if (typeof pf.approverOnly === 'boolean') filters.approverOnly = pf.approverOnly;
         if (Array.isArray(pf.visCats)) filters.visCats = pf.visCats.filter((c) => CATALOGS.includes(c));
         if (pf.appRoles && typeof pf.appRoles === 'object') {
-          for (const app of APPS) {
-            if (typeof pf.appRoles[app.key] === 'string') filters.appRoles[app.key] = pf.appRoles[app.key];
+          for (const key of ROLE_FILTER_KEYS) {
+            if (typeof pf.appRoles[key] === 'string') filters.appRoles[key] = pf.appRoles[key];
           }
         }
         if (typeof pf.q === 'string') filters.q = pf.q;
@@ -339,11 +436,11 @@ function matchesFilters(u) {
     for (const cat of f.visCats) if (!vis.includes(cat)) return false;
   }
 
-  for (const app of APPS) {
-    const want = f.appRoles[app.key];
+  for (const key of ROLE_FILTER_KEYS) {
+    const want = f.appRoles[key];
     if (want === 'any') continue;
-    const dir = appDirs[app.key];
-    if (!dir || !dir.ok) continue; // can't verify a degraded app — don't hide people on a guess
+    const dir = roleDirFor(key);
+    if (!dir || !dir.ok) continue; // can't verify a degraded column — don't hide people on a guess
     const appUser = dir.byEmail.get(u.email.toLowerCase());
     if (want === NO_ACCOUNT) {
       if (appUser) return false;
@@ -400,24 +497,26 @@ function compareUsers(a, b) {
   return res !== 0 ? res : tiebreak(a, b);
 }
 
-/** Rebuild each app's role-filter <select> from its OWN fetched vocabulary — never hardcoded (§1.2). */
+/** Rebuild each role column's filter <select> from its OWN fetched vocabulary — never hardcoded (§1.2). */
 function populateRoleFilterOptions() {
-  for (const app of APPS) {
-    const select = document.getElementById(`f-role-${app.key}`);
-    const dir = appDirs[app.key];
-    const current = state.filters.appRoles[app.key];
+  for (const key of ROLE_FILTER_KEYS) {
+    const select = document.getElementById(`f-role-${key}`);
+    const dir = roleDirFor(key);
+    const current = state.filters.appRoles[key];
     const valid = ['any', NO_ACCOUNT, ...(dir?.ok ? dir.roles : [])];
 
     select.innerHTML = '';
     select.appendChild(new Option('any', 'any'));
-    select.appendChild(new Option('no account yet', NO_ACCOUNT));
+    // audiobook: everyone can use the public site — absence means "no site
+    // role", not "no account". The apps create rows on first sign-in.
+    select.appendChild(new Option(key === 'audiobook' ? 'no site role' : 'no account yet', NO_ACCOUNT));
     if (dir?.ok) {
       for (const role of dir.roles) select.appendChild(new Option(role, role));
     }
-    select.disabled = !dir?.ok; // that app is degraded right now — its role filter can't be trusted
+    select.disabled = !dir?.ok; // that column is degraded right now — its role filter can't be trusted
 
-    if (!valid.includes(current)) state.filters.appRoles[app.key] = 'any'; // vocab moved under a stale value
-    select.value = state.filters.appRoles[app.key];
+    if (!valid.includes(current)) state.filters.appRoles[key] = 'any'; // vocab moved under a stale value
+    select.value = state.filters.appRoles[key];
   }
 }
 
@@ -450,7 +549,7 @@ function countActiveAdvancedFilters() {
   let n = 0;
   if (f.status !== 'all') n++;
   if (f.approverOnly) n++;
-  for (const app of APPS) if (f.appRoles[app.key] !== 'any') n++;
+  for (const key of ROLE_FILTER_KEYS) if (f.appRoles[key] !== 'any') n++;
   return n;
 }
 
@@ -519,13 +618,38 @@ function wireControls() {
     });
   }
 
-  for (const app of APPS) {
-    document.getElementById(`f-role-${app.key}`).addEventListener('change', (e) => {
-      state.filters.appRoles[app.key] = e.target.value;
+  for (const key of ROLE_FILTER_KEYS) {
+    document.getElementById(`f-role-${key}`).addEventListener('change', (e) => {
+      state.filters.appRoles[key] = e.target.value;
       persistView();
       renderFilteredList();
     });
   }
+
+  // Add member by email (owner UI-first rule): pre-seed a directory row
+  // before the person's first sign-in. The Worker lowercases + validates;
+  // idempotent — adding someone already present changes nothing.
+  const addBtn = document.getElementById('add-member-btn');
+  const addInput = document.getElementById('add-member-email');
+  const submitAdd = async () => {
+    const email = addInput.value.trim();
+    if (!email) return;
+    addBtn.disabled = true;
+    const data = await createMember(email);
+    addBtn.disabled = false;
+    if (!data) return; // api() already said why
+    addInput.value = '';
+    setStatus(
+      data.created
+        ? `${data.user.email} added (pending) — approve them below when ready.`
+        : `${data.user.email} is already in the directory (${data.user.status}).`,
+    );
+    await loadDirectory();
+  };
+  addBtn.addEventListener('click', submitAdd);
+  addInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitAdd();
+  });
 
   sortKeySel.addEventListener('change', () => {
     state.sort.key = sortKeySel.value;
@@ -640,6 +764,54 @@ function appRoleCell(app, estateUser) {
   return cell;
 }
 
+/**
+ * The audiobook role cell: none/moderator/admin dropdown wired to the auth
+ * Worker's site-roles federation, or the honest reason there isn't one.
+ * 'none' is a real state (most members hold no site role), so the dropdown
+ * always renders — unlike the app cells there is no "no account yet" case:
+ * revoking = picking none, granting = picking a role. The Worker resolves
+ * the uid from the email at write time; someone who has never signed in to
+ * the audiobook site with Google gets a 404 explained in the status line.
+ */
+function audiobookRoleCell(estateUser) {
+  const dir = siteRolesDir;
+  const cell = document.createElement('span');
+
+  if (!dir || !dir.ok) {
+    cell.className = 'cat-warn';
+    cell.textContent = dir?.why ?? 'not loaded';
+    return cell;
+  }
+
+  const emailKey = estateUser.email.toLowerCase();
+  const holder = dir.byEmail.get(emailKey);
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', `audiobook site role for ${estateUser.email}`);
+  for (const role of ['none', ...dir.roles]) {
+    const opt = document.createElement('option');
+    opt.value = role;
+    opt.textContent = role;
+    if ((holder?.role ?? 'none') === role) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    const role = select.value === 'none' ? null : select.value;
+    const ok = await postSiteRole(emailKey, role);
+    if (ok) {
+      // Keep the map truthful without a refetch (the app-cell idiom).
+      if (role) dir.byEmail.set(emailKey, { ...(holder ?? { uid: '', displayName: '' }), email: emailKey, role });
+      else dir.byEmail.delete(emailKey);
+    } else {
+      select.value = holder?.role ?? 'none'; // refused — snap back to what stands
+    }
+    select.disabled = false;
+  });
+  cell.className = 'cat-role';
+  cell.appendChild(select);
+  return cell;
+}
+
 /** One catalog line: name, visibility checkbox, role cell. */
 function catalogRow(estateUser, catKey, roleCell) {
   const row = document.createElement('div');
@@ -714,10 +886,7 @@ function userCard(u) {
   const cats = document.createElement('div');
   cats.className = 'cats';
 
-  const abNote = document.createElement('span');
-  abNote.className = 'cat-note';
-  abNote.textContent = 'public site — no roles to grant';
-  cats.appendChild(catalogRow(u, 'audiobook', abNote));
+  cats.appendChild(catalogRow(u, 'audiobook', audiobookRoleCell(u)));
 
   for (const app of APPS) {
     cats.appendChild(catalogRow(u, app.key, appRoleCell(app, u)));

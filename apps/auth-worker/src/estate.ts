@@ -5,9 +5,11 @@
  *   GET  /api/estate/me              the caller's own answer (Firebase ID token,
  *                                    CORS: apex + audiobook site — see index.ts)
  *   GET  /api/estate/users           admin API (approver-gated, CORS: apex only)
+ *   POST /api/estate/users           manual pre-seed by email (origin 'manual')
  *   POST /api/estate/users/:id/status
  *   POST /api/estate/users/:id/approver
  *   POST /api/estate/users/:id/visibility   which catalogs the member may SEE (§4.5)
+ *   GET/POST /api/estate/site-roles  audiobook site_roles federation (site-roles.ts)
  *   GET  /api/health                 open; counts, no emails
  *
  * ⚠️ There is NO admin page here — the admin UI lives on the apex
@@ -25,6 +27,7 @@ import {
   getUserByEmail,
   getUserById,
   listUsers,
+  manualCreate,
   seenUpsert,
   setApprover,
   setVisibility,
@@ -98,6 +101,19 @@ const statusBodySchema = z
   .strict();
 
 const approverBodySchema = z.object({ is_approver: z.boolean() }).strict();
+
+/** POST /estate/users (manual pre-seed): lowercased, must look like an email. */
+const createBodySchema = z
+  .object({
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(3)
+      .max(320)
+      .refine((s) => s.includes('@'), 'not an email'),
+  })
+  .strict();
 
 const visibilityBodySchema = z.object({ visibility: visibilitySchema }).strict();
 
@@ -199,6 +215,31 @@ estateRoutes.get('/estate/me', async (c) => {
 estateRoutes.get('/estate/users', requireApprover(), async (c) => {
   const users = await listUsers(c.env.DB);
   return c.json({ users: users.map(userJson) });
+});
+
+// ---------------------------------------------------------------------------
+// POST /estate/users — manual pre-seed by email (owner UI-first rule,
+// 2026-08-14): adding a person before their first sign-in never needs a
+// script. Creates origin 'manual', status pending; idempotent — an existing
+// row (any status) comes back untouched with created:false, so pre-seeding
+// can never resurrect a revocation.
+// ---------------------------------------------------------------------------
+estateRoutes.post('/estate/users', requireApprover(), async (c) => {
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = createBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues.slice(0, 5) }, 400);
+  }
+  const { row, created } = await manualCreate(c.env.DB, {
+    email: parsed.data.email,
+    actorId: c.get('actor').id,
+  });
+  return c.json({ user: userJson(row), created }, created ? 201 : 200);
 });
 
 estateRoutes.post('/estate/users/:id/status', requireApprover(), async (c) => {

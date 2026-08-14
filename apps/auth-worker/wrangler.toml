@@ -53,8 +53,11 @@ database_name = "estate_auth"
 database_id = "d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb"
 migrations_dir = "migrations"
 
-# Not in this file, ever: the three per-consumer secrets. At deploy time:
+# Not in this file, ever: the three per-consumer secrets, plus the Firebase
+# service-account JSON behind /api/estate/site-roles. At deploy time:
 #   wrangler secret put ESTATE_APP_TOKEN_LIBRARY   (and _GAMES, _INDEX)
+#   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
+#     never paste it into a terminal line, never echo it; see firebase-sa.ts)
 # Locally they live in .dev.vars (gitignored; see .dev.vars.example) or are
 # passed as --var flags by the probe suite.
 #

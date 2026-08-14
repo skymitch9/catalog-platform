@@ -18,6 +18,7 @@ import { declareAuthPosture } from '@platform/estate-auth';
 import type { AppBindings } from './env.js';
 import { parseAdminOrigins } from './env.js';
 import { estateRoutes } from './estate.js';
+import { siteRolesRoutes } from './site-roles.js';
 import { rateLimit } from './middleware/rate-limit.js';
 
 /**
@@ -41,6 +42,8 @@ app.use('/api/*', rateLimit());
 // /seen and /health are not browser surfaces and get no CORS.
 app.use('/api/estate/users', adminCors());
 app.use('/api/estate/users/*', adminCors());
+// The audiobook site-roles federation is admin-page surface too: apex only.
+app.use('/api/estate/site-roles', adminCors());
 
 // CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
 // audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
@@ -49,6 +52,7 @@ app.use('/api/estate/users/*', adminCors());
 app.use('/api/estate/me', meCors());
 
 app.route('/api', estateRoutes);
+app.route('/api', siteRolesRoutes);
 
 function adminCors() {
   return cors({

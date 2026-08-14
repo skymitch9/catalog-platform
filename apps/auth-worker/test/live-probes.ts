@@ -307,6 +307,52 @@ async function phaseA(): Promise<void> {
         JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
       JSON.stringify(r.body),
     );
+
+    // --- Manual pre-seed by email (owner UI-first rule, 2026-08-14) ---
+    r = await api('POST', '/api/estate/users', { body: { email: 'Newby@Example.COM' } });
+    check(
+      'A29 manual create: 201, pending, origin manual, email lowercased',
+      r.status === 201 &&
+        r.body.created === true &&
+        r.body.user.email === 'newby@example.com' &&
+        r.body.user.status === 'pending' &&
+        r.body.user.origin === 'manual',
+      JSON.stringify(r.body),
+    );
+    r = await api('POST', '/api/estate/users', { body: { email: 'newby@example.com' } });
+    check(
+      'A30 manual create is idempotent — existing row untouched, created:false',
+      r.status === 200 && r.body.created === false && r.body.user.status === 'pending',
+      JSON.stringify(r.body),
+    );
+    // Pre-seeding must never resurrect a revocation: bob is currently
+    // approved (A14) — the create answers his row unchanged either way.
+    r = await api('POST', '/api/estate/users', { body: { email: 'bob@example.com' } });
+    check(
+      'A31 manual create of an existing member changes nothing',
+      r.status === 200 && r.body.created === false && r.body.user.status === 'approved',
+      JSON.stringify(r.body),
+    );
+    r = await api('POST', '/api/estate/users', { body: { email: 'not-an-email' } });
+    check('A32 malformed email refused 400', r.status === 400, `got ${r.status}`);
+    r = await api('POST', '/api/estate/users', { body: { email: 'a@b.c', extra: 1 } });
+    check('A33 create body is strict — unknown keys refused', r.status === 400, `got ${r.status}`);
+
+    // --- Site-roles federation: without the FIREBASE_SERVICE_ACCOUNT secret
+    // the endpoints say so (503 config error), and only AFTER the approver
+    // gate has admitted the caller — never a silent failure, never a leak.
+    r = await api('GET', '/api/estate/site-roles');
+    check(
+      'A34 site-roles GET without the secret → 503 service_account_unset',
+      r.status === 503 && r.body.error === 'service_account_unset',
+      JSON.stringify(r.body),
+    );
+    r = await api('POST', '/api/estate/site-roles', { body: { email: 'a@b.c', role: 'moderator' } });
+    check(
+      'A35 site-roles POST without the secret → 503 service_account_unset',
+      r.status === 503 && r.body.error === 'service_account_unset',
+      JSON.stringify(r.body),
+    );
   } finally {
     stopDev(child);
     await waitDown();
@@ -326,6 +372,9 @@ async function phaseB(): Promise<void> {
         { path: '/api/estate/me' },
         { method: 'POST', path: '/api/estate/users/1/status' },
         { method: 'POST', path: '/api/estate/users/1/approver' },
+        { method: 'POST', path: '/api/estate/users' },
+        { path: '/api/estate/site-roles' },
+        { method: 'POST', path: '/api/estate/site-roles' },
       ],
       openRoutes: [{ path: '/api/health' }],
       machineRoutes: [{ method: 'POST', path: '/api/estate/seen' }],
@@ -433,6 +482,12 @@ async function phaseC(): Promise<void> {
         JSON.stringify(r.body.visibility) === '["audiobook","library"]',
       JSON.stringify(r.body),
     );
+    // The new admin surfaces refuse a non-approver BEFORE anything else —
+    // the approver gate outranks even the missing-secret 503.
+    r = await api('POST', '/api/estate/users', { body: { email: 'x@y.z' } });
+    check('C3 manual create refused for a non-approver', r.status === 403, `got ${r.status}`);
+    r = await api('GET', '/api/estate/site-roles');
+    check('C4 site-roles GET refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
   } finally {
     stopDev(child);
     await waitDown();
@@ -446,6 +501,8 @@ async function phaseD(): Promise<void> {
     await waitReady();
     let r = await api('GET', '/api/estate/users');
     check('D1 a stranger is refused the admin API — no first-to-knock', r.status === 403, `got ${r.status}`);
+    r = await api('POST', '/api/estate/site-roles', { body: { email: 'x@y.z', role: 'admin' } });
+    check('D4 a stranger cannot grant site roles', r.status === 403, `got ${r.status}`);
     // /me for someone the directory has never seen: a calm null, NEVER a 500 —
     // and (checked by D2 below) the ask itself enrols nobody.
     r = await api('GET', '/api/estate/me');
@@ -460,9 +517,10 @@ async function phaseD(): Promise<void> {
     // And being refused did not enrol them.
     const health = await api('GET', '/api/health');
     const total = health.body.users.pending + health.body.users.approved + health.body.users.revoked;
-    // owner, bob, carol, dave — A17's strict refusal and B5's bad bearer
-    // created nothing, and neither did mallory's refused admin call.
-    check('D2 the refused request created no row', total === 4, `total=${total} (want owner, bob, carol, dave)`);
+    // owner, bob, carol, dave, newby (A29's manual create) — A17's strict
+    // refusal and B5's bad bearer created nothing, and neither did mallory's
+    // refused admin calls (D1/D4).
+    check('D2 the refused request created no row', total === 5, `total=${total} (want owner, bob, carol, dave, newby)`);
   } finally {
     stopDev(child);
     await waitDown();

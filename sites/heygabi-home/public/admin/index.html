@@ -265,6 +265,8 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 /* 2. CATALOG CHIPS + live count + Reset — always visible, never inside
    the advanced disclosure. */
 .cats-row { display: flex; align-items: center; gap: .6rem 1rem; flex-wrap: wrap; }
+/* Add-member row: input + button on one line, wrapping on narrow screens. */
+.add-row { display: flex; align-items: flex-end; gap: .6rem; flex-wrap: wrap; }
 .cats-row .ctl-label { flex: 0 0 auto; }
 .cats-row-actions { display: flex; align-items: center; gap: .6rem; margin-left: auto; }
 /* A horizontal row of chips — same 34px line so the row reads as one
@@ -386,8 +388,9 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     deleted: a revoked person who comes back meets their revocation, not a
     fresh queue entry. Per catalog, <em>visible</em> is which shelves their
     search sees (the estate's fact); the role dropdowns are each app's own —
-    the library's <code>reader</code> and the games shelf's <code>viewer</code>
-    are different words on purpose, and changing one changes it in that app
+    the library's <code>reader</code>, the games shelf's <code>viewer</code>
+    and the audiobook site's <code>moderator</code>/<code>admin</code> are
+    different words on purpose, and changing one changes it in that app
     itself.
   </p>
 
@@ -413,6 +416,17 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       <span class="ctl-label">Name / email</span>
       <input id="f-q" class="ctl-input" type="search" placeholder="Search name or email…" autocomplete="off">
     </label>
+
+    <!-- ADD MEMBER BY EMAIL (owner UI-first rule, 2026-08-14): pre-seed a
+         directory row (origin 'manual', pending) before the person's first
+         sign-in — no script needed. Idempotent; the Worker validates. -->
+    <div class="add-row">
+      <label class="ctl" style="flex:1 1 14rem">
+        <span class="ctl-label">Add member by email</span>
+        <input id="add-member-email" class="ctl-input" type="email" placeholder="person@example.com" autocomplete="off">
+      </label>
+      <button type="button" id="add-member-btn" class="btn small">Add member</button>
+    </div>
 
     <div class="cats-row">
       <span class="ctl-label">Sees</span>
@@ -466,6 +480,16 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
                 <button type="button" id="s-dir" class="btn small quiet" aria-pressed="false">↑ asc</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="adv-section">
+          <span class="ctl-label adv-section-title">Audiobook</span>
+          <div class="adv-fields">
+            <label class="ctl">
+              <span class="ctl-label">Site role</span>
+              <select id="f-role-audiobook" class="ctl-input"><option value="any">any</option></select>
+            </label>
           </div>
         </div>
 
