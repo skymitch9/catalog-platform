@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Platform-level docs, the heygabi.ai front door, the shared universe list both book catalogs read at build time, and the shared index Worker (apps/index-worker).",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "universes": "node tools/universes.mjs",

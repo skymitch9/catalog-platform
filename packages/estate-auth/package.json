@@ -1,0 +1,21 @@
+{
+  "name": "@platform/estate-auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The ONE estate auth implementation: hardened Firebase token verifier, the 3.1 estate/local combination table, the /seen client with its TTL cache, the public: posture declaration, and the 8.2 conformance probes as runnable checks. See docs/info/estate-auth-design.md.",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
