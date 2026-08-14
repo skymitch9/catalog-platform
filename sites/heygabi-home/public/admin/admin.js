@@ -78,6 +78,8 @@ const usersEl = document.getElementById('users');
 const gapsEl = document.getElementById('gaps');
 const controlsEl = document.getElementById('controls');
 const countEl = document.getElementById('count');
+const advEl = document.getElementById('adv');
+const advCountEl = document.getElementById('adv-count');
 
 let currentUser = null;
 
@@ -283,6 +285,7 @@ function defaultSort() {
 function loadPersistedView() {
   const filters = defaultFilters();
   const sort = defaultSort();
+  let advOpen = false; // advanced filters section: collapsed by default (owner spec)
   try {
     const raw = sessionStorage.getItem(VIEW_STORAGE_KEY);
     if (raw) {
@@ -304,11 +307,14 @@ function loadPersistedView() {
         if (SORT_KEYS.includes(ps.key)) sort.key = ps.key;
         if (ps.dir === 'asc' || ps.dir === 'desc') sort.dir = ps.dir;
       }
+      // Older saves predate the advanced disclosure — a missing/non-boolean
+      // value just leaves it collapsed rather than failing to load at all.
+      if (typeof parsed?.advOpen === 'boolean') advOpen = parsed.advOpen;
     }
   } catch (e) {
     // corrupt or unavailable storage (private mode quota) — defaults stand
   }
-  return { filters, sort };
+  return { filters, sort, advOpen };
 }
 
 function persistView() {
@@ -428,6 +434,31 @@ function syncControlsFromState() {
   populateRoleFilterOptions();
   document.getElementById('s-key').value = state.sort.key;
   updateSortDirButton();
+  advEl.open = state.advOpen;
+  updateAdvHint();
+}
+
+/**
+ * "N active" on the Advanced filters toggle — status/approver/role are the
+ * fields living behind the disclosure that actually HIDE rows (sort only
+ * reorders, catalog chips and search sit outside it already), so those are
+ * what's counted. Hidden while the section is open — the fields are right
+ * there, nothing to summarize.
+ */
+function countActiveAdvancedFilters() {
+  const f = state.filters;
+  let n = 0;
+  if (f.status !== 'all') n++;
+  if (f.approverOnly) n++;
+  for (const app of APPS) if (f.appRoles[app.key] !== 'any') n++;
+  return n;
+}
+
+function updateAdvHint() {
+  const n = countActiveAdvancedFilters();
+  const show = !advEl.open && n > 0;
+  advCountEl.hidden = !show;
+  advCountEl.textContent = show ? `${n} active` : '';
 }
 
 function updateSortDirButton() {
@@ -447,6 +478,7 @@ function renderFilteredList() {
   usersEl.innerHTML = '';
   for (const u of view) usersEl.appendChild(userCard(u));
   updateCountLine(view.length, allEstateUsers.length);
+  updateAdvHint();
 }
 
 function wireControls() {
@@ -516,6 +548,13 @@ function wireControls() {
     syncControlsFromState();
     persistView();
     renderFilteredList();
+  });
+
+  // Native <details> toggle — fires on open AND close, from keyboard or click.
+  advEl.addEventListener('toggle', () => {
+    state.advOpen = advEl.open;
+    persistView();
+    updateAdvHint();
   });
 }
 

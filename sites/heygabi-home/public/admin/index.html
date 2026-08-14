@@ -212,22 +212,28 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   text-wrap: pretty;
 }
 
-/* SORT + FILTER bar (admin.js: the "who has access to what, who's an
-   admin where" view over the directory already in memory — client-side,
+/* CONTROLS bar (admin.js: the "who has access to what, who's an admin
+   where" view over the directory already in memory — client-side,
    household scale, no pagination). Same surface/hairline language as
-   #status and .user; token-only, no new colors. */
+   #status and .user; token-only, no new colors.
+
+   Layout, top to bottom: a full-width search row; a row of catalog toggle
+   chips with the live count + Reset always beside them (owner spec:
+   these stay visible, never behind the disclosure); then a
+   collapsed-by-default <details> holding everything else, grouped into
+   per-catalog sections. Search/chips/count/reset are what an estate admin
+   touches constantly; status, approver, role and sort are reached far
+   less often and stay out of the way until opened. */
 .controls {
   display: grid;
-  gap: .55rem;
+  gap: .7rem;
   margin: 0 0 var(--et-space-2);
   padding: .7em .9em;
   border: var(--et-border-w) solid var(--et-panel-border);
   border-radius: var(--et-radius);
   background: var(--et-surface);
 }
-.ctl-group { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; }
 .ctl { display: flex; flex-direction: column; gap: .2rem; font-size: var(--et-text-small); }
-.ctl.grow { flex: 1 1 12rem; min-width: 10rem; }
 .ctl-label {
   color: var(--et-muted);
   font-size: var(--et-text-micro);
@@ -246,11 +252,26 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 }
 .ctl-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
 .ctl-input:disabled { opacity: .5; }
-/* A horizontal row of chips sitting where a .ctl-input would — same 34px line
-   so the bar reads as one row of fields. (The chips once stacked vertically:
-   the container carried .ctl, whose flex-direction:column applied to the chips
-   themselves — owner-flagged, 2026-08-14. The chipset is now nested INSIDE the
-   .ctl, beside its label, like every other field.) */
+
+/* 1. SEARCH — first, full-width, a step more prominent than the other
+   fields (bigger line, bigger type) since it's the control used most. */
+.ctl-search { width: 100%; }
+.ctl-search .ctl-input {
+  min-height: 44px;
+  padding: .55em .8em;
+  font-size: var(--et-text-body);
+}
+
+/* 2. CATALOG CHIPS + live count + Reset — always visible, never inside
+   the advanced disclosure. */
+.cats-row { display: flex; align-items: center; gap: .6rem 1rem; flex-wrap: wrap; }
+.cats-row .ctl-label { flex: 0 0 auto; }
+.cats-row-actions { display: flex; align-items: center; gap: .6rem; margin-left: auto; }
+/* A horizontal row of chips — same 34px line so the row reads as one
+   control. (The chips once stacked vertically: the container carried
+   .ctl, whose flex-direction:column applied to the chips themselves —
+   owner-flagged, 2026-08-14. .chipset declares its own row direction so
+   it stays a row wherever it's placed — no longer dependent on nesting.) */
 .chipset { display: flex; flex-direction: row; align-items: center; gap: .35rem; flex-wrap: wrap; min-height: 34px; }
 .chip {
   min-height: 30px;
@@ -273,6 +294,49 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   color: var(--et-accent-fg);
 }
 .count { color: var(--et-muted); font-size: var(--et-text-small); }
+
+/* 3. ADVANCED FILTERS — collapsed by default; a native <details> so the
+   toggle needs no script and degrades safely with CSS off. Sections sit
+   side by side where width allows and stack on narrow screens. */
+.adv { border-top: 1px solid var(--et-hairline); padding-top: .6rem; }
+.adv-summary {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: .2em .1em;
+}
+.adv-summary::-webkit-details-marker { display: none; }
+.adv-summary::before {
+  content: '▸';
+  display: inline-block;
+  color: var(--et-muted);
+  transition: transform var(--et-dur-fast) var(--et-ease);
+}
+.adv[open] > .adv-summary::before { transform: rotate(90deg); }
+.adv-summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: var(--et-radius); }
+/* "N active" — shown only while collapsed, so a hidden filter is never a
+   silent mystery (admin.js: updateAdvHint). */
+.adv-count {
+  padding: .05em .55em;
+  border: 1px solid var(--et-accent);
+  border-radius: var(--et-radius-pill);
+  color: var(--et-accent);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+}
+.adv-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.6rem;
+  padding-top: .65rem;
+}
+.adv-section { display: flex; flex-direction: column; gap: .5rem; flex: 1 1 14rem; min-width: 12rem; }
+.adv-section-title { padding-bottom: .3rem; border-bottom: 1px solid var(--et-hairline); }
+.adv-fields { display: flex; flex-wrap: wrap; gap: .6rem .9rem; }
+.sort-controls { display: flex; align-items: center; gap: .4rem; }
 
 footer {
   margin-top: var(--et-space-4);
@@ -338,64 +402,94 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <p id="status" hidden></p>
 
-  <!-- SORT + FILTER bar: client-side over the directory already in memory
-       (admin.js). Hidden until there is a directory to filter; persists in
-       sessionStorage; re-applied after every mutation re-render. -->
+  <!-- CONTROLS: search first, catalog chips + count/reset always visible,
+       everything else behind "Advanced filters" (admin.js). Client-side
+       over the directory already in memory; hidden until there is a
+       directory to filter; state — including the advanced disclosure's
+       own open/closed state — persists in sessionStorage and is
+       re-applied after every mutation re-render. -->
   <div id="controls" class="controls" hidden>
-    <div class="ctl-group">
-      <label class="ctl">
-        <span class="ctl-label">Status</span>
-        <select id="f-status" class="ctl-input">
-          <option value="all">all</option>
-          <option value="pending">pending</option>
-          <option value="approved">approved</option>
-          <option value="revoked">revoked</option>
-        </select>
-      </label>
-      <label class="ctl">
-        <span class="ctl-label">Approver</span>
-        <select id="f-approver" class="ctl-input">
-          <option value="any">any</option>
-          <option value="only">only approvers</option>
-        </select>
-      </label>
-      <div class="ctl" role="group" aria-label="Sees catalog">
-        <span class="ctl-label">Sees</span>
-        <div class="chipset">
-          <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
-          <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
-          <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+    <label class="ctl ctl-search">
+      <span class="ctl-label">Name / email</span>
+      <input id="f-q" class="ctl-input" type="search" placeholder="Search name or email…" autocomplete="off">
+    </label>
+
+    <div class="cats-row">
+      <span class="ctl-label">Sees</span>
+      <div class="chipset" role="group" aria-label="Sees catalog">
+        <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
+        <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
+        <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+      </div>
+      <div class="cats-row-actions">
+        <span id="count" class="count" aria-live="polite"></span>
+        <button type="button" id="f-reset" class="btn small quiet">Reset</button>
+      </div>
+    </div>
+
+    <details id="adv" class="adv">
+      <summary class="adv-summary">
+        <span class="ctl-label">Advanced filters</span>
+        <span id="adv-count" class="adv-count" hidden></span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <span class="ctl-label adv-section-title">Estate</span>
+          <div class="adv-fields">
+            <label class="ctl">
+              <span class="ctl-label">Status</span>
+              <select id="f-status" class="ctl-input">
+                <option value="all">all</option>
+                <option value="pending">pending</option>
+                <option value="approved">approved</option>
+                <option value="revoked">revoked</option>
+              </select>
+            </label>
+            <label class="ctl">
+              <span class="ctl-label">Approver</span>
+              <select id="f-approver" class="ctl-input">
+                <option value="any">any</option>
+                <option value="only">only approvers</option>
+              </select>
+            </label>
+            <div class="ctl">
+              <span class="ctl-label">Sort</span>
+              <div class="sort-controls">
+                <select id="s-key" class="ctl-input">
+                  <option value="name">name</option>
+                  <option value="email">email</option>
+                  <option value="status">status</option>
+                  <option value="first_seen">first seen</option>
+                  <option value="decided">decided date</option>
+                  <option value="breadth">breadth (catalogs)</option>
+                </select>
+                <button type="button" id="s-dir" class="btn small quiet" aria-pressed="false">↑ asc</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="adv-section">
+          <span class="ctl-label adv-section-title">Library</span>
+          <div class="adv-fields">
+            <label class="ctl">
+              <span class="ctl-label">Library role</span>
+              <select id="f-role-library" class="ctl-input"><option value="any">any</option></select>
+            </label>
+          </div>
+        </div>
+
+        <div class="adv-section">
+          <span class="ctl-label adv-section-title">Games</span>
+          <div class="adv-fields">
+            <label class="ctl">
+              <span class="ctl-label">Games role</span>
+              <select id="f-role-games" class="ctl-input"><option value="any">any</option></select>
+            </label>
+          </div>
         </div>
       </div>
-      <label class="ctl">
-        <span class="ctl-label">Library role</span>
-        <select id="f-role-library" class="ctl-input"><option value="any">any</option></select>
-      </label>
-      <label class="ctl">
-        <span class="ctl-label">Games role</span>
-        <select id="f-role-games" class="ctl-input"><option value="any">any</option></select>
-      </label>
-      <label class="ctl grow">
-        <span class="ctl-label">Name / email</span>
-        <input id="f-q" class="ctl-input" type="search" placeholder="contains…" autocomplete="off">
-      </label>
-    </div>
-    <div class="ctl-group">
-      <label class="ctl">
-        <span class="ctl-label">Sort</span>
-        <select id="s-key" class="ctl-input">
-          <option value="name">name</option>
-          <option value="email">email</option>
-          <option value="status">status</option>
-          <option value="first_seen">first seen</option>
-          <option value="decided">decided date</option>
-          <option value="breadth">breadth (catalogs)</option>
-        </select>
-      </label>
-      <button type="button" id="s-dir" class="btn small quiet" aria-pressed="false">↑ asc</button>
-      <span id="count" class="count" aria-live="polite"></span>
-      <button type="button" id="f-reset" class="btn small quiet">Reset</button>
-    </div>
+    </details>
   </div>
 
   <ul id="users" class="users"></ul>
