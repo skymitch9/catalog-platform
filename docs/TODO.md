@@ -178,6 +178,31 @@ per-catalog visibility (who can see what), and per-app role (who is an admin
 where). All client-side — the page already holds the directory + both apps'
 federated rosters. Dispatched same day.
 
+## Discord bot — option space (design doc on file)
+
+Design doc: [`docs/info/discord-bot-design.md`](info/discord-bot-design.md)
+(2026-08-14, no code yet). Builds on `audiobook_catalog/docs/info/
+discord-poll-sync-research.md` (bot mechanics: Ed25519 interactions endpoint,
+token custody, per-server invite, identity linking). Recommended first
+three: (b), (a), (d) below.
+
+- (a) Two-way poll voting — buttons sync votes with club polls both ways. **M**
+- (b) `/have` or `/shelf` — "does the estate have this book?" via the index
+  Worker's search, scoped `{audiobook}` for strangers / member visibility for
+  linked+approved users. **S–M**
+- (c) New-additions feed / `/recent` / rich shelf embed — browse what's owned,
+  driven by `additions_log.json`. **S (feed/`/recent`), M (rich embed)**
+- (d) Club RSVP via buttons — ties to the shipped meeting scheduler. **M**
+- (e) `/progress` — reading-progress updates from Discord, identity-linked
+  writes via service account. **M–L**
+- (f) Meeting reminders with snooze/RSVP actions. **M**
+- (g) Community-stats digest posts to a channel. **S–M**
+- (h) `/suggest` — TBR suggestions from Discord, identity-linked writes. **M**
+- P1 `/guessgame` — Discord-native cover-guessing game (proposal). **M**
+- P2 `/review` — surface existing book reviews on request (proposal). **S**
+- P3 `/universe <name>` — cross-catalog universe showcase (proposal). **S**
+- P4 Per-book discussion threads on read-start (proposal, lower priority). **M–L**
+
 ## Fable-preferred queue (started 2026-08-14, owner directive)
 
 Agents now run non-Fable by default. Work banked here genuinely benefits from
