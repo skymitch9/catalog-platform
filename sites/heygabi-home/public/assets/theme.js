@@ -3,23 +3,48 @@
  * synchronously in <head> right after estate-theme.css so the persisted
  * theme/mode land on <html> before first paint (no flash of the wrong theme).
  *
+ * v2 (2026-08-13): themes persist PER PAGE. The owner: "let me set a theme per
+ * page and it persist, sometimes i want different looks and feel for all my
+ * pages." Resolution order, first hit wins:
+ *
+ *   1. this page's override — localStorage `hg_theme_page`, a JSON object
+ *      keyed by normalised location.pathname (trailing slash and /index.html
+ *      stripped, so /admin, /admin/ and /admin/index.html are ONE page);
+ *   2. the site default the person chose — localStorage `hg_theme`;
+ *   3. the site's identity — <html data-default-theme="…">;
+ *   4. 'apple'.
+ *
+ * setTheme() writes the PAGE override (that is the owner's expressed default
+ * for the cog); setSiteTheme() is the "apply to all pages" lever — it writes
+ * `hg_theme` and DELETES the whole override map, because "all pages" means
+ * what it says (docs/info/estate-themes.md §2a argues this out). MODE stays
+ * site-wide (`hg_mode`) on purpose: per-page dark/light is chaos.
+ *
  * What it does:
- *   - reads localStorage `hg_theme` ('classic'|'apple'|'cyberpunk'|'retro') and
- *     `hg_mode` ('auto'|'light'|'dark'); origin-scoped, so each site keeps
- *     its own choice for free;
+ *   - reads the three keys above; localStorage is origin-scoped, so each
+ *     site keeps its own choices for free;
  *   - stamps <html data-theme="…" data-mode="light|dark"> — data-mode is
  *     always the RESOLVED mode ('auto' is resolved against
  *     prefers-color-scheme and re-resolved live when the OS flips);
- *   - exposes window.estateTheme { get, setTheme, setMode, themes, modes }
- *     and fires 'hg-themechange' on document — this API is how a consumer
- *     site's EXISTING settings cog integrates (docs/info/estate-themes.md);
+ *   - exposes window.estateTheme { get, setTheme, setSiteTheme, setMode,
+ *     themes, modes } and fires 'hg-themechange' on document, whose detail
+ *     carries `scope` ('page' when an override governs here, else 'site') —
+ *     this API is how a consumer site's EXISTING settings cog integrates;
  *   - wires the standard cog UI if the page carries the #hg-cog markup
- *     (button#hg-cog + div#hg-cog-panel with select#hg-theme-select and
- *     [data-hg-mode] buttons). Pages without the markup get the API only.
+ *     (button#hg-cog + div#hg-cog-panel with select#hg-theme-select,
+ *     [data-hg-mode] buttons, and optionally button#hg-apply-all +
+ *     p#hg-scope-note). Pages without the markup get the API only.
+ *
+ * ⚠️ SPA note: "the page" is location.pathname at the moment of boot or of a
+ * setTheme() call. Client-side navigation does not re-resolve — the theme a
+ * person set travels with the session until the next real page load, which
+ * resolves against the path it lands on. Coherent, and cheap to reason about.
  *
  * The per-site DEFAULT is identity (owner, 2026-08-13): a site declares its
- * classic look via <html data-default-theme="…"> — apex + library 'apple',
- * audiobooks 'cyberpunk', games 'retro'. Unset falls back to 'apple'.
+ * classic look via <html data-default-theme="…"> — apex 'classic', /admin +
+ * library 'apple', audiobooks 'cyberpunk', games 'retro'. Unset falls back
+ * to 'apple'. No migration for v2: absence of `hg_theme_page` simply means
+ * no page has its own look yet.
  */
 
 (function () {
@@ -29,6 +54,7 @@
   var THEMES = ['classic', 'apple', 'cyberpunk', 'retro'];
   var MODES = ['auto', 'light', 'dark'];
   var DEFAULT_THEME = docEl.getAttribute('data-default-theme') || 'apple';
+  var PAGE_MAP_KEY = 'hg_theme_page';
   var media = window.matchMedia('(prefers-color-scheme: dark)');
 
   function read(key) {
@@ -37,11 +63,47 @@
   function write(key, value) {
     try { localStorage.setItem(key, value); } catch (e) { /* private mode etc. — selection just won't persist */ }
   }
+  function remove(key) {
+    try { localStorage.removeItem(key); } catch (e) { /* same */ }
+  }
 
-  var storedTheme = read('hg_theme');
+  function validTheme(t) {
+    return THEMES.indexOf(t) >= 0 ? t : null;
+  }
+
+  // One page, one key: strip /index.html and any trailing slash so a page
+  // reached three ways cannot accumulate three overrides.
+  function pageKey() {
+    var p = location.pathname || '/';
+    p = p.replace(/\/index\.html?$/i, '/');
+    if (p.length > 1) p = p.replace(/\/+$/, '');
+    return p === '' ? '/' : p;
+  }
+
+  // The override map. Corrupt JSON or a non-object reads as "no overrides";
+  // unknown theme values are dropped rather than stamped.
+  function readOverrides() {
+    var raw = read(PAGE_MAP_KEY);
+    if (!raw) return {};
+    try {
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Object.prototype.toString.call(parsed) !== '[object Object]') return {};
+      var clean = {};
+      for (var k in parsed) {
+        if (Object.prototype.hasOwnProperty.call(parsed, k) && validTheme(parsed[k])) clean[k] = parsed[k];
+      }
+      return clean;
+    } catch (e) { return {}; }
+  }
+
+  var overrides = readOverrides();
+  var siteTheme = validTheme(read('hg_theme')) || DEFAULT_THEME;
   var storedMode = read('hg_mode');
+  var bootOverride = validTheme(overrides[pageKey()]);
+
   var state = {
-    theme: THEMES.indexOf(storedTheme) >= 0 ? storedTheme : DEFAULT_THEME,
+    theme: bootOverride || siteTheme,
+    scope: bootOverride ? 'page' : 'site',
     mode: MODES.indexOf(storedMode) >= 0 ? storedMode : 'auto',
   };
 
@@ -54,7 +116,13 @@
     docEl.setAttribute('data-mode', resolvedMode());
     try {
       document.dispatchEvent(new CustomEvent('hg-themechange', {
-        detail: { theme: state.theme, mode: state.mode, resolvedMode: resolvedMode() },
+        detail: {
+          theme: state.theme,
+          mode: state.mode,
+          resolvedMode: resolvedMode(),
+          scope: state.scope,
+          siteTheme: siteTheme,
+        },
       }));
     } catch (e) { /* CustomEvent should exist everywhere we run; stay quiet if not */ }
   }
@@ -69,10 +137,34 @@
   window.estateTheme = {
     themes: THEMES.slice(),
     modes: MODES.slice(),
-    get: function () { return { theme: state.theme, mode: state.mode, resolvedMode: resolvedMode() }; },
+    get: function () {
+      return {
+        theme: state.theme,
+        mode: state.mode,
+        resolvedMode: resolvedMode(),
+        scope: state.scope,
+        siteTheme: siteTheme,
+      };
+    },
+    /** Theme for THIS PAGE — writes the per-path override. */
     setTheme: function (t) {
-      if (THEMES.indexOf(t) < 0) return;
+      if (!validTheme(t)) return;
       state.theme = t;
+      state.scope = 'page';
+      overrides[pageKey()] = t;
+      write(PAGE_MAP_KEY, JSON.stringify(overrides));
+      apply();
+    },
+    /** Theme for ALL pages — writes the site default and clears EVERY page
+     *  override, this page's and every other's. "All pages" means all pages;
+     *  this is also the only reset lever, on purpose (estate-themes.md §2a). */
+    setSiteTheme: function (t) {
+      if (!validTheme(t)) return;
+      siteTheme = t;
+      state.theme = t;
+      state.scope = 'site';
+      overrides = {};
+      remove(PAGE_MAP_KEY);
       write('hg_theme', t);
       apply();
     },
@@ -92,10 +184,13 @@
     if (!cog || !panel) return;
 
     var themeSelect = document.getElementById('hg-theme-select');
+    var applyAll = document.getElementById('hg-apply-all');
+    var scopeNote = document.getElementById('hg-scope-note');
     var modeButtons = panel.querySelectorAll('[data-hg-mode]');
 
     function sync() {
       if (themeSelect) themeSelect.value = state.theme;
+      if (scopeNote) scopeNote.hidden = state.scope !== 'page';
       for (var i = 0; i < modeButtons.length; i++) {
         var b = modeButtons[i];
         b.setAttribute('aria-pressed', b.getAttribute('data-hg-mode') === state.mode ? 'true' : 'false');
@@ -128,6 +223,11 @@
     if (themeSelect) {
       themeSelect.addEventListener('change', function () {
         window.estateTheme.setTheme(themeSelect.value);
+      });
+    }
+    if (applyAll) {
+      applyAll.addEventListener('click', function () {
+        window.estateTheme.setSiteTheme(state.theme);
       });
     }
     for (var i = 0; i < modeButtons.length; i++) {
