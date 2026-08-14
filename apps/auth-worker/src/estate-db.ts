@@ -9,13 +9,16 @@
  */
 
 import type { EstateUserRow } from './env.js';
+import type { Catalog } from './visibility.js';
+import { visibilityToFlags } from './visibility.js';
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 const COLS =
-  'id, email, firebase_uid, display_name, status, is_approver, origin, note, first_seen_at, decided_at, decided_by';
+  'id, email, firebase_uid, display_name, status, is_approver, origin, note, first_seen_at, decided_at, decided_by, ' +
+  'vis_audiobook, vis_library, vis_games';
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<EstateUserRow | null> {
   const row = await db
@@ -87,11 +90,29 @@ export async function listUsers(db: D1Database): Promise<EstateUserRow[]> {
   return results;
 }
 
-/** Approve / revoke. Stamps decided_at / decided_by; status only, never a role. */
+/**
+ * Approve / revoke. Stamps decided_at / decided_by; status only, never a role.
+ * `visibility`, when given (approval-time narrowing, §4.5), sets the stored
+ * set in the same statement — one decision, one write.
+ */
 export async function decideStatus(
   db: D1Database,
-  input: { id: number; status: 'approved' | 'revoked'; actorId: number },
+  input: { id: number; status: 'approved' | 'revoked'; actorId: number; visibility?: Catalog[] },
 ): Promise<EstateUserRow | null> {
+  if (input.visibility) {
+    const f = visibilityToFlags(input.visibility);
+    const row = await db
+      .prepare(
+        `UPDATE estate_user
+         SET status = ?, vis_audiobook = ?, vis_library = ?, vis_games = ?,
+             decided_at = datetime('now'), decided_by = ?
+         WHERE id = ?
+         RETURNING ${COLS}`,
+      )
+      .bind(input.status, f.vis_audiobook, f.vis_library, f.vis_games, input.actorId, input.id)
+      .first<EstateUserRow>();
+    return row ?? null;
+  }
   const row = await db
     .prepare(
       `UPDATE estate_user
@@ -100,6 +121,29 @@ export async function decideStatus(
        RETURNING ${COLS}`,
     )
     .bind(input.status, input.actorId, input.id)
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * Set the STORED visibility set (§4.5) — narrowing or re-widening after
+ * approval. Stamped like a status decision: who changed what a member can
+ * see, and when, must be reconstructible. Never touches status.
+ */
+export async function setVisibility(
+  db: D1Database,
+  input: { id: number; visibility: Catalog[]; actorId: number },
+): Promise<EstateUserRow | null> {
+  const f = visibilityToFlags(input.visibility);
+  const row = await db
+    .prepare(
+      `UPDATE estate_user
+       SET vis_audiobook = ?, vis_library = ?, vis_games = ?,
+           decided_at = datetime('now'), decided_by = ?
+       WHERE id = ?
+       RETURNING ${COLS}`,
+    )
+    .bind(f.vis_audiobook, f.vis_library, f.vis_games, input.actorId, input.id)
     .first<EstateUserRow>();
   return row ?? null;
 }

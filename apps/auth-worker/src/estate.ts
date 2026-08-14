@@ -5,6 +5,7 @@
  *   GET  /api/estate/users           admin API (approver-gated, CORS: apex only)
  *   POST /api/estate/users/:id/status
  *   POST /api/estate/users/:id/approver
+ *   POST /api/estate/users/:id/visibility   which catalogs the member may SEE (§4.5)
  *   GET  /api/health                 open; counts, no emails
  *
  * ⚠️ There is NO admin page here — the admin UI lives on the apex
@@ -22,9 +23,11 @@ import {
   listUsers,
   seenUpsert,
   setApprover,
+  setVisibility,
   statusCounts,
 } from './estate-db.js';
 import { requireApprover } from './middleware/auth.js';
+import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
 
 /**
  * Bearer-token check. Length-gated `crypto.subtle.timingSafeEqual` — the
@@ -67,20 +70,44 @@ const seenBodySchema = z
   })
   .strict();
 
+/**
+ * The visibility set as the API speaks it (§4.5): an array of catalog names,
+ * normalized to canonical order + deduped on the way in. Empty is legal —
+ * an approver may narrow to nothing (the estate's surfaces then show
+ * nothing, mirroring the revoked rule).
+ */
+const visibilitySchema = z.array(z.enum(CATALOGS)).max(20).transform((v) => normalizeVisibility(v));
+
 const statusBodySchema = z
   .object({
     // Approve or revoke — never 'pending' (a decision cannot be un-made into
     // "never decided"; re-approving is how a mistake is corrected) and never
     // a role (the estate answers in/out only).
     status: z.enum(['approved', 'revoked']),
+    // Approval-time narrowing (§4.5). Omitted = the stored set stands (all
+    // three by default). Meaningless with 'revoked' — refused below, because
+    // a revoked person's effective set is {} regardless and a stored narrow
+    // set on a revocation would only mislead a later re-approval.
+    visibility: visibilitySchema.optional(),
   })
   .strict();
 
 const approverBodySchema = z.object({ is_approver: z.boolean() }).strict();
 
-/** What the admin API shows. Everything in the row; there are no secrets in it. */
+const visibilityBodySchema = z.object({ visibility: visibilitySchema }).strict();
+
+/**
+ * What the admin API shows: the row plus `visibility` — the STORED set (for
+ * a pending row, what approval would grant). The raw vis_ flags stay out of
+ * the JSON so the array is the one representation consumers see.
+ */
 function userJson(row: EstateUserRow) {
-  return { ...row, is_approver: row.is_approver === 1 };
+  const { vis_audiobook, vis_library, vis_games, ...rest } = row;
+  return {
+    ...rest,
+    is_approver: row.is_approver === 1,
+    visibility: storedVisibility(row),
+  };
 }
 
 export const estateRoutes = new Hono<AppBindings>();
@@ -123,11 +150,18 @@ estateRoutes.post('/estate/seen', async (c) => {
 
   // §4.3: OWNER_EMAILS is approved regardless of table state. Computed, not
   // stored — the row keeps its honest history, the answer keeps the estate
-  // recoverable when the directory is wrong about its own owner.
+  // recoverable when the directory is wrong about its own owner. Visibility
+  // rides the same rule: an owner sees all three regardless of stored flags,
+  // so the break-glass can never be narrowed into a lockout.
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
-  const status = owners.includes(row.email) ? 'approved' : row.status;
+  const isOwner = owners.includes(row.email);
+  const status = isOwner ? 'approved' : row.status;
 
-  return c.json({ status });
+  // §4.5: the EFFECTIVE set, already combined with status — consumers apply
+  // it as-is: approved → stored; pending → {audiobook}; revoked → {}.
+  const visibility = isOwner ? [...CATALOGS] : effectiveVisibility(status, row);
+
+  return c.json({ status, visibility });
 });
 
 // ---------------------------------------------------------------------------
@@ -153,6 +187,13 @@ estateRoutes.post('/estate/users/:id/status', requireApprover(), async (c) => {
     return c.json({ error: 'invalid_body', issues: parsed.error.issues.slice(0, 5) }, 400);
   }
 
+  if (parsed.data.visibility && parsed.data.status !== 'approved') {
+    return c.json(
+      { error: 'invalid_body', detail: 'visibility may only accompany an approval — a revoked person sees {} regardless (§4.5).' },
+      400,
+    );
+  }
+
   const existing = await getUserById(c.env.DB, id);
   if (!existing) return c.json({ error: 'not_found', id }, 404);
 
@@ -160,6 +201,7 @@ estateRoutes.post('/estate/users/:id/status', requireApprover(), async (c) => {
     id,
     status: parsed.data.status,
     actorId: c.get('actor').id,
+    visibility: parsed.data.visibility,
   });
   return c.json({ user: updated ? userJson(updated) : null });
 });
@@ -190,6 +232,38 @@ estateRoutes.post('/estate/users/:id/approver', requireApprover(), async (c) => 
   const updated = await setApprover(c.env.DB, {
     id,
     isApprover: parsed.data.is_approver,
+    actorId: c.get('actor').id,
+  });
+  return c.json({ user: updated ? userJson(updated) : null });
+});
+
+// ---------------------------------------------------------------------------
+// POST /estate/users/:id/visibility — set which catalogs the member may SEE
+// (§4.5). Narrowing or re-widening after approval; stamps decided_at /
+// decided_by like every decision. Status and is_approver are untouched —
+// visibility is deliberately NOT a role: apps own what a person may DO.
+// ---------------------------------------------------------------------------
+estateRoutes.post('/estate/users/:id/visibility', requireApprover(), async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'bad_id' }, 400);
+
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = visibilityBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues.slice(0, 5) }, 400);
+  }
+
+  const existing = await getUserById(c.env.DB, id);
+  if (!existing) return c.json({ error: 'not_found', id }, 404);
+
+  const updated = await setVisibility(c.env.DB, {
+    id,
+    visibility: parsed.data.visibility,
     actorId: c.get('actor').id,
   });
   return c.json({ user: updated ? userJson(updated) : null });

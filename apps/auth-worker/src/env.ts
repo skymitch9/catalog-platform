@@ -58,6 +58,15 @@ export interface EstateUserRow {
   first_seen_at: string;
   decided_at: string | null;
   decided_by: number | null;
+  /**
+   * Visibility flags (0002, design §4.5): which catalogs this person may SEE.
+   * ⚠️ Not a role system — each app still owns what a person may DO there.
+   * The stored set only answers for the approved; /seen computes the
+   * effective set from status (visibility.ts).
+   */
+  vis_audiobook: number;
+  vis_library: number;
+  vis_games: number;
 }
 
 export type AppBindings = {

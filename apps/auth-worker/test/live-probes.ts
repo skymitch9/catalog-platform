@@ -167,6 +167,11 @@ async function phaseA(): Promise<void> {
       body: { email: 'Bob@Example.COM', firebase_uid: 'uid-bob', display_name: 'Bob' },
     });
     check('A3 /seen creates pending', r.status === 200 && r.body.status === 'pending', JSON.stringify(r.body));
+    check(
+      'A3v pending /seen carries the public slice only — visibility ["audiobook"] (§4.5)',
+      JSON.stringify(r.body.visibility) === '["audiobook"]',
+      JSON.stringify(r.body.visibility),
+    );
 
     r = await api('GET', '/api/estate/users');
     const bob = r.body.users.find((u: any) => u.email === 'bob@example.com');
@@ -196,6 +201,11 @@ async function phaseA(): Promise<void> {
 
     r = await api('POST', '/api/estate/seen', { token: TOKENS.index, body: { email: 'bob@example.com' } });
     check('A10 /seen now answers approved', r.body.status === 'approved');
+    check(
+      'A10v approval without narrowing grants ALL THREE (the 0002 defaults)',
+      JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
+      JSON.stringify(r.body.visibility),
+    );
 
     // Revoke; revocation survives re-sign-in (§4.2 — rows never deleted).
     r = await api('POST', `/api/estate/users/${bob2.id}/status`, { body: { status: 'revoked' } });
@@ -205,6 +215,11 @@ async function phaseA(): Promise<void> {
       body: { email: 'bob@example.com', display_name: 'Bob Again' },
     });
     check('A12 a revoked person re-signing-in meets their revocation, not a fresh pending', r.body.status === 'revoked');
+    check(
+      'A12v revoked ⇒ visibility {} — revocation beats the public slice (§4.5)',
+      JSON.stringify(r.body.visibility) === '[]',
+      JSON.stringify(r.body.visibility),
+    );
 
     // Promotion guard + the promotion path (owner decision #4: API, no redeploy).
     r = await api('POST', `/api/estate/users/${bob2.id}/approver`, { body: { is_approver: true } });
@@ -213,11 +228,56 @@ async function phaseA(): Promise<void> {
     r = await api('POST', `/api/estate/users/${bob2.id}/approver`, { body: { is_approver: true } });
     check('A14 approve-then-promote flips is_approver via the API', r.status === 200 && r.body.user.is_approver === true);
 
-    // A second approved (but never approver) user for phase C.
+    // --- Visibility (§4.5): the admin surface, and /seen carrying the set ---
+    check(
+      'A19 admin rows speak visibility as an array, never raw vis_ flags',
+      Array.isArray(r.body.user.visibility) && !('vis_audiobook' in r.body.user),
+      JSON.stringify(r.body.user),
+    );
+    r = await api('POST', `/api/estate/users/${bob2.id}/visibility`, {
+      body: { visibility: ['games', 'audiobook', 'games'] },
+    });
+    check(
+      'A20 set visibility: dedupes, canonical order, stamps the decision',
+      r.status === 200 &&
+        JSON.stringify(r.body.user.visibility) === '["audiobook","games"]' &&
+        r.body.user.decided_at !== null,
+      JSON.stringify(r.body.user),
+    );
+    r = await api('POST', '/api/estate/seen', { token: TOKENS.library, body: { email: 'bob@example.com' } });
+    check(
+      'A21 /seen answers the narrowed set for an approved member',
+      r.body.status === 'approved' && JSON.stringify(r.body.visibility) === '["audiobook","games"]',
+      JSON.stringify(r.body),
+    );
+    r = await api('POST', `/api/estate/users/${bob2.id}/visibility`, { body: { visibility: [] } });
+    check('A22 narrowing to {} is legal — approved may see nothing on estate surfaces', r.status === 200 && JSON.stringify(r.body.user.visibility) === '[]');
+    r = await api('POST', '/api/estate/seen', { token: TOKENS.library, body: { email: 'bob@example.com' } });
+    check('A23 /seen honours the empty set for the approved', JSON.stringify(r.body.visibility) === '[]');
+    r = await api('POST', `/api/estate/users/${bob2.id}/visibility`, {
+      body: { visibility: ['audiobook', 'library', 'games'] },
+    });
+    check('A24 re-widening restores all three', JSON.stringify(r.body.user.visibility) === '["audiobook","library","games"]');
+    r = await api('POST', `/api/estate/users/${bob2.id}/visibility`, { body: { visibility: ['bookface'] } });
+    check('A25 an unknown catalog name is refused 400', r.status === 400, `got ${r.status}`);
+    r = await api('POST', `/api/estate/users/${bob2.id}/status`, {
+      body: { status: 'revoked', visibility: ['audiobook'] },
+    });
+    check('A26 visibility with a revocation is refused 400 — revoked sees {} regardless', r.status === 400, `got ${r.status}`);
+
+    // A second approved (but never approver) user for phase C — approved WITH
+    // approval-time narrowing, the §4.5 one-call path.
     await api('POST', '/api/estate/seen', { token: TOKENS.library, body: { email: 'carol@example.com' } });
     r = await api('GET', '/api/estate/users');
     const carol = r.body.users.find((u: any) => u.email === 'carol@example.com');
-    await api('POST', `/api/estate/users/${carol.id}/status`, { body: { status: 'approved' } });
+    r = await api('POST', `/api/estate/users/${carol.id}/status`, {
+      body: { status: 'approved', visibility: ['audiobook', 'library'] },
+    });
+    check(
+      'A27 approval-time narrowing lands in one call',
+      r.status === 200 && r.body.user.status === 'approved' && JSON.stringify(r.body.user.visibility) === '["audiobook","library"]',
+      JSON.stringify(r.body.user),
+    );
 
     // Bad inputs.
     r = await api('POST', `/api/estate/users/${bob2.id}/status`, { body: { status: 'pending' } });
@@ -230,6 +290,11 @@ async function phaseA(): Promise<void> {
     // The owner's own /seen: computed approved (§4.3), row state untouched.
     r = await api('POST', '/api/estate/seen', { token: TOKENS.library, body: { email: OWNER } });
     check('A18 OWNER_EMAILS /seen answers approved regardless of table state', r.body.status === 'approved');
+    check(
+      'A18v OWNER_EMAILS sees all three, computed — break-glass cannot be narrowed into lockout',
+      JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
+      JSON.stringify(r.body.visibility),
+    );
   } finally {
     stopDev(child);
     await waitDown();

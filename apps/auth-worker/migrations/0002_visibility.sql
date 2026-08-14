@@ -1,0 +1,37 @@
+-- estate_auth 0002 — per-member VISIBILITY: which catalogs this person may
+-- SEE (`audiobook`, `library`, `games`). Design: estate-auth-design.md §4.5.
+--
+-- ⚠️ This must NOT become a role system — each app still owns what a person
+-- may DO there (§1.2/§1.3 stand). Visibility answers estate-level questions
+-- only: index search scope today, a federated admin view later. The estate
+-- answers in/out and now WHICH SHELVES ARE IN THE ROOM; what a person may do
+-- at any shelf stays app-local forever.
+--
+-- Encoding: three flag columns, not a CSV/JSON set column. Argued:
+--   1. Additive forever. Catalog #4 is one more ADD COLUMN — the cheap kind
+--      of migration. A set column's CHECK would enumerate the valid names,
+--      and SQLite CHECKs cannot be altered: every new catalog would cost the
+--      full table rebuild the apps paid in 0008/0023/0024.
+--   2. SQLite has no set type. A TEXT set invites canonicalization bugs
+--      ('library,audiobook' vs 'audiobook,library', duplicates, whitespace),
+--      and a CHECK strong enough to forbid them is a regex in a constraint —
+--      which SQLite cannot express. Three flags have no canonical form to
+--      get wrong.
+--   3. Each flag is individually CHECK-able (IN (0,1)) and individually
+--      updatable in plain SQL — no JSON functions, no read-modify-write.
+--   The cost, named: the catalog list lives in the schema instead of in
+--   data. At three catalogs, with the list already hardcoded in the estate's
+--   posture declarations and the seed, that is where it honestly lives.
+--
+-- DEFAULT 1 on all three: ADD COLUMN backfills every existing row, so the
+-- seeded approved members hold all three the moment this applies — the
+-- current household expectation; nothing changes for them. New rows also
+-- default to all three, so an approval that does not narrow grants all
+-- three; the admin API narrows at approval time or after (§4.5).
+--
+-- Flags on pending/revoked rows are inert: /seen answers the EFFECTIVE set
+-- (pending → the public slice {audiobook}; revoked → {}), computed from
+-- status at read time. The stored set is only the answer for the approved.
+ALTER TABLE estate_user ADD COLUMN vis_audiobook INTEGER NOT NULL DEFAULT 1 CHECK (vis_audiobook IN (0, 1));
+ALTER TABLE estate_user ADD COLUMN vis_library   INTEGER NOT NULL DEFAULT 1 CHECK (vis_library   IN (0, 1));
+ALTER TABLE estate_user ADD COLUMN vis_games     INTEGER NOT NULL DEFAULT 1 CHECK (vis_games     IN (0, 1));
