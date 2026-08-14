@@ -39,6 +39,11 @@ FIREBASE_PROJECT_ID = "audiobook-catalog"
 OWNER_EMAILS = "nbaslamking@gmail.com"
 # The admin UI's origin — the apex, and nothing else (owner decision #6).
 ADMIN_ORIGINS = "https://heygabi.ai"
+# Browsers allowed to call GET /api/estate/me — the apex AND the audiobook
+# site (its /dev/ lane shares the same origin). ⚠️ Wider than ADMIN_ORIGINS
+# on purpose, and consulted ONLY by the /me CORS; the admin API stays
+# locked to ADMIN_ORIGINS alone.
+ME_ORIGINS = "https://heygabi.ai,https://audiobooks.heygabi.ai"
 
 [[d1_databases]]
 binding = "DB"

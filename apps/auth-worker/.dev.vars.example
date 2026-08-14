@@ -6,6 +6,9 @@ FIREBASE_PROJECT_ID=audiobook-catalog
 OWNER_EMAILS=nbaslamking@gmail.com
 # The apex admin page's dev origin, alongside production.
 ADMIN_ORIGINS=https://heygabi.ai,http://localhost:8080
+# Browsers allowed on GET /api/estate/me — wider than ADMIN_ORIGINS on purpose
+# (the audiobook site calls it); unset ⇒ /me falls back to ADMIN_ORIGINS.
+ME_ORIGINS=https://heygabi.ai,https://audiobooks.heygabi.ai,http://localhost:8080
 # Per-consumer bearer tokens for /api/estate/seen — any long random values locally.
 ESTATE_APP_TOKEN_LIBRARY=dev-library-token
 ESTATE_APP_TOKEN_GAMES=dev-games-token

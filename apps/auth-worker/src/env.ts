@@ -32,6 +32,14 @@ export interface Env {
   ADMIN_ORIGINS?: string;
 
   /**
+   * Comma-separated origins allowed to call GET /api/estate/me from a
+   * browser — the apex AND the audiobook site. ⚠️ Deliberately wider than
+   * ADMIN_ORIGINS and consulted ONLY for /me; the admin API never reads it.
+   * Unset ⇒ /me falls back to ADMIN_ORIGINS (narrow, never wide).
+   */
+  ME_ORIGINS?: string;
+
+  /**
    * Per-consumer bearer tokens for POST /api/estate/seen — one secret per
    * app (`wrangler secret put ESTATE_APP_TOKEN_LIBRARY`, etc.; .dev.vars
    * locally). Per-app so one leaked token is one rotation, and so the

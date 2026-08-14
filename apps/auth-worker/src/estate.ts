@@ -2,6 +2,8 @@
  * The directory's routes (design §4.4, amended by owner decision #6):
  *
  *   POST /api/estate/seen            per-app bearer — answer the check AND queue newcomers
+ *   GET  /api/estate/me              the caller's own answer (Firebase ID token,
+ *                                    CORS: apex + audiobook site — see index.ts)
  *   GET  /api/estate/users           admin API (approver-gated, CORS: apex only)
  *   POST /api/estate/users/:id/status
  *   POST /api/estate/users/:id/approver
@@ -15,10 +17,12 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { resolveIdentity } from '@platform/estate-auth';
 import type { AppBindings, ConsumerApp, EstateUserRow } from './env.js';
 import { CONSUMER_APPS, appTokenFor, parseOwnerEmails } from './env.js';
 import {
   decideStatus,
+  getUserByEmail,
   getUserById,
   listUsers,
   seenUpsert,
@@ -26,6 +30,7 @@ import {
   setVisibility,
   statusCounts,
 } from './estate-db.js';
+import { meAnswer } from './me.js';
 import { requireApprover } from './middleware/auth.js';
 import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
 
@@ -162,6 +167,30 @@ estateRoutes.post('/estate/seen', async (c) => {
   const visibility = isOwner ? [...CATALOGS] : effectiveVisibility(status, row);
 
   return c.json({ status, visibility });
+});
+
+// ---------------------------------------------------------------------------
+// GET /estate/me — a BROWSER endpoint: the caller asks about THEMSELF with
+// their own Firebase ID token (the canonical verifier — iss/aud pinned to the
+// shared project). Unlike /seen it enrols nobody, and unlike the admin API it
+// gates nothing: an unknown user is answered { status: null }, never an
+// error. CORS (apex + audiobook site, ME_ORIGINS) is mounted in index.ts
+// BEFORE this handler runs, so the tokenless OPTIONS preflight succeeds —
+// the estate learned that ordering the hard way.
+// ---------------------------------------------------------------------------
+estateRoutes.get('/estate/me', async (c) => {
+  let identity;
+  try {
+    identity = await resolveIdentity(c.req.raw, c.env);
+  } catch (err) {
+    return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
+  }
+  if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+
+  const email = identity.email.trim().toLowerCase();
+  const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
+  const row = await getUserByEmail(c.env.DB, email);
+  return c.json(meAnswer(row, owners.includes(email)));
 });
 
 // ---------------------------------------------------------------------------

@@ -42,6 +42,12 @@ app.use('/api/*', rateLimit());
 app.use('/api/estate/users', adminCors());
 app.use('/api/estate/users/*', adminCors());
 
+// CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
+// audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
+// preflight is answered by the middleware, never by the auth check — and
+// confined to exactly this path so the admin API stays apex-only.
+app.use('/api/estate/me', meCors());
+
 app.route('/api', estateRoutes);
 
 function adminCors() {
@@ -51,6 +57,20 @@ function adminCors() {
       return allowed.includes(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  });
+}
+
+function meCors() {
+  return cors({
+    origin: (origin, c) => {
+      // Falls back to ADMIN_ORIGINS when ME_ORIGINS is unset (a fresh .dev.vars),
+      // which fails in the NARROW direction — never wider than the apex.
+      const allowed = parseAdminOrigins(c.env.ME_ORIGINS ?? c.env.ADMIN_ORIGINS);
+      return allowed.includes(origin) ? origin : null;
+    },
+    allowMethods: ['GET', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
   });

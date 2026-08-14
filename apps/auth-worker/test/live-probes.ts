@@ -139,6 +139,7 @@ const baseVars = {
   FIREBASE_PROJECT_ID: 'audiobook-catalog',
   OWNER_EMAILS: OWNER,
   ADMIN_ORIGINS: 'https://heygabi.ai',
+  ME_ORIGINS: 'https://heygabi.ai,https://audiobooks.heygabi.ai',
   ESTATE_APP_TOKEN_LIBRARY: TOKENS.library,
   ESTATE_APP_TOKEN_GAMES: TOKENS.games,
   ESTATE_APP_TOKEN_INDEX: TOKENS.index,
@@ -295,6 +296,17 @@ async function phaseA(): Promise<void> {
       JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
       JSON.stringify(r.body.visibility),
     );
+
+    // GET /estate/me: the owner's own answer, break-glass included.
+    r = await api('GET', '/api/estate/me');
+    check(
+      'A28 /me for OWNER_EMAILS: approved + approver + all three, computed',
+      r.status === 200 &&
+        r.body.status === 'approved' &&
+        r.body.is_approver === true &&
+        JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
+      JSON.stringify(r.body),
+    );
   } finally {
     stopDev(child);
     await waitDown();
@@ -311,6 +323,7 @@ async function phaseB(): Promise<void> {
       baseUrl: BASE,
       protectedRoutes: [
         { path: '/api/estate/users' },
+        { path: '/api/estate/me' },
         { method: 'POST', path: '/api/estate/users/1/status' },
         { method: 'POST', path: '/api/estate/users/1/approver' },
       ],
@@ -355,6 +368,41 @@ async function phaseB(): Promise<void> {
     await evil.text();
     check('B7 preflight from anywhere else gets no ACAO', evil.headers.get('access-control-allow-origin') === null);
 
+    // /me CORS: the ONE deliberately wider surface (ME_ORIGINS). The preflight
+    // carries no token, so this also proves CORS answers before auth.
+    const mePre = await fetch(`${BASE}/api/estate/me`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://audiobooks.heygabi.ai',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'Authorization',
+      },
+    });
+    await mePre.text();
+    check(
+      'B9 tokenless /me preflight from the audiobook site is allowed',
+      mePre.headers.get('access-control-allow-origin') === 'https://audiobooks.heygabi.ai' &&
+        (mePre.headers.get('access-control-allow-headers') ?? '').toLowerCase().includes('authorization'),
+      `ACAO=${mePre.headers.get('access-control-allow-origin')} ACAH=${mePre.headers.get('access-control-allow-headers')}`,
+    );
+    const meEvil = await fetch(`${BASE}/api/estate/me`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'GET' },
+    });
+    await meEvil.text();
+    check('B10 /me preflight from anywhere else gets no ACAO', meEvil.headers.get('access-control-allow-origin') === null);
+    // The widening is CONFINED to /me — the admin API refuses the site's origin.
+    const adminFromSite = await fetch(`${BASE}/api/estate/users`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://audiobooks.heygabi.ai', 'Access-Control-Request-Method': 'GET' },
+    });
+    await adminFromSite.text();
+    check(
+      'B11 the audiobook origin is NOT admitted to the admin API',
+      adminFromSite.headers.get('access-control-allow-origin') === null,
+      `ACAO=${adminFromSite.headers.get('access-control-allow-origin')}`,
+    );
+
     r = await api('GET', '/api/health');
     check(
       'B8 health: counts only, no emails',
@@ -372,8 +420,19 @@ async function phaseC(): Promise<void> {
   const child = startDev({ ...baseVars, ENVIRONMENT: 'development', DEV_EMAIL: 'carol@example.com' });
   try {
     await waitReady();
-    const r = await api('GET', '/api/estate/users');
+    let r = await api('GET', '/api/estate/users');
     check('C1 an approved non-approver is refused the admin API', r.status === 403, `got ${r.status}`);
+    // /me answers the same person honestly: approved, not an approver, and
+    // exactly the narrowed set A27 stored.
+    r = await api('GET', '/api/estate/me');
+    check(
+      'C2 /me for an approved non-approver: status, flag and narrowed set',
+      r.status === 200 &&
+        r.body.status === 'approved' &&
+        r.body.is_approver === false &&
+        JSON.stringify(r.body.visibility) === '["audiobook","library"]',
+      JSON.stringify(r.body),
+    );
   } finally {
     stopDev(child);
     await waitDown();
@@ -387,6 +446,17 @@ async function phaseD(): Promise<void> {
     await waitReady();
     let r = await api('GET', '/api/estate/users');
     check('D1 a stranger is refused the admin API — no first-to-knock', r.status === 403, `got ${r.status}`);
+    // /me for someone the directory has never seen: a calm null, NEVER a 500 —
+    // and (checked by D2 below) the ask itself enrols nobody.
+    r = await api('GET', '/api/estate/me');
+    check(
+      'D3 /me for a stranger answers status null with the public slice',
+      r.status === 200 &&
+        r.body.status === null &&
+        r.body.is_approver === false &&
+        JSON.stringify(r.body.visibility) === '["audiobook"]',
+      JSON.stringify(r.body),
+    );
     // And being refused did not enrol them.
     const health = await api('GET', '/api/health');
     const total = health.body.users.pending + health.body.users.approved + health.body.users.revoked;
