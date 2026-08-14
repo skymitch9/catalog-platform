@@ -1,13 +1,20 @@
 /**
  * find.js — the global search in the front door's #find slot.
  *
- * The contract (estate-auth-design.md §7, index-worker-design.md §3.3):
- *   - the PAGE stays public; the SEARCH is estate-members-only. Signed out,
- *     the box asks for a sign-in; signed in, every query sends the Firebase
- *     ID token as a bearer to index.heygabi.ai, which verifies it locally and
- *     checks estate membership. This page holds no membership logic at all —
- *     the canonical module lives server-side and the browser's whole job is
- *     sign-in + bearer.
+ * The contract (estate-auth-design.md §7 + §4.5, index-worker-design.md §3.3):
+ *   - the PAGE stays public, and since §4.5 the SEARCH answers everyone —
+ *     scoped by VISIBILITY. Signed out, queries go tokenless and the index
+ *     answers the public slice (the audiobook catalog) with a quiet "sign in
+ *     to search everything" affordance — an invitation, not a wall. Signed
+ *     in, every query sends the Firebase ID token as a bearer to
+ *     index.heygabi.ai, which verifies it locally and scopes results to the
+ *     member's effective visibility set (the /api/search answer carries
+ *     `scope`, applied server-side in the SQL — out-of-scope rows never
+ *     reach this page). This page holds no membership or visibility logic at
+ *     all — the canonical module lives server-side and the browser's whole
+ *     job is sign-in + bearer.
+ *   - universe follow-ups (/api/universe) stay MEMBERS-ONLY server-side; the
+ *     signed-out click gets the sign-in invitation instead of a 401.
  *
  * ⚠️ WHAT A RESULT MEANS — the index design's own words: a hit means "in your
  *   catalog — tap through for owned-vs-wanted", NEVER "you own this".
@@ -92,8 +99,10 @@ function renderAuthState() {
     return;
   }
   const signedIn = currentUser !== null;
-  input.disabled = !signedIn;
-  submitBtn.hidden = !signedIn;
+  // §4.5: the box works for EVERYONE — signed out it searches the public
+  // (audiobook) slice, so it is never disabled once auth state is known.
+  input.disabled = false;
+  submitBtn.hidden = false;
   signinBtn.hidden = signedIn;
   if (signedIn) {
     whoEl.innerHTML = '';
@@ -114,7 +123,9 @@ function renderAuthState() {
   } else {
     whoEl.hidden = true;
     whoEl.innerHTML = '';
-    input.placeholder = 'Sign in to search';
+    // The quiet affordance, not a wall: the placeholder names what works now
+    // and the visible "Sign in to search everything" button offers the rest.
+    input.placeholder = 'Search the audiobook shelf…';
   }
 }
 
@@ -161,6 +172,29 @@ function sourceLabel(source) {
     : source === 'library' ? 'library'
     : source === 'audiobook' ? 'audiobooks'
     : source;
+}
+
+/** The server's scope vocabulary (§4.5 catalogs), spoken like a person. */
+const SCOPE_LABELS = { audiobook: 'audiobooks', library: 'the library', games: 'board games' };
+const FULL_SCOPE_SIZE = 3;
+
+function scopePhrase(scope) {
+  return scope.map((c) => SCOPE_LABELS[c] || c).join(' and ');
+}
+
+/**
+ * The subtle scope line under a partial-scope answer: which shelves were
+ * searched, plus the sign-in invitation for the signed-out. Full scope earns
+ * no line at all — the default deserves no furniture.
+ */
+function scopeNote(scope) {
+  if (!Array.isArray(scope) || scope.length === 0 || scope.length >= FULL_SCOPE_SIZE) return null;
+  const p = document.createElement('p');
+  p.className = 'find-caveat';
+  p.setAttribute('role', 'presentation');
+  p.textContent = `Searching ${scopePhrase(scope)} only.` +
+    (currentUser ? '' : ' Sign in to search every shelf.');
+  return p;
 }
 
 function openUrl(url) {
@@ -318,19 +352,32 @@ function caveatLine(headingText) {
   return heading;
 }
 
-/** The live /api/search answer: books (same-work), games, universes. */
+/** The live /api/search answer: books (same-work), games, universes — scoped. */
 function renderSearch(data) {
   clearResults();
 
+  if (data.reason === 'no_catalogs_visible') {
+    // The server's honest empty scope ({} — revoked, or narrowed to nothing):
+    // said plainly, one message for both, because the server does not say which.
+    setStatus('Your account currently has no catalogs to search. An approver can restore them.', 'warn');
+    return;
+  }
+
   const total = data.books.length + data.games.length + data.universes.length;
   if (total === 0) {
-    setStatus(`Nothing on any shelf matches “${data.query}”. The search tries titles, authors and series — a couple more letters can help.`);
+    const where = Array.isArray(data.scope) && data.scope.length < FULL_SCOPE_SIZE
+      ? `in ${scopePhrase(data.scope)}` : 'on any shelf';
+    setStatus(`Nothing ${where} matches “${data.query}”. The search tries titles, authors and series — a couple more letters can help.` +
+      (currentUser || !Array.isArray(data.scope) || data.scope.length >= FULL_SCOPE_SIZE
+        ? '' : ' Signing in searches every shelf.'));
     return;
   }
   setStatus('');
   input.setAttribute('aria-expanded', 'true');
 
   resultsEl.appendChild(caveatLine(`Matches for “${data.query}”.`));
+  const note = scopeNote(data.scope);
+  if (note) resultsEl.appendChild(note);
 
   if (data.universes.length) {
     resultsEl.appendChild(groupHeading('Universes — every catalog, every format'));
@@ -410,17 +457,21 @@ let debounceTimer = 0;
 let inflight = null; // the current AbortController
 
 async function callIndex(path, signal) {
-  const token = await idToken();
-  if (!token) {
-    setStatus('Your sign-in has lapsed — sign in again.', 'warn');
-    return null;
+  // Signed out, the request goes TOKENLESS on purpose — §4.5's anonymous
+  // rule answers it with the public slice server-side. Only a signed-in
+  // session whose token cannot be minted is worth a warning.
+  const headers = {};
+  if (currentUser) {
+    const token = await idToken();
+    if (!token) {
+      setStatus('Your sign-in has lapsed — sign in again.', 'warn');
+      return null;
+    }
+    headers.authorization = `Bearer ${token}`;
   }
   let res;
   try {
-    res = await fetch(`${INDEX_ORIGIN}${path}`, {
-      headers: { authorization: `Bearer ${token}` },
-      signal,
-    });
+    res = await fetch(`${INDEX_ORIGIN}${path}`, { headers, signal });
   } catch (e) {
     if (e && e.name === 'AbortError') return { aborted: true };
     setStatus('The index did not answer (network). Try again shortly.', 'warn');
@@ -471,6 +522,12 @@ async function runSearch(q) {
 }
 
 async function runUniverse(name) {
+  if (!currentUser) {
+    // /api/universe is members-only server-side (the §4.5 carve-out is
+    // search-only). Say so as an invitation, before a 401 says it worse.
+    setStatus(`The universe view spans every shelf, so it needs a sign-in. Sign in to see everything in ${name}.`);
+    return;
+  }
   if (inflight) inflight.abort();
   inflight = new AbortController();
   setStatus(`Everything in ${name}…`);
@@ -504,7 +561,7 @@ resultsEl.setAttribute('role', 'listbox');
 resultsEl.setAttribute('aria-label', 'Search results');
 
 input.addEventListener('input', () => {
-  if (!currentUser) return;
+  if (!authResolved) return; // neutral boot: no claims either way yet
   scheduleSearch();
 });
 
@@ -531,7 +588,7 @@ input.addEventListener('keydown', (e) => {
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  if (!currentUser) return;
+  if (!authResolved) return;
   clearTimeout(debounceTimer);
   const q = input.value.trim();
   if (q.length < MIN_CHARS) return;
@@ -549,11 +606,16 @@ signinBtn.addEventListener('click', async () => {
 
 watchAuth((user) => {
   // The first callback is the moment auth is KNOWN — neutral ends here,
-  // decisively, in whichever direction the answer went.
+  // decisively, in whichever direction the answer went. (Signed out is now a
+  // WORKING state: the anonymous audiobook slice, §4.5 — not disabled.)
   authResolved = true;
   clearTimeout(authBackstop);
+  const changed = currentUser !== user;
   currentUser = user;
   renderAuthState();
+  // Crossing the sign-in boundary changes the scope: re-run a standing query
+  // so the results widen (or narrow) without a re-type.
+  if (changed && input.value.trim().length >= MIN_CHARS) scheduleSearch();
 });
 
 renderAuthState();

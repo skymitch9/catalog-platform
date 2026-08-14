@@ -701,24 +701,26 @@ footer a.more:hover svg { transform: translateX(3px); }
   </header>
 
   <!--
-    The cross-format search (estate-auth-design.md §7). Logic in
+    The cross-format search (estate-auth-design.md §7 + §4.5). Logic in
     /assets/find.js; sign-in is scoped to this section and to /admin — the
-    rest of the page neither knows nor cares who you are.
+    rest of the page neither knows nor cares who you are. Since §4.5 the
+    signed-out box WORKS: it searches the public audiobook slice tokenless,
+    and signing in widens the scope to the member's visibility set.
 
     ⚠️ The search box boots NEUTRAL (disabled input, both buttons hidden)
     until find.js hears from Firebase — a returning member must never see
-    "Sign in to search" flash before their session resolves. find.js flips
+    the signed-out state flash before their session resolves. find.js flips
     the state decisively both ways once auth answers.
   -->
   <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
     <h2 id="find-h">One question, three shelves</h2>
     <div class="find-box">
       <form id="find-form">
-        <input id="find-input" type="search" placeholder="One moment…" autocomplete="off" disabled aria-label="Search every catalogue by title">
+        <input id="find-input" type="search" placeholder="One moment…" autocomplete="off" disabled aria-label="Search the catalogues by title">
         <button id="find-submit" class="find-btn" type="submit" hidden>Search</button>
-        <button id="find-signin" class="find-btn" type="button" hidden>Sign in to search</button>
+        <button id="find-signin" class="find-btn" type="button" hidden>Sign in to search everything</button>
       </form>
-      <p class="find-hint">“Do we own this in any format?” — one title, checked against every shelf at once. The page is open to anyone; searching is for household members, so it asks for a Google sign-in.</p>
+      <p class="find-hint">“Do we own this in any format?” — one title, checked against every shelf at once. Anyone can search the audiobook shelf; household members sign in with Google to search every shelf they can see.</p>
       <p id="find-who" hidden></p>
       <p id="find-status" hidden></p>
       <div id="find-results"></div>
