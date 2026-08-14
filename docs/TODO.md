@@ -177,3 +177,19 @@ Sort + filter the estate member list: by estate status, approver flag,
 per-catalog visibility (who can see what), and per-app role (who is an admin
 where). All client-side — the page already holds the directory + both apps'
 federated rosters. Dispatched same day.
+
+## Fable-preferred queue (started 2026-08-14, owner directive)
+
+Agents now run non-Fable by default. Work banked here genuinely benefits from
+Fable and waits for the owner to release it (e.g. after a weekly reset):
+
+1. **SSO build, phases 1-4** (sso-design.md) — service-account signing, estate
+   cookie sessions, per-surface adoption. Awaiting the owner's go on the design
+   regardless (it overturns the no-central-cookie rule).
+2. **Rules tightening deploy (club permissions 0b)** — deny manager writes on
+   unclaimed clubs once every active club is claimed. Precondition-gated.
+3. **Edit-audit phases A2/A3** (edit-audit-design.md §6) — override-aware
+   review backfill + CLI key-move warning; guards the shared review store
+   against orphaning. Do BEFORE any reviewed audiobook is retitled.
+4. Any future Firestore-rules rewrite or estate auth-worker change touching
+   verification/secrets.
