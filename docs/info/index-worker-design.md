@@ -3,12 +3,14 @@
 > **Audience:** Claude sessions. **Status:** TRACKED. **BUILT games-first,
 > 2026-08-13** — §7 steps 1–3 landed (`apps/index-worker/` here; pusher in
 > `Board_Game_Catalog`; 836 items pushed and looked up against local dev).
-> Step 4 remains out until the shape has lived with games for a while. The
-> Worker is deliberately NOT deployed: §9 Q3 (read auth) is still the owner's
-> open call, and the remote `index_catalog` D1 exists (id
-> `3004d175-3c51-4ed4-ac3e-62859319f8ac`) with its migration deliberately
-> unapplied — `npm run db:migrate` in `apps/index-worker` is a pending owner
-> command, part of the gated deploy, not a forgotten step.
+> Step 4 remains out until the shape has lived with games for a while.
+> **§9 Q3 is ANSWERED and WIRED, 2026-08-13**: reads are estate-members-only
+> (`estate-auth-design.md` §7.1); the Worker is the estate's first auth
+> consumer (canonical module + `estate_cache` migration 0002). Migration 0001
+> IS applied remotely (verified live 2026-08-13); 0002 is pending the deploy.
+> The Worker itself is still NOT deployed — deploy, route, remote 0002 and the
+> `ESTATE_APP_TOKEN_INDEX` secret are one gated dispatcher step, not a
+> forgotten one.
 > Last verified: **2026-08-13** (bridge scripts and games schema read; production
 > key measurements are from the 2026-08-12 threshold write-up).
 > Companion: `PLATFORM.md` §5 (the sketch this refines),
@@ -217,6 +219,14 @@ games. The two bridges keep running untouched meanwhile.
    means a `universes.json` edit needs a re-push to propagate. Acceptable:
    the file changes "maybe monthly" (`PLATFORM.md` §5.4) and every source
    pushes at least daily once wired.
-3. **Auth for reads** — the lookup surface leaks titles owned. Public-read is
+3. **Auth for reads** — ~~the lookup surface leaks titles owned. Public-read is
    probably fine for the same reason the audiobook site is public, but it is
-   an owner call before the domain route (`index.heygabi.ai`) goes live.
+   an owner call before the domain route (`index.heygabi.ai`) goes live.~~
+   **ANSWERED 2026-08-13** by `estate-auth-design.md` §7.1: reads are
+   **estate-members-only** — the surface aggregates titles across all three
+   catalogs including the two private ones, so it does not inherit the
+   audiobook site's public rationale. Wired the same day (`middleware/auth.ts`
+   + `estate_cache` migration 0002); the index is deliberately the estate's
+   FIRST auth consumer (zero users — the protocol is proven where nobody can
+   be locked out). `/api/health` stays open; push keeps its per-source
+   bearers.

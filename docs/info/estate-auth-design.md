@@ -3,8 +3,11 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED — §14.1 +
 > §14.2 **BUILT 2026-08-13** (auth Worker `apps/auth-worker/`, D1 `estate_auth`
 > created id `d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb`, canonical module
-> `packages/estate-auth/`, seed script) — **NOT deployed, remote migration NOT
-> applied, no consumer wired**; §14.3–14.5 not started. Owner answered all
+> `packages/estate-auth/`, seed script); auth Worker since **DEPLOYED and
+> SEEDED** at `auth.heygabi.ai` (dispatcher). §14.3 **BUILT 2026-08-13**
+> (the index Worker is the first wired consumer — estate_cache migration
+> 0002, reads gated, probes run; its own deploy still pending); §14.4–14.5
+> not started. Owner answered all
 > seven §13 questions 2026-08-13; the build folds them in: machinery
 > estate-wide with per-surface `public:` posture (audiobook site untouched),
 > default-grant ON (library `reader`, games `viewer`), TTL 10 min, approver =
@@ -370,10 +373,11 @@ constantly, an in-memory cache would re-call on every cold start, and a KV
 namespace is a new moving part per app. The row is already loaded on every
 request — the cache rides for free.
 
-The index Worker has no `app_user`; it gets a two-column `estate_cache(email,
-status, checked_at)` table folded into its **still-unapplied** initial
-migration (measured: the remote `index_catalog` migration is deliberately
-pending, so this costs zero extra migrations if done before first deploy).
+The index Worker has no `app_user`; it gets an `estate_cache(email,
+firebase_uid, status, checked_at)` table. ⚠️ *Built 2026-08-13 as an ADDITIVE
+migration `0002`, not the fold-into-0001 this paragraph originally proposed —
+the index's 0001 had been applied remotely by the time §14.3 was built
+(re-verified live that day). An applied migration is never edited.*
 
 ### 5.3 ⚠️ The TTL is the revocation delay — chosen out loud
 
@@ -719,15 +723,25 @@ the `CATALOG_PLATFORM_DIR` fetch the library already uses for universes;
 `Board_Game_Catalog` gains that dependency (new for it — say so in its
 README when wiring).
 
-### 14.3 Index adoption (§9 step 3)
+### 14.3 Index adoption (§9 step 3) — **BUILT 2026-08-13** (deploy pending)
 
-Edit `apps/index-worker/migrations/0001_…` **in place** — it is unapplied
-everywhere remote (verified 2026-08-13; re-verify before assuming):
-add `estate_cache(email TEXT PRIMARY KEY, status TEXT NOT NULL, checked_at
-TEXT NOT NULL)`. Wire `requireAuth` + `estateCheck` onto `GET /api/lookup`
-and `GET /api/universe/:name` only. Then the index's own pending deploy steps
-(its doc §7 + FABLE5 log 18:55 entry: remote migration, push tokens, deploy,
-first real push). Exercise per §9 step 3's three probes.
+~~Edit `apps/index-worker/migrations/0001_…` in place — it is unapplied
+everywhere remote~~ ⚠️ Stale by build time: 0001 WAS applied remotely
+(re-verified before building, as this section itself demanded), so
+`estate_cache` landed as **additive migration `0002_estate_cache.sql`**
+(email PK, firebase_uid, status CHECK, checked_at). Wired
+`requireEstateMember()` (canonical module: `resolveIdentity` →
+`estateCheck` cached in `estate_cache` → §3.1 combine) as a blanket over
+`GET /api/lookup` + `GET /api/universe/:name`; health open; push routes keep
+per-source bearers, mounted before the blanket by name. The index has no
+local roles, so §3.1's `default_grant` grants nothing and proceeds —
+membership IS the authorization there — and local standing is `OWNER_EMAILS`
+alone (the §6 row 4 break-glass). Proven by 16 wiring tests + 13 live probes
+(`npm run probe`: §8.2 conformance in real-auth mode, then the full
+pending→approved→revoked→outage lifecycle against a spawned local auth
+Worker). Remaining (dispatcher): remote 0002, `ESTATE_APP_TOKEN_INDEX`
+secret, push tokens, deploy, first real push, then §9 step 3's three probes
+against production.
 
 ### 14.4 Apex search (§9 step 4)
 
