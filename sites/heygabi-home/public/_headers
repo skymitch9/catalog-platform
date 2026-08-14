@@ -19,7 +19,11 @@
 #   connect-src the two estate Workers (index = search, auth = the /admin
 #               API whose CORS names exactly https://heygabi.ai) + Firebase
 #               auth endpoints (identitytoolkit = sign-in, securetoken =
-#               token refresh).
+#               token refresh). /admin ONLY additionally names the two app
+#               Workers (library, boardgames) — the federated role columns
+#               read/write each app's own /api/admin surface, whose CORS is
+#               locked to this origin; the front door has no business there,
+#               so its rule does not carry them.
 #   frame-src   the Firebase auth iframe on the project's authDomain, and
 #               accounts.google.com for the sign-in flow.
 #   img-src     'self' data: (the inline SVG favicon) + the estate's cover
@@ -63,7 +67,7 @@
 
 /admin
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /todo
   X-Frame-Options: DENY

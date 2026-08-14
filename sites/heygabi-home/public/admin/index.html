@@ -16,10 +16,16 @@
   authorised-domain entry).
 
   This is a household directory of a handful of rows, not a console. It
-  lists estate_user rows and offers the three writes the API has: approve,
-  revoke, promote/demote approver. Everything else — who may call it, what
-  a status means, the refusal to delete rows — is the auth Worker's and is
-  documented there.
+  lists estate_user rows and offers the auth Worker's writes — approve,
+  revoke, promote/demote approver, per-catalog visibility — and FEDERATES
+  each app's own roles beside them: the library and games cells are read
+  from and written to those apps' own /api/admin surfaces, in those apps'
+  own vocabularies, on the signed-in caller's own bearer (design §1.2:
+  roles stay per-app; this page never translates or unifies them). An app
+  that cannot be reached degrades to one honest cell, never a broken page.
+  Everything else — who may call what, what a status means, the refusal to
+  delete rows — belongs to the Worker that owns the fact, and is documented
+  there.
 
   ⚠️ THIS PAGE IS NEVER THE ONLY WAY IN. OWNER_EMAILS on the auth Worker is
   the break-glass: an owner email is answered `approved` + approver
@@ -150,6 +156,49 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 .user-meta { margin: .3rem 0 .55rem; color: var(--et-muted); font-size: var(--et-text-small); }
 .user-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 
+/* The federated catalog block: one line per catalog — visibility checkbox
+   (the estate's fact) beside the app's own role dropdown (that app's fact). */
+.cats { display: grid; gap: .35rem; margin: 0 0 .65rem; }
+.cat {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  flex-wrap: wrap;
+  font-size: var(--et-text-small);
+}
+.cat-name { min-width: 6.2rem; font-weight: 600; }
+.cat-vis {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  color: var(--et-muted);
+  cursor: pointer;
+}
+.cat-vis input { accent-color: var(--et-accent); width: 1rem; height: 1rem; margin: 0; }
+.cat-role select {
+  font: inherit;
+  color: var(--et-fg);
+  background: var(--et-bg);
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  padding: .15em .4em;
+  min-height: 30px;
+}
+.cat-role select:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+.cat-role select:disabled { opacity: .5; }
+.cat-note { color: var(--et-muted); }
+.cat-warn { color: var(--et-warn); }
+
+#gaps {
+  margin: var(--et-space-2) 0 0;
+  padding: .7em 1em;
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+  color: var(--et-warn);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+
 footer {
   margin-top: var(--et-space-4);
   padding-top: var(--et-space-2);
@@ -159,7 +208,7 @@ footer {
   text-wrap: pretty;
 }
 footer a { color: var(--et-accent); }
-footer code { font-family: var(--et-font-mono); font-size: .9em; }
+code { font-family: var(--et-font-mono); font-size: .9em; }
 </style>
 </head>
 
@@ -198,7 +247,11 @@ footer code { font-family: var(--et-font-mono); font-size: .9em; }
     <a href="/">the front door</a>, the library as a reader, the games shelf as
     a viewer. Revoking shuts every door within ten minutes. Rows are never
     deleted: a revoked person who comes back meets their revocation, not a
-    fresh queue entry.
+    fresh queue entry. Per catalog, <em>visible</em> is which shelves their
+    search sees (the estate's fact); the role dropdowns are each app's own —
+    the library's <code>reader</code> and the games shelf's <code>viewer</code>
+    are different words on purpose, and changing one changes it in that app
+    itself.
   </p>
 
   <div class="bar">
@@ -210,6 +263,9 @@ footer code { font-family: var(--et-font-mono); font-size: .9em; }
   <p id="status" hidden></p>
 
   <ul id="users" class="users"></ul>
+
+  <!-- Seed-gap notices: an app listing someone the directory does not. -->
+  <p id="gaps" hidden></p>
 
   <footer>
     <p>

@@ -4,15 +4,40 @@
  * Thin by design: every decision (who may call, what a status transition
  * means, the never-delete rule, the OWNER_EMAILS break-glass) lives in the
  * auth Worker (catalog-platform/apps/auth-worker). This page signs in,
- * sends the Firebase ID token as a bearer, and renders what the API says.
+ * sends the Firebase ID token as a bearer, and renders what the APIs say.
  *
- * The API (auth.heygabi.ai, CORS locked to https://heygabi.ai):
- *   GET  /api/estate/users               → { users: [...] }  (pending first)
- *   POST /api/estate/users/:id/status    { status: 'approved' | 'revoked' }
- *   POST /api/estate/users/:id/approver  { is_approver: boolean }
+ * ## Federation, not centralization (estate-auth-design.md §1.2/§4.5)
  *
- * ⚠️ Because the Worker's CORS names https://heygabi.ai exactly, this page
- * does not work from www.heygabi.ai or a local file. That is the Worker's
+ * One row per person shows three different kinds of fact, each fetched from
+ * and written to the system that owns it:
+ *
+ *   - estate STATUS (pending/approved/revoked) + approver — the auth Worker
+ *   - per-catalog VISIBILITY (which shelves their search sees) — also the
+ *     auth Worker (§4.5; the stored set, canonical order)
+ *   - per-app ROLES — each app's OWN /api/admin surface, in each app's OWN
+ *     vocabulary, verbatim: library `owner|manager|reader|pending`, games
+ *     `owner|manager|rater|viewer|pending`. ⚠️ `reader` ≠ `viewer` — the
+ *     dropdowns list what each endpoint answers and never translate. The
+ *     audiobook catalog has no roles by design (world-readable site), so its
+ *     cell says so instead of pretending.
+ *
+ * A per-app fetch failure degrades to that app's cell reading "unreachable";
+ * the directory and every other column keep working.
+ *
+ * The APIs:
+ *   auth.heygabi.ai (CORS locked to https://heygabi.ai):
+ *     GET  /api/estate/users               → { users: [...] }  (pending first)
+ *     POST /api/estate/users/:id/status    { status: 'approved' | 'revoked' }
+ *     POST /api/estate/users/:id/approver  { is_approver: boolean }
+ *     POST /api/estate/users/:id/visibility { visibility: ['audiobook', ...] }
+ *   library.heygabi.ai + boardgames.heygabi.ai (same CORS lock, each app's
+ *   own owner-only `manageUsers` gate — this page holds no credential; the
+ *   caller's own bearer must be an owner THERE to change anything there):
+ *     GET   /api/admin/users               → { app, roles, users: [{id,email,displayName,role}] }
+ *     PATCH /api/admin/users/:id/role      { role: <one of that app's roles> }
+ *
+ * ⚠️ Because every Worker's CORS names https://heygabi.ai exactly, this page
+ * does not work from www.heygabi.ai or a local file. That is the Workers'
  * config being right, not a bug here — the page says so instead of failing
  * mutely.
  */
@@ -22,13 +47,31 @@ import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '.
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
 
+/** §4.5's canonical catalog order — never re-sorted, never duplicated. */
+const CATALOGS = ['audiobook', 'library', 'games'];
+
+/** The two apps with roles to federate. The audiobook column is a note. */
+const APPS = [
+  { key: 'library', label: 'library', origin: 'https://library.heygabi.ai' },
+  { key: 'games', label: 'games', origin: 'https://boardgames.heygabi.ai' },
+];
+
 const signinBtn = document.getElementById('signin');
 const whoEl = document.getElementById('who');
 const refreshBtn = document.getElementById('refresh');
 const statusEl = document.getElementById('status');
 const usersEl = document.getElementById('users');
+const gapsEl = document.getElementById('gaps');
 
 let currentUser = null;
+
+/**
+ * Per-app directory state, keyed by app key:
+ *   null                                  — not loaded yet
+ *   { ok: true, roles, byEmail }          — that app's list + vocabulary
+ *   { ok: false, why }                    — degraded; why is shown in-cell
+ */
+let appDirs = { library: null, games: null };
 
 function setStatus(text, tone) {
   statusEl.textContent = text || '';
@@ -37,7 +80,7 @@ function setStatus(text, tone) {
 }
 
 // ---------------------------------------------------------------------------
-// API calls
+// API calls — the auth Worker (directory + visibility)
 // ---------------------------------------------------------------------------
 
 async function api(path, init) {
@@ -98,20 +141,96 @@ async function api(path, init) {
   return null;
 }
 
-async function loadUsers() {
+// ---------------------------------------------------------------------------
+// API calls — the app Workers (federated roles)
+// ---------------------------------------------------------------------------
+
+/**
+ * One app's member list + role vocabulary, or the reason it degraded.
+ * Never throws: a broken app becomes an honest cell, not a broken page.
+ */
+async function fetchAppDirectory(app) {
+  const token = await idToken();
+  if (!token) return { ok: false, why: 'sign-in lapsed' };
+  let res;
+  try {
+    res = await fetch(`${app.origin}/api/admin/users`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return { ok: false, why: 'unreachable' };
+  }
+  if (res.status === 401) return { ok: false, why: 'token refused' };
+  if (res.status === 403) return { ok: false, why: 'needs an owner account there' };
+  if (!res.ok) return { ok: false, why: `error ${res.status}` };
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return { ok: false, why: 'unreadable answer' };
+  }
+  const byEmail = new Map();
+  for (const u of data.users ?? []) byEmail.set(String(u.email).toLowerCase(), u);
+  return { ok: true, roles: Array.isArray(data.roles) ? data.roles : [], byEmail };
+}
+
+/** PATCH one role change to one app. True on success; failures explain themselves. */
+async function patchAppRole(app, appUserId, role) {
+  const token = await idToken();
+  if (!token) {
+    setStatus('Sign-in lapsed — sign in again.', 'warn');
+    return false;
+  }
+  let res;
+  try {
+    res = await fetch(`${app.origin}/api/admin/users/${appUserId}/role`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+  } catch (e) {
+    setStatus(`The ${app.label} catalog did not answer — the role is unchanged.`, 'warn');
+    return false;
+  }
+  if (res.ok) {
+    setStatus('');
+    return true;
+  }
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (e) { /* the status code still speaks */ }
+  const detail = typeof body?.detail === 'string' ? body.detail : null;
+  setStatus(`${app.label}: ${detail || `role change refused (${res.status})`}`, 'warn');
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Loading — the directory and both app lists, in parallel
+// ---------------------------------------------------------------------------
+
+async function loadDirectory() {
   setStatus('Loading…');
-  const data = await api('/api/estate/users');
-  if (!data) {
+  const [estate, library, games] = await Promise.all([
+    api('/api/estate/users'),
+    fetchAppDirectory(APPS[0]),
+    fetchAppDirectory(APPS[1]),
+  ]);
+  appDirs = { library, games };
+  if (!estate) {
+    // api() already said why. The app lists are useless without the spine.
     usersEl.innerHTML = '';
+    gapsEl.hidden = true;
     return;
   }
   setStatus('');
-  renderUsers(data.users);
+  renderUsers(estate.users);
+  renderSeedGaps(estate.users);
 }
 
 async function mutate(path, body) {
   const data = await api(path, { method: 'POST', body: JSON.stringify(body) });
-  if (data) await loadUsers();
+  if (data) await loadDirectory();
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +248,97 @@ function actionBtn(label, className, onClick) {
     b.disabled = false;
   });
   return b;
+}
+
+/**
+ * Save the visibility set as the checkboxes now stand — the whole array in
+ * §4.5's canonical order, because the endpoint takes the set, not a delta.
+ */
+async function saveVisibility(estateUser, catsEl) {
+  const boxes = [...catsEl.querySelectorAll('input[type="checkbox"]')];
+  for (const b of boxes) b.disabled = true;
+  const visibility = CATALOGS.filter(
+    (cat) => boxes.find((b) => b.dataset.cat === cat)?.checked,
+  );
+  const data = await api(`/api/estate/users/${estateUser.id}/visibility`, {
+    method: 'POST',
+    body: JSON.stringify({ visibility }),
+  });
+  if (data) {
+    await loadDirectory(); // re-render from what the server now says
+  } else {
+    for (const b of boxes) b.disabled = false; // failed — leave them editable
+  }
+}
+
+/** The role cell for one app: a dropdown, or the honest reason there isn't one. */
+function appRoleCell(app, estateUser) {
+  const dir = appDirs[app.key];
+  const cell = document.createElement('span');
+
+  if (!dir || !dir.ok) {
+    cell.className = 'cat-warn';
+    cell.textContent = dir?.why ?? 'not loaded';
+    return cell;
+  }
+
+  const appUser = dir.byEmail.get(estateUser.email.toLowerCase());
+  if (!appUser) {
+    // The app creates its row on the person's first sign-in there — until
+    // then there is nothing to hold a role. Not an error.
+    cell.className = 'cat-note';
+    cell.textContent = 'no account yet — appears on first sign-in';
+    return cell;
+  }
+
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', `${app.label} role for ${estateUser.email}`);
+  for (const role of dir.roles) {
+    const opt = document.createElement('option');
+    opt.value = role;
+    opt.textContent = role;
+    if (role === appUser.role) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    const ok = await patchAppRole(app, appUser.id, select.value);
+    if (ok) {
+      appUser.role = select.value; // keep the map truthful without a refetch
+    } else {
+      select.value = appUser.role; // refused — snap back to what stands
+    }
+    select.disabled = false;
+  });
+  cell.className = 'cat-role';
+  cell.appendChild(select);
+  return cell;
+}
+
+/** One catalog line: name, visibility checkbox, role cell. */
+function catalogRow(estateUser, catKey, roleCell) {
+  const row = document.createElement('div');
+  row.className = 'cat';
+
+  const name = document.createElement('span');
+  name.className = 'cat-name';
+  name.textContent = catKey;
+  row.appendChild(name);
+
+  if (Array.isArray(estateUser.visibility)) {
+    const vis = document.createElement('label');
+    vis.className = 'cat-vis';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.dataset.cat = catKey;
+    box.checked = estateUser.visibility.includes(catKey);
+    box.addEventListener('change', () => saveVisibility(estateUser, row.parentElement));
+    vis.append(box, ' visible');
+    row.appendChild(vis);
+  }
+
+  row.appendChild(roleCell);
+  return row;
 }
 
 function userCard(u) {
@@ -171,6 +381,22 @@ function userCard(u) {
   meta.textContent = bits.join(' · ');
   li.appendChild(meta);
 
+  // The federated catalog block: per catalog, the estate's visibility flag
+  // (what their search may SEE) beside the app's own role (what they may DO
+  // there — each app's words, each app's decision).
+  const cats = document.createElement('div');
+  cats.className = 'cats';
+
+  const abNote = document.createElement('span');
+  abNote.className = 'cat-note';
+  abNote.textContent = 'public site — no roles to grant';
+  cats.appendChild(catalogRow(u, 'audiobook', abNote));
+
+  for (const app of APPS) {
+    cats.appendChild(catalogRow(u, app.key, appRoleCell(app, u)));
+  }
+  li.appendChild(cats);
+
   const actions = document.createElement('div');
   actions.className = 'user-actions';
 
@@ -203,6 +429,28 @@ function renderUsers(users) {
   for (const u of users) usersEl.appendChild(userCard(u));
 }
 
+/**
+ * An app listing an email the estate directory does not hold means the seed
+ * missed someone (§9 step 2 is idempotent and re-runnable) — say so rather
+ * than silently rendering a directory that disagrees with its apps.
+ */
+function renderSeedGaps(estateUsers) {
+  const known = new Set(estateUsers.map((u) => u.email.toLowerCase()));
+  const lines = [];
+  for (const app of APPS) {
+    const dir = appDirs[app.key];
+    if (!dir?.ok) continue;
+    const extras = [...dir.byEmail.keys()].filter((e) => !known.has(e));
+    if (extras.length) {
+      lines.push(
+        `The ${app.label} catalog also lists ${extras.join(', ')} — not in the estate directory (a seed gap; re-run the seed).`,
+      );
+    }
+  }
+  gapsEl.textContent = lines.join(' ');
+  gapsEl.hidden = !lines.length;
+}
+
 // ---------------------------------------------------------------------------
 // Auth wiring
 // ---------------------------------------------------------------------------
@@ -220,6 +468,7 @@ function renderAuthState() {
     out.addEventListener('click', async () => {
       await signOutUser();
       usersEl.innerHTML = '';
+      gapsEl.hidden = true;
       setStatus('');
     });
     whoEl.append(`${currentUser.displayName || currentUser.email} · `, out);
@@ -228,6 +477,7 @@ function renderAuthState() {
     whoEl.hidden = true;
     whoEl.innerHTML = '';
     usersEl.innerHTML = '';
+    gapsEl.hidden = true;
   }
 }
 
@@ -238,12 +488,12 @@ signinBtn.addEventListener('click', async () => {
   if (r.error) setStatus(r.error, r.ownerAction ? 'owner' : 'warn');
 });
 
-refreshBtn.addEventListener('click', loadUsers);
+refreshBtn.addEventListener('click', loadDirectory);
 
 watchAuth((user) => {
   currentUser = user;
   renderAuthState();
-  if (user) loadUsers();
+  if (user) loadDirectory();
 });
 
 renderAuthState();
