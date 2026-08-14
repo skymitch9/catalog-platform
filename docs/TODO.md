@@ -93,3 +93,29 @@ that is the real coupling to solve here — not a deploy.
   deploy would publish straight to the live custom domain.
 
 **Not started. No code written.** Raised, measured and scoped only.
+
+## 2. Visibility-scoped + anonymous search (B2) — BUILT, deploy pending
+
+**Asked 2026-08-13** (owner-approved a+b), built the same day on `main`.
+Estate design §4.5 is the contract; `index-worker-design.md` §9 Q3's
+amendment names the carve-out.
+
+- `/api/search` scopes to the caller's effective visibility set — in the SQL
+  (`search-route.ts`), so out-of-scope rows never reach ranker, universe
+  counts, or wire. Anonymous/invalid-token/pending ⇒ `{audiobook}`; revoked
+  ⇒ `{}` (200 + `reason: no_catalogs_visible`, never 401). `/api/lookup`
+  members-only untouched; `/api/universe` members-only, rows scoped.
+- `estate_cache` carries visibility WITH status (migration **0003**, applied
+  locally; remote apply is the dispatcher's). `@platform/estate-auth` gained
+  `postSeenAnswer`/`Catalog`/`parseVisibility` — additive, `postSeen` and app
+  consumers untouched.
+- `find.js`: signed-out live-search of the audiobook slice with a quiet
+  "sign in to search everything" affordance; scope note under partial-scope
+  results; universe view still asks for sign-in.
+
+**Pending (dispatcher, one step):** deploy the pair together — index Worker
+(`apps/index-worker`: `npm run db:migrate` for 0003, then `wrangler deploy`)
+**and** Pages (`sites/heygabi-home`) — a new find.js against the old Worker
+would send tokenless searches into 401s. Verify after: tokenless
+`GET https://index.heygabi.ai/api/search?q=dune` → 200 with
+`"scope":["audiobook"]`.
