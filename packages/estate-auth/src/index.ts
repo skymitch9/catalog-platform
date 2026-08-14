@@ -24,12 +24,22 @@ export {
   REVOCATION_DELAY_MS,
   cacheIsFresh,
   postSeen,
+  postSeenAnswer,
   estateCheck,
+  type SeenAnswer,
   type SeenCache,
   type SeenClientOptions,
   type SeenIdentity,
   type EstateCheckResult,
 } from './seen.js';
+export {
+  CATALOGS,
+  PUBLIC_CATALOGS,
+  isCatalog,
+  normalizeVisibility,
+  parseVisibility,
+  type Catalog,
+} from './visibility.js';
 export { declareAuthPosture, type EstateAuthConfig } from './config.js';
 export {
   runConformanceProbes,

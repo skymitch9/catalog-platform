@@ -5,7 +5,9 @@ import {
   cacheIsFresh,
   estateCheck,
   postSeen,
+  postSeenAnswer,
 } from '../src/seen.js';
+import { parseVisibility } from '../src/visibility.js';
 
 const NOW = Date.parse('2026-08-13T12:00:00.000Z');
 const opts = (fetchImpl: typeof fetch) => ({
@@ -62,7 +64,7 @@ test('stale cache + reachable estate refreshes and says to persist', async () =>
     NOW,
   );
   assert.equal(r.status, 'revoked', 'a revocation lands at the first check past the TTL');
-  assert.deepEqual(r.refresh, { status: 'revoked', checkedAt: new Date(NOW).toISOString() });
+  assert.deepEqual(r.refresh, { status: 'revoked', visibility: null, checkedAt: new Date(NOW).toISOString() });
 });
 
 test('stale cache + unreachable estate keeps the stale value, flagged stale', async () => {
@@ -90,6 +92,112 @@ test('postSeen refuses garbage answers rather than caching them', async () => {
   assert.equal(await postSeen(opts(err500), me), null);
   const denied: typeof fetch = async () => new Response('{}', { status: 401 });
   assert.equal(await postSeen(opts(denied), me), null, 'a 401 (bad app token) is a failure, not a status');
+});
+
+// --- §4.5: visibility rides WITH status, one answer, never aged separately. -
+
+const okFullFetch =
+  (status: unknown, visibility: unknown): typeof fetch =>
+  async () =>
+    new Response(JSON.stringify({ status, visibility }), { status: 200 });
+
+test('parseVisibility: canonical order enforced, duplicates collapsed, garbage refused', () => {
+  assert.deepEqual(parseVisibility(['games', 'audiobook']), ['audiobook', 'games']);
+  assert.deepEqual(parseVisibility(['library', 'library']), ['library']);
+  assert.deepEqual(parseVisibility([]), []);
+  assert.equal(parseVisibility(['audiobook', 'banana']), null);
+  assert.equal(parseVisibility('audiobook'), null);
+  assert.equal(parseVisibility(undefined), null);
+});
+
+test('postSeenAnswer carries the effective visibility verbatim, canonicalised', async () => {
+  const r = await postSeenAnswer(opts(okFullFetch('approved', ['games', 'audiobook'])), me);
+  assert.deepEqual(r, { status: 'approved', visibility: ['audiobook', 'games'] });
+  const revoked = await postSeenAnswer(opts(okFullFetch('revoked', [])), me);
+  assert.deepEqual(revoked, { status: 'revoked', visibility: [] }, '[] is an answer, not an absence');
+});
+
+test('a missing or garbage visibility field is null, NOT a failed answer — the status half still stands', async () => {
+  const noVis = await postSeenAnswer(opts(okFetch('approved')), me);
+  assert.deepEqual(noVis, { status: 'approved', visibility: null });
+  const garbage = await postSeenAnswer(opts(okFullFetch('approved', 'everything')), me);
+  assert.deepEqual(garbage, { status: 'approved', visibility: null });
+});
+
+test('estateCheck: a fresh answer refreshes visibility WITH status — one write, one age', async () => {
+  const r = await estateCheck(
+    { status: null, checkedAt: null },
+    me,
+    opts(okFullFetch('approved', ['audiobook', 'games'])),
+    NOW,
+  );
+  assert.equal(r.status, 'approved');
+  assert.deepEqual(r.visibility, ['audiobook', 'games']);
+  assert.deepEqual(r.refresh, {
+    status: 'approved',
+    visibility: ['audiobook', 'games'],
+    checkedAt: new Date(NOW).toISOString(),
+  });
+});
+
+test('estateCheck: a fresh cache WITH visibility short-circuits; requireVisibility adds nothing', async () => {
+  let called = 0;
+  const spy: typeof fetch = async () => {
+    called += 1;
+    return new Response('{}');
+  };
+  const r = await estateCheck(
+    { status: 'approved', checkedAt: new Date(NOW - 1000).toISOString(), visibility: ['games'] },
+    me,
+    { ...opts(spy), requireVisibility: true },
+    NOW,
+  );
+  assert.deepEqual(r.visibility, ['games']);
+  assert.equal(called, 0);
+});
+
+test('estateCheck + requireVisibility: a fresh cache MISSING visibility is healed by one /seen call', async () => {
+  const r = await estateCheck(
+    { status: 'approved', checkedAt: new Date(NOW - 1000).toISOString() }, // pre-§4.5 row
+    me,
+    { ...opts(okFullFetch('approved', ['audiobook', 'library', 'games'])), requireVisibility: true },
+    NOW,
+  );
+  assert.deepEqual(r.visibility, ['audiobook', 'library', 'games']);
+  assert.ok(r.refresh, 'the whole answer is persisted so the next request short-circuits');
+});
+
+test('estateCheck without requireVisibility: the fresh visibility-less cache still short-circuits (status-only consumers untouched)', async () => {
+  let called = 0;
+  const spy: typeof fetch = async () => {
+    called += 1;
+    return new Response('{}');
+  };
+  const r = await estateCheck(
+    { status: 'approved', checkedAt: new Date(NOW - 1000).toISOString() },
+    me,
+    opts(spy),
+    NOW,
+  );
+  assert.equal(r.status, 'approved');
+  assert.equal(r.visibility, null);
+  assert.equal(called, 0);
+});
+
+test('estateCheck: unreachable estate — the STALE cached visibility rides with its stale status', async () => {
+  const r = await estateCheck(
+    {
+      status: 'approved',
+      checkedAt: new Date(NOW - REVOCATION_DELAY_MS * 3).toISOString(),
+      visibility: ['audiobook', 'library'],
+    },
+    me,
+    opts(failFetch),
+    NOW,
+  );
+  assert.equal(r.status, 'approved');
+  assert.deepEqual(r.visibility, ['audiobook', 'library'], 'the cached pair travels together');
+  assert.equal(r.stale, true);
 });
 
 test('postSeen sends the bearer and the snake_case body the Worker expects', async () => {
