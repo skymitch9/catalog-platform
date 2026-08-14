@@ -212,6 +212,63 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   text-wrap: pretty;
 }
 
+/* SORT + FILTER bar (admin.js: the "who has access to what, who's an
+   admin where" view over the directory already in memory — client-side,
+   household scale, no pagination). Same surface/hairline language as
+   #status and .user; token-only, no new colors. */
+.controls {
+  display: grid;
+  gap: .55rem;
+  margin: 0 0 var(--et-space-2);
+  padding: .7em .9em;
+  border: var(--et-border-w) solid var(--et-panel-border);
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+}
+.ctl-group { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; }
+.ctl { display: flex; flex-direction: column; gap: .2rem; font-size: var(--et-text-small); }
+.ctl.grow { flex: 1 1 12rem; min-width: 10rem; }
+.ctl-label {
+  color: var(--et-muted);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.ctl-input {
+  font: inherit;
+  color: var(--et-fg);
+  background: var(--et-bg);
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  padding: .3em .5em;
+  min-height: 34px;
+}
+.ctl-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+.ctl-input:disabled { opacity: .5; }
+.chipset { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+.chip {
+  min-height: 30px;
+  padding: .2em .7em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  background: var(--et-bg);
+  color: var(--et-muted);
+  font: 600 var(--et-text-small)/1.2 var(--et-font);
+  cursor: pointer;
+  transition: background var(--et-dur-fast) var(--et-ease),
+              color var(--et-dur-fast) var(--et-ease),
+              border-color var(--et-dur-fast) var(--et-ease);
+}
+.chip:hover { border-color: var(--et-accent); }
+.chip:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+.chip[aria-pressed="true"] {
+  background: var(--et-accent);
+  border-color: var(--et-accent);
+  color: var(--et-accent-fg);
+}
+.count { color: var(--et-muted); font-size: var(--et-text-small); }
+
 footer {
   margin-top: var(--et-space-4);
   padding-top: var(--et-space-2);
@@ -275,6 +332,64 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   </div>
 
   <p id="status" hidden></p>
+
+  <!-- SORT + FILTER bar: client-side over the directory already in memory
+       (admin.js). Hidden until there is a directory to filter; persists in
+       sessionStorage; re-applied after every mutation re-render. -->
+  <div id="controls" class="controls" hidden>
+    <div class="ctl-group">
+      <label class="ctl">
+        <span class="ctl-label">Status</span>
+        <select id="f-status" class="ctl-input">
+          <option value="all">all</option>
+          <option value="pending">pending</option>
+          <option value="approved">approved</option>
+          <option value="revoked">revoked</option>
+        </select>
+      </label>
+      <label class="ctl">
+        <span class="ctl-label">Approver</span>
+        <select id="f-approver" class="ctl-input">
+          <option value="any">any</option>
+          <option value="only">only approvers</option>
+        </select>
+      </label>
+      <div class="ctl chipset" role="group" aria-label="Sees catalog">
+        <span class="ctl-label">Sees</span>
+        <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
+        <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
+        <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+      </div>
+      <label class="ctl">
+        <span class="ctl-label">Library role</span>
+        <select id="f-role-library" class="ctl-input"><option value="any">any</option></select>
+      </label>
+      <label class="ctl">
+        <span class="ctl-label">Games role</span>
+        <select id="f-role-games" class="ctl-input"><option value="any">any</option></select>
+      </label>
+      <label class="ctl grow">
+        <span class="ctl-label">Name / email</span>
+        <input id="f-q" class="ctl-input" type="search" placeholder="contains…" autocomplete="off">
+      </label>
+    </div>
+    <div class="ctl-group">
+      <label class="ctl">
+        <span class="ctl-label">Sort</span>
+        <select id="s-key" class="ctl-input">
+          <option value="name">name</option>
+          <option value="email">email</option>
+          <option value="status">status</option>
+          <option value="first_seen">first seen</option>
+          <option value="decided">decided date</option>
+          <option value="breadth">breadth (catalogs)</option>
+        </select>
+      </label>
+      <button type="button" id="s-dir" class="btn small quiet" aria-pressed="false">↑ asc</button>
+      <span id="count" class="count" aria-live="polite"></span>
+      <button type="button" id="f-reset" class="btn small quiet">Reset</button>
+    </div>
+  </div>
 
   <ul id="users" class="users"></ul>
 

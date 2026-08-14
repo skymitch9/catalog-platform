@@ -56,12 +56,28 @@ const APPS = [
   { key: 'games', label: 'games', origin: 'https://boardgames.heygabi.ai' },
 ];
 
+/**
+ * SORT + FILTER — client-side over the directory already in memory (owner
+ * ask: "sort on who has access to what catalogs, who's an admin in what
+ * spaces"). Household scale — no server round-trip, no pagination.
+ */
+const NO_ACCOUNT = '__none__'; // per-app role filter: "no row in that app's roster yet"
+const SORT_KEYS = ['name', 'email', 'status', 'first_seen', 'decided', 'breadth'];
+const STATUS_RANK = { pending: 0, approved: 1, revoked: 2 }; // the existing pending-first instinct, made sortable
+const DEFAULT_DIR_FOR_KEY = { // the sensible starting direction when a sort key is first picked
+  name: 'asc', email: 'asc', status: 'asc', first_seen: 'asc', decided: 'asc', breadth: 'desc',
+};
+const VIEW_STORAGE_KEY = 'hg-admin-view-v1'; // sessionStorage: survives a refresh, not a new tab/session
+const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
+
 const signinBtn = document.getElementById('signin');
 const whoEl = document.getElementById('who');
 const refreshBtn = document.getElementById('refresh');
 const statusEl = document.getElementById('status');
 const usersEl = document.getElementById('users');
 const gapsEl = document.getElementById('gaps');
+const controlsEl = document.getElementById('controls');
+const countEl = document.getElementById('count');
 
 let currentUser = null;
 
@@ -72,6 +88,11 @@ let currentUser = null;
  *   { ok: false, why }                    — degraded; why is shown in-cell
  */
 let appDirs = { library: null, games: null };
+
+/** The full directory as last loaded — filters/sort run over this, it is never re-fetched for a view change. */
+let allEstateUsers = [];
+
+let state = loadPersistedView();
 
 function setStatus(text, tone) {
   statusEl.textContent = text || '';
@@ -234,6 +255,268 @@ async function loadDirectory() {
 async function mutate(path, body) {
   const data = await api(path, { method: 'POST', body: JSON.stringify(body) });
   if (data) await loadDirectory();
+}
+
+// ---------------------------------------------------------------------------
+// Filtering & sorting — entirely client-side over `allEstateUsers`. Every
+// control change and every mutation re-render both funnel through
+// renderFilteredList(), so approve/revoke/visibility/role edits never reset
+// what the admin was looking at. Persisted in sessionStorage; every stored
+// value is re-validated on load (and the app-role vocab re-checked on every
+// render) rather than trusted, since a stale value can outlive its vocab.
+// ---------------------------------------------------------------------------
+
+function defaultFilters() {
+  return {
+    status: 'all',       // all | pending | approved | revoked
+    approverOnly: false,
+    visCats: [],          // subset of CATALOGS the member must SEE (AND semantics)
+    appRoles: { library: 'any', games: 'any' }, // 'any' | NO_ACCOUNT | a role from that app's own vocab
+    q: '',
+  };
+}
+
+function defaultSort() {
+  return { key: 'name', dir: 'asc' };
+}
+
+function loadPersistedView() {
+  const filters = defaultFilters();
+  const sort = defaultSort();
+  try {
+    const raw = sessionStorage.getItem(VIEW_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const pf = parsed?.filters;
+      if (pf) {
+        if (['all', 'pending', 'approved', 'revoked'].includes(pf.status)) filters.status = pf.status;
+        if (typeof pf.approverOnly === 'boolean') filters.approverOnly = pf.approverOnly;
+        if (Array.isArray(pf.visCats)) filters.visCats = pf.visCats.filter((c) => CATALOGS.includes(c));
+        if (pf.appRoles && typeof pf.appRoles === 'object') {
+          for (const app of APPS) {
+            if (typeof pf.appRoles[app.key] === 'string') filters.appRoles[app.key] = pf.appRoles[app.key];
+          }
+        }
+        if (typeof pf.q === 'string') filters.q = pf.q;
+      }
+      const ps = parsed?.sort;
+      if (ps) {
+        if (SORT_KEYS.includes(ps.key)) sort.key = ps.key;
+        if (ps.dir === 'asc' || ps.dir === 'desc') sort.dir = ps.dir;
+      }
+    }
+  } catch (e) {
+    // corrupt or unavailable storage (private mode quota) — defaults stand
+  }
+  return { filters, sort };
+}
+
+function persistView() {
+  try {
+    sessionStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // storage unavailable — the view simply won't survive a refresh
+  }
+}
+
+function breadth(u) {
+  return Array.isArray(u.visibility) ? u.visibility.length : 0;
+}
+
+function matchesFilters(u) {
+  const f = state.filters;
+  if (f.status !== 'all' && u.status !== f.status) return false;
+  if (f.approverOnly && !u.is_approver) return false;
+
+  if (f.visCats.length) {
+    const vis = Array.isArray(u.visibility) ? u.visibility : [];
+    for (const cat of f.visCats) if (!vis.includes(cat)) return false;
+  }
+
+  for (const app of APPS) {
+    const want = f.appRoles[app.key];
+    if (want === 'any') continue;
+    const dir = appDirs[app.key];
+    if (!dir || !dir.ok) continue; // can't verify a degraded app — don't hide people on a guess
+    const appUser = dir.byEmail.get(u.email.toLowerCase());
+    if (want === NO_ACCOUNT) {
+      if (appUser) return false;
+    } else if (!appUser || appUser.role !== want) {
+      return false;
+    }
+  }
+
+  if (f.q) {
+    const q = f.q.trim().toLowerCase();
+    if (q) {
+      const hay = `${u.display_name || ''} ${u.email}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+  }
+
+  return true;
+}
+
+function displayKey(u) {
+  return (u.display_name || u.email).toLowerCase();
+}
+
+function tiebreak(a, b) {
+  return collator.compare(displayKey(a), displayKey(b));
+}
+
+/** No decided_at (and, in principle, no first_seen_at) always sorts last, in either direction. */
+function compareNullableDate(av, bv, mult) {
+  if (!av && !bv) return 0;
+  if (!av) return 1;
+  if (!bv) return -1;
+  return (new Date(av) - new Date(bv)) * mult;
+}
+
+function compareUsers(a, b) {
+  const { key, dir } = state.sort;
+  const mult = dir === 'desc' ? -1 : 1;
+
+  if (key === 'first_seen' || key === 'decided') {
+    const field = key === 'first_seen' ? 'first_seen_at' : 'decided_at';
+    const res = compareNullableDate(a[field], b[field], mult);
+    return res !== 0 ? res : tiebreak(a, b);
+  }
+
+  let res;
+  switch (key) {
+    case 'email': res = collator.compare(a.email, b.email); break;
+    case 'status': res = STATUS_RANK[a.status] - STATUS_RANK[b.status]; break;
+    case 'breadth': res = breadth(a) - breadth(b); break;
+    default: res = collator.compare(displayKey(a), displayKey(b)); break; // 'name'
+  }
+  res *= mult;
+  return res !== 0 ? res : tiebreak(a, b);
+}
+
+/** Rebuild each app's role-filter <select> from its OWN fetched vocabulary — never hardcoded (§1.2). */
+function populateRoleFilterOptions() {
+  for (const app of APPS) {
+    const select = document.getElementById(`f-role-${app.key}`);
+    const dir = appDirs[app.key];
+    const current = state.filters.appRoles[app.key];
+    const valid = ['any', NO_ACCOUNT, ...(dir?.ok ? dir.roles : [])];
+
+    select.innerHTML = '';
+    select.appendChild(new Option('any', 'any'));
+    select.appendChild(new Option('no account yet', NO_ACCOUNT));
+    if (dir?.ok) {
+      for (const role of dir.roles) select.appendChild(new Option(role, role));
+    }
+    select.disabled = !dir?.ok; // that app is degraded right now — its role filter can't be trusted
+
+    if (!valid.includes(current)) state.filters.appRoles[app.key] = 'any'; // vocab moved under a stale value
+    select.value = state.filters.appRoles[app.key];
+  }
+}
+
+function syncControlsFromState() {
+  document.getElementById('f-status').value = state.filters.status;
+  document.getElementById('f-approver').value = state.filters.approverOnly ? 'only' : 'any';
+  document.getElementById('f-q').value = state.filters.q;
+  for (const cat of CATALOGS) {
+    const chip = controlsEl.querySelector(`.chip[data-cat="${cat}"]`);
+    const active = state.filters.visCats.includes(cat);
+    chip.setAttribute('aria-pressed', String(active));
+    chip.classList.toggle('active', active);
+  }
+  populateRoleFilterOptions();
+  document.getElementById('s-key').value = state.sort.key;
+  updateSortDirButton();
+}
+
+function updateSortDirButton() {
+  const btn = document.getElementById('s-dir');
+  const asc = state.sort.dir === 'asc';
+  btn.textContent = asc ? '↑ asc' : '↓ desc';
+  btn.setAttribute('aria-pressed', String(!asc));
+}
+
+function updateCountLine(shown, total) {
+  countEl.textContent = total ? `Showing ${shown} of ${total}` : '';
+}
+
+/** Filter + sort `allEstateUsers` and paint. Every control change and every mutation re-render go through here. */
+function renderFilteredList() {
+  const view = allEstateUsers.filter(matchesFilters).sort(compareUsers);
+  usersEl.innerHTML = '';
+  for (const u of view) usersEl.appendChild(userCard(u));
+  updateCountLine(view.length, allEstateUsers.length);
+}
+
+function wireControls() {
+  const statusSel = document.getElementById('f-status');
+  const approverSel = document.getElementById('f-approver');
+  const qInput = document.getElementById('f-q');
+  const sortKeySel = document.getElementById('s-key');
+  const sortDirBtn = document.getElementById('s-dir');
+  const resetBtn = document.getElementById('f-reset');
+
+  statusSel.addEventListener('change', () => {
+    state.filters.status = statusSel.value;
+    persistView();
+    renderFilteredList();
+  });
+
+  approverSel.addEventListener('change', () => {
+    state.filters.approverOnly = approverSel.value === 'only';
+    persistView();
+    renderFilteredList();
+  });
+
+  qInput.addEventListener('input', () => {
+    state.filters.q = qInput.value;
+    persistView();
+    renderFilteredList();
+  });
+
+  for (const chip of controlsEl.querySelectorAll('.chip[data-cat]')) {
+    chip.addEventListener('click', () => {
+      const cat = chip.dataset.cat;
+      const i = state.filters.visCats.indexOf(cat);
+      if (i === -1) state.filters.visCats.push(cat); else state.filters.visCats.splice(i, 1);
+      chip.setAttribute('aria-pressed', String(i === -1));
+      chip.classList.toggle('active', i === -1);
+      persistView();
+      renderFilteredList();
+    });
+  }
+
+  for (const app of APPS) {
+    document.getElementById(`f-role-${app.key}`).addEventListener('change', (e) => {
+      state.filters.appRoles[app.key] = e.target.value;
+      persistView();
+      renderFilteredList();
+    });
+  }
+
+  sortKeySel.addEventListener('change', () => {
+    state.sort.key = sortKeySel.value;
+    state.sort.dir = DEFAULT_DIR_FOR_KEY[state.sort.key] || 'asc';
+    updateSortDirButton();
+    persistView();
+    renderFilteredList();
+  });
+
+  sortDirBtn.addEventListener('click', () => {
+    state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+    updateSortDirButton();
+    persistView();
+    renderFilteredList();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    state.filters = defaultFilters();
+    state.sort = defaultSort();
+    syncControlsFromState();
+    persistView();
+    renderFilteredList();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -426,12 +709,16 @@ function userCard(u) {
 }
 
 function renderUsers(users) {
-  usersEl.innerHTML = '';
+  allEstateUsers = users;
+  controlsEl.hidden = !users.length;
   if (!users.length) {
+    usersEl.innerHTML = '';
+    updateCountLine(0, 0);
     setStatus('The directory is empty. Owner emails still work everywhere (the break-glass), and the seed script fills this list.');
     return;
   }
-  for (const u of users) usersEl.appendChild(userCard(u));
+  syncControlsFromState(); // the app role vocab may have just arrived/changed — keep the bar honest
+  renderFilteredList();
 }
 
 /**
@@ -478,11 +765,23 @@ function anchoredMemberEmail() {
  * Scroll the anchored member's card into view with a brief highlight.
  * Safe to call any time: it does nothing without a fragment, a rendered
  * directory (auth resolves async — loadDirectory re-runs this), or a match.
+ *
+ * The deep-link must always land: if the anchored member exists in the
+ * directory but the CURRENT filters hide them, drop the filters (sort is
+ * left alone — it only reorders, never hides) and re-render once before
+ * giving up.
  */
 function revealAnchoredMember() {
   const email = anchoredMemberEmail();
   if (!email) return;
-  const card = usersEl.querySelector(`li.user[data-email="${CSS.escape(email)}"]`);
+  let card = usersEl.querySelector(`li.user[data-email="${CSS.escape(email)}"]`);
+  if (!card && allEstateUsers.some((u) => u.email.toLowerCase() === email)) {
+    state.filters = defaultFilters();
+    syncControlsFromState();
+    persistView();
+    renderFilteredList();
+    card = usersEl.querySelector(`li.user[data-email="${CSS.escape(email)}"]`);
+  }
   if (!card) return;
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   card.classList.add('anchored');
@@ -525,6 +824,9 @@ function renderAuthState() {
       await signOutUser();
       usersEl.innerHTML = '';
       gapsEl.hidden = true;
+      controlsEl.hidden = true;
+      allEstateUsers = [];
+      updateCountLine(0, 0);
       setStatus('');
     });
     whoEl.append(`${currentUser.displayName || currentUser.email} · `, out);
@@ -534,6 +836,7 @@ function renderAuthState() {
     whoEl.innerHTML = '';
     usersEl.innerHTML = '';
     gapsEl.hidden = true;
+    controlsEl.hidden = true;
   }
 }
 
@@ -553,6 +856,9 @@ watchAuth((user) => {
   renderAuthState();
   if (user) loadDirectory();
 });
+
+wireControls();
+syncControlsFromState(); // paint any persisted filter/sort choice into the controls before data even loads
 
 renderAuthState();
 setStatus('Sign in to see the member list. The page is API-gated — nothing loads without an approver token.');
