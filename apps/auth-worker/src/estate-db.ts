@@ -135,18 +135,35 @@ export async function materializeOwnerRow(
   db: D1Database,
   input: { email: string; firebaseUid: string | null; displayName: string | null },
 ): Promise<EstateUserRow> {
-  const row = await db
-    .prepare(
-      `INSERT INTO estate_user
+  const insert = `INSERT INTO estate_user
          (email, firebase_uid, display_name, status, is_approver, origin, note, decided_at)
        VALUES (?, ?, ?, 'approved', 1, 'manual', 'auto-created: OWNER_EMAILS actor', datetime('now'))
        ON CONFLICT(email) DO UPDATE SET email = estate_user.email
-       RETURNING ${COLS}`,
-    )
-    .bind(normalizeEmail(input.email), input.firebaseUid, input.displayName)
-    .first<EstateUserRow>();
-  if (!row) throw new Error('materializeOwnerRow returned no row');
-  return row;
+       RETURNING ${COLS}`;
+  try {
+    const row = await db
+      .prepare(insert)
+      .bind(normalizeEmail(input.email), input.firebaseUid, input.displayName)
+      .first<EstateUserRow>();
+    if (!row) throw new Error('materializeOwnerRow returned no row');
+    return row;
+  } catch (err) {
+    // Same class seenUpsert absorbs: the owner's uid already recorded on
+    // ANOTHER row (an account's email changed — or every dev-bypass identity
+    // sharing the module's fixed 'dev-uid', which is how this was found:
+    // the index Worker's live probes 500'd the BREAK-GLASS path, the worst
+    // possible place to 500). Materialize without the contested uid rather
+    // than refusing the owner; nothing joins on uid (design §1.4).
+    if (input.firebaseUid && /UNIQUE/i.test((err as Error).message)) {
+      const row = await db
+        .prepare(insert)
+        .bind(normalizeEmail(input.email), null, input.displayName)
+        .first<EstateUserRow>();
+      if (!row) throw new Error('materializeOwnerRow returned no row');
+      return row;
+    }
+    throw err;
+  }
 }
 
 /** Health: row counts by status, no emails (§4.4). */
