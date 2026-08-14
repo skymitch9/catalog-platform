@@ -10,52 +10,53 @@
 
 <!--
   ============================================================================
-  ⚠️  NO AUTHENTICATION ON THIS HOST. EVER. DO NOT ADD A SIGN-IN BUTTON.
+  ⚠️  AUTH ON THIS HOST EXISTS FOR EXACTLY ONE PURPOSE: MINTING BEARER TOKENS.
   ============================================================================
 
-  The apex (heygabi.ai / www.heygabi.ai) is a static, public, read-only signpost.
-  It must never become a Firebase Auth origin for the shared `audiobook-catalog`
-  Firebase project.
+  Until 2026-08-13 this comment said "NO AUTHENTICATION ON THIS HOST. EVER."
+  That rule was OVERTURNED DELIBERATELY, with the arguing on the record in
+  catalog-platform/docs/info/estate-auth-design.md §7.2 — read it before
+  moving anything here. The short form:
 
-  Why, concretely: audiobook_catalog/site/identity.js calls signOut() on the
-  SHARED Firebase Auth instance on page load. A second auth origin for the same
-  project is therefore actively hostile — one host can sign the user out from
-  under another. catalog-platform/docs/HEYGABI_LAYOUT.md §1.3 and §6 make the
-  same argument for the redirect-only hosts: a host that never runs a sign-in
-  never needs to be an authorised domain, and adding one "just in case" is the
-  failure mode.
+  - The old rule's concrete hazard was audiobook identity.js calling signOut()
+    on the shared Firebase Auth instance on page load — lethal when two apps
+    share ONE ORIGIN. Firebase auth state is origin-scoped, so a session on
+    heygabi.ai and the capture-detach dance on audiobooks.heygabi.ai cannot
+    see each other. The hazard stays guarded where it is real (never two apps
+    on one origin); it is not this configuration. (§15 of the design lists the
+    origin-scoping claim as verify-by-attended-two-tab-test.)
+  - The residual cost is paid knowingly: heygabi.ai is now a Firebase
+    authorised domain — one more permanent OAuth redirect surface (owner
+    console step; HEYGABI_LAYOUT.md §1 priced it in "if anything there
+    signs in", and the global search finally spends it).
 
-  So: no Firebase SDK, no Google sign-in, no session cookie, no /login, no
-  "my ratings", no personalisation. Every catalog does its own sign-in on its
-  own host.
-
-  Corollary — DO NOT add heygabi.ai to Firebase → Authentication → Settings →
-  Authorised domains.
+  WHAT THE SIGN-IN IS, AND IS NOT (the new rule, as load-bearing as the old):
+  the Firebase SDK loads to mint ID tokens sent as bearers to
+  index.heygabi.ai (the global search) and auth.heygabi.ai (the estate admin
+  API behind /admin — owner decision #6 put the admin PAGE on this host, and
+  that Worker's CORS is locked to exactly this origin). The PAGE stays public
+  and readable signed-out; there is NO session for browsing, NO
+  personalisation, NO "my ratings", NO gating of anything on this host, and
+  no membership logic in the browser — the canonical estate-auth module lives
+  in the Workers, and this page's whole job is sign-in + bearer.
 
   ---------------------------------------------------------------------------
-  ZERO EXTERNAL REQUESTS, and zero JavaScript. public/_headers ships
-  `default-src 'none'` with no script-src at all, so a <script> of any kind is
-  blocked outright — this page cannot be made interactive with JS even by
-  accident. Everything below is therefore CSS-only: the drifting background, the
-  entrance stagger and the card sheen are all keyframes, and every glyph is
-  inline SVG markup. System fonts only.
-
-  That constraint is the reason for the shape of this file, not an obstacle to
-  it. If you want motion here, it is a @keyframes; if you want an icon, it is an
-  <svg> in the markup.
+  EXTERNAL REQUESTS ARE ALLOW-LISTED IN public/_headers, NOT FORBIDDEN ANY
+  MORE — but only for this page's job: the Firebase SDK (www.gstatic.com),
+  Google's auth endpoints, the two estate Workers, and cover/avatar image
+  hosts. Still NO analytics, NO web fonts, NO CDN frameworks, and /todo keeps
+  the original default-src 'none' no-JS CSP — its filter must stay CSS-only.
+  Scripts are external files under /assets/ (script-src 'self' — inline
+  script stays blocked); decoration stays CSS-only as before.
   ---------------------------------------------------------------------------
-
-  GROWING INTO THE CROSS-FORMAT INDEX (catalog-platform/docs/PLATFORM.md §5):
-  <section id="find"> is the reserved slot — drop a search input and results
-  list in there; the catalogue cards sit below it and do not move. That will be
-  the first feature needing JS, and it needs BOTH `script-src 'self'` and
-  `connect-src https://index.heygabi.ai` added to _headers. Widen it for that
-  host and nothing else.
 
   ⚠️ NO INVENTED NUMBERS. An earlier version of this page displayed a game count
-  that was not measured and was wrong by a wide margin. This page has no live
-  data source, so it states no totals. If counts ever appear here they come from
-  the index API, not from a person's memory.
+  that was not measured and was wrong by a wide margin. Totals may only come
+  from the index API, never from a person's memory.
+
+  ⚠️ WHAT A SEARCH RESULT MEANS: "in your catalog — tap through", NEVER "you
+  own this". Ownership deliberately does not travel to the index (29 of 836
+  game rows are wanted-only). The caveat line find.js renders is load-bearing.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
@@ -329,24 +330,132 @@ h2::after {
   background: linear-gradient(90deg, var(--line), transparent);
 }
 
-/* ---- reserved slot for the cross-format index ---------------------------- */
+/* ---- the cross-format search (the slot, grown up) ------------------------ */
 
 #find { margin-bottom: clamp(2rem, 5vw, 3rem); }
 
-.slot {
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  margin: 0;
-  padding: 1rem 1.15rem;
-  border: 1px dashed var(--line);
+.find-box {
+  padding: 1rem 1.15rem 1.1rem;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--panel) 45%, transparent);
+  background: color-mix(in srgb, var(--panel) 65%, transparent);
+}
+
+#find-form {
+  display: flex;
+  gap: .6rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+#find-input {
+  flex: 1 1 14rem;
+  min-height: 44px;
+  padding: .5rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+}
+#find-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#find-input:disabled { opacity: .6; }
+
+.find-btn {
+  min-height: 44px;
+  padding: .5rem 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.find-btn:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
+.find-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.find-btn:disabled { opacity: .6; cursor: default; }
+
+.find-hint {
+  margin: .6rem 0 0;
   color: var(--muted);
-  font-size: .9375rem;
+  font-size: .84375rem;
   text-wrap: pretty;
 }
-.slot svg { flex: none; opacity: .65; }
+
+#find-who { margin: .6rem 0 0; color: var(--muted); font-size: .84375rem; }
+
+.find-linkbtn {
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.find-linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+#find-status {
+  margin: .8rem 0 0;
+  padding: .6rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  color: var(--muted);
+  font-size: .875rem;
+  text-wrap: pretty;
+}
+#find-status[data-tone="warn"] { border-color: color-mix(in srgb, var(--clay) 45%, var(--line)); color: var(--fg); }
+#find-status[data-tone="owner"] { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); color: var(--fg); }
+
+.find-caveat {
+  margin: 1rem 0 .3rem;
+  color: var(--muted);
+  font-size: .84375rem;
+  text-wrap: pretty;
+}
+
+.find-group {
+  margin: 1rem 0 .5rem;
+  font-size: .71875rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+.hit {
+  display: flex;
+  gap: .8rem;
+  align-items: flex-start;
+  padding: .65rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.hit-cover {
+  flex: none;
+  width: 2.6rem;
+  height: 3.6rem;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.hit-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.hit-title { font-weight: 600; }
+.hit-title a { color: var(--fg); text-decoration: none; }
+.hit-title a:hover { color: var(--accent); text-decoration: underline; }
+.hit-meta { color: var(--muted); font-size: .8125rem; }
+.hit-universe { align-self: flex-start; font-size: .8125rem; margin-top: .15rem; }
 
 /* ---- the catalogue cards -------------------------------------------------- */
 
@@ -606,15 +715,24 @@ footer a.more:hover svg { transform: translateX(3px); }
   </header>
 
   <!--
-    RESERVED: the cross-format index (PLATFORM.md §5). Replace the .slot below
-    with a search field and a results list. Nothing else on this page moves.
+    The cross-format search (PLATFORM.md §5, estate-auth-design.md §7): the
+    slot this section reserved since day one, now live. The logic is in
+    /assets/find.js; sign-in is scoped to this section and to /admin — the
+    rest of the page neither knows nor cares who you are.
   -->
   <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
     <h2 id="find-h">One question, three shelves</h2>
-    <p class="slot">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      Searching everything at once — “do we own this in any format?” — is coming. For now, pick a shelf.
-    </p>
+    <div class="find-box">
+      <form id="find-form">
+        <input id="find-input" type="search" placeholder="Sign in to search" autocomplete="off" disabled aria-label="Search every catalogue by title">
+        <button id="find-submit" class="find-btn" type="submit" hidden>Search</button>
+        <button id="find-signin" class="find-btn" type="button">Sign in to search</button>
+      </form>
+      <p class="find-hint">“Do we own this in any format?” — one title, checked against every shelf at once. The page is open to anyone; searching is for household members, so it asks for a Google sign-in.</p>
+      <p id="find-who" hidden></p>
+      <p id="find-status" hidden></p>
+      <div id="find-results"></div>
+    </div>
   </section>
 
   <section class="rise" style="animation-delay:.18s" aria-labelledby="cat-h">
@@ -666,7 +784,7 @@ footer a.more:hover svg { transform: translateX(3px); }
 
   <footer class="rise" style="animation-delay:.26s">
     <p>Not a shop and not a library — nothing here is for sale or for loan.</p>
-    <p>No accounts, no tracking and no cookies on this page. Each catalogue handles its own sign-in and will ask before it shows you anything.</p>
+    <p>No tracking and no cookies. The page itself needs no account; the search asks for a sign-in because it looks across the private shelves. Each catalogue handles its own sign-in and will ask before it shows you anything.</p>
     <p>
       <a class="more" href="/todo">What we are working on next
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
@@ -675,5 +793,10 @@ footer a.more:hover svg { transform: translateX(3px); }
   </footer>
 
 </main>
+
+<!-- The one script on this page. External file because _headers ships
+     script-src 'self' — inline script stays blocked, which keeps the CSP
+     doing its job for everything except the named search feature. -->
+<script type="module" src="/assets/find.js"></script>
 </body>
 </html>

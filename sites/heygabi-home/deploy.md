@@ -34,9 +34,15 @@
 | You are in the **same Cloudflare account** as the two Workers | Registrar, zone and Pages project must share an account or the custom-domain step cannot see the zone |
 | ⚠️ You are deploying **`sites/heygabi-home/public`**, not the repo root and not `sites/heygabi-home` | Either wrong root publishes `README.md` and `deploy.md` at `https://heygabi.ai/README.md`; the repo root would also publish all of `docs/` |
 
-**Nothing here touches Firebase.** Do **not** add `heygabi.ai` or
-`www.heygabi.ai` to Firebase authorised domains — see the no-auth rule in
-`README.md`. This is the one step it would be easy to do "while you're in there".
+**Firebase, revised 2026-08-13 (estate-auth-design.md §7.2 / §14.4):** the
+apex now signs in, so 🔴 **the owner must add `heygabi.ai` to Firebase
+authorised domains** (console → project `audiobook-catalog` → Authentication →
+Settings → Authorised domains) — before or with the deploy that ships the
+search, or sign-in answers `auth/unauthorized-domain` (the page renders that
+as an owner-action message, not a broken button). ⚠️ `www.heygabi.ai` stays
+**off** the list — it should become a redirect-only host (§2.1), and the
+admin API's CORS names the apex alone anyway. `auth.heygabi.ai` and
+`index.heygabi.ai` also stay off: no sign-in popup ever runs there.
 
 ---
 
@@ -163,10 +169,26 @@ Then in a browser:
       emulation, at least once).
 - [ ] Renders on an actual **phone**, portrait, without horizontal scroll.
 - [ ] Favicon appears in the tab.
-- [ ] **DevTools → Network shows exactly one request** (the document). No font,
-      no image, no beacon. This is the whole no-external-requests rule, checked
-      in one glance.
+- [ ] **DevTools → Network shows only allow-listed hosts** (since 2026-08-13):
+      the document, `/assets/*.js`, `www.gstatic.com` Firebase modules, and —
+      once signed in — Google auth endpoints and the two estate Workers.
+      No font, no beacon, no analytics, nothing else. (`/todo` is still
+      exactly one request.)
 - [ ] **Console is empty** — a CSP violation would print here.
+- [ ] **Search, signed out:** the box asks for a sign-in and the page is
+      otherwise whole. **Signed in (member):** a title returns grouped results
+      whose caveat line says in-catalog-not-owned. **Signed in (fresh
+      account):** the awaiting-approval message, not an error.
+- [ ] **`/admin`, signed in as the owner:** the member list loads; approve /
+      revoke / promote buttons act and re-render. From `www.heygabi.ai/admin`
+      it will NOT work (CORS names the apex) — the page says so.
+- [ ] ⚠️ **The §15 two-tab test (estate-auth-design.md — OWNER-ATTENDED, due
+      on first deploy of the sign-in):** sign in on `heygabi.ai`, then in a
+      second tab load `audiobooks.heygabi.ai` (which calls `signOut()` on its
+      own auth instance) and use its sign-in/sign-out; confirm the apex tab's
+      session survives and the audiobook site's own state is unaffected.
+      If the apex session dies, §15's fallback triggers: search moves to a
+      `search.heygabi.ai` host and the apex reverts.
 - [ ] Board games card **is** a link and wears **no pill**. (It was an
       unclickable "Coming soon" card until 2026-08-09 and carried an "Owner
       only" pill until 2026-08-10; `README.md` records why each changed.)
@@ -236,8 +258,8 @@ owner, not for the public. The upload root is the single defence; there is no
 
 | Never | Why |
 |---|---|
-| ⚠️ Add `heygabi.ai` / `www.heygabi.ai` to **Firebase authorised domains** | `identity.js` calls `signOut()` on the shared Auth instance on load; a second auth origin for one project is actively hostile. `HEYGABI_LAYOUT.md` §1.3, §6 |
-| Put a Worker in front of the apex | It is Pages, direct upload, by decision (`HEYGABI_LAYOUT.md` §1). A Worker here is how auth sneaks back in |
+| ⚠️ Add `www.heygabi.ai` (or `auth.` / `index.` / `covers.`) to **Firebase authorised domains** | No sign-in popup runs on any of them; each entry is a permanent OAuth redirect surface. ⚠️ The apex itself **is** authorised since 2026-08-13 — that reversal is deliberate and argued in `estate-auth-design.md` §7.2; it does not extend to any other host |
+| Put a Worker in front of the apex | It is Pages, direct upload, by decision (`HEYGABI_LAYOUT.md` §1). The sign-in that finally arrived came as static JS + Workers on their own hosts, not as an apex Worker — keep it that way |
 | Deploy the repo root instead of `public/` | Publishes `README.md` and `deploy.md` |
 | Point `audiobooks.heygabi.ai` at this project | That is its own Pages project with its own `/dev/` lane |
 | Add an analytics beacon "since it's just one script" | Breaks the CSP, and the CSP is the point |

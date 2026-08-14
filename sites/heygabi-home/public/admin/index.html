@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — estate members</title>
+<meta name="description" content="The estate's member directory: approve, revoke, promote.">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+
+<!--
+  The estate admin page (estate-auth-design.md §4.4, amended by owner
+  decision #6: the admin UI lives on the APEX, not on auth.heygabi.ai —
+  which is why that Worker's admin API carries CORS locked to exactly
+  https://heygabi.ai and why auth.heygabi.ai needs no Firebase
+  authorised-domain entry).
+
+  This is a household directory of a handful of rows, not a console. It
+  lists estate_user rows and offers the three writes the API has: approve,
+  revoke, promote/demote approver. Everything else — who may call it, what
+  a status means, the refusal to delete rows — is the auth Worker's and is
+  documented there.
+
+  ⚠️ THIS PAGE IS NEVER THE ONLY WAY IN. OWNER_EMAILS on the auth Worker is
+  the break-glass: an owner email is answered `approved` + approver
+  regardless of table state, and the Cloudflare D1 console can edit the
+  directory directly. If this page is broken, nothing is locked.
+
+  Same CSP regime as the front door (_headers /admin rules): external
+  same-origin scripts only, allow-listed hosts, no analytics.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<style>
+/* Same token family as the front door — same palette, deliberately less
+   theatre: this is a working page. */
+:root {
+  --bg: #f7f4ed;
+  --fg: #17150f;
+  --muted: #6b6559;
+  --line: #e0d9c9;
+  --panel: #fffdf8;
+  --accent: #3a5a40;
+  --gold: #b3822c;
+  --clay: #b1533c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0b09;
+    --fg: #ece7d9;
+    --muted: #9a948a;
+    --line: #2a2c22;
+    --panel: #171a13;
+    --accent: #8fbc8f;
+    --gold: #d9a441;
+    --clay: #d97e63;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.15rem 3.5rem; }
+
+h1 { margin: 0 0 .3rem; font-size: 1.6rem; letter-spacing: -.02em; }
+.sub { margin: 0 0 1.4rem; color: var(--muted); font-size: .9375rem; text-wrap: pretty; }
+.sub a { color: var(--accent); }
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+.btn {
+  min-height: 44px;
+  padding: .5rem 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.small { min-height: 34px; padding: .25rem .7rem; font-size: .8125rem; font-weight: 600; }
+.btn.danger { border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); background: color-mix(in srgb, var(--clay) 10%, var(--panel)); }
+.btn.quiet { border-color: var(--line); background: var(--panel); }
+.linkbtn {
+  border: 0; padding: 0; background: none;
+  color: var(--accent); font: inherit; font-weight: 600;
+  cursor: pointer; text-decoration: underline;
+}
+.who { color: var(--muted); font-size: .875rem; }
+
+#status {
+  margin: 0 0 1.2rem;
+  padding: .6rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: .875rem;
+  text-wrap: pretty;
+}
+#status[data-tone="warn"] { border-color: color-mix(in srgb, var(--clay) 45%, var(--line)); color: var(--fg); }
+#status[data-tone="owner"] { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); color: var(--fg); }
+
+ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+.user {
+  padding: .8rem .95rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.user-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.user-name { font-weight: 700; }
+.user-email { color: var(--muted); font-size: .875rem; word-break: break-all; }
+.badge {
+  padding: .1rem .5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge.pending  { border-color: color-mix(in srgb, var(--gold) 60%, var(--line)); color: var(--gold); }
+.badge.approved { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); color: var(--accent); }
+.badge.revoked  { border-color: color-mix(in srgb, var(--clay) 60%, var(--line)); color: var(--clay); }
+.user-meta { margin: .3rem 0 .55rem; color: var(--muted); font-size: .8125rem; }
+.user-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+footer {
+  margin-top: 2.5rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .8125rem;
+  text-wrap: pretty;
+}
+footer a { color: var(--accent); }
+</style>
+</head>
+
+<body>
+<main>
+  <h1>Estate members</h1>
+  <p class="sub">
+    One approval here admits a person estate-wide — search on
+    <a href="/">the front door</a>, the library as a reader, the games shelf as
+    a viewer. Revoking shuts every door within ten minutes. Rows are never
+    deleted: a revoked person who comes back meets their revocation, not a
+    fresh queue entry.
+  </p>
+
+  <div class="bar">
+    <button id="signin" class="btn" type="button">Sign in with Google</button>
+    <span id="who" class="who" hidden></span>
+    <button id="refresh" class="btn small quiet" type="button" hidden>Refresh</button>
+  </div>
+
+  <p id="status" hidden></p>
+
+  <ul id="users" class="users"></ul>
+
+  <footer>
+    <p>
+      This page is a convenience, never the only way in: owner emails
+      (<code>OWNER_EMAILS</code> on the auth Worker) are answered as approved
+      approvers regardless of what the directory says, and the directory
+      itself can be edited from the Cloudflare D1 console. If this page
+      breaks, nothing is locked.
+    </p>
+    <p><a href="/">← back to the front door</a></p>
+  </footer>
+</main>
+
+<script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

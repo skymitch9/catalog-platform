@@ -4,11 +4,15 @@
 > <https://heygabi.ai>. Last verified: **2026-08-10** — apex and `www` both
 > answered `200` and the CSP arrived from `_headers`.
 >
-> ⚠️ **A DEPLOY IS PENDING (2026-08-10).** The `/todo` board was added and the
-> front door gained a footer link to it, so the deployed HTML is **no longer
-> byte-identical** to this directory. `deploy.md` §4 is the one command.
-> Outstanding owner actions are listed in the root
-> [`README.md`](../../README.md) § What is left.
+> ⚠️ **A DEPLOY IS PENDING (2026-08-13).** The global search landed in `#find`
+> and the estate admin page landed at `/admin` (estate-auth-design.md §14.4),
+> on top of the still-undeployed 2026-08-10 `/todo` board. The deployed site
+> is **not** what this directory holds. `deploy.md` §4 is the one command.
+> 🔴 Before or with that deploy the owner must add `heygabi.ai` to Firebase
+> authorised domains (console-only), or sign-in answers
+> `auth/unauthorized-domain` — the page renders that as an owner-action
+> message rather than a broken button, but search stays unusable until the
+> entry exists.
 >
 > ⚠️ **This used to be its own repo, `vs-code-repos/heygabi-home`. It moved here
 > on 2026-08-10** — see the root [`README.md`](../../README.md) for why. Paths in
@@ -16,10 +20,12 @@
 > **deploy command now runs from the repo root and names `sites/heygabi-home/public`**.
 
 The landing page for the apex domain **`heygabi.ai`** (and `www.heygabi.ai`),
-plus the cross-project board at **`heygabi.ai/todo`**.
+the estate-wide search in its `#find` section, the estate admin page at
+**`heygabi.ai/admin`**, and the cross-project board at **`heygabi.ai/todo`**.
 
-Two static HTML files. No build step, no dependencies, no framework, no package
-manager. `public/index.html` and `public/todo/index.html` are the whole site.
+Static HTML plus a few hand-written ES modules. No build step, no
+dependencies beyond the Firebase SDK loaded from Google's CDN, no framework,
+no package manager.
 
 ---
 
@@ -121,56 +127,78 @@ game count.
 
 ---
 
-## ⚠️ The one rule: NO AUTH ON THIS HOST. EVER.
+## ⚠️ The one rule, rewritten 2026-08-13: sign-in exists ONLY to mint bearer tokens
 
-**Do not add a sign-in button. Do not add the Firebase SDK. Do not add
-`heygabi.ai` to Firebase → Authentication → Settings → Authorised domains.**
+This section used to say **NO AUTH ON THIS HOST. EVER.** That rule was
+**overturned deliberately** by the owner's global-search requirement, with the
+full arguing in `docs/info/estate-auth-design.md` §7.2 — read that before
+moving anything. The short form:
 
-`audiobook_catalog/site/identity.js` calls `signOut()` on the **shared** Firebase
-Auth instance on page load. A second auth origin for the same Firebase project is
-therefore actively hostile — one host can sign the user out from under another.
-`HEYGABI_LAYOUT.md` §1.3 and §6 make the same argument for the redirect-only
-hosts: a host that never runs a sign-in never needs to be an authorised domain,
-and adding one "just in case" is the failure mode.
+- The old rule's hazard — `audiobook_catalog/site/identity.js` calling
+  `signOut()` on the shared Firebase Auth instance on page load — is real and
+  stays guarded **where it applies: two apps on one origin**. Firebase auth
+  state is origin-scoped, so a session on `heygabi.ai` and the capture-detach
+  dance on `audiobooks.heygabi.ai` cannot touch each other. (Origin-scoping is
+  the design's one verify-during-build claim: the §15 attended two-tab test.)
+- The residual cost is paid knowingly: `heygabi.ai` is now a Firebase
+  **authorised domain** (🔴 owner console entry) — one more permanent OAuth
+  redirect surface, priced in by `HEYGABI_LAYOUT.md` §1 from the start.
 
-`HEYGABI_LAYOUT.md` §1 lists the apex as an authorised domain *"if anything there
-signs in"*. Nothing here signs in, so the answer stays **no**.
-
-Every catalogue does its own sign-in on its own host. If a feature here appears
-to need a logged-in user, that feature belongs on a catalogue host.
+The new rule, as load-bearing as the old one: **the Firebase SDK loads to mint
+ID tokens sent as bearers to `index.heygabi.ai` (search) and
+`auth.heygabi.ai` (the `/admin` API), and for nothing else.** No session for
+browsing, no personalisation, no "my ratings", no gating of the page, no
+membership logic in the browser — the canonical `packages/estate-auth` module
+lives in the Workers. If a feature here appears to need more than sign-in +
+bearer, it belongs on a catalogue host.
 
 The rule is repeated as a comment at the top of `public/index.html`, which is
 where anyone about to break it will actually be looking.
 
-## ⚠️ The second rule: zero external requests
+## ⚠️ The second rule, narrowed 2026-08-13: external requests are allow-listed
 
-No CDN, no web fonts, no analytics, no remote images, no favicon file. System
-fonts and one inline SVG data URI for the icon. The page renders identically with
-the network cut after first byte and sets no cookies.
+Formerly "zero external requests". The search spent that rule too, knowingly
+and narrowly: the front door and `/admin` may reach **exactly** the hosts in
+`public/_headers`' CSP — the Firebase SDK on `www.gstatic.com`, Google's auth
+endpoints, the two estate Workers, and the known cover/avatar image hosts.
+Still absolutely absent: analytics, web fonts, CDN frameworks, and anything
+not named in that file. Inline `<script>` stays blocked (`script-src 'self'`),
+so the page cannot grow ad-hoc JS — logic lives in `/assets/*.js`.
 
-`public/_headers` ships a Content-Security-Policy that enforces this at the edge,
-so a regression fails visibly in the console instead of quietly phoning home.
+**`/todo` keeps the original `default-src 'none'` no-JS CSP** — its filter is
+CSS-only radios and must never acquire JavaScript. ⚠️ The CSP now lives on
+**per-path rules, not `/*`** (two pages, two policies; a path matching two CSP
+rules would be enforced as their intersection). A new page under `public/`
+ships with **no CSP** until a rule is added in `_headers` — add one, strict by
+default, in the same commit as the page.
 
 ---
 
-## Growing into the cross-format index
+## The cross-format search and the admin page (built 2026-08-13, §14.4)
 
-`PLATFORM.md` §5 describes a cross-format index Worker at `index.heygabi.ai`
-answering *"do we own this in any format?"* across all three catalogues. This
-page is eventually its front end. That was designed as an **additive** change:
+The `#find` slot grew into the real thing: a search box querying
+`index.heygabi.ai/api/lookup` with the signed-in user's Firebase ID token,
+plus `/admin` calling `auth.heygabi.ai`'s admin API (whose CORS names exactly
+`https://heygabi.ai` — owner decision #6 put the admin page here so that
+Worker needs no Firebase authorised-domain entry of its own).
 
-- `<section id="find">` is a reserved slot holding a one-line note. Drop a search
-  input and a results list in there.
-- The catalogue cards are a plain `<ul class="catalogues">`. The index sits
-  **above** them; it does not replace them.
-- A `fetch()` to `https://index.heygabi.ai` would be the first external request
-  this page makes. That is a deliberate, allowed exception — same-site and
-  first-party — and it requires widening `connect-src` (and `script-src`) in
-  `public/_headers`. It does not open the door to fonts, analytics or CDNs.
-- ⚠️ The index must stay a **public, default-deny projection** (`PLATFORM.md`
-  §5.2 — no prices, no `lent_to`, no per-person ratings, no email addresses). A
-  personalised index would need auth, and auth is the thing this host must never
-  have.
+- **Signed out, the page stays whole** — the search box asks for a sign-in;
+  nothing else on the page knows who you are. Signed-in-but-pending gets the
+  honest queue message in the same words as the apps' request screens.
+- ⚠️ **A result means "in the catalog — tap through", never "you own this".**
+  Ownership deliberately does not travel to the index (29 of the 836 game rows
+  are wanted-only); `find.js`'s caveat line is load-bearing copy.
+- Results render in the index design's two tiers: books (library + audiobook —
+  same work, any format) and board games (title-only match, carrying `kind`
+  and `parent_source_id`), with an "everything in <universe>" follow-up on
+  rows that carry a universe — the only cross-format join games take part in.
+- The projection stays **default-deny** (`PLATFORM.md` §5.2 — no prices, no
+  `lent_to`, no per-person ratings, no emails); the reads are
+  **estate-members-only** (`index-worker-design.md` §9 Q3).
+- `/admin` is a household directory of a handful of rows: list by status
+  (pending first), approve, revoke, promote-to-approver. It is **never the
+  only way in** — `OWNER_EMAILS` on the auth Worker is the break-glass, and
+  the page says so on its face.
 
 ---
 
@@ -196,9 +224,12 @@ All paths are under `sites/heygabi-home/`.
 
 | File | Purpose |
 |---|---|
-| `public/index.html` | The front door. Inline CSS, inline SVG favicon, no JS |
-| `public/todo/index.html` | The cross-project board at `/todo`. Same rules; its filter is CSS-only radios |
-| `public/_headers` | Cloudflare Pages headers — CSP that forbids external requests |
+| `public/index.html` | The front door: cards, and the `#find` search. Inline CSS, inline SVG favicon; its one script is `/assets/find.js` |
+| `public/assets/estate-auth.js` | Firebase sign-in, ported (minimum) from audiobook `identity.js` — popup-first, redirect fallback, `auth/unauthorized-domain` → owner-action message. ⚠️ Keeps the session (unlike identity.js): its job is minting bearer tokens |
+| `public/assets/find.js` | The search UI: lookup + universe queries, two-tier rendering, the in-catalog-not-owned caveat |
+| `public/admin/index.html` + `admin.js` | The estate member directory at `/admin` — approve / revoke / promote against `auth.heygabi.ai`'s admin API |
+| `public/todo/index.html` | The cross-project board at `/todo`. Still no-JS; its filter is CSS-only radios |
+| `public/_headers` | Cloudflare Pages headers — per-path CSPs: allow-listed hosts on `/` and `/admin`, `default-src 'none'` on `/todo` |
 | `deploy.md` | Exact steps to create the Pages project and attach the domains |
 | `README.md` | This file |
 | `.gitattributes` | Pins this subtree to LF. `_headers` is parsed by Cloudflare, not git, and `core.autocrlf` is on globally on this machine |
@@ -215,10 +246,14 @@ the whole platform repo**: the upload root is one named directory, so nothing in
 
 ## Local preview
 
-Open `public/index.html` or `public/todo/index.html` in a browser. There is
-nothing to install and nothing to serve. (`_headers` is a Pages-only file and has
-no effect locally, so a local preview does **not** verify the CSP — check that on
-the deployed site.)
+Open `public/todo/index.html` in a browser — the board is still
+zero-dependency. The front door and `/admin` render from `file://` too, but
+their JS will not run there (ES modules need an http origin) and sign-in
+cannot work anywhere but the deployed apex: `localhost` is not the CORS
+origin the auth Worker allows, and Firebase popup auth wants an authorised
+domain. (`_headers` is a Pages-only file and has no effect locally, so a
+local preview never verifies the CSP either — check everything dynamic on the
+deployed site.)
 
 ⚠️ Opened as a `file://` URL, the footer link `/todo` and the board's back link
 `/` both resolve against the filesystem root and 404. That is the local preview

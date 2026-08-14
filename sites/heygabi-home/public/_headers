@@ -1,27 +1,55 @@
 # Cloudflare Pages headers file. Has no effect locally — Pages applies it at the
 # edge. Syntax: a path pattern on its own line, then indented "Name: value" lines.
 #
-# The CSP is the enforcement half of this repo's "zero external requests" rule.
-# default-src 'none' means a stray <script src>, web font, CDN stylesheet,
-# analytics beacon or remote <img> fails visibly in the console instead of
-# quietly phoning home.
+# ⚠️ STRUCTURE: the CSP is deliberately NOT on /* any more. Two pages carry two
+# different policies (the front door signs in, /todo must never gain JS), and a
+# path that matched two CSP rules could end up with two CSP headers — which
+# browsers enforce as the INTERSECTION, silently breaking sign-in. So /* carries
+# only the non-CSP safety headers, and each page's CSP lives on its own exact
+# rules. A NEW page added under public/ therefore ships with NO CSP until a rule
+# is added here — add one, strict by default, in the same commit as the page.
 #
-#   img-src 'self' data:   — the inline SVG favicon is a data: URI.
-#   style-src 'unsafe-inline' — the whole stylesheet is one inline <style>.
-#     ⚠️ This is NOT a hole worth closing with a nonce: Pages serves a static
-#     file and cannot mint a per-response nonce without a Worker. With
-#     script-src blocked entirely there is no injection vector to leverage it.
-#   script-src is absent, so default-src 'none' applies: NO JavaScript at all.
+# THE FRONT DOOR + /admin POLICY (estate-auth-design.md §7.2 — the old
+# "zero external requests" rule was overturned WITH the reasoning on record;
+# the in-file comment atop index.html carries it). Allow-listed, not open:
+#   script-src  'self' + www.gstatic.com (Firebase SDK modules, the same CDN
+#               builds every audiobook page ships) + apis.google.com (the
+#               sign-in popup's helper — Google-controlled, needed by some
+#               popup flows; remove if observed unused).
+#   connect-src the two estate Workers (index = search, auth = the /admin
+#               API whose CORS names exactly https://heygabi.ai) + Firebase
+#               auth endpoints (identitytoolkit = sign-in, securetoken =
+#               token refresh).
+#   frame-src   the Firebase auth iframe on the project's authDomain, and
+#               accounts.google.com for the sign-in flow.
+#   img-src     'self' data: (the inline SVG favicon) + the estate's cover
+#               hosts + the hosts catalog rows are known to hotlink
+#               (openlibrary/books.google measured in the library; BGG
+#               thumbnails for games) + Google avatars. A cover on any other
+#               host renders blank (find.js hides broken images) — add the
+#               host here if that starts mattering.
+#   style-src   'unsafe-inline' — the stylesheets are inline <style> blocks;
+#               with inline SCRIPT still blocked there is no injection vector
+#               to leverage a nonce against (unchanged reasoning).
+# Still absolutely absent: analytics, web fonts, CDN frameworks.
 #
-# ⚠️ When the cross-format index (PLATFORM.md §5) lands, this page will fetch
-# https://index.heygabi.ai. That needs BOTH:
-#     connect-src https://index.heygabi.ai;
-#     script-src 'self';        (and the script moved out to its own .js file)
-# Widen it for that host and nothing else.
+# /todo KEEPS THE ORIGINAL default-src 'none' NO-JS POLICY. Its filter is
+# CSS-only radios and its README says it must never acquire JavaScript; the
+# strict CSP is the enforcement of that sentence.
 
 /*
-  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  X-Frame-Options: DENY
   Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+
+/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/admin
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/todo
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
