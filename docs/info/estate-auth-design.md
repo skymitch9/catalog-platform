@@ -6,8 +6,11 @@
 > `packages/estate-auth/`, seed script); auth Worker since **DEPLOYED and
 > SEEDED** at `auth.heygabi.ai` (dispatcher). §14.3 **BUILT 2026-08-13**
 > (the index Worker is the first wired consumer — estate_cache migration
-> 0002, reads gated, probes run; its own deploy still pending); §14.4–14.5
-> not started. Owner answered all
+> 0002, reads gated, probes run; its own deploy still pending). §14.4
+> **BUILT 2026-08-13** (apex search in `#find` + the `/admin` member page,
+> `sites/heygabi-home/`; deploy pending — the dispatcher's, and 🔴 the apex
+> must enter Firebase authorised domains with it; ⚠️ the §15 two-tab test
+> becomes due on that deploy). §14.5 not started. Owner answered all
 > seven §13 questions 2026-08-13; the build folds them in: machinery
 > estate-wide with per-surface `public:` posture (audiobook site untouched),
 > default-grant ON (library `reader`, games `viewer`), TTL 10 min, approver =
@@ -743,7 +746,7 @@ Worker). Remaining (dispatcher): remote 0002, `ESTATE_APP_TOKEN_INDEX`
 secret, push tokens, deploy, first real push, then §9 step 3's three probes
 against production.
 
-### 14.4 Apex search (§9 step 4)
+### 14.4 Apex search (§9 step 4) — **BUILT 2026-08-13** (deploy pending)
 
 `sites/heygabi-home/public/index.html`: replace the `#find` slot with input +
 results list; Firebase web SDK (same CDN modules the audiobook site uses);
@@ -753,6 +756,20 @@ Rewrite the :13 warning per §7.2 — *rewrite, not delete*. `_headers`: widen
 CSP per §7.2. 🔴 Owner: apex into Firebase authorised domains. Deploy per
 `sites/heygabi-home/deploy.md` §4. Verify signed-out (page fine, search asks
 for sign-in), pending (honest queue message), approved (results).
+
+Built as specified, plus the owner-decision-#6 rider this section predates:
+**the `/admin` member page** (list by status, approve/revoke,
+promote-to-approver, break-glass surfaced on the page) shipped in the same
+change — `public/admin/` + `public/assets/estate-auth.js` (the ported
+minimum of `identity.js`, keeping the session because its job is minting
+bearers) + `public/assets/find.js`. Two amendments to §7.2's mechanical
+list, found by building: (1) `connect-src` also needs
+`https://auth.heygabi.ai` — the admin API lives there and §7.2 was written
+before decision #6 moved the admin UI to the apex; (2) the CSP went onto
+**per-path `_headers` rules**, not `/*`, so `/todo` keeps its no-JS
+`default-src 'none'` policy (two CSP headers on one path would enforce
+their intersection). `auth/unauthorized-domain` renders as a named
+owner-action message. ⚠️ The §15 two-tab test is DUE at first deploy.
 
 ### 14.5 Library, then games (§9 steps 5–6)
 
