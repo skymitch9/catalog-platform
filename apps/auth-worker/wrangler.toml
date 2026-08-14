@@ -17,6 +17,21 @@ compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
+# Added at deploy time by the dispatcher, 2026-08-13, per the header's gate.
+routes = [{ pattern = "auth.heygabi.ai", custom_domain = true }]
+
+# ⚠️ `namespace_id` is arbitrary but changing it silently resets every counter.
+# "2001" — deliberately NOT the games catalog's "1001"; separate counters for a
+# separate Worker. Tighter than the catalogs (60/min vs 300/min) because this
+# surface is an auth directory: /seen arrives at most once per user per app per
+# TTL window, and the admin API is one household. The middleware fails open
+# with a log line if this binding is absent, so dev and tests run unthrottled.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "2001"
+simple = { limit = 60, period = 60 }
+
 [vars]
 # Explicit, affirmative value — the canonical verifier's dev bypass requires
 # ENVIRONMENT === 'development', so anything else gets real authentication

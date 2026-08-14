@@ -87,21 +87,28 @@ function readAppUsers(label, appDir, dbName, sql) {
   }
   const sourceFlag = sourcesLocal ? '--local' : '--remote';
   console.error(`reading ${label} app_user (read-only, ${sourceFlag})…`);
-  // Via --file, not --command: Windows shell:true concatenates args unquoted,
-  // which shreds any SQL containing spaces.
-  const qFile = join(tmpdir(), `seed-estate-read-${Date.now()}.sql`);
-  writeFileSync(qFile, sql + '\n', 'utf8');
-  let out;
-  try {
-    out = sh(workerDir, 'npx', ['wrangler', 'd1', 'execute', dbName, sourceFlag, '--json', '--file', qFile]);
-  } finally {
-    rmSync(qFile, { force: true });
-  }
+  // ⚠️ Via --command, NOT --file — measured 2026-08-13 on the first real run:
+  // with `--file`, this wrangler version's --json output contains ONLY the
+  // execution summary ("Total queries executed", …); the SELECT's rows are
+  // never in the JSON at all, so a file-based read is structurally unable to
+  // return users. The original reason for --file (Windows shell:true
+  // concatenates args unquoted, shredding SQL spaces) is answered by
+  // pre-quoting the whole SQL as one argument — cmd.exe keeps a
+  // double-quoted token intact, and these SELECTs contain no double quotes.
+  const out = sh(workerDir, 'npx', ['wrangler', 'd1', 'execute', dbName, sourceFlag, '--json', '--command', `"${sql}"`]);
   const jsonStart = out.indexOf('[');
   const parsed = JSON.parse(out.slice(jsonStart));
-  const rows = parsed[0]?.results ?? [];
+  // ⚠️ With `--file`, wrangler's --json array includes a SUMMARY element whose
+  // "results" are meta rows ("Total queries executed", "Rows read", …), not
+  // user rows. `parsed[0]` grabbed that summary on the first real remote run —
+  // it passed the zero-row check (the summary IS rows) and then crashed the
+  // fold on `email: undefined`. Select by SHAPE instead: the one element whose
+  // rows actually carry an `email` column. Found 2026-08-13 on the first
+  // dispatcher-run dry-run, exactly the run this script's own handoff demanded
+  // a human execute before --commit.
+  const rows = parsed.map((p) => p?.results ?? []).find((rs) => rs.length > 0 && typeof rs[0]?.email === 'string') ?? [];
   if (rows.length === 0) {
-    console.error(`${label}: ZERO rows from ${dbName}.app_user — a zero-row read is a failed read. Refusing.`);
+    console.error(`${label}: ZERO user rows from ${dbName}.app_user (summary-only or empty output) — a zero-row read is a failed read. Refusing.`);
     process.exit(2);
   }
   return rows;
