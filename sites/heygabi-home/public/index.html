@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="en" data-default-theme="apple">
+<html lang="en" data-default-theme="classic">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>heygabi.ai — audio, books &amp; games</title>
 <meta name="description" content="Audio. Books. Games. One household, one search.">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfd">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f4ed">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b09">
 
 <!--
   ============================================================================
@@ -35,13 +35,15 @@
   this host, and no membership logic in the browser.
 
   ---------------------------------------------------------------------------
-  THEMING (owner, 2026-08-13): this page runs the estate THEME SYSTEM —
-  assets/estate-theme.css (three themes × light/dark, one --et-* token
-  contract) + assets/theme.js (the cog; localStorage hg_theme / hg_mode).
-  This page styles against TOKENS ONLY — if a rule below names a raw color,
-  it is a bug. Default here: apple. The audiobook site's default is its own
-  cyberpunk, games its retro — per-site identity is the rule, see
-  docs/info/estate-themes.md. Fonts are SELF-HOSTED under /assets/fonts/.
+  LAYOUT vs THEME (owner ruling, 2026-08-14): THIS PAGE'S STRUCTURE — the
+  masthead, the search box, the three catalogue CARDS in a grid, the footer —
+  is THE layout, restored from the pre-retheme page (git 3b9c6b3) after the
+  full-bleed tile experiment was rejected. Themes change SKIN ONLY: the page
+  styles against the --et-* tokens (assets/estate-theme.css — four themes ×
+  light/dark) and never against a theme; assets/theme.js is the cog
+  (localStorage hg_theme / hg_mode). Default here: classic — the original
+  look, promoted to a theme. If a rule below names a raw color, it is a bug.
+  Fonts are SELF-HOSTED under /assets/fonts/. See docs/info/estate-themes.md.
 
   EXTERNAL REQUESTS ARE ALLOW-LISTED IN public/_headers: the Firebase SDK
   (www.gstatic.com), Google's auth endpoints, the two estate Workers, and
@@ -68,12 +70,15 @@
 
 <style>
 /*
- * heygabi.ai — the front door, on the estate theme system.
+ * heygabi.ai — the front door. THE ORIGINAL LAYOUT (git 3b9c6b3), retokenised.
  *
- * Every color, radius, ease and size below comes from the --et-* tokens
- * (assets/estate-theme.css). The page is one column of full-width stacked
- * sections: hero, search, three shelf tiles, footer. Phone first; wider
- * viewports get more air, not more furniture.
+ * Warm paper by day, a lamp-lit library at night — under the classic theme,
+ * which is this page's default. Every color, radius and shadow below comes
+ * from the --et-* tokens so the other three themes reskin the same bones.
+ * The page is read once, for about four seconds, and its whole job is to
+ * make three links feel like a place rather than a list.
+ *
+ * Phone first throughout. Desktop gets a wider measure and a 3-up grid.
  */
 
 * { box-sizing: border-box; }
@@ -83,78 +88,220 @@ body {
   margin: 0;
   min-height: 100dvh;
   background: var(--et-bg);
-  background-image: var(--et-bg-texture);
+  background-image: var(--et-bg-texture); /* retro halftone / cyberpunk haze */
   background-size: var(--et-bg-texture-size);
-  background-attachment: fixed; /* the retro halftone belongs to the sheet */
+  background-attachment: fixed;
   color: var(--et-fg);
   font: var(--et-text-body)/1.55 var(--et-font);
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
   overflow-x: hidden;
-  transition: background-color var(--et-dur) var(--et-ease),
-              color var(--et-dur) var(--et-ease);
 }
 
+/* ---- the drifting background --------------------------------------------- */
+/*
+ * Three soft colour fields on a fixed layer, plus a fine grain overlay so the
+ * gradients do not band on cheap panels. Decorative and inert: position:fixed
+ * + pointer-events:none, aria-hidden on the element. Which themes get blobs
+ * is a TOKEN decision (--et-blob-*): classic wears them fully, the others set
+ * them transparent and keep their own atmosphere in --et-bg-texture.
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, var(--et-bg-2) 0%, var(--et-bg) 60%);
+  overflow: hidden;
+}
+
+.backdrop span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(60px);
+  will-change: transform;
+}
+
+.backdrop .b1 {
+  width: 60vmax; height: 60vmax;
+  top: -22vmax; left: -18vmax;
+  background: var(--et-blob-1);
+  animation: drift-a 44s ease-in-out infinite;
+}
+.backdrop .b2 {
+  width: 46vmax; height: 46vmax;
+  top: 10vmax; right: -20vmax;
+  background: var(--et-blob-2);
+  animation: drift-b 58s ease-in-out infinite;
+}
+.backdrop .b3 {
+  width: 40vmax; height: 40vmax;
+  bottom: -18vmax; left: 25%;
+  background: var(--et-blob-3);
+  animation: drift-c 52s ease-in-out infinite;
+}
+
+/* Grain. An inline SVG feTurbulence — no image request, and it tiles for free. */
+.backdrop .grain {
+  position: absolute;
+  inset: -50%;
+  width: 200%; height: 200%;
+  border-radius: 0;
+  filter: none;
+  opacity: var(--et-grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-7vmax, 6vmax, 0) scale(1.08); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4vmax, -5vmax, 0) scale(1.15); }
+}
+
+/* ---- layout --------------------------------------------------------------- */
+
+/*
+ * Centred vertically when the viewport has room to spare, top-aligned when it
+ * does not. `justify-content: center` on a flex column with min-height does
+ * exactly that and, unlike a transform or absolute positioning, never clips
+ * the top of overflowing content on a short window.
+ */
 main {
-  max-width: 64rem;
+  max-width: 60rem;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: var(--et-space-6) 1.15rem var(--et-space-5);
+  padding: clamp(2.5rem, 9vw, 4.5rem) 1.15rem 3.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-/* ---- hero ----------------------------------------------------------------- */
+/* Entrance stagger. Each piece declares its own delay; nothing is scripted. */
+.rise {
+  animation: rise .7s cubic-bezier(.22, .8, .3, 1) backwards;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
 
-.hero {
-  text-align: center;
-  margin-bottom: var(--et-space-5);
-  transform-origin: 50% 0;
+/* ---- masthead ------------------------------------------------------------- */
+
+header { margin-bottom: clamp(2.25rem, 6vw, 3.5rem); }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  margin: 0 0 1rem;
+  padding: .3rem .7rem .3rem .5rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  background: color-mix(in srgb, var(--et-surface) 70%, transparent);
+  color: var(--et-muted);
+  font-size: var(--et-text-micro);
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+/* A slow pulse on the dot — the only thing on the page that says "live". */
+.eyebrow .dot-live {
+  width: .5rem; height: .5rem;
+  border-radius: 50%;
+  background: var(--et-accent);
+  animation: pulse 3.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1;  transform: scale(1); }
+  50%      { opacity: .45; transform: scale(.82); }
 }
 
 h1 {
-  margin: 0 0 var(--et-space-2);
+  margin: 0 0 .6rem;
   font-family: var(--et-font-display);
-  font-size: var(--et-text-display);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -.03em;
-  text-transform: var(--et-title-case);
-  color: var(--et-heading-color);
-  text-shadow: var(--et-glow-title);
-}
-h1 .tld { color: var(--et-accent); text-shadow: none; }
-
-.tagline {
-  margin: 0 auto;
-  max-width: 36rem;
-  color: var(--et-muted);
-  font-size: var(--et-text-heading);
-  font-weight: 500;
-  text-wrap: balance;
-}
-
-/* ---- the search ----------------------------------------------------------- */
-
-#find {
-  max-width: 40rem;
-  margin: 0 auto var(--et-space-6);
-  text-align: center;
-}
-
-#find h2 {
-  margin: 0 0 var(--et-space-1);
-  font-family: var(--et-font-display);
-  font-size: var(--et-text-title);
-  font-weight: 600;
+  font-size: clamp(2.6rem, 11vw, 5rem);
+  line-height: .98;
   letter-spacing: var(--et-title-spacing);
   text-transform: var(--et-title-case);
+  font-weight: 800;
   color: var(--et-heading-color);
   text-shadow: var(--et-glow-title);
 }
 
-.find-hint {
-  margin: 0 0 var(--et-space-3);
+/*
+ * The wordmark gradient sweeps very slowly left to right. background-clip:text
+ * needs the -webkit- prefix in Safari and Chrome-on-iOS; both are set. The
+ * sweep runs fg → accent → accent-2 → fg, so every theme sweeps in its own
+ * voices (classic: green and gold; apple: one blue; cyberpunk: cyan/yellow).
+ */
+h1 .mark {
+  background: linear-gradient(100deg,
+              var(--et-heading-color) 0%, var(--et-heading-color) 28%,
+              var(--et-accent) 46%, var(--et-accent-2) 60%,
+              var(--et-heading-color) 78%, var(--et-heading-color) 100%);
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sweep 14s ease-in-out infinite;
+}
+@keyframes sweep {
+  0%, 100% { background-position: 100% 50%; }
+  50%      { background-position: 0% 50%; }
+}
+
+h1 .tld { color: var(--et-accent); -webkit-text-fill-color: var(--et-accent); }
+
+.tagline {
+  margin: 0;
+  max-width: 34rem;
   color: var(--et-muted);
-  font-size: var(--et-text-small);
+  font-size: clamp(1rem, 2.6vw, 1.1875rem);
   text-wrap: pretty;
+}
+
+/* ---- section headings ------------------------------------------------------ */
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: 0 0 1rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+/* The rule that trails the heading. Pure decoration, so it is a pseudo-element
+   rather than a <hr> a screen reader would announce. */
+h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--et-hairline), transparent);
+}
+
+/* ---- the cross-format search ----------------------------------------------- */
+
+#find { margin-bottom: clamp(2rem, 5vw, 3rem); }
+
+.find-box {
+  padding: 1rem 1.15rem 1.1rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-lg);
+  background: color-mix(in srgb, var(--et-surface) 65%, transparent);
 }
 
 #find-form {
@@ -162,28 +309,47 @@ h1 .tld { color: var(--et-accent); text-shadow: none; }
   gap: .6rem;
   align-items: stretch;
   flex-wrap: wrap;
-  justify-content: center;
 }
 
 #find-input {
-  flex: 1 1 16rem;
-  min-height: 48px;
-  padding: .5em 1.25em;
-  border: var(--et-border-w) solid var(--et-field-border);
-  border-radius: var(--et-radius-pill);
+  flex: 1 1 14rem;
+  min-height: 44px;
+  padding: .5rem .85rem;
+  border: 1px solid var(--et-field-border, var(--et-hairline));
+  border-radius: var(--et-radius);
   background: var(--et-surface);
   color: var(--et-fg);
-  font: var(--et-text-body)/1.4 var(--et-font);
+  font: inherit;
 }
 #find-input::placeholder { color: var(--et-muted); }
-#find-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 0; }
-#find-input:disabled { opacity: .55; }
+#find-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
+#find-input:disabled { opacity: .6; }
 
-.find-btn { /* both buttons carry .et-btn in markup; this is only the local fit */
-  flex: none;
+.find-btn {
+  min-height: 44px;
+  padding: .5rem 1.05rem;
+  border: var(--et-btn-border);
+  border-radius: var(--et-radius);
+  background: var(--et-btn-bg);
+  color: var(--et-btn-fg);
+  box-shadow: var(--et-btn-shadow);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.find-btn:hover { filter: brightness(1.06); }
+.find-btn:active { transform: var(--et-press); }
+.find-btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+.find-btn:disabled { opacity: .6; cursor: default; transform: none; }
+
+.find-hint {
+  margin: .6rem 0 0;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
 }
 
-#find-who { margin: var(--et-space-2) 0 0; color: var(--et-muted); font-size: var(--et-text-small); }
+#find-who { margin: .6rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); }
 
 .find-linkbtn {
   border: 0;
@@ -195,60 +361,55 @@ h1 .tld { color: var(--et-accent); text-shadow: none; }
   font-size: inherit;
   font-weight: 600;
   cursor: pointer;
-  text-decoration: none;
+  text-decoration: underline;
 }
-.find-linkbtn:hover { text-decoration: underline; }
 .find-linkbtn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 4px; }
 
 #find-status {
-  margin: var(--et-space-2) auto 0;
-  padding: .7em 1em;
+  margin: .8rem 0 0;
+  padding: .6rem .85rem;
+  border: 1px solid var(--et-hairline);
   border-radius: var(--et-radius);
-  background: var(--et-surface);
+  background: color-mix(in srgb, var(--et-surface) 55%, transparent);
   color: var(--et-muted);
   font-size: var(--et-text-small);
-  text-align: left;
   text-wrap: pretty;
 }
-#find-status[data-tone="warn"] { color: var(--et-warn); }
-#find-status[data-tone="owner"] { color: var(--et-accent); }
-
-/* Results — a quiet hairline list on a surface panel, left-aligned. */
-#find-results { text-align: left; }
+#find-status[data-tone="warn"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); color: var(--et-fg); }
+#find-status[data-tone="owner"] { border-color: color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline)); color: var(--et-fg); }
 
 .find-caveat {
-  margin: var(--et-space-3) 0 var(--et-space-1);
+  margin: 1rem 0 .3rem;
   color: var(--et-muted);
   font-size: var(--et-text-small);
   text-wrap: pretty;
 }
 
 .find-group {
-  margin: var(--et-space-2) 0 .5rem;
-  color: var(--et-muted);
+  margin: 1rem 0 .5rem;
   font-size: var(--et-text-micro);
   font-weight: 700;
   letter-spacing: .1em;
   text-transform: uppercase;
+  color: var(--et-muted);
 }
 
-ul.hits {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: var(--et-surface);
-  border: var(--et-border-w) solid var(--et-panel-border);
-  border-radius: var(--et-radius-lg);
-  overflow: hidden;
-}
+ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 
 .hit {
   display: flex;
   gap: .8rem;
   align-items: flex-start;
-  padding: .8rem 1rem;
+  padding: .65rem .75rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
 }
-.hit + .hit { border-top: 1px solid var(--et-hairline); }
+/* Keyboard navigation's active row (find.js sets aria-selected). */
+.hit[aria-selected="true"] {
+  border-color: var(--et-accent);
+  outline: 1px solid var(--et-accent);
+}
 
 .hit-cover {
   flex: none;
@@ -256,6 +417,7 @@ ul.hits {
   height: 3.6rem;
   object-fit: cover;
   border-radius: calc(var(--et-radius) / 2);
+  border: 1px solid var(--et-hairline);
   background: var(--et-bg);
 }
 
@@ -266,61 +428,179 @@ ul.hits {
 .hit-meta { color: var(--et-muted); font-size: var(--et-text-small); }
 .hit-universe { align-self: flex-start; font-size: var(--et-text-small); margin-top: .15rem; }
 
-/* ---- the shelf tiles ------------------------------------------------------ */
+/* ---- the catalogue cards ---------------------------------------------------- */
 
-ul.tiles {
+ul.catalogues {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--et-space-2);
+  gap: 1rem;
 }
 
-.tile-name {
-  display: block;
-  margin: 0 0 .4rem;
+@media (min-width: 52rem) {
+  ul.catalogues { grid-template-columns: repeat(3, 1fr); }
+}
+
+/*
+ * The whole card is the tap target — a small link inside a big card is a miss
+ * on a phone. Same reasoning as button.row-open in the library app.
+ */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1.35rem 1.3rem 1.2rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-xl);
+  clip-path: var(--et-clip-panel);
+  background: linear-gradient(180deg, var(--et-surface-edge), var(--et-surface));
+  box-shadow: var(--et-shadow);
+  color: inherit;
+  text-decoration: none;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 44px;
+}
+
+/* The spine: a coloured edge down the left, like a book on a shelf. Each card
+   sets --hue from the theme's three shelf hues; everything else is shared. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--hue);
+  opacity: .85;
+}
+
+a.card {
+  transition: transform .22s cubic-bezier(.22, .8, .3, 1),
+              box-shadow .22s ease,
+              border-color .22s ease;
+}
+a.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--et-shadow-lift);
+  border-color: color-mix(in srgb, var(--hue) 45%, var(--et-hairline));
+}
+a.card:active { transform: translateY(-1px) scale(.995); }
+a.card:focus-visible { outline: 2px solid var(--hue); outline-offset: 3px; }
+
+/* A sheen that crosses the card on hover. ::after so it sits above the
+   background but below the text (which is z-indexed up). */
+a.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(105deg, transparent 35%,
+              color-mix(in srgb, var(--hue) 16%, transparent) 50%, transparent 65%);
+  background-size: 280% 100%;
+  background-position: 130% 0;
+  opacity: 0;
+  transition: opacity .2s ease;
+  pointer-events: none;
+}
+a.card:hover::after {
+  opacity: 1;
+  animation: sheen .8s ease-out;
+}
+@keyframes sheen {
+  from { background-position: 130% 0; }
+  to   { background-position: -30% 0; }
+}
+
+.card > * { position: relative; z-index: 2; }
+
+.glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: .9rem;
+  border-radius: calc(var(--et-radius) + 1px);
+  background: color-mix(in srgb, var(--hue) 13%, transparent);
+  color: var(--hue);
+}
+.glyph svg { display: block; }
+
+.card .name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .5rem;
   font-family: var(--et-font-display);
-  font-size: var(--et-text-title);
+  font-size: 1.25rem;
   font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: var(--et-title-spacing);
+  letter-spacing: calc(var(--et-title-spacing) / 2);
   text-transform: var(--et-title-case);
-  color: var(--et-heading-color);
-  text-shadow: var(--et-glow-title);
 }
+a.card .name { color: var(--et-fg); }
 
-.tile-what {
-  margin: 0 auto;
-  max-width: 30rem;
+.card .what {
+  margin: .35rem 0 0;
   color: var(--et-muted);
-  font-size: var(--et-text-body);
+  font-size: .9375rem;
   text-wrap: pretty;
 }
 
-.tile-host {
-  display: inline-flex;
+/* Pushed to the bottom so hosts line up across cards of unequal text length. */
+.card .host {
+  display: flex;
   align-items: center;
   gap: .4rem;
-  margin: var(--et-space-2) 0 0;
-  color: var(--et-accent);
-  font-size: var(--et-text-small);
-  font-weight: 600;
+  margin: 1.1rem 0 0;
+  padding-top: .85rem;
+  border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted);
+  font-size: .78125rem;
+  font-family: var(--et-font-mono);
+  word-break: break-all;
 }
-.tile-host .arrow { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
-.et-tile:hover .tile-host .arrow { transform: translateX(3px); }
+.card .host .arrow {
+  margin-left: auto;
+  flex: none;
+  transition: transform .22s ease;
+}
+a.card:hover .host .arrow { transform: translateX(3px); }
 
-/* ---- footer --------------------------------------------------------------- */
+/* Not-yet-live catalogue: a <li> with no <a>, so it cannot be tapped, focused
+   or crawled. Retained (unused right now) because a fourth shelf is plausible
+   and this is the pattern for it. */
+.card.soon {
+  border-style: dashed;
+  background: none;
+  box-shadow: none;
+}
+.card.soon .name { color: var(--et-fg); }
+
+.pill {
+  padding: .15rem .5rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  background: var(--et-bg);
+  color: var(--et-muted);
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---- footer ---------------------------------------------------------------- */
 
 footer {
-  margin-top: var(--et-space-6);
-  padding-top: var(--et-space-3);
+  margin-top: clamp(2.5rem, 7vw, 4rem);
+  padding-top: 1.4rem;
   border-top: 1px solid var(--et-hairline);
   color: var(--et-muted);
   font-size: var(--et-text-small);
-  text-align: center;
   text-wrap: pretty;
 }
-footer p { margin: 0 auto .5rem; max-width: 46rem; }
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
 footer p:last-child { margin-bottom: 0; }
 
 footer a.more {
@@ -334,16 +614,42 @@ footer a.more {
 }
 footer a.more:hover { text-decoration: underline; }
 footer a.more:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
-footer a.more svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
+footer a.more svg { flex: none; transition: transform .22s ease; }
 footer a.more:hover svg { transform: translateX(3px); }
 
+/* ---- motion off ------------------------------------------------------------ */
+/*
+ * One block, everything. A drifting background is exactly the kind of ambient
+ * motion this setting exists to stop, so the blobs are parked rather than
+ * merely slowed, and the wordmark gradient is frozen at a readable position.
+ */
 @media (prefers-reduced-motion: reduce) {
-  body, .tile-host .arrow, footer a.more svg { transition: none !important; }
+  .backdrop span,
+  .eyebrow .dot-live,
+  h1 .mark,
+  .rise,
+  a.card,
+  a.card::after,
+  .card .host .arrow,
+  footer a.more svg {
+    animation: none !important;
+    transition: none !important;
+  }
+  .rise { opacity: 1; transform: none; }
+  h1 .mark { background-position: 50% 50%; }
+  a.card:hover { transform: none; }
 }
 </style>
 </head>
 
 <body>
+
+<div class="backdrop" aria-hidden="true">
+  <span class="b1"></span>
+  <span class="b2"></span>
+  <span class="b3"></span>
+  <span class="grain"></span>
+</div>
 
 <!-- The settings cog: dark mode + theme, together (owner ask). Wired by
      /assets/theme.js; styled by the theme system so it wears what it picks. -->
@@ -354,6 +660,7 @@ footer a.more:hover svg { transform: translateX(3px); }
   <div class="hg-row">
     <label class="hg-label" for="hg-theme-select">Theme</label>
     <select id="hg-theme-select">
+      <option value="classic">Classic</option>
       <option value="apple">Apple</option>
       <option value="cyberpunk">Cyberpunk</option>
       <option value="retro">Retro</option>
@@ -372,8 +679,9 @@ footer a.more:hover svg { transform: translateX(3px); }
 
 <main>
 
-  <header class="hero reveal" data-hero>
-    <h1>heygabi<span class="tld">.ai</span></h1>
+  <header class="rise" style="animation-delay:.02s">
+    <p class="eyebrow"><span class="dot-live"></span> Three shelves, one household</p>
+    <h1><span class="mark">heygabi</span><span class="tld">.ai</span></h1>
     <p class="tagline">Audio. Books. Games. One&nbsp;search.</p>
   </header>
 
@@ -381,50 +689,66 @@ footer a.more:hover svg { transform: translateX(3px); }
     The cross-format search (estate-auth-design.md §7). Logic in
     /assets/find.js; sign-in is scoped to this section and to /admin — the
     rest of the page neither knows nor cares who you are.
+
+    ⚠️ The search box boots NEUTRAL (disabled input, both buttons hidden)
+    until find.js hears from Firebase — a returning member must never see
+    "Sign in to search" flash before their session resolves. find.js flips
+    the state decisively both ways once auth answers.
   -->
-  <section id="find" class="reveal reveal-d1" aria-labelledby="find-h">
-    <h2 id="find-h">Do we own it?</h2>
-    <p class="find-hint">One title, checked against every shelf at once. The page is open to anyone; searching is for household members, so it asks for a Google sign-in.</p>
-    <form id="find-form">
-      <input id="find-input" type="search" placeholder="Sign in to search" autocomplete="off" disabled aria-label="Search every catalogue by title">
-      <button id="find-submit" class="et-btn find-btn" type="submit" hidden>Search</button>
-      <button id="find-signin" class="et-btn find-btn" type="button">Sign in to search</button>
-    </form>
-    <p id="find-who" hidden></p>
-    <p id="find-status" hidden></p>
-    <div id="find-results"></div>
+  <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
+    <h2 id="find-h">One question, three shelves</h2>
+    <div class="find-box">
+      <form id="find-form">
+        <input id="find-input" type="search" placeholder="One moment…" autocomplete="off" disabled aria-label="Search every catalogue by title">
+        <button id="find-submit" class="find-btn" type="submit" hidden>Search</button>
+        <button id="find-signin" class="find-btn" type="button" hidden>Sign in to search</button>
+      </form>
+      <p class="find-hint">“Do we own this in any format?” — one title, checked against every shelf at once. The page is open to anyone; searching is for household members, so it asks for a Google sign-in.</p>
+      <p id="find-who" hidden></p>
+      <p id="find-status" hidden></p>
+      <div id="find-results"></div>
+    </div>
   </section>
 
-  <section aria-labelledby="cat-h">
-    <h2 id="cat-h" class="sr-only">The shelves</h2>
+  <section class="rise" style="animation-delay:.18s" aria-labelledby="cat-h">
+    <h2 id="cat-h">The catalogues</h2>
 
-    <ul class="tiles">
+    <ul class="catalogues">
 
-      <li class="reveal">
-        <a class="et-tile et-tilt" href="https://audiobooks.heygabi.ai" target="_blank" rel="noopener">
-          <span class="tile-name">Audio</span>
-          <p class="tile-what">Our audio library — reviews, ratings and book clubs.</p>
-          <p class="tile-host">audiobooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
+      <li>
+        <a class="card" style="--hue: var(--et-hue-1)" href="https://audiobooks.heygabi.ai" target="_blank" rel="noopener">
+          <span class="glyph" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M20 14h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1H19a1 1 0 0 0 1-1z"/></svg>
+          </span>
+          <span class="name">Audio</span>
+          <p class="what">Our audio library — reviews, ratings and book clubs.</p>
+          <p class="host">audiobooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
       </li>
 
-      <li class="reveal">
-        <a class="et-tile et-tilt" href="https://library.heygabi.ai" target="_blank" rel="noopener">
-          <span class="tile-name">Books</span>
-          <p class="tile-what">Every book in the house — paper and ebook, one shelf.</p>
-          <p class="tile-host">library.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
+      <li>
+        <a class="card" style="--hue: var(--et-hue-2)" href="https://library.heygabi.ai" target="_blank" rel="noopener">
+          <span class="glyph" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
+          </span>
+          <span class="name">Books</span>
+          <p class="what">Every book in the house — paper and ebook, one shelf.</p>
+          <p class="host">library.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
       </li>
 
-      <li class="reveal">
-        <a class="et-tile et-tilt" href="https://boardgames.heygabi.ai" target="_blank" rel="noopener">
-          <span class="tile-name">Games</span>
-          <p class="tile-what">The game shelf — player counts, weights and who has played what.</p>
-          <p class="tile-host">boardgames.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
+      <li>
+        <a class="card" style="--hue: var(--et-hue-3)" href="https://boardgames.heygabi.ai" target="_blank" rel="noopener">
+          <span class="glyph" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
+          </span>
+          <span class="name">Games</span>
+          <p class="what">The game shelf — player counts, weights and who has played what.</p>
+          <p class="host">boardgames.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
@@ -433,7 +757,7 @@ footer a.more:hover svg { transform: translateX(3px); }
     </ul>
   </section>
 
-  <footer class="reveal">
+  <footer class="rise" style="animation-delay:.26s">
     <p>Not a shop and not a library — nothing here is for sale or for loan.</p>
     <p>No tracking and no cookies. The page itself needs no account; the search asks for a sign-in because it looks across the private shelves. Each catalogue handles its own sign-in and will ask before it shows you anything.</p>
     <p>
@@ -445,10 +769,9 @@ footer a.more:hover svg { transform: translateX(3px); }
 
 </main>
 
-<!-- External files because _headers ships script-src 'self' — inline script
-     stays blocked. motion.js = the estate motion vocabulary; find.js = the
-     search (its ids/classes above are its contract — renaming them breaks it). -->
-<script type="module" src="/assets/motion.js"></script>
+<!-- External file because _headers ships script-src 'self' — inline script
+     stays blocked. find.js = the search (its ids/classes above are its
+     contract — renaming them breaks it). -->
 <script type="module" src="/assets/find.js"></script>
 </body>
 </html>

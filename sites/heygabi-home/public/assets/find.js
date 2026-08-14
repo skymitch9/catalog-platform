@@ -39,6 +39,26 @@ const resultsEl = document.getElementById('find-results');
 
 let currentUser = null;
 
+/**
+ * ⚠️ THE SIGN-IN FLASH BUG, fixed for good (owner-found, live, 2026-08-14):
+ * Firebase reads its persisted session ASYNCHRONOUSLY after load, so a page
+ * that renders the signed-out state immediately shows a returning member
+ * "Sign in to search" for however long the SDK takes — which reads as "it
+ * forgot me". The box therefore boots NEUTRAL (markup ships it disabled with
+ * both buttons hidden) and renders nothing decisive until watchAuth's FIRST
+ * callback — which always comes, signed in or out, once the session is read.
+ * The timeout below is a backstop for the SDK never answering at all
+ * (blocked gstatic, dead network): after 8s the box falls back to the
+ * signed-out state, because a silent forever-disabled box is worse.
+ */
+let authResolved = false;
+const authBackstop = setTimeout(() => {
+  if (!authResolved) {
+    authResolved = true;
+    renderAuthState();
+  }
+}, 8000);
+
 // ---------------------------------------------------------------------------
 // UI state
 // ---------------------------------------------------------------------------
@@ -50,6 +70,15 @@ function setStatus(text, tone) {
 }
 
 function renderAuthState() {
+  if (!authResolved) {
+    // Neutral: no claim either way until Firebase answers.
+    input.disabled = true;
+    input.placeholder = 'One moment…';
+    submitBtn.hidden = true;
+    signinBtn.hidden = true;
+    whoEl.hidden = true;
+    return;
+  }
   const signedIn = currentUser !== null;
   input.disabled = !signedIn;
   submitBtn.hidden = !signedIn;
@@ -271,6 +300,10 @@ signinBtn.addEventListener('click', async () => {
 });
 
 watchAuth((user) => {
+  // The first callback is the moment auth is KNOWN — neutral ends here,
+  // decisively, in whichever direction the answer went.
+  authResolved = true;
+  clearTimeout(authBackstop);
   currentUser = user;
   renderAuthState();
 });
