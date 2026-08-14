@@ -23,6 +23,7 @@
  */
 
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { Env } from './env.js';
 import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
@@ -39,10 +40,36 @@ app.route('/api/push', pushRoutes);
 // Open by design: counts and timestamps only (health.ts says why).
 app.route('/api/health', healthRoutes);
 
+// ⚠️ CORS BEFORE the auth blanket, and the ordering is the whole bug it fixes.
+// The apex search page fetches these reads cross-origin with an Authorization
+// header, which makes the browser send a PREFLIGHT — an OPTIONS request that
+// deliberately carries no token. With auth mounted first, the preflight was
+// answered 401, the browser reported a bare "network" error, and the first
+// real user's first real search failed (found live, 2026-08-14, by the owner).
+// hono/cors short-circuits OPTIONS itself, so mounting it here lets the
+// preflight succeed while every actual GET still hits requireEstateMember.
+// Origin allow-list mirrors the auth Worker's adminCors: the apex only.
+app.use('/api/*', readCors());
+
 // The blanket. Every /api route below this line is estate-members-only.
 app.use('/api/*', requireEstateMember());
 
 app.route('/api', readRoutes);
+
+function readCors() {
+  return cors({
+    origin: (origin, c) => {
+      const allowed = (c.env.READ_ORIGINS ?? 'https://heygabi.ai')
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      return allowed.includes(origin) ? origin : null;
+    },
+    allowMethods: ['GET', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  });
+}
 
 app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404));
 

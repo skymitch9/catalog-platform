@@ -26,6 +26,8 @@ export interface Env {
   OWNER_EMAILS?: string;
   /** The estate directory, e.g. https://auth.heygabi.ai (local dev: :8799). */
   ESTATE_AUTH_URL?: string;
+  /** CORS allow-list for browser reads; comma-separated. Defaults to the apex. */
+  READ_ORIGINS?: string;
   /**
    * This consumer's own bearer for POST /api/estate/seen — a secret
    * (`wrangler secret put ESTATE_APP_TOKEN_INDEX`); the matching value lives
