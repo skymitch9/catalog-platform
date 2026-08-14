@@ -15,8 +15,16 @@
 > **NOT verified:** nothing was executed. No fresh read of production D1,
 > Firestore, or the live site — deploy claims (version `8433e561`, first real
 > `change_log` rows) are taken from `library_catalog/docs/TODO.md`'s work log,
-> not re-observed. Whether any *title* override has already been applied on the
-> audiobook side was not checked against `scripts/catalog_overrides.json`.
+> not re-observed. ~~Whether any *title* override has already been applied on the
+> audiobook side was not checked against `scripts/catalog_overrides.json`.~~
+>
+> **Updated 2026-08-14 by the A1/A3 build**, which executed things: the
+> overrides file was read (69 entries, **0** title or author corrections — §3.4a),
+> the audiobook repo's push state was verified against `origin/main` (§7, A1),
+> and `backfill-review-keys.mjs` was dry-run three times against the live
+> Firestore `reviews` collection (870 documents). **Still not verified:** no
+> `--commit` write was made anywhere, and D1, the live sites and A2 were not
+> touched.
 
 The owner's ask, verbatim, from one scanning session (2026-08-13):
 
@@ -184,6 +192,31 @@ their stored `bookId`. So a retitle on the audiobook side:
 - moves the derived `workKey`, so the library-side join and read-state sweep
   quietly lose those reviews. The same orphaning as §3.1, reached through a CSV.
 
+### ⚠️ 3.4a What building A3 found: aliasing alone would have fixed nothing
+
+Measured 2026-08-14 while building A3, and recorded because the analysis above
+is *incomplete* without it. `backfill-review-keys.mjs` skipped **any** document
+that already carried a `workKey` — the test was "is there a key", not "is the
+key still right". Since the 2026-08-12 `--commit` run stamped all 870 documents,
+every one of them was already keyed, so a re-run after a retitle would have
+matched the book through its new alias and then *skipped it anyway*, reporting a
+tidy `already keyed: 870`. **The carry ceremony needs both halves**: the alias
+finds the document, and a stale-key restamp actually moves it. A3 ships both.
+
+Two rules that came with the second half, both now tested: a review the
+**library** wrote (`source: 'library'`) is never restamped from the audiobook
+row's spelling — this catalog's own title and author are the authority for a
+print review — and a live catalog row always beats an alias, because pointing a
+real book's reviews at a different book is worse than leaving a rename
+unmatched.
+
+Also measured that day, closing the header's open question: **production carries
+zero title or author overrides.** All 69 entries in `catalog_overrides.json`
+correct `series`/`series_index`, which move no `bookId` and no `workKey` the CSV
+does not already carry. So the guard landed before the first retitle, which is
+the order §7 asks for, and the first dry run wrote nothing because there was
+nothing wrong: 870 matched, 0 unmatched, 0 stale keys.
+
 Nothing in `edit_overrides.py` warns about any of this today. The fix is
 Phase A2 (§7): the overrides file itself records the **pre**-correction values
 (`match.title`/`match.author` — the editor already keys on pre-correction tags
@@ -289,18 +322,22 @@ already exists** (`edit_overrides`, §2.2) and **its audit log already exists**
 (git, §4.3). What it lacks is not machinery but the *cross-catalog safety
 rules*. So its path is three small steps, none of which invent a store:
 
-1. **Push discipline** — the overrides branch merges to main and pushes like
-   any other work; an audit log that exists only locally is not one.
+1. **Push discipline** — ✅ **done, verified 2026-08-14** (§7, A1). The overrides
+   branch merges to main and pushes like any other work; an audit log that
+   exists only locally is not one.
 2. **The key-move guard in `edit_overrides.py`** — when `set` touches `title`
    or `author`, print what it means (*"this moves the review join for N
    existing reviews"* — N knowable from a Firestore read, or stated as
    unknowable), and print the carry procedure: run the library's
    `backfill-review-keys.mjs` after the next site build.
-3. **Override-aware backfill** — `backfill-review-keys.mjs` also derives each
-   book's *pre-correction* slug from `catalog_overrides.json` (`match.title`)
-   so retitled books' existing docs still match and get restamped (§3.4). This
-   is the audiobook side's entire carry ceremony, and it lives in the library
-   repo, which already reads the audiobook checkout (`LC_AUDIOBOOK_ROOT`).
+3. **Override-aware backfill** — ✅ **built 2026-08-14** (§7, A3).
+   `backfill-review-keys.mjs` also derives each book's *pre-correction* slug
+   from `catalog_overrides.json` (`match.title`, falling back to
+   `evidence.tags_read` for an ASIN-keyed entry) so retitled books' existing
+   docs still match, **and restamps a key that has gone stale** — the half §3.4a
+   found missing. This is the audiobook side's entire carry ceremony, and it
+   lives in the library repo, which already reads the audiobook checkout
+   (`LC_AUDIOBOOK_ROOT`).
 
 Explicitly **not** proposed: an audiobook D1, a web editor, touching
 `site/reviews.js` to stamp `workKey` on new reviews (see §8 Q1 — recommended,
@@ -323,9 +360,9 @@ same day.
 | Phase | Repo | Ships | Size |
 |---|---|---|---|
 | **L1 — DONE** (2026-08-13) | library | 0120 migration, three-tier guard, key-move ceremony + evidence floor, atomic audit writes on all mutations, Changes panel, authorless add + sentinel | shipped, 335 tests |
-| **A1 — push discipline** | audiobook | merge/push the overrides branch; note in its TODO that the audit trail is the *remote* git history | minutes; do with the next touch of that repo |
+| **A1 — DONE** (verified 2026-08-14) | audiobook | merge/push the overrides branch; note in its TODO that the audit trail is the *remote* git history | ✅ the branch was **already merged and pushed** — `feat/editable-listings` (tip `09ea472`) is an ancestor of `origin/main`, the CLI commit `336d0e2` and the latest `catalog_overrides.json` commit are both on `origin/main`, and the corrections layer had nothing uncommitted. The discipline note is in that repo's `docs/TODO.md` (⚠️ `docs/` is gitignored there — **this table is the tracked record**) |
 | **A2 — key-move guard** | audiobook | the §6.2 warning in `edit_overrides.py` + tests | small; single-file |
-| **A3 — override-aware backfill** | library (reads audiobook checkout) | §6.3 aliasing in `backfill-review-keys.mjs`; re-run after any audiobook retitle build | small; one script + fixture |
+| **A3 — DONE** (2026-08-14) | library (reads audiobook checkout) | §6.3 aliasing in `backfill-review-keys.mjs`; re-run after any audiobook retitle build | shipped on `feature/override-aware-review-carry`: `overrideTitleAliases` + `aliasedBookIdIndex` in `@lc/core` (pure, 10 new tests, 415 → 425), the aliasing and — see §3.4 — the **restamp** the design had not spotted. Measured dry runs in `library_catalog/docs/info/identity-and-reviews.md` §5.1 |
 | **G1 — games adoption** | board games | 0120 DDL + `changes.ts` port + audit writes on mutations. **Trigger: first real need** (first destructive mistake, or the estate-wide changes view) — not before | medium; no ceremony needed (no key join) |
 
 A2/A3 are ordered before any *title/author* override is applied to a reviewed
