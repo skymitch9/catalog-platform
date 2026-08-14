@@ -4,7 +4,7 @@
  * theme/mode land on <html> before first paint (no flash of the wrong theme).
  *
  * What it does:
- *   - reads localStorage `hg_theme` ('apple'|'cyberpunk'|'retro') and
+ *   - reads localStorage `hg_theme` ('classic'|'apple'|'cyberpunk'|'retro') and
  *     `hg_mode` ('auto'|'light'|'dark'); origin-scoped, so each site keeps
  *     its own choice for free;
  *   - stamps <html data-theme="…" data-mode="light|dark"> — data-mode is
@@ -26,7 +26,7 @@
   'use strict';
 
   var docEl = document.documentElement;
-  var THEMES = ['apple', 'cyberpunk', 'retro'];
+  var THEMES = ['classic', 'apple', 'cyberpunk', 'retro'];
   var MODES = ['auto', 'light', 'dark'];
   var DEFAULT_THEME = docEl.getAttribute('data-default-theme') || 'apple';
   var media = window.matchMedia('(prefers-color-scheme: dark)');
