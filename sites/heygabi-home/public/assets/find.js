@@ -15,19 +15,31 @@
  *   rows are wanted-only). The caveat line under the results is load-bearing
  *   copy, not decoration; do not "tidy" it into a claim of ownership.
  *
- * Rendering groups per the index design's two tiers:
- *   - books tier (source library/audiobook): same work, any format —
- *     work_fold joins these server-side; here they are one group.
- *   - games: matched on title alone, carrying `kind` and `parent_source_id`
- *     (expansions point at their base game). Games are never the same *work*
- *     as a book; the only cross-format join they take part in is the
- *     universe tier, offered here as a "everything in <universe>" follow-up
- *     that calls /api/universe/:name.
+ * HOW IT SEARCHES (the owner's ask, 2026-08-14): as you type. From two
+ * characters, each pause of ~250ms fires GET /api/search?q=… — the Worker's
+ * RANKED partial-match search (exact > prefix > all-tokens-prefix >
+ * substring; title > creator > series; every hit carries its reason).
+ * Stale responses cannot land: each request aborts the previous one via
+ * AbortController, and an aborted request renders nothing. Enter merely
+ * flushes the debounce — no submit needed, none punished.
+ *
+ * Rendering groups per the server's own grouping:
+ *   - books: SAME-WORK groups (work_fold joined server-side) — one card,
+ *     every owned format a link inside it;
+ *   - games: individual rows carrying `kind` and `parent_source_id`;
+ *   - universes: names the QUERY matched, as follow-up buttons onto
+ *     /api/universe/:name (the only cross-format join games take part in).
+ *
+ * Keyboard: ↑/↓ walk the results (aria-activedescendant on the input,
+ * aria-selected on the row), Enter opens the active row, Escape closes the
+ * list. The results container is role="listbox", rows role="option".
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from './estate-auth.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
+const DEBOUNCE_MS = 250;
+const MIN_CHARS = 2;
 
 const form = document.getElementById('find-form');
 const input = document.getElementById('find-input');
@@ -93,12 +105,12 @@ function renderAuthState() {
     out.textContent = 'sign out';
     out.addEventListener('click', async () => {
       await signOutUser();
-      resultsEl.innerHTML = '';
+      clearResults();
       setStatus('');
     });
     whoEl.append('Signed in as ', name, ' · ', out);
     whoEl.hidden = false;
-    input.placeholder = 'A title — book, audiobook or board game';
+    input.placeholder = 'Start typing a title, author or series…';
   } else {
     whoEl.hidden = true;
     whoEl.innerHTML = '';
@@ -107,8 +119,42 @@ function renderAuthState() {
 }
 
 // ---------------------------------------------------------------------------
-// Results
+// Results + keyboard navigation
 // ---------------------------------------------------------------------------
+
+/** The walkable rows, top to bottom: { el, open } — open() is what Enter does. */
+let navItems = [];
+let activeIndex = -1;
+
+function clearResults() {
+  resultsEl.innerHTML = '';
+  navItems = [];
+  activeIndex = -1;
+  input.removeAttribute('aria-activedescendant');
+  input.setAttribute('aria-expanded', 'false');
+}
+
+function setActive(i) {
+  if (activeIndex >= 0 && navItems[activeIndex]) {
+    navItems[activeIndex].el.setAttribute('aria-selected', 'false');
+  }
+  activeIndex = i;
+  if (i >= 0 && navItems[i]) {
+    const el = navItems[i].el;
+    el.setAttribute('aria-selected', 'true');
+    input.setAttribute('aria-activedescendant', el.id);
+    el.scrollIntoView({ block: 'nearest' });
+  } else {
+    input.removeAttribute('aria-activedescendant');
+  }
+}
+
+function registerNav(el, open) {
+  el.id = `find-opt-${navItems.length}`;
+  el.setAttribute('role', 'option');
+  el.setAttribute('aria-selected', 'false');
+  navItems.push({ el, open });
+}
 
 function sourceLabel(source) {
   return source === 'game' ? 'board games'
@@ -117,21 +163,51 @@ function sourceLabel(source) {
     : source;
 }
 
+function openUrl(url) {
+  if (url) window.open(url, '_blank', 'noopener');
+}
+
+function metaBits(row) {
+  const bits = [];
+  if (row.creator) bits.push(row.creator);
+  bits.push(row.format);
+  if (row.kind && row.kind !== 'base') bits.push(row.kind);
+  if (row.parent_source_id) bits.push('belongs with a base game');
+  if (row.series) bits.push(row.series_index != null ? `${row.series} #${row.series_index}` : row.series);
+  if (row.year) bits.push(String(row.year));
+  if (row.publisher) bits.push(row.publisher);
+  return bits.join(' · ');
+}
+
+/**
+ * The thumbnail slot — ALWAYS rendered at fixed size so rows line up and
+ * nothing shifts as lazy images land. No cover (or a cover whose host is
+ * missing from the CSP img-src list, or a dead hotlink) leaves a clean
+ * themed box — never a broken-image glyph. The allow-list of cover hosts
+ * lives in public/_headers, measured from the real pushed rows.
+ */
+function coverFor(li, row) {
+  const box = document.createElement('span');
+  box.className = 'hit-cover';
+  box.setAttribute('aria-hidden', 'true');
+  if (row && row.cover_url) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.width = 42;
+    img.height = 58;
+    img.src = row.cover_url;
+    img.addEventListener('error', () => img.remove());
+    box.appendChild(img);
+  }
+  li.appendChild(box);
+}
+
+/** One game row, or one flat row in a universe listing. */
 function rowCard(row) {
   const li = document.createElement('li');
   li.className = 'hit';
-
-  if (row.cover_url) {
-    const img = document.createElement('img');
-    img.className = 'hit-cover';
-    img.alt = '';
-    img.loading = 'lazy';
-    img.src = row.cover_url;
-    // A cover host missing from the CSP img-src list, or a dead hotlink,
-    // fails here — hide the box rather than show a broken-image glyph.
-    img.addEventListener('error', () => img.remove());
-    li.appendChild(img);
-  }
+  coverFor(li, row);
 
   const body = document.createElement('div');
   body.className = 'hit-body';
@@ -152,15 +228,7 @@ function rowCard(row) {
 
   const meta = document.createElement('span');
   meta.className = 'hit-meta';
-  const bits = [];
-  if (row.creator) bits.push(row.creator);
-  bits.push(row.format);
-  if (row.kind && row.kind !== 'base') bits.push(row.kind);
-  if (row.parent_source_id) bits.push('belongs with a base game');
-  if (row.series) bits.push(row.series_index != null ? `${row.series} #${row.series_index}` : row.series);
-  if (row.year) bits.push(String(row.year));
-  if (row.publisher) bits.push(row.publisher);
-  meta.textContent = bits.join(' · ');
+  meta.textContent = metaBits(row);
   body.appendChild(meta);
 
   if (row.universe) {
@@ -173,49 +241,175 @@ function rowCard(row) {
   }
 
   li.appendChild(body);
+  registerNav(li, () => openUrl(row.detail_url));
   return li;
 }
 
-function renderGroups(matches, headingText) {
-  resultsEl.innerHTML = '';
+/** One BOOK WORK: the server joined same-work rows; every format is a link. */
+function workCard(hit) {
+  const li = document.createElement('li');
+  li.className = 'hit';
+  coverFor(li, hit.entries.find((e) => e.cover_url) || null);
 
-  if (!matches.length) {
-    setStatus('Nothing in any catalog matches that title exactly. The search joins on the exact title — try the full title, or browse the shelf that would hold it.');
-    return;
+  const body = document.createElement('div');
+  body.className = 'hit-body';
+
+  const title = document.createElement('span');
+  title.className = 'hit-title';
+  title.textContent = hit.title;
+  body.appendChild(title);
+
+  const meta = document.createElement('span');
+  meta.className = 'hit-meta';
+  meta.textContent = hit.creator || '';
+  if (meta.textContent) body.appendChild(meta);
+
+  // The formats line: "library · book" / "audiobooks · audiobook", each a link.
+  const formats = document.createElement('span');
+  formats.className = 'hit-meta';
+  hit.entries.forEach((e, i) => {
+    if (i > 0) formats.append(' · ');
+    const label = `${sourceLabel(e.source)}: ${e.format}`;
+    if (e.detail_url) {
+      const a = document.createElement('a');
+      a.href = e.detail_url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = label;
+      formats.appendChild(a);
+    } else {
+      formats.append(label);
+    }
+  });
+  body.appendChild(formats);
+
+  const withUniverse = hit.entries.find((e) => e.universe);
+  if (withUniverse) {
+    const uni = document.createElement('button');
+    uni.type = 'button';
+    uni.className = 'find-linkbtn hit-universe';
+    uni.textContent = `everything in ${withUniverse.universe} →`;
+    uni.addEventListener('click', () => runUniverse(withUniverse.universe));
+    body.appendChild(uni);
   }
 
+  li.appendChild(body);
+  const first = hit.entries.find((e) => e.detail_url);
+  registerNav(li, () => openUrl(first ? first.detail_url : null));
+  return li;
+}
+
+function groupHeading(text) {
+  const h = document.createElement('h3');
+  h.className = 'find-group';
+  h.setAttribute('role', 'presentation');
+  h.textContent = text;
+  return h;
+}
+
+function caveatLine(headingText) {
   const heading = document.createElement('p');
   heading.className = 'find-caveat';
+  heading.setAttribute('role', 'presentation');
   // ⚠️ Load-bearing copy (see file header): in-catalog, not owned.
   heading.textContent =
     `${headingText} A result means it is in the catalog — some entries are wanted, not owned. ` +
     'Tap through to the owning catalog for owned-versus-wanted.';
-  resultsEl.appendChild(heading);
+  return heading;
+}
 
-  // Books tier first (same work, any format), then games (title-only match).
-  const groups = [
-    { name: 'Books & audiobooks — same work, any format', rows: matches.filter((m) => m.source === 'library' || m.source === 'audiobook') },
-    { name: 'Board games — matched on title', rows: matches.filter((m) => m.source === 'game') },
-  ];
+/** The live /api/search answer: books (same-work), games, universes. */
+function renderSearch(data) {
+  clearResults();
 
-  for (const g of groups) {
-    if (!g.rows.length) continue;
-    const h = document.createElement('h3');
-    h.className = 'find-group';
-    h.textContent = g.name;
-    resultsEl.appendChild(h);
+  const total = data.books.length + data.games.length + data.universes.length;
+  if (total === 0) {
+    setStatus(`Nothing on any shelf matches “${data.query}”. The search tries titles, authors and series — a couple more letters can help.`);
+    return;
+  }
+  setStatus('');
+  input.setAttribute('aria-expanded', 'true');
+
+  resultsEl.appendChild(caveatLine(`Matches for “${data.query}”.`));
+
+  if (data.universes.length) {
+    resultsEl.appendChild(groupHeading('Universes — every catalog, every format'));
     const ul = document.createElement('ul');
     ul.className = 'hits';
+    ul.setAttribute('role', 'presentation');
+    for (const u of data.universes) {
+      const li = document.createElement('li');
+      li.className = 'hit';
+      const body = document.createElement('div');
+      body.className = 'hit-body';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'find-linkbtn hit-universe';
+      btn.textContent = `everything in ${u.name} (${u.count}) →`;
+      btn.addEventListener('click', () => runUniverse(u.name));
+      body.appendChild(btn);
+      li.appendChild(body);
+      registerNav(li, () => runUniverse(u.name));
+      ul.appendChild(li);
+    }
+    resultsEl.appendChild(ul);
+  }
+
+  if (data.books.length) {
+    resultsEl.appendChild(groupHeading('Books & audiobooks — same work, any format'));
+    const ul = document.createElement('ul');
+    ul.className = 'hits';
+    ul.setAttribute('role', 'presentation');
+    for (const hit of data.books) ul.appendChild(workCard(hit));
+    resultsEl.appendChild(ul);
+  }
+
+  if (data.games.length) {
+    resultsEl.appendChild(groupHeading('Board games — matched on title'));
+    const ul = document.createElement('ul');
+    ul.className = 'hits';
+    ul.setAttribute('role', 'presentation');
+    for (const hit of data.games) ul.appendChild(rowCard(hit));
+    resultsEl.appendChild(ul);
+  }
+}
+
+/** A /api/universe answer: flat rows, grouped by tier (unchanged shape). */
+function renderUniverse(data) {
+  clearResults();
+
+  if (!data.matches.length) {
+    setStatus(`Nothing in any catalog sits in ${data.universe} right now.`);
+    return;
+  }
+  setStatus('');
+  input.setAttribute('aria-expanded', 'true');
+
+  resultsEl.appendChild(caveatLine(`Everything in ${data.universe} — every catalog, every format.`));
+
+  const groups = [
+    { name: 'Books & audiobooks', rows: data.matches.filter((m) => m.source === 'library' || m.source === 'audiobook') },
+    { name: 'Board games', rows: data.matches.filter((m) => m.source === 'game') },
+  ];
+  for (const g of groups) {
+    if (!g.rows.length) continue;
+    resultsEl.appendChild(groupHeading(g.name));
+    const ul = document.createElement('ul');
+    ul.className = 'hits';
+    ul.setAttribute('role', 'presentation');
     for (const row of g.rows) ul.appendChild(rowCard(row));
     resultsEl.appendChild(ul);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Queries
+// Queries — debounced, abortable
 // ---------------------------------------------------------------------------
 
-async function callIndex(path) {
+let debounceTimer = 0;
+let inflight = null; // the current AbortController
+
+async function callIndex(path, signal) {
   const token = await idToken();
   if (!token) {
     setStatus('Your sign-in has lapsed — sign in again.', 'warn');
@@ -225,8 +419,10 @@ async function callIndex(path) {
   try {
     res = await fetch(`${INDEX_ORIGIN}${path}`, {
       headers: { authorization: `Bearer ${token}` },
+      signal,
     });
   } catch (e) {
+    if (e && e.name === 'AbortError') return { aborted: true };
     setStatus('The index did not answer (network). Try again shortly.', 'warn');
     return null;
   }
@@ -250,6 +446,10 @@ async function callIndex(path) {
     case 'estate_unreachable':
       setStatus('The estate directory did not answer, so new admissions cannot be checked right now. Try again shortly.', 'warn');
       break;
+    case 'query_too_short':
+      // The client already gates at MIN_CHARS; reaching this means the gates
+      // disagree — stay quiet rather than scold mid-keystroke.
+      break;
     case 'unfoldable_query':
       setStatus('That title cannot be key-matched (it folds to nothing — wholly non-Latin or punctuation-only titles do this). Browse the owning catalog instead.', 'warn');
       break;
@@ -262,32 +462,80 @@ async function callIndex(path) {
   return null;
 }
 
-async function runLookup(title) {
-  setStatus('Searching…');
-  const data = await callIndex(`/api/lookup?title=${encodeURIComponent(title)}`);
-  if (!data) return;
-  setStatus('');
-  renderGroups(data.matches, `Matches for “${data.query}”.`);
+async function runSearch(q) {
+  if (inflight) inflight.abort();
+  inflight = new AbortController();
+  const data = await callIndex(`/api/search?q=${encodeURIComponent(q)}`, inflight.signal);
+  if (!data || data.aborted) return; // a newer keystroke owns the box now
+  renderSearch(data);
 }
 
 async function runUniverse(name) {
+  if (inflight) inflight.abort();
+  inflight = new AbortController();
   setStatus(`Everything in ${name}…`);
-  const data = await callIndex(`/api/universe/${encodeURIComponent(name)}`);
-  if (!data) return;
-  setStatus('');
-  renderGroups(data.matches, `Everything in ${data.universe} — every catalog, every format.`);
+  const data = await callIndex(`/api/universe/${encodeURIComponent(name)}`, inflight.signal);
+  if (!data || data.aborted) return;
+  renderUniverse(data);
+}
+
+function scheduleSearch() {
+  clearTimeout(debounceTimer);
+  const q = input.value.trim();
+  if (q.length < MIN_CHARS) {
+    // Below the threshold nothing is pending and nothing stale can land.
+    if (inflight) inflight.abort();
+    clearResults();
+    setStatus('');
+    return;
+  }
+  debounceTimer = setTimeout(() => runSearch(q), DEBOUNCE_MS);
 }
 
 // ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
+input.setAttribute('role', 'combobox');
+input.setAttribute('aria-autocomplete', 'list');
+input.setAttribute('aria-expanded', 'false');
+input.setAttribute('aria-controls', 'find-results');
+resultsEl.setAttribute('role', 'listbox');
+resultsEl.setAttribute('aria-label', 'Search results');
+
+input.addEventListener('input', () => {
+  if (!currentUser) return;
+  scheduleSearch();
+});
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!navItems.length) return;
+    e.preventDefault();
+    const delta = e.key === 'ArrowDown' ? 1 : -1;
+    const next = activeIndex + delta;
+    setActive(next < -1 ? navItems.length - 1 : next >= navItems.length ? -1 : next);
+  } else if (e.key === 'Enter') {
+    if (activeIndex >= 0 && navItems[activeIndex]) {
+      e.preventDefault();
+      navItems[activeIndex].open();
+    }
+    // Plain Enter falls through to the form submit below: flush the debounce.
+  } else if (e.key === 'Escape') {
+    clearTimeout(debounceTimer);
+    if (inflight) inflight.abort();
+    clearResults();
+    setStatus('');
+  }
+});
+
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  const q = input.value.trim();
-  if (!q) return;
   if (!currentUser) return;
-  runLookup(q);
+  clearTimeout(debounceTimer);
+  const q = input.value.trim();
+  if (q.length < MIN_CHARS) return;
+  runSearch(q);
 });
 
 signinBtn.addEventListener('click', async () => {
