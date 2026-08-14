@@ -82,6 +82,12 @@ h1 {
 }
 
 /* admin.js mints buttons with these classes — styled from the tokens. */
+/* ⚠️ The hidden attribute hides via the UA stylesheet's display:none — which
+   ANY author display rule beats. `.btn { display:inline-flex }` below beat it,
+   so the sign-in button rendered BESIDE "Skylar · sign out" for every signed-in
+   visit (owner-found, on the phone, 2026-08-14 — the attribute read true while
+   the pixels said otherwise). This guard restores hidden's meaning page-wide. */
+[hidden] { display: none !important; }
 .btn {
   display: inline-flex;
   align-items: center;
