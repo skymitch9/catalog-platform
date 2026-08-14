@@ -119,3 +119,19 @@ amendment names the carve-out.
 would send tokenless searches into 401s. Verify after: tokenless
 `GET https://index.heygabi.ai/api/search?q=dune` → 200 with
 `"scope":["audiobook"]`.
+
+## Done 2026-08-14 — audiobook members migrated; apex Admin affordances
+
+- **All audiobook Firebase Auth accounts migrated into the estate directory**
+  (owner ask). 10 accounts exported; 8 new rows inserted as **pending**,
+  audiobook-only visibility, origin 'seed:audiobook'. Pending on purpose:
+  the library posture auto-grants 'reader' to any APPROVED member, so
+  approving at migration time would have silently granted app access —
+  the Approve button on /admin is the deliberate grant moment.
+- **Approver-only Admin link on the apex** — find.js probes GET /estate/users
+  (a 200 IS the approver fact) and shows 'Admin' in the signed-in chip.
+- **/admin sign-in flash fixed** — button ships hidden, neutral until
+  watchAuth's first callback, 8s backstop (find.js's rule, applied).
+- Commit 8b15d7c; deployed to Pages; all three verified live.
+- Next owner-facing idea on file: deep-links from person surfaces in each
+  catalog to /admin (see-someone-then-grant). Not ordered yet.
