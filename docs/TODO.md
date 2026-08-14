@@ -125,7 +125,11 @@ workflow prints the line to append locally if wanted.
    dispatch catalog-platform with `target=all` (or index-worker then
    heygabi-home — never heygabi-home alone first).
 
-## 2. Visibility-scoped + anonymous search (B2) — BUILT, deploy pending
+## 2. Visibility-scoped + anonymous search (B2) — ✅ DEPLOYED LIVE 2026-08-14
+
+(The pair shipped together — index Worker migration 0003 + wrangler deploy, and the
+Pages site — and was verified live: tokenless /api/search returns 200 with
+scope ["audiobook"]. The section below is the build record.)
 
 **Asked 2026-08-13** (owner-approved a+b), built the same day on `main`.
 Estate design §4.5 is the contract; `index-worker-design.md` §9 Q3's
