@@ -27,10 +27,12 @@ import { cors } from 'hono/cors';
 import type { Env } from './env.js';
 import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
+import { searchRoutes } from './search-route.js';
 import { healthRoutes } from './health.js';
 import { requireEstateMember } from './middleware/auth.js';
+import type { ScopeVariables } from './middleware/scope.js';
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 
 // Machine route, BEFORE the blanket by name: pushers are machines with their
 // own per-source bearer tokens (push.ts), not people — §8.2 #3's named
@@ -50,6 +52,15 @@ app.route('/api/health', healthRoutes);
 // preflight succeed while every actual GET still hits requireEstateMember.
 // Origin allow-list mirrors the auth Worker's adminCors: the apex only.
 app.use('/api/*', readCors());
+
+// Scoped-not-gated, BEFORE the blanket by name (§8.2 #3's named-exception
+// rule): /api/search is the ONE read the anonymous internet may use —
+// estate design §4.5 resolves an absent/invalid token to the public slice
+// ({audiobook}), a member to their effective visibility set, the revoked to
+// {} — so its middleware (searchScope, in search-route.ts) never answers
+// 401; the visibility set IS the answer. Lookup and universe stay below the
+// blanket, members-only.
+app.route('/api/search', searchRoutes);
 
 // The blanket. Every /api route below this line is estate-members-only.
 app.use('/api/*', requireEstateMember());

@@ -1,13 +1,19 @@
 /**
  * The read surface: lookup and universe. (Health lives in health.ts — open by
- * design, mounted before the auth blanket.)
+ * design, mounted before the auth blanket. Search lives in search-route.ts —
+ * mounted before the blanket TOO, by name, because §4.5's anonymous rule
+ * gives a tokenless caller the public slice there; it is the one read that
+ * must never 401.)
  *
  * ⚠️ AUTH DOES NOT LIVE IN THIS FILE, AND THAT IS DELIBERATE — these routes
  * are estate-members-only (design §9 Q3, answered by estate-auth-design.md
- * §7.1), enforced by the `requireEstateMember()` blanket in index.ts mounted
- * BEFORE this router. Adding a route here puts it behind that blanket
- * automatically; an open or machine route belongs in index.ts, named, with a
- * comment (conformance §8.2 #3).
+ * §7.1; the search carve-out is §4.5's anonymous rule), enforced by the
+ * `requireEstateMember()` blanket in index.ts mounted BEFORE this router.
+ * Adding a route here puts it behind that blanket automatically; an open or
+ * machine route belongs in index.ts, named, with a comment (conformance §8.2
+ * #3). The blanket also stamps the member's effective VISIBILITY set
+ * (§4.5) into the context; scoped routes read it, /api/lookup deliberately
+ * does not (owner call: lookup stays membership-gated, unscoped).
  *
  * These routes never auto-act. Title-only matching is safe HERE AND ONLY HERE
  * because the reader is a human looking at a result list with covers and
@@ -22,11 +28,12 @@
 import { Hono } from 'hono';
 import type { Env } from './env.js';
 import { titleFoldOrNull } from './fold.js';
-import { searchIndex, type SearchRow } from './search.js';
+import type { ScopeVariables } from './middleware/scope.js';
+import { sourcesForScope } from './search-route.js';
 import { resolveUniverseName } from './universes.js';
 import { universeIndex } from './universes-data.js';
 
-export const readRoutes = new Hono<{ Bindings: Env }>();
+export const readRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 
 /** The columns a reader gets back — everything in `entry`; it is all display data. */
 const ENTRY_COLS =
@@ -67,37 +74,16 @@ readRoutes.get('/lookup', async (c) => {
 });
 
 /**
- * GET /api/search?q=… — the as-you-type search behind the apex's box.
+ * GET /api/universe/:name — everything in one fiction, across every VISIBLE
+ * catalog. The only cross-format join games participate in (design §3.2):
+ * the DCC board game beside the DCC books, joined where the shared fact
+ * actually exists.
  *
- * A scored SCAN of the whole table (~2,300 rows — deliberately no FTS, no
- * extra index, no migration; the scale does not earn one). The ranking and
- * the §8 carve-out argument live in search.ts; this route only validates,
- * scans, and answers. Unlike /api/lookup, an unfoldable QUERY is not refused
- * here — the raw display-title lane can still find the Korean rows, which is
- * §3.1's own "display-title search" path.
- */
-readRoutes.get('/search', async (c) => {
-  const raw = c.req.query('q');
-  if (raw === undefined || raw.trim() === '') {
-    return c.json({ error: 'missing_query', usage: '/api/search?q=…' }, 400);
-  }
-  const query = raw.trim();
-  if (query.length < 2) {
-    // One character ranks half the estate — not a search, a shrug. The
-    // client keeps typing; the refusal is polite and named.
-    return c.json({ error: 'query_too_short', detail: 'type at least two characters and the search will run' }, 422);
-  }
-
-  const { results } = await c.env.DB.prepare(`SELECT ${ENTRY_COLS} FROM entry`).all();
-  const found = searchIndex(query, (results ?? []) as unknown as SearchRow[], universeIndex);
-  return c.json({ query, ...found });
-});
-
-/**
- * GET /api/universe/:name — everything in one fiction, across every catalog.
- * The only cross-format join games participate in (design §3.2): the DCC
- * board game beside the DCC books, joined where the shared fact actually
- * exists.
+ * Scoped since §4.5: the rows are filtered to the member's effective
+ * visibility set (stamped by the blanket) — the search's universe counts
+ * only count in-scope rows, and this follow-up must show the same shelves
+ * those counts counted, not quietly widen. A member narrowed to {} gets the
+ * honest empty list, mirroring the revoked rule.
  */
 readRoutes.get('/universe/:name', async (c) => {
   const asked = c.req.param('name');
@@ -106,12 +92,19 @@ readRoutes.get('/universe/:name', async (c) => {
     return c.json({ error: 'unknown_universe', asked, known: [...universeIndex.names] }, 404);
   }
 
+  const scope = c.get('visibility');
+  if (scope.length === 0) {
+    return c.json({ universe: canonical, scope, matches: [], reason: 'no_catalogs_visible' });
+  }
+
+  const sources = sourcesForScope(scope);
+  const placeholders = sources.map(() => '?').join(', ');
   const { results } = await c.env.DB.prepare(
-    `SELECT ${ENTRY_COLS} FROM entry WHERE universe = ? ORDER BY source, series, series_index, title`,
+    `SELECT ${ENTRY_COLS} FROM entry WHERE universe = ? AND source IN (${placeholders}) ORDER BY source, series, series_index, title`,
   )
-    .bind(canonical)
+    .bind(canonical, ...sources)
     .all();
 
-  return c.json({ universe: canonical, matches: results });
+  return c.json({ universe: canonical, scope, matches: results });
 });
 

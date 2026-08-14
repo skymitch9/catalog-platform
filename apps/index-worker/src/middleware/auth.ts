@@ -23,6 +23,7 @@
 
 import type { MiddlewareHandler } from 'hono';
 import {
+  CATALOGS,
   combineEstateAndLocal,
   declareAuthPosture,
   estateCheck,
@@ -31,6 +32,7 @@ import {
 import type { Env } from '../env.js';
 import { parseOwnerEmails } from '../env.js';
 import { readEstateCache, writeEstateCache } from '../estate-cache.js';
+import { scopeFromAnswer, type ScopeVariables } from './scope.js';
 
 /**
  * The per-surface posture declaration (owner decision #1): reads are gated,
@@ -42,7 +44,7 @@ export const AUTH_POSTURE = declareAuthPosture({
   defaultRole: null, // no local role table — membership is the authorization
 });
 
-export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env }> {
+export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variables: ScopeVariables }> {
   return async (c, next) => {
     // 1. Identity — verified locally, no central call (design §5.1).
     let identity;
@@ -64,6 +66,7 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env }> {
     const appToken = c.env.ESTATE_APP_TOKEN_INDEX;
     if (!baseUrl || !appToken) {
       if (isOwner) {
+        c.set('visibility', [...CATALOGS]); // §4.5: owner's set is computed, never stored
         await next();
         return;
       }
@@ -77,12 +80,14 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env }> {
     }
 
     // 3. Membership — cache while fresh, /seen otherwise, stale on failure.
+    //    Since §4.5 the answer is status + visibility, cached WHOLE
+    //    (requireVisibility heals pre-0003 rows with one /seen call).
     const cache = await readEstateCache(c.env.DB, email);
     const result = await estateCheck(cache, {
       email,
       firebaseUid: identity.uid,
       displayName: identity.name,
-    }, { baseUrl, appToken });
+    }, { baseUrl, appToken, requireVisibility: true });
 
     if (result.refresh) {
       await writeEstateCache(c.env.DB, {
@@ -90,6 +95,7 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env }> {
         firebaseUid: identity.uid,
         status: result.refresh.status,
         checkedAt: result.refresh.checkedAt,
+        visibility: result.refresh.visibility,
       });
     }
     if (result.stale) {
@@ -105,6 +111,14 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env }> {
     switch (verdict) {
       case 'proceed':
       case 'default_grant': // nothing to grant here — membership is the authorization
+        // The member's effective visibility travels with the request so the
+        // scoped reads (/api/universe) show only in-scope rows (§4.5). The
+        // owner's set is computed, never stored — break-glass must not be
+        // narrowable into lockout (§4.3).
+        c.set(
+          'visibility',
+          isOwner ? [...CATALOGS] : scopeFromAnswer(result.status, result.visibility),
+        );
         await next();
         return;
       case 'request_screen':

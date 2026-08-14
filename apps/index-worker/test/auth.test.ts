@@ -17,6 +17,8 @@ interface CacheRow {
   status: string;
   checked_at: string;
   firebase_uid: string | null;
+  /** The 0003 column: canonical JSON array text, or null (pre-0003 row). */
+  visibility: string | null;
 }
 
 class FakeDB {
@@ -28,17 +30,26 @@ class FakeDB {
       async first() {
         if (sql.includes('FROM estate_cache')) {
           const row = self.cache.get(String(args[0]));
-          return row ? { status: row.status, checked_at: row.checked_at } : null;
+          return row
+            ? { status: row.status, checked_at: row.checked_at, visibility: row.visibility }
+            : null;
         }
         return null;
       },
       async run() {
         if (sql.includes('INSERT INTO estate_cache')) {
-          const [email, uid, status, checkedAt] = args as [string, string | null, string, string];
+          const [email, uid, status, checkedAt, visibility] = args as [
+            string,
+            string | null,
+            string,
+            string,
+            string | null,
+          ];
           const prev = self.cache.get(email);
           self.cache.set(email, {
             status,
             checked_at: checkedAt,
+            visibility: visibility ?? null,
             firebase_uid: uid ?? prev?.firebase_uid ?? null,
           });
         }
@@ -60,6 +71,9 @@ class FakeDB {
     return [];
   }
 }
+
+/** All three catalogs as stored JSON — the household default. */
+const FULL_VIS = '["audiobook","library","games"]';
 
 // --- Env + fetch-stub helpers. --------------------------------------------
 
@@ -171,7 +185,7 @@ test('estate approved → 200, and the fresh answer is cached (default_grant gra
 
 test('fresh cache is used — no /seen call inside the TTL', async () => {
   const db = new FakeDB();
-  db.cache.set('member@example.com', { status: 'approved', checked_at: FRESH(), firebase_uid: null });
+  db.cache.set('member@example.com', { status: 'approved', checked_at: FRESH(), firebase_uid: null, visibility: FULL_VIS });
   const f = stubFetch('unreachable'); // would fail loudly if called
   try {
     const res = await app.request('/api/lookup?title=dune', {}, devEnv(db, 'member@example.com'));
@@ -197,7 +211,7 @@ test('estate pending → 403 estate_pending, the request-screen answer', async (
 
 test('estate revoked → 403, always — even for OWNER_EMAILS (§3.1 row 1: computed, never stored)', async () => {
   const db = new FakeDB();
-  db.cache.set(OWNER, { status: 'revoked', checked_at: FRESH(), firebase_uid: null });
+  db.cache.set(OWNER, { status: 'revoked', checked_at: FRESH(), firebase_uid: null, visibility: '[]' });
   const f = stubFetch('unreachable');
   try {
     const res = await app.request('/api/lookup?title=dune', {}, devEnv(db, OWNER));
@@ -221,7 +235,7 @@ test('estate unreachable, no cache, unknown person → 503 estate_unreachable (n
 
 test('estate unreachable, STALE approved cache → 200 (standing member served, §6 row 1)', async () => {
   const db = new FakeDB();
-  db.cache.set('member@example.com', { status: 'approved', checked_at: STALE, firebase_uid: null });
+  db.cache.set('member@example.com', { status: 'approved', checked_at: STALE, firebase_uid: null, visibility: FULL_VIS });
   const f = stubFetch('unreachable');
   try {
     const res = await app.request('/api/lookup?title=dune', {}, devEnv(db, 'member@example.com'));
@@ -234,7 +248,7 @@ test('estate unreachable, STALE approved cache → 200 (standing member served, 
 
 test('estate unreachable, stale PENDING cache → still refused (no admission to stand on)', async () => {
   const db = new FakeDB();
-  db.cache.set('newcomer@example.com', { status: 'pending', checked_at: STALE, firebase_uid: null });
+  db.cache.set('newcomer@example.com', { status: 'pending', checked_at: STALE, firebase_uid: null, visibility: '["audiobook"]' });
   const f = stubFetch('unreachable');
   try {
     const res = await app.request('/api/lookup?title=dune', {}, devEnv(db, 'newcomer@example.com'));

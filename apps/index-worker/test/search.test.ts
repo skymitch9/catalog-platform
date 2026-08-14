@@ -188,14 +188,20 @@ class SearchFakeDB {
   constructor(private rows: SearchRow[]) {}
   prepare(sql: string) {
     const self = this;
-    const result = {
+    const make = (args: unknown[]) => ({
       async first() { return null; },
       async run() { return { success: true }; },
       async all() {
-        return { results: sql.includes('FROM entry') ? self.rows : [] };
+        if (!sql.includes('FROM entry')) return { results: [] };
+        // The scope IS the SQL (search-route.ts): honor WHERE source IN (…).
+        if (sql.includes('WHERE source IN')) {
+          const sources = args.map(String);
+          return { results: self.rows.filter((r) => sources.includes(r.source)) };
+        }
+        return { results: self.rows };
       },
-    };
-    return { bind: () => result, ...result };
+    });
+    return { bind: (...args: unknown[]) => make(args), ...make([]) };
   }
   async batch() { return []; }
 }
@@ -213,13 +219,22 @@ function env(db: SearchFakeDB) {
   };
 }
 
-test('tokenless GET /api/search → 401: the new route sits behind the blanket automatically', async () => {
+test('tokenless GET /api/search → 200 with the PUBLIC slice — §4.5\'s anonymous rule, never a 401', async () => {
+  const db = new SearchFakeDB([
+    row({ title: 'Dune', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Dune', source: 'library', format: 'hardcover' }),
+  ]);
   const res = await app.request('/api/search?q=dune', {}, {
-    ...env(new SearchFakeDB([])),
+    ...env(db),
     ENVIRONMENT: 'production',
     DEV_EMAIL: undefined,
   });
-  assert.equal(res.status, 401);
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.deepEqual(body.scope, ['audiobook'], 'the world-readable catalog, nothing more');
+  assert.equal(body.books.length, 1);
+  assert.deepEqual(body.books[0].entries.map((e: any) => e.source), ['audiobook'],
+    'the library edition never reaches the wire');
 });
 
 test('GET /api/search without q → 400 missing_query', async () => {
