@@ -172,6 +172,67 @@
   --et-dur: .35s;
   --et-dur-slow: .7s;
   --et-tilt-max: 4; /* degrees; read by assets/motion.js (apple-only pattern) */
+
+  /* ---- card dress (the apex's three catalogue cards) ----------------------
+     Skin for shared bones (the skin-not-bones ruling): how a theme DRESSES
+     the cards without touching their grid. Neutral defaults here — every
+     theme inherits the classic grammar (surface gradient, left-aligned,
+     lift + shadow + sheen on hover) unless it overrides. Apple overrides
+     below (:root[data-theme="apple"]) with the apple.com tile grammar:
+     alternating gray/black grounds, centered stack, big quiet name, a
+     whisper of scale and NO shadow explosion. Defined relatively, so every
+     theme's own surface/fg/muted flow through without restating. */
+  --et-card-1-bg: linear-gradient(180deg, var(--et-surface-edge), var(--et-surface));
+  --et-card-2-bg: linear-gradient(180deg, var(--et-surface-edge), var(--et-surface));
+  --et-card-3-bg: linear-gradient(180deg, var(--et-surface-edge), var(--et-surface));
+  --et-card-1-fg: var(--et-fg);
+  --et-card-2-fg: var(--et-fg);
+  --et-card-3-fg: var(--et-fg);
+  --et-card-1-muted: var(--et-muted);
+  --et-card-2-muted: var(--et-muted);
+  --et-card-3-muted: var(--et-muted);
+  --et-lift: translateY(-3px);            /* the hover move */
+  --et-lift-shadow: var(--et-shadow-lift); /* the hover shadow */
+  --et-sheen: 1;                           /* hover sheen visibility */
+  --et-card-align: left;
+  --et-card-name-size: 1.25rem;
+  --et-card-glyph-margin: 0 0 .9rem;
+}
+
+/* The apple card dress — the one theme whose cards leave the neutral grammar.
+   Observed from apple.com live (2026-08-14): tiles as self-contained scenes
+   on alternating soft-gray/black grounds, centered type stack, big semibold
+   name, calm ~1.016 hover scale with the RESTING shadow (precision, not
+   fireworks). Scoped to the stamped theme; a no-JS visitor gets the neutral
+   dress, which is graceful rather than wrong. */
+:root[data-theme="apple"] {
+  --et-card-1-bg: #f5f5f7;
+  --et-card-1-fg: #1d1d1f;
+  --et-card-1-muted: #6e6e73;
+  --et-card-2-bg: #000000;
+  --et-card-2-fg: #f5f5f7;
+  --et-card-2-muted: #86868b;
+  --et-card-3-bg: #f5f5f7;
+  --et-card-3-fg: #1d1d1f;
+  --et-card-3-muted: #6e6e73;
+  --et-lift: scale(1.016);
+  --et-lift-shadow: var(--et-shadow);
+  --et-sheen: 0;
+  --et-card-align: center;
+  --et-card-name-size: clamp(1.5rem, 3vw, 2rem);
+  --et-card-glyph-margin: 0 auto .9rem;
+}
+/* Dark flips the pair: the black tile becomes the light one. */
+:root[data-theme="apple"][data-mode="dark"] {
+  --et-card-1-bg: #1d1d1f;
+  --et-card-1-fg: #f5f5f7;
+  --et-card-1-muted: #86868b;
+  --et-card-2-bg: #f5f5f7;
+  --et-card-2-fg: #1d1d1f;
+  --et-card-2-muted: #6e6e73;
+  --et-card-3-bg: #1d1d1f;
+  --et-card-3-fg: #f5f5f7;
+  --et-card-3-muted: #86868b;
 }
 
 /* Native widgets (selects, date pickers) follow the stamped mode. */
