@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Platform-level docs, the heygabi.ai front door, and the shared universe list that both book catalogs read at build time.",
+  "description": "Platform-level docs, the heygabi.ai front door, the shared universe list both book catalogs read at build time, and the shared index Worker (apps/index-worker).",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "universes": "node tools/universes.mjs",
-    "validate": "node tools/universes.mjs validate && node tools/universes.mjs fixtures"
+    "validate": "node tools/universes.mjs validate && node tools/universes.mjs fixtures",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
   },
   "engines": {
     "node": ">=20"

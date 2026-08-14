@@ -1,0 +1,26 @@
+# The shared index Worker — its own config, its own D1, deliberately apart
+# from every catalog's deploy (the separate-blast-radius rule: a bad index
+# deploy must not be able to take a catalog down, and vice versa).
+#
+# ⚠️ NOT DEPLOYED YET, ON PURPOSE. Read-surface auth is an open owner question
+# (docs/info/index-worker-design.md §9 Q3 — the lookup surface leaks which
+# titles the household owns), and the deploy plus any route
+# (index.heygabi.ai) are gated on that answer. `workers_dev = false` and the
+# absence of [[routes]] are that gate written down, not an omission.
+
+name = "catalog-index"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "index_catalog"
+# Created 2026-08-13 in region WNAM (`wrangler d1 create index_catalog`).
+database_id = "3004d175-3c51-4ed4-ac3e-62859319f8ac"
+migrations_dir = "migrations"
+
+# No [vars]. The three push tokens are secrets, never in this file:
+#   wrangler secret put INDEX_PUSH_TOKEN_GAME       (and _LIBRARY, _AUDIOBOOK)
+# Locally they live in .dev.vars (gitignored).

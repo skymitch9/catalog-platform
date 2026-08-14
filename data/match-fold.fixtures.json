@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "_doc": "Fold-pinning fixtures for the work-tier join key. The index Worker (apps/index-worker) computes title_fold and creator_fold on write, and those folds MUST equal library_catalog's normaliseTitle / normaliseTitle(primaryAuthor(...)) — otherwise 'same book' means two different things in the estate, because work_fold replicates what work_key means. This file is the UNIVERSES mechanism applied again: one fixture file, N implementations, each repo's CI asserts its own implementation reproduces every case, so drift breaks a build loudly instead of a join silently.",
+  "_measured": "Every `fold` value below was produced by executing library_catalog packages/core/src/titles.ts on 2026-08-13 — measured, not hand-computed. If a case here looks wrong, the fix is a MIGRATION in the library (stored work_key rows depend on this fold), never an edit to this file to match a new implementation.",
+  "_contract": "titles: fold === normaliseTitle(raw). authors: primary === primaryAuthor(raw) and fold === normaliseTitle(primaryAuthor(raw)). An empty-string fold is a REAL expected value: wholly non-Latin input folds to ''. What each consumer does about '' is its own documented policy — the library keeps the degenerate key (a known production wart, two Korean works), the index Worker stores NULL and excludes the row from key joins (the refusal wrapper, index-only, NOT part of this contract).",
+  "_runners": [
+    "catalog-platform — apps/index-worker: npm test (test/fold.test.ts)",
+    "library_catalog  — npm test (packages/core/test/fold-fixtures.test.ts, file materialised by scripts/sync-universes.mjs)"
+  ],
+  "titles": [
+    { "raw": "The Hobbit", "fold": "hobbit", "why": "leading article stripped" },
+    { "raw": "A Court of Thorns and Roses", "fold": "court of thorns and roses", "why": "leading 'A' stripped; interior 'and' kept" },
+    { "raw": "An Absolutely Remarkable Thing", "fold": "absolutely remarkable thing", "why": "leading 'An' stripped" },
+    { "raw": "Dungeons & Dragons", "fold": "dungeons and dragons", "why": "ampersand becomes the word 'and'" },
+    { "raw": "Café at the Edge of the World", "fold": "cafe at the edge of the world", "why": "diacritics folded; only the LEADING article is stripped, interior 'the' survives" },
+    { "raw": "The Frugal Wizard’s Handbook for Surviving Medieval England", "fold": "frugal wizard s handbook for surviving medieval england", "why": "curly apostrophe (U+2019) becomes a space, leaving a free-standing 's' — the real audiobook row spelling" },
+    { "raw": "Summoner 6", "fold": "summoner 6", "why": "a bare trailing number IS the title (Eric Vall) and survives the fold" },
+    { "raw": "Who Goes Roar?", "fold": "who goes roar", "why": "trailing punctuation dropped" },
+    { "raw": "THE STORMLIGHT ARCHIVE", "fold": "stormlight archive", "why": "case folds; spine-style all caps" },
+    { "raw": "캐치! 티니핑", "fold": "", "why": "⚠️ wholly non-Latin folds to EMPTY — the '|samg' production bug. The index stores NULL for this and refuses key joins; the library still carries the degenerate key (known wart)" },
+    { "raw": "三体", "fold": "", "why": "same empty-fold class, CJK" },
+    { "raw": "   ", "fold": "", "why": "whitespace-only input folds to empty" },
+    { "raw": "Betrayal at House on the Hill", "fold": "betrayal at house on the hill", "why": "a board game title — same fold, one implementation estate-wide" }
+  ],
+  "authors": [
+    { "raw": "Brandon Sanderson", "primary": "Brandon Sanderson", "fold": "brandon sanderson", "why": "single name passes through" },
+    { "raw": "Brandon Sanderson & Janci Patterson", "primary": "Brandon Sanderson", "fold": "brandon sanderson", "why": "first listed wins, split on &" },
+    { "raw": "Oleg Sapphire, Alexey Kovtunov, Jennifer E. Sunseri - Translator", "primary": "Oleg Sapphire", "fold": "oleg sapphire", "why": "comma split; the '- Translator' suffix must never become an author" },
+    { "raw": "Terry Pratchett and Neil Gaiman", "primary": "Terry Pratchett", "fold": "terry pratchett", "why": "split on the word 'and'" },
+    { "raw": "J.R.R. Tolkien", "primary": "J.R.R. Tolkien", "fold": "j r r tolkien", "why": "initials become separated letters" },
+    { "raw": "SAMG", "primary": "SAMG", "fold": "samg", "why": "one of the two real author spellings behind the Korean-title collision risk" },
+    { "raw": "SAMG Entertainment", "primary": "SAMG Entertainment", "fold": "samg entertainment", "why": "the other spelling — one author-merge away from colliding two empty-title keys; the reason the index refuses author-only joins" },
+    { "raw": "William D. Arand", "primary": "William D. Arand", "fold": "william d arand", "why": "middle initial" },
+    { "raw": "샘지", "primary": "샘지", "fold": "", "why": "⚠️ wholly non-Latin author folds to EMPTY — creator_fold NULL at the index, so work_fold is NULL and the row can never key-join" },
+    { "raw": "?unknown", "primary": "?unknown", "fold": "unknown", "why": "⚠️ the library's authorless SENTINEL folds to plain 'unknown' — indistinguishable from a real 'Unknown' credit, which is exactly why workKeyFor bypasses the fold for it and why the index must refuse to fold the sentinel at all (creator_fold NULL), never store 'unknown'" }
+  ]
+}

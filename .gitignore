@@ -16,6 +16,10 @@ node_modules/
 # of the shared universe list; library_catalog and audiobook_catalog both read
 # it at build time. Ignoring it breaks two builds in another repo, silently.
 
+# Local Worker secrets (apps/index-worker/.dev.vars): push tokens for wrangler
+# dev. Never committed — the real ones are Worker secrets.
+.dev.vars
+
 # OS and editor cruft.
 Thumbs.db
 desktop.ini

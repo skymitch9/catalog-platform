@@ -1,0 +1,25 @@
+{
+  "name": "@platform/index-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The shared cross-catalog index: snapshot pushes in, two-tier joins out. See docs/info/index-worker-design.md.",
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "db:migrate:local": "wrangler d1 migrations apply index_catalog --local",
+    "db:migrate": "wrangler d1 migrations apply index_catalog --remote",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.0.0"
+  }
+}
