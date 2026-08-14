@@ -594,3 +594,202 @@ Recorded so nobody reopens them expecting a win:
 | **Second Firebase project, or auth for `covers.` / redirect hosts** | `docs/access/cloudflare.md` §5 and `HEYGABI_LAYOUT.md` §1.3 already settled both |
 | **Password / passphrase support** | Google-only, estate-wide. The frozen `/users` docs stay frozen |
 | **Approval workflows beyond approve/revoke** (invitations, expiring guests, per-app grants at approval time) | Household scale. Per-app grants at approval time would re-centralise roles through the back door — the exact thing §3 splits apart |
+
+---
+
+## 11. The dispatcher's seven recommendations — verdicts
+
+Asked to argue where wrong; here is where I did and did not.
+
+| # | Recommendation | Verdict |
+|---|---|---|
+| 1 | Split identity from authorization | **Accepted** — and it is not even new doctrine: both `auth.ts` headers already say "Firebase authenticates; the app authorizes". This design promotes an existing habit to a contract and inserts the one missing layer (membership) between the two |
+| 2 | Dedicated auth Worker with its own D1; not Firestore, not the index Worker | **Accepted, with the alternatives argued rather than assumed** (§4.1) — including one the brief did not list: *no service at all*, which is the honest fallback if the owner finds the Worker heavy, and which still satisfies requirement 5 via §8's contract alone |
+| 3 | Verify tokens locally; call the service only for approval, cached with a named TTL | **Accepted and sharpened.** The sharpening matters: "call the service for approval" could be read as *estate approval required for everyone, always*, which during a seed gap or an outage locks out the household. §3.1's rule — the estate gates newcomers and revocations, never overrules a standing local approval — plus `shadow` mode in the rollout are the difference between bulletproof and brittle here. TTL proposed 10 min, trade-off in §5.3 |
+| 4 | `OWNER_EMAILS` break-glass in every app | **Accepted, extended**: the auth Worker itself carries it, and — deliberately unlike the apps — carries **no** empty-table-first-claim bootstrap (§4.3), because "first to knock owns the estate" is an unacceptable failure for the estate's gate even briefly |
+| 5 | Email is the join key | **Accepted; verified** in all four places (§1.4) |
+| 6 | Audiobook contributes its user list and adopts approval; not rebuilt | **Accepted with the meaning sharpened by measurement** (§1.5): the "user list" that can move is the two D1 tables plus `ADMIN_EMAILS`. Four review authors have no email on record anywhere and can only be met at the door; three passphrase docs are frozen and stay so. The audiobook *site* neither adopts nor enforces anything — it has no server to enforce with, and its Firestore posture is §4a's settled decision |
+| 7 | Adoption order: library first, prove it, then the others | ⚠️ **Rejected as stated.** Library first means proving the protocol on a system with real household users — the exact people a seed gap would lock out. The **index Worker adopts first** (§9 step 3): it has zero users, deployment is already gated on this design, and its migration is conveniently still unapplied so the estate cache costs nothing. Library is then the first *existing* app to adopt — the brief's reasoning (smallest diff, approval already works) holds for that slot — and does it in `shadow` mode before `enforce`. Never all at once, agreed |
+
+On the brief's framing question — whether requirement 5 should drive: **agreed,
+and §8 is the evidence.** Designed inheritance-first, the deliverable is a
+contract plus the smallest shared state the contract needs. Designed
+feature-first, it would have been three bespoke integrations and a promise.
+
+Two things the brief had wrong, corrected by measurement rather than argued:
+games is already on Firebase tokens (not Access), and library's roles include
+`manager`. Both made the project *smaller* than briefed — §1.
+
+---
+
+## 12. Questions I settled (so they are not reopened as open)
+
+| Question | Settled as | Where |
+|---|---|---|
+| Firestore vs D1 for the directory | D1; no service account in Workers, standing policy | §4.1 |
+| In the index Worker vs its own | Own Worker; blast radius + the snapshot-delete neighbour hazard | §4.1 |
+| Central roles vs status-only | Status-only (`pending/approved/revoked` + `is_approver` flag) | §3, §4.2 |
+| Token forwarding vs per-app bearer for the check | Per-app bearer | §4.4 |
+| Cache location | Two columns on each app's own user row; a small table for the index | §5.2 |
+| Estate vs local precedence | The §3.1 sentence and table | §3.1 |
+| Revoked = deleted? | Never deleted; revocation must survive re-sign-in | §4.2 |
+| Auth Worker bootstrap | `OWNER_EMAILS` only; **no** first-claim rule | §4.3 |
+| Index read auth (`index-worker-design.md` §9 Q3) | Estate-members-only | §7.1 |
+| Search host | The apex, overturning its no-auth rule with reasons on the record | §7.2 |
+| Rollout safety | `off/shadow/enforce` flag per app; index-first order | §9 |
+
+## 13. Open questions — the owner must answer before a build starts
+
+| # | Question | Blocks | Default if unanswered |
+|---|---|---|---|
+| 1 | **Does "login becomes app-wide" include gating `audiobooks.heygabi.ai` reads?** Its world-readable posture is long-standing and load-bearing (`PLATFORM.md` §2.4); gating it is a separate, real project (edge gate or rewrite) with §4a implications. This design assumes **no** | Nothing in §9 — but the assumption must be confirmed, not slid past | No — it stays public |
+| 2 | **Confirm the default-grant** (§5.4): one estate approval auto-grants library `reader` + games `viewer`. This flattens the (currently theoretical) per-app privacy boundary — locations, prices, `lent_to` become visible to anyone you approve into the estate | §9 step 5 semantics | On, with those two defaults |
+| 3 | **TTL = 10 minutes** — the revocation delay. Comfortable? | §5.3 constant | 10 minutes |
+| 4 | **Who besides `nbaslamking@gmail.com` is an approver?** (Skylar's account *is* that email; is Amber an approver?) | §9 step 2 seed | Only `OWNER_EMAILS` |
+| 5 | **Pre-seed any known emails for the four review-name-only people** (§1.5), or let them arrive as `pending` on first sign-in? Pre-seeding needs you to supply addresses we do not hold | §9 step 2 completeness | Meet them at the door |
+| 6 | **Admin surface at `auth.heygabi.ai` acceptable** (one more Firebase authorised domain), or would you rather approve from inside an existing app's People page (couples that app to the directory's admin API)? | §9 steps 1–2 | `auth.heygabi.ai` |
+| 7 | **Is the auth Worker itself wanted**, or is §4.1's "no service" fallback (contract only, per-app approval stays) closer to your appetite? Everything else in this doc survives either answer except single-approval and estate-wide revocation | Whether §9 steps 1–3 exist | Build it — requirements 2 and 4 want it |
+
+---
+
+## 14. Build plan — written for a fresh agent with none of this context
+
+Read first: this doc top to bottom; `PLATFORM.md` §2, §4, §4a;
+`index-worker-design.md`; both repos' `CLAUDE.md` (⚠️ Windows: `git commit -F`
+never `-m`; wrangler leaks dev servers — kill by name). Rules that bind every
+step: no migration reaches production unattended; commit before deploy; the
+owner runs 🔴 steps.
+
+### 14.1 The auth Worker (§9 steps 1–2)
+
+```
+catalog-platform/apps/auth-worker/
+  wrangler.toml            # own worker name, own D1 binding (estate_auth),
+                           # ENVIRONMENT="production" in [vars], routes: auth.heygabi.ai
+  migrations/0001_init.sql # §4.2 DDL, comments carried from this doc
+  src/index.ts             # thin: mounts routes (repo rule: entrypoints stay thin)
+  src/estate.ts            # /seen upsert (never touches status), admin list/status,
+                           # health; every status change stamps decided_at/decided_by
+  src/middleware/auth.ts   # the canonical verifier (see 14.2) + is_approver gate
+  src/middleware/rate-limit.ts  # ported from Board_Game_Catalog
+  admin/                   # one static page: pending-first list, approve/revoke;
+                           # Firebase sign-in against project audiobook-catalog
+  test/                    # local-D1 probes: §8.2's eight, plus §3.1's table
+                           # row by row, plus: /seen never upgrades status;
+                           # revoked survives re-sign-in; OWNER_EMAILS works
+                           # on an EMPTY table (the §4.3 property)
+scripts/seed-estate.mjs    # §9 step 2. Dry-run DEFAULT, prints EVERY row with
+                           # origin; --commit writes; idempotent (INSERT OR
+                           # IGNORE by email; never downgrades an existing row).
+                           # Inputs: both production app_user tables via
+                           # wrangler d1 execute --remote (read-only SELECTs),
+                           # audiobook ADMIN_EMAILS (site/identity.js:146),
+                           # OWNER_EMAILS. Refuse zero-row reads (the d1.mjs
+                           # lesson: a zero-row read is a failed read)
+```
+
+Secrets: `ESTATE_APP_TOKEN_LIBRARY`, `_GAMES`, `_INDEX` — mint long random
+values, `wrangler secret put` on the auth Worker; each consumer gets its own
+via its repo's secret store. Never in git, never echoed (`docs/access/` rules).
+
+🔴 Owner: create the D1 (or authorise `wrangler d1 create estate_auth`), run
+the migration, add `auth.heygabi.ai` to Firebase authorised domains, approve
+the seed's dry-run output before `--commit`.
+
+### 14.2 The canonical module
+
+`catalog-platform/packages/estate-auth/` (or a single-file module beside it —
+match the universes packaging): the verifier exactly as games' `auth.ts` has
+it (jose, JWKS cached per isolate, iss+aud = `FIREBASE_PROJECT_ID`,
+`email_verified === false` refused, dev bypass `ENVIRONMENT === 'development'
+&& DEV_EMAIL`), plus `estateCheck(db, user, env)` implementing §5.2 + §3.1,
+plus the `/seen` client. Ship with a conformance fixture (the eight probes as
+runnable assertions) so consumers' CI pins behaviour — the
+`match-fold.fixtures.json` mechanism applied to auth. Consumers wire it via
+the `CATALOG_PLATFORM_DIR` fetch the library already uses for universes;
+`Board_Game_Catalog` gains that dependency (new for it — say so in its
+README when wiring).
+
+### 14.3 Index adoption (§9 step 3)
+
+Edit `apps/index-worker/migrations/0001_…` **in place** — it is unapplied
+everywhere remote (verified 2026-08-13; re-verify before assuming):
+add `estate_cache(email TEXT PRIMARY KEY, status TEXT NOT NULL, checked_at
+TEXT NOT NULL)`. Wire `requireAuth` + `estateCheck` onto `GET /api/lookup`
+and `GET /api/universe/:name` only. Then the index's own pending deploy steps
+(its doc §7 + FABLE5 log 18:55 entry: remote migration, push tokens, deploy,
+first real push). Exercise per §9 step 3's three probes.
+
+### 14.4 Apex search (§9 step 4)
+
+`sites/heygabi-home/public/index.html`: replace the `#find` slot with input +
+results list; Firebase web SDK (same CDN modules the audiobook site uses);
+sign-in button appears only inside `#find`; results render title / source /
+cover / `detail_url` link — the fields `index-worker-design.md` §4 exposes.
+Rewrite the :13 warning per §7.2 — *rewrite, not delete*. `_headers`: widen
+CSP per §7.2. 🔴 Owner: apex into Firebase authorised domains. Deploy per
+`sites/heygabi-home/deploy.md` §4. Verify signed-out (page fine, search asks
+for sign-in), pending (honest queue message), approved (results).
+
+### 14.5 Library, then games (§9 steps 5–6)
+
+Per app: additive migration `ALTER TABLE app_user ADD COLUMN estate_status
+TEXT; ALTER TABLE app_user ADD COLUMN estate_checked_at TEXT;` (attended, per
+the standing migration rule). Swap local verifier for the canonical module —
+⚠️ in the library this changes the dev bypass condition; check
+`apps/worker/.dev.vars` sets `ENVIRONMENT=development` so local dev keeps
+working. Add `ESTATE_CHECK` var (`off`→`shadow`→`enforce`) and
+`ESTATE_APP_TOKEN_*` secret. In `shadow`, log the §3.1 verdict per request;
+run days-not-hours, grep for would-have-refused lines, expect **zero** for
+household members before flipping `enforce`. Default-grant writes an audit row
+in apps that have `change_log` (`changed_how='auto'`, note naming the estate).
+
+### 14.6 Done-when
+
+- All eight §8.2 probes pass on: auth Worker, index, library, games
+- A test Google account (a real spare, not a household member) walks:
+  sign-in → pending everywhere → one approval at `auth.heygabi.ai` → search
+  works + library `reader` + games `viewer` → revoke → all three refuse within
+  10 minutes
+- `OWNER_EMAILS` sign-in works with the auth Worker **stopped**
+- `PLATFORM.md` §1/§4 updated; this doc's status header flipped from
+  DESIGN-ONLY to BUILT with dates per stage
+
+---
+
+## 15. Sources, and what was NOT verified
+
+Read 2026-08-13 (all paths absolute in the repos named): both
+`apps/worker/src/middleware/auth.ts` files; both `apps/worker/wrangler.toml`
+([vars] sections); both `packages/db/src/users.ts`; both
+`packages/core/src/capabilities.ts`; library migrations 0001/0006/0007/0008/
+0040/0100/0110/0120 (the FK grep); games migrations 0001/0023/0024;
+`audiobook_catalog/site/identity.js` (ADMIN_EMAILS:146, isAdmin:163, /users
+writes) and `firestore.rules` (/users:147, /reviews:153); library
+`apps/worker/src/index.ts` and games `…/index.ts` (blanket mounting);
+`sites/heygabi-home/public/index.html` (:13 warning, #find slot) and its
+README; `PLATFORM.md`; `HEYGABI_LAYOUT.md`; `index-worker-design.md`;
+`library_catalog/docs/info/identity-and-reviews.md`.
+
+**Not verified, explicitly:**
+
+- **Firebase auth-state origin-scoping** (§7.2's load-bearing claim) — from
+  platform knowledge of IndexedDB/localStorage scoping, not from an
+  experiment on these hosts. Verify during §9 step 4 with one attended
+  two-tab test: sign in on the apex, load `audiobooks.heygabi.ai` (which
+  calls `signOut()` on its own auth instance), confirm the apex session
+  survives. If it does not, the fallback is a `search.heygabi.ai` host —
+  §7.2's rejected alternative becomes the design, and nothing else changes.
+- **Neither production D1 was queried** — user counts and role distributions
+  come from the repos' own docs, not live reads. The seed's dry run is where
+  live data gets read, printed and eyeballed.
+- **Firestore was not read live** (no service account held, by policy); the
+  /users and reviews population figures are `identity-and-reviews.md`'s
+  measurements of 2026-08-11/13.
+- **Worker-to-Worker latency** for `/seen` on same-zone custom domains —
+  assumed low; measured never. It is off the hot path (once per user per TTL)
+  so even a slow answer costs little, but the shadow phase should log its
+  duration.
+- **`ENVIRONMENT` values in any non-production lane** of either app — the
+  §1.1 exposure analysis reasons from the tomls read, not from deployed
+  config.
