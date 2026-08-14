@@ -2,12 +2,8 @@
 # from every catalog's deploy (the separate-blast-radius rule: a bad index
 # deploy must not be able to take a catalog down, and vice versa).
 #
-# ⚠️ NOT DEPLOYED YET. §9 Q3 (read-surface auth) is ANSWERED — reads are
-# estate-members-only per estate-auth-design.md §7.1, wired 2026-08-13 — but
-# the deploy, the route (index.heygabi.ai), the remote 0002 migration and the
-# ESTATE_APP_TOKEN_INDEX secret are the dispatcher's (estate design §9 step
-# 3). `workers_dev = false` and the absence of [[routes]] are that gate
-# written down, not an omission.
+# DEPLOYED 2026-08-14 — live with its custom domain, remote migrations applied.
+# (This header once gated the first deploy; the gate served and is retired.)
 
 name = "catalog-index"
 main = "src/index.ts"

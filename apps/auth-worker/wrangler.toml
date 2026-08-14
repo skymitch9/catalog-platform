@@ -3,13 +3,8 @@
 # must never be bulk-deleted does not live next to a table whose write
 # protocol IS bulk deletion — estate-auth-design.md §4.1).
 #
-# ⚠️ NOT DEPLOYED YET, ON PURPOSE. Deploy, the custom domain, and the REMOTE
-# migration are the dispatcher's (design §9 step 2). `workers_dev = false`
-# and the absence of [[routes]] are that gate written down, not an omission.
-# At deploy time the dispatcher adds:
-#   routes = [{ pattern = "auth.heygabi.ai", custom_domain = true }]
-# No Firebase authorised-domain entry is needed for this host — the admin UI
-# lives on the APEX (owner decision #6); this Worker serves only APIs.
+# DEPLOYED 2026-08-14 — live with its custom domain, remote migrations applied.
+# (This header once gated the first deploy; the gate served and is retired.)
 
 name = "estate-auth"
 main = "src/index.ts"
