@@ -104,6 +104,13 @@ workflow prints the line to append locally if wanted.
 
 **Owner checklist (nothing deploys until these exist):**
 
+0. ⚠️ **Board_Game_Catalog's default branch is still `phase-1-manual-catalog`**
+   (a stale ancestor, 152 commits behind `main`) — GitHub only shows the
+   dispatch button for workflows on the *default* branch, so the deploy
+   workflow is invisible until this flips. Fix:
+   `gh repo edit skymitch9/Board_Game_Catalog --default-branch main`
+   (a session tried on 2026-08-14; repo-settings changes are permission-blocked
+   for Claude, so this one is genuinely the owner's).
 1. Create ONE Cloudflare API token at dash.cloudflare.com/profile/api-tokens:
    'Edit Cloudflare Workers' template **plus D1 edit + Cloudflare Pages: Edit**
    (Pages is for heygabi-home; the plain Workers template lacks it), account
