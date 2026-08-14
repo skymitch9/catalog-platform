@@ -226,6 +226,9 @@ async function loadDirectory() {
   setStatus('');
   renderUsers(estate.users);
   renderSeedGaps(estate.users);
+  // Auth resolves async, so the directory renders well after page load —
+  // this is the moment the anchor's target actually exists.
+  revealAnchoredMember();
 }
 
 async function mutate(path, body) {
@@ -344,6 +347,8 @@ function catalogRow(estateUser, catKey, roleCell) {
 function userCard(u) {
   const li = document.createElement('li');
   li.className = 'user';
+  // Stable handle for the #member=<email> anchor (revealAnchoredMember).
+  li.dataset.email = String(u.email).toLowerCase();
 
   const head = document.createElement('div');
   head.className = 'user-head';
@@ -450,6 +455,41 @@ function renderSeedGaps(estateUsers) {
   gapsEl.textContent = lines.join(' ');
   gapsEl.hidden = !lines.length;
 }
+
+// ---------------------------------------------------------------------------
+// #member=<email> anchor — the "see someone, then grant permissions" flow.
+// The catalogs link a rendered person straight to their card here, e.g.
+// https://heygabi.ai/admin#member=someone%40example.com. This page only
+// scrolls and highlights; it grants nothing the buttons don't already.
+// ---------------------------------------------------------------------------
+
+/** The URL-encoded email carried by a #member= fragment, lowercased; else null. */
+function anchoredMemberEmail() {
+  const m = /^#member=(.+)$/.exec(location.hash);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]).trim().toLowerCase();
+  } catch (e) {
+    return null; // malformed percent-encoding — ignore rather than throw
+  }
+}
+
+/**
+ * Scroll the anchored member's card into view with a brief highlight.
+ * Safe to call any time: it does nothing without a fragment, a rendered
+ * directory (auth resolves async — loadDirectory re-runs this), or a match.
+ */
+function revealAnchoredMember() {
+  const email = anchoredMemberEmail();
+  if (!email) return;
+  const card = usersEl.querySelector(`li.user[data-email="${CSS.escape(email)}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.add('anchored');
+  setTimeout(() => card.classList.remove('anchored'), 2600);
+}
+
+window.addEventListener('hashchange', revealAnchoredMember);
 
 // ---------------------------------------------------------------------------
 // Auth wiring
