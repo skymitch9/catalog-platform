@@ -12,14 +12,17 @@
  * These routes never auto-act. Title-only matching is safe HERE AND ONLY HERE
  * because the reader is a human looking at a result list with covers and
  * publishers (design §3.3); the 0.34/0.7 threshold lessons apply to
- * auto-acting matchers, of which this surface contains none. No fuzzy
- * matching either — exact fold-joins only; containment and thresholds stay in
- * the catalogs' own matching code, where their gates live.
+ * auto-acting matchers, of which this surface contains none. /api/lookup is
+ * exact fold-joins only and stays that way — it is the exact-IDENTITY
+ * endpoint. /api/search is the deliberate carve-out from §8's "no second
+ * matcher": a ranked partial-match search for humans typing, which claims
+ * resemblance and never identity — the full argument is search.ts's header.
  */
 
 import { Hono } from 'hono';
 import type { Env } from './env.js';
 import { titleFoldOrNull } from './fold.js';
+import { searchIndex, type SearchRow } from './search.js';
 import { resolveUniverseName } from './universes.js';
 import { universeIndex } from './universes-data.js';
 
@@ -61,6 +64,33 @@ readRoutes.get('/lookup', async (c) => {
     .all();
 
   return c.json({ query: title, title_fold: fold, matches: results });
+});
+
+/**
+ * GET /api/search?q=… — the as-you-type search behind the apex's box.
+ *
+ * A scored SCAN of the whole table (~2,300 rows — deliberately no FTS, no
+ * extra index, no migration; the scale does not earn one). The ranking and
+ * the §8 carve-out argument live in search.ts; this route only validates,
+ * scans, and answers. Unlike /api/lookup, an unfoldable QUERY is not refused
+ * here — the raw display-title lane can still find the Korean rows, which is
+ * §3.1's own "display-title search" path.
+ */
+readRoutes.get('/search', async (c) => {
+  const raw = c.req.query('q');
+  if (raw === undefined || raw.trim() === '') {
+    return c.json({ error: 'missing_query', usage: '/api/search?q=…' }, 400);
+  }
+  const query = raw.trim();
+  if (query.length < 2) {
+    // One character ranks half the estate — not a search, a shrug. The
+    // client keeps typing; the refusal is polite and named.
+    return c.json({ error: 'query_too_short', detail: 'type at least two characters and the search will run' }, 422);
+  }
+
+  const { results } = await c.env.DB.prepare(`SELECT ${ENTRY_COLS} FROM entry`).all();
+  const found = searchIndex(query, (results ?? []) as unknown as SearchRow[], universeIndex);
+  return c.json({ query, ...found });
 });
 
 /**
