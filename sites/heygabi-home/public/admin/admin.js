@@ -455,9 +455,25 @@ function renderSeedGaps(estateUsers) {
 // Auth wiring
 // ---------------------------------------------------------------------------
 
+/**
+ * ⚠️ The sign-in flash, same bug find.js fixed and the owner then met HERE
+ * (live, 2026-08-14): Firebase reads its persisted session asynchronously,
+ * so a page that renders signed-out immediately shows a signed-in owner the
+ * sign-in button for however long the SDK takes. The markup now ships the
+ * button hidden; nothing decisive renders until watchAuth's first callback.
+ * The 8s backstop covers the SDK never answering (blocked gstatic).
+ */
+let authResolved = false;
+const authBackstop = setTimeout(() => {
+  if (!authResolved) {
+    authResolved = true;
+    renderAuthState();
+  }
+}, 8000);
+
 function renderAuthState() {
   const signedIn = currentUser !== null;
-  signinBtn.hidden = signedIn;
+  signinBtn.hidden = signedIn || !authResolved;
   refreshBtn.hidden = !signedIn;
   if (signedIn) {
     whoEl.innerHTML = '';
@@ -491,6 +507,8 @@ signinBtn.addEventListener('click', async () => {
 refreshBtn.addEventListener('click', loadDirectory);
 
 watchAuth((user) => {
+  authResolved = true;
+  clearTimeout(authBackstop);
   currentUser = user;
   renderAuthState();
   if (user) loadDirectory();

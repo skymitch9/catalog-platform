@@ -45,6 +45,7 @@
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from './estate-auth.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
+const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
 
@@ -70,6 +71,33 @@ let currentUser = null;
  * (blocked gstatic, dead network): after 8s the box falls back to the
  * signed-out state, because a silent forever-disabled box is worse.
  */
+/**
+ * The Admin affordance (owner ask, 2026-08-14): approvers get a quiet link to
+ * /admin in the signed-in chip; everyone else never sees the word. "Is this
+ * person an approver?" is answered by the admin API itself — GET /estate/users
+ * sits behind requireApprover(), so a 200 IS the fact, with no second
+ * vocabulary invented client-side. Probed once per signed-in user (uid-keyed),
+ * a failed probe fails quiet: the link is a convenience, /admin still exists.
+ */
+let isApprover = false;
+let approverProbedFor = null;
+async function probeApprover() {
+  const uid = currentUser?.uid;
+  if (!uid || approverProbedFor === uid) return;
+  approverProbedFor = uid;
+  const token = await idToken();
+  if (!token) return;
+  try {
+    const r = await fetch(`${AUTH_ORIGIN}/api/estate/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    isApprover = r.ok;
+  } catch {
+    isApprover = false;
+  }
+  if (isApprover && currentUser?.uid === uid) renderAuthState();
+}
+
 let authResolved = false;
 const authBackstop = setTimeout(() => {
   if (!authResolved) {
@@ -118,6 +146,13 @@ function renderAuthState() {
       setStatus('');
     });
     whoEl.append('Signed in as ', name, ' · ', out);
+    if (isApprover) {
+      const admin = document.createElement('a');
+      admin.href = '/admin';
+      admin.className = 'find-linkbtn';
+      admin.textContent = 'Admin';
+      whoEl.append(' · ', admin);
+    }
     whoEl.hidden = false;
     input.placeholder = 'Start typing a title, author or series…';
   } else {
@@ -612,7 +647,14 @@ watchAuth((user) => {
   clearTimeout(authBackstop);
   const changed = currentUser !== user;
   currentUser = user;
+  if (!user) {
+    // Sign-out drops the approver fact with the session; the next sign-in
+    // (any account) re-probes rather than inheriting the last answer.
+    isApprover = false;
+    approverProbedFor = null;
+  }
   renderAuthState();
+  if (user) probeApprover();
   // Crossing the sign-in boundary changes the scope: re-run a standing query
   // so the results widen (or narrow) without a re-type.
   if (changed && input.value.trim().length >= MIN_CHARS) scheduleSearch();

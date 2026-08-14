@@ -253,7 +253,10 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   </p>
 
   <div class="bar">
-    <button id="signin" class="btn" type="button">Sign in with Google</button>
+<!-- Ships hidden: the sign-in-flash rule (find.js's fix, applied here after the
+     owner met the same flash on THIS page, 2026-08-14). admin.js reveals it only
+     once Firebase has answered signed-out — or after the 8s backstop. -->
+    <button id="signin" class="btn" type="button" hidden>Sign in with Google</button>
     <span id="who" class="who" hidden></span>
     <button id="refresh" class="btn small quiet" type="button" hidden>Refresh</button>
   </div>
