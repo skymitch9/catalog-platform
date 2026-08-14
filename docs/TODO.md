@@ -170,3 +170,10 @@ would send tokenless searches into 401s. Verify after: tokenless
 - Commit 8b15d7c; deployed to Pages; all three verified live.
 - Next owner-facing idea on file: deep-links from person surfaces in each
   catalog to /admin (see-someone-then-grant). Not ordered yet.
+
+## In flight 2026-08-14 — /admin sort & filter (owner ask)
+
+Sort + filter the estate member list: by estate status, approver flag,
+per-catalog visibility (who can see what), and per-app role (who is an admin
+where). All client-side — the page already holds the directory + both apps'
+federated rosters. Dispatched same day.
