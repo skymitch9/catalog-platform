@@ -1,6 +1,14 @@
 # Shared Index Worker — Information Reference (design)
 
-> **Audience:** Claude sessions. **Status:** TRACKED. Design — nothing built yet.
+> **Audience:** Claude sessions. **Status:** TRACKED. **BUILT games-first,
+> 2026-08-13** — §7 steps 1–3 landed (`apps/index-worker/` here; pusher in
+> `Board_Game_Catalog`; 836 items pushed and looked up against local dev).
+> Step 4 remains out until the shape has lived with games for a while. The
+> Worker is deliberately NOT deployed: §9 Q3 (read auth) is still the owner's
+> open call, and the remote `index_catalog` D1 exists (id
+> `3004d175-3c51-4ed4-ac3e-62859319f8ac`) with its migration deliberately
+> unapplied — `npm run db:migrate` in `apps/index-worker` is a pending owner
+> command, part of the gated deploy, not a forgotten step.
 > Last verified: **2026-08-13** (bridge scripts and games schema read; production
 > key measurements are from the 2026-08-12 threshold write-up).
 > Companion: `PLATFORM.md` §5 (the sketch this refines),
