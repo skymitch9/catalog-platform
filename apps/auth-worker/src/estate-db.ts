@@ -1,0 +1,170 @@
+/**
+ * The directory's data access — every statement that touches `estate_user`.
+ *
+ * The invariants live here so no route can miss one:
+ *   - emails are lowercased before any read or write (design §1.4)
+ *   - `/seen`'s upsert NEVER changes `status` (§4.4)
+ *   - rows are never deleted (§4.2 — revocation must survive re-sign-in)
+ *   - every status change stamps decided_at / decided_by
+ */
+
+import type { EstateUserRow } from './env.js';
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+const COLS =
+  'id, email, firebase_uid, display_name, status, is_approver, origin, note, first_seen_at, decided_at, decided_by';
+
+export async function getUserByEmail(db: D1Database, email: string): Promise<EstateUserRow | null> {
+  const row = await db
+    .prepare(`SELECT ${COLS} FROM estate_user WHERE email = ?`)
+    .bind(normalizeEmail(email))
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+export async function getUserById(db: D1Database, id: number): Promise<EstateUserRow | null> {
+  const row = await db.prepare(`SELECT ${COLS} FROM estate_user WHERE id = ?`).bind(id).first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * The `/seen` upsert (§4.4): unknown email → create `pending` with
+ * origin 'seen:<app>'; known → refresh uid/name only. ⚠️ NEVER touches
+ * `status` — one statement, so there is no code path that could.
+ */
+export async function seenUpsert(
+  db: D1Database,
+  input: {
+    email: string;
+    firebaseUid: string | null;
+    displayName: string | null;
+    app: string;
+  },
+): Promise<EstateUserRow> {
+  const email = normalizeEmail(input.email);
+  const upsert = `INSERT INTO estate_user (email, firebase_uid, display_name, origin)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET
+       firebase_uid = COALESCE(excluded.firebase_uid, estate_user.firebase_uid),
+       display_name = COALESCE(excluded.display_name, estate_user.display_name)
+     RETURNING ${COLS}`;
+  try {
+    const row = await db
+      .prepare(upsert)
+      .bind(email, input.firebaseUid, input.displayName, `seen:${input.app}`)
+      .first<EstateUserRow>();
+    if (!row) throw new Error('upsert returned no row');
+    return row;
+  } catch (err) {
+    // The one conflict ON CONFLICT(email) cannot absorb: a NEW email arriving
+    // with a firebase_uid already recorded on another row (an account's email
+    // changed). Record the new email without the contested uid rather than
+    // failing the sign-in; the old row keeps the uid, nothing joins on it.
+    if (input.firebaseUid && /UNIQUE/i.test((err as Error).message)) {
+      const row = await db
+        .prepare(upsert)
+        .bind(email, null, input.displayName, `seen:${input.app}`)
+        .first<EstateUserRow>();
+      if (!row) throw new Error('upsert returned no row');
+      return row;
+    }
+    throw err;
+  }
+}
+
+/** Admin list: pending first (the queue), then approved, then revoked. */
+export async function listUsers(db: D1Database): Promise<EstateUserRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${COLS} FROM estate_user
+       ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+                first_seen_at DESC, id DESC`,
+    )
+    .all<EstateUserRow>();
+  return results;
+}
+
+/** Approve / revoke. Stamps decided_at / decided_by; status only, never a role. */
+export async function decideStatus(
+  db: D1Database,
+  input: { id: number; status: 'approved' | 'revoked'; actorId: number },
+): Promise<EstateUserRow | null> {
+  const row = await db
+    .prepare(
+      `UPDATE estate_user
+       SET status = ?, decided_at = datetime('now'), decided_by = ?
+       WHERE id = ?
+       RETURNING ${COLS}`,
+    )
+    .bind(input.status, input.actorId, input.id)
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * Flip `is_approver` — the admin-API promotion path (owner decision #4:
+ * no redeploy to add an approver). Stamped like a status decision: who
+ * granted approval rights, and when, must be reconstructible.
+ */
+export async function setApprover(
+  db: D1Database,
+  input: { id: number; isApprover: boolean; actorId: number },
+): Promise<EstateUserRow | null> {
+  const row = await db
+    .prepare(
+      `UPDATE estate_user
+       SET is_approver = ?, decided_at = datetime('now'), decided_by = ?
+       WHERE id = ?
+       RETURNING ${COLS}`,
+    )
+    .bind(input.isApprover ? 1 : 0, input.actorId, input.id)
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * Materialize a row for an `OWNER_EMAILS` actor acting on a directory that
+ * has never seen them (§4.3's bootstrap meeting the table). Approved +
+ * approver because OWNER_EMAILS IS that authority; origin 'manual' and the
+ * note say exactly where the row came from.
+ */
+export async function materializeOwnerRow(
+  db: D1Database,
+  input: { email: string; firebaseUid: string | null; displayName: string | null },
+): Promise<EstateUserRow> {
+  const row = await db
+    .prepare(
+      `INSERT INTO estate_user
+         (email, firebase_uid, display_name, status, is_approver, origin, note, decided_at)
+       VALUES (?, ?, ?, 'approved', 1, 'manual', 'auto-created: OWNER_EMAILS actor', datetime('now'))
+       ON CONFLICT(email) DO UPDATE SET email = estate_user.email
+       RETURNING ${COLS}`,
+    )
+    .bind(normalizeEmail(input.email), input.firebaseUid, input.displayName)
+    .first<EstateUserRow>();
+  if (!row) throw new Error('materializeOwnerRow returned no row');
+  return row;
+}
+
+/** Health: row counts by status, no emails (§4.4). */
+export async function statusCounts(
+  db: D1Database,
+): Promise<{ pending: number; approved: number; revoked: number; approvers: number }> {
+  const { results } = await db
+    .prepare(
+      `SELECT status, COUNT(*) AS n, SUM(is_approver) AS approvers
+       FROM estate_user GROUP BY status`,
+    )
+    .all<{ status: string; n: number; approvers: number | null }>();
+  const counts = { pending: 0, approved: 0, revoked: 0, approvers: 0 };
+  for (const r of results) {
+    if (r.status === 'pending') counts.pending = r.n;
+    if (r.status === 'approved') counts.approved = r.n;
+    if (r.status === 'revoked') counts.revoked = r.n;
+    counts.approvers += r.approvers ?? 0;
+  }
+  return counts;
+}

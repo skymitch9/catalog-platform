@@ -1,8 +1,17 @@
 # Estate-Wide Auth — Information Reference (design)
 
-> **Audience:** Claude sessions and the owner. **Status:** TRACKED — **DESIGN
-> ONLY, nothing built, nothing deployed, no migration applied.** Written by
-> Fable 5, 2026-08-13, for owner approval before any build starts.
+> **Audience:** Claude sessions and the owner. **Status:** TRACKED — §14.1 +
+> §14.2 **BUILT 2026-08-13** (auth Worker `apps/auth-worker/`, D1 `estate_auth`
+> created id `d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb`, canonical module
+> `packages/estate-auth/`, seed script) — **NOT deployed, remote migration NOT
+> applied, no consumer wired**; §14.3–14.5 not started. Owner answered all
+> seven §13 questions 2026-08-13; the build folds them in: machinery
+> estate-wide with per-surface `public:` posture (audiobook site untouched),
+> default-grant ON (library `reader`, games `viewer`), TTL 10 min, approver =
+> owner via `is_approver` API flag, pre-seed list later (`--extra`), admin UI
+> on the APEX so the Worker ships an admin API with CORS locked to
+> `https://heygabi.ai` and NO admin page (§4.4 amended), Worker confirmed
+> wanted. Originally written by Fable 5, 2026-08-13, for owner approval.
 > Last verified: **2026-08-13** — every "measured" claim below was read out of
 > the named file or grep that day. §15 lists what was NOT verified.
 > Companions: `PLATFORM.md` §4 (the sketch this replaces), §4a (the Firestore

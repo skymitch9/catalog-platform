@@ -1,0 +1,48 @@
+# The estate auth Worker — its own config, its own D1, deliberately apart
+# from every catalog's deploy AND from the index Worker (the directory that
+# must never be bulk-deleted does not live next to a table whose write
+# protocol IS bulk deletion — estate-auth-design.md §4.1).
+#
+# ⚠️ NOT DEPLOYED YET, ON PURPOSE. Deploy, the custom domain, and the REMOTE
+# migration are the dispatcher's (design §9 step 2). `workers_dev = false`
+# and the absence of [[routes]] are that gate written down, not an omission.
+# At deploy time the dispatcher adds:
+#   routes = [{ pattern = "auth.heygabi.ai", custom_domain = true }]
+# No Firebase authorised-domain entry is needed for this host — the admin UI
+# lives on the APEX (owner decision #6); this Worker serves only APIs.
+
+name = "estate-auth"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[vars]
+# Explicit, affirmative value — the canonical verifier's dev bypass requires
+# ENVIRONMENT === 'development', so anything else gets real authentication
+# (conformance §8.2 #8).
+ENVIRONMENT = "production"
+# Pinned as iss AND aud in the verifier. The shared project every consumer uses.
+FIREBASE_PROJECT_ID = "audiobook-catalog"
+# Break-glass (§4.3): approved + approver regardless of table state. The ONLY
+# bootstrap — this Worker deliberately has no first-sign-in-claims rule.
+OWNER_EMAILS = "nbaslamking@gmail.com"
+# The admin UI's origin — the apex, and nothing else (owner decision #6).
+ADMIN_ORIGINS = "https://heygabi.ai"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "estate_auth"
+# Created 2026-08-13 in region WNAM (`wrangler d1 create estate_auth`).
+# ⚠️ Remote migration deliberately NOT applied — dispatcher's, with the deploy.
+database_id = "d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb"
+migrations_dir = "migrations"
+
+# Not in this file, ever: the three per-consumer secrets. At deploy time:
+#   wrangler secret put ESTATE_APP_TOKEN_LIBRARY   (and _GAMES, _INDEX)
+# Locally they live in .dev.vars (gitignored; see .dev.vars.example) or are
+# passed as --var flags by the probe suite.
+#
+# Production should also gain a [[unsafe.bindings]] rate-limiter (RATE_LIMITER)
+# at deploy time; the middleware fails open (with a log line) without it, so
+# dev and tests run unthrottled by design.
