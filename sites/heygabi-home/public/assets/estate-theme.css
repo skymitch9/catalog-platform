@@ -872,30 +872,6 @@
 
 .hg-cog-note { margin: .8rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); }
 
-/* v2 per-page affordances (both optional in the markup contract):
-   #hg-apply-all — the quiet "apply to all pages" lever under the select;
-   #hg-scope-note — shown only while THIS page carries its own override. */
-.hg-apply-all {
-  margin: .45rem 0 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--et-muted);
-  font: 600 var(--et-text-micro)/1.3 var(--et-font);
-  letter-spacing: .02em;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.hg-apply-all:hover { color: var(--et-accent); }
-.hg-apply-all:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
-.hg-scope-note {
-  margin: .45rem 0 0;
-  color: var(--et-muted);
-  font-size: var(--et-text-micro);
-  font-style: italic;
-}
-.hg-scope-note[hidden] { display: none; }
 
 /* ---- motion machinery ----------------------------------------------------- */
 /*

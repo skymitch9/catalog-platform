@@ -36,59 +36,27 @@ list and role definitions live at the top of `estate-theme.css`); **if a page
 needs a `[data-theme=…]` selector, a token is missing — add one to the
 contract, never fork.** `theme.js` stamps `<html data-theme="…"
 data-mode="light|dark">` (mode always resolved; `auto` follows the OS live)
-and persists choices in localStorage (§2a for the v2 shapes). localStorage is
-origin-scoped, so "per site" costs nothing. `document` fires
-**`hg-themechange`** on every change (detail carries `scope` since v2);
-`window.estateTheme.{get,setTheme,setSiteTheme,setMode}` is the whole API.
+and persists the choice in localStorage as **`hg_theme`** and **`hg_mode`**
+(`'auto'|'light'|'dark'`). localStorage is origin-scoped, so "per site" costs
+nothing. `document` fires **`hg-themechange`** on every change;
+`window.estateTheme.{get,setTheme,setMode}` is the whole API.
 
-## 2a. Per-page themes (v2, 2026-08-13)
+## 2a. Theme choice is SITE-WIDE — one look per site (owner, 2026-08-14)
 
-The owner, verbatim: *"let me set a theme per page and it persist, sometimes i
-want different looks and feel for all my pages."* So the theme is resolved
-per PAGE, first hit wins:
+The owner, verbatim: *"Each site should have unified theme choice — by per
+page I meant per site."* Picking a theme in any cog sets it for the WHOLE
+site (`hg_theme`); each site still keeps its own choice for free because
+localStorage is origin-scoped. Mode is likewise one key per site
+(`hg_mode`).
 
-1. **This page's override** — `hg_theme_page`, a JSON object keyed by
-   normalised `location.pathname` (`/index.html` and trailing slashes are
-   stripped, so `/admin`, `/admin/` and `/admin/index.html` are ONE key).
-2. **The site default the person chose** — `hg_theme` (unchanged key).
-3. **The site's identity** — `<html data-default-theme="…">`.
-4. `'apple'`.
-
-**The cog writes the page.** Picking a theme in any cog calls `setTheme()`,
-which writes the override for the current page — that is the owner's
-expressed default. The quiet **"Apply to all pages"** action calls
-`setSiteTheme()`, which writes `hg_theme` **and deletes the entire override
-map** — this page's override and every other page's.
-
-**Why apply-to-all clears ALL overrides, argued once:** "all pages" must mean
-what it says. If stray overrides survived, the button would be a lie on
-exactly the pages the person had bothered to customise — the ones they most
-remember. It is also deliberately the only reset lever: there is no per-page
-"clear" affordance, so the mental model stays two verbs (this page / all
-pages) instead of three, and a person can always dig out of any state with
-one press.
-
-**Mode stays site-wide** (`hg_mode`). Per-page dark/light is chaos: brightness
-thrashing between navigations is physically unpleasant in a way a palette
-change is not, and it would double the QA matrix of every page for a look
-nobody asked for. Theme is voice; mode is lighting.
-
-**Events and API.** `hg-themechange`'s detail is
-`{ theme, mode, resolvedMode, scope, siteTheme }` — `scope` is `'page'` when
-an override governs the current page, else `'site'`. `get()` returns the same
-shape. Consumers with their own cogs (the library, the games app) surface a
-"this page keeps its own theme" hint from `scope` and an apply-to-all action
-calling `setSiteTheme()`.
-
-**No migration.** Absence of `hg_theme_page` means no page has its own look;
-existing `hg_theme` values keep exactly their old meaning (the site default).
-
-⚠️ **SPA caveat:** "the page" is `location.pathname` at boot or at the moment
-`setTheme()` is called. Client-side navigation does not re-resolve — the
-chosen theme rides the session until the next real page load, which resolves
-against whatever path it lands on. In the React apps this means a deep link
-back to the route where a theme was picked restores it; wandering there
-client-side does not. Documented as accepted, not accidental.
+⚠️ **History note, so nobody re-mines it:** a per-page override system
+(`hg_theme_page` map, `setSiteTheme`, an "apply to all pages" lever, `scope`
+in the event detail) was built 2026-08-13 and **reverted the same day** at
+the owner's clarification above — the original "theme per page" brief meant
+per SITE. It never deployed. `theme.js` deletes the stale `hg_theme_page`
+key once on boot (droppable once it has plausibly run everywhere a dev build
+wrote). If you find the per-page wiring in git history, it is a misread
+brief, not lost work — do not reintroduce it.
 
 ## 3. ⚠️ Defaults are identity — the owner's boundary, restated as the rule
 
@@ -116,13 +84,12 @@ consumer without `data-default-theme="<its default>"` on `<html>`.
 2. Set `<html data-default-theme="…">`, load `theme.js` synchronously in
    `<head>` (pre-paint — kills the wrong-theme flash).
 3. Fold the theme dropdown into the site's EXISTING settings cog by calling
-   `window.estateTheme.setTheme/setSiteTheme/setMode` — or use the standard
-   cog markup (`button#hg-cog` + `div#hg-cog-panel` + `select#hg-theme-select`
-   + `[data-hg-mode]` buttons, plus optionally `button#hg-apply-all` and
-   `p#hg-scope-note` for the v2 affordances; see the apex's `index.html`)
-   which `theme.js` wires automatically. A consumer cog must expose the
-   Theme group (all four themes), the Mode group, and the apply-to-all
-   action — the library's cog is the reference presentation.
+   `window.estateTheme.setTheme/setMode` — or use the standard cog markup
+   (`button#hg-cog` + `div#hg-cog-panel` + `select#hg-theme-select` +
+   `[data-hg-mode]` buttons; see the apex's `index.html`) which `theme.js`
+   wires automatically. A consumer cog must expose the Theme group (all four
+   themes) and the Mode group — the library's cog is the reference
+   presentation (a Theme select over an Auto/Light/Dark row).
 4. **Migrate the legacy mode keys once, then let `hg_mode` own it**:
    audiobook `ab_theme` (`'dark'|'light'`) and games `bgc-theme`
    (`'system'|'light'|'dark'`) map 1:1 onto `hg_mode` (`system`→`auto`). Read
@@ -208,8 +175,8 @@ palette, not the soul**:
 
 | Key | Values | Owner |
 |---|---|---|
-| `hg_theme` | `classic` \| `apple` \| `cyberpunk` \| `retro` — the SITE default | the estate (this system) |
-| `hg_theme_page` | JSON object: normalised pathname → theme name (per-page overrides, v2) | the estate (this system) |
-| `hg_mode` | `auto` \| `light` \| `dark` — always site-wide | the estate (this system) |
+| `hg_theme` | `classic` \| `apple` \| `cyberpunk` \| `retro` — the site's ONE theme | the estate (this system) |
+| `hg_mode` | `auto` \| `light` \| `dark` — likewise site-wide | the estate (this system) |
+| `hg_theme_page` | RETIRED same-day 2026-08-14 (§2a history note) — theme.js deletes it on boot | dead, never reintroduce |
 | `ab_theme` | legacy audiobook mode | migrate-once, then dead |
 | `bgc-theme` | legacy games mode | migrate-once, then dead |
