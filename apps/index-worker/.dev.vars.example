@@ -1,0 +1,19 @@
+# Copy to .dev.vars (gitignored) for `npm run dev`. The live probe suite
+# (`npm run probe`) passes its own --var flags and needs none of this.
+ENVIRONMENT=development
+DEV_EMAIL=nbaslamking@gmail.com
+FIREBASE_PROJECT_ID=audiobook-catalog
+# Break-glass: emails here are served even with the estate unreachable —
+# which is also what makes dev work without an auth Worker running.
+OWNER_EMAILS=nbaslamking@gmail.com
+# The estate directory. In dev, point at a local auth Worker (`npm run dev`
+# in apps/auth-worker, port 8799); the token must equal the value THAT Worker
+# holds as ESTATE_APP_TOKEN_INDEX (dev-index-token in its own example file).
+# In production both are real: the URL is a wrangler.toml var, the token a
+# secret (`wrangler secret put ESTATE_APP_TOKEN_INDEX`).
+ESTATE_AUTH_URL=http://127.0.0.1:8799
+ESTATE_APP_TOKEN_INDEX=dev-index-token
+# Per-source push tokens — any long random values locally.
+INDEX_PUSH_TOKEN_GAME=dev-push-game
+INDEX_PUSH_TOKEN_LIBRARY=dev-push-library
+INDEX_PUSH_TOKEN_AUDIOBOOK=dev-push-audiobook

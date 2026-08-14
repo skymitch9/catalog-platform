@@ -1,11 +1,13 @@
 /**
- * The read surface: lookup, universe, health.
+ * The read surface: lookup and universe. (Health lives in health.ts — open by
+ * design, mounted before the auth blanket.)
  *
- * ⚠️ NO AUTH HERE YET, AND THAT IS NOT A DECISION — design §9 Q3 (the lookup
- * surface leaks which titles the household owns) is an OWNER call, open on
- * purpose. This Worker is deliberately not deployed until it is answered; do
- * not deploy it, and do not "helpfully" pick public-or-tokened here on the
- * owner's behalf.
+ * ⚠️ AUTH DOES NOT LIVE IN THIS FILE, AND THAT IS DELIBERATE — these routes
+ * are estate-members-only (design §9 Q3, answered by estate-auth-design.md
+ * §7.1), enforced by the `requireEstateMember()` blanket in index.ts mounted
+ * BEFORE this router. Adding a route here puts it behind that blanket
+ * automatically; an open or machine route belongs in index.ts, named, with a
+ * comment (conformance §8.2 #3).
  *
  * These routes never auto-act. Title-only matching is safe HERE AND ONLY HERE
  * because the reader is a human looking at a result list with covers and
@@ -20,7 +22,6 @@ import type { Env } from './env.js';
 import { titleFoldOrNull } from './fold.js';
 import { resolveUniverseName } from './universes.js';
 import { universeIndex } from './universes-data.js';
-import { SOURCES } from './rows.js';
 
 export const readRoutes = new Hono<{ Bindings: Env }>();
 
@@ -84,22 +85,3 @@ readRoutes.get('/universe/:name', async (c) => {
   return c.json({ universe: canonical, matches: results });
 });
 
-/**
- * GET /api/health — rows and MAX(pushed_at) per source, every source always
- * listed. A source that has never pushed shows rows 0 / pushed_at null
- * instead of being absent, so staleness is visible rather than silent —
- * "zero rows from a source means the push failed, never that the collection
- * is empty" (design §1).
- */
-readRoutes.get('/health', async (c) => {
-  const { results } = await c.env.DB.prepare(
-    'SELECT source, COUNT(*) AS rows, MAX(pushed_at) AS pushed_at FROM entry GROUP BY source',
-  ).all<{ source: string; rows: number; pushed_at: string | null }>();
-
-  const bySource = new Map(results.map((r) => [r.source, r]));
-  const sources = Object.fromEntries(
-    SOURCES.map((s) => [s, { rows: bySource.get(s)?.rows ?? 0, pushed_at: bySource.get(s)?.pushed_at ?? null }]),
-  );
-
-  return c.json({ ok: true, sources });
-});
