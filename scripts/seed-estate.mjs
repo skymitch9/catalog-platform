@@ -19,9 +19,19 @@
  *        OPTIONAL: absence never blocks the seed.)
  *
  * Idempotent: INSERT ... ON CONFLICT(email) DO NOTHING — an existing row is
- * NEVER changed, so re-running cannot downgrade anyone. The one exception is
- * an explicit UPGRADE: is_approver 0→1 for admin/owner emails. Status
- * upgrades for existing rows are the admin API's job, deliberately.
+ * NEVER changed, so re-running cannot downgrade anyone. Two explicit
+ * UPGRADE exceptions: is_approver 0→1 for admin/owner emails, and the
+ * visibility RE-ASSERT below. Status upgrades for existing rows are the
+ * admin API's job, deliberately.
+ *
+ * Visibility (estate-auth-design.md §4.5, migration 0002): every seeded row
+ * carries all three catalogs EXPLICITLY (vis_audiobook/library/games = 1),
+ * and for seed-listed APPROVED emails an UPDATE re-asserts all three on
+ * existing rows — the seed list IS the household, and the household holds
+ * all three by declaration. ⚠️ Consequence, stated: if an approver has
+ * deliberately narrowed a seed-listed member, re-running the seed re-widens
+ * them (same class as the approver upgrade). Narrowing of people NOT on the
+ * seed list is never touched.
  *
  * ⚠️ Refuses zero-row reads (the d1.mjs lesson: a zero-row read is a FAILED
  * read, not an empty table).
@@ -216,7 +226,7 @@ console.log(`\nSeed plan — ${rows.length} rows (library ${libraryRows.length},
 for (const r of rows) {
   console.log(
     `  ${r.status.padEnd(8)} ${r.is_approver ? 'APPROVER ' : '         '}${r.origin.padEnd(13)} ${r.email}` +
-      `${r.display_name ? `  (${r.display_name})` : ''}  ← ${r.sources.join(' + ')}`,
+      `${r.display_name ? `  (${r.display_name})` : ''}  vis=all-three  ← ${r.sources.join(' + ')}`,
   );
 }
 
@@ -225,14 +235,22 @@ const statements = rows.map((r) => {
   const decided = r.status === 'approved' ? "datetime('now')" : 'NULL';
   const note = `seed 2026: ${r.sources.join(' + ')}`;
   return (
-    `INSERT INTO estate_user (email, firebase_uid, display_name, status, is_approver, origin, note, decided_at)\n` +
-    `  VALUES (${esc(r.email)}, ${esc(r.firebase_uid)}, ${esc(r.display_name)}, ${esc(r.status)}, ${r.is_approver ? 1 : 0}, ${esc(r.origin)}, ${esc(note)}, ${decided})\n` +
+    `INSERT INTO estate_user (email, firebase_uid, display_name, status, is_approver, origin, note, decided_at, vis_audiobook, vis_library, vis_games)\n` +
+    `  VALUES (${esc(r.email)}, ${esc(r.firebase_uid)}, ${esc(r.display_name)}, ${esc(r.status)}, ${r.is_approver ? 1 : 0}, ${esc(r.origin)}, ${esc(note)}, ${decided}, 1, 1, 1)\n` +
     `  ON CONFLICT(email) DO NOTHING;`
   );
 });
-// The one permitted change to an existing row: the approver UPGRADE.
+// The permitted changes to existing rows, both one-directional upgrades:
+// the approver UPGRADE, and the §4.5 visibility RE-ASSERT (household =
+// all three; see the header for the re-run consequence, stated out loud).
 for (const r of rows.filter((x) => x.is_approver)) {
   statements.push(`UPDATE estate_user SET is_approver = 1 WHERE email = ${esc(r.email)} AND is_approver = 0;`);
+}
+for (const r of rows.filter((x) => x.status === 'approved')) {
+  statements.push(
+    `UPDATE estate_user SET vis_audiobook = 1, vis_library = 1, vis_games = 1\n` +
+      `  WHERE email = ${esc(r.email)} AND status = 'approved' AND (vis_audiobook = 0 OR vis_library = 0 OR vis_games = 0);`,
+  );
 }
 
 if (!commit) {
