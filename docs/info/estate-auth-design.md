@@ -423,3 +423,174 @@ failures: never open to strangers; never a locked-out household.
 | 6 | **Estate D1 lost or corrupted** | Apps continue on caches + local roles (degraded = per-app posture). The directory is **reconstructible by re-running the seed** (§9 step 2 is idempotent and its inputs — the two `app_user` tables — still exist). Deliberate property: the directory holds no fact that lives nowhere else, *except* revocations and approver flags — after a rebuild, re-check those two by hand against the short list of humans involved | Closed for new, open for standing; recoverable by design |
 | 7 | **Apex CSP or Firebase misconfig breaks search sign-in** | Search visibly broken; the page (a static signpost) is untouched. Nothing else on the estate shares the apex's sign-in | Closed, contained |
 | 8 | **The shared Firebase project itself breaks** (deleted authorised domain, quota, config) | The whole estate's sign-in dies at once. This concentration **already exists today** (both Workers + audiobook sign-in pin the same project) and is accepted — it is the price of "one account everywhere" chosen on 2026-08-09. Mitigations: existing tokens live ≤ 1h; authorised-domain edits are console-only (owner); `*.workers.dev` entries stay on the authorised list as the escape hatch (existing practice, `HEYGABI_LAYOUT.md` Track A) | Closed. Named SPOF, inherited not introduced |
+
+---
+
+## 7. Global search — requirement 1, and the apex decision it forces
+
+### 7.1 The shape
+
+The search lives where the landing page already reserved it —
+`<section id="find">` in `sites/heygabi-home/public/index.html`, whose own
+comment says the slot is for exactly this (*"drop a search input and results
+list … `connect-src https://index.heygabi.ai` added to `_headers`"*). It calls
+the **index Worker's read surface**, which gains auth:
+
+- `GET /api/lookup` and `GET /api/universe/:name` require a verified Firebase
+  ID token (same vendored middleware) **and** estate `approved` (via `/seen`
+  + the §5.2 cache). `GET /api/health` stays open; the push routes keep their
+  per-source bearer tokens unchanged.
+- **This closes `index-worker-design.md` §9 Q3** — the question the index
+  deploy is gated on. Answer: reads are estate-members-only, because the
+  lookup surface aggregates titles across all three catalogs including the two
+  private ones. The index Worker becomes consumer #3 of the auth contract, and
+  deliberately the *first* to adopt it (§9 step 3) — it has zero existing
+  users, so the protocol is proven where nobody can be locked out.
+
+The page itself stays fully public and readable signed-out; the search slot
+renders a "sign in to search" affordance instead of results. Signed-in but
+`pending` gets the honest state: "your account is awaiting approval" — the
+same posture as the apps' request screens, and the same words.
+
+### 7.2 ⚠️ This deliberately overturns a standing rule, and here is the arguing
+
+`heygabi-home/public/index.html:13` says, in capitals: **"NO AUTHENTICATION ON
+THIS HOST. EVER. DO NOT ADD A SIGN-IN BUTTON."** A design that silently
+contradicts a warning that loud is how estates rot, so, explicitly:
+
+- **The rule's concrete argument no longer applies to this host.** Its cited
+  reason is `identity.js`'s `signOut()`-on-load — one page signing the user
+  out from under another. That is lethal when two apps share **one origin**
+  (the finding that settled subdomains-vs-paths in `DOMAIN_AND_HOSTING.md`
+  §1.2). But Firebase web auth state is **origin-scoped** (IndexedDB /
+  localStorage per origin): a sign-in on `heygabi.ai` and the capture-detach
+  dance on `audiobooks.heygabi.ai` cannot see each other's sessions. The
+  hazard the rule guards is real and stays guarded — it just is not *this*
+  configuration. (§15 lists the origin-scoping claim as verify-during-build:
+  one attended cross-tab test before ship.)
+- **The rule's residual cost survives and is paid knowingly:** the apex
+  becomes a Firebase **authorised domain** — one more permanent OAuth redirect
+  surface. `HEYGABI_LAYOUT.md` §1 priced this in from the start ("✅ yes — if
+  anything there signs in"). The owner's requirement 1 is the thing that
+  finally spends it.
+- **Alternative rejected:** a separate `search.heygabi.ai` host to keep the
+  apex clean. Rejected because the owner asked for search *on the front door*;
+  a second host is one more name, one more authorised domain, and one more CSP
+  — strictly more surface to protect the apex from a hazard §7.2 just showed
+  does not apply.
+- **What does NOT change on the apex:** no session for browsing, no
+  personalisation, no "my ratings", no gating of the page. The Firebase SDK
+  loads for one purpose — minting a token to send to `index.heygabi.ai`. The
+  in-file warning gets rewritten (not deleted) to say precisely this, so the
+  next session inherits the new rule with its reasoning, the way it inherited
+  the old one.
+
+Mechanical consequences for the build (§14): `_headers` CSP widens
+`connect-src` to `https://index.heygabi.ai https://identitytoolkit.googleapis.com
+https://securetoken.googleapis.com` and `script-src`/frame allowances for the
+Firebase SDK + Google sign-in; the owner adds `heygabi.ai` (and `www` if kept)
+to Firebase authorised domains — console-only, 🔴 owner step.
+
+---
+
+## 8. What a new site must do to inherit auth — the contract
+
+Requirement 5, as an actual checklist. A "site" here means anything with a
+server component (a Worker). Static-only pages inherit nothing and need
+nothing — they have no data to protect (the apex pattern).
+
+### 8.1 The canonical verifier — one implementation, not three copies
+
+§1.1's drift is the argument. The fix is the estate's established mechanism
+for exactly this problem, applied to its most important file:
+
+- **`catalog-platform` owns the canonical `estate-auth` module** — the token
+  verifier (JWKS, iss+aud pin, unverified-email refusal, `ENVIRONMENT ===
+  'development'` dev bypass **in the games-hardened form**) plus the §3.1
+  combination logic and the `/seen` client with its TTL cache.
+- Consumers take it the way the library already takes `universes`: fetched at
+  build from the sibling checkout (`CATALOG_PLATFORM_DIR` override, loud
+  failure when missing) — the repo has been a code dependency since 2026-08-11
+  (`PLATFORM.md` §5.4), and the user's own global rule says *prefer shared
+  canonical modules over synced copies*. Where that mechanism is genuinely
+  unavailable, a vendored copy is tolerable **only** with a pinned-version
+  header and the conformance probes below in that repo's CI — the
+  fixture-file discipline (`PLATFORM.md` §5.3) applied to behaviour.
+- ⚠️ Migration note: adopting the canonical module in the library **replaces**
+  its `!== 'production'` bypass with the hardened form — closing §1.1's drift
+  as a side effect of adoption rather than a separate errand.
+
+### 8.2 The checklist
+
+| # | Requirement | Verified by |
+|---|---|---|
+| 1 | Serve on a `*.heygabi.ai` host; add it to **Firebase authorised domains** only if the sign-in popup runs on that host (redirect-only and asset hosts: never — `HEYGABI_LAYOUT.md` §1.3) | 🔴 owner console; `auth/unauthorized-domain` on first sign-in if missed |
+| 2 | Verify Firebase ID tokens **locally** with the canonical module; `FIREBASE_PROJECT_ID = "audiobook-catalog"` pinned as iss **and** aud; refuse unverified emails | Probe: token from another project → 401; unverified-email token → 401 |
+| 3 | **Blanket `app.use('/api/*', requireAuth())` before any route is mounted**; every data route additionally behind a capability gate; machine routes (ingest, push) with their own bearer tokens are mounted before it *by name, with a comment* — the library's ingest route is the precedent | Probe: curl every route tokenless → all 401 except named machine routes and `/api/health` |
+| 4 | A local user table keyed on **lowercased email**, role vocabulary of the app's own choosing, `DEFAULT 'pending'`, and **`pending` maps to zero capabilities** | Probe: fresh sign-in → 403 on every capability route, request screen in the UI |
+| 5 | Call `POST /api/estate/seen` per §5.2 (own `ESTATE_APP_TOKEN_*` secret, TTL cache columns) and apply the §3.1 table — including fail-closed for non-standing users when the estate is unreachable | Probe: revoked test user → 403 within TTL; auth Worker stopped → standing user still served, fresh user refused with `estate_unreachable` |
+| 6 | `OWNER_EMAILS` break-glass set; first-sign-in-claims-owner only if the app's own table can start empty | Probe: listed email lands as owner |
+| 7 | Rate limiting on the unauthenticated surface | games `rate-limit.ts` ported |
+| 8 | The dev bypass is `ENVIRONMENT === 'development'` + `DEV_EMAIL`, and production `wrangler.toml` sets `ENVIRONMENT = "production"` explicitly | Read the toml; probe the deployed host with no token → 401 |
+
+Items 2–5 come free with the canonical module; the checklist exists so that a
+site which *cannot* take the module still has the contract, and so the probes
+are written down as commands rather than intentions. **The probes are the
+deliverable** — §6 row 5's failing-open site is caught by running them, and
+they take about a minute per site.
+
+### 8.3 What inheriting does NOT require
+
+No shared session store, no cookies, no redirect dance through a central
+login page, no schema beyond two cache columns, no role vocabulary imposed, no
+central call on the hot path. A new site's auth cost is: one module, one
+secret, two columns, one console entry, eight probes.
+
+---
+
+## 9. The migration — step by step, reversible at every step
+
+Ordering principle: **prove the protocol where nobody can be locked out, then
+adopt where approval already works, then everywhere else.** Every step leaves
+the estate in a working state if the work halts there; "halt state" says what
+is true if it does.
+
+| # | Step | Reversal | Halt state |
+|---|---|---|---|
+| 0 | Owner answers §13's open questions; this doc approved | — | Nothing changed |
+| 1 | Build `apps/auth-worker/` (Worker + migration + admin page + tests) locally. No deploy | Delete the directory | Nothing deployed; design proven in local D1 |
+| 2 | Create the `estate_auth` D1, apply its migration, deploy `auth.heygabi.ai`, 🔴 owner adds `auth.heygabi.ai` to Firebase authorised domains. **Seed**: dry-run first, printing every row it would write (the review-key backfill's lesson: *read the rows, not the counts*), then commit. Sources: library `app_user` (active roles → `approved`, origin `seed:library`), games `app_user` (likewise), audiobook `ADMIN_EMAILS` (→ `approved`+`is_approver`), `OWNER_EMAILS` (→ `approved`+`is_approver`). Union by lowercased email; local `pending` rows seed as `pending` | Delete Worker + D1. **Zero consumers exist** — this step is pure addition | Directory live and populated; estate unchanged in behaviour. The seed is idempotent and re-runnable (§6 row 6 depends on this) |
+| 3 | **Index Worker adopts first**: fold `estate_cache` + read-auth into its still-unapplied migration, wire the vendored verifier + `/seen`, set `ESTATE_APP_TOKEN_INDEX`. Deploy index (running its own pending owner-gated migration + push-token setup from `index-worker-design.md`) and exercise: approved member token → results; fresh Google account → pending screen; no token → 401 | `wrangler delete` the index Worker — it has no users and its catalogs' pushers tolerate its absence by design | The auth contract proven end-to-end on a consumer with **zero existing users**. Search API exists; no UI yet |
+| 4 | Apex search UI: search box + results in `#find`, Firebase sign-in scoped to it, CSP widened, the §7.2 warning rewritten. 🔴 owner adds `heygabi.ai` to authorised domains | Revert two static files (the site is two HTML files; `deploy.md` §4 is one command) | Requirement 1 delivered. Apps still on per-app approval — nothing about them has changed |
+| 5 | **Library adopts** (smallest diff among the apps — approval/pending already work): additive migration for the two cache columns; canonical module replaces local `auth.ts` (closing the §1.1 bypass drift); `ESTATE_CHECK` env var — `off` → `shadow` → `enforce`. **`shadow` calls `/seen` and logs the §3.1 verdict but never refuses**; run it for a few days and read the logs for would-have-refused lines — a seed gap surfaces as a log line instead of a locked-out household member | Set `ESTATE_CHECK=off` (one redeploy); the columns are inert when unread | Library on estate auth. Games still per-app — the layers make mixed adoption a working state, not a broken one |
+| 6 | **Games adopts**: same shape, same flag, same shadow-first | Same | Requirement 2 delivered for every Worker app |
+| 7 | Audiobook-side linking, which per §1.5 is mostly already done by the seed. Optional extras, each independent: re-run the seed after new sign-ups; note in the audiobook admin page that people-management moved to `auth.heygabi.ai` | — | **The audiobook site itself never changes** (§10). Requirement 3 delivered in its honest form |
+| 8 | Update `PLATFORM.md` §1 (stale Access row) + §4 (point here); prune per-app People pages' copy to mention the estate queue | Docs revert | Estate coherent on paper as well as in fact |
+
+**If it halts halfway** — the worst cases, named: after 2, an unused directory
+idles (cost: one Worker). After 3–4, search works estate-gated while apps
+still approve per-app — users see two queues briefly; annoying, not broken.
+After 5, the two apps disagree about whether approval is global — §3.1's
+local-wins rows mean nobody standing loses access either way; a newcomer might
+be approved estate-wide yet still `pending` in games until step 6 — visible,
+honest, fixable by an owner tap in games' People page, exactly as today. **No
+halt point strands anyone or opens anything.**
+
+---
+
+## 10. What this design deliberately does NOT do
+
+Recorded so nobody reopens them expecting a win:
+
+| Not doing | Why |
+|---|---|
+| **Unify the role vocabularies** | Lossy for games (§1.2). The estate answers in/out; roles are app-local forever |
+| **Move, merge or renumber `app_user` rows** | 17 FKs including both audit logs' actors (§1.3). The rows ARE the authorization layer |
+| **Harden the audiobook Firestore rules** (`reviews`, or `request.auth` anywhere) | `PLATFORM.md` §4a is a standing owner decision with a live dependency (the `work_key` carry). This design must not be the back door through which that decision gets un-made |
+| **Add real auth to the audiobook site itself** | It is a static, world-readable, pipeline-fed site by decision (`PLATFORM.md` §2.4); its identity is presentation. Gating its *reads* would mean an edge gate or an app rewrite — a separate project with its own design doc if the owner ever wants it (§13 Q1) |
+| **A central session, cookie, or login-redirect service** | Firebase already is the session layer. A second one is pure attack surface |
+| **Per-request central authorization** | The auth Worker must never be able to take the whole estate down (§5.1, §6 row 1) |
+| **A Firestore service account in any Worker** | Standing refusal, load-bearing elsewhere (`identity-and-reviews.md` §3, `PLATFORM.md` §4a) |
+| **Second Firebase project, or auth for `covers.` / redirect hosts** | `docs/access/cloudflare.md` §5 and `HEYGABI_LAYOUT.md` §1.3 already settled both |
+| **Password / passphrase support** | Google-only, estate-wide. The frozen `/users` docs stay frozen |
+| **Approval workflows beyond approve/revoke** (invitations, expiring guests, per-app grants at approval time) | Household scale. Per-app grants at approval time would re-centralise roles through the back door — the exact thing §3 splits apart |
