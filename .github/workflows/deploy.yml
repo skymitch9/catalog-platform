@@ -1,0 +1,131 @@
+name: Deploy (manual)
+
+# ⚠️ MANUAL DISPATCH ONLY — decided by the owner 2026-08-14 (docs/TODO.md §1).
+# Every target here goes straight to a live heygabi.ai host; there is no dev
+# lane and no promote step. Do not add push triggers or schedules, and do not
+# copy audiobook_catalog's two-lane machinery here (TODO.md §1.2).
+#
+# Three deployables, chosen by the required `target` input:
+#   index-worker  → apps/index-worker   (wrangler deploy, D1 migrate first)
+#   auth-worker   → apps/auth-worker    (wrangler deploy, D1 migrate first)
+#   heygabi-home  → sites/heygabi-home  (wrangler pages deploy of public/;
+#                    see sites/heygabi-home/deploy.md — the upload root
+#                    sites/heygabi-home/public is load-bearing: anything wider
+#                    publishes this repo's private docs)
+#   all           → all three
+#
+# ⚠️ Coupled deploys: TODO.md §2 has a pending change where index-worker and
+# heygabi-home must ship TOGETHER (new find.js against the old Worker 401s).
+# For that, dispatch with target=all, or index-worker then heygabi-home.
+#
+# Auth: the CLOUDFLARE_API_TOKEN secret must carry Workers + D1 scope AND
+# Cloudflare Pages: Edit (for heygabi-home) — the plain 'Edit Cloudflare
+# Workers' template does not include Pages. Guards below fail early if absent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to deploy (all targets are LIVE — no dev lane)'
+        type: choice
+        required: true
+        options:
+          - index-worker
+          - auth-worker
+          - heygabi-home
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  index-worker:
+    if: inputs.target == 'index-worker' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '113be82b840c956b8378a187047ab3ea' }}
+    steps:
+      - name: Guard — CLOUDFLARE_API_TOKEN must exist
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN: repo Settings → Secrets → Actions (or: gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/catalog-platform). Create it at dash.cloudflare.com/profile/api-tokens with the 'Edit Cloudflare Workers' template PLUS 'Cloudflare Pages: Edit' (account 113be82b840c956b8378a187047ab3ea)."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # Migrate BEFORE deploy, so new code never meets an old schema
+      # (TODO.md §1.3 point 2; §2 depends on this order for migration 0003).
+      - name: Apply D1 migrations (remote)
+        run: npm run db:migrate --workspace @platform/index-worker
+      - name: Deploy index-worker
+        working-directory: apps/index-worker
+        run: npx wrangler deploy
+      - name: Summary
+        run: echo "::notice::index-worker deployed at ${GITHUB_SHA} → index.heygabi.ai (live)."
+
+  auth-worker:
+    if: inputs.target == 'auth-worker' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '113be82b840c956b8378a187047ab3ea' }}
+    steps:
+      - name: Guard — CLOUDFLARE_API_TOKEN must exist
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN: repo Settings → Secrets → Actions (or: gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/catalog-platform). Create it at dash.cloudflare.com/profile/api-tokens with the 'Edit Cloudflare Workers' template PLUS 'Cloudflare Pages: Edit' (account 113be82b840c956b8378a187047ab3ea)."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply D1 migrations (remote)
+        run: npm run db:migrate --workspace @platform/auth-worker
+      - name: Deploy auth-worker
+        working-directory: apps/auth-worker
+        run: npx wrangler deploy
+      - name: Summary
+        run: echo "::notice::auth-worker deployed at ${GITHUB_SHA} → auth.heygabi.ai (live)."
+
+  heygabi-home:
+    if: inputs.target == 'heygabi-home' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '113be82b840c956b8378a187047ab3ea' }}
+    steps:
+      - name: Guard — CLOUDFLARE_API_TOKEN must exist (needs Pages edit scope)
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN: repo Settings → Secrets → Actions (or: gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/catalog-platform). Create it at dash.cloudflare.com/profile/api-tokens with the 'Edit Cloudflare Workers' template PLUS 'Cloudflare Pages: Edit' — this job deploys a Pages project and fails on a Workers-only token."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # No build step — the site is hand-edited static files. npm ci is only
+      # to get wrangler from the workspace devDependencies.
+      - name: Install dependencies
+        run: npm ci
+      # ⚠️ The upload root MUST be sites/heygabi-home/public (deploy.md §0):
+      # the repo root or sites/heygabi-home would publish private docs.
+      - name: Deploy heygabi-home (Pages, direct upload)
+        run: npx wrangler pages deploy sites/heygabi-home/public --project-name heygabi-home --branch main --commit-dirty=true
+      - name: Summary
+        run: echo "::notice::heygabi-home deployed at ${GITHUB_SHA} → heygabi.ai (live)."

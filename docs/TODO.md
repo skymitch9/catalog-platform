@@ -22,9 +22,9 @@ is a person at a specific machine.**
 | Repo | `.github/workflows` | How it reaches production |
 |---|---|---|
 | `bookbuddy/audiobook_catalog` | ✅ 7 workflows — `deploy`, `promote`, `auto-promote`, `lint`, `tests`, `club-notify`, `cw-fulfill` | Push to `main` → deploy → `/dev/`; a separate **Promote to Prod** dispatch publishes the root |
-| `bookbuddy/library_catalog` | ❌ **none** | `npm run deploy` typed by hand |
-| `boardbuddy/Board_Game_Catalog` | ❌ **none** | `npm run deploy` typed by hand |
-| `catalog-platform` | ❌ **none** | Not deployed at all — it is a data/code dependency, see §1.4 |
+| `bookbuddy/library_catalog` | ✅ `deploy.yml` (manual dispatch, 2026-08-14) | `npm run deploy` by hand, **or** Actions → Deploy Worker (manual) once secrets exist (§1.5) |
+| `boardbuddy/Board_Game_Catalog` | ✅ `deploy.yml` (manual dispatch, 2026-08-14) | same as library |
+| `catalog-platform` | ✅ `deploy.yml` (manual dispatch, target choice, 2026-08-14) | index-worker / auth-worker / heygabi-home / all — once secrets exist (§1.5) |
 
 ### 1.1 The two catalogs are structurally identical, which is the opportunity
 
@@ -82,17 +82,41 @@ universe list from this repo and **fail loudly** if the checkout is missing
 (`UNIVERSES.md`). So CI for `library_catalog` has to check out *two* repos, and
 that is the real coupling to solve here — not a deploy.
 
-### Open questions for the owner
+### Former open questions — answered
 
-- Is `Board_Game_Catalog`'s repo public or private? It decides the Actions
-  budget, and the audiobook repo was made public on 2026-08-11 specifically to
-  get unmetered minutes.
-- Should deploy be **on push to `main`**, or **manual dispatch only**? The
-  standing rule in this estate is that "deploy" means main → `/dev/` and prod
-  needs an explicit ask — but these two Workers have no dev lane, so a push-to-
-  deploy would publish straight to the live custom domain.
+- `Board_Game_Catalog` is **PUBLIC** (unmetered minutes); `library_catalog` and
+  `catalog-platform` are **PRIVATE** (metered — fine for occasional manual
+  deploys, revisit if usage grows).
+- The owner decided **manual dispatch only** (2026-08-14): these Workers have no
+  dev lane, so the trigger stays a deliberate human button-press. No push
+  triggers, no schedules.
 
-**Not started. No code written.** Raised, measured and scoped only.
+### 1.5 BUILT 2026-08-14 — workflows exist; owner actions remain before first use
+
+`deploy.yml` in each of the three repos (manual `workflow_dispatch` only).
+All preserve §1.3: check-clean still runs (not disabled), D1 migrate runs
+**before** deploy, no `|| true` anywhere. The two catalog workflows check out
+`catalog-platform` as a sibling and set `CATALOG_PLATFORM_DIR`. Each fails
+early with instructions when a secret is missing (proven by a triggered run).
+`CLOUDFLARE_ACCOUNT_ID` is already set as an Actions **variable** on all three
+repos (it is not a secret). CI does **not** commit `docs/deploys.log` — the
+workflow prints the line to append locally if wanted.
+
+**Owner checklist (nothing deploys until these exist):**
+
+1. Create ONE Cloudflare API token at dash.cloudflare.com/profile/api-tokens:
+   'Edit Cloudflare Workers' template **plus D1 edit + Cloudflare Pages: Edit**
+   (Pages is for heygabi-home; the plain Workers template lacks it), account
+   `113be82b840c956b8378a187047ab3ea`.
+2. `gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/library_catalog`
+   (repeat for `skymitch9/Board_Game_Catalog` and `skymitch9/catalog-platform`).
+3. Create a fine-grained PAT (github.com/settings/personal-access-tokens) with
+   **Contents: Read on skymitch9/catalog-platform** (it is private), then
+   `gh secret set CATALOG_PLATFORM_TOKEN` on **library_catalog** and
+   **Board_Game_Catalog** (catalog-platform's own workflow does not need it).
+4. First real runs: dispatch from the Actions tab. For §2's pending pair,
+   dispatch catalog-platform with `target=all` (or index-worker then
+   heygabi-home — never heygabi-home alone first).
 
 ## 2. Visibility-scoped + anonymous search (B2) — BUILT, deploy pending
 
