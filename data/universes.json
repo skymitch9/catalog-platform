@@ -51,7 +51,11 @@
     "disney": "Disney",
     "star wars": "Star Wars",
     "alliances": "Alliances",
-    "stan lee's alliances": "Alliances"
+    "stan lee's alliances": "Alliances",
+    "cytoverse": "Cytoverse",
+    "the cytoverse": "Cytoverse",
+    "reckoners": "Reckoners",
+    "the reckoners": "Reckoners"
   },
   "universes": [
     {
@@ -222,10 +226,6 @@
           "why": "⚠️ Secret Projects 2 — the one of five that is NOT Cosmere. This single row is the proof that a series-level mapping cannot work."
         },
         {
-          "title": "Snapshot",
-          "why": "standalone thriller"
-        },
-        {
           "title": "Perfect State",
           "why": "standalone novella"
         },
@@ -240,14 +240,6 @@
         {
           "title": "The Most Boring Book Ever",
           "why": "children's picture book"
-        },
-        {
-          "title": "Firstborn / Defending Elysium",
-          "why": "⚠️ An OMNIBUS, not a data error — corrected by the owner. It is a real published two-novella volume: one file (firstborn_defendingelysium.epub), and the audiobook catalog's own description enumerates its contents as bullets, one of which reads '(from the world of Skyward)'. NEITHER novella is Cosmere. Belongs in edition.collects (migration 0060), the same shape as the White Sand omnibus — not split into two works."
-        },
-        {
-          "title": "Lux - A Texas Reckoners Novel",
-          "why": "Reckoners spin-off. Also note 'Texas Reckoners series' is a separate series value from 'Reckoners' — likely the same thing split in two."
         }
       ]
     },
@@ -893,6 +885,39 @@
       ],
       "bookOverrides": [],
       "bookExclusions": []
+    },
+    {
+      "name": "Cytoverse",
+      "decidedHow": "human",
+      "confirmed": "Owner-approved creation, 2026-08-15, via coordinator, during the estate-wide orphan sweep. Named 'Cytoverse' by the owner, which is also the name the publisher prints: the ebook edition of Defending Elysium is titled 'Defending Elysium: A Cytoverse Novella (The Skyward Series)'. Per-item membership is the whole owned set and was measured, not proposed.",
+      "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 7 rows sharing the exact series value 'The Skyward Series' — Skyward, Starsight, Cytonic, Defiant, and the three Skyward Flight novellas Sunreach, ReDawn and Evershore (the last three co-written with Janci Patterson). library_catalog D1: 1 row, work #8 'Firstborn / Defending Elysium', series null — caught by the title override below. No board game exists for this franchise in board-game D1. Sources: https://coppermind.net/wiki/Cytoverse, https://www.amazon.com/Defending-Elysium-Cytoverse-Novella-Skyward-ebook/dp/B09M3ZV4Y1, https://www.audible.com/blog/article-brandon-sanderson-cytoverse.",
+      "notes": "Sanderson's non-Cosmere science-fiction continuity. It earns a shelf on this file's own rule rather than as an exception: the universe name says something 'The Skyward Series' does not, because Defending Elysium is NOT a Skyward book and carries no series value at all — the same shape as Fires of December in The Cosmere. Skyward was built around the same premise as the 2008 novella (people who can teleport), and Sanderson tied Jason's story to Spensa's explicitly while writing Cytonic. ⚠️ The Cosmere's notSeries still lists 'The Skyward Series', and that stays true and is not contradicted: not-Cosmere and in-the-Cytoverse are different statements.",
+      "series": [
+        "The Skyward Series"
+      ],
+      "bookOverrides": [
+        {
+          "title": "Firstborn / Defending Elysium",
+          "why": "library_catalog D1 work #8, series null. ⚠️ An OMNIBUS, not a data error — this wording is carried over verbatim from the bookExclusion it replaces in The Cosmere, because it was corrected by the owner once already and must not be re-litigated. It is a real published two-novella volume (one file, firstborn_defendingelysium.epub) and the audiobook catalog's own description enumerates its contents as bullets, one of which reads '(from the world of Skyward)'. It belongs in edition.collects (migration 0060), the same shape as the White Sand omnibus, not split into two works. What is new in 2026-08-15 is the universe: Defending Elysium is canonically Cytoverse — its ebook edition is titled 'Defending Elysium: A Cytoverse Novella (The Skyward Series)' (https://www.amazon.com/Defending-Elysium-Cytoverse-Novella-Skyward-ebook/dp/B09M3ZV4Y1) and the Coppermind files it under Cytoverse (https://coppermind.net/wiki/Cytoverse). ⚠️ CAVEAT the owner should know: FIRSTBORN, the other half of this volume, is a standalone with no universe. The row is claimed for Cytoverse because half its content is Cytoverse and the volume is indivisible in this catalog — the same trade-off any omnibus forces. If the two are ever split into separate works, only Defending Elysium keeps the universe."
+        }
+      ]
+    },
+    {
+      "name": "Reckoners",
+      "decidedHow": "human",
+      "confirmed": "Owner-approved creation, 2026-08-15, via coordinator, during the estate-wide orphan sweep. Membership is the whole owned set and was measured, not proposed. ⚠️ Named for the series rather than invented ('Reckonerverse' is not a name anyone uses), so the universe name and one of its series names are the same string — which is legitimate here for exactly the reason this file requires: the universe says something the series name does not, namely that Lux and Snapshot belong with the trilogy.",
+      "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 4 rows sharing the exact series value 'Reckoners' (Steelheart, Firefight, Calamity, and the novella Mitosis), 1 row 'Lux - A Texas Reckoners Novel' under the separate series value 'Texas Reckoners series' (co-written with Steven Michael Bohls), and 1 seriesless row 'Snapshot'. library_catalog D1: 1 row, work #27 'Snapshot', series null. Both Snapshot rows are caught by the title override below. No board game exists for this franchise in board-game D1. Sources: https://coppermind.net/wiki/The_Reckoners, https://www.goodreads.com/book/show/39883704-snapshot.",
+      "notes": "Sanderson's Epics continuity. Three things make it a universe rather than a series: the Texas Reckoners spin-off carries a DIFFERENT series value, Snapshot carries NO series value, and neither would ever join the trilogy under a series-keyed lookup. ⚠️ 'Texas Reckoners series' and 'Reckoners' are very likely one series split in two by a tagging accident — that observation is inherited from the Cosmere bookExclusion this entry supersedes and is worth a look on its own, but it is a series-spelling question, not a universe question, and folding them would not change any answer here because both are claimed. The Cosmere's notSeries still lists 'Reckoners' and that stays true: not-Cosmere and in-the-Reckoners-universe are different statements.",
+      "series": [
+        "Reckoners",
+        "Texas Reckoners series"
+      ],
+      "bookOverrides": [
+        {
+          "title": "Snapshot",
+          "why": "Two rows, both seriesless: audiobook_catalog site/catalog.csv (blank series) and library_catalog D1 work #27 (series null), joined to each other by library_work_id 27. Sanderson has confirmed Snapshot shares the Reckoners world — it is set some time after Calamity and the links are deliberately slight, which is exactly why no series field will ever carry the association and a title override is the only route (https://coppermind.net/wiki/The_Reckoners, https://tvtropes.org/pmwiki/pmwiki.php/Literature/TheReckonersTrilogy, https://www.goodreads.com/book/show/39883704-snapshot). Replaces the bookExclusion 'standalone thriller' that kept it out of The Cosmere, which remains true: The Cosmere's notSeries still records Reckoners."
+        }
+      ]
     }
   ],
   "_refused": [
@@ -906,7 +931,8 @@
       "subject": "Same author, different world",
       "decidedHow": "seed",
       "decision": "never sufficient on its own",
-      "why": "Reckoners and the Cosmere share an author and nothing else. Author is not a universe."
+      "why": "Reckoners and the Cosmere share an author and nothing else. Author is not a universe.",
+      "stillTrueAfter2026_08_15": "⚠️ Reckoners became its own universe on 2026-08-15 (owner-approved), and this refusal is NOT overturned by that — read carefully, because the two look similar. What earned Reckoners a shelf is that the continuity spans a differently-named spin-off series (Texas Reckoners series) and a seriesless novella (Snapshot), neither of which a series-keyed lookup can reach. What is still refused is the thing this entry names: inferring a universe FROM THE AUTHOR. Legion is the live proof — same author, in The Cosmere notSeries, claimed by nothing — and the fixture \"same author is not a universe\" was re-pointed at it the same day for exactly that reason."
     },
     {
       "subject": "Turncoat's Truth — William D. Arand with Victor E. Krabin",
@@ -2114,6 +2140,39 @@
       "title": "The Nightmare Before Christmas",
       "why": "library_catalog D1 work #197, credited 'Tim Burton, Disney', series null — measured 2026-08-15 estate sweep. The first Disney pass read only audiobook_catalog for imprint rows and so missed the one Disney row on the library side. A Touchstone/Disney production, and Halloween Town is a Kingdom Hearts world, which is the owner's crossover-potential test met directly. Series is null, so it needs a title override rather than a series claim.",
       "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "unexclude-book",
+      "universe": "The Cosmere",
+      "title": "Snapshot",
+      "why": "Superseded 2026-08-15 by the owner-approved Reckoners universe. The exclusion said 'standalone thriller' and kept Snapshot out of The Cosmere, which is still true and still the answer this file gives - Snapshot is not Cosmere. But bookExclusions is a GLOBAL stop in the resolution order (_lookup.order rule 1: an exclusion returns no universe and stops), so leaving it here would make the new Reckoners bookOverride unreachable. Removed here and re-stated as a Reckoners override; The Cosmere already records Reckoners in notSeries, which is where the not-Cosmere fact now lives on its own."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "unexclude-book",
+      "universe": "The Cosmere",
+      "title": "Lux - A Texas Reckoners Novel",
+      "why": "Superseded 2026-08-15 by the owner-approved Reckoners universe, which claims the series 'Texas Reckoners series' outright. The exclusion existed to keep a Reckoners spin-off out of The Cosmere; that is still true and The Cosmere's notSeries still records Reckoners. But an exclusion is a GLOBAL stop (_lookup.order rule 1), so leaving it here would block the new universe's own series match on the very row it was written about. Its second observation - that 'Texas Reckoners series' and 'Reckoners' are likely one series split in two - is carried over into the Reckoners universe notes rather than lost."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "unexclude-book",
+      "universe": "The Cosmere",
+      "title": "Firstborn / Defending Elysium",
+      "why": "Superseded 2026-08-15 by the owner-approved Cytoverse universe. Everything the exclusion said stays true and is carried into the new Cytoverse override verbatim: it is a real published two-novella omnibus, not a data error, and NEITHER novella is Cosmere. What changed is that one of the two - Defending Elysium - is now known to have a universe of its own; its published ebook edition is literally titled 'Defending Elysium: A Cytoverse Novella (The Skyward Series)'. An exclusion is a GLOBAL stop (_lookup.order rule 1), so it had to be removed for the Cytoverse override to be reachable at all."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "create-universe",
+      "universe": "Cytoverse",
+      "why": "Owner-approved creation via coordinator during the 2026-08-15 estate-wide orphan sweep. Written into the file by hand with its evidence rather than by a command, per this file's own rule that the CLI cannot create a universe. Aliases registered in canonicalNames at the same time so the name can fold; no alias is guessed beyond the bare form and its leading article. ⚠️ sites/heygabi-home/public/universes/universes.js carries a HARDCODED UNIVERSE_NAMES array (UNIVERSES.md §6) and was updated in the same commit, or the universe is invisible on /universes even after a correct data file and a correct Worker deploy."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "create-universe",
+      "universe": "Reckoners",
+      "why": "Owner-approved creation via coordinator during the 2026-08-15 estate-wide orphan sweep. Written into the file by hand with its evidence rather than by a command, per this file's own rule that the CLI cannot create a universe. Aliases registered in canonicalNames at the same time so the name can fold; no alias is guessed beyond the bare form and its leading article. ⚠️ sites/heygabi-home/public/universes/universes.js carries a HARDCODED UNIVERSE_NAMES array (UNIVERSES.md §6) and was updated in the same commit, or the universe is invisible on /universes even after a correct data file and a correct Worker deploy."
     }
   ]
 }

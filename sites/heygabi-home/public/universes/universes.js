@@ -41,7 +41,9 @@ const INDEX_ORIGIN = 'https://index.heygabi.ai';
 // ⚠️ Keep in sync with data/universes.json `universes[].name` — see header.
 // Marvel and Disney added 2026-08-15 (owner/coordinator: separate universes).
 // Same day, revised further: Star Wars split out of Disney (crossover-
-// potential criterion) and Alliances created (owner-approved).
+// potential criterion) and Alliances created (owner-approved). Later the same
+// day, during the estate-wide orphan sweep, Cytoverse and Reckoners were
+// created, both owner-approved — 13 now.
 const UNIVERSE_NAMES = [
   'The Cosmere',
   'Runnerverse',
@@ -54,6 +56,8 @@ const UNIVERSE_NAMES = [
   'Disney',
   'Star Wars',
   'Alliances',
+  'Cytoverse',
+  'Reckoners',
 ];
 
 const whoEl = document.getElementById('uni-who');

@@ -7,10 +7,11 @@
 > Editor: [`../tools/universes.mjs`](../tools/universes.mjs).
 
 A fictional universe is flagged **only where it says something the series (or,
-for board games, the title) name does not already say**. **Eleven** universes
-as of 2026-08-15 — Marvel, Disney, Star Wars and Alliances added; The Cosmere
-and CAL Verse extended to cover owned board games — **44 series, 139 book/game
-overrides, 8 exclusions**, and five recorded refusals. ⚠️ **This file's own
+for board games, the title) name does not already say**. **Thirteen** universes
+as of 2026-08-15 — Marvel, Disney, Star Wars, Alliances, Cytoverse and
+Reckoners all added that day; The Cosmere and CAL Verse extended to cover owned
+board games — **47 series, 141 book/game overrides, 5 exclusions**, and five
+recorded refusals. ⚠️ **This file's own
 wording still says "book," but nothing in the schema or the resolver is
 book-specific** — `bookOverrides`/`bookExclusions` key on `title`, and
 `title`/`series` are exactly what a board-game row carries too (see §6's third
@@ -38,9 +39,11 @@ The Cosmere treatment above was generalised to **every** universe: all 2,265
 rows in the estate (1,078 audiobook CSV, 351 library D1 `work`, 836 board-game
 D1 `item`) were pulled and read by author, by franchise keyword, and by the
 `library_work_id` join between the two book catalogs, looking for anything that
-belongs in a universe but resolves to none. **Membership went 322 → 337 rows**
-(audiobook 181 → 193, library 45 → 48, games 96 unchanged). Fifteen adds, in
-four shapes worth knowing:
+belongs in a universe but resolves to none. **Across the whole day's work,
+membership went 322 → 352 rows** (audiobook 181 → 206, library 45 → 50, games
+96 unchanged) across 11 → 13 universes. The first phase — placing orphans in
+the universes that already existed — accounts for 15 of those, in four shapes
+worth knowing:
 
 | Add | Universe | The shape it hid in |
 |---|---|---|
@@ -63,18 +66,55 @@ ladder missing from the audio side — five rows the library had numbered 1–5 
 plus **World's Only Hero**, which `universes.json` had been describing in prose
 under CAL Verse `notThisSeries` since 2026-08-11.
 
-**Two things deliberately NOT done, both recorded rather than guessed:**
+Three further candidates came out of the sweep and were **not** created —
+Middle-earth, Dungeon Crawler Carl, and a refusal case for D&D — because §4's
+rule stands: the CLI cannot create a universe, and a new one is a decision
+written into the file with its evidence. They went to the owner with the
+evidence and the ready-to-apply shape.
 
-1. **No new universe was created.** §4's rule stands — the CLI cannot create
-   one, and a new one is a decision written into the file with its evidence.
-   Three genuine candidates came out of this sweep (Middle-earth, Dungeon
-   Crawler Carl, and a refusal case for D&D); they are in the session's verdict
-   table for the owner, with the evidence and the exact ready-to-apply shape.
-2. **`apps/index-worker` was not redeployed**, so ⚠️ **the additions above are
-   not live on `/universes` yet.** §6's third row is the reason a redeploy is
-   needed at all — the Worker bundles this file at build time — and the reason
-   it was skipped is that a concurrent session had uncommitted changes in
-   `apps/index-worker/src/`, which a deploy would have shipped.
+### Two more universes, owner-approved the same day: Cytoverse and Reckoners
+
+Approved by the owner via the coordinator during the sweep, so **13** now.
+Both are Sanderson continuities that are *not* the Cosmere, and both earn a
+shelf on this file's ordinary rule rather than as an exception — in each case
+the universe name says something no series name can:
+
+| | Claims | The row that makes it a universe rather than a series |
+|---|---|---|
+| **Cytoverse** | series `The Skyward Series` (7 audiobooks) + title `Firstborn / Defending Elysium` | **Defending Elysium is not a Skyward book and carries no series value at all.** Its own ebook edition is titled *Defending Elysium: A Cytoverse Novella*. Same shape as *Fires of December* in The Cosmere |
+| **Reckoners** | series `Reckoners` + series `Texas Reckoners series` + title `Snapshot` | Two of them. The spin-off (*Lux*) carries a **different series value**, and *Snapshot* carries **none at all** in either catalog — Sanderson has confirmed it shares the Reckoners world, with links slight enough that no series field will ever say so |
+
+⚠️ **Creating them forced three `bookExclusions` out of The Cosmere** —
+*Snapshot*, *Lux - A Texas Reckoners Novel*, and *Firstborn / Defending
+Elysium* — and the reason is §3's own resolution order, not a change of mind.
+An exclusion is a **global stop**: rule 1 returns "no universe" and halts, so
+leaving those titles excluded would have made the new universes' claims on
+those exact rows permanently unreachable. Every fact the exclusions carried is
+preserved — The Cosmere's `notSeries` still refuses Reckoners and The Skyward
+Series, the omnibus reasoning on *Firstborn / Defending Elysium* is copied into
+its new entry verbatim, and each removal records why in `_changelog`.
+
+⚠️ **Four canary assertions across three repos had to be rewritten**, and each
+one was rewritten to keep testing what it was built to test rather than to
+match the new numbers:
+
+| Was | Now | Why it moved |
+|---|---|---|
+| *"an exclusion beats a series"* — Lux + `Reckoners` | The Frugal Wizard + `The Mistborn Saga` | Lux is legitimately Reckoners now. The replacement is **stronger**: it pairs an exclusion with a series The Cosmere really claims, so rule 3 would fire if rule 1 did not run first. The old pair had both rules saying no anyway |
+| *"same author is not a universe"* — Steelheart + `Reckoners` | Legion + `Legion` | Legion carries the identical property (Sanderson's, in `notSeries`, claimed by nothing). The refusal did **not** weaken: Reckoners earning a shelf is a continuity spanning a renamed spin-off and a seriesless novella, not the author being read as a universe |
+| `canonicalName("Cytoverse") → null` | `→ "Cytoverse"` | Flipped by the approval, the same shape as the Willverse flip of 2026-08-12 |
+| — | `canonicalName("Skyward universe") → null` **added** | Replaces the property the Cytoverse case used to carry. It is the most temptingly guessable name in the file, because `The Skyward Series` is Cytoverse's only claim |
+
+### Propagation
+
+`data/universes.json` is read at three different times by three consumers
+(§6), so "changed the file" is not "changed the answer" anywhere:
+
+| Consumer | What was done |
+|---|---|
+| `library_catalog` | `sync-universes.mjs` + `backfill:universes --remote --commit`. **45 → 50 rows** carry a universe (White Sand, Goodnight Darth Vader, The Nightmare Before Christmas, then Firstborn / Defending Elysium and Snapshot) |
+| `audiobook_catalog` | `python -m app.main`. **181 → 206 rows** resolve |
+| `apps/index-worker` | ⚠️ **Bundles this file at build time** — until it is redeployed *and* each source pushes again, `/universes` serves the answers stored at the last push. This is also why library work #272 (*Star Wars: The Fight to Survive*) still renders "Part of Disney" on the live page: `universes.json` has resolved it to Star Wars since the split, and D1 stores `universe='Star Wars'`, but the index row was written before |
 
 ---
 

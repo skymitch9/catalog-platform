@@ -87,19 +87,20 @@
     },
     {
       "name": "an exclusion beats a series that would otherwise sweep it in",
-      "title": "Lux - A Texas Reckoners Novel",
-      "series": "Reckoners",
+      "title": "The Frugal Wizard’s Handbook for Surviving Medieval England",
+      "series": "The Mistborn Saga",
       "author": "Brandon Sanderson",
       "expect": null,
-      "why": "Reckoners is in The Cosmere's notSeries, and this title is an explicit exclusion. Both must say no; the order (exclusions first) is what makes the answer independent of which rule fires."
+      "why": "⚠️ REWRITTEN 2026-08-15, and it now tests MORE than it did. It used to be 'Lux - A Texas Reckoners Novel' with series 'Reckoners', which stopped being a null case when the owner approved the Reckoners universe — that row is legitimately Reckoners now. The property it existed to pin is untouched and is asserted here against a stronger pair: The Frugal Wizard is an explicit exclusion, and 'The Mistborn Saga' is a series The Cosmere really does claim, so rule 3 would sweep it in if rule 1 did not run first. The old case only ever paired an exclusion with a notSeries — two rules that both said no anyway.",
+      "note": "⚠️ The series value here is SYNTHETIC; the real row carries 'Secret Projects'. That is deliberate, and was true of the case this replaces too: a fixture that pins the resolution ORDER needs a combination the real data never produces, or it proves nothing about ordering."
     },
     {
       "name": "same author is not a universe",
-      "title": "Steelheart",
-      "series": "Reckoners",
+      "title": "Legion: The Many Lives of Stephen Leeds",
+      "series": "Legion",
       "author": "Brandon Sanderson",
       "expect": null,
-      "why": "The seed refusal 'Same author, different world'. notSeries records it; the lookup must return nothing rather than falling back to the author."
+      "why": "The seed refusal 'Same author, different world'. notSeries records it; the lookup must return nothing rather than falling back to the author. ⚠️ REWRITTEN 2026-08-15: this used to be Steelheart / 'Reckoners', which the owner-approved Reckoners universe turned into a genuine hit. Legion carries the identical property — Sanderson's, listed in The Cosmere's notSeries, claimed by no universe — so the refusal stays pinned by a real measured row (site/catalog.csv series 'Legion'; library_catalog D1 works #22 and #23). The refusal did not weaken: Reckoners earning a shelf is not the author being treated as a universe, it is one continuity spanning a differently-named spin-off series and a seriesless novella."
     },
     {
       "name": "The Last Horizon is in the Willverse — the refusal was answered",
@@ -333,17 +334,23 @@
     },
     {
       "input": "Cytoverse",
+      "expect": "Cytoverse",
+      "why": "⚠️ FLIPPED 2026-08-15, and the flip is the point — the same shape as 'The Last Horizon is in the Willverse'. This case asserted NULL from 2026-08-11, when Cytoverse was named in The Cosmere's notes as a real but unlisted universe and the rule was that an unknown name must not be invented. The owner approved it as a universe on 2026-08-15 (7 Skyward audiobooks plus Defending Elysium, which carries no series value at all), so the name is now registered and folds onto itself. What has NOT changed is that it must never fold into The Cosmere: the case below keeps a genuinely unknown Sanderson-adjacent name pinned at null."
+    },
+    {
+      "input": "Skyward universe",
       "expect": null,
-      "why": "Named in The Cosmere's notes as a real but UNLISTED universe. An unknown name normalises to nothing; it must not be invented, and it must not fold into The Cosmere just because that entry mentions it."
+      "why": "⚠️ ADDED 2026-08-15 to replace the property the Cytoverse case above used to carry. An unregistered name must normalise to nothing rather than being guessed onto the nearest universe — and this is the most temptingly guessable name in the file, because 'The Skyward Series' IS Cytoverse's only claimed series. Only 'cytoverse' and 'the cytoverse' are registered; per canonicalNames `_note`, no alias is invented without a reason."
     }
   ],
   "_knownGaps": [
     {
-      "gap": "⚠️ 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' does not resolve",
-      "detail": "The audiobook catalog holds TWO rows for this book — 'Isles of the Emberdark' (series blank) and 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' (series 'Secret Projects'). The bookOverride matches the short title only, because title matching is exact by design (see _lookup.exactTitlesOnly). The long row therefore resolves to no universe.",
-      "whyNotFixedHere": "Two candidate fixes and both belong elsewhere. Adding a second override would put a damaged row title into the decisions file and would change the owner's stated count of ten Cosmere overrides. Loosening to substring matching would make 'Elantris' match 'The Hope of Elantris'. The right fix is an entry in audiobook_catalog scripts/catalog_overrides.json correcting the row's title — the layer that exists for exactly this — after which the override matches with no change here.",
-      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11.",
-      "notAsserted": "Deliberately NOT a fixture case, because a case asserting null here would enshrine an answer that is wrong about the book."
+      "gap": "✅ CLOSED 2026-08-15 — 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' did not resolve",
+      "detail": "The audiobook catalog holds TWO rows for this book — 'Isles of the Emberdark' (series blank) and 'Isles of the Emberdark - A Cosmere Novel Secret Projects, Book 5' (series 'Secret Projects'). The bookOverride matches the short title only, because title matching is exact by design (see _lookup.exactTitlesOnly). The long row therefore resolved to no universe.",
+      "whyNotFixedHere": "Two candidate fixes and both belong elsewhere. Adding a second override would put a damaged row title into the decisions file and would change the owner's stated count of Cosmere overrides. Loosening to substring matching would make 'Elantris' match 'The Hope of Elantris'. The right fix is an entry in audiobook_catalog scripts/catalog_overrides.json correcting the row's title — the layer that exists for exactly this — after which the override matches with no change here.",
+      "fixed": "⚠️ Done 2026-08-15, exactly as prescribed above and NOT by loosening anything here: `python -m app.tools.edit_overrides` (ASIN B0F4RQQC4N) sets the row's title to 'Isles of the Emberdark'. The m4b's own ©alb tag already read the clean title, so the correction restores what is on the file rather than inventing one; the trailing string was Audible marketing copy plus the series and volume, both of which the row already carries in its own series/series_index fields. The key-move guard was checked first — 0 reviews were joined to the old title. The sibling row (blank series) was given series 'Secret Projects' index 5 in the same pass. Both rows now resolve to The Cosmere, confirmed in the rebuilt site/catalog.csv `universe` column.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-11; re-measured after the fix 2026-08-15.",
+      "notAsserted": "Deliberately NOT a fixture case, because a case asserting null here would have enshrined an answer that is wrong about the book. Kept in _knownGaps after the fix as the worked example of where a damaged-title gap gets repaired."
     },
     {
       "gap": "The library catalog's own rows were not measured",
