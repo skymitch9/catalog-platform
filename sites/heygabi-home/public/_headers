@@ -40,20 +40,25 @@
 #   frame-src   the Firebase auth iframe on the project's authDomain, and
 #               accounts.google.com for the sign-in flow.
 #   img-src     'self' data: (the inline SVG favicon) + the estate's cover
-#               hosts + EVERY host the real pushed index rows hotlink,
-#               MEASURED 2026-08-14 from the 2,259 production rows (the
-#               as-you-type search renders cover thumbnails, so a missing
-#               host silently blanks a thumbnail): covers.heygabi.ai
-#               (1,077 audiobook), bookcovers.heygabi.ai + library.heygabi.ai
-#               (library), cf.geekdo-images.com (196 games) and the games'
-#               long third-party tail (shopify/gamefound/dndbeyond/
-#               dicethrone/cloudfront/squarespace/kickstarter/itch/
-#               loottavern/d20/backerkit/bigcommerce — each appears in real
-#               rows; no https: wildcard on purpose). That tail is the
-#               rehost-to-R2 case (improvement-proposals §3): when covers
-#               move to estate hosts, prune this list back. Plus Google
-#               avatars. A cover on any other host renders a clean blank
-#               box (find.js keeps the slot, drops the broken image).
+#               hosts: covers.heygabi.ai (audiobook), bookcovers.heygabi.ai +
+#               library.heygabi.ai (library), gamecovers.heygabi.ai (games).
+#               PRUNED 2026-08-15: games' third-party tail (cf.geekdo-images
+#               .com and the shopify/gamefound/dndbeyond/dicethrone/
+#               cloudfront/squarespace/kickstarter/itch/loottavern/d20/
+#               backerkit/bigcommerce hosts, MEASURED 2026-08-14 from the
+#               2,259 production rows) is GONE — the covers consolidation
+#               (catalog-platform/docs/info/covers-consolidation-plan.md)
+#               rehosted all 1,124 distinct URLs (item.thumbnail_url ∪
+#               edition.image_url) onto gamecovers.heygabi.ai, verified
+#               against production D1: 0 of 506 item rows and 1 of 974
+#               edition rows (a 7.27MB file over the upload ceiling, left as
+#               its original hotlink on purpose) still point at a
+#               third-party host. This is why estate hosts are named
+#               individually rather than a https: wildcard: a missing one
+#               silently blanks a thumbnail (find.js keeps the slot, drops
+#               the broken image) rather than breaking loudly, so the list
+#               has to stay exactly what production actually serves. Plus
+#               Google avatars.
 #   style-src   'self' (assets/estate-theme.css — the theme system) +
 #               'unsafe-inline' for the per-page <style> blocks; with inline
 #               SCRIPT still blocked there is no injection vector to
@@ -99,11 +104,11 @@
 
 /universes
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://cdn.shopify.com https://imgcdn.gamefound.com https://www.dndbeyond.com https://dicethrone.com https://d1wgd08o7gfznj.cloudfront.net https://images.squarespace-cdn.com https://i.kickstarter.com https://img.itch.zone https://loottavern.com https://files.d20.io https://cdn.backerkit.com https://cdn11.bigcommerce.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /universes/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://cdn.shopify.com https://imgcdn.gamefound.com https://www.dndbeyond.com https://dicethrone.com https://d1wgd08o7gfznj.cloudfront.net https://images.squarespace-cdn.com https://i.kickstarter.com https://img.itch.zone https://loottavern.com https://files.d20.io https://cdn.backerkit.com https://cdn11.bigcommerce.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /*
   X-Content-Type-Options: nosniff
@@ -112,15 +117,15 @@
 
 /
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://cdn.shopify.com https://imgcdn.gamefound.com https://www.dndbeyond.com https://dicethrone.com https://d1wgd08o7gfznj.cloudfront.net https://images.squarespace-cdn.com https://i.kickstarter.com https://img.itch.zone https://loottavern.com https://files.d20.io https://cdn.backerkit.com https://cdn11.bigcommerce.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /admin
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /admin/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /todo
   X-Frame-Options: DENY
