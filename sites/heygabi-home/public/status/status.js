@@ -9,9 +9,20 @@
  * Sections, each independent so one dead host cannot blank the others:
  *   1. Shared index  — one GET to index.heygabi.ai/api/health, three rows
  *      (audiobook/library/games) read out of its `sources` object.
- *   2. Workers        — the index (reusing #1's fetch), library, games and
+ *   2. Book pipeline  — the audiobook sync pipeline's OWN two records, not
+ *      inferred from the index push: `pipeline_status/current`, a Firestore
+ *      document the pipeline's service account writes at every step and that
+ *      firestore.rules makes public-read (`allow read: if true` — see
+ *      audiobook_catalog/app/pipeline_status.py and firestore.rules), read
+ *      here over the plain REST API (no SDK, no auth, same reasoning as
+ *      every other row: a JSON GET this page can fetch signed-out); and
+ *      `site/ebooks.json`, the ebook-lane manifest sync step 1b already
+ *      publishes (CORS-open, `Access-Control-Allow-Origin: *`, verified live)
+ *      with its own `generated_at` stamp. Both records existed before this
+ *      page did — nothing here is invented, only read.
+ *   3. Workers        — the index (reusing #1's fetch), library, games and
  *      estate-auth /api/health endpoints.
- *   3. Sites           — a no-cors reachability probe of the three catalog
+ *   4. Sites           — a no-cors reachability probe of the three catalog
  *      site roots plus the audiobook site's /dev/ lane (its own two-lane
  *      deploy — the apex itself has no such lane, deploy.md §4 is explicit
  *      that it deliberately does not copy that architecture).
@@ -46,6 +57,19 @@ const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
 
 /**
+ * The audiobook pipeline's own status doc, read straight over the Firestore
+ * REST API — public because firestore.rules sets `allow read: if true` on
+ * `pipeline_status/current` deliberately ("nobody can forge a run" is the
+ * write-side control; the read side was already open for the admin panel).
+ * No API key, no SDK: a plain signed-out GET returns the same document the
+ * admin panel's onSnapshot() gets, just typed-JSON instead of decoded.
+ */
+const FIRESTORE_STATUS_URL =
+  'https://firestore.googleapis.com/v1/projects/audiobook-catalog/databases/(default)/documents/pipeline_status/current';
+/** The ebook-lane manifest — sync step 1b's own output, CORS-open. */
+const EBOOKS_MANIFEST_URL = `${AUDIO_ORIGIN}/ebooks.json`;
+
+/**
  * Per-source staleness thresholds for the shared index (design:
  * catalog-platform/docs/info/index-worker-design.md §5, §7 step 4).
  *
@@ -71,7 +95,7 @@ const INDEX_THRESHOLDS = {
     label: 'Audiobook',
     amberMs: 9 * 3600_000,
     redMs: 17 * 3600_000,
-    note: 'The 8h audiobook pipeline’s heartbeat is its index push — this row is that pipeline’s freshness signal, not a separate check.',
+    note: 'See the Book pipeline section below for the pipeline’s own run status — this row is only its index push, a downstream effect of a successful run, not the run itself.',
     guess: false,
   },
   library: {
@@ -118,6 +142,30 @@ function formatAge(ms) {
  */
 function detailOf(body) {
   return body && body.detail ? body.detail : body;
+}
+
+/**
+ * Decode one Firestore REST typed value (`{stringValue: "x"}`,
+ * `{integerValue: "3"}`, `{mapValue: {fields: {...}}}`, …) into a plain JS
+ * value. The REST API always wraps values this way; the JS SDK the admin
+ * panel uses (site/pipeline-status.js) hides this same decoding inside
+ * onSnapshot(), so this is the same document, just undecoded.
+ */
+function fsValue(v) {
+  if (v == null) return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('timestampValue' in v) return v.timestampValue;
+  if ('mapValue' in v) return fsMap((v.mapValue && v.mapValue.fields) || {});
+  if ('arrayValue' in v) return ((v.arrayValue && v.arrayValue.values) || []).map(fsValue);
+  return null; // nullValue, or a type this page never needs to read
+}
+function fsMap(fields) {
+  const out = {};
+  for (const k of Object.keys(fields)) out[k] = fsValue(fields[k]);
+  return out;
 }
 
 /** GET JSON with a timeout. Never throws — the caller reads `.ok`. */
@@ -245,6 +293,23 @@ function buildIndexSection() {
   }
 }
 
+/** 8h Task Scheduler cadence (00:00/08:00/16:00 local) — same amber/red
+ *  thresholds INDEX_THRESHOLDS.audiobook already used for the index push,
+ *  now applied to the pipeline's own timestamps instead of a downstream one. */
+const PIPELINE_AMBER_MS = 9 * 3600_000;
+const PIPELINE_RED_MS = 17 * 3600_000;
+const PIPELINE_CADENCE_MS = 8 * 3600_000;
+/** Mirrors site/pipeline-status.js isStale() — a "running" doc whose
+ *  heartbeat stopped updating probably means the process died, not that a
+ *  15-minute step is in progress. */
+const PIPELINE_STALE_RUNNING_MS = 15 * 60_000;
+
+function buildPipelineSection() {
+  const ul = document.getElementById('pipeline-rows');
+  ul.appendChild(makeRow('pipe-audio', 'Audiobook pipeline'));
+  ul.appendChild(makeRow('pipe-ebook', 'Ebook lane'));
+}
+
 function buildWorkerSection() {
   const ul = document.getElementById('worker-rows');
   ul.appendChild(makeRow('wk-index', 'Shared index (index.heygabi.ai)'));
@@ -319,6 +384,101 @@ function renderWorkerHealthRow(id, name, fetchResult, now, detailFn) {
   updateRow(id, ok ? 'ok' : 'danger', detailFn(detailOf(fetchResult.body)), null, now);
 }
 
+/**
+ * Audiobook pipeline row — reads pipeline_status/current straight, no
+ * inference. The page cannot see Task Scheduler's NEXT run (it is a local
+ * job on the home machine, not a public endpoint), so this shows the last
+ * recorded run plus a cadence-based estimate, clearly labeled as such.
+ */
+function renderPipelineAudioRow(fetchResult, now) {
+  if (!fetchResult.reached) {
+    updateRow('pipe-audio', 'danger', `Did not answer (${fetchResult.error}).`,
+      'firestore.googleapis.com unreachable — cannot read the pipeline heartbeat.', now);
+    return;
+  }
+  if (fetchResult.status === 404) {
+    updateRow('pipe-audio', 'warn', 'No runs recorded yet.',
+      'pipeline_status/current has never been written — either a fresh clone or the home machine has no service-account credentials configured.', now);
+    return;
+  }
+  if (!fetchResult.httpOk || !fetchResult.body || !fetchResult.body.fields) {
+    updateRow('pipe-audio', 'danger', `Firestore answered HTTP ${fetchResult.status} with no readable status doc.`, null, now);
+    return;
+  }
+
+  const status = fsMap(fetchResult.body.fields);
+  const startedAt = Date.parse(status.startedAt || '');
+  const updatedAt = Date.parse(status.updatedAt || '');
+  const finishedAt = Date.parse(status.finishedAt || '');
+  const stale = status.state === 'running' && Number.isFinite(updatedAt)
+    && (now - updatedAt) > PIPELINE_STALE_RUNNING_MS;
+
+  if (status.state === 'running' && !stale) {
+    const step = status.stepLabel ? ` · ${status.stepLabel}` : '';
+    updateRow('pipe-audio', 'ok', `RUNNING${step} · started ${formatAge(now - startedAt)}`,
+      '8h Task Scheduler cadence (00/08/16 local) — mid-run, so the freshness check below does not apply yet.', now);
+    return;
+  }
+
+  // Finished (success/partial/failed) or a stale "running" doc with a dead
+  // heartbeat — either way, age it against the same cadence as the index row.
+  const anchor = Number.isFinite(finishedAt) ? finishedAt : updatedAt;
+  const ageMs = now - anchor;
+  const outcome = stale ? 'NO HEARTBEAT' : (status.state || 'unknown').toUpperCase();
+  let state = ageMs > PIPELINE_RED_MS ? 'danger' : ageMs > PIPELINE_AMBER_MS ? 'warn' : 'ok';
+  if (stale || status.state === 'failed') state = 'danger';
+  else if (status.state === 'partial' && state === 'ok') state = 'warn';
+
+  const summary = status.summary || {};
+  const bits = [];
+  if (summary.idle) bits.push('nothing new to upload');
+  if (summary.uploaded) bits.push(`${summary.uploaded} uploaded`);
+  if (summary.books) bits.push(`${summary.books} books`);
+  const summaryText = bits.length ? ` · ${bits.join(' · ')}` : '';
+
+  let nextText = '';
+  if (Number.isFinite(anchor)) {
+    const dueAt = anchor + PIPELINE_CADENCE_MS;
+    const clock = new Date(dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    nextText = dueAt > now
+      ? ` Next run expected ~${clock} (cadence estimate only — this page cannot see Task Scheduler).`
+      : ` Next run is overdue by this cadence estimate — Task Scheduler itself is not visible to this page, so confirm on the machine before assuming a miss.`;
+  }
+
+  updateRow(
+    'pipe-audio', state,
+    `${outcome} · ${formatAge(ageMs)}${summaryText}`,
+    `${stale ? 'No heartbeat for over 15 minutes on a run marked running — it may have been interrupted. ' : ''}` +
+      `Amber past 9h, red past 17h since last finish, same thresholds as the index row above.${nextText}`,
+    now,
+  );
+}
+
+/** Ebook lane row — freshness + size of site/ebooks.json only. No
+ *  import-outcome signal is exposed by library_catalog's worker today
+ *  (checked: no stored last-import status route exists there), so this row
+ *  does not claim one rather than inventing a number. */
+function renderPipelineEbookRow(fetchResult, now) {
+  if (!fetchResult.reached || !fetchResult.httpOk || !fetchResult.body) {
+    updateRow('pipe-ebook', 'danger', `Did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
+    return;
+  }
+  const body = fetchResult.body;
+  const generatedAt = Date.parse(body.generated_at || '');
+  if (!Number.isFinite(generatedAt) || typeof body.count !== 'number') {
+    updateRow('pipe-ebook', 'danger', 'ebooks.json answered with no generated_at/count — manifest shape changed.', null, now);
+    return;
+  }
+  const ageMs = now - generatedAt;
+  const state = ageMs > PIPELINE_RED_MS ? 'danger' : ageMs > PIPELINE_AMBER_MS ? 'warn' : 'ok';
+  updateRow(
+    'pipe-ebook', state,
+    `${body.count.toLocaleString()} ebooks · manifest generated ${formatAge(ageMs)}`,
+    'Manifest freshness from scripts/build_ebook_manifest.py (sync step 1b) only — no last-import outcome from library_catalog is available yet.',
+    now,
+  );
+}
+
 function renderSiteRow(id, name, reached, now) {
   updateRow(id, reached ? 'ok' : 'danger', reached ? 'Reachable.' : 'Did not answer within 8s.', null, now);
 }
@@ -334,7 +494,7 @@ async function refreshAll() {
 
   const now = () => Date.now();
 
-  const [indexHealth, libraryHealth, gamesHealth, authHealth, audioUp, audioDevUp, libraryUp, gamesUp] =
+  const [indexHealth, libraryHealth, gamesHealth, authHealth, audioUp, audioDevUp, libraryUp, gamesUp, pipelineStatus, ebooksManifest] =
     await Promise.all([
       fetchJSON(`${INDEX_ORIGIN}/api/health`),
       fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
@@ -344,12 +504,16 @@ async function refreshAll() {
       probeReachable(AUDIO_ORIGIN + '/dev/'),
       probeReachable(LIBRARY_ORIGIN + '/'),
       probeReachable(GAMES_ORIGIN + '/'),
+      fetchJSON(FIRESTORE_STATUS_URL),
+      fetchJSON(EBOOKS_MANIFEST_URL),
     ]);
 
   const t = now();
 
   renderIndexSection(indexHealth, t);
   renderIndexWorkerRow(indexHealth, t);
+  renderPipelineAudioRow(pipelineStatus, t);
+  renderPipelineEbookRow(ebooksManifest, t);
   renderWorkerHealthRow('wk-library', 'Library', libraryHealth, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
   renderWorkerHealthRow('wk-games', 'Games', gamesHealth, t, (b) =>
@@ -381,6 +545,7 @@ async function refreshAll() {
 // ---------------------------------------------------------------------------
 
 buildIndexSection();
+buildPipelineSection();
 buildWorkerSection();
 buildSiteSection();
 

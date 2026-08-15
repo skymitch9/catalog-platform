@@ -76,12 +76,16 @@
 #
 # /status (added 2026-08-14, the estate status page — "I want to see all the
 # pipelines"). No sign-in, so no Firebase SDK and no script-src beyond
-# 'self'. connect-src names exactly the five hosts status.js fetches: the
-# four /api/health origins it reads as JSON (index/auth/library/games) plus
-# the audiobook site root, whose /dev/ lane is checked at the same origin so
-# it needs no separate entry. No img-src beyond the inline SVG favicon —
-# this page renders no covers. frame-src, form-action and base-uri all stay
-# 'none' — nothing on this page ever needs them.
+# 'self'. connect-src names exactly the six hosts status.js fetches: the
+# four /api/health origins it reads as JSON (index/auth/library/games), the
+# audiobook site root (whose /dev/ lane AND /ebooks.json are checked at the
+# same origin, so neither needs a separate entry), and — added 2026-08-15
+# for the Book pipeline row — firestore.googleapis.com, read over the plain
+# REST API for the one public document pipeline_status/current (no Firebase
+# SDK needed or added: a signed-out GET is enough, same as every other row).
+# No img-src beyond the inline SVG favicon — this page renders no covers.
+# frame-src, form-action and base-uri all stay 'none' — nothing on this page
+# ever needs them.
 #
 # /universes (added 2026-08-15, one row per estate universe expanding to
 # /api/universe/:name). Signs in (universes.js reuses estate-auth.js), so it
@@ -96,11 +100,11 @@
 
 /status
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /status/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /universes
   X-Frame-Options: DENY

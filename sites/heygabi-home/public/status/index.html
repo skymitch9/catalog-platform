@@ -14,11 +14,17 @@
   /api/health (index-worker-design.md §5 — counts and MAX(pushed_at) per
   source, open by design), the library/games Workers' /api/health (also open
   — "the endpoint you curl to prove the deployment works"), the estate auth
-  Worker's /api/health (open; counts, no emails), and a no-cors reachability
-  probe of the three catalog site roots + the audiobook site's /dev/ lane.
-  No sign-in, ever — nothing here needs one, and nothing here may leak
-  member data (every payload this page reads is counts/timestamps only,
-  verified against each route's own source before this page shipped).
+  Worker's /api/health (open; counts, no emails), a no-cors reachability
+  probe of the three catalog site roots + the audiobook site's /dev/ lane,
+  and — added 2026-08-15, "we need the book pipeline for ebooks and
+  audiobooks recorded" — the audiobook sync pipeline's own two public
+  records: `pipeline_status/current` (a Firestore document the pipeline
+  writes at every step; public-read by firestore.rules, fetched here over
+  the plain REST API) and `site/ebooks.json` (the ebook-lane manifest sync
+  step 1b already publishes, CORS-open). No sign-in, ever — nothing here
+  needs one, and nothing here may leak member data (every payload this page
+  reads is counts/timestamps only, verified against each route's own source
+  before this page shipped).
 
   ⚠️ CORS: none of the four health endpoints sent Access-Control-Allow-Origin
   before this page existed (verified live with curl -H "Origin:
@@ -32,7 +38,7 @@
   Styling: the estate theme system (assets/estate-theme.css + theme.js) —
   tokens only, same cog, same localStorage choice as every other page on
   this origin. CSP: _headers /status rule, strict by default, connect-src
-  naming exactly the five hosts this page fetches and nothing else.
+  naming exactly the six hosts this page fetches and nothing else.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
@@ -252,6 +258,19 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     <ul id="index-rows" class="rows"></ul>
   </section>
 
+  <section aria-labelledby="pipe-h">
+    <h2 id="pipe-h">Book pipeline</h2>
+    <p class="section-note">
+      The audiobook sync pipeline's own records, not inferred from anything
+      downstream — its Firestore heartbeat and the ebook-lane manifest it
+      writes, both read straight rather than guessed at. This page cannot see
+      the pipeline's <em>next</em> Task Scheduler run (that lives only on the
+      home machine); ages below are checked against the last recorded run,
+      same 8h+slack thresholds as the Audiobook row above.
+    </p>
+    <ul id="pipeline-rows" class="rows"></ul>
+  </section>
+
   <section aria-labelledby="wk-h">
     <h2 id="wk-h">Workers</h2>
     <p class="section-note">Each catalog's own API, reachable straight from its <code>/api/health</code>.</p>
@@ -270,10 +289,12 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <footer>
     <p>
-      This page reads five hosts and nothing else: <code>index.heygabi.ai</code>,
+      This page reads six hosts and nothing else: <code>index.heygabi.ai</code>,
       <code>auth.heygabi.ai</code>, <code>library.heygabi.ai</code>,
-      <code>boardgames.heygabi.ai</code> and <code>audiobooks.heygabi.ai</code>
-      (its <code>/dev/</code> lane included). No credentials are sent or
+      <code>boardgames.heygabi.ai</code>, <code>audiobooks.heygabi.ai</code>
+      (its <code>/dev/</code> lane and <code>/ebooks.json</code> included) and
+      <code>firestore.googleapis.com</code> (one public document,
+      <code>pipeline_status/current</code>). No credentials are sent or
       needed — every endpoint above answers signed-out by design.
     </p>
     <p>
