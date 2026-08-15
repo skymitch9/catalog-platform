@@ -1,7 +1,8 @@
 # estate-scan.js — Information Reference
 
 > **Audience:** Claude sessions. **Status:** TRACKED. Last verified: **2026-08-15**
-> (the day it shipped — owner's bookstore trip).
+> (the day the barcode path shipped — owner's bookstore trip; the shelf-photo
+> backend below shipped later the same day, see its own section).
 
 ## What this is
 
@@ -26,16 +27,70 @@ for the specific provenance of each export.
 | ISBN → title/author resolve (Open Library, 2 fetches) | `assets/estate-scan.js::resolveIsbn` | **LIVE**, verified with `9780590353427` → a real search hit |
 | 📷 UI + manual ISBN fallback | `assets/estate-search.js` (`scan` attribute) | **LIVE** on `/` and `/universes` |
 | "Add to Books →" (queues a resolved ISBN into library_catalog's own intake queue) | `assets/estate-scan.js::addToCatalog`, `assets/estate-search.js::_renderAddAffordance` | **LIVE client-side.** Reuses `library_catalog`'s own `POST /api/scan-jobs/barcode` — NOT a hand-rolled `createWork` call (a barcode alone cannot honestly supply `format`/`publisher`; the intake endpoint runs the real ISBN ladder and dedup). CORS opened on the library Worker for `https://heygabi.ai` (`scanCors()` in `apps/worker/src/routes/scan-jobs.ts`), deployed same day. Verified to the 401/CORS boundary only — see below |
-| Shelf/cover photo capture helper | `assets/estate-scan.js::captureFrame` | **Code complete**, unused (no UI wired to it yet) |
-| Shelf/cover photo identify caller | `assets/estate-scan.js::identifyPhoto` | **Code complete**, calls a server endpoint that **does not exist yet** — see below |
+| Shelf/cover photo capture helper | `assets/estate-scan.js::captureFrame`, `::downscaleImagePhoto` | **LIVE** — `downscaleImagePhoto` (added for the shelf deploy below) covers the file-input "photo/upload" path; `captureFrame` stays unused (no live-video shelf capture UI was built — the file input covers it) |
+| Shelf/cover photo identify caller | `assets/estate-scan.js::identifyPhoto` | **LIVE**, calls `POST /api/scan/shelf` on `index.heygabi.ai` — see below |
+| Shelf/cover photo identify endpoint | `apps/index-worker/src/scan.ts` + `vision.ts` | **LIVE**, deployed 2026-08-15, verified end-to-end against the real Anthropic API with a constructed three-spine test image (see below) |
+| 📚 "Scan a shelf" UI, icon-only scan buttons, search-bar ISBN | `assets/estate-search.js` | **LIVE** on `/` and `/universes` — two owner UI orders folded into this same deploy: the 📷/📚 controls are icon-only (aria-label/title carry the words), and the separate manual-ISBN box is gone — a complete, checksum-valid ISBN typed/pasted into the main search box resolves automatically (`estate-scan.js::parseIsbnQuery`, ISBN-10 and ISBN-13) |
 
-## NOT shipped: the shelf-photo vision backend
+## SHIPPED 2026-08-15 (second deploy, same day): the shelf-photo vision backend
 
 The owner asked (mid-build) for a "scan a shelf" photo path to match
 `library_catalog`'s real shelf-scanning sessions. The proven shape was
-investigated and is fully specified below — it was **not built**, on the
-explicit standing instruction that the barcode path ships first and photo
-trails as a second deploy if it threatens the clock. It did.
+investigated and specified below — deferred as a second deploy so the
+barcode path shipped first, then built the same day.
+
+**Port fidelity**: `SHELF_SYSTEM`/`SHELF_SCHEMA`/`COVER_SYSTEM`/`COVER_SCHEMA`
+and `readShelf()`'s call shape, cost discipline (no `cache_control`,
+`MAX_TOKENS = 8000`), and refusal/truncation/parse-order checks were copied
+character-for-character into `apps/index-worker/src/vision.ts`. The only
+structural change: library_catalog splits the prompt/schema data
+(`packages/core`) from the network call (`apps/worker/src/lib`) because
+`packages/core` is a leaf package with many consumers; index-worker has
+exactly one consumer of this module (`scan.ts`) and no equivalent leaf layer,
+so both live in one file. Everything D1/job-shaped (scan-job persistence,
+`matching.ts`, `buildWorkIndex`) was dropped — this Worker has no per-catalog
+work table, so per estate-scan-adoption's own framing, matching is the
+**client** re-running `<estate-search>`'s own `_runSearch()` once per
+identified title against the shared cross-catalog index this Worker already
+serves.
+
+**Endpoint**: `POST /api/scan/shelf`, mounted in `index.ts` AFTER the
+`requireEstateMember()` blanket (no anonymous carve-out — unlike
+`/api/search`, vision costs money, so a tokenless caller gets 401, verified
+live against `index.heygabi.ai`). `ANTHROPIC_API_KEY` is a secret, pushed from
+`library_catalog/apps/worker/.dev.vars`'s own value.
+
+**Tested**: `apps/index-worker/test/scan.test.ts` (12 tests) — gating,
+request validation, and `VisionError`→HTTP-status translation, with the
+Anthropic Messages call stubbed at the `fetch` layer (no real key needed for
+the unit suite). Separately, a **live smoke test** ran against a real
+`wrangler dev` + the real Anthropic API: a three-"spine" JPEG constructed
+locally with Python/PIL (rotated title/author text reading "PROJECT HAIL
+MARY / ANDY WEIR", "MISTBORN / BRANDON SANDERSON", "DUNE / FRANK HERBERT" —
+no real bookshelf photo needed to prove the pipeline) came back with all
+three titles and authors at `confidence: "high"` (one carried a `note` about
+being slightly cropped — an accurate read of the constructed image, not an
+error); a second call with a blank grey image correctly returned
+`unreadable: true` with an empty `books` array, proving the refusal
+discipline (never invents a title) survives the real model call, not just
+the mocked unit tests.
+
+**Client UX**: `<estate-search>` renders one row per identified title with an
+automatic scoped-search answer ("In the catalog — audiobooks, library." /
+"Not found in any catalog."), each title clickable to re-run the normal
+search box query for it. An unreadable photo (or zero books) renders "No
+titles could be read from that photo" rather than an empty list with no
+explanation.
+
+**Still needs a signed-in, owner-attended live pass** (not done from this
+session — no interactive Google sign-in / physical camera available here):
+sign in on `heygabi.ai` as the owner, tap 📚, photograph a real bookshelf
+(not the constructed test image), confirm the per-title own-it/not-owned
+answers render correctly and the whole flow feels right on the owner's
+actual phone. The server-side pipeline and the tokenless-gating are proven
+live; the authed round trip through a real Firebase ID token is not.
+
+### The original sizing note (kept for history — all of it is now done)
 
 **The proven server-side shape** (port verbatim, do not re-derive):
 
