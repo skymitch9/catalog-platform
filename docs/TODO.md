@@ -239,4 +239,8 @@ nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning
 **TOMORROW:**
 5. **Universes page on the apex** — after the status page lands (same repo
    surface); one page per universe across all three catalogs via the index.
-6. **Covers consolidation — execution** — per tonight's plan, attended.
+6. **Covers consolidation — execution** — per tonight's plan, attended. Plan:
+   `docs/info/covers-consolidation-plan.md` — 506 `item.thumbnail_url` rows /
+   1,124 distinct URLs across item+edition, 13 hosts, 0/78 sampled dead,
+   ~110–230 MB; new `game-covers` R2 bucket at `gamecovers.heygabi.ai`;
+   CSP prune is the last step, gated on a zero-rows verification query.
