@@ -75,17 +75,27 @@
 # strict CSP is the enforcement of that sentence.
 #
 # /status (added 2026-08-14, the estate status page — "I want to see all the
-# pipelines"). No sign-in, so no Firebase SDK and no script-src beyond
-# 'self'. connect-src names exactly the six hosts status.js fetches: the
+# pipelines"). connect-src names exactly the six hosts status.js fetches: the
 # four /api/health origins it reads as JSON (index/auth/library/games), the
 # audiobook site root (whose /dev/ lane AND /ebooks.json are checked at the
 # same origin, so neither needs a separate entry), and — added 2026-08-15
 # for the Book pipeline row — firestore.googleapis.com, read over the plain
 # REST API for the one public document pipeline_status/current (no Firebase
-# SDK needed or added: a signed-out GET is enough, same as every other row).
-# No img-src beyond the inline SVG favicon — this page renders no covers.
-# frame-src, form-action and base-uri all stay 'none' — nothing on this page
-# ever needs them.
+# SDK needed or added for THAT row: a signed-out GET is enough, same as every
+# other read-only row). No img-src beyond the inline SVG favicon — this page
+# renders no covers. form-action and base-uri stay 'none'.
+#
+# Operations (added 2026-08-15, "make sure the status page has all the
+# pieces to RUN the pipelines"): the page's read-only rows still need no
+# sign-in, but the new Operations section does, so this rule now ALSO
+# carries the front door's sign-in trio — script-src gains www.gstatic.com
+# (Firebase SDK) + apis.google.com (the popup helper); connect-src gains
+# identitytoolkit.googleapis.com + securetoken.googleapis.com (sign-in +
+# token refresh — auth.heygabi.ai was ALREADY here for the Workers row
+# above, so the one new REST call this section makes, POST
+# /api/estate/ops/pipeline, needed no new host); frame-src, 'none' on every
+# other rule on this page, now names the project's authDomain + Google's
+# accounts page for the popup/redirect flow, same as / and /admin.
 #
 # /universes (added 2026-08-15, one row per estate universe expanding to
 # /api/universe/:name). Signs in (universes.js reuses estate-auth.js), so it
@@ -100,11 +110,11 @@
 
 /status
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /status/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /universes
   X-Frame-Options: DENY

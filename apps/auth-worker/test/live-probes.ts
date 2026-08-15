@@ -353,6 +353,18 @@ async function phaseA(): Promise<void> {
       r.status === 503 && r.body.error === 'service_account_unset',
       JSON.stringify(r.body),
     );
+
+    // --- Operations: "run the audiobook pipeline now" — same 503-config-error
+    // idiom as site-roles, and checked in the SAME order the route checks it
+    // (PIPELINE_TRIGGER_TOKEN before the service account). Neither secret is
+    // set in baseVars, so this NEVER reaches a real Firestore write — the
+    // probe suite must not trigger a real pipeline run.
+    r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
+    check(
+      'A36 ops/pipeline without PIPELINE_TRIGGER_TOKEN → 503 pipeline_trigger_token_unset',
+      r.status === 503 && r.body.error === 'pipeline_trigger_token_unset',
+      JSON.stringify(r.body),
+    );
   } finally {
     stopDev(child);
     await waitDown();
@@ -375,6 +387,7 @@ async function phaseB(): Promise<void> {
         { method: 'POST', path: '/api/estate/users' },
         { path: '/api/estate/site-roles' },
         { method: 'POST', path: '/api/estate/site-roles' },
+        { method: 'POST', path: '/api/estate/ops/pipeline' },
       ],
       openRoutes: [{ path: '/api/health' }],
       machineRoutes: [{ method: 'POST', path: '/api/estate/seen' }],
@@ -452,6 +465,32 @@ async function phaseB(): Promise<void> {
       `ACAO=${adminFromSite.headers.get('access-control-allow-origin')}`,
     );
 
+    // Operations CORS: apex-only, same mount as the admin API (not ME_ORIGINS).
+    const opsPre = await fetch(`${BASE}/api/estate/ops/pipeline`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://heygabi.ai',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Authorization',
+      },
+    });
+    await opsPre.text();
+    check(
+      'B12 ops/pipeline preflight from the apex is allowed',
+      opsPre.headers.get('access-control-allow-origin') === 'https://heygabi.ai',
+      `ACAO=${opsPre.headers.get('access-control-allow-origin')}`,
+    );
+    const opsFromSite = await fetch(`${BASE}/api/estate/ops/pipeline`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://audiobooks.heygabi.ai', 'Access-Control-Request-Method': 'POST' },
+    });
+    await opsFromSite.text();
+    check(
+      'B13 the audiobook origin is NOT admitted to ops/pipeline either',
+      opsFromSite.headers.get('access-control-allow-origin') === null,
+      `ACAO=${opsFromSite.headers.get('access-control-allow-origin')}`,
+    );
+
     r = await api('GET', '/api/health');
     check(
       'B8 health: counts only, no emails',
@@ -488,6 +527,8 @@ async function phaseC(): Promise<void> {
     check('C3 manual create refused for a non-approver', r.status === 403, `got ${r.status}`);
     r = await api('GET', '/api/estate/site-roles');
     check('C4 site-roles GET refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
+    r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
+    check('C5 ops/pipeline refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
   } finally {
     stopDev(child);
     await waitDown();
@@ -503,6 +544,8 @@ async function phaseD(): Promise<void> {
     check('D1 a stranger is refused the admin API — no first-to-knock', r.status === 403, `got ${r.status}`);
     r = await api('POST', '/api/estate/site-roles', { body: { email: 'x@y.z', role: 'admin' } });
     check('D4 a stranger cannot grant site roles', r.status === 403, `got ${r.status}`);
+    r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
+    check('D5 a stranger cannot trigger the pipeline', r.status === 403, `got ${r.status}`);
     // /me for someone the directory has never seen: a calm null, NEVER a 500 —
     // and (checked by D2 below) the ask itself enrols nobody.
     r = await api('GET', '/api/estate/me');

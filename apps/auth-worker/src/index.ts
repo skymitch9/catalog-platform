@@ -19,6 +19,7 @@ import type { AppBindings } from './env.js';
 import { parseAdminOrigins } from './env.js';
 import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
+import { opsRoutes } from './ops.js';
 import { rateLimit } from './middleware/rate-limit.js';
 
 /**
@@ -44,6 +45,10 @@ app.use('/api/estate/users', adminCors());
 app.use('/api/estate/users/*', adminCors());
 // The audiobook site-roles federation is admin-page surface too: apex only.
 app.use('/api/estate/site-roles', adminCors());
+// Operations: "run the audiobook pipeline now" — apex-only, same as every
+// other admin-page control (the status page's Operations section lives on
+// the apex, not on a wider origin).
+app.use('/api/estate/ops/pipeline', adminCors());
 
 // CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
 // audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
@@ -59,6 +64,7 @@ app.use('/api/health', healthCors());
 
 app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
+app.route('/api', opsRoutes);
 
 function adminCors() {
   return cors({

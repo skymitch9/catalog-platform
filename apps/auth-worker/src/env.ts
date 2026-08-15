@@ -60,6 +60,16 @@ export interface Env {
 
   /** Cloudflare rate-limiting binding; optional so wrangler dev runs without it. */
   RATE_LIMITER?: RateLimiter;
+
+  /**
+   * The audiobook pipeline's shared trigger secret — the SAME value as
+   * PIPELINE_TRIGGER_TOKEN in audiobook_catalog's .env, piped in (never
+   * pasted, never logged) so `POST /api/estate/ops/pipeline` can write a
+   * request document the home machine's watcher accepts. See ops.ts for the
+   * full trigger contract this mirrors. `wrangler secret put
+   * PIPELINE_TRIGGER_TOKEN`; locally in `.dev.vars` (gitignored).
+   */
+  PIPELINE_TRIGGER_TOKEN?: string;
 }
 
 /** The row estate.ts reads and writes. */

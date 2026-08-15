@@ -46,6 +46,8 @@
  * against a future deploy that drops the top-level duplicates.
  */
 
+import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
+
 const REFRESH_INTERVAL_MS = 60_000;
 const TICK_INTERVAL_MS = 5_000;
 const FETCH_TIMEOUT_MS = 8_000;
@@ -541,6 +543,257 @@ async function refreshAll() {
 }
 
 // ---------------------------------------------------------------------------
+// Operations — signed-in approvers only. Everything above this point is
+// untouched and stays anonymous; this block only ever REVEALS #ops-section,
+// never removes anything from the read-only rows. See index.html's header
+// comment for the full design note.
+// ---------------------------------------------------------------------------
+
+/**
+ * Deep-links to every OTHER run control, in the order an owner would reach
+ * for them: platform deploys, the audiobook promote path, backups, then the
+ * legacy per-catalog trigger. Each opens the real surface (GitHub Actions or
+ * the audiobook admin page) rather than embedding it — those already have
+ * their own auth, and this page holding none of their credentials is the
+ * point (footer note).
+ *
+ * catalog-platform ships ONE "Deploy (manual)" workflow with a `target`
+ * choice (index-worker | auth-worker | heygabi-home | all) rather than three
+ * separate workflow files — GitHub's web UI has no way to pre-select a
+ * workflow_dispatch input from a URL, so all three rows below land on the
+ * same Actions page; the target is picked there, same as the owner already
+ * does today.
+ */
+const RUN_LEVERS = [
+  {
+    label: 'Deploy — index-worker',
+    url: 'https://github.com/skymitch9/catalog-platform/actions/workflows/deploy.yml',
+    note: 'catalog-platform · "Deploy (manual)", target=index-worker',
+  },
+  {
+    label: 'Deploy — auth-worker',
+    url: 'https://github.com/skymitch9/catalog-platform/actions/workflows/deploy.yml',
+    note: 'catalog-platform · "Deploy (manual)", target=auth-worker',
+  },
+  {
+    label: 'Deploy — heygabi-home',
+    url: 'https://github.com/skymitch9/catalog-platform/actions/workflows/deploy.yml',
+    note: 'catalog-platform · "Deploy (manual)", target=heygabi-home (this page)',
+  },
+  {
+    label: 'Backup',
+    url: 'https://github.com/skymitch9/catalog-platform/actions/workflows/backup.yml',
+    note: 'catalog-platform · "Backup (manual)"',
+  },
+  {
+    label: 'Promote + Verify',
+    url: 'https://github.com/skymitch9/audiobook_catalog/actions/workflows/promote-verified.yml',
+    note: 'audiobook_catalog · dev → prod, verified after landing',
+  },
+  {
+    label: 'Audiobook admin panel',
+    url: 'https://audiobooks.heygabi.ai/admin',
+    note: 'legacy per-catalog trigger — the same request doc as the button above, written from that page instead of here',
+  },
+];
+
+function buildLeverList() {
+  const ul = document.getElementById('lever-rows');
+  for (const lever of RUN_LEVERS) {
+    const li = document.createElement('li');
+    li.className = 'lever-item';
+    const a = document.createElement('a');
+    a.href = lever.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = lever.label;
+    const note = document.createElement('span');
+    note.className = 'lever-note';
+    note.textContent = lever.note;
+    li.append(a, note);
+    ul.appendChild(li);
+  }
+}
+
+const opsSigninBtn = document.getElementById('ops-signin');
+const opsWhoEl = document.getElementById('ops-who');
+const opsNoteEl = document.getElementById('ops-note');
+const opsSectionEl = document.getElementById('ops-section');
+const opsRunBtn = document.getElementById('ops-run-pipeline');
+const opsRunMsgEl = document.getElementById('ops-run-msg');
+
+let opsCurrentUser = null;
+let opsIsApprover = false;
+let opsApproverCheckedFor = null; // uid the last /me probe ran for
+
+function setOpsNote(text, tone) {
+  opsNoteEl.textContent = text || '';
+  opsNoteEl.dataset.tone = tone || '';
+  opsNoteEl.hidden = !text;
+}
+
+function setOpsRunMsg(text, tone) {
+  opsRunMsgEl.textContent = text || '';
+  opsRunMsgEl.dataset.tone = tone || '';
+}
+
+/**
+ * GET /api/estate/me with the caller's own ID token — the same gate find.js
+ * uses for the /admin link (a 200-shaped fact, not a client-side guess), but
+ * reading `is_approver` directly since /me answers it without a second call.
+ * Never throws: a failed probe leaves the section hidden, which is the safe
+ * default (fail closed on a control surface, unlike a read-only status row).
+ */
+async function probeOpsApprover() {
+  const uid = opsCurrentUser?.uid;
+  if (!uid || opsApproverCheckedFor === uid) return;
+  opsApproverCheckedFor = uid;
+  const token = await idToken();
+  if (!token) return;
+  try {
+    const res = await fetch(`${AUTH_ORIGIN}/api/estate/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      opsIsApprover = false;
+    } else {
+      const body = await res.json();
+      opsIsApprover = body?.is_approver === true;
+    }
+  } catch {
+    opsIsApprover = false;
+  }
+  if (opsCurrentUser?.uid === uid) renderOpsAuthState();
+}
+
+function renderOpsAuthState() {
+  const signedIn = opsCurrentUser !== null;
+  opsSigninBtn.hidden = signedIn;
+  opsWhoEl.hidden = !signedIn;
+
+  if (!signedIn) {
+    opsWhoEl.innerHTML = '';
+    opsSectionEl.hidden = true;
+    setOpsNote('');
+    return;
+  }
+
+  opsWhoEl.innerHTML = '';
+  const out = document.createElement('button');
+  out.type = 'button';
+  out.className = 'linkbtn';
+  out.textContent = 'sign out';
+  out.addEventListener('click', async () => {
+    await signOutUser();
+  });
+  opsWhoEl.append(`Signed in as ${opsCurrentUser.displayName || opsCurrentUser.email} · `, out);
+
+  if (opsApproverCheckedFor !== opsCurrentUser.uid) {
+    setOpsNote('Checking approver status…');
+    opsSectionEl.hidden = true;
+    return;
+  }
+
+  if (opsIsApprover) {
+    setOpsNote('');
+    opsSectionEl.hidden = false;
+  } else {
+    opsSectionEl.hidden = true;
+    setOpsNote(
+      'Signed in, but this account is not an approver — Operations stays hidden. ' +
+        'An existing approver can grant that from /admin.',
+      'warn',
+    );
+  }
+}
+
+/**
+ * After a successful trigger, poll faster than the standing 60s cadence for
+ * a few minutes so "watch the Pipeline row" is actually true within a
+ * reasonable wait — the home machine's watcher checks every ~3 min, so this
+ * covers one full poll cycle with margin, then gets out of the way. Stops
+ * early the moment the row itself reports "running".
+ */
+const PICKUP_POLL_MS = 20_000;
+const PICKUP_POLL_MAX_MS = 4 * 60_000;
+let pickupTimer = null;
+
+function watchForPickup() {
+  if (pickupTimer) clearInterval(pickupTimer);
+  const deadline = Date.now() + PICKUP_POLL_MAX_MS;
+  pickupTimer = setInterval(async () => {
+    if (Date.now() > deadline) {
+      clearInterval(pickupTimer);
+      pickupTimer = null;
+      return;
+    }
+    await refreshAll();
+    const row = document.getElementById('row-pipe-audio');
+    if (row && /^RUNNING/.test(row.querySelector('.row-detail')?.textContent || '')) {
+      clearInterval(pickupTimer);
+      pickupTimer = null;
+    }
+  }, PICKUP_POLL_MS);
+}
+
+opsSigninBtn.addEventListener('click', async () => {
+  opsSigninBtn.disabled = true;
+  const r = await signIn();
+  opsSigninBtn.disabled = false;
+  if (r.error) setOpsNote(r.error, 'warn');
+});
+
+opsRunBtn.addEventListener('click', async () => {
+  const token = await idToken();
+  if (!token) {
+    setOpsRunMsg('Sign-in lapsed — sign in again.', 'warn');
+    return;
+  }
+  opsRunBtn.disabled = true;
+  setOpsRunMsg('Requesting…');
+  try {
+    const res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let body = null;
+    try { body = await res.json(); } catch { /* status still speaks */ }
+    if (res.ok) {
+      setOpsRunMsg(
+        `${body?.detail || 'Requested.'} Watch the Pipeline row below — it flips to RUNNING on pickup.`,
+        'ok',
+      );
+      watchForPickup();
+    } else if (res.status === 503) {
+      setOpsRunMsg(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`, 'warn');
+    } else if (res.status === 403) {
+      setOpsRunMsg('Refused — this account is not an approver.', 'warn');
+    } else {
+      setOpsRunMsg(`Request failed (${res.status}${body?.error ? `: ${body.error}` : ''}).`, 'warn');
+    }
+  } catch {
+    setOpsRunMsg('The auth Worker did not answer (network). Try again shortly.', 'warn');
+  } finally {
+    opsRunBtn.disabled = false;
+  }
+});
+
+watchAuth((user) => {
+  const changed = opsCurrentUser?.uid !== user?.uid;
+  opsCurrentUser = user;
+  if (!user) {
+    opsIsApprover = false;
+    opsApproverCheckedFor = null;
+  }
+  renderOpsAuthState();
+  if (user && changed) probeOpsApprover();
+});
+
+handleRedirectResult().then((err) => {
+  if (err) setOpsNote(err, 'warn');
+});
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
@@ -548,6 +801,7 @@ buildIndexSection();
 buildPipelineSection();
 buildWorkerSection();
 buildSiteSection();
+buildLeverList();
 
 document.getElementById('refresh').addEventListener('click', () => refreshAll());
 

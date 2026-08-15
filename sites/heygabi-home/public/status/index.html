@@ -39,6 +39,26 @@
   tokens only, same cog, same localStorage choice as every other page on
   this origin. CSP: _headers /status rule, strict by default, connect-src
   naming exactly the six hosts this page fetches and nothing else.
+
+  ⚠️ Operations (added 2026-08-15, owner ask: "make sure the status page has
+  all the pieces to RUN the pipelines" — the audiobook pipeline moves the
+  ebooks too, so this is estate operations, not one catalog's admin tool).
+  Adds a sign-in affordance (estate-auth.js, the same Firebase project every
+  other estate page uses) purely to gate a NEW section: the rest of the
+  page is UNCHANGED and stays anonymous — no controls appear for anyone who
+  is not signed in AND confirmed an approver via GET /api/estate/me
+  (auth.heygabi.ai). Signed-in-but-not-approver sees an honest note, never a
+  button. The one control (POST /api/estate/ops/pipeline, same auth Worker)
+  writes the identical Firestore request document the audiobook admin
+  panel's "Run pipeline now" already writes — audiobook_catalog is
+  UNTOUCHED, this is a second producer of the same trigger, not a new
+  mechanism. A "Run levers" list beside it deep-links every OTHER run
+  control to where it already lives (GitHub Actions, or the legacy admin
+  panel) — no embedding, those surfaces have their own auth. CSP gained
+  script-src (Firebase SDK + the sign-in popup helper) and frame-src (the
+  popup/redirect flow) — see _headers; connect-src already named
+  auth.heygabi.ai for the Workers row above, now also identitytoolkit +
+  securetoken for the sign-in itself.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
@@ -199,6 +219,61 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 @media (prefers-reduced-motion: reduce) {
   .btn.spinning svg, .row[data-state="pending"] .dot { animation: none !important; }
 }
+
+/* --- Operations: sign-in bar + the approver-only section it gates --- */
+.ops-bar {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  flex-wrap: wrap;
+  margin: -.2rem 0 var(--et-space-2);
+  font-size: var(--et-text-small);
+  color: var(--et-muted);
+}
+.ops-bar .linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--et-accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.ops-note { margin: 0 0 .6rem; font-size: var(--et-text-small); color: var(--et-muted); text-wrap: pretty; }
+.ops-note[data-tone="warn"] { color: var(--et-warn); }
+
+#ops-section { margin-bottom: var(--et-space-3); }
+#ops-controls { display: grid; gap: .7rem; }
+
+.ops-run {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex-wrap: wrap;
+  padding: .85rem .95rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+}
+.ops-run-msg { font-size: var(--et-text-small); color: var(--et-muted); flex: 1 1 16rem; text-wrap: pretty; }
+.ops-run-msg[data-tone="ok"] { color: var(--et-ok); }
+.ops-run-msg[data-tone="warn"] { color: var(--et-danger); }
+
+.lever-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.lever-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .8rem;
+  flex-wrap: wrap;
+  padding: .6rem .85rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+  font-size: var(--et-text-small);
+}
+.lever-item a { color: var(--et-accent); font-weight: 600; }
+.lever-note { color: var(--et-muted); font-size: var(--et-text-micro); }
 </style>
 </head>
 
@@ -232,10 +307,11 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   <h1>Estate status</h1>
   <p class="sub">
     Every pipeline and service, read straight from each one's own public
-    health endpoint — no sign-in, and nothing here shows more than counts
-    and timestamps. A quiet dot, not a dashboard: green means the last check
-    was healthy, amber means it is worth a glance, red means something
-    stopped answering the way it should.
+    health endpoint — no sign-in required to watch, and nothing below shows
+    more than counts and timestamps. A quiet dot, not a dashboard: green
+    means the last check was healthy, amber means it is worth a glance, red
+    means something stopped answering the way it should. Approvers may sign
+    in for an Operations section with run controls; nobody else sees it.
   </p>
 
   <div class="bar">
@@ -247,6 +323,28 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   </div>
 
   <p id="summary" class="sr-only" role="status" aria-live="polite"></p>
+
+  <div class="ops-bar">
+    <button id="ops-signin" class="linkbtn" type="button">Sign in for Operations</button>
+    <span id="ops-who" hidden></span>
+  </div>
+  <p id="ops-note" class="ops-note" hidden></p>
+
+  <section id="ops-section" aria-labelledby="ops-h" hidden>
+    <h2 id="ops-h">Operations</h2>
+    <p class="section-note">
+      Run controls, approver-only. Nothing here is visible or usable signed
+      out — this section only appears once <code>GET /api/estate/me</code>
+      confirms an approver account.
+    </p>
+    <div id="ops-controls">
+      <div class="ops-run">
+        <button id="ops-run-pipeline" class="btn" type="button">▶ Run audiobook pipeline</button>
+        <span id="ops-run-msg" class="ops-run-msg"></span>
+      </div>
+      <ul id="lever-rows" class="lever-list"></ul>
+    </div>
+  </section>
 
   <section aria-labelledby="idx-h">
     <h2 id="idx-h">Shared index</h2>
@@ -289,19 +387,23 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <footer>
     <p>
-      This page reads six hosts and nothing else: <code>index.heygabi.ai</code>,
-      <code>auth.heygabi.ai</code>, <code>library.heygabi.ai</code>,
-      <code>boardgames.heygabi.ai</code>, <code>audiobooks.heygabi.ai</code>
-      (its <code>/dev/</code> lane and <code>/ebooks.json</code> included) and
+      The status rows above read six hosts and nothing else:
+      <code>index.heygabi.ai</code>, <code>auth.heygabi.ai</code>,
+      <code>library.heygabi.ai</code>, <code>boardgames.heygabi.ai</code>,
+      <code>audiobooks.heygabi.ai</code> (its <code>/dev/</code> lane and
+      <code>/ebooks.json</code> included) and
       <code>firestore.googleapis.com</code> (one public document,
       <code>pipeline_status/current</code>). No credentials are sent or
-      needed — every endpoint above answers signed-out by design.
+      needed for any of that — every endpoint above answers signed-out by
+      design. Signing in for Operations only adds Firebase's own auth hosts
+      (identitytoolkit, securetoken) and does not change what the rows read.
     </p>
     <p>
       Not shown: GitHub Actions run status (the audiobook pipeline's own CI)
-      would need a token this page cannot hold client-side — a future
-      version could proxy that through a Worker with a scoped, read-only
-      token instead of asking a visitor's browser to hold one.
+      would need a token this page cannot hold client-side — the Run levers
+      list in Operations links straight to those Actions pages instead of
+      trying to embed them, since GitHub already gates them with its own
+      sign-in.
     </p>
     <p><a href="/">← back to the front door</a></p>
   </footer>

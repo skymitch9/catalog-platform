@@ -13,3 +13,11 @@ ME_ORIGINS=https://heygabi.ai,https://audiobooks.heygabi.ai,http://localhost:808
 ESTATE_APP_TOKEN_LIBRARY=dev-library-token
 ESTATE_APP_TOKEN_GAMES=dev-games-token
 ESTATE_APP_TOKEN_INDEX=dev-index-token
+# POST /api/estate/ops/pipeline — must equal audiobook_catalog's own
+# PIPELINE_TRIGGER_TOKEN (.env there) for a local watcher to ever accept a
+# request written from local dev. Leave unset to exercise the 503 path.
+PIPELINE_TRIGGER_TOKEN=
+# FIREBASE_SERVICE_ACCOUNT is deliberately absent from this example — it is
+# the whole service-account JSON (site-roles.ts + ops.ts both need it) and
+# is never typed into a file even as a placeholder; `wrangler secret put` in
+# production, or paste the real JSON into your own gitignored .dev.vars.
