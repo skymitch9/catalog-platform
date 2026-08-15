@@ -50,7 +50,9 @@ const INDEX_ORIGIN = 'https://index.heygabi.ai';
 // Same day, revised further: Star Wars split out of Disney (crossover-
 // potential criterion) and Alliances created (owner-approved). Later the same
 // day, during the estate-wide orphan sweep, Cytoverse and Reckoners were
-// created, both owner-approved — 13 now.
+// created, both owner-approved. Then the owner ruled on that sweep's verdict
+// table and approved three more — Middle-earth, Dungeon Crawler Carl and
+// Innworld — so 16 now.
 const UNIVERSE_NAMES = [
   'The Cosmere',
   'Runnerverse',
@@ -65,6 +67,9 @@ const UNIVERSE_NAMES = [
   'Alliances',
   'Cytoverse',
   'Reckoners',
+  'Middle-earth',
+  'Dungeon Crawler Carl',
+  'Innworld',
 ];
 
 // ALPHABETICAL UNIVERSES (owner-ordered upgrade #2) — display order only; the

@@ -55,7 +55,15 @@
     "cytoverse": "Cytoverse",
     "the cytoverse": "Cytoverse",
     "reckoners": "Reckoners",
-    "the reckoners": "Reckoners"
+    "the reckoners": "Reckoners",
+    "middle-earth": "Middle-earth",
+    "middle earth": "Middle-earth",
+    "tolkien legendarium": "Middle-earth",
+    "dungeon crawler carl": "Dungeon Crawler Carl",
+    "innworld": "Innworld",
+    "the innworld": "Innworld",
+    "innverse": "Innworld",
+    "the wandering inn universe": "Innworld"
   },
   "universes": [
     {
@@ -850,9 +858,14 @@
         {
           "title": "The Nightmare Before Christmas",
           "why": "library_catalog D1 work #197, credited 'Tim Burton, Disney', series null — measured 2026-08-15 estate sweep. The first Disney pass read only audiobook_catalog for imprint rows and so missed the one Disney row on the library side. A Touchstone/Disney production, and Halloween Town is a Kingdom Hearts world, which is the owner's crossover-potential test met directly. Series is null, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "My First Winnie-the-Pooh",
+          "why": "library_catalog D1 work #146, series null, credited to A. A. Milne. Raised in the 2026-08-15 sweep's verdict table as genuinely ambiguous — the 100 Acre Wood is a Kingdom Hearts world, so the franchise passes the crossover test, but this row is the ORIGINAL MILNE TEXT rather than a Disney adaptation. Owner ruled 2026-08-15 via coordinator: 'Leave Pooh with Disney for my kid, she won't know.' See this universe's `criterion` field, which that ruling settled for every future case."
         }
       ],
-      "bookExclusions": []
+      "bookExclusions": [],
+      "criterion": "⚠️ SETTLED 2026-08-15 by the owner, and it decides a question this entry could not answer on its own: Disney here means FRANCHISE-INCLUSIVE, not Disney-produced. A property a child would recognise as Disney belongs on this shelf even when the specific row's provenance is not Disney's — original-text authorship, a pre-Disney public-domain source, or a licensor's imprint do not exclude it. Ruled on 'My First Winnie-the-Pooh' (credited to A. A. Milne): 'Leave Pooh with Disney for my kid, she won't know.' This SUPERSEDES the produced-vs-franchise question raised in that sweep's verdict table and should be applied directly to future cases rather than re-litigated. It does NOT loosen the crossover-potential test in `notes` — that still governs whether a franchise belongs here at all; this criterion only governs whether a particular ROW of an already-qualifying franchise is excluded on provenance. It also does not reach a name collision: 'Betrayed! (Aladdin Historical Fiction)' stays out, because Simon & Schuster's Aladdin imprint is not the Disney franchise at all."
     },
     {
       "name": "Star Wars",
@@ -918,6 +931,95 @@
           "why": "Two rows, both seriesless: audiobook_catalog site/catalog.csv (blank series) and library_catalog D1 work #27 (series null), joined to each other by library_work_id 27. Sanderson has confirmed Snapshot shares the Reckoners world — it is set some time after Calamity and the links are deliberately slight, which is exactly why no series field will ever carry the association and a title override is the only route (https://coppermind.net/wiki/The_Reckoners, https://tvtropes.org/pmwiki/pmwiki.php/Literature/TheReckonersTrilogy, https://www.goodreads.com/book/show/39883704-snapshot). Replaces the bookExclusion 'standalone thriller' that kept it out of The Cosmere, which remains true: The Cosmere's notSeries still records Reckoners."
         }
       ]
+    },
+    {
+      "name": "Middle-earth",
+      "decidedHow": "human",
+      "confirmed": "Owner-approved 2026-08-15 via coordinator, from the estate-wide orphan sweep's verdict table, where it was the strongest new-universe candidate found. Membership is the whole owned set and was measured, not proposed.",
+      "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 5 rows sharing the exact series value 'The Lord of the Rings' (The Fellowship of the Ring ×2 — one dramatised — The Two Towers, The Return of the King, and The Hobbit). board-game D1 (board-game-catalog): 12 rows, ids 329-340, the three Ascension deluxe boxes and their accessory/promo tree, all carrying series 'Ascension'; plus id 665 'The Lord of the Rings Roleplaying', carrying series 'D&D'. library_catalog D1: no rows. 18 in total.",
+      "notes": "⚠️ THE CLEAREST CASE IN THE FILE of a universe saying something no series name says. The 13 board-game rows are filed under 'Ascension' and 'D&D' — a deckbuilder line and a rules system — so nothing in their series values hints at Tolkien, and universe is the ONLY cross-format signal a games row carries at all (UNIVERSES.md §6). Without this entry the household's Middle-earth shelf is split across two catalogs and three unrelated series strings. Note that the audiobook catalog files THE HOBBIT under series 'The Lord of the Rings', which is wrong as a series — The Hobbit is not a volume of the trilogy — but is harmless now that a universe carries the grouping; left alone deliberately rather than fixed into a second one-book series.",
+      "naming": "'Middle-earth' is the in-world setting, following Solaria's convention (named for the realm rather than for one of its series) rather than 'Tolkien Legendarium' — which is the scholarly term for the corpus, not the shelf a reader looks for — or 'LotR universe', which would elevate the audiobook series over the games' own branding. The one owned game outside Ascension is a licensed 5e product, so no series name could serve as the label either.",
+      "series": [
+        "The Lord of the Rings"
+      ],
+      "bookOverrides": [
+        {
+          "title": "The Lord of the Rings: The Fellowship of the Ring - Ascension (Deluxe Edition)",
+          "why": "board-game D1 id 329, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: The Two Towers - Ascension (Deluxe Edition)",
+          "why": "board-game D1 id 330, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: The Return of the King - Ascension (Deluxe Edition)",
+          "why": "board-game D1 id 331, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Premium Components",
+          "why": "board-game D1 id 332, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Metal Runes & Power Trackers",
+          "why": "board-game D1 id 333, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Premium Acrylic Standees (x14)",
+          "why": "board-game D1 id 334, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Honor Coins",
+          "why": "board-game D1 id 335, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Premium The Fellowship of the Ring Board",
+          "why": "board-game D1 id 336, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Premium The Two Towers Board",
+          "why": "board-game D1 id 337, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Premium The Return of the King Board",
+          "why": "board-game D1 id 338, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Oversized Serialized \"The One Ring\" Card",
+          "why": "board-game D1 id 339, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings: Ascension - Epic Card Pack (Gamefound Exclusive)",
+          "why": "board-game D1 id 340, measured 2026-08-15: Stone Blade Entertainment's officially licensed Lord of the Rings Ascension line. Series is 'Ascension' on every row — the generic deckbuilder line, which also holds non-Tolkien products (id 383 Ascension 15th Anniversary Collector's Edition, id 388 Ascension Storm of Souls) — so the series CANNOT be claimed at series level without sweeping those in. Same mixed-series shape as The Cosmere's 'Secret Projects' and Marvel's 'Dice Throne'; each Tolkien row is claimed one exact title at a time."
+        },
+        {
+          "title": "The Lord of the Rings Roleplaying",
+          "why": "board-game D1 id 665, measured 2026-08-15: Free League's officially licensed Lord of the Rings 5e roleplaying book. Series is 'D&D' — a RULES SYSTEM, not a continuity, which is exactly why D&D is recorded as a refusal in _refused rather than made a universe. This row is the sharpest evidence for that refusal: a 'D&D' universe would have put Tolkien on the same shelf as Critical Role's Exandria and a dozen unrelated third-party 5e supplements."
+        }
+      ]
+    },
+    {
+      "name": "Dungeon Crawler Carl",
+      "decidedHow": "human",
+      "confirmed": "Owner-approved 2026-08-15 via coordinator, from the estate-wide orphan sweep's verdict table, together with the games-side series write that makes the single series claim below reach all 29 game rows.",
+      "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 8 rows under series 'Dungeon Crawler Carl' (Matt Dinniman). library_catalog D1: 6 rows under the identical spelling, including the graphic novel. board-game D1: 29 rows, ids 570-598 — the Renegade Game Studios RPG core book and starter set with their accessory/dice/miniature/art-print tree, plus the 'Dungeon Crawler Carl: Unstoppable' board game and its four add-ons. 43 in total.",
+      "notes": "⚠️ This one exists for a reason the other single-series universes do not have, and the reason is structural rather than literary. `work_fold` is null for every game row by design — a board game is never the same WORK as a book — so **universe is the only tier at which a games row can ever join the rest of the estate** (UNIVERSES.md §6). Without this entry the 29 owned DCC game products can never appear beside the 14 DCC books, however obviously they belong together. That is the thing the series name cannot say, and it is what satisfies this file's own bar.",
+      "naming": "Named for the series, following the Reckoners precedent set earlier the same day: where no in-world or fandom name for the setting is in general use, this file uses the franchise's own name rather than inventing one. There is no equivalent of 'Innworld' or 'Solaria' here — the in-world setting is simply the dungeon.",
+      "series": [
+        "Dungeon Crawler Carl"
+      ],
+      "seriesReachesGames": "⚠️ A SERIES claim, not 29 title overrides — and that is only correct because the games rows were given `series = 'Dungeon Crawler Carl'` in board-game D1 on 2026-08-15 (audit trail: Board_Game_Catalog docs/info/dcc-series-and-lotr-parent-2026-08-15.md, before-snapshot plus the exact UPDATEs, since that repo has no change_log). This is the deliberate OPPOSITE of the treatment The Cosmere's Brotherwise RPG line gets: those rows carry a null series and could not be fixed the same way without inventing a product-line name, so they are 21 exact title overrides. Here the product line has an obvious, already-correct name. ⚠️ If those game rows ever lose their series value, these 29 rows fall out of the universe silently — that is the cost of a series claim over title overrides, and it is accepted because the alternative is 29 override entries that drift the other way."
+    },
+    {
+      "name": "Innworld",
+      "decidedHow": "human",
+      "confirmed": "Owner-approved 2026-08-15 via coordinator, on the owner's own prompt. The qualifying fact was verified before the entry was written: the household owns Gravesong AND Huntsong, which are 'The Singer of Terandria' 1-2, a pirateaba spin-off set on Terandria — a CONTINENT of the same world as The Wandering Inn. That is a second owned series in the same continuity, which is the ordinary bar this file applies everywhere (and the exact bar the Willverse had to clear twice).",
+      "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 16 rows under series 'The Wandering Inn' and 2 under 'Singer of Terandria Series' (Gravesong, Huntsong). library_catalog D1: 4 rows, works #229-232, all under series 'The Wandering Inn' — the print line that splits each web volume into two paperbacks. 22 in total. Canon connection: pirateaba's own store copy calls Gravesong 'an Innverse story' and Terandria a continent of the Innworld that The Wandering Inn takes place in (https://store.wanderinginn.com/products/gravesong, https://thewanderinginn.fandom.com/wiki/Gravesong, https://www.goodreads.com/series/407910-the-singer-of-terandria). ⚠️ Ghostsong is book 3 of the spin-off and is NOT owned — listed here so it is not mistaken for a holding.",
+      "notes": "One of the audiobook rows only joins because of a correction made in the same sweep: 'The Witch of Webs: The Wandering Inn, Book 12' carried a BLANK series and had its series stamped to 'The Wandering Inn' index 12 through audiobook_catalog's corrections layer. Without that fix this universe would silently hold 21 rows instead of 22 — a good illustration of why the orphan sweep and the universe list are the same job.",
+      "naming": "⚠️ 'Innworld', not 'The Wandering Inn'. Naming it after the flagship series would elevate one of its two series over the other, which is precisely the trap Solaria's own `naming` note records ('named for the in-world realm rather than Zodiac Academy universe... the same reason Divine Dungeon became CAL Verse'). 'Innworld' is not invented for this file either — it is the author's and the fandom's own word for the setting, used in pirateaba's store copy and throughout The Wandering Inn Wiki. ⚠️ Consequence to expect: the universe name and the series name differ, so a reader searching 'The Wandering Inn' finds the series; `canonicalNames` therefore folds 'the wandering inn universe' and 'innverse' onto Innworld so the obvious spellings still resolve.",
+      "series": [
+        "The Wandering Inn",
+        "Singer of Terandria Series"
+      ]
     }
   ],
   "_refused": [
@@ -969,6 +1071,13 @@
       "aDifferentVerse": "The owner adds that it belongs to a different verse. That is recorded and NOT acted on: no universe is named, and a universe earns a place here only when it is named, spans more than one series, and the household owns more than one member. If that verse is ever identified and a second member owned, it becomes a NEW universe — never a reassignment of this one row.",
       "shape": "A short-fiction COLLECTION including the novella 'Moment Zero'. Measured in site/catalog.csv 2026-08-11 as a single row with a BLANK series, which is why it is held out by title rather than by series.",
       "settledBy": "the owner, 2026-08-12"
+    },
+    {
+      "subject": "D&D / Dungeons & Dragons — 113 board-game rows",
+      "decidedHow": "human",
+      "decision": "never a universe — a SYSTEM, not a continuity",
+      "why": "⚠️ Owner-recorded 2026-08-15 from the estate-wide orphan sweep, and it is the largest single block of rows in the games catalog, so the refusal is worth more than the entry would have been. board-game D1 holds 109 rows under series 'D&D' and 4 under 'D&D Adventure System', plus id 796 Lords of Waterdeep and id 885 Temple of Elemental Evil with a null series. But 'D&D' in this catalog names a RULES SYSTEM that products are compatible with, not a world they are set in: the same series value holds third-party 5e supplements with their own settings (id 463 Auroboros / Warchief Gaming, id 476 Bergin's Book of Beasts and id 479 Firestar Falling / Penny Dragon, ids 487-489 Midnight Tower, id 511 Ryoko's Guide to the Yokai Realms, id 539 Starlight Arcana / Kelfecil's Tales), Critical Role's Exandria (id 634 Frozen Sick), and even Middle-earth (id 665 The Lord of the Rings Roleplaying, which is claimed by the Middle-earth universe instead). A 'D&D' universe would sweep four or more unrelated continuities onto one shelf — the exact failure the children's-imprint refusal above describes, at ten times the scale.",
+      "whatWouldChangeIt": "A universe for a specific D&D SETTING — Forgotten Realms, Ravenloft, Eberron, Exandria — would be a different and defensible question, because a setting IS a continuity. It is not asked today because the household owns no second series in any one of them; Lords of Waterdeep and Temple of Elemental Evil are both Forgotten Realms, which is the nearest thing to a candidate and is two rows."
     }
   ],
   "_shapeNotes": [
@@ -2173,6 +2282,37 @@
       "action": "create-universe",
       "universe": "Reckoners",
       "why": "Owner-approved creation via coordinator during the 2026-08-15 estate-wide orphan sweep. Written into the file by hand with its evidence rather than by a command, per this file's own rule that the CLI cannot create a universe. Aliases registered in canonicalNames at the same time so the name can fold; no alias is guessed beyond the bare form and its leading article. ⚠️ sites/heygabi-home/public/universes/universes.js carries a HARDCODED UNIVERSE_NAMES array (UNIVERSES.md §6) and was updated in the same commit, or the universe is invisible on /universes even after a correct data file and a correct Worker deploy."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "create-universe",
+      "universe": "Middle-earth",
+      "why": "Owner-approved via coordinator, 2026-08-15, from the estate-wide orphan sweep's verdict table. Written into the file by hand with its evidence rather than by a command, per this file's own rule that the CLI cannot create a universe. ⚠️ sites/heygabi-home/public/universes/universes.js carries a HARDCODED UNIVERSE_NAMES array (UNIVERSES.md §6) and must be updated in the same change, or the universe is invisible on /universes however correct the data file and the Worker deploy are."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "create-universe",
+      "universe": "Dungeon Crawler Carl",
+      "why": "Owner-approved via coordinator, 2026-08-15, from the estate-wide orphan sweep's verdict table. Written into the file by hand with its evidence rather than by a command, per this file's own rule that the CLI cannot create a universe. ⚠️ sites/heygabi-home/public/universes/universes.js carries a HARDCODED UNIVERSE_NAMES array (UNIVERSES.md §6) and must be updated in the same change, or the universe is invisible on /universes however correct the data file and the Worker deploy are."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "create-universe",
+      "universe": "Innworld",
+      "why": "Owner-approved via coordinator, 2026-08-15, from the estate-wide orphan sweep's verdict table. Written into the file by hand with its evidence rather than by a command, per this file's own rule that the CLI cannot create a universe. ⚠️ sites/heygabi-home/public/universes/universes.js carries a HARDCODED UNIVERSE_NAMES array (UNIVERSES.md §6) and must be updated in the same change, or the universe is invisible on /universes however correct the data file and the Worker deploy are."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "My First Winnie-the-Pooh",
+      "why": "Owner ruling, 2026-08-15 via coordinator: 'Leave Pooh with Disney for my kid, she won't know.' Recorded together with the general criterion it settles, in Disney's new `criterion` field: Disney is FRANCHISE-inclusive, so a kid-recognisable Disney property belongs even where the row's own provenance is not Disney's."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "refuse",
+      "subject": "D&D / Dungeons & Dragons",
+      "why": "Owner-recorded refusal from the estate-wide orphan sweep: 113 board-game rows, but the series value names a rules SYSTEM rather than a continuity, and already spans at least four unrelated settings including Middle-earth and Exandria."
     }
   ]
 }

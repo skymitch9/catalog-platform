@@ -7,11 +7,11 @@
 > Editor: [`../tools/universes.mjs`](../tools/universes.mjs).
 
 A fictional universe is flagged **only where it says something the series (or,
-for board games, the title) name does not already say**. **Thirteen** universes
-as of 2026-08-15 — Marvel, Disney, Star Wars, Alliances, Cytoverse and
-Reckoners all added that day; The Cosmere and CAL Verse extended to cover owned
-board games — **47 series, 141 book/game overrides, 5 exclusions**, and five
-recorded refusals. ⚠️ **This file's own
+for board games, the title) name does not already say**. **Sixteen** universes
+as of 2026-08-15 — Marvel, Disney, Star Wars, Alliances, Cytoverse, Reckoners,
+Middle-earth, Dungeon Crawler Carl and Innworld all added that day; The Cosmere
+and CAL Verse extended to cover owned board games — **51 series, 155 book/game
+overrides, 5 exclusions**, and six recorded refusals. ⚠️ **This file's own
 wording still says "book," but nothing in the schema or the resolver is
 book-specific** — `bookOverrides`/`bookExclusions` key on `title`, and
 `title`/`series` are exactly what a board-game row carries too (see §6's third
@@ -66,11 +66,10 @@ ladder missing from the audio side — five rows the library had numbered 1–5 
 plus **World's Only Hero**, which `universes.json` had been describing in prose
 under CAL Verse `notThisSeries` since 2026-08-11.
 
-Three further candidates came out of the sweep and were **not** created —
-Middle-earth, Dungeon Crawler Carl, and a refusal case for D&D — because §4's
-rule stands: the CLI cannot create a universe, and a new one is a decision
-written into the file with its evidence. They went to the owner with the
-evidence and the ready-to-apply shape.
+Three further candidates came out of the sweep and went to the owner rather
+than being created, because §4's rule stands: the CLI cannot create a universe,
+and a new one is a decision written into the file with its evidence. **The owner
+ruled on all of them the same day** — see "The owner's rulings" below.
 
 ### Two more universes, owner-approved the same day: Cytoverse and Reckoners
 
@@ -114,7 +113,26 @@ match the new numbers:
 |---|---|
 | `library_catalog` | `sync-universes.mjs` + `backfill:universes --remote --commit`. **45 → 50 rows** carry a universe (White Sand, Goodnight Darth Vader, The Nightmare Before Christmas, then Firstborn / Defending Elysium and Snapshot) |
 | `audiobook_catalog` | `python -m app.main`. **181 → 206 rows** resolve |
-| `apps/index-worker` | ⚠️ **Bundles this file at build time** — until it is redeployed *and* each source pushes again, `/universes` serves the answers stored at the last push. This is also why library work #272 (*Star Wars: The Fight to Survive*) still renders "Part of Disney" on the live page: `universes.json` has resolved it to Star Wars since the split, and D1 stores `universe='Star Wars'`, but the index row was written before |
+| `apps/index-worker` | ⚠️ **Bundles this file at build time** — until it is redeployed *and* each source pushes again, `/universes` serves the answers stored at the last push. This is also why library work #272 (*Star Wars: The Fight to Survive*) rendered "Part of Disney" after the split: `universes.json` had resolved it to Star Wars since that moment and D1 stored `universe='Star Wars'`, but the index row was written before. **The only lever on a stale library row is a mutation through `/api/*` or the 24-hour backstop** — there is no cron and no manual push in that repo |
+
+### The owner's rulings on the sweep's verdict table — 2026-08-15
+
+All of it ruled the same day, taking the estate to **16 universes**.
+
+| Ruling | Result |
+|---|---|
+| **Middle-earth — approved** | 18 rows. ⚠️ **The clearest case in the file** of a universe saying what no series name says: 5 audiobooks under `The Lord of the Rings`, but the 13 board-game rows are filed under **`Ascension`** (a deckbuilder line) and **`D&D`** (a rules system). Claimed as 1 series + **13 exact title overrides**, because `Ascension` also holds non-Tolkien products (ids 383, 388) and cannot be claimed wholesale — the same mixed-series shape as *Secret Projects* and *Dice Throne* |
+| **Dungeon Crawler Carl — approved** | 43 rows (8 audio + 6 library + 29 games). It exists for a **structural** reason no other single-series universe has: `work_fold` is null for every game row by design, so **universe is the only tier at which a games row can join the estate**. Without it the 29 owned game products can never sit beside the 14 books |
+| **D&D — refused, recorded** | 113 board-game rows, and the largest single block in that catalog — which makes the refusal worth more than the entry would have been. `D&D` names a **rules system**, not a continuity: the same series value holds six third-party 5e lines with their own settings, Critical Role's Exandria (id 634 *Frozen Sick*), and **Middle-earth itself** (id 665). A universe there would have swept four unrelated continuities onto one shelf. A *setting* universe (Forgotten Realms, Exandria) stays a live and defensible question — recorded in `_refused.whatWouldChangeIt` |
+| **Innworld — approved** | 22 rows. The qualifying fact was verified before writing: the household owns *Gravesong* **and** *Huntsong* = `Singer of Terandria Series` 1–2, and Terandria is a **continent of the same world** as The Wandering Inn (pirateaba's own store copy calls *Gravesong* "an Innverse story") |
+| **Winnie-the-Pooh — include in Disney** | And, more valuable than the row, it **settled a criterion**: Disney here is **franchise-inclusive**, so a kid-recognisable Disney property belongs even where the row's own provenance is not Disney's. Written into Disney's new `criterion` field, which explicitly supersedes the produced-vs-franchise question. It does **not** loosen the crossover test, and it does **not** reach a name collision — *Betrayed! (Aladdin Historical Fiction)* stays out, because S&S's Aladdin imprint is not the franchise |
+
+**Two naming calls, both made on this file's existing conventions rather than invented:**
+
+- **Innworld**, not "The Wandering Inn" — naming it after the flagship series would elevate one of its two series over the other, which is exactly the trap Solaria's `naming` note records ("the same reason Divine Dungeon became CAL Verse"). *Innworld* is the author's and fandom's own word. `canonicalNames` folds `the wandering inn universe` and `innverse` onto it so the obvious spellings still resolve.
+- **Dungeon Crawler Carl** *is* named for its series — following the Reckoners precedent set the same day: where no in-world or fandom name is in general use, use the franchise's own rather than inventing one.
+
+⚠️ **One entry depends on a write in another repo.** The Dungeon Crawler Carl universe claims **one series** instead of 29 title overrides, and that only works because `series = 'Dungeon Crawler Carl'` was set on board-game D1 ids 570–598 the same day (audit trail: `Board_Game_Catalog/docs/dcc-series-and-lotr-parent-2026-08-15-snapshot.json` + `.sql`, since that repo has no `change_log`). This is the deliberate **opposite** of the Brotherwise Cosmere line, whose rows carry a null series with no obvious product-line name and so get 21 exact title overrides. The cost is recorded in the entry's `seriesReachesGames` field: if those game rows ever lose their series value, 29 rows fall out of the universe silently.
 
 ---
 
