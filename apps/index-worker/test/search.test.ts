@@ -301,6 +301,56 @@ test('GET /api/search answers ranked groups with reasons', async () => {
   assert.deepEqual(body.universes, [{ name: 'Dungeon Crawler Carl', count: 1 }]);
 });
 
+// --- `source` — the search-normalization narrowing param. -------------------
+
+test('source=library narrows an owner\'s full scope to one shelf', async () => {
+  const db = new SearchFakeDB([
+    row({ title: 'Dune', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Dune', source: 'library', format: 'hardcover' }),
+  ]);
+  const res = await app.request('/api/search?q=dune&source=library', {}, env(db));
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.deepEqual(body.scope, ['library'], 'the response scope reflects what was actually searched');
+  assert.equal(body.books.length, 1);
+  assert.deepEqual(body.books[0].entries.map((e: any) => e.source), ['library']);
+});
+
+test('source can only narrow, never widen: a stranger asking for game gets an honest empty, not audiobook leaking through', async () => {
+  const db = new SearchFakeDB([
+    row({ title: 'Dune', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Catan', source: 'game', format: 'boardgame' }),
+  ]);
+  const res = await app.request('/api/search?q=dune&source=game', {}, {
+    ...env(db),
+    ENVIRONMENT: 'production',
+    DEV_EMAIL: undefined,
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.deepEqual(body.scope, [], 'anonymous visibility is {audiobook}; game is outside it');
+  assert.equal(body.books.length, 0);
+  assert.equal(body.games.length, 0);
+  assert.equal(body.reason, undefined, 'this is not the account-level no_catalogs_visible case');
+});
+
+test('source=all behaves exactly like omitting the param', async () => {
+  const db = new SearchFakeDB([
+    row({ title: 'Dune', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Dune', source: 'library', format: 'hardcover' }),
+  ]);
+  const withAll = await app.request('/api/search?q=dune&source=all', {}, env(db));
+  const withoutParam = await app.request('/api/search?q=dune', {}, env(db));
+  assert.deepEqual(await withAll.json(), await withoutParam.json());
+});
+
+test('an unrecognised source value is a 400, not a silent ignore', async () => {
+  const res = await app.request('/api/search?q=dune&source=bogus', {}, env(new SearchFakeDB([])));
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as any;
+  assert.equal(body.error, 'invalid_source');
+});
+
 test('an unfoldable query is NOT refused by /api/search (unlike /api/lookup): raw lane still answers', async () => {
   const db = new SearchFakeDB([row({ title: '드래곤 사냥꾼' })]);
   const res = await app.request(`/api/search?q=${encodeURIComponent('드래곤')}`, {}, env(db));

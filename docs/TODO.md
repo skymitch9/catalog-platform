@@ -1,7 +1,7 @@
 # Catalog Platform — Work Log
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-12**.
+> Last verified: **2026-08-15**.
 > This is the *work log* — current state and things in flight. Stable facts live
 > in [`PLATFORM.md`](PLATFORM.md), [`DOMAIN_AND_HOSTING.md`](DOMAIN_AND_HOSTING.md)
 > and [`UNIVERSES.md`](UNIVERSES.md). Cross-link rather than duplicate.
@@ -292,16 +292,186 @@ the still-deployed old CSP.
 
 ## Queued behind the Cosmere batch (owner, 2026-08-15)
 
-0. **Search normalization (owner proposal, adopted)**: search improvements
-   must reach EVERY search bar — today only the apex consumes the shared
-   index, so tiers like universe-name search die at one site. Build ONE
-   reusable search component (framework-agnostic custom element, canonical
-   module + sync like theme.js), backed by /api/search with per-site INTAKE
-   FILTERS (source pre-scope + site-local filters as config). Phase 1:
-   component + apex adoption (proves it); then per-site adoption plan with
-   sizes (library/games React wrap it; audiobook vanilla embeds it —
-   its client-side table filter stays for its own columns, decide the split
-   honestly). Universe search then reaches everything for free.
+0. **Search normalization (owner proposal, adopted)** — ✅ **PHASE 1 BUILT
+   2026-08-15**: search improvements must reach EVERY search bar — today
+   only the apex consumes the shared index, so tiers like universe-name
+   search die at one site. §0.1–§0.4 below are the build record; §0.5 is the
+   adoption plan for what's left, sized rather than assumed.
+
+### 0.1 The component
+
+`sites/heygabi-home/public/assets/estate-search.js` — `<estate-search>`, a
+framework-agnostic custom element (Shadow DOM, no build step, `customElements
+.define`), find.js's whole behavior turned configurable. Extraction was
+verbatim where the logic was already tested by hand (ranking groups, keyboard
+nav, the debounced-abortable query pattern, the sign-in flash fix) — nothing
+about the search itself changed, only where it lives.
+
+**Config — attributes (kebab-case), each mirrored by a same-name camelCase
+property:**
+
+| Attribute | Values | Default | Does |
+|---|---|---|---|
+| `index-url` | any origin | `https://index.heygabi.ai` | the index Worker to query |
+| `source` | `all`\|`audiobook`\|`library`\|`game` | `all` | scope preset → `&source=` on `/api/search` (§0.2); NARROWS the caller's own visibility, never widens it |
+| `auth` | `authless`\|`authed` | `authless` | authless: tokenless forever, zero Firebase cost, nothing imported. authed: find.js's neutral-boot/sign-in/bearer pattern |
+| `auth-module` | a module path | sibling `estate-auth.js` (`import.meta.url`-relative) | where `auth="authed"` dynamically imports its adapter from — never a static import, so authless embeds pay nothing |
+| `min-chars` | int | 2 | query length before a search fires |
+| `debounce-ms` | int | 250 | debounce delay |
+| `placeholder` / `placeholder-authed` | text | find.js's own copy | input placeholder, signed-out/authless vs signed-in |
+| `sign-in-label` | text | "Sign in to search everything" | the sign-in button's text |
+| `hint` | text | find.js's own copy | the helper line; pass `""` to hide it, omit the attribute to keep the default |
+| `universes` | `true`\|`false` | `true` | show the cross-catalog "Universes" group + "everything in X →" follow-ups |
+
+**Config — JS-only properties** (no attribute can carry a function/object):
+
+- `.intakeFilter(data, { kind: 'search'|'universe' }) → data` — the per-site
+  INTAKE FILTER hook: runs on every parsed response before render, so a host
+  can narrow further (e.g. drop non-local entries out of a same-work group)
+  without forking the component.
+- `.authAdapter = { watchAuth, idToken, signIn, signOutUser,
+  handleRedirectResult }` — set directly to skip the dynamic import (a React
+  app that already has an estate-auth-shaped module loaded).
+
+**Events** (`bubbles: true, composed: true` — cross the shadow boundary):
+
+- `estate-search:auth` — `detail: { user, resolved }`, authed mode only.
+- `estate-search:select` — `detail: { url, hit }`, **cancelable** — fires
+  instead of the default `window.open(url, '_blank', 'noopener')` on any
+  result open (click or Enter). `preventDefault()` to hand navigation to an
+  SPA router instead — this is the hook library/games will need (§0.5).
+
+**One extension point for opinions the component must NOT hold:** a light-DOM
+child carrying `slot="who-extra"` inside `<estate-search>` renders after
+"Signed in as … · sign out" in the signed-in state. The apex uses this for
+its approver-only Admin chip (`assets/apex-admin-link.js` — the extracted,
+unchanged probeApprover() logic) instead of teaching the shared component
+what "Admin" is.
+
+### 0.2 What the server gained
+
+`apps/index-worker/src/search-route.ts`: `GET /api/search` accepts an
+optional `source` param — `audiobook`\|`library`\|`game`\|`all` — that
+INTERSECTS with the caller's own visibility from `searchScope()`, never
+widens it. A stranger requesting `source=game` gets an honest empty (`scope:
+[]`, no `reason` — this is not §4.5's account-level `no_catalogs_visible`,
+it's "you asked for a shelf you cannot see", answered the same shape as a
+zero-match query). An unrecognised value is `400 invalid_source`. The
+response's `scope` field now reflects what was ACTUALLY searched after
+narrowing, not the caller's raw visibility — universe counts inherit this for
+free, same as before. 5 new tests in `test/search.test.ts` (narrows a full
+scope; narrows-to-nothing outside visibility; `source=all` ≡ no param;
+400 on garbage); **70/70 tests pass, typecheck clean.** Deployed with
+`wrangler deploy` (index-worker) — no migration needed, additive query param
+only.
+
+### 0.3 Apex adoption — verified live
+
+`sites/heygabi-home/public/index.html`'s `#find` section now embeds
+`<estate-search id="find-search" auth="authed" hint="…">` (the `hint`
+attribute and defaults reproduce find.js's copy verbatim — no attribute
+overrides needed beyond `auth` and `hint`) with the Admin chip as its
+`slot="who-extra"` child. `assets/find.js` is deleted (dead code — nothing
+imported it, confirmed by grep before deletion); `assets/estate-search.js` +
+`assets/apex-admin-link.js` replace it. The `.find-*`/`.hit*` CSS block in
+`index.html` is gone (it now lives in the component's own scoped `<style>`,
+reading the same `--et-*` tokens so it re-skins with every theme unchanged);
+`index.html` keeps only `#find`'s section spacing and the slotted Admin
+link's own small style block, since `::slotted()` can't reach that deep.
+
+Deployed: `npx wrangler pages deploy sites/heygabi-home/public --project-name
+heygabi-home`. **Review link: https://heygabi.ai** — try: (1) type 2+
+characters signed out, confirm audiobook-only results with the "Searching
+audiobooks only. Sign in to search every shelf." note; (2) sign in, confirm
+the box widens and the Admin chip appears if you're an approver; (3) ↑/↓/
+Enter/Escape still walk and open results; (4) a universe hit's "everything in
+X →" still asks for sign-in when signed out. Behavior is pixel/behavior-
+identical to find.js's — the same markup shape renders inside the shadow
+root, same CSS custom properties, same copy.
+
+### 0.4 Tests
+
+- `apps/index-worker/test/search.test.ts`: 70/70 (5 new for `source`), plus
+  `npm run typecheck` clean.
+- The component itself ships no automated tests (browser-only custom element,
+  no existing JS test runner in `sites/heygabi-home` — same as find.js before
+  it, which also had none; this is an existing gap, not a regression).
+  Verified by hand against the review link above.
+
+### 0.5 Adoption plan for what's left (sizes, not code)
+
+Researched 2026-08-15 (read `CollectionPage.tsx` + `router.tsx` + `api.ts` in
+both React apps, and `audiobook_catalog/site/index.html`'s inline filter
+block) before sizing, rather than assuming.
+
+**library_catalog + Board_Game_Catalog (React, `apps/web`) — size M each,
+same shape (the "structurally identical" property from §1.1 holds here too):**
+
+- Both apps' own collection search (`CollectionPage.tsx` — 739 lines library,
+  399 games) is SERVER-SIDE against `/api/collection?q=…`, filtering their
+  OWN catalog's rows with facets/pagination `<estate-search>` cannot
+  replicate — that stays exactly as it is. `<estate-search>` is ADDITIVE: a
+  header/nav-level "search the whole estate" box, not a replacement.
+- ⚠️ **Neither app uses `react-router-dom`** — both ship a **hand-rolled
+  ~20KB pushState/replaceState router** (`router.tsx`). A wrapper assuming
+  `useNavigate`/`<Link>` would be wrong; it must call this repo's own
+  `navigate()`-equivalent from the `estate-search:select` handler instead.
+- The wrapper itself: a thin React component (ref to the custom element,
+  props → attributes, `intakeFilter` passed as a property not an attribute,
+  `estate-search:select` listened to and `preventDefault()`ed to route
+  through the local router). Sync machinery is close to mechanical —
+  `sync-estate-theme.mjs`/`sync-estate-auth.mjs` are the exact precedent for
+  a `sync-estate-search.mjs` copying `estate-search.js` (+ `estate-auth.js`
+  if `auth="authed"` is wanted here too) into the build.
+  ⚠️ **library_catalog materializes into `apps/web/public/estate/`;
+  Board_Game_Catalog's existing estate assets sit under `apps/web/public/
+  assets/` instead** — confirm which convention before writing the sync
+  script for games, rather than assuming it matches library.
+- `auth="authed"` here would need each app's OWN sign-in wired as the
+  adapter (or reuse of the shared Firebase project's session — the estate
+  design already assumes one Firebase project estate-wide) — undecided,
+  flag for the dispatcher.
+
+**audiobook_catalog (vanilla, `site/index.html`) — size S:**
+
+- Its own filter (the ~860-line inline block, `_buildSearchCache`/
+  `_applySearch`) is CLIENT-SIDE substring search over the already-rendered
+  table/card grid across every column (title, series, series#, author,
+  narrator, year, genre, duration, rating) with sort/pagination on top —
+  genuinely a different job (its OWN columns) and STAYS, per the owner's own
+  framing of the split.
+  `<estate-search>` is close to a real drop-in here: no framework to bridge,
+  `<script type="module" src=".../estate-search.js">` + the tag, DOM events
+  straight through — the "do we own this anywhere across catalogs" box the
+  site does not have today (confirmed: no existing cross-catalog search
+  there; it only PUSHES to the index via `app/index_push.py`, never queries
+  it). Likely placement: a small "search the whole estate" affordance
+  alongside the existing table, `source="audiobook"` NOT set (the point is
+  reaching the other two shelves, which this table cannot show).
+
+**`/universes` page (`sites/heygabi-home/public/universes/`) — size S,
+tomorrow's item per §5 below:**
+
+- Today: `universes.js` (381 lines) hand-duplicates find.js's rowCard/render
+  logic on purpose (this codebase's stated convention before estate-search.js
+  existed — see the file's own header) and hardcodes 11 universe names
+  because `read.ts` exposes no "list universe names" route.
+  `<estate-search universes="true">` typed a universe's name already surfaces
+  it via the Universes result group and "everything in X →" — so the
+  hardcoded list becomes REDUNDANT for the search path (not the whole page:
+  the page's collapsed-row browsing view has no equivalent in the
+  component). Honest split: swap the page's OWN search entry point for the
+  component, keep the hand-rolled expand/collapse browse view as-is unless a
+  "list names" route gets built later (§0's own reasoning for why that route
+  doesn't exist yet still holds).
+
+**Cross-cutting note for the dispatcher:** every non-apex site currently gets
+`source`-scoped searches from ANONYMOUS visibility `{audiobook}` only
+(§4.5) — an authless `source="library"` or `source="game"` box returns
+empty, always, by design (§0.2's narrowing rule). Only audiobook's box is
+useful authless out of the box; library/games need `auth="authed"` wired
+before their own-shelf scoping does anything, which is real new work, not
+config.
 
 1. **Generalize the Cosmere treatment estate-wide**: for every universe and
    series, apply the same logic just exercised on Cosmere — matcher

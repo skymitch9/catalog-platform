@@ -58,7 +58,16 @@
 
   ⚠️ WHAT A SEARCH RESULT MEANS: "in your catalog — tap through", NEVER "you
   own this". Ownership deliberately does not travel to the index (29 of 836
-  game rows are wanted-only). The caveat line find.js renders is load-bearing.
+  game rows are wanted-only). The caveat line <estate-search> renders is
+  load-bearing.
+
+  ⚠️ SEARCH NORMALIZATION (docs/TODO.md item 0, 2026-08-15): the search is no
+  longer this page's own script. /assets/estate-search.js is the ONE
+  reusable <estate-search> component — find.js's behavior, extracted so a
+  search fix reaches every site that embeds the tag, not just this one. This
+  page's own remaining script, apex-admin-link.js, is the thin heygabi-home-
+  specific bit (the approver-only Admin chip) that plugs into the component's
+  one extension point rather than living inside it.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
@@ -293,151 +302,25 @@ h2::after {
   background: linear-gradient(90deg, var(--et-hairline), transparent);
 }
 
-/* ---- the cross-format search ----------------------------------------------- */
+/* ---- the cross-format search ------------------------------------------------
+   The box itself (form, input, results, "hit" cards — everything find.js used
+   to style here by id/class) now lives inside <estate-search>'s own Shadow
+   DOM (assets/estate-search.js) — it carries its own <style>, scoped, reading
+   the same --et-* tokens this page sets on <html>, so it re-skins with every
+   theme exactly as before. What's left here is the section's own spacing and
+   the ONE light-DOM piece that rides outside the shadow boundary on purpose:
+   the slotted Admin chip (apex-admin-link.js) styled to match the component's
+   own .es-linkbtn look, because a shadow tree's ::slotted() cannot reach into
+   the slotted element's own descendants deeply enough to skip this. */
 
 #find { margin-bottom: clamp(2rem, 5vw, 3rem); }
 
-.find-box {
-  padding: 1rem 1.15rem 1.1rem;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius-lg);
-  background: color-mix(in srgb, var(--et-surface) 65%, transparent);
-}
-
-#find-form {
-  display: flex;
-  gap: .6rem;
-  align-items: stretch;
-  flex-wrap: wrap;
-}
-
-#find-input {
-  flex: 1 1 14rem;
-  min-height: 44px;
-  padding: .5rem .85rem;
-  border: 1px solid var(--et-field-border, var(--et-hairline));
-  border-radius: var(--et-radius);
-  background: var(--et-surface);
-  color: var(--et-fg);
-  font: inherit;
-}
-#find-input::placeholder { color: var(--et-muted); }
-#find-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
-#find-input:disabled { opacity: .6; }
-
-.find-btn {
-  min-height: 44px;
-  padding: .5rem 1.05rem;
-  border: var(--et-btn-border);
-  border-radius: var(--et-radius);
-  background: var(--et-btn-bg);
-  color: var(--et-btn-fg);
-  box-shadow: var(--et-btn-shadow);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.find-btn:hover { filter: brightness(1.06); }
-.find-btn:active { transform: var(--et-press); }
-.find-btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
-.find-btn:disabled { opacity: .6; cursor: default; transform: none; }
-
-.find-hint {
-  margin: .6rem 0 0;
-  color: var(--et-muted);
-  font-size: var(--et-text-small);
-  text-wrap: pretty;
-}
-
-#find-who { margin: .6rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); }
-
-.find-linkbtn {
-  border: 0;
-  padding: 0;
-  min-height: 0;
-  background: none;
+#find-admin {
   color: var(--et-accent);
-  font: inherit;
-  font-size: inherit;
   font-weight: 600;
-  cursor: pointer;
   text-decoration: underline;
 }
-.find-linkbtn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 4px; }
-
-#find-status {
-  margin: .8rem 0 0;
-  padding: .6rem .85rem;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius);
-  background: color-mix(in srgb, var(--et-surface) 55%, transparent);
-  color: var(--et-muted);
-  font-size: var(--et-text-small);
-  text-wrap: pretty;
-}
-#find-status[data-tone="warn"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); color: var(--et-fg); }
-#find-status[data-tone="owner"] { border-color: color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline)); color: var(--et-fg); }
-
-.find-caveat {
-  margin: 1rem 0 .3rem;
-  color: var(--et-muted);
-  font-size: var(--et-text-small);
-  text-wrap: pretty;
-}
-
-.find-group {
-  margin: 1rem 0 .5rem;
-  font-size: var(--et-text-micro);
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--et-muted);
-}
-
-ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
-
-.hit {
-  display: flex;
-  gap: .8rem;
-  align-items: flex-start;
-  padding: .65rem .75rem;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius);
-  background: var(--et-surface);
-}
-/* Keyboard navigation's active row (find.js sets aria-selected). */
-.hit[aria-selected="true"] {
-  border-color: var(--et-accent);
-  outline: 1px solid var(--et-accent);
-}
-
-/* The thumbnail slot: a fixed-size themed box that is ALWAYS present, so
-   rows align and lazy images landing cause no shift. Empty = clean blank. */
-.hit-cover {
-  flex: none;
-  display: block;
-  width: 2.6rem;
-  height: 3.6rem;
-  border-radius: calc(var(--et-radius) / 2);
-  border: 1px solid var(--et-hairline);
-  background: var(--et-bg);
-  overflow: hidden;
-}
-.hit-cover img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.hit-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-.hit-title { font-weight: 600; }
-.hit-title a { color: var(--et-fg); text-decoration: none; }
-.hit-title a:hover { color: var(--et-accent); text-decoration: underline; }
-.hit-meta { color: var(--et-muted); font-size: var(--et-text-small); }
-.hit-meta a { color: var(--et-accent); font-weight: 600; text-decoration: none; }
-.hit-meta a:hover { text-decoration: underline; }
-.hit-universe { align-self: flex-start; font-size: var(--et-text-small); margin-top: .15rem; }
+#find-admin a { color: inherit; text-decoration: inherit; }
 
 /* ---- the catalogue cards ---------------------------------------------------- */
 
@@ -699,30 +582,34 @@ footer a.more:hover svg { transform: translateX(3px); }
   </header>
 
   <!--
-    The cross-format search (estate-auth-design.md §7 + §4.5). Logic in
-    /assets/find.js; sign-in is scoped to this section and to /admin — the
-    rest of the page neither knows nor cares who you are. Since §4.5 the
-    signed-out box WORKS: it searches the public audiobook slice tokenless,
-    and signing in widens the scope to the member's visibility set.
+    The cross-format search (estate-auth-design.md §7 + §4.5). Behavior lives
+    in the shared /assets/estate-search.js <estate-search> component — the
+    search-normalization component (docs/TODO.md item 0), not this page's own
+    script; a fix made there now reaches every site that embeds the tag.
+    Sign-in is scoped to this element and to /admin — the rest of the page
+    neither knows nor cares who you are. Since §4.5 the signed-out box WORKS:
+    it searches the public audiobook slice tokenless, and signing in widens
+    the scope to the member's visibility set.
 
     ⚠️ The search box boots NEUTRAL (disabled input, both buttons hidden)
-    until find.js hears from Firebase — a returning member must never see
-    the signed-out state flash before their session resolves. find.js flips
-    the state decisively both ways once auth answers.
+    until the component hears from Firebase (auth="authed") — a returning
+    member must never see the signed-out state flash before their session
+    resolves. Preserved verbatim from find.js inside the component itself.
+
+    The Admin chip is NOT part of the shared component (it is apex-specific
+    admin surface) — apex-admin-link.js toggles this slotted child's `hidden`
+    once the approver probe answers, using the component's one extension
+    point (slot="who-extra").
   -->
   <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
     <h2 id="find-h">One question, three shelves</h2>
-    <div class="find-box">
-      <form id="find-form">
-        <input id="find-input" type="search" placeholder="One moment…" autocomplete="off" disabled aria-label="Search the catalogues by title">
-        <button id="find-submit" class="find-btn" type="submit" hidden>Search</button>
-        <button id="find-signin" class="find-btn" type="button" hidden>Sign in to search everything</button>
-      </form>
-      <p class="find-hint">“Do we own this in any format?” — one title, checked against every shelf at once. Anyone can search the audiobook shelf; household members sign in with Google to search every shelf they can see.</p>
-      <p id="find-who" hidden></p>
-      <p id="find-status" hidden></p>
-      <div id="find-results"></div>
-    </div>
+    <estate-search
+      id="find-search"
+      auth="authed"
+      hint="“Do we own this in any format?” — one title, checked against every shelf at once. Anyone can search the audiobook shelf; household members sign in with Google to search every shelf they can see."
+    >
+      <span slot="who-extra" id="find-admin" hidden> · <a href="/admin">Admin</a></span>
+    </estate-search>
   </section>
 
   <section class="rise" style="animation-delay:.18s" aria-labelledby="cat-h">
@@ -792,9 +679,13 @@ footer a.more:hover svg { transform: translateX(3px); }
 
 </main>
 
-<!-- External file because _headers ships script-src 'self' — inline script
-     stays blocked. find.js = the search (its ids/classes above are its
-     contract — renaming them breaks it). -->
-<script type="module" src="/assets/find.js"></script>
+<!-- External files because _headers ships script-src 'self' — inline script
+     stays blocked. estate-search.js defines <estate-search> (the shared
+     search-normalization component); apex-admin-link.js is this page's own
+     thin adapter (the approver-only Admin chip, via the component's
+     slot="who-extra" extension point) and must load after it defines the
+     element. -->
+<script type="module" src="/assets/estate-search.js"></script>
+<script type="module" src="/assets/apex-admin-link.js"></script>
 </body>
 </html>

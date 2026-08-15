@@ -16,6 +16,15 @@
  * FTS, no extra index); ranking and the §8 carve-out argument live in
  * search.ts; an unfoldable QUERY is not refused (the raw display-title lane
  * still finds the Korean rows, §3.1's own path).
+ *
+ * ⚠️ `source` (added for the search-normalization component, 2026-08-15):
+ * an optional NARROWING query param — `library`|`game`|`audiobook`|`all` —
+ * for a per-site scope preset (e.g. the library app only ever wants its own
+ * shelf). It can only ever narrow the caller's own visibility, never widen
+ * it: the requested source is intersected with `scope` from searchScope(),
+ * so a stranger who asks for `source=library` gets an honest empty answer,
+ * not a peek. `scope` in the response reflects what was ACTUALLY searched
+ * after narrowing — the SQL is still the scope, same rule as before.
  */
 
 import { Hono } from 'hono';
@@ -43,6 +52,13 @@ const SOURCE_FOR_CATALOG: Record<Catalog, string> = {
 export function sourcesForScope(scope: readonly Catalog[]): string[] {
   return scope.map((c) => SOURCE_FOR_CATALOG[c]);
 }
+
+/** The reverse of SOURCE_FOR_CATALOG — entry.source vocabulary → Catalog. */
+const CATALOG_FOR_SOURCE: Record<string, Catalog> = Object.fromEntries(
+  (Object.entries(SOURCE_FOR_CATALOG) as [Catalog, string][]).map(([catalog, source]) => [source, catalog]),
+);
+
+const VALID_SOURCE_PARAMS = new Set(['audiobook', 'library', 'game', 'all']);
 
 export const searchRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 
@@ -75,7 +91,35 @@ searchRoutes.get('/', async (c) => {
     });
   }
 
-  const sources = sourcesForScope(scope);
+  // The `source` narrowing param — a per-site scope preset. It can only
+  // subtract from `scope`, never add: a source outside the caller's own
+  // visibility intersects to nothing, answered the same honest-empty way a
+  // caller with no matches gets, not an error.
+  const sourceParam = c.req.query('source');
+  let sources = sourcesForScope(scope);
+  let effectiveScope = scope;
+  if (sourceParam !== undefined && sourceParam !== '') {
+    const requested = sourceParam.trim().toLowerCase();
+    if (!VALID_SOURCE_PARAMS.has(requested)) {
+      return c.json(
+        { error: 'invalid_source', detail: 'source must be one of audiobook, library, game, or "all"' },
+        400,
+      );
+    }
+    if (requested !== 'all') {
+      sources = sources.filter((s) => s === requested);
+      const catalog = CATALOG_FOR_SOURCE[requested];
+      effectiveScope = catalog && scope.includes(catalog) ? [catalog] : [];
+    }
+  }
+
+  if (sources.length === 0) {
+    // Not §4.5's "no_catalogs_visible" (that names an account-level state) —
+    // this is "you asked for a shelf you cannot see", answered the same
+    // shape as a query with no matches: an honest empty, no `reason`.
+    return c.json({ query, scope: effectiveScope, books: [], games: [], universes: [] });
+  }
+
   const placeholders = sources.map(() => '?').join(', ');
   const { results } = await c.env.DB.prepare(
     `SELECT ${ENTRY_COLS} FROM entry WHERE source IN (${placeholders})`,
@@ -87,5 +131,5 @@ searchRoutes.get('/', async (c) => {
   // rows it is handed, and out-of-scope rows were never fetched — a
   // games-only member's "×31" counts 31 game rows, not 25 library ones.
   const found = searchIndex(query, (results ?? []) as unknown as SearchRow[], universeIndex);
-  return c.json({ query, scope, ...found });
+  return c.json({ query, scope: effectiveScope, ...found });
 });
