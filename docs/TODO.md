@@ -576,3 +576,14 @@ embedded component, Marvel's 48 accessories + 2 promos collapsed by
 default — the built-in demo case) and https://heygabi.ai (front door, search
 "mistborn", confirm the Cosmere autofill row). See the deploy log for exact
 verification performed signed-out vs. what still needs signed-in eyes.
+
+## Index-push staleness — the real fix (sweep finding, 2026-08-15)
+
+Backfill scripts write D1 directly and BYPASS the workers, so no index push
+fires; the backstops ask a 24-HOUR staleness question, so data changes go
+unnoticed for up to a day (this bit three times today: Boba Fett, the games
+universe rows, the library universe rows — each needed a manual save-trigger).
+Fix properly: (a) give both catalogs' backfill scripts a --push-index flag
+(mint-and-call the push the way the workers do), or (b) gate the existing
+checks on MAX(updated_at) > pushed_at instead of a clock. Small build, big
+annoyance-removal. Queue for the next working session.
