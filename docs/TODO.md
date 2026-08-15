@@ -315,3 +315,46 @@ the still-deployed old CSP.
    miss, series spelled into isolation. Verdict table like the fuzzy-match
    sweep (confident fixes applied via the proper instruments; ambiguous rows
    reported); before/after counts.
+
+## ✅ Estate Operations on the status page (owner order, 2026-08-15) — DEPLOYED
+
+"Make sure the status page has all the pieces to RUN the pipelines" +
+centralize controls away from individual sites, because the audiobook
+pipeline is really an estate pipeline (it moves the ebooks too, via
+sync_to_drive.py).
+
+- `apps/auth-worker`: `POST /api/estate/ops/pipeline` (`src/ops.ts`),
+  `requireApprover()`-gated, apex-only CORS. Writes the SAME
+  `pipeline_requests` document audiobook_catalog's admin panel already
+  writes (its `firestore.rules` `validPipelineRequest()` and
+  `app/tools/pipeline_watcher.py` are untouched — this is a second producer
+  of the existing contract) via the existing Firebase service account plus
+  a new `PIPELINE_TRIGGER_TOKEN` secret, piped from audiobook_catalog's own
+  `.env`. Deployed; secret set; unit tests + live probes (401 tokenless,
+  403 non-approver/stranger, apex-only CORS, 503 config-error) all pass —
+  probe suite never performs a real Firestore write.
+- `sites/heygabi-home/public/status`: a new Operations section, gated on
+  `GET /api/estate/me`'s `is_approver` (mirrors find.js's approver-probe
+  pattern) — invisible to anonymous/non-approver visitors, who see the
+  existing read-only rows unchanged. "Run audiobook pipeline" button +
+  optimistic feedback + a faster poll to catch the Pipeline row flipping to
+  RUNNING. A "Run levers" list deep-links every other run control instead
+  of embedding it: the platform's three deploy targets (one workflow,
+  `target=` choice), Backup, audiobook's Promote + Verify, and the legacy
+  admin-panel trigger.
+- `_headers`: `/status` + `/status/` CSP gained the sign-in trio
+  (gstatic/apis.google.com script-src, identitytoolkit/securetoken
+  connect-src, the Firebase authDomain + accounts.google.com frame-src) for
+  the new sign-in affordance only — the six read-only hosts are unchanged.
+
+⚠️ **The audiobook admin panel's own trigger (`site/admin.html` +
+`site/pipeline-status.js`) is deliberately UNTOUCHED** — it still works
+exactly as before, listed on the status page's Run levers as "legacy". Its
+retirement (localStorage token entry replaced entirely by the estate path)
+is a LATER OWNER DECISION, not made here.
+
+**Awaiting the owner's first press**: the endpoint and UI are live and
+verified as far as tokenless/non-approver probing and code-reading allow,
+but the button itself was never clicked in anger during this build — it
+starts a REAL local pipeline run with Google Drive side effects, so that
+was deliberately left for the owner.
