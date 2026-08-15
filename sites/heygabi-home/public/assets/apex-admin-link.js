@@ -17,6 +17,7 @@ const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 
 const search = document.getElementById('find-search');
 const adminSlot = document.getElementById('find-admin');
+const adminCard = document.getElementById('admin-card-li'); // the front-door Admin card (owner, 2026-08-15) — same probe, same fact
 if (search && adminSlot) {
   let probedFor = null;
 
@@ -24,6 +25,7 @@ if (search && adminSlot) {
     const user = e.detail.user;
     if (!user) {
       adminSlot.hidden = true;
+      if (adminCard) adminCard.hidden = true;
       probedFor = null;
       return;
     }
@@ -35,7 +37,10 @@ if (search && adminSlot) {
       const r = await fetch(`${AUTH_ORIGIN}/api/estate/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (probedFor === user.uid) adminSlot.hidden = !r.ok;
+      if (probedFor === user.uid) {
+        adminSlot.hidden = !r.ok;
+        if (adminCard) adminCard.hidden = !r.ok;
+      }
     } catch {
       /* a failed probe fails quiet — the link is a convenience */
     }
