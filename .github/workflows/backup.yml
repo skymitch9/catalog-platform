@@ -1,0 +1,153 @@
+name: Backup (manual)
+
+# ⚠️ MANUAL DISPATCH ONLY, same posture as deploy.yml (docs/TODO.md §1) — a
+# backup is a deliberate button-press, never a schedule, so nobody has to
+# reason about a cron quietly touching credentials at 3am. See
+# docs/access/backup-restore.md for the full runbook (what's protected, how
+# to restore, what is deliberately NOT backed up here).
+#
+# Two independent jobs, each its own artifact set:
+#
+#   d1        → `wrangler d1 export` for all four estate D1 databases, by
+#                database ID — this job needs NO wrangler.toml and NO sibling
+#                checkout, because `wrangler d1 export <id> --remote` is an
+#                account-level operation (proven interactively 2026-08-14: it
+#                ran clean from an empty directory with only
+#                CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID set). That is also
+#                why this workflow can back up board-game-catalog's and
+#                library-catalog's D1s even though it lives in a THIRD repo —
+#                see the note below on why it does.
+#
+#   firestore → scripts/backup-firestore.mjs, a recursive per-collection JSON
+#                dump via a service account (no gcloud/GCS infrastructure).
+#
+# ⚠️ WHY ALL FOUR D1 BACKUPS LAND HERE AND NOT IN THE REPO THAT OWNS EACH DB:
+# `Board_Game_Catalog` is a PUBLIC repo (verified via `gh repo view`,
+# 2026-08-14). GitHub's own docs + the linked community reports say
+# downloading a workflow artifact needs only "read access to the repository" —
+# and on a PUBLIC repo, EVERY authenticated GitHub account has read access,
+# not just collaborators (see the open issues on actions/upload-artifact
+# asking exactly "why do public artifacts require a login" — the answer is
+# "a login is all they require"). A D1 export of board-game-catalog is a
+# household database dump; it must never be one anonymous GitHub signup away
+# from anyone. `library_catalog` and `catalog-platform` are both PRIVATE, so
+# they carry no such exposure today — but consolidating all four exports into
+# ONE workflow, in the one repo that is private AND already holds the
+# account-wide CLOUDFLARE_API_TOKEN, means there is exactly one place backups
+# land, one retention policy, and one artifact-visibility question ever to
+# re-check — instead of three, one of which would silently become wrong the
+# day a repo's visibility changes. `wrangler d1 export` not needing a
+# wrangler.toml for the target database is what makes this possible without
+# a cross-repo checkout.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to back up'
+        type: choice
+        required: true
+        default: all
+        options:
+          - d1
+          - firestore
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  d1:
+    if: inputs.target == 'd1' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '113be82b840c956b8378a187047ab3ea' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # database_id, not database_name — export-by-id needs no
+          # wrangler.toml, so this job has no sibling checkout at all.
+          - name: library-catalog
+            id: 6022ea5e-2510-450e-81ce-7d847fa31379
+            owner_repo: skymitch9/library_catalog
+          - name: board-game-catalog
+            id: 7dd22702-f0e2-4fc7-b201-d16d60176efa
+            owner_repo: skymitch9/Board_Game_Catalog
+          - name: index_catalog
+            id: 3004d175-3c51-4ed4-ac3e-62859319f8ac
+            owner_repo: skymitch9/catalog-platform (apps/index-worker)
+          - name: estate_auth
+            id: d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb
+            owner_repo: skymitch9/catalog-platform (apps/auth-worker)
+    steps:
+      - name: Guard — CLOUDFLARE_API_TOKEN must exist
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN: repo Settings → Secrets → Actions (or: gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/catalog-platform). Same token deploy.yml already uses — D1 export needs only 'D1 Edit' scope, which the existing token already carries."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies (for the pinned wrangler binary)
+        run: npm ci
+      - name: Export ${{ matrix.name }} (${{ matrix.owner_repo }})
+        run: |
+          mkdir -p backups
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          npx wrangler d1 export "${{ matrix.id }}" --remote --output="backups/${{ matrix.name }}-$STAMP.sql" -y
+      - name: Verify the export is non-empty
+        run: |
+          f=$(ls backups/${{ matrix.name }}-*.sql)
+          bytes=$(wc -c < "$f")
+          echo "::notice::$f is $bytes bytes."
+          if [ "$bytes" -lt 50 ]; then
+            echo "::error::Export for ${{ matrix.name }} is suspiciously small ($bytes bytes) — treating as a failed backup."
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-${{ matrix.name }}-${{ github.run_id }}
+          path: backups/${{ matrix.name }}-*.sql
+          retention-days: 90
+          if-no-files-found: error
+
+  firestore:
+    if: inputs.target == 'firestore' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Guard — FIREBASE_SERVICE_ACCOUNT_JSON must exist
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Set FIREBASE_SERVICE_ACCOUNT_JSON: repo Settings → Secrets → Actions. Paste the FULL JSON content of a Firebase service account key (Firebase console -> audiobook-catalog project -> Project settings -> Service accounts -> Generate new private key) as the secret value — not a path, the JSON itself. See docs/access/backup-restore.md §3."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Dump Firestore
+        run: |
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "OUT=backups/firestore-$STAMP" >> "$GITHUB_ENV"
+          BACKUP_OUT_DIR="backups/firestore-$STAMP" node scripts/backup-firestore.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestore-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          retention-days: 90
+          if-no-files-found: error

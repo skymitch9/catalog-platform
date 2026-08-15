@@ -12,9 +12,13 @@
     "universes": "node tools/universes.mjs",
     "validate": "node tools/universes.mjs validate && node tools/universes.mjs fixtures",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "backup:firestore": "node scripts/backup-firestore.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0"
   }
 }
