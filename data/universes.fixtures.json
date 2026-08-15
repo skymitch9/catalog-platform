@@ -209,12 +209,76 @@
       "measured": "board-game D1, id 742, parent chain 742→697→677, 2026-08-15."
     },
     {
-      "name": "Disney — a Star Wars series claim, so future purchases file themselves",
+      "name": "Star Wars split out of Disney — crossover-potential criterion",
       "title": "Star Wars: Light of the Jedi - The High Republic",
       "series": "Star Wars: The High Republic",
-      "expect": "Disney",
-      "why": "Claimed at series level (not per-title) because 3 owned rows already share this exact series value — the same reasoning Riordanverse and Willverse record for their own series claims.",
+      "expect": "Star Wars",
+      "why": "⚠️ This case ASSERTED 'Disney' until 2026-08-15, same day: the owner's actual criterion arrived (\"universes are defined by CROSSOVER POTENTIAL — Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story\") and Star Wars failed Disney's own bar, so it was split into its own universe, the same treatment Marvel got. Claimed at series level because 3 owned rows share this exact series value.",
       "measured": "audiobook_catalog site/catalog.csv, 2026-08-15."
+    },
+    {
+      "name": "Toy Story stays IN Disney — it's the pool Kingdom-Hearts-style crossovers draw from",
+      "title": "Toy Story 1 - Disney Classic Stories",
+      "series": "Toy Story",
+      "expect": "Disney",
+      "why": "The contrast case for the Star Wars split: Toy Story passes the owner's crossover-potential test (Kingdom Hearts-style media plausibly draws on it), Star Wars does not. Both were reachable from 'Disney' before 2026-08-15; only one still is.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-15."
+    },
+    {
+      "name": "Shards of Creation is The Cosmere — the Shards of Adonalsium",
+      "title": "Shards of Creation",
+      "series": "",
+      "expect": "The Cosmere",
+      "why": "Owner, 2026-08-15, via coordinator: 'literally all the gods from the cosmere.' Publisher Brotherwise Games, same as the already-claimed Cosmere RPG line and Mistborn deckbuilder. Series is null, so a title override.",
+      "measured": "board-game D1 id 844, 2026-08-15."
+    },
+    {
+      "name": "Alliances — owner-approved universe, not folded into Marvel",
+      "title": "Stan Lee's Alliances: A Trick of Light",
+      "series": "Stan Lee's Alliances",
+      "expect": "Alliances",
+      "why": "Owner, 2026-08-15, via coordinator: 'your ready-to-apply option is approved.' Confirmed NOT Marvel canon (POW! Entertainment original) in this session's first pass — see Marvel's watch note.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-15."
+    },
+    {
+      "name": "⚠️ Devil's Quintet stays in NO universe — a real series, one owned volume, correctly filed already",
+      "title": "Stan Lee's The Devil's Quintet: The Armageddon Code - A Novel",
+      "series": "Stan Lee's The Devil's Quintet",
+      "expect": null,
+      "why": "Confirmed 2026-08-15 as a genuine 2-book series (Book 2, The Shadow Society, published 2023 — https://www.goodreads.com/series/363085-stan-lee-s-the-devil-s-quintet) with only Book 1 owned. Its series field is already correct in site/catalog.csv (curly apostrophes, U+2019) — nothing to fix — and one owned volume of a real series does not earn a universe under this file's own rule.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-15."
+    },
+    {
+      "name": "⚠️ 'The Cosmere' as a bare series is NO LONGER claimed — owner-revised order 5",
+      "title": "",
+      "series": "The Cosmere",
+      "expect": null,
+      "why": "⚠️ This case ASSERTED 'The Cosmere' until 2026-08-15, same day: the owner first said leave the series field alone and just match it, then REVISED that — blank the series non-destructively and match by title instead. 'Cosmere'/'The Cosmere' were only ever claimed as series because of the two specific rows below; now that both are fixed at the source, re-claiming either spelling as a series would silently sweep in anything else that happens to carry it, which is exactly the failure mode this file's own notes on The Cosmere used to warn about from the other side.",
+      "measured": "catalog-platform data/universes.json, 2026-08-15."
+    },
+    {
+      "name": "The Emperor's Soul is The Cosmere by TITLE now, not by its old series value",
+      "title": "The Emperor's Soul",
+      "series": "",
+      "expect": "The Cosmere",
+      "why": "library_catalog id 30. Used to carry series 'The Cosmere' (a universe masquerading as a series); the field is now blanked non-destructively (change_log preserves the old value) and this exact title is an override instead — the owner-revised order 5 outcome.",
+      "measured": "library_catalog D1 id 30, 2026-08-15."
+    },
+    {
+      "name": "same case, the sibling row — 'Cosmere' with no article, also now a title override",
+      "title": "Shadows for Silence in the Forests of Hell",
+      "series": "",
+      "expect": "The Cosmere",
+      "why": "library_catalog id 25. Used to carry series exactly 'Cosmere' (no leading article); now blanked the same way as The Emperor's Soul, id 30.",
+      "measured": "library_catalog D1 id 25, 2026-08-15."
+    },
+    {
+      "name": "Arcanum Unbounded is The Cosmere by title, series corrected to blank — order 7b",
+      "title": "Arcanum Unbounded: The Cosmere Collection",
+      "series": "",
+      "expect": "The Cosmere",
+      "why": "Owner, 2026-08-15, via coordinator: 'Arcanum should be in no series since it's in all the series and is just cosmere' — an anthology of 9 Cosmere stories across Elantris/Sel, Mistborn and Stormlight (https://en.wikipedia.org/wiki/Arcanum_Unbounded:_The_Cosmere_Collection). audiobook_catalog's series field was WRONG ('The Mistborn Saga') and is corrected via the corrections layer (ASIN B01K5Q6VWO) to blank; this title override is what catches it now.",
+      "measured": "audiobook_catalog scripts/catalog_overrides.json, 2026-08-15."
     },
     {
       "name": "Disney — a seriesless Disney Books imprint title needs its own override",

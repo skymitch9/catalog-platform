@@ -7,13 +7,30 @@
 > Editor: [`../tools/universes.mjs`](../tools/universes.mjs).
 
 A fictional universe is flagged **only where it says something the series (or,
-for board games, the title) name does not already say**. Nine universes as of
-2026-08-15 (Marvel and Disney added; The Cosmere and CAL Verse extended to
-cover owned board games), ~40 series, ~120 book/game overrides, and five
-recorded refusals. ⚠️ **This file's own wording still says "book," but nothing
-in the schema or the resolver is book-specific** — `bookOverrides`/
-`bookExclusions` key on `title`, and `title`/`series` are exactly what a
-board-game row carries too (see §6's third row, added 2026-08-15).
+for board games, the title) name does not already say**. **Eleven** universes
+as of 2026-08-15 — Marvel, Disney, Star Wars and Alliances added; The Cosmere
+and CAL Verse extended to cover owned board games — ~38 series, ~130 book/game
+overrides, and five recorded refusals. ⚠️ **This file's own wording still says
+"book," but nothing in the schema or the resolver is book-specific** —
+`bookOverrides`/`bookExclusions` key on `title`, and `title`/`series` are
+exactly what a board-game row carries too (see §6's third row, added
+2026-08-15).
+
+**Same-day revisions, in order, all 2026-08-15:** (1) Disney and Marvel added.
+(2) Owner supplied the actual test for what belongs in Disney — **crossover
+potential** ("Star Wars and Toy Story would never cross over, but games like
+Kingdom Hearts would cross over with Toy Story") — so Star Wars was split back
+out into its own universe; Toy Story and the Disney Books imprint titles stay,
+because they're the pool that Kingdom-Hearts-style crossovers actually draw
+from. (3) Alliances created, owner-approved, for the two Stan Lee's Alliances
+audiobooks (confirmed NOT Marvel canon — an independent POW! Entertainment
+property). (4) Two library_catalog works that carried the universe's own name
+("Cosmere" / "The Cosmere") as their SERIES value had that field blanked
+**non-destructively** (old value preserved in `change_log`) and caught by a
+title override instead — the series-masquerading-as-universe problem this
+file has flagged since day one. (5) Arcanum Unbounded's series was corrected
+(it collects stories from every Cosmere sub-series, so no single one is true)
+via the audiobook corrections layer, and it too is now a title override.
 
 ---
 

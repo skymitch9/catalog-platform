@@ -182,6 +182,38 @@ test('universe matches surface as their own group, with counts, only when rows e
   assert.deepEqual(noRows.universes, [], 'a universe with no rows here is not offered');
 });
 
+test('universe-name search reaches the real 2026-08-15 universes, not just synthetic ones', () => {
+  // Unlike the case above (a made-up universe name, testing the mechanism
+  // generically), this one goes through the REAL `universes` index built from
+  // data/universes.json at the top of this file — so it breaks the moment a
+  // universe is renamed or removed there, the same "an edit in another repo
+  // fails HERE" property universes.test.ts's own canary tests carry.
+  const rows = [
+    row({ title: 'Dice Throne: X-Men', universe: 'Marvel', source: 'game', format: 'boardgame' }),
+    row({ title: 'Marvel Dice Throne', universe: 'Marvel', source: 'game', format: 'boardgame' }),
+    row({ title: 'Star Wars: Ahsoka', universe: 'Star Wars', source: 'audiobook', format: 'audiobook' }),
+    row({ title: "Stan Lee's Alliances: A Trick of Light", universe: 'Alliances', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Shards of Creation', universe: 'The Cosmere', source: 'game', format: 'boardgame' }),
+    row({ title: 'Unrelated Book' }),
+  ];
+  const marvel = searchIndex('marvel', rows, universes);
+  assert.deepEqual(marvel.universes, [{ name: 'Marvel', count: 2 }]);
+  const starWars = searchIndex('star wars', rows, universes);
+  assert.deepEqual(starWars.universes, [{ name: 'Star Wars', count: 1 }]);
+  const alliances = searchIndex('alliances', rows, universes);
+  assert.deepEqual(alliances.universes, [{ name: 'Alliances', count: 1 }]);
+  // The owner-approved alias resolves too, same alias path as 'cosmere universe' above.
+  const alliancesAlias = searchIndex("stan lee's alliances", rows, universes);
+  assert.deepEqual(alliancesAlias.universes, [{ name: 'Alliances', count: 1 }]);
+  // A query that only matches a TITLE inside The Cosmere (not the universe's
+  // own name) surfaces the book/game hit, never a phantom universe group —
+  // 'shards' is not 'the cosmere' or any of its aliases.
+  const shards = searchIndex('shards', rows, universes);
+  assert.deepEqual(shards.universes, []);
+  assert.equal(shards.games.length, 1);
+  assert.equal(shards.games[0]!.title, 'Shards of Creation');
+});
+
 // --- The route, through the real app (auth blanket included). ---------------
 
 class SearchFakeDB {

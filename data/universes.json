@@ -48,15 +48,16 @@
     "will wight multiverse": "Willverse",
     "wightverse": "Willverse",
     "marvel": "Marvel",
-    "disney": "Disney"
+    "disney": "Disney",
+    "star wars": "Star Wars",
+    "alliances": "Alliances",
+    "stan lee's alliances": "Alliances"
   },
   "universes": [
     {
       "name": "The Cosmere",
       "decidedHow": "human",
       "series": [
-        "Cosmere",
-        "The Cosmere",
         "Elantris",
         "The Mistborn Saga",
         "The Stormlight Archive"
@@ -66,7 +67,7 @@
         "Reckoners",
         "The Skyward Series"
       ],
-      "notes": "⚠️ 'Cosmere' and 'The Cosmere' currently exist as SERIES values on two different works — a universe masquerading as a series, spelled two ways. Those two works need a real series (or none) once this lands. Reckoners and Skyward are the same author and deliberately excluded; Skyward is the Cytoverse.",
+      "notes": "⚠️ RESOLVED 2026-08-15 (was open since 2026-08-11): 'Cosmere' and 'The Cosmere' used to exist as literal SERIES values on two library_catalog works (id 25 Shadows for Silence in the Forests of Hell, id 30 The Emperor's Soul) — a universe masquerading as a series, spelled two ways. Both series fields are now blanked (change_log preserves the old values; library_catalog scripts/blank-cosmere-series-2026-08-15.mjs), and both titles are exact overrides below instead. 'Cosmere'/'The Cosmere' are therefore NOT claimed series here any more — if either spelling ever appears as a real series value again, it will resolve to no universe until re-examined, which is the correct default per this file's own rule (guess-nothing over sweep-everything).",
       "confirmed": "Owner approved 2026-08-11, series and book-level, after reviewing all 19 unclassified titles.",
       "bookOverrides": [
         {
@@ -196,6 +197,22 @@
         {
           "title": "Cosmere RPG: Mistborn Deluxe Dice & Case",
           "why": "board-game D1 id 538, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Shards of Creation",
+          "why": "board-game D1 id 844, publisher Brotherwise Games (same publisher as the already-claimed Cosmere RPG line and Mistborn deckbuilder). Owner, 2026-08-15, via coordinator: 'literally all the gods from the cosmere' — the Shards of Adonalsium. Series is null and no expansion/accessory rows exist (no parent_item_id = 844 rows), so this is a single title override."
+        },
+        {
+          "title": "Shadows for Silence in the Forests of Hell",
+          "why": "Owner, 2026-08-15, via coordinator: the 2 library_catalog works that carried this as a literal SERIES value (a universe masquerading as a series, per this universe's own notes since 2026-08-11) had their series field blanked non-destructively (change_log old_json preserves 'Cosmere'/'The Cosmere' + the bogus 'Book 1' index — scripts/blank-cosmere-series-2026-08-15.mjs in library_catalog). Replaced by an exact title override on the same two rows, per this file's own rule (§ order 5/7): a title override when the series matcher no longer applies."
+        },
+        {
+          "title": "The Emperor's Soul",
+          "why": "Owner, 2026-08-15, via coordinator: the 2 library_catalog works that carried this as a literal SERIES value (a universe masquerading as a series, per this universe's own notes since 2026-08-11) had their series field blanked non-destructively (change_log old_json preserves 'Cosmere'/'The Cosmere' + the bogus 'Book 1' index — scripts/blank-cosmere-series-2026-08-15.mjs in library_catalog). Replaced by an exact title override on the same two rows, per this file's own rule (§ order 5/7): a title override when the series matcher no longer applies."
+        },
+        {
+          "title": "Arcanum Unbounded: The Cosmere Collection",
+          "why": "Owner, 2026-08-15, via coordinator: 'Arcanum should be in no series since it's in all the series and is just cosmere.' Anthology collecting 9 Cosmere stories across Elantris/Sel, Mistborn, Stormlight and seriesless shorts (https://en.wikipedia.org/wiki/Arcanum_Unbounded:_The_Cosmere_Collection). audiobook_catalog series field corrected from the wrong 'The Mistborn Saga' to blank via the corrections layer (scripts/catalog_overrides.json, ASIN B01K5Q6VWO) — this title override is what catches it now that no series claims it."
         }
       ],
       "bookExclusions": [
@@ -428,7 +445,7 @@
       "notes": "A genuine shared narrative continuity (Marvel Comics/MCU) — fits this file's own definition more cleanly than Disney does (see Disney's notes). The board game 'Dice Throne' series is deliberately NOT claimed at series level: it is a MIXED series, the same shape as The Cosmere's 'Secret Projects' — most Dice Throne content (Vanguard, Outcasts, Season One/Two ReRolled, Mystic Brawler, Alchemist, Santa vs Krampus, Slam Throne) is original IP with zero Marvel connection, so only the Marvel/X-Men/Deadpool-branded rows are claimed, one exact title at a time, following this file's own exclusions-first / exact-title-only rule rather than a series sweep.",
       "evidence": "Measured 2026-08-15. board-game D1 (board-game-catalog): 72 rows across 5 base items and their full expansion/accessory trees — Dice Throne: X-Men (id 96), Dice Throne: Deadpool Box Deluxe Edition (id 114), Marvel Dice Throne: Missions (id 115), Marvel Dice Throne (id 677), Marvel Villainous: Infinite Power (id 821) — carrying Wolverine, Storm, Cyclops, Rogue, Gambit, Psylocke, Iceman, Jean Grey, Deadpool, Scarlet Witch, Thor, Loki, Spider-Man (Miles Morales), Black Panther, Captain Marvel, Doctor Strange and Black Widow. audiobook_catalog site/catalog.csv: 4 rows (3 Marvel's Avengers: Age of Ultron tie-ins + 1 Disney Junior Marvel Spidey title). library_catalog D1: 1 row, 'Miles Morales (Marvel Spider-Man)', filed under the generic 'Little Golden Book' imprint series — not claimed at series level for the same reason 'Dice Throne' is not: Little Golden Book spans hundreds of unrelated titles.",
       "watch": [
-        "Owner addition 2026-08-15: investigated Stan Lee's Alliances (A New Reality, A Trick of Light) and Stan Lee's The Devil's Quintet: The Armageddon Code, both in audiobook_catalog. NOT added here. Both are original POW! Entertainment / Audible-original properties Lee co-created independent of Marvel Comics/MCU — Alliances stars Nia and Cameron Ackerson against an org called OPTIC (Audible/Hollywood Reporter coverage of the 2019 launch); The Devil's Quintet is an original Navy-SEALs-and-a-Faustian-bargain thriller co-written with Jay Bonansinga (Tor/Forge). Neither shares characters or setting with Marvel. See the session report for full sourcing and a proposed-but-not-applied 'Alliances' universe option."
+        "2026-08-15: Stan Lee's Alliances (A New Reality, A Trick of Light) and Stan Lee's The Devil's Quintet: The Armageddon Code, both in audiobook_catalog, were investigated and left OUT of Marvel — both are original POW! Entertainment/Audible properties, not Marvel Comics/MCU canon (sources in the session report). Alliances got its own universe the same day, owner-approved — see the Alliances universe entry. The Devil's Quintet stayed out of any universe: its series field ('Stan Lee's The Devil's Quintet') is already correct in site/catalog.csv, and it is confirmed 2026-08-15 to be a real 2-book series (Book 1 The Armageddon Code, owned; Book 2 The Shadow Society, 2023, NOT owned — https://www.goodreads.com/series/363085-stan-lee-s-the-devil-s-quintet) — one owned volume of a real series does not earn a universe under this file's own rule."
       ],
       "series": [],
       "bookOverrides": [
@@ -747,15 +764,12 @@
       "name": "Disney",
       "decidedHow": "llm",
       "confirmed": "Owner/coordinator decision 2026-08-15: Disney and Marvel are separate universes — an explicit instruction. Per-item membership is agent-proposed from measured inventory on 2026-08-15; not individually owner-reviewed. Recommend an owner skim.",
-      "notes": "⚠️ UNLIKE every other universe in this file, 'Disney' is a STUDIO/OWNERSHIP umbrella, not one connected fictional continuity — Cars, Toy Story, The Aristocats, Ariel/The Little Mermaid, Doc McStuffins, Vampirina and Star Wars share no characters or plot and never cross over. This is exactly the shape this file's own _refused entry warns about ('a brand or an imprint, not a fictional continuity' — the children's-picture-book-lines refusal). Included anyway because the owner/coordinator explicitly asked for Disney split out from Marvel as its own shelf. Flagged here rather than silently applying the file's usual bar, so a future reviewer sees the tension instead of assuming Disney passed the same test Willverse or Maasverse did.",
+      "notes": "⚠️ UNLIKE every other universe in this file, 'Disney' groups titles by STUDIO/OWNERSHIP filtered through the owner's own CROSSOVER-POTENTIAL test (2026-08-15, via coordinator): 'universes are defined by CROSSOVER POTENTIAL — Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars failed that test and was split out into its own universe the same day (see the Star Wars universe entry) — what remains here (Toy Story, Cars, The Aristocats, Ariel/The Little Mermaid, Doc McStuffins, Vampirina, the Disney Princess/Villains anthology entries) is the pool that Kingdom-Hearts-style crossover media actually draws from, which is the sense in which 'Disney' still earns a shelf rather than being a bare imprint-brand grouping. Apply this test to any future Disney-adjacent addition: does it plausibly crossover with the rest of this pool, or does it only share a parent studio?",
       "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 12 'Disney Books'-imprint titles with a blank series value (Cars: Tractor Trouble - Disney Classic Stories; Disney Fairies: New Friends; Disney Junior: Doc McStuffins: Toy Hospital; Disney Junior: Vampirina: Vampire for President; Disney Pixar Cars: Hitting the Speedway; Disney Princess: Tiana and Her Loyal Friend; Disney Villains: Jaffar: Fortune Teller Fiasco [catalog's own spelling]; Disney: The Aristocats: The Birthday Wish; Finding Dory - Disney Classic Stories; The Legend of Sleepy Hollow - Disney Classic Stories; Disney Junior Ariel: A Magical Mess; Star Wars: Ahsoka), plus 2 Star Wars series (Star Wars: The High Republic ×3 rows, Star Wars: Legends ×2 rows) and one Toy Story row carrying a real series value. library_catalog D1: 1 row, 'Star Wars: The Fight to Survive' (series 'Star Wars: Boba Fett'). No pure-Disney board game exists in board-game D1 — Marvel Villainous: Infinite Power is the only Disney-adjacent game found, and its content is Marvel IP (Ravensburger's Marvel-licensed Villainous line), so it is assigned to Marvel instead, per the owner's split.",
       "watch": [
-        "Star Wars is the strongest internal candidate for its OWN universe — a multi-decade continuity, no weaker a case than Willverse's two series — folded into Disney here only because the task asked for exactly two new universes (Disney, Marvel). Revisit if the owner wants Star Wars split out on its own."
+        "2026-08-15: Star Wars was the strongest internal candidate for its own universe; split out the same day once the owner supplied the crossover-potential test above. This note is now resolved — see the Star Wars universe entry."
       ],
       "series": [
-        "Star Wars: The High Republic",
-        "Star Wars: Legends",
-        "Star Wars: Boba Fett",
         "Toy Story"
       ],
       "bookOverrides": [
@@ -802,12 +816,39 @@
         {
           "title": "Disney Junior Ariel: A Magical Mess",
           "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior Ariel: A Magical Mess' carries a blank series value, so it needs its own title override rather than a series claim."
-        },
-        {
-          "title": "Star Wars: Ahsoka",
-          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Star Wars: Ahsoka' carries a blank series value, so it needs its own title override rather than a series claim."
         }
       ],
+      "bookExclusions": []
+    },
+    {
+      "name": "Star Wars",
+      "decidedHow": "llm",
+      "confirmed": "Split out of Disney 2026-08-15 on the owner's explicit criterion, relayed by the coordinator: universes are defined by CROSSOVER POTENTIAL, and Star Wars's continuity never crosses with Toy Story's or the Disney Books imprint pool (unlike Kingdom-Hearts-style crossovers, which is why those stay in Disney). Owner/coordinator approved the split; per-item membership remains 'llm'-tier, not individually owner-reviewed.",
+      "notes": "A genuine, self-contained multi-decade continuity — flagged as the strongest internal candidate for its own universe in Disney's original 2026-08-15 `watch` note, and split out the same day once the owner supplied the actual test (crossover potential) to apply. No board game exists in board-game D1 for this franchise as of 2026-08-15 (re-checked on the owner's prompt: no 'star wars' hit in title or series, and 'Villainous' only turns up as Marvel Villainous: Infinite Power, already in Marvel) — Star Wars stays book-only until one is owned.",
+      "evidence": "audiobook_catalog site/catalog.csv: 3 rows sharing series 'Star Wars: The High Republic' (Rising Storm, Light of the Jedi, Into the Dark) + 2 rows sharing 'Star Wars: Legends' (The Old Republic: Revan, Darth Plagueis) + 1 seriesless row ('Star Wars: Ahsoka'). library_catalog D1: 1 row, 'Star Wars: The Fight to Survive' (id 272, series 'Star Wars: Boba Fett'). Moved verbatim out of Disney's equivalent entries — same rows, same measurement date.",
+      "series": [
+        "Star Wars: The High Republic",
+        "Star Wars: Legends",
+        "Star Wars: Boba Fett"
+      ],
+      "bookOverrides": [
+        {
+          "title": "Star Wars: Ahsoka",
+          "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got. Seriesless row (audiobook_catalog site/catalog.csv), so it needs its own title override rather than a series claim."
+        }
+      ],
+      "bookExclusions": []
+    },
+    {
+      "name": "Alliances",
+      "decidedHow": "human",
+      "confirmed": "Owner-approved creation, 2026-08-15, via coordinator: 'your ready-to-apply option is approved' — the option proposed in this session's first-pass report after investigating the two Stan Lee's Alliances audiobooks. Named 'Alliances' rather than the catalog's own 'Stan Lee's Alliances' series string because the shorter form is registered as the canonical target and the longer one as an alias, so both spellings resolve; recorded here rather than guessed silently.",
+      "notes": "POW! Entertainment / Audible-original audio-drama franchise Stan Lee co-created independent of Marvel Comics/MCU, launched 2019 — confirmed NOT Marvel canon in this session's first pass (see Marvel's `watch` field). A New Reality and A Trick of Light both carry the exact series value 'Stan Lee's Alliances' in audiobook_catalog site/catalog.csv (series_index 2 and 1 respectively), so this is a genuine multi-volume continuity the household owns two members of — the ordinary bar this file applies everywhere else, not an exception.",
+      "evidence": "Story: a mysterious woman, Nia, and a Midwestern teenager, Cameron Ackerson, gain the power to see a hidden reality and clash with an organisation called OPTIC — created by Stan Lee with Ryan Silbert and Luke Lieberman (the latter started his career at Lee's own POW! Entertainment). Sources: Audible newsroom (https://www.audible.com/about/newsroom/stan-lees-alliances-a-trick-of-light-premiering-june-27th-on-audible) and Den of Geek's making-of piece (https://www.denofgeek.com/comics/stan-lees-alliances-a-trick-of-light-the-making-of-the-marvel-icons-final-universe/), both retrieved 2026-08-15.",
+      "series": [
+        "Stan Lee's Alliances"
+      ],
+      "bookOverrides": [],
       "bookExclusions": []
     }
   ],
@@ -1812,6 +1853,120 @@
       "title": "Cosmere RPG: Mistborn Deluxe Dice & Case",
       "why": "board-game D1 id 538, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
       "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "remove-series",
+      "universe": "Disney",
+      "series": "Star Wars: The High Republic",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "remove-series",
+      "universe": "Disney",
+      "series": "Star Wars: Legends",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "remove-series",
+      "universe": "Disney",
+      "series": "Star Wars: Boba Fett",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "remove-book",
+      "universe": "Disney",
+      "title": "Star Wars: Ahsoka",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Star Wars",
+      "series": "Star Wars: The High Republic",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Star Wars",
+      "series": "Star Wars: Legends",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Star Wars",
+      "series": "Star Wars: Boba Fett",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Star Wars",
+      "title": "Star Wars: Ahsoka",
+      "why": "Owner's criterion (2026-08-15, via coordinator): universes are defined by CROSSOVER POTENTIAL — 'Star Wars and Toy Story would never cross over, but games like Kingdom Hearts would cross over with Toy Story.' Star Wars's continuity never touches Toy Story's or the rest of the Disney Books imprint pool, so it fails Disney's own bar and gets its own shelf, the same treatment Marvel already got. Seriesless row (audiobook_catalog site/catalog.csv), so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Shards of Creation",
+      "why": "board-game D1 id 844, publisher Brotherwise Games (same publisher as the already-claimed Cosmere RPG line and Mistborn deckbuilder). Owner, 2026-08-15, via coordinator: 'literally all the gods from the cosmere' — the Shards of Adonalsium. Series is null and no expansion/accessory rows exist (no parent_item_id = 844 rows), so this is a single title override.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Alliances",
+      "series": "Stan Lee's Alliances",
+      "why": "audiobook_catalog site/catalog.csv: both owned rows (A New Reality, A Trick of Light) carry this exact series value. Owner-approved universe creation 2026-08-15.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "remove-series",
+      "universe": "The Cosmere",
+      "series": "Cosmere",
+      "why": "Owner, 2026-08-15, via coordinator: the 2 library_catalog works that carried this as a literal SERIES value (a universe masquerading as a series, per this universe's own notes since 2026-08-11) had their series field blanked non-destructively (change_log old_json preserves 'Cosmere'/'The Cosmere' + the bogus 'Book 1' index — scripts/blank-cosmere-series-2026-08-15.mjs in library_catalog). Replaced by an exact title override on the same two rows, per this file's own rule (§ order 5/7): a title override when the series matcher no longer applies."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "remove-series",
+      "universe": "The Cosmere",
+      "series": "The Cosmere",
+      "why": "Owner, 2026-08-15, via coordinator: the 2 library_catalog works that carried this as a literal SERIES value (a universe masquerading as a series, per this universe's own notes since 2026-08-11) had their series field blanked non-destructively (change_log old_json preserves 'Cosmere'/'The Cosmere' + the bogus 'Book 1' index — scripts/blank-cosmere-series-2026-08-15.mjs in library_catalog). Replaced by an exact title override on the same two rows, per this file's own rule (§ order 5/7): a title override when the series matcher no longer applies."
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Shadows for Silence in the Forests of Hell",
+      "why": "Owner, 2026-08-15, via coordinator: the 2 library_catalog works that carried this as a literal SERIES value (a universe masquerading as a series, per this universe's own notes since 2026-08-11) had their series field blanked non-destructively (change_log old_json preserves 'Cosmere'/'The Cosmere' + the bogus 'Book 1' index — scripts/blank-cosmere-series-2026-08-15.mjs in library_catalog). Replaced by an exact title override on the same two rows, per this file's own rule (§ order 5/7): a title override when the series matcher no longer applies.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "The Emperor's Soul",
+      "why": "Owner, 2026-08-15, via coordinator: the 2 library_catalog works that carried this as a literal SERIES value (a universe masquerading as a series, per this universe's own notes since 2026-08-11) had their series field blanked non-destructively (change_log old_json preserves 'Cosmere'/'The Cosmere' + the bogus 'Book 1' index — scripts/blank-cosmere-series-2026-08-15.mjs in library_catalog). Replaced by an exact title override on the same two rows, per this file's own rule (§ order 5/7): a title override when the series matcher no longer applies.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Arcanum Unbounded: The Cosmere Collection",
+      "why": "Owner, 2026-08-15, via coordinator: 'Arcanum should be in no series since it's in all the series and is just cosmere.' Anthology collecting 9 Cosmere stories across Elantris/Sel, Mistborn, Stormlight and seriesless shorts (https://en.wikipedia.org/wiki/Arcanum_Unbounded:_The_Cosmere_Collection). audiobook_catalog series field corrected from the wrong 'The Mistborn Saga' to blank via the corrections layer (scripts/catalog_overrides.json, ASIN B01K5Q6VWO) — this title override is what catches it now that no series claims it.",
+      "decidedHow": "human"
     }
   ]
 }
