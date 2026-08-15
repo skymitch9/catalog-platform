@@ -218,3 +218,49 @@ Fable and waits for the owner to release it (e.g. after a weekly reset):
    against orphaning. Do BEFORE any reviewed audiobook is retitled.
 4. Any future Firestore-rules rewrite or estate auth-worker change touching
    verification/secrets.
+
+## Research ideas — Claude's suggestions for the trio (2026-08-14, owner asked)
+
+Unordered; each grounded in machinery that already exists. "Research" = scope
+it, don't build it. Promote any line to a real item with an owner word.
+
+1. **Estate dashboard on the apex** — signed-in members see one page: current
+   reads/listens, club due dates + RSVPs, recent additions across all three
+   catalogs. Everything it needs already answers an API (index, /estate/me,
+   clubs, additions_log).
+2. **"Year in the estate" annual recap** — a Wrapped-style page per member:
+   books finished, hours listened, clubs, reviews, series completed. The data
+   all exists (progress, read-states, reviews, additions log). Pure fun,
+   high delight-per-token.
+3. **Game nights = clubs machinery generalized** — the meeting scheduler,
+   RSVP + .ics, and Discord nudges are game-night features wearing book-club
+   clothes. Research what a games-site "game night" surface reuses verbatim
+   vs needs new (play-log with players/winners is the genuinely new part).
+4. **Duplicate-purchase guard** — before buying, one check: "you already own
+   this (audiobook)". The index answers it today; research the surface —
+   wishlist integration, a bookmarklet, or a /have-style lookup on the apex.
+   Extends the library Wishlist estate-wide.
+5. **Cross-format series completion view** — the library's series ladders +
+   audio corroboration generalized: "series you're collecting, gaps by
+   format, what ANY format would complete." The certainGaps/onAudio math is
+   built; this is a presentation + cross-catalog join question.
+6. **Universes page on the apex** — the shared universes.json (7 universes)
+   joined across all three catalogs: one page per universe showing books,
+   audiobooks, games. Matches the combined-site long-term plan; also feeds
+   the Discord /universe idea.
+7. **Estate status page** — pipeline last-run, index freshness per source,
+   deploy versions, worker health. The games cron died silently three times
+   before anyone noticed; the health endpoints exist, nothing watches them.
+   Small page, real observability.
+8. **Covers consolidation** — covers live on covers.heygabi.ai (R2),
+   bookcovers, library, plus a long third-party hotlink tail (geekdo,
+   shopify, kickstarter...) that bloats the apex CSP and can rot. Research
+   the rehost-to-R2 pass (improvement-proposals §3 already sketches it).
+9. **PWA/installability for the audiobook site** — the owner drives it from
+   a phone constantly; manifest + install prompt + offline catalog browsing
+   are cheap for a static site this shape. Research service-worker cache
+   strategy against the /dev/-vs-prod lane model.
+10. **Backup posture** — D1 (library, index, estate_auth) and Firestore have
+    no rehearsed restore story. Research D1 time-travel/export options, a
+    Firestore export cadence, and write the restore runbook docs/access
+    style. The estate is now valuable enough to deserve one.
