@@ -21,6 +21,27 @@ name: Backup (manual)
 #   firestore → scripts/backup-firestore.mjs, a recursive per-collection JSON
 #                dump via a service account (no gcloud/GCS infrastructure).
 #
+#   r2        → scripts/backup-r2.mjs, a full object dump of the R2 buckets
+#                that have no other master copy (`library-covers`), via the
+#                plain Cloudflare REST API (list + get, Bearer-token auth) —
+#                no S3-compatible credentials needed. Closes the gap recorded
+#                in docs/access/backup-restore.md §8 on 2026-08-14. See that
+#                script's header comment for the full "why REST and not
+#                wrangler/S3" reasoning and the permission this job's token
+#                needs (`Workers R2 Storage Read`, added on top of the
+#                existing CLOUDFLARE_API_TOKEN — NOT part of the "Edit
+#                Cloudflare Workers" template the token started from).
+#                `audiobook-covers` is included too for completeness even
+#                though it's independently reproducible from the local master
+#                (§8) — the export is cheap, same reasoning as index_catalog
+#                in the d1 job. `bgc-photos` (Board_Game_Catalog's photo
+#                bucket) is deliberately excluded: unbound and 0 objects as
+#                of 2026-08-15 (verified against its own repo's HANDOFF.md
+#                and a live listing) — nothing to back up yet. Add it here
+#                the day it goes live. The planned `game-covers` bucket
+#                (docs/info/covers-consolidation-plan.md) does not exist yet
+#                either — add a matrix entry once it's created.
+#
 # ⚠️ WHY ALL FOUR D1 BACKUPS LAND HERE AND NOT IN THE REPO THAT OWNS EACH DB:
 # `Board_Game_Catalog` is a PUBLIC repo (verified via `gh repo view`,
 # 2026-08-14). GitHub's own docs + the linked community reports say
@@ -51,6 +72,7 @@ on:
         options:
           - d1
           - firestore
+          - r2
           - all
 
 permissions:
@@ -61,6 +83,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  r2:
+    if: inputs.target == 'r2' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '113be82b840c956b8378a187047ab3ea' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        bucket: [library-covers, audiobook-covers]
+    steps:
+      - name: Guard — CLOUDFLARE_API_TOKEN must exist
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN: repo Settings → Secrets → Actions (or: gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/catalog-platform)."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Back up ${{ matrix.bucket }}
+        run: |
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "OUT=backups/r2-${{ matrix.bucket }}-$STAMP" >> "$GITHUB_ENV"
+          BACKUP_OUT_DIR="backups/r2-${{ matrix.bucket }}-$STAMP" node scripts/backup-r2.mjs "${{ matrix.bucket }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r2-${{ matrix.bucket }}-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          retention-days: 90
+          if-no-files-found: error
+
   d1:
     if: inputs.target == 'd1' || inputs.target == 'all'
     runs-on: ubuntu-latest
