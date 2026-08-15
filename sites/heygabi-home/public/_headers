@@ -77,6 +77,17 @@
 # it needs no separate entry. No img-src beyond the inline SVG favicon —
 # this page renders no covers. frame-src, form-action and base-uri all stay
 # 'none' — nothing on this page ever needs them.
+#
+# /universes (added 2026-08-15, one row per estate universe expanding to
+# /api/universe/:name). Signs in (universes.js reuses estate-auth.js), so it
+# carries the front door's script-src (Firebase SDK) and frame-src (the
+# popup/redirect sign-in flow), but connect-src drops auth.heygabi.ai — this
+# page shows no admin surface and never calls that Worker. img-src is the
+# SAME cover-host allow-list as the front door's own "/" rule below, copied
+# verbatim rather than hand-maintained separately, because a universe's rows
+# can carry a cover from any source the estate indexes (audiobook, library or
+# game) — read that list fresh before editing either one; a copy that drifts
+# from "/" is how a cover host silently blanks here but not there.
 
 /status
   X-Frame-Options: DENY
@@ -85,6 +96,14 @@
 /status/
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/universes
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://cdn.shopify.com https://imgcdn.gamefound.com https://www.dndbeyond.com https://dicethrone.com https://d1wgd08o7gfznj.cloudfront.net https://images.squarespace-cdn.com https://i.kickstarter.com https://img.itch.zone https://loottavern.com https://files.d20.io https://cdn.backerkit.com https://cdn11.bigcommerce.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/universes/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://cdn.shopify.com https://imgcdn.gamefound.com https://www.dndbeyond.com https://dicethrone.com https://d1wgd08o7gfznj.cloudfront.net https://images.squarespace-cdn.com https://i.kickstarter.com https://img.itch.zone https://loottavern.com https://files.d20.io https://cdn.backerkit.com https://cdn11.bigcommerce.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /*
   X-Content-Type-Options: nosniff
