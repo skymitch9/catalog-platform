@@ -9,6 +9,19 @@
 # rules. A NEW page added under public/ therefore ships with NO CSP until a rule
 # is added here — add one, strict by default, in the same commit as the page.
 #
+# ⚠️ TRAILING SLASH, discovered 2026-08-14 building /status: Pages 308s a
+# subdirectory request from its bare form ("/admin") to the trailing-slash
+# form ("/admin/") before serving the file, and a _headers path pattern
+# matches ONLY the exact request path — "/admin" does NOT also match
+# "/admin/". The 308 itself carries the CSP (it matched), but the redirect's
+# empty body is never rendered, so the browser applies whatever headers
+# arrive on the FINAL 200 — which had none. Net effect: /admin and /todo have
+# been serving their real page with **no CSP at all** since each was added;
+# only curling the bare path (which the deploy checklists happen to do)
+# looked like proof it worked. Fixed here by adding an explicit
+# trailing-slash duplicate of every subdirectory rule; a future page under
+# public/<name>/ needs both "/<name>" and "/<name>/" for this reason.
+#
 # THE FRONT DOOR + /admin POLICY (estate-auth-design.md §7.2 — the old
 # "zero external requests" rule was overturned WITH the reasoning on record;
 # the in-file comment atop index.html carries it). Allow-listed, not open:
@@ -55,6 +68,23 @@
 # /todo KEEPS THE ORIGINAL default-src 'none' NO-JS POLICY. Its filter is
 # CSS-only radios and its README says it must never acquire JavaScript; the
 # strict CSP is the enforcement of that sentence.
+#
+# /status (added 2026-08-14, the estate status page — "I want to see all the
+# pipelines"). No sign-in, so no Firebase SDK and no script-src beyond
+# 'self'. connect-src names exactly the five hosts status.js fetches: the
+# four /api/health origins it reads as JSON (index/auth/library/games) plus
+# the audiobook site root, whose /dev/ lane is checked at the same origin so
+# it needs no separate entry. No img-src beyond the inline SVG favicon —
+# this page renders no covers. frame-src, form-action and base-uri all stay
+# 'none' — nothing on this page ever needs them.
+
+/status
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://audiobooks.heygabi.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /*
   X-Content-Type-Options: nosniff
@@ -69,6 +99,14 @@
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+/admin/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://cf.geekdo-images.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 /todo
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/todo/
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

@@ -1,0 +1,375 @@
+/**
+ * status.js — the estate status page (owner ask, 2026-08-14: "I want to see
+ * all the pipelines"). Reads five public health/reachability surfaces and
+ * renders a quiet red/amber/green view. No sign-in anywhere on this page —
+ * every endpoint it touches answers signed-out by design, and every payload
+ * is counts and timestamps only (checked against each route's own source
+ * before this page shipped; see index.html's header comment).
+ *
+ * Sections, each independent so one dead host cannot blank the others:
+ *   1. Shared index  — one GET to index.heygabi.ai/api/health, three rows
+ *      (audiobook/library/games) read out of its `sources` object.
+ *   2. Workers        — the index (reusing #1's fetch), library, games and
+ *      estate-auth /api/health endpoints.
+ *   3. Sites           — a no-cors reachability probe of the three catalog
+ *      site roots plus the audiobook site's /dev/ lane (its own two-lane
+ *      deploy — the apex itself has no such lane, deploy.md §4 is explicit
+ *      that it deliberately does not copy that architecture).
+ *
+ * ⚠️ Reachability, not status codes: none of the four sites this page HEADs
+ * send Access-Control-Allow-Origin (verified — Cloudflare Pages does not by
+ * default), so a normal cross-origin fetch would reject before a status
+ * code is ever visible to this page. `mode: 'no-cors'` sidesteps that: the
+ * browser still makes the request and the promise still resolves once a
+ * response arrives, but the response is opaque — no status, no body. That
+ * is enough to tell "answered" from "did not answer," which is what the
+ * Sites section claims and nothing more.
+ */
+
+const REFRESH_INTERVAL_MS = 60_000;
+const TICK_INTERVAL_MS = 5_000;
+const FETCH_TIMEOUT_MS = 8_000;
+
+const INDEX_ORIGIN = 'https://index.heygabi.ai';
+const LIBRARY_ORIGIN = 'https://library.heygabi.ai';
+const GAMES_ORIGIN = 'https://boardgames.heygabi.ai';
+const AUTH_ORIGIN = 'https://auth.heygabi.ai';
+const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
+
+/**
+ * Per-source staleness thresholds for the shared index (design:
+ * catalog-platform/docs/info/index-worker-design.md §5, §7 step 4).
+ *
+ * `audiobook` is OWNER-SPECIFIED, not a guess: the pipeline pushes on an 8h
+ * cadence and its index push IS that pipeline's heartbeat, so amber/red are
+ * "8h cadence + slack" exactly as asked.
+ *
+ * `library` and `games` are GUESSES, marked as such deliberately. Both push
+ * on every catalog-mutating write PLUS a staleness backstop that rides
+ * ordinary /api/* request traffic (at most once per isolate-hour, re-pushing
+ * only past 24h stale — see library_catalog and Board_Game_Catalog
+ * apps/worker/src/lib/index-push.ts). Neither catalog has a cron backing
+ * this any more (the games cron backstop was retired 2026-08-13 for being
+ * unobservable). That means an untouched app's index row can age
+ * indefinitely without anything being wrong — nobody opened the app, so
+ * nothing pushed, because nothing changed either. These thresholds are
+ * therefore "worth a glance," not "certainly broken": chosen as the 24h
+ * backstop ceiling plus slack for the hourly check granularity (amber), and
+ * two full backstop cycles (red) — round numbers, not measurements.
+ */
+const INDEX_THRESHOLDS = {
+  audiobook: {
+    label: 'Audiobook',
+    amberMs: 9 * 3600_000,
+    redMs: 17 * 3600_000,
+    note: 'The 8h audiobook pipeline’s heartbeat is its index push — this row is that pipeline’s freshness signal, not a separate check.',
+    guess: false,
+  },
+  library: {
+    label: 'Library',
+    amberMs: 26 * 3600_000,
+    redMs: 48 * 3600_000,
+    note: 'GUESS — pushes on edit + a 24h backstop riding request traffic, no cron. A long age can mean "quiet," not "broken."',
+    guess: true,
+  },
+  game: {
+    label: 'Games',
+    amberMs: 26 * 3600_000,
+    redMs: 48 * 3600_000,
+    note: 'GUESS — same push design as library (on-edit + a 24h traffic-riding backstop). Same caveat: quiet ≠ broken.',
+    guess: true,
+  },
+};
+/** Display order — matches the front door's Audio / Books / Games cards. */
+const INDEX_SOURCE_ORDER = ['audiobook', 'library', 'game'];
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+function formatAge(ms) {
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  if (s < 10) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  if (h < 24) return remM ? `${h}h ${remM}m ago` : `${h}h ago`;
+  const d = Math.floor(h / 24);
+  const remH = h % 24;
+  return remH ? `${d}d ${remH}h ago` : `${d}d ago`;
+}
+
+/** GET JSON with a timeout. Never throws — the caller reads `.ok`. */
+async function fetchJSON(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    let body = null;
+    try { body = await res.json(); } catch { /* non-JSON error body */ }
+    return { reached: true, httpOk: res.ok, status: res.status, body };
+  } catch (err) {
+    const timedOut = err && err.name === 'AbortError';
+    return { reached: false, error: timedOut ? 'timed out' : 'network error (offline, or CORS)' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * A no-cors reachability probe — see the file header for why this is the
+ * right (and only) tool for a site with no CORS headers. HEAD, never GET:
+ * the audiobook site's root ships a multi-megabyte generated page, and a
+ * HEAD costs nothing regardless of body size on either side of the check.
+ */
+async function probeReachable(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Row rendering — one shape shared by all three sections
+// ---------------------------------------------------------------------------
+
+/** Rows keep their DOM node + checked-at timestamp so the ticker (below)
+ *  can update "checked Ns ago" without re-fetching anything. */
+const rowRegistry = new Map(); // id -> { el, checkedAtEl, checkedAt }
+
+function makeRow(id, name) {
+  const li = document.createElement('li');
+  li.className = 'row';
+  li.dataset.state = 'pending';
+  li.id = `row-${id}`;
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.setAttribute('aria-hidden', 'true');
+
+  const body = document.createElement('div');
+  body.className = 'row-body';
+
+  const head = document.createElement('div');
+  head.className = 'row-head';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'row-name';
+  nameEl.textContent = name;
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  badge.textContent = 'checking…';
+  head.append(nameEl, badge);
+
+  const detail = document.createElement('p');
+  detail.className = 'row-detail';
+  detail.textContent = 'Checking…';
+
+  const note = document.createElement('p');
+  note.className = 'row-note';
+  note.hidden = true;
+
+  const checked = document.createElement('p');
+  checked.className = 'row-checked';
+  checked.textContent = '';
+
+  body.append(head, detail, note, checked);
+  li.append(dot, body);
+
+  rowRegistry.set(id, { el: li, badgeEl: badge, detailEl: detail, noteEl: note, checkedEl: checked, checkedAt: null });
+  return li;
+}
+
+const STATE_LABELS = { ok: 'OK', warn: 'WARN', danger: 'DOWN' };
+
+function updateRow(id, state, detailText, noteText, checkedAt) {
+  const row = rowRegistry.get(id);
+  if (!row) return;
+  row.el.dataset.state = state;
+  row.badgeEl.textContent = STATE_LABELS[state] || state;
+  row.detailEl.textContent = detailText;
+  if (noteText) {
+    row.noteEl.textContent = noteText;
+    row.noteEl.hidden = false;
+  } else {
+    row.noteEl.hidden = true;
+  }
+  row.checkedAt = checkedAt;
+  tickRow(id);
+}
+
+function tickRow(id) {
+  const row = rowRegistry.get(id);
+  if (!row || row.checkedAt == null) return;
+  row.checkedEl.textContent = `checked ${formatAge(Date.now() - row.checkedAt)}`;
+}
+
+function tickAll() {
+  for (const id of rowRegistry.keys()) tickRow(id);
+}
+
+// ---------------------------------------------------------------------------
+// Section builders (called once, at boot)
+// ---------------------------------------------------------------------------
+
+function buildIndexSection() {
+  const ul = document.getElementById('index-rows');
+  for (const key of INDEX_SOURCE_ORDER) {
+    ul.appendChild(makeRow(`idx-${key}`, INDEX_THRESHOLDS[key].label));
+  }
+}
+
+function buildWorkerSection() {
+  const ul = document.getElementById('worker-rows');
+  ul.appendChild(makeRow('wk-index', 'Shared index (index.heygabi.ai)'));
+  ul.appendChild(makeRow('wk-library', 'Library (library.heygabi.ai)'));
+  ul.appendChild(makeRow('wk-games', 'Games (boardgames.heygabi.ai)'));
+  ul.appendChild(makeRow('wk-auth', 'Estate auth (auth.heygabi.ai)'));
+}
+
+function buildSiteSection() {
+  const ul = document.getElementById('site-rows');
+  ul.appendChild(makeRow('site-audio', 'Audio (audiobooks.heygabi.ai)'));
+  ul.appendChild(makeRow('site-audio-dev', 'Audio — /dev/ lane'));
+  ul.appendChild(makeRow('site-library', 'Books (library.heygabi.ai)'));
+  ul.appendChild(makeRow('site-games', 'Games (boardgames.heygabi.ai)'));
+}
+
+// ---------------------------------------------------------------------------
+// Refresh — one pass touches all three sections, independently per row
+// ---------------------------------------------------------------------------
+
+function renderIndexSection(fetchResult, now) {
+  if (!fetchResult.reached || !fetchResult.httpOk || !fetchResult.body || !fetchResult.body.sources) {
+    for (const key of INDEX_SOURCE_ORDER) {
+      updateRow(`idx-${key}`, 'danger', `index.heygabi.ai did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
+    }
+    return;
+  }
+  const sources = fetchResult.body.sources;
+  for (const key of INDEX_SOURCE_ORDER) {
+    const cfg = INDEX_THRESHOLDS[key];
+    const src = sources[key];
+    if (!src || !src.pushed_at || !src.rows) {
+      // "zero rows from a source means the push failed, never that the
+      // collection is empty" — index-worker-design.md §1. Never silent.
+      updateRow(`idx-${key}`, 'danger', `${cfg.label}: 0 rows / never pushed.`, cfg.note, now);
+      continue;
+    }
+    const pushedAt = Date.parse(src.pushed_at);
+    const ageMs = now - pushedAt;
+    const state = ageMs > cfg.redMs ? 'danger' : ageMs > cfg.amberMs ? 'warn' : 'ok';
+    const rowsText = src.rows.toLocaleString();
+    updateRow(`idx-${key}`, state, `${rowsText} rows · pushed ${formatAge(ageMs)}`, cfg.note, now);
+  }
+}
+
+function renderIndexWorkerRow(fetchResult, now) {
+  if (!fetchResult.reached || !fetchResult.httpOk || !fetchResult.body) {
+    updateRow('wk-index', 'danger', `Did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
+    return;
+  }
+  const sources = fetchResult.body.sources || {};
+  const total = Object.values(sources).reduce((sum, s) => sum + (s && s.rows ? s.rows : 0), 0);
+  const ok = fetchResult.body.ok !== false;
+  updateRow('wk-index', ok ? 'ok' : 'danger', `Reachable · ${total.toLocaleString()} rows across 3 sources.`, null, now);
+}
+
+function renderWorkerHealthRow(id, name, fetchResult, now, detailFn) {
+  if (!fetchResult.reached) {
+    updateRow(id, 'danger', `${name} did not answer (${fetchResult.error}).`, null, now);
+    return;
+  }
+  if (!fetchResult.body) {
+    updateRow(id, 'danger', `${name} answered HTTP ${fetchResult.status} with no readable body.`, null, now);
+    return;
+  }
+  const ok = fetchResult.body.ok === true;
+  updateRow(id, ok ? 'ok' : 'danger', detailFn(fetchResult.body), null, now);
+}
+
+function renderSiteRow(id, name, reached, now) {
+  updateRow(id, reached ? 'ok' : 'danger', reached ? 'Reachable.' : 'Did not answer within 8s.', null, now);
+}
+
+let refreshing = false;
+
+async function refreshAll() {
+  if (refreshing) return;
+  refreshing = true;
+  const btn = document.getElementById('refresh');
+  btn.disabled = true;
+  btn.classList.add('spinning');
+
+  const now = () => Date.now();
+
+  const [indexHealth, libraryHealth, gamesHealth, authHealth, audioUp, audioDevUp, libraryUp, gamesUp] =
+    await Promise.all([
+      fetchJSON(`${INDEX_ORIGIN}/api/health`),
+      fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
+      fetchJSON(`${GAMES_ORIGIN}/api/health`),
+      fetchJSON(`${AUTH_ORIGIN}/api/health`),
+      probeReachable(AUDIO_ORIGIN + '/'),
+      probeReachable(AUDIO_ORIGIN + '/dev/'),
+      probeReachable(LIBRARY_ORIGIN + '/'),
+      probeReachable(GAMES_ORIGIN + '/'),
+    ]);
+
+  const t = now();
+
+  renderIndexSection(indexHealth, t);
+  renderIndexWorkerRow(indexHealth, t);
+  renderWorkerHealthRow('wk-library', 'Library', libraryHealth, t, (b) =>
+    `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
+  renderWorkerHealthRow('wk-games', 'Games', gamesHealth, t, (b) =>
+    `v${b.version || '?'} · database ${b.database || '?'}`);
+  renderWorkerHealthRow('wk-auth', 'Estate auth', authHealth, t, (b) => {
+    const u = b.users || {};
+    return `${u.approved ?? '?'} approved · ${u.pending ?? '?'} pending · ${u.revoked ?? '?'} revoked · ${u.approvers ?? '?'} approvers`;
+  });
+
+  renderSiteRow('site-audio', 'Audio', audioUp, t);
+  renderSiteRow('site-audio-dev', 'Audio /dev/', audioDevUp, t);
+  renderSiteRow('site-library', 'Books', libraryUp, t);
+  renderSiteRow('site-games', 'Games', gamesUp, t);
+
+  const rows = [...rowRegistry.values()];
+  const okCount = rows.filter((r) => r.el.dataset.state === 'ok').length;
+  const warnCount = rows.filter((r) => r.el.dataset.state === 'warn').length;
+  const dangerCount = rows.filter((r) => r.el.dataset.state === 'danger').length;
+  document.getElementById('summary').textContent =
+    `Estate status refreshed: ${okCount} ok, ${warnCount} warnings, ${dangerCount} down, out of ${rows.length} checks.`;
+
+  btn.disabled = false;
+  btn.classList.remove('spinning');
+  refreshing = false;
+}
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+
+buildIndexSection();
+buildWorkerSection();
+buildSiteSection();
+
+document.getElementById('refresh').addEventListener('click', () => refreshAll());
+
+refreshAll();
+setInterval(tickAll, TICK_INTERVAL_MS);
+
+// Auto-refresh every 60s, but only while the tab is actually visible — a
+// backgrounded tab gains nothing from polling five hosts, and refreshing
+// once immediately on return keeps the numbers from reading stale.
+setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_INTERVAL_MS);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshAll();
+});

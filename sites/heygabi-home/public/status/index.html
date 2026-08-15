@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — estate status</title>
+<meta name="description" content="Every pipeline and service in the estate — red or green, at a glance.">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+
+<!--
+  The estate status page — "I want to see all the pipelines" (owner ask,
+  2026-08-14). Reads ONLY public health surfaces: the shared index's
+  /api/health (index-worker-design.md §5 — counts and MAX(pushed_at) per
+  source, open by design), the library/games Workers' /api/health (also open
+  — "the endpoint you curl to prove the deployment works"), the estate auth
+  Worker's /api/health (open; counts, no emails), and a no-cors reachability
+  probe of the three catalog site roots + the audiobook site's /dev/ lane.
+  No sign-in, ever — nothing here needs one, and nothing here may leak
+  member data (every payload this page reads is counts/timestamps only,
+  verified against each route's own source before this page shipped).
+
+  ⚠️ CORS: none of the four health endpoints sent Access-Control-Allow-Origin
+  before this page existed (verified live with curl -H "Origin:
+  https://heygabi.ai" — no ACAO header on any of the four). Each Worker's
+  /api/health route gained a small, GET-only, apex-locked CORS mount
+  (catalog-platform apps/index-worker + apps/auth-worker; the sibling repos'
+  library_catalog + Board_Game_Catalog apps/worker) and was redeployed. The
+  route itself did not change — it was already open by design; the CORS
+  addition only lets a BROWSER read what curl already could.
+
+  Styling: the estate theme system (assets/estate-theme.css + theme.js) —
+  tokens only, same cog, same localStorage choice as every other page on
+  this origin. CSP: _headers /status rule, strict by default, connect-src
+  naming exactly the five hosts this page fetches and nothing else.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- Classic script on purpose: stamps theme/mode before first paint. -->
+<script src="/assets/theme.js"></script>
+
+<style>
+/* Working page, same language as /admin: tokens only, hairlines, one accent. */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--et-bg);
+  background-image: var(--et-bg-texture);
+  background-size: var(--et-bg-texture-size);
+  color: var(--et-fg);
+  font: var(--et-text-body)/1.55 var(--et-font);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+main { max-width: 44rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
+
+h1 {
+  margin: 0 0 .3rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-title);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  text-transform: var(--et-title-case);
+  color: var(--et-heading-color);
+  text-shadow: var(--et-glow-title);
+}
+.sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+.sub a { color: var(--et-accent); }
+
+[hidden] { display: none !important; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex-wrap: wrap;
+  margin-bottom: var(--et-space-2);
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  min-height: 44px;
+  padding: .5em 1.2em;
+  border: var(--et-btn-border);
+  border-radius: var(--et-radius-pill);
+  background: var(--et-btn-bg);
+  color: var(--et-btn-fg);
+  box-shadow: var(--et-btn-shadow);
+  font: 600 var(--et-text-body)/1.2 var(--et-font);
+  cursor: pointer;
+  transition: transform var(--et-dur-fast) var(--et-ease),
+              filter var(--et-dur-fast) var(--et-ease);
+}
+.btn:hover { filter: brightness(1.06); }
+.btn:active { transform: scale(.965); }
+.btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; }
+.btn:disabled { opacity: .6; cursor: default; transform: none; }
+.btn.quiet { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-fg); }
+.btn svg { flex: none; transition: transform var(--et-dur) var(--et-ease); }
+.btn.spinning svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.auto-note { color: var(--et-muted); font-size: var(--et-text-small); }
+
+/* One accessible line, updated after every refresh, so a screen reader
+   hears a summary once instead of every row every 60 seconds. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+section { margin-bottom: var(--et-space-3); }
+h2 {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  margin: 0 0 .5rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-heading);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  color: var(--et-heading-color);
+}
+.section-note { margin: 0 0 .6rem; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+
+ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: .75rem .9rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+}
+
+.dot {
+  flex: none;
+  width: .7rem;
+  height: .7rem;
+  margin-top: .3rem;
+  border-radius: 50%;
+  background: var(--et-muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--et-muted) 18%, transparent);
+}
+.row[data-state="ok"]     .dot { background: var(--et-ok);     box-shadow: 0 0 0 3px var(--et-ok-bg); }
+.row[data-state="warn"]   .dot { background: var(--et-warn);   box-shadow: 0 0 0 3px var(--et-warn-bg); }
+.row[data-state="danger"] .dot { background: var(--et-danger); box-shadow: 0 0 0 3px var(--et-danger-bg); }
+.row[data-state="pending"] .dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+.row-body { flex: 1 1 auto; min-width: 0; }
+.row-head { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.row-name { font-weight: 700; }
+
+.badge {
+  padding: .1em .6em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+  white-space: nowrap;
+}
+.row[data-state="ok"]      .badge { border-color: var(--et-ok);     color: var(--et-ok); }
+.row[data-state="warn"]    .badge { border-color: var(--et-warn);   color: var(--et-warn); }
+.row[data-state="danger"]  .badge { border-color: var(--et-danger); color: var(--et-danger); }
+
+.row-detail { margin: .3rem 0 0; color: var(--et-fg); font-size: var(--et-text-small); text-wrap: pretty; }
+.row-note { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.row-checked { margin: .35rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); font-family: var(--et-font-mono); }
+
+footer {
+  margin-top: var(--et-space-4);
+  padding-top: var(--et-space-2);
+  border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
+footer a { color: var(--et-accent); }
+code { font-family: var(--et-font-mono); font-size: .9em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn.spinning svg, .row[data-state="pending"] .dot { animation: none !important; }
+}
+</style>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select">
+      <option value="classic">Classic</option>
+      <option value="apple">Apple</option>
+      <option value="cyberpunk">Cyberpunk</option>
+      <option value="retro">Retro</option>
+    </select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+</div>
+
+<main>
+  <h1>Estate status</h1>
+  <p class="sub">
+    Every pipeline and service, read straight from each one's own public
+    health endpoint — no sign-in, and nothing here shows more than counts
+    and timestamps. A quiet dot, not a dashboard: green means the last check
+    was healthy, amber means it is worth a glance, red means something
+    stopped answering the way it should.
+  </p>
+
+  <div class="bar">
+    <button id="refresh" class="btn" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v6h-6"/></svg>
+      Refresh
+    </button>
+    <span class="auto-note">Refreshes on its own every 60s while this tab is open.</span>
+  </div>
+
+  <p id="summary" class="sr-only" role="status" aria-live="polite"></p>
+
+  <section aria-labelledby="idx-h">
+    <h2 id="idx-h">Shared index</h2>
+    <p class="section-note">
+      <code>index.heygabi.ai</code> — one cross-catalog pointer table, fed by
+      snapshot pushes from each catalog. A source's row age is how long ago
+      it last pushed, not how old the data inside it is.
+    </p>
+    <ul id="index-rows" class="rows"></ul>
+  </section>
+
+  <section aria-labelledby="wk-h">
+    <h2 id="wk-h">Workers</h2>
+    <p class="section-note">Each catalog's own API, reachable straight from its <code>/api/health</code>.</p>
+    <ul id="worker-rows" class="rows"></ul>
+  </section>
+
+  <section aria-labelledby="site-h">
+    <h2 id="site-h">Sites</h2>
+    <p class="section-note">
+      Reachability only — these hosts send no CORS header for a browser to
+      read a status code from, so a green dot here means "answered a
+      request," not "returned 200."
+    </p>
+    <ul id="site-rows" class="rows"></ul>
+  </section>
+
+  <footer>
+    <p>
+      This page reads five hosts and nothing else: <code>index.heygabi.ai</code>,
+      <code>auth.heygabi.ai</code>, <code>library.heygabi.ai</code>,
+      <code>boardgames.heygabi.ai</code> and <code>audiobooks.heygabi.ai</code>
+      (its <code>/dev/</code> lane included). No credentials are sent or
+      needed — every endpoint above answers signed-out by design.
+    </p>
+    <p>
+      Not shown: GitHub Actions run status (the audiobook pipeline's own CI)
+      would need a token this page cannot hold client-side — a future
+      version could proxy that through a Worker with a scoped, read-only
+      token instead of asking a visitor's browser to hold one.
+    </p>
+    <p><a href="/">← back to the front door</a></p>
+  </footer>
+</main>
+
+<script type="module" src="/status/status.js"></script>
+</body>
+</html>
