@@ -219,48 +219,24 @@ Fable and waits for the owner to release it (e.g. after a weekly reset):
 4. Any future Firestore-rules rewrite or estate auth-worker change touching
    verification/secrets.
 
-## Research ideas — Claude's suggestions for the trio (2026-08-14, owner asked)
+## The owner's five (picked from the research ideas, 2026-08-14 night)
 
-Unordered; each grounded in machinery that already exists. "Research" = scope
-it, don't build it. Promote any line to a real item with an owner word.
+Prioritized by the owner; rejected ideas removed (dashboard, recap, game
+nights, purchase guard). PWA (#9) pending the owner's read of its value case.
 
-1. **Estate dashboard on the apex** — signed-in members see one page: current
-   reads/listens, club due dates + RSVPs, recent additions across all three
-   catalogs. Everything it needs already answers an API (index, /estate/me,
-   clubs, additions_log).
-2. **"Year in the estate" annual recap** — a Wrapped-style page per member:
-   books finished, hours listened, clubs, reviews, series completed. The data
-   all exists (progress, read-states, reviews, additions log). Pure fun,
-   high delight-per-token.
-3. **Game nights = clubs machinery generalized** — the meeting scheduler,
-   RSVP + .ics, and Discord nudges are game-night features wearing book-club
-   clothes. Research what a games-site "game night" surface reuses verbatim
-   vs needs new (play-log with players/winners is the genuinely new part).
-4. **Duplicate-purchase guard** — before buying, one check: "you already own
-   this (audiobook)". The index answers it today; research the surface —
-   wishlist integration, a bookmarklet, or a /have-style lookup on the apex.
-   Extends the library Wishlist estate-wide.
-5. **Cross-format series completion view** — the library's series ladders +
-   audio corroboration generalized: "series you're collecting, gaps by
-   format, what ANY format would complete." The certainGaps/onAudio math is
-   built; this is a presentation + cross-catalog join question.
-6. **Universes page on the apex** — the shared universes.json (7 universes)
-   joined across all three catalogs: one page per universe showing books,
-   audiobooks, games. Matches the combined-site long-term plan; also feeds
-   the Discord /universe idea.
-7. **Estate status page** — pipeline last-run, index freshness per source,
-   deploy versions, worker health. The games cron died silently three times
-   before anyone noticed; the health endpoints exist, nothing watches them.
-   Small page, real observability.
-8. **Covers consolidation** — covers live on covers.heygabi.ai (R2),
-   bookcovers, library, plus a long third-party hotlink tail (geekdo,
-   shopify, kickstarter...) that bloats the apex CSP and can rot. Research
-   the rehost-to-R2 pass (improvement-proposals §3 already sketches it).
-9. **PWA/installability for the audiobook site** — the owner drives it from
-   a phone constantly; manifest + install prompt + offline catalog browsing
-   are cheap for a static site this shape. Research service-worker cache
-   strategy against the /dev/-vs-prod lane model.
-10. **Backup posture** — D1 (library, index, estate_auth) and Firestore have
-    no rehearsed restore story. Research D1 time-travel/export options, a
-    Firestore export cadence, and write the restore runbook docs/access
-    style. The estate is now valuable enough to deserve one.
+**TONIGHT (non-Fable agents, in flight):**
+1. **Estate status page** ("I want to see ALL the pipelines") — apex page:
+   every pipeline's last run + freshness (audiobook 8h pipeline, index pushes
+   per source, worker healths, site build stamps), red/green at a glance.
+2. **Cross-format series completion view** — library site: series ladders
+   showing gaps by format and what ANY format would complete.
+3. **Backup & restore runbook + backup workflows** — D1 exports (library,
+   index, estate_auth), Firestore export cadence, rehearsed restore docs;
+   manual-dispatch backup workflows using the new CI plumbing.
+4. **Covers consolidation — research + inventory tonight** — count the
+   third-party hotlink tail, size the R2 rehost, write the execution plan.
+
+**TOMORROW:**
+5. **Universes page on the apex** — after the status page lands (same repo
+   surface); one page per universe across all three catalogs via the index.
+6. **Covers consolidation — execution** — per tonight's plan, attended.
