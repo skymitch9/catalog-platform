@@ -110,7 +110,17 @@
  *            --et-shadow --et-shadow-lift --et-glow --et-glow-title
  *   identity --et-hue-1 --et-hue-2 --et-hue-3  (the three shelves' spine
  *            colors — audio, books, games; a theme with one voice sets all
- *            three to its accent)
+ *            three to its accent) --et-hue-4 --et-hue-5 (added 2026-08-15,
+ *            owner order: Universes leads as PURPLE, Admin follows as
+ *            GOLD/AMBER — purple's complement, "keys to the building".
+ *            Each theme picks its own rendition rather than reusing hue-1's
+ *            gold/mustard family verbatim, so cards 4/5 stay visually
+ *            distinct from cards 1-3, not just from each other.)
+ *   card     --et-card-1/2/3-{bg,fg,muted} (the three shelf cards' dress;
+ *            neutral by default, apple overrides with real tile grounds)
+ *            --et-card-4/5-{bg,fg,muted} (Universes/Admin, added
+ *            2026-08-15; same neutral default as 1-3 in every theme except
+ *            apple, which tints them — see its supersession note below)
  *   ambient  --et-blob-1 --et-blob-2 --et-blob-3 --et-grain-opacity  (the
  *            apex backdrop's drifting fields + grain; transparent/0 where a
  *            theme carries its atmosphere in --et-bg-texture instead)
@@ -191,6 +201,20 @@
   --et-card-1-muted: var(--et-muted);
   --et-card-2-muted: var(--et-muted);
   --et-card-3-muted: var(--et-muted);
+  /* Card 4 (Universes) and card 5 (Admin) joined 2026-08-15 (owner order —
+     Universes leads as PURPLE, Admin as GOLD/AMBER, purple's complement).
+     Same neutral default as 1-3: classic/cyberpunk/retro distinguish these
+     cards through --et-hue-4/-5 (the spine + hover tint) exactly like they
+     already do for 1-3, not through a bespoke background. Apple is the one
+     theme that overrides card backgrounds at all (see
+     :root[data-theme="apple"] below), so it is the one theme that overrides
+     card-4/-5 backgrounds too. */
+  --et-card-4-bg: linear-gradient(180deg, var(--et-surface-edge), var(--et-surface));
+  --et-card-5-bg: linear-gradient(180deg, var(--et-surface-edge), var(--et-surface));
+  --et-card-4-fg: var(--et-fg);
+  --et-card-5-fg: var(--et-fg);
+  --et-card-4-muted: var(--et-muted);
+  --et-card-5-muted: var(--et-muted);
   --et-lift: translateY(-3px);            /* the hover move */
   --et-lift-shadow: var(--et-shadow-lift); /* the hover shadow */
   --et-sheen: 1;                           /* hover sheen visibility */
@@ -215,6 +239,20 @@
   --et-card-3-bg: #f5f5f7;
   --et-card-3-fg: #1d1d1f;
   --et-card-3-muted: #6e6e73;
+  /* ⚠️ SUPERSESSION, 2026-08-15: this theme's whole point is ONE accent
+     (--et-hue-1/2/3 all equal --et-accent; card 1-3 alternate only
+     gray/black, never color). The owner's front-door card order overrules
+     that for cards 4-5 specifically: Universes gets a real purple, Admin a
+     real gold, even here. Kept soft and desaturated on purpose — a
+     restrained SF-symbols tint over apple's gray, not a saturated brand
+     color — so the page still reads as apple rather than borrowing another
+     theme's voice. Cards 1-3 are untouched; this is additive. */
+  --et-card-4-bg: #f3ecfb;  /* soft purple tint */
+  --et-card-4-fg: #2e1a47;
+  --et-card-4-muted: #6b4d8a;
+  --et-card-5-bg: #faf3e2;  /* soft gold tint */
+  --et-card-5-fg: #4a3a12;
+  --et-card-5-muted: #7d652c;
   --et-lift: scale(1.016);
   --et-lift-shadow: var(--et-shadow);
   --et-sheen: 0;
@@ -222,7 +260,10 @@
   --et-card-name-size: clamp(1.5rem, 3vw, 2rem);
   --et-card-glyph-margin: 0 auto .9rem;
 }
-/* Dark flips the pair: the black tile becomes the light one. */
+/* Dark flips the pair: the black tile becomes the light one. Cards 4-5 keep
+   their own hue (purple/gold) rather than flipping like 1-3, since they were
+   never part of the gray/black alternation to begin with — they just move to
+   dark-appropriate tints of the same hue. */
 :root[data-theme="apple"][data-mode="dark"] {
   --et-card-1-bg: #1d1d1f;
   --et-card-1-fg: #f5f5f7;
@@ -233,6 +274,12 @@
   --et-card-3-bg: #1d1d1f;
   --et-card-3-fg: #f5f5f7;
   --et-card-3-muted: #86868b;
+  --et-card-4-bg: #2a1b3d;  /* deep purple */
+  --et-card-4-fg: #f0e6fb;
+  --et-card-4-muted: #b79ddd;
+  --et-card-5-bg: #3a2e14;  /* deep bronze-gold */
+  --et-card-5-fg: #f5e9c8;
+  --et-card-5-muted: #c9ab6a;
 }
 
 /* Native widgets (selects, date pickers) follow the stamped mode. */
@@ -256,6 +303,8 @@
   --et-hue-1: #0071e3; /* one voice: all three shelves wear the accent */
   --et-hue-2: #0071e3;
   --et-hue-3: #0071e3;
+  --et-hue-4: #af52de; /* Universes = purple, owner order 2026-08-15 — SF systemPurple */
+  --et-hue-5: #ba8a3c; /* Admin = soft gold, owner order 2026-08-15 */
   --et-blob-1: transparent; /* apple's ground is clean, deliberately */
   --et-blob-2: transparent;
   --et-blob-3: transparent;
@@ -330,6 +379,8 @@
     --et-hue-1: #2997ff;
     --et-hue-2: #2997ff;
     --et-hue-3: #2997ff;
+    --et-hue-4: #bf5af2; /* SF systemPurple, dark variant */
+    --et-hue-5: #d9b45c; /* soft gold, lifted for black */
     --et-ok: #30d158;
     --et-warn: #ff9f0a;
     --et-danger: #ff453a;
@@ -352,6 +403,8 @@
   --et-hue-1: #2997ff;
   --et-hue-2: #2997ff;
   --et-hue-3: #2997ff;
+  --et-hue-4: #bf5af2; /* SF systemPurple, dark variant */
+  --et-hue-5: #d9b45c; /* soft gold, lifted for black */
   --et-ok: #30d158;
   --et-warn: #ff9f0a;
   --et-danger: #ff453a;
@@ -423,6 +476,8 @@
   --et-hue-1: #b3822c; /* audio — gold */
   --et-hue-2: #3a5a40; /* books — green */
   --et-hue-3: #b1533c; /* games — clay */
+  --et-hue-4: #6b4a86; /* universes — warm bookish violet, owner order 2026-08-15 */
+  --et-hue-5: #c9971f; /* admin — brass, distinct from audio's duller gold */
   --et-blob-1: rgba(58, 90, 64, .20);
   --et-blob-2: rgba(217, 164, 65, .18);
   --et-blob-3: rgba(177, 83, 60, .12);
@@ -453,6 +508,8 @@
   --et-hue-1: #d9a441;
   --et-hue-2: #8fbc8f;
   --et-hue-3: #d97e63;
+  --et-hue-4: #b98fd1; /* universes — lamp-lit plum */
+  --et-hue-5: #f0c14b; /* admin — shining brass in lamplight */
   --et-blob-1: rgba(143, 188, 143, .16);
   --et-blob-2: rgba(217, 164, 65, .16);
   --et-blob-3: rgba(217, 126, 99, .11);
@@ -474,6 +531,8 @@
   --et-hue-1: #fcee0a; /* the three neons ARE the three shelves */
   --et-hue-2: #05d9e8;
   --et-hue-3: #ff2a6d;
+  --et-hue-4: #b14aff; /* universes — neon violet, distinct from #ff2a6d's pink-magenta */
+  --et-hue-5: #ff9f1c; /* admin — neon amber, distinct from #fcee0a's lemon-yellow */
   --et-blob-1: transparent; /* atmosphere lives in --et-bg-texture's haze */
   --et-blob-2: transparent;
   --et-blob-3: transparent;
@@ -547,6 +606,8 @@
   --et-hue-1: #9a7b00;
   --et-hue-2: #00798f;
   --et-hue-3: #c31e58;
+  --et-hue-4: #7c3aed; /* universes — vivid violet */
+  --et-hue-5: #cc6b00; /* admin — burnt amber, distinct from audio's olive-gold */
   --et-fg: #16161e;
   --et-muted: #5c6270;
   --et-hairline: #c9cdd9;
@@ -581,6 +642,8 @@
   --et-hue-1: #d99a2b; /* mustard / blue / red — the app's own poster palette */
   --et-hue-2: #4a7c9b;
   --et-hue-3: #a8443a;
+  --et-hue-4: #7d5a8c; /* universes — dusty grape/mauve, halftone-friendly */
+  --et-hue-5: #b8860b; /* admin — old gold/ochre, distinct from audio's brighter mustard */
   --et-blob-1: transparent; /* atmosphere is the halftone, not aurora */
   --et-blob-2: transparent;
   --et-blob-3: transparent;
@@ -656,6 +719,8 @@
   --et-hue-1: #e5b45c;
   --et-hue-2: #7fb0cd;
   --et-hue-3: #d4776b;
+  --et-hue-4: #b98fc9; /* universes — grape/mauve for dark paper */
+  --et-hue-5: #d4af37; /* admin — gold, distinct from audio's more orange mustard */
   --et-bg-texture:
     radial-gradient(circle at 1px 1px, rgba(236, 224, 203, .05) 1px, transparent 0),
     radial-gradient(circle at 4px 4px, rgba(236, 224, 203, .03) 1px, transparent 0);
