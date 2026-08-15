@@ -269,3 +269,23 @@ nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning
    1,124 distinct URLs across item+edition, 13 hosts, 0/78 sampled dead,
    ~110–230 MB; new `game-covers` R2 bucket at `gamecovers.heygabi.ai`;
    CSP prune is the last step, gated on a zero-rows verification query.
+
+## ⚠️ Covers migration — ONE ordered finish step (2026-08-15)
+
+Migration itself is DONE (1,123/1,124 rehosted to gamecovers.heygabi.ai; the
+one refusal is a 7.3MB Shopify file over the size ceiling, row left on its
+original URL on purpose). Intake hooks live. Rollback snapshots committed in
+the games repo. Remaining, IN THIS ORDER:
+1. The games index push must land with the new cover URLs. The push-token
+   pair was rotated FRESH on both workers (the agent-printed token is dead —
+   never use a token that has appeared in any transcript). The push fires on
+   the next real games item mutation OR the 24h staleness backstop
+   (~03:46Z). VERIFY on heygabi.ai/status (game source pushed_at advances)
+   or index /api/health.
+2. ONLY THEN deploy heygabi-home (the CSP prune is already committed in
+   _headers): npx wrangler pages deploy sites/heygabi-home/public
+   --project-name heygabi-home. Deploying before step 1 blanks apex-search
+   game thumbnails (CSP excludes old hosts while index still serves them).
+3. Verify: apex search a game, thumbnail loads from gamecovers.heygabi.ai.
+Nothing is user-visibly broken meanwhile — old hotlinks still serve under
+the still-deployed old CSP.
