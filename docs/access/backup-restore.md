@@ -2,12 +2,25 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (no secret
 > values — env var / secret NAMES only, per the estate's access-doc rule).
-> Last verified: **2026-08-14** — every command below was run for real that
-> night: `backup.yml` dispatched and its four D1 artifacts + one Firestore
-> artifact downloaded and inspected non-empty; `scripts/backup-firestore.mjs`
-> run locally against the live `audiobook-catalog` project (56 collections,
-> 1,294 docs); `scripts/restore-firestore.mjs`'s dry-run path exercised (its
-> live-write path was NOT exercised against production — see §5).
+> Last verified: **2026-08-15** — the R2 gap named the night before (§8) is
+> closed: `backup.yml`'s new `r2` job was dispatched for real (runs
+> `31889683701` and `31890412775`, the second one adding `game-covers` once
+> it appeared) and all three artifacts downloaded and inspected non-empty —
+> `library-covers`: 208 objects/20.6 MiB, `audiobook-covers`: 1,868
+> objects/240.4 MiB, `game-covers`: 922 objects/118.8 MiB (that bucket was
+> created AND actively populated mid-session by a second agent working the
+> covers-consolidation plan — it held 432 objects when first checked ten
+> minutes earlier and 922 by the time the CI backup ran; a backup taken
+> mid-migration is still an honest snapshot of what existed at that moment,
+> included here rather than deferred). A sampled object from
+> `library-covers` was restored via `wrangler r2 object get --remote` and
+> diffed byte-identical against the backup. Everything from 2026-08-14 below
+> still holds: `backup.yml`
+> dispatched and its four D1 artifacts + one Firestore artifact downloaded
+> and inspected non-empty; `scripts/backup-firestore.mjs` run locally against
+> the live `audiobook-catalog` project (56 collections, 1,294 docs);
+> `scripts/restore-firestore.mjs`'s dry-run path exercised (its live-write
+> path was NOT exercised against production — see §5).
 
 ---
 
@@ -20,8 +33,9 @@
 | D1 `estate_auth` | `catalog-platform/apps/auth-worker`, id `d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb` | Time Travel + `backup.yml` export | **High despite being tiny** — it is the estate's membership directory (who is approved, who is revoked, who is an approver); losing it silently reopens the door to everyone it revoked, or locks out everyone it approved. §9 below covers the one mitigating fact: it is also reconstructible by re-running `scripts/seed-estate.mjs` |
 | D1 `index_catalog` | `catalog-platform/apps/index-worker`, id `3004d175-3c51-4ed4-ac3e-62859319f8ac` | Time Travel + `backup.yml` export, but **treat as low priority** | **Low, deliberately** — every row is a pointer copied FROM the three source catalogs (`docs/access/index-worker.md`'s "pointers, never truth"). A push replaces a source's rows wholesale; the index is fully rebuildable at any time by re-triggering the three pushes (§7). It is backed up here anyway because the export is nearly free, not because losing it would be a real loss |
 | Firestore (`audiobook-catalog` project) | shared by all three catalogs — `reviews`, `clubs` (+subcollections), `site_roles`, `users`, `profiles`, `leaderboard`, `readingLists`, `pipeline_*`, `cw_requests`, `club_seen`, each also `*_dev` | `scripts/backup-firestore.mjs` (recursive JSON dump), dispatched via `backup.yml` | High — `reviews` alone is 878 docs with no source of truth anywhere else; four review authors (`identity-and-reviews.md`) have **no account to re-derive their reviews from** if this is lost |
-| R2 `library-covers` | `library_catalog` | **Not automated tonight — see §8, a real gap** | Medium-high — user-uploaded photos of book covers are content-addressed and may have no copy outside the bucket |
-| R2 `audiobook-covers` | `audiobook_catalog` | Not automated (deliberately) — rebuildable | Low — every object is also a JPEG under `output_files/covers` on the OpenAudible machine (243 MB, gitignored, the actual master); `covers_manifest.json` (tracked in git) is the enumeration. Restore = re-run the upload script (§8) |
+| R2 `library-covers` | `library_catalog` | `scripts/backup-r2.mjs` (full object dump via the Cloudflare REST API), dispatched via `backup.yml`'s `r2` job — **gap closed 2026-08-15, see §8** | Medium-high — user-uploaded photos of book covers are content-addressed and may have no copy outside the bucket |
+| R2 `audiobook-covers` | `audiobook_catalog` | `scripts/backup-r2.mjs`, same job — backed up anyway even though it's independently reproducible (§8), same "the export is nearly free" reasoning as `index_catalog` | Low — every object is also a JPEG under `output_files/covers` on the OpenAudible machine (243 MB, gitignored, the actual master); `covers_manifest.json` (tracked in git) is the enumeration. Restore = re-run the upload script (§6) |
+| R2 `game-covers` | `Board_Game_Catalog` (per `docs/info/covers-consolidation-plan.md`) | `scripts/backup-r2.mjs`, same job — included from the start since the bucket was already live (922 objects/118.8 MiB in the proof run, up from 432 ten minutes earlier — a migration was actively running the same night) | Medium — same content-addressed-upload shape as `library-covers`; whether a local/reproducible master exists depends on how the consolidation migration script ends up sourcing images (see that plan doc) — treated as precious until proven otherwise |
 | The three catalog D1 dumps, the Firestore dump | **artifacts on `catalog-platform`'s Actions runs** | — | See §2 for why they all land in this ONE private repo regardless of which repo owns the source |
 | The four git repos themselves | GitHub (`skymitch9/*`) + this machine's working copies | **Already distributed — deliberately not duplicated here.** Every repo already exists in at least two places (GitHub + local clone); a third copy of source code is not what this runbook is for | N/A |
 | OpenAudible library files (`.m4b`s, the owner's local media) | `C:\Users\nbasl\OpenAudible\books\<Author>\*.m4b` on this machine | **Google Drive sync**, per-author folders — `audiobook_catalog/scripts/sync_to_drive.py`, step of the 8h pipeline (`docs/access/README.md`'s 60-second orientation, `audiobook_catalog`) | N/A here — this is the one item in the inventory that already has a real, running backup story outside git/D1/Firestore entirely. Verified 2026-08-14: `docs/access/README.md` names it explicitly (*"Local audiobook library → ... → Google Drive"*) and `docs/DRIVE_AUDIT_REPORT.md` / `scripts/audit_drive_vs_local.py` exist to check the sync is honest. Nothing new needed here |
@@ -75,7 +89,7 @@ silently drifting ones.
 ## 3. Running a backup
 
 **GitHub UI:** `skymitch9/catalog-platform` → Actions → *Backup (manual)* →
-Run workflow → choose `d1`, `firestore`, or `all`.
+Run workflow → choose `d1`, `firestore`, `r2`, or `all`.
 
 **CLI:**
 
@@ -87,8 +101,10 @@ gh run view <run-id> --repo skymitch9/catalog-platform
 
 **Where backups land:** Actions artifacts on that run, one per database
 (`d1-library-catalog-<run-id>`, `d1-board-game-catalog-<run-id>`,
-`d1-index_catalog-<run-id>`, `d1-estate_auth-<run-id>`) plus
-`firestore-<run-id>`. Download via the Actions UI or:
+`d1-index_catalog-<run-id>`, `d1-estate_auth-<run-id>`), one per R2 bucket
+(`r2-library-covers-<run-id>`, `r2-audiobook-covers-<run-id>`,
+`r2-game-covers-<run-id>`), plus `firestore-<run-id>`. Download via the
+Actions UI or:
 
 ```bash
 gh run download <run-id> --repo skymitch9/catalog-platform --dir ./restore-work
@@ -107,7 +123,7 @@ do that automatically tonight.
 
 | Secret | What | How to get it |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN` | Already set (shared with `deploy.yml`) | dash.cloudflare.com/profile/api-tokens, "Edit Cloudflare Workers" template — D1 edit is already in scope |
+| `CLOUDFLARE_API_TOKEN` | Already set (shared with `deploy.yml`) | dash.cloudflare.com/profile/api-tokens, "Edit Cloudflare Workers" template — D1 edit is already in scope. Verified 2026-08-15 it ALSO already covers R2's `objects` list/get REST endpoints (the `r2` job ran clean with no token changes) — if a future token ever needs re-creating from scratch, explicitly add the "Workers R2 Storage Read" (Account) permission group, since that one is not part of the base template |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | The **full JSON content** (not a path) of a Firebase service account key for the `audiobook-catalog` project | Firebase console → `audiobook-catalog` → Project settings → Service accounts → Generate new private key → paste the whole file as the secret value: `gh secret set FIREBASE_SERVICE_ACCOUNT_JSON --repo skymitch9/catalog-platform < path/to/key.json`. The same credential `audiobook_catalog/scripts/firebase_service_account.json` already is — reusing it rather than minting a second key with the same power |
 
 Both guard steps in `backup.yml` fail loudly with these exact instructions if
@@ -216,24 +232,76 @@ that ever feels worth the cost.
 
 ## 6. Restoring R2
 
+**One object, from a `backup.yml` `r2` artifact or any local copy:**
+
 ```bash
-# List local files the Firestore/D1 restore might reference, or just fetch
-# one object by key (works even without a bucket-listing capability):
-npx wrangler r2 object get library-covers/<key> --file=./restored-cover.jpg
-npx wrangler r2 object put library-covers/<key> --file=./restored-cover.jpg
+npx wrangler r2 object get library-covers/<key> --file=./restored-cover.jpg --remote   # fetch (verify first)
+npx wrangler r2 object put library-covers/<key> --file=./restored-cover.jpg --remote   # write it back
 ```
 
-- **`audiobook-covers`**: don't restore individual objects — re-run the
-  upload script from the actual master copy instead:
+`--remote` is required on both — `wrangler r2 object` defaults to the local
+Miniflare simulator, not the live bucket, and silently "succeeds" against an
+empty local store if you forget it.
+
+**Bulk restore from a `backup-r2.mjs` artifact** (`manifest.json` +
+`objects/<key>` — download the artifact first, §3): loop the manifest and
+`put` every file back:
+
+```bash
+node -e '
+  const fs = require("fs");
+  const { execFileSync } = require("child_process");
+  const dir = process.argv[1];             // e.g. ./restore-work/r2-library-covers-<run-id>
+  const bucket = process.argv[2];           // e.g. library-covers
+  const { objects } = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
+  for (const o of objects) {
+    execFileSync("npx", ["wrangler", "r2", "object", "put", `${bucket}/${o.key}`,
+      "--file", `${dir}/objects/${o.key}`, "--remote", "-y"], { stdio: "inherit" });
+  }
+' ./restore-work/r2-library-covers-<run-id> library-covers
+```
+
+This overwrites matching keys in place and does not delete anything that
+exists in the live bucket but not in the manifest — same non-destructive
+shape as the Firestore restore (§5).
+
+**Where the backup itself comes from, and why the runbook used to say this
+was impossible:** `wrangler r2 object` has `get`/`put`/`delete` but still no
+`list` as of wrangler 4.123.0 (checked 2026-08-15 via `npx wrangler r2
+object --help` — still open as `cloudflare/workers-sdk#13008`). But the
+**plain Cloudflare REST API** (`api.cloudflare.com/client/v4`, Bearer-token
+auth — NOT the S3-compatible endpoint) has always had list + get for R2
+objects:
+
+```
+GET /accounts/{account_id}/r2/buckets/{bucket}/objects            # paginated list, cursor-based
+GET /accounts/{account_id}/r2/buckets/{bucket}/objects/{key}      # object body + metadata
+```
+
+`scripts/backup-r2.mjs` is exactly that — two `fetch()` calls, no
+dependencies, no S3 access key/secret pair. It needs the account-level
+**"Workers R2 Storage Read"** permission group on the token; verified
+2026-08-15 that the existing `CLOUDFLARE_API_TOKEN` (created from the "Edit
+Cloudflare Workers" template, per §3) already carries enough to run this
+successfully in CI — no token edit turned out to be necessary. (If a future
+token rotation ever drops this and `backup.yml`'s `r2` job starts failing
+with a 401/403/9109, re-adding "Workers R2 Storage Read" — dash.cloudflare.com
+→ My Profile → API Tokens → edit the token — is the fix; still no S3 keys
+needed.)
+
+- **`audiobook-covers`**: prefer NOT restoring individual objects from the R2
+  backup — re-run the upload script from the actual master copy instead:
   `python -m scripts.upload_covers_r2 --force` (from `audiobook_catalog/`).
   It reads `output_files/covers` (the local master, 243 MB, gitignored) and
   `site/covers_manifest.json` (tracked) and re-uploads everything. This is
   strictly better than restoring from any R2-level backup because the master
-  copy is more current than any snapshot could be.
-- **`library-covers`**: no equivalent script exists (§8 — this is the real
-  gap). If an object is lost with no local copy, the only path back is
-  whatever the uploader (the household member who added that cover) still
-  has on their device.
+  copy is more current than any snapshot could be. The R2 backup is still
+  useful as a fallback if that master is ever unavailable.
+- **`library-covers`** and **`game-covers`**: no local master exists for
+  either (household uploads / a migration script respectively) — the
+  `backup-r2.mjs` artifact from `backup.yml` is the only path back for an
+  object with no other copy. Restore via the bulk loop above, or a single
+  `wrangler r2 object put --remote` for one file.
 
 ## 7. "Restoring" `index_catalog` — usually don't; re-push instead
 
@@ -265,8 +333,9 @@ sources have had a chance to re-push, not because the data is precious.
 | `index_catalog` (as data worth protecting) | Rebuildable from the three sources at any time (§7); backed up anyway because the export is nearly free, not because it matters | None |
 | The four git repos | Already exist in ≥2 places (GitHub + every local clone) the moment they're pushed; a third copy inside a "backup" system duplicates distribution git already provides | None |
 | OpenAudible `.m4b` library files | Already synced to Google Drive, per-author folders, as a running step of the existing 8h pipeline (`sync_to_drive.py`) — a genuinely separate, already-working backup story that predates this runbook | None — this is the one item that needed no new work tonight, only verifying its docs said so (they do) |
-| `audiobook-covers` (R2) | Reproducible from the local master (`output_files/covers`) + the tracked manifest; a backup of the bucket would be a second copy of a copy | None |
-| **`library-covers` (R2)** | **No equivalent master copy is guaranteed to exist** — a household member can upload a photo straight from their phone with the app's own upload button, and nothing else on this estate necessarily keeps that file. `wrangler r2 object list` does not exist as of this writing (an open feature request against `cloudflare/workers-sdk` since March 2026), so there is no CLI-native way to even enumerate what's in the bucket, let alone snapshot it, without minting a separate R2 API token and using the S3-compatible API (`rclone` or `aws-cli`) — genuinely new infrastructure, not built tonight | **This is the honest gap.** If it matters before it's built: mint an R2-scoped API token (dash.cloudflare.com → R2 → Manage API tokens), `rclone sync` the bucket to local/Drive storage periodically. Until then, an uploaded cover with no other copy is not recoverable if the object is lost |
+| `audiobook-covers` (R2) — as a REASON not to back it up | Superseded 2026-08-15 — it's still reproducible from the local master, but it's backed up anyway now because the `r2` job makes doing all three buckets together cheaper than special-casing one out | Backed up in §1's table; restore still prefers the master copy (§6) |
+| `bgc-photos` (R2) | Exists in the account (`Board_Game_Catalog`) but is **unbound and holds 0 objects** as of 2026-08-15 (confirmed both via that repo's own `docs/HANDOFF.md` and a live listing) — feature not live yet, nothing to back up | Add a `bgc-photos` matrix entry to `backup.yml`'s `r2` job the day it goes live and starts holding real uploads |
+| ~~R2 object listing is impossible without S3 keys~~ | **This claim from 2026-08-14 was wrong — corrected 2026-08-15.** `wrangler r2 object list` genuinely still doesn't exist, but the plain Cloudflare REST API (`api.cloudflare.com`, Bearer-token auth, the same style of credential `CLOUDFLARE_API_TOKEN` already is) has list AND get for R2 objects, gated behind the "Workers R2 Storage Read" permission group — not an S3-compatible access key/secret pair. The existing token already carried it; no new credential was needed. See §6 | The gap that drove this whole section is closed — `library-covers`, `audiobook-covers`, and `game-covers` are all now covered by `scripts/backup-r2.mjs` via `backup.yml`'s `r2` job |
 | R2 bucket-level versioning / cross-bucket replication | **Does not exist as a native R2 feature** (checked 2026-08-14: R2's object-lifecycle docs cover retention/storage-class transitions only; the only replication-shaped feature, Super Slurper, is a one-way *inbound* migration tool from other clouds, not a backup mechanism; a community feature request for object versioning/replication is open and unimplemented). A DIY version could be built with R2 event notifications + Queues + a second bucket, but that's a project of its own | Time Travel-style "any point in the last N days" simply isn't available for R2 the way it is for D1 |
 | A GCS-bucket-backed Firestore export (the `gcloud`/managed path) | Needs a Cloud Storage bucket in the same GCP project plus Storage Admin granted to the Firestore service agent — real new billed infrastructure for a household backup, when the Admin SDK can already read every document with the credential this estate already trusts and uses elsewhere | Worth building later if point-in-time GCS-native Firestore restore ever becomes worth the infrastructure; `scripts/backup-firestore.mjs`'s doc comment names this trade explicitly |
 
@@ -285,8 +354,9 @@ else. Note who currently holds either before relying on this path.
 
 | File | Role |
 |---|---|
-| `.github/workflows/backup.yml` | The manual-dispatch workflow — §2's reasoning, §3's usage |
+| `.github/workflows/backup.yml` | The manual-dispatch workflow — §2's reasoning, §3's usage, `r2` job added 2026-08-15 |
 | `scripts/backup-firestore.mjs` | The Firestore dump tool §3/§5 use |
 | `scripts/restore-firestore.mjs` | The Firestore restore tool §5 uses |
+| `scripts/backup-r2.mjs` | The R2 object dump tool §6 uses — REST API list+get, added 2026-08-15 to close the gap this runbook named the night before |
 | `scripts/seed-estate.mjs` | `estate_auth`'s independent rebuild path, §9 |
 | `docs/access/index-worker.md` (in `library_catalog`) | The push protocol §7 restores by re-triggering |

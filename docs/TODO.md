@@ -247,9 +247,17 @@ nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning
    `31855147930`): all 5 jobs green, artifacts downloaded and verified —
    4 non-empty `.sql` exports (5.8 KB estate_auth to 3.8 MB board-game-catalog)
    + 1 Firestore dump (56 collections, 1,294 docs, matching the local
-   pre-flight run exactly). Named gap: R2 `library-covers` has no backup path
-   yet — `wrangler r2 object list` doesn't exist, so there's no CLI-native way
-   to enumerate the bucket without a separate R2 API token + rclone/aws-cli.
+   pre-flight run exactly). Named gap, closed the next night (2026-08-15):
+   R2 `library-covers` had no backup path — `wrangler r2 object list` still
+   doesn't exist, but the plain Cloudflare REST API (Bearer-token auth, no
+   S3 keys) has always had list+get for R2 objects, and the existing
+   `CLOUDFLARE_API_TOKEN` already carries enough permission to use it.
+   `scripts/backup-r2.mjs` + `backup.yml`'s new `r2` job back up
+   `library-covers` (208 objects/20.6 MiB), `audiobook-covers` (1,868
+   objects/240.4 MiB), and `game-covers` (922 objects/118.8 MiB, a bucket
+   created AND actively populated the same night by a second agent on the
+   covers-consolidation plan). Full details + restore commands:
+   `docs/access/backup-restore.md` §6/§8.
 4. **Covers consolidation — research + inventory tonight** — count the
    third-party hotlink tail, size the R2 rehost, write the execution plan.
 
