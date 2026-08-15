@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "_doc": "Cross-language drift guard for the estate's CLUB-ENGINE mirrors (normalization item 2): audiobook_catalog's browser-side site/club-reads.js (the canon — it is what the live app runs) and its Python announcer app/club_announcements.py, which hand-ports the schedule-position maths and the two tally functions so the unattended Discord bot can compute the same numbers without a browser. Both live in ONE repo (audiobook_catalog) but are two runtimes with no shared code, which is exactly how the estate's other cross-language bugs started (see title-key-fixtures.json's header). The UNIVERSES mechanism, applied a third time.",
+  "_measured": "Every 'expectPosition' / 'expectStatus' / 'expect' value below was produced by executing site/club-reads.js through vitest on 2026-08-14 (the real browser-side module, not hand-computed) — that file is the canon. If a case here looks wrong, the fix is in whichever side disagrees with club-reads.js, never an edit to this file.",
+  "_divergenceFound2026_08_14": "Building this fixture file caught a REAL bug, not a hypothetical one: app/club_announcements.py's member_position(milestones, progress) took no `chaptered` argument at all and INFERRED it from whether any milestone carried `chEnd` — a different signal than memberSchedulePosition's explicit `chaptered` parameter (JS sources it from hasChapters(), i.e. read.chapterTitles.length > 0). The two signals are set atomically together at read creation in production (site/club-reads.js:startRead stamps both from the same object in one write), so the bug was invisible for every read the live app has ever created — but the two ADVERSARIAL cases below, where an explicit chaptered disagrees with milestone shape, reproduced a genuine numeric divergence from canon: position 1 vs 0 in one direction, -1 vs 2 in the other (verified against the pre-fix code before landing the change; see the two 'ADVERSARIAL' cases in positionCases). FIXED same day: member_position now takes an optional explicit `chaptered` parameter (defaulting to the old inference for backward compatibility), and on_track_summary/build_embed now pass bool(read.get('chapterTitles')) explicitly, matching hasChapters() exactly. See app/club_announcements.py's member_position docstring for the full account.",
+  "_implementations": {
+    "memberSchedulePosition / member_position": [
+      "audiobook_catalog site/club-reads.js — memberSchedulePosition(milestones, progress, chaptered) (canon)",
+      "audiobook_catalog app/club_announcements.py — member_position(milestones, progress, chaptered=None) — chaptered now explicit, see _divergenceFound2026_08_14 above"
+    ],
+    "scheduleStatus / hasSchedule": [
+      "audiobook_catalog site/club-reads.js — scheduleStatus(milestones, progress, chaptered, nowMs) + hasSchedule(milestones) (canon)",
+      "audiobook_catalog app/club_announcements.py — NO literal per-member mirror exists. on_track_summary() computes the same behindBy count via past_due_positions()+member_position() and aggregates it across all members into an 'N of M on track' string rather than a per-member status enum. tests/test_club_fixtures.py composes past_due_positions+member_position itself, from the SAME statusCases fixtures, to assert the primitives Python actually has reproduce canon's behindBy/status for one member at a time — it does not invent a new production function to test against."
+    ],
+    "tallyRatings / tally_ratings": [
+      "audiobook_catalog site/club-reads.js — tallyRatings(ratings) -> { average, count } (canon)",
+      "audiobook_catalog app/club_announcements.py — tally_ratings(ratings) -> (average, count) — same values, tuple instead of an object"
+    ],
+    "tallyPollVotes / tally_poll_votes": [
+      "audiobook_catalog site/club-reads.js — tallyPollVotes(options, votes) -> { counts, total } (canon)",
+      "audiobook_catalog app/club_announcements.py — tally_poll_votes(options, votes) -> counts (list only; Python derives 'any votes at all' from any(counts) in poll_winners() instead of carrying a separate total field — a shape difference, not a logic divergence)"
+    ]
+  },
+  "_runners": [
+    "audiobook_catalog — npm test / vitest (site/__tests__/club-fixtures.test.js)",
+    "audiobook_catalog — python -m pytest tests/test_club_fixtures.py (reads catalog-platform/data/ directly, same SKIP-not-fail posture as tests/test_universes.py when the sibling checkout is absent)"
+  ],
+  "positionCases": [
+    { "name": "not started, whole-book milestones", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }, { "id": "m2", "position": 2 }], "progress": null, "chaptered": false, "expectPosition": -1 },
+    { "name": "milestonePosition mid-way, non-chaptered", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }, { "id": "m2", "position": 2 }], "progress": { "milestonePosition": 1 }, "chaptered": false, "expectPosition": 1 },
+    { "name": "finished, non-chaptered", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }, { "id": "m2", "position": 2 }], "progress": { "finished": true }, "chaptered": false, "expectPosition": 2 },
+    { "name": "chaptered: chapterIndex below the first chEnd", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4 }, { "id": "m1", "position": 1, "chEnd": 11 }, { "id": "m2", "position": 2, "chEnd": 15 }, { "id": "m3", "position": 3, "chEnd": 19 }], "progress": { "chapterIndex": 3 }, "chaptered": true, "expectPosition": -1 },
+    { "name": "chaptered: chapterIndex exactly at a chEnd boundary", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4 }, { "id": "m1", "position": 1, "chEnd": 11 }, { "id": "m2", "position": 2, "chEnd": 15 }, { "id": "m3", "position": 3, "chEnd": 19 }], "progress": { "chapterIndex": 4 }, "chaptered": true, "expectPosition": 0 },
+    { "name": "chaptered: chapterIndex mid a later milestone", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4 }, { "id": "m1", "position": 1, "chEnd": 11 }, { "id": "m2", "position": 2, "chEnd": 15 }, { "id": "m3", "position": 3, "chEnd": 19 }], "progress": { "chapterIndex": 12 }, "chaptered": true, "expectPosition": 1 },
+    { "name": "chaptered: finished overrides chapterIndex", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4 }, { "id": "m1", "position": 1, "chEnd": 11 }], "progress": { "finished": true, "chapterIndex": 0 }, "chaptered": true, "expectPosition": 1 },
+    { "name": "no progress doc at all", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }], "progress": null, "chaptered": false, "expectPosition": -1 },
+    { "name": "empty milestones list, no progress", "milestones": [], "progress": null, "chaptered": false, "expectPosition": -1 },
+    { "name": "empty milestones list, finished", "milestones": [], "progress": { "finished": true }, "chaptered": false, "expectPosition": -1 },
+    { "name": "chaptered flag true but no milestone carries chEnd (whole-book milestones chosen despite chapter data existing)", "milestones": [{ "id": "m0", "position": 0 }], "progress": { "chapterIndex": 5 }, "chaptered": true, "expectPosition": -1 },
+    { "name": "chaptered flag false but progress carries a stray chapterIndex (ignored: milestonePosition governs)", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }], "progress": { "milestonePosition": 1, "chapterIndex": 99 }, "chaptered": false, "expectPosition": 1 },
+    { "name": "chaptered flag true and progress carries a stray milestonePosition too (ignored: chapterIndex governs)", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4 }, { "id": "m1", "position": 1, "chEnd": 11 }], "progress": { "milestonePosition": 0, "chapterIndex": 12 }, "chaptered": true, "expectPosition": 1 },
+    { "name": "non-chaptered, milestonePosition is -1 (explicitly not started)", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }], "progress": { "milestonePosition": -1 }, "chaptered": false, "expectPosition": -1 },
+    { "name": "ADVERSARIAL: milestones carry chEnd but chaptered is explicitly false (decoupled from milestone shape)", "milestones": [{ "id": "m0", "position": 0, "chEnd": 0 }, { "id": "m1", "position": 1, "chEnd": 5 }], "progress": { "milestonePosition": 1, "chapterIndex": 0 }, "chaptered": false, "expectPosition": 1, "why": "⚠️ proves member_position must take chaptered EXPLICITLY, not infer it from milestone shape — see _divergenceFound2026_08_14" },
+    { "name": "ADVERSARIAL: milestones lack chEnd but chaptered is explicitly true (decoupled from milestone shape)", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }], "progress": { "chapterIndex": 5, "milestonePosition": 2 }, "chaptered": true, "expectPosition": -1, "why": "⚠️ the mirror-image proof — see _divergenceFound2026_08_14" }
+  ],
+  "statusCases": [
+    { "name": "no schedule at all (no milestone has dueAt)", "milestones": [{ "id": "m0", "position": 0 }, { "id": "m1", "position": 1 }, { "id": "m2", "position": 2 }], "progress": { "milestonePosition": 1 }, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": false, "expectStatus": { "status": "none", "behindBy": 0 } },
+    { "name": "on track: no past-due milestone beyond position", "milestones": [{ "id": "m0", "position": 0, "dueAt": 1799999990000 }, { "id": "m1", "position": 1, "dueAt": 1800000010000 }], "progress": { "milestonePosition": 0 }, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "on-track", "behindBy": 0 } },
+    { "name": "behind by one: a past-due milestone beyond position", "milestones": [{ "id": "m0", "position": 0, "dueAt": 1799999980000 }, { "id": "m1", "position": 1, "dueAt": 1799999990000 }, { "id": "m2", "position": 2, "dueAt": 1800000010000 }], "progress": { "milestonePosition": 0 }, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "behind", "behindBy": 1 } },
+    { "name": "behind by two", "milestones": [{ "id": "m0", "position": 0, "dueAt": 1799999970000 }, { "id": "m1", "position": 1, "dueAt": 1799999980000 }, { "id": "m2", "position": 2, "dueAt": 1799999990000 }], "progress": { "milestonePosition": 0 }, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "behind", "behindBy": 2 } },
+    { "name": "done: finished flag", "milestones": [{ "id": "m0", "position": 0, "dueAt": 1799999990000 }, { "id": "m1", "position": 1, "dueAt": 1800000010000 }], "progress": { "finished": true }, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "done", "behindBy": 0 } },
+    { "name": "done: position reached the last milestone even without finished flag", "milestones": [{ "id": "m0", "position": 0, "dueAt": 1799999990000 }, { "id": "m1", "position": 1, "dueAt": 1799999995000 }], "progress": { "milestonePosition": 1 }, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "done", "behindBy": 0 } },
+    { "name": "chaptered, on track", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4, "dueAt": 1799999990000 }, { "id": "m1", "position": 1, "chEnd": 11, "dueAt": 1800000010000 }], "progress": { "chapterIndex": 4 }, "chaptered": true, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "on-track", "behindBy": 0 } },
+    { "name": "chaptered, behind", "milestones": [{ "id": "m0", "position": 0, "chEnd": 4, "dueAt": 1799999980000 }, { "id": "m1", "position": 1, "chEnd": 11, "dueAt": 1799999990000 }], "progress": { "chapterIndex": 3 }, "chaptered": true, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "behind", "behindBy": 2 } },
+    { "name": "no progress doc yet, schedule exists", "milestones": [{ "id": "m0", "position": 0, "dueAt": 1799999990000 }], "progress": null, "chaptered": false, "nowMs": 1800000000000, "expectHasSchedule": true, "expectStatus": { "status": "behind", "behindBy": 1 } }
+  ],
+  "ratingsCases": [
+    { "name": "empty list", "ratings": [], "expect": { "average": 0, "count": 0 } },
+    { "name": "single rating", "ratings": [{ "rating": 4 }], "expect": { "average": 4, "count": 1 } },
+    { "name": "average rounds to 1 decimal", "ratings": [{ "rating": 4 }, { "rating": 5 }, { "rating": 3 }], "expect": { "average": 4, "count": 3 } },
+    { "name": "non-numeric ratings filtered out", "ratings": [{ "rating": 4 }, { "rating": null }, { "rating": "x" }, { "rating": 5 }], "expect": { "average": 4.5, "count": 2 } },
+    { "name": "half-star values", "ratings": [{ "rating": 3.5 }, { "rating": 4.5 }], "expect": { "average": 4, "count": 2 } },
+    { "name": "all filtered out leaves the empty-list default", "ratings": [{ "rating": null }, {}], "expect": { "average": 0, "count": 0 } },
+    { "name": "repeating-decimal average", "ratings": [{ "rating": 1 }, { "rating": 2 }, { "rating": 2 }], "expect": { "average": 1.7, "count": 3 } }
+  ],
+  "pollCases": [
+    { "name": "no votes", "options": ["A", "B", "C"], "votes": [], "expect": { "counts": [0, 0, 0], "total": 0 } },
+    { "name": "simple tally", "options": ["A", "B", "C"], "votes": [{ "optionIndex": 0 }, { "optionIndex": 0 }, { "optionIndex": 2 }], "expect": { "counts": [2, 0, 1], "total": 3 } },
+    { "name": "out-of-range index ignored", "options": ["A", "B"], "votes": [{ "optionIndex": 0 }, { "optionIndex": 5 }, { "optionIndex": -1 }], "expect": { "counts": [1, 0], "total": 1 } },
+    { "name": "non-numeric index ignored", "options": ["A", "B"], "votes": [{ "optionIndex": "x" }, { "optionIndex": 1 }], "expect": { "counts": [0, 1], "total": 1 } },
+    { "name": "empty options list", "options": [], "votes": [{ "optionIndex": 0 }], "expect": { "counts": [], "total": 0 } },
+    { "name": "tie", "options": ["A", "B"], "votes": [{ "optionIndex": 0 }, { "optionIndex": 1 }], "expect": { "counts": [1, 1], "total": 2 } }
+  ]
+}

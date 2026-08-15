@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "_doc": "Cross-language drift guard for the estate's TITLE/KEY functions (normalization item 1). These produce PERSISTED keys — library_catalog's work.work_key and Firestore review document ids — so drift here silently orphans reviews or mis-links books, the same class of bug §2.3 of PLATFORM.md already recorded once (resolve_author_link / _resolveAuthorFolder). One fixture file, N hand-ported implementations across 2 repos and 2 languages; each repo's CI runs it against its OWN implementation and asserts every case reproduces. The UNIVERSES mechanism, applied to a second contract.",
+  "_measured": "Every 'expect' value below was produced by executing library_catalog packages/core/src/titles.ts and packages/core/src/reviews.ts on 2026-08-14 (npx tsx against the real source, not hand-computed) — that file is the canon for every function except bookIdFromTitle, whose canon is audiobook_catalog/site/reviews.js; the two are verified byte-identical in source and produce the same values, so the TS run stands in for both. If a case here looks wrong, the fix is a MIGRATION in whichever repo stores the affected key, never an edit to this file to match a new implementation.",
+  "_critical": "bookIdFromTitle and normaliseTitle intentionally DISAGREE on leading articles: bookIdFromTitle KEEPS 'The'/'A'/'An' (it is ported verbatim from the audiobook site's Firestore review doc-id slug, and changing it orphans every existing review), normaliseTitle STRIPS it (it feeds work_key, a fold, not a slug). This file records EXPECTED OUTPUT PER FUNCTION and never assumes any two functions agree with each other, even on the same input.",
+  "_implementations": {
+    "normaliseTitle": [
+      "library_catalog packages/core/src/titles.ts — normaliseTitle (canon)",
+      "audiobook_catalog app/core/review_join.py — normalise_title",
+      "audiobook_catalog app/library_link.py — imports review_join.normalise_title directly (no third copy)"
+    ],
+    "bookIdFromTitle": [
+      "audiobook_catalog site/reviews.js — bookIdFromTitle (canon: every existing Firestore review doc id was built with this exact function)",
+      "library_catalog packages/core/src/reviews.ts — bookIdFromTitle (ported verbatim, per that file's own header)",
+      "audiobook_catalog app/core/review_join.py — book_id_from_title",
+      "audiobook_catalog app/tools/import_pagebound_reviews.py — book_id (a second, independent Python port of the same JS; test_review_join.py already pins the two Python copies against each other)"
+    ],
+    "splitAuthors": [
+      "library_catalog packages/core/src/titles.ts — splitAuthors (canon)",
+      "audiobook_catalog app/core/review_join.py — split_authors / primary_author"
+    ],
+    "workKeyFor": [
+      "library_catalog packages/core/src/titles.ts — workKeyFor (canon)",
+      "audiobook_catalog app/core/review_join.py — work_key_for"
+    ],
+    "cleanAudiobookTitle / cleanTitleWithSeries": [
+      "library_catalog packages/core/src/titles.ts — cleanAudiobookTitle / cleanTitleWithSeries (canon)",
+      "audiobook_catalog app/library_link.py — clean_audiobook_title / clean_title_with_series"
+    ],
+    "splitSeriesPrefix": [
+      "library_catalog packages/core/src/titles.ts — splitSeriesPrefix. No audiobook port exists (audiobook_catalog has no OPF/series-prefix ingest path); included here as a single-repo pin so a future port has a fixture to run against from day one, not written after the fact."
+    ]
+  },
+  "_runners": [
+    "library_catalog — npm test (packages/core/test/title-key-fixtures.test.ts, file materialised into packages/universes/generated/ by scripts/sync-universes.mjs, same mechanism as match-fold.fixtures.json)",
+    "audiobook_catalog — python -m pytest tests/test_title_key_fixtures.py (reads catalog-platform/data/ directly, same posture as tests/test_universes.py: SKIPPED, not failed, when the sibling checkout is absent)",
+    "audiobook_catalog — npm test / vitest (site/__tests__/reviews-fixtures.test.js, bookIdFromTitle only — the ONE function whose canon lives in this repo's own site JS)"
+  ],
+  "titles": [
+    { "raw": "The Hobbit", "expect": "hobbit", "why": "leading article 'The' stripped" },
+    { "raw": "A Court of Thorns and Roses", "expect": "court of thorns and roses", "why": "leading 'A' stripped; interior 'and' kept" },
+    { "raw": "An Absolutely Remarkable Thing", "expect": "absolutely remarkable thing", "why": "leading 'An' stripped" },
+    { "raw": "THE STORMLIGHT ARCHIVE", "expect": "stormlight archive", "why": "case folds; spine-style all caps" },
+    { "raw": "Dungeons & Dragons", "expect": "dungeons and dragons", "why": "ampersand becomes the word 'and'" },
+    { "raw": "Fish & Chips & Vinegar", "expect": "fish and chips and vinegar", "why": "multiple ampersands" },
+    { "raw": "Café at the Edge of the World", "expect": "cafe at the edge of the world", "why": "diacritic e-acute folded; interior 'the' survives" },
+    { "raw": "Naïve Super", "expect": "naive super", "why": "diaeresis folded" },
+    { "raw": "Ångström's Legacy", "expect": "angstrom s legacy", "why": "ring-above + umlaut folded, straight apostrophe becomes a space" },
+    { "raw": "The Frugal Wizard’s Handbook for Surviving Medieval England", "expect": "frugal wizard s handbook for surviving medieval england", "why": "curly apostrophe (U+2019) becomes a space — the real audiobook row spelling" },
+    { "raw": "The Frugal Wizard's Handbook for Surviving Medieval England", "expect": "frugal wizard s handbook for surviving medieval england", "why": "straight apostrophe, same shape as the curly-quote case above" },
+    { "raw": "Summoner 6", "expect": "summoner 6", "why": "a bare trailing number IS the title (Eric Vall) and survives the fold" },
+    { "raw": "Who Goes Roar?", "expect": "who goes roar", "why": "trailing punctuation dropped" },
+    { "raw": "Tamer: King of Dinosaurs", "expect": "tamer king of dinosaurs", "why": "colon becomes a space" },
+    { "raw": "Beneath the Dragoneye Moons – Immortal War", "expect": "beneath the dragoneye moons immortal war", "why": "en dash (U+2013) becomes a space" },
+    { "raw": "Beneath the Dragoneye Moons — Immortal War", "expect": "beneath the dragoneye moons immortal war", "why": "em dash (U+2014) becomes a space" },
+    { "raw": "   ", "expect": "", "why": "whitespace-only input folds to empty" },
+    { "raw": "", "expect": "", "why": "empty string folds to empty" },
+    { "raw": "The The The", "expect": "the the", "why": "the leading-article strip is anchored and fires ONCE, so a repeated article word only loses its first occurrence" },
+    { "raw": "A", "expect": "a", "why": "a bare single letter matching the article pattern, with nothing after it, is left alone (the pattern requires trailing whitespace)" },
+    { "raw": "The Lake House", "expect": "lake house", "why": "the library/audiobook bridge's own canonical example" },
+    { "raw": "Firefight - The Reckoners, Book 2", "expect": "firefight the reckoners book 2", "why": "raw undecorated fold — contrast with cleanAudiobookTitle, which would strip the series suffix first" },
+    { "raw": "100 Cupboards", "expect": "100 cupboards", "why": "leading digits, no article to strip" },
+    { "raw": "L'Engle's Wrinkle", "expect": "l engle s wrinkle", "why": "apostrophe mid-word, straight, becomes a space same as any other punctuation" },
+    { "raw": "Boy, Snow, Bird", "expect": "boy snow bird", "why": "commas collapse to spaces" }
+  ],
+  "bookIds": [
+    { "raw": "The Lake House", "expect": "the-lake-house", "why": "⚠️ keeps the leading article — unlike normaliseTitle above on the SAME input" },
+    { "raw": "A Court of Thorns and Roses", "expect": "a-court-of-thorns-and-roses", "why": "keeps leading 'A'" },
+    { "raw": "An Absolutely Remarkable Thing", "expect": "an-absolutely-remarkable-thing", "why": "keeps leading 'An'" },
+    { "raw": "THE STORMLIGHT ARCHIVE", "expect": "the-stormlight-archive", "why": "lowercases but keeps 'the'" },
+    { "raw": "Café Society", "expect": "caf-society", "why": "⚠️ does NOT fold diacritics, unlike normaliseTitle — é is outside [a-z0-9] and simply becomes a hyphen" },
+    { "raw": "Tamer: King of Dinosaurs", "expect": "tamer-king-of-dinosaurs", "why": "colon becomes a hyphen" },
+    { "raw": "  Leading   & Trailing  ", "expect": "leading-trailing", "why": "collapses runs of non-alnum to one hyphen, trims edge hyphens" },
+    { "raw": "---already---dashed---", "expect": "already-dashed", "why": "no double-hyphen artifacts survive the run-collapse" },
+    { "raw": "Who Goes Roar?", "expect": "who-goes-roar", "why": "trailing punctuation dropped, no trailing hyphen left behind" },
+    { "raw": "", "expect": "", "why": "empty in, empty out" },
+    { "raw": "Summoner 6", "expect": "summoner-6", "why": "bare number kept as a hyphen-joined segment" },
+    { "raw": "Firefight - The Reckoners, Book 2", "expect": "firefight-the-reckoners-book-2", "why": "raw undecorated slug — no series/book stripping happens here at all" }
+  ],
+  "splitAuthorsCases": [
+    { "raw": "Brandon Sanderson", "expect": ["Brandon Sanderson"], "why": "single name passes through" },
+    { "raw": "Brandon Sanderson & Janci Patterson", "expect": ["Brandon Sanderson", "Janci Patterson"], "why": "split on '&'" },
+    { "raw": "Terry Pratchett and Neil Gaiman", "expect": ["Terry Pratchett", "Neil Gaiman"], "why": "split on the word 'and'" },
+    { "raw": "Oleg Sapphire, Alexey Kovtunov, Jennifer E. Sunseri - Translator", "expect": ["Oleg Sapphire", "Alexey Kovtunov", "Jennifer E. Sunseri"], "why": "comma split; the '- Translator' suffix is stripped from the last segment" },
+    { "raw": "Jennifer E. Sunseri - Translator", "expect": ["Jennifer E. Sunseri"], "why": "a role-only credit still yields a real, non-empty name" },
+    { "raw": " - Translator", "expect": [], "why": "a segment that strips down to nothing at all is dropped, yielding an empty list" },
+    { "raw": "", "expect": [], "why": "empty string yields an empty list" },
+    { "raw": "Real Author; Jennifer E. Sunseri - Narrator", "expect": ["Real Author", "Jennifer E. Sunseri"], "why": "semicolon split, narrator suffix stripped" },
+    { "raw": "J.R.R. Tolkien", "expect": ["J.R.R. Tolkien"], "why": "no delimiter present, passes through whole (periods are not a splitter)" },
+    { "raw": "Author A, Author B, Author C - Editor", "expect": ["Author A", "Author B", "Author C"], "why": "three-way comma split, editor suffix stripped from the last" }
+  ],
+  "workKeyCases": [
+    { "title": "The Lake House", "authors": "Dakota Krout", "expect": "lake house|dakota krout", "why": "canonical bridge example" },
+    { "title": "The Lake House", "authors": "Author A, Author B", "expect": "lake house|author a", "why": "only the primary (first-listed) author is folded into the key" },
+    { "title": "Implode", "authors": "Dakota Krout", "expect": "implode|dakota krout", "why": "baseline for the change-detection pair below" },
+    { "title": "Implode Retitled", "authors": "Dakota Krout", "expect": "implode retitled|dakota krout", "why": "a title change moves the key" },
+    { "title": "Implode", "authors": "A Different Author", "expect": "implode|different author", "why": "an author change moves the key" },
+    { "title": "THE Implode", "authors": "Dakota Krout", "expect": "implode|dakota krout", "why": "a pure-tag casing/article change folds IDENTICALLY to the baseline — must not look like a move" },
+    { "title": "Some Book", "authors": "?unknown", "expect": "some book|?unknown", "why": "⚠️ the '?unknown' sentinel bypasses normaliseTitle entirely and survives into the key verbatim — folding it would collide every authorless book with a real 'Unknown'-credited one" },
+    { "title": "The Hobbit", "authors": "J.R.R. Tolkien", "expect": "hobbit|j r r tolkien", "why": "diacritic-free control case; initials become separated letters" }
+  ],
+  "cleanAudiobookTitleCases": [
+    { "raw": "Firefight - The Reckoners, Book 2", "expect": "Firefight", "why": "series+book suffix stripped" },
+    { "raw": "A Court of Thorns and Roses, Book One", "expect": "A Court of Thorns and Roses", "why": "word-numeral 'Book One' suffix stripped, no separator needed before the series name" },
+    { "raw": "Court of Mist and Fury - Part 1 of 2 (Dramatized Adaptation)", "expect": "Court of Mist and Fury", "why": "both 'Part N of M' and 'Dramatized Adaptation' packaging stripped" },
+    { "raw": "Court of Mist and Fury (Dramatized Adaptation) - A Court of Thorns and Roses, Book 2", "expect": "Court of Mist and Fury", "why": "adaptation tag removed first, then the series/book suffix it was blocking" },
+    { "raw": "Court of Mist and Fury (Dramatized Adaptation) - A Court of Thorns and Roses 2", "expect": "Court of Mist and Fury - A Court of Thorns and Roses 2", "why": "⚠️ the bare-trailing-numeral stripper requires a comma before the number; without one this suffix survives untouched — a measured gap, not a guess" },
+    { "raw": "Court of Mist and Fury (Dramatized Adaptation) - A Court of Thorns and Roses", "expect": "Court of Mist and Fury - A Court of Thorns and Roses", "why": "no numeral and no 'Book' marker at all: nothing left to pattern-match, survives untouched" },
+    { "raw": "The Wandering Inn (Volume 1)", "expect": "The Wandering Inn", "why": "parenthetical volume stripped" },
+    { "raw": "Some Book (The Great Series)", "expect": "Some Book", "why": "parenthetical containing the word 'Series' stripped" },
+    { "raw": "Some Book (Full-Cast Edition)", "expect": "Some Book (Full-Cast Edition)", "why": "⚠️ NOT one of the special-cased patterns (no Book/Volume/Part/Series marker) — survives completely untouched. Recorded as measured behaviour, not a bug: a fixture of what the function actually does, not what a reader might assume" },
+    { "raw": "A Standalone Novel - A Novel", "expect": "A Standalone Novel", "why": "marketing tail 'A Novel' stripped" },
+    { "raw": "Light Reading - Light Novel", "expect": "Light Reading", "why": "marketing tail 'Light Novel' stripped" },
+    { "raw": "Summoner 6", "expect": "Summoner 6", "why": "bare trailing number is the title, survives untouched (Eric Vall)" },
+    { "raw": "Just a Title", "expect": "Just a Title", "why": "nothing to strip, passes through unchanged" },
+    { "raw": "Trailing Dash Only -", "expect": "Trailing Dash Only", "why": "a bare trailing dash with nothing after it is stripped" }
+  ],
+  "cleanTitleWithSeriesCases": [
+    { "raw": "Firefight - The Reckoners, Book 2", "series": "The Reckoners", "expect": "Firefight", "why": "known series name strips the exact suffix" },
+    { "raw": "Dune", "series": "Dune", "expect": "Dune", "why": "⚠️ title equals series: the function never returns empty, falls back to the un-series-stripped clean rather than producing a blank title" },
+    { "raw": "Blackflame (Cradle Book 3)", "series": "Cradle", "expect": "Blackflame", "why": "the base heuristic (cleanAudiobookTitle) already strips this parenthetical before the series argument is even consulted" },
+    { "raw": "Some Book", "series": null, "expect": "Some Book", "why": "no series given: identical to cleanAudiobookTitle alone" },
+    { "raw": "Some Book", "series": "", "expect": "Some Book", "why": "empty-string series is treated the same as no series" },
+    { "raw": "Warbreaker - The Cosmere", "series": "The Cosmere", "expect": "Warbreaker", "why": "the leading 'The' inside the suffix pattern is optional and matched either way" }
+  ],
+  "splitSeriesPrefixCases": [
+    { "raw": "Beneath the Dragoneye Moons: Immortal War", "expect": { "series": "Beneath the Dragoneye Moons", "title": "Immortal War" }, "why": "the measured 2026-08-14 EPUB OPF shape that motivated this function" },
+    { "raw": "All The Skills: Book 2: A Deck-Building LitRPG", "expect": { "series": "All The Skills", "title": "Book 2: A Deck-Building LitRPG" }, "why": "splits on the FIRST colon only — a double-decorated title fails safe rather than inventing a second split" },
+    { "raw": "Immortal War", "expect": null, "why": "no colon at all: null" },
+    { "raw": ": Immortal War", "expect": null, "why": "nothing before the colon: null" },
+    { "raw": "Beneath the Dragoneye Moons:", "expect": null, "why": "nothing after the colon: null" },
+    { "raw": "Tamer:  King of Dinosaurs Book 10", "expect": { "series": "Tamer", "title": "King of Dinosaurs Book 10" }, "why": "extra whitespace trimmed from both halves" }
+  ]
+}
