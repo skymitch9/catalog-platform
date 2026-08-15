@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — universes</title>
+<meta name="description" content="Every estate universe — the books, audiobooks and games that share one fiction.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f4ed">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b09">
+
+<!--
+  /universes — one row per estate universe (data/universes.json), each
+  expanding on click to GET /api/universe/:name (index-worker read.ts).
+
+  ⚠️ MEMBERS-ONLY DATA, SAME AS THE FRONT DOOR'S UNIVERSE FOLLOW-UP: read.ts's
+  own header is explicit that /api/universe/:name sits behind the
+  requireEstateMember() blanket with NO anonymous carve-out (the carve-out
+  that exists for /api/search is search-only, §4.5). /api/search was checked
+  (search-route.ts) and offers no universe-scoped query — only a ranked `q`
+  text match whose `universes` group is names-and-counts, not rows. So there
+  is no honest way to give a signed-out visitor real universe contents here;
+  a signed-out click gets the same sign-in invitation find.js already uses
+  for its own "everything in X" buttons, not a wall and not a fake fetch.
+
+  Auth: assets/estate-auth.js, same shared Firebase project as the front
+  door. Neutral-boot pattern from assets/find.js (see universes.js) — no
+  flash of "sign in" for a returning member before Firebase answers.
+
+  Rendering: DELIBERATELY DUPLICATED from find.js's rowCard/coverFor/
+  metaBits rather than factored into a shared module — this codebase's own
+  convention (find.js, status.js, identity.js precedents) is one page, one
+  script, no build step. universes.js says so at its own header.
+
+  Theme: assets/estate-theme.css + theme.js, same cog markup as every other
+  apex page (index.html, status/index.html). CSP: public/_headers /universes
+  + /universes/ rules (Pages 308s the bare path and the redirect drops
+  headers — same trailing-slash duplication /status needed, explained there).
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- Classic script on purpose: stamps theme/mode before first paint. -->
+<script src="/assets/theme.js"></script>
+
+<style>
+/* Working page, same language as /status and /admin: tokens only, hairlines,
+   one accent. The .hits/.hit/.hit-cover/.hit-body/.hit-title/.hit-meta rules
+   below are copied verbatim from index.html's <style> block (find.js's
+   contract) so a universe's rows render identically to a search result. */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--et-bg);
+  background-image: var(--et-bg-texture);
+  background-size: var(--et-bg-texture-size);
+  color: var(--et-fg);
+  font: var(--et-text-body)/1.55 var(--et-font);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+main { max-width: 44rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
+
+h1 {
+  margin: 0 0 .3rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-title);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  text-transform: var(--et-title-case);
+  color: var(--et-heading-color);
+  text-shadow: var(--et-glow-title);
+}
+.sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+
+[hidden] { display: none !important; }
+
+/* ---- sign-in strip, same button language as index.html's #find --------- */
+
+.find-btn {
+  min-height: 44px;
+  padding: .5rem 1.05rem;
+  border: var(--et-btn-border);
+  border-radius: var(--et-radius);
+  background: var(--et-btn-bg);
+  color: var(--et-btn-fg);
+  box-shadow: var(--et-btn-shadow);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.find-btn:hover { filter: brightness(1.06); }
+.find-btn:disabled { opacity: .6; cursor: default; }
+
+.find-linkbtn {
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  background: none;
+  color: var(--et-accent);
+  font: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.find-linkbtn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 4px; }
+
+#uni-who { margin: 0 0 var(--et-space-2); color: var(--et-muted); font-size: var(--et-text-small); }
+#uni-status {
+  margin: 0 0 var(--et-space-3);
+  padding: .6rem .85rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: color-mix(in srgb, var(--et-surface) 55%, transparent);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+#uni-status[data-tone="warn"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); color: var(--et-fg); }
+#uni-status[data-tone="owner"] { border-color: color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline)); color: var(--et-fg); }
+
+/* ---- the universe list -------------------------------------------------- */
+
+ul.uni-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+
+.uni-row {
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+  overflow: hidden;
+}
+
+.uni-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: .8rem 1rem;
+  border: 0;
+  background: none;
+  color: var(--et-fg);
+  font: inherit;
+  font-weight: 700;
+  font-family: var(--et-font-display);
+  letter-spacing: var(--et-title-spacing);
+  text-align: left;
+  cursor: pointer;
+}
+.uni-toggle:hover { color: var(--et-accent); }
+.uni-toggle:focus-visible { outline: 2px solid var(--et-accent); outline-offset: -2px; }
+.uni-toggle::after {
+  content: "";
+  flex: none;
+  width: .6rem;
+  height: .6rem;
+  border-right: 2px solid var(--et-muted);
+  border-bottom: 2px solid var(--et-muted);
+  transform: rotate(45deg);
+  transition: transform .18s ease;
+}
+.uni-toggle[aria-expanded="true"]::after { transform: rotate(-135deg); }
+
+.uni-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--et-hairline);
+}
+
+.uni-note {
+  margin: .9rem 0 0;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+
+.find-group {
+  margin: 1rem 0 .5rem;
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+
+.find-caveat {
+  margin: 1rem 0 .3rem;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+
+ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+.hit {
+  display: flex;
+  gap: .8rem;
+  align-items: flex-start;
+  padding: .65rem .75rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: var(--et-bg);
+}
+
+.hit-cover {
+  flex: none;
+  display: block;
+  width: 2.6rem;
+  height: 3.6rem;
+  border-radius: calc(var(--et-radius) / 2);
+  border: 1px solid var(--et-hairline);
+  background: var(--et-surface);
+  overflow: hidden;
+}
+.hit-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hit-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.hit-title { font-weight: 600; }
+.hit-title a { color: var(--et-fg); text-decoration: none; }
+.hit-title a:hover { color: var(--et-accent); text-decoration: underline; }
+.hit-meta { color: var(--et-muted); font-size: var(--et-text-small); }
+
+footer {
+  margin-top: var(--et-space-4);
+  padding-top: var(--et-space-2);
+  border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
+footer a { color: var(--et-accent); }
+</style>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select">
+      <option value="classic">Classic</option>
+      <option value="apple">Apple</option>
+      <option value="cyberpunk">Cyberpunk</option>
+      <option value="retro">Retro</option>
+    </select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+</div>
+
+<main>
+  <h1>Universes</h1>
+  <p class="sub">
+    Every fiction the estate tracks across formats — tap one to see its books,
+    audiobooks and games together. Sourced live from the shared index, the
+    same place the front door's search sends its own "everything in X"
+    follow-ups.
+  </p>
+
+  <p id="uni-who" hidden></p>
+  <button id="uni-signin" class="find-btn" type="button" hidden>Sign in to see contents</button>
+  <p id="uni-status" hidden></p>
+
+  <ul id="uni-list" class="uni-list" aria-label="Estate universes"></ul>
+
+  <footer>
+    <p>
+      A result means it is in the catalog — some entries are wanted, not
+      owned. Tap through to the owning catalog for owned-versus-wanted.
+    </p>
+    <p><a href="/">&larr; back to the front door</a></p>
+  </footer>
+</main>
+
+<!-- External file because _headers ships script-src 'self' — inline script
+     stays blocked, same as every other apex page. -->
+<script type="module" src="/universes/universes.js"></script>
+</body>
+</html>
