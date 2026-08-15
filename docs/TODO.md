@@ -230,9 +230,26 @@ nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning
    per source, worker healths, site build stamps), red/green at a glance.
 2. **Cross-format series completion view** — library site: series ladders
    showing gaps by format and what ANY format would complete.
-3. **Backup & restore runbook + backup workflows** — D1 exports (library,
-   index, estate_auth), Firestore export cadence, rehearsed restore docs;
-   manual-dispatch backup workflows using the new CI plumbing.
+3. **Backup & restore runbook + backup workflows** — ✅ **BUILT + RUN
+   2026-08-14.** `docs/access/backup-restore.md` is the runbook (protect
+   inventory across all four repos, D1 Time Travel + export/import, Firestore
+   dump/restore, R2's real gaps, what's deliberately not backed up and why).
+   `.github/workflows/backup.yml` (manual dispatch, `d1`/`firestore`/`all`)
+   exports **all four** D1 databases — library-catalog, board-game-catalog,
+   index_catalog, estate_auth — from THIS repo alone, by database ID (proven
+   interactively: no wrangler.toml needed), because `Board_Game_Catalog` is a
+   PUBLIC repo and a GitHub Actions artifact there is downloadable by any
+   signed-in GitHub account, not just collaborators — unacceptable for a
+   database dump. `scripts/backup-firestore.mjs` (+ its restore companion
+   `scripts/restore-firestore.mjs`, dry-run by default) walks every Firestore
+   collection/subcollection recursively via the existing service account —
+   no GCS bucket, no gcloud infra. **Proof run** (workflow dispatch
+   `31855147930`): all 5 jobs green, artifacts downloaded and verified —
+   4 non-empty `.sql` exports (5.8 KB estate_auth to 3.8 MB board-game-catalog)
+   + 1 Firestore dump (56 collections, 1,294 docs, matching the local
+   pre-flight run exactly). Named gap: R2 `library-covers` has no backup path
+   yet — `wrangler r2 object list` doesn't exist, so there's no CLI-native way
+   to enumerate the bucket without a separate R2 API token + rclone/aws-cli.
 4. **Covers consolidation — research + inventory tonight** — count the
    third-party hotlink tail, size the R2 rehost, write the execution plan.
 
