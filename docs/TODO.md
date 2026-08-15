@@ -292,6 +292,17 @@ the still-deployed old CSP.
 
 ## Queued behind the Cosmere batch (owner, 2026-08-15)
 
+0. **Search normalization (owner proposal, adopted)**: search improvements
+   must reach EVERY search bar — today only the apex consumes the shared
+   index, so tiers like universe-name search die at one site. Build ONE
+   reusable search component (framework-agnostic custom element, canonical
+   module + sync like theme.js), backed by /api/search with per-site INTAKE
+   FILTERS (source pre-scope + site-local filters as config). Phase 1:
+   component + apex adoption (proves it); then per-site adoption plan with
+   sizes (library/games React wrap it; audiobook vanilla embeds it —
+   its client-side table filter stays for its own columns, decide the split
+   honestly). Universe search then reaches everything for free.
+
 1. **Generalize the Cosmere treatment estate-wide**: for every universe and
    series, apply the same logic just exercised on Cosmere — matcher
    completeness (no member left unflagged by a spelling quirk), series-blank
