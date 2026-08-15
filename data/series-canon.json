@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "_doc": "The estate series canon: CROSS-CATALOG spelling folds for series names. Normalization item 4. Built so the two book catalogs stop drifting on how a series is spelled — the drift that left three series building NO cross-catalog audio rungs at all, because library_catalog's audiobook-holdings backfill folds series names for a living and a series folded against the wrong spelling folds against nothing.",
+  "_home": "catalog-platform/data/series-canon.json — the ONE copy, mirroring data/universes.json's placement and the reasoning in docs/UNIVERSES.md §1. Both catalogs read this path; neither keeps a copy in git. ⚠️ This makes catalog-platform a CODE dependency for a second reason, not just for universes — deleting or moving this file breaks the same two builds.",
+  "_scope": {
+    "crossCatalogOnly": "⚠️ This file records CROSS-CATALOG drift ONLY — a series spelled one way in audiobook_catalog's site/catalog.csv and a different way in library_catalog's D1 work.series. It is NOT where a within-catalog variant belongs. audiobook_catalog already owns that problem for its own data, in scripts/catalog_overrides.json canonical_series (docs/info/catalog-corrections.md §4) — see _completionistChroniclesCheckedAndExcluded below for the case that tests this line directly.",
+    "notAUniverse": "A series canon entry says two strings name the same series. A universe (data/universes.json) says a series belongs to a larger fictional continuity. Different questions, kept in different files on purpose — Ascend Online, Harry Potter and Fae & Alchemy are none of them claimed by any universe, and folding their spelling has nothing to do with whether they ever are."
+  },
+  "_decided": {
+    "canonicalRule": "⚠️ The plain, UNDECORATED form always wins, applied identically every time regardless of which catalog happens to hold it: no bracketed reading-order notes ('[publication order]'), no descriptive parenthetical ('(Full-Cast Editions)'), no redundant 'The … Series' wrapper. In all three seeded entries the plain form happens to be library_catalog's spelling and the decorated form audiobook_catalog's — that is a fact about Audible's naming conventions (which favour disambiguating suffixes), not a rule that library_catalog always wins. A future entry where audiobook_catalog holds the plainer spelling folds the other way.",
+    "provenance": "decidedHow follows data/universes.json's vocabulary — seed (measured + folded by rule, no owner review needed because the rule is mechanical and the evidence is a direct read of both catalogs), human (owner confirmed), llm (proposed, unconfirmed). All three seeded entries are seed: the canonical form is not a judgment call once the rule above is fixed.",
+    "whyAFileAndNotAFunction": "Three entries today, will not stay three. A fold RULE (strip brackets, strip parens, strip 'The'/'Series') was tried first, during discovery — see _measured — and it is exactly what finds candidate groups. It is deliberately NOT what a consumer runs at match time: a rule can merge two series that only coincidentally share a decoration pattern, and would need to reproduce identically in Python and in two places in JavaScript (packages/core here, the standalone backfill script) with no shared runtime to keep them honest, the same trap docs/UNIVERSES.md §6 already names for resolve_author_link. A flat variant→canonical map, matched EXACTLY like universes.json canonicalNames, has none of that risk — see _lookup."
+  },
+  "_measured": "2026-08-14. audiobook_catalog/site/catalog.csv `series` column (337 unique spellings, already POST audiobook_catalog's own canonical_series fold — the CSV is a generated build artifact, corrections happen before it is written) diffed against library_catalog D1 `work.series` (114 unique spellings, queried live: `npx wrangler d1 execute library-catalog --config apps/worker/wrangler.toml --remote --command \"SELECT DISTINCT series FROM work WHERE series IS NOT NULL AND series != '' ORDER BY series\" --json`). The diff first folded both lists by the canonicalRule above (strip a trailing `[...]` or `(...)`, strip a leading 'The ', strip a trailing ' Series', then lowercase/trim) and kept every fold-key present in both lists with more than one surviving exact spelling. A second, looser pass — alphanumeric characters only, everything else discarded — was run over both raw lists as a check that nothing was missed by the decoration-shaped rule; it found nothing beyond the three below. Exactly three cross-catalog variant groups exist in the current data.",
+  "_completionistChroniclesCheckedAndExcluded": "The Completionist Chronicles was the fourth candidate this file was built to look for — the owner's example of a series spelled four ways (docs/info/improvement-proposals.md and audiobook_catalog docs/info/catalog-corrections.md §4/§7). Measured 2026-08-14: both catalogs already read the identical string 'The Completionist Chronicles' — site/catalog.csv because audiobook_catalog's OWN scripts/catalog_overrides.json canonical_series folds its four raw filename-tag spellings before the CSV is ever written, and library_catalog D1 independently stores the same clean spelling. There is no cross-catalog drift left for this series, so it gets NO entry here — an entry that folds a string onto itself would document nothing. If either side's spelling ever drifts again, re-run the measurement above; it will reappear as a real group.",
+  "_lookup": {
+    "matching": "Exact match only, after normalising: lowercase, curly quotes folded to straight (['‘’ʼ′'] -> \"'\"; [\"\\u201c\\u201d\"] -> '\"'), whitespace collapsed, trimmed. Identical fold to data/universes.json's normText — same reason: the estate's one text-normalisation rule for names, not a second one drifting from the first.",
+    "noDecorationStripping": "⚠️ The decoration-insensitive fold in `_measured` is a DISCOVERY tool only, never a runtime rule. A consumer never strips brackets, parens or 'Series' at match time — it looks up the exact (normalised) string in the variants list below and gets back the canonical spelling, or gets nothing and passes the input through unchanged. An unknown spelling is never a guess, matching data/universes.json canonicalName's rule.",
+    "unknownPassesThrough": "A series not in this file resolves to itself, unlike universes.json's canonicalName (which returns null for an unknown name). Different default because the two callers need different answers: a universe lookup treats 'no answer' as 'no universe', a valid and common case; a series-name fold has no such empty case — a series with no cross-catalog drift is still a series, spelled correctly, and the fold must hand it back unchanged."
+  },
+  "entries": [
+    {
+      "canonical": "Ascend Online",
+      "variants": [
+        "Ascend Online",
+        "Ascend Online [publication order]"
+      ],
+      "evidence": "audiobook_catalog site/catalog.csv: 'Ascend Online [publication order]'. library_catalog D1 work.series: 'Ascend Online'. Both measured 2026-08-14 (see _measured).",
+      "decidedHow": "seed"
+    },
+    {
+      "canonical": "Harry Potter",
+      "variants": [
+        "Harry Potter",
+        "Harry Potter (Full-Cast Editions)"
+      ],
+      "evidence": "audiobook_catalog site/catalog.csv: 'Harry Potter (Full-Cast Editions)' — the household's audio copies are the full-cast dramatised productions, and Audible files them with that suffix. library_catalog D1 work.series: 'Harry Potter'. Both measured 2026-08-14.",
+      "decidedHow": "seed"
+    },
+    {
+      "canonical": "Fae & Alchemy",
+      "variants": [
+        "Fae & Alchemy",
+        "The Fae & Alchemy Series"
+      ],
+      "evidence": "audiobook_catalog site/catalog.csv: 'The Fae & Alchemy Series'. library_catalog D1 work.series: 'Fae & Alchemy'. Both measured 2026-08-14.",
+      "decidedHow": "seed"
+    }
+  ],
+  "_shapeNotes": [
+    {
+      "note": "An entry is a canonical spelling plus every OTHER spelling that means it — not a pairwise map",
+      "why": "Mirrors universes.json canonicalNames' shape (many aliases -> one target) rather than a list of two-item pairs, so a THIRD catalog or a third spelling of an existing entry is one more string in `variants`, not a new entry."
+    },
+    {
+      "note": "Every edit needs a reason, same as universes.json, enforced by tools/series-canon.mjs `add`",
+      "why": "An unexplained fold is indistinguishable from a typo that happens to look plausible — the same property data/universes.json protects, for the same reason."
+    },
+    {
+      "note": "Consumers hold this in memory; nothing queries it",
+      "why": "Three entries today. library_catalog reads it live from the sibling checkout inside scripts/lib/series-canon.mjs, the same direct-read pattern scripts/lib/audiobooks.mjs already uses for site/catalog.csv — not the packages/universes/generated/ bundling path, because this file is consumed by a hand-run backfill script, not by the deployed Worker. audiobook_catalog consumes it ONCE, at sync time, via `python -m app.tools.sync_series_canon`, which merges these entries into its own scripts/catalog_overrides.json canonical_series and then never reads this file again until the next sync."
+    }
+  ],
+  "_changelogDoc": "Every mutation made through tools/series-canon.mjs, newest last. Git records WHAT changed; this records WHY.",
+  "_changelog": [
+    {
+      "date": "2026-08-14",
+      "action": "seed",
+      "entries": ["Ascend Online", "Harry Potter", "Fae & Alchemy"],
+      "why": "Normalization item 4 (owner-ordered): these three series each spelled one way in audiobook_catalog and another in library_catalog, which is exactly the shape that makes library_catalog's audiobook-holdings series fold miss them entirely — measured before this file existed as zero audio rungs for all three. Measured against both catalogs' real data 2026-08-14; see _measured for the exact query. Completionist Chronicles was checked as the fourth candidate and excluded — see _completionistChroniclesCheckedAndExcluded.",
+      "decidedHow": "seed"
+    }
+  ]
+}

@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "universes": "node tools/universes.mjs",
-    "validate": "node tools/universes.mjs validate && node tools/universes.mjs fixtures",
+    "series-canon": "node tools/series-canon.mjs",
+    "validate": "node tools/universes.mjs validate && node tools/universes.mjs fixtures && node tools/series-canon.mjs validate",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "backup:firestore": "node scripts/backup-firestore.mjs"

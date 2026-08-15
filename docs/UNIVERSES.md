@@ -207,3 +207,90 @@ apart until a promote failed **silently**.
 - **`Fires of December`** has no row in the audiobook catalog; the entry rests
   on publisher copy and the owner's pledge, both cited in the file.
 - Nothing was deployed and nothing was pushed.
+
+---
+
+## 8. A sibling file: the series canon (normalization item 4)
+
+`data/series-canon.json`, built 2026-08-14, **not universe data** — the two
+files sit beside each other because they are both small, both edited through a
+local CLI, and both stop a specific kind of estate-wide drift, but they answer
+different questions. `universes.json` says a series belongs to a larger
+fictional continuity. `series-canon.json` says two strings name the *same*
+series. Folding a series' spelling has nothing to do with whether it is ever
+claimed by a universe — none of the three seeded entries below are.
+
+### Why it exists
+
+`library_catalog`'s audiobook-holdings backfill
+(`scripts/backfill-audiobook-holdings.mjs`) builds a series-to-audio-rungs map
+by folding `audiobook_catalog/site/catalog.csv`'s `series` column against its
+own `work.series`. Before this file, that fold used only `normaliseTitle` —
+which folds case and whitespace, not decoration — so a series spelled
+`"Ascend Online [publication order]"` on the audio side and `"Ascend Online"`
+on the library side folded to two different keys and produced **zero** audio
+rungs, for a series the household owns on both formats. Measured 2026-08-14:
+this was true of three series — **Ascend Online**, **Harry Potter**, **Fae &
+Alchemy** — each spelled plainly in one catalog and with a decorative suffix in
+the other.
+
+### How the three entries were found
+
+`audiobook_catalog/site/catalog.csv`'s `series` column (337 unique spellings,
+already past *that* catalog's own `canonical_series` fold — the CSV is a build
+artifact, written after corrections) was diffed against `library_catalog` D1
+`work.series` (114 unique spellings, queried live via `wrangler d1 execute
+library-catalog --remote`). The diff folded both lists by the canonical rule
+below to find *candidate* groups, then kept every group where more than one
+exact spelling survived. A separate, looser alphanumeric-only pass over both
+raw lists confirmed nothing else was missed. **The Completionist Chronicles**
+— the household's other well-known multi-spelling series — was checked as a
+fourth candidate and excluded: both catalogs already read the identical string
+`"The Completionist Chronicles"`, because `audiobook_catalog`'s own
+`canonical_series` already folds its four *filename-tag* spellings before the
+CSV is written. See `_completionistChroniclesCheckedAndExcluded` in the data
+file.
+
+### The choosing rule
+
+The plain, undecorated form always wins — no bracketed reading-order note, no
+descriptive parenthetical, no redundant `"The … Series"` wrapper — applied
+identically regardless of which catalog happens to hold it. In today's three
+entries the plain form is always `library_catalog`'s spelling, which is a fact
+about Audible's naming conventions (it favours disambiguating suffixes like
+`"(Full-Cast Editions)"`), not a rule that one catalog always wins.
+
+### Matching: exact, never the decoration-stripping rule itself
+
+The rule above is a **discovery** tool, used once to find candidate groups. A
+consumer never runs it at match time — that would need reproducing identically
+in Python and in two separate places in JavaScript with no shared runtime to
+keep them honest, the exact trap §6 above already names for
+`resolve_author_link`. Instead each entry lists every known spelling
+explicitly, and lookup is an exact match after the same `normText` fold
+`universes.json` uses (lowercase, curly quotes folded, whitespace collapsed).
+An unknown spelling passes through **unchanged** — unlike `canonicalName()`
+above, which returns `null` for an unknown universe name. Different default on
+purpose: a series with no cross-catalog drift is still a series, correctly
+spelled, and the fold must hand it back rather than erase it.
+
+### The consumers
+
+| | `library_catalog` | `audiobook_catalog` |
+|---|---|---|
+| Reads it | Live, at backfill time: `scripts/lib/series-canon.mjs` resolves the sibling checkout the same way `scripts/lib/audiobooks.mjs` reads `site/catalog.csv` — direct, no build step | Once, by hand: `python -m app.tools.sync_series_canon` merges every entry into `scripts/catalog_overrides.json` `canonical_series`, additively, then is not consulted again until re-run |
+| When it cannot find this repo | ⚠️ **Warns and continues** with an identity fold (unlike `universes.json`, which fails the *build*) — this file feeds a hand-run, dry-run-then-commit backfill script, not the deployed Worker, so a missing checkout should degrade the fold quality, not stop the whole backfill | The sync tool exits with an error naming `CATALOG_PLATFORM_DIR` and every path tried; nothing is silently skipped, but nothing else in the pipeline depends on it either |
+| Used by | `scripts/backfill-audiobook-holdings.mjs`, folding both the audiobook CSV's series column and this catalog's own `work.series` before the `normaliseTitle` key that joins them | `app.core.catalog_overrides.canonicalize_series()` — the sync tool's output lands in the SAME file and code path every other `canonical_series` entry already goes through |
+
+### How to add an entry
+
+```bash
+node tools/series-canon.mjs add --canonical "Name" --variant "Other Spelling" --why "..."
+```
+
+`--why` under 10 characters is refused, same rule as `universes.mjs`. After
+adding: `node tools/series-canon.mjs validate`, then re-run
+`python -m app.tools.sync_series_canon --commit` in `audiobook_catalog` so its
+own corrections layer picks up the new fold (`library_catalog` needs nothing —
+it reads this file live). Commit `data/series-canon.json` here and
+`scripts/catalog_overrides.json` there as two separate commits, one per repo.

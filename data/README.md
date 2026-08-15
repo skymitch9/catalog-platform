@@ -12,6 +12,7 @@ the design, and the root [`README.md`](../README.md) § *A code dependency*.
 |---|---|---|
 | `universes.json` | The shared fictional-universe list — six universes, their series, per-book overrides and exclusions, and every recorded refusal | `library_catalog` (build), `audiobook_catalog` (pipeline), `tools/universes.mjs` |
 | `universes.fixtures.json` | Lookup cases both catalogs must answer identically | all three test suites |
+| `series-canon.json` | The estate series canon — CROSS-CATALOG series-spelling folds (normalization item 4). Not universe data; see [`../docs/UNIVERSES.md`](../docs/UNIVERSES.md) §8 | `library_catalog` (`scripts/lib/series-canon.mjs`, live at backfill time), `audiobook_catalog` (`python -m app.tools.sync_series_canon`, at sync time), `tools/series-canon.mjs` |
 
 ## Editing
 
@@ -22,6 +23,10 @@ node tools/universes.mjs                 # help
 node tools/universes.mjs list
 node tools/universes.mjs validate        # exit 1 on any error
 node tools/universes.mjs fixtures
+
+node tools/series-canon.mjs              # help
+node tools/series-canon.mjs list
+node tools/series-canon.mjs validate
 ```
 
 Every mutating command requires `--why`. That is the point of the file: each
