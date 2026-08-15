@@ -222,7 +222,7 @@ Fable and waits for the owner to release it (e.g. after a weekly reset):
 ## The owner's five (picked from the research ideas, 2026-08-14 night)
 
 Prioritized by the owner; rejected ideas removed (dashboard, recap, game
-nights, purchase guard, and PWA — all skipped by owner decision).
+nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning worth keeping: the owner LIKES the idea, but the site's main job is linking into Google Drive to download m4b files — offline browsing is meaningless when the endgame needs data anyway. Re-pitch only if the site ever gains offline-useful jobs.)
 
 **TONIGHT (non-Fable agents, in flight):**
 1. **Estate status page** ("I want to see ALL the pipelines") — apex page:
