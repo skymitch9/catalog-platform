@@ -39,6 +39,13 @@ const app = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 // exception, the library's ingest-route precedent.
 app.route('/api/push', pushRoutes);
 
+// CORS for the estate status page (heygabi.ai/status), GET-only, no auth
+// header needed — health.ts is already public, this only lets a BROWSER on
+// the apex read it. Mounted before the route (same preflight reasoning as
+// readCors below): an OPTIONS preflight carries no token and must not fall
+// through to anything that could 401 it. Health has no other CORS-bearing
+// mount ahead of it, so this is the one place to add it.
+app.use('/api/health', healthCors());
 // Open by design: counts and timestamps only (health.ts says why).
 app.route('/api/health', healthRoutes);
 
@@ -66,6 +73,15 @@ app.route('/api/search', searchRoutes);
 app.use('/api/*', requireEstateMember());
 
 app.route('/api', readRoutes);
+
+/** Locked to the apex — the estate status page is the only browser caller. */
+function healthCors() {
+  return cors({
+    origin: 'https://heygabi.ai',
+    allowMethods: ['GET', 'OPTIONS'],
+    maxAge: 600,
+  });
+}
 
 function readCors() {
   return cors({

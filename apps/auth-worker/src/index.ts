@@ -51,6 +51,12 @@ app.use('/api/estate/site-roles', adminCors());
 // confined to exactly this path so the admin API stays apex-only.
 app.use('/api/estate/me', meCors());
 
+// CORS on /api/health alone — apex only, GET-only. The route itself
+// (estate.ts) is already open by design; this only lets a BROWSER on
+// heygabi.ai/status read it. Mounted before estateRoutes for the same
+// preflight reasoning as adminCors/meCors above.
+app.use('/api/health', healthCors());
+
 app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 
@@ -62,6 +68,15 @@ function adminCors() {
     },
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  });
+}
+
+/** The estate status page — apex only, GET-only, no Authorization needed. */
+function healthCors() {
+  return cors({
+    origin: 'https://heygabi.ai',
+    allowMethods: ['GET', 'OPTIONS'],
     maxAge: 600,
   });
 }
