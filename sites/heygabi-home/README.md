@@ -87,11 +87,16 @@ scope and the badge change with them. Two fields free to disagree is how a board
 starts lying.
 
 **The filter is CSS-only** — six visually-hidden radios, `<label>` chips, and
-`:checked ~` rules. There is no JavaScript here and there cannot be: `_headers`
-sets `default-src 'none'` with no `script-src`. ⚠️ The `<input>`s **must stay
-direct siblings** of `.filters` and `.board`; wrapping them in a `<fieldset>`
-for tidiness kills every `~` rule and the filter fails **silently**. `deploy.md`
-§3 has the tap-test that catches it.
+`:checked ~` rules. ⚠️ **SUPERSEDED 2026-08-15** (owner order: "Auth lock the
+todo page too"): the sentence used to end here with "There is no JavaScript
+here and there cannot be: `_headers` sets `default-src 'none'` with no
+`script-src`." That is no longer true — see § below — but the filter itself
+is unchanged: it is still CSS-only, the radios/labels/`:checked ~` rules are
+unchanged, and they now live inside the fragment fetched from
+`GET /api/estate/todo` rather than being static in this file. ⚠️ The
+`<input>`s **must stay direct siblings** of `.filters` and `.board`;
+wrapping them in a `<fieldset>` for tidiness kills every `~` rule and the
+filter fails **silently**. `deploy.md` §3 has the tap-test that catches it.
 
 A project filter matches on **membership**, so an all-projects item appears
 under Audiobooks *and* Books *and* Board games. That is the honest answer to
@@ -165,12 +170,25 @@ Still absolutely absent: analytics, web fonts, CDN frameworks, and anything
 not named in that file. Inline `<script>` stays blocked (`script-src 'self'`),
 so the page cannot grow ad-hoc JS — logic lives in `/assets/*.js`.
 
-**`/todo` keeps the original `default-src 'none'` no-JS CSP** — its filter is
-CSS-only radios and must never acquire JavaScript. ⚠️ The CSP now lives on
-**per-path rules, not `/*`** (two pages, two policies; a path matching two CSP
-rules would be enforced as their intersection). A new page under `public/`
-ships with **no CSP** until a rule is added in `_headers` — add one, strict by
-default, in the same commit as the page.
+**`/todo` — SUPERSEDED 2026-08-15.** This used to say "`/todo` keeps the
+original `default-src 'none'` no-JS CSP — its filter is CSS-only radios and
+must never acquire JavaScript." The owner overturned that with a second,
+explicit order ("Auth lock the todo page too"): the page was CSS-only *and
+public* — every board item shipped in cleartext to anyone with the URL,
+independent of JavaScript. That was a hidden link, not a lock. `/todo` is
+now a content-free shim: it loads `estate-auth.js` (the front door's
+sign-in module) and fetches the board from `auth.heygabi.ai`'s
+`requireApprover()`-gated `GET /api/estate/todo`, rendering it only on 200.
+The board's actual content moved into `apps/auth-worker/src/todo-board.ts` —
+see that repo's own docs. `/todo`'s CSP now allows exactly the sign-in
+surface (`script-src 'self'` + gstatic/apis.google, `connect-src
+auth.heygabi.ai` + the Firebase auth endpoints), the same shape `/status`'s
+Operations section uses, not a general loosening. The filter itself is
+unchanged: still CSS-only radios, now living in the fetched fragment. ⚠️ The
+CSP lives on **per-path rules, not `/*`** (several pages, several policies;
+a path matching two CSP rules would be enforced as their intersection). A
+new page under `public/` ships with **no CSP** until a rule is added in
+`_headers` — add one, strict by default, in the same commit as the page.
 
 ---
 
@@ -235,8 +253,8 @@ All paths are under `sites/heygabi-home/`.
 | `public/assets/estate-auth.js` | Firebase sign-in, ported (minimum) from audiobook `identity.js` — popup-first, redirect fallback, `auth/unauthorized-domain` → owner-action message. ⚠️ Keeps the session (unlike identity.js): its job is minting bearer tokens |
 | `public/assets/find.js` | The search UI: lookup + universe queries, two-tier rendering, the in-catalog-not-owned caveat |
 | `public/admin/index.html` + `admin.js` | The estate member directory at `/admin` — approve / revoke / promote against `auth.heygabi.ai`'s admin API. Same theme system, same cog |
-| `public/todo/index.html` | The cross-project board at `/todo`. Still no-JS (and therefore unthemed — its CSP forbids the switcher); its filter is CSS-only radios |
-| `public/_headers` | Cloudflare Pages headers — per-path CSPs: allow-listed hosts on `/` and `/admin` (style-src + font-src `'self'` for the theme system), `default-src 'none'` on `/todo` |
+| `public/todo/index.html` + `todo.js` | ⚠️ **Auth-locked 2026-08-15.** A content-free shim for the cross-project board at `/todo` — signs in (`estate-auth.js`) and fetches the board from the auth Worker's `requireApprover()`-gated `GET /api/estate/todo` on 200; shows a quiet refusal on 401/403. No board content ships in this file. Unthemed still (its CSP forbids the estate theme switcher, unrelated to the lock); its filter is CSS-only radios, now living in the fetched fragment. Actual content: `catalog-platform/apps/auth-worker/src/todo-board.ts` |
+| `public/_headers` | Cloudflare Pages headers — per-path CSPs: allow-listed hosts on `/` and `/admin` (style-src + font-src `'self'` for the theme system); `/todo` (since 2026-08-15) allows the same sign-in surface as `/status`'s Operations section, no longer `default-src 'none'` with no script-src |
 | `deploy.md` | Exact steps to create the Pages project and attach the domains |
 | `README.md` | This file |
 | `.gitattributes` | Pins this subtree to LF. `_headers` is parsed by Cloudflare, not git, and `core.autocrlf` is on globally on this machine |
@@ -253,8 +271,15 @@ the whole platform repo**: the upload root is one named directory, so nothing in
 
 ## Local preview
 
-Open `public/todo/index.html` in a browser — the board is still
-zero-dependency. The front door and `/admin` render from `file://` too, but
+⚠️ **`/todo` — SUPERSEDED 2026-08-15.** This used to say opening
+`public/todo/index.html` directly showed the board, zero-dependency. Now it
+is a sign-in shim like `/` and `/admin`: it renders from `file://` the same
+gate-only shell they do, but the board itself never appears there — ES
+modules need an http origin, and sign-in only works on the deployed apex
+(below). Previewing `/todo` locally now proves nothing about the board
+content; use the deployed site.
+
+The front door and `/admin` render from `file://` too, but
 their JS will not run there (ES modules need an http origin) and sign-in
 cannot work anywhere but the deployed apex: `localhost` is not the CORS
 origin the auth Worker allows, and Firebase popup auth wants an authorised

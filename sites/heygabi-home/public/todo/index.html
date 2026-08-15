@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>What's next — heygabi.ai</title>
+<title>What&rsquo;s next — heygabi.ai</title>
 <meta name="description" content="Work in progress across the three catalogues and the front door itself.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#12140f">
@@ -14,35 +14,89 @@
   THE CROSS-PROJECT TODO BOARD.  Served at https://heygabi.ai/todo
   ============================================================================
 
-  Every rule from ../index.html applies here unchanged, and two of them decide
-  the whole shape of this file:
+  ⚠️ AUTH-LOCKED 2026-08-15 (owner order: "Auth lock the todo page too").
+  SUPERSEDES the CSS-only, no-JS design this file carried from 2026-08-10 —
+  read on for what changed and why; the old reasoning is kept below (marked
+  SUPERSEDED) rather than deleted, because the next person to touch a
+  "public but hidden-link" page on this site should be able to see that this
+  exact shape was tried and found insufficient.
 
-  ⚠️  NO AUTHENTICATION ON THIS HOST. EVER.  See ../index.html and
-      ../../README.md § The one rule. This page is public, and that is the
-      constraint that governs what may be written on it — see NO SECRETS below.
+  WHAT WAS WRONG WITH THE OLD DESIGN: it was zero-JS, `default-src 'none'`,
+  and PUBLIC — every item on the board sat in cleartext in this file, served
+  to anyone who requested the URL. The only protection was that the front
+  door's Admin card link-hides `/todo` behind an approver probe
+  (apex-admin-link.js) — hiding the LINK, never the PAGE. Anyone with the URL
+  (bookmarked, in browser history, in a referrer log, guessed) saw the whole
+  board regardless of who they were. That is "obscured", not "locked", and
+  the owner's order above is the correction.
 
-  ⚠️  ZERO EXTERNAL REQUESTS, AND ZERO JAVASCRIPT. public/_headers ships
-      `default-src 'none'` with no script-src, so a <script> is blocked outright.
-      The filter below is therefore CSS-only: hidden radio inputs, visible
-      <label> chips, and `:checked ~` sibling rules. No JS, no CSP change.
+  THE NEW DESIGN: this file ships as a THIN, CONTENT-FREE SHIM. It contains
+  no board items, no titles, no hints about what is on the board — view its
+  source signed out and there is nothing here but a sign-in prompt. The real
+  content lives in the auth Worker (catalog-platform/apps/auth-worker,
+  src/todo-board.ts + src/todo.ts) behind `GET /api/estate/todo`, gated by
+  requireApprover() — the exact same gate as `/admin`'s member API and
+  `/status`'s Operations section. This page:
+
+    1. Loads the estate-auth sign-in module (assets/estate-auth.js — the
+       same "neutral boot, backstop" idiom /admin uses: the sign-in button
+       ships `hidden` and nothing decisive renders until Firebase's
+       onAuthStateChanged fires or an 8s backstop elapses, so a signed-in
+       owner never sees a flash of "please sign in").
+    2. Once signed in, fetches `GET /api/estate/todo` with the resulting
+       Firebase ID token as a bearer.
+    3. On 200: injects `data.html` (the board fragment, verbatim from
+       todo-board.ts) into #board-mount and hides the gate. THIS is the
+       approver probe — there is no separate "am I an approver?" check; a
+       200 from a requireApprover()-gated endpoint IS the fact, the same
+       idiom `/status`'s Operations section and `/admin` both use.
+    4. On 401 (signed out / bad token) or 403 (signed in, not an approver):
+       leaves the gate showing a quiet "This board is for the estate's
+       admins." with the sign-in button. No board content, no error detail
+       that would confirm or deny anything about the board's existence
+       beyond what the URL itself already reveals.
+
+  CSS-ONLY RADIO FILTERS, KEPT: the fetched fragment carries the same six
+  hidden radios + `<label>` chips + `:checked ~` rules the original board
+  used — that part of the design earned its keep and needed no JavaScript
+  even after the lock. The stylesheet below still defines every one of
+  those rules verbatim; JS is now responsible only for AUTH and for
+  injecting the fragment, never for the filtering itself. Verified after
+  injection: the radios are direct siblings of .filters and .board WITHIN
+  the fetched fragment (todo-board.ts preserves that structure exactly), so
+  the sibling-combinator rules resolve the same as before regardless of
+  where the fragment lands in the DOM. No id collisions with this shim's own
+  elements (gate/sign-in ids are namespaced `gate-*`/`signin`/`who`, the
+  fragment's are `f-*`).
+
+  ⚠️ SUPERSEDED (2026-08-10 → 2026-08-15) — kept for the historical record:
+    "ZERO EXTERNAL REQUESTS, AND ZERO JAVASCRIPT. public/_headers ships
+    `default-src 'none'` with no script-src, so a <script> is blocked
+    outright. The filter below is therefore CSS-only... No JS, no CSP
+    change." That rule protected content that, it turned out, needed a
+    LOGIN WALL more than it needed to avoid a <script> tag. `_headers`'
+    `/todo` CSP now allows exactly what sign-in needs (script-src 'self' +
+    gstatic/apis.google, connect-src auth.heygabi.ai + the Firebase auth
+    endpoints) — the same allow-list shape as `/status`'s Operations
+    section, not a blanket loosening.
 
   ---------------------------------------------------------------------------
-  ⚠️  NO SECRETS, NO SECURITY POSTURE, NO ORDER HISTORY.
+  NO SECRETS, NO SECURITY POSTURE, NO ORDER HISTORY — UNCHANGED BY THE LOCK.
   ---------------------------------------------------------------------------
-  The three projects' own work logs are private and contain things that must
-  never appear on a public page: token names, auth weaknesses, purchase and
-  order detail, email addresses, prices. This page is a CURATED SUMMARY, not a
-  mirror. When you copy an item across, restate it as a feature or a chore.
-  "Bring the audiobook catalogue onto the shared roles" is publishable. The
-  paragraph in its work log explaining why it cannot join yet is NOT.
+  The lock protects the board from strangers; it does not relax what may be
+  WRITTEN on the board. The three projects' own work logs are private and
+  contain things that must never appear here even now: token names, auth
+  weaknesses, purchase and order detail, email addresses, prices. This is
+  still a CURATED SUMMARY, not a mirror. "Bring the audiobook catalogue onto
+  the shared roles" is publishable (to an approver); the paragraph in its
+  work log explaining why it cannot join yet still is not — an approver is
+  trusted with the estate's admin surfaces, not handed the household's raw
+  operational logs.
 
-  If an item cannot be phrased without disclosing one of those things, it does
-  not belong here. It stays in the project's own docs/TODO.md.
-
   ---------------------------------------------------------------------------
-  AUTHORED HERE, NOT AGGREGATED — and this was a decision, not an oversight.
+  AUTHORED IN THE WORKER, NOT AGGREGATED — unchanged reasoning, new location.
   ---------------------------------------------------------------------------
-  The full detail for every item lives in the project that owns it:
+  The full detail for every item still lives in the project that owns it:
 
       bookbuddy/library_catalog/docs/TODO.md          (books)
       boardbuddy/Board_Game_Catalog/docs/TODO.md      (board games)
@@ -50,62 +104,28 @@
       bookbuddy/audiobook_catalog/docs/TODO.md        (audiobooks)
       catalog-platform/README.md § What is left       (this site)
 
-  Those files stay authoritative. This page is a hand-written cross-project
-  view over them, for three reasons:
+  Those files stay authoritative; this board is a hand-written cross-project
+  view over them. The three original reasons for authoring rather than
+  aggregating (no read access to private repos, no common item shape, and —
+  now doubly true — publishing source text verbatim is exactly what the NO
+  SECRETS rule forbids) are unchanged by the lock. What changed is WHERE the
+  authored copy lives: `apps/auth-worker/src/todo-board.ts`, not this file.
 
-    1. It cannot read them. They live in private repos with no public API, and
-       this page may not fetch anything at all (CSP above). Baking them in at
-       build time is not available either: this site has no build step, no
-       package manager and no dependencies — Pages uploads public/ as-is.
-    2. They have no common shape. One is a table of marks, one is prose under
-       headings, one is a 688-line living doc with dated handoffs. There is no
-       item schema to parse, and the books file was reorganised on 2026-08-10 —
-       a scraper would already be broken.
-    3. Aggregation would publish the source text verbatim, which is exactly
-       what the NO SECRETS rule forbids. Authoring here forces the pass that
-       decides what is safe to say.
-
-  The cost is duplication: closing something in a project's work log does not
-  close it here. That is the price, it is paid by hand, and it is cheaper than
-  the alternatives above. Delete finished items rather than striking them
-  through — the project's own log is the historical record, not this page.
+  CONTENT-UPDATE PATH, now slower on purpose (docs/TODO.md has the full
+  note): edit `apps/auth-worker/src/todo-board.ts`, run the Worker's test
+  suite, `wrangler deploy` from `apps/auth-worker/`. This file and todo.js
+  change only when the GATE changes, not when an item does.
 
   ---------------------------------------------------------------------------
-  ADDING AN ITEM
+  WHY THE STYLESHEET IS DUPLICATED FROM ../index.html (unchanged reasoning)
   ---------------------------------------------------------------------------
-  Copy an <li> and set two kinds of class on it:
+  style-src is 'unsafe-inline' with no 'self' on this path, so an external
+  stylesheet is blocked BY THIS SITE'S OWN CSP even same-origin. The tokens
+  below are copied from ../index.html; if that palette changes, this drifts,
+  and that is accepted — same family, not one stylesheet in two places.
 
-    which projects   p-audio  p-books  p-games  p-landing   (one or more)
-    how wide it is   s-one    s-some   s-all    s-landing   (exactly one)
-
-  The scope class is DERIVED from the project classes and must agree with them:
-    s-landing  = p-landing only
-    s-one      = exactly one catalogue
-    s-some     = more than one catalogue, but not all three
-    s-all      = all three catalogues (p-landing may ride along)
-  Two fields that can disagree is how a board starts lying. If you change the
-  projects, change the scope, and change the visible badges to match.
-
-  Order is broadest first: all → some → one → landing. There are no group
-  headings on purpose; a heading would need its own filter classes and one more
-  thing to keep in step for no gain over the badges each item already carries.
-
-  ⚠️ NO COUNTS. CSS cannot count what a filter matched, and a hand-typed "12
-  open" goes stale on the next edit. The front door already learned this — see
-  the invented game count in ../index.html. State no totals here either.
-
-  ---------------------------------------------------------------------------
-  WHY THE STYLESHEET IS DUPLICATED FROM ../index.html
-  ---------------------------------------------------------------------------
-  Not laziness, and not fixable by a <link>: style-src is 'unsafe-inline' with
-  no 'self', so an external stylesheet is blocked BY THIS SITE'S OWN CSP even
-  same-origin. Sharing one would mean widening the CSP, which is the thing the
-  CSP exists to stop. The tokens below are copied from ../index.html; if that
-  palette changes, this drifts, and that is accepted — same family, not one
-  stylesheet in two places.
-
-  noindex is set above deliberately: the page is public and linkable, but a
-  household's rolling work list does not need to be a search result.
+  noindex stays set: the page is reachable (now behind a gate) but a
+  household's rolling work list still does not need to be a search result.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
@@ -239,11 +259,6 @@ body {
 
 /* ---- layout -------------------------------------------------------------- */
 
-/*
- * Top-aligned, unlike the front door. That page is four seconds of reading and
- * looks best optically centred; this one is a list that grows, and a centred
- * list jumps down the screen every time an item is added.
- */
 main {
   max-width: 60rem;
   margin: 0 auto;
@@ -256,7 +271,7 @@ main {
   to   { opacity: 1; transform: none; }
 }
 
-/* ---- masthead ------------------------------------------------------------ */
+/* ---- masthead (used by both the gate and the fetched fragment) ----------- */
 
 header { margin-bottom: clamp(1.75rem, 5vw, 2.5rem); }
 
@@ -294,12 +309,65 @@ h1 {
   text-wrap: pretty;
 }
 
-/* ---- the filter ----------------------------------------------------------
+/* ---- the sign-in gate ------------------------------------------------ */
+
+[hidden] { display: none !important; }
+
+#gate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .9rem;
+}
+
+#gate-status {
+  margin: 0;
+  padding: .9em 1.1em;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: .9375rem;
+  text-wrap: pretty;
+  max-width: 34rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: .5em 1.3em;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font: 700 .9375rem/1.2 inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: filter .18s ease, transform .06s ease;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .5; cursor: default; transform: none; }
+.btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+
+.linkbtn {
+  border: 0; padding: 0; background: none;
+  color: var(--accent); font: inherit; font-weight: 700;
+  cursor: pointer; text-decoration: none;
+}
+.linkbtn:hover { text-decoration: underline; }
+
+.who { display: inline-flex; align-items: center; gap: .3rem; color: var(--muted); font-size: .875rem; }
+
+/* ---- the filter (lives in the fetched fragment; rules kept here) ---------
  *
  * Six radios, one per view, hidden with the .sr-only clip pattern so they stay
  * focusable and keep native radio-group arrow-key behaviour. The visible chips
  * are <label for>. The radios must be DIRECT SIBLINGS of .board, preceding it,
- * or the `~` rules below cannot reach the items.
+ * or the `~` rules below cannot reach the items — true both before and after
+ * this fragment was moved into the auth Worker, since todo-board.ts preserves
+ * the exact sibling structure the fragment shipped with when it was static.
  *
  * Selecting a filter does not change the URL, so a filtered view is not
  * shareable. `:target` would give that, and was rejected: it needs an anchor
@@ -572,233 +640,27 @@ footer p:last-child { margin-bottom: 0; }
   <span class="grain"></span>
 </div>
 
-<main>
+<!--
+  THE GATE — everything the anonymous internet ever sees. No board title, no
+  tagline, no items: an approver probe (fetch /api/estate/todo, read the
+  status code) decides whether #gate-main stays the whole page or gets
+  hidden in favour of the fetched fragment in #board-mount. See todo.js.
+-->
+<main id="gate-main" class="rise" style="animation-delay:.02s">
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
 
-  <header class="rise" style="animation-delay:.02s">
-    <a class="back" href="/">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
-      heygabi.ai
-    </a>
-    <h1>What&rsquo;s next</h1>
-    <p class="tagline">Work that is agreed but not built, across the three catalogues and the front door itself. Each item says how far it reaches: one shelf, a few, all of them, or this site.</p>
-  </header>
-
-  <section class="rise" style="animation-delay:.1s">
-    <h2 class="sr-only">The board</h2>
-
-    <!--
-      ⚠️ The six radios must stay DIRECT SIBLINGS of .filters and .board, in
-      this order. Wrapping them in a <fieldset> for tidiness breaks every
-      `~` rule in the stylesheet and silently disables the filter.
-    -->
-    <input class="filter-radio" type="radio" name="view" id="f-all" checked>
-    <input class="filter-radio" type="radio" name="view" id="f-audio">
-    <input class="filter-radio" type="radio" name="view" id="f-books">
-    <input class="filter-radio" type="radio" name="view" id="f-games">
-    <input class="filter-radio" type="radio" name="view" id="f-home">
-    <input class="filter-radio" type="radio" name="view" id="f-cross">
-
-    <div class="filters" role="group" aria-label="Filter the board">
-      <label class="chip" for="f-all">Everything</label>
-      <label class="chip" for="f-audio">Audiobooks</label>
-      <label class="chip" for="f-books">Books</label>
-      <label class="chip" for="f-games">Board games</label>
-      <label class="chip" for="f-home">Landing site</label>
-      <label class="chip" for="f-cross">Cross&#8209;project</label>
-    </div>
-
-    <div class="board">
-
-      <ul class="items">
-
-        <!-- ===== ALL PROJECTS ============================================ -->
-
-        <li class="item p-audio p-books p-games p-landing s-all">
-          <h3>One search across all three shelves</h3>
-          <p>&ldquo;Do we own this in any format?&rdquo; answered once, instead of three times. Needs a public, read-only projection out of each catalogue and a search box on the front door.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="tag t-books">Books</span>
-            <span class="tag t-games">Board games</span>
-            <span class="tag t-landing">Landing site</span>
-            <span class="scope">All projects</span>
-          </p>
-        </li>
-
-        <li class="item p-audio p-books p-games s-all">
-          <h3>One sign-in and one set of roles everywhere</h3>
-          <p>Books and board games already share the same accounts and the same owner / manager / reader / waiting-list roles. The audiobook catalogue is the one left to bring across.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="tag t-books">Books</span>
-            <span class="tag t-games">Board games</span>
-            <span class="scope">All projects</span>
-          </p>
-        </li>
-
-        <!-- ===== SOME PROJECTS =========================================== -->
-
-        <li class="item p-books p-games s-some">
-          <h3>Keep the two scanning catalogues in step</h3>
-          <p>Books borrowed its scan queue, its barcode lookup and its arrival flow from board games. Fixes found on one side should travel to the other rather than quietly forking.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="tag t-games">Board games</span>
-            <span class="scope">Some projects</span>
-          </p>
-        </li>
-
-        <li class="item p-audio p-books s-some">
-          <h3>Match books to their audiobooks</h3>
-          <p>A book and its audiobook are the same story on two shelves, and only some of them are joined up so far. Long series with many volumes are the group worth chasing first.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="tag t-books">Books</span>
-            <span class="scope">Some projects</span>
-          </p>
-        </li>
-
-        <!-- ===== ONE PROJECT — BOOKS ===================================== -->
-
-        <li class="item p-books s-one">
-          <h3>Mark a preordered book as arrived</h3>
-          <p>Preorders and crowdfunding pledges sit in the catalogue as promises. There is no way yet to say &ldquo;this one is on the shelf now&rdquo;, which is the single transition most of them are waiting on.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-books s-one">
-          <h3>An ebooks view of the library</h3>
-          <p>Print and ebook live in one catalogue on purpose. What is missing is the filter that shows just one of them &mdash; a link you can bookmark or pin to a home screen.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-books s-one">
-          <h3>Twelve books still have no cover</h3>
-          <p>Every automatic source has been tried and come back empty for these. Filling them needs a genuinely different source, not another pass over the same ones.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-books s-one">
-          <h3>Five pledged books need creating by hand</h3>
-          <p>A campaign&rsquo;s spelling of a title is exactly what mints a duplicate, so the importer deliberately never invents a book. These five have to exist first, then their pledges attach themselves.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-books s-one">
-          <h3>Check the series pages on a real phone</h3>
-          <p>The series list, the format chips and the newer panels have been built and read on a desktop. None of them has been looked at on a 390px screen, which is where they will actually be used.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <!-- ===== ONE PROJECT — BOARD GAMES =============================== -->
-
-        <li class="item p-games s-one">
-          <h3>Fill in what is missing from each box</h3>
-          <p>&ldquo;Which pieces am I short?&rdquo; has no data behind it yet. A weekly job will fill it unattended; doing it by hand is only worth it to get the shopping list sooner.</p>
-          <p class="meta">
-            <span class="tag t-games">Board games</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-games s-one">
-          <h3>Count the Dice Throne playmats</h3>
-          <p>Eleven are confirmed bought, twenty-one provably were not, and twenty-two came through a channel no pledge record can speak to. A physical count is the only thing that settles it.</p>
-          <p class="meta">
-            <span class="tag t-games">Board games</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-games s-one">
-          <h3>Name the HELLDIVERS 2 mystery box</h3>
-          <p>A deliberate placeholder for content the campaign has not revealed. Rename it from whatever is actually in the box when it turns up.</p>
-          <p class="meta">
-            <span class="tag t-games">Board games</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <!-- ===== ONE PROJECT — AUDIOBOOKS ================================ -->
-
-        <li class="item p-audio s-one">
-          <h3>Reading schedules for book clubs</h3>
-          <p>Checkpoints with target dates, and an on-track or behind chip against them. The milestones already exist; what they lack is a calendar.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-audio s-one">
-          <h3>Announce club events to Discord</h3>
-          <p>Comments already post through. Starting a book, finishing one and a new leader on the to-be-read list do not.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-audio s-one">
-          <h3>Polls inside a club</h3>
-          <p>Free-form questions a club can vote on, taggable to a chapter so they sit behind the same spoiler shield as everything else.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <!-- ===== THE LANDING SITE ======================================== -->
-
-        <li class="item p-landing s-landing">
-          <h3>Pick one name for the front door</h3>
-          <p>Both <code>heygabi.ai</code> and <code>www.heygabi.ai</code> serve this page today. One of them should redirect to the other; the recommendation is the bare name, because every catalogue is a subdomain of it.</p>
-          <p class="meta">
-            <span class="tag t-landing">Landing site</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">Landing site</span>
-          </p>
-        </li>
-
-        <li class="item p-landing s-landing">
-          <h3>Decide whether <code>ebooks.heygabi.ai</code> should exist</h3>
-          <p>Only ever as a redirect into the library&rsquo;s ebook view &mdash; never as a second app. It is free and reversible, and it is also one more name to remember.</p>
-          <p class="meta">
-            <span class="tag t-landing">Landing site</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">Landing site</span>
-          </p>
-        </li>
-
-      </ul>
-
-      <p class="empty">Nothing on the board matches that filter right now. Choose <strong>Everything</strong> to see the whole list.</p>
-
-    </div>
-  </section>
-
-  <footer class="rise" style="animation-delay:.18s">
-    <p>Each project keeps its own full work log; this is the view across all of them, kept by hand. Finished work is deleted rather than crossed out.</p>
-    <p>No accounts, no tracking and no cookies on this page &mdash; same as <a href="/">the front door</a>.</p>
-  </footer>
-
+  <div id="gate">
+    <p id="gate-status">Checking sign-in&hellip;</p>
+    <button id="signin" class="btn" type="button" hidden>Sign in with Google</button>
+    <span id="who" class="who" hidden></span>
+  </div>
 </main>
+
+<div id="board-mount"></div>
+
+<script type="module" src="/todo/todo.js"></script>
 </body>
 </html>

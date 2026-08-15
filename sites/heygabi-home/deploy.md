@@ -172,8 +172,9 @@ Then in a browser:
 - [ ] **DevTools → Network shows only allow-listed hosts** (since 2026-08-13):
       the document, `/assets/*.js`, `www.gstatic.com` Firebase modules, and —
       once signed in — Google auth endpoints and the two estate Workers.
-      No font, no beacon, no analytics, nothing else. (`/todo` is still
-      exactly one request.)
+      No font, no beacon, no analytics, nothing else. ⚠️ SUPERSEDED
+      2026-08-15: `/todo` is no longer one request — see its own checklist
+      below, which now expects the sign-in surface too.
 - [ ] **Console is empty** — a CSP violation would print here.
 - [ ] **Search, signed out:** the box asks for a sign-in and the page is
       otherwise whole. **Signed in (member):** a title returns grouped results
@@ -202,16 +203,34 @@ Then in a browser:
       of its own — a signed-out browser reaching a sign-in screen is the gate
       working, not a broken link.
 
-And for `/todo` (added 2026-08-10):
+And for `/todo` (added 2026-08-10; **auth-locked 2026-08-15** — owner order
+"Auth lock the todo page too". The two checks below marked SUPERSEDED are
+kept for history; the rest of this list is UNCHANGED and still applies):
 
 - [ ] `https://heygabi.ai/todo` loads, and the footer link on the front door
       reaches it.
-- [ ] **Tap each of the six filter chips.** They are CSS-only radios; if the
-      board stops filtering, something reordered the `<input>`s away from being
-      direct siblings of `.filters` and `.board` and every `~` rule died
-      silently. Nothing logs when this breaks.
-- [ ] Still **exactly one network request** and an **empty console** on this
-      page too. It has no JS and must never acquire any.
+- [ ] **Signed out:** view-source (or `curl`) the page and confirm there is
+      no board content anywhere in it — no item titles, no tags, no hints.
+      Only the sign-in gate. This is the actual lock; everything else on
+      this list is testing the UI built on top of it.
+- [ ] **Signed out, `GET https://auth.heygabi.ai/api/estate/todo` (curl, no
+      `Authorization` header):** `401`.
+- [ ] **Signed in as a non-approver (if one exists):** the gate shows "This
+      board is for the estate's admins." — no board content, no `500`.
+- [ ] **Signed in as an approver:** the board renders — same items as
+      before the lock (content lives in `apps/auth-worker/src/todo-board.ts`
+      now; a stale board here means that file needs a `wrangler deploy`, not
+      a Pages deploy).
+- [ ] **Tap each of the six filter chips**, signed in as an approver. They
+      are CSS-only radios (unchanged by the lock); if the board stops
+      filtering, something reordered the `<input>`s away from being direct
+      siblings of `.filters` and `.board` and every `~` rule died silently.
+      Nothing logs when this breaks.
+- [ ] ⚠️ SUPERSEDED 2026-08-15: this used to say "Still exactly one network
+      request and an empty console on this page too. It has no JS and must
+      never acquire any." `/todo` now loads `todo.js` + the Firebase SDK +
+      calls `auth.heygabi.ai`, same request shape as `/admin` — an empty
+      **console** (no CSP violations) is still the bar; request count is not.
 - [ ] At 360px wide: chips wrap, no horizontal scroll, every chip is tappable.
 
 ---

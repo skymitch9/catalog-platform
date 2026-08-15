@@ -20,6 +20,7 @@ import { parseAdminOrigins } from './env.js';
 import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
+import { todoRoutes } from './todo.js';
 import { rateLimit } from './middleware/rate-limit.js';
 
 /**
@@ -49,6 +50,10 @@ app.use('/api/estate/site-roles', adminCors());
 // other admin-page control (the status page's Operations section lives on
 // the apex, not on a wider origin).
 app.use('/api/estate/ops/pipeline', adminCors());
+// The todo board (auth-locked 2026-08-15) — apex-only, same reasoning as
+// every other admin-page surface: the shim that calls this lives on the
+// apex and nowhere else.
+app.use('/api/estate/todo', adminCors());
 
 // CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
 // audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
@@ -65,6 +70,7 @@ app.use('/api/health', healthCors());
 app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
+app.route('/api', todoRoutes);
 
 function adminCors() {
   return cors({

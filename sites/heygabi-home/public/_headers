@@ -1,8 +1,9 @@
 # Cloudflare Pages headers file. Has no effect locally — Pages applies it at the
 # edge. Syntax: a path pattern on its own line, then indented "Name: value" lines.
 #
-# ⚠️ STRUCTURE: the CSP is deliberately NOT on /* any more. Two pages carry two
-# different policies (the front door signs in, /todo must never gain JS), and a
+# ⚠️ STRUCTURE: the CSP is deliberately NOT on /* any more. Several pages carry
+# different policies (⚠️ 2026-08-15: /todo no longer "must never gain JS" — see
+# its own section below, kept for the historical record), and a
 # path that matched two CSP rules could end up with two CSP headers — which
 # browsers enforce as the INTERSECTION, silently breaking sign-in. So /* carries
 # only the non-CSP safety headers, and each page's CSP lives on its own exact
@@ -70,9 +71,34 @@
 #               OFF this list on purpose.
 # Still absolutely absent: analytics, third-party font requests, CDN frameworks.
 #
-# /todo KEEPS THE ORIGINAL default-src 'none' NO-JS POLICY. Its filter is
-# CSS-only radios and its README says it must never acquire JavaScript; the
-# strict CSP is the enforcement of that sentence.
+# /todo — SUPERSEDED 2026-08-15 (owner order: "Auth lock the todo page too").
+# The line this comment used to carry — "/todo KEEPS THE ORIGINAL
+# default-src 'none' NO-JS POLICY... the strict CSP is the enforcement of
+# that sentence" — kept the page from acquiring a <script>, but the page was
+# still PUBLIC: every board item shipped in cleartext to anyone who
+# requested the URL, JS or no JS. That protected against the wrong thing —
+# a hidden link, not a lock. The board's content moved OFF this origin
+# entirely, into the auth Worker (apps/auth-worker/src/todo-board.ts, served
+# by requireApprover()-gated GET /api/estate/todo); this page is now a
+# content-free shim that signs in and fetches the board only after the
+# Worker answers 200. The CSS-only radio filter is UNCHANGED — still no JS
+# in the filtering itself, only in the sign-in + fetch — so the rule below
+# is the SAME sign-in allow-list shape as /status's Operations section, not
+# a general loosening:
+#   script-src  'self' (this page's own /todo/todo.js module) +
+#               www.gstatic.com (Firebase SDK) + apis.google.com (the
+#               sign-in popup helper).
+#   connect-src auth.heygabi.ai (GET /api/estate/todo, CORS locked to this
+#               apex — apps/auth-worker/src/index.ts) +
+#               identitytoolkit.googleapis.com + securetoken.googleapis.com
+#               (sign-in + token refresh).
+#   frame-src   the Firebase auth iframe on the project's authDomain, and
+#               accounts.google.com for the popup/redirect flow — same two
+#               hosts as every other estate-auth page on this site.
+#   img-src     unchanged: 'self' data: only (the inline SVG favicon; the
+#               board carries no images).
+#   style-src   unchanged: 'unsafe-inline' only — still one inline <style>
+#               block, no external stylesheet link, so 'self' is not needed.
 #
 # /status (added 2026-08-14, the estate status page — "I want to see all the
 # pipelines"). connect-src names exactly the six hosts status.js fetches: the
@@ -143,8 +169,8 @@
 
 /todo
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /todo/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

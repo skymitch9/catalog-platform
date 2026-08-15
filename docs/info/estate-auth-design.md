@@ -871,10 +871,18 @@ bearers) + `public/assets/find.js`. Two amendments to §7.2's mechanical
 list, found by building: (1) `connect-src` also needs
 `https://auth.heygabi.ai` — the admin API lives there and §7.2 was written
 before decision #6 moved the admin UI to the apex; (2) the CSP went onto
-**per-path `_headers` rules**, not `/*`, so `/todo` keeps its no-JS
-`default-src 'none'` policy (two CSP headers on one path would enforce
-their intersection). `auth/unauthorized-domain` renders as a named
-owner-action message. ⚠️ The §15 two-tab test is DUE at first deploy.
+**per-path `_headers` rules**, not `/*`, so each page can carry its own
+policy (two CSP headers on one path would enforce their intersection).
+⚠️ SUPERSEDED 2026-08-15 (owner order: "Auth lock the todo page too") — this
+sentence used to end "...so `/todo` keeps its no-JS `default-src 'none'`
+policy." `/todo` is no longer no-JS: it is now itself a `requireApprover()`-
+gated surface, same shape as `/admin` and the `/status` Operations section
+(`apps/auth-worker/src/todo.ts` serves the board content; the public page is
+a content-free shim that signs in and fetches it). The board being
+CSS-only-radios and public was a hidden link, not a lock — see
+`catalog-platform/docs/TODO.md`'s "Auth-lock the /todo page" entry for the
+full change. `auth/unauthorized-domain` renders as a named owner-action
+message. ⚠️ The §15 two-tab test is DUE at first deploy.
 
 ### 14.5 Library, then games (§9 steps 5–6)
 

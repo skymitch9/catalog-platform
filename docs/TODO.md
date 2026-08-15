@@ -587,3 +587,84 @@ Fix properly: (a) give both catalogs' backfill scripts a --push-index flag
 (mint-and-call the push the way the workers do), or (b) gate the existing
 checks on MAX(updated_at) > pushed_at instead of a clock. Small build, big
 annoyance-removal. Queue for the next working session.
+
+## ✅ Auth-lock the /todo page (owner order, 2026-08-15) — DEPLOYED
+
+"Auth lock the todo page too" — `/todo` was CSS-only-radios and had never
+gained a `<script>`, but it was still **public**: every board item shipped in
+cleartext to anyone with the URL, `_headers`' `default-src 'none'` CSP or not.
+That protected against the wrong thing (a hidden link, not a lock) — the
+front door's Admin card already link-hid `/todo` behind an approver probe
+(2026-08-15, same day, earlier order), but the URL itself answered for
+anyone who had it. Same architecture as the earlier `/status` Operations
+lock and `/admin`: content must LEAVE the public origin, not just be
+harder to find.
+
+- `apps/auth-worker`: `GET /api/estate/todo` (`src/todo.ts`),
+  `requireApprover()`-gated, apex-only CORS (mounted in `index.ts`
+  alongside `/api/estate/users`, `/api/estate/site-roles`,
+  `/api/estate/ops/pipeline`). Returns `{ html }` — the board's `<main>`
+  fragment, bundled as a plain TS string constant in
+  `src/todo-board.ts` (**not** a wrangler text-module `import … from
+  './todo-board.html'`: that idiom has no precedent in this Worker and
+  would have broken `npm test`, since `tsx --test` does not read
+  `wrangler.toml`'s `[[rules]]` module types the way `wrangler
+  dev`/`deploy` do — see `todo-board.ts`'s own header for the full
+  reasoning). Unit tests (`test/todo.test.ts`) pin the fragment's shape
+  (starts `<main>`, carries all six filter-radio ids, no `<script>`, no
+  secret-shaped words). Gating (401 tokenless, 403 approved-non-approver,
+  403 stranger, 200 + fragment for an approver, apex-only CORS) is in
+  `test/live-probes.ts` phases A/B/C/D (checks A37/A37v, B14–B16, C6, D6) —
+  same idiom `ops/pipeline`'s gating uses, run against a real `wrangler
+  dev`, never a Hono-level stub (`resolveIdentity()` needs a fully
+  configured verifier context to answer 401 the way production does).
+  **70/70 live-probe checks pass**, including every new one.
+- `sites/heygabi-home/public/todo/index.html` rewritten as a content-free
+  shim (no board items, no titles, no hints in the served HTML — verified
+  by fetching the anonymous page and grepping for board text). Loads
+  `../assets/estate-auth.js` (the front door's sign-in module, "neutral
+  boot" + 8s backstop ported from `admin.js`'s 2026-08-14 sign-in-flash
+  fix), then `public/todo/todo.js` fetches `GET /api/estate/todo` with the
+  caller's Firebase ID token. 200 → the fragment is injected into
+  `#board-mount` via `innerHTML` (safe: it is the Worker's own bundled
+  content, never user-supplied) and the gate is hidden. 401/403 → the gate
+  stays up, showing "This board is for the estate's admins." — no
+  status-code-specific hint. The CSS-only radio filter is UNCHANGED: same
+  six radios, same `:checked ~` rules, still zero JS in the filtering
+  itself, verified working once injected (the fragment preserves the
+  original direct-sibling structure `.filters`/`.board` need; no id
+  collisions with the shim's own `gate-*`/`signin`/`who` elements).
+- `_headers`: `/todo` + `/todo/` CSP replaced `default-src 'none'` (no
+  script-src) with the sign-in allow-list — `script-src 'self'` +
+  `www.gstatic.com` + `apis.google.com`; `connect-src auth.heygabi.ai` +
+  `identitytoolkit.googleapis.com` + `securetoken.googleapis.com`;
+  `frame-src` the Firebase authDomain + `accounts.google.com` — the same
+  shape `/status`'s Operations section uses, not a general loosening.
+  `img-src`/`style-src` unchanged (`'self' data:'` / `'unsafe-inline'`
+  only — still one inline `<style>` block, no images beyond the favicon).
+  The file's own header comment and the old `/todo` section are both kept,
+  marked SUPERSEDED with the date, rather than deleted.
+- Stale "no-JS"/"must never acquire JavaScript" claims corrected, same
+  supersede-don't-delete treatment, in: `sites/heygabi-home/README.md`
+  (three sections + the files table + the local-preview note),
+  `sites/heygabi-home/public/index.html` (two comments — the CSP summary
+  and the Admin card's link-hiding note, which used to say `/todo` "cannot
+  authenticate" and now can), `docs/info/estate-auth-design.md` §14.4's
+  `/todo` aside. `deploy.md`'s `/todo` checklist (§3) still applies
+  unchanged for the filter tap-test; its "exactly one network request...
+  has no JS and must never acquire any" line is now wrong and should be
+  revisited before the next `/todo`-touching deploy walks that checklist.
+
+**Content-update path, now deliberately slower**: editing the board means
+editing `apps/auth-worker/src/todo-board.ts` + `wrangler deploy` from
+`apps/auth-worker/` — **not** editing a file under `sites/heygabi-home/`
+and re-running the Pages upload. This is a real cost, accepted because the
+board changes rarely (documented in `todo-board.ts`'s own header and here).
+A Pages deploy is only needed again if the SHIM (gate UI, auth wiring)
+changes — not for a content-only edit.
+
+**Verification performed**: `npm test` and `npm run probe` both green in
+`apps/auth-worker` (see above). Pages deploy and the live
+`https://heygabi.ai/todo` checks (anonymous HTML carries no board text,
+tokenless `GET /api/estate/todo` 401s, CSP present on both `/todo` and
+`/todo/`) are recorded in the deploy log / session report for this change.

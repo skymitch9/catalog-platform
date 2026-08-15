@@ -48,7 +48,10 @@
   EXTERNAL REQUESTS ARE ALLOW-LISTED IN public/_headers: the Firebase SDK
   (www.gstatic.com), Google's auth endpoints, the two estate Workers, and
   cover/avatar image hosts. Still NO analytics, NO third-party fonts at
-  runtime, NO CDN frameworks; /todo keeps its no-JS default-src 'none' CSP.
+  runtime, NO CDN frameworks. ⚠️ SUPERSEDED 2026-08-15: /todo no longer
+  keeps a no-JS default-src 'none' CSP — it is now auth-locked (owner order)
+  behind estate-auth sign-in + requireApprover(), same shape as /admin and
+  /status's Operations section; see _headers' own /todo comment.
   Scripts are external files under /assets/ (script-src 'self' — inline
   script stays blocked).
   ---------------------------------------------------------------------------
@@ -685,9 +688,20 @@ footer a.more:hover svg { transform: translateX(3px); }
         <!-- Approver-only (owner order, 2026-08-15): revealed by
              apex-admin-link.js on the same probe as the search chip. A div,
              not a link — it holds three destinations. The footer's Status and
-             todo links moved in here; /todo is LINK-HIDDEN from the public
-             page, not auth-walled (that page is deliberately no-JS and cannot
-             authenticate — its URL still answers for anyone who has it). -->
+             todo links moved in here.
+
+             ⚠️ SUPERSEDED 2026-08-15, same day, by a second owner order
+             ("Auth lock the todo page too"): this comment used to say
+             "/todo is LINK-HIDDEN from the public page, not auth-walled
+             (that page is deliberately no-JS and cannot authenticate — its
+             URL still answers for anyone who has it)". That gap is closed —
+             /todo is now itself an auth-locked shim (estate-auth sign-in +
+             requireApprover()-gated GET /api/estate/todo on auth-worker;
+             see that page's own header comment and _headers' /todo rule).
+             This link staying hidden pre-sign-in is now defense in depth
+             (fewer strangers reach even the sign-in prompt), not the only
+             protection the board has. -->
+
         <div class="card" style="--hue: var(--et-hue-4, var(--et-hue-1)); --card-bg: var(--et-card-4-bg, var(--et-card-1-bg)); --card-fg: var(--et-card-4-fg, var(--et-card-1-fg)); --card-muted: var(--et-card-4-muted, var(--et-card-1-muted))">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.4-3.6"/></svg>

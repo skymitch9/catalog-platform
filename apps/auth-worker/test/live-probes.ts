@@ -365,6 +365,22 @@ async function phaseA(): Promise<void> {
       r.status === 503 && r.body.error === 'pipeline_trigger_token_unset',
       JSON.stringify(r.body),
     );
+
+    // --- The todo board (auth-locked 2026-08-15): an approver gets the
+    // content, wrapped in { html }, and the fragment carries the CSS-only
+    // filter markup the shim depends on.
+    r = await api('GET', '/api/estate/todo');
+    check(
+      'A37 todo: an approver (owner via bypass) gets 200 with the board fragment',
+      r.status === 200 && typeof r.body.html === 'string' && r.body.html.startsWith('<main>'),
+      JSON.stringify(r.body).slice(0, 200),
+    );
+    check(
+      "A37v todo: the fragment carries the six filter radios the shim's CSS depends on",
+      ['f-all', 'f-audio', 'f-books', 'f-games', 'f-home', 'f-cross'].every((id) =>
+        r.body.html.includes(`id="${id}"`),
+      ),
+    );
   } finally {
     stopDev(child);
     await waitDown();
@@ -388,6 +404,7 @@ async function phaseB(): Promise<void> {
         { path: '/api/estate/site-roles' },
         { method: 'POST', path: '/api/estate/site-roles' },
         { method: 'POST', path: '/api/estate/ops/pipeline' },
+        { path: '/api/estate/todo' },
       ],
       openRoutes: [{ path: '/api/health' }],
       machineRoutes: [{ method: 'POST', path: '/api/estate/seen' }],
@@ -491,6 +508,35 @@ async function phaseB(): Promise<void> {
       `ACAO=${opsFromSite.headers.get('access-control-allow-origin')}`,
     );
 
+    // Todo board CORS: apex-only, same mount as the admin API — the shim
+    // that calls this lives on heygabi.ai and nowhere else.
+    const todoPre = await fetch(`${BASE}/api/estate/todo`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://heygabi.ai',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'Authorization',
+      },
+    });
+    await todoPre.text();
+    check(
+      'B14 todo preflight from the apex is allowed',
+      todoPre.headers.get('access-control-allow-origin') === 'https://heygabi.ai',
+      `ACAO=${todoPre.headers.get('access-control-allow-origin')}`,
+    );
+    const todoFromSite = await fetch(`${BASE}/api/estate/todo`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://audiobooks.heygabi.ai', 'Access-Control-Request-Method': 'GET' },
+    });
+    await todoFromSite.text();
+    check(
+      'B15 the audiobook origin is NOT admitted to the todo board either',
+      todoFromSite.headers.get('access-control-allow-origin') === null,
+      `ACAO=${todoFromSite.headers.get('access-control-allow-origin')}`,
+    );
+    r = await api('GET', '/api/estate/todo');
+    check('B16 todo tokenless → 401 in real-auth mode', r.status === 401, `got ${r.status}`);
+
     r = await api('GET', '/api/health');
     check(
       'B8 health: counts only, no emails',
@@ -529,6 +575,8 @@ async function phaseC(): Promise<void> {
     check('C4 site-roles GET refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
     r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
     check('C5 ops/pipeline refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
+    r = await api('GET', '/api/estate/todo');
+    check('C6 the todo board is refused for a non-approver — approved is not enough', r.status === 403, `got ${r.status}`);
   } finally {
     stopDev(child);
     await waitDown();
@@ -546,6 +594,8 @@ async function phaseD(): Promise<void> {
     check('D4 a stranger cannot grant site roles', r.status === 403, `got ${r.status}`);
     r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
     check('D5 a stranger cannot trigger the pipeline', r.status === 403, `got ${r.status}`);
+    r = await api('GET', '/api/estate/todo');
+    check('D6 a stranger cannot read the todo board', r.status === 403, `got ${r.status}`);
     // /me for someone the directory has never seen: a calm null, NEVER a 500 —
     // and (checked by D2 below) the ask itself enrols nobody.
     r = await api('GET', '/api/estate/me');
