@@ -16,7 +16,7 @@
  * callback. A returning member must never see "sign in" flash before their
  * session resolves.
  *
- * FETCHING: lazy, one universe at a time, only on expand — never all 7
+ * FETCHING: lazy, one universe at a time, only on expand — never all of them
  * eagerly on load. /api/universe is a real per-universe DB query and this
  * page's own click-to-fetch mirrors find.js's runUniverse() (also
  * click-triggered, not fired on every render). A signed-out expand shows the
@@ -25,13 +25,20 @@
  * anonymous carve-out (read.ts's header is explicit: members-only, no public
  * fallback, unlike /api/search's §4.5 carve-out).
  *
- * THE 7 NAMES ARE HARDCODED, deliberately, because read.ts exposes no public
+ * THE NAMES ARE HARDCODED, deliberately, because read.ts exposes no public
  * "list universe names" route — only /api/lookup (title-keyed) and the
  * members-only /api/universe/:name. Checked before assuming this: no such
  * route exists today. Keep this list in sync with data/universes.json's
  * `universes[].name` by hand; that file's own docs say it changes roughly
  * monthly, so a periodic check is enough — this is a maintenance note, not a
  * bug, and outgrowing it is the moment to add a real "list names" route.
+ *
+ * ALPHABETICAL DISPLAY (owner-ordered upgrade #2): UNIVERSE_NAMES itself
+ * stays in add-order (a running log — see the comment above it) so its own
+ * history reads cleanly; DISPLAY_NAMES, built once beside it, is what
+ * buildRows() actually iterates. Sort is display-order only — it has no
+ * bearing on /api/universe/:name resolution, which is name-keyed, not
+ * position-keyed.
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
@@ -59,6 +66,11 @@ const UNIVERSE_NAMES = [
   'Cytoverse',
   'Reckoners',
 ];
+
+// ALPHABETICAL UNIVERSES (owner-ordered upgrade #2) — display order only; the
+// list above stays in its historical add-order (a running log, see the
+// header note above it), sorted only at render time in buildRows().
+const DISPLAY_NAMES = [...UNIVERSE_NAMES].sort((a, b) => a.localeCompare(b));
 
 const whoEl = document.getElementById('uni-who');
 const signinBtn = document.getElementById('uni-signin');
@@ -195,6 +207,30 @@ function groupHeading(text) {
   return h;
 }
 
+/** kind='accessory'/'promo' — the "accessories de-clutter" (owner: "make
+ * accessories a sub category in a universe page"). Not a checkbox: these
+ * always render, just collapsed and out of the way. */
+function isAccessoryOrPromo(row) {
+  return row.kind === 'accessory' || row.kind === 'promo';
+}
+
+/** Accessories/promos collapse into a <details>, COLLAPSED BY DEFAULT (no
+ * `open` attribute) — the native disclosure widget so no extra JS is needed
+ * to toggle it. */
+function accessoriesDetails(rows) {
+  const details = document.createElement('details');
+  details.className = 'find-accessories';
+  const summary = document.createElement('summary');
+  summary.className = 'find-group';
+  summary.textContent = `Accessories & promos (${rows.length})`;
+  details.appendChild(summary);
+  const ul = document.createElement('ul');
+  ul.className = 'hits';
+  for (const row of rows) ul.appendChild(rowCard(row));
+  details.appendChild(ul);
+  return details;
+}
+
 /** Renders one /api/universe/:name answer into `body` (the row's expand slot). */
 function renderUniverseBody(body, data) {
   body.innerHTML = '';
@@ -222,17 +258,27 @@ function renderUniverseBody(body, data) {
     'Tap through to the owning catalog for owned-versus-wanted.';
   body.appendChild(caveat);
 
-  const groups = [
-    { name: 'Books & audiobooks', rows: data.matches.filter((m) => m.source === 'library' || m.source === 'audiobook') },
-    { name: 'Board games', rows: data.matches.filter((m) => m.source === 'game') },
-  ];
-  for (const g of groups) {
-    if (!g.rows.length) continue;
-    body.appendChild(groupHeading(g.name));
+  const bookRows = data.matches.filter((m) => m.source === 'library' || m.source === 'audiobook');
+  const gameRows = data.matches.filter((m) => m.source === 'game');
+  const games = gameRows.filter((m) => !isAccessoryOrPromo(m));
+  const accessories = gameRows.filter(isAccessoryOrPromo);
+
+  if (bookRows.length) {
+    body.appendChild(groupHeading('Books & audiobooks'));
     const ul = document.createElement('ul');
     ul.className = 'hits';
-    for (const row of g.rows) ul.appendChild(rowCard(row));
+    for (const row of bookRows) ul.appendChild(rowCard(row));
     body.appendChild(ul);
+  }
+  if (games.length) {
+    body.appendChild(groupHeading('Games'));
+    const ul = document.createElement('ul');
+    ul.className = 'hits';
+    for (const row of games) ul.appendChild(rowCard(row));
+    body.appendChild(ul);
+  }
+  if (accessories.length) {
+    body.appendChild(accessoriesDetails(accessories));
   }
 }
 
@@ -254,12 +300,12 @@ function errorNote(status, errCode) {
 }
 
 // ---------------------------------------------------------------------------
-// The list — 7 hardcoded rows, each a lazy fetch on first expand
+// The list — hardcoded rows in DISPLAY_NAMES's alphabetical order, each a lazy fetch on first expand
 // ---------------------------------------------------------------------------
 
 function buildRows() {
   listEl.innerHTML = '';
-  for (const name of UNIVERSE_NAMES) {
+  for (const name of DISPLAY_NAMES) {
     const li = document.createElement('li');
     li.className = 'uni-row';
 

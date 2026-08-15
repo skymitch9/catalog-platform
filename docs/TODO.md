@@ -452,18 +452,10 @@ same shape (the "structurally identical" property from §1.1 holds here too):**
 **`/universes` page (`sites/heygabi-home/public/universes/`) — size S,
 tomorrow's item per §5 below:**
 
-- Today: `universes.js` (381 lines) hand-duplicates find.js's rowCard/render
-  logic on purpose (this codebase's stated convention before estate-search.js
-  existed — see the file's own header) and hardcodes 11 universe names
-  because `read.ts` exposes no "list universe names" route.
-  `<estate-search universes="true">` typed a universe's name already surfaces
-  it via the Universes result group and "everything in X →" — so the
-  hardcoded list becomes REDUNDANT for the search path (not the whole page:
-  the page's collapsed-row browsing view has no equivalent in the
-  component). Honest split: swap the page's OWN search entry point for the
-  component, keep the hand-rolled expand/collapse browse view as-is unless a
-  "list names" route gets built later (§0's own reasoning for why that route
-  doesn't exist yet still holds).
+- ✅ **BUILT 2026-08-15** — see "Four owner-ordered upgrades" below. The
+  swap happened exactly as sized here: `<estate-search universes>` embedded
+  as the page's own search entry point, the hand-rolled expand/collapse
+  browse view (`universes.js`) kept as-is underneath it.
 
 **Cross-cutting note for the dispatcher:** every non-apex site currently gets
 `source`-scoped searches from ANONYMOUS visibility `{audiobook}` only
@@ -528,3 +520,59 @@ verified as far as tokenless/non-approver probing and code-reading allow,
 but the button itself was never clicked in anger during this build — it
 starts a REAL local pipeline run with Google Drive side effects, so that
 was deliberately left for the owner.
+
+## ✅ Four owner-ordered upgrades to universes/search (2026-08-15) — DEPLOYED
+
+1. **Accessories de-clutter** ("make accessories a sub category in a
+   universe page"; no include-checkbox by design). `apps/index-worker/
+   src/search.ts`: a `unitDemotionTier()` on the `units.sort` inside
+   `searchIndex` — `kind='accessory'`/`'promo'` game units sort BELOW every
+   book/audiobook/base/expansion-game unit regardless of raw match score
+   (previously `kindRank`'s tie-break only ordered them at EQUAL score; this
+   is an outright demotion, so it also protects the `MAX_RESULTS` cap from
+   an exact-match accessory bumping a real result out). Every consumer
+   inherits it for free since none of them re-sort server output. Client
+   side (`universes.js` + `estate-search.js`'s `_renderUniverse`): the
+   universe expansion view groups game rows by kind — base/expansion stay in
+   "Games", accessory/promo collapse into a native `<details>` "Accessories
+   & promos (N)", COLLAPSED BY DEFAULT. `kind` was already on the
+   `/api/universe/:name` wire (`ENTRY_COLS` in both `read.ts` and
+   `search-route.ts`) — checked before assuming a server change was needed;
+   none was. 7 new tests (`search.test.ts` ×6, `scope.test.ts` ×1 pinning
+   `kind` on the wire).
+2. **Alphabetical universes** — `universes.js`: `DISPLAY_NAMES`, a sorted
+   copy of `UNIVERSE_NAMES` built once, is what `buildRows()` now iterates.
+   `UNIVERSE_NAMES` itself stays in its historical add-order (a running log,
+   per its own header) — display order only, no data change.
+3. **Embed the component** — `universes/index.html` gets a new `#find`
+   section at the top: `<estate-search auth="authed" universes>`, same
+   wiring the front door uses (its own dynamic `estate-auth.js` import, its
+   own neutral-boot sign-in). The hand-rolled browse list (`#uni-list`)
+   stays underneath, unchanged — two ways to the same data, per §0.5's own
+   sizing above.
+4. **Member-implied universe autofill** ("if I search mistborn have it show
+   cosmere as the search autofill"). `search.ts`: `searchIndex` now returns
+   an additive `universeSuggestions` field — distinct universes the MATCHED
+   rows belong to (from `scored`, pre-cap, so the count is the true matched
+   count), excluding anything already in the name-matched `universes` field
+   (never duplicate), capped at the top 2 by matched-row count
+   (`MAX_SUGGESTED_UNIVERSES`). `estate-search.js`'s `_renderSearch` merges
+   `data.universeSuggestions` into the same "Universes" group as
+   `data.universes` — same row idiom, no client dedup needed since the
+   server already excludes the overlap. Verified server-side that anonymous
+   "mistborn" still surfaces the Cosmere suggestion (audiobook-slice rows
+   carry `universe` same as every other source) — a dedicated route test
+   pins this. 8 new tests in `search.test.ts` (the owner's own example, the
+   never-duplicate rule, the top-2 cap with a tie-break, matched-row-only
+   counting, plus the signed-out route case).
+
+**Tests**: `apps/index-worker` — 79/79 pass (21 new), `npm run typecheck`
+clean (both the main and test tsconfig). No DB migration — `kind` and
+`universe` were already columns; nothing changed shape, only the ranking and
+one additive response field.
+
+**Review links**: https://heygabi.ai/universes (alphabetical order, the
+embedded component, Marvel's 48 accessories + 2 promos collapsed by
+default — the built-in demo case) and https://heygabi.ai (front door, search
+"mistborn", confirm the Cosmere autofill row). See the deploy log for exact
+verification performed signed-out vs. what still needs signed-in eyes.

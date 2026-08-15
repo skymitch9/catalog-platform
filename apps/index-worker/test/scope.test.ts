@@ -351,6 +351,26 @@ test('/api/universe respects the member scope: a games-only member gets game row
   }
 });
 
+test('/api/universe carries `kind` on game rows — the accessories de-clutter (task 1) reads it client-side', async () => {
+  const rows = [
+    row({ title: 'Cosmere: The Board Game', source: 'game', format: 'boardgame', kind: 'base', universe: UNIVERSE }),
+    row({ title: 'Cosmere: Art Print', source: 'game', format: 'boardgame', kind: 'accessory', universe: UNIVERSE }),
+  ];
+  const db = new FakeDB(rows);
+  const f = stubSeen({ status: 'approved', visibility: ['games'] });
+  try {
+    const res = await app.request(
+      `/api/universe/${encodeURIComponent(UNIVERSE)}`, {}, memberEnv(db, 'gamer@example.com'),
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.deepEqual(body.matches.map((m: any) => m.kind).sort(), ['accessory', 'base'],
+      'kind must be on the wire — the component groups accessories/promos into a collapsed subsection by it');
+  } finally {
+    f.restore();
+  }
+});
+
 test('/api/universe stays members-only: anonymous → 401, unlike search', async () => {
   const res = await app.request(
     `/api/universe/${encodeURIComponent(UNIVERSE)}`, {}, prodEnv(new FakeDB(estateRows())),

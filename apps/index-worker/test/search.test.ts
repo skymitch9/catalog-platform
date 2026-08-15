@@ -157,6 +157,39 @@ test('at equal score the base game outranks its satellites (the real-data Art Pr
     'same tier, but base > expansion > accessory');
 });
 
+// --- Accessories de-clutter (task 1): the ranking half. ---------------------
+
+test('an accessory/promo ranks BELOW a base/expansion game even with a strictly HIGHER match score', () => {
+  const rows = [
+    // Exact title match — the highest score the ranker gives — but it is an accessory.
+    row({ title: 'Widget', source: 'game', format: 'boardgame', kind: 'accessory', parent_source_id: 'g1' }),
+    // Merely a prefix match, lower score, but it is the base game.
+    row({ title: 'Widget Deluxe Edition', source: 'game', format: 'boardgame', kind: 'base', source_id: 'g1' }),
+  ];
+  const r = searchIndex('widget', rows, universes);
+  assert.deepEqual(r.games.map((g) => g.kind), ['base', 'accessory'],
+    'demotion beats raw score — an exact-match accessory still sorts after a prefix-match base game');
+});
+
+test('a promo ranks below books too, not just other games, even outscoring them', () => {
+  const rows = [
+    row({ title: 'Widget', source: 'game', format: 'boardgame', kind: 'promo', parent_source_id: 'g1' }), // exact
+    row({ title: 'Widget Handbook' }), // book, prefix — lower score
+  ];
+  const r = searchIndex('widget', rows, universes);
+  assert.equal(r.books.length, 1, 'the book unit is never bumped from the cap by a higher-scoring promo');
+  assert.equal(r.games.length, 1);
+  assert.equal(r.games[0]!.kind, 'promo');
+});
+
+test('demotion survives the MAX_RESULTS cap: an exact-match accessory never crowds out real matches', () => {
+  const rows = Array.from({ length: MAX_RESULTS }, (_, i) => row({ title: `Widget Book ${i}` })); // prefix, lower score
+  rows.push(row({ title: 'Widget', source: 'game', format: 'boardgame', kind: 'accessory' })); // exact, higher score
+  const r = searchIndex('widget', rows, universes);
+  assert.equal(r.books.length, MAX_RESULTS, 'all MAX_RESULTS slots went to the real matches');
+  assert.equal(r.games.length, 0, 'the demoted accessory did not take a slot from them');
+});
+
 test('the cap: at most MAX_RESULTS units, best first', () => {
   const rows = Array.from({ length: 40 }, (_, i) => row({ title: `Dragon Book ${i}` }));
   rows.push(row({ title: 'Dragon' })); // the exact hit must survive the cap
@@ -214,6 +247,54 @@ test('universe-name search reaches the real 2026-08-15 universes, not just synth
   assert.equal(shards.games[0]!.title, 'Shards of Creation');
 });
 
+// --- Member-implied universe autofill (task 4). ------------------------------
+
+test('owner\'s own example: searching "mistborn" surfaces The Cosmere as a suggestion, though the query never named it', () => {
+  const rows = [
+    row({ title: 'Mistborn: The Final Empire', creator: 'Brandon Sanderson', universe: 'The Cosmere', source: 'library', format: 'hardcover' }),
+    row({ title: 'Mistborn: The Final Empire', creator: 'Brandon Sanderson', universe: 'The Cosmere', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Mistborn: House War', universe: 'The Cosmere', source: 'game', format: 'boardgame', kind: 'base' }),
+    row({ title: 'Unrelated Widget' }),
+  ];
+  const r = searchIndex('mistborn', rows, universes);
+  assert.deepEqual(r.universes, [], 'the query text "mistborn" does not name the universe "The Cosmere" itself');
+  assert.deepEqual(r.universeSuggestions, [{ name: 'The Cosmere', count: 3 }],
+    'all three matched rows carry universe=The Cosmere, so it is offered as an autofill');
+});
+
+test('a universe the query DID name directly is never duplicated into universeSuggestions', () => {
+  const rows = [
+    row({ title: 'Elantris', universe: 'The Cosmere' }),
+    row({ title: 'The Cosmere Atlas', universe: 'The Cosmere' }),
+  ];
+  const r = searchIndex('cosmere', rows, universes);
+  assert.deepEqual(r.universes, [{ name: 'The Cosmere', count: 2 }]);
+  assert.deepEqual(r.universeSuggestions, [], 'already offered by name — never say it twice');
+});
+
+test('universeSuggestions caps at the top 2 universes by matched-row count, ties broken A-Z', () => {
+  const rows = [
+    ...Array.from({ length: 3 }, (_, i) => row({ title: `Widget Alpha ${i}`, universe: 'Alpha Verse' })),
+    ...Array.from({ length: 2 }, (_, i) => row({ title: `Widget Beta ${i}`, universe: 'Beta Verse' })),
+    row({ title: 'Widget Gamma', universe: 'Gamma Verse' }),
+  ];
+  const r = searchIndex('widget', rows, universes);
+  assert.deepEqual(r.universeSuggestions, [
+    { name: 'Alpha Verse', count: 3 },
+    { name: 'Beta Verse', count: 2 },
+  ], 'top 2 by count; Gamma Verse (count 1) is capped out');
+});
+
+test('universeSuggestions counts matched rows only, not the universe\'s whole catalog', () => {
+  const rows = [
+    row({ title: 'Mistborn Companion', universe: 'The Cosmere' }), // matches "mistborn"
+    row({ title: 'Elantris', universe: 'The Cosmere' }), // same universe, does NOT match "mistborn"
+  ];
+  const r = searchIndex('mistborn', rows, universes);
+  assert.deepEqual(r.universeSuggestions, [{ name: 'The Cosmere', count: 1 }],
+    'only the row that actually matched the query counts, not every Cosmere row in scope');
+});
+
 // --- The route, through the real app (auth blanket included). ---------------
 
 class SearchFakeDB {
@@ -267,6 +348,23 @@ test('tokenless GET /api/search → 200 with the PUBLIC slice — §4.5\'s anony
   assert.equal(body.books.length, 1);
   assert.deepEqual(body.books[0].entries.map((e: any) => e.source), ['audiobook'],
     'the library edition never reaches the wire');
+});
+
+test('the mistborn autofill works SIGNED OUT: the anonymous audiobook slice still carries universe, so the route\'s universeSuggestions still fires', async () => {
+  const db = new SearchFakeDB([
+    row({ title: 'Mistborn: The Final Empire', universe: 'The Cosmere', source: 'audiobook', format: 'audiobook' }),
+    row({ title: 'Mistborn: The Final Empire', universe: 'The Cosmere', source: 'library', format: 'hardcover' }), // out of anon scope
+  ]);
+  const res = await app.request('/api/search?q=mistborn', {}, {
+    ...env(db),
+    ENVIRONMENT: 'production',
+    DEV_EMAIL: undefined,
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.deepEqual(body.scope, ['audiobook']);
+  assert.deepEqual(body.universeSuggestions, [{ name: 'The Cosmere', count: 1 }],
+    'the library row never left the database (scope IS the SQL) — only the one visible audiobook row counts');
 });
 
 test('GET /api/search without q → 400 missing_query', async () => {

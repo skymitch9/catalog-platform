@@ -91,11 +91,23 @@ export interface SearchResults {
   /** Universe NAMES the query matched — their own group (design §3.2's tier),
    * counts only; the rows live behind /api/universe/:name. */
   universes: UniverseHit[];
+  /**
+   * MEMBER-IMPLIED UNIVERSE AUTOFILL (owner: "if I search mistborn have it
+   * show cosmere as the search autofill") — additive to `universes`: the
+   * distinct universes the MATCHED ROWS belong to, even when the query text
+   * never named the universe itself. Excludes anything already in
+   * `universes` (never duplicate the same name across both groups), capped
+   * at MAX_SUGGESTED_UNIVERSES by matched-row count so autofill stays clean.
+   */
+  universeSuggestions: UniverseHit[];
 }
 
 /** How many ranked units (book works + game rows) a response carries. */
 export const MAX_RESULTS = 20;
 const MAX_UNIVERSES = 5;
+/** Cap for member-implied universe autofill (task 4) — "sensibly", per the
+ * owner's own word: the top 2 universes by matched-row count, not a flood. */
+const MAX_SUGGESTED_UNIVERSES = 2;
 
 /** Collapse raw display text for the raw-substring lane: lowercase, one-space. */
 function rawFold(s: string): string {
@@ -152,12 +164,30 @@ export function scoreRow(q: string, qTokens: readonly string[], rawQ: string, ro
   return best;
 }
 
+/** A ranked cap unit: one book work or one game row (searchIndex's `units`). */
+type RankedUnit = { score: number; kind: 'book'; key: string } | { score: number; kind: 'game'; hit: ScoredRow };
+
 /** Base games before their satellites at equal score — probed on the real
  * data: 'dungeon craw' put four Art Prints above the board game itself. */
 function kindRank(kind: string | null): number {
   if (kind === null || kind === 'base') return 0;
   if (kind === 'expansion') return 1;
   return 2; // accessory / promo / upgrade
+}
+
+/**
+ * ACCESSORIES DE-CLUTTER, ranking half (owner: "make accessories a sub
+ * category in a universe page"): kind='accessory'/'promo' units rank BELOW
+ * every book, audiobook and base/expansion game unit — not merely tie-broken
+ * against them at equal score (that is kindRank, above, unchanged), but
+ * demoted outright regardless of score. A demotion TIER on the unit cap
+ * (searchIndex's `units.sort`), not a per-row score penalty, so it survives
+ * the MAX_RESULTS cap the same way for every consumer: the component never
+ * reorders what the server sends, so this is the one place to implement it.
+ */
+function unitDemotionTier(u: RankedUnit): number {
+  if (u.kind === 'game' && (u.hit.row.kind === 'accessory' || u.hit.row.kind === 'promo')) return 1;
+  return 0;
 }
 
 /** Stable order: score desc, then base before satellites, then the shorter
@@ -216,12 +246,16 @@ export function searchIndex(query: string, rows: readonly SearchRow[], universes
   }
 
   // Rank units (book works + game rows) together, then cap.
-  type Unit = { score: number; kind: 'book'; key: string } | { score: number; kind: 'game'; hit: ScoredRow };
-  const units: Unit[] = [
+  const units: RankedUnit[] = [
     ...bookOrder.map((key) => ({ score: bookGroups.get(key)!.best.score, kind: 'book' as const, key })),
     ...gameHits.map((hit) => ({ score: hit.score, kind: 'game' as const, hit })),
   ];
-  units.sort((a, b) => b.score - a.score);
+  units.sort((a, b) => {
+    const da = unitDemotionTier(a);
+    const db = unitDemotionTier(b);
+    if (da !== db) return da - db;
+    return b.score - a.score;
+  });
   const kept = units.slice(0, MAX_RESULTS);
 
   const books: BookHit[] = [];
@@ -244,7 +278,37 @@ export function searchIndex(query: string, rows: readonly SearchRow[], universes
     }
   }
 
-  return { books, games, universes: matchUniverses(query, q, qTokens, rows, universes) };
+  const namedUniverses = matchUniverses(query, q, qTokens, rows, universes);
+  return {
+    books,
+    games,
+    universes: namedUniverses,
+    universeSuggestions: suggestUniverses(scored, namedUniverses),
+  };
+}
+
+/**
+ * MEMBER-IMPLIED UNIVERSE AUTOFILL (task 4, owner: "if I search mistborn have
+ * it show cosmere as the search autofill"): the distinct universes the
+ * MATCHED rows belong to — every row that scored at all against the query,
+ * before the MAX_RESULTS cap, so the count reflects the true matched set, not
+ * just what fit on screen. Skips any universe already offered by
+ * `matchUniverses` (the query NAMED it directly) — the two groups are
+ * additive and must never duplicate the same name. Capped at
+ * MAX_SUGGESTED_UNIVERSES by matched-row count, ties broken A–Z.
+ */
+function suggestUniverses(scored: readonly ScoredRow[], named: readonly UniverseHit[]): UniverseHit[] {
+  const namedNames = new Set(named.map((u) => u.name));
+  const counts = new Map<string, number>();
+  for (const s of scored) {
+    const universe = s.row.universe;
+    if (universe === null || namedNames.has(universe)) continue;
+    counts.set(universe, (counts.get(universe) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, MAX_SUGGESTED_UNIVERSES)
+    .map(([name, count]) => ({ name, count }));
 }
 
 /**

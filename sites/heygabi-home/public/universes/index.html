@@ -10,8 +10,15 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b09">
 
 <!--
-  /universes — one row per estate universe (data/universes.json), each
-  expanding on click to GET /api/universe/:name (index-worker read.ts).
+  /universes — search-first (owner-ordered upgrade #3): the shared
+  <estate-search universes> component (assets/estate-search.js), authed, same
+  wiring the front door uses, sits at the top as the page's primary entry
+  point. Below it, the ORIGINAL browse surface stays: one row per estate
+  universe (data/universes.json), alphabetically ordered (upgrade #2,
+  universes.js's DISPLAY_NAMES — display order only), each expanding on click
+  to GET /api/universe/:name (index-worker read.ts). Two ways to the same
+  data, kept both on purpose: search finds a title fast, the browse list is
+  for "what universes exist at all".
 
   ⚠️ MEMBERS-ONLY DATA, SAME AS THE FRONT DOOR'S UNIVERSE FOLLOW-UP: read.ts's
   own header is explicit that /api/universe/:name sits behind the
@@ -19,13 +26,26 @@
   that exists for /api/search is search-only, §4.5). /api/search was checked
   (search-route.ts) and offers no universe-scoped query — only a ranked `q`
   text match whose `universes` group is names-and-counts, not rows. So there
-  is no honest way to give a signed-out visitor real universe contents here;
-  a signed-out click gets the same sign-in invitation find.js already uses
-  for its own "everything in X" buttons, not a wall and not a fake fetch.
+  is no honest way to give a signed-out visitor real universe contents in the
+  BROWSE list; a signed-out click there gets the same sign-in invitation
+  find.js already uses for its own "everything in X" buttons, not a wall and
+  not a fake fetch. The embedded <estate-search> component is unaffected —
+  its own box searches the public audiobook slice signed out, same as the
+  front door, since /api/search carries its own anonymous carve-out.
 
   Auth: assets/estate-auth.js, same shared Firebase project as the front
-  door. Neutral-boot pattern from assets/find.js (see universes.js) — no
-  flash of "sign in" for a returning member before Firebase answers.
+  door — the embedded component dynamically imports it itself (resolved next
+  to estate-search.js, its own default), and the browse list's own script
+  (universes.js) imports it separately. Two independent auth listeners on one
+  page, both against the same Firebase project — that mirrors the front
+  door's own component-is-self-contained design, not a bug.
+
+  Accessories de-clutter (owner-ordered upgrade #1): the browse list's
+  expanded universe body groups game rows by kind — base/expansion render in
+  a "Games" group as before, kind='accessory'/'promo' collapse into a
+  "Accessories & promos (N)" <details>, collapsed by default. Ranking (the
+  demotion in SEARCH results) is server-side, in index-worker's search.ts —
+  nothing to do here.
 
   Rendering: DELIBERATELY DUPLICATED from find.js's rowCard/coverFor/
   metaBits rather than factored into a shared module — this codebase's own
@@ -77,6 +97,34 @@ h1 {
 .sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
 
 [hidden] { display: none !important; }
+
+/* ---- section headings, and the embedded <estate-search> ------------------
+   Same language as heygabi-home's own index.html: h2 is a small-caps rule
+   with a trailing line, and the search box itself (form, input, results —
+   everything find.js used to style locally) lives inside <estate-search>'s
+   own Shadow DOM (assets/estate-search.js) reading the same --et-* tokens
+   this page sets on <html>, so it re-skins with every theme automatically. */
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: 0 0 1rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--et-hairline), transparent);
+}
+
+#find { margin-bottom: var(--et-space-4); }
 
 /* ---- sign-in strip, same button language as index.html's #find --------- */
 
@@ -194,6 +242,18 @@ ul.uni-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem
   text-wrap: pretty;
 }
 
+/* Accessories de-clutter (owner: "make accessories a sub category in a
+   universe page") — a native <details>, collapsed by default (no `open`
+   attribute in universes.js), so the disclosure needs no extra JS. */
+details.find-accessories { margin: 1rem 0 .5rem; }
+details.find-accessories > summary {
+  cursor: pointer;
+  margin: 0;
+}
+details.find-accessories > summary:hover { color: var(--et-accent); }
+details.find-accessories > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+details.find-accessories > ul.hits { margin-top: .5rem; }
+
 ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 
 .hit {
@@ -277,6 +337,25 @@ footer a { color: var(--et-accent); }
     follow-ups.
   </p>
 
+  <!--
+    EMBED THE COMPONENT (owner-ordered upgrade #3): the same shared
+    <estate-search> the front door uses, authed, same wiring — so this page
+    scales as universes multiply instead of staying a hand-rolled list. This
+    IS the page's primary entry point now; the hand-rolled browse list below
+    (universes.js's own #uni-list) stays as a secondary "every universe,
+    browseable" view, unchanged.
+  -->
+  <section id="find" aria-labelledby="find-h">
+    <h2 id="find-h">Search everything</h2>
+    <estate-search
+      id="uni-search"
+      auth="authed"
+      universes
+      hint="Search across every catalog and format — a match surfaces an “everything in X” follow-up for its universe."
+    ></estate-search>
+  </section>
+
+  <h2 id="browse-h">Browse by universe</h2>
   <p id="uni-who" hidden></p>
   <button id="uni-signin" class="find-btn" type="button" hidden>Sign in to see contents</button>
   <p id="uni-status" hidden></p>
@@ -292,8 +371,13 @@ footer a { color: var(--et-accent); }
   </footer>
 </main>
 
-<!-- External file because _headers ships script-src 'self' — inline script
-     stays blocked, same as every other apex page. -->
+<!-- External files because _headers ships script-src 'self' — inline script
+     stays blocked, same as every other apex page. estate-search.js defines
+     <estate-search> and must load before universes.js's own script (page
+     order does not strictly require it — module scripts defer and
+     customElements.define is idempotent-safe here — but this is the same
+     load order the front door uses, kept for consistency). -->
+<script type="module" src="/assets/estate-search.js"></script>
 <script type="module" src="/universes/universes.js"></script>
 </body>
 </html>

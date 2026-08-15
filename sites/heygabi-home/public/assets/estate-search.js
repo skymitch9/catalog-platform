@@ -60,7 +60,9 @@
  *                  "Universes" result group and "everything in X →" follow-
  *                  up buttons. /api/universe stays members-only server-side
  *                  regardless; authless/signed-out callers get the sign-in
- *                  invitation, unchanged from find.js.
+ *                  invitation, unchanged from find.js. Also gates
+ *                  `universeSuggestions` rendering (see below) — one flag,
+ *                  both surfaces, since they share the exact idiom.
  *
  * PROPERTIES (JS-only — for callback/object config no attribute can carry)
  *   .intakeFilter(data, { kind }) → data
@@ -98,6 +100,18 @@
  *     caveat copy — load-bearing, per find.js's own header, unchanged here;
  *   - full keyboard nav (↑/↓/Enter/Escape, aria-activedescendant / aria-
  *     selected, role="combobox"/"listbox"/"option").
+ *
+ * ADDED SINCE (four owner-ordered upgrades, this pass):
+ *   - accessories de-clutter (task 1): `_renderUniverse` splits game rows by
+ *     kind — base/expansion stay in "Games", kind='accessory'/'promo' collapse
+ *     into a collapsed-by-default `_accessoriesDetails()` subsection. The
+ *     RANKING half (accessories/promos sorting below books/audiobooks/base-
+ *     expansion games) is server-side, in index-worker's search.ts — this
+ *     component inherits it for free by rendering server order unchanged;
+ *   - member-implied universe autofill (task 4): `_renderSearch` merges the
+ *     server's additive `data.universeSuggestions` into the same "Universes"
+ *     group as `data.universes` — the server already excludes any name the
+ *     query text itself matched, so the merge needs no client-side dedup.
  *
  * NOT ported: the apex's approver-probe "Admin" chip (find.js's
  * probeApprover()). That is heygabi-home-specific admin surface, not a
@@ -186,6 +200,17 @@
         margin: 1rem 0 .5rem; font-size: var(--et-text-micro); font-weight: 700;
         letter-spacing: .1em; text-transform: uppercase; color: var(--et-muted);
       }
+      /* Accessories de-clutter (task 1): a native <details>, collapsed by
+         default — the universe expansion view groups kind='accessory'/'promo'
+         rows here instead of the plain .es-group list. */
+      details.es-accessories { margin: 1rem 0 .5rem; }
+      details.es-accessories > summary {
+        cursor: pointer; margin: 0; font-size: var(--et-text-micro); font-weight: 700;
+        letter-spacing: .1em; text-transform: uppercase; color: var(--et-muted);
+      }
+      details.es-accessories > summary:hover { color: var(--et-accent); }
+      details.es-accessories > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+      details.es-accessories > .es-hits { margin-top: .5rem; }
       .es-hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
       .es-hit {
         display: flex; gap: .8rem; align-items: flex-start;
@@ -651,6 +676,28 @@
       return h;
     }
 
+    /** kind='accessory'/'promo' — the accessories de-clutter (owner: "make
+     * accessories a sub category in a universe page"). Always present, just
+     * collapsed and out of the way; no include-checkbox. */
+    _isAccessoryOrPromo(row) {
+      return row.kind === 'accessory' || row.kind === 'promo';
+    }
+
+    /** A native <details>, COLLAPSED BY DEFAULT (no `open` attribute). */
+    _accessoriesDetails(rows) {
+      const details = document.createElement('details');
+      details.className = 'es-accessories';
+      const summary = document.createElement('summary');
+      summary.textContent = `Accessories & promos (${rows.length})`;
+      details.appendChild(summary);
+      const ul = document.createElement('ul');
+      ul.className = 'es-hits';
+      ul.setAttribute('role', 'presentation');
+      for (const row of rows) ul.appendChild(this._rowCard(row));
+      details.appendChild(ul);
+      return details;
+    }
+
     _caveatLine(headingText) {
       const heading = document.createElement('p');
       heading.className = 'es-caveat';
@@ -670,7 +717,14 @@
         return;
       }
 
-      const total = data.books.length + data.games.length + (this.showUniverses ? data.universes.length : 0);
+      // MEMBER-IMPLIED UNIVERSE AUTOFILL (task 4): `universeSuggestions` is
+      // additive to `universes` — the server already excludes any name the
+      // query itself matched, so the two arrays never overlap and can be
+      // rendered as one combined list, same row idiom, no dedup needed here.
+      const universeRows = this.showUniverses
+        ? [...data.universes, ...(data.universeSuggestions || [])]
+        : [];
+      const total = data.books.length + data.games.length + universeRows.length;
       if (total === 0) {
         const where = Array.isArray(data.scope) && data.scope.length < FULL_SCOPE_SIZE
           ? `in ${this._scopePhrase(data.scope)}` : 'on any shelf';
@@ -688,12 +742,12 @@
       const note = this._scopeNote(data.scope);
       if (note) this._resultsEl.appendChild(note);
 
-      if (this.showUniverses && data.universes.length) {
+      if (universeRows.length) {
         this._resultsEl.appendChild(this._groupHeading('Universes — every catalog, every format'));
         const ul = document.createElement('ul');
         ul.className = 'es-hits';
         ul.setAttribute('role', 'presentation');
-        for (const u of data.universes) {
+        for (const u of universeRows) {
           const li = document.createElement('li');
           li.className = 'es-hit';
           const body = document.createElement('div');
@@ -742,9 +796,17 @@
 
       this._resultsEl.appendChild(this._caveatLine(`Everything in ${data.universe} — every catalog, every format.`));
 
+      // Accessories de-clutter (task 1): base/expansion games render in
+      // "Games" as before; kind='accessory'/'promo' collapse into a
+      // collapsed-by-default details subsection, out of the main list.
+      const bookRows = data.matches.filter((m) => m.source === 'library' || m.source === 'audiobook');
+      const gameRows = data.matches.filter((m) => m.source === 'game');
+      const games = gameRows.filter((m) => !this._isAccessoryOrPromo(m));
+      const accessories = gameRows.filter((m) => this._isAccessoryOrPromo(m));
+
       const groups = [
-        { name: 'Books & audiobooks', rows: data.matches.filter((m) => m.source === 'library' || m.source === 'audiobook') },
-        { name: 'Board games', rows: data.matches.filter((m) => m.source === 'game') },
+        { name: 'Books & audiobooks', rows: bookRows },
+        { name: 'Games', rows: games },
       ];
       for (const g of groups) {
         if (!g.rows.length) continue;
@@ -755,6 +817,7 @@
         for (const row of g.rows) ul.appendChild(this._rowCard(row));
         this._resultsEl.appendChild(ul);
       }
+      if (accessories.length) this._resultsEl.appendChild(this._accessoriesDetails(accessories));
     }
 
     // -- queries: debounced, abortable ---------------------------------------
