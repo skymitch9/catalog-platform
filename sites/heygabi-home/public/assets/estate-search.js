@@ -67,10 +67,11 @@
  *                  none, turns it on — absence turns it off). Shows two
  *                  ICON-ONLY buttons (aria-label + title carry the words;
  *                  hover tooltips are the discoverability, per owner order):
- *                  📷 opens the rear camera and decodes a book's back-cover
- *                  barcode, resolving it to a title/author via the public
- *                  Open Library API and feeding the title into this
- *                  component's own search path. 📚 ("Scan a shelf",
+ *                  the BARCODE-glyph button opens the rear camera and decodes
+ *                  a book's back-cover barcode, resolving it to a title/author
+ *                  via the public Open Library API and feeding the title into
+ *                  this component's own search path. The CAMERA-glyph button
+ *                  ("Scan a shelf",
  *                  authed mode only — vision costs money) opens a native
  *                  file input (`accept="image/*" capture="environment"`,
  *                  camera on mobile / picker on desktop) and identifies every
@@ -235,6 +236,26 @@ export function groupBySeries(rows) {
   const DEFAULT_HINT =
     '“Do we own this in any format?” — one title, checked against every shelf at once.';
 
+  /**
+   * Inline SVG icons (owner order 2026-08-15): the barcode button shows a
+   * BARCODE and the shelf/cover button shows a CAMERA. The previous 📷/📚
+   * pair read exactly backwards — the camera glyph sat on the barcode
+   * scanner. There is no barcode emoji, so both became SVGs; currentColor
+   * keeps them on-theme, aria-hidden because the words stay in
+   * aria-label/title (icon-only rule unchanged). `stop`/`busy` are the
+   * in-flight states of those same two buttons.
+   */
+  const ES_ICONS = {
+    barcode:
+      '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M2 5h2v14H2zM5.5 5h1v14h-1zM8 5h2v14H8zM11.5 5h1v14h-1zM14 5h3v14h-3zM18.5 5h1v14h-1zM21 5h1v14h-1z"/></svg>',
+    photo:
+      '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+    stop:
+      '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>',
+    busy:
+      '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 2h10M7 22h10M8 2v3.5L12 10l4-4.5V2M8 22v-3.5L12 14l4 4.5V22"/></svg>',
+  };
+
   const TEMPLATE = document.createElement('template');
   TEMPLATE.innerHTML = `
     <style>
@@ -335,6 +356,7 @@ export function groupBySeries(rows) {
          live in aria-label/title, not in the button's visible text. */
       .es-scan-row { display: flex; gap: .6rem; align-items: stretch; flex-wrap: wrap; margin-top: .6rem; }
       .es-icon-btn { flex: none; width: 44px; padding: 0; font-size: 1.2rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+      .es-icon-btn svg { display: block; }
       .es-camera-stage { margin-top: .6rem; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }
       .es-camera-stage[hidden] { display: none; }
       .es-scan-video { width: 100%; max-width: 24rem; border-radius: var(--et-radius); border: 1px solid var(--et-hairline); background: #000; }
@@ -357,8 +379,8 @@ export function groupBySeries(rows) {
         <button class="es-btn es-signin" type="button" hidden>Sign in to search everything</button>
       </form>
       <div class="es-scan-row" hidden>
-        <button class="es-btn es-icon-btn es-scan-btn" type="button" aria-label="Scan a barcode" title="Scan a barcode">📷</button>
-        <button class="es-btn es-icon-btn es-shelf-btn" type="button" aria-label="Scan a shelf" title="Scan a shelf" hidden>📚</button>
+        <button class="es-btn es-icon-btn es-scan-btn" type="button" aria-label="Scan a barcode" title="Scan a barcode">${ES_ICONS.barcode}</button>
+        <button class="es-btn es-icon-btn es-shelf-btn" type="button" aria-label="Scan a shelf" title="Scan a shelf" hidden>${ES_ICONS.photo}</button>
         <input class="es-shelf-file" type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabindex="-1">
       </div>
       <div class="es-camera-stage" hidden>
@@ -1195,11 +1217,11 @@ export function groupBySeries(rows) {
       // ok / redirecting need nothing: watchAuth re-renders, or the page leaves.
     }
 
-    // -- scan (📷 barcode, 📚 shelf, search-bar ISBN — logic lives in
-    //    estate-scan.js) ---------------------------------------------------
+    // -- scan (barcode-glyph button, camera-glyph shelf button, search-bar
+    //    ISBN — logic lives in estate-scan.js) -----------------------------
 
     /**
-     * Dynamically imported ONLY on first use (📷 tapped, 📚 tapped, or a
+     * Dynamically imported ONLY on first use (either scan button tapped, or a
      * typed query first parses as a candidate ISBN) — same reasoning as the
      * auth adapter above: a site that embeds `scan` but whose visitor never
      * touches it never pays for the module, and a site that never sets
@@ -1230,7 +1252,7 @@ export function groupBySeries(rows) {
      */
     _setBarcodeBtnState(mode) {
       const label = mode === 'running' ? 'Stop camera' : mode === 'opening' ? 'Opening camera…' : 'Scan a barcode';
-      this._scanBtn.textContent = mode === 'running' ? '⏹️' : '📷';
+      this._scanBtn.innerHTML = mode === 'running' ? ES_ICONS.stop : ES_ICONS.barcode;
       this._scanBtn.setAttribute('aria-label', label);
       this._scanBtn.title = label;
     }
@@ -1327,11 +1349,11 @@ export function groupBySeries(rows) {
       this._renderAddAffordance({ isbn13: isbn, title: resolved.title, author: resolved.author }, scan);
     }
 
-    // -- scan (📚 shelf — logic lives in estate-scan.js) ----------------------
+    // -- scan (camera-glyph shelf button — logic lives in estate-scan.js) -----
 
     _setShelfBtnState(mode) {
       const label = mode === 'busy' ? 'Reading the shelf…' : 'Scan a shelf';
-      this._shelfBtn.textContent = mode === 'busy' ? '⏳' : '📚';
+      this._shelfBtn.innerHTML = mode === 'busy' ? ES_ICONS.busy : ES_ICONS.photo;
       this._shelfBtn.setAttribute('aria-label', label);
       this._shelfBtn.title = label;
       this._shelfBtn.disabled = mode === 'busy';

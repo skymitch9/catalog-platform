@@ -8,6 +8,20 @@
 
 ---
 
+## Scan icons: barcode glyph vs camera glyph (owner ask 2026-08-15) — ✅ DONE
+
+Owner: the apex's two scan icons were confusing (camera emoji sat on the
+*barcode* scanner) — "give the barcode scanner a barcode icon and a photo icon
+for the shelf and cover option… do this everywhere too." Estate-wide
+convention now: **barcode modes show a barcode SVG, photo modes (shelf +
+single-cover) show a camera SVG**, currentColor so they follow theme.
+Canonical set is `ES_ICONS` in `estate-search.js`; the library and games scan
+tabs carry vendored copies of the same paths (comment at each points back
+here). Changed: apex `estate-search.js` (buttons + stop/busy states),
+library `ScanPage.tsx` + `styles.css`, games `ScanJobsPage.tsx` + `styles.css`.
+
+---
+
 ## 1. ⚠️ Three of the four repos deploy only from a human's laptop
 
 **Raised by the owner 2026-08-12**, immediately after a manual
