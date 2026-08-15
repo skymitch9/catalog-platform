@@ -521,6 +521,30 @@ but the button itself was never clicked in anger during this build — it
 starts a REAL local pipeline run with Google Drive side effects, so that
 was deliberately left for the owner.
 
+## ✅ Estate backups rewired to R2, not artifacts (2026-08-15) — DEPLOYED
+
+`backup.yml` moved back into this repo (it had spent part of the day on the
+private `skymitch9/estate-backups` repo to keep D1/Firestore/R2 export
+artifacts off a now-public repo) and every job now writes straight into a
+new **private** `estate-backups` R2 bucket via `wrangler r2 object put ...
+--remote` instead of `actions/upload-artifact` — the artifact exposure this
+was working around no longer applies regardless of which repo runs the
+workflow. `CLOUDFLARE_API_TOKEN`'s R2-write permission was proven with a
+throwaway smoke-test object before the rewrite; no owner-side token change
+was needed. A new `retention` job (`scripts/prune-r2-backups.mjs`) keeps the
+newest 8 objects per `<kind>/<store>` prefix on every dispatch. Proof run
+(`target=all`, all 8 jobs + retention green) verified objects for all four
+D1s, Firestore, and all three covers buckets, with the D1 export and
+Firestore dump each sampled and confirmed byte-identical across two
+independent downloads. Full detail: `docs/access/backup-restore.md`. The
+`estate-backups` GitHub repo is now superseded (README updated, its own
+`backup.yml` disabled) — kept only as a pointer, owner may delete it.
+
+**Queued, not built — v2 idea:** a "last backup age" row on `/status`,
+reading the `estate-backups` bucket's object listing (would need a small
+Worker with Cloudflare-API access, since the status page has none server-
+side today). Sized but deliberately not built this session.
+
 ## ✅ Four owner-ordered upgrades to universes/search (2026-08-15) — DEPLOYED
 
 1. **Accessories de-clutter** ("make accessories a sub category in a
