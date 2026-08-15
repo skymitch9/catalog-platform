@@ -1,3 +1,7 @@
+> **MOVED 2026-08-15:** the backup WORKFLOW now lives in the private
+> skymitch9/estate-backups repo (this repo went public; export artifacts must
+> never sit on a public repo). Restore recipes below remain authoritative.
+
 # Estate Backup & Restore — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (no secret
