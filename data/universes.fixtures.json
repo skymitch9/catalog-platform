@@ -183,6 +183,62 @@
       "expect": null,
       "why": "⚠️ SETTLED 2026-08-12: the owner confirms it is specifically NON-Cosmere short fiction. Tested because it is the second-most likely false positive in the whole list — a Sanderson collection sitting among ten Cosmere rows, with a blank series so nothing else contradicts a careless guess. The Frugal Wizard's Handbook is the first, and it already has its own case.",
       "measured": "audiobook_catalog site/catalog.csv 2026-08-11; owner settled it 2026-08-12."
+    },
+    {
+      "name": "cross-format: a board game is Marvel by title override, not by series",
+      "title": "Dice Throne: X-Men",
+      "series": "Dice Throne",
+      "expect": "Marvel",
+      "why": "The first cross-format universe answer this file pins. Resolved by the bookOverride on the exact title, never by the series — see the next case.",
+      "measured": "board-game D1 (board-game-catalog), id 96, 2026-08-15."
+    },
+    {
+      "name": "⚠️ 'Dice Throne' as a bare series resolves to NOTHING — the mixed series that proves the game side needs the same rule as the book side",
+      "title": "Dice Throne: Alchemist",
+      "series": "Dice Throne",
+      "expect": null,
+      "why": "Same shape as 'Secret Projects': most Dice Throne content (Vanguard, Outcasts, Season One/Two ReRolled, Mystic Brawler, Alchemist, Santa vs Krampus, Slam Throne) has no Marvel connection at all, so the series is deliberately NOT claimed by Marvel. If this ever resolves non-null, every non-Marvel Dice Throne row in the catalog just got swept in by mistake.",
+      "measured": "board-game D1, id 679, 2026-08-15."
+    },
+    {
+      "name": "a Marvel game accessory needs its OWN override — the resolver never inherits from parent_item_id",
+      "title": "Marvel Dice Throne: Hero Sculpt - Thor",
+      "series": "Dice Throne",
+      "expect": "Marvel",
+      "why": "Board-game rows carry a parent_item_id tree (base → hero expansion → sleeves/sculpt/playmat) but universeFor() resolves per row on title+series alone — it does not walk the tree. Every accessory needed its own exact-title override for the same reason the accessory itself needed its own row in board-game D1.",
+      "measured": "board-game D1, id 742, parent chain 742→697→677, 2026-08-15."
+    },
+    {
+      "name": "Disney — a Star Wars series claim, so future purchases file themselves",
+      "title": "Star Wars: Light of the Jedi - The High Republic",
+      "series": "Star Wars: The High Republic",
+      "expect": "Disney",
+      "why": "Claimed at series level (not per-title) because 3 owned rows already share this exact series value — the same reasoning Riordanverse and Willverse record for their own series claims.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-15."
+    },
+    {
+      "name": "Disney — a seriesless Disney Books imprint title needs its own override",
+      "title": "Disney Junior Ariel: A Magical Mess",
+      "series": "",
+      "expect": "Disney",
+      "why": "The Disney Books imprint rows all carry a blank series, the same shape that forced per-title overrides for Otherlife and Secret Projects on the book side.",
+      "measured": "audiobook_catalog site/catalog.csv, 2026-08-15."
+    },
+    {
+      "name": "the Divine Dungeon board game joins CAL Verse, not a new universe",
+      "title": "Divine Dungeon the Game",
+      "series": "",
+      "expect": "CAL Verse",
+      "why": "canonicalNames already folds 'divine dungeon universe' onto CAL Verse and 'The Divine Dungeon' is already a claimed series there — direct evidence a standalone Divine Dungeon universe was considered and declined before. The game's series is null, so it needed its own title override to land the same place its books already do.",
+      "measured": "board-game D1, id 103, publisher Mountaindale Press, 2026-08-15."
+    },
+    {
+      "name": "cross-format: the Cosmere RPG line joins The Cosmere by title override",
+      "title": "Cosmere RPG: Stormlight Handbook",
+      "series": "",
+      "expect": "The Cosmere",
+      "why": "Brotherwise Games' officially licensed Cosmere RPG line. Every row's series is null, so each of the 21 RPG products plus the Mistborn deckbuilder needed its own override — the same exact-title-only rule as every other Cosmere case above.",
+      "measured": "board-game D1, id 518, 2026-08-15."
     }
   ],
   "canonicalNameCases": [

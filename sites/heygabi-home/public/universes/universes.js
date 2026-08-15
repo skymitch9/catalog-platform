@@ -39,6 +39,7 @@ import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '.
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
 // ⚠️ Keep in sync with data/universes.json `universes[].name` — see header.
+// Marvel and Disney added 2026-08-15 (owner/coordinator: separate universes).
 const UNIVERSE_NAMES = [
   'The Cosmere',
   'Runnerverse',
@@ -47,6 +48,8 @@ const UNIVERSE_NAMES = [
   'Riordanverse',
   'Solaria',
   'Willverse',
+  'Marvel',
+  'Disney',
 ];
 
 const whoEl = document.getElementById('uni-who');

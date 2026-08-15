@@ -46,7 +46,9 @@
     "willverse": "Willverse",
     "the willverse": "Willverse",
     "will wight multiverse": "Willverse",
-    "wightverse": "Willverse"
+    "wightverse": "Willverse",
+    "marvel": "Marvel",
+    "disney": "Disney"
   },
   "universes": [
     {
@@ -106,6 +108,94 @@
         {
           "title": "Fires of December",
           "why": "⚠️ Standalone with NO series, narrated by Hoid. Publisher copy via Books-A-Million (9781250462657) calls it 'a standalone Cosmere novel'; the owner's Hoid's Storybook Collection pledge corroborates it — chasmfiend plush, The Girl Who Looked Up figurine, Hoid's Flute. THE example of the owner's own rule: in a universe, not connected by series."
+        },
+        {
+          "title": "Mistborn: The Deckbuilding Game",
+          "why": "board-game D1 id 65, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Handbook",
+          "why": "board-game D1 id 518, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight World Guide",
+          "why": "board-game D1 id 519, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stonewalkers Adventure",
+          "why": "board-game D1 id 520, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Level Zero Adventure",
+          "why": "board-game D1 id 521, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Welcome to Roshar Guide",
+          "why": "board-game D1 id 522, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Bridge Nine Adventure",
+          "why": "board-game D1 id 523, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Basic Dice Set",
+          "why": "board-game D1 id 524, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Liquid Core Dice",
+          "why": "board-game D1 id 525, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight GM Screen",
+          "why": "board-game D1 id 526, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Plot Deck",
+          "why": "board-game D1 id 527, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Item Cards Deck",
+          "why": "board-game D1 id 528, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Punchboard Tokens Pack",
+          "why": "board-game D1 id 529, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Adventure Maps Pack",
+          "why": "board-game D1 id 530, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight RPG Miniatures Set",
+          "why": "board-game D1 id 531, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Stormlight Slipcase",
+          "why": "board-game D1 id 532, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Mistborn Handbook",
+          "why": "board-game D1 id 533, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Mistborn World Guide",
+          "why": "board-game D1 id 534, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Mistborn Legacy Adventure",
+          "why": "board-game D1 id 535, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Welcome to Scadrial Guide",
+          "why": "board-game D1 id 536, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Mistborn GM Screen",
+          "why": "board-game D1 id 537, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
+        },
+        {
+          "title": "Cosmere RPG: Mistborn Deluxe Dice & Case",
+          "why": "board-game D1 id 538, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule."
         }
       ],
       "bookExclusions": [
@@ -257,6 +347,12 @@
           "title": "The Divine Dungeon Complete Series",
           "why": "564k words / ~2,053 pages — an OMNIBUS of all five Dungeon books, not a sixth book. Same shape as White Sand; belongs in edition.collects."
         }
+      ],
+      "bookOverrides": [
+        {
+          "title": "Divine Dungeon the Game",
+          "why": "board-game D1 id 103, publisher Mountaindale Press (Krout's own publisher), series null so the existing 'The Divine Dungeon' series claim can't reach it by series match. canonicalNames already folds 'divine dungeon universe' onto CAL Verse — direct evidence a standalone Divine Dungeon universe was already considered and declined in favour of CAL Verse, so this game joins CAL Verse rather than seeding a 7th universe."
+        }
       ]
     },
     {
@@ -324,6 +420,395 @@
         "⚠️ Holdings are 12 Cradle (ebook) + 3 The Last Horizon (3 audio, 3 library rows). NOT a 15-title universe if the two catalogs are ever summed — the same reconciliation trap Riordanverse carries.",
         "The Elder Empire and The Traveler's Gate are claimed but NOT owned. They exist here so a future scan files itself with zero lookups; they should not be read as holdings."
       ]
+    },
+    {
+      "name": "Marvel",
+      "decidedHow": "llm",
+      "confirmed": "Owner/coordinator decision 2026-08-15: Disney and Marvel are separate universes — an explicit instruction, not an agent inference. Per-item membership below is agent-proposed from measured inventory across board-game D1, audiobook_catalog's site/catalog.csv, and library_catalog D1 on 2026-08-15; it has NOT been individually owner-reviewed, the same confidence tier as any llm-decided entry in this file. Recommend a quick owner skim.",
+      "notes": "A genuine shared narrative continuity (Marvel Comics/MCU) — fits this file's own definition more cleanly than Disney does (see Disney's notes). The board game 'Dice Throne' series is deliberately NOT claimed at series level: it is a MIXED series, the same shape as The Cosmere's 'Secret Projects' — most Dice Throne content (Vanguard, Outcasts, Season One/Two ReRolled, Mystic Brawler, Alchemist, Santa vs Krampus, Slam Throne) is original IP with zero Marvel connection, so only the Marvel/X-Men/Deadpool-branded rows are claimed, one exact title at a time, following this file's own exclusions-first / exact-title-only rule rather than a series sweep.",
+      "evidence": "Measured 2026-08-15. board-game D1 (board-game-catalog): 72 rows across 5 base items and their full expansion/accessory trees — Dice Throne: X-Men (id 96), Dice Throne: Deadpool Box Deluxe Edition (id 114), Marvel Dice Throne: Missions (id 115), Marvel Dice Throne (id 677), Marvel Villainous: Infinite Power (id 821) — carrying Wolverine, Storm, Cyclops, Rogue, Gambit, Psylocke, Iceman, Jean Grey, Deadpool, Scarlet Witch, Thor, Loki, Spider-Man (Miles Morales), Black Panther, Captain Marvel, Doctor Strange and Black Widow. audiobook_catalog site/catalog.csv: 4 rows (3 Marvel's Avengers: Age of Ultron tie-ins + 1 Disney Junior Marvel Spidey title). library_catalog D1: 1 row, 'Miles Morales (Marvel Spider-Man)', filed under the generic 'Little Golden Book' imprint series — not claimed at series level for the same reason 'Dice Throne' is not: Little Golden Book spans hundreds of unrelated titles.",
+      "watch": [
+        "Owner addition 2026-08-15: investigated Stan Lee's Alliances (A New Reality, A Trick of Light) and Stan Lee's The Devil's Quintet: The Armageddon Code, both in audiobook_catalog. NOT added here. Both are original POW! Entertainment / Audible-original properties Lee co-created independent of Marvel Comics/MCU — Alliances stars Nia and Cameron Ackerson against an org called OPTIC (Audible/Hollywood Reporter coverage of the 2019 launch); The Devil's Quintet is an original Navy-SEALs-and-a-Faustian-bargain thriller co-written with Jay Bonansinga (Tor/Forge). Neither shares characters or setting with Marvel. See the session report for full sourcing and a proposed-but-not-applied 'Alliances' universe option."
+      ],
+      "series": [],
+      "bookOverrides": [
+        {
+          "title": "Dice Throne: X-Men",
+          "why": "board-game D1 id 96, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne: Deadpool Box Deluxe Edition",
+          "why": "board-game D1 id 114, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Missions",
+          "why": "board-game D1 id 115, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Dice Tray",
+          "why": "board-game D1 id 225, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Promo Pack",
+          "why": "board-game D1 id 228, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Token Upgrades",
+          "why": "board-game D1 id 229, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Token Upgrades",
+          "why": "board-game D1 id 230, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne Missions: Card Sleeves",
+          "why": "board-game D1 id 325, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne Missions: Promo Pack",
+          "why": "board-game D1 id 326, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne Missions: Token Upgrades",
+          "why": "board-game D1 id 327, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne",
+          "why": "board-game D1 id 677, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Scarlet Witch",
+          "why": "board-game D1 id 696, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Thor",
+          "why": "board-game D1 id 697, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Loki",
+          "why": "board-game D1 id 698, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Spider-Man (Miles Morales)",
+          "why": "board-game D1 id 699, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Black Panther",
+          "why": "board-game D1 id 700, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Captain Marvel",
+          "why": "board-game D1 id 701, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Doctor Strange",
+          "why": "board-game D1 id 702, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Black Widow",
+          "why": "board-game D1 id 703, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Wolverine",
+          "why": "board-game D1 id 704, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Storm",
+          "why": "board-game D1 id 705, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Cyclops",
+          "why": "board-game D1 id 706, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Rogue",
+          "why": "board-game D1 id 707, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Gambit",
+          "why": "board-game D1 id 708, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Psylocke",
+          "why": "board-game D1 id 709, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Iceman",
+          "why": "board-game D1 id 710, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Jean Grey",
+          "why": "board-game D1 id 711, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Hero: Deadpool",
+          "why": "board-game D1 id 722, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Wolverine",
+          "why": "board-game D1 id 725, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Storm",
+          "why": "board-game D1 id 726, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Cyclops",
+          "why": "board-game D1 id 727, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Rogue",
+          "why": "board-game D1 id 728, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Gambit",
+          "why": "board-game D1 id 729, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Psylocke",
+          "why": "board-game D1 id 730, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Iceman",
+          "why": "board-game D1 id 731, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Card Sleeves - Jean Grey",
+          "why": "board-game D1 id 732, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Wolverine",
+          "why": "board-game D1 id 733, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Storm",
+          "why": "board-game D1 id 734, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Cyclops",
+          "why": "board-game D1 id 735, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Rogue",
+          "why": "board-game D1 id 736, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Gambit",
+          "why": "board-game D1 id 737, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Psylocke",
+          "why": "board-game D1 id 738, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Iceman",
+          "why": "board-game D1 id 739, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Hero Sculpt - Jean Grey",
+          "why": "board-game D1 id 740, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Scarlet Witch",
+          "why": "board-game D1 id 741, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Thor",
+          "why": "board-game D1 id 742, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Loki",
+          "why": "board-game D1 id 743, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Spider-Man (Miles Morales)",
+          "why": "board-game D1 id 744, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Black Panther",
+          "why": "board-game D1 id 745, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Captain Marvel",
+          "why": "board-game D1 id 746, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Doctor Strange",
+          "why": "board-game D1 id 747, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Hero Sculpt - Black Widow",
+          "why": "board-game D1 id 748, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Deadpool: Hero Sculpt - Deadpool",
+          "why": "board-game D1 id 761, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Deadpool: Card Sleeves - Deadpool",
+          "why": "board-game D1 id 762, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Wolverine",
+          "why": "board-game D1 id 763, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Storm",
+          "why": "board-game D1 id 764, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Cyclops",
+          "why": "board-game D1 id 765, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Rogue",
+          "why": "board-game D1 id 766, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Gambit",
+          "why": "board-game D1 id 767, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Psylocke",
+          "why": "board-game D1 id 768, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Iceman",
+          "why": "board-game D1 id 769, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne X-Men: Playmat - Jean Grey",
+          "why": "board-game D1 id 770, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Scarlet Witch",
+          "why": "board-game D1 id 771, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Thor",
+          "why": "board-game D1 id 772, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Loki",
+          "why": "board-game D1 id 773, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Spider-Man (Miles Morales)",
+          "why": "board-game D1 id 774, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Black Panther",
+          "why": "board-game D1 id 775, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Captain Marvel",
+          "why": "board-game D1 id 776, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Doctor Strange",
+          "why": "board-game D1 id 777, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Dice Throne: Playmat - Black Widow",
+          "why": "board-game D1 id 778, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Dice Throne Deadpool: Playmat - Deadpool",
+          "why": "board-game D1 id 783, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Marvel Villainous: Infinite Power",
+          "why": "board-game D1 id 821, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level."
+        },
+        {
+          "title": "Avengers Save the Day - Marvel's Avengers: Age of Ultron",
+          "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override."
+        },
+        {
+          "title": "Battle at Avenger's Tower - Marvel's Avengers: Age of Ultron",
+          "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override."
+        },
+        {
+          "title": "Disney Junior Marvel Spidey and His Amazing Friends: The Lost Web Shooter",
+          "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override."
+        },
+        {
+          "title": "Friends and Foes - Marvel's Avengers: Age of Ultron",
+          "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override."
+        },
+        {
+          "title": "Miles Morales (Marvel Spider-Man)",
+          "why": "library_catalog D1 id 330, series \"Little Golden Book\" (a generic imprint spanning hundreds of unrelated titles, not claimable at series level), measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override."
+        }
+      ],
+      "bookExclusions": []
+    },
+    {
+      "name": "Disney",
+      "decidedHow": "llm",
+      "confirmed": "Owner/coordinator decision 2026-08-15: Disney and Marvel are separate universes — an explicit instruction. Per-item membership is agent-proposed from measured inventory on 2026-08-15; not individually owner-reviewed. Recommend an owner skim.",
+      "notes": "⚠️ UNLIKE every other universe in this file, 'Disney' is a STUDIO/OWNERSHIP umbrella, not one connected fictional continuity — Cars, Toy Story, The Aristocats, Ariel/The Little Mermaid, Doc McStuffins, Vampirina and Star Wars share no characters or plot and never cross over. This is exactly the shape this file's own _refused entry warns about ('a brand or an imprint, not a fictional continuity' — the children's-picture-book-lines refusal). Included anyway because the owner/coordinator explicitly asked for Disney split out from Marvel as its own shelf. Flagged here rather than silently applying the file's usual bar, so a future reviewer sees the tension instead of assuming Disney passed the same test Willverse or Maasverse did.",
+      "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 12 'Disney Books'-imprint titles with a blank series value (Cars: Tractor Trouble - Disney Classic Stories; Disney Fairies: New Friends; Disney Junior: Doc McStuffins: Toy Hospital; Disney Junior: Vampirina: Vampire for President; Disney Pixar Cars: Hitting the Speedway; Disney Princess: Tiana and Her Loyal Friend; Disney Villains: Jaffar: Fortune Teller Fiasco [catalog's own spelling]; Disney: The Aristocats: The Birthday Wish; Finding Dory - Disney Classic Stories; The Legend of Sleepy Hollow - Disney Classic Stories; Disney Junior Ariel: A Magical Mess; Star Wars: Ahsoka), plus 2 Star Wars series (Star Wars: The High Republic ×3 rows, Star Wars: Legends ×2 rows) and one Toy Story row carrying a real series value. library_catalog D1: 1 row, 'Star Wars: The Fight to Survive' (series 'Star Wars: Boba Fett'). No pure-Disney board game exists in board-game D1 — Marvel Villainous: Infinite Power is the only Disney-adjacent game found, and its content is Marvel IP (Ravensburger's Marvel-licensed Villainous line), so it is assigned to Marvel instead, per the owner's split.",
+      "watch": [
+        "Star Wars is the strongest internal candidate for its OWN universe — a multi-decade continuity, no weaker a case than Willverse's two series — folded into Disney here only because the task asked for exactly two new universes (Disney, Marvel). Revisit if the owner wants Star Wars split out on its own."
+      ],
+      "series": [
+        "Star Wars: The High Republic",
+        "Star Wars: Legends",
+        "Star Wars: Boba Fett",
+        "Toy Story"
+      ],
+      "bookOverrides": [
+        {
+          "title": "Cars: Tractor Trouble - Disney Classic Stories",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Cars: Tractor Trouble - Disney Classic Stories' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Fairies: New Friends",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Fairies: New Friends' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Junior: Doc McStuffins: Toy Hospital",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior: Doc McStuffins: Toy Hospital' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Junior: Vampirina: Vampire for President",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior: Vampirina: Vampire for President' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Pixar Cars: Hitting the Speedway",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Pixar Cars: Hitting the Speedway' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Princess: Tiana and Her Loyal Friend",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Princess: Tiana and Her Loyal Friend' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Villains: Jaffar: Fortune Teller Fiasco",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Villains: Jaffar: Fortune Teller Fiasco' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney: The Aristocats: The Birthday Wish",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney: The Aristocats: The Birthday Wish' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Finding Dory - Disney Classic Stories",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Finding Dory - Disney Classic Stories' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "The Legend of Sleepy Hollow - Disney Classic Stories",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'The Legend of Sleepy Hollow - Disney Classic Stories' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Disney Junior Ariel: A Magical Mess",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior Ariel: A Magical Mess' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Star Wars: Ahsoka",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Star Wars: Ahsoka' carries a blank series value, so it needs its own title override rather than a series claim."
+        }
+      ],
+      "bookExclusions": []
     }
   ],
   "_refused": [
@@ -399,6 +884,934 @@
       "series": "Turncoat's Truth",
       "why": "Owner confirmed 2026-08-12: it IS in the Runnerverse. Held out on 2026-08-11 ('Turncoat leave out for now while I verify') because it is co-authored with Victor E. Krabin, and a collaboration does not reliably sit inside an author's own continuity — the same rule that keeps The Reckoners out of the Cosmere. The owner verified and it does.",
       "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Disney",
+      "series": "Star Wars: The High Republic",
+      "why": "audiobook_catalog: 3 rows (Rising Storm, Light of the Jedi, Into the Dark) share this exact series value.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Disney",
+      "series": "Star Wars: Legends",
+      "why": "audiobook_catalog: 2 rows (The Old Republic: Revan, Darth Plagueis) share this exact series value.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Disney",
+      "series": "Star Wars: Boba Fett",
+      "why": "library_catalog D1: 'Star Wars: The Fight to Survive' (id 272) carries this series value.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Disney",
+      "series": "Toy Story",
+      "why": "audiobook_catalog: 'Toy Story 1 - Disney Classic Stories' carries series 'Toy Story'; claiming the series (not just the title) lets future Toy Story purchases file themselves, the same reasoning Riordanverse and Willverse record for their own series claims.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Cars: Tractor Trouble - Disney Classic Stories",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Cars: Tractor Trouble - Disney Classic Stories' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Fairies: New Friends",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Fairies: New Friends' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Junior: Doc McStuffins: Toy Hospital",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior: Doc McStuffins: Toy Hospital' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Junior: Vampirina: Vampire for President",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior: Vampirina: Vampire for President' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Pixar Cars: Hitting the Speedway",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Pixar Cars: Hitting the Speedway' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Princess: Tiana and Her Loyal Friend",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Princess: Tiana and Her Loyal Friend' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Villains: Jaffar: Fortune Teller Fiasco",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Villains: Jaffar: Fortune Teller Fiasco' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney: The Aristocats: The Birthday Wish",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney: The Aristocats: The Birthday Wish' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Finding Dory - Disney Classic Stories",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Finding Dory - Disney Classic Stories' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "The Legend of Sleepy Hollow - Disney Classic Stories",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'The Legend of Sleepy Hollow - Disney Classic Stories' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Disney Junior Ariel: A Magical Mess",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior Ariel: A Magical Mess' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Star Wars: Ahsoka",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Star Wars: Ahsoka' carries a blank series value, so it needs its own title override rather than a series claim.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne: X-Men",
+      "why": "board-game D1 id 96, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne: Deadpool Box Deluxe Edition",
+      "why": "board-game D1 id 114, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Missions",
+      "why": "board-game D1 id 115, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Dice Tray",
+      "why": "board-game D1 id 225, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Promo Pack",
+      "why": "board-game D1 id 228, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Token Upgrades",
+      "why": "board-game D1 id 229, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Token Upgrades",
+      "why": "board-game D1 id 230, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne Missions: Card Sleeves",
+      "why": "board-game D1 id 325, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne Missions: Promo Pack",
+      "why": "board-game D1 id 326, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne Missions: Token Upgrades",
+      "why": "board-game D1 id 327, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne",
+      "why": "board-game D1 id 677, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Scarlet Witch",
+      "why": "board-game D1 id 696, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Thor",
+      "why": "board-game D1 id 697, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Loki",
+      "why": "board-game D1 id 698, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Spider-Man (Miles Morales)",
+      "why": "board-game D1 id 699, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Black Panther",
+      "why": "board-game D1 id 700, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Captain Marvel",
+      "why": "board-game D1 id 701, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Doctor Strange",
+      "why": "board-game D1 id 702, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Black Widow",
+      "why": "board-game D1 id 703, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Wolverine",
+      "why": "board-game D1 id 704, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Storm",
+      "why": "board-game D1 id 705, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Cyclops",
+      "why": "board-game D1 id 706, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Rogue",
+      "why": "board-game D1 id 707, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Gambit",
+      "why": "board-game D1 id 708, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Psylocke",
+      "why": "board-game D1 id 709, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Iceman",
+      "why": "board-game D1 id 710, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Jean Grey",
+      "why": "board-game D1 id 711, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Hero: Deadpool",
+      "why": "board-game D1 id 722, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Wolverine",
+      "why": "board-game D1 id 725, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Storm",
+      "why": "board-game D1 id 726, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Cyclops",
+      "why": "board-game D1 id 727, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Rogue",
+      "why": "board-game D1 id 728, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Gambit",
+      "why": "board-game D1 id 729, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Psylocke",
+      "why": "board-game D1 id 730, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Iceman",
+      "why": "board-game D1 id 731, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Card Sleeves - Jean Grey",
+      "why": "board-game D1 id 732, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Wolverine",
+      "why": "board-game D1 id 733, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Storm",
+      "why": "board-game D1 id 734, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Cyclops",
+      "why": "board-game D1 id 735, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Rogue",
+      "why": "board-game D1 id 736, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Gambit",
+      "why": "board-game D1 id 737, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Psylocke",
+      "why": "board-game D1 id 738, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Iceman",
+      "why": "board-game D1 id 739, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Hero Sculpt - Jean Grey",
+      "why": "board-game D1 id 740, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Scarlet Witch",
+      "why": "board-game D1 id 741, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Thor",
+      "why": "board-game D1 id 742, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Loki",
+      "why": "board-game D1 id 743, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Spider-Man (Miles Morales)",
+      "why": "board-game D1 id 744, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Black Panther",
+      "why": "board-game D1 id 745, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Captain Marvel",
+      "why": "board-game D1 id 746, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Doctor Strange",
+      "why": "board-game D1 id 747, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Hero Sculpt - Black Widow",
+      "why": "board-game D1 id 748, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Deadpool: Hero Sculpt - Deadpool",
+      "why": "board-game D1 id 761, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Deadpool: Card Sleeves - Deadpool",
+      "why": "board-game D1 id 762, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Wolverine",
+      "why": "board-game D1 id 763, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Storm",
+      "why": "board-game D1 id 764, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Cyclops",
+      "why": "board-game D1 id 765, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Rogue",
+      "why": "board-game D1 id 766, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Gambit",
+      "why": "board-game D1 id 767, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Psylocke",
+      "why": "board-game D1 id 768, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Iceman",
+      "why": "board-game D1 id 769, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne X-Men: Playmat - Jean Grey",
+      "why": "board-game D1 id 770, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Scarlet Witch",
+      "why": "board-game D1 id 771, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Thor",
+      "why": "board-game D1 id 772, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Loki",
+      "why": "board-game D1 id 773, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Spider-Man (Miles Morales)",
+      "why": "board-game D1 id 774, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Black Panther",
+      "why": "board-game D1 id 775, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Captain Marvel",
+      "why": "board-game D1 id 776, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Doctor Strange",
+      "why": "board-game D1 id 777, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Dice Throne: Playmat - Black Widow",
+      "why": "board-game D1 id 778, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Dice Throne Deadpool: Playmat - Deadpool",
+      "why": "board-game D1 id 783, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Marvel Villainous: Infinite Power",
+      "why": "board-game D1 id 821, measured 2026-08-15: Marvel/X-Men/Deadpool-branded row inside the otherwise-generic 'Dice Throne' series, which stays unclaimed at series level.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Avengers Save the Day - Marvel's Avengers: Age of Ultron",
+      "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Battle at Avenger's Tower - Marvel's Avengers: Age of Ultron",
+      "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Disney Junior Marvel Spidey and His Amazing Friends: The Lost Web Shooter",
+      "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Friends and Foes - Marvel's Avengers: Age of Ultron",
+      "why": "audiobook_catalog, measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Miles Morales (Marvel Spider-Man)",
+      "why": "library_catalog D1 id 330, series \"Little Golden Book\" (a generic imprint spanning hundreds of unrelated titles, not claimable at series level), measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "CAL Verse",
+      "title": "Divine Dungeon the Game",
+      "why": "board-game D1 id 103, publisher Mountaindale Press (Krout's own publisher), series null so the existing 'The Divine Dungeon' series claim can't reach it by series match. canonicalNames already folds 'divine dungeon universe' onto CAL Verse — direct evidence a standalone Divine Dungeon universe was already considered and declined in favour of CAL Verse, so this game joins CAL Verse rather than seeding a 7th universe.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Mistborn: The Deckbuilding Game",
+      "why": "board-game D1 id 65, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Handbook",
+      "why": "board-game D1 id 518, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight World Guide",
+      "why": "board-game D1 id 519, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stonewalkers Adventure",
+      "why": "board-game D1 id 520, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Level Zero Adventure",
+      "why": "board-game D1 id 521, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Welcome to Roshar Guide",
+      "why": "board-game D1 id 522, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Bridge Nine Adventure",
+      "why": "board-game D1 id 523, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Basic Dice Set",
+      "why": "board-game D1 id 524, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Liquid Core Dice",
+      "why": "board-game D1 id 525, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight GM Screen",
+      "why": "board-game D1 id 526, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Plot Deck",
+      "why": "board-game D1 id 527, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Item Cards Deck",
+      "why": "board-game D1 id 528, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Punchboard Tokens Pack",
+      "why": "board-game D1 id 529, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Adventure Maps Pack",
+      "why": "board-game D1 id 530, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight RPG Miniatures Set",
+      "why": "board-game D1 id 531, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Stormlight Slipcase",
+      "why": "board-game D1 id 532, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Mistborn Handbook",
+      "why": "board-game D1 id 533, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Mistborn World Guide",
+      "why": "board-game D1 id 534, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Mistborn Legacy Adventure",
+      "why": "board-game D1 id 535, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Welcome to Scadrial Guide",
+      "why": "board-game D1 id 536, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Mistborn GM Screen",
+      "why": "board-game D1 id 537, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "The Cosmere",
+      "title": "Cosmere RPG: Mistborn Deluxe Dice & Case",
+      "why": "board-game D1 id 538, measured 2026-08-15: Brotherwise Games' officially licensed Cosmere tabletop line (RPG or deckbuilder); series is null on every row so each needs its own title override, per this file's exact-title-only rule.",
+      "decidedHow": "llm"
     }
   ]
 }

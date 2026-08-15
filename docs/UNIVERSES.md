@@ -1,13 +1,19 @@
 # The Shared Universe List — Information Reference
 
 > **Audience:** Claude sessions. **Status:** BUILT 2026-08-11 — the file is here,
-> the editor works, both catalogs read it. Last verified: **2026-08-11**.
+> the editor works, all three catalogs' rows resolve through it. Last verified:
+> **2026-08-15**.
 > Data: [`../data/universes.json`](../data/universes.json).
 > Editor: [`../tools/universes.mjs`](../tools/universes.mjs).
 
-A fictional universe is flagged **only where it says something the series name
-does not already say**. Six universes, ~33 series, ~13 book overrides, and six
-recorded refusals.
+A fictional universe is flagged **only where it says something the series (or,
+for board games, the title) name does not already say**. Nine universes as of
+2026-08-15 (Marvel and Disney added; The Cosmere and CAL Verse extended to
+cover owned board games), ~40 series, ~120 book/game overrides, and five
+recorded refusals. ⚠️ **This file's own wording still says "book," but nothing
+in the schema or the resolver is book-specific** — `bookOverrides`/
+`bookExclusions` key on `title`, and `title`/`series` are exactly what a
+board-game row carries too (see §6's third row, added 2026-08-15).
 
 ---
 
@@ -177,8 +183,9 @@ owner's. Both are checked as answers, not as map entries.
 
 ## 6. The consumers
 
-Neither surfaces universes on screen yet — that is a separate job. Both read the
-list, so the wiring and the failure modes are proven now rather than later.
+Neither book catalog surfaces universes on screen yet — that is a separate job.
+Both read the list at their own build time, so the wiring and the failure
+modes are proven now rather than later.
 
 | | `library_catalog` | `audiobook_catalog` |
 |---|---|---|
@@ -191,6 +198,38 @@ Both run `data/universes.fixtures.json` in their own test suites — the mechani
 [`PLATFORM.md`](PLATFORM.md) §5.3 prescribes for a rule that has to exist in
 Python and in TypeScript at once. There is no shared runtime, so there is no
 shared implementation; the fixtures are what keep the two honest.
+
+### ⚠️ A third, architecturally different consumer: `Board_Game_Catalog`, via the index Worker — found and documented 2026-08-15
+
+`Board_Game_Catalog` never reads `data/universes.json` at all, and has no build
+dependency on this repo. It pushes raw `title`/`series` strings for every item
+(`packages/db/src/index-projection.ts`) to `apps/index-worker` here, which
+resolves each row's universe **at push time**, server-side, using
+`apps/index-worker/src/universes-data.ts` — a build-time
+`import ... from '../../../data/universes.json' with { type: 'json' }`,
+i.e. **the Worker bundles this file at deploy time.** Consequences that do not
+apply to the two book catalogs:
+
+- Editing `data/universes.json` changes nothing live until **`apps/index-worker`
+  is redeployed** — there is no gitignored-copy sync step to forget, but there
+  is a deploy to forget instead.
+- Universe is resolved and stored per row in the Worker's own `entry.universe`
+  column at push time (`apps/index-worker/src/rows.ts` `entryFor()`), not
+  recomputed on read. After a redeploy, every source (`game`, `library`,
+  `audiobook`) needs a **fresh push** for its existing rows to pick up the new
+  answer — an edit here is inert for already-pushed rows until then.
+- `work_fold` is `null` for every `game` row by design (a board game is never
+  the same *work* as a book), so games only ever join the rest of the estate at
+  the **universe** tier — `universe` is the one cross-format signal a games row
+  carries at all.
+- **This consumer DOES surface universes on screen**: `/universes` on
+  `heygabi-home` (`sites/heygabi-home/public/universes/universes.js`) is a
+  members-only page backed by `GET /api/universe/:name`. ⚠️ Its universe name
+  list is **hardcoded** (`UNIVERSE_NAMES`, because `read.ts` exposes no public
+  "list universe names" route) and must be kept in sync with
+  `data/universes.json` `universes[].name` **by hand** — adding a universe here
+  without also editing that array leaves it invisible on the page even after a
+  correct data file and a correct Worker deploy.
 
 ⚠️ This repo has already shipped that class of bug once — §2.3 of `PLATFORM.md`
 records `resolve_author_link` (Python) and `_resolveAuthorFolder` (JS) drifting
