@@ -308,7 +308,7 @@ const PIPELINE_STALE_RUNNING_MS = 15 * 60_000;
 
 function buildPipelineSection() {
   const ul = document.getElementById('pipeline-rows');
-  ul.appendChild(makeRow('pipe-audio', 'Audiobook pipeline'));
+  ul.appendChild(makeRow('pipe-audio', 'Automated Book Pipeline'));
   ul.appendChild(makeRow('pipe-ebook', 'Ebook lane'));
 }
 
