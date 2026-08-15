@@ -289,3 +289,18 @@ the games repo. Remaining, IN THIS ORDER:
 3. Verify: apex search a game, thumbnail loads from gamecovers.heygabi.ai.
 Nothing is user-visibly broken meanwhile — old hotlinks still serve under
 the still-deployed old CSP.
+
+## Queued behind the Cosmere batch (owner, 2026-08-15)
+
+1. **Generalize the Cosmere treatment estate-wide**: for every universe and
+   series, apply the same logic just exercised on Cosmere — matcher
+   completeness (no member left unflagged by a spelling quirk), series-blank
+   via the corrections layer where a 'series' is really a universe umbrella
+   (non-destructive, owner's exclusion-list rule), spelling fixes through the
+   series canon. Same propagation chain.
+2. **Full orphan sweep (AI judgment, Opus)**: read all three catalogs like a
+   librarian and find every book/game that BELONGS in a series or universe
+   but isn't attached — missing series fields, universe members the matchers
+   miss, series spelled into isolation. Verdict table like the fuzzy-match
+   sweep (confident fixes applied via the proper instruments; ambiguous rows
+   reported); before/after counts.
