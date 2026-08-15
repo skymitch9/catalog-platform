@@ -38,9 +38,11 @@ name: Backup (manual)
 #                bucket) is deliberately excluded: unbound and 0 objects as
 #                of 2026-08-15 (verified against its own repo's HANDOFF.md
 #                and a live listing) — nothing to back up yet. Add it here
-#                the day it goes live. The planned `game-covers` bucket
-#                (docs/info/covers-consolidation-plan.md) does not exist yet
-#                either — add a matrix entry once it's created.
+#                the day it goes live. `game-covers`
+#                (docs/info/covers-consolidation-plan.md) WAS created
+#                2026-08-15 (same night, a second agent's work) and already
+#                held 432 objects when checked, so it is included in the
+#                matrix from the start rather than added later.
 #
 # ⚠️ WHY ALL FOUR D1 BACKUPS LAND HERE AND NOT IN THE REPO THAT OWNS EACH DB:
 # `Board_Game_Catalog` is a PUBLIC repo (verified via `gh repo view`,
@@ -92,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bucket: [library-covers, audiobook-covers]
+        bucket: [library-covers, audiobook-covers, game-covers]
     steps:
       - name: Guard — CLOUDFLARE_API_TOKEN must exist
         run: |
