@@ -13,6 +13,7 @@
     "probe": "tsx test/live-probes.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@platform/estate-auth": "*",
     "hono": "^4.6.14",
     "zod": "^3.24.1"

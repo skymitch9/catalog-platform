@@ -27,6 +27,7 @@ import { cors } from 'hono/cors';
 import type { Env } from './env.js';
 import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
+import { scanRoutes } from './scan.js';
 import { searchRoutes } from './search-route.js';
 import { healthRoutes } from './health.js';
 import { requireEstateMember } from './middleware/auth.js';
@@ -73,6 +74,13 @@ app.route('/api/search', searchRoutes);
 app.use('/api/*', requireEstateMember());
 
 app.route('/api', readRoutes);
+
+// Shelf/cover-photo identify (docs/info/estate-scan-adoption.md, the
+// barcode build's deferred second deploy). Mounted here, not named above the
+// blanket: unlike /api/search this read has no anonymous carve-out — vision
+// costs money, so a tokenless caller must get the sign-in prompt like every
+// other route in this block, not a free shot at the model.
+app.route('/api', scanRoutes);
 
 /** Locked to the apex — the estate status page is the only browser caller. */
 function healthCors() {

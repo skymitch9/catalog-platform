@@ -34,6 +34,16 @@ export interface Env {
    * on the auth Worker under the same name.
    */
   ESTATE_APP_TOKEN_INDEX?: string;
+
+  /**
+   * The shelf/cover-photo vision call (scan.ts, vision.ts) — the ONLY place
+   * this Worker spends money. A secret (`wrangler secret put
+   * ANTHROPIC_API_KEY`); the value already exists in library_catalog's own
+   * `apps/worker/.dev.vars` (see docs/info/estate-scan-adoption.md for the
+   * push command). Unset = the route answers 503, never a silent skip — see
+   * vision.ts's own explain().
+   */
+  ANTHROPIC_API_KEY?: string;
 }
 
 /** OWNER_EMAILS, parsed the way every consumer parses it: comma-split, trimmed, lowercased. */

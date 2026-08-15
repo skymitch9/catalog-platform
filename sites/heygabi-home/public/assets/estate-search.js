@@ -64,25 +64,38 @@
  *                  `universeSuggestions` rendering (see below) — one flag,
  *                  both surfaces, since they share the exact idiom.
  *   scan           Presence-gated (boolean attribute; any value, including
- *                  none, turns it on — absence turns it off). Shows a 📷
- *                  button that opens the rear camera, decodes a book's back-
- *                  cover barcode, resolves it to a title/author via the
- *                  public Open Library API, and feeds the title into this
- *                  component's own search path — plus a manual ISBN entry
- *                  box for when the camera loses. ALL of the scanning logic
- *                  (camera, barcode decode, ISBN resolve, shelf-photo
- *                  capture/identify) lives in the sibling canonical module
+ *                  none, turns it on — absence turns it off). Shows two
+ *                  ICON-ONLY buttons (aria-label + title carry the words;
+ *                  hover tooltips are the discoverability, per owner order):
+ *                  📷 opens the rear camera and decodes a book's back-cover
+ *                  barcode, resolving it to a title/author via the public
+ *                  Open Library API and feeding the title into this
+ *                  component's own search path. 📚 ("Scan a shelf",
+ *                  authed mode only — vision costs money) opens a native
+ *                  file input (`accept="image/*" capture="environment"`,
+ *                  camera on mobile / picker on desktop) and identifies every
+ *                  spine it can read, rendering a per-title scoped search
+ *                  answer for each. There is no separate manual-ISBN box any
+ *                  more (owner: "why can we not just search an isbn?") — the
+ *                  MAIN search input itself detects a complete, checksum-
+ *                  valid ISBN (10 or 13 digits, via estate-scan.js's
+ *                  parseIsbnQuery) and routes it through the same resolve
+ *                  flow automatically; see `_scheduleSearch`/
+ *                  `_runSearchOrIsbn`. ALL of the scanning logic (camera,
+ *                  barcode decode, ISBN parse/resolve, shelf-photo capture/
+ *                  identify) lives in the sibling canonical module
  *                  `estate-scan.js` (see `scan-module` below) — this
  *                  component only owns the UI wiring, per the "change
  *                  scanning in ONE place" rule. Ignored entirely unless
  *                  `scan-module` resolves; see its own header for the full
  *                  scanning contract and the library_catalog provenance.
  *   scan-module    Path to the estate-scan.js adapter, imported ONLY when a
- *                  `scan`-gated control is first used (📷 tapped, or a
- *                  manual ISBN submitted) — never a static import, so a site
- *                  that never sets `scan` never pays for the scanner module,
- *                  same reasoning as `auth-module` below. Default:
- *                  'estate-scan.js' resolved NEXT TO THIS FILE.
+ *                  `scan`-gated control is first used (📷 tapped, 📚 tapped,
+ *                  or a typed query first parses as a candidate ISBN) —
+ *                  never a static import, so a site that never sets `scan`
+ *                  never pays for the scanner module, same reasoning as
+ *                  `auth-module` below. Default: 'estate-scan.js' resolved
+ *                  NEXT TO THIS FILE.
  *
  * PROPERTIES (JS-only — for callback/object config no attribute can carry)
  *   .intakeFilter(data, { kind }) → data
@@ -318,15 +331,24 @@ export function groupBySeries(rows) {
       .es-hit-meta a:hover { text-decoration: underline; }
       .es-hit-universe { align-self: flex-start; font-size: var(--et-text-small); margin-top: .15rem; }
       /* Barcode/shelf scan (scan attribute) — see estate-scan.js for the
-         logic; this is UI only. */
+         logic; this is UI only. Icon-only controls (owner order): the words
+         live in aria-label/title, not in the button's visible text. */
       .es-scan-row { display: flex; gap: .6rem; align-items: stretch; flex-wrap: wrap; margin-top: .6rem; }
-      .es-scan-manual { flex: 1 1 10rem; min-height: 44px; padding: .5rem .85rem; border: 1px solid var(--et-field-border, var(--et-hairline)); border-radius: var(--et-radius); background: var(--et-surface); color: var(--et-fg); font: inherit; }
+      .es-icon-btn { flex: none; width: 44px; padding: 0; font-size: 1.2rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
       .es-camera-stage { margin-top: .6rem; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }
       .es-camera-stage[hidden] { display: none; }
       .es-scan-video { width: 100%; max-width: 24rem; border-radius: var(--et-radius); border: 1px solid var(--et-hairline); background: #000; }
       .es-scan-resolve { margin: .8rem 0 0; padding: .6rem .85rem; border: 1px solid var(--et-hairline); border-radius: var(--et-radius); background: color-mix(in srgb, var(--et-accent) 8%, var(--et-surface)); font-size: var(--et-text-small); }
       .es-scan-resolve[data-tone="bad"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); }
       .es-scan-add { margin-top: .5rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+      /* Shelf-scan per-title results (Scan a shelf → identifyPhoto). */
+      .es-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+      .es-shelf-row { padding: .6rem .75rem; border: 1px solid var(--et-hairline); border-radius: var(--et-radius); background: var(--et-surface); }
+      .es-shelf-title { margin: 0; font-weight: 600; }
+      .es-shelf-title button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--et-fg); cursor: pointer; text-align: left; }
+      .es-shelf-title button:hover { color: var(--et-accent); text-decoration: underline; }
+      .es-shelf-note { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); font-style: italic; }
+      .es-shelf-answer { margin: .3rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); }
     </style>
     <div class="es-box">
       <form class="es-form">
@@ -335,9 +357,9 @@ export function groupBySeries(rows) {
         <button class="es-btn es-signin" type="button" hidden>Sign in to search everything</button>
       </form>
       <div class="es-scan-row" hidden>
-        <button class="es-btn es-scan-btn" type="button">📷 Scan barcode</button>
-        <input class="es-scan-manual" type="text" inputmode="numeric" autocomplete="off" placeholder="…or type an ISBN" aria-label="Type an ISBN">
-        <button class="es-btn es-scan-manual-btn" type="button">Look up</button>
+        <button class="es-btn es-icon-btn es-scan-btn" type="button" aria-label="Scan a barcode" title="Scan a barcode">📷</button>
+        <button class="es-btn es-icon-btn es-shelf-btn" type="button" aria-label="Scan a shelf" title="Scan a shelf" hidden>📚</button>
+        <input class="es-shelf-file" type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabindex="-1">
       </div>
       <div class="es-camera-stage" hidden>
         <!-- muted + playsinline are load-bearing on iOS: without them WebKit
@@ -395,13 +417,15 @@ export function groupBySeries(rows) {
       this._scanStream = null;
       this._scanStopLoop = null;
       this._scanRunning = false;
+      this._shelfBusy = false;
 
       this._onInput = this._onInput.bind(this);
       this._onKeydown = this._onKeydown.bind(this);
       this._onSubmit = this._onSubmit.bind(this);
       this._onSigninClick = this._onSigninClick.bind(this);
       this._onScanBtnClick = this._onScanBtnClick.bind(this);
-      this._onScanManualSubmit = this._onScanManualSubmit.bind(this);
+      this._onShelfBtnClick = this._onShelfBtnClick.bind(this);
+      this._onShelfFileChange = this._onShelfFileChange.bind(this);
     }
 
     // -- config -----------------------------------------------------------
@@ -442,8 +466,8 @@ export function groupBySeries(rows) {
       this._resultsEl = root.querySelector('.es-results');
       this._scanRow = root.querySelector('.es-scan-row');
       this._scanBtn = root.querySelector('.es-scan-btn');
-      this._scanManualInput = root.querySelector('.es-scan-manual');
-      this._scanManualBtn = root.querySelector('.es-scan-manual-btn');
+      this._shelfBtn = root.querySelector('.es-shelf-btn');
+      this._shelfFileInput = root.querySelector('.es-shelf-file');
       this._cameraStage = root.querySelector('.es-camera-stage');
       this._scanVideo = root.querySelector('.es-scan-video');
       this._scanStopBtn = root.querySelector('.es-scan-stop');
@@ -469,13 +493,13 @@ export function groupBySeries(rows) {
         this._scanRow.hidden = false;
         this._scanBtn.addEventListener('click', this._onScanBtnClick);
         this._scanStopBtn.addEventListener('click', () => this._stopScan());
-        this._scanManualBtn.addEventListener('click', this._onScanManualSubmit);
-        this._scanManualInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            this._onScanManualSubmit();
-          }
-        });
+        // Scan-a-shelf is authed-only — vision costs money, and authless mode
+        // has no path to ever get an idToken, so the button stays hidden
+        // there rather than existing only to fail. Re-checked in
+        // _renderAuthState() too (sign-in can happen after this runs).
+        this._shelfBtn.hidden = this.authMode !== 'authed';
+        this._shelfBtn.addEventListener('click', this._onShelfBtnClick);
+        this._shelfFileInput.addEventListener('change', this._onShelfFileChange);
       }
 
       if (this.authMode === 'authed') {
@@ -1078,9 +1102,50 @@ export function groupBySeries(rows) {
         if (this._inflight) this._inflight.abort();
         this._clearResults();
         this._setStatus('');
+        if (this.scanEnabled) this._setScanResolve('');
         return;
       }
-      this._debounceTimer = setTimeout(() => this._runSearch(q), this.debounceMs);
+      this._debounceTimer = setTimeout(() => void this._runQuery(q), this.debounceMs);
+    }
+
+    /**
+     * The debounced query dispatch: plain text search, UNLESS `scan` is
+     * enabled AND the query parses as a complete ISBN (estate-scan.js's
+     * parseIsbnQuery) — the search-bar ISBN upgrade (owner: "why can we not
+     * just search an isbn?"), replacing the old separate manual-ISBN box.
+     * Shared by the debounce timer and a flushed Enter/submit so typing fast
+     * and pressing Enter cannot disagree about which path a query takes.
+     */
+    async _runQuery(q) {
+      if (!this.scanEnabled) return this._runSearch(q);
+
+      // Cheap local pre-check before paying for the scan module's dynamic
+      // import: only a COMPLETE 10 or 13 digit run is ever worth it — the
+      // load-bearing rule is "never fire Open Library on a partial digit
+      // string", so anything else (including every partial digit run
+      // mid-type) goes straight to plain text search.
+      const digits = q.replace(/[^0-9Xx]/gi, '');
+      if (digits.length !== 10 && digits.length !== 13) {
+        this._setScanResolve('');
+        return this._runSearch(q);
+      }
+
+      const scan = await this._loadScanModule().catch(() => null);
+      const parsed = scan?.parseIsbnQuery ? scan.parseIsbnQuery(q) : { kind: 'not_isbn' };
+
+      if (parsed.kind === 'isbn13') {
+        return this._onIsbnResolved(parsed.isbn13, scan);
+      }
+      if (parsed.kind === 'invalid') {
+        // Clearly ISBN-shaped (13 digits, 978/979 prefix) but the checksum
+        // fails: a quiet hint, not silence — and still an ordinary text
+        // search, because failing a checksum does not mean the digits were
+        // never meant as a search at all.
+        this._setScanResolve('That does not look like a valid ISBN — the check digit does not match.', 'bad');
+      } else {
+        this._setScanResolve('');
+      }
+      return this._runSearch(q);
     }
 
     // -- wiring ---------------------------------------------------------------
@@ -1117,7 +1182,7 @@ export function groupBySeries(rows) {
       clearTimeout(this._debounceTimer);
       const q = this._input.value.trim();
       if (q.length < this.minChars) return;
-      this._runSearch(q);
+      void this._runQuery(q);
     }
 
     async _onSigninClick() {
@@ -1130,14 +1195,16 @@ export function groupBySeries(rows) {
       // ok / redirecting need nothing: watchAuth re-renders, or the page leaves.
     }
 
-    // -- scan (📷 barcode, manual ISBN — logic lives in estate-scan.js) ------
+    // -- scan (📷 barcode, 📚 shelf, search-bar ISBN — logic lives in
+    //    estate-scan.js) ---------------------------------------------------
 
     /**
-     * Dynamically imported ONLY on first use (📷 tapped or a manual ISBN
-     * submitted) — same reasoning as the auth adapter above: a site that
-     * embeds `scan` but whose visitor never touches it never pays for the
-     * module, and a site that never sets `scan` at all never even requests
-     * it (the row stays `hidden` and nothing here runs).
+     * Dynamically imported ONLY on first use (📷 tapped, 📚 tapped, or a
+     * typed query first parses as a candidate ISBN) — same reasoning as the
+     * auth adapter above: a site that embeds `scan` but whose visitor never
+     * touches it never pays for the module, and a site that never sets
+     * `scan` at all never even requests it (the row stays `hidden` and
+     * nothing here runs).
      */
     async _loadScanModule() {
       if (!this._scanModulePromise) {
@@ -1156,6 +1223,18 @@ export function groupBySeries(rows) {
       this._scanResolveEl.hidden = !text;
     }
 
+    /**
+     * Icon-only state (owner order): the visible glyph and the disabled flag
+     * carry "what's happening" at a glance; the WORDS live in aria-label and
+     * title (tooltip), never in the button's text content.
+     */
+    _setBarcodeBtnState(mode) {
+      const label = mode === 'running' ? 'Stop camera' : mode === 'opening' ? 'Opening camera…' : 'Scan a barcode';
+      this._scanBtn.textContent = mode === 'running' ? '⏹️' : '📷';
+      this._scanBtn.setAttribute('aria-label', label);
+      this._scanBtn.title = label;
+    }
+
     async _onScanBtnClick() {
       if (this._scanRunning) {
         this._stopScan();
@@ -1164,12 +1243,12 @@ export function groupBySeries(rows) {
       this._setStatus('');
       this._setScanResolve('');
       this._scanBtn.disabled = true;
-      this._scanBtn.textContent = 'Opening camera…';
+      this._setBarcodeBtnState('opening');
       try {
         const scan = await this._loadScanModule();
         if (!scan.cameraPlausible()) {
           this._setScanResolve(
-            'This browser will not give a camera to this page. Type the ISBN below instead.',
+            'This browser will not give a camera to this page. Type the title or a full ISBN in the search box instead.',
             'bad',
           );
           return;
@@ -1181,7 +1260,7 @@ export function groupBySeries(rows) {
         await this._scanVideo.play();
         this._cameraStage.hidden = false;
         this._scanRunning = true;
-        this._scanBtn.textContent = 'Stop camera';
+        this._setBarcodeBtnState('running');
 
         this._scanStopLoop = scan.startBarcodeScanLoop({
           video: this._scanVideo,
@@ -1200,7 +1279,7 @@ export function groupBySeries(rows) {
         if (CameraErrorCtor && err instanceof CameraErrorCtor) {
           message =
             err.reason === 'denied'
-              ? 'Camera permission was refused. Allow it for this site, then try again — or type the ISBN below.'
+              ? 'Camera permission was refused. Allow it for this site, then try again — or type the title/ISBN in the search box.'
               : err.message;
         }
         this._setScanResolve(message, 'bad');
@@ -1221,39 +1300,23 @@ export function groupBySeries(rows) {
       this._scanVideo.srcObject = null;
       this._cameraStage.hidden = true;
       this._scanRunning = false;
-      this._scanBtn.textContent = '📷 Scan barcode';
-    }
-
-    async _onScanManualSubmit() {
-      const raw = this._scanManualInput.value.trim();
-      if (!raw) return;
-      this._scanManualInput.value = '';
-      const scan = await this._loadScanModule().catch((e) => {
-        this._setScanResolve(`Could not load the scanner: ${e instanceof Error ? e.message : e}`, 'bad');
-        return null;
-      });
-      if (!scan) return;
-      const digits = raw.replace(/[^0-9Xx]/g, '');
-      if (digits.length !== 10 && digits.length !== 13) {
-        this._setScanResolve('That does not look like an ISBN (10 or 13 digits).', 'bad');
-        return;
-      }
-      await this._onIsbnResolved(digits, scan);
+      this._setBarcodeBtnState('idle');
     }
 
     /**
-     * Shared tail for both the camera and manual-entry paths: resolve the
-     * ISBN via Open Library, show the "ISBN → Title, Author" line (so a wrong
-     * resolve is visible), feed the title into this component's own search,
-     * and — signed in — offer to queue it in the library's own Add screen
-     * (estate-scan.js's addToCatalog(), which reuses the library app's real,
-     * proven barcode-intake endpoint rather than guessing at a catalog write).
+     * Shared tail for both the camera path and the search-bar ISBN upgrade
+     * (_runQuery): resolve the ISBN via Open Library, show the "ISBN → Title,
+     * Author" line (so a wrong resolve is visible), feed the title into this
+     * component's own search, and — signed in — offer to queue it in the
+     * library's own Add screen (estate-scan.js's addToCatalog(), which
+     * reuses the library app's real, proven barcode-intake endpoint rather
+     * than guessing at a catalog write).
      */
     async _onIsbnResolved(isbn, scan) {
       this._setScanResolve(`Looking up ${isbn}…`);
       const resolved = await scan.resolveIsbn(isbn).catch(() => null);
       if (!resolved) {
-        this._setScanResolve(`${isbn} — Not identified. Try the title below, or check the number.`, 'bad');
+        this._setScanResolve(`${isbn} — Not identified. Try a different title, or check the number.`, 'bad');
         return;
       }
       const byline = resolved.author ? `${resolved.title}, ${resolved.author}` : resolved.title;
@@ -1262,6 +1325,152 @@ export function groupBySeries(rows) {
       clearTimeout(this._debounceTimer);
       void this._runSearch(resolved.title);
       this._renderAddAffordance({ isbn13: isbn, title: resolved.title, author: resolved.author }, scan);
+    }
+
+    // -- scan (📚 shelf — logic lives in estate-scan.js) ----------------------
+
+    _setShelfBtnState(mode) {
+      const label = mode === 'busy' ? 'Reading the shelf…' : 'Scan a shelf';
+      this._shelfBtn.textContent = mode === 'busy' ? '⏳' : '📚';
+      this._shelfBtn.setAttribute('aria-label', label);
+      this._shelfBtn.title = label;
+      this._shelfBtn.disabled = mode === 'busy';
+    }
+
+    /**
+     * Opens the native file input (`accept="image/*" capture="environment"`)
+     * — camera directly on mobile, a file picker on desktop; the "photo/
+     * upload" flow in one control, no second camera-stream UI needed for a
+     * single still shot. Gated to authed + signed-in: vision costs money, so
+     * an anonymous tap gets the sign-in prompt, never a free shot at the
+     * model (the endpoint enforces this too — this is the honest UI half).
+     */
+    async _onShelfBtnClick() {
+      if (this._shelfBusy) return;
+      this._setStatus('');
+      const idToken = await this._idToken();
+      if (!idToken) {
+        this._setStatus('Sign in to scan a shelf — reading a photo costs a little, so it is members-only.', 'warn');
+        return;
+      }
+      this._shelfFileInput.click();
+    }
+
+    async _onShelfFileChange() {
+      const file = this._shelfFileInput.files?.[0] || null;
+      this._shelfFileInput.value = ''; // allow picking the exact same file again
+      if (!file) return;
+
+      this._shelfBusy = true;
+      this._setShelfBtnState('busy');
+      this._setStatus('Reading the shelf…');
+      try {
+        const scan = await this._loadScanModule();
+        const idToken = await this._idToken();
+        if (!idToken) {
+          this._setStatus('Your sign-in has lapsed — sign in again.', 'warn');
+          return;
+        }
+        // ~1600px long edge before upload (docs/info/estate-scan-adoption.md's
+        // sizing) — enough to read a dozen spines without paying for a raw
+        // phone-camera resolution the model would downscale anyway.
+        const photo = await scan.downscaleImagePhoto(file, 1600);
+        const reading = await scan.identifyPhoto(photo, {
+          endpoint: `${this.indexUrl}/api/scan/shelf`,
+          idToken,
+          kind: 'shelf',
+        });
+        this._renderShelfReading(reading);
+      } catch (err) {
+        this._setStatus(err instanceof Error ? err.message : String(err), 'warn');
+      } finally {
+        this._shelfBusy = false;
+        this._setShelfBtnState('idle');
+      }
+    }
+
+    /**
+     * Per-title scoped search answers, per estate-scan-adoption.md: the
+     * server does ONLY photo → structured titles (no catalog match of its
+     * own — this Worker has no per-catalog work index to match against), so
+     * matching is THIS component re-running its own scoped search once per
+     * identified title, the exact path a normal typed query already uses.
+     */
+    _renderShelfReading(reading) {
+      this._clearResults();
+
+      if (reading.unreadable || reading.books.length === 0) {
+        // The explicit "could not identify anything" case — never invents a
+        // title, ported refusal discipline (vision.ts's SHELF_SYSTEM: set
+        // unreadable rather than guess). A shelf that is readable but simply
+        // has no books on it also lands here as an honest empty list.
+        this._setStatus('No titles could be read from that photo. Try a closer, better-lit shot of the spines.');
+        return;
+      }
+      this._setStatus('');
+      this._input.setAttribute('aria-expanded', 'true');
+
+      this._resultsEl.appendChild(
+        this._caveatLine(`${reading.books.length} title${reading.books.length === 1 ? '' : 's'} read off that photo.`),
+      );
+
+      const list = document.createElement('ul');
+      list.className = 'es-shelf-list';
+      list.setAttribute('role', 'presentation');
+      this._resultsEl.appendChild(list);
+
+      for (const book of reading.books) {
+        const li = document.createElement('li');
+        li.className = 'es-shelf-row';
+
+        const head = document.createElement('p');
+        head.className = 'es-shelf-title';
+        const titleBtn = document.createElement('button');
+        titleBtn.type = 'button';
+        titleBtn.textContent = book.author ? `${book.text} — ${book.author}` : book.text;
+        titleBtn.title = 'Search this title directly';
+        titleBtn.addEventListener('click', () => {
+          this._input.value = book.text;
+          clearTimeout(this._debounceTimer);
+          void this._runSearch(book.text);
+        });
+        head.appendChild(titleBtn);
+        li.appendChild(head);
+
+        if (book.confidence === 'low' && book.note) {
+          const note = document.createElement('p');
+          note.className = 'es-shelf-note';
+          note.textContent = `Uncertain read: ${book.note}`;
+          li.appendChild(note);
+        }
+
+        const answer = document.createElement('p');
+        answer.className = 'es-shelf-answer';
+        answer.textContent = 'Checking…';
+        li.appendChild(answer);
+
+        list.appendChild(li);
+        void this._fillShelfAnswer(book.text, answer);
+      }
+    }
+
+    /** Runs this component's OWN scoped search for one identified title and renders a one-line own-it/not-owned answer beside it. */
+    async _fillShelfAnswer(title, el) {
+      const data = await this._callIndex(this._searchPath(title));
+      if (!data || data.aborted) {
+        el.textContent = 'Could not check this title.';
+        return;
+      }
+      const bookHit = data.books?.[0];
+      const gameHit = data.games?.[0];
+      if (bookHit) {
+        const sources = bookHit.entries.map((e) => this._sourceLabel(e.source)).join(', ');
+        el.textContent = `In the catalog — ${sources}.`;
+      } else if (gameHit) {
+        el.textContent = 'In the catalog — board games.';
+      } else {
+        el.textContent = 'Not found in any catalog.';
+      }
     }
 
     /**

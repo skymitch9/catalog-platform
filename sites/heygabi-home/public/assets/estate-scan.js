@@ -65,7 +65,16 @@
  *   closeCamera(stream)          → stop every track (iOS keeps the light on
  *                                   otherwise)
  *   captureFrame(video, longEdge)→ Promise<CapturedPhoto>, downscaled JPEG as
- *                                   base64 (no data: prefix)
+ *                                   base64 (no data: prefix), from a LIVE
+ *                                   <video> frame
+ *   downscaleImagePhoto(file, longEdge) → Promise<CapturedPhoto>, same shape
+ *                                   as captureFrame's, from a picked/dropped
+ *                                   image File/Blob instead of a live video
+ *                                   frame — the shelf-scan "photo/upload"
+ *                                   path (a native file input, capture=
+ *                                   "environment", opens the camera directly
+ *                                   on mobile and a picker on desktop, so no
+ *                                   second camera-stream UI is needed here).
  *
  * Barcode:
  *   preloadBarcodeDetector()     → warm the wasm while the user points the
@@ -79,7 +88,33 @@
  *                                   or a retail UPC is skipped silently and
  *                                   scanning continues (see classifyBarcode).
  *   classifyBarcode(raw)         → { kind: 'isbn13', isbn13 } |
- *                                   { kind: 'ignore', reason }
+ *                                   { kind: 'ignore', reason }. SCANNER-only:
+ *                                   EAN-13/Bookland, silent on anything else
+ *                                   (the scan loop's contract is "keep
+ *                                   scanning", never a UI complaint).
+ *   parseIsbnQuery(raw)          → what a TYPED/pasted search-box string
+ *                                   looks like as an ISBN, if anything —
+ *                                   the search-bar ISBN upgrade (owner: "why
+ *                                   can we not just search an isbn?"),
+ *                                   distinct from classifyBarcode because a
+ *                                   person typing gets to see WHY a clearly
+ *                                   ISBN-shaped string didn't resolve.
+ *                                   Accepts ISBN-10 too (ported from
+ *                                   library_catalog packages/core/src/
+ *                                   isbn.ts's isValidIsbn10/toIsbn13), not
+ *                                   just EAN-13. Returns:
+ *                                     { kind: 'isbn13', isbn13 }   — complete,
+ *                                       checksum-valid (10 upconverted to 13)
+ *                                     { kind: 'invalid' }          — clearly
+ *                                       ISBN-shaped (13 digits, 978/979
+ *                                       prefix) but the checksum fails —
+ *                                       worth a quiet hint, not a lookup
+ *                                     { kind: 'not_isbn' }         — anything
+ *                                       else, including a bare 10-digit
+ *                                       string (phone numbers, IDs) and any
+ *                                       partial/incomplete digit run — plain
+ *                                       text search, unchanged, and NEVER an
+ *                                       Open Library call.
  *
  * ISBN resolution:
  *   resolveIsbn(isbn, opts?)     → Promise<{title, author} | null>. Exactly
@@ -139,8 +174,29 @@ function isBooklandEan13(raw) {
 }
 
 /**
- * What a scanned (or typed) code actually is. One function so the camera loop
- * and manual entry cannot disagree about whether a code is worth a lookup.
+ * ISBN-10 check: weights 10..1, modulo 11, with X standing for 10. Ported
+ * from library_catalog packages/core/src/isbn.ts::isValidIsbn10 — needed
+ * because pre-2007 books print only this, and the search-bar ISBN upgrade
+ * (below) has to accept them too, not just Bookland EAN-13.
+ */
+function isValidIsbn10(raw) {
+  const s = digitsOnly(raw);
+  if (!/^\d{9}[\dX]$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += (s.charCodeAt(i) - 48) * (10 - i);
+  const last = s[9] === 'X' ? 10 : s.charCodeAt(9) - 48;
+  return (sum + last) % 11 === 0;
+}
+
+/** ISBN-10 → ISBN-13: prefix 978, drop the old check digit, recompute. Caller must have already validated the ISBN-10. */
+function isbn10ToIsbn13(isbn10) {
+  const body = '978' + digitsOnly(isbn10).slice(0, 9);
+  return body + String(ean13CheckDigit(body));
+}
+
+/**
+ * What a scanned code actually is. One function so the camera loop cannot
+ * disagree with itself about whether a code is worth a lookup.
  */
 export function classifyBarcode(raw) {
   const trimmed = String(raw).trim();
@@ -157,6 +213,40 @@ export function classifyBarcode(raw) {
   if (/^\d{13}$/.test(s) && isValidIsbn13(s)) return { kind: 'ignore', reason: 'not_bookland' };
 
   return { kind: 'ignore', reason: 'unrecognised' };
+}
+
+/**
+ * What a TYPED/pasted search-box string looks like as an ISBN, if anything.
+ * See the module header for the three-way result — this is the search-bar
+ * ISBN upgrade, not the scanner: a person typing gets to see WHY a clearly
+ * ISBN-shaped string didn't resolve, which classifyBarcode's silent-ignore
+ * contract deliberately does not offer (a scan loop cannot pop up a message
+ * mid-sweep; a search box can).
+ */
+export function parseIsbnQuery(raw) {
+  const trimmed = String(raw).trim();
+  const s = digitsOnly(trimmed);
+
+  if (s.length === 13) {
+    if (isBooklandEan13(s)) return { kind: 'isbn13', isbn13: s };
+    // "Clearly ISBN-shaped": 13 digits, 978/979 prefix, but the checksum is
+    // wrong — worth a quiet hint. Any OTHER 13-digit number (a phone number,
+    // a random count) says nothing on its own and falls through silently.
+    if (/^97[89]\d{10}$/.test(s)) return { kind: 'invalid' };
+    return { kind: 'not_isbn' };
+  }
+
+  if (s.length === 10) {
+    if (isValidIsbn10(s)) return { kind: 'isbn13', isbn13: isbn10ToIsbn13(s) };
+    // A bare 10-digit string is common on its own (IDs, phone numbers) and
+    // is not "clearly ISBN-shaped" the way a 978/979-prefixed 13-digit run
+    // is — stay quiet, fall through to an ordinary text search.
+    return { kind: 'not_isbn' };
+  }
+
+  // Any other length, including every partial digit run mid-type: plain
+  // text search, and — the load-bearing rule — NEVER an Open Library call.
+  return { kind: 'not_isbn' };
 }
 
 // ===========================================================================
@@ -275,6 +365,40 @@ export async function captureFrame(video, longEdge, quality = 0.85) {
     // iOS does not reliably garbage-collect canvases; shrink before dropping.
     canvas.width = 1;
     canvas.height = 1;
+  }
+}
+
+/**
+ * Same shape as captureFrame's result, from a picked/dropped image File/Blob
+ * instead of a live video frame — the shelf-scan "photo/upload" path. A
+ * `<input type="file" accept="image/*" capture="environment">` opens the
+ * camera directly on mobile (or the gallery/file picker, OS-dependent) and a
+ * plain file picker on desktop, so this is the ONE path that covers both
+ * without a second camera-stream UI.
+ */
+export async function downscaleImagePhoto(file, longEdge, quality = 0.85) {
+  if (!(file instanceof Blob)) throw new CameraError('unknown', 'That is not an image file.');
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new CameraError('unknown', 'Could not read that photo.');
+  }
+
+  try {
+    const { w, h } = fit(bitmap.width, bitmap.height, longEdge);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new CameraError('unknown', 'Could not get a drawing context.');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob) throw new CameraError('unknown', 'Could not encode the photo.');
+    return { data: await toBase64(blob), mediaType: 'image/jpeg', width: w, height: h, bytes: blob.size };
+  } finally {
+    bitmap.close?.();
   }
 }
 
