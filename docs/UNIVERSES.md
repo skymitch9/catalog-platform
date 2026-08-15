@@ -9,12 +9,12 @@
 A fictional universe is flagged **only where it says something the series (or,
 for board games, the title) name does not already say**. **Eleven** universes
 as of 2026-08-15 — Marvel, Disney, Star Wars and Alliances added; The Cosmere
-and CAL Verse extended to cover owned board games — ~38 series, ~130 book/game
-overrides, and five recorded refusals. ⚠️ **This file's own wording still says
-"book," but nothing in the schema or the resolver is book-specific** —
-`bookOverrides`/`bookExclusions` key on `title`, and `title`/`series` are
-exactly what a board-game row carries too (see §6's third row, added
-2026-08-15).
+and CAL Verse extended to cover owned board games — **44 series, 139 book/game
+overrides, 8 exclusions**, and five recorded refusals. ⚠️ **This file's own
+wording still says "book," but nothing in the schema or the resolver is
+book-specific** — `bookOverrides`/`bookExclusions` key on `title`, and
+`title`/`series` are exactly what a board-game row carries too (see §6's third
+row, added 2026-08-15).
 
 **Same-day revisions, in order, all 2026-08-15:** (1) Disney and Marvel added.
 (2) Owner supplied the actual test for what belongs in Disney — **crossover
@@ -31,6 +31,50 @@ title override instead — the series-masquerading-as-universe problem this
 file has flagged since day one. (5) Arcanum Unbounded's series was corrected
 (it collects stories from every Cosmere sub-series, so no single one is true)
 via the audiobook corrections layer, and it too is now a title override.
+
+### The estate-wide orphan sweep — 2026-08-15, later the same day
+
+The Cosmere treatment above was generalised to **every** universe: all 2,265
+rows in the estate (1,078 audiobook CSV, 351 library D1 `work`, 836 board-game
+D1 `item`) were pulled and read by author, by franchise keyword, and by the
+`library_work_id` join between the two book catalogs, looking for anything that
+belongs in a universe but resolves to none. **Membership went 322 → 337 rows**
+(audiobook 181 → 193, library 45 → 48, games 96 unchanged). Fifteen adds, in
+four shapes worth knowing:
+
+| Add | Universe | The shape it hid in |
+|---|---|---|
+| series **White Sand** (library #90) | The Cosmere | ⚠️ **An author-keyed scan cannot find this one.** `work.authors` reads "Julius Gopez Rik Hoskin" — the artist and scripter of the graphic novels — so the word "Sanderson" appears nowhere on the row. It was the only Cosmere row in any catalog resolving to nothing |
+| series **Darth Vader and Family** (library #190) | Star Wars | Jeffrey Brown's licensed picture books. The series name says "Darth Vader", which a keyword scan catches, but nothing had claimed it |
+| series **Lady and the Tramp** | Disney | A real series value, so it needed a series claim rather than the title override the other Disney rows get |
+| **9 title overrides** — 3 Frozen, 2 Minnie, Mickey/Minnie, Peter Pan, The Lion King, The Nightmare Before Christmas (library #197) | Disney | ⚠️ The 2026-08-15 first pass keyed on the literal word **"Disney" in the title** and stopped. Half the imprint's rows do not carry it. Re-run by **author = Disney Books** instead and the set closes: 22 rows, all now placed |
+| **Panther Patience - Spidey and His Amazing Friends** | Marvel | Disney Junior imprint, Marvel characters — goes to Marvel, not Disney, like the Age of Ultron tie-ins already there |
+
+Every Disney add was tested against the owner's crossover-potential criterion
+individually, not swept: Arendelle, the Pride Lands, Neverland, Halloween Town
+and Mickey himself are all Kingdom Hearts material, which is the pool the
+criterion names.
+
+**The method that found the most, and should be the first thing run next
+time:** `site/catalog.csv`'s `library_work_id` column is a join between the two
+book catalogs, and diffing `series` across it surfaces rows where one catalog
+knows the series and the other does not. It found the whole **Secret Projects**
+ladder missing from the audio side — five rows the library had numbered 1–5 —
+plus **World's Only Hero**, which `universes.json` had been describing in prose
+under CAL Verse `notThisSeries` since 2026-08-11.
+
+**Two things deliberately NOT done, both recorded rather than guessed:**
+
+1. **No new universe was created.** §4's rule stands — the CLI cannot create
+   one, and a new one is a decision written into the file with its evidence.
+   Three genuine candidates came out of this sweep (Middle-earth, Dungeon
+   Crawler Carl, and a refusal case for D&D); they are in the session's verdict
+   table for the owner, with the evidence and the exact ready-to-apply shape.
+2. **`apps/index-worker` was not redeployed**, so ⚠️ **the additions above are
+   not live on `/universes` yet.** §6's third row is the reason a redeploy is
+   needed at all — the Worker bundles this file at build time — and the reason
+   it was skipped is that a concurrent session had uncommitted changes in
+   `apps/index-worker/src/`, which a deploy would have shipped.
 
 ---
 

@@ -60,7 +60,8 @@
       "series": [
         "Elantris",
         "The Mistborn Saga",
-        "The Stormlight Archive"
+        "The Stormlight Archive",
+        "White Sand"
       ],
       "notSeries": [
         "Legion",
@@ -756,6 +757,10 @@
         {
           "title": "Miles Morales (Marvel Spider-Man)",
           "why": "library_catalog D1 id 330, series \"Little Golden Book\" (a generic imprint spanning hundreds of unrelated titles, not claimable at series level), measured 2026-08-15: Marvel-character content with a blank or unusable series value, so it needs its own title override."
+        },
+        {
+          "title": "Panther Patience - Spidey and His Amazing Friends",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: seriesless Disney Books row from the Disney Junior series 'Marvel's Spidey and His Amazing Friends' — Spider-Man, Ms. Marvel, Hulk and, in this title, Black Panther. Marvel Comics characters under a Disney Junior imprint, so it goes to Marvel and not Disney, exactly like the three 'Marvel's Avengers: Age of Ultron' tie-ins already here. Seriesless, so it needs a title override rather than a series claim."
         }
       ],
       "bookExclusions": []
@@ -770,7 +775,8 @@
         "2026-08-15: Star Wars was the strongest internal candidate for its own universe; split out the same day once the owner supplied the crossover-potential test above. This note is now resolved — see the Star Wars universe entry."
       ],
       "series": [
-        "Toy Story"
+        "Toy Story",
+        "Lady and the Tramp"
       ],
       "bookOverrides": [
         {
@@ -816,6 +822,42 @@
         {
           "title": "Disney Junior Ariel: A Magical Mess",
           "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: 'Disney Junior Ariel: A Magical Mess' carries a blank series value, so it needs its own title override rather than a series claim."
+        },
+        {
+          "title": "Family Game Night - Frozen 2",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the 2026-08-15 first pass, which caught the twelve rows whose titles carry the word 'Disney' and stopped there. Frozen is Walt Disney Animation Studios canon and passes the owner's crossover-potential test directly — Arendelle is a playable Kingdom Hearts III world alongside Toy Story's Andy's Room, which is the pool this universe exists to hold. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "Frozen: An Anniversary for Arendelle",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the 2026-08-15 first pass, which caught the twelve rows whose titles carry the word 'Disney' and stopped there. Frozen is Walt Disney Animation Studios canon and passes the owner's crossover-potential test directly — Arendelle is a playable Kingdom Hearts III world alongside Toy Story's Andy's Room, which is the pool this universe exists to hold. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "Frozen: Something to Celebrate",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the 2026-08-15 first pass, which caught the twelve rows whose titles carry the word 'Disney' and stopped there. Frozen is Walt Disney Animation Studios canon and passes the owner's crossover-potential test directly — Arendelle is a playable Kingdom Hearts III world alongside Toy Story's Andy's Room, which is the pool this universe exists to hold. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "Mickey Mouse Mixed-Up Adventures: Minnie: One Unicorny Day",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Mickey and Minnie Mouse are the studio's own founding characters and Mickey is a playable party member across the whole Kingdom Hearts series, so this is the single strongest pass of the owner's crossover-potential test in the entire Disney set. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "The Lion King: Hakuna Matata",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. The Lion King is Walt Disney Animation Studios canon and its Pride Lands are a Kingdom Hearts II world, so it passes the owner's crossover-potential test on the same evidence as Toy Story and the Aristocats entries already here. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "Minnie in Paris - Minnie",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Minnie Mouse is a founding Walt Disney studio character and Mickey is a playable Kingdom Hearts party member, so this is among the strongest passes of the owner's crossover-potential test in the Disney set. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "Minnie's Fashion and Fun: Bow-Bot Robot",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Minnie Mouse is a founding Walt Disney studio character and Mickey is a playable Kingdom Hearts party member, so this is among the strongest passes of the owner's crossover-potential test in the Disney set. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "Peter Pan: Captain Hook's Shadow",
+          "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Disney's Peter Pan (1953) is Walt Disney Animation Studios canon and Neverland is a Kingdom Hearts world, so it passes the owner's crossover-potential test on the same evidence as the Aristocats and Lion King entries. Seriesless, so it needs a title override rather than a series claim."
+        },
+        {
+          "title": "The Nightmare Before Christmas",
+          "why": "library_catalog D1 work #197, credited 'Tim Burton, Disney', series null — measured 2026-08-15 estate sweep. The first Disney pass read only audiobook_catalog for imprint rows and so missed the one Disney row on the library side. A Touchstone/Disney production, and Halloween Town is a Kingdom Hearts world, which is the owner's crossover-potential test met directly. Series is null, so it needs a title override rather than a series claim."
         }
       ],
       "bookExclusions": []
@@ -829,7 +871,8 @@
       "series": [
         "Star Wars: The High Republic",
         "Star Wars: Legends",
-        "Star Wars: Boba Fett"
+        "Star Wars: Boba Fett",
+        "Darth Vader and Family"
       ],
       "bookOverrides": [
         {
@@ -1966,6 +2009,110 @@
       "universe": "The Cosmere",
       "title": "Arcanum Unbounded: The Cosmere Collection",
       "why": "Owner, 2026-08-15, via coordinator: 'Arcanum should be in no series since it's in all the series and is just cosmere.' Anthology collecting 9 Cosmere stories across Elantris/Sel, Mistborn, Stormlight and seriesless shorts (https://en.wikipedia.org/wiki/Arcanum_Unbounded:_The_Cosmere_Collection). audiobook_catalog series field corrected from the wrong 'The Mistborn Saga' to blank via the corrections layer (scripts/catalog_overrides.json, ASIN B01K5Q6VWO) — this title override is what catches it now that no series claims it.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "The Cosmere",
+      "series": "White Sand",
+      "why": "library_catalog D1 work #90 'White Sand' (series 'White Sand', index 1, authors 'Julius Gopez Rik Hoskin' — the artist and scripter, which is why an author-keyed Sanderson scan misses it entirely). White Sand is Sanderson's Cosmere graphic-novel series, set on Taldain and following Kenton and the Sand Masters; this file's own CAL Verse notes already reference 'the White Sand omnibus' as a collects-case, so the work was known here but never claimed. Measured 2026-08-15 estate sweep: the only Cosmere row in any catalog that resolved to no universe.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Star Wars",
+      "series": "Darth Vader and Family",
+      "why": "library_catalog D1 work #190 'Goodnight Darth Vader' by Jeffrey Brown (series 'Darth Vader and Family', index 3). Brown's officially licensed Lucasfilm/Chronicle Books picture-book line (Darth Vader and Son, Vader's Little Princess, Goodnight Darth Vader, Darth Vader and Friends) — Star Wars characters and continuity throughout, so it belongs on the same shelf as the High Republic and Legends novels. Measured 2026-08-15 estate sweep: the only Star Wars row in any catalog that resolved to no universe.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Marvel",
+      "title": "Panther Patience - Spidey and His Amazing Friends",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15: seriesless Disney Books row from the Disney Junior series 'Marvel's Spidey and His Amazing Friends' — Spider-Man, Ms. Marvel, Hulk and, in this title, Black Panther. Marvel Comics characters under a Disney Junior imprint, so it goes to Marvel and not Disney, exactly like the three 'Marvel's Avengers: Age of Ultron' tie-ins already here. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Family Game Night - Frozen 2",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the 2026-08-15 first pass, which caught the twelve rows whose titles carry the word 'Disney' and stopped there. Frozen is Walt Disney Animation Studios canon and passes the owner's crossover-potential test directly — Arendelle is a playable Kingdom Hearts III world alongside Toy Story's Andy's Room, which is the pool this universe exists to hold. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Frozen: An Anniversary for Arendelle",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the 2026-08-15 first pass, which caught the twelve rows whose titles carry the word 'Disney' and stopped there. Frozen is Walt Disney Animation Studios canon and passes the owner's crossover-potential test directly — Arendelle is a playable Kingdom Hearts III world alongside Toy Story's Andy's Room, which is the pool this universe exists to hold. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Frozen: Something to Celebrate",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the 2026-08-15 first pass, which caught the twelve rows whose titles carry the word 'Disney' and stopped there. Frozen is Walt Disney Animation Studios canon and passes the owner's crossover-potential test directly — Arendelle is a playable Kingdom Hearts III world alongside Toy Story's Andy's Room, which is the pool this universe exists to hold. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Mickey Mouse Mixed-Up Adventures: Minnie: One Unicorny Day",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Mickey and Minnie Mouse are the studio's own founding characters and Mickey is a playable party member across the whole Kingdom Hearts series, so this is the single strongest pass of the owner's crossover-potential test in the entire Disney set. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "The Lion King: Hakuna Matata",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. The Lion King is Walt Disney Animation Studios canon and its Pride Lands are a Kingdom Hearts II world, so it passes the owner's crossover-potential test on the same evidence as Toy Story and the Aristocats entries already here. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-series",
+      "universe": "Disney",
+      "series": "Lady and the Tramp",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: 'Lady and the Tramp: Barking Up the Right Tree' (author Disney Books) carries the real series value 'Lady and the Tramp', so it is claimed at series level like Toy Story rather than by title. Walt Disney Animation Studios canon; passes the owner's crossover-potential test as part of the classic-animation pool Kingdom-Hearts-style crossovers draw on.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Minnie in Paris - Minnie",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Minnie Mouse is a founding Walt Disney studio character and Mickey is a playable Kingdom Hearts party member, so this is among the strongest passes of the owner's crossover-potential test in the Disney set. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Minnie's Fashion and Fun: Bow-Bot Robot",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Minnie Mouse is a founding Walt Disney studio character and Mickey is a playable Kingdom Hearts party member, so this is among the strongest passes of the owner's crossover-potential test in the Disney set. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "Peter Pan: Captain Hook's Shadow",
+      "why": "audiobook_catalog site/catalog.csv, measured 2026-08-15 estate sweep: seriesless Disney Books row missed by the first pass, which keyed on the literal word 'Disney' in the title. Disney's Peter Pan (1953) is Walt Disney Animation Studios canon and Neverland is a Kingdom Hearts world, so it passes the owner's crossover-potential test on the same evidence as the Aristocats and Lion King entries. Seriesless, so it needs a title override rather than a series claim.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-15",
+      "action": "add-book",
+      "universe": "Disney",
+      "title": "The Nightmare Before Christmas",
+      "why": "library_catalog D1 work #197, credited 'Tim Burton, Disney', series null — measured 2026-08-15 estate sweep. The first Disney pass read only audiobook_catalog for imprint rows and so missed the one Disney row on the library side. A Touchstone/Disney production, and Halloween Town is a Kingdom Hearts world, which is the owner's crossover-potential test met directly. Series is null, so it needs a title override rather than a series claim.",
       "decidedHow": "human"
     }
   ]
