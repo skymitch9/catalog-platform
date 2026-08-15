@@ -668,3 +668,15 @@ changes — not for a content-only edit.
 `https://heygabi.ai/todo` checks (anonymous HTML carries no board text,
 tokenless `GET /api/estate/todo` 401s, CSP present on both `/todo` and
 `/todo/`) are recorded in the deploy log / session report for this change.
+
+## Estate API testing suite (owner proposal, 2026-08-15 — queued next)
+
+Promote the auth worker's live-probes idiom (70 checks: real minted tokens,
+synthetic users, role matrix, cleanup) to an ESTATE-WIDE suite in
+catalog-platform: every worker's public + gated endpoints probed — index
+(search/scan/universe/health), auth (estate/me/site-roles/ops/todo), library
+API (incl. the audiobook-mapping machine route + the apex add flow's CORS),
+games API. One runner (npm run probe:estate), per-surface sections, a
+manual-dispatch workflow button, matrix output. First customer: the owner's
+ordered EXTENSIVE scanning + add-to-catalog test pass (plus the coordinator's
+browser session for signed-in UI flows the suite can't drive).
