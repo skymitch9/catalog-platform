@@ -113,12 +113,75 @@
  *     group as `data.universes` — the server already excludes any name the
  *     query text itself matched, so the merge needs no client-side dedup.
  *
+ * SERIES FOLDS (owner: "add sub sections that can collapse for series. No
+ * need to see loose books", 2026-08-15): `_renderUniverse`'s "Books &
+ * audiobooks" and "Games" groups are now each broken into per-series
+ * `<details>` (collapsed by default, summary "SeriesName (N)" — the count is
+ * the overview, which is the de-clutter), plus one collapsed catch-all fold
+ * for rows with no series ("Standalones" for books, "Other games" for games).
+ * The accessories fold is unaffected — it still collapses straight out of
+ * `games`, upstream of this split, and stays last. Series folds sort
+ * alphabetically; the catch-all fold sorts last, before the next group.
+ * The exported `groupBySeries()` below is the shared grouping logic —
+ * universes.js (the /universes page's OWN hand-rolled renderer, duplicated
+ * from this file's idiom on purpose per its own header) imports it rather
+ * than re-deriving a third copy, since both renderers already draw on the
+ * same `entry.series`/`series_index` columns (index-worker's read.ts
+ * ENTRY_COLS, ordered `series, series_index, title` at the DB) and the
+ * grouping math has nothing DOM- or Shadow-DOM-specific about it. Each
+ * renderer keeps its OWN details/summary DOM-building (different class names,
+ * `.es-*` vs `.find-*`) — only the pure data grouping is shared.
+ *
  * NOT ported: the apex's approver-probe "Admin" chip (find.js's
  * probeApprover()). That is heygabi-home-specific admin surface, not a
  * generic search behavior — baking it in here would make every future
  * consumer carry an apex opinion. The apex keeps it as a thin adapter that
  * listens for 'estate-search:auth' (see index.html) instead.
  */
+
+/**
+ * Groups universe-view rows (already filtered to one kind — books, or games)
+ * by `series` for the series-folds treatment (see header). Pure data, no DOM,
+ * so both this component and universes.js's hand-rolled renderer can share
+ * it without sharing render idiom.
+ *
+ * Returns { seriesGroups, standalone } —
+ *   seriesGroups: [{ name, rows }], sorted alphabetically by `name`; each
+ *     group's own rows sorted by `series_index` (numeric rows first, in
+ *     order; a row with a null index — not supposed to happen once a series
+ *     is assigned, but never trusted — falls after its numbered siblings;
+ *     ties/nulls-vs-nulls break on title). This is belt-and-suspenders: the
+ *     server already orders by `series, series_index, title` (read.ts), so
+ *     in practice this sort is a no-op confirming that order, not the source
+ *     of truth for it.
+ *   standalone: rows with no `series` at all, in their incoming (server)
+ *     order — the caller renders these as one collapsed catch-all fold.
+ */
+export function groupBySeries(rows) {
+  const bySeries = new Map();
+  const standalone = [];
+  for (const row of rows) {
+    if (row.series) {
+      if (!bySeries.has(row.series)) bySeries.set(row.series, []);
+      bySeries.get(row.series).push(row);
+    } else {
+      standalone.push(row);
+    }
+  }
+  const seriesGroups = [...bySeries.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, seriesRows]) => ({
+      name,
+      rows: [...seriesRows].sort((x, y) => {
+        const xi = x.series_index, yi = y.series_index;
+        if (xi != null && yi != null && xi !== yi) return xi - yi;
+        if (xi != null && yi == null) return -1;
+        if (xi == null && yi != null) return 1;
+        return x.title.localeCompare(y.title);
+      }),
+    }));
+  return { seriesGroups, standalone };
+}
 
 (function () {
   'use strict';
@@ -200,17 +263,19 @@
         margin: 1rem 0 .5rem; font-size: var(--et-text-micro); font-weight: 700;
         letter-spacing: .1em; text-transform: uppercase; color: var(--et-muted);
       }
-      /* Accessories de-clutter (task 1): a native <details>, collapsed by
-         default — the universe expansion view groups kind='accessory'/'promo'
-         rows here instead of the plain .es-group list. */
-      details.es-accessories { margin: 1rem 0 .5rem; }
-      details.es-accessories > summary {
+      /* Accessories de-clutter (task 1) and series folds (owner: "add sub
+         sections that can collapse for series"): both are a native <details>,
+         collapsed by default — one shared look for every fold the universe
+         expansion view uses (accessories, one per series, and the
+         Standalones/Other-games catch-all). */
+      details.es-accessories, details.es-series { margin: 1rem 0 .5rem; }
+      details.es-accessories > summary, details.es-series > summary {
         cursor: pointer; margin: 0; font-size: var(--et-text-micro); font-weight: 700;
         letter-spacing: .1em; text-transform: uppercase; color: var(--et-muted);
       }
-      details.es-accessories > summary:hover { color: var(--et-accent); }
-      details.es-accessories > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
-      details.es-accessories > .es-hits { margin-top: .5rem; }
+      details.es-accessories > summary:hover, details.es-series > summary:hover { color: var(--et-accent); }
+      details.es-accessories > summary:focus-visible, details.es-series > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+      details.es-accessories > .es-hits, details.es-series > .es-hits { margin-top: .5rem; }
       .es-hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
       .es-hit {
         display: flex; gap: .8rem; align-items: flex-start;
@@ -683,12 +748,14 @@
       return row.kind === 'accessory' || row.kind === 'promo';
     }
 
-    /** A native <details>, COLLAPSED BY DEFAULT (no `open` attribute). */
-    _accessoriesDetails(rows) {
+    /** A native <details>, COLLAPSED BY DEFAULT (no `open` attribute) — the
+     * one shape shared by the accessories fold, each per-series fold, and the
+     * Standalones/Other-games catch-all fold. */
+    _foldDetails(label, rows, className) {
       const details = document.createElement('details');
-      details.className = 'es-accessories';
+      details.className = className;
       const summary = document.createElement('summary');
-      summary.textContent = `Accessories & promos (${rows.length})`;
+      summary.textContent = `${label} (${rows.length})`;
       details.appendChild(summary);
       const ul = document.createElement('ul');
       ul.className = 'es-hits';
@@ -696,6 +763,24 @@
       for (const row of rows) ul.appendChild(this._rowCard(row));
       details.appendChild(ul);
       return details;
+    }
+
+    _accessoriesDetails(rows) {
+      return this._foldDetails('Accessories & promos', rows, 'es-accessories');
+    }
+
+    /** Series folds (owner: "add sub sections that can collapse for series.
+     * No need to see loose books"): groups `rows` by `series` via the shared
+     * groupBySeries() (module-level export above), renders one collapsed
+     * fold per series (alphabetical), then one collapsed catch-all fold for
+     * the series-less rows, labeled `otherLabel` ("Standalones" for books,
+     * "Other games" for games) — last, per the owner's ordering. */
+    _seriesFolds(rows, otherLabel) {
+      const { seriesGroups, standalone } = groupBySeries(rows);
+      const frag = document.createDocumentFragment();
+      for (const g of seriesGroups) frag.appendChild(this._foldDetails(g.name, g.rows, 'es-series'));
+      if (standalone.length) frag.appendChild(this._foldDetails(otherLabel, standalone, 'es-series'));
+      return frag;
     }
 
     _caveatLine(headingText) {
@@ -804,18 +889,19 @@
       const games = gameRows.filter((m) => !this._isAccessoryOrPromo(m));
       const accessories = gameRows.filter((m) => this._isAccessoryOrPromo(m));
 
+      // Series folds (owner-ordered, this pass): each group's rows are
+      // broken into per-series collapsed folds plus one collapsed catch-all
+      // ("Standalones" / "Other games") — no plain flat list anymore, so a
+      // universe with several series does not dump every volume in the
+      // reader's face. Series folds sort alphabetically, catch-all last.
       const groups = [
-        { name: 'Books & audiobooks', rows: bookRows },
-        { name: 'Games', rows: games },
+        { name: 'Books & audiobooks', rows: bookRows, otherLabel: 'Standalones' },
+        { name: 'Games', rows: games, otherLabel: 'Other games' },
       ];
       for (const g of groups) {
         if (!g.rows.length) continue;
         this._resultsEl.appendChild(this._groupHeading(g.name));
-        const ul = document.createElement('ul');
-        ul.className = 'es-hits';
-        ul.setAttribute('role', 'presentation');
-        for (const row of g.rows) ul.appendChild(this._rowCard(row));
-        this._resultsEl.appendChild(ul);
+        this._resultsEl.appendChild(this._seriesFolds(g.rows, g.otherLabel));
       }
       if (accessories.length) this._resultsEl.appendChild(this._accessoriesDetails(accessories));
     }

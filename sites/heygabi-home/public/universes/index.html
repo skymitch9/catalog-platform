@@ -47,6 +47,15 @@
   demotion in SEARCH results) is server-side, in index-worker's search.ts —
   nothing to do here.
 
+  Series folds (owner-ordered, 2026-08-15: "add sub sections that can
+  collapse for series. No need to see loose books"): the same expanded body
+  now breaks "Books & audiobooks" and "Games" into one collapsed <details>
+  per series ("SeriesName (N)", alphabetical) plus one collapsed catch-all
+  fold for series-less rows ("Standalones" / "Other games", last). The
+  accessories fold is unaffected. See universes.js's own header for the
+  grouping-helper-sharing note (groupBySeries, imported from
+  assets/estate-search.js).
+
   Rendering: DELIBERATELY DUPLICATED from find.js's rowCard/coverFor/
   metaBits rather than factored into a shared module — this codebase's own
   convention (find.js, status.js, identity.js precedents) is one page, one
@@ -243,16 +252,19 @@ ul.uni-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem
 }
 
 /* Accessories de-clutter (owner: "make accessories a sub category in a
-   universe page") — a native <details>, collapsed by default (no `open`
-   attribute in universes.js), so the disclosure needs no extra JS. */
-details.find-accessories { margin: 1rem 0 .5rem; }
-details.find-accessories > summary {
+   universe page") and series folds (owner: "add sub sections that can
+   collapse for series") — both a native <details>, collapsed by default (no
+   `open` attribute in universes.js), so the disclosure needs no extra JS.
+   One shared look for every fold: accessories, one per series, and the
+   Standalones/Other-games catch-all. */
+details.find-accessories, details.find-series { margin: 1rem 0 .5rem; }
+details.find-accessories > summary, details.find-series > summary {
   cursor: pointer;
   margin: 0;
 }
-details.find-accessories > summary:hover { color: var(--et-accent); }
-details.find-accessories > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
-details.find-accessories > ul.hits { margin-top: .5rem; }
+details.find-accessories > summary:hover, details.find-series > summary:hover { color: var(--et-accent); }
+details.find-accessories > summary:focus-visible, details.find-series > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+details.find-accessories > ul.hits, details.find-series > ul.hits { margin-top: .5rem; }
 
 ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 

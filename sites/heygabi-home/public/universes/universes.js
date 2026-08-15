@@ -39,9 +39,23 @@
  * buildRows() actually iterates. Sort is display-order only — it has no
  * bearing on /api/universe/:name resolution, which is name-keyed, not
  * position-keyed.
+ *
+ * SERIES FOLDS (owner: "add sub sections that can collapse for series. No
+ * need to see loose books", 2026-08-15): renderUniverseBody's "Books &
+ * audiobooks" and "Games" groups are each broken into per-series <details>
+ * (collapsed by default, "SeriesName (N)"), plus one collapsed catch-all fold
+ * for series-less rows ("Standalones" for books, "Other games" for games).
+ * The GROUPING math (groupBySeries) is imported from estate-search.js rather
+ * than re-derived a third time — it is pure data logic with nothing
+ * DOM-specific, so importing it does not break this file's own
+ * duplicated-DOM-idiom convention (see header above); only the render half
+ * (accessoriesDetails-shaped <details> building, this file's own classes)
+ * stays duplicated, same as before. The accessories fold is unaffected — it
+ * still collapses out of `games`, upstream of this split, and stays last.
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
+import { groupBySeries } from '../assets/estate-search.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
@@ -219,21 +233,39 @@ function isAccessoryOrPromo(row) {
   return row.kind === 'accessory' || row.kind === 'promo';
 }
 
-/** Accessories/promos collapse into a <details>, COLLAPSED BY DEFAULT (no
- * `open` attribute) — the native disclosure widget so no extra JS is needed
- * to toggle it. */
-function accessoriesDetails(rows) {
+/** A <details>, COLLAPSED BY DEFAULT (no `open` attribute) — the native
+ * disclosure widget so no extra JS is needed to toggle it. Shared shape for
+ * the accessories fold, each per-series fold, and the Standalones/Other-games
+ * catch-all fold. */
+function foldDetails(label, rows, className) {
   const details = document.createElement('details');
-  details.className = 'find-accessories';
+  details.className = className;
   const summary = document.createElement('summary');
   summary.className = 'find-group';
-  summary.textContent = `Accessories & promos (${rows.length})`;
+  summary.textContent = `${label} (${rows.length})`;
   details.appendChild(summary);
   const ul = document.createElement('ul');
   ul.className = 'hits';
   for (const row of rows) ul.appendChild(rowCard(row));
   details.appendChild(ul);
   return details;
+}
+
+function accessoriesDetails(rows) {
+  return foldDetails('Accessories & promos', rows, 'find-accessories');
+}
+
+/** Series folds (owner: "add sub sections that can collapse for series. No
+ * need to see loose books"): groups `rows` by series via the shared
+ * groupBySeries() (imported from estate-search.js), renders one collapsed
+ * fold per series (alphabetical), then one collapsed catch-all fold for the
+ * series-less rows, labeled `otherLabel` — last, per the owner's ordering. */
+function seriesFolds(rows, otherLabel) {
+  const { seriesGroups, standalone } = groupBySeries(rows);
+  const frag = document.createDocumentFragment();
+  for (const g of seriesGroups) frag.appendChild(foldDetails(g.name, g.rows, 'find-series'));
+  if (standalone.length) frag.appendChild(foldDetails(otherLabel, standalone, 'find-series'));
+  return frag;
 }
 
 /** Renders one /api/universe/:name answer into `body` (the row's expand slot). */
@@ -268,19 +300,17 @@ function renderUniverseBody(body, data) {
   const games = gameRows.filter((m) => !isAccessoryOrPromo(m));
   const accessories = gameRows.filter(isAccessoryOrPromo);
 
+  // Series folds (owner-ordered, this pass): each group's rows are broken
+  // into per-series collapsed folds plus one collapsed catch-all
+  // ("Standalones" / "Other games") — no flat list anymore, so a universe
+  // with several series does not dump every volume in the reader's face.
   if (bookRows.length) {
     body.appendChild(groupHeading('Books & audiobooks'));
-    const ul = document.createElement('ul');
-    ul.className = 'hits';
-    for (const row of bookRows) ul.appendChild(rowCard(row));
-    body.appendChild(ul);
+    body.appendChild(seriesFolds(bookRows, 'Standalones'));
   }
   if (games.length) {
     body.appendChild(groupHeading('Games'));
-    const ul = document.createElement('ul');
-    ul.className = 'hits';
-    for (const row of games) ul.appendChild(rowCard(row));
-    body.appendChild(ul);
+    body.appendChild(seriesFolds(games, 'Other games'));
   }
   if (accessories.length) {
     body.appendChild(accessoriesDetails(accessories));
