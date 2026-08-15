@@ -222,7 +222,7 @@ Fable and waits for the owner to release it (e.g. after a weekly reset):
 ## The owner's five (picked from the research ideas, 2026-08-14 night)
 
 Prioritized by the owner; rejected ideas removed (dashboard, recap, game
-nights, purchase guard). PWA (#9) pending the owner's read of its value case.
+nights, purchase guard, and PWA — all skipped by owner decision).
 
 **TONIGHT (non-Fable agents, in flight):**
 1. **Estate status page** ("I want to see ALL the pipelines") — apex page:
