@@ -133,6 +133,34 @@
 # can carry a cover from any source the estate indexes (audiobook, library or
 # game) — read that list fresh before editing either one; a copy that drifts
 # from "/" is how a cover host silently blanks here but not there.
+#
+# BARCODE SCAN (added 2026-08-15, owner: bookstore trip — <estate-search
+# scan> on / and /universes). Three additions, both pages, both trailing-
+# slash duplicates (the 308-redirect trap this file's own header warns
+# about):
+#   script-src  gains 'wasm-unsafe-eval' — CSP3 requires this specifically to
+#               allow WebAssembly compilation (WebAssembly.instantiate /
+#               instantiateStreaming) when default-src is 'none'; the
+#               self-hosted zxing-wasm barcode decoder (assets/scanner/,
+#               vendored — see assets/estate-scan.js's header) would
+#               otherwise fail SILENTLY under this CSP with no console error
+#               naming the cause. Supported Safari 16+ / Chrome 97+ / Firefox
+#               102+ — fine for the owner's iPhone.
+#   connect-src gains 'self' (the same-origin fetch() of assets/scanner/
+#               zxing_reader.wasm — governed by connect-src, not script-src,
+#               because it is a network fetch rather than a script load) and
+#               https://openlibrary.org (the two-fetch ISBN→title/author
+#               resolve, assets/estate-scan.js's resolveIsbn()). img-src
+#               already carries https://covers.openlibrary.org on both pages
+#               from the cover-host list above — no change needed there.
+#               ALSO gains https://library.heygabi.ai — the "Add to Books →"
+#               affordance (owner: "add it from the main page to the right
+#               catalog") POSTs a resolved ISBN to the library app's own
+#               barcode-intake endpoint with the signed-in member's bearer
+#               token; the library Worker's own CORS must separately allow
+#               this origin (library_catalog repo, tracked there).
+#   Permissions-Policy (on /*, below): camera=() → camera=(self) — see that
+#   rule's own comment.
 
 /status
   X-Frame-Options: DENY
@@ -144,20 +172,20 @@
 
 /universes
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /universes/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Permissions-Policy: geolocation=(), microphone=(), camera=(self), interest-cohort=()
 
 /
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /admin
   X-Frame-Options: DENY

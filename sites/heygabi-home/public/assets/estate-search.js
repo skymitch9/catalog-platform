@@ -63,6 +63,26 @@
  *                  invitation, unchanged from find.js. Also gates
  *                  `universeSuggestions` rendering (see below) — one flag,
  *                  both surfaces, since they share the exact idiom.
+ *   scan           Presence-gated (boolean attribute; any value, including
+ *                  none, turns it on — absence turns it off). Shows a 📷
+ *                  button that opens the rear camera, decodes a book's back-
+ *                  cover barcode, resolves it to a title/author via the
+ *                  public Open Library API, and feeds the title into this
+ *                  component's own search path — plus a manual ISBN entry
+ *                  box for when the camera loses. ALL of the scanning logic
+ *                  (camera, barcode decode, ISBN resolve, shelf-photo
+ *                  capture/identify) lives in the sibling canonical module
+ *                  `estate-scan.js` (see `scan-module` below) — this
+ *                  component only owns the UI wiring, per the "change
+ *                  scanning in ONE place" rule. Ignored entirely unless
+ *                  `scan-module` resolves; see its own header for the full
+ *                  scanning contract and the library_catalog provenance.
+ *   scan-module    Path to the estate-scan.js adapter, imported ONLY when a
+ *                  `scan`-gated control is first used (📷 tapped, or a
+ *                  manual ISBN submitted) — never a static import, so a site
+ *                  that never sets `scan` never pays for the scanner module,
+ *                  same reasoning as `auth-module` below. Default:
+ *                  'estate-scan.js' resolved NEXT TO THIS FILE.
  *
  * PROPERTIES (JS-only — for callback/object config no attribute can carry)
  *   .intakeFilter(data, { kind }) → data
@@ -297,6 +317,16 @@ export function groupBySeries(rows) {
       .es-hit-meta a { color: var(--et-accent); font-weight: 600; text-decoration: none; }
       .es-hit-meta a:hover { text-decoration: underline; }
       .es-hit-universe { align-self: flex-start; font-size: var(--et-text-small); margin-top: .15rem; }
+      /* Barcode/shelf scan (scan attribute) — see estate-scan.js for the
+         logic; this is UI only. */
+      .es-scan-row { display: flex; gap: .6rem; align-items: stretch; flex-wrap: wrap; margin-top: .6rem; }
+      .es-scan-manual { flex: 1 1 10rem; min-height: 44px; padding: .5rem .85rem; border: 1px solid var(--et-field-border, var(--et-hairline)); border-radius: var(--et-radius); background: var(--et-surface); color: var(--et-fg); font: inherit; }
+      .es-camera-stage { margin-top: .6rem; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }
+      .es-camera-stage[hidden] { display: none; }
+      .es-scan-video { width: 100%; max-width: 24rem; border-radius: var(--et-radius); border: 1px solid var(--et-hairline); background: #000; }
+      .es-scan-resolve { margin: .8rem 0 0; padding: .6rem .85rem; border: 1px solid var(--et-hairline); border-radius: var(--et-radius); background: color-mix(in srgb, var(--et-accent) 8%, var(--et-surface)); font-size: var(--et-text-small); }
+      .es-scan-resolve[data-tone="bad"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); }
+      .es-scan-add { margin-top: .5rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
     </style>
     <div class="es-box">
       <form class="es-form">
@@ -304,6 +334,18 @@ export function groupBySeries(rows) {
         <button class="es-btn es-submit" type="submit" hidden>Search</button>
         <button class="es-btn es-signin" type="button" hidden>Sign in to search everything</button>
       </form>
+      <div class="es-scan-row" hidden>
+        <button class="es-btn es-scan-btn" type="button">📷 Scan barcode</button>
+        <input class="es-scan-manual" type="text" inputmode="numeric" autocomplete="off" placeholder="…or type an ISBN" aria-label="Type an ISBN">
+        <button class="es-btn es-scan-manual-btn" type="button">Look up</button>
+      </div>
+      <div class="es-camera-stage" hidden>
+        <!-- muted + playsinline are load-bearing on iOS: without them WebKit
+             either blocks autoplay or takes the video fullscreen. -->
+        <video class="es-scan-video" playsinline muted></video>
+        <button class="es-btn es-scan-stop" type="button">Stop camera</button>
+      </div>
+      <p class="es-scan-resolve" hidden></p>
       <p class="es-hint"></p>
       <p class="es-who" hidden></p>
       <p class="es-status" hidden></p>
@@ -326,6 +368,7 @@ export function groupBySeries(rows) {
       return [
         'index-url', 'source', 'auth', 'auth-module', 'min-chars', 'debounce-ms',
         'placeholder', 'placeholder-authed', 'sign-in-label', 'hint', 'universes',
+        'scan', 'scan-module',
       ];
     }
 
@@ -347,10 +390,18 @@ export function groupBySeries(rows) {
       this._debounceTimer = 0;
       this._inflight = null;
 
+      // -- scan (estate-scan.js, dynamically imported on first use) --------
+      this._scanModulePromise = null;
+      this._scanStream = null;
+      this._scanStopLoop = null;
+      this._scanRunning = false;
+
       this._onInput = this._onInput.bind(this);
       this._onKeydown = this._onKeydown.bind(this);
       this._onSubmit = this._onSubmit.bind(this);
       this._onSigninClick = this._onSigninClick.bind(this);
+      this._onScanBtnClick = this._onScanBtnClick.bind(this);
+      this._onScanManualSubmit = this._onScanManualSubmit.bind(this);
     }
 
     // -- config -----------------------------------------------------------
@@ -374,6 +425,8 @@ export function groupBySeries(rows) {
       return Number.isFinite(n) && n >= 0 ? n : DEFAULT_DEBOUNCE_MS;
     }
     get showUniverses() { return this.getAttribute('universes') !== 'false'; }
+    get scanEnabled() { return this.hasAttribute('scan'); }
+    get scanModulePath() { return this.getAttribute('scan-module') || null; }
 
     // -- lifecycle ----------------------------------------------------------
 
@@ -387,6 +440,14 @@ export function groupBySeries(rows) {
       this._whoEl = root.querySelector('.es-who');
       this._statusEl = root.querySelector('.es-status');
       this._resultsEl = root.querySelector('.es-results');
+      this._scanRow = root.querySelector('.es-scan-row');
+      this._scanBtn = root.querySelector('.es-scan-btn');
+      this._scanManualInput = root.querySelector('.es-scan-manual');
+      this._scanManualBtn = root.querySelector('.es-scan-manual-btn');
+      this._cameraStage = root.querySelector('.es-camera-stage');
+      this._scanVideo = root.querySelector('.es-scan-video');
+      this._scanStopBtn = root.querySelector('.es-scan-stop');
+      this._scanResolveEl = root.querySelector('.es-scan-resolve');
 
       this._input.setAttribute('role', 'combobox');
       this._input.setAttribute('aria-autocomplete', 'list');
@@ -404,6 +465,19 @@ export function groupBySeries(rows) {
       this._signinBtn.addEventListener('click', this._onSigninClick);
       this._signinBtn.textContent = this.getAttribute('sign-in-label') || DEFAULT_SIGNIN_LABEL;
 
+      if (this.scanEnabled) {
+        this._scanRow.hidden = false;
+        this._scanBtn.addEventListener('click', this._onScanBtnClick);
+        this._scanStopBtn.addEventListener('click', () => this._stopScan());
+        this._scanManualBtn.addEventListener('click', this._onScanManualSubmit);
+        this._scanManualInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this._onScanManualSubmit();
+          }
+        });
+      }
+
       if (this.authMode === 'authed') {
         this._bootAuthed();
       } else {
@@ -416,6 +490,7 @@ export function groupBySeries(rows) {
       if (this._authBackstop) clearTimeout(this._authBackstop);
       if (this._inflight) this._inflight.abort();
       clearTimeout(this._debounceTimer);
+      this._stopScan();
     }
 
     attributeChangedCallback(name) {
@@ -1053,6 +1128,199 @@ export function groupBySeries(rows) {
       if (r.error) this._setStatus(r.error, r.ownerAction ? 'owner' : 'warn');
       else if (r.cancelled) this._setStatus('');
       // ok / redirecting need nothing: watchAuth re-renders, or the page leaves.
+    }
+
+    // -- scan (📷 barcode, manual ISBN — logic lives in estate-scan.js) ------
+
+    /**
+     * Dynamically imported ONLY on first use (📷 tapped or a manual ISBN
+     * submitted) — same reasoning as the auth adapter above: a site that
+     * embeds `scan` but whose visitor never touches it never pays for the
+     * module, and a site that never sets `scan` at all never even requests
+     * it (the row stays `hidden` and nothing here runs).
+     */
+    async _loadScanModule() {
+      if (!this._scanModulePromise) {
+        const path = this.scanModulePath || new URL('estate-scan.js', import.meta.url).href;
+        this._scanModulePromise = import(/* @vite-ignore */ path).catch((e) => {
+          this._scanModulePromise = null;
+          throw e;
+        });
+      }
+      return this._scanModulePromise;
+    }
+
+    _setScanResolve(text, tone) {
+      this._scanResolveEl.textContent = text || '';
+      this._scanResolveEl.dataset.tone = tone || '';
+      this._scanResolveEl.hidden = !text;
+    }
+
+    async _onScanBtnClick() {
+      if (this._scanRunning) {
+        this._stopScan();
+        return;
+      }
+      this._setStatus('');
+      this._setScanResolve('');
+      this._scanBtn.disabled = true;
+      this._scanBtn.textContent = 'Opening camera…';
+      try {
+        const scan = await this._loadScanModule();
+        if (!scan.cameraPlausible()) {
+          this._setScanResolve(
+            'This browser will not give a camera to this page. Type the ISBN below instead.',
+            'bad',
+          );
+          return;
+        }
+        scan.preloadBarcodeDetector();
+        const stream = await scan.openRearCamera();
+        this._scanStream = stream;
+        this._scanVideo.srcObject = stream;
+        await this._scanVideo.play();
+        this._cameraStage.hidden = false;
+        this._scanRunning = true;
+        this._scanBtn.textContent = 'Stop camera';
+
+        this._scanStopLoop = scan.startBarcodeScanLoop({
+          video: this._scanVideo,
+          onScan: ({ code }) => {
+            this._stopScan();
+            void this._onIsbnResolved(code, scan);
+          },
+          onError: (err) => {
+            this._setScanResolve(err instanceof Error ? err.message : String(err), 'bad');
+          },
+        });
+      } catch (err) {
+        const scan = await this._loadScanModule().catch(() => null);
+        const CameraErrorCtor = scan?.CameraError;
+        let message = err instanceof Error ? err.message : String(err);
+        if (CameraErrorCtor && err instanceof CameraErrorCtor) {
+          message =
+            err.reason === 'denied'
+              ? 'Camera permission was refused. Allow it for this site, then try again — or type the ISBN below.'
+              : err.message;
+        }
+        this._setScanResolve(message, 'bad');
+      } finally {
+        this._scanBtn.disabled = false;
+      }
+    }
+
+    _stopScan() {
+      if (this._scanStopLoop) {
+        this._scanStopLoop();
+        this._scanStopLoop = null;
+      }
+      if (this._scanStream) {
+        this._scanStream.getTracks().forEach((t) => t.stop());
+        this._scanStream = null;
+      }
+      this._scanVideo.srcObject = null;
+      this._cameraStage.hidden = true;
+      this._scanRunning = false;
+      this._scanBtn.textContent = '📷 Scan barcode';
+    }
+
+    async _onScanManualSubmit() {
+      const raw = this._scanManualInput.value.trim();
+      if (!raw) return;
+      this._scanManualInput.value = '';
+      const scan = await this._loadScanModule().catch((e) => {
+        this._setScanResolve(`Could not load the scanner: ${e instanceof Error ? e.message : e}`, 'bad');
+        return null;
+      });
+      if (!scan) return;
+      const digits = raw.replace(/[^0-9Xx]/g, '');
+      if (digits.length !== 10 && digits.length !== 13) {
+        this._setScanResolve('That does not look like an ISBN (10 or 13 digits).', 'bad');
+        return;
+      }
+      await this._onIsbnResolved(digits, scan);
+    }
+
+    /**
+     * Shared tail for both the camera and manual-entry paths: resolve the
+     * ISBN via Open Library, show the "ISBN → Title, Author" line (so a wrong
+     * resolve is visible), feed the title into this component's own search,
+     * and — signed in — offer to queue it in the library's own Add screen
+     * (estate-scan.js's addToCatalog(), which reuses the library app's real,
+     * proven barcode-intake endpoint rather than guessing at a catalog write).
+     */
+    async _onIsbnResolved(isbn, scan) {
+      this._setScanResolve(`Looking up ${isbn}…`);
+      const resolved = await scan.resolveIsbn(isbn).catch(() => null);
+      if (!resolved) {
+        this._setScanResolve(`${isbn} — Not identified. Try the title below, or check the number.`, 'bad');
+        return;
+      }
+      const byline = resolved.author ? `${resolved.title}, ${resolved.author}` : resolved.title;
+      this._setScanResolve(`${isbn} → ${byline}`);
+      this._input.value = resolved.title;
+      clearTimeout(this._debounceTimer);
+      void this._runSearch(resolved.title);
+      this._renderAddAffordance({ isbn13: isbn, title: resolved.title, author: resolved.author }, scan);
+    }
+
+    /**
+     * The honest "Add to Books" affordance (owner: "if I scan a book and end
+     * up buying it I want to be able to add it from the main page"): shows
+     * exactly what will be sent BEFORE the click, and only to a signed-in
+     * member (adding costs a write on the library's own catalog — the search
+     * box's public/authless path never reaches this).
+     */
+    _renderAddAffordance(candidate, scan) {
+      const old = this._scanResolveEl.nextElementSibling;
+      if (old && old.classList?.contains('es-scan-add')) old.remove();
+      if (this.authMode !== 'authed' || !this._currentUser) return;
+
+      const row = document.createElement('div');
+      row.className = 'es-scan-add';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'es-btn';
+      btn.textContent = `Add “${candidate.title}” to Books →`;
+      btn.title = `Sends ISBN ${candidate.isbn13} to the library's own add queue for review.`;
+      btn.addEventListener('click', () => void this._onAddToCatalog(candidate, scan, btn, row));
+      row.appendChild(btn);
+      this._scanResolveEl.insertAdjacentElement('afterend', row);
+    }
+
+    async _onAddToCatalog(candidate, scan, btn, row) {
+      btn.disabled = true;
+      btn.textContent = 'Adding…';
+      try {
+        const idToken = await this._idToken();
+        if (!idToken) {
+          this._setStatus('Your sign-in has lapsed — sign in again.', 'warn');
+          return;
+        }
+        const result = await scan.addToCatalog(candidate.isbn13, { idToken });
+        const line = result?.line;
+        const msg = document.createElement('span');
+        msg.className = 'muted small';
+        if (result?.duplicate || line?.state === 'owned') {
+          msg.textContent = 'Already on the shelf — no new entry created.';
+        } else {
+          const jobId = result?.job?.id;
+          const a = document.createElement('a');
+          a.href = jobId
+            ? `https://library.heygabi.ai/add?job=${encodeURIComponent(jobId)}`
+            : 'https://library.heygabi.ai/add';
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = 'Queued — finish it in the library →';
+          msg.appendChild(a);
+        }
+        row.replaceChildren(msg);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = `Add “${candidate.title}” to Books →`;
+        const detail = err instanceof Error ? err.message : String(err);
+        this._setScanResolve(`Could not add it: ${detail}`, 'bad');
+      }
     }
   }
 
