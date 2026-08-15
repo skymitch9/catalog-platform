@@ -139,7 +139,21 @@ test('tokenless GET /api/universe/:name → 401', async () => {
 test('tokenless GET /api/health → 200, open by design', async () => {
   const res = await app.request('/api/health', {}, baseEnv(new FakeDB()));
   assert.equal(res.status, 200);
-  assert.equal((await res.json() as any).ok, true);
+  const body = (await res.json()) as any;
+  assert.equal(body.ok, true);
+});
+
+// Envelope normalization (estate item 5, 2026-08-14): the new wrapper fields
+// arrive AND the pre-existing `sources` field stays put at the top level —
+// additive, so status.js keeps working unchanged either way.
+test('GET /api/health answers the estate envelope with `sources` kept at the top level', async () => {
+  const res = await app.request('/api/health', {}, baseEnv(new FakeDB()));
+  const body = (await res.json()) as any;
+  assert.equal(body.service, 'catalog-index');
+  assert.equal(typeof body.time, 'string');
+  assert.ok(!Number.isNaN(Date.parse(body.time)));
+  assert.deepEqual(body.detail, { ok: true, sources: body.sources });
+  assert.deepEqual(body.sources, { game: { rows: 0, pushed_at: null }, library: { rows: 0, pushed_at: null }, audiobook: { rows: 0, pushed_at: null } });
 });
 
 test('PUT /api/push/:source keeps its OWN bearer auth — wrong token answers push.ts 401, not the blanket', async () => {

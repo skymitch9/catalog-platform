@@ -341,8 +341,23 @@ estateRoutes.post('/estate/users/:id/visibility', requireApprover(), async (c) =
 
 // ---------------------------------------------------------------------------
 // GET /health — open by design so a deploy can be curled. Counts, no emails.
+//
+// ⚠️ Envelope normalization (estate item 5, 2026-08-14): also answers
+// `{ ok, service, time, detail }`, `detail` holding this route's pre-existing
+// shape verbatim. `users` stays at the top level too — additive only,
+// nothing removed this pass; see docs/info/health-envelope.md.
 // ---------------------------------------------------------------------------
 estateRoutes.get('/health', async (c) => {
   const counts = await statusCounts(c.env.DB);
-  return c.json({ ok: true, users: counts });
+  // The pre-envelope shape, unchanged — nested under `detail` AND kept at
+  // the top level (additive transition, see comment above). Spread FIRST so
+  // the explicit envelope fields after it are an intentional override, not
+  // a silently-shadowed duplicate (tsc flags the reverse order, TS2783).
+  const legacy = { ok: true, users: counts };
+  return c.json({
+    ...legacy,
+    service: 'estate-auth',
+    time: new Date().toISOString(),
+    detail: legacy,
+  });
 });

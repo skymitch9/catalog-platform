@@ -2,6 +2,12 @@
  * GET /api/health — open by design (conformance §8.2 #3's named exception,
  * same stance as the auth Worker's health route). Counts and timestamps only;
  * no titles, no emails — nothing here is worth gating.
+ *
+ * ⚠️ Envelope normalization (estate item 5, 2026-08-14): every estate health
+ * endpoint now ALSO answers `{ ok, service, time, detail }`, `detail` holding
+ * this route's own pre-existing shape verbatim. `sources` stays at the top
+ * level too — additive only, nothing removed this pass; see
+ * docs/info/health-envelope.md for the transition plan and its removal step.
  */
 
 import { Hono } from 'hono';
@@ -26,5 +32,16 @@ healthRoutes.get('/', async (c) => {
     SOURCES.map((s) => [s, { rows: bySource.get(s)?.rows ?? 0, pushed_at: bySource.get(s)?.pushed_at ?? null }]),
   );
 
-  return c.json({ ok: true, sources });
+  // The pre-envelope shape, unchanged — nested under `detail` AND kept at the
+  // top level (additive transition, see file header). Spread FIRST so the
+  // explicit envelope fields after it are an intentional override, not a
+  // silently-shadowed duplicate (tsc flags the reverse order, TS2783).
+  const legacy = { ok: true, sources };
+
+  return c.json({
+    ...legacy,
+    service: 'catalog-index',
+    time: new Date().toISOString(),
+    detail: legacy,
+  });
 });

@@ -24,6 +24,15 @@
  * response arrives, but the response is opaque — no status, no body. That
  * is enough to tell "answered" from "did not answer," which is what the
  * Sites section claims and nothing more.
+ *
+ * ⚠️ Envelope normalization (estate item 5, 2026-08-14): all four
+ * /api/health endpoints now answer `{ ok, service, version?, time, detail }`
+ * with `detail` holding that worker's pre-existing fields verbatim, AND keep
+ * every pre-existing top-level field too (additive transition — see each
+ * repo's docs/info/health-envelope.md). `detailOf()` below prefers the new
+ * `detail` nesting and falls back to the flat body, so this page keeps
+ * working unchanged against a worker that has not redeployed yet, and
+ * against a future deploy that drops the top-level duplicates.
  */
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -100,6 +109,15 @@ function formatAge(ms) {
   const d = Math.floor(h / 24);
   const remH = h % 24;
   return remH ? `${d}d ${remH}h ago` : `${d}d ago`;
+}
+
+/**
+ * Envelope-aware accessor (see file header) — prefers `body.detail` (the new
+ * envelope's unchanged nested copy of a worker's own fields), falls back to
+ * the flat body itself for a worker still on the pre-envelope shape.
+ */
+function detailOf(body) {
+  return body && body.detail ? body.detail : body;
 }
 
 /** GET JSON with a timeout. Never throws — the caller reads `.ok`. */
@@ -248,13 +266,14 @@ function buildSiteSection() {
 // ---------------------------------------------------------------------------
 
 function renderIndexSection(fetchResult, now) {
-  if (!fetchResult.reached || !fetchResult.httpOk || !fetchResult.body || !fetchResult.body.sources) {
+  const detail = fetchResult.body ? detailOf(fetchResult.body) : null;
+  if (!fetchResult.reached || !fetchResult.httpOk || !detail || !detail.sources) {
     for (const key of INDEX_SOURCE_ORDER) {
       updateRow(`idx-${key}`, 'danger', `index.heygabi.ai did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
     }
     return;
   }
-  const sources = fetchResult.body.sources;
+  const sources = detail.sources;
   for (const key of INDEX_SOURCE_ORDER) {
     const cfg = INDEX_THRESHOLDS[key];
     const src = sources[key];
@@ -277,7 +296,7 @@ function renderIndexWorkerRow(fetchResult, now) {
     updateRow('wk-index', 'danger', `Did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
     return;
   }
-  const sources = fetchResult.body.sources || {};
+  const sources = detailOf(fetchResult.body).sources || {};
   const total = Object.values(sources).reduce((sum, s) => sum + (s && s.rows ? s.rows : 0), 0);
   const ok = fetchResult.body.ok !== false;
   updateRow('wk-index', ok ? 'ok' : 'danger', `Reachable · ${total.toLocaleString()} rows across 3 sources.`, null, now);
@@ -292,8 +311,12 @@ function renderWorkerHealthRow(id, name, fetchResult, now, detailFn) {
     updateRow(id, 'danger', `${name} answered HTTP ${fetchResult.status} with no readable body.`, null, now);
     return;
   }
+  // `ok` is deliberately read off the raw body, not detailOf(): every worker
+  // keeps `ok` at the top level in both the envelope and the legacy shape,
+  // and the envelope's `ok` is the one meant to win once fallback fields
+  // are eventually dropped.
   const ok = fetchResult.body.ok === true;
-  updateRow(id, ok ? 'ok' : 'danger', detailFn(fetchResult.body), null, now);
+  updateRow(id, ok ? 'ok' : 'danger', detailFn(detailOf(fetchResult.body)), null, now);
 }
 
 function renderSiteRow(id, name, reached, now) {
