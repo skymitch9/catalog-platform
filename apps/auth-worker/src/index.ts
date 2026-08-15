@@ -60,6 +60,11 @@ app.use('/api/estate/todo', adminCors());
 // preflight is answered by the middleware, never by the auth check — and
 // confined to exactly this path so the admin API stays apex-only.
 app.use('/api/estate/me', meCors());
+// /hello (browser self-enrollment, 2026-08-15 — the audiobook-signup pipe)
+// shares /me's origins EXACTLY: the same static sites allowed to ask "who am
+// I?" are the ones whose sign-ins must reach the directory. Same middleware,
+// so the two lists can never drift apart.
+app.use('/api/estate/hello', meCors());
 
 // CORS on /api/health alone — apex only, GET-only. The route itself
 // (estate.ts) is already open by design; this only lets a BROWSER on
@@ -101,7 +106,8 @@ function meCors() {
       const allowed = parseAdminOrigins(c.env.ME_ORIGINS ?? c.env.ADMIN_ORIGINS);
       return allowed.includes(origin) ? origin : null;
     },
-    allowMethods: ['GET', 'OPTIONS'],
+    // POST is /hello's (self-enrollment); /me itself only ever answers GET.
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
   });

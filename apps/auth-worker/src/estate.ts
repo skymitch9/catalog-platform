@@ -186,6 +186,56 @@ estateRoutes.post('/estate/seen', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /estate/hello — BROWSER self-enrollment (added 2026-08-15; incident:
+// "someone just signed up on the audiobook site and it didn't pipe into the
+// main GABI sso page"). The audiobook site is STATIC — it has no server to
+// hold an app token, so unlike library/games (whose Workers call /seen on
+// their own sign-in path) its sign-ins never reached the directory; the
+// 2026-08-14 migration was a one-time backfill wearing the pipe's clothes,
+// and the first post-migration signup (backfilled by hand, origin
+// 'seen:audiobook-backfill') proved it.
+//
+// This is the ongoing pipe. The caller proves who they are with their OWN
+// Firebase ID token — the same canonical verifier as /me — and the write is
+// seenUpsert, the §4.4 single statement that can NEVER touch status. It can
+// enrol only the verified caller, never an arbitrary email, so the
+// probe-by-email risk that makes /seen app-token-gated does not exist here:
+// you cannot learn anything about anyone but yourself, and about yourself
+// /me already answers. Returns the same MeAnswer as /me so a browser needs
+// one call, not two. The `app` stamp comes from the request Origin (an
+// allow-listed CORS origin, so it is one of ours), giving rows an honest
+// 'seen:web:<host>' provenance.
+// ---------------------------------------------------------------------------
+estateRoutes.post('/estate/hello', async (c) => {
+  let identity;
+  try {
+    identity = await resolveIdentity(c.req.raw, c.env);
+  } catch (err) {
+    return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
+  }
+  if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+
+  const email = identity.email.trim().toLowerCase();
+  const originHost = (() => {
+    try {
+      return new URL(c.req.header('origin') ?? '').hostname;
+    } catch {
+      return 'unknown';
+    }
+  })();
+
+  const row = await seenUpsert(c.env.DB, {
+    email,
+    firebaseUid: identity.uid ?? null,
+    displayName: identity.name ?? null,
+    app: `web:${originHost}`,
+  });
+
+  const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
+  return c.json(meAnswer(row, owners.includes(email)));
+});
+
+// ---------------------------------------------------------------------------
 // GET /estate/me — a BROWSER endpoint: the caller asks about THEMSELF with
 // their own Firebase ID token (the canonical verifier — iss/aud pinned to the
 // shared project). Unlike /seen it enrols nobody, and unlike the admin API it
