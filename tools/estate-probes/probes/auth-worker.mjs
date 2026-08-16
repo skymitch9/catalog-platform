@@ -113,6 +113,43 @@ export async function probeAuthWorker() {
     check(AREA, 'A12', 'OPTIONS', usersUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
   }
 
+  // --- The role ladder + capability map (0005, role-ladder.ts / site-
+  // roles.ts) — GET /api/estate/site-roles/tree. Same requireApprover()
+  // gate as every other admin surface, so the same tokenless-401 and
+  // apex-only-CORS shape applies; new-endpoint rule (this suite's own
+  // README): every new route gets a probe here, not just the auth Worker's
+  // own live-probes.ts.
+  const treeUrl = `${AUTH_ORIGIN}/api/estate/site-roles/tree`;
+  expectUnauthenticated('A20', 'GET', '/api/estate/site-roles/tree', await get(treeUrl));
+
+  const treeApex = await options(treeUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'Authorization' },
+  });
+  if (!treeApex.ok) {
+    check(AREA, 'A21', 'OPTIONS', treeUrl, `access-control-allow-origin === ${APEX_ORIGIN}`, false, `request failed: ${treeApex.error}`);
+  } else {
+    const acao = header(treeApex, 'access-control-allow-origin');
+    check(
+      AREA,
+      'A21',
+      'OPTIONS',
+      treeUrl,
+      `access-control-allow-origin === ${APEX_ORIGIN} (the /site-roles/* wildcard CORS mount covers /tree)`,
+      acao === APEX_ORIGIN,
+      `ACAO=${acao}`,
+    );
+  }
+
+  const treeEvil = await options(treeUrl, {
+    headers: { Origin: FOREIGN_ORIGIN, 'Access-Control-Request-Method': 'GET' },
+  });
+  if (!treeEvil.ok) {
+    check(AREA, 'A22', 'OPTIONS', treeUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, false, `request failed: ${treeEvil.error}`);
+  } else {
+    const acao = header(treeEvil, 'access-control-allow-origin');
+    check(AREA, 'A22', 'OPTIONS', treeUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
+  }
+
   // --- Phase 1 (sso-design.md §4.1): the /__/auth/* proxy is LIVE and is a
   // TRUE proxy — Firebase's own content, never this Worker's { error:
   // 'not_found' } 404 shape (which would mean the mount was shadowed or
