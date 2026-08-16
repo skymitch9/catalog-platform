@@ -402,6 +402,39 @@ nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning
 
 ---
 
+## ✅ Covers migration — FINISHED, verified 2026-08-16
+
+**All three steps are done.** Verified rather than assumed, because the owner
+asked for this to be picked up and the honest answer turned out to be "it
+already happened":
+
+| Step | Evidence |
+|---|---|
+| 1. Games index push lands with new cover URLs | `board-game-catalog` D1: **507 items on `gamecovers.heygabi.ai`, 330 with no cover, ZERO on any other host.** The index pushed **837 rows at 08:19:56Z** on 2026-08-16 — 507 + 330 = 837 exactly, so the push carried the migrated set |
+| 2. Deploy heygabi-home (CSP prune) | Live CSP `img-src` names `gamecovers.heygabi.ai` and no old hosts. Shipped repeatedly on 2026-08-16 |
+| 3. Apex search shows a game thumbnail | ⚠️ **NOT verified by this session** — see below |
+
+⚠️ **The ordering hazard did not bite, and it was close.** The note warned that
+deploying step 2 before step 1 blanks apex-search game thumbnails, because the
+pruned CSP excludes the old hosts while the index still serves them. heygabi-home
+was deployed eight times on 2026-08-16 for unrelated work — but the games push
+landed at **08:19Z**, hours before the first of those deploys. Correct order by
+luck, not by design. If a future migration carries the same warning, check the
+push timestamp BEFORE deploying rather than after.
+
+⚠️ **Step 3 genuinely cannot be checked signed out** and was not: anonymous
+search returns **zero game rows** by design (the visibility narrowing rule — an
+anonymous caller sees the audiobook source only). So "apex search a game,
+thumbnail loads" is an OWNER check, thirty seconds while signed in. Everything
+upstream of it is measured.
+
+The one deliberate refusal from the migration stands: a 7.3MB Shopify file over
+the size ceiling, left on its original URL on purpose — it is among the 330
+without a rehosted cover, not a failure.
+
+<details>
+<summary>The original ordered instructions, kept for the record</summary>
+
 ## ⚠️ Covers migration — ONE ordered finish step (2026-08-15)
 
 Migration itself is DONE (1,123/1,124 rehosted to gamecovers.heygabi.ai; the
@@ -421,6 +454,8 @@ the games repo. Remaining, IN THIS ORDER:
 3. Verify: apex search a game, thumbnail loads from gamecovers.heygabi.ai.
 Nothing is user-visibly broken meanwhile — old hotlinks still serve under
 the still-deployed old CSP.
+
+</details>
 
 ---
 
