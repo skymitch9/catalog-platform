@@ -347,6 +347,20 @@ dev lane first per that repo's two-lane rule.
 
 ## 9. Owner decision points
 
+> ✅ **ALL APPROVED BY THE OWNER 2026-08-16** ("I'm plenty awake, run the
+> project as a whole"), after being told Q2's tradeoff in plain terms — a
+> deliberately zero-role signing key that can nonetheless impersonate any
+> estate user. Every recommendation below is therefore the DECISION: Q1 yes
+> (the `estate-auth-design.md` §10 no-central-session row is overturned; §6
+> governs), Q2 yes **with the rotation runbook written into
+> `docs/access/estate-auth.md` at build time — that runbook is a build
+> deliverable, not a follow-up**, Q3 yes, Q4 local + cookie-clear, Q5 yes
+> with the legacy-mirror guard, Q6 30-day rolling. Build proceeds phases
+> 1→4 per §8, owner console steps 🔴 at each gate.
+> ⚠️ §8's ordering hazard stands regardless of approval: the Phase 1 proxy
+> and its console steps must be LIVE before any surface flips `authDomain`,
+> or that surface's sign-in breaks.
+
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | **Approve overturning `estate-auth-design.md` §10's "no central session/cookie" row** (§6). This is the go/no-go for Phases 2–3 | **Yes** — the cookie is convenience-only; enforcement is untouched. Declining = ship Phase 1 only, live with 4 taps/device (§4.4) |
