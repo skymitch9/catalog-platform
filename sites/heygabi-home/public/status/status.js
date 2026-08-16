@@ -745,7 +745,11 @@ const BACKUP_AMBER_MS = 14 * 24 * 3600_000;
 const BACKUP_RED_MS = 45 * 24 * 3600_000;
 const BACKUP_MANUAL_NOTE =
   'Backups run on manual dispatch only (no cron) — a long age can mean nobody has run it recently, ' +
-  'not that anything is broken. Run it from the "Backup" row in Run levers below if it has been a while.';
+  // "above", not "below": the lever list lives inside Operations, which
+  // renders BEFORE the Backups section — the original wording pointed the
+  // wrong way even before the 2026-08-16 move up under Pipeline steps.
+  'not that anything is broken. Run it from the "Backup" row in Run levers ' +
+  '(Operations, above) if it has been a while.';
 
 function buildBackupsSection() {
   const ul = document.getElementById('backups-rows');

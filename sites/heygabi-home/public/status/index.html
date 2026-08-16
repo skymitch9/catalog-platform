@@ -501,6 +501,38 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       <ul id="pipeline-steps" class="step-list"></ul>
       <p id="pipeline-steps-msg" class="ops-run-msg"></p>
 
+      <!-- Run levers (owner ask 2026-08-16: "we have a section of what looks
+           like GitHub actions, can we label this and put it near pipeline
+           steps"). This list shipped 2026-08-15 with NO heading of its own,
+           at the very bottom of Operations — six bare links reading as an
+           unexplained block nobody could identify. Two things fixed here and
+           they are separate: it now has an h3 saying what it IS, and it now
+           sits DIRECTLY BELOW "Pipeline steps" so the two run-control lists
+           are adjacent (the Shelf server block moved below it — that block
+           is the least usable of the three today, since the physical server
+           does not exist yet).
+
+           ⚠️ The distinction the heading has to carry: the steps ABOVE run
+           on the home machine through this page and take the pipeline's
+           single-flight lock; the levers BELOW run on GitHub's infrastructure
+           and this page cannot trigger, read, or even see them — it holds no
+           GitHub token client-side and deliberately never will (footer note).
+           They are links out, not buttons. Naming them "Run levers" alone
+           did not convey that, hence "— GitHub Actions" in the heading, which
+           is the phrase an owner actually recognises from the tab they land
+           on. Copy elsewhere refers to this list by the name "Run levers"
+           (status.js's backups-row message) — keep that phrase in the
+           heading or that reference dangles. -->
+      <h3 class="step-list-h">Run levers — GitHub Actions</h3>
+      <p class="section-note step-section-note">
+        Everything that runs somewhere <em>else</em>. Each row opens its real
+        workflow on GitHub in a new tab, where GitHub's own sign-in gates it —
+        this page holds no GitHub credential and cannot start, stop, or read
+        these runs. The three <code>Deploy</code> rows land on one shared
+        workflow; pick the target there.
+      </p>
+      <ul id="lever-rows" class="lever-list"></ul>
+
       <!-- Force full upload to the shelf server (owner ask 2026-08-16: "add
            a button to force a full upload to the server that we can run to
            make sure we can move google drive to server without the full
@@ -522,8 +554,6 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
         <a href="/runbooks/shelf/">the shelf runbook</a> for status.
       </p>
       <ul id="shelf-upload-rows" class="rows"></ul>
-
-      <ul id="lever-rows" class="lever-list"></ul>
     </div>
   </section>
 
