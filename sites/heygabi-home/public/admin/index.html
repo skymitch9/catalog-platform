@@ -188,6 +188,7 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   cursor: pointer;
 }
 .cat-vis input { accent-color: var(--et-accent); width: 1rem; height: 1rem; margin: 0; }
+.cat-role { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .cat-role select {
   font: inherit;
   color: var(--et-fg);
@@ -201,6 +202,39 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 .cat-role select:disabled { opacity: .5; }
 .cat-note { color: var(--et-muted); }
 .cat-warn { color: var(--et-warn); }
+
+/* The role ladder / capability map (admin.js: renderRoleTree) — the
+   owner's "role tree map" ask. Same <details> language as .adv, its own
+   id so it can sit above the controls bar, always visible once loaded
+   regardless of whether the roster itself did (independent fetch). */
+#role-ladder {
+  margin: 0 0 var(--et-space-2);
+  padding: .6em .9em;
+  border: var(--et-border-w) solid var(--et-panel-border);
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+}
+#role-ladder .adv-summary { padding: .2em .1em; }
+.role-tree-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: .6rem;
+  font-size: var(--et-text-small);
+}
+.role-tree-table th, .role-tree-table td {
+  text-align: left;
+  padding: .4em .6em;
+  border-bottom: 1px solid var(--et-hairline);
+  vertical-align: top;
+}
+.role-tree-table th {
+  color: var(--et-muted);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.role-tree-note { margin: .6rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
 
 #gaps {
   margin: var(--et-space-2) 0 0;
@@ -389,9 +423,11 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     fresh queue entry. Per catalog, <em>visible</em> is which shelves their
     search sees (the estate's fact); the role dropdowns are each app's own —
     the library's <code>reader</code>, the games shelf's <code>viewer</code>
-    and the audiobook site's <code>moderator</code>/<code>admin</code> are
-    different words on purpose, and changing one changes it in that app
-    itself.
+    and the audiobook site's own cumulative ladder (<code>reader</code> &lt;
+    <code>contributor</code> &lt; <code>moderator</code> &lt; <code>admin</code>)
+    are different words on purpose, and changing one changes it in that app
+    itself. Each dropdown only offers roles strictly beneath your own — see
+    "Audiobook role ladder" below for the full map.
   </p>
 
   <div class="bar">
@@ -404,6 +440,18 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   </div>
 
   <p id="status" hidden></p>
+
+  <!-- The audiobook role ladder + capability map (owner ask: "see a role
+       tree map") — admin.js: renderRoleTree(), fetched from
+       GET /api/estate/site-roles/tree. Collapsed by default like Advanced
+       filters; independent of the roster load, so it can show even when
+       the roster itself is degraded (no Firestore service account yet). -->
+  <details id="role-ladder" class="adv" hidden>
+    <summary class="adv-summary">
+      <span class="ctl-label">Audiobook role ladder</span>
+    </summary>
+    <div id="role-ladder-body"></div>
+  </details>
 
   <!-- CONTROLS: search first, catalog chips + count/reset always visible,
        everything else behind "Advanced filters" (admin.js). Client-side

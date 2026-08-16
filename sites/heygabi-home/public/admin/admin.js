@@ -19,11 +19,23 @@
  *     `owner|manager|rater|viewer|pending`. ⚠️ `reader` ≠ `viewer` — the
  *     dropdowns list what each endpoint answers and never translate. The
  *     AUDIOBOOK catalog (world-readable site) grew rules-enforced site
- *     roles 2026-08-14 (three-tier model: `admin` = everything incl.
- *     site-wide review removal; `moderator` = the operational club subset).
- *     They live in ITS system — Firestore site_roles docs — federated here
- *     through the auth Worker's /api/estate/site-roles (the Worker holds
- *     the service account; browsers can neither list nor write those docs).
+ *     roles 2026-08-14 and was extended 2026-08-16 to the full estate role
+ *     LADDER (ROLES.md §1, audiobook_catalog repo — read-only reference):
+ *     `viewer < reader < contributor < moderator < admin < owner`,
+ *     cumulative — each role includes everything beneath it. `viewer` is
+ *     never stored (no row = viewer) and `owner` is DB-only (no UI/API path
+ *     ever touches it — this page cannot grant, revoke, or even display an
+ *     editable control for it). They live in ITS system — Firestore
+ *     site_roles docs — federated here through the auth Worker's
+ *     /api/estate/site-roles (the Worker holds the service account;
+ *     browsers can neither list nor write those docs). The Worker enforces
+ *     "grant only strictly beneath your own role" server-side; this page
+ *     mirrors that by only offering roles GET /site-roles's `grantable`
+ *     array names — a row the caller may not touch renders read-only
+ *     rather than a dropdown that would just be refused on submit. The full
+ *     ladder + what each role does is fetched from
+ *     GET /api/estate/site-roles/tree and rendered near the top of the page
+ *     (the owner's "role tree map" ask) rather than hardcoded here.
  *
  * The page also offers ADD MEMBER BY EMAIL (POST /api/estate/users, origin
  * 'manual') so pre-seeding a person before their first sign-in never needs
@@ -38,6 +50,8 @@
  *     POST /api/estate/users/:id/status    { status: 'approved' | 'revoked' }
  *     POST /api/estate/users/:id/approver  { is_approver: boolean }
  *     POST /api/estate/users/:id/visibility { visibility: ['audiobook', ...] }
+ *     GET  /api/estate/site-roles/tree     → { ladder, grantFloor, capabilities }
+ *                                             — the role ladder + capability map
  *   library.heygabi.ai + boardgames.heygabi.ai (same CORS lock, each app's
  *   own owner-only `manageUsers` gate — this page holds no credential; the
  *   caller's own bearer must be an owner THERE to change anything there):
@@ -102,12 +116,26 @@ let currentUser = null;
 let appDirs = { library: null, games: null };
 
 /**
- * Audiobook site-roles state, same shape contract as appDirs entries:
- *   null | { ok: true, roles, byEmail } | { ok: false, why }
+ * Audiobook site-roles state, same shape contract as appDirs entries, plus
+ * the ladder-specific fields the auth Worker now includes:
+ *   null | { ok: true, roles, byEmail, actorRole, grantable } | { ok: false, why }
  * byEmail maps lowercased email → { role, uid, ... } so the filter logic
- * can treat all three role columns uniformly (roleDirFor).
+ * can treat all three role columns uniformly (roleDirFor). `actorRole` is
+ * the SIGNED-IN caller's own ladder role on the audiobook site (computed
+ * server-side: OWNER_EMAILS always wins); `grantable` is exactly the
+ * SITE_ROLES entries canGrant() currently allows this caller to set —
+ * audiobookRoleCell renders a dropdown only for rows it covers.
  */
 let siteRolesDir = null;
+
+/**
+ * The role ladder + capability map (owner ask: "see a role tree map"),
+ * fetched once per load from GET /api/estate/site-roles/tree — static
+ * data, so it degrades independently of siteRolesDir (it works even when
+ * the Firestore service account isn't configured there).
+ *   null | { ok: true, ladder, grantFloor, capabilities } | { ok: false, why }
+ */
+let roleTreeDir = null;
 
 function roleDirFor(key) {
   return key === 'audiobook' ? siteRolesDir : appDirs[key];
@@ -281,7 +309,45 @@ async function fetchSiteRoles() {
   for (const h of data.holders ?? []) {
     if (h.email) byEmail.set(String(h.email).toLowerCase(), h);
   }
-  return { ok: true, roles: Array.isArray(data.roles) ? data.roles : [], byEmail };
+  return {
+    ok: true,
+    roles: Array.isArray(data.roles) ? data.roles : [],
+    byEmail,
+    actorRole: typeof data.actorRole === 'string' ? data.actorRole : 'viewer',
+    grantable: Array.isArray(data.grantable) ? data.grantable : [],
+  };
+}
+
+/**
+ * The role ladder + capability map. Independent of fetchSiteRoles() on
+ * purpose — the tree endpoint needs no Firestore service account, so it
+ * can succeed (and the ladder can render) even when the roster cell above
+ * is showing "service account not configured".
+ */
+async function fetchRoleTree() {
+  const token = await idToken();
+  if (!token) return { ok: false, why: 'sign-in lapsed' };
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/site-roles/tree`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return { ok: false, why: 'unreachable' };
+  }
+  if (res.status === 401) return { ok: false, why: 'token refused' };
+  if (res.status === 403) return { ok: false, why: 'needs an approver account' };
+  if (!res.ok) return { ok: false, why: `error ${res.status}` };
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return { ok: false, why: 'unreadable answer' };
+  }
+  if (!Array.isArray(data.capabilities) || !Array.isArray(data.ladder)) {
+    return { ok: false, why: 'unrecognized shape' };
+  }
+  return { ok: true, ladder: data.ladder, grantFloor: data.grantFloor, capabilities: data.capabilities };
 }
 
 /** POST one grant/revoke. role null = revoke. True on success; failures explain themselves. */
@@ -327,14 +393,17 @@ async function createMember(email) {
 
 async function loadDirectory() {
   setStatus('Loading…');
-  const [estate, library, games, sroles] = await Promise.all([
+  const [estate, library, games, sroles, rtree] = await Promise.all([
     api('/api/estate/users'),
     fetchAppDirectory(APPS[0]),
     fetchAppDirectory(APPS[1]),
     fetchSiteRoles(),
+    fetchRoleTree(),
   ]);
   appDirs = { library, games };
   siteRolesDir = sroles;
+  roleTreeDir = rtree;
+  renderRoleTree();
   if (!estate) {
     // api() already said why. The app lists are useless without the spine.
     usersEl.innerHTML = '';
@@ -805,17 +874,30 @@ function appRoleCell(app, estateUser) {
 }
 
 /**
- * The audiobook role cell: none/moderator/admin dropdown wired to the auth
- * Worker's site-roles federation, or the honest reason there isn't one.
- * 'none' is a real state (most members hold no site role), so the dropdown
- * always renders — unlike the app cells there is no "no account yet" case:
- * revoking = picking none, granting = picking a role. The Worker resolves
- * the uid from the email at write time; someone who has never signed in to
- * the audiobook site with Google gets a 404 explained in the status line.
+ * The audiobook role cell: a none/reader/contributor/moderator/admin
+ * dropdown wired to the auth Worker's site-roles LADDER federation, or the
+ * honest reason there isn't one. 'none' is a real state (most members hold
+ * no site role — i.e. viewer, never stored), so the dropdown always
+ * renders when it renders at all — unlike the app cells there is no "no
+ * account yet" case: revoking = picking none, granting = picking a role.
+ *
+ * ⚠️ Escalation is enforced SERVER-SIDE (site-roles.ts's canGrant, mirrored
+ * from role-ladder.ts) — this cell mirrors that rather than re-deriving
+ * it: only `dir.grantable` roles are ever offered, and a row whose CURRENT
+ * role the caller may not touch (it outranks their own grant power, or is
+ * 'owner' — DB-only, no UI path, ever) renders READ-ONLY rather than a
+ * control that would just be refused on submit.
+ *
+ * Role changes are DESTRUCTIVE (they change what a member may do) — the
+ * owner explicitly asked for confirmation on role changes, so this reuses
+ * the two-tap confirmBtn idiom instead of applying on a bare <select>
+ * change: picking a new value only STAGES it; the confirm button must be
+ * tapped twice before postSiteRole() actually runs.
  */
 function audiobookRoleCell(estateUser) {
   const dir = siteRolesDir;
   const cell = document.createElement('span');
+  cell.className = 'cat-role';
 
   if (!dir || !dir.ok) {
     cell.className = 'cat-warn';
@@ -825,18 +907,45 @@ function audiobookRoleCell(estateUser) {
 
   const emailKey = estateUser.email.toLowerCase();
   const holder = dir.byEmail.get(emailKey);
+  const currentRole = holder?.role ?? 'none';
+  const grantable = Array.isArray(dir.grantable) ? dir.grantable : [];
+  const canTouchCurrent = currentRole === 'none' || grantable.includes(currentRole);
+
+  if (!canTouchCurrent) {
+    // The current holder outranks what this caller may grant/revoke (e.g.
+    // an admin viewed by a moderator, or 'owner' — DB-only for everyone).
+    const note = document.createElement('span');
+    note.className = 'cat-note';
+    note.textContent =
+      currentRole === 'owner' ? 'owner (DB-only — no UI path, ever)' : `${currentRole} (outranks your grant power)`;
+    cell.appendChild(note);
+    return cell;
+  }
+
+  if (grantable.length === 0) {
+    // Nothing to grant AND nothing held — no control worth showing.
+    const note = document.createElement('span');
+    note.className = 'cat-note';
+    note.textContent = 'none — you hold no grant power on this ladder';
+    cell.appendChild(note);
+    return cell;
+  }
+
   const select = document.createElement('select');
   select.setAttribute('aria-label', `audiobook site role for ${estateUser.email}`);
-  for (const role of ['none', ...dir.roles]) {
+  for (const role of ['none', ...grantable]) {
     const opt = document.createElement('option');
     opt.value = role;
     opt.textContent = role;
-    if ((holder?.role ?? 'none') === role) opt.selected = true;
+    if (currentRole === role) opt.selected = true;
     select.appendChild(opt);
   }
-  select.addEventListener('change', async () => {
-    select.disabled = true;
+  select.value = currentRole;
+
+  const applyBtn = confirmBtn('Set role', 'quiet', async () => {
     const role = select.value === 'none' ? null : select.value;
+    if (role === (holder?.role ?? null)) return; // no-op — nothing staged
+    select.disabled = true;
     const ok = await postSiteRole(emailKey, role);
     if (ok) {
       // Keep the map truthful without a refetch (the app-cell idiom).
@@ -847,8 +956,8 @@ function audiobookRoleCell(estateUser) {
     }
     select.disabled = false;
   });
-  cell.className = 'cat-role';
-  cell.appendChild(select);
+
+  cell.append(select, applyBtn);
   return cell;
 }
 
@@ -978,6 +1087,74 @@ function userCard(u) {
   return li;
 }
 
+/**
+ * The role tree / capability map (owner ask: "see a role tree map") — a
+ * small table of the whole audiobook ladder, rendered from
+ * GET /api/estate/site-roles/tree regardless of whether the roster itself
+ * loaded (independent fetch, independent failure mode; see fetchRoleTree).
+ */
+function renderRoleTree() {
+  const details = document.getElementById('role-ladder');
+  const body = document.getElementById('role-ladder-body');
+  if (!details || !body) return;
+
+  if (!roleTreeDir) {
+    details.hidden = true;
+    return;
+  }
+  details.hidden = false;
+  body.innerHTML = '';
+
+  if (!roleTreeDir.ok) {
+    const p = document.createElement('p');
+    p.className = 'cat-warn';
+    p.textContent = roleTreeDir.why ?? 'not loaded';
+    body.appendChild(p);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'role-tree-table';
+  const thead = document.createElement('thead');
+  thead.innerHTML = '<tr><th>role</th><th>grants</th><th>granted by</th><th>rules-enforced</th></tr>';
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  for (const cap of roleTreeDir.capabilities) {
+    const tr = document.createElement('tr');
+
+    const roleTd = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = `badge ${cap.role === 'owner' ? 'revoked' : cap.apiGrantable ? 'approved' : 'pending'}`;
+    badge.textContent = cap.role;
+    roleTd.appendChild(badge);
+    tr.appendChild(roleTd);
+
+    const summaryTd = document.createElement('td');
+    summaryTd.textContent = cap.summary;
+    tr.appendChild(summaryTd);
+
+    const grantedByTd = document.createElement('td');
+    grantedByTd.className = 'cat-note';
+    grantedByTd.textContent = cap.grantedBy;
+    tr.appendChild(grantedByTd);
+
+    const rulesTd = document.createElement('td');
+    rulesTd.textContent = cap.rulesEnforced ? 'yes' : 'not yet';
+    if (!cap.rulesEnforced) rulesTd.className = 'cat-warn';
+    tr.appendChild(rulesTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  const note = document.createElement('p');
+  note.className = 'role-tree-note';
+  note.textContent =
+    'reader/contributor are real and grantable here, but the audiobook site’s firestore.rules (a different, owner-gated repo) only enforces moderator/admin today — see "rules-enforced" above.';
+  body.appendChild(note);
+}
+
 function renderUsers(users) {
   allEstateUsers = users;
   controlsEl.hidden = !users.length;
@@ -1098,6 +1275,8 @@ function renderAuthState() {
       allEstateUsers = [];
       updateCountLine(0, 0);
       setStatus('');
+      roleTreeDir = null;
+      renderRoleTree();
     });
     whoEl.append(`${currentUser.displayName || currentUser.email} · `, out);
     whoEl.hidden = false;
@@ -1107,6 +1286,8 @@ function renderAuthState() {
     usersEl.innerHTML = '';
     gapsEl.hidden = true;
     controlsEl.hidden = true;
+    roleTreeDir = null;
+    renderRoleTree();
   }
 }
 
