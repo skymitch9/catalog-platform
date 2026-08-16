@@ -134,6 +134,49 @@ workflow prints the line to append locally if wanted.
 
 ---
 
+## 📌 HANDOFF — 2026-08-16 ~15:45 PDT (Opus → Fable)
+
+**Everything below the line is ACTIVE. What landed today is archived in
+[`DONE.md`](DONE.md).** Nothing is in flight; the board is clear.
+
+### Deployed today from this repo
+
+| Worker / site | Version | What |
+|---|---|---|
+| `estate-auth` | `43a26680` | Revoked-approver gate fix; revocation clears `is_approver`/`is_devops` (migration **0006**, applied `--remote`, 0 rows); the Firestore ladder-role clear; owner rows render as facts |
+| `catalog-index` | `befcce25` | ⚠️ `READ_ORIGINS` set explicitly — it was ABSENT, so `readCors` defaulted to the apex alone and **both catalogs were CORS-blocked** from the shared index |
+| `heygabi-home` | `b41e1b03` | Status-page fixes (ebook row ×3, labelled Run levers, back arrows), backups graded per-store, `/admin` owner cells, predeploy guard |
+
+### ⚠️ Things worth knowing before touching this repo
+
+- **`npm run deploy:home` is now the routine** — it runs a static check (every
+  public `.js` parses, every `.html` structurally sound, tree committed-clean),
+  deploys, then fetches the live URLs and asserts each page still serves its own
+  markers. `ALLOW_DIRTY_DEPLOY=1` is the deliberate escape hatch.
+  ⚠️ `verify:home` fetches **signed out**, so a green run means the shell
+  shipped, never that gated behaviour works.
+- **Backups grade per STORE, not "newest object anywhere."** A partial
+  `backup.yml` dispatch (target input) happened twice on 2026-08-15; under the
+  old logic a database could go months unbacked while the row read green.
+- **`skymitch9/estate-backups` (the REPO) was deleted 2026-08-16.** ⚠️ The **R2
+  bucket of the same name is live and holds every backup** — do not confuse
+  them. Backups verified landing that day: 5 runs ever, all successful, newest
+  with all 8 store jobs green.
+- **Two auth gates had no tests at all** until today; a mutation opened one and
+  the whole 126-test suite still passed. `test/gates.test.ts` and
+  `test/revoke-clears-powers.test.ts` now pin them. **176 tests.**
+
+### Next here
+
+1. Nothing is blocking. The reactive pipeline (audiobook_catalog) is the queued
+   work; this repo is only involved if the status page needs a row for it.
+2. **Discord bot** — design doc on file, needs the owner's decisions.
+3. Sub-item 1 of the two-surface build — the apex `/universes` cross-catalog
+   page — is still unbuilt here. Sub-item 2 (audiobook side) is done.
+
+---
+
+
 ## 📖 TBR should span all catalogs, the way "read" does (owner ask 2026-08-16)
 
 > *"tbr like read should span all catalogs"*
