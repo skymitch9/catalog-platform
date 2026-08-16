@@ -452,9 +452,35 @@ async function loadDirectory() {
   revealAnchoredMember();
 }
 
+/**
+ * ⚠️ A REVOCATION HAS TWO HALVES, and only one of them is D1.
+ *
+ * POST /estate/users/:id/status clears the estate row (status, approver,
+ * devops) and then, best-effort, the audiobook LADDER role in Firestore —
+ * which the audiobook site's own rules read directly from the browser, so a
+ * stale one keeps real powers there (site-wide review deletes, club
+ * administration) no matter what this directory says. There is no
+ * transaction across the two stores: the Worker answers 200 for the
+ * revocation that landed and reports the second half in `site_role`.
+ *
+ * So this must never be dropped on the floor. Returns the sentence to show,
+ * or null when there is genuinely nothing to say (it worked, or they had no
+ * audiobook role to lose).
+ */
+function siteRoleNote(siteRole) {
+  if (!siteRole || siteRole.cleared) return null;
+  if (siteRole.reason === 'no_role' || siteRole.reason === 'no_firebase_user') return null;
+  const failed = siteRole.reason === 'firestore_error' || siteRole.reason === 'service_account_unset';
+  return { text: siteRole.detail, tone: failed ? 'warn' : '' };
+}
+
 async function mutate(path, body) {
   const data = await api(path, { method: 'POST', body: JSON.stringify(body) });
-  if (data) await loadDirectory();
+  if (!data) return;
+  const note = siteRoleNote(data.site_role);
+  // loadDirectory() clears the status line on success, so the note goes after.
+  await loadDirectory();
+  if (note) setStatus(note.text, note.tone);
 }
 
 // ---------------------------------------------------------------------------

@@ -264,6 +264,30 @@ Concretely, after an app has verified a token and loaded/created its local
 Every row of that table fails in the direction §2.2 chose: closed for
 strangers and the revoked, open for the already-admitted household.
 
+⚠️ **That table describes the two apps that ASK — library and games. The
+audiobook catalog does not, and that is why revocation there needed a
+second mechanism** (built 2026-08-16; ROLES.md §1f in the audiobook repo,
+`clearSiteRoleOnRevocation()` in `apps/auth-worker/src/site-roles.ts`).
+
+Measured, not assumed: the audiobook site is world-readable and calls
+`/api/estate/me` for exactly one cosmetic thing — whether to show the
+"Dev site →" link in the account modal (`site/identity.js`). It is not a
+gate. Every real permission on that site is enforced by ITS
+`firestore.rules`, which reads `site_roles/{uid}` and `request.auth`
+directly from the browser and never consults this directory at all. So the
+first row above — "`revoked` ⇒ 403, always" — simply **did not apply
+there**: `status = 'revoked'` had no effect on the audiobook site
+whatsoever, and a revoked site `admin` kept site-wide review deletion and
+club administration indefinitely.
+
+The consequence for the row's other half ("the local role is left intact so
+a later re-approval restores the person exactly as they were"): that stays
+true for library and games, where the estate 403 makes a stale local role
+inert. It is **deliberately NOT true of the audiobook ladder role**, which
+is deleted on revocation and never restored on re-approval — owner,
+2026-08-16: *"they need to reearn all rights."* The asymmetry is the point:
+a role nobody re-checks per request cannot be left lying around.
+
 ---
 
 ## 4. The estate directory — the auth Worker and its D1
