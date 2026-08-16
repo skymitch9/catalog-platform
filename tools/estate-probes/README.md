@@ -1,13 +1,15 @@
 # estate-probes — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-16** (71/71 passing against live production,
-> measured by running `npm run probe:estate` — +4 for the new
-> `GET`/`POST /api/estate/facts/:slug` checks, the 0007 self-service
-> shelf-facts endpoint: tokenless 401 on both verbs + apex-only CORS
-> admit/refuse. The prior run's count in this doc had drifted from the
-> suite's actual total; this figure is the freshly measured one, not
-> carried forward).
+> Last verified: **2026-08-16** (78/78 passing against live production,
+> measured by running `npm run probe:estate` after deploying the
+> auth-worker — +7 for the fine-grained pipeline step controls and the
+> shelf-server force-upload (owner ask 2026-08-16): tokenless 401 on
+> `POST /api/estate/ops/pipeline/step` and
+> `POST /api/estate/ops/pipeline/force-upload`, apex-only CORS admit/refuse
+> for both, plus one Firestore read-permitted check on the new
+> `shelf_upload_status/current` doc (200 or 404, never denied). Prior count:
+> 71/71.
 
 Owner order 2026-08-15: *"Maybe it's time to make an api testing suite"* —
 promoting `apps/auth-worker/test/live-probes.ts`'s idiom (a named `check()`,
@@ -43,15 +45,24 @@ time, by anyone with this repo checked out, with no credentials at all.
 | Area | File | Surface |
 |---|---|---|
 | All four `/api/health` | `probes/health.mjs` | The `{ ok, service, version?, time, detail }` envelope (`docs/info/health-envelope.md`) on auth, index, library, games |
-| `auth.heygabi.ai` | `probes/auth-worker.mjs` | `/me`, `/hello` tokenless → 401; `/docs/:slug` tokenless → 401; `/backups` tokenless → 401 (0006, the /status "last backup age" row) plus its apex-only CORS admit/refuse; `/facts/:slug` tokenless → 401 on GET AND POST (0007, the self-service shelf-facts form) plus its apex-only CORS admit/refuse; admin API (`/users`) tokenless AND garbage-bearer → 401; `/hello` CORS (audiobook site admitted, foreign origin refused, POST allowed); admin API CORS (apex admitted, foreign origin refused); `/__/auth/*` proxy is live (not this Worker's 404 shape — sso-design.md §4.1 Phase 1); `/api/session` tokenless → 401, `/api/session/token` no-cookie / unknown-cookie → 401 `no_session`, `DELETE /api/session` no-cookie → 200 idempotent (§4.3 Phase 2); session-routes CORS is CREDENTIALED and admits `library.heygabi.ai` (proving it uses its own SESSION_ORIGINS list, not ADMIN_ORIGINS/ME_ORIGINS), foreign origin refused |
+| `auth.heygabi.ai` | `probes/auth-worker.mjs` | `/me`, `/hello` tokenless → 401; `/docs/:slug` tokenless → 401; `/backups` tokenless → 401 (0006, the /status "last backup age" row) plus its apex-only CORS admit/refuse; `/facts/:slug` tokenless → 401 on GET AND POST (0007, the self-service shelf-facts form) plus its apex-only CORS admit/refuse; `/ops/pipeline/step` and `/ops/pipeline/force-upload` tokenless → 401 (0008, the fine-grained pipeline step controls — owner ask 2026-08-16) plus apex-only CORS admit/refuse for both — **never a live trigger, see the note below**; admin API (`/users`) tokenless AND garbage-bearer → 401; `/hello` CORS (audiobook site admitted, foreign origin refused, POST allowed); admin API CORS (apex admitted, foreign origin refused); `/__/auth/*` proxy is live (not this Worker's 404 shape — sso-design.md §4.1 Phase 1); `/api/session` tokenless → 401, `/api/session/token` no-cookie / unknown-cookie → 401 `no_session`, `DELETE /api/session` no-cookie → 200 idempotent (§4.3 Phase 2); session-routes CORS is CREDENTIALED and admits `library.heygabi.ai` (proving it uses its own SESSION_ORIGINS list, not ADMIN_ORIGINS/ME_ORIGINS), foreign origin refused |
 | `index.heygabi.ai` | `probes/index-worker.mjs` | `/api/search` anonymous → 200 with the public-slice shape (`scope === ["audiobook"]`); `/api/universe/:name`, `/api/lookup`, `/api/scan/shelf` tokenless → 401; `/api/search` CORS (apex admitted, foreign origin refused) |
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
 | `boardgames.heygabi.ai` | `probes/health.mjs` | `/api/health` only — no other public surface is asked for by design |
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
-| Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on |
+| Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on; `shelf_upload_status/current` (2026-08-16) — read permitted (200 or 404, never denied) |
 
-71 assertions as of last verification, all passing. Run the suite for the
+78 assertions as of last verification, all passing. Run the suite for the
 current count and result — this table is not re-derived automatically.
+
+⚠️ **`POST /api/estate/ops/pipeline` itself has NO probe, on purpose, and
+neither do the two 0008 routes above beyond the tokenless-401/CORS checks —
+do not add one that signs in and actually calls it.** A prior version of
+this suite included a signed-in call to a live trigger route and it queued a
+real pipeline run against production. `requireDevops()` checks identity
+FIRST on all three routes, so a tokenless call never reaches the
+Firestore-write path — that is what makes A5/A26/A27/A30/A31 safe to run
+unattended. See "What is NOT covered" below.
 
 ## `authorized-domains.mjs` — optional, credentialed
 
@@ -113,7 +124,12 @@ identity to act as — that is the whole point of "unauthenticated-edge":
   aggregate counts/timestamps (only the tokenless 401 + CORS are probed);
   `GET`/`POST /api/estate/facts/:slug` returning or writing a real facts
   record (0007 — only the tokenless 401 on both verbs + CORS are probed,
-  same honest gap as the other two devops-tier routes above).
+  same honest gap as the other two devops-tier routes above); `POST
+  /api/estate/ops/pipeline/step` and `POST /api/estate/ops/pipeline/
+  force-upload` actually queuing a step or a force-upload (0008 — same
+  honest gap, tokenless 401 + CORS only; a signed-in 200 here queues a REAL
+  request the home machine will act on, so it is deliberately never
+  exercised by this unattended suite).
 - Nothing that requires a **per-app machine bearer**: `POST
   /api/estate/seen`, `POST /api/push` (index-worker's per-source push
   tokens). These are secrets by design and this suite holds none.

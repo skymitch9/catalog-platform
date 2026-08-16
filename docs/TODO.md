@@ -1,10 +1,48 @@
 # Catalog Platform — Work Log
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-15**.
+> Last verified: **2026-08-16**.
 > This is the *work log* — current state and things in flight. Stable facts live
 > in [`PLATFORM.md`](PLATFORM.md), [`DOMAIN_AND_HOSTING.md`](DOMAIN_AND_HOSTING.md)
 > and [`UNIVERSES.md`](UNIVERSES.md). Cross-link rather than duplicate.
+
+---
+
+## Fine-grained pipeline step controls + shelf-server force-upload (owner ask 2026-08-16) — ✅ DONE
+
+Owner: *"maybe in the admin status dashboard you give us fine control over
+each part of the pipeline in case we need to do part way steps, do so in a
+way to make sure we cant break stuff though"* + *"add a button to force a
+full upload to the server that we can run to make sure we can move google
+drive to server without the full pipeline."*
+
+Built on `/status`'s Operations section (devops/approver-gated, unchanged
+tier): 7 per-stage buttons (audit/sort/detect/folders/upload/catalog/publish)
+classified by blast radius — read-only plain buttons, mutating/publishing
+two-tap `confirmBtn` (now shared via `assets/estate-controls.js`, extracted
+from `admin.js` so both pages use the one idiom), publishing steps carry a
+standing "updates the live site" warning. THE SAFETY MODEL: every control —
+including the standalone force-upload — takes the exact same single-flight
+lock the scheduled 8h run already takes (audiobook_catalog's
+`app/core/pipeline_lock.py`); the auth Worker also live-checks
+`pipeline_status/current` before queuing (409 if busy, fails OPEN on a read
+error since the lock downstream is the real guarantee); the one genuine
+ordering dependency (Upload needs to know what's new) disables with a
+reason using real `summary.toUpload` data, not a fabricated graph. Every
+manual invocation is logged server-side (`pipeline_step_requested` /
+`pipeline_force_upload_requested`). New auth-worker routes: `POST
+/api/estate/ops/pipeline/step`, `POST /api/estate/ops/pipeline/force-upload`
+(`ops.ts`), both `requireDevops()`, same as the existing pipeline trigger.
+Force-upload is its own control, outside the step list (not a pipeline
+stage) — the shelf server does not exist yet
+(`audiobook_catalog/docs/access/SHELF_SERVER.md`), so it degrades honestly
+("not configured"/"unreachable") via its own `shelf_upload_status/current`
+Firestore doc, never the pipeline's own status row. audiobook_catalog side:
+`scripts/sync_to_drive.py --step <name>`, new `scripts/sync_to_server.py`,
+`app/tools/pipeline_watcher.py` dispatch, `firestore.rules` updates — see
+that repo's own docs for detail. 10 new auth-worker tests (116→126), 67 new
+Python tests (805→872), 7 new probes (71→78, all passing live). Deployed:
+auth-worker, firestore rules (audiobook_catalog), apex.
 
 ---
 

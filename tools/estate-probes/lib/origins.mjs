@@ -28,5 +28,15 @@ export const EBOOKS_MANIFEST_URL = `${AUDIO_ORIGIN}/ebooks.json`;
 export const FIRESTORE_STATUS_URL =
   'https://firestore.googleapis.com/v1/projects/audiobook-catalog/databases/(default)/documents/pipeline_status/current';
 
+/**
+ * The shelf-server force-upload's own doc (2026-08-16, `allow read: if
+ * true` mirroring pipeline_status/current) — status.js's
+ * SHELF_UPLOAD_STATUS_URL. Legitimately 404 until the control has ever run
+ * once (the shelf server does not exist yet); the probe checks the READ is
+ * permitted, not that a document exists.
+ */
+export const SHELF_UPLOAD_STATUS_URL =
+  'https://firestore.googleapis.com/v1/projects/audiobook-catalog/databases/(default)/documents/shelf_upload_status/current';
+
 /** A token shaped like a bearer but signed by nobody — the garbage-token probe. */
 export const GARBAGE_BEARER = 'Bearer garbage-token-not-a-real-jwt-af93k2';

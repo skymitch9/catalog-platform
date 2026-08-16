@@ -47,6 +47,7 @@
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
+import { actionBtn, confirmBtn } from '../assets/estate-controls.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
 const TICK_INTERVAL_MS = 5_000;
@@ -75,6 +76,39 @@ const FIRESTORE_STATUS_URL =
  *  someone promotes (so its age measures promote cadence, not health). */
 const EBOOKS_MANIFEST_DEV_URL = `${AUDIO_ORIGIN}/dev/ebooks.json`;
 const EBOOKS_MANIFEST_PROD_URL = `${AUDIO_ORIGIN}/ebooks.json`;
+
+/**
+ * The standalone shelf-server force-upload's OWN status doc (owner ask
+ * 2026-08-16) — deliberately separate from pipeline_status/current, same
+ * public-read Firestore doc idiom as FIRESTORE_STATUS_URL above. Written by
+ * audiobook_catalog's scripts/sync_to_server.py via
+ * app/pipeline_status.py's force_upload_result().
+ */
+const SHELF_UPLOAD_STATUS_URL =
+  'https://firestore.googleapis.com/v1/projects/audiobook-catalog/databases/(default)/documents/shelf_upload_status/current';
+
+/**
+ * Fine-grained pipeline step controls (owner ask 2026-08-16: "give us fine
+ * control over each part of the pipeline in case we need to do part way
+ * steps... make sure we cant break stuff"). MUST mirror auth-worker's
+ * ops.ts PIPELINE_STEPS (and, one hop further, audiobook_catalog's
+ * scripts/sync_to_drive.py STEP_INFO) exactly — no shared module across the
+ * three, same duplication story as INDEX_THRESHOLDS/KNOWN_BACKUP_PREFIXES
+ * elsewhere in this estate. `kind` drives the confirmation tier:
+ *   read-only  — plain button, runs immediately.
+ *   mutating   — two-tap confirmBtn (assets/estate-controls.js).
+ *   publishing — two-tap confirmBtn PLUS a standing "updates the live site"
+ *                warning next to the button.
+ */
+const PIPELINE_STEPS = [
+  { key: 'audit', label: 'Purchase audit', kind: 'read-only' },
+  { key: 'sort', label: 'Sort books', kind: 'mutating' },
+  { key: 'detect', label: 'Detect new books', kind: 'read-only' },
+  { key: 'folders', label: 'Read Drive folders', kind: 'mutating' },
+  { key: 'upload', label: 'Upload to Drive', kind: 'mutating' },
+  { key: 'catalog', label: 'Rebuild catalog', kind: 'publishing' },
+  { key: 'publish', label: 'Commit & deploy', kind: 'publishing' },
+];
 
 /**
  * Per-source staleness thresholds for the shared index (design:
@@ -538,6 +572,11 @@ function renderSiteRow(id, name, reached, now) {
 }
 
 let refreshing = false;
+/** The last decoded pipeline_status/current doc (fsMap() output), or null.
+ * Feeds renderPipelineStepsAvailability() — the pipeline-step interlock —
+ * without a second fetch, since refreshAll() already reads this doc every
+ * cycle for the "Book pipeline" row above. */
+let lastPipelineStatusDoc = null;
 
 async function refreshAll() {
   if (refreshing) return;
@@ -569,6 +608,16 @@ async function refreshAll() {
   renderIndexWorkerRow(indexHealth, t);
   renderPipelineAudioRow(pipelineStatus, t);
   renderPipelineEbookRow(ebooksDev, ebooksProd, pipelineStatus, t);
+
+  // Feed the pipeline-step interlock (see stepDisabledReason()) from the
+  // same doc the row above just read — no extra fetch. null when the doc
+  // is missing/unreadable, same "fail open, not busy" stance as the
+  // server-side checkPipelineBusy() in ops.ts.
+  lastPipelineStatusDoc =
+    pipelineStatus.reached && pipelineStatus.httpOk && pipelineStatus.body?.fields
+      ? fsMap(pipelineStatus.body.fields)
+      : null;
+  if (opsIsApprover) renderPipelineStepsAvailability(lastPipelineStatusDoc);
   renderWorkerHealthRow('wk-library', 'Library', libraryHealth, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
   renderWorkerHealthRow('wk-games', 'Games', gamesHealth, t, (b) =>
@@ -754,6 +803,265 @@ async function loadBackups() {
   updateRow('backup-age', state, `Newest backup ${formatAge(ageMs)} · ${total} object${total === 1 ? '' : 's'} across ${Object.keys(prefixes).length} stores.`, note, now);
 }
 
+// ---------------------------------------------------------------------------
+// Fine-grained pipeline step controls (owner ask 2026-08-16) — see
+// PIPELINE_STEPS above for the classification. THE SAFETY MODEL:
+//   1. Confirmation tier by blast radius (read-only/mutating/publishing).
+//   2. THE INTERLOCK: every control disables the instant pipeline_status/
+//      current shows a run in flight (running/deferred/blocked) — the same
+//      doc the "Book pipeline" row above already reads, so no extra fetch.
+//      The REAL guarantee is app/core/pipeline_lock.py's single-flight lock
+//      on the home machine (this UI state can never be the only thing
+//      standing between two runs); this is the fast, honest UX layer on
+//      top of it, backed up by the auth Worker's own live check
+//      (POST .../pipeline/step answers 409 if it reads the same doc busy).
+//   3. Dependencies enforced with REAL data, not a fabricated graph: the
+//      one genuine ordering dependency in the underlying pipeline is
+//      "upload needs to know what's new", so the Upload button disables
+//      with a reason until pipeline_status/current's own summary.toUpload
+//      field says there is something to upload. Every other step is
+//      self-sufficient by construction (see sync_to_drive.py's
+//      _step_upload(), which always re-runs detect internally) — inventing
+//      more "needs X first" rules here would document an order that does
+//      not actually exist in the code behind the button.
+//   4. Every click is logged server-side (ops.ts's pipeline_step_requested
+//      / pipeline_force_upload_requested console lines) — same audit-trail
+//      role grants get.
+// ---------------------------------------------------------------------------
+
+const stepRowRegistry = new Map(); // key -> { li, btn, reasonEl }
+const stepsMsgEl = document.getElementById('pipeline-steps-msg');
+
+function setStepsMessage(text, tone) {
+  if (!stepsMsgEl) return;
+  stepsMsgEl.textContent = text || '';
+  stepsMsgEl.dataset.tone = tone || '';
+}
+
+function buildPipelineStepsSection() {
+  const ul = document.getElementById('pipeline-steps');
+  if (!ul) return;
+  for (const step of PIPELINE_STEPS) {
+    const li = document.createElement('li');
+    li.className = 'step-row';
+    li.dataset.step = step.key;
+
+    const main = document.createElement('div');
+    main.className = 'step-main';
+    const name = document.createElement('span');
+    name.className = 'step-name';
+    name.textContent = step.label;
+    const kind = document.createElement('span');
+    kind.className = 'step-kind';
+    kind.dataset.kind = step.kind;
+    kind.textContent = step.kind;
+    main.append(name, kind);
+    if (step.kind === 'publishing') {
+      const warnNote = document.createElement('span');
+      warnNote.className = 'step-warn-note';
+      warnNote.textContent = '⚠ updates the live site';
+      main.appendChild(warnNote);
+    }
+
+    const onClick = () => runPipelineStep(step.key, step.label);
+    const btn =
+      step.kind === 'read-only'
+        ? actionBtn('Run', 'quiet', onClick)
+        : confirmBtn('Run', 'quiet', onClick, step.kind === 'publishing' ? 'warn' : '');
+    btn.setAttribute('aria-label', `Run ${step.label}`);
+
+    const reason = document.createElement('p');
+    reason.className = 'step-reason';
+    reason.hidden = true;
+
+    li.append(main, btn, reason);
+    ul.appendChild(li);
+    stepRowRegistry.set(step.key, { li, btn, reasonEl: reason });
+  }
+}
+
+/**
+ * Pure: given the DECODED pipeline_status/current doc (fsMap() output, or
+ * null when unreadable/never-run), returns a disable reason for ONE step,
+ * or null when it should be enabled. See the section header above for the
+ * two rules this implements — the interlock (applies to every step) and
+ * the one real "needs detect first" dependency (upload only).
+ */
+function stepDisabledReason(statusDoc, stepKey) {
+  if (statusDoc) {
+    const state = statusDoc.state;
+    if (state === 'running' || state === 'deferred' || state === 'blocked') {
+      const since = statusDoc.startedAt || statusDoc.updatedAt;
+      const clock = since && Number.isFinite(Date.parse(since))
+        ? new Date(Date.parse(since)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
+      return `pipeline ${state} (${statusDoc.trigger || 'unknown'})${clock ? ` since ${clock}` : ''} — wait for it to finish.`;
+    }
+  }
+  if (stepKey === 'upload') {
+    const toUpload = statusDoc && statusDoc.summary ? statusDoc.summary.toUpload : undefined;
+    if (toUpload === 0) return 'Detect found 0 new files — nothing to upload right now.';
+    if (typeof toUpload !== 'number') return 'Run Detect first so we know what’s new.';
+  }
+  return null;
+}
+
+/** Called every refresh — updates disabled state + reason text without
+ * recreating the buttons (which would lose confirmBtn's armed-state timer). */
+function renderPipelineStepsAvailability(statusDoc) {
+  for (const step of PIPELINE_STEPS) {
+    const row = stepRowRegistry.get(step.key);
+    if (!row) continue;
+    const reason = stepDisabledReason(statusDoc, step.key);
+    row.btn.disabled = reason !== null;
+    row.li.dataset.disabled = reason !== null ? 'true' : 'false';
+    if (reason) {
+      row.reasonEl.textContent = reason;
+      row.reasonEl.hidden = false;
+      row.btn.title = reason;
+    } else {
+      row.reasonEl.hidden = true;
+      row.btn.removeAttribute('title');
+    }
+  }
+}
+
+async function runPipelineStep(step, label) {
+  const token = await idToken();
+  if (!token) {
+    setStepsMessage('Sign-in lapsed — sign in again.', 'warn');
+    return;
+  }
+  setStepsMessage(`Requesting "${label}"…`);
+  try {
+    const res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/pipeline/step`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step }),
+    });
+    let body = null;
+    try { body = await res.json(); } catch { /* status still speaks */ }
+    if (res.ok) {
+      setStepsMessage(`${body?.detail || 'Requested.'} Watch the Pipeline row above.`, 'ok');
+      watchForPickup();
+    } else if (res.status === 409) {
+      setStepsMessage(body?.detail || 'The pipeline is already busy — try again shortly.', 'warn');
+    } else if (res.status === 503) {
+      setStepsMessage(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`, 'warn');
+    } else if (res.status === 403) {
+      setStepsMessage('You need the approver role to trigger a step. Ask an existing approver or an owner.', 'warn');
+    } else {
+      setStepsMessage(`Something went wrong on the server${body?.error ? ` (${body.error})` : ''}. Try again shortly.`, 'warn');
+    }
+  } catch {
+    setStepsMessage('The auth Worker did not answer (network). Try again shortly.', 'warn');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Force full upload to the shelf server (owner ask 2026-08-16) — deliberately
+// NOT one of the pipeline steps above; see index.html's comment. Reads its
+// own status doc (shelf_upload_status/current) so a "not configured yet"
+// result is shown plainly, never silently swallowed.
+// ---------------------------------------------------------------------------
+
+function buildShelfUploadSection() {
+  const ul = document.getElementById('shelf-upload-rows');
+  if (!ul) return;
+  ul.appendChild(makeRow('shelf-upload', 'Shelf upload (last force-upload result)'));
+}
+
+const SHELF_STATE_LABELS = {
+  success: 'ok',
+  not_configured: 'warn',
+  unreachable: 'warn',
+  failed: 'danger',
+};
+
+async function loadShelfUploadStatus() {
+  const now = Date.now();
+  const result = await fetchJSON(SHELF_UPLOAD_STATUS_URL);
+  if (result.status === 404) {
+    updateRow('shelf-upload', 'warn', 'Never run yet.', 'Use the button above once the shelf server exists (see /runbooks/shelf/).', now);
+    return;
+  }
+  if (!result.reached || !result.httpOk || !result.body || !result.body.fields) {
+    updateRow('shelf-upload', 'danger', `Did not answer (${result.error || `HTTP ${result.status}`}).`, null, now);
+    return;
+  }
+  const doc = fsMap(result.body.fields);
+  const state = SHELF_STATE_LABELS[doc.state] || 'warn';
+  updateRow('shelf-upload', state, `${(doc.state || 'unknown').toUpperCase()} — ${doc.message || ''}`, doc.updatedAt ? `Last attempt: ${doc.updatedAt}` : null, now);
+  return doc.updatedAt;
+}
+
+/** Poll loadShelfUploadStatus() until it reports something newer than the
+ * request, or PICKUP_POLL_MAX_MS elapses — same cadence/limits as
+ * watchForPickup() below, generalized since force-upload has no "RUNNING"
+ * state on pipeline_status to watch for. */
+let shelfPickupTimer = null;
+function watchForShelfPickup(requestedAtIso) {
+  if (shelfPickupTimer) clearInterval(shelfPickupTimer);
+  const deadline = Date.now() + PICKUP_POLL_MAX_MS;
+  shelfPickupTimer = setInterval(async () => {
+    if (Date.now() > deadline) {
+      clearInterval(shelfPickupTimer);
+      shelfPickupTimer = null;
+      return;
+    }
+    const updatedAt = await loadShelfUploadStatus();
+    if (updatedAt && Date.parse(updatedAt) >= Date.parse(requestedAtIso)) {
+      clearInterval(shelfPickupTimer);
+      shelfPickupTimer = null;
+    }
+  }, PICKUP_POLL_MS);
+}
+
+const opsForceUploadBtn = document.getElementById('ops-force-upload');
+const opsForceUploadMsgEl = document.getElementById('ops-force-upload-msg');
+
+function setForceUploadMsg(text, tone) {
+  if (!opsForceUploadMsgEl) return;
+  opsForceUploadMsgEl.textContent = text || '';
+  opsForceUploadMsgEl.dataset.tone = tone || '';
+}
+
+if (opsForceUploadBtn) {
+  opsForceUploadBtn.addEventListener('click', async () => {
+    const token = await idToken();
+    if (!token) {
+      setForceUploadMsg('Sign-in lapsed — sign in again.', 'warn');
+      return;
+    }
+    opsForceUploadBtn.disabled = true;
+    setForceUploadMsg('Requesting…');
+    try {
+      const res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/pipeline/force-upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      let body = null;
+      try { body = await res.json(); } catch { /* status still speaks */ }
+      if (res.ok) {
+        setForceUploadMsg(`${body?.detail || 'Requested.'} Watch the "Shelf upload" row below.`, 'ok');
+        watchForShelfPickup(body?.requestedAt || new Date().toISOString());
+      } else if (res.status === 409) {
+        setForceUploadMsg(body?.detail || 'The pipeline is busy — try again shortly.', 'warn');
+      } else if (res.status === 503) {
+        setForceUploadMsg(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`, 'warn');
+      } else if (res.status === 403) {
+        setForceUploadMsg('You need the approver role to trigger this. Ask an existing approver or an owner.', 'warn');
+      } else {
+        setForceUploadMsg(`Something went wrong on the server${body?.error ? ` (${body.error})` : ''}. Try again shortly.`, 'warn');
+      }
+    } catch {
+      setForceUploadMsg('The auth Worker did not answer (network). Try again shortly.', 'warn');
+    } finally {
+      opsForceUploadBtn.disabled = false;
+    }
+  });
+}
+
 const opsSigninBtn = document.getElementById('ops-signin');
 const opsWhoEl = document.getElementById('ops-who');
 const opsNoteEl = document.getElementById('ops-note');
@@ -856,6 +1164,11 @@ function renderOpsAuthState() {
     commandmentsSectionEl.hidden = false;
     backupsSectionEl.hidden = false;
     loadBackups();
+    loadShelfUploadStatus();
+    // Interlock state may already be known from the last refreshAll() pass
+    // (the ops section can reveal well after boot); render it immediately
+    // instead of waiting up to 60s for the next tick.
+    renderPipelineStepsAvailability(lastPipelineStatusDoc);
   } else {
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
@@ -967,6 +1280,8 @@ buildWorkerSection();
 buildSiteSection();
 buildLeverList();
 buildBackupsSection();
+buildPipelineStepsSection();
+buildShelfUploadSection();
 
 document.getElementById('refresh').addEventListener('click', () => refreshAll());
 

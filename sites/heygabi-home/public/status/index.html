@@ -151,9 +151,56 @@ h1 {
 .btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; }
 .btn:disabled { opacity: .6; cursor: default; transform: none; }
 .btn.quiet { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-fg); }
+.btn.danger { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-danger); }
+/* Publishing-tier steps (catalog/publish) — a standing amber tint, not just
+   the danger-red confirm-armed state, so "this ships to the live site" is
+   visible before the first tap, not only after arming it. */
+.btn.warn { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-warn); border-color: var(--et-warn); }
+.btn.small { min-height: 34px; padding: .25em .8em; font-size: var(--et-text-small); }
 .btn svg { flex: none; transition: transform var(--et-dur) var(--et-ease); }
 .btn.spinning svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Fine-grained pipeline step controls (owner ask 2026-08-16) */
+.step-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  flex-wrap: wrap;
+  padding: .6rem .85rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+}
+.step-row[data-disabled="true"] { opacity: .72; }
+.step-main { display: flex; align-items: center; gap: .55rem; flex: 1 1 14rem; min-width: 0; }
+.step-name { font-weight: 600; font-size: var(--et-text-small); }
+.step-kind {
+  padding: .05em .55em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+  white-space: nowrap;
+}
+.step-kind[data-kind="mutating"] { border-color: var(--et-warn); color: var(--et-warn); }
+.step-kind[data-kind="publishing"] { border-color: var(--et-danger); color: var(--et-danger); }
+.step-reason { flex: 1 1 100%; margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.step-warn-note { color: var(--et-warn); font-size: var(--et-text-micro); font-weight: 600; white-space: nowrap; }
+.step-section-note { margin: .1rem 0 .6rem; }
+.force-upload-note { margin: .5rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.step-list-h {
+  margin: var(--et-space-2) 0 0;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-body);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  color: var(--et-heading-color);
+}
 
 .auto-note { color: var(--et-muted); font-size: var(--et-text-small); }
 
@@ -432,6 +479,50 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
         <button id="ops-run-pipeline" class="btn" type="button">▶ Run Automated Book Pipeline</button>
         <span id="ops-run-msg" class="ops-run-msg"></span>
       </div>
+
+      <!-- Fine-grained pipeline step controls (owner ask 2026-08-16: "give
+           us fine control over each part of the pipeline in case we need to
+           do part way steps... make sure we cant break stuff"). Each button
+           takes the EXACT SAME single-flight lock as the button above and
+           the scheduled 8h run (app/core/pipeline_lock.py on the home
+           machine) — while a run is in flight every control below renders
+           disabled with who holds it and since when. Confirmation tier by
+           blast radius: read-only steps are plain buttons; mutating and
+           publishing steps use the SAME two-tap confirmBtn idiom as
+           /admin's revoke/role buttons (assets/estate-controls.js);
+           publishing steps additionally carry a standing "updates the live
+           site" warning. -->
+      <h3 class="step-list-h">Pipeline steps</h3>
+      <p class="section-note step-section-note">
+        Run one stage of the pipeline in isolation — for partial or recovery
+        work, never the whole thing. Read-only steps run immediately;
+        everything else needs a second tap to confirm.
+      </p>
+      <ul id="pipeline-steps" class="step-list"></ul>
+      <p id="pipeline-steps-msg" class="ops-run-msg"></p>
+
+      <!-- Force full upload to the shelf server (owner ask 2026-08-16: "add
+           a button to force a full upload to the server that we can run to
+           make sure we can move google drive to server without the full
+           pipeline"). Deliberately its OWN control, outside the step list
+           above — it is not a pipeline stage, it is a standalone
+           reconciliation push straight from the local library to the shelf
+           server. The shelf server does not exist yet (see
+           /runbooks/shelf/); this degrades honestly rather than appearing
+           to succeed — watch the "Shelf upload" row below for the real
+           outcome. Safe to run repeatedly by design. -->
+      <h3 class="step-list-h">Shelf server</h3>
+      <div class="ops-run">
+        <button id="ops-force-upload" class="btn quiet" type="button">⇪ Force full upload to shelf server</button>
+        <span id="ops-force-upload-msg" class="ops-run-msg"></span>
+      </div>
+      <p class="force-upload-note">
+        The physical shelf server build is not finished — this reports
+        "not configured" honestly until it exists. See
+        <a href="/runbooks/shelf/">the shelf runbook</a> for status.
+      </p>
+      <ul id="shelf-upload-rows" class="rows"></ul>
+
       <ul id="lever-rows" class="lever-list"></ul>
     </div>
   </section>

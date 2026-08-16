@@ -69,8 +69,14 @@ app.use('/api/estate/site-roles', adminCors());
 app.use('/api/estate/site-roles/*', adminCors());
 // Operations: "run the audiobook pipeline now" — apex-only, same as every
 // other admin-page control (the status page's Operations section lives on
-// the apex, not on a wider origin).
+// the apex, not on a wider origin). Wildcard mount added 2026-08-16 for the
+// fine-grained step control (POST .../pipeline/step) and the standalone
+// shelf-server force-upload (POST .../pipeline/force-upload) — Hono CORS
+// mounts are exact-or-wildcard, never prefix-implicit (see the site-roles
+// mount below for the same pattern), so the bare exact mount alone would
+// leave those two sub-routes with no CORS at all.
 app.use('/api/estate/ops/pipeline', adminCors());
+app.use('/api/estate/ops/pipeline/*', adminCors());
 // The todo board (auth-locked 2026-08-15) — apex-only, same reasoning as
 // every other admin-page surface: the shim that calls this lives on the
 // apex and nowhere else.

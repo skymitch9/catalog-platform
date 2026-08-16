@@ -208,6 +208,64 @@ export async function probeAuthWorker() {
     check(AREA, 'A29', 'OPTIONS', factsUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
   }
 
+  // --- Fine-grained pipeline step controls + shelf-server force-upload
+  // (0008, owner ask 2026-08-16: "give us fine control over each part of
+  // the pipeline"). Same requireDevops() tier as /ops/pipeline above.
+  //
+  // ⚠️ TOKENLESS ONLY, same as every other write-shaped route in this file
+  // (A5, A26/A27 etc.) — requireDevops() checks identity FIRST, so this
+  // never reaches the Firestore write path and can NEVER queue a real
+  // pipeline run or force-upload. This suite's own hard rule (see the
+  // README and the 2026-08-16 incident it was written after): a probe MUST
+  // NOT invoke a real trigger. POST /api/estate/ops/pipeline itself still
+  // has NO probe here for exactly this reason — do not add one.
+  expectUnauthenticated('A30', 'POST', '/api/estate/ops/pipeline/step', await post(`${AUTH_ORIGIN}/api/estate/ops/pipeline/step`));
+  expectUnauthenticated('A31', 'POST', '/api/estate/ops/pipeline/force-upload', await post(`${AUTH_ORIGIN}/api/estate/ops/pipeline/force-upload`));
+
+  // --- CORS: /api/estate/ops/pipeline/* is apex-only, same wildcard mount
+  // as the exact /ops/pipeline route (index.ts). ---
+  const stepUrl = `${AUTH_ORIGIN}/api/estate/ops/pipeline/step`;
+  const stepApex = await options(stepUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'Authorization' },
+  });
+  if (!stepApex.ok) {
+    check(AREA, 'A32', 'OPTIONS', stepUrl, `access-control-allow-origin === ${APEX_ORIGIN}`, false, `request failed: ${stepApex.error}`);
+  } else {
+    const acao = header(stepApex, 'access-control-allow-origin');
+    check(AREA, 'A32', 'OPTIONS', stepUrl, `access-control-allow-origin === ${APEX_ORIGIN} (pipeline step trigger, apex-only)`, acao === APEX_ORIGIN, `ACAO=${acao}`);
+  }
+
+  const stepEvil = await options(stepUrl, {
+    headers: { Origin: FOREIGN_ORIGIN, 'Access-Control-Request-Method': 'POST' },
+  });
+  if (!stepEvil.ok) {
+    check(AREA, 'A33', 'OPTIONS', stepUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, false, `request failed: ${stepEvil.error}`);
+  } else {
+    const acao = header(stepEvil, 'access-control-allow-origin');
+    check(AREA, 'A33', 'OPTIONS', stepUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
+  }
+
+  const forceUploadUrl = `${AUTH_ORIGIN}/api/estate/ops/pipeline/force-upload`;
+  const forceUploadApex = await options(forceUploadUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'Authorization' },
+  });
+  if (!forceUploadApex.ok) {
+    check(AREA, 'A34', 'OPTIONS', forceUploadUrl, `access-control-allow-origin === ${APEX_ORIGIN}`, false, `request failed: ${forceUploadApex.error}`);
+  } else {
+    const acao = header(forceUploadApex, 'access-control-allow-origin');
+    check(AREA, 'A34', 'OPTIONS', forceUploadUrl, `access-control-allow-origin === ${APEX_ORIGIN} (shelf force-upload trigger, apex-only)`, acao === APEX_ORIGIN, `ACAO=${acao}`);
+  }
+
+  const forceUploadEvil = await options(forceUploadUrl, {
+    headers: { Origin: FOREIGN_ORIGIN, 'Access-Control-Request-Method': 'POST' },
+  });
+  if (!forceUploadEvil.ok) {
+    check(AREA, 'A35', 'OPTIONS', forceUploadUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, false, `request failed: ${forceUploadEvil.error}`);
+  } else {
+    const acao = header(forceUploadEvil, 'access-control-allow-origin');
+    check(AREA, 'A35', 'OPTIONS', forceUploadUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
+  }
+
   // --- Phase 1 (sso-design.md §4.1): the /__/auth/* proxy is LIVE and is a
   // TRUE proxy — Firebase's own content, never this Worker's { error:
   // 'not_found' } 404 shape (which would mean the mount was shadowed or

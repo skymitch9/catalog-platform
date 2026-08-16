@@ -71,6 +71,7 @@
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
+import { actionBtn, confirmBtn } from '../assets/estate-controls.js';
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
@@ -763,58 +764,10 @@ function wireControls() {
 // Rendering
 // ---------------------------------------------------------------------------
 
-function actionBtn(label, className, onClick) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = `btn small ${className || ''}`.trim();
-  b.textContent = label;
-  b.addEventListener('click', async () => {
-    b.disabled = true;
-    await onClick();
-    b.disabled = false;
-  });
-  return b;
-}
-
-/**
- * Two-tap confirmation (owner order 2026-08-15: "make the revoke button,
- * make approver, make devops buttons have a confirmation so I don't
- * accidentally remove people from key roles"). First tap ARMS the button —
- * label flips to "Tap again to <label>", danger styling — and it disarms
- * itself after 4s untouched. Only the second tap inside that window runs
- * the mutation. Chosen over window.confirm(): this page is used from a
- * phone, and a native dialog is both uglier and easier to fat-finger
- * through than a button that visibly changes state and relaxes on its own.
- */
-function confirmBtn(label, className, onClick) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  const baseClass = `btn small ${className || ''}`.trim();
-  b.className = baseClass;
-  b.textContent = label;
-  let armed = false;
-  let disarmTimer = null;
-  const disarm = () => {
-    armed = false;
-    clearTimeout(disarmTimer);
-    b.textContent = label;
-    b.className = baseClass;
-  };
-  b.addEventListener('click', async () => {
-    if (!armed) {
-      armed = true;
-      b.textContent = `Tap again to ${label.toLowerCase()}`;
-      b.className = `btn small danger`;
-      disarmTimer = setTimeout(disarm, 4000);
-      return;
-    }
-    disarm();
-    b.disabled = true;
-    await onClick();
-    b.disabled = false;
-  });
-  return b;
-}
+// actionBtn/confirmBtn moved to ../assets/estate-controls.js (2026-08-16) so
+// the /status page's fine-grained pipeline controls could reuse the exact
+// same two-tap idiom instead of a second implementation — see that file's
+// header comment.
 
 /**
  * Save the visibility set as the checkboxes now stand — the whole array in
