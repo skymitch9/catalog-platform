@@ -49,6 +49,48 @@ time, by anyone with this repo checked out, with no credentials at all.
 61 assertions as of last verification, all passing. Run the suite for the
 current count and result — this table is not re-derived automatically.
 
+## `authorized-domains.mjs` — optional, credentialed
+
+**Not part of `npm run probe:estate`. Not imported by `run.mjs`. Run it by
+hand.** Everything above this section is the zero-auth, zero-dependency
+contract; this one script is deliberately outside it, because what it checks
+cannot be checked any other way.
+
+Built 2026-08-16 after a real incident: the apex (`heygabi.ai`) was
+accidentally REMOVED from Firebase's authorised-domain list during unrelated
+console cleanup, and estate-wide sign-in broke — silently, because nothing
+in this suite (or anywhere else) was watching that list. This probe reads it
+straight from the source of truth, `GET
+https://identitytoolkit.googleapis.com/admin/v2/projects/audiobook-catalog/config`,
+and asserts all four estate origins (`heygabi.ai`, `audiobooks.heygabi.ai`,
+`library.heygabi.ai`, `boardgames.heygabi.ai`) are present.
+
+```bash
+# PowerShell
+$env:FIREBASE_SERVICE_ACCOUNT_PATH = "<path to a Firebase service-account JSON>"
+node tools/estate-probes/authorized-domains.mjs
+
+# bash
+FIREBASE_SERVICE_ACCOUNT_PATH=<path> node tools/estate-probes/authorized-domains.mjs
+```
+
+No `FIREBASE_SERVICE_ACCOUNT_PATH` (or no file at that path) → the script
+prints why and exits **0** — SKIPPED is the expected state for anyone
+running this repo without the credential, not a failure. This is why it is
+not wired into the default `npm run probe:estate` run: that command must
+stay runnable by anyone, with nothing, always — bolting a credentialed check
+onto it would make "no credential" look like a failing suite.
+
+The service-account JSON needs the same shape
+`apps/auth-worker/src/firebase-sa.ts` parses (`client_email`, `private_key`,
+`project_id`) and enough GCP IAM on the project to read Identity Platform
+admin config (Firebase Authentication Admin/Editor/Owner-class access) — a
+plain OAuth scope is not enough by itself; the project IAM role is what
+actually gates the call. ⚠️ **Never print, log, or commit the service
+account JSON, its private key, or the minted access token.** The script
+itself only ever prints authorised-domain hostnames (public information —
+the same hostnames already appear in every CSP header this repo ships).
+
 ## What is NOT covered, and why
 
 **Every signed-in 200-path, estate-wide.** This suite has no authenticated
