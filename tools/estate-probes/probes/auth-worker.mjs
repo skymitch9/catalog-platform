@@ -16,8 +16,15 @@
  * `if (!identity) return 401` as their very first line).
  */
 
-import { get, post, options, check, header } from '../lib/kit.mjs';
-import { AUTH_ORIGIN, AUDIOBOOK_SITE_ORIGIN, APEX_ORIGIN, FOREIGN_ORIGIN, GARBAGE_BEARER } from '../lib/origins.mjs';
+import { get, post, request, options, check, header } from '../lib/kit.mjs';
+import {
+  AUTH_ORIGIN,
+  AUDIOBOOK_SITE_ORIGIN,
+  APEX_ORIGIN,
+  LIBRARY_ORIGIN,
+  FOREIGN_ORIGIN,
+  GARBAGE_BEARER,
+} from '../lib/origins.mjs';
 
 const AREA = 'auth';
 
@@ -104,5 +111,116 @@ export async function probeAuthWorker() {
   } else {
     const acao = header(usersEvil, 'access-control-allow-origin');
     check(AREA, 'A12', 'OPTIONS', usersUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
+  }
+
+  // --- Phase 1 (sso-design.md §4.1): the /__/auth/* proxy is LIVE and is a
+  // TRUE proxy — Firebase's own content, never this Worker's { error:
+  // 'not_found' } 404 shape (which would mean the mount was shadowed or
+  // missing). Content is Firebase's own and may change; the only thing
+  // pinned here is "not our router's 404", the one failure mode that would
+  // actually matter (§4.1: "mounted before the API routes so it can never
+  // be shadowed").
+  const proxyUrl = `${AUTH_ORIGIN}/__/auth/handler`;
+  const proxyResp = await get(proxyUrl);
+  if (!proxyResp.ok) {
+    check(AREA, 'A13', 'GET', proxyUrl, 'proxies to Firebase — not this Worker\'s 404 shape', false, `request failed: ${proxyResp.error}`);
+  } else {
+    const isOurNotFound = proxyResp.json?.error === 'not_found';
+    check(
+      AREA,
+      'A13',
+      'GET',
+      proxyUrl,
+      'proxies to Firebase (status !== 404, body is not this Worker\'s { error: "not_found" })',
+      proxyResp.status !== 404 && !isOurNotFound,
+      `status=${proxyResp.status} body=${proxyResp.text.slice(0, 120)}`,
+    );
+  }
+
+  // --- Phase 2 (sso-design.md §4.3): the session routes. All three sit
+  // safely idle pre-owner-console-step (docs/access/estate-auth.md §6) —
+  // what is probed here is the tokenless/no-cookie edge, exactly like every
+  // other unauthenticated-edge assertion in this suite. The TOKEN_SIGNER_KEY
+  // 503 path is NOT reachable from here: it requires a live session, which
+  // requires a real ID token this suite deliberately holds none of (see the
+  // README's "What is NOT covered" — same class as every signed-in path).
+  const sessionUrl = `${AUTH_ORIGIN}/api/session`;
+  const sessionResp = await post(sessionUrl);
+  check(
+    AREA,
+    'A14',
+    'POST',
+    sessionUrl,
+    'tokenless → 401 { error: "unauthenticated" } (the canonical verifier, same shape as /me)',
+    sessionResp.ok && sessionResp.status === 401 && sessionResp.json?.error === 'unauthenticated',
+    sessionResp.ok ? `status=${sessionResp.status} body=${JSON.stringify(sessionResp.json)}` : `request failed: ${sessionResp.error}`,
+  );
+
+  const sessionTokenUrl = `${AUTH_ORIGIN}/api/session/token`;
+  const sessionTokenResp = await post(sessionTokenUrl);
+  check(
+    AREA,
+    'A15',
+    'POST',
+    sessionTokenUrl,
+    'no cookie → 401 { error: "no_session" }, never a 500',
+    sessionTokenResp.ok && sessionTokenResp.status === 401 && sessionTokenResp.json?.error === 'no_session',
+    sessionTokenResp.ok ? `status=${sessionTokenResp.status} body=${JSON.stringify(sessionTokenResp.json)}` : `request failed: ${sessionTokenResp.error}`,
+  );
+
+  const sessionTokenBogus = await post(sessionTokenUrl, { headers: { Cookie: 'estate_session=probe-nonexistent-id' } });
+  check(
+    AREA,
+    'A16',
+    'POST',
+    sessionTokenUrl,
+    'unknown cookie id → 401 { error: "no_session" }, never leaks whether an id ever existed',
+    sessionTokenBogus.ok && sessionTokenBogus.status === 401 && sessionTokenBogus.json?.error === 'no_session',
+    sessionTokenBogus.ok ? `status=${sessionTokenBogus.status} body=${JSON.stringify(sessionTokenBogus.json)}` : `request failed: ${sessionTokenBogus.error}`,
+  );
+
+  const sessionDeleteResp = await request('DELETE', sessionUrl);
+  check(
+    AREA,
+    'A17',
+    'DELETE',
+    sessionUrl,
+    'no cookie → 200 { ok: true }, idempotent sign-out',
+    sessionDeleteResp.ok && sessionDeleteResp.status === 200 && sessionDeleteResp.json?.ok === true,
+    sessionDeleteResp.ok ? `status=${sessionDeleteResp.status} body=${JSON.stringify(sessionDeleteResp.json)}` : `request failed: ${sessionDeleteResp.error}`,
+  );
+
+  // --- CORS: the session routes are CREDENTIALED (Access-Control-Allow-
+  // Credentials: true) and admit all FOUR estate origins — proven here with
+  // library.heygabi.ai, the one origin neither adminCors() nor meCors()
+  // admits, so this also proves the session routes use their OWN list
+  // (SESSION_ORIGINS) rather than accidentally inheriting one of those.
+  const sessionPre = await options(sessionUrl, {
+    headers: { Origin: LIBRARY_ORIGIN, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'Authorization' },
+  });
+  if (!sessionPre.ok) {
+    check(AREA, 'A18', 'OPTIONS', sessionUrl, `access-control-allow-origin === ${LIBRARY_ORIGIN}, allow-credentials === true`, false, `request failed: ${sessionPre.error}`);
+  } else {
+    const acao = header(sessionPre, 'access-control-allow-origin');
+    const acac = header(sessionPre, 'access-control-allow-credentials');
+    check(
+      AREA,
+      'A18',
+      'OPTIONS',
+      sessionUrl,
+      `access-control-allow-origin === ${LIBRARY_ORIGIN} AND allow-credentials === true (credentialed, all four estate origins)`,
+      acao === LIBRARY_ORIGIN && acac === 'true',
+      `ACAO=${acao} ACAC=${acac}`,
+    );
+  }
+
+  const sessionEvil = await options(sessionUrl, {
+    headers: { Origin: FOREIGN_ORIGIN, 'Access-Control-Request-Method': 'POST' },
+  });
+  if (!sessionEvil.ok) {
+    check(AREA, 'A19', 'OPTIONS', sessionUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, false, `request failed: ${sessionEvil.error}`);
+  } else {
+    const acao = header(sessionEvil, 'access-control-allow-origin');
+    check(AREA, 'A19', 'OPTIONS', sessionUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
   }
 }

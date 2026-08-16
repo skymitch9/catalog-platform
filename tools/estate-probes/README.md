@@ -1,7 +1,9 @@
 # estate-probes — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-15** (54/54 passing against live production).
+> Last verified: **2026-08-16** (61/61 passing against live production —
+> the 54 prior plus 7 new for the estate SSO build's Phase 1 proxy and
+> Phase 2 session routes, sso-design.md §8).
 
 Owner order 2026-08-15: *"Maybe it's time to make an api testing suite"* —
 promoting `apps/auth-worker/test/live-probes.ts`'s idiom (a named `check()`,
@@ -37,14 +39,14 @@ time, by anyone with this repo checked out, with no credentials at all.
 | Area | File | Surface |
 |---|---|---|
 | All four `/api/health` | `probes/health.mjs` | The `{ ok, service, version?, time, detail }` envelope (`docs/info/health-envelope.md`) on auth, index, library, games |
-| `auth.heygabi.ai` | `probes/auth-worker.mjs` | `/me`, `/hello` tokenless → 401; `/docs/:slug` tokenless → 401; admin API (`/users`) tokenless AND garbage-bearer → 401; `/hello` CORS (audiobook site admitted, foreign origin refused, POST allowed); admin API CORS (apex admitted, foreign origin refused) |
+| `auth.heygabi.ai` | `probes/auth-worker.mjs` | `/me`, `/hello` tokenless → 401; `/docs/:slug` tokenless → 401; admin API (`/users`) tokenless AND garbage-bearer → 401; `/hello` CORS (audiobook site admitted, foreign origin refused, POST allowed); admin API CORS (apex admitted, foreign origin refused); `/__/auth/*` proxy is live (not this Worker's 404 shape — sso-design.md §4.1 Phase 1); `/api/session` tokenless → 401, `/api/session/token` no-cookie / unknown-cookie → 401 `no_session`, `DELETE /api/session` no-cookie → 200 idempotent (§4.3 Phase 2); session-routes CORS is CREDENTIALED and admits `library.heygabi.ai` (proving it uses its own SESSION_ORIGINS list, not ADMIN_ORIGINS/ME_ORIGINS), foreign origin refused |
 | `index.heygabi.ai` | `probes/index-worker.mjs` | `/api/search` anonymous → 200 with the public-slice shape (`scope === ["audiobook"]`); `/api/universe/:name`, `/api/lookup`, `/api/scan/shelf` tokenless → 401; `/api/search` CORS (apex admitted, foreign origin refused) |
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
 | `boardgames.heygabi.ai` | `probes/health.mjs` | `/api/health` only — no other public surface is asked for by design |
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
 | Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on |
 
-54 assertions as of last verification, all passing. Run the suite for the
+61 assertions as of last verification, all passing. Run the suite for the
 current count and result — this table is not re-derived automatically.
 
 ## What is NOT covered, and why
@@ -65,6 +67,12 @@ identity to act as — that is the whole point of "unauthenticated-edge":
 - Nothing that requires a **per-app machine bearer**: `POST
   /api/estate/seen`, `POST /api/push` (index-worker's per-source push
   tokens). These are secrets by design and this suite holds none.
+- **`POST /api/session/token`'s `token_signer_unset` 503 path.** Reaching it
+  requires a LIVE `estate_session` row, which requires a real Firebase ID
+  token from `POST /api/session` first — this suite holds none (same class
+  as every signed-in path above). What IS probed is the no-cookie/
+  unknown-cookie 401 edge; the 503 idiom itself is proven in
+  `apps/auth-worker/test/session.test.ts` against a fake D1.
 - The **games worker's** non-health routes entirely — no probe target was
   named for them in the design pass that produced this suite, and inventing
   unauthenticated assertions for an unfamiliar route surface risked getting

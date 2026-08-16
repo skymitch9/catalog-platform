@@ -21,3 +21,16 @@ PIPELINE_TRIGGER_TOKEN=
 # the whole service-account JSON (site-roles.ts + ops.ts both need it) and
 # is never typed into a file even as a placeholder; `wrangler secret put` in
 # production, or paste the real JSON into your own gitignored .dev.vars.
+
+# Phase 2 session service (sso-design.md §4.3, docs/access/estate-auth.md).
+# COOKIE_DOMAIN: Domain=.heygabi.ai can never be set from a localhost origin
+# — override for local dev so the Set-Cookie is actually usable in-browser.
+COOKIE_DOMAIN=localhost
+# SESSION_ORIGINS: unset falls back to the production four (env.ts) — only
+# needed locally if testing from a dev origin other than those.
+SESSION_ORIGINS=https://heygabi.ai,https://audiobooks.heygabi.ai,https://library.heygabi.ai,https://boardgames.heygabi.ai,http://localhost:8080
+# TOKEN_SIGNER_KEY is deliberately absent from this example, same reasoning
+# as FIREBASE_SERVICE_ACCOUNT above — but it MUST be a DIFFERENT, dedicated,
+# zero-IAM-role service account, never the same key. See
+# docs/access/estate-auth.md §3 for what it is and how to create/rotate it.
+# Left unset, POST /api/session/token answers 503 token_signer_unset.
