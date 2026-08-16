@@ -5,6 +5,18 @@
  * auth Worker (src/docs.ts + the estate_docs KV namespace). A 200 IS the
  * devops probe; 401/403 leave a quiet refusal, never content. Neutral boot
  * + 8s backstop ported verbatim — the flash-of-sign-in bug was found live.
+ *
+ * ALSO fills in the §0 facts table (0007, 2026-08-16 — see index.html's
+ * header for the client-vs-server design note). After the document renders,
+ * fillFacts() fetches GET /api/estate/facts/shelf and writes each value into
+ * the fragment's own `[data-fact="…"]` cells with `textContent` — never
+ * `innerHTML` — because that value was typed by Justin into a browser and
+ * this is the point it gets rendered back out; textContent cannot execute
+ * markup regardless of what the string contains, which is the actual
+ * escaping boundary here (nothing server-side re-escapes it). A facts-fetch
+ * failure is swallowed quietly: the fragment's own default placeholder text
+ * stays exactly as written, and the document the caller came to read is
+ * never blocked on it.
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../../assets/estate-auth.js';
@@ -12,6 +24,8 @@ import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '.
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
 const DOC_SLUG = 'shelf-server';
+const FACTS_SLUG = 'shelf';
+const FACT_FIELDS = ['hardware', 'os', 'disk_free', 'library_size', 'notes'];
 
 const gateMain = document.getElementById('gate-main');
 const gateStatusEl = document.getElementById('gate-status');
@@ -87,6 +101,63 @@ async function loadDoc() {
   docMount.innerHTML = data.html;
   docLoaded = true;
   gateMain.hidden = true;
+
+  // Best-effort: never blocks the document above from having already shown.
+  fillFacts();
+}
+
+/**
+ * GET /api/estate/facts/shelf and write each value into the just-rendered
+ * fragment's `[data-fact="…"]` cells. Swallows every failure quietly — the
+ * fragment's own placeholder text is a perfectly good fallback, and this is
+ * decoration on top of a document that already loaded successfully.
+ */
+async function fillFacts() {
+  let token;
+  try {
+    token = await idToken();
+  } catch (e) {
+    return;
+  }
+  if (!token) return;
+
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/facts/${FACTS_SLUG}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return;
+  }
+  if (!res.ok) return;
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return;
+  }
+  const facts = data && data.facts;
+
+  for (const field of FACT_FIELDS) {
+    const cell = docMount.querySelector(`[data-fact="${field}"]`);
+    if (!cell) continue;
+    const value = facts ? facts[field] : '';
+    if (value && value.trim()) cell.textContent = value;
+    // else: leave the fragment's own default placeholder text untouched.
+  }
+
+  const metaEl = docMount.querySelector('[data-fact="meta"]');
+  if (metaEl) {
+    if (facts && facts.submitted_by) {
+      const parsed = new Date(facts.submitted_at);
+      const when = Number.isNaN(parsed.getTime())
+        ? facts.submitted_at
+        : parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      metaEl.textContent = `Entered by ${facts.submitted_by} on ${when}.`;
+    }
+    // else: leave the fragment's own default "not yet entered" text.
+  }
 }
 
 let authResolved = false;

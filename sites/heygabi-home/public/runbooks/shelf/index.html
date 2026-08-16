@@ -41,6 +41,24 @@
   (heygabi.ai) rather than `/status`, matching the front-door pattern this
   whole page family now shares (see /todo's gate for the source of the
   `.back` arrow-SVG idiom this reuses verbatim).
+
+  ⚠️ FACTS AUTO-POPULATE HAPPENS HERE, CLIENT-SIDE, NOT SERVER-SIDE (0007,
+  owner ask 2026-08-16: "auto pop the run book"). Two ways were on the
+  table: the Worker templating facts into the fragment at serve time
+  (docs.ts), or this shim fetching GET /api/estate/facts/shelf and filling
+  the already-rendered table itself. Chosen: THIS ONE — client-side —
+  because it keeps docs.ts (serves static content) and facts.ts (serves a
+  small JSON record) each single-purpose and mutually unaware, and keeps
+  per-deployment state (who entered what, when) entirely OUT of the KV
+  fragment doc:shelf-server, which stays exactly what a person wrote,
+  forever, with no placeholder syntax baked in for a second endpoint to
+  understand. The fragment carries plain `data-fact="hardware"` etc.
+  attributes on its §0 table cells (see facts.ts for the exact five field
+  names) — doc.js's fillFacts() below finds them by attribute and sets
+  `textContent`, never `innerHTML`, which is the escaping boundary for
+  whatever Justin typed. A facts-fetch failure never blocks the document
+  itself from rendering; the cells simply keep the fragment's own default
+  placeholder text.
 -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237a5c2e'/%3E%3Crect x='7' y='9' width='18' height='3' rx='1.2' fill='%23fbfaf7'/%3E%3Crect x='7' y='15' width='18' height='3' rx='1.2' fill='%23e8d9b8'/%3E%3Crect x='7' y='21' width='11' height='3' rx='1.2' fill='%23d9a441'/%3E%3C/svg%3E">
 <style>
