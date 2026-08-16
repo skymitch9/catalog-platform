@@ -52,6 +52,13 @@ export async function probeAuthWorker() {
   // so this never reaches estate-db.ts's create path (docs.ts/estate.ts §gate).
   expectUnauthenticated('A5', 'POST', '/api/estate/users', await post(`${AUTH_ORIGIN}/api/estate/users`));
 
+  // GET/POST /api/estate/facts/:slug (0007, 2026-08-16: the self-service
+  // shelf-facts form, facts.ts) — same requireDevops() tier as /docs/:slug
+  // and /backups above; new-endpoint rule (this suite's own README): every
+  // new estate route gets a probe here. Both verbs, since POST writes.
+  expectUnauthenticated('A26', 'GET', '/api/estate/facts/shelf', await get(`${AUTH_ORIGIN}/api/estate/facts/shelf`));
+  expectUnauthenticated('A27', 'POST', '/api/estate/facts/shelf', await post(`${AUTH_ORIGIN}/api/estate/facts/shelf`));
+
   // --- Garbage bearer tokens: verification fails, same 401 as tokenless ---
   expectUnauthenticated(
     'A6',
@@ -175,6 +182,30 @@ export async function probeAuthWorker() {
   } else {
     const acao = header(backupsEvil, 'access-control-allow-origin');
     check(AREA, 'A25', 'OPTIONS', backupsUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
+  }
+
+  // --- CORS: /api/estate/facts/* is apex-only, same adminCors() mount as
+  // /docs/*, /ops/pipeline and /backups (index.ts) — the only callers are
+  // the migration-page form and the runbook page, both on the apex.
+  const factsUrl = `${AUTH_ORIGIN}/api/estate/facts/shelf`;
+  const factsApex = await options(factsUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'Authorization' },
+  });
+  if (!factsApex.ok) {
+    check(AREA, 'A28', 'OPTIONS', factsUrl, `access-control-allow-origin === ${APEX_ORIGIN}`, false, `request failed: ${factsApex.error}`);
+  } else {
+    const acao = header(factsApex, 'access-control-allow-origin');
+    check(AREA, 'A28', 'OPTIONS', factsUrl, `access-control-allow-origin === ${APEX_ORIGIN} (facts form, apex-only)`, acao === APEX_ORIGIN, `ACAO=${acao}`);
+  }
+
+  const factsEvil = await options(factsUrl, {
+    headers: { Origin: FOREIGN_ORIGIN, 'Access-Control-Request-Method': 'POST' },
+  });
+  if (!factsEvil.ok) {
+    check(AREA, 'A29', 'OPTIONS', factsUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, false, `request failed: ${factsEvil.error}`);
+  } else {
+    const acao = header(factsEvil, 'access-control-allow-origin');
+    check(AREA, 'A29', 'OPTIONS', factsUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
   }
 
   // --- Phase 1 (sso-design.md §4.1): the /__/auth/* proxy is LIVE and is a
