@@ -172,6 +172,39 @@ state machine (want → have → reading → read) rather than three features.
 **Games:** "all catalogs" plausibly includes a to-PLAY list. Ask before
 assuming — it may be the same feature or a deliberately different one.
 
+### ⚠️ SCOPE NARROWED by the owner, 2026-08-16 — read this before building anything above
+
+> *"lets more or less exclude games unless we design a feature thats worth
+> adding to it. for now my friend wants to sort her books"*
+
+Two corrections to everything written above, and the second is the important one:
+
+1. **Games are out of scope** for the federation, the cross-catalog TBR and the
+   ownership join — unless a feature turns up that is genuinely worth adding to
+   games on its own merits. Do not carry games through these designs "for
+   symmetry"; it doubles the surface for a use case nobody asked for.
+
+2. ⚠️ **The actual requirement is "she wants to sort her books."** That is not
+   the federation, not "who owns what", not a spanning TBR. Those are things
+   the OWNER finds interesting about the estate; they are not what the person
+   with the books needs. **Build the small thing first.**
+
+**What "sort her books" actually needs, in order:**
+
+| Need | Status today |
+|---|---|
+| Get her books INTO a catalog without a terminal | Scanning exists and is field-proven; the remote/non-technical ingest story is the real gap |
+| Details filled in without her chasing them | The hourly auto-sweep landed for games 2026-08-16; **library is the queued twin and is what she actually needs** |
+| Browse/sort by series, author, what's missing | Already the library app's strongest feature — series ladders, gaps, sorting, filters |
+
+So most of what she needs **already exists**; the missing piece is ingestion for
+someone remote and non-technical, plus the library details sweep.
+
+⚠️ **Do NOT start with the shared index join.** "See who owns what" is a
+SECOND-phase want, and it is cheap to add later precisely because a separate
+instance is already an index source. Building the join first would mean
+designing a federation for a catalog that does not yet have any books in it.
+
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
 Raised mid-conversation and **not yet decided** — recorded because it reframes
