@@ -623,6 +623,7 @@ const opsRunBtn = document.getElementById('ops-run-pipeline');
 const opsRunMsgEl = document.getElementById('ops-run-msg');
 // Server migration section (2026-08-15) — same gate, same probe, one more box.
 const migrationSectionEl = document.getElementById('migration-section');
+const commandmentsSectionEl = document.getElementById('commandments-section');
 
 let opsCurrentUser = null;
 let opsIsApprover = false;
@@ -681,6 +682,7 @@ function renderOpsAuthState() {
     opsWhoEl.innerHTML = '';
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
+    commandmentsSectionEl.hidden = true;
     setOpsNote('');
     return;
   }
@@ -699,6 +701,7 @@ function renderOpsAuthState() {
     setOpsNote('Checking access…');
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
+    commandmentsSectionEl.hidden = true;
     return;
   }
 
@@ -706,9 +709,11 @@ function renderOpsAuthState() {
     setOpsNote('');
     opsSectionEl.hidden = false;
     migrationSectionEl.hidden = false;
+    commandmentsSectionEl.hidden = false;
   } else {
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
+    commandmentsSectionEl.hidden = true;
     setOpsNote(
       'Signed in, but this account holds neither devops nor admin — Operations stays hidden. ' +
         'An admin can grant devops from /admin ("Make devops").',

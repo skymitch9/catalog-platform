@@ -245,6 +245,21 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 #ops-section { margin-bottom: var(--et-space-3); }
 #ops-controls { display: grid; gap: .7rem; }
 
+/* The 12-commandments collapsible — native <details>, styled like a row. */
+#commandments-section { margin-bottom: var(--et-space-3); }
+.cmd-details {
+  border: 1px solid var(--et-hairline); border-radius: var(--et-radius);
+  background: var(--et-surface); padding: .55rem .85rem;
+}
+.cmd-details summary {
+  cursor: pointer; font-weight: 600; font-size: var(--et-text-small);
+  color: var(--et-muted); user-select: none; min-height: 32px;
+  display: flex; align-items: center;
+}
+.cmd-details[open] summary { color: var(--et-fg); margin-bottom: .4rem; }
+.cmd-list { margin: 0; padding-left: 1.3rem; font-size: var(--et-text-small); display: grid; gap: .45rem; }
+.cmd-list li { text-wrap: pretty; }
+
 .ops-run {
   display: flex;
   align-items: center;
@@ -349,6 +364,33 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       <li><a href="/runbooks/shelf-migration/">Instructions manual →</a> — who does what: Skylar's steps, the keeper's steps, the two handoffs.</li>
       <li><a href="/runbooks/shelf/">Runbook →</a> — the full reference: every prompt, flag, config file, dash field and gotcha.</li>
     </ul>
+  </section>
+
+  <!-- The 12 AI commandments (owner order 2026-08-16: "add the 12
+       commandments of ai we set up in the devops page. Make a collapsible
+       tab"). Same devops/approver gate as the two sections around it;
+       native <details> so collapsing needs no JS. The rules are generic
+       operating practice — no household detail — so unlike the runbooks'
+       KV-held content they can live in this committed file. -->
+  <section id="commandments-section" aria-labelledby="cmd-h" hidden>
+    <h2 id="cmd-h">The 12 AI commandments</h2>
+    <details class="cmd-details">
+      <summary>The estate's global rules — how everything here gets built (tap to expand)</summary>
+      <ol class="cmd-list">
+        <li><strong>Three doc folders:</strong> <code>access/</code> (how to operate — secrets <em>named</em>, never valued), <code>info/</code> (how it works, dates on every measured fact), and one living work log. Never duplicate a fact across them.</li>
+        <li><strong>Agent instructions stay thin</strong> — only what bites in the first ten minutes, pointing at the work log for everything else.</li>
+        <li><strong>Stale docs are bugs</strong> — if reality disagrees with a doc you touched, fix the doc in the same session.</li>
+        <li><strong>Every report states what was NOT verified.</strong> No guessing to unblock — an unavailable fact is reported unavailable.</li>
+        <li><strong>Shipped ≠ verified.</strong> Track them separately. Run the change; don't reason about it.</li>
+        <li><strong>Guards are scripts, not advice</strong> — deploys refuse a dirty tree; escape hatches are deliberate env vars; write the guard the day of the incident and name it after it.</li>
+        <li><strong>Every ask goes on the todo list the moment it's said</strong> — never memory-only.</li>
+        <li><strong>Big model plans and reviews; cheap models build from tight briefs</strong> — exact paths, rules, verification steps, off-limits files.</li>
+        <li><strong>Concurrent agents claim work in an append-only log</strong> <em>before</em> starting, never rewrite entries, and write down what they <em>couldn't</em> solve.</li>
+        <li><strong>If agents are metered:</strong> read the budget before every dispatch and after every landing — an agent's cost is invisible until it finishes — and a limit is a pause with a scheduled resume, never a stop.</li>
+        <li><strong>Anything visible ships with its review link</strong> — the exact deep URL plus one line on what to look at. A change you have to hunt for isn't delivered.</li>
+        <li><strong>Directory deploys ship whatever's on disk</strong> — deploy only from a committed-clean tree (or a throwaway worktree of HEAD), or you'll ship a colleague's half-built work.</li>
+      </ol>
+    </details>
   </section>
 
   <section id="ops-section" aria-labelledby="ops-h" hidden>
