@@ -435,6 +435,9 @@ async function loadDirectory() {
   siteRolesDir = sroles;
   roleTreeDir = rtree;
   renderRoleTree();
+  // Owner: "just always auto fill and write the max role possible for each
+  // site." Fire-and-forget — the render below must not wait on it.
+  void reconcileOwnerRoles();
   if (!estate) {
     // api() already said why. The app lists are useless without the spine.
     usersEl.innerHTML = '';
@@ -905,6 +908,52 @@ function appRoleCell(app, estateUser) {
  * change: picking a new value only STAGES it; the confirm button must be
  * tapped twice before postSiteRole() actually runs.
  */
+/**
+ * Keep every OWNER at the top of the audiobook ladder, automatically.
+ *
+ * Owner decision 2026-08-16: *"just always auto fill and write the max role
+ * possible for each site."* An owner outranks anything this page can grant, so
+ * their stored role is not a choice — it is a value that should simply always
+ * be correct, and drift in it is a bug rather than a preference.
+ *
+ * ⚠️ Runs ONCE after the directory loads, never from inside a render function.
+ * A cell that wrote as a side effect of being drawn would re-fire on every
+ * re-render, every sort and every filter change — a storm of POSTs triggered by
+ * scrolling.
+ *
+ * ⚠️ Only ever writes the TOP role to a KNOWN OWNER, so the sole direction this
+ * can move anyone is one the owner has already decided is theirs by rank. It
+ * cannot promote a non-owner: the guard is the server's own ownerEmails list,
+ * the same one the gates use. If the server refuses anyway (an owner whose
+ * caller lacks grant power — e.g. an admin viewing an owner's row), the refusal
+ * stands and is reported, not retried.
+ *
+ * Silent by design when there is nothing to do, which is the normal case.
+ */
+async function reconcileOwnerRoles() {
+  const dir = siteRolesDir;
+  if (!dir || !dir.ok || !Array.isArray(dir.ownerEmails) || !dir.ownerEmails.length) return;
+  const top = dir.roles[dir.roles.length - 1];
+  if (!top) return;
+
+  const behind = dir.ownerEmails.filter((email) => (dir.byEmail.get(email)?.role ?? 'none') !== top);
+  if (!behind.length) return;
+
+  const fixed = [];
+  for (const email of behind) {
+    const ok = await postSiteRole(email, top);
+    if (ok) {
+      const prev = dir.byEmail.get(email);
+      dir.byEmail.set(email, { ...(prev ?? { uid: '', displayName: '' }), email, role: top });
+      fixed.push(email);
+    }
+  }
+  if (fixed.length) {
+    setStatus(`Owner role set to ${top} for ${fixed.join(', ')}.`, 'owner');
+    render();
+  }
+}
+
 function audiobookRoleCell(estateUser) {
   const dir = siteRolesDir;
   const cell = document.createElement('span');
@@ -921,6 +970,43 @@ function audiobookRoleCell(estateUser) {
   const currentRole = holder?.role ?? 'none';
   const grantable = Array.isArray(dir.grantable) ? dir.grantable : [];
   const canTouchCurrent = currentRole === 'none' || grantable.includes(currentRole);
+
+  // ⚠️ AN OWNER GETS NO CONTROL HERE EITHER (owner-reported 2026-08-16: "for
+  // the audiobook portal it didnt force my role" — the app cells got this
+  // treatment and this one was missed).
+  //
+  // ⚠️ The `currentRole === 'owner'` branch below CANNOT FIRE, and that is the
+  // whole bug. `currentRole` comes from the Firestore site_roles doc, and
+  // SITE_ROLES stops at 'admin' — 'owner' is never stored there by design, it
+  // lives in OWNER_EMAILS. So an owner's row carried 'admin' or 'none', passed
+  // the canTouchCurrent test, and was handed a dropdown. The dead branch is
+  // kept below only because a doc COULD hold a stale 'owner' string from an
+  // earlier vocabulary; it is not the owner check.
+  //
+  // Ask the server who owns the estate instead, exactly as the app cells do.
+  // The displayed value is the highest role this ladder can express (the last
+  // SITE_ROLES entry, not a hardcoded 'admin' that a rename would rot), shown
+  // as a fact with the real rank beside it.
+  if (isOwnerEmail(estateUser)) {
+    const top = dir.roles[dir.roles.length - 1];
+    const note = document.createElement('span');
+    note.className = 'cat-owner';
+    note.textContent = `owner · ${top}`;
+    note.title =
+      `Owner — outranks every role this page can grant, so there is nothing to choose. ` +
+      `'owner' itself is DB-only and is never stored in a site_roles doc; ${top} is the ` +
+      `highest role the audiobook ladder can express, and is kept set automatically.`;
+    if (currentRole !== top) {
+      // Reconciliation is done once after load (reconcileOwnerRoles), not from
+      // inside a render function — a cell that writes as a side effect of being
+      // drawn would fire again on every re-render and every filter change.
+      note.classList.add('cat-warn');
+      note.textContent = `owner · ${currentRole} → ${top}`;
+      note.title += ` Currently ${currentRole}; being corrected.`;
+    }
+    cell.appendChild(note);
+    return cell;
+  }
 
   if (!canTouchCurrent) {
     // The current holder outranks what this caller may grant/revoke (e.g.
