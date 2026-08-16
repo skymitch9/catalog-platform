@@ -44,7 +44,15 @@ import {
 // FIREBASE_PROJECT_ID is pinned to this projectId in every Worker verifier.
 const firebaseConfig = {
   apiKey: 'AIzaSyDgAblkxzVxl7nFbd7jXOo6PpuNPsJw11Y',
-  authDomain: 'audiobook-catalog.firebaseapp.com',
+  // Flipped 2026-08-16 — sso-design.md §4.1/§8 Phase 1 (option a). Was
+  // 'audiobook-catalog.firebaseapp.com'. auth.heygabi.ai reverse-proxies
+  // /__/auth/* to that same host (apps/auth-worker/src/auth-proxy.ts), so
+  // the sign-in ceremony now runs same-site instead of cross-site — fixes
+  // the third-party-storage breakage in signInWithRedirect() (§3.2). This
+  // does NOT share sessions across origins (§4.1 says so plainly); it only
+  // makes THIS origin's sign-in reliable. Rollback: revert this one string
+  // to the firebaseapp.com value and redeploy.
+  authDomain: 'auth.heygabi.ai',
   projectId: 'audiobook-catalog',
   storageBucket: 'audiobook-catalog.firebasestorage.app',
   messagingSenderId: '68492219785',
