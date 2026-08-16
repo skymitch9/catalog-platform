@@ -1,9 +1,12 @@
 # estate-probes — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-16** (64/64 passing against live production —
-> the 61 prior plus 3 new for `GET /api/estate/backups`, the 0006 "last
-> backup age" /status row: tokenless 401 + apex-only CORS admit/refuse).
+> Last verified: **2026-08-16** (67/67 passing against live production,
+> measured by running `npm run probe:estate` — +3 for the new
+> `GET /api/estate/backups` checks, the 0006 "last backup age" /status row:
+> tokenless 401 + apex-only CORS admit/refuse. The prior run's count in this
+> doc had drifted from the suite's actual total; this figure is the freshly
+> measured one, not carried forward).
 
 Owner order 2026-08-15: *"Maybe it's time to make an api testing suite"* —
 promoting `apps/auth-worker/test/live-probes.ts`'s idiom (a named `check()`,
@@ -46,7 +49,7 @@ time, by anyone with this repo checked out, with no credentials at all.
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
 | Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on |
 
-64 assertions as of last verification, all passing. Run the suite for the
+67 assertions as of last verification, all passing. Run the suite for the
 current count and result — this table is not re-derived automatically.
 
 ## `authorized-domains.mjs` — optional, credentialed
