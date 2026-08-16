@@ -634,6 +634,53 @@ function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
   const startedAt = pipeStatus ? Date.parse(pipeStatus.startedAt || '') : NaN;
   const kind = ebookRunKind(pipeStatus?.trigger, pipeStatus?.steps);
 
+  // ── The MEASURED answer, when the pipeline has given us one ──────────────
+  //
+  // `summary.ebookManifestAt` (audiobook_catalog, sync_to_drive.py step 1b,
+  // added 2026-08-16 with the owner's approval) is the manifest's OWN
+  // generated_at, read back from the file the step just wrote. When the live
+  // manifest carries that exact stamp, the published file IS the one that run
+  // produced — a fact, with no trigger string or step key involved.
+  //
+  // It exists because this row had guessed three times and been wrong three
+  // times, each guess correct about the case that prompted it. A cross-repo
+  // string contract (trigger names live in the audiobook repo, the reader
+  // lives here) degrades silently when either side is renamed; a recorded
+  // timestamp does not.
+  //
+  // ⚠️ It answers "was the manifest BUILT", never "was it PUBLISHED" — and
+  // that gap IS the bug of 2026-08-16: a run that finds nothing new builds the
+  // manifest and then skips `publish`, so the built stamp races ahead of the
+  // live file. `kind.produces` (the publish-state check) therefore still runs
+  // FIRST and still wins; this block only refines a run that did publish.
+  //
+  // Absent field = an older run, or a pipeline not yet carrying the change.
+  // Fall through to the step/trigger logic rather than breaking.
+  const builtAt = Date.parse(pipeStatus?.summary?.ebookManifestAt || '');
+  if (kind.produces === true && Number.isFinite(builtAt)) {
+    if (Math.abs(generatedAt - builtAt) < 1000) {
+      updateRow(
+        'pipe-ebook',
+        'ok',
+        `${body.count.toLocaleString()} ebooks · published manifest is the one the last run built`,
+        'Measured, not inferred — the pipeline records the manifest’s own generated_at ' +
+          '(summary.ebookManifestAt) and this row matches the live file against it.',
+        now,
+      );
+      return;
+    }
+    updateRow(
+      'pipe-ebook',
+      'warn',
+      `${body.count.toLocaleString()} ebooks · ⚠️ the last run built a NEWER manifest than the one published ` +
+        `(built ${formatAge(now - builtAt)}, published ${formatAge(now - generatedAt)})`,
+      'The pipeline recorded building a manifest the live site never received — a publish that ' +
+        'did not land, rather than a step that did not run.',
+      now,
+    );
+    return;
+  }
+
   let state = 'ok';
   let detail = `${body.count.toLocaleString()} ebooks · manifest from the last pipeline run`;
 
