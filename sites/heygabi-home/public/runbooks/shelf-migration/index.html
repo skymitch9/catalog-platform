@@ -41,6 +41,21 @@
   (heygabi.ai) rather than `/status`, matching the front-door pattern this
   whole page family now shares (see /todo's gate for the source of the
   `.back` arrow-SVG idiom this reuses verbatim).
+
+  ⚠️ FACTS FORM LIVES IN PAGE CHROME TOO (0007, owner ask 2026-08-16: "make
+  an information entry form... so he can enter in the data without
+  bothering me"). #facts-card is the SAME kind of thing as the header
+  above: page chrome, not KV content — it POSTs to GET/POST
+  /api/estate/facts/shelf (apps/auth-worker/src/facts.ts), a route that
+  knows nothing about this page's markup and is never templated into any
+  KV fragment. Keeping it here (not in doc:shelf-migration's fragment)
+  means editing the form never touches the KV content pipeline, and vice
+  versa. It sits between the header and #gate-main, hidden until doc.js
+  proves the caller is devops (the same gate the document itself waits on)
+  — shown/hidden by the SAME loadDoc() success path, not a second auth
+  round-trip. Every fact value from the API is written with
+  `.value =`/`textContent`, NEVER `innerHTML` — see doc.js: that is the
+  escaping boundary for content Justin typed, not anything server-side.
 -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237a5c2e'/%3E%3Crect x='7' y='9' width='18' height='3' rx='1.2' fill='%23fbfaf7'/%3E%3Crect x='7' y='15' width='18' height='3' rx='1.2' fill='%23e8d9b8'/%3E%3Crect x='7' y='21' width='11' height='3' rx='1.2' fill='%23d9a441'/%3E%3C/svg%3E">
 <style>
@@ -84,6 +99,35 @@
   .linkbtn { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
   .linkbtn:hover { text-decoration: underline; }
   .who { color: var(--muted); font-size: .875rem; }
+
+  /* #facts-card — the self-service facts form (0007). Page chrome, same
+     card language as the gate above, own <hr>-style divider from the doc
+     that follows it. */
+  #facts-card {
+    max-width: 40rem; margin: 0 auto; padding: 0 1.25rem 1.5rem;
+  }
+  .facts-box {
+    border: 1px solid var(--hairline); border-radius: 14px; padding: 1.1rem 1.25rem 1.3rem;
+  }
+  .facts-h { margin: 0 0 .3rem; font-size: 1.0625rem; }
+  .facts-sub { margin: 0 0 1rem; color: var(--muted); font-size: .875rem; }
+  .facts-form { display: flex; flex-direction: column; gap: .85rem; }
+  .f-row { display: flex; flex-direction: column; gap: .3rem; }
+  .f-label { font-size: .8125rem; font-weight: 700; color: var(--muted); }
+  .facts-form input, .facts-form textarea {
+    font: inherit; font-size: .9375rem; padding: .55em .7em; border-radius: 8px;
+    border: 1px solid var(--hairline); background: var(--bg); color: var(--ink);
+    min-height: 44px; resize: vertical;
+  }
+  .facts-form textarea { min-height: 4.5em; }
+  .facts-form input:focus-visible, .facts-form textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .facts-actions { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+  .facts-status { color: var(--muted); font-size: .875rem; }
+  .facts-status.err { color: #b3453a; }
+  @media (prefers-color-scheme: dark) { .facts-status.err { color: #e6897d; } }
+  .facts-meta { margin: 0; color: var(--muted); font-size: .8125rem; }
 </style>
 </head>
 <body>
@@ -100,6 +144,39 @@
     <span id="who" class="who" hidden></span>
   </div>
 </main>
+<section id="facts-card" hidden aria-labelledby="facts-h">
+  <div class="facts-box">
+    <h2 id="facts-h" class="facts-h">Server facts</h2>
+    <p class="facts-sub">What you know about the box, Justin — this saves straight into the runbook&rsquo;s &sect;0 so nobody has to relay it by hand.</p>
+    <form id="facts-form" class="facts-form">
+      <div class="f-row">
+        <label class="f-label" for="f-hardware">Server hardware</label>
+        <input id="f-hardware" name="hardware" maxlength="200" autocomplete="off" placeholder="e.g. Dell OptiPlex 7060, i5-8500, 16GB RAM">
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-os">OS + version</label>
+        <input id="f-os" name="os" maxlength="200" autocomplete="off" placeholder="e.g. Ubuntu Server 24.04 LTS">
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-disk">Free disk space</label>
+        <input id="f-disk" name="disk_free" maxlength="100" autocomplete="off" placeholder="e.g. 612 GB free">
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-lib">Library size</label>
+        <input id="f-lib" name="library_size" maxlength="100" autocomplete="off" placeholder="e.g. ~310 GB (ask Skylar if unsure)">
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-notes">Anything odd about this machine?</label>
+        <textarea id="f-notes" name="notes" maxlength="2000" rows="3" placeholder="Optional — dual boot, a flaky drive, a weird BIOS setting, whatever's worth knowing"></textarea>
+      </div>
+      <div class="facts-actions">
+        <button id="facts-save" class="btn" type="submit">Save facts</button>
+        <span id="facts-status" class="facts-status" role="status" aria-live="polite"></span>
+      </div>
+      <p id="facts-meta" class="facts-meta" hidden></p>
+    </form>
+  </div>
+</section>
 <div id="doc-mount"></div>
 <script type="module" src="./doc.js"></script>
 </body>
