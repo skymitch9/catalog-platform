@@ -47,7 +47,7 @@
     },
     {
       "path": "/admin/",
-      "mustContain": ["</html>"]
+      "mustContain": ["Estate members", "class=\"back\""]
     },
     {
       "path": "/todo/",

@@ -384,6 +384,40 @@ footer {
 }
 footer a { color: var(--et-accent); }
 code { font-family: var(--et-font-mono); font-size: .9em; }
+
+/* Back to the front door. Copied VERBATIM from /status — same selector, same
+   arrow SVG, same 44px tap target — because this arrow is now the estate's
+   one way home and it has to look identical wherever it appears. The pages
+   that already had it (/status, /runbooks/shelf/, /runbooks/shelf-migration/)
+   got it on 2026-08-16; this page was simply missed in that pass, which is
+   why it is arriving separately (owner: "the estate page needs an easier way
+   to get back to the home page").
+
+   What was here instead: the word "the front door" linked inside the
+   explanatory paragraph below. That is a link you have to READ your way to,
+   and it sits in a sentence about what an approval does — not somewhere a
+   person scans when they want out. ⚠️ It stays where it is on purpose: it
+   carries meaning in that sentence (search on the front door is one of the
+   three things an approval admits you to), so removing it would cost the
+   sentence its example. Two links to the same place is the right answer when
+   one is prose and the other is chrome. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;
+  margin: 0 0 var(--et-space-1);
+  color: var(--et-muted);
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.back:hover { color: var(--et-fg); }
+.back:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+.back svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
+.back:hover svg { transform: translateX(-3px); }
 </style>
 </head>
 
@@ -414,6 +448,10 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 </div>
 
 <main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
   <h1>Estate members</h1>
   <p class="sub">
     One approval here admits a person estate-wide — search on
