@@ -668,6 +668,92 @@ function buildLeverList() {
   }
 }
 
+/**
+ * Backups row — GET /api/estate/backups (requireDevops()), added 2026-08-16
+ * for the "is the backup workflow actually still running" gap: nothing
+ * before this surfaced whether a silently-dead backup workflow was
+ * invisible or not, which is exactly the failure this row exists to catch.
+ *
+ * ⚠️ THRESHOLDS ARE CALENDAR-BASED, DELIBERATELY, UNLIKE THE PIPELINE ROWS
+ * ABOVE. `.github/workflows/backup.yml` is `workflow_dispatch`-only — no
+ * cron, no expected cadence — so there is no "did it keep up with X" signal
+ * to measure against the way renderPipelineEbookRow() measures the ebook
+ * lane against the pipeline's own last run (see that function's header for
+ * the incident this row deliberately does NOT repeat: aging a MANUAL act
+ * against a threshold that implied an AUTOMATIC cadence, which went
+ * amber/red while genuinely healthy). A backup's own age IS the right thing
+ * to measure here — the question this row answers is "how much would the
+ * estate lose if disaster struck right now," which is a real, wall-clock
+ * question regardless of how the last backup was triggered. What must stay
+ * honest is the LABEL: every state below says outright that the trigger is
+ * manual, so a long age reads as "nobody has run it in a while" first and
+ * "something is broken" only past a wide margin — 14 days amber (worth a
+ * glance), 45 days red (six-plus weeks with no fresh copy of the estate's
+ * data is a real risk regardless of intent). Both are round numbers, not
+ * measurements — there is no historical cadence to derive them from yet.
+ */
+const BACKUP_AMBER_MS = 14 * 24 * 3600_000;
+const BACKUP_RED_MS = 45 * 24 * 3600_000;
+const BACKUP_MANUAL_NOTE =
+  'Backups run on manual dispatch only (no cron) — a long age can mean nobody has run it recently, ' +
+  'not that anything is broken. Run it from the "Backup" row in Run levers below if it has been a while.';
+
+function buildBackupsSection() {
+  const ul = document.getElementById('backups-rows');
+  ul.appendChild(makeRow('backup-age', 'Estate backups (estate-backups R2)'));
+}
+
+async function loadBackups() {
+  const token = await idToken();
+  if (!token) return; // no live session yet — probeOpsApprover() retries on the next auth event
+  const now = Date.now();
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/backups`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    updateRow('backup-age', 'danger', 'The auth Worker did not answer (network).', BACKUP_MANUAL_NOTE, now);
+    return;
+  }
+  if (res.status === 401 || res.status === 403) {
+    // Should not happen once opsIsApprover is true (same token, same gate
+    // tier as /me), but never show a stale row silently if it does.
+    updateRow('backup-age', 'danger', 'Not authorized to read backup metadata.', null, now);
+    return;
+  }
+  if (!res.ok) {
+    updateRow('backup-age', 'danger', `The backups endpoint answered HTTP ${res.status}.`, BACKUP_MANUAL_NOTE, now);
+    return;
+  }
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    updateRow('backup-age', 'danger', 'The backups answer was unreadable.', BACKUP_MANUAL_NOTE, now);
+    return;
+  }
+
+  const prefixes = body.prefixes || {};
+  const missing = Object.keys(prefixes).filter((k) => prefixes[k].count === 0);
+  const newestOverall = body.newest_overall ? Date.parse(body.newest_overall) : NaN;
+
+  if (!Number.isFinite(newestOverall)) {
+    updateRow(
+      'backup-age', 'danger', 'No backup has ever been captured.',
+      `${BACKUP_MANUAL_NOTE} This bucket has never received an object of any kind.`, now,
+    );
+    return;
+  }
+
+  const ageMs = now - newestOverall;
+  const state = ageMs > BACKUP_RED_MS ? 'danger' : ageMs > BACKUP_AMBER_MS ? 'warn' : 'ok';
+  const total = Object.values(prefixes).reduce((sum, p) => sum + (p.count || 0), 0);
+  let note = BACKUP_MANUAL_NOTE;
+  if (missing.length) {
+    note += ` Never captured yet: ${missing.join(', ')}.`;
+  }
+  updateRow('backup-age', state, `Newest backup ${formatAge(ageMs)} · ${total} object${total === 1 ? '' : 's'} across ${Object.keys(prefixes).length} stores.`, note, now);
+}
+
 const opsSigninBtn = document.getElementById('ops-signin');
 const opsWhoEl = document.getElementById('ops-who');
 const opsNoteEl = document.getElementById('ops-note');
@@ -677,6 +763,9 @@ const opsRunMsgEl = document.getElementById('ops-run-msg');
 // Server migration section (2026-08-15) — same gate, same probe, one more box.
 const migrationSectionEl = document.getElementById('migration-section');
 const commandmentsSectionEl = document.getElementById('commandments-section');
+// Backups section (2026-08-16) — same gate; its row is fetched separately
+// (loadBackups()) since it is its own endpoint, not part of /me.
+const backupsSectionEl = document.getElementById('backups-section');
 
 let opsCurrentUser = null;
 let opsIsApprover = false;
@@ -736,6 +825,7 @@ function renderOpsAuthState() {
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
     commandmentsSectionEl.hidden = true;
+    backupsSectionEl.hidden = true;
     setOpsNote('');
     return;
   }
@@ -755,6 +845,7 @@ function renderOpsAuthState() {
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
     commandmentsSectionEl.hidden = true;
+    backupsSectionEl.hidden = true;
     return;
   }
 
@@ -763,10 +854,13 @@ function renderOpsAuthState() {
     opsSectionEl.hidden = false;
     migrationSectionEl.hidden = false;
     commandmentsSectionEl.hidden = false;
+    backupsSectionEl.hidden = false;
+    loadBackups();
   } else {
     opsSectionEl.hidden = true;
     migrationSectionEl.hidden = true;
     commandmentsSectionEl.hidden = true;
+    backupsSectionEl.hidden = true;
     setOpsNote(
       'Signed in, but this account holds neither devops nor admin — Operations stays hidden. ' +
         'An admin can grant devops from /admin ("Make devops").',
@@ -872,6 +966,7 @@ buildPipelineSection();
 buildWorkerSection();
 buildSiteSection();
 buildLeverList();
+buildBackupsSection();
 
 document.getElementById('refresh').addEventListener('click', () => refreshAll());
 

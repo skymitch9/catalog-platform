@@ -61,6 +61,18 @@ ME_ORIGINS = "https://heygabi.ai,https://audiobooks.heygabi.ai"
 binding = "estate_docs"
 id = "3278d5e3b22c4275b83bcc0b1ed5ab9c"
 
+# The PRIVATE estate-backups R2 bucket (.github/workflows/backup.yml is the
+# only writer; retention keep-8 per <kind>/<store> prefix). Bound here
+# READ-ONLY IN INTENT (owner ask 2026-08-16, "the status page has a row for
+# whether backups are actually still running"): src/backups.ts calls only
+# `.list()`, never `.get()`/`.put()`, and GET /api/estate/backups
+# (requireDevops()) answers aggregate counts/timestamps per known prefix
+# only — never a body, a signed URL, or a raw key. The bucket has no public
+# access and no custom domain regardless of this binding.
+[[r2_buckets]]
+binding = "ESTATE_BACKUPS"
+bucket_name = "estate-backups"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "estate_auth"

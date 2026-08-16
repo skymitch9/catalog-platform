@@ -22,6 +22,7 @@ import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
+import { backupsRoutes } from './backups.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
@@ -76,6 +77,10 @@ app.use('/api/estate/todo', adminCors());
 // Unlisted estate docs (0003 devops) — apex-only like /todo: the only shim
 // that calls this lives on the apex (an unlisted /r/<slug>/ page).
 app.use('/api/estate/docs/*', adminCors());
+// Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
+// above: the only caller is the status page's Operations section, on the
+// apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
+app.use('/api/estate/backups', adminCors());
 
 // CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
 // audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
@@ -110,6 +115,7 @@ app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
 app.route('/api', todoRoutes);
 app.route('/api', docsRoutes);
+app.route('/api', backupsRoutes);
 app.route('/api', sessionRoutes);
 
 function adminCors() {

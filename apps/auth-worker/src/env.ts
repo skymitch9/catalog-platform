@@ -20,6 +20,20 @@ export interface Env {
    */
   estate_docs?: KVNamespace;
 
+  /**
+   * The PRIVATE `estate-backups` R2 bucket (owner ask 2026-08-16: surface
+   * backup health on /status). ⚠️ READ-ONLY IN INTENT — backups.ts only ever
+   * calls `.list()` and reads `key`/`uploaded` off each object; nothing in
+   * this Worker calls `.get()` or `.put()` on this binding, and the route it
+   * backs (GET /api/estate/backups, requireDevops()) returns aggregate
+   * counts/timestamps per known prefix only — never an object body, a
+   * signed URL, or a raw key a caller could turn into a fetch of the bucket.
+   * Bound in wrangler.toml as `ESTATE_BACKUPS`; the bucket itself stays
+   * private (no public access, no custom domain) regardless of this
+   * binding — see docs/access/backup-restore.md.
+   */
+  ESTATE_BACKUPS?: R2Bucket;
+
   /** Set to "production" explicitly in wrangler.toml (conformance §8.2 #8). */
   ENVIRONMENT?: string;
   /** Dev bypass identity — only honoured when ENVIRONMENT === 'development'. */

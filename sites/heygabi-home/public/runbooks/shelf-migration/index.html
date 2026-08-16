@@ -25,6 +25,22 @@
   LOCAL-ONLY docs/access/SHELF_SERVER.md), regenerate the fragment, and
   `wrangler kv key put` it (exact command recorded in that doc). doc.js
   changes only when the GATE changes.
+
+  ⚠️ BACK-TO-FRONT-DOOR LINK LIVES IN PAGE CHROME, NOT THE GATE (owner ask
+  2026-08-16: "put a more easy to access back to front door button" on this
+  page). This page has TWO states — the gate (#gate-main) and the injected
+  KV document (#doc-mount, doc.js sets gateMain.hidden = true once it loads)
+  — and the fragment served from estate_docs KV carries no way back of its
+  own. Putting the back link INSIDE #gate-main (the old shape: an `<a
+  class="back" href="/status">` as the gate's first child) meant it
+  vanished the instant the document rendered, exactly when a long runbook
+  most needs an easy way out. The fix is a `<header class="page-chrome">`
+  OUTSIDE both #gate-main and #doc-mount, so it survives whichever one is
+  showing — never a change to the KV fragment itself, which stays exactly
+  what /api/estate/docs/shelf-migration returns. Also now points at `/`
+  (heygabi.ai) rather than `/status`, matching the front-door pattern this
+  whole page family now shares (see /todo's gate for the source of the
+  `.back` arrow-SVG idiom this reuses verbatim).
 -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237a5c2e'/%3E%3Crect x='7' y='9' width='18' height='3' rx='1.2' fill='%23fbfaf7'/%3E%3Crect x='7' y='15' width='18' height='3' rx='1.2' fill='%23e8d9b8'/%3E%3Crect x='7' y='21' width='11' height='3' rx='1.2' fill='%23d9a441'/%3E%3C/svg%3E">
 <style>
@@ -44,9 +60,19 @@
     margin: 0; background: var(--bg); color: var(--ink); min-height: 100dvh;
     font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  #gate-main { max-width: 40rem; margin: 0 auto; padding: 3rem 1.25rem; }
-  .back { color: var(--muted); font-size: .8125rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; text-decoration: none; }
+  /* Persistent chrome — outside #gate-main and #doc-mount, so it is visible
+     in BOTH page states. Real 44px tap target, visible without scrolling. */
+  .page-chrome { max-width: 40rem; margin: 0 auto; padding: 1.1rem 1.25rem 0; }
+  .back {
+    display: inline-flex; align-items: center; gap: .45rem; min-height: 44px;
+    color: var(--muted); font-size: .8125rem; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; text-decoration: none;
+  }
   .back:hover { color: var(--ink); }
+  .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+  .back svg { flex: none; transition: transform .2s ease; }
+  .back:hover svg { transform: translateX(-3px); }
+  #gate-main { max-width: 40rem; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
   #gate { display: flex; flex-direction: column; align-items: flex-start; gap: .9rem; margin-top: 1.2rem; }
   #gate-status { margin: 0; padding: .9em 1.1em; border: 1px dashed var(--hairline); border-radius: 12px; color: var(--muted); font-size: .9375rem; max-width: 32rem; }
   .btn {
@@ -61,8 +87,13 @@
 </style>
 </head>
 <body>
+<header class="page-chrome">
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+</header>
 <main id="gate-main">
-  <a class="back" href="/status">&larr; status</a>
   <div id="gate">
     <p id="gate-status">Checking sign-in&hellip;</p>
     <button id="signin" class="btn" type="button" hidden>Sign in with Google</button>

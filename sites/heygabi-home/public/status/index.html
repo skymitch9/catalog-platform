@@ -84,6 +84,29 @@ body {
 }
 main { max-width: 44rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
 
+/* ---- back to the front door — owner ask 2026-08-16: "put a more easy to
+   access back to front door button" on this family of pages. First thing in
+   <main>, above the fold on a phone, a real 44px tap target. Same pattern as
+   /todo's gate (.back: arrow SVG + text) so the whole estate shares one
+   "how do I get back" affordance instead of each page inventing its own. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;
+  margin: 0 0 var(--et-space-1);
+  color: var(--et-muted);
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.back:hover { color: var(--et-fg); }
+.back:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+.back svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
+.back:hover svg { transform: translateX(-3px); }
+
 h1 {
   margin: 0 0 .3rem;
   font-family: var(--et-font-display);
@@ -319,6 +342,10 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 </div>
 
 <main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
   <h1>Estate status</h1>
   <p class="sub">
     Every pipeline and service, read straight from each one's own public
@@ -407,6 +434,30 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       </div>
       <ul id="lever-rows" class="lever-list"></ul>
     </div>
+  </section>
+
+  <!-- Backups (owner ask 2026-08-16: "nothing surfaces whether backups are
+       actually still running"). Same devops/approver gate as Operations
+       above — GET /api/estate/backups (requireDevops()) reads the PRIVATE
+       estate-backups R2 bucket and answers aggregate counts/timestamps
+       only, so this row can only ever be fetched signed in, unlike every
+       anonymous row below. See status.js's renderBackupsRow() for why the
+       thresholds are calendar-based (14d/45d) rather than cadence-based —
+       backup.yml is workflow_dispatch-only, no cron, so there is no
+       "expected next run" to measure against the way the 8h pipeline
+       cadence works; a long age here honestly can mean "nobody ran it,"
+       not "broken," and the row's own note says so every time. -->
+  <section id="backups-section" aria-labelledby="backups-h" hidden>
+    <h2 id="backups-h">Backups</h2>
+    <p class="section-note">
+      The private <code>estate-backups</code> R2 bucket — D1 exports, a
+      Firestore dump, and the three cover-image buckets, written only by a
+      manual run of <code>backup.yml</code> (no cron). Read via
+      <code>GET /api/estate/backups</code>, which returns counts and
+      timestamps only — never a bucket listing, an object, or a URL that
+      could fetch one.
+    </p>
+    <ul id="backups-rows" class="rows"></ul>
   </section>
 
   <section aria-labelledby="idx-h">
