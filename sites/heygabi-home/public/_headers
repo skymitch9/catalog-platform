@@ -195,6 +195,17 @@
   X-Robots-Tag: noindex, nofollow
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# /runbooks/* — estate runbook shims at PROPER, TRACKED urls (2026-08-15,
+# owner: "give this a proper url since we'll be updating it a lot"). Same
+# lock and exact same CSP as /r/* above — the auth is the fence, the URL is
+# public knowledge (linked from /status's Operations section). A shim here
+# is committed; only its KV-served content is private. Splat sidesteps the
+# trailing-slash 308 trap and covers each page's doc.js.
+/runbooks/*
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer

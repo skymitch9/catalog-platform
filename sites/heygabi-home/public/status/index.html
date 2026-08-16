@@ -333,9 +333,9 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   <section id="ops-section" aria-labelledby="ops-h" hidden>
     <h2 id="ops-h">Operations</h2>
     <p class="section-note">
-      Run controls, approver-only. Nothing here is visible or usable signed
-      out — this section only appears once <code>GET /api/estate/me</code>
-      confirms an approver account.
+      Run controls, devops/admin-only. Nothing here is visible or usable
+      signed out — this section only appears once
+      <code>GET /api/estate/me</code> confirms a devops or approver account.
     </p>
     <div id="ops-controls">
       <div class="ops-run">
@@ -343,6 +343,14 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
         <span id="ops-run-msg" class="ops-run-msg"></span>
       </div>
       <ul id="lever-rows" class="lever-list"></ul>
+      <!-- Runbooks (owner order 2026-08-15: "add it to the status page").
+           The link is public knowledge — the PAGE it opens is a content-free
+           shim whose document only loads for devops/approver tokens, so
+           listing it here leaks nothing the gate does not already defend. -->
+      <p class="section-note">
+        Runbooks: <a href="/runbooks/shelf/">Shelf server (family audiobook
+        shelf) →</a>
+      </p>
     </div>
   </section>
 

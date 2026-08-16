@@ -693,7 +693,7 @@ function renderOpsAuthState() {
   opsWhoEl.append(`Signed in as ${opsCurrentUser.displayName || opsCurrentUser.email} · `, out);
 
   if (opsApproverCheckedFor !== opsCurrentUser.uid) {
-    setOpsNote('Checking approver status…');
+    setOpsNote('Checking access…');
     opsSectionEl.hidden = true;
     return;
   }
@@ -704,8 +704,8 @@ function renderOpsAuthState() {
   } else {
     opsSectionEl.hidden = true;
     setOpsNote(
-      'Signed in, but this account is not an approver — Operations stays hidden. ' +
-        'An existing approver can grant that from /admin.',
+      'Signed in, but this account holds neither devops nor admin — Operations stays hidden. ' +
+        'An admin can grant devops from /admin ("Make devops").',
       'warn',
     );
   }
