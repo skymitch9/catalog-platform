@@ -1,6 +1,10 @@
 > **MOVED BACK 2026-08-15 (later the same day):** the backup WORKFLOW lives
 > in THIS repo again. The 2026-08-15-morning move to the private
-> skymitch9/estate-backups repo was to keep export ARTIFACTS off a public
+> skymitch9/estate-backups repo (⚠️ **DELETED 2026-08-16** — it was a
+> pointer-only tombstone by then; every script and the workflow live here,
+> verified byte-identical before deletion. ⚠️ Do NOT confuse it with the
+> **R2 bucket of the same name**, which is live and holds every backup)
+> was to keep export ARTIFACTS off a public
 > repo — but the real fix was to stop using artifacts at all. Every job in
 > `backup.yml` now writes straight into the **private** `estate-backups` R2
 > bucket via `wrangler r2 object put ... --remote` (no public access, no
