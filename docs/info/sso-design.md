@@ -345,6 +345,24 @@ Order rules: commit before deploy (both repos' standing rule); each phase's
 console steps are 🔴 owner-only; Phase 3a's audiobook half deploys to the
 dev lane first per that repo's two-lane rule.
 
+## 8b. PHASE 1 STATUS — apex SHIPPED and OWNER-VERIFIED 2026-08-16
+
+| Piece | State |
+|---|---|
+| Auth Worker `/__/auth/*` proxy | **LIVE** — `/handler` and `/iframe` both 200 |
+| 🔴 Firebase authorised domain `auth.heygabi.ai` | **DONE** (read back via Identity Toolkit admin API) |
+| 🔴 OAuth redirect URI `https://auth.heygabi.ai/__/auth/handler` | **DONE** (verified by page reload; note the console page lives under the OTHER Google account — see audiobook_catalog `docs/access/CONSOLE_URLS.md`) |
+| Apex `authDomain` flip + CSP `frame-src` widening | **DEPLOYED** |
+| **Owner attended sign-in test on heygabi.ai** | ✅ **PASSED 2026-08-16** — the owner signed in successfully after the flip. This is the acceptance gate §8 named |
+| audiobook / library / games `authDomain` flips | **NOT DONE** — deliberately held back until the apex proved the path. Now unblocked |
+
+⚠️ Still not exercised: the §15 two-tab test (apex session surviving while
+`audiobooks.heygabi.ai` runs its own `signOut()`), and Phase 2's real token
+exchange (needs `TOKEN_SIGNER_KEY`, an owner console step).
+
+Rollback for any flipped surface stays one string + a redeploy; the CSP
+widening is safe to leave in place regardless.
+
 ## 9. Owner decision points
 
 > ✅ **ALL APPROVED BY THE OWNER 2026-08-16** ("I'm plenty awake, run the
