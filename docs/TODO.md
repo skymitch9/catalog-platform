@@ -412,7 +412,7 @@ already happened":
 |---|---|
 | 1. Games index push lands with new cover URLs | `board-game-catalog` D1: **507 items on `gamecovers.heygabi.ai`, 330 with no cover, ZERO on any other host.** The index pushed **837 rows at 08:19:56Z** on 2026-08-16 — 507 + 330 = 837 exactly, so the push carried the migrated set |
 | 2. Deploy heygabi-home (CSP prune) | Live CSP `img-src` names `gamecovers.heygabi.ai` and no old hosts. Shipped repeatedly on 2026-08-16 |
-| 3. Apex search shows a game thumbnail | ⚠️ **NOT verified by this session** — see below |
+| 3. Apex search shows a game thumbnail | ✅ **VERIFIED BY THE OWNER, 2026-08-16** — *"yes covers are showing up in global search"* |
 
 ⚠️ **The ordering hazard did not bite, and it was close.** The note warned that
 deploying step 2 before step 1 blanks apex-search game thumbnails, because the
@@ -422,11 +422,15 @@ landed at **08:19Z**, hours before the first of those deploys. Correct order by
 luck, not by design. If a future migration carries the same warning, check the
 push timestamp BEFORE deploying rather than after.
 
-⚠️ **Step 3 genuinely cannot be checked signed out** and was not: anonymous
-search returns **zero game rows** by design (the visibility narrowing rule — an
-anonymous caller sees the audiobook source only). So "apex search a game,
-thumbnail loads" is an OWNER check, thirty seconds while signed in. Everything
-upstream of it is measured.
+✅ **Step 3 confirmed by the owner the same day.** It could not be checked from
+this session and was not guessed at: anonymous search returns **zero game rows**
+by design (the visibility narrowing rule — an anonymous caller sees the
+audiobook source only), so the only instrument that could answer it was a
+signed-in pair of eyes. The owner looked and reported covers loading in global
+search.
+
+**The migration is now closed end to end** — every step either measured or
+confirmed by someone who could see it. Nothing here is outstanding.
 
 The one deliberate refusal from the migration stands: a 7.3MB Shopify file over
 the size ceiling, left on its original URL on purpose — it is among the 330
