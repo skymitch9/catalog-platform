@@ -354,6 +354,35 @@ async function phaseA(): Promise<void> {
       JSON.stringify(r.body),
     );
 
+    // --- The role ladder + capability map (0005, role-ladder.ts): static
+    // data, NO Firestore round-trip, so unlike the two routes above this
+    // works EVEN WITHOUT FIREBASE_SERVICE_ACCOUNT — proving that
+    // independence is the point of this check, not an incidental pass.
+    r = await api('GET', '/api/estate/site-roles/tree');
+    check(
+      'A35t tree: works for an approver with NO service account configured (static data)',
+      r.status === 200 && Array.isArray(r.body.capabilities) && Array.isArray(r.body.ladder),
+      JSON.stringify(r.body).slice(0, 300),
+    );
+    check(
+      'A35t-ladder tree: the exact six-role cumulative order',
+      JSON.stringify(r.body.ladder) === JSON.stringify(['viewer', 'reader', 'contributor', 'moderator', 'admin', 'owner']),
+      JSON.stringify(r.body.ladder),
+    );
+    check('A35t-floor tree: grantFloor is moderator', r.body.grantFloor === 'moderator', r.body.grantFloor);
+    const viewerCap = r.body.capabilities?.find((cap: any) => cap.role === 'viewer');
+    const ownerCap = r.body.capabilities?.find((cap: any) => cap.role === 'owner');
+    check(
+      'A35t-viewer tree: viewer is a first-class row, never apiGrantable',
+      viewerCap && viewerCap.apiGrantable === false,
+      JSON.stringify(viewerCap),
+    );
+    check(
+      'A35t-owner tree: owner is a first-class row, never apiGrantable (DB-only)',
+      ownerCap && ownerCap.apiGrantable === false,
+      JSON.stringify(ownerCap),
+    );
+
     // --- Operations: "run the audiobook pipeline now" — same 503-config-error
     // idiom as site-roles, and checked in the SAME order the route checks it
     // (PIPELINE_TRIGGER_TOKEN before the service account). Neither secret is
@@ -403,6 +432,7 @@ async function phaseB(): Promise<void> {
         { method: 'POST', path: '/api/estate/users' },
         { path: '/api/estate/site-roles' },
         { method: 'POST', path: '/api/estate/site-roles' },
+        { path: '/api/estate/site-roles/tree' },
         { method: 'POST', path: '/api/estate/ops/pipeline' },
         { path: '/api/estate/todo' },
       ],
@@ -573,6 +603,8 @@ async function phaseC(): Promise<void> {
     check('C3 manual create refused for a non-approver', r.status === 403, `got ${r.status}`);
     r = await api('GET', '/api/estate/site-roles');
     check('C4 site-roles GET refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
+    r = await api('GET', '/api/estate/site-roles/tree');
+    check('C4t tree refused for a non-approver too — approver gate applies even to static data', r.status === 403, `got ${r.status}`);
     r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
     check('C5 ops/pipeline refused for a non-approver (403 beats 503)', r.status === 403, `got ${r.status}`);
     r = await api('GET', '/api/estate/todo');
@@ -592,6 +624,8 @@ async function phaseD(): Promise<void> {
     check('D1 a stranger is refused the admin API — no first-to-knock', r.status === 403, `got ${r.status}`);
     r = await api('POST', '/api/estate/site-roles', { body: { email: 'x@y.z', role: 'admin' } });
     check('D4 a stranger cannot grant site roles', r.status === 403, `got ${r.status}`);
+    r = await api('GET', '/api/estate/site-roles/tree');
+    check('D4t a stranger cannot read the role ladder either', r.status === 403, `got ${r.status}`);
     r = await api('POST', '/api/estate/ops/pipeline', { body: {} });
     check('D5 a stranger cannot trigger the pipeline', r.status === 403, `got ${r.status}`);
     r = await api('GET', '/api/estate/todo');

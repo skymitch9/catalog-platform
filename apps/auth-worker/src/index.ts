@@ -59,7 +59,12 @@ app.use('/api/*', rateLimit());
 app.use('/api/estate/users', adminCors());
 app.use('/api/estate/users/*', adminCors());
 // The audiobook site-roles federation is admin-page surface too: apex only.
+// The wildcard mount covers the ladder's /tree sub-route (role-ladder.ts /
+// site-roles.ts) added 2026-08-16 — without it, that route's CORS falls
+// through to no match at all (Hono CORS mounts are exact-or-wildcard, never
+// prefix-implicit) and a browser preflight from the apex would be refused.
 app.use('/api/estate/site-roles', adminCors());
+app.use('/api/estate/site-roles/*', adminCors());
 // Operations: "run the audiobook pipeline now" — apex-only, same as every
 // other admin-page control (the status page's Operations section lives on
 // the apex, not on a wider origin).

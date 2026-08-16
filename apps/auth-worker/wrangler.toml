@@ -36,7 +36,15 @@ ENVIRONMENT = "production"
 FIREBASE_PROJECT_ID = "audiobook-catalog"
 # Break-glass (§4.3): approved + approver regardless of table state. The ONLY
 # bootstrap — this Worker deliberately has no first-sign-in-claims rule.
-OWNER_EMAILS = "nbaslamking@gmail.com"
+# ⚠️ TWO owner accounts as of 2026-08-16 (owner order, folded into the role-
+# ladder build): mitchlandtv@gmail.com is the owner's second Google account —
+# the one that owns the audiobook-catalog GCP project — and must carry every
+# permission the primary does ("give it all permissions my main has so we
+# dont need to worry in the future"). Getting this var right matters more
+# than anything else in this file: an owner locked out of the estate's own
+# break-glass is the worst failure mode. Comma-separated, parseOwnerEmails()
+# (env.ts) trims + lowercases each entry independently.
+OWNER_EMAILS = "nbaslamking@gmail.com,mitchlandtv@gmail.com"
 # The admin UI's origin — the apex, and nothing else (owner decision #6).
 ADMIN_ORIGINS = "https://heygabi.ai"
 # Browsers allowed to call GET /api/estate/me — the apex AND the audiobook
