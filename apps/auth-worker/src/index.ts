@@ -16,12 +16,14 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { declareAuthPosture } from '@platform/estate-auth';
 import type { AppBindings } from './env.js';
-import { parseAdminOrigins } from './env.js';
+import { parseAdminOrigins, parseSessionOrigins } from './env.js';
 import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
+import { sessionRoutes } from './session.js';
+import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
 
 /**
@@ -36,6 +38,17 @@ export const AUTH_POSTURE = declareAuthPosture({
 });
 
 const app = new Hono<AppBindings>();
+
+// ---------------------------------------------------------------------------
+// PHASE 1 (sso-design.md §4.1/§8): the Firebase auth-helper proxy. Mounted
+// FIRST, before every other route (including the rate limiter and the /api
+// tree below) — it must never be shadowed, and it is its own edge: Firebase
+// itself, not this Worker, is the thing being reverse-proxied here, so the
+// estate's own auth checks (and its rate limiter, sized for the directory's
+// own traffic, not an OAuth ceremony's asset fetches) do not apply to it.
+// True proxy, no redirect — see auth-proxy.ts for why that matters.
+// ---------------------------------------------------------------------------
+app.all('/__/auth/*', (c) => proxyFirebaseAuth(c.req.raw));
 
 // Anti-abuse floor on the whole surface (fails open without the binding).
 app.use('/api/*', rateLimit());
@@ -76,11 +89,23 @@ app.use('/api/estate/hello', meCors());
 // preflight reasoning as adminCors/meCors above.
 app.use('/api/health', healthCors());
 
+// PHASE 2 (sso-design.md §4.3/§8): the session routes — CREDENTIALED CORS
+// (Access-Control-Allow-Credentials, so Set-Cookie/cookie survive a
+// cross-origin fetch) for exactly the four estate origins, never wider.
+// Deliberately its OWN list, not ADMIN_ORIGINS (apex-only) or ME_ORIGINS
+// (apex + audiobook): every estate surface must be able to POST its ID
+// token here and later ask for a custom token, including library and games,
+// which neither existing list admits. Mounted before sessionRoutes for the
+// same tokenless-preflight reasoning as every CORS mount above.
+app.use('/api/session', sessionCors());
+app.use('/api/session/token', sessionCors());
+
 app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
 app.route('/api', todoRoutes);
 app.route('/api', docsRoutes);
+app.route('/api', sessionRoutes);
 
 function adminCors() {
   return cors({
@@ -113,6 +138,29 @@ function meCors() {
     },
     // POST is /hello's (self-enrollment); /me itself only ever answers GET.
     allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  });
+}
+
+/**
+ * Credentialed CORS for the three session routes (design §4.3/§7) — the
+ * ONE credentialed surface in this Worker. `credentials: true` sets
+ * Access-Control-Allow-Credentials so a cross-origin `fetch(..., {
+ * credentials: 'include' })` can both receive the Set-Cookie on
+ * POST /api/session and send the cookie back on POST /api/session/token.
+ * Hono's cors() refuses `origin: '*'` together with credentials by
+ * construction — an exact-origin allow-list is required either way, which
+ * is what SESSION_ORIGINS already is (env.ts).
+ */
+function sessionCors() {
+  return cors({
+    origin: (origin, c) => {
+      const allowed = parseSessionOrigins(c.env.SESSION_ORIGINS);
+      return allowed.includes(origin) ? origin : null;
+    },
+    credentials: true,
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
   });

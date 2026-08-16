@@ -75,6 +75,43 @@ export interface Env {
   RATE_LIMITER?: RateLimiter;
 
   /**
+   * The Phase 2 session-cookie signing key (sso-design.md §4.3/§7.2/§8) —
+   * the whole service-account JSON, SAME shape as FIREBASE_SERVICE_ACCOUNT
+   * and parsed with the same parseServiceAccount() (firebase-sa.ts), but a
+   * DIFFERENT, dedicated, zero-IAM-role service account — never the same
+   * key as FIREBASE_SERVICE_ACCOUNT, which does hold real Firestore/identity
+   * scopes. What this key can do: mint a Firebase custom token for ANY uid
+   * (§7.2 — "impersonation of anyone"), nothing more; it is not a Firestore
+   * credential and grants no IAM permission of its own. Rotation runbook:
+   * docs/access/estate-auth.md. `wrangler secret put TOKEN_SIGNER_KEY`,
+   * piped from the key file — never committed, never logged, never echoed.
+   * ⚠️ DOES NOT EXIST YET as of this build — an owner console step. Every
+   * route that needs it answers 503 `{error:'token_signer_unset', fix:
+   * 'wrangler secret put TOKEN_SIGNER_KEY'}` until it is set (session.ts).
+   */
+  TOKEN_SIGNER_KEY?: string;
+
+  /**
+   * The parent-domain cookie's `Domain` attribute (design §4.3: "Domain on
+   * the parent domain"). A var, not a hardcoded string, so `wrangler dev`
+   * can point it at `localhost` — `Domain=.heygabi.ai` is never sendable
+   * from a local dev origin. Unset ⇒ the production value, `.heygabi.ai`.
+   */
+  COOKIE_DOMAIN?: string;
+
+  /**
+   * Comma-separated browser origins allowed to call the CREDENTIALED
+   * session routes (POST /api/session, POST /api/session/token, DELETE
+   * /api/session — session.ts). Deliberately its OWN list: narrower than
+   * nothing existing (ADMIN_ORIGINS is apex-only, ME_ORIGINS is apex +
+   * audiobook) — every estate surface, including library and games, must
+   * be able to call these. Unset ⇒ the four production estate origins
+   * (parseSessionOrigins's default below), so the routes are safe and
+   * correct out of the box even before a .dev.vars/production var exists.
+   */
+  SESSION_ORIGINS?: string;
+
+  /**
    * The audiobook pipeline's shared trigger secret — the SAME value as
    * PIPELINE_TRIGGER_TOKEN in audiobook_catalog's .env, piped in (never
    * pasted, never logged) so `POST /api/estate/ops/pipeline` can write a
@@ -135,6 +172,25 @@ export function parseAdminOrigins(raw: string | undefined): string[] {
     .split(',')
     .map((o) => o.trim().replace(/\/+$/, ''))
     .filter((o) => o.length > 0);
+}
+
+/** The four estate origins the session routes admit in production (design §4.3). */
+export const DEFAULT_SESSION_ORIGINS = [
+  'https://heygabi.ai',
+  'https://audiobooks.heygabi.ai',
+  'https://library.heygabi.ai',
+  'https://boardgames.heygabi.ai',
+];
+
+/**
+ * SESSION_ORIGINS, parsed — unset falls back to the production four (never
+ * to ADMIN_ORIGINS/ME_ORIGINS, which is either too narrow or the wrong set
+ * of surfaces entirely), so the credentialed routes are correct even before
+ * an operator ever visits `.dev.vars` or the production vars.
+ */
+export function parseSessionOrigins(raw: string | undefined): string[] {
+  if (raw === undefined) return DEFAULT_SESSION_ORIGINS;
+  return parseAdminOrigins(raw);
 }
 
 export function appTokenFor(env: Env, app: ConsumerApp): string | undefined {

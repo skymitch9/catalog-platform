@@ -46,14 +46,25 @@ export function parseServiceAccount(raw: string | undefined): ServiceAccount | n
   return sa as ServiceAccount;
 }
 
-const b64url = (bytes: Uint8Array): string =>
+/**
+ * Base64url, unpadded — the JWT segment encoding. Exported: token-signer.ts
+ * (the Phase 2 custom-token minter, sso-design.md §4.3) reuses this exact
+ * function rather than re-implementing it, per the design's instruction to
+ * share this file's idioms instead of writing a second signer from scratch.
+ */
+export const b64url = (bytes: Uint8Array): string =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 export const b64urlOfJson = (obj: unknown): string =>
   b64url(new TextEncoder().encode(JSON.stringify(obj)));
 
-/** PEM (PKCS#8) → CryptoKey for RSASSA-PKCS1-v1_5/SHA-256 signing. */
-async function importPrivateKey(pem: string): Promise<CryptoKey> {
+/**
+ * PEM (PKCS#8) → CryptoKey for RSASSA-PKCS1-v1_5/SHA-256 signing. Exported
+ * for the same reason as `b64url` above — token-signer.ts signs a
+ * different JWT (a Firebase custom token, not an OAuth2 grant assertion)
+ * with the identical WebCrypto mechanics.
+ */
+export async function importPrivateKey(pem: string): Promise<CryptoKey> {
   const body = pem
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
