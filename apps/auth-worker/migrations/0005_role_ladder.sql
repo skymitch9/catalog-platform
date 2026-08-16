@@ -16,10 +16,17 @@
 -- src/site-roles-db.ts).
 --
 -- `actor_role` / `previous_role` / `requested_role` store LADDER role
--- strings ('viewer' through 'owner') as free text, not a foreign key into
+-- strings ('guest' through 'owner') as free text, not a foreign key into
 -- anything — the ladder's vocabulary lives in role-ladder.ts, not the
 -- database schema, exactly like `estate_user.status` (0001) is a CHECK
--- constraint rather than a lookup table at this household's scale.
+-- constraint rather than a lookup table at this household's scale. ⚠️ The
+-- bottom two role names were renamed mid-build (viewer→guest, reader→
+-- member, owner decision 2026-08-16) AFTER this migration had already run
+-- (both local and --remote) but BEFORE any real grant/revoke ever POSTed
+-- to production — the table was still empty (checked; see the build
+-- report), so this is a comment-only wording fix, not a data migration.
+-- The DDL itself never named a role string (free text, no CHECK on these
+-- columns), so the schema needed no change either way.
 --
 -- ⚠️ 0004_sessions.sql took the last number (read before writing this one)
 -- — this is 0005. Applied locally by `npm run db:migrate:local`; the

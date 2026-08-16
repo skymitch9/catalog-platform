@@ -4,7 +4,12 @@
  * audiobook_catalog, read-only reference there) from the original
  * admin|moderator two-tier model to the full cumulative LADDER:
  *
- *   viewer < reader < contributor < moderator < admin < owner
+ *   guest < member < contributor < moderator < admin < owner
+ *
+ * ⚠️ Renamed mid-build (owner decision, 2026-08-16) from the original
+ * viewer/reader naming — see role-ladder.ts's module doc for why, and for
+ * the "estate member" (approved in the directory) vs. the `member` ROLE
+ * clash that naming deliberately accepted and how to word around it.
  *
  * The decisions (rank, who may grant what) live in role-ladder.ts, pure
  * and unit-tested; this file does the I/O — resolving a uid, reading/
@@ -20,7 +25,7 @@
  * ⚠️ RULES-ENFORCEMENT LIMITATION (stated here, in role-ladder.ts, and in
  * the build's report — loudly, more than once): firestore.rules is a
  * DIFFERENT repo and is NOT touched by this build. Today those rules
- * understand exactly 'admin' and 'moderator'. Granting 'reader' or
+ * understand exactly 'admin' and 'moderator'. Granting 'member' or
  * 'contributor' through this API is fully real — stored, visible, subject
  * to the same escalation rules — but grants NOTHING beyond what an
  * unlisted visitor already has until a firestore.rules change (owner-
@@ -176,7 +181,7 @@ function credentials(c: Context<AppBindings>) {
  * there is no doc (a legal, common state: nobody has ever granted this
  * person anything). A real Firestore failure is never swallowed into
  * "no doc"; it comes back as a discriminated failure so the caller answers
- * 502 honestly instead of silently treating an outage as "viewer".
+ * 502 honestly instead of silently treating an outage as "guest".
  */
 async function readStoredRole(
   sa: ServiceAccount,
@@ -198,7 +203,7 @@ async function readStoredRole(
  * doc explains why). Otherwise this resolves the actor's own uid + stored
  * role exactly the way a grant TARGET's is resolved below — an approver
  * who has never signed into the audiobook site with Google has no uid
- * there and so holds no role there either: 'viewer', which the grant floor
+ * there and so holds no role there either: 'guest', which the grant floor
  * (role-ladder.ts's GRANT_FLOOR) then correctly refuses any grant power to.
  */
 async function resolveActorRole(
@@ -211,7 +216,7 @@ async function resolveActorRole(
     return { ok: true, role: 'owner' };
   }
   const user = await lookupUidByEmail(sa, token, actorEmail);
-  if (!user) return { ok: true, role: 'viewer' };
+  if (!user) return { ok: true, role: 'guest' };
   const stored = await readStoredRole(sa, token, user.uid);
   if (!stored.ok) return stored;
   return {
@@ -246,7 +251,7 @@ async function auditGrant(
       actorRole: input.actorRole,
       targetEmail: input.email,
       targetUid: input.uid,
-      previousRole: input.currentRole === 'viewer' ? null : input.currentRole,
+      previousRole: input.currentRole === 'guest' ? null : input.currentRole,
       requestedRole: input.role,
       outcome: input.outcome,
       reason: input.reason ?? null,

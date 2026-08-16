@@ -16,28 +16,40 @@ import {
 
 // ---------------------------------------------------------------------------
 // The ladder itself — order, membership, what is/isn't stored/grantable.
+//
+// ⚠️ Names as of 2026-08-16 (owner decision, mid-build): the bottom two
+// roles are 'guest' and 'member' — renamed from the original 'viewer' and
+// 'reader' because those read as near-synonyms and both collided with
+// Google Drive's own vocabulary this ladder maps onto. See role-ladder.ts's
+// module doc for the full rationale and the "estate member" (approved in
+// the estate directory) vs. the `member` ROLE clash this rename accepted.
 // ---------------------------------------------------------------------------
 
-test('ROLE_LADDER: the exact cumulative order, viewer lowest, owner highest', () => {
-  assert.deepEqual(ROLE_LADDER, ['viewer', 'reader', 'contributor', 'moderator', 'admin', 'owner']);
+test('ROLE_LADDER: the exact cumulative order, guest lowest, owner highest', () => {
+  assert.deepEqual(ROLE_LADDER, ['guest', 'member', 'contributor', 'moderator', 'admin', 'owner']);
 });
 
-test('SITE_ROLES: the grantable subset excludes viewer (never stored) and owner (DB-only)', () => {
-  assert.deepEqual(SITE_ROLES, ['reader', 'contributor', 'moderator', 'admin']);
-  assert.ok(!(SITE_ROLES as readonly string[]).includes('viewer'));
+test('SITE_ROLES: the grantable subset excludes guest (never stored) and owner (DB-only)', () => {
+  assert.deepEqual(SITE_ROLES, ['member', 'contributor', 'moderator', 'admin']);
+  assert.ok(!(SITE_ROLES as readonly string[]).includes('guest'));
   assert.ok(!(SITE_ROLES as readonly string[]).includes('owner'));
+  // The renamed-away names must never resurface as legal values.
+  assert.ok(!(SITE_ROLES as readonly string[]).includes('viewer'));
+  assert.ok(!(SITE_ROLES as readonly string[]).includes('reader'));
 });
 
-test('GRANT_FLOOR is moderator — reader/contributor hold no grant power at all', () => {
+test('GRANT_FLOOR is moderator — member/contributor hold no grant power at all', () => {
   assert.equal(GRANT_FLOOR, 'moderator');
 });
 
-test('isLadderRole / isSiteRole: type guards agree with the arrays', () => {
+test('isLadderRole / isSiteRole: type guards agree with the arrays, and refuse the old names', () => {
   for (const r of ROLE_LADDER) assert.ok(isLadderRole(r));
   assert.ok(!isLadderRole('overlord'));
+  assert.ok(!isLadderRole('viewer'));
+  assert.ok(!isLadderRole('reader'));
   assert.ok(!isLadderRole(undefined));
   for (const r of SITE_ROLES) assert.ok(isSiteRole(r));
-  assert.ok(!isSiteRole('viewer'));
+  assert.ok(!isSiteRole('guest'));
   assert.ok(!isSiteRole('owner'));
 });
 
@@ -54,8 +66,8 @@ test('roleAtLeast: reflexive, and correct in both directions', () => {
   assert.ok(roleAtLeast('admin', 'admin'));
   assert.ok(roleAtLeast('admin', 'moderator'));
   assert.ok(!roleAtLeast('moderator', 'admin'));
-  assert.ok(roleAtLeast('owner', 'viewer'));
-  assert.ok(!roleAtLeast('viewer', 'reader'));
+  assert.ok(roleAtLeast('owner', 'guest'));
+  assert.ok(!roleAtLeast('guest', 'member'));
 });
 
 // ---------------------------------------------------------------------------
@@ -76,9 +88,9 @@ test('canGrant: moderator -> admin FAILS (cannot grant a role above your own)', 
   assert.equal(canGrant('moderator', 'admin').ok, false);
 });
 
-test('canGrant: moderator -> contributor and moderator -> reader both PASS', () => {
+test('canGrant: moderator -> contributor and moderator -> member both PASS', () => {
   assert.equal(canGrant('moderator', 'contributor').ok, true);
-  assert.equal(canGrant('moderator', 'reader').ok, true);
+  assert.equal(canGrant('moderator', 'member').ok, true);
 });
 
 test('canGrant: moderator -> moderator FAILS (peer-promotion)', () => {
@@ -101,19 +113,19 @@ test('canGrant: NOTHING can touch owner — every actor, including owner, refuse
   }
 });
 
-test('canGrant: contributor holds NO grant power, even over reader (ROLES.md\'s own answer: "moderator+", not contributor+)', () => {
-  assert.equal(canGrant('contributor', 'reader').ok, false);
+test('canGrant: contributor holds NO grant power, even over member (ROLES.md\'s own answer: "moderator+", not contributor+)', () => {
+  assert.equal(canGrant('contributor', 'member').ok, false);
   assert.equal(canGrant('contributor', 'contributor').ok, false);
-  assert.equal(canGrant('contributor', 'viewer').ok, false);
+  assert.equal(canGrant('contributor', 'guest').ok, false);
 });
 
-test('canGrant: reader and viewer hold no grant power over anything, including viewer itself', () => {
-  assert.equal(canGrant('reader', 'viewer').ok, false);
-  assert.equal(canGrant('viewer', 'viewer').ok, false);
+test('canGrant: member and guest hold no grant power over anything, including guest itself', () => {
+  assert.equal(canGrant('member', 'guest').ok, false);
+  assert.equal(canGrant('guest', 'guest').ok, false);
 });
 
 test('canGrant: a denial always names a reason (the clear 403 the brief asks for)', () => {
-  const belowFloor = canGrant('contributor', 'reader');
+  const belowFloor = canGrant('contributor', 'member');
   assert.equal(belowFloor.ok, false);
   if (!belowFloor.ok) assert.ok(belowFloor.reason.length > 0);
 
@@ -123,9 +135,9 @@ test('canGrant: a denial always names a reason (the clear 403 the brief asks for
 });
 
 test('canGrant: the full legal-grant matrix for moderator/admin/owner (every SITE_ROLES entry)', () => {
-  const expectMod = { reader: true, contributor: true, moderator: false, admin: false };
-  const expectAdmin = { reader: true, contributor: true, moderator: true, admin: false };
-  const expectOwner = { reader: true, contributor: true, moderator: true, admin: true };
+  const expectMod = { member: true, contributor: true, moderator: false, admin: false };
+  const expectAdmin = { member: true, contributor: true, moderator: true, admin: false };
+  const expectOwner = { member: true, contributor: true, moderator: true, admin: true };
   for (const role of SITE_ROLES) {
     assert.equal(canGrant('moderator', role).ok, expectMod[role], `moderator -> ${role}`);
     assert.equal(canGrant('admin', role).ok, expectAdmin[role], `admin -> ${role}`);
@@ -135,7 +147,7 @@ test('canGrant: the full legal-grant matrix for moderator/admin/owner (every SIT
 
 // ---------------------------------------------------------------------------
 // effectiveLadderRole — OWNER_EMAILS always wins; otherwise the stored
-// Firestore value; otherwise viewer. This is where the two-owner-accounts
+// Firestore value; otherwise guest. This is where the two-owner-accounts
 // requirement actually gets proven at the ladder layer (not just the env
 // parser layer — see env.test.ts for that half).
 // ---------------------------------------------------------------------------
@@ -181,17 +193,31 @@ test('effectiveLadderRole: a non-owner with a recognized stored role gets exactl
   );
 });
 
-test('effectiveLadderRole: no doc (null) -> viewer', () => {
+test('effectiveLadderRole: no doc (null) -> guest', () => {
   assert.equal(
     effectiveLadderRole({ email: 'nobody@example.com', ownerEmails: TWO_OWNERS, storedRole: null }),
-    'viewer',
+    'guest',
   );
 });
 
-test('effectiveLadderRole: an unrecognized stored value never gets silently promoted -> viewer', () => {
+test('effectiveLadderRole: an unrecognized stored value never gets silently promoted -> guest', () => {
   assert.equal(
     effectiveLadderRole({ email: 'x@example.com', ownerEmails: TWO_OWNERS, storedRole: 'overlord' }),
-    'viewer',
+    'guest',
+  );
+});
+
+test('effectiveLadderRole: the RETIRED names ("viewer"/"reader") are no longer recognized -> guest', () => {
+  // A doc that somehow still carried the pre-rename vocabulary must not be
+  // silently trusted as if it were the new name — better an honest 'guest'
+  // than a stale value being interpreted as something it no longer means.
+  assert.equal(
+    effectiveLadderRole({ email: 'x@example.com', ownerEmails: [], storedRole: 'viewer' }),
+    'guest',
+  );
+  assert.equal(
+    effectiveLadderRole({ email: 'x@example.com', ownerEmails: [], storedRole: 'reader' }),
+    'guest',
   );
 });
 
@@ -228,24 +254,24 @@ test('ROLE_CAPABILITIES: one row per ladder role, in ladder order, ranks match r
   });
 });
 
-test('ROLE_CAPABILITIES: viewer and owner are both present and both apiGrantable:false', () => {
-  const viewer = ROLE_CAPABILITIES.find((c) => c.role === 'viewer');
+test('ROLE_CAPABILITIES: guest and owner are both present and both apiGrantable:false', () => {
+  const guest = ROLE_CAPABILITIES.find((c) => c.role === 'guest');
   const owner = ROLE_CAPABILITIES.find((c) => c.role === 'owner');
-  assert.ok(viewer);
+  assert.ok(guest);
   assert.ok(owner);
-  assert.equal(viewer?.apiGrantable, false);
+  assert.equal(guest?.apiGrantable, false);
   assert.equal(owner?.apiGrantable, false);
 });
 
-test('ROLE_CAPABILITIES: exactly reader/contributor/moderator/admin are apiGrantable (matches SITE_ROLES)', () => {
+test('ROLE_CAPABILITIES: exactly member/contributor/moderator/admin are apiGrantable (matches SITE_ROLES)', () => {
   const grantable = ROLE_CAPABILITIES.filter((c) => c.apiGrantable).map((c) => c.role).sort();
   assert.deepEqual(grantable, [...SITE_ROLES].sort());
 });
 
-test('ROLE_CAPABILITIES: reader/contributor are marked NOT rules-enforced (the stated firestore.rules limitation)', () => {
-  const reader = ROLE_CAPABILITIES.find((c) => c.role === 'reader');
+test('ROLE_CAPABILITIES: member/contributor are marked NOT rules-enforced (the stated firestore.rules limitation)', () => {
+  const member = ROLE_CAPABILITIES.find((c) => c.role === 'member');
   const contributor = ROLE_CAPABILITIES.find((c) => c.role === 'contributor');
-  assert.equal(reader?.rulesEnforced, false);
+  assert.equal(member?.rulesEnforced, false);
   assert.equal(contributor?.rulesEnforced, false);
 });
 
@@ -254,4 +280,13 @@ test('ROLE_CAPABILITIES: moderator/admin ARE marked rules-enforced (true today, 
   const admin = ROLE_CAPABILITIES.find((c) => c.role === 'admin');
   assert.equal(moderator?.rulesEnforced, true);
   assert.equal(admin?.rulesEnforced, true);
+});
+
+test('ROLE_CAPABILITIES: the "member" row explicitly disambiguates itself from "estate member" (the accepted clash)', () => {
+  const member = ROLE_CAPABILITIES.find((c) => c.role === 'member');
+  assert.ok(member);
+  // The capability map is the one place a reader lands first — its own
+  // summary must carry the disambiguation, not just a code comment nobody
+  // reading the rendered role tree will ever see.
+  assert.ok(/estate member/i.test(member!.summary), member!.summary);
 });

@@ -21,11 +21,17 @@
  *     AUDIOBOOK catalog (world-readable site) grew rules-enforced site
  *     roles 2026-08-14 and was extended 2026-08-16 to the full estate role
  *     LADDER (ROLES.md §1, audiobook_catalog repo — read-only reference):
- *     `viewer < reader < contributor < moderator < admin < owner`,
- *     cumulative — each role includes everything beneath it. `viewer` is
- *     never stored (no row = viewer) and `owner` is DB-only (no UI/API path
- *     ever touches it — this page cannot grant, revoke, or even display an
- *     editable control for it). They live in ITS system — Firestore
+ *     `guest < member < contributor < moderator < admin < owner`,
+ *     cumulative — each role includes everything beneath it. Renamed
+ *     mid-build from `viewer`/`reader` (owner decision — those read as
+ *     near-synonyms and collided with Google Drive's own vocabulary).
+ *     ⚠️ the `member` ROLE (may download) is NOT the same thing as an
+ *     "estate member" (approved in the estate directory, the badge/status
+ *     column elsewhere on this page) — an approved estate member can still
+ *     hold no audiobook role at all (`guest`). `guest` is never stored
+ *     (no row = guest) and `owner` is DB-only (no UI/API path ever touches
+ *     it — this page cannot grant, revoke, or even display an editable
+ *     control for it). They live in ITS system — Firestore
  *     site_roles docs — federated here through the auth Worker's
  *     /api/estate/site-roles (the Worker holds the service account;
  *     browsers can neither list nor write those docs). The Worker enforces
@@ -313,7 +319,7 @@ async function fetchSiteRoles() {
     ok: true,
     roles: Array.isArray(data.roles) ? data.roles : [],
     byEmail,
-    actorRole: typeof data.actorRole === 'string' ? data.actorRole : 'viewer',
+    actorRole: typeof data.actorRole === 'string' ? data.actorRole : 'guest',
     grantable: Array.isArray(data.grantable) ? data.grantable : [],
   };
 }
@@ -874,10 +880,10 @@ function appRoleCell(app, estateUser) {
 }
 
 /**
- * The audiobook role cell: a none/reader/contributor/moderator/admin
+ * The audiobook role cell: a none/member/contributor/moderator/admin
  * dropdown wired to the auth Worker's site-roles LADDER federation, or the
  * honest reason there isn't one. 'none' is a real state (most members hold
- * no site role — i.e. viewer, never stored), so the dropdown always
+ * no site role — i.e. guest, never stored), so the dropdown always
  * renders when it renders at all — unlike the app cells there is no "no
  * account yet" case: revoking = picking none, granting = picking a role.
  *
@@ -1151,7 +1157,7 @@ function renderRoleTree() {
   const note = document.createElement('p');
   note.className = 'role-tree-note';
   note.textContent =
-    'reader/contributor are real and grantable here, but the audiobook site’s firestore.rules (a different, owner-gated repo) only enforces moderator/admin today — see "rules-enforced" above.';
+    'member/contributor are real and grantable here, but the audiobook site’s firestore.rules (a different, owner-gated repo) only enforces moderator/admin today — see "rules-enforced" above. (Note: this "member" role ≠ an "estate member" approved in the directory above — see the role tree\'s own row for that distinction.)';
   body.appendChild(note);
 }
 

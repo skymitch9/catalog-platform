@@ -365,17 +365,17 @@ async function phaseA(): Promise<void> {
       JSON.stringify(r.body).slice(0, 300),
     );
     check(
-      'A35t-ladder tree: the exact six-role cumulative order',
-      JSON.stringify(r.body.ladder) === JSON.stringify(['viewer', 'reader', 'contributor', 'moderator', 'admin', 'owner']),
+      'A35t-ladder tree: the exact six-role cumulative order (guest/member — renamed 2026-08-16 from viewer/reader)',
+      JSON.stringify(r.body.ladder) === JSON.stringify(['guest', 'member', 'contributor', 'moderator', 'admin', 'owner']),
       JSON.stringify(r.body.ladder),
     );
     check('A35t-floor tree: grantFloor is moderator', r.body.grantFloor === 'moderator', r.body.grantFloor);
-    const viewerCap = r.body.capabilities?.find((cap: any) => cap.role === 'viewer');
+    const guestCap = r.body.capabilities?.find((cap: any) => cap.role === 'guest');
     const ownerCap = r.body.capabilities?.find((cap: any) => cap.role === 'owner');
     check(
-      'A35t-viewer tree: viewer is a first-class row, never apiGrantable',
-      viewerCap && viewerCap.apiGrantable === false,
-      JSON.stringify(viewerCap),
+      'A35t-guest tree: guest is a first-class row, never apiGrantable',
+      guestCap && guestCap.apiGrantable === false,
+      JSON.stringify(guestCap),
     );
     check(
       'A35t-owner tree: owner is a first-class row, never apiGrantable (DB-only)',

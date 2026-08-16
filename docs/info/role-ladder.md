@@ -17,23 +17,59 @@ The audiobook site's `site_roles` Firestore federation
 pair (2026-08-14) into a full cumulative ladder (2026-08-16, owner decision):
 
 ```
-viewer < reader < contributor < moderator < admin < owner
+guest < member < contributor < moderator < admin < owner
 ```
 
-Each role includes everything beneath it. Two roles on this ladder are
-deliberately **never written by the grant API**:
+Each role includes everything beneath it.
 
-- **`viewer`** — never stored. No `site_roles/{uid}` doc for a person means
-  viewer. It is still a first-class row in the capability map (below) so its
-  permissions are defined and visible in the one place the whole ladder
-  lives — it is just never a value the POST body or the Firestore doc holds.
-- **`owner`** — DB-only. There is no API path and no UI path that can grant,
-  revoke, or otherwise modify a row at `owner` — not for an owner, not for
-  anyone. The only way in or out is a direct D1/Firestore edit (or, for the
-  ESTATE-wide sense below, an edit to `OWNER_EMAILS`). Enforced by
-  `canGrant()` refusing `owner` as a target for every possible actor,
-  including another owner — see the "owner is immune to owner" test in
-  `test/role-ladder.test.ts`.
+### ⚠️ Renamed mid-build: `viewer`→`guest`, `reader`→`member`
+
+The ladder's bottom two roles were originally named `viewer`/`reader`; the
+owner renamed them to `guest`/`member` before this build shipped. Why:
+`viewer`/`reader` are near-synonyms — in a *book* app, everyone is "a
+reader" — and both are also **Google Drive's own vocabulary**, which this
+ladder maps onto for Drive ⇄ role parity (`ROLES.md §2`, not built by this
+pass but the mapping is already named): `role: reader ⇒ Drive: reader` reads
+as a tautology and would hide a real mapping bug. `guest`/`member` are
+unmistakably distinct from each other and from Drive's words. Current
+mapping: Drive `writer` ⇒ contributor+, Drive `reader` ⇒ member+, no Drive
+permission ⇒ guest.
+
+**No data migration was needed for this rename.** The rename landed after
+`apps/auth-worker/migrations/0005_role_ladder.sql` had already applied
+(local and remote) but before any real grant/revoke was ever POSTed against
+production — the new `site_role_grant_log` audit table was verified empty
+(`SELECT COUNT(*)` → 0) at rename time, and the migration's own DDL never
+named a role string as a value (free-text columns, no CHECK constraint), so
+only code and comments needed updating, never a row.
+
+### ⚠️⚠️ The one clash to watch in wording: "estate member" vs. the `member` role
+
+**"Estate member"** (approved in the estate directory —
+`estate_user.status = 'approved'`, `estate-auth-design.md` §4) and **the
+`member` ROLE** on this ladder (may download; granted by moderator+) are
+**not the same thing**, and the owner accepted this clash deliberately when
+choosing the name. An approved estate member can hold no audiobook role at
+all (`guest`, the default) or any role up to `owner` — being "a member of
+the estate" says nothing about where they sit on this ladder.
+
+**The rule for anyone writing about this system:** never write a bare
+"member" where the estate's membership layer is meant — write "approved in
+the estate directory" or "an estate member" in full. The capability map
+(`ROLE_CAPABILITIES` in `role-ladder.ts`, rendered as the admin UI's role
+tree) states this explicitly in the `member` row's own description, since
+that is the one place a reader is most likely to land first.
+
+## The ladder in full
+
+| Role | May do | Granted by | Stored? | Rules-enforced today? |
+|---|---|---|---|---|
+| `guest` | See the site. Nothing else. | nobody — automatic | never (no row = guest) | n/a |
+| `member` | + download books; Drive view access; shelf-server download by URL. No add/delete. | moderator+ | yes | **not yet** — see limitation below |
+| `contributor` | + upload files to Drive (later, the server) | moderator+ | yes | **not yet** — see limitation below |
+| `moderator` | + today's moderator powers: club ops, ratings/comment removal | admin+ | yes | yes |
+| `admin` | + today's admin powers, incl. site-wide review removal. May NOT create other admins | owner only | yes | yes |
+| `owner` | Everything, on every site | nobody — DB-only, direct D1/Firestore access, no UI/API path ever | yes (never via this API) | yes |
 
 **`club mod` is not on this ladder.** It stays exactly where it already
 lived — a club's own `managerUids`, per-club and orthogonal to the
@@ -68,10 +104,10 @@ different reasons, and it is important they not be confused:
 An actor may grant or revoke a role **strictly beneath their own** — no
 self-escalation, no peer-promotion (`admin` cannot mint another `admin`;
 only `owner` can). Additionally, **granting/revoking anything requires
-holding at least `moderator`** — `reader` and `contributor` are cumulative
+holding at least `moderator`** — `member` and `contributor` are cumulative
 capability tiers, not management tiers, and hold zero grant power even over
 roles beneath them (the design's own answer to "can `contributor` grant
-`reader`?" is "no, `moderator`+").
+`member`?" is "no, `moderator`+").
 
 Both halves live in one pure function,
 `canGrant(actorRole, targetRole)` (`role-ladder.ts`), checked TWICE per
@@ -80,9 +116,9 @@ request in `site-roles.ts`'s POST handler: once against the role being
 immune no matter what new role was requested) and, for a grant, once against
 the role being **added**. A denial always names its reason and answers 403.
 
-| actor \ target | reader | contributor | moderator | admin | owner |
+| actor \ target | member | contributor | moderator | admin | owner |
 |---|---|---|---|---|---|
-| viewer/reader/contributor | ✗ (below grant floor) | ✗ | ✗ | ✗ | ✗ |
+| guest/member/contributor | ✗ (below grant floor) | ✗ | ✗ | ✗ | ✗ |
 | moderator | ✓ | ✓ | ✗ (peer) | ✗ | ✗ |
 | admin | ✓ | ✓ | ✓ | ✗ (peer) | ✗ |
 | owner | ✓ | ✓ | ✓ | ✓ | ✗ (no path, ever) |
@@ -102,7 +138,7 @@ GET  /api/estate/site-roles        holders + the CALLER's own ladder role
                                     503 service_account_unset if the
                                     Firestore secret isn't configured
 POST /api/estate/site-roles        {email, role} — role is one of
-                                    reader|contributor|moderator|admin, or
+                                    member|contributor|moderator|admin, or
                                     null (revoke). 403 {error:'forbidden',
                                     detail:<reason>} on any escalation
                                     canGrant() refuses
@@ -121,7 +157,7 @@ and — on a denial — why. Best-effort, never load-bearing: a write failure
 there is logged and swallowed, never allowed to undo or block the real
 Firestore decision.
 
-## ⚠️ The firestore.rules limitation — read this before granting `reader`/`contributor`
+## ⚠️ The firestore.rules limitation — read this before granting `member`/`contributor`
 
 The audiobook site's `firestore.rules` is a **different repository**,
 **owner-gated**, and **not touched by this build** (rules deploys are a
@@ -132,7 +168,7 @@ That means:
 
 - `moderator` and `admin`, granted through this API, work exactly as they
   did before this build — real, rules-enforced permissions.
-- `reader` and `contributor` are **fully real at the ladder/API layer** —
+- `member` and `contributor` are **fully real at the ladder/API layer** —
   storable, grantable (subject to the same escalation rules), visible in
   the admin UI's role-tree map — but **grant nothing beyond what an
   unlisted visitor already has** on the live audiobook site, because
@@ -142,7 +178,7 @@ That means:
 
 **What that rules change would need to add**, per `ROLES.md §1`:
 
-- a `reader` clause: today most reads on the audiobook site are already
+- a `member` clause: today most reads on the audiobook site are already
   public, so this is mostly forward cover for whatever narrows later (Drive
   view access and shelf-server book-URL downloads are OUT of Firestore
   entirely — they're a different system's access decision, see
@@ -171,11 +207,15 @@ of thing that gets missed on the next pass.
 
 ## Verification
 
-- `apps/auth-worker`: `npm test` (94 unit tests, incl. the full `canGrant`
-  escalation matrix and the two-owner-accounts case), `npx tsc --noEmit`
-  clean, `npm run probe` (local `wrangler dev`, 77 checks incl. the new
-  tree-endpoint coverage and its "works without the Firestore secret"
-  property).
+- `apps/auth-worker`: `npm test` (96 unit tests, incl. the full `canGrant`
+  escalation matrix, the two-owner-accounts case, and the renamed-vocabulary
+  guard — the retired `'viewer'`/`'reader'` strings are no longer
+  recognized and resolve to `guest`), `npx tsc --noEmit` clean, `npm run
+  probe` (local `wrangler dev`, 77 checks incl. the tree-endpoint coverage
+  and its "works without the Firestore secret" property).
 - Repo root: `npm run probe:estate` (production, read-only/unauthenticated-
   edge only) — extended with tokenless-401 and apex-only-CORS coverage for
   `GET /api/estate/site-roles/tree`.
+- `apps/auth-worker/migrations/0005_role_ladder.sql` applied to BOTH local
+  and remote (`estate_auth`) D1 before the rename; remote `site_role_grant_log`
+  row count verified 0 at rename time (see the rename note above).

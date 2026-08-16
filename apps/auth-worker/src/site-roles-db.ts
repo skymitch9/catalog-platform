@@ -27,7 +27,7 @@ export interface GrantLogInput {
   actorRole: string;
   targetEmail: string;
   targetUid: string | null;
-  /** The role the target held before this call, or null (viewer/no doc). */
+  /** The role the target held before this call, or null (guest/no doc). */
   previousRole: string | null;
   /** The role requested — null for a revoke. */
   requestedRole: string | null;
