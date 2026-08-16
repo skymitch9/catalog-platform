@@ -561,22 +561,29 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
        actually still running"). Same devops/approver gate as Operations
        above — GET /api/estate/backups (requireDevops()) reads the PRIVATE
        estate-backups R2 bucket and answers aggregate counts/timestamps
-       only, so this row can only ever be fetched signed in, unlike every
-       anonymous row below. See status.js's renderBackupsRow() for why the
-       thresholds are calendar-based (14d/45d) rather than cadence-based —
+       only, so these rows can only ever be fetched signed in, unlike every
+       anonymous row below. See status.js's renderBackupGroup() header for why
+       the thresholds are calendar-based (14d/45d) rather than cadence-based —
        backup.yml is workflow_dispatch-only, no cron, so there is no
        "expected next run" to measure against the way the 8h pipeline
        cadence works; a long age here honestly can mean "nobody ran it,"
-       not "broken," and the row's own note says so every time. -->
+       not "broken," and the rows' own note says so every time. The
+       thresholds themselves live in apps/auth-worker/src/backups.ts and are
+       pinned by its tests; this page renders the state, it does not decide
+       it. One row per backup KIND plus a roll-up, each graded on its
+       STALEST store — backup.yml's `target` input means a partial run
+       refreshes some stores and not others, so "newest object in the
+       bucket" would hide a database nobody has exported in months. -->
   <section id="backups-section" aria-labelledby="backups-h" hidden>
     <h2 id="backups-h">Backups</h2>
     <p class="section-note">
       The private <code>estate-backups</code> R2 bucket — D1 exports, a
       Firestore dump, and the three cover-image buckets, written only by a
-      manual run of <code>backup.yml</code> (no cron). Read via
-      <code>GET /api/estate/backups</code>, which returns counts and
-      timestamps only — never a bucket listing, an object, or a URL that
-      could fetch one.
+      manual run of <code>backup.yml</code> (no cron). Each row is graded on
+      its <em>oldest</em> store, so one stale database cannot hide behind a
+      fresh one. Read via <code>GET /api/estate/backups</code>, which returns
+      counts and timestamps only — never a bucket listing, an object, or a
+      URL that could fetch one.
     </p>
     <ul id="backups-rows" class="rows"></ul>
   </section>

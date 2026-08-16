@@ -872,31 +872,40 @@ function buildLeverList() {
 }
 
 /**
- * Backups row — GET /api/estate/backups (requireDevops()), added 2026-08-16
+ * Backups rows — GET /api/estate/backups (requireDevops()), added 2026-08-16
  * for the "is the backup workflow actually still running" gap: nothing
  * before this surfaced whether a silently-dead backup workflow was
- * invisible or not, which is exactly the failure this row exists to catch.
+ * invisible or not, which is exactly the failure these rows exist to catch.
  *
  * ⚠️ THRESHOLDS ARE CALENDAR-BASED, DELIBERATELY, UNLIKE THE PIPELINE ROWS
  * ABOVE. `.github/workflows/backup.yml` is `workflow_dispatch`-only — no
  * cron, no expected cadence — so there is no "did it keep up with X" signal
  * to measure against the way renderPipelineEbookRow() measures the ebook
  * lane against the pipeline's own last run (see that function's header for
- * the incident this row deliberately does NOT repeat: aging a MANUAL act
+ * the incident these rows deliberately do NOT repeat: aging a MANUAL act
  * against a threshold that implied an AUTOMATIC cadence, which went
  * amber/red while genuinely healthy). A backup's own age IS the right thing
- * to measure here — the question this row answers is "how much would the
+ * to measure here — the question these rows answer is "how much would the
  * estate lose if disaster struck right now," which is a real, wall-clock
  * question regardless of how the last backup was triggered. What must stay
  * honest is the LABEL: every state below says outright that the trigger is
  * manual, so a long age reads as "nobody has run it in a while" first and
- * "something is broken" only past a wide margin — 14 days amber (worth a
- * glance), 45 days red (six-plus weeks with no fresh copy of the estate's
- * data is a real risk regardless of intent). Both are round numbers, not
- * measurements — there is no historical cadence to derive them from yet.
+ * "something is broken" only past a wide margin.
+ *
+ * ⚠️ THE THRESHOLDS THEMSELVES LIVE SERVER-SIDE, in apps/auth-worker/src/
+ * backups.ts (14d amber / 45d red, pinned to the millisecond by
+ * test/backups.test.ts). This page owns NO threshold and computes NO state:
+ * it renders the `state` each group arrives with. That is deliberate — the
+ * one place a threshold can be changed is the one place a test guards.
+ *
+ * ⚠️ AND THE GRADE IS PER STORE, NOT "newest anywhere" (2026-08-16). backup.yml
+ * takes a `target` input, so an `r2`-only dispatch refreshes three stores and
+ * leaves the four databases and the Firestore dump untouched — the run history
+ * shows exactly that happening twice on 2026-08-15. A single row reading the
+ * freshest object in the bucket would have shown green with a database
+ * months out of date, which is the precise failure this section exists to
+ * catch. Every group is therefore graded on its STALEST store and names it.
  */
-const BACKUP_AMBER_MS = 14 * 24 * 3600_000;
-const BACKUP_RED_MS = 45 * 24 * 3600_000;
 const BACKUP_MANUAL_NOTE =
   'Backups run on manual dispatch only (no cron) — a long age can mean nobody has run it recently, ' +
   // "above", not "below": the lever list lives inside Operations, which
@@ -908,6 +917,82 @@ const BACKUP_MANUAL_NOTE =
 function buildBackupsSection() {
   const ul = document.getElementById('backups-rows');
   ul.appendChild(makeRow('backup-age', 'Estate backups (estate-backups R2)'));
+  // The per-kind rows below it are created on first response, since their
+  // labels and their number come from the Worker (one list of stores, in
+  // backups.ts) rather than a second copy kept here.
+}
+
+/** Create a per-kind row the first time that kind is seen, then reuse it. */
+function backupKindRowId(kind) {
+  const id = `backup-kind-${kind}`;
+  if (!rowRegistry.has(id)) {
+    document.getElementById('backups-rows').appendChild(makeRow(id, kind));
+  }
+  return id;
+}
+
+/** Set a row's visible name after creation (the label ships with the data). */
+function setRowName(id, name) {
+  const row = rowRegistry.get(id);
+  if (row) row.el.querySelector('.row-name').textContent = name;
+}
+
+/**
+ * One group (a kind, or the overall roll-up) -> one row. `group` is the shape
+ * gradeBackups() returns: {label, stores, count, newest, oldest, oldest_store,
+ * age_ms, never, state}. Nothing is recomputed here — `state` arrives decided.
+ */
+function renderBackupGroup(id, group, now) {
+  const stores = group.stores || 0;
+  // The roll-up row keeps the name it was built with (it names the bucket);
+  // per-kind rows get their label from the server, which owns the store list.
+  if (id !== 'backup-age') {
+    setRowName(id, stores === 1 ? group.label : `${group.label} (${stores} stores)`);
+  }
+
+  let detail;
+  if (group.never && group.never.length) {
+    // Never captured is not "stale" — say the true thing: no copy exists.
+    detail =
+      `No backup exists for ${group.never.join(', ')}` +
+      (group.oldest ? ` · the rest were last backed up ${formatAge(now - Date.parse(group.oldest))}.` : '.');
+  } else if (!group.oldest) {
+    detail = 'No backup has ever been captured.';
+  } else {
+    const oldestAge = formatAge(now - Date.parse(group.oldest));
+    const copies = `${group.count} ${group.count === 1 ? 'copy' : 'copies'} kept`;
+    if (stores === 1) {
+      detail = `Last backup ${oldestAge} · ${copies}.`;
+    } else if (group.newest === group.oldest) {
+      // Every store landed in the same run — no "oldest" worth singling out.
+      detail = `All ${stores} stores backed up ${oldestAge} · ${copies}.`;
+    } else {
+      detail =
+        `Oldest of ${stores} stores ${oldestAge} (${group.oldest_store})` +
+        ` · newest ${formatAge(now - Date.parse(group.newest))} · ${copies}.`;
+    }
+  }
+
+  // The manual-dispatch caveat rides on the overall row always, and on every
+  // row that is not green — so no amber or red can ever be read as "broken"
+  // without the sentence that says it might just be nobody pressing a button.
+  const note = id === 'backup-age' || group.state !== 'ok' ? BACKUP_MANUAL_NOTE : null;
+  updateRow(id, group.state, detail, note, now);
+}
+
+/**
+ * A read that failed must take the per-kind rows down WITH the overall row.
+ * probeOpsApprover() re-runs on every auth event, so a success followed by a
+ * failure would otherwise leave four green rows quoting a reading that could
+ * no longer be taken — the silent-staleness trap this whole section exists to
+ * close, reproduced one level down.
+ */
+function failBackupRows(detail, note, now, state = 'danger') {
+  for (const id of rowRegistry.keys()) {
+    if (id === 'backup-age' || id.startsWith('backup-kind-')) {
+      updateRow(id, state, detail, note, now);
+    }
+  }
 }
 
 async function loadBackups() {
@@ -918,47 +1003,50 @@ async function loadBackups() {
   try {
     res = await fetch(`${AUTH_ORIGIN}/api/estate/backups`, { headers: { Authorization: `Bearer ${token}` } });
   } catch {
-    updateRow('backup-age', 'danger', 'The auth Worker did not answer (network).', BACKUP_MANUAL_NOTE, now);
+    failBackupRows('The auth Worker did not answer (network) — backup age unknown.', BACKUP_MANUAL_NOTE, now);
     return;
   }
   if (res.status === 401 || res.status === 403) {
     // Should not happen once opsIsApprover is true (same token, same gate
     // tier as /me), but never show a stale row silently if it does.
-    updateRow('backup-age', 'danger', 'Not authorized to read backup metadata.', null, now);
+    failBackupRows('Not authorized to read backup metadata — backup age unknown.', null, now);
     return;
   }
   if (!res.ok) {
-    updateRow('backup-age', 'danger', `The backups endpoint answered HTTP ${res.status}.`, BACKUP_MANUAL_NOTE, now);
+    failBackupRows(`The backups endpoint answered HTTP ${res.status} — backup age unknown.`, BACKUP_MANUAL_NOTE, now);
     return;
   }
   let body;
   try {
     body = await res.json();
   } catch {
-    updateRow('backup-age', 'danger', 'The backups answer was unreadable.', BACKUP_MANUAL_NOTE, now);
+    failBackupRows('The backups answer was unreadable — backup age unknown.', BACKUP_MANUAL_NOTE, now);
     return;
   }
 
-  const prefixes = body.prefixes || {};
-  const missing = Object.keys(prefixes).filter((k) => prefixes[k].count === 0);
-  const newestOverall = body.newest_overall ? Date.parse(body.newest_overall) : NaN;
-
-  if (!Number.isFinite(newestOverall)) {
-    updateRow(
-      'backup-age', 'danger', 'No backup has ever been captured.',
-      `${BACKUP_MANUAL_NOTE} This bucket has never received an object of any kind.`, now,
+  if (!body.overall || !Array.isArray(body.kinds)) {
+    // Deploy skew: an auth-worker older than this page answers counts without
+    // grades. Say that plainly rather than re-implementing the thresholds
+    // here — a second copy is exactly what moving them server-side removed.
+    // Amber, because the honest state is "this page cannot tell you", which
+    // is a real problem with the page, NOT a claim about the backups.
+    const newestOverall = body.newest_overall ? Date.parse(body.newest_overall) : NaN;
+    failBackupRows(
+      Number.isFinite(newestOverall)
+        ? `Newest backup anywhere in the bucket ${formatAge(now - newestOverall)} — but per-store ages are unavailable.`
+        : 'Backup ages are unavailable.',
+      'The auth Worker answered without per-store grading, so a single stale store cannot be ruled out. ' +
+      'Deploy auth-worker (Run levers → Deploy — auth-worker, target=auth-worker) to restore these rows.',
+      now,
+      'warn',
     );
     return;
   }
 
-  const ageMs = now - newestOverall;
-  const state = ageMs > BACKUP_RED_MS ? 'danger' : ageMs > BACKUP_AMBER_MS ? 'warn' : 'ok';
-  const total = Object.values(prefixes).reduce((sum, p) => sum + (p.count || 0), 0);
-  let note = BACKUP_MANUAL_NOTE;
-  if (missing.length) {
-    note += ` Never captured yet: ${missing.join(', ')}.`;
+  renderBackupGroup('backup-age', body.overall, now);
+  for (const kind of body.kinds) {
+    renderBackupGroup(backupKindRowId(kind.kind), kind, now);
   }
-  updateRow('backup-age', state, `Newest backup ${formatAge(ageMs)} · ${total} object${total === 1 ? '' : 's'} across ${Object.keys(prefixes).length} stores.`, note, now);
 }
 
 // ---------------------------------------------------------------------------

@@ -12,8 +12,14 @@
  * caller could use to enumerate and fetch individual backups. `R2Bucket
  * .list()` in `summarizeBackups()` below reads only `key` and `uploaded` off
  * each `R2Object` — the body is never touched, and the response this route
- * sends back carries counts/timestamps exyed strictly to the fixed prefix
- * scoped strictly to the fixed prefix list, never a raw key list.
+ * sends back carries counts/timestamps scoped strictly to the fixed prefix
+ * list, never a raw key list.
+ *
+ * The route also GRADES what it found (`gradeBackups()` below) rather than
+ * shipping raw numbers for the page to judge: the thresholds then have exactly
+ * one home and are unit-tested here. ⚠️ Read that function's header before
+ * touching a threshold — they are deliberately calendar/exposure-based, never
+ * cadence-based, because backup.yml has no cron.
  *
  * Gating: requireDevops() (devops OR approver OR owner) — the same tier
  * `/api/estate/docs/:slug` and `POST /api/estate/ops/pipeline` use. Backup
@@ -97,6 +103,161 @@ export async function summarizeBackups(bucket: ListableBucket): Promise<BackupsS
   };
 }
 
+// ---------------------------------------------------------------------------
+// Grading — "when did a backup last land, and is that OK?"
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ THE THRESHOLDS ARE CALENDAR-BASED, DELIBERATELY, AND MUST STAY THAT WAY.
+ *
+ * `.github/workflows/backup.yml` is `workflow_dispatch`-only — there is NO
+ * cron and therefore NO expected cadence to measure against. A long age here
+ * genuinely can mean "nobody pressed the button", NOT "the backup is broken",
+ * and every string this module's consumers render says so. What these
+ * thresholds measure is EXPOSURE — "how much would the estate lose if disaster
+ * struck right now" — which is a real wall-clock question no matter how the
+ * last backup was triggered.
+ *
+ * 14 days amber (worth a glance), 45 days red (six-plus weeks with no fresh
+ * copy is a real risk regardless of intent). Both are round numbers chosen for
+ * that exposure question, NOT measurements — there is no historical cadence to
+ * derive them from, and claiming otherwise would be the exact dishonesty this
+ * comment exists to prevent. Changing either is a deliberate act: the tests in
+ * test/backups.test.ts assert both to the millisecond and will fail loudly.
+ *
+ * These live HERE (server-side) rather than in the status page so there is one
+ * copy: status.js renders the `state` this module decides and owns no
+ * threshold of its own.
+ */
+export const BACKUP_STALE_AMBER_MS = 14 * 24 * 3600_000;
+export const BACKUP_STALE_RED_MS = 45 * 24 * 3600_000;
+
+/** Human labels for the `<kind>` half of each known prefix. */
+export const BACKUP_KIND_LABELS: Record<string, string> = {
+  d1: 'D1 database exports',
+  firestore: 'Firestore dump',
+  r2: 'Cover buckets',
+};
+
+export type BackupState = 'ok' | 'warn' | 'danger';
+
+export interface BackupGroupGrade {
+  /** `d1` | `firestore` | `r2`, or `all` for the roll-up across every kind. */
+  kind: string;
+  label: string;
+  /** How many `<kind>/<store>` prefixes this group covers. */
+  stores: number;
+  /** Total objects across the group (retention keeps 8 per store). */
+  count: number;
+  /** Freshest object anywhere in the group, ISO 8601 or null. */
+  newest: string | null;
+  /**
+   * ⚠️ The STALEST store's newest object — this, not `newest`, is what the
+   * group is graded on. `newest` alone masks a dead store: backup.yml takes a
+   * `target` input, so an `r2`-only run refreshes three stores and leaves the
+   * other five untouched, and a group judged on its freshest member would read
+   * green while a database had not been exported in months.
+   */
+  oldest: string | null;
+  /** Which prefix `oldest` belongs to — the one to look at first. */
+  oldest_store: string | null;
+  /** now - oldest, in ms. Null when some store has never been written. */
+  age_ms: number | null;
+  /** Prefixes with zero objects: no backup of that store exists AT ALL. */
+  never: string[];
+  state: BackupState;
+}
+
+export interface BackupsGrade {
+  kinds: BackupGroupGrade[];
+  overall: BackupGroupGrade;
+}
+
+/** Age -> state. The only place the thresholds are compared against anything. */
+export function gradeBackupAge(ageMs: number): BackupState {
+  if (ageMs > BACKUP_STALE_RED_MS) return 'danger';
+  if (ageMs > BACKUP_STALE_AMBER_MS) return 'warn';
+  return 'ok';
+}
+
+function gradeGroup(
+  kind: string,
+  label: string,
+  prefixNames: readonly string[],
+  summary: BackupsSummary,
+  nowMs: number,
+): BackupGroupGrade {
+  const never: string[] = [];
+  let count = 0;
+  let newestMs: number | null = null;
+  let oldestMs: number | null = null;
+  let oldestStore: string | null = null;
+
+  for (const name of prefixNames) {
+    const p = summary.prefixes[name];
+    if (!p) continue;
+    count += p.count;
+    const ms = p.newest ? Date.parse(p.newest) : NaN;
+    if (!Number.isFinite(ms)) {
+      never.push(name);
+      continue;
+    }
+    if (newestMs === null || ms > newestMs) newestMs = ms;
+    if (oldestMs === null || ms < oldestMs) {
+      oldestMs = ms;
+      oldestStore = name;
+    }
+  }
+
+  // A store with no object at all is not "stale", it is UNPROTECTED — a
+  // wall-clock threshold cannot express that, so it short-circuits to danger.
+  // This is not a cadence judgement either: it says a copy does not exist,
+  // which is true whoever did or did not press the button.
+  const state: BackupState = never.length > 0
+    ? 'danger'
+    : oldestMs === null
+      ? 'danger'
+      : gradeBackupAge(nowMs - oldestMs);
+
+  return {
+    kind,
+    label,
+    stores: prefixNames.length,
+    count,
+    newest: newestMs === null ? null : new Date(newestMs).toISOString(),
+    oldest: oldestMs === null ? null : new Date(oldestMs).toISOString(),
+    oldest_store: never.length > 0 ? null : oldestStore,
+    age_ms: never.length > 0 || oldestMs === null ? null : nowMs - oldestMs,
+    never,
+    state,
+  };
+}
+
+/**
+ * Per-kind + overall grades from a summary. Pure (summary + clock in, verdict
+ * out) so every threshold decision is unit-testable without a bucket, a
+ * Worker, or a browser. Kind ORDER follows KNOWN_BACKUP_PREFIXES rather than a
+ * second literal list, so adding a store to that array is still the only edit
+ * a new store needs here.
+ */
+export function gradeBackups(summary: BackupsSummary, nowMs: number): BackupsGrade {
+  const byKind = new Map<string, string[]>();
+  for (const prefix of KNOWN_BACKUP_PREFIXES) {
+    const kind = prefix.split('/')[0]!;
+    const list = byKind.get(kind);
+    if (list) list.push(prefix);
+    else byKind.set(kind, [prefix]);
+  }
+
+  const kinds = [...byKind.entries()].map(([kind, prefixNames]) =>
+    gradeGroup(kind, BACKUP_KIND_LABELS[kind] ?? kind, prefixNames, summary, nowMs),
+  );
+
+  const overall = gradeGroup('all', 'Estate backups', KNOWN_BACKUP_PREFIXES, summary, nowMs);
+
+  return { kinds, overall };
+}
+
 export const backupsRoutes = new Hono<AppBindings>();
 
 backupsRoutes.get('/estate/backups', requireDevops(), async (c) => {
@@ -108,10 +269,18 @@ backupsRoutes.get('/estate/backups', requireDevops(), async (c) => {
   }
 
   const summary = await summarizeBackups(bucket);
+  const now = Date.now();
+  const grade = gradeBackups(summary, now);
   return c.json({
     ok: true,
-    time: new Date().toISOString(),
+    time: new Date(now).toISOString(),
     newest_overall: summary.newestOverall,
     prefixes: summary.prefixes,
+    // Grades are computed here, not on the page: one copy of the thresholds,
+    // unit-tested. Still counts/timestamps/prefix NAMES only — `oldest_store`
+    // and `never` carry the same `<kind>/<store>` strings `prefixes` already
+    // keys by, never an object key, never anything fetchable.
+    kinds: grade.kinds,
+    overall: grade.overall,
   });
 });
