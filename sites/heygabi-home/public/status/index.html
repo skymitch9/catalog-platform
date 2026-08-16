@@ -330,6 +330,27 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   </div>
   <p id="ops-note" class="ops-note" hidden></p>
 
+  <!-- Server migration (owner order 2026-08-15: "make this more obvious at
+       the top of the page in its own section called server migration").
+       Sits ABOVE Operations, revealed by the same devops/approver gate
+       (status.js toggles both sections off the one /me probe). The links
+       are public knowledge — each page is a content-free shim whose
+       document only loads for devops/approver tokens, so listing them here
+       leaks nothing the gate does not already defend. -->
+  <section id="migration-section" aria-labelledby="mig-h" hidden>
+    <h2 id="mig-h">Server migration</h2>
+    <p class="section-note">
+      The family audiobook shelf build — a physical server mirroring the
+      library from Drive, every book at its own URL on
+      <code>shelf.heygabi.ai</code>. Status: <strong>not yet run</strong> —
+      these two pages are the whole project.
+    </p>
+    <ul class="lever-list">
+      <li><a href="/runbooks/shelf-migration/">Instructions manual →</a> — who does what: Skylar's steps, the keeper's steps, the two handoffs.</li>
+      <li><a href="/runbooks/shelf/">Runbook →</a> — the full reference: every prompt, flag, config file, dash field and gotcha.</li>
+    </ul>
+  </section>
+
   <section id="ops-section" aria-labelledby="ops-h" hidden>
     <h2 id="ops-h">Operations</h2>
     <p class="section-note">
@@ -343,14 +364,6 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
         <span id="ops-run-msg" class="ops-run-msg"></span>
       </div>
       <ul id="lever-rows" class="lever-list"></ul>
-      <!-- Runbooks (owner order 2026-08-15: "add it to the status page").
-           The link is public knowledge — the PAGE it opens is a content-free
-           shim whose document only loads for devops/approver tokens, so
-           listing it here leaks nothing the gate does not already defend. -->
-      <p class="section-note">
-        Runbooks: <a href="/runbooks/shelf/">Shelf server (family audiobook
-        shelf) →</a>
-      </p>
     </div>
   </section>
 
