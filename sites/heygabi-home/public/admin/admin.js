@@ -700,6 +700,46 @@ function actionBtn(label, className, onClick) {
 }
 
 /**
+ * Two-tap confirmation (owner order 2026-08-15: "make the revoke button,
+ * make approver, make devops buttons have a confirmation so I don't
+ * accidentally remove people from key roles"). First tap ARMS the button —
+ * label flips to "Tap again to <label>", danger styling — and it disarms
+ * itself after 4s untouched. Only the second tap inside that window runs
+ * the mutation. Chosen over window.confirm(): this page is used from a
+ * phone, and a native dialog is both uglier and easier to fat-finger
+ * through than a button that visibly changes state and relaxes on its own.
+ */
+function confirmBtn(label, className, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  const baseClass = `btn small ${className || ''}`.trim();
+  b.className = baseClass;
+  b.textContent = label;
+  let armed = false;
+  let disarmTimer = null;
+  const disarm = () => {
+    armed = false;
+    clearTimeout(disarmTimer);
+    b.textContent = label;
+    b.className = baseClass;
+  };
+  b.addEventListener('click', async () => {
+    if (!armed) {
+      armed = true;
+      b.textContent = `Tap again to ${label.toLowerCase()}`;
+      b.className = `btn small danger`;
+      disarmTimer = setTimeout(disarm, 4000);
+      return;
+    }
+    disarm();
+    b.disabled = true;
+    await onClick();
+    b.disabled = false;
+  });
+  return b;
+}
+
+/**
  * Save the visibility set as the checkboxes now stand — the whole array in
  * §4.5's canonical order, because the endpoint takes the set, not a delta.
  */
@@ -910,23 +950,26 @@ function userCard(u) {
     actions.appendChild(actionBtn('Approve', '', () =>
       mutate(`/api/estate/users/${u.id}/status`, { status: 'approved' })));
   }
+  // Revoke and every role flip are two-tap (confirmBtn) — owner order
+  // 2026-08-15 after nearly fat-fingering a role change. Approve stays
+  // single-tap: it is the common, additive, low-stakes action.
   if (u.status !== 'revoked') {
-    actions.appendChild(actionBtn('Revoke', 'danger', () =>
+    actions.appendChild(confirmBtn('Revoke', 'danger', () =>
       mutate(`/api/estate/users/${u.id}/status`, { status: 'revoked' })));
   }
   if (u.status === 'approved') {
     actions.appendChild(u.is_approver
-      ? actionBtn('Remove approver', 'quiet', () =>
+      ? confirmBtn('Remove approver', 'quiet', () =>
           mutate(`/api/estate/users/${u.id}/approver`, { is_approver: false }))
-      : actionBtn('Make approver', 'quiet', () =>
+      : confirmBtn('Make approver', 'quiet', () =>
           mutate(`/api/estate/users/${u.id}/approver`, { is_approver: true })));
     // Devops (0003): pointless to toggle on an approver — they hold every
     // devops surface implicitly — so the button only renders for the rest.
     if (!u.is_approver) {
       actions.appendChild(u.is_devops
-        ? actionBtn('Remove devops', 'quiet', () =>
+        ? confirmBtn('Remove devops', 'quiet', () =>
             mutate(`/api/estate/users/${u.id}/devops`, { is_devops: false }))
-        : actionBtn('Make devops', 'quiet', () =>
+        : confirmBtn('Make devops', 'quiet', () =>
             mutate(`/api/estate/users/${u.id}/devops`, { is_devops: true })));
     }
   }
