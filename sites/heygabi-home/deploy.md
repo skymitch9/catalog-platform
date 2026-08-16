@@ -41,8 +41,11 @@ Settings → Authorised domains) — before or with the deploy that ships the
 search, or sign-in answers `auth/unauthorized-domain` (the page renders that
 as an owner-action message, not a broken button). ⚠️ `www.heygabi.ai` stays
 **off** the list — it should become a redirect-only host (§2.1), and the
-admin API's CORS names the apex alone anyway. `auth.heygabi.ai` and
-`index.heygabi.ai` also stay off: no sign-in popup ever runs there.
+admin API's CORS names the apex alone anyway. `index.heygabi.ai` also stays
+off: no sign-in popup ever runs there. `auth.heygabi.ai` is a NAMED
+EXCEPTION since 2026-08-16 — see §5's table row for the full reversal; it
+now runs the sign-in ceremony itself (`sso-design.md` §4.1 Phase 1) and IS
+an authorised domain, verified via the Identity Toolkit admin API.
 
 ---
 
@@ -283,7 +286,7 @@ owner, not for the public. The upload root is the single defence; there is no
 
 | Never | Why |
 |---|---|
-| ⚠️ Add `www.heygabi.ai` (or `auth.` / `index.` / `covers.`) to **Firebase authorised domains** | No sign-in popup runs on any of them; each entry is a permanent OAuth redirect surface. ⚠️ The apex itself **is** authorised since 2026-08-13 — that reversal is deliberate and argued in `estate-auth-design.md` §7.2; it does not extend to any other host |
+| ⚠️ Add `www.heygabi.ai` (or `index.` / `covers.`) to **Firebase authorised domains** | No sign-in popup runs on any of them; each entry is a permanent OAuth redirect surface. ⚠️ The apex itself **is** authorised since 2026-08-13 — that reversal is deliberate and argued in `estate-auth-design.md` §7.2; it does not extend to any other host. 🔁 **`auth.` is a SECOND, separate reversal, 2026-08-16:** this row originally named `auth.` alongside `www./index./covers.` as hosts that must never be authorised, on the reasoning "no sign-in popup ever runs there" (§0 above, same wording). `docs/info/sso-design.md` §4.1 (option a) overturns that for `auth.heygabi.ai` specifically: the sign-in *ceremony* now runs there on purpose — it reverse-proxies `/__/auth/*` to `audiobook-catalog.firebaseapp.com` (`apps/auth-worker/src/auth-proxy.ts`) so the estate's redirect sign-in flow is same-site instead of cross-site (§3.2's 2026 third-party-storage breakage). The owner added `auth.heygabi.ai` to Firebase's authorised-domain list for exactly this reason (§8 Phase 1, verified same day). `www.` / `index.` / `covers.` are UNCHANGED by this — they still must never be authorised, for the original reasoning |
 | Put a Worker in front of the apex | It is Pages, direct upload, by decision (`HEYGABI_LAYOUT.md` §1). The sign-in that finally arrived came as static JS + Workers on their own hosts, not as an apex Worker — keep it that way |
 | Deploy the repo root instead of `public/` | Publishes `README.md` and `deploy.md` |
 | Point `audiobooks.heygabi.ai` at this project | That is its own Pages project with its own `/dev/` lane |
