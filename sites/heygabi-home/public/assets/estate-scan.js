@@ -142,6 +142,8 @@
  *                                   non-2xx response.
  */
 
+import { describeHttpFailure } from './permission-ux.js';
+
 // ===========================================================================
 // Barcode classification — ported from library_catalog packages/core/src/isbn.ts
 // (the "book gate": accept nothing but a checksum-valid 978/979 EAN-13, keep
@@ -601,7 +603,10 @@ export async function identifyPhoto(photo, { endpoint, idToken, kind = 'shelf', 
   }
 
   if (!res.ok) {
-    throw new IdentifyError(body?.detail || body?.error || `Scan failed (${res.status}).`, res.status);
+    throw new IdentifyError(
+      describeHttpFailure(res.status, body, { fallback: 'The scan could not be read' }),
+      res.status,
+    );
   }
   return {
     books: Array.isArray(body?.books) ? body.books : [],
@@ -661,7 +666,13 @@ export async function addToCatalog(
   }
 
   if (!res.ok) {
-    throw new IdentifyError(body?.detail || body?.error || `Add failed (${res.status}).`, res.status);
+    throw new IdentifyError(
+      describeHttpFailure(res.status, body, {
+        need: 'the contributor role on the library catalog',
+        fallback: 'Could not add it',
+      }),
+      res.status,
+    );
   }
   return body;
 }

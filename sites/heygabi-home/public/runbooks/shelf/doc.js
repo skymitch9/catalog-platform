@@ -64,7 +64,8 @@ async function loadDoc() {
     return;
   }
   if (!res.ok) {
-    setGateStatus(`The document did not load (${res.status}). Try again shortly.`);
+    // §1e: never a bare HTTP status alone.
+    setGateStatus('The document did not load. Try again shortly.');
     return;
   }
 

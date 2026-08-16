@@ -1074,7 +1074,9 @@ export function groupBySeries(rows) {
           this._setStatus('The index did not accept the sign-in token. Sign out and back in.', 'warn');
           break;
         default:
-          this._setStatus(`Search failed (${res.status}${body?.error ? `: ${body.error}` : ''}).`, 'warn');
+          // §1e: never a bare HTTP status alone — say it failed, pass along
+          // the server's own words when it gave any.
+          this._setStatus(`Search failed${body?.error ? ` (${body.error})` : ''}. Try again shortly.`, 'warn');
       }
       return null;
     }

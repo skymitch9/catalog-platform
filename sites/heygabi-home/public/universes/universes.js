@@ -330,7 +330,8 @@ function errorNote(status, errCode) {
     case 'unauthenticated':
       return 'The index did not accept the sign-in token. Sign out and back in.';
     default:
-      return `Could not load this universe (${status}${errCode ? `: ${errCode}` : ''}).`;
+      // §1e: never a bare HTTP status alone.
+      return `Could not load this universe${errCode ? ` (${errCode})` : ''}. Try again shortly.`;
   }
 }
 

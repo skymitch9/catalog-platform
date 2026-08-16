@@ -86,7 +86,8 @@ async function loadBoard() {
     return;
   }
   if (!res.ok) {
-    setGateStatus(`The board did not load (${res.status}). Try again shortly.`);
+    // §1e: never a bare HTTP status alone.
+    setGateStatus('The board did not load. Try again shortly.');
     return;
   }
 

@@ -215,7 +215,9 @@ async function api(path, init) {
       setStatus(body?.detail || body?.error || 'That change is not coherent yet.', 'warn');
       break;
     default:
-      setStatus(`Request failed (${res.status}${body?.error ? `: ${body.error}` : ''}).`, 'warn');
+      // §1e: never a bare HTTP status — say it failed, and pass along the
+      // server's own words when it gave any, but never the number alone.
+      setStatus(`Something went wrong on the server${body?.error ? ` (${body.error})` : ''}. Try again shortly.`, 'warn');
   }
   return null;
 }
@@ -241,7 +243,7 @@ async function fetchAppDirectory(app) {
   }
   if (res.status === 401) return { ok: false, why: 'token refused' };
   if (res.status === 403) return { ok: false, why: 'needs an owner account there' };
-  if (!res.ok) return { ok: false, why: `error ${res.status}` };
+  if (!res.ok) return { ok: false, why: 'server error' };
   let data;
   try {
     data = await res.json();
@@ -304,7 +306,7 @@ async function fetchSiteRoles() {
   if (res.status === 401) return { ok: false, why: 'token refused' };
   if (res.status === 403) return { ok: false, why: 'needs an approver account' };
   if (res.status === 503) return { ok: false, why: 'service account not configured on the auth Worker' };
-  if (!res.ok) return { ok: false, why: `error ${res.status}` };
+  if (!res.ok) return { ok: false, why: 'server error' };
   let data;
   try {
     data = await res.json();
@@ -343,7 +345,7 @@ async function fetchRoleTree() {
   }
   if (res.status === 401) return { ok: false, why: 'token refused' };
   if (res.status === 403) return { ok: false, why: 'needs an approver account' };
-  if (!res.ok) return { ok: false, why: `error ${res.status}` };
+  if (!res.ok) return { ok: false, why: 'server error' };
   let data;
   try {
     data = await res.json();

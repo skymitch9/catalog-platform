@@ -835,9 +835,11 @@ opsRunBtn.addEventListener('click', async () => {
     } else if (res.status === 503) {
       setOpsRunMsg(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`, 'warn');
     } else if (res.status === 403) {
-      setOpsRunMsg('Refused — this account is not an approver.', 'warn');
+      setOpsRunMsg('You need the approver role to trigger a run. Ask an existing approver or an owner.', 'warn');
     } else {
-      setOpsRunMsg(`Request failed (${res.status}${body?.error ? `: ${body.error}` : ''}).`, 'warn');
+      // §1e: never a bare HTTP status alone — say it failed, pass along the
+      // server's own words when it gave any.
+      setOpsRunMsg(`Something went wrong on the server${body?.error ? ` (${body.error})` : ''}. Try again shortly.`, 'warn');
     }
   } catch {
     setOpsRunMsg('The auth Worker did not answer (network). Try again shortly.', 'warn');
