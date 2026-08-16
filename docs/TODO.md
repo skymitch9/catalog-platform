@@ -171,8 +171,11 @@ workflow prints the line to append locally if wanted.
 1. Nothing is blocking. The reactive pipeline (audiobook_catalog) is the queued
    work; this repo is only involved if the status page needs a row for it.
 2. **Discord bot** — design doc on file, needs the owner's decisions.
-3. Sub-item 1 of the two-surface build — the apex `/universes` cross-catalog
-   page — is still unbuilt here. Sub-item 2 (audiobook side) is done.
+3. ~~Sub-item 1 — the apex `/universes` page~~ — ⚠️ **CORRECTED 2026-08-16:
+   it is BUILT and LIVE** (heygabi.ai/universes, "tap one to see its books,
+   audiobooks and games together... sourced live from the shared index").
+   The previous line here said "still unbuilt" — written without checking,
+   the exact mark-done failure recorded the same day. Both sub-items are done.
 
 ---
 
