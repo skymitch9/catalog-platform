@@ -22,6 +22,7 @@ import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
+import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
@@ -77,6 +78,10 @@ app.use('/api/estate/todo', adminCors());
 // Unlisted estate docs (0003 devops) — apex-only like /todo: the only shim
 // that calls this lives on the apex (an unlisted /r/<slug>/ page).
 app.use('/api/estate/docs/*', adminCors());
+// Self-service build facts (0007, 2026-08-16) — apex-only, same reasoning:
+// the only callers are the migration-page form and the runbook page, both
+// on the apex. requireDevops()-gated (facts.ts), same tier as /docs and /ops.
+app.use('/api/estate/facts/*', adminCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
@@ -115,6 +120,7 @@ app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
 app.route('/api', todoRoutes);
 app.route('/api', docsRoutes);
+app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);
 app.route('/api', sessionRoutes);
 

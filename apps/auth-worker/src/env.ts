@@ -17,6 +17,11 @@ export interface Env {
    * <fragment.html> --remote`; the source of truth for each fragment is
    * named in the doc that owns it (first tenant: audiobook_catalog's
    * LOCAL-ONLY docs/access/SHELF_SERVER.md).
+   *
+   * ALSO backs facts.ts's `facts:<slug>` keys (0007, 2026-08-16) — small
+   * JSON blobs (not HTML) a devops-gated caller submits through a form,
+   * rendered back into a `doc:<slug>` page. Same binding, sibling key
+   * space, deliberately not a second namespace — see facts.ts's header.
    */
   estate_docs?: KVNamespace;
 
