@@ -1,16 +1,17 @@
 # tools — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-11**.
+> Last verified: **2026-08-15**.
 
-Local command-line tools for the shared data in [`../data/`](../data/). Zero
-dependencies and no install step — `node tools/universes.mjs` works in a fresh
-checkout. Node 20+.
+Local command-line tools for the shared data in [`../data/`](../data/), plus
+the estate-wide probe suite below. Zero dependencies and no install step —
+`node tools/universes.mjs` works in a fresh checkout. Node 20+.
 
 | File | What |
 |---|---|
 | `universes.mjs` | The editor CLI. Thin: argument parsing and printing only |
 | `lib/universes.mjs` | ⚠️ Every decision — load, normalise, look up, validate, mutate. **Imported by `library_catalog`'s build.** Changing the resolution order here means changing it in `audiobook_catalog/app/core/universes.py` too |
+| `estate-probes/` | **The API testing suite** (`npm run probe:estate`) — read-only, unauthenticated-edge probes run against LIVE production across all four estate Workers, the audiobook static site, and the public Firestore doc. Own README: [`estate-probes/README.md`](estate-probes/README.md) |
 
 ## Quick reference
 

@@ -8,6 +8,26 @@
 
 ---
 
+## Estate API testing suite (owner ask 2026-08-15) — ✅ DONE
+
+Owner: *"Maybe it's time to make an api testing suite"* — promote
+`apps/auth-worker/test/live-probes.ts`'s idiom estate-wide. Built
+`tools/estate-probes/` (plain Node, zero deps, `npm run probe:estate`):
+54 read-only, unauthenticated-edge assertions against LIVE production across
+all four `/api/health` envelopes, auth-worker (`/me`, `/hello`, `/docs/:slug`,
+admin API — tokenless and garbage-bearer 401s, CORS admit/refuse), index-worker
+(`/api/search` anonymous public-slice shape, `/universe`/`/lookup`/`/scan/shelf`
+401s, CORS), library-worker's scan-jobs barcode intake (401 + CORS, read against
+the sibling repo's route source, never edited), `audiobooks.heygabi.ai/ebooks.json`,
+and the public Firestore `pipeline_status/current` REST doc. All 54 passed on
+first live run (2026-08-15) — no findings, no production changes made or
+needed. Signed-in 200-paths are explicitly OUT OF SCOPE (no authed probe
+identity exists) — listed as future work in `tools/estate-probes/README.md`,
+which also carries the "new estate endpoint → probe in the same commit" rule.
+Indexed in `tools/README.md` and `docs/access/README.md`.
+
+---
+
 ## Scan icons: barcode glyph vs camera glyph (owner ask 2026-08-15) — ✅ DONE
 
 Owner: the apex's two scan icons were confusing (camera emoji sat on the
