@@ -134,6 +134,114 @@ workflow prints the line to append locally if wanted.
 
 ---
 
+## 📖 TBR should span all catalogs, the way "read" does (owner ask 2026-08-16)
+
+> *"tbr like read should span all catalogs"*
+
+**Recorded, not started.** Sits with the two entries below it — this is the
+same question they are, arrived at from the reader's side rather than the
+architecture's.
+
+**What exists today, measured 2026-08-16:**
+
+| Concept | Where it lives | Spans catalogs? |
+|---|---|---|
+| Reviews + ratings | ONE shared Firestore store, keyed by `bookIdFromTitle` — audiobook and library both write it | ✅ yes, already |
+| "read" / reading state | `PUT /works/:id/reading` (`trackReading`), library only | ❌ library's own table |
+| **TBR** | Only inside audiobook **book clubs** — a club's Current Read and TBR list | ❌ per-club, not per-person |
+| Wishlist | Per catalog (`suggestWishlist` / `manageWishlist` in both library and games) | ❌ separate lists |
+
+So there is a precedent that already works — the shared review store proves a
+per-person fact CAN span catalogs — and TBR is the one that most obviously
+should follow it: what someone intends to read next does not care whether the
+copy is an audiobook, an ebook or a paperback.
+
+⚠️ **The design question this forces, and why it is worth answering once:**
+TBR is a **per-person, per-WORK** fact, while every catalog is organised around
+**copies**. "I want to read *Wintersteel*" is one intention, even when the
+household holds it in three formats. So a cross-catalog TBR needs the same
+identity key the reviews already use, NOT a row in each catalog — otherwise
+finishing the audiobook leaves the paperback still on the list.
+
+⚠️ **This is the same seam as the ebooks question below.** Shared-pool formats
+(audio, ebook) versus owned copies (physical, games) is the split; a spanning
+TBR is what it looks like from the reader's side. Decide them together, and
+consider whether "read", wishlist and TBR are three names for one per-person
+state machine (want → have → reading → read) rather than three features.
+
+**Games:** "all catalogs" plausibly includes a to-PLAY list. Ask before
+assuming — it may be the same feature or a deliberately different one.
+
+## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
+
+Raised mid-conversation and **not yet decided** — recorded because it reframes
+the federation question above rather than adding to it.
+
+> *"we might need to now make ebooks its own site because we all share ebooks
+> like we do audiobooks but physical books obviously belong to someone"*
+
+**Why this is the sharp observation:** this estate has been splitting catalogs
+by MEDIUM (audiobooks / books / games), and the owner has just pointed out the
+split that actually matters is by **ownership model**:
+
+| | Shared by the household | Belongs to one person |
+|---|---|---|
+| Audiobooks | ✅ already its own site | |
+| **Ebooks** | ✅ **behaves like audiobooks** | |
+| Physical books | | ✅ a specific copy on a specific shelf |
+| Board games | | ✅ (a physical copy, though played together) |
+
+Ebooks currently live INSIDE the physical library catalog — `site/ebooks.json`
+is produced by the audiobook pipeline's step 1b and imported by
+`library_catalog`. So a shared-by-everyone format is stored inside the one
+catalog whose entire premise is "who owns this copy".
+
+⚠️ **This is exactly the question the second-household federation runs into.**
+"See who owns what" is meaningful for physical books and games, and close to
+meaningless for ebooks and audiobooks — those are "do we have it", not "whose
+is it". Deciding the ebook split FIRST would likely simplify the federation,
+because it separates *the shared pool* from *the per-person shelves* before two
+households ever have to be joined.
+
+**Not a build yet.** Open questions, in the order they need answering:
+1. Does an ebook site mean a new catalog, or a VIEW over the shared index?
+   (The index already exists and already spans catalogs — a new Worker may be
+   the expensive answer to a question a query answers.)
+2. What happens to `library_catalog`'s existing ebook rows — move, mirror, or
+   leave and re-point?
+3. Does the shelf server change shape? It serves audiobooks by URL today;
+   ebooks are the same *kind* of thing.
+4. Who is the ingest owner once ebooks leave the physical catalog — step 1b
+   still produces the manifest.
+
+## 🤝 A second household's library, federated with ours (owner ask 2026-08-16)
+
+**Deferred by the owner the same day it was raised — "do the next catalog
+later" — recorded now so it is not lost.**
+
+The ask: *"I want to make a site for my friends library and then link it to
+mine so we can see who owns what. but she's less technical and doesnt live near
+me, they need a much better automated solution."*
+
+Three constraints that make this NOT just "deploy another copy":
+
+1. ⚠️ **She is less technical.** Every operational assumption this estate rests
+   on — a pipeline on a home machine, wrangler from a laptop, reading a runbook
+   — is unavailable. Whatever is built has to run without her ever seeing a
+   terminal.
+2. ⚠️ **She is not local.** No shared LAN, no "I'll set it up on your machine",
+   no physical access to fix a stuck box. Remote-first from day one.
+3. **The point is the JOIN, not the copy.** "See who owns what" means the two
+   catalogs must be comparable — which is what the shared index
+   (`index.heygabi.ai`) already does across our three catalogs, and is the
+   obvious foundation rather than a new mechanism.
+
+⚠️ **Do not start this by cloning a repo.** The interesting design question is
+the automation and the ownership boundary (her data, her account, her control,
+our shared view), and answering that first will change what gets deployed.
+Related: the combined-site architecture already sketched for our own three
+catalogs.
+
 ## 🔒 Revocation should clear the flags, not just the status (audit finding, 2026-08-16)
 
 **Found by the testing audit** ("useful test not just bulk") and **half-fixed
