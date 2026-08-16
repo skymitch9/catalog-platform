@@ -24,6 +24,47 @@ import { getUserByEmail, materializeOwnerRow } from '../estate-db.js';
  * but OWNER_EMAILS. ⚠️ Requires status 'approved' when the answer comes from
  * the row: a revoked person's leftover flag must not keep a door open.
  */
+/**
+ * The two gate decisions, extracted as PURE predicates 2026-08-16 — and the
+ * extraction is the point, not tidiness.
+ *
+ * ⚠️ These lived inline inside the middleware closures, where nothing could
+ * reach them, and a mutation audit proved the consequence: `requireDevops()`
+ * was rewritten to admit anyone not banned and **the whole 126-test suite
+ * still passed**. A gate with no test is a gate that silently opens.
+ *
+ * ⚠️ Extracting them immediately exposed a REAL, LIVE privilege-retention
+ * bug in the approver gate, which is why they are now written side by side:
+ * `requireDevops` required `status === 'approved'`, and `requireApprover` —
+ * the strictly MORE powerful gate, the one that grants and revokes everyone
+ * else — checked only `is_approver` with no status check at all. Revoking
+ * someone (`decideStatus`) sets `status = 'revoked'` and deliberately leaves
+ * `is_approver` alone, so a revoked approver kept passing the approver gate
+ * and could re-approve themselves. The newer gate got the check; the older
+ * and more dangerous one never did.
+ *
+ * Both now answer the same question the same way: **owner always, otherwise
+ * an APPROVED row carrying the right flag.** Keep them adjacent, and keep
+ * them pure — a security decision that cannot be called from a test will not
+ * be tested.
+ *
+ * Defence in depth still owed (filed on the platform TODO): revocation should
+ * ALSO clear `is_approver` / `is_devops`, so the flag never outlives the
+ * status. That is a data change and a migration; this is the gate fix, and
+ * the gate is what actually admits people.
+ */
+export function approverAllows(row: EstateUserRow | null, isOwner: boolean): boolean {
+  if (isOwner) return true;
+  return row?.status === 'approved' && row.is_approver === 1;
+}
+
+export function devopsAllows(row: EstateUserRow | null, isOwner: boolean): boolean {
+  if (isOwner) return true;
+  // Approvers qualify implicitly: the devops flag exists to let someone read
+  // runbooks without holding the directory's keys, never to fence approvers out.
+  return row?.status === 'approved' && (row.is_devops === 1 || row.is_approver === 1);
+}
+
 export function requireDevops(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     let identity;
@@ -39,10 +80,8 @@ export function requireDevops(): MiddlewareHandler<AppBindings> {
     const isOwner = ownerEmails.includes(email);
 
     let row: EstateUserRow | null = await getUserByEmail(c.env.DB, email);
-    const rowQualifies =
-      row?.status === 'approved' && (row.is_devops === 1 || row.is_approver === 1);
 
-    if (!rowQualifies && !isOwner) {
+    if (!devopsAllows(row, isOwner)) {
       return c.json(
         { error: 'forbidden', detail: 'This surface is for the estate’s devops and admins.' },
         403,
@@ -78,7 +117,9 @@ export function requireApprover(): MiddlewareHandler<AppBindings> {
 
     let row: EstateUserRow | null = await getUserByEmail(c.env.DB, email);
 
-    if (!row?.is_approver && !isOwner) {
+    // ⚠️ approverAllows(), not `!row?.is_approver` — the old check ignored
+    // status entirely, so a REVOKED approver kept passing this gate.
+    if (!approverAllows(row, isOwner)) {
       return c.json(
         {
           error: 'forbidden',
