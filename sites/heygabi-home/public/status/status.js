@@ -563,7 +563,12 @@ function renderPipelineAudioRow(fetchResult, now) {
  * done here, since it changes pipeline code and the standing order is that
  * the pipeline is not touched without asking.
  */
-const EBOOK_PRODUCING_TRIGGERS = new Set(['scheduled', 'manual', 'cli']);
+// 'reactive' added 2026-08-16: the fs-watcher's trigger (audiobook_catalog
+// app/tools/fs_watcher.py). A reactive run fires only when files actually
+// changed, runs the full sync, and publishes — so it is a producer. The
+// publish-state check still runs first and still wins for a run that found
+// nothing to publish.
+const EBOOK_PRODUCING_TRIGGERS = new Set(['scheduled', 'manual', 'cli', 'reactive']);
 
 /**
  * ⚠️ THIRD fix on this row, 2026-08-16. The previous two were each right about
