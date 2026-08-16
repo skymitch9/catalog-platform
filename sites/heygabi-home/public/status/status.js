@@ -68,8 +68,13 @@ const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
  */
 const FIRESTORE_STATUS_URL =
   'https://firestore.googleapis.com/v1/projects/audiobook-catalog/databases/(default)/documents/pipeline_status/current';
-/** The ebook-lane manifest — sync step 1b's own output, CORS-open. */
-const EBOOKS_MANIFEST_URL = `${AUDIO_ORIGIN}/ebooks.json`;
+/** The ebook-lane manifest — sync step 1b's own output, CORS-open.
+ *  ⚠️ TWO copies matter and they mean different things: the /dev/ lane is
+ *  written by EVERY pipeline run with no human in the loop (so it is the
+ *  honest signal for lane health), while the prod copy only moves when
+ *  someone promotes (so its age measures promote cadence, not health). */
+const EBOOKS_MANIFEST_DEV_URL = `${AUDIO_ORIGIN}/dev/ebooks.json`;
+const EBOOKS_MANIFEST_PROD_URL = `${AUDIO_ORIGIN}/ebooks.json`;
 
 /**
  * Per-source staleness thresholds for the shared index (design:
@@ -456,29 +461,76 @@ function renderPipelineAudioRow(fetchResult, now) {
   );
 }
 
-/** Ebook lane row — freshness + size of site/ebooks.json only. No
- *  import-outcome signal is exposed by library_catalog's worker today
- *  (checked: no stored last-import status route exists there), so this row
- *  does not claim one rather than inventing a number. */
-function renderPipelineEbookRow(fetchResult, now) {
-  if (!fetchResult.reached || !fetchResult.httpOk || !fetchResult.body) {
-    updateRow('pipe-ebook', 'danger', `Did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
+/**
+ * Ebook lane row.
+ *
+ * ⚠️ REWRITTEN 2026-08-16 (owner: "i want it to be green if things are good
+ * or ill never trust the colors"). The old logic aged
+ * `ebooks.json:generated_at` against WALL CLOCK with the same 9h/17h
+ * thresholds as the pipeline row, and went amber/red while everything was
+ * perfectly healthy. Two measured reasons it was structurally wrong:
+ *
+ *   1. `scripts/build_ebook_manifest.py` rewrites `generated_at` on EVERY
+ *      run unconditionally (line ~185, `datetime.now(timezone.utc)`), so the
+ *      stamp says "when the pipeline last ran", never "how fresh the ebook
+ *      data is". Ageing it measures cadence, not health.
+ *   2. The PROD copy only changes when someone PROMOTES. So on prod the age
+ *      was really "time since last promote" — a manual, irregular act. A row
+ *      that goes red because nobody promoted overnight trains you to ignore
+ *      red, which is exactly what the owner said.
+ *
+ * So the row now asks the only question that means anything: **did the
+ * ebook step keep up with the pipeline's own last run?** The `/dev/` lane is
+ * the honest source for that — the pipeline commits there every run with no
+ * human in the loop. Green = the lane produced a manifest for the most
+ * recent run. Amber = the pipeline ran and the ebook step did NOT produce
+ * (a real fault). Prod lag is reported as a NOTE, never as a colour, because
+ * "not promoted yet" is a normal state, not a failure.
+ */
+function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
+  if (!devResult.reached || !devResult.httpOk || !devResult.body) {
+    updateRow('pipe-ebook', 'danger', `Did not answer (${devResult.error || `HTTP ${devResult.status}`}).`, null, now);
     return;
   }
-  const body = fetchResult.body;
+  const body = devResult.body;
   const generatedAt = Date.parse(body.generated_at || '');
   if (!Number.isFinite(generatedAt) || typeof body.count !== 'number') {
     updateRow('pipe-ebook', 'danger', 'ebooks.json answered with no generated_at/count — manifest shape changed.', null, now);
     return;
   }
-  const ageMs = now - generatedAt;
-  const state = ageMs > PIPELINE_RED_MS ? 'danger' : ageMs > PIPELINE_AMBER_MS ? 'warn' : 'ok';
-  updateRow(
-    'pipe-ebook', state,
-    `${body.count.toLocaleString()} ebooks · manifest generated ${formatAge(ageMs)}`,
-    'Manifest freshness from scripts/build_ebook_manifest.py (sync step 1b) only — no last-import outcome from library_catalog is available yet.',
-    now,
-  );
+
+  // The pipeline's own last run, from the same Firestore doc the row above
+  // reads. Without it we cannot judge "kept up", so fall back to reporting
+  // the facts uncoloured rather than inventing a verdict.
+  const pipeStatus = pipelineResult?.body?.fields ? fsMap(pipelineResult.body.fields) : null;
+  const startedAt = pipeStatus ? Date.parse(pipeStatus.startedAt || '') : NaN;
+
+  let state = 'ok';
+  let detail = `${body.count.toLocaleString()} ebooks · manifest from the last pipeline run`;
+
+  if (Number.isFinite(startedAt)) {
+    // Slack: the ebook step runs a little after the run starts, and clocks
+    // differ slightly between the pipeline host and this browser.
+    const keptUp = generatedAt >= startedAt - 15 * 60_000;
+    if (!keptUp) {
+      state = 'warn';
+      detail =
+        `${body.count.toLocaleString()} ebooks · ⚠️ manifest is OLDER than the last pipeline run ` +
+        `(manifest ${formatAge(now - generatedAt)}, run ${formatAge(now - startedAt)}) — the ebook step did not produce`;
+    }
+  } else {
+    detail += ` (${formatAge(now - generatedAt)})`;
+  }
+
+  // Prod lag: information, never colour. Promoting is a deliberate human act.
+  let note =
+    'Green means the ebook step kept up with the pipeline’s own last run — not wall-clock freshness, which only measured how long ago anyone promoted.';
+  const prodStamp = prodResult?.body ? Date.parse(prodResult.body.generated_at || '') : NaN;
+  if (Number.isFinite(prodStamp) && Number.isFinite(generatedAt) && prodStamp < generatedAt - 60_000) {
+    note += ` Prod is ${formatAge(generatedAt - prodStamp)} behind /dev/ — normal until the next promote.`;
+  }
+
+  updateRow('pipe-ebook', state, detail, note, now);
 }
 
 function renderSiteRow(id, name, reached, now) {
@@ -496,7 +548,7 @@ async function refreshAll() {
 
   const now = () => Date.now();
 
-  const [indexHealth, libraryHealth, gamesHealth, authHealth, audioUp, audioDevUp, libraryUp, gamesUp, pipelineStatus, ebooksManifest] =
+  const [indexHealth, libraryHealth, gamesHealth, authHealth, audioUp, audioDevUp, libraryUp, gamesUp, pipelineStatus, ebooksDev, ebooksProd] =
     await Promise.all([
       fetchJSON(`${INDEX_ORIGIN}/api/health`),
       fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
@@ -507,7 +559,8 @@ async function refreshAll() {
       probeReachable(LIBRARY_ORIGIN + '/'),
       probeReachable(GAMES_ORIGIN + '/'),
       fetchJSON(FIRESTORE_STATUS_URL),
-      fetchJSON(EBOOKS_MANIFEST_URL),
+      fetchJSON(EBOOKS_MANIFEST_DEV_URL),
+      fetchJSON(EBOOKS_MANIFEST_PROD_URL),
     ]);
 
   const t = now();
@@ -515,7 +568,7 @@ async function refreshAll() {
   renderIndexSection(indexHealth, t);
   renderIndexWorkerRow(indexHealth, t);
   renderPipelineAudioRow(pipelineStatus, t);
-  renderPipelineEbookRow(ebooksManifest, t);
+  renderPipelineEbookRow(ebooksDev, ebooksProd, pipelineStatus, t);
   renderWorkerHealthRow('wk-library', 'Library', libraryHealth, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
   renderWorkerHealthRow('wk-games', 'Games', gamesHealth, t, (b) =>
