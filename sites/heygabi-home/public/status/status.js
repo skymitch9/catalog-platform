@@ -521,6 +521,61 @@ function renderPipelineAudioRow(fetchResult, now) {
  * (a real fault). Prod lag is reported as a NOTE, never as a colour, because
  * "not promoted yet" is a normal state, not a failure.
  */
+/**
+ * Which run shapes actually REBUILD site/ebooks.json — the second false-yellow
+ * fix on this row, 2026-08-16 ("I thought we fixed the ebook yellow status?").
+ *
+ * The first fix replaced wall-clock freshness (which only ever measured how
+ * long ago someone promoted) with "did the manifest keep up with the
+ * pipeline's own last run". Correct as far as it went, and it carried an
+ * assumption that is simply false: that EVERY pipeline run produces a
+ * manifest. It does not, and audiobook_catalog says so explicitly —
+ * scripts/sync_to_drive.py's rebuild-only block lists "STEP 1b (ebook
+ * manifest)" among the steps EXCLUDED by design, because the whole point of
+ * --rebuild-only is to skip the sort/detect/upload path a manifest comes
+ * from.
+ *
+ * So a rebuild-only run (a tag fix republished, 22 seconds long) left the
+ * manifest legitimately 18 minutes OLDER than the run that followed it, and
+ * the row painted amber for a pipeline that had done exactly the right
+ * thing. Judging a manifest against a run that was never going to write one
+ * is a category error, not a measurement.
+ *
+ * Producers are whitelisted rather than non-producers blacklisted, and an
+ * unrecognised trigger returns null = "do not judge": a NEW run shape added
+ * upstream should fail toward saying nothing, never toward inventing a third
+ * false amber. The cost of that choice is a genuinely stale manifest going
+ * uncoloured after an unknown trigger — the age is still printed in the row,
+ * and a false alarm on this row has now cost more than a missed one.
+ *
+ * ⚠️ Trigger strings are the contract, and they live in audiobook_catalog:
+ * scripts/sync_pipeline_8h.bat sets PIPELINE_TRIGGER=scheduled, the remote
+ * watcher (app/tools/pipeline_watcher.py) uses "manual", the CLI defaults to
+ * "manual"/"cli", --rebuild-only uses "manual-rebuild", and a single-step run
+ * uses "manual-step:<key>" over the seven keys in PIPELINE_STEP_CHOICES —
+ * none of which is an ebook step, because step 1b has no fine-grained control.
+ * A rename there silently degrades this row to "do not judge"; it cannot
+ * produce a wrong colour.
+ *
+ * The durable fix is for the pipeline to RECORD whether step 1b ran (an
+ * `ebookManifestAt` field on pipeline_status/current) so this becomes a read
+ * rather than an inference — filed on the audiobook TODO, deliberately not
+ * done here, since it changes pipeline code and the standing order is that
+ * the pipeline is not touched without asking.
+ */
+const EBOOK_PRODUCING_TRIGGERS = new Set(['scheduled', 'manual', 'cli']);
+
+function ebookRunKind(trigger) {
+  const t = (trigger || '').trim();
+  if (!t) return { produces: null, label: 'an unrecorded run' };
+  if (EBOOK_PRODUCING_TRIGGERS.has(t)) return { produces: true, label: 'a full pipeline run' };
+  if (t === 'manual-rebuild') return { produces: false, label: 'a rebuild-only run' };
+  if (t.startsWith('manual-step:')) {
+    return { produces: false, label: `a single-step run (${t.slice('manual-step:'.length) || '?'})` };
+  }
+  return { produces: null, label: `an unrecognised run (${t})` };
+}
+
 function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
   if (!devResult.reached || !devResult.httpOk || !devResult.body) {
     updateRow('pipe-ebook', 'danger', `Did not answer (${devResult.error || `HTTP ${devResult.status}`}).`, null, now);
@@ -538,11 +593,12 @@ function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
   // the facts uncoloured rather than inventing a verdict.
   const pipeStatus = pipelineResult?.body?.fields ? fsMap(pipelineResult.body.fields) : null;
   const startedAt = pipeStatus ? Date.parse(pipeStatus.startedAt || '') : NaN;
+  const kind = ebookRunKind(pipeStatus?.trigger);
 
   let state = 'ok';
   let detail = `${body.count.toLocaleString()} ebooks · manifest from the last pipeline run`;
 
-  if (Number.isFinite(startedAt)) {
+  if (Number.isFinite(startedAt) && kind.produces === true) {
     // Slack: the ebook step runs a little after the run starts, and clocks
     // differ slightly between the pipeline host and this browser.
     const keptUp = generatedAt >= startedAt - 15 * 60_000;
@@ -552,13 +608,25 @@ function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
         `${body.count.toLocaleString()} ebooks · ⚠️ manifest is OLDER than the last pipeline run ` +
         `(manifest ${formatAge(now - generatedAt)}, run ${formatAge(now - startedAt)}) — the ebook step did not produce`;
     }
+  } else if (kind.produces === false) {
+    // The last run was a shape that SKIPS step 1b by design. Comparing
+    // against it is a category error, not a measurement — the manifest is
+    // supposed to predate it.
+    detail =
+      `${body.count.toLocaleString()} ebooks · manifest ${formatAge(now - generatedAt)} old · ` +
+      `last run was ${kind.label}, which does not rebuild it`;
   } else {
     detail += ` (${formatAge(now - generatedAt)})`;
   }
 
   // Prod lag: information, never colour. Promoting is a deliberate human act.
   let note =
-    'Green means the ebook step kept up with the pipeline’s own last run — not wall-clock freshness, which only measured how long ago anyone promoted.';
+    kind.produces === false
+      ? `Green because the manifest is not expected to move: the last run was ${kind.label}, ` +
+        'which skips the ebook step by design. Judged against the next full run instead.'
+      : 'Green means the ebook step kept up with the pipeline’s own last run — not wall-clock ' +
+        'freshness, which only measured how long ago anyone promoted, and only runs that actually ' +
+        'rebuild the manifest are counted.';
   const prodStamp = prodResult?.body ? Date.parse(prodResult.body.generated_at || '') : NaN;
   if (Number.isFinite(prodStamp) && Number.isFinite(generatedAt) && prodStamp < generatedAt - 60_000) {
     note += ` Prod is ${formatAge(generatedAt - prodStamp)} behind /dev/ — normal until the next promote.`;
