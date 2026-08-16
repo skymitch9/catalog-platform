@@ -15,7 +15,10 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "backup:firestore": "node scripts/backup-firestore.mjs",
-    "probe:estate": "node tools/estate-probes/run.mjs"
+    "probe:estate": "node tools/estate-probes/run.mjs",
+    "check:home": "node scripts/predeploy-check.mjs",
+    "verify:home": "node scripts/predeploy-check.mjs --live",
+    "deploy:home": "npm run check:home && npx wrangler pages deploy sites/heygabi-home/public --project-name=heygabi-home --branch=main --commit-dirty=false && npm run verify:home"
   },
   "engines": {
     "node": ">=20"

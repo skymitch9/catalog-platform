@@ -240,22 +240,62 @@ kept for history; the rest of this list is UNCHANGED and still applies):
 
 ## 4. Subsequent deploys
 
-Edit `sites/heygabi-home/public/index.html` or
-`sites/heygabi-home/public/todo/index.html`, commit (`git commit -F <file>`,
-**never `-m`**), then re-upload — **from the `catalog-platform` repo root**:
+Edit a file under `sites/heygabi-home/public/`, commit (`git commit -F <file>`,
+**never `-m`**), then — **from the `catalog-platform` repo root**:
 
 ```bash
-npx wrangler pages deploy sites/heygabi-home/public --project-name heygabi-home
+npm run deploy:home
 ```
+
+That is the whole routine. It is three steps in a trench coat, and each one can
+be run alone:
+
+| Command | What it does | Fails when |
+|---|---|---|
+| `npm run check:home` | Every public `.js` parses · every `.html` is structurally sound and has a `<title>` · `public/` is committed-clean | Before anything ships |
+| *(the deploy itself)* | `wrangler pages deploy sites/heygabi-home/public …` | Upload fails |
+| `npm run verify:home` | Fetches the live URLs and asserts each page still serves its own markers | After it shipped |
+
+⚠️ **Why a guard and not a dev lane** (ruling 2026-08-16, owner asked directly).
+A dev lane's value scales with the cost of a bad deploy, and here that cost is
+one rollback — Pages keeps every deployment (project → **Deployments** → ⋯ →
+**Rollback**, §4.1). Two more reasons it would have under-delivered: a preview
+host is **not a Firebase authorised domain**, so sign-in cannot run there and a
+lane would only ever inspect the *static* half of this site, never Operations
+on `/status`, the runbook pages or `/admin`; and a lane only pays out if a
+human looks at it, while the failures that actually shipped here were precisely
+*nobody looked*. The guard runs whether anyone remembers it or not, and it
+catches the one class a preview would only catch by luck: a syntax error in a
+public `.js` silently white-screening a page while `curl /` still returns a
+cheerful `200`.
+
+The static half's honest limit: it proves the files are **well-formed**, never
+that they are **correct**. It cannot know a heading is mislabeled or a link
+points at the wrong page.
+
+The live half's honest limit is sharper and worth remembering before trusting a
+green run: `verify:home` fetches **signed out**, so it can only assert page
+chrome and the sign-in gate. Every gated surface — Operations, the KV-served
+runbook documents, `/admin`'s member table — is injected only after Firebase
+sign-in and is invisible to it. A green `verify:home` means *the shell
+shipped*, not *the feature works*; gated behaviour still has to be checked by
+signing in. Markers live in
+[`predeploy.checks.json`](predeploy.checks.json) — add a page there the same
+day you add it to `public/`, or it ships unwatched.
+
+**Escape hatch:** `ALLOW_DIRTY_DEPLOY=1` skips only the clean-tree assertion.
+It is an env var rather than a flag on purpose, and it exists for emergencies —
+`wrangler pages deploy <dir>` uploads the **working tree, not a commit**, which
+on 2026-08-15 swept another agent's half-built refactor onto the live front
+door.
 
 One upload covers the whole directory, so the front door and `/todo` always
 ship together. There is no way to deploy one without the other, and no need.
 
-There is no build, no preview lane and no promote step. This site deliberately
-does **not** copy the audiobook catalog's two-lane `main` → `/dev/`, `prod` →
-root architecture: that exists to protect a 42,000-line generated site fed by a
-pipeline. One hand-edited static file does not need it, and the rollback is
-Pages' own deployment history (project → **Deployments** → ⋯ → **Rollback**).
+There is still no build and no promote step. This site deliberately does **not**
+copy the audiobook catalog's two-lane `main` → `/dev/`, `prod` → root
+architecture: that exists to protect a 42,000-line generated site fed by a
+pipeline. One hand-edited static file does not need it.
 
 ### 4.1 Rollback points
 
