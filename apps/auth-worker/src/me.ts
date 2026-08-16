@@ -22,6 +22,14 @@ import { CATALOGS, PUBLIC_CATALOGS, effectiveVisibility } from './visibility.js'
 export interface MeAnswer {
   status: 'pending' | 'approved' | 'revoked' | null;
   is_approver: boolean;
+  /**
+   * The estate DEVOPS capability (0003) as requireDevops() would honour it:
+   * the raw flag OR'd with is_approver, because approvers hold every devops
+   * surface implicitly. Reported EFFECTIVE (unlike is_approver, which is
+   * raw) so browser consumers — the status page's Operations section, the
+   * front door's Admin card — never re-derive the implication and drift.
+   */
+  is_devops: boolean;
   visibility: Catalog[];
 }
 
@@ -29,16 +37,17 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
   if (isOwner) {
     // §4.3: OWNER_EMAILS is approved + approver REGARDLESS of table state,
     // and sees all three — the break-glass cannot be narrowed into a lockout.
-    return { status: 'approved', is_approver: true, visibility: [...CATALOGS] };
+    return { status: 'approved', is_approver: true, is_devops: true, visibility: [...CATALOGS] };
   }
   if (!row) {
-    return { status: null, is_approver: false, visibility: [...PUBLIC_CATALOGS] };
+    return { status: null, is_approver: false, is_devops: false, visibility: [...PUBLIC_CATALOGS] };
   }
   return {
     status: row.status,
     // The raw flag, deliberately not gated on status — requireApprover reads
     // the same flag, so /me reports exactly what the admin gate would honour.
     is_approver: row.is_approver === 1,
+    is_devops: row.is_devops === 1 || row.is_approver === 1,
     visibility: effectiveVisibility(row.status, row),
   };
 }

@@ -178,6 +178,23 @@
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# /r/* — unlisted AUTH-LOCKED doc shims (2026-08-15; first tenant: the
+# shelf-server runbook, devops-gated). The pages themselves are GITIGNORED
+# (public/r/ — this repo is public, a committed page would put its "hidden"
+# URL in the open history) and ship only because Pages uploads the working
+# tree. This rule is a SPLAT on purpose, twice over: it must not name any
+# slug, and a splat also sidesteps the trailing-slash 308 trap documented
+# atop this file (it matches /r/<slug>, /r/<slug>/ and /r/<slug>/doc.js).
+# Each page is a CONTENT-FREE shim in /todo's exact shape — the content
+# lives in the auth Worker's estate_docs KV behind requireDevops() — so the
+# CSP is /todo's sign-in allow-list, with style-src widened to cover the
+# KV fragment's injected <style> and img-src kept to self+data:.
+# X-Robots-Tag backs up each page's own noindex meta at the header layer.
+/r/*
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer

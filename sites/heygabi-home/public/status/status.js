@@ -658,7 +658,11 @@ async function probeOpsApprover() {
       opsIsApprover = false;
     } else {
       const body = await res.json();
-      opsIsApprover = body?.is_approver === true;
+      // is_devops is EFFECTIVE from /me (approver ⇒ true), so this one field
+      // is the whole answer — owner order 2026-08-15: the devops role drives
+      // this page. Older worker deploys lack the field; is_approver keeps
+      // approvers working across that skew.
+      opsIsApprover = body?.is_devops === true || body?.is_approver === true;
     }
   } catch {
     opsIsApprover = false;

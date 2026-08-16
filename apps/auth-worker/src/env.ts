@@ -7,6 +7,19 @@ export type ConsumerApp = (typeof CONSUMER_APPS)[number];
 export interface Env {
   DB: D1Database;
 
+  /**
+   * Unlisted estate documents (0003/devops, 2026-08-15): KV holding the HTML
+   * fragments GET /api/estate/docs/:slug serves to devops/approver callers.
+   * ⚠️ Content lives in KV and NOT in this repo on purpose — the repo is
+   * public on GitHub, and these documents (runbooks with the household's
+   * operational detail) are exactly what the devops gate exists to fence.
+   * Written by `wrangler kv key put --binding estate_docs doc:<slug> --path
+   * <fragment.html> --remote`; the source of truth for each fragment is
+   * named in the doc that owns it (first tenant: audiobook_catalog's
+   * LOCAL-ONLY docs/access/SHELF_SERVER.md).
+   */
+  estate_docs?: KVNamespace;
+
   /** Set to "production" explicitly in wrangler.toml (conformance §8.2 #8). */
   ENVIRONMENT?: string;
   /** Dev bypass identity — only honoured when ENVIRONMENT === 'development'. */
@@ -80,6 +93,12 @@ export interface EstateUserRow {
   display_name: string | null;
   status: 'pending' | 'approved' | 'revoked';
   is_approver: number;
+  /**
+   * Estate-level DEVOPS capability (0003): may read the unlisted estate
+   * documents (/api/estate/docs/*). Same category as is_approver — an
+   * estate-page gate, never an app permission. Approvers implicitly qualify.
+   */
+  is_devops: number;
   origin: string;
   note: string | null;
   first_seen_at: string;

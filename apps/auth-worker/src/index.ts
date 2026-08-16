@@ -21,6 +21,7 @@ import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { todoRoutes } from './todo.js';
+import { docsRoutes } from './docs.js';
 import { rateLimit } from './middleware/rate-limit.js';
 
 /**
@@ -54,6 +55,9 @@ app.use('/api/estate/ops/pipeline', adminCors());
 // every other admin-page surface: the shim that calls this lives on the
 // apex and nowhere else.
 app.use('/api/estate/todo', adminCors());
+// Unlisted estate docs (0003 devops) — apex-only like /todo: the only shim
+// that calls this lives on the apex (an unlisted /r/<slug>/ page).
+app.use('/api/estate/docs/*', adminCors());
 
 // CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
 // audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
@@ -76,6 +80,7 @@ app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
 app.route('/api', todoRoutes);
+app.route('/api', docsRoutes);
 
 function adminCors() {
   return cors({

@@ -32,7 +32,8 @@
  *     min) and a lock file, and deletes every request it looks at (valid or
  *     not) — so a request here is consumed at most once and never retried.
  *
- * Gating: requireApprover() (the same admin gate as /estate/site-roles),
+ * Gating: requireDevops() since 0003 (owner order 2026-08-15: the devops
+ * role drives the status page) — approvers still qualify implicitly,
  * CORS apex-only (mounted in index.ts, mirroring the site-roles mount) and
  * the Worker-wide per-IP rate limiter (RATE_LIMITER, mounted on /api/* in
  * index.ts). Both secrets this route needs are configuration, not identity,
@@ -42,7 +43,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppBindings } from './env.js';
-import { requireApprover } from './middleware/auth.js';
+import { requireDevops } from './middleware/auth.js';
 import { firestoreRequest, mintAccessToken, parseServiceAccount } from './firebase-sa.js';
 
 /** Unconditionally prod — see the file header for why no lane suffix. */
@@ -78,7 +79,7 @@ function serviceAccountOrUnset(c: Context<AppBindings>) {
 
 export const opsRoutes = new Hono<AppBindings>();
 
-opsRoutes.post('/estate/ops/pipeline', requireApprover(), async (c) => {
+opsRoutes.post('/estate/ops/pipeline', requireDevops(), async (c) => {
   // Checked before the service account so the two missing-config cases are
   // distinguishable — a deployer fixing one secret should not have to guess
   // whether the other is also unset.

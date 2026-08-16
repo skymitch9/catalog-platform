@@ -45,6 +45,14 @@ ADMIN_ORIGINS = "https://heygabi.ai"
 # locked to ADMIN_ORIGINS alone.
 ME_ORIGINS = "https://heygabi.ai,https://audiobooks.heygabi.ai"
 
+# Unlisted estate documents (0003 devops, 2026-08-15): the HTML fragments
+# GET /api/estate/docs/:slug serves. ⚠️ Content lives HERE and not in the
+# repo because the repo is public — see src/docs.ts's header. Write path:
+#   npx wrangler kv key put --binding estate_docs "doc:<slug>" --path <fragment.html> --remote
+[[kv_namespaces]]
+binding = "estate_docs"
+id = "3278d5e3b22c4275b83bcc0b1ed5ab9c"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "estate_auth"

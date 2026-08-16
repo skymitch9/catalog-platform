@@ -17,7 +17,7 @@ export function normalizeEmail(email: string): string {
 }
 
 const COLS =
-  'id, email, firebase_uid, display_name, status, is_approver, origin, note, first_seen_at, decided_at, decided_by, ' +
+  'id, email, firebase_uid, display_name, status, is_approver, is_devops, origin, note, first_seen_at, decided_at, decided_by, ' +
   'vis_audiobook, vis_library, vis_games';
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<EstateUserRow | null> {
@@ -165,6 +165,27 @@ export async function setApprover(
        RETURNING ${COLS}`,
     )
     .bind(input.isApprover ? 1 : 0, input.actorId, input.id)
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * Flip `is_devops` (0003, owner order 2026-08-15) — the estate-page
+ * capability grant, in setApprover's exact mold: stamped, reconstructible,
+ * granted from the /admin UI and nowhere else routine.
+ */
+export async function setDevops(
+  db: D1Database,
+  input: { id: number; isDevops: boolean; actorId: number },
+): Promise<EstateUserRow | null> {
+  const row = await db
+    .prepare(
+      `UPDATE estate_user
+       SET is_devops = ?, decided_at = datetime('now'), decided_by = ?
+       WHERE id = ?
+       RETURNING ${COLS}`,
+    )
+    .bind(input.isDevops ? 1 : 0, input.actorId, input.id)
     .first<EstateUserRow>();
   return row ?? null;
 }

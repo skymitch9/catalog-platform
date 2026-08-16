@@ -871,6 +871,16 @@ function userCard(u) {
     head.appendChild(ap);
   }
 
+  // The estate devops capability (0003, owner 2026-08-15): unlisted runbook
+  // pages + the status page's Operations. Badged only when it is the ROW's
+  // own flag — approvers hold it implicitly and already wear a badge.
+  if (u.is_devops) {
+    const dv = document.createElement('span');
+    dv.className = 'badge approved';
+    dv.textContent = 'devops';
+    head.appendChild(dv);
+  }
+
   li.appendChild(head);
 
   const meta = document.createElement('p');
@@ -910,6 +920,15 @@ function userCard(u) {
           mutate(`/api/estate/users/${u.id}/approver`, { is_approver: false }))
       : actionBtn('Make approver', 'quiet', () =>
           mutate(`/api/estate/users/${u.id}/approver`, { is_approver: true })));
+    // Devops (0003): pointless to toggle on an approver — they hold every
+    // devops surface implicitly — so the button only renders for the rest.
+    if (!u.is_approver) {
+      actions.appendChild(u.is_devops
+        ? actionBtn('Remove devops', 'quiet', () =>
+            mutate(`/api/estate/users/${u.id}/devops`, { is_devops: false }))
+        : actionBtn('Make devops', 'quiet', () =>
+            mutate(`/api/estate/users/${u.id}/devops`, { is_devops: true })));
+    }
   }
 
   li.appendChild(actions);

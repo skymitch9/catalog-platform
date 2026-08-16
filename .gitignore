@@ -33,3 +33,13 @@ desktop.ini
 .DS_Store
 .vscode/
 *.swp
+
+# ⚠️ Unlisted pages: everything under public/r/ is deploy-only, NEVER committed.
+# This repo is PUBLIC on GitHub — committing a page here would put its
+# "hidden" URL in the open history, which defeats the entire mechanism. The
+# slug paths are recorded in audiobook_catalog's LOCAL-ONLY docs
+# (docs/access/SHELF_SERVER.md and siblings). Deploys upload the working
+# tree, so gitignored pages still ship — that is the one sanctioned use of
+# that property (the general rule stays: deploy only from committed-clean
+# trees; ignored files under public/r/ do not count as dirt).
+sites/heygabi-home/public/r/

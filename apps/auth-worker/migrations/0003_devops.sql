@@ -1,0 +1,18 @@
+-- estate_auth 0003 — the DEVOPS flag (owner order 2026-08-15: "put it behind
+-- sso and give this page its own role... that devops role should be
+-- associated with the heygabi.ai home page").
+--
+-- `is_devops` is an ESTATE-LEVEL capability flag in the exact mold of
+-- `is_approver`: it gates estate pages (first tenant: the unlisted
+-- shelf-server runbook served via GET /api/estate/docs/:slug), never
+-- anything inside an app. 0002's "this must NOT become a role system"
+-- warning stands untouched — that guarded app-level DO permissions, which
+-- stay app-local; this is page access on the estate's own origin, the
+-- category is_approver already established.
+--
+-- Grant path is the /admin UI (owner UI-first rule), backed by
+-- POST /api/estate/users/:id/devops — approver-gated, stamped like every
+-- decision. Approvers implicitly hold the capability (site admins outrank),
+-- so the flag exists for people who should read runbooks WITHOUT holding
+-- the keys to the directory — e.g. the shelf server's keeper.
+ALTER TABLE estate_user ADD COLUMN is_devops INTEGER NOT NULL DEFAULT 0 CHECK (is_devops IN (0, 1));

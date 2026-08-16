@@ -30,6 +30,7 @@ import {
   manualCreate,
   seenUpsert,
   setApprover,
+  setDevops,
   setVisibility,
   statusCounts,
 } from './estate-db.js';
@@ -102,6 +103,8 @@ const statusBodySchema = z
 
 const approverBodySchema = z.object({ is_approver: z.boolean() }).strict();
 
+const devopsBodySchema = z.object({ is_devops: z.boolean() }).strict();
+
 /** POST /estate/users (manual pre-seed): lowercased, must look like an email. */
 const createBodySchema = z
   .object({
@@ -127,6 +130,7 @@ function userJson(row: EstateUserRow) {
   return {
     ...rest,
     is_approver: row.is_approver === 1,
+    is_devops: row.is_devops === 1,
     visibility: storedVisibility(row),
   };
 }
@@ -352,6 +356,44 @@ estateRoutes.post('/estate/users/:id/approver', requireApprover(), async (c) => 
   const updated = await setApprover(c.env.DB, {
     id,
     isApprover: parsed.data.is_approver,
+    actorId: c.get('actor').id,
+  });
+  return c.json({ user: updated ? userJson(updated) : null });
+});
+
+// ---------------------------------------------------------------------------
+// POST /estate/users/:id/devops — flip the estate DEVOPS capability (0003;
+// owner order 2026-08-15: the unlisted-runbook + status-page role,
+// "associated with the heygabi.ai home page"). Approver-gated like every
+// grant; same approve-first coherence rule as the approver flip. What the
+// flag UNLOCKS is decided by requireDevops() (middleware/auth.ts): the
+// estate docs endpoint and the status page's Operations controls —
+// approvers hold both implicitly.
+// ---------------------------------------------------------------------------
+estateRoutes.post('/estate/users/:id/devops', requireApprover(), async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'bad_id' }, 400);
+
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = devopsBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues.slice(0, 5) }, 400);
+  }
+
+  const existing = await getUserById(c.env.DB, id);
+  if (!existing) return c.json({ error: 'not_found', id }, 404);
+  if (existing.status !== 'approved' && parsed.data.is_devops) {
+    return c.json({ error: 'not_approved', detail: 'Approve this person before granting devops.' }, 409);
+  }
+
+  const updated = await setDevops(c.env.DB, {
+    id,
+    isDevops: parsed.data.is_devops,
     actorId: c.get('actor').id,
   });
   return c.json({ user: updated ? userJson(updated) : null });
