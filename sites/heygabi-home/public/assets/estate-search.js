@@ -355,6 +355,19 @@ export function groupBySeries(rows) {
          logic; this is UI only. Icon-only controls (owner order): the words
          live in aria-label/title, not in the button's visible text. */
       .es-scan-row { display: flex; gap: .6rem; align-items: stretch; flex-wrap: wrap; margin-top: .6rem; }
+      /* ⚠️ An author display rule BEATS the UA stylesheet's [hidden] rule, so
+         .es-scan-row rendered its two scan buttons on every embed that never
+         asked for them — non-functional, because nothing had wired them up.
+         Found 2026-08-16 by exercising the component in a real browser during
+         the library adoption; typecheck, unit tests and vite build were all
+         green on it, which is exactly the point: an attribute can read
+         hidden=true while the pixels show the button.
+         .es-camera-stage[hidden] below already did this; the omission here was
+         an oversight, not a decision.
+         ⚠️ NO BACKTICKS IN THIS BLOCK — it sits inside a JS template literal,
+         and one backtick ends the string. That mistake was made writing this
+         very comment and caught by node --check. */
+      .es-scan-row[hidden] { display: none; }
       .es-icon-btn { flex: none; width: 44px; padding: 0; font-size: 1.2rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
       .es-icon-btn svg { display: block; }
       .es-camera-stage { margin-top: .6rem; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }

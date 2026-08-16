@@ -22,6 +22,26 @@ routes = [{ pattern = "index.heygabi.ai", custom_domain = true }]
 ENVIRONMENT = "production"
 # Pinned as iss AND aud in the verifier. The shared project every consumer uses.
 FIREBASE_PROJECT_ID = "audiobook-catalog"
+# Which ORIGINS may read /api/* from a browser (readCors in src/index.ts).
+#
+# ⚠️ Set explicitly 2026-08-16. It was absent, so the code default applied —
+# the apex ALONE — and the two catalogs were CORS-blocked from the shared
+# index. Measured before changing anything: an OPTIONS preflight from
+# https://library.heygabi.ai and from https://boardgames.heygabi.ai each got
+# 204 with NO Access-Control-Allow-Origin, while the apex got the header. That
+# made the estate-wide search box adopted in both apps (search-normalization
+# §0.5) unable to fetch at all — the browser refuses before the request is
+# sent, so there is no workaround on the app side.
+#
+# ⚠️ ADDITIVE ONLY, and first-party only: these are the estate's own catalog
+# hosts, the same ones the index already serves data ABOUT. It widens which
+# PAGES may ask; it does not widen WHAT is returned — visibility is still
+# decided per-caller inside the Worker (an anonymous caller still sees the
+# audiobook source only). Never add a third-party origin here.
+#
+# ⚠️ Comma-separated, exact scheme+host, no trailing slash, no wildcards —
+# readCors does an exact `allowed.includes(origin)` after trimming.
+READ_ORIGINS = "https://heygabi.ai,https://library.heygabi.ai,https://boardgames.heygabi.ai,https://audiobooks.heygabi.ai"
 # Break-glass (design §6 row 4): listed emails are served on local standing
 # alone, even with the estate directory unreachable or misconfigured.
 OWNER_EMAILS = "nbaslamking@gmail.com"
