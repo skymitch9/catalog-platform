@@ -311,6 +311,35 @@ footer {
 }
 footer p { margin: 0 0 .5rem; max-width: 46rem; }
 footer a { color: var(--et-accent); }
+
+/* Back to the front door — copied VERBATIM from /status and /admin: same
+   selector, same arrow, same 44px tap target, because this arrow is the
+   estate's one way home and has to look identical wherever it appears.
+   Added 2026-08-16, finishing the sweep that gave /status, both runbook pages
+   and /admin theirs.
+
+   ⚠️ This page already had "← back to the front door" in its footer, and that
+   stays. The footer link is not a substitute and its presence was why this
+   page was initially left out: the universe list runs long, and a way out you
+   have to reach the bottom of the page to find is not reachable at the moment
+   you want it. Chrome at the top, footer below — the same split /admin got. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;
+  margin: 0 0 var(--et-space-1);
+  color: var(--et-muted);
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.back:hover { color: var(--et-fg); }
+.back:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+.back svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
+.back:hover svg { transform: translateX(-3px); }
 </style>
 </head>
 
@@ -341,6 +370,10 @@ footer a { color: var(--et-accent); }
 </div>
 
 <main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
   <h1>Universes</h1>
   <p class="sub">
     Every fiction the estate tracks across formats — tap one to see its books,
