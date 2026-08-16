@@ -206,10 +206,20 @@
   X-Robots-Tag: noindex, nofollow
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# Cache-Control on everything (2026-08-15, owner: "can we make giving roles
+# hard refresh or something?"): a devops grant looked broken because the
+# grantee's browser kept running the PREVIOUS deploy's scripts from cache.
+# max-age=0 + must-revalidate makes every asset revalidate on each use —
+# Pages' ETags turn that into cheap 304s, so the cost is one conditional
+# request per file and the win is that every deploy AND every role change
+# is live on a PLAIN reload, never a hard refresh. This site is a handful
+# of small files; if a large rarely-changing asset class ever appears,
+# carve it out with its own longer rule rather than weakening this one.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: geolocation=(), microphone=(), camera=(self), interest-cohort=()
+  Cache-Control: public, max-age=0, must-revalidate
 
 /
   X-Frame-Options: DENY
