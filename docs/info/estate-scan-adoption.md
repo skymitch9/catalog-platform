@@ -155,6 +155,21 @@ the client (already written).
 
 ## Adoption plan: retiring library_catalog's own scanner onto this one
 
+> **DECLINED 2026-08-16 (owner decision: "I'm not sure I see much value
+> except updating docs").** Sizing below kept for the record. Outcome:
+> piece 1 was already a no-op, piece 3 was already not-recommended, and
+> piece 2 (vendoring the zxing decoder into library via a sync script) was
+> judged not worth an afternoon of iOS re-testing to protect against a
+> theoretical wasm drift — the library's scanner is real, iOS-tested and
+> field-proven (owner's bookstore run, 2026-08-15: apex barcode scan
+> correctly identified an already-owned book). Do not re-open without a
+> concrete driver (e.g. an actual zxing upgrade needed estate-wide).
+> ⚠️ Correction to the Games paragraph below, same date: games DOES have a
+> barcode/scan-jobs UI (`apps/web/src/pages/ScanJobsPage.tsx`, used by the
+> owner for a wishlist add 2026-08-16) — the "confirmed absent" claim was
+> wrong. What remains true: games codes are UPC/EAN, not Bookland ISBNs, so
+> its classify gate is rightly its own.
+
 The owner asked that this be *sized*, not built, in this pass.
 
 `library_catalog` (React/TS, Vite-bundled) currently owns its own copies of
