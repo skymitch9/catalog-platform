@@ -565,8 +565,47 @@ function renderPipelineAudioRow(fetchResult, now) {
  */
 const EBOOK_PRODUCING_TRIGGERS = new Set(['scheduled', 'manual', 'cli']);
 
-function ebookRunKind(trigger) {
+/**
+ * ⚠️ THIRD fix on this row, 2026-08-16. The previous two were each right about
+ * their own case and both missed this one — the CHRONIC one.
+ *
+ * Fix 1 replaced wall-clock freshness with "did the manifest keep up with the
+ * last run". Fix 2 stopped judging run shapes that skip the ebook step by
+ * design. Both still assumed a FULL run which regenerates the manifest also
+ * PUBLISHES it.
+ *
+ * It does not. A scheduled run whose `detect` step finds "0 to upload"
+ * short-circuits, and `folders`, `upload`, `catalog` and **`publish` all go to
+ * `skipped`**. The manifest is rewritten on the pipeline host at step 1b and
+ * never leaves it — publishing is what copies it to the live site. So the LIVE
+ * manifest legitimately keeps the timestamp of the last run that actually
+ * published, which is older than every quiet run since.
+ *
+ * That is not an edge case. A scheduled run finds nothing new most of the
+ * time, so the old logic painted amber after nearly every 8-hourly run — the
+ * owner reported this same amber three separate times. A row that cries wolf
+ * on a healthy pipeline is worse than no row.
+ *
+ * The signal needed no pipeline change: `steps[]` already carries a per-step
+ * `state`, and only `publish: 'done'` means the manifest this page can SEE was
+ * allowed to move.
+ *
+ * ⚠️ Do NOT simplify this back to trigger-only. The trigger says what KIND of
+ * run it was; the steps say what it actually DID, and they differ every single
+ * time the pipeline finds nothing new.
+ */
+function ebookRunKind(trigger, steps) {
   const t = (trigger || '').trim();
+
+  // What the run DID beats what it WAS.
+  const step = (key) => (Array.isArray(steps) ? steps.find((s) => s && s.key === key) : null);
+  const publish = step('publish');
+  if (publish && publish.state && publish.state !== 'done') {
+    const detect = step('detect');
+    const why = detect && detect.detail ? ` — ${detect.detail}` : '';
+    return { produces: false, label: `a run with nothing to publish${why}` };
+  }
+
   if (!t) return { produces: null, label: 'an unrecorded run' };
   if (EBOOK_PRODUCING_TRIGGERS.has(t)) return { produces: true, label: 'a full pipeline run' };
   if (t === 'manual-rebuild') return { produces: false, label: 'a rebuild-only run' };
@@ -593,7 +632,7 @@ function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
   // the facts uncoloured rather than inventing a verdict.
   const pipeStatus = pipelineResult?.body?.fields ? fsMap(pipelineResult.body.fields) : null;
   const startedAt = pipeStatus ? Date.parse(pipeStatus.startedAt || '') : NaN;
-  const kind = ebookRunKind(pipeStatus?.trigger);
+  const kind = ebookRunKind(pipeStatus?.trigger, pipeStatus?.steps);
 
   let state = 'ok';
   let detail = `${body.count.toLocaleString()} ebooks · manifest from the last pipeline run`;
