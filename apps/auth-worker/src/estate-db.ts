@@ -99,13 +99,41 @@ export async function decideStatus(
   db: D1Database,
   input: { id: number; status: 'approved' | 'revoked'; actorId: number; visibility?: Catalog[] },
 ): Promise<EstateUserRow | null> {
+  // ⚠️ REVOKING CLEARS THE POWERS, NOT JUST THE STATUS (owner decision
+  // 2026-08-16 — the demotion/revocation design, decisions 1 and 2).
+  //
+  // This UPDATE used to set `status` alone and leave `is_approver` /
+  // `is_devops` untouched. A testing audit found the consequence:
+  // `requireApprover()` checked only the flag, so a REVOKED approver kept
+  // passing the very gate that had just shut on them, and could re-approve
+  // themselves. That gate now checks status too (middleware/auth.ts); this is
+  // the other half, so the flag never outlives the status in the first place.
+  // Two independent barriers, deliberately — the audit showed what one is
+  // worth when nobody tests it.
+  //
+  // The deeper reason is the owner's own rule that access-REDUCING acts
+  // immediately while access-INCREASING is confirmed. A revoked row that keeps
+  // its flags means the NEXT approval silently hands power back that nobody
+  // consciously granted. Owner, asked directly: *"they need to reearn all
+  // rights."* So re-approval restores MEMBERSHIP, never powers — achieved not
+  // by special-casing approval, but by there being nothing left to restore.
+  //
+  // The row is still never deleted (0001's stance): a revoked person who comes
+  // back meets their revocation, not a fresh queue entry.
+  //
+  // ⚠️ D1 ONLY. The ladder role lives in Firestore `site_roles/{uid}` and
+  // cannot be cleared in this statement. D1 is the gate that actually admits
+  // people, so it is cleared FIRST and does not depend on the Firestore half
+  // landing; the route follows up separately and logs either way.
+  const clearPowers = input.status === 'revoked' ? ', is_approver = 0, is_devops = 0' : '';
+
   if (input.visibility) {
     const f = visibilityToFlags(input.visibility);
     const row = await db
       .prepare(
         `UPDATE estate_user
          SET status = ?, vis_audiobook = ?, vis_library = ?, vis_games = ?,
-             decided_at = datetime('now'), decided_by = ?
+             decided_at = datetime('now'), decided_by = ?${clearPowers}
          WHERE id = ?
          RETURNING ${COLS}`,
       )
@@ -116,7 +144,7 @@ export async function decideStatus(
   const row = await db
     .prepare(
       `UPDATE estate_user
-       SET status = ?, decided_at = datetime('now'), decided_by = ?
+       SET status = ?, decided_at = datetime('now'), decided_by = ?${clearPowers}
        WHERE id = ?
        RETURNING ${COLS}`,
     )

@@ -288,6 +288,21 @@ siteRolesRoutes.get('/estate/site-roles', requireApprover(), async (c) => {
     holders: (data.documents ?? []).map(rowFromDoc),
     actorRole,
     grantable,
+    // WHO IS AN OWNER (added 2026-08-16, owner decision: "for anyone with
+    // owner rank dont even render options to change it").
+    //
+    // The admin page could not previously tell. `holders` carries only
+    // Firestore site_roles docs and SITE_ROLES stops at 'admin' — 'owner' is
+    // never stored there by design, it lives in this env var. So every owner
+    // looked like an ordinary row and was given an editable dropdown that the
+    // server would then refuse: a control that appears to work and does not,
+    // which is exactly what the never-show-a-bare-status rule forbids.
+    //
+    // ⚠️ Not a new disclosure. This route is requireApprover()-gated and
+    // already returns the whole roster with email addresses; this only flags
+    // which of those already-visible emails outrank the caller. Lowercased so
+    // the client compares the same way the server does.
+    ownerEmails: owners.map((e) => e.trim().toLowerCase()),
   });
 });
 

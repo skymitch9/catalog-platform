@@ -385,6 +385,11 @@ footer {
 footer a { color: var(--et-accent); }
 code { font-family: var(--et-font-mono); font-size: .9em; }
 
+/* An owner's per-app role: a FACT, not a control (owner decision 2026-08-16).
+   Deliberately not styled like a disabled input — a greyed-out dropdown still
+   reads as "something you could enable", and there is nothing to enable. */
+.cat-owner { font-weight: 700; letter-spacing: .01em; }
+
 /* Back to the front door. Copied VERBATIM from /status — same selector, same
    arrow SVG, same 44px tap target — because this arrow is now the estate's
    one way home and it has to look identical wherever it appears. The pages

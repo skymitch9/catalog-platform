@@ -324,7 +324,29 @@ async function fetchSiteRoles() {
     byEmail,
     actorRole: typeof data.actorRole === 'string' ? data.actorRole : 'guest',
     grantable: Array.isArray(data.grantable) ? data.grantable : [],
+    // Lowercased server-side already; defaulted to [] so an older Worker
+    // simply means "nobody is flagged as owner" rather than a crash.
+    ownerEmails: Array.isArray(data.ownerEmails) ? data.ownerEmails : [],
   };
+}
+
+/**
+ * Is this estate row an OWNER? (owner decision 2026-08-16.)
+ *
+ * ⚠️ Read from the server's OWNER_EMAILS, never inferred from a stored role.
+ * 'owner' is deliberately absent from SITE_ROLES and is never written to a
+ * site_roles doc, so a stored role can never say 'owner' — inferring it from
+ * one would silently answer "no" for every real owner.
+ *
+ * Fails CLOSED in the useful direction: if the field is missing (older Worker,
+ * failed fetch), nobody is treated as an owner and the page keeps its previous
+ * behaviour of offering a dropdown the server will refuse. That is the same
+ * safety the page had before this flag existed — never worse.
+ */
+function isOwnerEmail(estateUser) {
+  const list = siteRolesDir && siteRolesDir.ok ? siteRolesDir.ownerEmails : null;
+  if (!Array.isArray(list) || !list.length) return false;
+  return list.includes(String(estateUser.email || '').trim().toLowerCase());
 }
 
 /**
@@ -807,6 +829,34 @@ function appRoleCell(app, estateUser) {
     // then there is nothing to hold a role. Not an error.
     cell.className = 'cat-note';
     cell.textContent = 'no account yet — appears on first sign-in';
+    return cell;
+  }
+
+  // ⚠️ AN OWNER'S ROLE IS NOT EDITABLE — no dropdown at all (owner decision
+  // 2026-08-16: "for anyone with owner rank dont even render options to change
+  // it. just always auto fill and write the max role possible for each site").
+  //
+  // Rendering a disabled control, or one that snaps back when the server
+  // refuses, would be the "button that looks like it worked" failure the
+  // never-show-a-bare-status rule exists to prevent. An owner outranks every
+  // grant this page can make, so there is no state a dropdown could offer that
+  // is not a refusal waiting to happen. It shows a fact instead.
+  //
+  // Each app owns its OWN vocabulary and they genuinely differ (library
+  // `owner|manager|reader`, games `owner|manager|rater|viewer`) — so "the max
+  // role possible for each site" is read from that app's own `dir.roles`
+  // (first entry, the apps list theirs highest-first) rather than hardcoding a
+  // word that would rot the next time an app renames a rung.
+  if (isOwnerEmail(estateUser)) {
+    const top = dir.roles[0];
+    cell.className = 'cat-role cat-owner';
+    cell.textContent = appUser.role === top ? top : `${appUser.role} → ${top}`;
+    cell.title =
+      appUser.role === top
+        ? `Owner — holds ${top}, this app's highest role. Not changeable here; owner is DB-only.`
+        : `Owner — should hold ${top} (this app's highest role) but currently holds ` +
+          `${appUser.role}. Not changeable here; fix it in the app itself.`;
+    if (appUser.role !== top) cell.classList.add('cat-warn');
     return cell;
   }
 
