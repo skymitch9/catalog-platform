@@ -36,6 +36,7 @@ import {
 } from './estate-db.js';
 import { meAnswer } from './me.js';
 import { requireApprover } from './middleware/auth.js';
+import { clearSiteRoleOnRevocation, type RoleClearResult } from './site-roles.js';
 import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
 
 /**
@@ -321,13 +322,38 @@ estateRoutes.post('/estate/users/:id/status', requireApprover(), async (c) => {
   const existing = await getUserById(c.env.DB, id);
   if (!existing) return c.json({ error: 'not_found', id }, 404);
 
+  // ── D1 FIRST, ALWAYS. This is the gate that actually admits people:
+  // status + is_approver + is_devops, cleared in one statement (estate-db.ts).
   const updated = await decideStatus(c.env.DB, {
     id,
     status: parsed.data.status,
     actorId: c.get('actor').id,
     visibility: parsed.data.visibility,
   });
-  return c.json({ user: updated ? userJson(updated) : null });
+
+  // ── THEN THE FIRESTORE HALF, best-effort (owner decision 2026-08-16,
+  // ROLES.md §1f). The audiobook site's LADDER role lives in Firestore
+  // `site_roles/{uid}`, which its firestore.rules reads directly from the
+  // browser — D1 has no say in that check, so revoking without this left a
+  // revoked site 'admin' able to delete any review site-wide and to
+  // administer claimed clubs, indefinitely.
+  //
+  // ⚠️ Wired HERE, at the decision, and not inside decideStatus(): that
+  // function is one D1 statement and must stay one. There is no transaction
+  // across D1 and Firestore, so the order is the design — D1 is cleared
+  // first and its success never depends on this landing.
+  // clearSiteRoleOnRevocation() never throws; a failure comes back as a
+  // sentence in `site_role`, which the admin page shows. The revocation
+  // itself has already happened either way.
+  let siteRole: RoleClearResult | null = null;
+  if (parsed.data.status === 'revoked' && updated) {
+    siteRole = await clearSiteRoleOnRevocation(c.env, {
+      targetEmail: updated.email,
+      actorEmail: c.get('actor').email,
+    });
+  }
+
+  return c.json({ user: updated ? userJson(updated) : null, ...(siteRole ? { site_role: siteRole } : {}) });
 });
 
 estateRoutes.post('/estate/users/:id/approver', requireApprover(), async (c) => {

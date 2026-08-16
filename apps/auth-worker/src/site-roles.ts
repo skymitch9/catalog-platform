@@ -62,12 +62,20 @@
  * the secret is configured — a missing secret is a configuration error,
  * not an auth failure (the /seen app_tokens_unset idiom). /tree does not
  * need the secret at all.
+ *
+ * This file also exports ONE function that is not a route:
+ * `clearSiteRoleOnRevocation()` — the Firestore half of an estate
+ * revocation, called by estate.ts's POST /estate/users/:id/status. It
+ * reuses this file's write path and its D1 audit trail on purpose (a
+ * revocation-driven clear must be as traceable as a hand-made one), but it
+ * is deliberately NOT subject to canGrant() and it NEVER throws. Its doc
+ * comment carries the full reasoning for both.
  */
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
-import type { AppBindings } from './env.js';
+import type { AppBindings, Env } from './env.js';
 import { parseOwnerEmails } from './env.js';
 import { requireApprover } from './middleware/auth.js';
 import {
@@ -236,7 +244,7 @@ async function auditGrant(
   db: D1Database,
   input: {
     actorEmail: string;
-    actorRole: LadderRole;
+    actorRole: LadderRole | typeof ESTATE_AUTHORITY;
     email: string;
     uid: string | null;
     currentRole: LadderRole;
@@ -258,6 +266,253 @@ async function auditGrant(
     });
   } catch (err) {
     console.error('site_role_grant_log write failed', (err as Error).message);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * REVOCATION'S FIRESTORE HALF (owner decision 2026-08-16, ROLES.md §1f)
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * What `actor_role` records for a clear driven by an ESTATE REVOCATION
+ * rather than by a ladder grant.
+ *
+ * ⚠️ Deliberately NOT a ladder role, and deliberately not the actor's real
+ * one. The estate approver who pressed Revoke acted with DIRECTORY
+ * authority; their own audiobook ladder role is usually 'guest' and is
+ * irrelevant here — see clearSiteRoleOnRevocation's doc for why canGrant()
+ * must not apply. Writing a real ladder role into this column would invite
+ * a future reader to conclude the escalation gate had been consulted.
+ * `actor_role` is free text in 0005 (no CHECK, no FK), so this is a legal
+ * value; a query for "who has ever been cleared by a revocation" is
+ * exactly `WHERE actor_role = 'estate-revocation'`.
+ */
+const ESTATE_AUTHORITY = 'estate-revocation' as const;
+
+/** Why the clear did or did not happen. Every value gets a sentence below. */
+export type RoleClearReason =
+  | 'cleared'
+  | 'no_role'
+  | 'no_firebase_user'
+  | 'owner_protected'
+  | 'service_account_unset'
+  | 'firestore_error';
+
+export interface RoleClearResult {
+  cleared: boolean;
+  reason: RoleClearReason;
+  /** The role that was taken away (or protected); null when there was none. */
+  previousRole: LadderRole | null;
+  /**
+   * A SENTENCE, for the admin page to show. ⚠️ Never a bare status code —
+   * the estate's standing rule (ROLES.md §1e): what happened, and what it
+   * means for the revocation that just landed in D1.
+   */
+  detail: string;
+  /** Only on 'firestore_error' — for the log line, not for a human. */
+  status?: number;
+}
+
+/**
+ * Clear the audiobook LADDER role when someone is revoked in the estate
+ * directory — the Firestore half of a revocation.
+ *
+ * ⚠️ WHY THIS EXISTS. `decideStatus()` clears `status`, `is_approver` and
+ * `is_devops` in one D1 statement, and both estate gates require
+ * `status === 'approved'`. But the audiobook site's own role lives in
+ * Firestore `site_roles/{uid}`, which firestore.rules (a DIFFERENT repo,
+ * read-only reference) consults directly from the browser with the person's
+ * live Firebase session. D1 has no say in that check. So before this
+ * function existed, revoking a site 'admin' left them able to delete any
+ * review site-wide, delete claimed clubs and their reads, and set a club's
+ * Discord webhook — indefinitely, with the estate directory showing
+ * `revoked`.
+ *
+ * ⚠️ NOT SUBJECT TO canGrant(). Every OTHER write in this file is: a
+ * moderator may only touch roles strictly beneath their own. This one is
+ * not, on purpose. The decision was already made by an approver holding
+ * DIRECTORY authority, and access-REDUCING acts immediately (the owner's
+ * standing rule). Gating it on the revoking approver's audiobook ladder
+ * rank — usually 'guest', since approvers need never have signed into that
+ * site — would mean a revoked admin KEEPS their site role because the
+ * person revoking them is not an admin there. That is precisely the
+ * privilege-retention shape this whole design exists to kill.
+ *
+ * ⚠️ NEVER THROWS, NEVER LOAD-BEARING. There is no transaction across D1
+ * and Firestore. D1 is the gate that actually admits people, it is cleared
+ * FIRST (estate-db.ts), and its success must not depend on this landing. A
+ * Firestore outage, a missing service account, a network failure — every
+ * one of them comes back as a `cleared: false` result with a sentence, is
+ * logged, and leaves the D1 revocation standing. If the two ever disagree,
+ * D1 wins and the Firestore role is the one to reconcile.
+ *
+ * ⚠️ AN OWNER IS NEVER STRIPPED. The OWNER_EMAILS check runs BEFORE any
+ * I/O, and a stray stored `role: 'owner'` doc is refused too. Revoking an
+ * owner's directory row is already toothless (`approverAllows()` returns
+ * true for OWNER_EMAILS regardless of the row — test/gates.test.ts pins
+ * it); the break-glass must not become half-real by having its audiobook
+ * role deleted underneath it. The attempt IS audited, as a 'denied' row —
+ * "who tried to strip the owner" is exactly the question that table exists
+ * to answer.
+ */
+export async function clearSiteRoleOnRevocation(
+  env: Env,
+  input: { targetEmail: string; actorEmail: string },
+): Promise<RoleClearResult> {
+  const email = input.targetEmail.trim().toLowerCase();
+  const owners = parseOwnerEmails(env.OWNER_EMAILS);
+
+  // ⚠️ Owner guard first, before a single round-trip: an owner's role is not
+  // read, not resolved, not touched. Break-glass wins.
+  if (owners.includes(email)) {
+    console.log(
+      JSON.stringify({
+        evt: 'site_role_clear_refused', actor: input.actorEmail, email, reason: 'owner_protected',
+      }),
+    );
+    await auditGrant(env.DB, {
+      actorEmail: input.actorEmail, actorRole: ESTATE_AUTHORITY, email, uid: null,
+      currentRole: 'owner', role: null, outcome: 'denied',
+      reason: 'OWNER_EMAILS is never stripped — an owner keeps their audiobook role through a revocation (break-glass).',
+    });
+    return {
+      cleared: false,
+      reason: 'owner_protected',
+      previousRole: 'owner',
+      detail:
+        'This account is an estate owner, so its audiobook role was left alone — owner access is the break-glass path and is never removed automatically.',
+    };
+  }
+
+  try {
+    const sa = parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT);
+    if (!sa) {
+      console.error('site_role_clear_skipped: FIREBASE_SERVICE_ACCOUNT unset');
+      return {
+        cleared: false,
+        reason: 'service_account_unset',
+        previousRole: null,
+        detail:
+          'The audiobook role could not be cleared: this Worker has no Firebase service account configured. The estate revocation stands — check the audiobook site’s role for this person by hand.',
+      };
+    }
+
+    const token = await mintAccessToken(sa);
+    const user = await lookupUidByEmail(sa, token, email);
+    if (!user) {
+      // No Firebase Auth account on the audiobook site ⇒ no uid ⇒ no
+      // site_roles doc can exist for them. Nothing to clear, not a failure.
+      return {
+        cleared: false,
+        reason: 'no_firebase_user',
+        previousRole: null,
+        detail: 'They have no audiobook site account, so there was no audiobook role to remove.',
+      };
+    }
+
+    const stored = await readStoredRole(sa, token, user.uid);
+    if (!stored.ok) {
+      console.error(
+        JSON.stringify({
+          evt: 'site_role_clear_failed', actor: input.actorEmail, email, uid: user.uid,
+          stage: 'read', status: stored.status,
+        }),
+      );
+      return {
+        cleared: false,
+        reason: 'firestore_error',
+        previousRole: null,
+        status: stored.status,
+        detail:
+          'The estate revocation went through, but their audiobook role could not be read (the role store did not answer). Their audiobook role may still be active — retry the revocation or clear it on the audiobook site.',
+      };
+    }
+
+    const currentRole = effectiveLadderRole({ email, ownerEmails: owners, storedRole: stored.role });
+
+    if (currentRole === 'owner') {
+      // A stray stored 'owner' doc — outside this API's vocabulary, seeded by
+      // hand. Same answer as OWNER_EMAILS: never stripped.
+      console.log(
+        JSON.stringify({
+          evt: 'site_role_clear_refused', actor: input.actorEmail, email, uid: user.uid,
+          reason: 'owner_protected_stored',
+        }),
+      );
+      await auditGrant(env.DB, {
+        actorEmail: input.actorEmail, actorRole: ESTATE_AUTHORITY, email, uid: user.uid,
+        currentRole: 'owner', role: null, outcome: 'denied',
+        reason: 'a stored role of "owner" is DB-only and is never removed by an API path, revocation included.',
+      });
+      return {
+        cleared: false,
+        reason: 'owner_protected',
+        previousRole: 'owner',
+        detail:
+          'Their audiobook role is “owner”, which only a direct database edit can change — it was left alone.',
+      };
+    }
+
+    if (currentRole === 'guest') {
+      // No doc (or an unrecognized value): guest is the absence of a role.
+      return {
+        cleared: false,
+        reason: 'no_role',
+        previousRole: null,
+        detail: 'They held no audiobook role, so there was nothing to remove.',
+      };
+    }
+
+    const res = await firestoreRequest(sa, token, 'DELETE', `site_roles/${user.uid}`);
+    if (!res.ok) {
+      console.error(
+        JSON.stringify({
+          evt: 'site_role_clear_failed', actor: input.actorEmail, email, uid: user.uid,
+          stage: 'delete', previousRole: currentRole, status: res.status,
+        }),
+      );
+      return {
+        cleared: false,
+        reason: 'firestore_error',
+        previousRole: currentRole,
+        status: res.status,
+        detail: `The estate revocation went through, but their audiobook “${currentRole}” role could not be removed (the role store refused the write). That role is still active on the audiobook site — retry the revocation.`,
+      };
+    }
+
+    // Same audit line shape a human revoke writes (the POST route above), so
+    // a sweep-driven clear is as traceable as a hand-made one.
+    console.log(
+      JSON.stringify({
+        evt: 'site_role_revoked', actor: input.actorEmail, actorRole: ESTATE_AUTHORITY,
+        email, uid: user.uid, previousRole: currentRole, cause: 'estate_revocation',
+      }),
+    );
+    await auditGrant(env.DB, {
+      actorEmail: input.actorEmail, actorRole: ESTATE_AUTHORITY, email, uid: user.uid,
+      currentRole, role: null, outcome: 'revoked',
+      reason: 'cleared by an estate revocation (status=revoked), not by a ladder grant.',
+    });
+    return {
+      cleared: true,
+      reason: 'cleared',
+      previousRole: currentRole,
+      detail: `Their audiobook “${currentRole}” role was removed as part of the revocation.`,
+    };
+  } catch (err) {
+    // mintAccessToken, lookupUidByEmail and a malformed service account all
+    // throw. None of them may fail the revocation that already landed in D1.
+    const message = (err as Error).message;
+    console.error(
+      JSON.stringify({ evt: 'site_role_clear_failed', actor: input.actorEmail, email, stage: 'exception', message }),
+    );
+    return {
+      cleared: false,
+      reason: 'firestore_error',
+      previousRole: null,
+      detail:
+        'The estate revocation went through, but the audiobook role store could not be reached, so their audiobook role was not removed. It may still be active — retry the revocation.',
+    };
   }
 }
 
