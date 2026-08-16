@@ -134,6 +134,35 @@ workflow prints the line to append locally if wanted.
 
 ---
 
+## 🔒 Revocation should clear the flags, not just the status (audit finding, 2026-08-16)
+
+**Found by the testing audit** ("useful test not just bulk") and **half-fixed
+the same day.** `decideStatus()` revokes by setting `status = 'revoked'` and
+deliberately leaves `is_approver` / `is_devops` untouched. That was survivable
+only because both gates now check status — but it means the *flag outlives the
+status*, and every future reader of that row has to remember the gate is what
+saves them.
+
+⚠️ **The gate fix already shipped** (`middleware/auth.ts`, `approverAllows()` /
+`devopsAllows()`, both requiring `status === 'approved'`, 14 tests in
+`test/gates.test.ts`, deployed as version `d043a337`). This item is the
+**defence in depth**, not the fix.
+
+**What is left:** clear `is_approver` and `is_devops` in the same statement
+that sets `status='revoked'`, so a revoked row carries no live-looking
+privilege at all. Also decide the re-approval story — restoring someone should
+NOT silently hand back an approver flag they used to have, which is exactly the
+access-*increasing* direction the global rules say to confirm rather than
+assume.
+
+**Why it is filed rather than done:** it changes stored data and wants a
+migration for existing rows, and the risk is asymmetric — a bad UPDATE here
+strips real people's access. Small, but it needs its own careful pass.
+
+**Verification when it is built:** the live directory currently holds 3 flagged
+accounts, all `approved` (both owners + Justin), and 0 revoked — so a migration
+touches nothing today. Re-check that before running it, not after.
+
 ## Discord bot — option space (design doc on file)
 
 Design doc: [`docs/info/discord-bot-design.md`](info/discord-bot-design.md)
