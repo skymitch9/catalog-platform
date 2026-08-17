@@ -11,6 +11,24 @@ export const LIBRARY_ORIGIN = 'https://library.heygabi.ai';
 export const GAMES_ORIGIN = 'https://boardgames.heygabi.ai';
 export const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
 
+/**
+ * The audiobook-worker's own hostname (2026-08-16, first deploy) — from
+ * `apps/audiobook-worker/wrangler.toml`'s `routes` pattern, the canonical
+ * source for that hostname (status.js does not list it yet). The SITE at
+ * AUDIO_ORIGIN stays static; this is its API.
+ */
+export const AUDIOBOOK_API_ORIGIN = 'https://audiobook-api.heygabi.ai';
+
+/**
+ * The discord-worker (`apps/discord-worker`) is BUILT but NOT DEPLOYED — no
+ * Discord application is registered yet, so it has no hostname. `null` here
+ * makes `probes/discord-worker.mjs` print a visible SKIP instead of the
+ * suite silently not knowing the worker exists. The day it deploys, set
+ * this to its real origin (e.g. 'https://discord-api.heygabi.ai') and the
+ * already-written health probes switch on — a one-line change.
+ */
+export const DISCORD_API_ORIGIN = null;
+
 /** The apex — the one origin every estate CORS allow-list admits. */
 export const APEX_ORIGIN = 'https://heygabi.ai';
 /** The audiobook static site — the ONE deliberately wider surface (ME_ORIGINS). */

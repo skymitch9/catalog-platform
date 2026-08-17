@@ -11,7 +11,7 @@ the estate-wide probe suite below. Zero dependencies and no install step —
 |---|---|
 | `universes.mjs` | The editor CLI. Thin: argument parsing and printing only |
 | `lib/universes.mjs` | ⚠️ Every decision — load, normalise, look up, validate, mutate. **Imported by `library_catalog`'s build.** Changing the resolution order here means changing it in `audiobook_catalog/app/core/universes.py` too |
-| `estate-probes/` | **The API testing suite** (`npm run probe:estate`) — read-only, unauthenticated-edge probes run against LIVE production across all four estate Workers, the audiobook static site, and the public Firestore doc. Plus `authorized-domains.mjs` — an OPTIONAL, CREDENTIALED probe outside that contract (needs a Firebase service-account JSON), run by hand, not part of `npm run probe:estate`. Own README: [`estate-probes/README.md`](estate-probes/README.md) |
+| `estate-probes/` | **The API testing suite** (`npm run probe:estate`) — read-only, unauthenticated-edge probes run against LIVE production across all five estate Workers (including the audiobook-worker at audiobook-api.heygabi.ai; the not-yet-deployed discord-worker prints a visible SKIP), the audiobook static site, and the public Firestore doc. Plus `authorized-domains.mjs` — an OPTIONAL, CREDENTIALED probe outside that contract (needs a Firebase service-account JSON), run by hand, not part of `npm run probe:estate`. Own README: [`estate-probes/README.md`](estate-probes/README.md) |
 
 ## Quick reference
 

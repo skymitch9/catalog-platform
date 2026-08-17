@@ -1,15 +1,15 @@
 # estate-probes — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-16** (78/78 passing against live production,
-> measured by running `npm run probe:estate` after deploying the
-> auth-worker — +7 for the fine-grained pipeline step controls and the
-> shelf-server force-upload (owner ask 2026-08-16): tokenless 401 on
-> `POST /api/estate/ops/pipeline/step` and
-> `POST /api/estate/ops/pipeline/force-upload`, apex-only CORS admit/refuse
-> for both, plus one Firestore read-permitted check on the new
-> `shelf_upload_status/current` doc (200 or 404, never denied). Prior count:
-> 71/71.
+> Last verified: **2026-08-16** (91/91 passing against live production,
+> measured by running `npm run probe:estate` — +13 for the audiobook-worker
+> (deployed 2026-08-16 at `audiobook-api.heygabi.ai`: health + estate_check
+> mode printed every run, the worded `/api/me` 401 on tokenless AND garbage
+> bearer, site-only CORS admit/refuse, and the one by-design 204 POST to
+> `/api/gate/shadow`) plus the read-only discipline audit (`discipline:RO1`)
+> that mechanically fails the suite if any probe is non-GET/OPTIONS without
+> an explicit allowlist row. The discord-worker prints a visible SKIP — not
+> deployed yet, expected. Prior count: 78/78.
 
 Owner order 2026-08-15: *"Maybe it's time to make an api testing suite"* —
 promoting `apps/auth-worker/test/live-probes.ts`'s idiom (a named `check()`,
@@ -49,11 +49,35 @@ time, by anyone with this repo checked out, with no credentials at all.
 | `index.heygabi.ai` | `probes/index-worker.mjs` | `/api/search` anonymous → 200 with the public-slice shape (`scope === ["audiobook"]`); `/api/universe/:name`, `/api/lookup`, `/api/scan/shelf` tokenless → 401; `/api/search` CORS (apex admitted, foreign origin refused) |
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
 | `boardgames.heygabi.ai` | `probes/health.mjs` | `/api/health` only — no other public surface is asked for by design |
+| `audiobook-api.heygabi.ai` | `probes/audiobook-worker.mjs` | The audiobook-worker (deployed 2026-08-16). `/api/health` → 200 with this Worker's OWN envelope `{ ok, service, time, estate_check }` (no `detail`, by design — not the estate health envelope), `estate_check` asserted ∈ {off, shadow, enforce} **and printed on every run** (the shadow flip / an accidental revert shows here without reading wrangler config); `/api/me` tokenless AND garbage-bearer → the WORDED 401 (`error: "unauthenticated"` + a non-empty human `detail` — the ROLES.md §1e contract, asserted, not just the shape); `/api/me` CORS (audiobook site admitted, foreign origin refused); `POST /api/gate/shadow` with `{ action: "probe" }` → 204 + empty body — **the one by-design non-refused POST in this suite, see the note below** |
+| discord-worker | `probes/discord-worker.mjs` | **NOT DEPLOYED — visible SKIP, on purpose.** Prints `discord-worker: not deployed yet (expected)` every run so the suite knows the worker exists. Health probes (200, `service === "estate-discord"`, config-presence booleans printed) are already written against `apps/discord-worker/src/index.ts`'s real shape; the day it deploys, setting `DISCORD_API_ORIGIN` in `lib/origins.mjs` switches them on — a one-line change |
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
 | Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on; `shelf_upload_status/current` (2026-08-16) — read permitted (200 or 404, never denied) |
 
-78 assertions as of last verification, all passing. Run the suite for the
+91 assertions as of last verification, all passing. Run the suite for the
 current count and result — this table is not re-derived automatically.
+
+⚠️ **The read-only discipline is now a MECHANICAL GUARD, not just prose**
+(`run.mjs`: `NON_GET_ALLOWLIST` + `auditMethodDiscipline()`, the
+`discipline:RO1` row). After all probes run, every recorded row must be
+GET/OPTIONS/PARSE or appear in the explicit allowlist of documented non-GET
+rows — each a tokenless call an auth gate refuses before any handler runs,
+the idempotent no-cookie `DELETE /api/session`, or the one 204 shadow POST
+below. An unlisted non-GET probe fails the whole suite. Adding one requires
+adding its `area:id:METHOD` allowlist row in the same commit — that edit is
+the deliberate escape hatch, per the mechanical-guards rule.
+
+**Why `POST /api/gate/shadow` is inside the read-only contract** (verified
+by reading `apps/audiobook-worker/src/gate-shadow.ts`, not guessed): the
+receiver answers 204 with no body ALWAYS (its own "iron rule 1"); it stores
+nothing — no D1/KV/R2 bindings exist in that Worker's wrangler.toml, and the
+only side effect is one `console.log` line read via `wrangler tail`; and a
+TOKENLESS report (the probe sends no token) skips every outbound call —
+`estateStatusFor`, `cachedStoredRole`, `isClubManager` are all gated on a
+verified identity, so the probe cannot trigger even a Firestore READ.
+`action: "probe"` is not in ACTION_GATES, so in shadow/enforce it logs one
+clearly-synthetic `unknown_action` line; in off it is not processed at all.
+Total blast radius: one log line and one unit of the 240/min budget.
 
 ⚠️ **`POST /api/estate/ops/pipeline` itself has NO probe, on purpose, and
 neither do the two 0008 routes above beyond the tokenless-401/CORS checks —
