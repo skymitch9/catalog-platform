@@ -912,7 +912,7 @@ test('read remove: comments/progress/RATINGS swept (SA sees what rules hide), sl
   }
 });
 
-test('reveal ratings: the STRUCTURAL flip lands; the read gate itself stays rules-side', async () => {
+test('reveal ratings: the LIFECYCLE flip lands; the read gate itself stays rules-side', async () => {
   const fake = fakeFirestore({
     ...asAdmin,
     'clubs/c1': clubSeed(),
@@ -924,17 +924,33 @@ test('reveal ratings: the STRUCTURAL flip lands; the read gate itself stays rule
     const read = fake.docs.get('clubs/c1/reads/r1');
     assert.equal((read?.fields['ratingsRevealed'] as { booleanValue?: boolean })?.booleanValue, true);
     assert.ok(read?.fields['revealedAt']);
-    // a moderator is NOT enough (manageClub is admin+ or the club's manager);
-    // the shared dev-uid needs its role doc AND cache moved to moderator first
+    // ⚠️ A MODERATOR NOW PASSES — the MANAGECLUB SPLIT, 2026-08-17. This
+    // assertion previously demanded 403, because the reveal sat on manageClub
+    // (admin+, or the club's own manager). Option B moved the read lifecycle
+    // to operateClub, so moderator+ overrides here like everywhere else; the
+    // shared dev-uid needs its role doc AND cache moved to moderator first.
     fake.docs.set('site_roles/dev-uid', { fields: toFsFields({ role: 'moderator' }), version: 2 });
     resetRoleCache();
     resetEstateCache();
-    const refused = await req(
+    const asMod = await req(
       envWith({ DEV_EMAIL: 'mod@example.com' }),
       'POST',
       '/api/clubs/c1/reads/r1/reveal-ratings',
     );
+    assert.equal(asMod.status, 200, 'site moderator holds the read lifecycle now');
+    // …and the floor is still a floor: a rankless caller who manages no club
+    // is refused, in words rather than a bare status.
+    fake.docs.delete('site_roles/dev-uid');
+    resetRoleCache();
+    resetEstateCache();
+    const refused = await req(
+      envWith({ DEV_EMAIL: 'guesty@example.com' }),
+      'POST',
+      '/api/clubs/c1/reads/r1/reveal-ratings',
+    );
     assert.equal(refused.status, 403);
+    const body = (await refused.json()) as { detail?: string };
+    assert.ok((body.detail ?? '').length > 0, 'a person never sees a bare 403');
   } finally {
     fake.restore();
   }

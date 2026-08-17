@@ -285,6 +285,99 @@ test('claim: an unknown club state reads as CLAIMED, never as free for the takin
   );
 });
 
+/* ── the MANAGECLUB SPLIT, 2026-08-17 (owner decision, option B) ───────── */
+
+const READ_LIFECYCLE = ['read.finish', 'read.remove', 'read.revealRatings'] as const;
+const DESTRUCTIVE = ['club.delete', 'club.updateStructural'] as const;
+
+test('split: a club manager runs their OWN club’s read lifecycle', () => {
+  // The island arm — a bound manager holding no site rank at all finishes,
+  // removes and reveals on the club they run.
+  for (const action of READ_LIFECYCLE) {
+    assert.deepEqual(
+      gateDecision({ action, tokened: true, role: 'guest', estateStatus: 'approved', clubManager: true }),
+      { wouldDeny: false, reason: null },
+      action,
+    );
+  }
+});
+
+test('split: the island is ONE club wide — a manager elsewhere is refused', () => {
+  // clubManager:false is "manager of some other club" here: the roster read is
+  // per-club, so the island does not reach. The refusal names the capability.
+  for (const action of READ_LIFECYCLE) {
+    assert.deepEqual(
+      gateDecision({ action, tokened: true, role: 'guest', estateStatus: 'approved', clubManager: false }),
+      { wouldDeny: true, reason: 'lacks_operateClub' },
+      action,
+    );
+  }
+});
+
+test('split: an ordinary member is refused the read lifecycle', () => {
+  for (const action of READ_LIFECYCLE) {
+    assert.deepEqual(
+      gateDecision({ action, tokened: true, role: 'member', estateStatus: 'approved', clubManager: false }),
+      { wouldDeny: true, reason: 'lacks_operateClub' },
+      action,
+    );
+  }
+});
+
+test('split: the site moderator overrides on ANY club — the actual widening', () => {
+  // ⚠️ This is the arm that genuinely changed for the worker. Club managers
+  // already held these three through the island (manageClub is island-held);
+  // moderator+ was denied by manageClub's admin floor and now holds them
+  // everywhere, per "moderators+ keep override everywhere".
+  for (const action of READ_LIFECYCLE) {
+    assert.equal(
+      gateDecision({ action, tokened: true, role: 'moderator', estateStatus: 'approved', clubManager: false }).wouldDeny,
+      false,
+      action,
+    );
+  }
+});
+
+test('split: the DESTRUCTIVE half did not move — moderator is still refused', () => {
+  // ⚠️ THE GUARD. Deleting a club and editing its structure keep the `admin`
+  // floor: a mutation lowering either to operateClub fails right here.
+  for (const action of DESTRUCTIVE) {
+    assert.deepEqual(
+      gateDecision({ action, tokened: true, role: 'moderator', estateStatus: 'approved', clubManager: false }),
+      { wouldDeny: true, reason: 'lacks_manageClub' },
+      action,
+    );
+    assert.equal(
+      gateDecision({ action, tokened: true, role: 'admin', estateStatus: 'approved', clubManager: false }).wouldDeny,
+      false,
+      action,
+    );
+  }
+});
+
+test('split: the gate table itself pins both halves, so a rename cannot drift', () => {
+  // Pinned as DATA, not behaviour: renaming a capability or flipping an island
+  // flag shows up here even if some other floor happens to make the verdicts
+  // agree by accident.
+  for (const action of READ_LIFECYCLE) {
+    assert.deepEqual(
+      ACTION_GATES[action],
+      { kind: 'capability', capability: 'operateClub', clubManagerMayHold: true },
+      action,
+    );
+  }
+  for (const action of DESTRUCTIVE) {
+    assert.deepEqual(
+      ACTION_GATES[action],
+      { kind: 'capability', capability: 'manageClub', clubManagerMayHold: true },
+      action,
+    );
+  }
+  // read.setSlot stayed where the conductor put it, below the split entirely:
+  // the slot LABEL is member-editable and rules never gated it.
+  assert.deepEqual(ACTION_GATES['read.setSlot'], { kind: 'signedIn' });
+});
+
 /* ── the route: the three iron rules ───────────────────────────────────── */
 
 test('mode off: 204 and INERT — no processing, no line', async () => {

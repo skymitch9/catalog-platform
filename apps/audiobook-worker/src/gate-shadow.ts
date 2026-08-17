@@ -90,6 +90,11 @@ export const ACTION_GATES: Readonly<Record<string, GateRule>> = {
   'warning.selfDelete': { kind: 'signedIn' },
   'warning.modDelete': cap('operateClub', false),
   // club management (§1 club.html table)
+  // ⚠️ THESE TWO STAY. The 2026-08-17 MANAGECLUB SPLIT (see the read-lifecycle
+  // note further down) moved read.finish/remove/revealRatings off `manageClub`
+  // and deliberately left these where they are: deleting a club and editing
+  // its structure are the irreversible half, so they keep the `admin` floor.
+  // A change that lowers either one is a widening the owner has not approved.
   'club.updateStructural': cap('manageClub', true),
   'club.delete': cap('manageClub', true),
   'club.setNextMeeting': cap('operateClub', true),
@@ -115,8 +120,32 @@ export const ACTION_GATES: Readonly<Record<string, GateRule>> = {
   // reads + discussion (§1 club-read.html table); the schedule name is the
   // design's own example line ("club.setSchedule")
   'club.setSchedule': cap('operateClub', true),
-  'read.finish': cap('manageClub', true),
-  'read.remove': cap('manageClub', true),
+  // ⚠️ THE MANAGECLUB SPLIT, 2026-08-17 (owner decision, option B verbatim):
+  // the READ-LIFECYCLE actions moved from `manageClub` to `operateClub`, and
+  // the two genuinely destructive rows below them did NOT move.
+  //
+  // The line the owner drew is "running the reading" vs "destroying the
+  // thing": finishing a read, removing one and revealing its ratings are the
+  // day-to-day work of whoever runs a club, so they take the same class as
+  // every other club.* row here — `cap('operateClub', true)`, which clubCan()
+  // resolves as **manager-of-THIS-club OR site moderator+**. Deleting a club
+  // and editing its structure are not recoverable, so they keep `manageClub`
+  // (admin floor, island-held) untouched.
+  //
+  // What actually changes, precisely, because the island already carried part
+  // of it: a bound club manager could ALWAYS finish/remove/reveal on their own
+  // club (`manageClub` is in CLUB_MANAGER_CAPABILITIES), so the delta the
+  // worker sees is the SITE MODERATOR arm — moderator+ was denied these three
+  // by manageClub's admin floor and now holds them everywhere, which is the
+  // "moderators+ keep override everywhere" rule the club package established.
+  // The delta a PERSON sees is in firestore.rules and the UI, which gated
+  // these on canManageClub / display-name host-or-mod (audiobook_catalog).
+  //
+  // ⚠️ Do not "tidy" these three back onto manageClub to match club.delete.
+  // The split is the decision; a test in gate-shadow.test.ts fails if either
+  // half moves.
+  'read.finish': cap('operateClub', true),
+  'read.remove': cap('operateClub', true),
   // ⚠️ signedIn, NOT manageClub — owner decision 2026-08-17, pre-flip. The
   // slot LABEL is member-editable by design: firestore.rules deliberately
   // keeps slotLabel out of MANAGED_READ_FIELDS ("commentCount bumps and slot
@@ -124,7 +153,8 @@ export const ACTION_GATES: Readonly<Record<string, GateRule>> = {
   // break at enforce (would_deny:true + succeeded:true for every member
   // renaming a read card). The gate now states what the rules always meant.
   'read.setSlot': { kind: 'signedIn' },
-  'read.revealRatings': cap('manageClub', true),
+  // The third read-lifecycle row — see the MANAGECLUB SPLIT note above.
+  'read.revealRatings': cap('operateClub', true),
   'poll.create': cap('operateClub', true),
   'poll.setStatus': cap('operateClub', true),
   'poll.delete': cap('operateClub', true),

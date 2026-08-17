@@ -41,9 +41,9 @@
  *                     DELETE /api/clubs/:clubId/requests/:slug      operateClub
  *                     POST   /api/clubs/:clubId/invites             operateClub
  * read lifecycle:     PUT    /api/clubs/:clubId/reads/:readId/schedule        operateClub
- *                     POST   /api/clubs/:clubId/reads/:readId/finish          manageClub
- *                     DELETE /api/clubs/:clubId/reads/:readId                 manageClub
- *                     POST   /api/clubs/:clubId/reads/:readId/reveal-ratings  manageClub
+ *                     POST   /api/clubs/:clubId/reads/:readId/finish          operateClub (MANAGECLUB SPLIT, 2026-08-17)
+ *                     DELETE /api/clubs/:clubId/reads/:readId                 operateClub (MANAGECLUB SPLIT, 2026-08-17)
+ *                     POST   /api/clubs/:clubId/reads/:readId/reveal-ratings  operateClub (MANAGECLUB SPLIT, 2026-08-17)
  * polls:              POST   /api/clubs/:clubId/polls               operateClub
  *                     PUT    /api/clubs/:clubId/polls/:pollId/status  operateClub
  *                     DELETE /api/clubs/:clubId/polls/:pollId       operateClub
@@ -756,9 +756,10 @@ enforceRoutes.put('/api/clubs/:clubId/reads/:readId/schedule', async (c) => {
 /**
  * POST /api/clubs/:clubId/reads/:readId/finish — club-reads.js finishRead:
  * status → finished|abandoned + finishedAt, and the read's slot leaves the
- * club's activeSlots. STRUCTURAL per rules readStructuralFieldsChanged →
- * canManageClub (lines 631–632). The client's two-doc transaction becomes
- * two preconditioned writes (read first — it carries the state check).
+ * club's activeSlots. LIFECYCLE per rules readLifecycleFieldsChanged →
+ * canOperateClub since the 2026-08-17 MANAGECLUB SPLIT (it was STRUCTURAL /
+ * canManageClub before). The client's two-doc transaction becomes two
+ * preconditioned writes (read first — it carries the state check).
  */
 enforceRoutes.post('/api/clubs/:clubId/reads/:readId/finish', async (c) => {
   const body = await jsonBody(c);
@@ -816,9 +817,12 @@ enforceRoutes.post('/api/clubs/:clubId/reads/:readId/finish', async (c) => {
 /**
  * DELETE /api/clubs/:clubId/reads/:readId — club-reads.js removeRead: free
  * the active slot, delete comments/progress/ratings subdocs, delete the
- * read. STRUCTURAL — rules `allow delete: if canManageClub(...)` (line 638,
- * "read deletes are structural" — deliberately NOT canOperateClub). The
- * ratings sweep is complete here (module doc: the SA reads what rules hide).
+ * read. LIFECYCLE — rules `allow delete: if canOperateClub(...)` since the
+ * 2026-08-17 MANAGECLUB SPLIT; it was canManageClub with the comment "read
+ * deletes are structural", which the owner's option B overruled: removing a
+ * read is running the club, not destroying it (the CLUB delete is the
+ * destructive row, and that one did not move). The ratings sweep is complete
+ * here (module doc: the SA reads what rules hide).
  */
 enforceRoutes.delete('/api/clubs/:clubId/reads/:readId', async (c) => {
   const clubId = c.req.param('clubId');
@@ -866,10 +870,10 @@ enforceRoutes.delete('/api/clubs/:clubId/reads/:readId', async (c) => {
 
 /**
  * POST /api/clubs/:clubId/reads/:readId/reveal-ratings — club-reads.js
- * revealRatings: ratingsRevealed + revealedAt. STRUCTURAL per rules
- * readStructuralFieldsChanged → canManageClub (lines 631–632; the reveal
- * fields are in the structural list at 251). The blind-ratings READ gate
- * itself stays in rules, untouched — design §7.
+ * revealRatings: ratingsRevealed + revealedAt. LIFECYCLE per rules
+ * readLifecycleFieldsChanged → canOperateClub since the 2026-08-17 MANAGECLUB
+ * SPLIT (both reveal fields moved out of the structural list with it). The
+ * blind-ratings READ gate itself stays in rules, untouched — design §7.
  */
 enforceRoutes.post('/api/clubs/:clubId/reads/:readId/reveal-ratings', async (c) => {
   const clubId = c.req.param('clubId');
