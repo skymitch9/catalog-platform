@@ -2,22 +2,26 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
-> Last verified: **2026-08-17 07:36 UTC** — LIVE at `discord.heygabi.ai`,
-> version `9d496ece-ae58-440f-b6d0-d51ba6143e6d`. Application **GABI**
-> (id `1538775435880562758`). Measured live this deploy: `/api/health`
-> `ok: true`; the four original `configured` booleans `true`;
-> `discord_client_secret` **`false`** and `link_ready` **`false`** (honest —
-> the link ceremony ships dark, §3 step 7); `/link` answering **503 with the
-> worded not-configured page**; `/interactions` still answering **401
-> `bad_signature`** to Discord's invalid-signature probe and **401
-> `missing_signature_headers`** to an unsigned POST — the endpoint is intact.
-> **Remaining owner steps: §3 step 7 only** (client secret + redirect URI +
-> the Firebase authorised-domain entry). Steps 5 and 6 are done.
+> Last verified: **2026-08-17** — LIVE at `discord.heygabi.ai`, version
+> `b64be346-876c-4cf0-8365-137afee3536a` (**phase 3**, bot-posted poll
+> messages). Application **GABI** (id `1538775435880562758`). Measured live
+> this deploy: `/api/health` `ok: true`; the four original `configured`
+> booleans `true`; `poll_sync_token` **`false`** and `poll_sync_ready`
+> **`false`** (honest — phase 3 ships dark, §8); `discord_client_secret`
+> **`false`** and `link_ready` **`false`** (honest — the link ceremony ships
+> dark, §3 step 7); `POST /polls/sync` answering **503 with the worded
+> not-configured body** both unsigned and with a bearer token;
+> `/interactions` still answering **401 `missing_signature_headers`** to an
+> unsigned POST — the endpoint is intact.
+> **Remaining steps: §3 step 7** (owner: client secret + redirect URI + the
+> Firebase authorised-domain entry) and **§8's `POLL_SYNC_TOKEN`**
+> (conductor: mint once, give to both sides). Steps 5 and 6 are done.
 
 The estate Discord bot's operational runbook: what exists, the secrets, and
 the exact Developer Portal steps **only the owner can perform**. The bot IS
-live; what is not yet on is identity linking, and only §3 step 7 stands
-between it and working. Design and option space:
+live; what is not yet on is **identity linking** (§3 step 7, the owner's three
+clicks) and **poll-message posting** (§8.6, one minted secret). Both are built,
+deployed and shipping dark. Design and option space:
 [`../info/discord-bot-design.md`](../info/discord-bot-design.md); bot
 mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 
@@ -27,15 +31,16 @@ mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 
 | Piece | State |
 |---|---|
-| `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (77), LIVE** |
+| `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (104), LIVE** |
 | Discord application / bot user | **Exists** — GABI, `1538775435880562758` |
-| Secrets | **Four of five set.** `DISCORD_CLIENT_SECRET` is the one gap (§2, §3 step 7) |
+| Secrets | **Four of six set.** `DISCORD_CLIENT_SECRET` (§3 step 7, owner) and `POLL_SYNC_TOKEN` (§8, conductor) are the two gaps |
 | Route `discord.heygabi.ai` | **Live** — custom domain, `wrangler.toml` `routes` |
 | Interactions Endpoint URL | **Saved and verified** — the portal's probe passed |
 | Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Built + deployed 2026-08-17, SHIPPING DARK.** Every route answers a worded "linking is not configured yet" page until `DISCORD_CLIENT_SECRET` exists. Until it is on, every vote click still gets the worded "not linked" rejection |
 | `/link` slash command | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. Publish it with §4 once the secret is set |
-| Bot-posted poll messages with buttons (phase 3) | **Not built** — nothing posts the votable message yet |
-| `club_announcements.py` / `send_discord_notification.py` | **Untouched, by design** — webhook announcements are permanent, never replaced |
+| Bot-posted poll messages with buttons, tally refresh, close propagation (phase 3) | **Built + deployed 2026-08-17, SHIPPING DARK.** `POST /polls/sync` answers a worded 503 until `POLL_SYNC_TOKEN` is minted (§8). Nothing has been posted to any channel yet |
+| `send_discord_notification.py` | **Untouched, by design** — the estate-wide new-books webhook is unchanged |
+| `club_announcements.py` | **One additive function, 2026-08-17** (`sync_poll_messages`): it POKES §8's endpoint after its own pass and can never fail because of it. Every webhook announcement it already sent is byte-for-byte unchanged — the announcements are permanent and are never replaced by the bot |
 
 ## 2. Secrets — names and custody
 
@@ -46,9 +51,10 @@ first deploy creates the Worker; locally they go in `.dev.vars`, gitignored):
 |---|---|---|
 | `DISCORD_PUBLIC_KEY` | Portal → General Information → **Public Key** | 64 hex chars. Public by design (it only *verifies*); kept as a secret for uniform custody |
 | `DISCORD_APPLICATION_ID` | Same portal page → **Application ID** | |
-| `DISCORD_BOT_TOKEN` | Portal → Bot → **Reset Token** | ⚠️ Shown **once**; one credential shared across every opted-in club (§1.2's accepted blast-radius regression). Rotate via the same Reset Token button. Not consumed by the poll-vote path yet (message edits ride the 15-min interaction token) — required for phase-3 bot-posted messages |
+| `DISCORD_BOT_TOKEN` | Portal → Bot → **Reset Token** | ⚠️ Shown **once**; one credential shared across every opted-in club (§1.2's accepted blast-radius regression). Rotate via the same Reset Token button. Still NOT used by the poll-**vote** path (those message edits ride the 15-min interaction token) — it is consumed by exactly two things: publishing slash commands (§4) and **phase 3's sync tick** (§8), which posts and edits real channel messages with it |
 | `FIREBASE_SERVICE_ACCOUNT` | The same JSON `auth-worker` holds | ⚠️ **Pipe the file in** (`wrangler secret put FIREBASE_SERVICE_ACCOUNT < key.json`) — never paste into a terminal line, never echo |
-| `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ⚠️ **NOT SET — the one remaining gap.** A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
+| `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ⚠️ **NOT SET.** A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
+| `POLL_SYNC_TOKEN` | ⚠️ **Nobody issues this one — the conductor MINTS it.** `python -c "import secrets; print(secrets.token_urlsafe(32))"` | ⚠️ **NOT SET.** The shared secret gating `POST /polls/sync` (§8). Goes to **both** sides: `wrangler secret put POLL_SYNC_TOKEN` here, and the *same value* into the audiobook pipeline's `.env` under the same name. A third, deliberately weaker credential class: holding it lets someone make the bot re-render its **own** poll messages sooner than it would have — it grants no Discord powers, holds no Firestore access of its own, and can post nothing a poll doc does not already say |
 
 Two **vars** (not secrets) were added to `wrangler.toml` with the link
 ceremony, both mirroring auth-worker's: `FIREBASE_PROJECT_ID =
@@ -247,10 +253,10 @@ estate makes.
   option index in range, and the club's `features.discordPollVoting` flag is
   affirmatively `true` (default OFF — a club opts in).
 - App→Discord direction: the message tally refreshes on every Discord vote.
-  An **app-side** vote does not move the Discord message until someone votes
-  in Discord again — the periodic refresh and close-propagation ride
-  `club_announcements.py`'s cadence and are phase 3 (that file stays as-is
-  until that build is approved).
+  An **app-side** vote does not move the Discord message until the next sync
+  tick — **phase 3, built 2026-08-17 (§8)**: the periodic refresh and the
+  close propagation ride `club_announcements.py`'s cadence, so an app-side
+  vote shows up in Discord within one pipeline run rather than instantly.
 
 ## 7. Gotchas (the ones that cost time elsewhere)
 
@@ -282,3 +288,130 @@ estate makes.
   exactly the command list an application PUT; writing the handler is not
   registering it (§4). Global commands can also take up to an hour to appear
   the first time — an absent `/link` in the first few minutes is normal.
+
+## 8. Poll message sync — the bot-posted votable message (phase 3)
+
+*(Numbered 8, not 5, on purpose: `DONE.md` is append-only and already points
+at §7's gotchas, so renumbering this file would leave the archive pointing at
+the wrong section. Code refers to this section by NAME rather than number, so
+it can move without lying.)*
+
+Phase 2 made a Discord click become a vote. **This is what posts the thing to
+click.** Built + deployed 2026-08-17, `apps/discord-worker/src/poll-sync.ts`.
+
+### 8.1 What runs, and who starts it
+
+| | |
+|---|---|
+| Endpoint | `POST https://discord.heygabi.ai/polls/sync` |
+| Auth | `Authorization: Bearer <POLL_SYNC_TOKEN>` (§2) |
+| Body | `{"lane": "prod"}` or `{"lane":"dev"}` — an empty body means prod |
+| Caller | `audiobook_catalog/app/club_announcements.py` → `sync_poll_messages()`, on the pipeline's existing ~8-hour cadence (the trigger `discord-poll-sync-research.md` §6 recommends) |
+| Manual run | `curl -s -X POST -H "authorization: Bearer $POLL_SYNC_TOKEN" -H 'content-type: application/json' -d '{"lane":"prod"}' https://discord.heygabi.ai/polls/sync` |
+
+⚠️ **The trigger carries NO club data — only the lane.** Every fact the tick
+acts on (which clubs opted in, which polls exist, the vote tallies, the
+channel) is read by the Worker with its own service account. A trigger that
+carried club ids or webhook URLs would make the pipeline a second source of
+truth and would put a webhook capability on the wire for nothing.
+
+⚠️ **Independent failure domains.** A dead sync endpoint costs the webhook
+announcements nothing: `sync_poll_messages()` runs *after* the announcement
+pass, catches everything, and logs one line. A dead pipeline costs the vote
+path nothing — clicking a button in Discord still writes a vote and still
+refreshes that message, because that rides the interaction token.
+
+### 8.2 What one tick does, per opted-in club
+
+Gated on `features.discordPollVoting === true` (default OFF — the same
+affirmative check the vote path re-enforces server-side).
+
+1. **Open poll, never posted** → post a message with one button per option.
+2. **Open poll, already posted** → edit that message with a fresh tally.
+3. **Poll now closed, message exists** → edit it to the closed rendering
+   (buttons **removed**, winner marked 🏆, footer "final — this poll is
+   closed") and record it as propagated, so it happens exactly **once**.
+4. **Poll closed and never posted** → nothing. The bot does not introduce a
+   vote nobody could cast.
+5. **Message deleted in Discord (404)** → an *open* poll is reposted and the
+   record repointed; a *closed* one is left gone rather than resurrected.
+
+### 8.3 Which channel it posts to
+
+In order, first hit wins:
+
+1. **`discordChannelId`** on `clubs/{id}/settings/discord` — a new, additive,
+   optional field. Set it when the club wants the bot in a *different* channel
+   from the one its announcement webhook posts to.
+2. **The club's existing `webhookUrl`**, resolved through Discord's own
+   `GET /webhooks/{id}/{token}`, whose webhook object carries `channel_id`.
+   This is the default and needs no new configuration at all: the bot simply
+   posts where that club's announcements already go — the channel the club
+   already agreed to.
+3. **Neither** → a named skip in the tick's `notes`, saying exactly which
+   field to add. Never a guess, never a crash.
+
+⚠️ **NOT VERIFIED LIVE:** step 2's `channel_id` round trip. No club had opted
+in at build time, so it has never run against real Discord. If Discord omits
+the field, step 1 is the documented fallback and the skip says so in words.
+
+### 8.4 State — `discord_poll_messages/{clubCol}__{clubId}__{pollId}`
+
+```
+{ clubCol, clubId, pollId, channelId, messageId,
+  renderedStatus: 'open' | 'closed', updatedAt }
+```
+
+A **top-level collection this Worker owns outright**, and the three reasons
+it is shaped that way:
+
+- **Not a field beside the poll.** `clubs/{id}/polls/{pollId}` is
+  browser-writable and edited by the club page's manager UI; Worker
+  bookkeeping in a doc a browser rewrites is a collision waiting to happen.
+  Nothing else writes this collection — not the club page, not the vote path
+  (`polls/{id}/votes/{slug}`), not `club_announcements.py`
+  (`settings/announceState`).
+- **Composite id, not the bare `pollId`.** `clubs` and `clubs_dev` are two
+  separate universes that may legitimately hold the same auto-id.
+- **No `firestore.rules` change.** No rule grants it and the file has no
+  catch-all, so browsers are denied by default and the service account
+  bypasses — the same posture as `discord_links/*` (§6).
+
+**Idempotence is keyed on the stored `messageId`:** present ⇒ edit, absent ⇒
+post. That is what makes a tick safe to run twice, or by hand mid-cadence.
+
+### 8.5 Blast rails
+
+- Per-club failures are **named skips** in `notes`, never a crash — one broken
+  club cannot stop the sweep, and the note says what to fix.
+- **429s honour Discord's own `retry_after`**, bounded to three attempts, so a
+  rate limit can never hold a tick open indefinitely.
+- At most `MAX_POLLS_PER_CLUB` (10) polls per club per tick; the overflow is
+  **stated**, not dropped.
+- A whole-tick Firestore outage answers as an outage, in words — never as a
+  permissions problem.
+
+### 8.6 Switching it on
+
+1. **Mint the secret once** (conductor):
+   `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+2. `wrangler secret put POLL_SYNC_TOKEN` from `apps/discord-worker` — paste at
+   the prompt, never on the command line.
+3. Put the **same value** in the audiobook pipeline's `.env` as
+   `POLL_SYNC_TOKEN` (documented in that repo's `.env.example`).
+4. Confirm: `curl -s https://discord.heygabi.ai/api/health` →
+   `configured.poll_sync_token: true`, `poll_sync_ready: true`.
+5. Opt a club in: `features.discordPollVoting = true` on its club doc, and
+   make sure GABI is in that server with Send Messages + Embed Links in the
+   target channel.
+6. The next pipeline run posts the message. Or run §8.1's curl to see it
+   immediately.
+
+**What a club sees once it is on:** an embed titled with the poll question,
+one numbered line per option with a live vote count, and a row of buttons
+(five per row, up to ten options). Clicking one records the vote against
+`votes/{slug}` — the same doc the club page writes — and the message's tally
+refreshes on the spot. When a manager closes the poll, the next tick strips
+the buttons, marks the winner, and the footer reads "final — this poll is
+closed". Members who have not linked their Discord account get the existing
+worded ephemeral telling them to run `/link`.

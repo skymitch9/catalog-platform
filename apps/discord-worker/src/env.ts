@@ -21,9 +21,11 @@ export interface Env {
   /** Portal → General Information → Application ID. Also arrives on every
    * interaction payload; the env value wins when both exist. */
   DISCORD_APPLICATION_ID?: string;
-  /** Portal → Bot → Reset Token. NOT consumed by the poll-vote path (edits
-   * ride the interaction token); consumed by the slash-command registration
-   * route (commands.ts) and held for phase-3 bot-posted messages. */
+  /** Portal → Bot → Reset Token. Still NOT consumed by the poll-VOTE path
+   * (those edits ride the interaction token). Consumed by exactly two things:
+   * the slash-command registration route (commands.ts) and phase 3's sync
+   * tick (poll-sync.ts), which posts and edits real channel messages with it —
+   * the first place §1.2's shared blast radius is actually exercised. */
   DISCORD_BOT_TOKEN?: string;
   /** Portal → OAuth2 → **Client Secret**. A DIFFERENT credential from the bot
    * token: it authenticates the APPLICATION during the identity-link code

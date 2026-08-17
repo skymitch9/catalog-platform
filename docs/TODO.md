@@ -75,20 +75,31 @@ to [`DONE.md`](DONE.md). It is live and **shipping dark**: every route answers
 a worded "linking is not configured yet" page until the owner does
 `access/discord-bot.md` **§3 step 7** (client secret + redirect URI + the
 Firebase authorised-domain row for `discord.heygabi.ai`) and then publishes
-`/link` via §4. **That is the one owner action outstanding on this whole
-section**, and no further build is blocked on it.
+`/link` via §4, and no further build is blocked on it.
+
+⚠️ **Phase 3 (bot-posted poll messages with buttons) LANDED 2026-08-17** —
+moved whole to [`DONE.md`](DONE.md). Live at version
+`b64be346-876c-4cf0-8365-137afee3536a` and **shipping dark**: `POST /polls/sync`
+answers a worded 503 until `POLL_SYNC_TOKEN` is minted.
+
+**The two things outstanding on this whole section are both switch-ons, not
+builds:**
+- 🧑 **Owner:** `access/discord-bot.md` §3 step 7 (three clicks) → identity
+  linking, then §4 to publish `/link`.
+- 🎛️ **Conductor:** mint `POLL_SYNC_TOKEN` once and give it to BOTH sides —
+  `wrangler secret put POLL_SYNC_TOKEN` in `apps/discord-worker`, and the same
+  value into the audiobook pipeline's `.env` (`access/discord-bot.md` §8.6).
+  ⚠️ Until a club also has `features.discordPollVoting = true`, a working
+  sync tick still posts nothing — correctly. Opting a club in is the third
+  step, not an afterthought.
 
 Queue, in intended order (all dispatch as OPUS agents per the model-tiering
 rule):
-1. **Phase 3 — bot-posted poll messages with buttons** (+ tally refresh /
-   close propagation riding `club_announcements.py` cadence). ⚠️ Until this
-   ships there is NOTHING votable in Discord — the invite changes nothing
-   visible. Set owner expectations accordingly.
-2. **More slash commands** — `/link` is registered by
+1. **More slash commands** — `/link` is registered by
    `POST /admin/commands/register` (`access/discord-bot.md` §4); the next is
    `/have`, anonymous audiobook-scope default per design §4 decision 4. Add it
    to `ESTATE_COMMANDS` and re-run the same route.
-3. **Moderation features** — SCOPE DECIDED by the owner 2026-08-16:
+2. **Moderation features** — SCOPE DECIDED by the owner 2026-08-16:
    **timeouts and message cleanup**, nothing else (no auto-responses, no
    scheduled sweeps — not declined forever, just not in scope now). Design
    doc still comes first, but it designs exactly these two:
@@ -109,7 +120,7 @@ rule):
    latent risk meanwhile, removing them from GABI's server role is one
    toggle and re-granting later is the same toggle.
 
-4. **FUTURE (design seed, logged in library_catalog docs/TODO.md —
+3. **FUTURE (design seed, logged in library_catalog docs/TODO.md —
    "Sam asks GABI to fix her books"):** a conversational fixer riding the
    library's existing research/apply machinery as an Anthropic tool-use loop,
    acting with HER authority on HER instance only. Not queued; listed here so

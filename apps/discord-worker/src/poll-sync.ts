@@ -592,7 +592,7 @@ export const SYNC_ROUTE_MSG = {
     'Poll message syncing is not switched on yet: the Worker has no POLL_SYNC_TOKEN, so it cannot ' +
     'tell a real caller from anyone else and refuses to act. Nothing was posted or changed. Set it ' +
     'with `wrangler secret put POLL_SYNC_TOKEN` from apps/discord-worker and give the same value to ' +
-    'the pipeline as POLL_SYNC_TOKEN (docs/access/discord-bot.md §5).',
+    'the pipeline as POLL_SYNC_TOKEN (docs/access/discord-bot.md, the poll-message sync section).',
   unauthorized:
     'This request did not carry the shared pipeline token, so nothing was synced. Send it as ' +
     '`Authorization: Bearer <POLL_SYNC_TOKEN>`. If you are a person who reached this URL in a ' +

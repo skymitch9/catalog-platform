@@ -227,6 +227,24 @@ shared with every other write-capable feature here).
 affects every opted-in club simultaneously, unlike the per-club webhook
 model.
 
+**BUILT IN FULL 2026-08-17.** Phase 2 (identity link) landed earlier the same
+day; **phase 3 — the bot-posted votable message, its tally refresh and close
+propagation — landed with it** (`apps/discord-worker/src/poll-sync.ts`,
+`POST /polls/sync`, triggered by `club_announcements.py`'s existing cadence
+exactly as the research doc §6 recommended). This is the first consumer of
+`DISCORD_BOT_TOKEN` — §1.2's blast radius stops being theoretical here.
+Operational detail, the shape of the state doc, the channel-resolution order
+and the switch-on steps: [`../access/discord-bot.md`](../access/discord-bot.md)
+§8. It ships **dark** behind a newly-named shared secret, `POLL_SYNC_TOKEN`.
+
+One thing this section left implicit that the build had to decide: ⚠️ **the
+bot posts to a CHANNEL, and nothing in the club's configuration named one.**
+The answer avoids new configuration for the common case — the channel is read
+from the club's existing webhook URL via Discord's own
+`GET /webhooks/{id}/{token}`, so the bot posts where that club's announcements
+already go. An optional `discordChannelId` overrides it; neither present is a
+named skip, never a guess.
+
 ### (b) "Do I have this book?" — `/have` or `/shelf`
 
 **What:** A slash command that queries `index.heygabi.ai`'s search surface

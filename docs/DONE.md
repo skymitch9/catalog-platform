@@ -13,6 +13,65 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🤖 GABI phase 3 — bot-posted poll messages with vote buttons — ✅ BUILT + DEPLOYED 2026-08-17 (SHIPS DARK)
+
+*(Moved whole from `TODO.md` §0's queue, item 1: "**Phase 3 — bot-posted poll
+messages with buttons** (+ tally refresh / close propagation riding
+`club_announcements.py` cadence). ⚠️ Until this ships there is NOTHING votable
+in Discord — the invite changes nothing visible. Set owner expectations
+accordingly.")*
+
+**Shipped:** version `b64be346-876c-4cf0-8365-137afee3536a` at
+`discord.heygabi.ai`; commits `92375af` (catalog-platform) and `f9f3ab6`
+(audiobook_catalog, pushed to `main`). Tests 77 → 104. Runbook: `access/discord-bot.md` §8.
+
+**What it is.** `POST /polls/sync` on the discord-worker, poked by
+`audiobook_catalog/app/club_announcements.py` on the pipeline's existing
+~8-hour cadence — the trigger the research doc itself recommended. Per
+opted-in club (`features.discordPollVoting === true`) the tick posts a votable
+message for each open poll, refreshes its tally, and edits it to a closed
+rendering (buttons removed, winner marked, "final" footer) exactly once when
+the poll closes.
+
+**The decisions worth keeping:**
+
+- **The buttons REUSE the live `pv|<clubs|clubs_dev>|<clubId>|<pollId>|<idx>`
+  grammar exactly.** The posting test parses what the poster emits with the
+  LIVE parser, not a copy — a button the vote path could not route would be a
+  dead button, and the suite now refuses to ship one.
+- **The trigger carries only the LANE.** Every fact the tick acts on is read by
+  the Worker with its own service account. Sending club ids or webhook URLs
+  would have made the pipeline a second source of truth and put a capability on
+  the wire for nothing.
+- **Independent failure domains, both ways.** `sync_poll_messages()` runs after
+  the announcement pass, catches everything and logs one line — a dead endpoint
+  cannot fail a run (pinned by a test). The webhook announcements themselves are
+  byte-for-byte unchanged, as design §0 requires.
+- **State lives in `discord_poll_messages/{clubCol}__{clubId}__{pollId}`**, a
+  top-level collection the Worker owns: not a field beside the poll (that doc is
+  browser-writable), not keyed on the bare `pollId` (the two lanes are separate
+  universes), and needing no `firestore.rules` change (nothing grants it, there
+  is no catch-all, the service account bypasses).
+- **Idempotence is keyed on the stored `messageId`** — present ⇒ edit, absent ⇒
+  post — so a tick is safe to run twice or by hand mid-cadence. A closed poll
+  that was never posted is never posted; a deleted OPEN message is reposted, a
+  deleted CLOSED one is left gone.
+- **Blast rails:** per-club named skips (never a crash), 429s honouring
+  Discord's own `retry_after` bounded to three attempts, a 10-poll-per-club cap
+  that states its overflow, and a whole-tick Firestore outage answering as an
+  outage rather than a permissions refusal.
+- **Ships dark, and dark BEFORE closed:** with `POLL_SYNC_TOKEN` unset the route
+  answers a worded 503 even to a caller presenting a bearer token — an unminted
+  secret is not the caller's fault, and a 401 there would send someone hunting a
+  credential mismatch that does not exist.
+
+**Remaining to switch it on** (`access/discord-bot.md` §8.6): mint
+`POLL_SYNC_TOKEN` once, `wrangler secret put` it here, put the same value in the
+audiobook pipeline's `.env`, and opt a club in. **Not verified:** no real
+Discord message has been posted — that needs the secret minted AND a club opted
+in AND GABI holding Send Messages in the target channel. Nor has the
+webhook→`channel_id` resolution run against real Discord.
+
 ## 🤖 GABI phase 2 — the identity-link ceremony — ✅ BUILT + DEPLOYED 2026-08-17 (SHIPS DARK)
 
 *(Moved whole from `TODO.md` §0's queue, item 1: "**Phase 2 — identity-link
