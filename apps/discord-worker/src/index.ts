@@ -65,6 +65,8 @@ import {
 } from './commands.js';
 import { indexBase, processHave } from './have.js';
 import { panelBase, panelDeepLink, processGabi } from './gabi.js';
+import { mentionsOn } from './mentions.js';
+import { gatewayStub } from './gateway.js';
 import {
   moderationOn,
   MOD_MSG,
@@ -100,6 +102,7 @@ app.get('/api/health', (c) =>
       'have_command',
       'gabi_command',
       'moderation_dark',
+      'gabi_mentions',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -117,6 +120,12 @@ app.get('/api/health', (c) =>
       // loaded. Not a value, not a prefix — a boolean, like every row here.
       discord_client_secret: Boolean(c.env.DISCORD_CLIENT_SECRET),
       firebase_project_id: Boolean(c.env.FIREBASE_PROJECT_ID),
+      // ⚠️ Reports FALSE until the owner mints and pastes it. Same honest-false
+      // discipline as every row here — and its absence is a LADDER, not a
+      // fault: without it GABI still answers mentions from the keyword router
+      // (src/mentions.ts), she just has no conversational half. A missing key
+      // never produces an error message in a channel.
+      anthropic_key_gabi: Boolean(c.env.ANTHROPIC_API_KEY_GABI),
     },
     // The one derived answer: both halves present, so /link can actually run.
     link_ready: linkConfigured(c.env) && Boolean(c.env.FIREBASE_PROJECT_ID),
@@ -146,6 +155,17 @@ app.get('/api/health', (c) =>
     // reporting it leaks nothing and makes a misconfigured link visible.
     gabi_surface: 'propose_and_deep_link',
     gabi_panel_url: panelDeepLink(panelBase(c.env)),
+    // ⚠️ The conversational kill switch, VISIBLE from outside — same reasoning
+    // as `moderation_enabled` above. `false` here is the whole state of the
+    // phase-A mention build, checkable in one curl, and it means no gateway
+    // WebSocket is open at all rather than "open but quiet".
+    gabi_mentions_enabled: mentionsOn(c.env),
+    // Stated rather than inferred, because it is the claim the whole design
+    // rests on: she is reachable by an @mention and by nothing else, on
+    // unprivileged intents. If this ever reads otherwise, somebody requested
+    // Discord's Message Content intent and that is a decision worth finding.
+    gabi_mentions_trigger: 'at_mention_only',
+    gabi_mentions_privileged_intent: false,
   }),
 );
 
@@ -184,12 +204,23 @@ app.use(
     maxAge: 600,
   }),
 );
-app.post('/admin/commands/register', async (c) => {
+/**
+ * The estate-admin gate, in ONE place — extracted 2026-08-17 when the gateway
+ * poke became a second route needing it. Returns `null` when the caller may
+ * proceed and a fully-worded refusal otherwise; ⚠️ every refusal says what
+ * happened, what it needs and how to get it, and an OUTAGE is never dressed up
+ * as a permissions problem (the estate's no-bare-status rule).
+ */
+async function adminGate(c: {
+  req: { raw: Request };
+  env: Env;
+  json: (body: unknown, status?: number) => Response;
+}): Promise<Response | null> {
   let identity;
   try {
     identity = await resolveIdentity(c.req.raw, c.env);
   } catch (err) {
-    console.error('command registration verifier misconfigured:', err instanceof Error ? err.message : err);
+    console.error('estate admin verifier misconfigured:', err instanceof Error ? err.message : err);
     return c.json({ ok: false, message: LINK_MSG.misconfigured }, 503);
   }
   if (!identity || !identity.uid) {
@@ -197,7 +228,7 @@ app.post('/admin/commands/register', async (c) => {
       {
         ok: false,
         message:
-          'You are not signed in to the estate, so nothing was published. Send a Firebase ID ' +
+          'You are not signed in to the estate, so nothing was done. Send a Firebase ID ' +
           'token as `Authorization: Bearer <token>` from an estate admin account.',
       },
       401,
@@ -216,7 +247,7 @@ app.post('/admin/commands/register', async (c) => {
           ok: false,
           message:
             'Your permissions could not be checked because the estate directory did not answer ' +
-            '(a service problem, NOT a permissions one). Nothing was published — try again shortly.',
+            '(a service problem, NOT a permissions one). Nothing was done — try again shortly.',
         },
         502,
       );
@@ -226,7 +257,7 @@ app.post('/admin/commands/register', async (c) => {
         {
           ok: false,
           message:
-            'Publishing GABI’s slash commands needs the estate `admin` role, and this account ' +
+            'This is an estate `admin` action, and this account ' +
             `holds ${role ?? 'no role'}. Ask an estate admin to run it, or to grant the role from ` +
             'the audiobook site’s admin page.',
         },
@@ -234,6 +265,12 @@ app.post('/admin/commands/register', async (c) => {
       );
     }
   }
+  return null;
+}
+
+app.post('/admin/commands/register', async (c) => {
+  const refusal = await adminGate(c);
+  if (refusal) return refusal;
 
   const applicationId = c.env.DISCORD_APPLICATION_ID;
   const botToken = c.env.DISCORD_BOT_TOKEN;
@@ -281,6 +318,61 @@ app.post('/admin/commands/register', async (c) => {
     commands: commandNames(registry),
     moderation_enabled: moderationOn(c.env),
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/gateway/start — wake the conversational gateway (phase A).
+//
+// The Durable Object in src/gateway.ts holds the one outbound WebSocket that
+// lets GABI HEAR @mentions. It needs somebody to exist before it can connect,
+// and there are exactly two pokers: the cron below (every two minutes, so the
+// connection exists without traffic) and this route, for a person who has just
+// flipped the posture and does not want to wait.
+//
+// ⚠️ Estate admin only, same gate as the command registry — the poke costs
+// money in the sense that it opens a billable Durable Object.
+// ⚠️ It is also the ONLY way to clear the object's fatal flag: after a 4004
+// (bad token) or 4014 (unapproved intent) the object deliberately stops
+// reconnecting, and a person has to fix the cause and say so.
+// ---------------------------------------------------------------------------
+app.use(
+  '/admin/gateway/start',
+  cors({
+    origin: 'https://heygabi.ai',
+    allowMethods: ['POST', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  }),
+);
+app.post('/admin/gateway/start', async (c) => {
+  const refusal = await adminGate(c);
+  if (refusal) return refusal;
+
+  const stub = gatewayStub(c.env);
+  if (!stub) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'The gateway Durable Object is not bound on this Worker (a configuration gap, NOT a ' +
+          'permissions problem). Nothing was started — check the [[durable_objects.bindings]] ' +
+          'entry for GABI_GATEWAY in wrangler.toml and redeploy.',
+      },
+      503,
+    );
+  }
+  if (!mentionsOn(c.env)) {
+    return c.json({
+      ok: true,
+      started: false,
+      message:
+        'GABI_MENTIONS is not "on", so no gateway connection was opened and none will be. That is ' +
+        'the shipped posture, not a fault — flipping it is an owner decision in wrangler.toml, ' +
+        'followed by a deploy and then this route.',
+    });
+  }
+  const res = await stub.fetch('https://gateway.internal/start', { method: 'POST' });
+  return c.json({ ok: true, started: true, gateway: await res.json() });
 });
 
 // ---------------------------------------------------------------------------
@@ -585,4 +677,52 @@ app.post('/interactions', async (c) => {
   }
 });
 
-export default app;
+// ---------------------------------------------------------------------------
+// The cron — the heartbeat OUTSIDE the Durable Object.
+//
+// ⚠️ A gateway connection that only exists while somebody is talking to it is
+// not a gateway connection. The object's own alarm heals it from the inside,
+// but an alarm cannot fire on an object nobody has ever created, and (measured
+// 2026-08-17) an outbound WebSocket only prevents eviction "for up to 15
+// minutes per connection". So something outside has to poke it on a cadence —
+// this is that something, and it is deliberately dumber than the object it
+// wakes: one conditional, one subrequest, no state.
+//
+// ⚠️ With the posture off it does NOTHING — no object is created, no Durable
+// Object duration is billed, and the cost of shipping this dark is zero.
+// ---------------------------------------------------------------------------
+async function scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  if (!mentionsOn(env)) return;
+  const stub = gatewayStub(env);
+  if (!stub) {
+    console.error(
+      'GABI mentions are on but the GABI_GATEWAY Durable Object is not bound; nothing can listen. ' +
+        'Check wrangler.toml.',
+    );
+    return;
+  }
+  ctx.waitUntil(
+    stub
+      .fetch('https://gateway.internal/start', { method: 'POST' })
+      .then(() => undefined)
+      .catch((err) => console.error('GABI gateway poke failed:', err instanceof Error ? err.message : err)),
+  );
+}
+
+// ⚠️ The Durable Object class must be exported from the Worker's entrypoint or
+// Cloudflare cannot construct it — a binding alone is not enough, and the
+// failure reads as "class not found" at deploy rather than at runtime.
+export { GabiGateway } from './gateway.js';
+
+/**
+ * ⚠️ The Hono app is now a NAMED export and the default is a handler object.
+ *
+ * A Worker with a cron needs a `scheduled` handler beside `fetch`, and a bare
+ * Hono instance has no place to put one. Nothing about HTTP behaviour changed —
+ * `app.fetch` below is the same handler that used to be the default export —
+ * but tests drive the app through `app.request(...)`, which only exists on the
+ * Hono instance, so both shapes are exported rather than one being faked.
+ */
+export { app };
+
+export default { fetch: app.fetch, scheduled };

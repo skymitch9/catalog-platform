@@ -12,7 +12,7 @@
  * to execute it as a suite.
  */
 
-import app from '../../src/index.js';
+import { app } from '../../src/index.js';
 
 const toHex = (bytes: Uint8Array): string =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');

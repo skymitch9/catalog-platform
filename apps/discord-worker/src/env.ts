@@ -71,6 +71,30 @@ export interface Env {
    * Firebase sign-in and its own role check, which is exactly why shape (b)
    * needs no new custody. Exists so a test can point elsewhere. */
   GABI_PANEL_URL?: string;
+  /** ⚠️ THE CONVERSATIONAL KILL SWITCH — phase A of "GABI answers when you
+   * @mention her" (src/mentions.ts, src/gateway.ts). A plain var in
+   * wrangler.toml, affirmative-only in the exact idiom of MODERATION_ENABLED
+   * above and the library's own `GABI_PANEL`: `"on"` and nothing else enables
+   * it; absent, empty, `"true"`, `"1"`, `"yes"` and every typo all mean OFF.
+   * ⚠️ OFF means the gateway **never opens a WebSocket** — an off bot is not
+   * merely silent, it is not connected, and costs nothing. Flipping it is the
+   * OWNER/conductor's decision, never a side effect of a deploy, and it is
+   * pinned both ways by test/mentions.test.ts. */
+  GABI_MENTIONS?: string;
+  /** The key that gives her a brain in Discord — a NEW secret, deliberately
+   * separate from the library Worker's `ANTHROPIC_API_KEY` so the two spends
+   * are separately capped, separately rotated and separately auditable.
+   * ⚠️ SHIPS DARK while unset, and that is a LADDER not a failure: with it,
+   * intent is classified and small talk answered by claude-haiku-4-5; without
+   * it, src/mentions.ts's keyword router still answers lookups and still nudges
+   * toward the panel. ⚠️ A missing key must NEVER produce an error message in a
+   * channel — the absence is logged as a worded line and nothing else. */
+  ANTHROPIC_API_KEY_GABI?: string;
+  /** The Durable Object holding the one outbound WebSocket to Discord's
+   * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
+   * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason
+   * every binding here is: a missing binding answers in words, never a crash. */
+  GABI_GATEWAY?: DurableObjectNamespace;
 }
 
 export type AppBindings = { Bindings: Env };

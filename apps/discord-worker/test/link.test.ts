@@ -25,7 +25,7 @@ import { rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import app from '../src/index.js';
+import { app } from '../src/index.js';
 import {
   linkConfigured,
   linkDocFields,
@@ -568,7 +568,13 @@ test('command registration refuses an unauthenticated caller in words', async ()
   const body = (await res.json()) as { ok: boolean; message: string };
   assert.equal(body.ok, false);
   assert.match(body.message, /not signed in/i);
-  assert.match(body.message, /nothing was published/i);
+  // ⚠️ "nothing was done", not "nothing was published": the admin gate was
+  // extracted into ONE implementation on 2026-08-17 when POST
+  // /admin/gateway/start became a second route needing it, so its wording had
+  // to stop naming the command registry specifically. The three things a
+  // refusal must say — what happened, what it needs, how to get it — are
+  // unchanged and still asserted here.
+  assert.match(body.message, /nothing was done/i);
   assert.match(body.message, /Authorization: Bearer/); // how to get it
 });
 

@@ -364,7 +364,7 @@ test('a signed /gabi interaction answers with a DEFERRED EPHEMERAL ack inside th
 });
 
 test('/api/health reports the SHAPE and the panel URL, so a misconfigured link is one curl away', async () => {
-  const { default: app } = await import('../src/index.js');
+  const { app } = await import('../src/index.js');
   const res = await app.request('https://discord.heygabi.ai/api/health', {}, {});
   const body = (await res.json()) as { gabi_surface: string; gabi_panel_url: string; features: string[] };
   assert.equal(body.gabi_surface, 'propose_and_deep_link');

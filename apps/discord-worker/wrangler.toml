@@ -23,6 +23,43 @@ workers_dev = false
 #   https://discord.heygabi.ai/interactions
 routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
 
+# ⚠️ THE ONLY CRON ON THIS WORKER, and it exists for exactly one reason: a
+# Durable Object's alarm cannot fire on an object nobody has ever created, and
+# (measured 2026-08-17 from Cloudflare's own docs) "an active outbound WebSocket
+# connection keeps the Durable Object alive and prevents eviction for up to 15
+# minutes per connection". So the gateway needs a poke from OUTSIDE on a cadence
+# or it goes quietly deaf. Every two minutes; the handler is one conditional.
+#
+# ⚠️ Costs NOTHING while GABI_MENTIONS is off — the scheduled handler returns
+# before it creates the object, so no Durable Object duration is billed at all.
+[triggers]
+crons = ["*/2 * * * *"]
+
+# ⚠️ The one persistent WebSocket to Discord's gateway, so GABI HEARS ordinary
+# messages that @mention her (src/gateway.ts). A single named instance,
+# deliberately: Discord's gateway is one connection per bot, and a per-request
+# object would open one socket per caller and get the bot rate-limited into a
+# ban.
+#
+# ⚠️ COST, estimated from Cloudflare's published table — NOT an invoice.
+# Outbound WebSockets cannot hibernate ("Hibernation is only supported when a
+# Durable Object acts as a WebSocket server"), so this bills duration for as
+# long as it is connected: 128 MB × 30 days = ~324,000 GB-s/month, against the
+# 400,000 GB-s/month included on Workers Paid. That is an estimated $0.00/month
+# while this is the estate's only Durable Object, and ~$4.05/month if it were
+# ever billed at the full $12.50 per million GB-s with no inclusion. Requests
+# are negligible (1M included; this makes a few hundred a day).
+[[durable_objects.bindings]]
+name = "GABI_GATEWAY"
+class_name = "GabiGateway"
+
+# SQLite-backed, the current default class for new Durable Objects. The object
+# stores four small things: the resumable gateway session, the daily identify
+# budget, and the two spend counters.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GabiGateway"]
+
 [vars]
 # Explicit, affirmative value — same idiom as the sibling Workers.
 ENVIRONMENT = "production"
@@ -78,6 +115,28 @@ GABI_PANEL_URL = "https://padhard.heygabi.ai"
 # POST /admin/commands/register so the pair appears (access/discord-bot.md).
 MODERATION_ENABLED = "off"
 
+# ⚠️ THE CONVERSATIONAL KILL-SWITCH — phase A of the owner's ask, *"I want to
+# use heygabi and similar forms ... to kick her off for a question and then she
+# responds"* (2026-08-17). Affirmative-only in the exact idiom of
+# MODERATION_ENABLED above and the library's own GABI_PANEL: "on" and nothing
+# else; absent, empty, "true", "1", "yes" and every typo all mean OFF, and
+# test/mentions.test.ts pins that both ways.
+#
+# ⚠️ SHIPS OFF, and OFF means the gateway NEVER OPENS A WEBSOCKET — she is not
+# connected, not merely quiet, and the Durable Object costs nothing. Flipping it
+# is an OWNER/CONDUCTOR decision, never a side effect of a deploy, and the flip
+# has a documented SECOND step: `POST /admin/gateway/start` with an estate
+# admin's bearer, or wait up to two minutes for the cron above.
+#
+# ⚠️ WHAT IT DOES NOT DO: bare-text triggers. She answers a genuine @mention and
+# nothing else, because reading messages she was not addressed in needs
+# Discord's Message Content privileged intent — which discord-bot-design.md §1.5
+# says is NEVER requested. Measured 2026-08-17 against Discord's own docs: the
+# content of a message that MENTIONS the app arrives populated WITHOUT that
+# intent, which is exactly why this phase works and a bare-text one does not.
+# Turning on bare text is a separate owner decision, not a config change.
+GABI_MENTIONS = "off"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put DISCORD_PUBLIC_KEY        (Developer Portal → General
 #     Information → Public Key; 64 hex chars. Public by design, but kept as a
@@ -121,3 +180,18 @@ MODERATION_ENABLED = "off"
 #     exactly this, and /api/health reports configured.poll_sync_token = false
 #     and poll_sync_ready = false. Same idiom as DISCORD_CLIENT_SECRET above.)
 # Locally they live in .dev.vars (gitignored).
+#   wrangler secret put ANTHROPIC_API_KEY_GABI    (phase A of conversational
+#     GABI, added 2026-08-17. ⚠️ NOT A PORTAL VALUE and NOT the library's key —
+#     a NEW Anthropic API key, deliberately separate from library_catalog's
+#     ANTHROPIC_API_KEY so the Discord spend is separately capped, separately
+#     rotated and separately auditable. Mint it at console.anthropic.com and
+#     pipe it in from .dev.vars; never paste it into a terminal line.
+#     It buys exactly two cheap calls per answered mention on
+#     claude-haiku-4-5 — one intent classification, one short chat turn —
+#     both capped (20 turns/user/hour, 200/day estate-wide) and both accounted
+#     as a `gabi_turn` log line with raw token counts.
+#     ⚠️ SHIPS DARK until set, and the absence is a LADDER not a failure:
+#     src/mentions.ts's keyword router still answers lookups and still nudges
+#     toward the panel, and /api/health reports
+#     configured.anthropic_key_gabi = false. A missing key must NEVER produce
+#     an error message in a Discord channel — it logs a worded line instead.)

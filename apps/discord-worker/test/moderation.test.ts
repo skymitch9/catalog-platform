@@ -56,7 +56,7 @@ import {
   routeInteraction,
   TIMEOUT_COMMAND_NAME,
 } from '../src/interactions.js';
-import app from '../src/index.js';
+import { app } from '../src/index.js';
 import { signedPost } from './helpers/signed-post.js';
 
 const MOD_BITS = (PERMISSION.MODERATE_MEMBERS | PERMISSION.MANAGE_MESSAGES).toString();

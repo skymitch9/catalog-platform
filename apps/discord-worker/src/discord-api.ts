@@ -238,6 +238,86 @@ export async function deleteChannelMessage(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Bot-token calls — CONVERSATIONAL MENTIONS (gateway.ts / mention-flow.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Discord's gateway entry point for a bot, and the connection budget that comes
+ * with it. `GET /gateway/bot` needs the bot token; the plain `/gateway` does
+ * not, but only the bot form returns `session_start_limit`, and a build that
+ * reconnects on a timer should be able to see how many identifies it has left.
+ *
+ * ⚠️ The returned `url` has a `wss://` scheme. Workers open an outbound
+ * WebSocket with `fetch(..., {headers: {Upgrade: 'websocket'}})`, which needs
+ * `https://` — `gateway.ts` rewrites it, and that rewrite is the single most
+ * likely thing to be "fixed" wrongly by a later reader.
+ */
+export async function getGatewayBot(
+  botToken: string,
+  sleep?: Sleeper,
+): Promise<{ url: string; remainingStarts: number | null } | null> {
+  const res = await discordFetch(
+    `${DISCORD_API}/gateway/bot`,
+    { method: 'GET', headers: botHeaders(botToken) },
+    sleep,
+  );
+  if (!res.ok) return null;
+  try {
+    const body = (await res.json()) as {
+      url?: unknown;
+      session_start_limit?: { remaining?: unknown };
+    };
+    if (typeof body.url !== 'string' || body.url.length === 0) return null;
+    const remaining = body.session_start_limit?.remaining;
+    return { url: body.url, remainingStarts: typeof remaining === 'number' ? remaining : null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reply to a message in its own channel, as a REPLY rather than a loose post —
+ * so an answer is attached to the question in the client, which is what makes a
+ * busy channel readable.
+ *
+ * ⚠️ **`allowed_mentions` is a GUARDRAIL, not decoration.** The body addresses
+ * the asker by `<@id>`, and Discord would happily resolve any other mention the
+ * model or a book title happened to produce — including `@everyone`. The
+ * allowlist is `parse: []` (resolve NOTHING by default) plus the one user id
+ * this reply is for. `replied_user: false` stops the reply itself firing a
+ * second ping at somebody it just pinged in the text.
+ *
+ * `fail_if_not_exists: false` means a deleted question becomes a plain message
+ * rather than a 400 — the answer is still worth having.
+ */
+export async function replyToMessage(
+  botToken: string,
+  channelId: string,
+  messageId: string,
+  content: string,
+  mentionUserId: string | null,
+  sleep?: Sleeper,
+): Promise<Response> {
+  return discordFetch(
+    `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages`,
+    {
+      method: 'POST',
+      headers: botHeaders(botToken),
+      body: JSON.stringify({
+        content,
+        message_reference: { message_id: messageId, fail_if_not_exists: false },
+        allowed_mentions: {
+          parse: [],
+          users: mentionUserId ? [mentionUserId] : [],
+          replied_user: false,
+        },
+      }),
+    },
+    sleep,
+  );
+}
+
 /**
  * The channel a webhook posts into, read with the webhook's OWN token.
  *

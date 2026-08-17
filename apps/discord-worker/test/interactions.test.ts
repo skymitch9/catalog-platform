@@ -14,7 +14,7 @@ import {
   routeInteraction,
 } from '../src/interactions.js';
 import { buildPollCustomId } from '../src/poll-vote.js';
-import app from '../src/index.js';
+import { app } from '../src/index.js';
 import { signedPost } from './helpers/signed-post.js';
 
 test('isInteraction: needs an object with a numeric type', () => {
@@ -160,6 +160,11 @@ test('health answers config-presence booleans and never values', async () => {
     // ships-dark feature is VISIBLE from outside rather than inferred.
     discord_client_secret: false,
     firebase_project_id: false,
+    // Added with phase A of conversational GABI (2026-08-17), same honest-false
+    // contract as every row above. ⚠️ Its `false` is a LADDER rather than a
+    // ships-dark gate: with no key she still answers @mentions from the keyword
+    // router, so this row means "duller", not "broken".
+    anthropic_key_gabi: false,
   });
   assert.ok(!JSON.stringify(data).includes('abc'));
 });

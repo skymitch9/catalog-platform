@@ -26,7 +26,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import app from '../src/index.js';
+import { app } from '../src/index.js';
 import { parsePollCustomId } from '../src/poll-vote.js';
 import { discordFetch } from '../src/discord-api.js';
 import {
