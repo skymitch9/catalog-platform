@@ -35,7 +35,13 @@
  */
 
 import { firestoreRequest, mintAccessToken, parseServiceAccount } from './firebase-sa.js';
-import { LINK_COMMAND_NAME } from './interactions.js';
+import {
+  CLEANUP_COMMAND_NAME,
+  HAVE_COMMAND_NAME,
+  LINK_COMMAND_NAME,
+  TIMEOUT_COMMAND_NAME,
+} from './interactions.js';
+import { CLEANUP_CONTAINS_MAX, CLEANUP_MAX, moderationOn, PERMISSION } from './moderation.js';
 import type { Env } from './env.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -43,11 +49,17 @@ const DISCORD_API = 'https://discord.com/api/v10';
 /** Discord application-command type 1 = CHAT_INPUT (a slash command). */
 const CHAT_INPUT = 1;
 
+/** Command-option types (Discord's own numbering). */
+const OPTION = { STRING: 3, INTEGER: 4, USER: 6 } as const;
+
 /**
- * The whole registry. `/link` is the first and, in this phase, the only
- * entry — the ceremony every write-capable command in design §2 reuses.
+ * The always-published registry: the two commands that are on.
+ *
+ * `/link` is phase 2's ceremony; `/have` is design §2b, answering at the
+ * public audiobook scope (§4 decision 4) for everyone, which is why it needs
+ * no credential and no gate.
  */
-export const ESTATE_COMMANDS = [
+export const BASE_COMMANDS = [
   {
     name: LINK_COMMAND_NAME,
     type: CHAT_INPUT,
@@ -56,7 +68,116 @@ export const ESTATE_COMMANDS = [
     // `dm_permission` left at Discord's default (allowed) — linking is a
     // personal act and is entirely reasonable to start from a DM.
   },
+  {
+    name: HAVE_COMMAND_NAME,
+    type: CHAT_INPUT,
+    description: 'Ask whether a book is on the estate’s shelves',
+    options: [
+      {
+        name: 'title',
+        type: OPTION.STRING,
+        description: 'A title, author or series to look for',
+        required: true,
+      },
+    ],
+  },
 ] as const;
+
+/**
+ * The moderation pair — TODO §0 item 4's decided scope, and nothing else.
+ *
+ * ⚠️ `default_member_permissions` is a SECOND, independent rail beside the
+ * runtime permission check: Discord itself hides the command from members who
+ * lack the bit, so most people never see a control they could not use (the
+ * estate's "prefer not rendering a control someone cannot use" rule). It is
+ * not a substitute for the runtime check — a server admin can override these
+ * per-server, so the interaction's own permissions are still what decides.
+ */
+export const MODERATION_COMMANDS = [
+  {
+    name: TIMEOUT_COMMAND_NAME,
+    type: CHAT_INPUT,
+    description: 'Time a member out (mirrors your own Moderate Members permission)',
+    default_member_permissions: PERMISSION.MODERATE_MEMBERS.toString(),
+    dm_permission: false,
+    options: [
+      { name: 'user', type: OPTION.USER, description: 'Who to time out', required: true },
+      {
+        name: 'duration',
+        type: OPTION.STRING,
+        description: 'How long — 10m, 1h, 1d (max 28 days)',
+        required: true,
+      },
+      {
+        name: 'reason',
+        type: OPTION.STRING,
+        description: 'Why (recorded in the estate log and this server’s audit log)',
+        required: false,
+      },
+    ],
+  },
+  {
+    name: CLEANUP_COMMAND_NAME,
+    type: CHAT_INPUT,
+    description: 'Preview and delete recent messages (mirrors your own Manage Messages permission)',
+    default_member_permissions: PERMISSION.MANAGE_MESSAGES.toString(),
+    dm_permission: false,
+    options: [
+      {
+        name: 'count',
+        type: OPTION.INTEGER,
+        description: `How many recent messages to look at (1–${CLEANUP_MAX})`,
+        required: true,
+        min_value: 1,
+        max_value: CLEANUP_MAX,
+      },
+      { name: 'user', type: OPTION.USER, description: 'Only this member’s messages', required: false },
+      {
+        name: 'contains',
+        type: OPTION.STRING,
+        description: `Only messages containing this text (max ${CLEANUP_CONTAINS_MAX} characters)`,
+        required: false,
+        max_length: CLEANUP_CONTAINS_MAX,
+      },
+    ],
+  },
+] as const;
+
+/**
+ * ⚠️ THE REGISTRY IS A FUNCTION OF THE KILL SWITCH — and that is a decision,
+ * recorded here because it is the one place a future session will look.
+ *
+ * Both idioms were on the table and both are defensible. A **visible command
+ * answering "switched off"** is honest, and it is what `/link` does today. A
+ * **hidden command** is also honest, and it is what was chosen, for one reason
+ * the link ceremony does not share:
+ *
+ *   `/link` being visible-but-off costs a curious person twenty seconds. A
+ *   visible `/timeout` costs a moderator the seconds in which they were
+ *   dealing with an actual incident — and worse, it advertises, in every
+ *   server GABI is ever invited to, a moderation capability the estate has
+ *   deliberately not switched on. Commands are GLOBAL (design §1.4): the
+ *   estate cannot show it to one server and not another.
+ *
+ * So while `MODERATION_ENABLED` is anything but `"on"`, Discord is told about
+ * `/link` and `/have` only. The handlers still exist, are still wired, and
+ * still answer the switched-off ephemeral if an interaction ever arrives —
+ * the kill-switch contract is honoured at RUNTIME regardless of what is
+ * published, which is what makes hiding them safe rather than merely quiet.
+ *
+ * ⚠️ Consequence, and it is the reason the register route reports what it
+ * published: re-running registration after the owner flips the switch DOES
+ * change the list (it is no longer a pure constant). That re-run is the
+ * documented second step of the flip — see docs/access/discord-bot.md.
+ */
+export function commandsFor(env: Pick<Env, 'MODERATION_ENABLED'>): readonly unknown[] {
+  return moderationOn(env) ? [...BASE_COMMANDS, ...MODERATION_COMMANDS] : [...BASE_COMMANDS];
+}
+
+/** The names in a registry — for the route's worded answer. */
+export function commandNames(commands: readonly unknown[]): string[] {
+  return commands.map((c) => (c as { name?: string }).name ?? '?');
+}
 
 /** Where `/link` sends people. Derived from the request, never hardcoded. */
 export function linkUrlFor(origin: string): string {

@@ -45,7 +45,7 @@ import { linkFromDoc, voteDocFields } from '../src/poll-vote.js';
 import { authorizeUrl, callbackUrl, LINK_SCOPE, readDiscordUser } from '../src/discord-oauth.js';
 import { confirmPage, esc, notConfiguredPage, page } from '../src/link-pages.js';
 import {
-  ESTATE_COMMANDS,
+  BASE_COMMANDS,
   isOwnerEmail,
   linkCommandMessage,
   roleIsAdmin,
@@ -523,8 +523,10 @@ test('every page carries a what-to-do line — the no-bare-status rule, mechanic
 // ===========================================================================
 
 test('the registry and the router agree on the command name', () => {
-  assert.equal(ESTATE_COMMANDS.length, 1);
-  assert.equal(ESTATE_COMMANDS[0]!.name, LINK_COMMAND_NAME);
+  // BASE_COMMANDS is the always-published half (/link, /have); the moderation
+  // pair is published only when the switch is on — see have.test.ts and
+  // moderation.test.ts for that contract.
+  assert.ok(BASE_COMMANDS.some((cmd) => cmd.name === LINK_COMMAND_NAME));
   assert.deepEqual(routeInteraction({ type: 2, data: { name: LINK_COMMAND_NAME } }), {
     kind: 'link_command',
   });

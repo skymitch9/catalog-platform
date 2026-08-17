@@ -28,10 +28,12 @@ test('PING routes to pong', () => {
   assert.deepEqual(routeInteraction({ type: 1 }), { kind: 'pong' });
 });
 
-test('APPLICATION_COMMAND: empty registry → unknown_command carrying the name', () => {
-  assert.deepEqual(routeInteraction({ type: 2, data: { name: 'have' } }), {
+test('APPLICATION_COMMAND: a name outside the registry → unknown_command carrying it', () => {
+  // `/recent` is design §2c.2 — designed, not built. It stands in here for
+  // "anything the router does not know", which /have used to be.
+  assert.deepEqual(routeInteraction({ type: 2, data: { name: 'recent' } }), {
     kind: 'unknown_command',
-    name: 'have',
+    name: 'recent',
   });
   assert.deepEqual(routeInteraction({ type: 2 }), { kind: 'unknown_command', name: 'unknown' });
 });
@@ -111,12 +113,12 @@ test('ephemeralMessage: type 4 with the ephemeral flag', () => {
 // different and prove the wrong thing while still passing.
 
 test('an unregistered slash command gets a worded ephemeral answer, not a bare failure', async () => {
-  const res = await signedPost({ type: 2, data: { name: 'have' } });
+  const res = await signedPost({ type: 2, data: { name: 'recent' } });
   assert.equal(res.status, 200);
   const data = (await res.json()) as { type: number; data: { content: string; flags: number } };
   assert.equal(data.type, 4);
   assert.equal(data.data.flags, EPHEMERAL);
-  assert.match(data.data.content, /\/have/);
+  assert.match(data.data.content, /\/recent/);
 });
 
 test('a vote click with the Firestore credential unset says so in words — vote NOT recorded, no network', async () => {

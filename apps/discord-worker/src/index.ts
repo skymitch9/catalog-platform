@@ -3,6 +3,15 @@
  * in sibling modules (verify.ts signatures, interactions.ts routing,
  * poll-vote.ts the vote flow, firebase-sa.ts the Firestore credential).
  *
+ * Slash commands, and what each answers:
+ *   /link      the identity-link ceremony (link.ts, commands.ts)
+ *   /have      "is this book on the estate's shelves?" — the PUBLIC audiobook
+ *              slice for everyone, no credential on the call (have.ts)
+ *   /timeout   ⚠️ DARK. Answers "moderation is switched off" while
+ *   /cleanup   ⚠️ DARK.  MODERATION_ENABLED is anything but "on"
+ *              (moderation.ts / mod-actions.ts), and is not even published to
+ *              Discord until it is.
+ *
  * What this is: the bot's single HTTP interactions endpoint
  * (discord-bot-design.md §1.3 — a dedicated Worker, deliberately apart from
  * auth-worker so the bot token and the estate directory stay separately
@@ -23,26 +32,46 @@
  */
 
 import { Hono } from 'hono';
-import type { AppBindings } from './env.js';
+import type { AppBindings, Env } from './env.js';
 import { verifyDiscordSignature } from './verify.js';
 import {
+  deferredEphemeral,
+  displayNameOf,
   ephemeralMessage,
   isInteraction,
   ResponseType,
   routeInteraction,
+  type InteractionActor,
 } from './interactions.js';
 import { processPollVote } from './poll-vote.js';
 import { pollSyncRoutes } from './poll-sync.js';
 import { parseServiceAccount, type ServiceAccount } from './firebase-sa.js';
 import { linkConfigured, linkRoutes, LINK_MSG } from './link.js';
 import {
-  ESTATE_COMMANDS,
+  commandNames,
+  commandsFor,
   isOwnerEmail,
   linkCommandMessage,
   putGlobalCommands,
   readLadderRole,
   roleIsAdmin,
 } from './commands.js';
+import { indexBase, processHave } from './have.js';
+import {
+  moderationOn,
+  MOD_MSG,
+  verifyConfirmCustomId,
+  type CleanupPlan,
+} from './moderation.js';
+import {
+  planCleanup,
+  planTimeout,
+  realModDeps,
+  runCleanupConfirm,
+  runCleanupPreview,
+  runTimeout,
+  type ModCallContext,
+} from './mod-actions.js';
 import { resolveIdentity } from '@platform/estate-auth';
 
 const app = new Hono<AppBindings>();
@@ -60,6 +89,8 @@ app.get('/api/health', (c) =>
       'poll_vote_component',
       'identity_link',
       'poll_message_sync',
+      'have_command',
+      'moderation_dark',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -88,6 +119,15 @@ app.get('/api/health', (c) =>
       Boolean(c.env.POLL_SYNC_TOKEN) &&
       Boolean(c.env.DISCORD_BOT_TOKEN) &&
       Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    // ⚠️ The kill switch, VISIBLE from outside — the same honest-false
+    // discipline as the two rows above. A var, not a secret, so reporting the
+    // derived boolean leaks nothing; and `false` here is the whole state of
+    // the moderation build, checkable without pressing anything.
+    moderation_enabled: moderationOn(c.env),
+    // What scope /have answers at, for everyone (design §4 decision 4). Stated
+    // rather than inferred: if this ever reads anything but `audiobook`, the
+    // privacy line moved and somebody should know why.
+    have_scope: 'audiobook',
   }),
 );
 
@@ -178,7 +218,12 @@ app.post('/admin/commands/register', async (c) => {
     );
   }
 
-  const result = await putGlobalCommands(applicationId, botToken, ESTATE_COMMANDS);
+  // ⚠️ The registry is a FUNCTION of MODERATION_ENABLED (commands.ts explains
+  // the choice in full): while the switch is off, Discord is told about /link
+  // and /have only, and the moderation pair is published by re-running this
+  // route AFTER the owner flips it.
+  const registry = commandsFor(c.env);
+  const result = await putGlobalCommands(applicationId, botToken, registry);
   if (!result.ok) {
     console.error('slash command registration failed:', result.status, result.detail);
     return c.json(
@@ -196,10 +241,56 @@ app.post('/admin/commands/register', async (c) => {
     ok: true,
     message:
       `Published ${result.count} global command(s). Global commands can take up to an hour to ` +
-      'appear the first time; updates show up almost immediately.',
-    commands: ESTATE_COMMANDS.map((cmd) => cmd.name),
+      'appear the first time; updates show up almost immediately.' +
+      (moderationOn(c.env)
+        ? ' Moderation is ON, so /timeout and /cleanup were published too.'
+        : ' Moderation is switched off, so /timeout and /cleanup were deliberately NOT published — ' +
+          're-run this route after MODERATION_ENABLED is flipped to "on" and they will appear.'),
+    commands: commandNames(registry),
+    moderation_enabled: moderationOn(c.env),
   });
 });
+
+// ---------------------------------------------------------------------------
+// Three small wiring helpers. Everything they touch is decided elsewhere —
+// this file stays an orchestrator (the estate's thin-entrypoint rule).
+// ---------------------------------------------------------------------------
+
+/** Run the slow half after the ack. Tests drive the app without an execution
+ * context; production always has one, and none of these flows rejects. */
+function defer(
+  c: { executionCtx: { waitUntil(promise: Promise<unknown>): void } },
+  work: Promise<unknown>,
+): void {
+  try {
+    c.executionCtx.waitUntil(work);
+  } catch {
+    void work;
+  }
+}
+
+function serviceAccountOrNull(json: string | undefined): ServiceAccount | null {
+  try {
+    return parseServiceAccount(json);
+  } catch (err) {
+    console.error('FIREBASE_SERVICE_ACCOUNT malformed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Everything a moderation path needs about WHO asked and WHERE — including
+ * the kill switch, read once, here, from the environment. */
+function modContext(env: Env, actor: InteractionActor): ModCallContext {
+  return {
+    enabled: moderationOn(env),
+    permissionsRaw: actor.permissions,
+    guildId: actor.guildId,
+    channelId: actor.channelId,
+    actorId: actor.user?.id ?? '',
+    actorName: displayNameOf(actor.user),
+    applicationId: env.DISCORD_APPLICATION_ID || actor.applicationId,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // The interactions endpoint. Order is load-bearing: config check → signature
@@ -257,6 +348,133 @@ app.post('/interactions', async (c) => {
         ),
       );
 
+    case 'have_command': {
+      // Design §2b / §4 decision 4: the PUBLIC audiobook slice, for everyone,
+      // with no credential on the call. Deferred because it asks the index —
+      // a round trip must never race Discord's 3-second window (§1.7).
+      if (!decision.actor.token) {
+        return c.json(
+          ephemeralMessage(
+            'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
+              'Nothing went wrong on the estate side — try the command again.',
+          ),
+        );
+      }
+      defer(
+        c,
+        processHave({
+          query: decision.query,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          indexBaseUrl: indexBase(c.env),
+          serviceAccountJson: c.env.FIREBASE_SERVICE_ACCOUNT,
+          discordUserId: decision.actor.user?.id ?? null,
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    // -----------------------------------------------------------------------
+    // MODERATION — dark. Each of the three paths checks MODERATION_ENABLED
+    // itself (via the planners' shared gate, and again inside the flows), and
+    // while it is off every one of them answers MOD_MSG.switchedOff having
+    // performed no I/O at all.
+    // -----------------------------------------------------------------------
+
+    case 'timeout_command': {
+      const ctx = modContext(c.env, decision.actor);
+      const planned = planTimeout(ctx, {
+        targetUserId: decision.target.id,
+        targetName: decision.target.name,
+        duration: decision.duration,
+        reason: decision.reason,
+      });
+      if (planned.kind === 'refuse') return c.json(ephemeralMessage(planned.message));
+      const botToken = c.env.DISCORD_BOT_TOKEN;
+      if (!botToken || !decision.actor.token) {
+        return c.json(ephemeralMessage(MOD_MSG.botTokenMissing));
+      }
+      defer(
+        c,
+        runTimeout(
+          realModDeps({
+            botToken,
+            serviceAccount: serviceAccountOrNull(c.env.FIREBASE_SERVICE_ACCOUNT),
+            applicationId: ctx.applicationId,
+            interactionToken: decision.actor.token,
+          }),
+          ctx,
+          planned.plan,
+        ),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'cleanup_command': {
+      const ctx = modContext(c.env, decision.actor);
+      const planned = planCleanup(ctx, {
+        count: decision.count,
+        user: decision.userId,
+        contains: decision.contains,
+      });
+      if (planned.kind === 'refuse') return c.json(ephemeralMessage(planned.message));
+      const botToken = c.env.DISCORD_BOT_TOKEN;
+      if (!botToken || !decision.actor.token) {
+        return c.json(ephemeralMessage(MOD_MSG.botTokenMissing));
+      }
+      defer(
+        c,
+        runCleanupPreview(
+          realModDeps({
+            botToken,
+            serviceAccount: serviceAccountOrNull(c.env.FIREBASE_SERVICE_ACCOUNT),
+            applicationId: ctx.applicationId,
+            interactionToken: decision.actor.token,
+          }),
+          ctx,
+          planned.plan,
+        ),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'mod_confirm': {
+      const ctx = modContext(c.env, decision.actor);
+      // The switch, before the signature: an off bot does not even reveal
+      // whether a confirm id was valid.
+      if (!ctx.enabled) return c.json(ephemeralMessage(MOD_MSG.switchedOff));
+      const botToken = c.env.DISCORD_BOT_TOKEN;
+      if (!botToken || !decision.actor.token) {
+        return c.json(ephemeralMessage(MOD_MSG.botTokenMissing));
+      }
+      const parsed = await verifyConfirmCustomId(
+        botToken,
+        decision.customId,
+        { invokerId: ctx.actorId, channelId: ctx.channelId },
+        Date.now(),
+      );
+      if (!parsed.ok) {
+        return c.json(
+          ephemeralMessage(parsed.reason === 'expired' ? MOD_MSG.confirmExpired : MOD_MSG.confirmInvalid),
+        );
+      }
+      const plan: CleanupPlan = parsed.plan;
+      defer(
+        c,
+        runCleanupConfirm(
+          realModDeps({
+            botToken,
+            serviceAccount: serviceAccountOrNull(c.env.FIREBASE_SERVICE_ACCOUNT),
+            applicationId: ctx.applicationId,
+            interactionToken: decision.actor.token,
+          }),
+          ctx,
+          plan,
+        ),
+      );
+      return c.json({ type: ResponseType.DEFERRED_UPDATE_MESSAGE });
+    }
+
     case 'unknown_command':
       return c.json(
         ephemeralMessage(
@@ -284,13 +502,7 @@ app.post('/interactions', async (c) => {
           ),
         );
       }
-      let sa: ServiceAccount | null;
-      try {
-        sa = parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT);
-      } catch (err) {
-        console.error('FIREBASE_SERVICE_ACCOUNT malformed:', err instanceof Error ? err.message : err);
-        sa = null;
-      }
+      const sa: ServiceAccount | null = serviceAccountOrNull(c.env.FIREBASE_SERVICE_ACCOUNT);
       if (!sa) {
         return c.json(
           ephemeralMessage(
@@ -299,20 +511,16 @@ app.post('/interactions', async (c) => {
           ),
         );
       }
-      const work = processPollVote({
-        sa,
-        ref: decision.ref,
-        discordUserId: decision.user.id,
-        applicationId: c.env.DISCORD_APPLICATION_ID || decision.applicationId,
-        interactionToken: decision.token,
-      });
-      // Tests run the app without an execution context; production always
-      // has one. processPollVote never rejects, so floating is safe there.
-      try {
-        c.executionCtx.waitUntil(work);
-      } catch {
-        void work;
-      }
+      defer(
+        c,
+        processPollVote({
+          sa,
+          ref: decision.ref,
+          discordUserId: decision.user.id,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.applicationId,
+          interactionToken: decision.token,
+        }),
+      );
       return c.json({ type: ResponseType.DEFERRED_UPDATE_MESSAGE });
     }
   }

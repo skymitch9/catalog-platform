@@ -7,6 +7,7 @@
  */
 
 import { parsePollCustomId, POLL_VOTE_PREFIX, type PollVoteRef } from './poll-vote.js';
+import { MOD_CONFIRM_PREFIX } from './moderation.js';
 
 /** Discord interaction request types (the ones this Worker handles). */
 export const InteractionType = {
@@ -19,6 +20,10 @@ export const InteractionType = {
 export const ResponseType = {
   PONG: 1,
   CHANNEL_MESSAGE_WITH_SOURCE: 4,
+  /** "Thinking…" — buys 15 minutes for a command whose answer needs a round
+   * trip (design §1.7: build the deferred path from day one, never bolt it on
+   * after the synchronous one is observed flaky). */
+  DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: 5,
   DEFERRED_UPDATE_MESSAGE: 6,
   UPDATE_MESSAGE: 7,
 } as const;
@@ -32,9 +37,28 @@ export const EPHEMERAL = 64;
  * exactly the drift this one constant prevents. */
 export const LINK_COMMAND_NAME = 'link';
 
+/** `/have` — design §2b. Same rule as LINK_COMMAND_NAME: the ROUTER owns the
+ * vocabulary and commands.ts imports it, so a registered command the router
+ * would not recognise cannot exist. */
+export const HAVE_COMMAND_NAME = 'have';
+
+/** The two moderation commands (TODO §0 item 4's decided scope). Named here
+ * for the same reason, and answered by the switched-off ephemeral while
+ * MODERATION_ENABLED is anything but "on". */
+export const TIMEOUT_COMMAND_NAME = 'timeout';
+export const CLEANUP_COMMAND_NAME = 'cleanup';
+
 export interface DiscordUser {
   id: string;
   username?: string;
+  global_name?: string;
+}
+
+/** One slash-command option as Discord sends it. */
+export interface CommandOption {
+  name?: string;
+  type?: number;
+  value?: string | number | boolean;
 }
 
 /** The subset of an interaction payload this Worker reads. */
@@ -42,10 +66,50 @@ export interface Interaction {
   type: number;
   token?: string;
   application_id?: string;
-  data?: { name?: string; custom_id?: string };
-  /** Guild interactions carry member.user; DM interactions carry user. */
-  member?: { user?: DiscordUser };
+  guild_id?: string;
+  channel_id?: string;
+  data?: {
+    name?: string;
+    custom_id?: string;
+    options?: CommandOption[];
+    resolved?: { users?: Record<string, DiscordUser> };
+  };
+  /** Guild interactions carry member.user AND the member's computed
+   * permissions for this channel — the value `/timeout` and `/cleanup` mirror.
+   * Discord sends it as a decimal STRING (the bitfield exceeds 2^53). */
+  member?: { user?: DiscordUser; permissions?: string };
   user?: DiscordUser;
+}
+
+/** A named option's raw value, or undefined. */
+export function optionValue(i: Interaction, name: string): string | number | boolean | undefined {
+  return i.data?.options?.find((o) => o.name === name)?.value;
+}
+
+export function stringOption(i: Interaction, name: string): string {
+  const v = optionValue(i, name);
+  return typeof v === 'string' ? v : '';
+}
+
+export function numberOption(i: Interaction, name: string): number | undefined {
+  const v = optionValue(i, name);
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && /^-?\d+$/.test(v)) return Number(v);
+  return undefined;
+}
+
+/** A USER-type option arrives as an id string; the display name (if Discord
+ * resolved one) comes from `data.resolved.users`. */
+export function userOption(i: Interaction, name: string): { id: string; name: string } {
+  const id = stringOption(i, name);
+  if (!id) return { id: '', name: '' };
+  const resolved = i.data?.resolved?.users?.[id];
+  return { id, name: resolved?.global_name || resolved?.username || '' };
+}
+
+/** The display name for whoever is acting — for the audit line and the words. */
+export function displayNameOf(u: DiscordUser | null): string {
+  return u?.global_name || u?.username || 'someone';
 }
 
 /** Who clicked/typed — guild shape first, DM shape second, null if absent. */
@@ -54,9 +118,39 @@ export function interactionUser(i: Interaction): DiscordUser | null {
   return u && typeof u.id === 'string' && u.id.length > 0 ? u : null;
 }
 
+/** What every command/component decision carries about WHO and WHERE — the
+ * facts the moderation gate mirrors and the audit line records. Assembled once
+ * so no handler has to remember where Discord hides the permissions. */
+export interface InteractionActor {
+  user: DiscordUser | null;
+  /** Discord's computed permission bits for this member, as sent (a decimal
+   * string) — absent in DMs, which is a different answer from "no permission". */
+  permissions: unknown;
+  guildId: string;
+  channelId: string;
+  token: string;
+  applicationId: string;
+}
+
 export type RouterDecision =
   | { kind: 'pong' }
   | { kind: 'link_command' }
+  | { kind: 'have_command'; query: string; actor: InteractionActor }
+  | {
+      kind: 'timeout_command';
+      actor: InteractionActor;
+      target: { id: string; name: string };
+      duration: string;
+      reason: string;
+    }
+  | {
+      kind: 'cleanup_command';
+      actor: InteractionActor;
+      count: number | undefined;
+      userId: string;
+      contains: string;
+    }
+  | { kind: 'mod_confirm'; customId: string; actor: InteractionActor }
   | { kind: 'unknown_command'; name: string }
   | {
       kind: 'poll_vote';
@@ -67,6 +161,17 @@ export type RouterDecision =
     }
   | { kind: 'bad_component'; customId: string }
   | { kind: 'unsupported'; type: number };
+
+export function interactionActor(i: Interaction): InteractionActor {
+  return {
+    user: interactionUser(i),
+    permissions: i.member?.permissions,
+    guildId: i.guild_id ?? '',
+    channelId: i.channel_id ?? '',
+    token: i.token ?? '',
+    applicationId: i.application_id ?? '',
+  };
+}
 
 /** Type guard for a JSON body that is at least interaction-shaped. */
 export function isInteraction(body: unknown): body is Interaction {
@@ -91,11 +196,41 @@ export function routeInteraction(i: Interaction): RouterDecision {
     case InteractionType.APPLICATION_COMMAND: {
       const name = i.data?.name ?? 'unknown';
       if (name === LINK_COMMAND_NAME) return { kind: 'link_command' };
+      if (name === HAVE_COMMAND_NAME) {
+        return { kind: 'have_command', query: stringOption(i, 'title'), actor: interactionActor(i) };
+      }
+      // ⚠️ The two moderation commands are ROUTED even though they are not
+      // published while the switch is off (commands.ts's registry is a
+      // function of MODERATION_ENABLED). A stale global command, a
+      // hand-crafted interaction, or the minutes after a flip must all land on
+      // the switched-off answer rather than on "nothing answers /timeout" —
+      // the kill-switch contract is about behaviour, not about visibility.
+      if (name === TIMEOUT_COMMAND_NAME) {
+        return {
+          kind: 'timeout_command',
+          actor: interactionActor(i),
+          target: userOption(i, 'user'),
+          duration: stringOption(i, 'duration'),
+          reason: stringOption(i, 'reason'),
+        };
+      }
+      if (name === CLEANUP_COMMAND_NAME) {
+        return {
+          kind: 'cleanup_command',
+          actor: interactionActor(i),
+          count: numberOption(i, 'count'),
+          userId: userOption(i, 'user').id,
+          contains: stringOption(i, 'contains'),
+        };
+      }
       return { kind: 'unknown_command', name };
     }
 
     case InteractionType.MESSAGE_COMPONENT: {
       const customId = i.data?.custom_id ?? '';
+      if (customId.startsWith(`${MOD_CONFIRM_PREFIX}|`)) {
+        return { kind: 'mod_confirm', customId, actor: interactionActor(i) };
+      }
       if (customId.startsWith(`${POLL_VOTE_PREFIX}|`)) {
         const ref = parsePollCustomId(customId);
         if (ref && typeof i.token === 'string' && i.token.length > 0) {
@@ -121,5 +256,18 @@ export function ephemeralMessage(content: string) {
   return {
     type: ResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: { content, flags: EPHEMERAL },
+  };
+}
+
+/**
+ * "GABI is thinking…", privately. The ack that buys 15 minutes for a command
+ * that has to ask something else (the index, Discord, Firestore) before it can
+ * answer. ⚠️ The ephemeral flag has to be set HERE — a followup cannot make a
+ * public deferral private afterwards.
+ */
+export function deferredEphemeral() {
+  return {
+    type: ResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+    data: { flags: EPHEMERAL },
   };
 }

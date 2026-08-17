@@ -48,6 +48,21 @@ export interface Env {
    * the route answers a worded 503 and `/api/health` reports
    * `configured.poll_sync_token: false`. */
   POLL_SYNC_TOKEN?: string;
+  /** ⚠️ THE MODERATION KILL SWITCH — a plain var in wrangler.toml, declared
+   * there (2026-08-16, owner order) BEFORE any moderation code existed, with
+   * the required behaviour written into the comment beside it. `"on"` and
+   * nothing else enables `/timeout` and `/cleanup`; absent, empty, `"true"`,
+   * `"1"` and every typo all mean OFF, and every moderation code path answers
+   * a worded "switched off" ephemeral while it is. Flipping it is the OWNER's
+   * evidence-gated step — never a side effect of a deploy, and never done by
+   * an agent. See src/moderation.ts. */
+  MODERATION_ENABLED?: string;
+  /** Override for the estate index `/have` queries (default:
+   * `https://index.heygabi.ai`). A var, not a secret — the host is public and
+   * the call carries no credential at all, which IS the scope decision
+   * (design §4 decision 4). Exists so a test or a future lane can point
+   * elsewhere without editing code. */
+  INDEX_BASE_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

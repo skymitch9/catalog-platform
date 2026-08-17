@@ -41,14 +41,27 @@ FIREBASE_PROJECT_ID = "audiobook-catalog"
 # (src/commands.ts). Everything else resolves authority from site_roles/{uid}.
 OWNER_EMAILS = "nbaslamking@gmail.com,mitchlandtv@gmail.com"
 
+# The estate index `/have` queries (design §2b). A var, not a secret: the host
+# is public and ⚠️ the call carries NO credential at all — that absence IS the
+# scope decision (§4 decision 4: an unlinked Discord user gets the same public
+# audiobook slice as an anonymous web visitor). Present so a test or a future
+# lane can point elsewhere; the default in code is this same host.
+INDEX_BASE_URL = "https://index.heygabi.ai"
+
 # ⚠️ MODERATION KILL-SWITCH (owner order 2026-08-16: "disable her reacting to
-# any admin mod stuff for now until we get further along"). Nothing in the
-# Worker consumes this yet — no moderation feature exists — but it is
-# declared NOW so the phase-4 moderation build (timeouts + cleanup, TODO §0)
-# ships DARK behind it by contract: every mod code path must check this var
-# and answer a worded "moderation is switched off" ephemeral while it is
-# anything but "on". Flipping it is the owner's evidence-gated step, same
-# shadow-first idiom as ESTATE_CHECK — never a side effect of a deploy.
+# any admin mod stuff for now until we get further along"). Declared here
+# BEFORE the moderation build existed, so that build would ship DARK behind it
+# by contract: every mod code path must check this var and answer a worded
+# "moderation is switched off" ephemeral while it is anything but "on".
+#
+# ⚠️ CONSUMED SINCE 2026-08-17 — /timeout and /cleanup are BUILT (src/
+# moderation.ts, src/mod-actions.ts) and the contract is pinned by
+# test/moderation.test.ts, including that "true", "1" and "yes" all mean OFF.
+# It is ALSO read by src/commands.ts: while this is off, the two commands are
+# not even published to Discord, so nobody sees a moderation control that
+# cannot act. Flipping it is the owner's evidence-gated step — never a side
+# effect of a deploy — and the flip has a documented SECOND step: re-run
+# POST /admin/commands/register so the pair appears (access/discord-bot.md).
 MODERATION_ENABLED = "off"
 
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):

@@ -136,6 +136,108 @@ export async function editChannelMessage(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Bot-token calls — MODERATION (moderation.ts / mod-actions.ts)
+//
+// ⚠️ Every function below is reachable ONLY when MODERATION_ENABLED is "on",
+// which it is not. They are written, typed and tested; none has ever run
+// against Discord. The bot's own server permissions were granted at invite
+// time (the moderator bundle) and stay unconsumed while the switch is off.
+// ---------------------------------------------------------------------------
+
+/**
+ * Discord's own audit log takes a REASON header, and giving it one is the
+ * difference between a server admin seeing "GABI timed out X — spam in
+ * #general, by @mod" and seeing an unexplained bot action. Header values must
+ * be ASCII-safe, so it is percent-encoded (Discord's documented handling).
+ */
+function auditReasonHeader(reason: string | undefined): Record<string, string> {
+  const text = (reason ?? '').trim();
+  if (text.length === 0) return {};
+  return { 'x-audit-log-reason': encodeURIComponent(text.slice(0, 400)) };
+}
+
+/**
+ * Time a member out — PATCH the guild member's `communication_disabled_until`.
+ * `untilIso` null LIFTS a timeout; this build only ever sets one.
+ *
+ * 403 here is usually ROLE ORDER, not a missing permission: Discord refuses
+ * to let any actor moderate a member whose highest role sits above theirs, and
+ * refuses the guild owner outright. The caller words that specifically.
+ */
+export async function timeoutGuildMember(
+  botToken: string,
+  guildId: string,
+  userId: string,
+  untilIso: string | null,
+  reason?: string,
+  sleep?: Sleeper,
+): Promise<Response> {
+  return discordFetch(
+    `${DISCORD_API}/guilds/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}`,
+    {
+      method: 'PATCH',
+      headers: { ...botHeaders(botToken), ...auditReasonHeader(reason) },
+      body: JSON.stringify({ communication_disabled_until: untilIso }),
+    },
+    sleep,
+  );
+}
+
+/** The most recent `limit` messages in a channel (Discord's own ceiling is
+ * 100; the cleanup cap keeps this well under it). */
+export async function listChannelMessages(
+  botToken: string,
+  channelId: string,
+  limit: number,
+  sleep?: Sleeper,
+): Promise<Response> {
+  const capped = Math.max(1, Math.min(100, Math.floor(limit)));
+  return discordFetch(
+    `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages?limit=${capped}`,
+    { method: 'GET', headers: botHeaders(botToken) },
+    sleep,
+  );
+}
+
+/**
+ * Bulk delete. ⚠️ Discord's endpoint takes **2 to 100** ids and refuses
+ * anything older than 14 days — both limits are the caller's to respect, and
+ * the caller surfaces them in words rather than discovering them as a 400.
+ */
+export async function bulkDeleteMessages(
+  botToken: string,
+  channelId: string,
+  messageIds: readonly string[],
+  reason?: string,
+  sleep?: Sleeper,
+): Promise<Response> {
+  return discordFetch(
+    `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages/bulk-delete`,
+    {
+      method: 'POST',
+      headers: { ...botHeaders(botToken), ...auditReasonHeader(reason) },
+      body: JSON.stringify({ messages: messageIds }),
+    },
+    sleep,
+  );
+}
+
+/** The single-message door — bulk-delete refuses a list of one. */
+export async function deleteChannelMessage(
+  botToken: string,
+  channelId: string,
+  messageId: string,
+  reason?: string,
+  sleep?: Sleeper,
+): Promise<Response> {
+  return discordFetch(
+    `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: 'DELETE', headers: { ...botHeaders(botToken), ...auditReasonHeader(reason) } },
+    sleep,
+  );
+}
+
 /**
  * The channel a webhook posts into, read with the webhook's OWN token.
  *
