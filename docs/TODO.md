@@ -52,14 +52,40 @@ read-only pack — none were done):
    author-or-moderator on `user_content_warnings{,_dev}` (author bound by a
    new `authorUid` field; rules deployed and smoke-tested). So the owner
    decision this item asked for is answered — a member self-delete is a
-   member floor and will not be denied at enforce. ⚠️ Still unmeasured: the
-   worker must be **deployed** before `warning.selfDelete` stops logging as
-   `unknown_action`, and neither warning action has an organic report yet.
-4. 🟠 **Exercise the surfaces deliberately** — highest value actor is a
-   **household club manager who is not ladder-admin** (`club.setWebhook` /
-   `club.clearWebhook` / `club.claimManager` are `administerClub`, admin-floor,
-   club island **off**; `club.claimManager` is additionally self-blocking —
-   it's how one *becomes* a manager).
+   member floor and will not be denied at enforce.
+   ✅ The worker deploy this item was waiting on **landed 2026-08-17**
+   (version `d5752cca-5435-4f63-a06f-788b39f53fca`); `warning.selfDelete` was
+   confirmed on the live tail to resolve rather than log `unknown_action`.
+   ⚠️ Still unmeasured: neither warning action has an ORGANIC report yet.
+4. 🟢 **Exercise the surfaces deliberately** — ⚠️ **the reason they COULD NOT
+   be exercised is fixed 2026-08-17** (owner-approved CLUB MANAGER package;
+   catalog-platform `fe30cb0`, audiobook_catalog `84009e7`). The blocker was
+   not shyness about testing: `club.setWebhook` / `club.clearWebhook` /
+   `club.claimManager` were all `administerClub`, admin-floor, club island
+   **off**, and `club.claimManager` was **self-blocking** — it is how one
+   *becomes* a manager, so no non-admin could reach the island at all.
+   Now: `administerClub` is island-held at a moderator floor, and
+   `claimManager` is its own rule (unclaimed → any live session, claimed →
+   moderator+ override). `firestore.rules` enforces the same shapes live —
+   **18/18 REST smoke assertions** against the deployed rules, re-runnable
+   via `audiobook_catalog/scripts/smoke_club_manager_rules.py`.
+   **Still to measure (this is what remains of the item):** a real household
+   club manager doing these in a browser. Nothing organic has been logged
+   yet; the worker vocabulary is deployed and verified live (version
+   `d5752cca-5435-4f63-a06f-788b39f53fca` — `club.claimManager` and
+   `warning.selfDelete` both resolve, a control action still reads
+   `unknown_action`, and the log line now carries `club_claimed`), and the
+   site half rides the next owner-worded promote to prod.
+
+5. 🧑 **OWNER QUESTION, opened 2026-08-17 — should `manageClub` follow
+   `administerClub` down to a moderator floor?** As it stands a site
+   moderator cannot toggle a claimed club's features/joinMode, while a
+   rankless member who claimed that club can. The same inversion existed
+   before this package (manageClub has been island-held at an admin floor
+   since the matrix was written) and this build deliberately did NOT touch
+   it: lowering a floor is access-INCREASING, so it is confirmed, not
+   assumed. One line in `capabilities.ts` plus `canManageClub` in
+   `firestore.rules` if the answer is yes.
 
 Owner action available now: `wrangler d1 execute estate_auth --remote` was
 **blocked by the permission classifier**, so the estate membership census

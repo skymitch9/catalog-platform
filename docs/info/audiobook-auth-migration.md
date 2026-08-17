@@ -370,6 +370,39 @@ The ROLES.md §1b ask, absorbed here because it is the same migration:
 `manager → moderator` preserved; `guest`/`member`/`contributor`/`admin` are
 new rungs nobody migrates into. Club managers (`managerUids`) stay orthogonal.
 
+⚠️ **Revised 2026-08-17 — the CLUB MANAGER package (owner-approved: "Yes I'm
+good with your club logic").** The 2026-08-16 tightening had one admin-only
+`administerClub` covering both the Discord webhook and `managerUids`. The
+shadow soak's blocker 4 showed why that could not stand: the surface was
+unexercisable, and `claimManager` was **self-blocking** — claiming is how one
+*becomes* a club manager, so an admin floor on it meant nobody below admin
+could ever reach the club island at all. The capability split in two:
+
+- **`administerClub`** — the club's own settings. Club-scoped power over a
+  club you already run, so the **island holds it**; floor drops `admin` →
+  `moderator` so the island can never out-rank the ladder (a bound manager
+  may hold no rung whatsoever).
+- **`claimClub`** — the roster itself. **Island OFF, permanently**: a manager
+  appointing co-managers is the peer-escalation ROLES.md outlaws. Claiming an
+  already-claimed club is moderator+ (the override path). One narrow open
+  arm: an **unclaimed** club is first-come-first-served to any live session.
+
+⚠️ **"any member may claim" does NOT mean the `member` RUNG** — that rung is
+granted and essentially nobody holds it, so flooring the claim there would
+re-create the self-blocking AND diverge from `firestore.rules`, which cannot
+test a rung and enforces "signed in". `CLAIM_UNCLAIMED_FLOOR` in
+capabilities.ts is the one-line lever if the owner ever means the rung.
+
+⚠️ **Known inversion, NOT changed by this build:** `manageClub` keeps its
+`admin` floor while being island-held, so a site moderator still cannot
+toggle a claimed club's features though a rankless club manager can. That
+predates 2026-08-17; lowering it is a real widening and is an owner
+question in `docs/TODO.md`, not a silent fix.
+
+⚠️ **Unlike every other row, these two are enforced by `firestore.rules`
+TODAY**, not only by the dormant worker — the site's live gate was changed in
+the same package (audiobook_catalog `84009e7`, deployed and smoke-tested).
+
 | Capability | guest | member | contributor | moderator | admin | owner | Enforced by (end state) |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|---|
 | `read` (site, reviews, stats, clubs) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | nothing — world-readable stays |
@@ -378,7 +411,8 @@ new rungs nobody migrates into. Club managers (`managerUids`) stay orthogonal.
 | `upload` (inbox → validated promote) | | | ✅ | ✅ | ✅ | ✅ | **worker** Phase 4 |
 | `operateClub` (schedule, polls mgmt, next meeting, membership ops, content deletes — any club) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 (club managers get it on their own club) |
 | `manageClub` (structural: features, joinMode, read lifecycle, club delete — any club) | | | | | ✅ | ✅ | **worker** Phase 3 (club managers on their own club) |
-| `administerClub` (webhook, managerUids) | | | | | ✅ | ✅ | **worker** Phase 3 — never club managers (2026-08-16 tightening preserved) |
+| `administerClub` (the club's own settings — the Discord webhook) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 + `firestore.rules` today — **club managers hold it on their own club** (2026-08-17) |
+| `claimClub` (writing `managerUids`) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 + `firestore.rules` today — **never** club managers; an UNCLAIMED club is first-come-first-served to any live session |
 | `removeAnyReview` | | | | | ✅ | ✅ | **worker** Phase 3 |
 | `manageUsers` (grant strictly beneath self) | | | | ✅† | ✅ | ✅ | already live: auth-worker `canGrant()` — †moderator+ per `GRANT_FLOOR` |
 | grant `admin` | | | | | | ✅ | already live: `canGrant()` (nothing outranks owner) |
