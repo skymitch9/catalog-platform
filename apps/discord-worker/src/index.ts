@@ -32,6 +32,7 @@
  */
 
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { AppBindings, Env } from './env.js';
 import { verifyDiscordSignature } from './verify.js';
 import {
@@ -151,7 +152,21 @@ app.route('/', pollSyncRoutes);
 // POST /admin/commands/register — publish the slash-command registry to
 // Discord. Estate admin only; see commands.ts for why this is a route rather
 // than a script (the credentials live in the Worker and nowhere else).
+//
+// CORS locked to the apex (2026-08-17): the registration is performed from
+// the /admin page with the admin's own bearer, and that page's CSP names this
+// Worker — the auth-worker's adminCors idiom, origin pinned rather than
+// env-configurable because exactly one page legitimately calls this.
 // ---------------------------------------------------------------------------
+app.use(
+  '/admin/commands/register',
+  cors({
+    origin: 'https://heygabi.ai',
+    allowMethods: ['POST', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  }),
+);
 app.post('/admin/commands/register', async (c) => {
   let identity;
   try {
