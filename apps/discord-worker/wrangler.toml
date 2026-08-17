@@ -80,4 +80,17 @@ MODERATION_ENABLED = "off"
 #     ships-dark idiom as MODERATION_ENABLED above.
 #     It also derives the HMAC key for the pending-link cookie, so rotating
 #     it invalidates in-flight link attempts and nothing else.)
+#   wrangler secret put POLL_SYNC_TOKEN           (phase 3, added 2026-08-17.
+#     ⚠️ NOT A PORTAL VALUE — nobody issues this one. It is a shared secret
+#     the conductor MINTS (any long random string, e.g. `openssl rand -hex 32`)
+#     and gives to BOTH sides: here, and to the audiobook pipeline as the env
+#     var of the same name, which app/club_announcements.py reads to call
+#     POST /polls/sync on its existing cadence.
+#     A third credential class, deliberately weaker than the other two:
+#     holding it lets someone make the bot re-render its OWN poll messages
+#     sooner than it would have. It grants no Discord powers, and it can post
+#     nothing a poll doc does not already say.
+#     ⚠️ SHIPS DARK until set: POST /polls/sync answers a worded 503 saying
+#     exactly this, and /api/health reports configured.poll_sync_token = false
+#     and poll_sync_ready = false. Same idiom as DISCORD_CLIENT_SECRET above.)
 # Locally they live in .dev.vars (gitignored).

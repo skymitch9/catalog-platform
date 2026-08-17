@@ -36,6 +36,16 @@ export interface Env {
   /** The same service-account JSON auth-worker holds — Firestore REST
    * access for vote writes. See src/firebase-sa.ts. */
   FIREBASE_SERVICE_ACCOUNT?: string;
+  /** The shared secret gating `POST /polls/sync` (phase 3, src/poll-sync.ts).
+   * The SAME value is held by the audiobook pipeline, which calls the route on
+   * `club_announcements.py`'s cadence. A THIRD credential class, deliberately
+   * distinct from the bot token and the client secret: leaking it lets someone
+   * make the bot re-render its own poll messages sooner than it would have —
+   * it grants no Discord powers, reads no Firestore of its own, and cannot
+   * post anything a poll doc does not already say. ⚠️ SHIPS DARK while unset:
+   * the route answers a worded 503 and `/api/health` reports
+   * `configured.poll_sync_token: false`. */
+  POLL_SYNC_TOKEN?: string;
 }
 
 export type AppBindings = { Bindings: Env };

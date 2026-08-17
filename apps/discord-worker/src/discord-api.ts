@@ -1,13 +1,70 @@
 /**
- * The two Discord REST calls the deferred vote flow needs. Both ride the
- * INTERACTION token (valid 15 minutes), not the bot token — editing the
- * original message and posting followups through the interaction webhook
- * needs no Authorization header at all, which keeps DISCORD_BOT_TOKEN
- * entirely out of the poll-vote path (it is held for phase-3 bot-posted
- * messages only).
+ * Every Discord REST call this Worker makes, in two clearly separated
+ * families — because they authenticate differently and the difference is the
+ * whole blast-radius story:
+ *
+ *  1. **Interaction-token calls** (the deferred vote flow). They ride the
+ *     15-minute INTERACTION token and need no Authorization header at all,
+ *     which is what keeps `DISCORD_BOT_TOKEN` entirely out of the poll-vote
+ *     path. Unchanged since phase 2.
+ *  2. **Bot-token calls** (phase 3: the sync tick posts and edits a real
+ *     channel message). These carry `Authorization: Bot <token>` — the one
+ *     credential shared across every opted-in club (design §1.2's named and
+ *     accepted regression). They exist ONLY for `poll-sync.ts`.
+ *
+ * Plus one oddity that belongs to neither: `getWebhookChannelId()` reads a
+ * webhook object using the webhook's OWN token, which is embedded in the URL
+ * the club already saved. No bot token, no bot permissions — it is how a
+ * club that pasted a webhook URL gets a bot-postable channel id for free
+ * (see poll-sync.ts's channel-resolution note).
  */
 
 const DISCORD_API = 'https://discord.com/api/v10';
+
+/** Bounded 429 handling. Discord answers rate limits with a JSON body
+ * carrying `retry_after` in SECONDS; honouring it is the documented contract
+ * and ignoring it is how an app earns a cloudflare-level ban. Bounded,
+ * because a sync tick that retried forever would hold a Worker invocation
+ * open and starve the run it belongs to. */
+const MAX_RATE_LIMIT_ATTEMPTS = 3;
+const MAX_RETRY_WAIT_MS = 5_000;
+
+export type Sleeper = (ms: number) => Promise<void>;
+
+const realSleep: Sleeper = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Perform a Discord REST request, retrying ONLY on 429 and only as many
+ * times as `MAX_RATE_LIMIT_ATTEMPTS` allows. Every other status — including
+ * 403 (the bot is not in that channel) and 404 (the message was deleted) —
+ * is returned to the caller untouched, because those are decisions, not
+ * transients, and poll-sync.ts words each one differently.
+ *
+ * `sleep` is injectable so tests can prove the retry happened without
+ * actually waiting; production always gets the real timer.
+ */
+export async function discordFetch(
+  url: string,
+  init: RequestInit,
+  sleep: Sleeper = realSleep,
+): Promise<Response> {
+  let res = await fetch(url, init);
+  for (let attempt = 1; attempt < MAX_RATE_LIMIT_ATTEMPTS && res.status === 429; attempt += 1) {
+    let waitMs = 1_000;
+    try {
+      const body = (await res.clone().json()) as { retry_after?: unknown };
+      if (typeof body.retry_after === 'number' && Number.isFinite(body.retry_after)) {
+        waitMs = Math.max(0, body.retry_after) * 1000;
+      }
+    } catch {
+      // A 429 without a readable body still gets the conservative default
+      // wait — a rate limit is real whether or not its body parsed.
+    }
+    await sleep(Math.min(waitMs, MAX_RETRY_WAIT_MS));
+    res = await fetch(url, init);
+  }
+  return res;
+}
 
 /** Discord message flag: visible only to the interacting user. */
 export const EPHEMERAL_FLAG = 64;
@@ -36,4 +93,72 @@ export async function editOriginalMessage(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Bot-token calls — phase 3 only (poll-sync.ts)
+// ---------------------------------------------------------------------------
+
+const botHeaders = (botToken: string) => ({
+  authorization: `Bot ${botToken}`,
+  'content-type': 'application/json',
+});
+
+/** POST a new message to a channel. The bot must be in that guild and hold
+ * Send Messages + Embed Links there; if it does not, Discord answers 403 and
+ * the caller turns that into a NAMED skip rather than a crash. */
+export async function createChannelMessage(
+  botToken: string,
+  channelId: string,
+  payload: unknown,
+  sleep?: Sleeper,
+): Promise<Response> {
+  return discordFetch(
+    `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages`,
+    { method: 'POST', headers: botHeaders(botToken), body: JSON.stringify(payload) },
+    sleep,
+  );
+}
+
+/** PATCH an existing message the bot posted (fresh tally, or the closed
+ * rendering). 404 means somebody deleted it — a fact, not a failure. */
+export async function editChannelMessage(
+  botToken: string,
+  channelId: string,
+  messageId: string,
+  payload: unknown,
+  sleep?: Sleeper,
+): Promise<Response> {
+  return discordFetch(
+    `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: 'PATCH', headers: botHeaders(botToken), body: JSON.stringify(payload) },
+    sleep,
+  );
+}
+
+/**
+ * The channel a webhook posts into, read with the webhook's OWN token.
+ *
+ * `GET /webhooks/{id}/{token}` is Discord's unauthenticated (token-in-URL)
+ * webhook fetch; the webhook object it returns carries `channel_id`. That is
+ * what lets a club which only ever pasted a webhook URL — the estate's
+ * default, zero-permission integration — get a bot-postable channel id
+ * without any new configuration.
+ *
+ * ⚠️ NOT VERIFIED LIVE at build time (no club had opted in yet). If Discord
+ * ever omits `channel_id` here, the caller falls back to the explicit
+ * `discordChannelId` field and says so in words; it never guesses.
+ */
+export async function getWebhookChannelId(
+  webhookUrl: string,
+  sleep?: Sleeper,
+): Promise<string | null> {
+  const res = await discordFetch(webhookUrl, { method: 'GET' }, sleep);
+  if (!res.ok) return null;
+  try {
+    const body = (await res.json()) as { channel_id?: unknown };
+    return typeof body.channel_id === 'string' && body.channel_id.length > 0 ? body.channel_id : null;
+  } catch {
+    return null;
+  }
 }

@@ -151,6 +151,9 @@ test('health answers config-presence booleans and never values', async () => {
     discord_application_id: false,
     discord_bot_token: false,
     firebase_service_account: false,
+    // Added with phase 3 — same honest-false contract as the phase-2 row
+    // below: the sync route's ships-dark state is visible from outside.
+    poll_sync_token: false,
     // Added with phase 2. ⚠️ The honest `false` is the contract: it is how a
     // ships-dark feature is VISIBLE from outside rather than inferred.
     discord_client_secret: false,
@@ -178,6 +181,34 @@ test('health: link_ready is false unless BOTH halves of the ceremony are configu
         FIREBASE_PROJECT_ID: 'p',
       })
     ).link_ready,
+    true,
+  );
+});
+
+test('health: poll_sync_ready needs the caller token AND the bot token AND the SA', async () => {
+  const read = async (env: Record<string, string>) => {
+    const res = await app.request('/api/health', {}, env);
+    return (await res.json()) as { poll_sync_ready: boolean };
+  };
+  // Each of the three alone is not enough — a tick that could authenticate a
+  // caller but not post, or post but not read polls, is not ready.
+  assert.equal((await read({ POLL_SYNC_TOKEN: 't' })).poll_sync_ready, false);
+  assert.equal(
+    (await read({ POLL_SYNC_TOKEN: 't', DISCORD_BOT_TOKEN: 'b' })).poll_sync_ready,
+    false,
+  );
+  assert.equal(
+    (await read({ DISCORD_BOT_TOKEN: 'b', FIREBASE_SERVICE_ACCOUNT: '{}' })).poll_sync_ready,
+    false,
+  );
+  assert.equal(
+    (
+      await read({
+        POLL_SYNC_TOKEN: 't',
+        DISCORD_BOT_TOKEN: 'b',
+        FIREBASE_SERVICE_ACCOUNT: '{}',
+      })
+    ).poll_sync_ready,
     true,
   );
 });

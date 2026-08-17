@@ -15,6 +15,8 @@
  *   GET  /link, /link/callback       the identity-link ceremony (link.ts)
  *   POST /link/confirm, /link/unlink  — mounted, not implemented here
  *   POST /admin/commands/register    publish the slash-command registry
+ *   POST /polls/sync                 post/refresh/close the votable poll
+ *                                    messages (phase 3, poll-sync.ts)
  *
  * LIVE since 2026-08-16 at discord.heygabi.ai; the runbook remains
  * docs/access/discord-bot.md.
@@ -30,6 +32,7 @@ import {
   routeInteraction,
 } from './interactions.js';
 import { processPollVote } from './poll-vote.js';
+import { pollSyncRoutes } from './poll-sync.js';
 import { parseServiceAccount, type ServiceAccount } from './firebase-sa.js';
 import { linkConfigured, linkRoutes, LINK_MSG } from './link.js';
 import {
@@ -52,12 +55,22 @@ app.get('/api/health', (c) =>
   c.json({
     ok: true,
     service: 'estate-discord',
-    features: ['interactions_endpoint', 'poll_vote_component', 'identity_link'],
+    features: [
+      'interactions_endpoint',
+      'poll_vote_component',
+      'identity_link',
+      'poll_message_sync',
+    ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
       discord_application_id: Boolean(c.env.DISCORD_APPLICATION_ID),
       discord_bot_token: Boolean(c.env.DISCORD_BOT_TOKEN),
       firebase_service_account: Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+      // ⚠️ Reports FALSE until the conductor mints it and gives the SAME value
+      // to the audiobook pipeline. Same honest-false discipline as the row
+      // below: the ships-dark state of phase 3's sync route is VISIBLE here
+      // rather than inferred from a POST nobody made.
+      poll_sync_token: Boolean(c.env.POLL_SYNC_TOKEN),
       // ⚠️ Reports FALSE until the owner sets it (docs/access/discord-bot.md
       // §3 step 7). An honest false is the point of this row: it is how the
       // ships-dark state is VISIBLE rather than inferred from a page nobody
@@ -67,6 +80,14 @@ app.get('/api/health', (c) =>
     },
     // The one derived answer: both halves present, so /link can actually run.
     link_ready: linkConfigured(c.env) && Boolean(c.env.FIREBASE_PROJECT_ID),
+    // The same question for phase 3: a sync tick needs the caller's token,
+    // the bot token to post with, and the service account to read polls.
+    // All three or it is dark — reported as one honest boolean, not three
+    // rows a reader has to AND together themselves.
+    poll_sync_ready:
+      Boolean(c.env.POLL_SYNC_TOKEN) &&
+      Boolean(c.env.DISCORD_BOT_TOKEN) &&
+      Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
   }),
 );
 
@@ -76,6 +97,15 @@ app.get('/api/health', (c) =>
 // link.ts; this file only wires it, per the estate's thin-entrypoint rule.
 // ---------------------------------------------------------------------------
 app.route('/', linkRoutes);
+
+// ---------------------------------------------------------------------------
+// POST /polls/sync — phase 3. The audiobook pipeline's club_announcements.py
+// pokes this on its existing cadence; the Worker then posts/edits the votable
+// poll messages with the bot token. Token-gated, ships dark, and reads every
+// fact it acts on from Firestore itself (poll-sync.ts's header explains why
+// the trigger carries no club data).
+// ---------------------------------------------------------------------------
+app.route('/', pollSyncRoutes);
 
 // ---------------------------------------------------------------------------
 // POST /admin/commands/register — publish the slash-command registry to

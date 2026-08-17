@@ -205,19 +205,36 @@ export function buildPollMessage(
   ref: Pick<PollVoteRef, 'clubCol' | 'clubId' | 'pollId'>,
   poll: PollDoc,
   tallies: number[],
+  opts: { closed?: boolean } = {},
 ): { embeds: unknown[]; components: unknown[] } {
   const total = tallies.reduce((a, b) => a + b, 0);
-  const lines = poll.options.map(
-    (text, i) => `**${i + 1}.** ${text} — ${tallies[i] ?? 0} vote${(tallies[i] ?? 0) === 1 ? '' : 's'}`,
-  );
+  const closed = opts.closed === true;
+  // A winner marker only means something once voting is frozen; while the
+  // poll is open a "leader" would flap on every click and read as a result.
+  const top = closed && total > 0 ? Math.max(...tallies) : -1;
+  const lines = poll.options.map((text, i) => {
+    const n = tallies[i] ?? 0;
+    const mark = closed && top > 0 && n === top ? '🏆 ' : '';
+    return `${mark}**${i + 1}.** ${text} — ${n} vote${n === 1 ? '' : 's'}`;
+  });
   const embeds = [
     {
-      title: truncate(poll.question, 256),
+      title: truncate(closed ? `${poll.question} (closed)` : poll.question, 256),
       description: lines.join('\n'),
       color: POLL_COLOR,
-      footer: { text: `${total} vote${total === 1 ? '' : 's'} · syncs with the club page` },
+      footer: {
+        text: closed
+          ? `${total} vote${total === 1 ? '' : 's'} · final — this poll is closed`
+          : `${total} vote${total === 1 ? '' : 's'} · syncs with the club page`,
+      },
     },
   ];
+  // ⚠️ A closed poll gets its buttons REMOVED, not merely disabled: an empty
+  // `components` array is Discord's own "strip every component" instruction,
+  // and a button that cannot be clicked at all cannot race the server-side
+  // `status == 'open'` re-check. `components: []` must always be SENT on an
+  // edit — omitting the field leaves the old buttons in place.
+  if (closed) return { embeds, components: [] };
   const buttons = poll.options.map((text, i) => ({
     type: 2, // button
     style: 2, // secondary
@@ -266,8 +283,10 @@ export interface VoteContext {
   interactionToken: string;
 }
 
-/** List every vote doc's optionIndex (pages until exhausted). */
-async function listVoteIndices(
+/** List every vote doc's optionIndex (pages until exhausted). Exported
+ * because poll-sync.ts tallies the SAME way on its refresh tick — two
+ * tallies of one poll that disagreed would be worse than none. */
+export async function listVoteIndices(
   sa: ServiceAccount,
   accessToken: string,
   ref: PollVoteRef,
