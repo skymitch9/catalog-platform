@@ -117,7 +117,13 @@ export const ACTION_GATES: Readonly<Record<string, GateRule>> = {
   'club.setSchedule': cap('operateClub', true),
   'read.finish': cap('manageClub', true),
   'read.remove': cap('manageClub', true),
-  'read.setSlot': cap('manageClub', true),
+  // ⚠️ signedIn, NOT manageClub — owner decision 2026-08-17, pre-flip. The
+  // slot LABEL is member-editable by design: firestore.rules deliberately
+  // keeps slotLabel out of MANAGED_READ_FIELDS ("commentCount bumps and slot
+  // labels stay open"), so a manageClub floor here was a predicted real
+  // break at enforce (would_deny:true + succeeded:true for every member
+  // renaming a read card). The gate now states what the rules always meant.
+  'read.setSlot': { kind: 'signedIn' },
   'read.revealRatings': cap('manageClub', true),
   'poll.create': cap('operateClub', true),
   'poll.setStatus': cap('operateClub', true),
