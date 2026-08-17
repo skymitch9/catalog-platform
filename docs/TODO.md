@@ -76,15 +76,24 @@ envs. in the meantime grant Samantha dev permission."*
 
 - Meantime grant DONE 2026-08-17: Samantha holds the estate **devops** flag
   (granted via /admin two-tap, badge verified on the rendered page 22:13:28).
-- This repo's half: estate directory gets a per-person **dev_access** flag
-  (D1 migration), `/api/estate/users/:id/dev-access` mutation, a **Give dev
-  access** two-tap button on each member card (confirmBtn idiom), and the
-  rule **devops ⇒ dev access, always** (his sentence) — devops rows show the
-  fact, never a redundant button. Surfaced in /api/estate/seen so app
-  workers/pages can read it.
-- audiobook_catalog's half (the dev ebook pages' worded curtain) is queued in
-  THAT repo's local TODO behind the save-spot build — ⚠️ curtain, not lock:
-  the vis_ebooks-gated manifest/stream APIs stay the real lock on both lanes.
+- ~~This repo's half~~ **SHIPPED 2026-08-17** — commit `be6f15c`, migration
+  `0011_dev_access.sql` applied `--remote` (12 rows, 0 hand grants, 4 devops
+  who hold it by the OR), Worker version `265c6131-b0c1-4960-9385-e780025a06f2`.
+  Grammar recorded in [`access/estate-auth.md` §10](access/estate-auth.md).
+  ⚠️ It stays HERE rather than moving to `DONE.md` because the item is not
+  finished: the audiobook half below is the other half of the same ask, and an
+  item moves once, whole, at completion.
+- **STILL OPEN — audiobook_catalog's half** (the dev ebook pages' worded
+  curtain), queued in THAT repo's local TODO behind the save-spot build.
+  Nothing there consumes `dev_access` yet, so the flag's end use is
+  unexercised. ⚠️ Curtain, not lock: the `vis_ebooks`-gated manifest/stream
+  APIs stay the real lock on both lanes.
+- 🧑 **OWNER EYEBALL** — <https://heygabi.ai/admin/>, signed in: open any
+  member's card and look at the button row. A plain member gets a two-tap
+  **Give dev access** button (and a `DEV ACCESS` badge beside their status
+  once granted); a devops or approver gets the WORDS *"dev access · via
+  devops"* where that button would be, because they already hold it and a
+  button there could not change the answer.
 
 ## 🧑 OWNER EYEBALL: the reshaped /admin page, signed in (2026-08-17)
 
