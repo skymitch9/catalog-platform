@@ -2,30 +2,38 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
-> Last verified: **2026-08-16 late** — LIVE. The owner registered application
-> **GABI** (id `1538775435880562758`) and the Worker is deployed at
-> `discord.heygabi.ai` (version `96b315e4`), all four secrets set,
-> `/api/health` answering `ok: true` with every `configured` boolean `true`.
-> Remaining owner steps at that point: §3 step 5 (Interactions Endpoint URL
-> save — the Ed25519 verification moment) and step 6 (server invite).
+> Last verified: **2026-08-17 07:36 UTC** — LIVE at `discord.heygabi.ai`,
+> version `9d496ece-ae58-440f-b6d0-d51ba6143e6d`. Application **GABI**
+> (id `1538775435880562758`). Measured live this deploy: `/api/health`
+> `ok: true`; the four original `configured` booleans `true`;
+> `discord_client_secret` **`false`** and `link_ready` **`false`** (honest —
+> the link ceremony ships dark, §3 step 7); `/link` answering **503 with the
+> worded not-configured page**; `/interactions` still answering **401
+> `bad_signature`** to Discord's invalid-signature probe and **401
+> `missing_signature_headers`** to an unsigned POST — the endpoint is intact.
+> **Remaining owner steps: §3 step 7 only** (client secret + redirect URI +
+> the Firebase authorised-domain entry). Steps 5 and 6 are done.
 
 The estate Discord bot's operational runbook: what exists, the secrets, and
-the exact Developer Portal steps **only the owner can perform** — the bot is
-not live, and cannot be, until they happen. Design and option space:
+the exact Developer Portal steps **only the owner can perform**. The bot IS
+live; what is not yet on is identity linking, and only §3 step 7 stands
+between it and working. Design and option space:
 [`../info/discord-bot-design.md`](../info/discord-bot-design.md); bot
 mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 
 ---
 
-## 1. What exists / what does not (2026-08-16)
+## 1. What exists / what does not (2026-08-17)
 
 | Piece | State |
 |---|---|
-| `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (34), NOT deployed** |
-| Discord application / bot user | **Does not exist** — owner creates it (§3) |
-| Secrets | **None set** — names in §2 |
-| Route `discord.heygabi.ai` | **Not created** — commented in `wrangler.toml`, added at deploy |
-| Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Not built** — phase 2; until it ships every vote click gets the worded "not linked" rejection |
+| `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (77), LIVE** |
+| Discord application / bot user | **Exists** — GABI, `1538775435880562758` |
+| Secrets | **Four of five set.** `DISCORD_CLIENT_SECRET` is the one gap (§2, §3 step 7) |
+| Route `discord.heygabi.ai` | **Live** — custom domain, `wrangler.toml` `routes` |
+| Interactions Endpoint URL | **Saved and verified** — the portal's probe passed |
+| Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Built + deployed 2026-08-17, SHIPPING DARK.** Every route answers a worded "linking is not configured yet" page until `DISCORD_CLIENT_SECRET` exists. Until it is on, every vote click still gets the worded "not linked" rejection |
+| `/link` slash command | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. Publish it with §4 once the secret is set |
 | Bot-posted poll messages with buttons (phase 3) | **Not built** — nothing posts the votable message yet |
 | `club_announcements.py` / `send_discord_notification.py` | **Untouched, by design** — webhook announcements are permanent, never replaced |
 
@@ -40,6 +48,13 @@ first deploy creates the Worker; locally they go in `.dev.vars`, gitignored):
 | `DISCORD_APPLICATION_ID` | Same portal page → **Application ID** | |
 | `DISCORD_BOT_TOKEN` | Portal → Bot → **Reset Token** | ⚠️ Shown **once**; one credential shared across every opted-in club (§1.2's accepted blast-radius regression). Rotate via the same Reset Token button. Not consumed by the poll-vote path yet (message edits ride the 15-min interaction token) — required for phase-3 bot-posted messages |
 | `FIREBASE_SERVICE_ACCOUNT` | The same JSON `auth-worker` holds | ⚠️ **Pipe the file in** (`wrangler secret put FIREBASE_SERVICE_ACCOUNT < key.json`) — never paste into a terminal line, never echo |
+| `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ⚠️ **NOT SET — the one remaining gap.** A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
+
+Two **vars** (not secrets) were added to `wrangler.toml` with the link
+ceremony, both mirroring auth-worker's: `FIREBASE_PROJECT_ID =
+"audiobook-catalog"` (the canonical verifier asserts it as *both* issuer and
+audience — ⚠️ removing it does not make the check smaller, it makes it
+absent) and `OWNER_EMAILS` (read by exactly one thing: the gate on §4).
 
 ## 3. Owner runbook — Developer Portal steps, in order
 
@@ -86,7 +101,133 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
    (16384) + Read Message History (65536). Never Manage Server, never
    Administrator, never Message Content.
 
-## 4. Poll voting — how a Discord click becomes a vote
+   *(Done 2026-08-16 — invited with the wider moderator bundle
+   `1116825807878`, deliberately NOT Administrator. Widening later is a role
+   toggle, never a re-invite.)*
+
+7. ⚠️ **THE ONE REMAINING OWNER STEP — switch identity linking on.**
+   Three clicks, in this order. Until all three exist, the ceremony ships
+   **dark**: `/link` answers a worded "linking is not configured yet" page,
+   `/api/health` reports `configured.discord_client_secret: false` and
+   `link_ready: false`, and `/link` in Discord says so in its ephemeral
+   reply. Nothing is broken meanwhile — voting on the club page is unchanged.
+
+   **7a. The redirect URI.** Portal → application **GABI** → **OAuth2** tab →
+   **Redirects** → **Add Redirect** →
+
+   ```
+   https://discord.heygabi.ai/link/callback
+   ```
+
+   → Save. ⚠️ **Do this BEFORE 7b.** Discord matches the redirect URI
+   *exactly*, and an absent one fails the round trip at the authorize page
+   with Discord's own error, not the estate's — which reads as "the link is
+   broken" rather than "a field is empty".
+
+   **7b. The client secret.** Same OAuth2 tab → **Client Secret** →
+   **Reset Secret** → copy (shown once) → from `apps/discord-worker/`:
+
+   ```
+   npx wrangler secret put DISCORD_CLIENT_SECRET
+   ```
+
+   …and paste at the prompt. ⚠️ **Never on the command line, never echoed** —
+   same custody as every other secret here. No redeploy is needed; secrets
+   take effect on the next request.
+
+   **7c. The Firebase authorised domain.** Firebase console → project
+   **audiobook-catalog** → **Authentication → Settings → Authorised
+   domains** → add **`discord.heygabi.ai`**.
+   ⚠️ **`heygabi.ai` already being on the list does NOT cover this** —
+   Firebase matches exact hostnames, not domain trees. Without it the
+   callback page's Google sign-in throws `auth/unauthorized-domain` and the
+   page says so in words (naming this exact step), but nobody can finish a
+   link. Console-only; it cannot be scripted.
+
+   **Confirm all three landed:**
+
+   ```
+   curl -s https://discord.heygabi.ai/api/health
+   ```
+
+   `configured.discord_client_secret` and `link_ready` should both be `true`.
+   Then publish the slash command (§4) and run `/link` in Discord.
+
+## 4. Publishing the slash commands
+
+Discord does not discover commands — an application **PUTs** its command
+list and Discord shows exactly that. GABI's registry is
+`apps/discord-worker/src/commands.ts` (`ESTATE_COMMANDS`; currently one
+entry, `/link`), and it is published by calling the Worker:
+
+```
+POST https://discord.heygabi.ai/admin/commands/register
+Authorization: Bearer <a Firebase ID token from an estate ADMIN account>
+```
+
+**Why a route and not a script:** the two credentials it needs
+(`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`) are wrangler secrets that
+exist inside the Worker and nowhere else. A script could only work by
+pasting the bot token onto a command line, which §2 forbids in as many
+words. The Worker already holds both, so the Worker publishes.
+
+**The gate:** verified Firebase ID token **and** ladder rank `admin` or
+above — `OWNER_EMAILS` short-circuits, otherwise `site_roles/{uid}`, the very
+doc `firestore.rules` consults. Every refusal is worded; a directory outage
+answers as an outage, never as a permissions refusal.
+
+**Getting a token:** sign in on any estate page and run
+`await (await import('/assets/estate-auth.js')).idToken()` in the console,
+or take it from an authenticated request's `Authorization` header.
+
+Registration is a **bulk overwrite and idempotent** — the payload is a
+constant in the repo, so re-running it changes nothing. Commands are
+**global** (design §1.4: any server's own admin invites GABI, and the estate
+never enumerates the servers it is in — per-guild registration would require
+exactly that enumeration). Global commands can take up to an hour to appear
+the first time; updates show up almost immediately.
+
+## 5. Identity linking — what a person actually experiences
+
+Once §3 step 7 is done and §4 has run:
+
+1. In Discord they run **`/link`** (or click a vote button while unlinked and
+   are told, in words, to run it). The reply is **ephemeral** — a link
+   ceremony is personal, and a channel-visible message would invite the wrong
+   person to press it.
+2. They open `https://discord.heygabi.ai/link`. The Worker sets a CSRF nonce
+   cookie and sends them to Discord's own authorize screen, asking for
+   **`identify` and nothing else** — a username, no email, no server list, no
+   messages.
+3. They approve. Discord returns to `/link/callback`, which checks the nonce,
+   exchanges the code, and learns who they are. **Declining is a first-class
+   outcome** and gets a page that says so kindly, with nothing stored.
+4. That page then asks them to **sign in with the same Google account they
+   use on the club pages**, and posts the resulting Firebase ID token back.
+5. The Worker verifies the token server-side and writes **one document**:
+   `discord_links/{discordUserId}` = `{slug, displayName, linkedAt,
+   firebaseUid}`. The page says "Linked" in words.
+6. From then on, a vote clicked in Discord lands on
+   `…/polls/{pollId}/votes/{slug}` — the exact doc id and field shape the
+   club page's own `castVote()` writes, so tallies, the club page and
+   `club_announcements.py` pick it up with zero new code.
+7. **Unlink** is a button on the same page. It deletes the doc; the next
+   Discord vote is refused in words again.
+
+**The two proofs, and why both.** A link joins two identities, so the write
+demands both in the same request: the Discord half is an OAuth code exchange
+the browser cannot forge (carried to the confirm step in an **HttpOnly**
+HMAC'd cookie the page can neither read nor edit), and the estate half is a
+Firebase ID token verified server-side. Possessing a Discord session lets you
+bind *your* Discord account and no other; possessing an estate session lets
+you bind to *your* member entry and no other. Neither alone writes anything.
+
+**The residual risk is unchanged and stated in design §1.6:** the link binds
+a Discord identity to "whoever was signed in to Google in that browser" —
+exactly as strong, and no stronger, than every other identity claim the
+estate makes.
+
+## 6. Poll voting — how a Discord click becomes a vote
 
 - The vote buttons carry `custom_id = pv|<clubs|clubs_dev>|<clubId>|<pollId>|<idx>`;
   the Worker answers a deferred ack inside Discord's 3-second window and does
@@ -111,7 +252,7 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
   `club_announcements.py`'s cadence and are phase 3 (that file stays as-is
   until that build is approved).
 
-## 5. Gotchas (the ones that cost time elsewhere)
+## 7. Gotchas (the ones that cost time elsewhere)
 
 - **The portal silently removes a saved Interactions URL** if invalid
   signatures ever stop being rejected. If interactions stop arriving, check
@@ -123,3 +264,21 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
   auth-worker's (auth-worker was frozen by a concurrent agent at build
   time), scoped down to `datastore` only. Treat auth-worker's as canonical;
   the recorded follow-up is hoisting the common core into `packages/`.
+- ⚠️ **A Firebase authorised domain does NOT cover subdomains.**
+  `heygabi.ai` being on the list says nothing about `discord.heygabi.ai`;
+  each hostname that runs a Google sign-in needs its own entry. Symptom:
+  `auth/unauthorized-domain` on the link page's sign-in button, which reads
+  like a broken button rather than a missing console row. §3 step 7c.
+- ⚠️ **A member slug is `displayName.toLowerCase()` — nothing more**
+  (`audiobook_catalog/site/identity.js:765`). It is NOT dashed, NOT stripped,
+  NOT transliterated, so nearly every real slug contains a **space**. Any code
+  validating a slug with a Firestore-auto-id pattern (`[A-Za-z0-9_-]+`) will
+  refuse almost every genuine member. That was live in `poll-vote.ts` until
+  2026-08-17 and would have made every linked voter with a two-word name hear
+  "you are not linked" while their link doc sat right there. The rule now
+  lives in one file, `apps/discord-worker/src/slug.ts`, and a round-trip
+  contract test pins the writer to the reader.
+- **`/link` will not appear in Discord until it is published.** Discord shows
+  exactly the command list an application PUT; writing the handler is not
+  registering it (§4). Global commands can also take up to an hour to appear
+  the first time — an absent `/link` in the first few minutes is normal.

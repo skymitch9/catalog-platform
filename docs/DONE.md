@@ -13,6 +13,87 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🤖 GABI phase 2 — the identity-link ceremony — ✅ BUILT + DEPLOYED 2026-08-17 (SHIPS DARK)
+
+*(Moved whole from `TODO.md` §0's queue, item 1: "**Phase 2 — identity-link
+ceremony**: OAuth2 `identify` → writes `discord_links/{discordUserId}`
+`{slug, displayName}`; until it ships every vote click gets the worded 'not
+linked' ephemeral. Design §1.6.")*
+
+**Shipped:** version `9d496ece-ae58-440f-b6d0-d51ba6143e6d` at
+`discord.heygabi.ai`, commit `7ae9137` plus the docs commit that follows it.
+Tests 34 → 77.
+
+**What it is.** `GET /link` → Discord's OAuth2 `identify` screen →
+`GET /link/callback` → a self-contained page that signs the person in to the
+estate's Firebase → `POST /link/confirm` writes ONE doc:
+`discord_links/{discordUserId}` = `{slug, displayName, linkedAt,
+firebaseUid}`. `POST /link/unlink` deletes it — revocable is part of §1.6's
+identity rules, not an afterthought, and its button sits on the same page as
+the link button so nobody has to hunt for it. `POST /admin/commands/register`
+(estate `admin` only) publishes the `/link` slash command, whose reply is
+ephemeral.
+
+**The design decision worth keeping.** A link joins TWO identities, so the
+write demands both in the same request. The Discord half is an OAuth code
+exchange the browser cannot forge; it crosses from the callback to the
+confirm POST inside an **HttpOnly, HMAC-signed, 15-minute cookie**, never in
+the page's JavaScript — because a page that knows a Discord user id is a page
+that can be edited to submit somebody *else's*, and that is the entire
+security of the ceremony. The estate half is a Firebase ID token verified
+server-side by `@platform/estate-auth` (project-pinned issuer AND audience).
+Neither proof alone writes anything. That is what makes §1.6's "votes are
+never guessed from usernames" a mechanism rather than a promise.
+
+**Why it ships dark, deliberately.** `DISCORD_CLIENT_SECRET` is a NEW secret
+and only the owner can fetch it. Rather than crash or 500, every route
+answers a worded "linking is not configured yet" page naming the exact
+remaining step; `/api/health` reports `configured.discord_client_secret:
+false` and `link_ready: false` **honestly**, which is how the dark state is
+visible from outside rather than inferred from a page nobody loaded. Same
+idiom as `MODERATION_ENABLED`.
+
+⚠️ **THE BUG THIS BUILD FOUND, which would have been silent and cruel.**
+`poll-vote.ts` validated the link doc's `slug` with the Firestore-auto-id
+pattern `/^[A-Za-z0-9_-]{1,64}$/`. But a member slug is
+`displayName.toLowerCase()` — measured against
+`audiobook_catalog/site/identity.js:765`, which strips nothing, dashes
+nothing and transliterates nothing — so nearly every real slug contains a
+**space**, and that regex refused it. Left alone, phase 2 would have written
+links that phase 1 then declined to read, and every affected voter would have
+been told **"you are not linked" while their link doc sat right in front of
+the Worker**. Fixed: the slug rule now lives in one file
+(`apps/discord-worker/src/slug.ts`) shared by the writer and the reader,
+everything reaching a Firestore REST path is percent-encoded, and a
+round-trip **contract test** over real display-name shapes ("Sam Vimes",
+"Conn O'Neill", "Renée Descartes", an email fallback) pins the two halves
+together so they cannot drift apart again. The gotcha is recorded in
+`access/discord-bot.md` §7.
+
+**Verified live at deploy (2026-08-17 07:36 UTC):** `/api/health` `ok: true`
+with the four original booleans `true` and the two new ones honest;
+`GET /link` → **503 + the worded not-configured page** (naming
+`DISCORD_CLIENT_SECRET`, the callback URI and the runbook, and never
+redirecting into a broken OAuth trip); `POST /link/confirm` → worded JSON
+naming a configuration gap, "NOT a permissions problem";
+`POST /admin/commands/register` → worded 401 saying how to authenticate; and
+critically `POST /interactions` still answering **401 `bad_signature`** to
+Discord's invalid-signature probe and **401 `missing_signature_headers`** to
+an unsigned POST — the endpoint the portal silently removes on failure is
+intact.
+
+**NOT verified, and why.** The full OAuth round trip has never run — it
+cannot until the client secret exists, and the code exchange is the one step
+no test can stand in for. Also unexercised: the Firestore write and delete
+themselves, the Google sign-in on the callback page (which additionally needs
+`discord.heygabi.ai` added to Firebase's authorised domains — ⚠️ a subdomain
+is NOT covered by its parent), the `site_roles` admin-gate read, and the
+Discord command-registration API call. Everything up to the network boundary
+is tested; nothing across it is.
+
+**Remaining owner action:** `access/discord-bot.md` §3 step 7 (three clicks),
+then §4 to publish `/link`.
+
 ## 📚 The apex `/series` page — ✅ BUILT + DEPLOYED + VERIFIED SIGNED-IN 2026-08-17
 
 *(Moved whole from `TODO.md`'s "Series registry — what still hangs off it",

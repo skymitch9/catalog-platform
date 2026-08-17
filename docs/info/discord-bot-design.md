@@ -156,6 +156,33 @@ Discord identity to "whoever was sitting at this browser when they clicked
 Link" — exactly as strong, and no stronger, than every other identity claim
 this site already makes (`site/identity.js`'s shape-only trust model).
 
+**BUILT 2026-08-17** — `apps/discord-worker/src/link.ts` and siblings, live at
+`discord.heygabi.ai`, shipping dark behind `DISCORD_CLIENT_SECRET`.
+Operational detail, the owner's remaining click and the end-to-end experience:
+[`../access/discord-bot.md`](../access/discord-bot.md) §3 step 7, §4, §5. Two
+questions this section had left open, and how the build answered them:
+
+- **Where the ceremony is hosted.** Not "the app" — the *Worker* serves both
+  pages itself. `discord.heygabi.ai` has no Pages project behind it, and
+  hosting the callback on a catalog site would have put the Discord OAuth
+  credential in a second place. The pages are self-contained HTML with the
+  estate's `--et-*` tokens inlined in a minimal, documented subset.
+- **How the two halves are joined without trusting the browser.** The Discord
+  identity never enters the page's JavaScript; it crosses from the OAuth
+  callback to the confirm POST inside an **HttpOnly, HMAC-signed, 15-minute
+  cookie**. Otherwise a page that knows a Discord user id is a page that can
+  be edited to submit somebody *else's*. The estate half is proven
+  independently in the same request by a server-verified Firebase ID token
+  (`@platform/estate-auth`, project-pinned issuer and audience). Neither
+  proof alone writes anything — which is what makes §1.6's "never guessed"
+  a mechanism rather than a promise.
+
+⚠️ One measured correction to this section's shorthand: a club-member slug is
+`displayName.toLowerCase()` and nothing else (`site/identity.js:765`), so it
+routinely contains spaces. See `access/discord-bot.md` §7's gotcha — the
+Firestore-auto-id shape is the WRONG validator for it, and using it silently
+refuses almost every real member.
+
 ### 1.7 Operational notes
 
 - **3-second response deadline**, extendable via a deferred response
