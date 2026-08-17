@@ -486,7 +486,7 @@
   --et-hue-3: #b1533c; /* games — clay */
   --et-hue-4: #6b4a86; /* universes — warm bookish violet, owner order 2026-08-15 */
   --et-hue-5: #c9971f; /* admin — brass, distinct from audio's duller gold */
-  --et-hue-6: #2e6e6a; /* ebooks — deep ink teal, bookish against the brass (added 2026-08-17, the ebooks card) */
+  --et-hue-6: #46628f; /* ebooks — ink blue; teal clashed with books' green (owner call 2026-08-17) */
   --et-blob-1: rgba(58, 90, 64, .20);
   --et-blob-2: rgba(217, 164, 65, .18);
   --et-blob-3: rgba(177, 83, 60, .12);
@@ -519,7 +519,7 @@
   --et-hue-3: #d97e63;
   --et-hue-4: #b98fd1; /* universes — lamp-lit plum */
   --et-hue-5: #f0c14b; /* admin — shining brass in lamplight */
-  --et-hue-6: #74b8b1; /* ebooks — ink teal in lamplight (added 2026-08-17, the ebooks card) */
+  --et-hue-6: #8fa7d9; /* ebooks — ink blue in lamplight; teal clashed with books' green */
   --et-blob-1: rgba(143, 188, 143, .16);
   --et-blob-2: rgba(217, 164, 65, .16);
   --et-blob-3: rgba(217, 126, 99, .11);
@@ -543,7 +543,7 @@
   --et-hue-3: #ff2a6d;
   --et-hue-4: #b14aff; /* universes — neon violet, distinct from #ff2a6d's pink-magenta */
   --et-hue-5: #ff9f1c; /* admin — neon amber, distinct from #fcee0a's lemon-yellow */
-  --et-hue-6: #00f5d4; /* ebooks — neon mint-teal, distinct from the amber and pink (added 2026-08-17, the ebooks card) */
+  --et-hue-6: #3d5afe; /* ebooks — indigo neon; mint clashed with books' cyan #05d9e8 (owner call 2026-08-17) */
   --et-blob-1: transparent; /* atmosphere lives in --et-bg-texture's haze */
   --et-blob-2: transparent;
   --et-blob-3: transparent;
@@ -619,7 +619,7 @@
   --et-hue-3: #c31e58;
   --et-hue-4: #7c3aed; /* universes — vivid violet */
   --et-hue-5: #cc6b00; /* admin — burnt amber, distinct from audio's olive-gold */
-  --et-hue-6: #0d9488; /* ebooks — vivid teal, distinct from the burnt amber (added 2026-08-17, the ebooks card) */
+  --et-hue-6: #1d4ed8; /* ebooks — strong blue; teal clashed with books' #00798f */
   --et-fg: #16161e;
   --et-muted: #5c6270;
   --et-hairline: #c9cdd9;
@@ -656,7 +656,7 @@
   --et-hue-3: #a8443a;
   --et-hue-4: #7d5a8c; /* universes — dusty grape/mauve, halftone-friendly */
   --et-hue-5: #b8860b; /* admin — old gold/ochre, distinct from audio's brighter mustard */
-  --et-hue-6: #3c7a6e; /* ebooks — dusty teal, halftone-friendly (added 2026-08-17, the ebooks card) */
+  --et-hue-6: #5c7a4a; /* ebooks — sage, the reading nook; teal sat too near books' steel blue */
   --et-blob-1: transparent; /* atmosphere is the halftone, not aurora */
   --et-blob-2: transparent;
   --et-blob-3: transparent;
@@ -734,7 +734,7 @@
   --et-hue-3: #d4776b;
   --et-hue-4: #b98fc9; /* universes — grape/mauve for dark paper */
   --et-hue-5: #d4af37; /* admin — gold, distinct from audio's more orange mustard */
-  --et-hue-6: #79c0b4; /* ebooks — sea-glass teal for dark paper (added 2026-08-17, the ebooks card) */
+  --et-hue-6: #9ab87f; /* ebooks — sage for dark paper; teal sat too near books' steel blue */
   --et-bg-texture:
     radial-gradient(circle at 1px 1px, rgba(236, 224, 203, .05) 1px, transparent 0),
     radial-gradient(circle at 4px 4px, rgba(236, 224, 203, .03) 1px, transparent 0);
