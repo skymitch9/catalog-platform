@@ -61,7 +61,8 @@
       "mustContain": [
         "Estate members",
         "class=\"back\"",
-        "id=\"f-role-library2\""
+        "id=\"f-role-library2\"",
+        "data-cat=\"ebooks\""
       ]
     },
     {
@@ -75,6 +76,21 @@
         "padhard.heygabi.ai",
         "library2",
         "ROLE_FILTER_KEYS"
+      ]
+    },
+    {
+      "_why": [
+        "The ebook permission gate (estate_auth 0008/0009, owner directive 2026-08-17). Member rows are",
+        "injected only after Firebase sign-in, so what CAN be asserted unauthenticated is that the shipped",
+        "bundle carries the fifth catalog AND the download grant's own endpoint. Shipping the checkbox",
+        "without the route, or the route without the checkbox, both look exactly like a working page."
+      ],
+      "path": "/admin/admin.js",
+      "mustContain": [
+        "'ebooks'",
+        "downloadEbooksCell",
+        "download-ebooks",
+        "download_ebooks_granted"
       ]
     },
     {

@@ -91,10 +91,16 @@ const CANONICAL_ORIGIN = 'https://heygabi.ai';
 /** §4.5's canonical catalog order — never re-sorted, never duplicated.
  *  `library2` (0007) is the second library instance — visibility DEFAULTS
  *  TO 0 there, so every row renders it unchecked until deliberately granted. */
-const CATALOGS = ['audiobook', 'library', 'games', 'library2'];
+const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'];
 
 /** UI labels only — the wire vocabulary stays the CATALOGS keys above. */
-const CATALOG_LABELS = { audiobook: 'audiobook', library: 'library', games: 'games', library2: "Sam's library" };
+const CATALOG_LABELS = {
+  audiobook: 'audiobook',
+  library: 'library',
+  games: 'games',
+  library2: "Sam's library",
+  ebooks: 'Ebooks',
+};
 
 /**
  * The app Workers with roles to federate, in §4.5's canonical CATALOGS order
@@ -869,7 +875,11 @@ function wireControls() {
  * §4.5's canonical order, because the endpoint takes the set, not a delta.
  */
 async function saveVisibility(estateUser, catsEl) {
-  const boxes = [...catsEl.querySelectorAll('input[type="checkbox"]')];
+  // ⚠️ `[data-cat]` is load-bearing: the Ebooks row also carries a DOWNLOAD
+  // checkbox (0009), which is NOT a catalog and must never be folded into the
+  // visibility array. A bare input[type=checkbox] selector would have posted
+  // it as one and had the Worker's strict schema reject the whole save.
+  const boxes = [...catsEl.querySelectorAll('input[type="checkbox"][data-cat]')];
   for (const b of boxes) b.disabled = true;
   const visibility = CATALOGS.filter(
     (cat) => boxes.find((b) => b.dataset.cat === cat)?.checked,
@@ -1128,6 +1138,96 @@ function audiobookRoleCell(estateUser) {
   return cell;
 }
 
+/**
+ * The Ebooks row's second control: the per-person DOWNLOAD grant (0009).
+ *
+ * ⚠️ Two facts, two fields, and the difference is the whole design (the admin
+ * API sends both):
+ *   download_ebooks          EFFECTIVE — what this person can actually do.
+ *   download_ebooks_granted  the STORED half — all a toggle can write.
+ * An admin+ or owner row reads effective=true with granted=false, because the
+ * admin half is COMPUTED and never stored (0009's header argues why storing it
+ * would survive a demotion). Those rows therefore render CHECKED AND DISABLED
+ * with the reason said out loud — the owners-get-no-editable-controls idiom
+ * this page already uses for owner roles. An editable box there would offer an
+ * un-check that changes nothing, which is precisely the silently-dead control
+ * the estate's refusal rules forbid.
+ *
+ * ⚠️ Download is not a way IN. A person can hold it and still not see the
+ * shelf; the note says so rather than letting the pair read as one control.
+ */
+function downloadEbooksCell(estateUser) {
+  const cell = document.createElement('span');
+
+  // A pre-0009 Worker simply does not send the fields. Say so, rather than
+  // drawing a control whose state would be a guess.
+  if (typeof estateUser.download_ebooks !== 'boolean') {
+    cell.className = 'cat-note';
+    cell.textContent = 'download grant not reported by this Worker';
+    return cell;
+  }
+
+  const owner = isOwnerEmail(estateUser);
+  // ⚠️ Read the SERVER's own reason rather than re-deriving the admin+ rule
+  // here: effective true with the stored half false can only mean the
+  // computed admin half granted it. me.ts's downloadEbooks() is the one
+  // implementation and a second copy in this file would drift from it.
+  // The owner check stays local because the admin API's row shape has no
+  // OWNER_EMAILS field — userJson computes from `is_approver` alone, so an
+  // owner whose row is not flagged approver would otherwise render unchecked.
+  const byRole =
+    owner || (estateUser.download_ebooks === true && estateUser.download_ebooks_granted === false);
+
+  const label = document.createElement('label');
+  label.className = 'cat-vis';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  // ⚠️ deliberately NO data-cat — saveVisibility() collects by that attribute
+  // and this is not a catalog.
+  box.dataset.grant = 'download';
+  box.checked = estateUser.download_ebooks;
+  box.setAttribute('aria-label', `ebook download grant for ${estateUser.email}`);
+
+  if (byRole) {
+    box.disabled = true;
+    box.checked = true;
+    label.append(box, ' download');
+    const why = document.createElement('span');
+    why.className = 'cat-note';
+    why.textContent = owner ? ' owner — always' : ' admin — always';
+    cell.append(label, why);
+    return cell;
+  }
+
+  box.addEventListener('change', async () => {
+    box.disabled = true;
+    const want = box.checked;
+    const data = await api(`/api/estate/users/${estateUser.id}/download-ebooks`, {
+      method: 'POST',
+      body: JSON.stringify({ download_ebooks: want }),
+    });
+    if (data) {
+      await loadDirectory(); // re-render from what the server now says
+    } else {
+      box.checked = !want; // refused — snap back to what stands
+      box.disabled = false;
+    }
+  });
+
+  label.append(box, ' download');
+  cell.appendChild(label);
+
+  // The honest pairing note, shown only where it can mislead: a download grant
+  // on someone who cannot see the shelf grants nothing at all today.
+  if (estateUser.download_ebooks && Array.isArray(estateUser.visibility) && !estateUser.visibility.includes('ebooks')) {
+    const note = document.createElement('span');
+    note.className = 'cat-note';
+    note.textContent = ' no effect without "visible"';
+    cell.appendChild(note);
+  }
+  return cell;
+}
+
 /** One catalog line: name, visibility checkbox, role cell. */
 function catalogRow(estateUser, catKey, roleCell) {
   const row = document.createElement('div');
@@ -1225,6 +1325,12 @@ function userCard(u) {
   // has no roles, I should be able to set her with the same level of roles as
   // my library"). Its visibility checkbox is unchanged — 0007's column is
   // DEFAULT 0, so existing rows still show it unchecked until granted.
+
+  // The ebook shelf (0008/0009, owner directive 2026-08-17: "ebooks should be
+  // like the other site where we grant permission to view it"). Its second
+  // control is NOT a role — the shelf has no ladder of its own — it is the
+  // DOWNLOAD toggle, the one capability that separates from the view grant.
+  cats.appendChild(catalogRow(u, 'ebooks', downloadEbooksCell(u)));
   li.appendChild(cats);
 
   const actions = document.createElement('div');

@@ -530,6 +530,12 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
              TO 0 on the directory — every row starts unchecked here. The
              label is a UI string; the wire vocabulary stays `library2`. -->
         <button type="button" class="chip" data-cat="library2" aria-pressed="false">Sam's library</button>
+        <!-- ebooks (0008, owner directive 2026-08-17): the household's shared
+             ebook shelf. Visibility DEFAULTS TO 0 and it is NOT in the public
+             slice, so every row starts unchecked and only a deliberate grant
+             opens the shelf. The label is a UI string; the wire vocabulary
+             stays `ebooks`. -->
+        <button type="button" class="chip" data-cat="ebooks" aria-pressed="false">Ebooks</button>
       </div>
       <div class="cats-row-actions">
         <span id="count" class="count" aria-live="polite"></span>
