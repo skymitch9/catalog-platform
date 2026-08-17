@@ -57,12 +57,29 @@
       ]
     },
     {
+      "_why": [
+        "⚠️ THE MERGED CATALOG ROW, 2026-08-17. Owner order: 'instead of a new line for ebooks in the auth page,",
+        "just make it Audiobook/Ebooks. also they should both be plural.' Audiobooks and Ebooks are one site behind",
+        "one site_roles ladder, so they are now ONE row and ONE advanced-filter section. The member table itself is",
+        "signed-in-only, but the CHROME that carries the merge is not: the advanced-filters section title and the",
+        "role-ladder disclosure both ship in the HTML, so both can be asserted unauthenticated.",
+        "mustNotContain pins the REMOVAL half, per the rework precedent below: the singular '>Audiobook</span>'",
+        "section title and the old 'Audiobook role ladder' summary are exactly what a stale bundle would still",
+        "carry while serving a cheerful 200 and satisfying every mustContain."
+      ],
       "path": "/admin/",
       "mustContain": [
         "Estate members",
         "class=\"back\"",
         "id=\"f-role-library2\"",
-        "data-cat=\"ebooks\""
+        "data-cat=\"ebooks\"",
+        "Audiobooks/Ebooks",
+        "Audiobooks/Ebooks role ladder",
+        "id=\"f-role-audiobook\""
+      ],
+      "mustNotContain": [
+        ">Audiobook</span>",
+        "Audiobook role ladder"
       ]
     },
     {
@@ -87,19 +104,28 @@
         "('download-ebooks', 'download_ebooks_granted'). The owner removed that control the day after it",
         "shipped — 'For ebooks I don't want a download check box, I want to use roles we have. Set up the",
         "roles to match library.' Downloading is now the audiobook ladder's `download` capability (floor",
-        "admin), granted by promotion on the Audiobook role dropdown. A bundle that still carried the old",
-        "markers would be a bundle that still shipped the checkbox, so asserting them would now be exactly",
-        "backwards — mustNotContain pins the removal instead."
+        "admin), granted by promotion on the role dropdown. A bundle that still carried the old markers",
+        "would be a bundle that still shipped the checkbox, so asserting them would now be exactly",
+        "backwards — mustNotContain pins the removal instead.",
+        "⚠️ AND CHANGED AGAIN THE SAME DAY, for the row merge ('just make it Audiobook/Ebooks'). The two",
+        "rows became one, so the marker set moved with it: MERGED_ROW is the list that makes one line",
+        "cover two catalogs, downloadNoteCell is what downloadEbooksCell was renamed to, and the note's",
+        "own words shortened once the role it names stopped being a row away. The three superseded",
+        "strings are refused rather than dropped — a bundle still carrying 'downloadEbooksCell' is a",
+        "bundle still rendering two rows, and it would pass every mustContain below."
       ],
       "path": "/admin/admin.js",
       "mustContain": [
         "'ebooks'",
-        "downloadEbooksCell",
-        "download: admin on the audiobook role above"
+        "MERGED_ROW",
+        "downloadNoteCell",
+        "download: admin+ role"
       ],
       "mustNotContain": [
         "download-ebooks",
-        "download_ebooks_granted"
+        "download_ebooks_granted",
+        "downloadEbooksCell",
+        "download: admin on the audiobook role above"
       ]
     },
     {

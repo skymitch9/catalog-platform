@@ -13,6 +13,77 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔗 Admin page: Audiobooks and Ebooks become ONE row — ✅ BUILT + DEPLOYED 2026-08-17
+
+**Owner order, verbatim:** *"instead of a new line for ebooks in the auth page,
+just make it Audiobook/Ebooks. also they should both be plural."*
+
+⚠️ **Amends the two entries below, both from the same day** — the ebooks gate
+gave Ebooks a row of its own, and the download rework left that row carrying a
+note that pointed UP at the audiobook role a line above it. Neither is wrong
+about the *grants*; this is the row those grants are drawn on. Where they
+describe the admin page's LAYOUT, this entry wins.
+
+### The shape
+
+Audiobooks and Ebooks are ONE surface — the same site, the same `site_roles`
+ladder, and ebook visibility is just a second grant on it. Two rows described
+one thing, which meant two places to look for one answer and a note whose job
+was to send the reader from one to the other. So: one line reading
+**Audiobooks/Ebooks**, carrying
+
+- **two visibility checkboxes**, labelled *Audiobooks visible* and *Ebooks
+  visible* (`vis_audiobook` / `vis_ebooks` — still two independent grants, still
+  the same wire, still posted as §4.5's canonical whole-array set),
+- **one role dropdown** — the audiobook site-roles ladder, which is the only
+  ladder either shelf has ever had,
+- **the download note**, now reading `download: admin+ role`. It shortened
+  because the role it names is an inch to its left instead of a row up: the
+  direction was half the old sentence and is now noise.
+
+Owner rows keep the no-editable-control idiom exactly as before (a fact, not a
+dropdown); their visibility boxes render as they always have.
+
+### The plural sweep
+
+Display labels only — **no persisted key, `data-cat` value, filter id or site
+vocabulary was renamed.** `CATALOG_LABELS` now reads `Audiobooks` / `Library` /
+`Games` / `Sam's library` / `Ebooks`: `Ebooks` was already plural and
+capitalised, so the rest came into line with it rather than the reverse.
+`Library` stays singular — it names one shelf. The "Sees" chips, the
+advanced-filters section title (**Audiobooks/Ebooks**, one section, because
+there has never been a separate ebooks role filter and must not be) and the
+role-ladder disclosure (**Audiobooks/Ebooks role ladder**) all follow. The two
+visibility CHIPS stay two: "sees the audiobook shelf" and "sees the ebook shelf"
+are still different questions.
+
+### Found while in there
+
+`reconcileOwnerRoles()` called `render()` — **a function that does not exist in
+this module and never did.** It threw `ReferenceError` inside a `void`-ed async
+call, so it failed silently: the status line announced that an owner's role had
+been corrected while the cell went on showing the stale rung until a manual
+refresh. Now `renderFilteredList()`, the repaint every other mutation uses.
+
+### Markers
+
+`predeploy.checks.json` moved with the page, both halves:
+
+| | mustContain | mustNotContain |
+|---|---|---|
+| `/admin/` | `Audiobooks/Ebooks`, `Audiobooks/Ebooks role ladder`, `id="f-role-audiobook"` | `>Audiobook</span>`, `Audiobook role ladder` |
+| `/admin/admin.js` | `MERGED_ROW`, `downloadNoteCell`, `download: admin+ role` | `downloadEbooksCell`, `download: admin on the audiobook role above` |
+
+Proved discriminating before shipping, by running the new marker set against the
+**pre-merge** files from `HEAD`: **9 failures** (4 missing, 5 still-carried).
+A stale bundle serving a cheerful 200 is detected, which is the whole point of
+the `mustNotContain` half the download rework added.
+
+⚠️ **NOT verified by this build: the rendered signed-in table.** Every member
+row is injected after Firebase sign-in, so an unauthenticated fetch can only
+prove the chrome shipped. **The merged row itself needs the owner's eyes** at
+<https://heygabi.ai/admin/>.
+
 ## 📥 Ebook DOWNLOAD becomes a ROLE, not a checkbox — ✅ BUILT + DEPLOYED 2026-08-17
 
 **Owner directive, verbatim:** *"For ebooks I don't want a download check box,

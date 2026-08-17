@@ -93,14 +93,40 @@ const CANONICAL_ORIGIN = 'https://heygabi.ai';
  *  TO 0 there, so every row renders it unchecked until deliberately granted. */
 const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'];
 
-/** UI labels only — the wire vocabulary stays the CATALOGS keys above. */
+/**
+ * UI labels only — the wire vocabulary stays the CATALOGS keys above.
+ *
+ * ⚠️ PLURAL AND CAPITALISED, owner order 2026-08-17: *"instead of a new line
+ * for ebooks in the auth page, just make it Audiobook/Ebooks. also they should
+ * both be plural."* `Ebooks` was already plural and capitalised, so the sweep
+ * brought the rest of the display names into line with it rather than the other
+ * way round. `Library` stays singular — it is the name of one shelf, and
+ * "Libraries" would describe something that does not exist here.
+ *
+ * ⚠️ DISPLAY ONLY. The keys are the persisted/site vocabulary (`audiobook`,
+ * `ebooks`, `library2`, …) and are never renamed: they are what the visibility
+ * array stores, what `data-cat` carries, and what the auth Worker validates.
+ */
 const CATALOG_LABELS = {
-  audiobook: 'audiobook',
-  library: 'library',
-  games: 'games',
+  audiobook: 'Audiobooks',
+  library: 'Library',
+  games: 'Games',
   library2: "Sam's library",
   ebooks: 'Ebooks',
 };
+
+/**
+ * The catalogs that share ONE row (owner order 2026-08-17). Audiobooks and
+ * Ebooks are one surface — the same site, the same `site_roles` ladder — and
+ * ebook visibility is simply a second grant on it, so two lines describing one
+ * thing was two places to look for one answer. The row shows both visibility
+ * boxes beside the single role dropdown that governs both.
+ *
+ * ⚠️ Order matters twice over: it is the order the boxes render in AND the
+ * order the label is joined in ("Audiobooks/Ebooks"), and both keys must stay
+ * inside CATALOGS so saveVisibility keeps posting §4.5's canonical set.
+ */
+const MERGED_ROW = ['audiobook', 'ebooks'];
 
 /**
  * The app Workers with roles to federate, in §4.5's canonical CATALOGS order
@@ -875,10 +901,15 @@ function wireControls() {
  * §4.5's canonical order, because the endpoint takes the set, not a delta.
  */
 async function saveVisibility(estateUser, catsEl) {
-  // ⚠️ `[data-cat]` is load-bearing: the Ebooks row also carries a DOWNLOAD
-  // checkbox (0009), which is NOT a catalog and must never be folded into the
-  // visibility array. A bare input[type=checkbox] selector would have posted
-  // it as one and had the Worker's strict schema reject the whole save.
+  // ⚠️ `[data-cat]` is load-bearing, and stayed load-bearing when the rows
+  // merged: a card's `.cats` block now holds a line with TWO boxes on it
+  // (Audiobooks/Ebooks) and this selector still collects exactly the boxes that
+  // ARE catalogs, in whatever row they happen to sit. It also survived the
+  // opposite case — the DOWNLOAD checkbox that briefly sat in the ebooks row
+  // (0009) was not a catalog, and a bare input[type=checkbox] selector would
+  // have posted it as one and had the Worker's strict schema reject the whole
+  // save. The filter below is over CATALOGS, so the ORDER is canonical no
+  // matter how the rows are grouped on screen.
   const boxes = [...catsEl.querySelectorAll('input[type="checkbox"][data-cat]')];
   for (const b of boxes) b.disabled = true;
   const visibility = CATALOGS.filter(
@@ -1030,7 +1061,13 @@ async function reconcileOwnerRoles() {
   }
   if (fixed.length) {
     setStatus(`Owner role set to ${top} for ${fixed.join(', ')}.`, 'owner');
-    render();
+    // ⚠️ This said `render()` — a function that does not exist in this module
+    // and never did (found 2026-08-17 while merging the catalog rows). It threw
+    // ReferenceError inside a `void`-ed async call, so it failed SILENTLY: the
+    // status line said the owner's role had been corrected while the cell kept
+    // showing the stale rung until the next manual refresh. renderFilteredList
+    // is the repaint every other mutation path uses.
+    renderFilteredList();
   }
 }
 
@@ -1139,60 +1176,88 @@ function audiobookRoleCell(estateUser) {
 }
 
 /**
- * The Ebooks row's second cell — a NOTE, not a control, and deliberately so.
+ * The Audiobooks/Ebooks row's trailing cell — a NOTE, not a control, and
+ * deliberately so.
  *
  * ⚠️ THERE IS NO DOWNLOAD CHECKBOX HERE ANY MORE. One shipped on 2026-08-16
  * (0009's per-person `dl_ebooks` grant) and the owner removed it the next day,
  * verbatim: *"For ebooks I don't want a download check box, I want to use roles
- * we have. Set up the roles to match library."*
+ * we have. Set up the roles to match library."* Downloading is granted by
+ * PROMOTION on the role dropdown — `download` floors at `admin` in
+ * audiobook-worker's capability matrix. One grant mechanism, in the place the
+ * page already puts "what may they DO there".
  *
- * So the Ebooks row now carries exactly ONE control — the `visible` checkbox
- * every catalog row has — and downloading is granted by PROMOTION on the
- * Audiobook row's role dropdown further up this same card (`download` floors at
- * `admin` in audiobook-worker's capability matrix). One grant mechanism, in the
- * place the page already puts "what may they DO there".
+ * ⚠️ The sentence got SHORTER when the rows merged (owner order 2026-08-17).
+ * Its previous wording spent half its words pointing UP at the audiobook row,
+ * because the role it names was a row away and the reader had to be sent there.
+ * The dropdown is now an inch to its left on the same line, so the direction is
+ * noise and only the rung is news: "download: admin+ role". (The old wording is
+ * deliberately not quoted here — predeploy.checks.json pins its removal with
+ * `mustNotContain`, and a comment repeating it verbatim would fail that check
+ * from a bundle that is in fact correct.)
  *
- * This cell exists so the row does not simply go quiet about downloads: a blank
+ * The cell exists at all so the row does not go quiet about downloads: a blank
  * space would read as "downloads are not a thing here", and someone would go
  * looking for the toggle that used to be in it. Saying where the grant moved is
  * cheaper than the question it prevents.
  */
-function downloadEbooksCell(estateUser) {
+function downloadNoteCell(estateUser) {
   const cell = document.createElement('span');
   cell.className = 'cat-note';
   // Named for what the reader must DO, and pointing at the control that does
   // it — never a bare statement that they lack something.
-  cell.textContent = 'download: admin on the audiobook role above';
+  cell.textContent = 'download: admin+ role';
   cell.title =
     'Downloading ebook files is a role, not a per-person grant (owner decision ' +
-    '2026-08-17). Set this person to admin on the Audiobook row to allow it; ' +
-    'the "visible" box here only opens the shelf and the in-browser reader.';
+    '2026-08-17). Set this person to admin on the role dropdown in this row to ' +
+    'allow it; the "Ebooks" box only opens the shelf and the in-browser reader.';
   return cell;
 }
 
-/** One catalog line: name, visibility checkbox, role cell. */
-function catalogRow(estateUser, catKey, roleCell) {
+/**
+ * One catalog line: name, a visibility checkbox per catalog it covers, the role
+ * cell, and any trailing note.
+ *
+ * ⚠️ `catKeys` IS A LIST because one line can describe more than one catalog.
+ * Audiobooks and Ebooks share a row (owner order 2026-08-17) — same site, same
+ * ladder, two visibility grants — so the row carries TWO checkboxes above ONE
+ * dropdown. Every other row passes a single key and renders exactly as before.
+ *
+ * ⚠️ The wire vocabulary is untouched: each box still carries its own
+ * `data-cat`, and saveVisibility still rebuilds the whole array from CATALOGS,
+ * so a merged row saves both grants independently and in canonical order.
+ *
+ * The checkbox label follows suit — a lone box says "visible" (there is only
+ * one shelf on the line to be visible in), a shared row names its catalog
+ * ("Audiobooks visible" / "Ebooks visible") because "visible" twice on one line
+ * would be two identical controls with no way to tell them apart.
+ */
+function catalogRow(estateUser, catKeys, roleCell, trailingCell) {
+  const keys = Array.isArray(catKeys) ? catKeys : [catKeys];
   const row = document.createElement('div');
   row.className = 'cat';
 
   const name = document.createElement('span');
   name.className = 'cat-name';
-  name.textContent = CATALOG_LABELS[catKey] || catKey;
+  name.textContent = keys.map((k) => CATALOG_LABELS[k] || k).join('/');
   row.appendChild(name);
 
   if (Array.isArray(estateUser.visibility)) {
-    const vis = document.createElement('label');
-    vis.className = 'cat-vis';
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.dataset.cat = catKey;
-    box.checked = estateUser.visibility.includes(catKey);
-    box.addEventListener('change', () => saveVisibility(estateUser, row.parentElement));
-    vis.append(box, ' visible');
-    row.appendChild(vis);
+    for (const catKey of keys) {
+      const vis = document.createElement('label');
+      vis.className = 'cat-vis';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.cat = catKey;
+      box.checked = estateUser.visibility.includes(catKey);
+      box.addEventListener('change', () => saveVisibility(estateUser, row.parentElement));
+      vis.append(box, keys.length > 1 ? ` ${CATALOG_LABELS[catKey] || catKey} visible` : ' visible');
+      row.appendChild(vis);
+    }
   }
 
   row.appendChild(roleCell);
+  if (trailingCell) row.appendChild(trailingCell);
   return row;
 }
 
@@ -1254,7 +1319,15 @@ function userCard(u) {
   const cats = document.createElement('div');
   cats.className = 'cats';
 
-  cats.appendChild(catalogRow(u, 'audiobook', audiobookRoleCell(u)));
+  // ONE ROW FOR ONE SURFACE (owner order 2026-08-17, verbatim: "instead of a
+  // new line for ebooks in the auth page, just make it Audiobook/Ebooks. also
+  // they should both be plural"). Audiobooks and Ebooks are the same site and
+  // the same site_roles ladder; ebook visibility is a second grant on it, not a
+  // second catalog with a second permission system. So: one line, two visibility
+  // boxes (vis_audiobook / vis_ebooks — unchanged wiring), one role dropdown,
+  // and the download note, which now reads naturally because the role it names
+  // is in the same row rather than an instruction to look upward.
+  cats.appendChild(catalogRow(u, MERGED_ROW, audiobookRoleCell(u), downloadNoteCell(u)));
 
   for (const app of APPS) {
     cats.appendChild(catalogRow(u, app.key, appRoleCell(app, u)));
@@ -1268,15 +1341,11 @@ function userCard(u) {
   // my library"). Its visibility checkbox is unchanged — 0007's column is
   // DEFAULT 0, so existing rows still show it unchecked until granted.
 
-  // The ebook shelf (0008, owner directive 2026-08-17: "ebooks should be like
-  // the other site where we grant permission to view it"). Its `visible` box is
-  // the whole grant: the shelf AND reading in the browser viewer.
-  //
-  // ⚠️ Its second cell is a NOTE, not a control — the download checkbox that
-  // sat there for one day was removed by the follow-up directive ("use roles we
-  // have… match library"). The shelf has no ladder of its own; it rides the
-  // AUDIOBOOK role rendered a few rows up, where `download` floors at admin.
-  cats.appendChild(catalogRow(u, 'ebooks', downloadEbooksCell(u)));
+  // ⚠️ THE EBOOK SHELF NO LONGER HAS A ROW OF ITS OWN (0008 shipped one on
+  // 2026-08-17; the owner merged it the same day — see MERGED_ROW above). Its
+  // `vis_ebooks` box is unchanged and unmoved in the data — it simply renders
+  // beside the audiobook one, because the shelf never had a ladder of its own:
+  // it rides the audiobook role, where `download` floors at admin.
   li.appendChild(cats);
 
   const actions = document.createElement('div');

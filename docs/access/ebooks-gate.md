@@ -30,7 +30,7 @@ it just has nothing to show until you are signed in **and** hold the estate's
 | `vis_ebooks` column | `apps/auth-worker/migrations/0008_vis_ebooks.sql` | The view grant. `DEFAULT 0`; **not** in the public slice. Includes READING. |
 | `download` capability | `apps/audiobook-worker/src/capabilities.ts` | **The download grant.** Floor `admin` on the site-roles ladder. ⚠️ Replaced the per-person checkbox 2026-08-17 — see §3. |
 | `dl_ebooks` column | `apps/auth-worker/migrations/0009_dl_ebooks.sql` | ⚠️ **DEPRECATED AND UNREAD** since 2026-08-17 (migration `0010` records why it was left standing). Nothing SELECTs it. |
-| Ebooks column (view checkbox only) | `sites/heygabi-home/public/admin/` | The UI. ⚠️ **No download toggle** — that row's second cell is a note pointing at the Audiobook role. |
+| **Audiobooks/Ebooks** row — two view checkboxes, one role dropdown | `sites/heygabi-home/public/admin/` | The UI. ⚠️ **Merged 2026-08-17** (owner: *"just make it Audiobook/Ebooks"*): no Ebooks row of its own any more. Still **no download toggle**; the row's trailing note reads `download: admin+ role`. |
 | `GET /api/ebooks/manifest` | `apps/audiobook-worker/src/ebooks.ts` | **The gate.** Verifies the token, requires `ebooks` visibility, serves the manifest. |
 | `ebooks-gated` R2 bucket | Cloudflare account `113be82b…` | The private store. Key: `ebooks.json`. |
 | `scripts/publish_ebooks_manifest.py` | `audiobook_catalog` | The publisher (sync **step 5.8**). |
@@ -39,17 +39,27 @@ it just has nothing to show until you are signed in **and** hold the estate's
 
 ## 3. Granting and revoking (UI first — the owner's standing rule)
 
-**Grant:** `https://heygabi.ai/admin/` → find the person → the **Ebooks** row →
-tick **visible**. That is the whole grant, and it includes reading.
+⚠️ **ONE ROW NOW, NOT TWO** (owner order 2026-08-17, verbatim: *"instead of a
+new line for ebooks in the auth page, just make it Audiobook/Ebooks. also they
+should both be plural."*). The member card carries a single
+**Audiobooks/Ebooks** line: two visibility checkboxes (**Audiobooks visible**,
+**Ebooks visible** — still `vis_audiobook` and `vis_ebooks`, still two
+independent grants), the site-role dropdown that governs both shelves, and the
+download note. Nothing about the wire changed; the two rows were one surface
+described twice, which meant two places to look for one answer.
+
+**Grant:** `https://heygabi.ai/admin/` → find the person → the
+**Audiobooks/Ebooks** row → tick **Ebooks visible**. That is the whole grant,
+and it includes reading.
 
 **Download: there is no download checkbox. Promote them.** Owner directive
 2026-08-17, verbatim: *"For ebooks I don't want a download check box, I want to
 use roles we have. Set up the roles to match library."*
 
-`https://heygabi.ai/admin/` → the same person → the **Audiobook** row's role
-dropdown → set **admin**. That is the entire download grant, and demoting them
-is the entire revocation. The Ebooks row's second cell says so in place of the
-toggle that used to be there.
+The role dropdown on that **same row** → set **admin**. That is the entire
+download grant, and demoting them is the entire revocation. The note beside the
+dropdown (`download: admin+ role`) says so in place of the toggle that used to
+be there.
 
 ⚠️ **The two grants are independent and BOTH are needed to download.**
 Visibility is checked first, on every request:
@@ -64,7 +74,8 @@ Visibility is checked first, on every request:
 If you find a reference to it, or to `POST /api/estate/users/:id/download-ebooks`,
 that reference is stale — the route is deleted and the column is unread.
 
-**Revoke:** un-tick **visible**. Takes effect within the estate's revocation
+**Revoke:** un-tick **Ebooks visible** on that row (⚠️ *not* **Audiobooks
+visible** beside it — same line, different shelf). Takes effect within the estate's revocation
 delay — **10 minutes** (`REVOCATION_DELAY_MS`), because the Worker caches the
 `/seen` answer per isolate. Instant kill paths, unchanged: revoke the person in
 the estate (their effective set becomes `{}` immediately on the next cache

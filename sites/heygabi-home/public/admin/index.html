@@ -169,8 +169,11 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 .user-meta { margin: .3rem 0 .55rem; color: var(--et-muted); font-size: var(--et-text-small); }
 .user-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 
-/* The federated catalog block: one line per catalog — visibility checkbox
-   (the estate's fact) beside the app's own role dropdown (that app's fact). */
+/* The federated catalog block: one line per SURFACE — visibility checkbox
+   (the estate's fact) beside the app's own role dropdown (that app's fact).
+   ⚠️ Per surface, not per catalog, since 2026-08-17: Audiobooks and Ebooks are
+   one site behind one ladder, so that line carries two visibility boxes and one
+   dropdown. .cat is flex-wrap, so the extra box costs nothing on a phone. */
 .cats { display: grid; gap: .35rem; margin: 0 0 .65rem; }
 .cat {
   display: flex;
@@ -179,7 +182,12 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   flex-wrap: wrap;
   font-size: var(--et-text-small);
 }
-.cat-name { min-width: 6.2rem; font-weight: 600; }
+/* 8.6rem, not 6.2rem, since 2026-08-17: the merged "Audiobooks/Ebooks" name is
+   the longest label on the block, and a min-width shorter than it would leave
+   that one row's checkboxes hanging further right than every other row's. The
+   row still wraps on a narrow phone — this only aligns the columns when there
+   is room for them. */
+.cat-name { min-width: 8.6rem; font-weight: 600; }
 .cat-vis {
   display: inline-flex;
   align-items: center;
@@ -470,8 +478,12 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     — note: this <code>member</code> role is NOT the same thing as being an
     approved estate member above) are different words on purpose, and
     changing one changes it in that app itself. Each dropdown only offers
-    roles strictly beneath your own — see "Audiobook role ladder" below for
-    the full map.
+    roles strictly beneath your own — see "Audiobooks/Ebooks role ladder"
+    below for the full map. <strong>Audiobooks and Ebooks share one line</strong>:
+    they are one site behind one ladder, so the line carries two
+    <em>visible</em> boxes (the audiobook shelf, the ebook shelf) above the
+    single role that governs both — and downloading an ebook file is that
+    role at <code>admin</code>, not a box of its own.
   </p>
 
   <div class="bar">
@@ -489,10 +501,14 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
        tree map") — admin.js: renderRoleTree(), fetched from
        GET /api/estate/site-roles/tree. Collapsed by default like Advanced
        filters; independent of the roster load, so it can show even when
-       the roster itself is degraded (no Firestore service account yet). -->
+       the roster itself is degraded (no Firestore service account yet).
+       ⚠️ Titled "Audiobooks/Ebooks" since 2026-08-17: this is ONE ladder over
+       BOTH shelves (the ebook shelf has none of its own — `download` is this
+       ladder's admin rung), so naming only the audiobook half sent people
+       looking for a second, non-existent ebook ladder. -->
   <details id="role-ladder" class="adv" hidden>
     <summary class="adv-summary">
-      <span class="ctl-label">Audiobook role ladder</span>
+      <span class="ctl-label">Audiobooks/Ebooks role ladder</span>
     </summary>
     <div id="role-ladder-body"></div>
   </details>
@@ -522,10 +538,17 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
     <div class="cats-row">
       <span class="ctl-label">Sees</span>
+      <!-- ⚠️ TWO visibility chips for the merged Audiobooks/Ebooks row, on
+           purpose (owner order 2026-08-17 merged the ROW, not the grants):
+           `vis_audiobook` and `vis_ebooks` are still two independent grants,
+           so "sees the audiobook shelf" and "sees the ebook shelf" stay two
+           different questions to filter on. Labels are plural + capitalised to
+           match the row names; `data-cat` is the wire vocabulary and is
+           untouched. -->
       <div class="chipset" role="group" aria-label="Sees catalog">
-        <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
-        <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
-        <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+        <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">Audiobooks</button>
+        <button type="button" class="chip" data-cat="library" aria-pressed="false">Library</button>
+        <button type="button" class="chip" data-cat="games" aria-pressed="false">Games</button>
         <!-- library2 (0007): the second library instance. Visibility DEFAULTS
              TO 0 on the directory — every row starts unchecked here. The
              label is a UI string; the wire vocabulary stays `library2`. -->
@@ -585,11 +608,17 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
           </div>
         </div>
 
+        <!-- ⚠️ ONE role filter for BOTH shelves (2026-08-17). There has never
+             been a separate ebooks role filter and there must not be one: the
+             ebook shelf rides this same site_roles ladder, so `f-role-audiobook`
+             already answers "what may they do on the ebook shelf" too. The id
+             and ROLE_FILTER_KEYS entry stay `audiobook` — that is the persisted
+             site vocabulary; only the visible title says both names. -->
         <div class="adv-section">
-          <span class="ctl-label adv-section-title">Audiobook</span>
+          <span class="ctl-label adv-section-title">Audiobooks/Ebooks</span>
           <div class="adv-fields">
             <label class="ctl">
-              <span class="ctl-label">Site role</span>
+              <span class="ctl-label">Site role (both shelves)</span>
               <select id="f-role-audiobook" class="ctl-input"><option value="any">any</option></select>
             </label>
           </div>

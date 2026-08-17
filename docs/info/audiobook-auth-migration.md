@@ -345,8 +345,13 @@ The ROLES.md §1b ask, absorbed here because it is the same migration:
 
   | Capability | Grant | Where it lives |
   |---|---|---|
-  | See the shelf + read in the viewer | estate `vis_ebooks` | a checkbox on the admin page's Ebooks row |
-  | Take the file away | ladder `download`, floor `admin` | **promotion** on the Audiobook role dropdown |
+  | See the shelf + read in the viewer | estate `vis_ebooks` | the **Ebooks visible** checkbox on the admin page's **Audiobooks/Ebooks** row |
+  | Take the file away | ladder `download`, floor `admin` | **promotion** on that same row's role dropdown |
+
+  (⚠️ Those were two separate rows until 2026-08-17, when the owner merged them:
+  *"instead of a new line for ebooks in the auth page, just make it
+  Audiobook/Ebooks."* One site, one ladder, one line — the two capabilities and
+  the two grants behind them are unchanged.)
 
   What changed is that the second briefly had its OWN per-person checkbox
   (`dl_ebooks`, migration 0009, shipped 2026-08-16) and no longer does. That
