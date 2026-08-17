@@ -194,7 +194,13 @@ path has checked one refusal path.*
 
 ---
 
-## 5. The one book that 404s, on purpose
+## 5. The one book that 404s, on purpose — ⚠️ SUPERSEDED, see §9.7
+
+> 🔴 **STALE AS OF 2026-08-17.** The omnibus **is** in `estate-ebooks` now and
+> opens live (§9.7). Whoever ran phase 0a owner step 1 did not come back and
+> update this section, and a later build nearly published a doc asserting a 404
+> that no longer happens. The contract below is still the right one for a
+> present-in-manifest / absent-in-bucket object; only the example is wrong.
 
 `wrangler r2 object put` refuses files over 300 MiB (measured twice at phase
 0a, `--pipe` included), so **the 393 MiB White Sand Omnibus is the one of 168
@@ -511,29 +517,56 @@ already anticipated this; §6.2 of the findings doc called it correctly.
   precisely so phase 3's persisted key is produced by the renderer that will
   still be there — a stored CFI is a migration to change, not an edit.
 
-### 9.7 What was NOT verified in phase 2
+### 9.7 ✅ VERIFIED LIVE, 2026-08-17 — the first gated book anyone has read
 
-- 🔴 **NOBODY HAS OPENED A GATED EPUB WHILE SIGNED IN.** Every figure in §9.1 is
-  a local file over a local server. §9.4 removed the first thing that would have
-  stopped a signed-in reader; it does not prove the rest of the path.
-  <https://audiobooks.heygabi.ai/dev/read?b=&lt;anchor&gt;>
-- 🔴 **The acceptance-test book cannot be opened live at all**, and not for a
-  phase-2 reason: the 393 MiB omnibus is the one of 168 files still absent from
-  `estate-ebooks` (§5, the 300 MiB wrangler wall). The live test of the headline
-  case is blocked on an owner upload.
-- **No live EPUB range request has been observed through Cloudflare.** Whether
-  the edge preserves an 18-range pattern on a `no-store` 206, and whether 18
-  bearer-authenticated ranges behave against R2, is untested.
-- **The `blob:` CSP fix has never been exercised on any deployed origin** — see
-  §9.3: the dev lane serves the prod policy, so it cannot be until a promote.
-- **No paginated session beyond 25 turns**, and no resize, no font-size change
-  mid-book on a long read.
+⚠️ **This section replaced a "NOT VERIFIED" list within the hour**, because the
+§9.4 fix was the only thing standing in the way and the check became possible
+the moment it deployed. Measured on `/dev/`, signed in, through the real path —
+token → estate gate → Worker → R2 → Cloudflare's edge → foliate:
+
+| Book | Size | To OPEN (`book.init`) | Rendered |
+|---|---|---|---|
+| `whitesand.epub` | 150,104,209 B | **11 range requests / 27,005 B** (0.018%) | ✅ two-page spread |
+| **White Sand Omnibus** | **412,436,591 B** | **9 range requests / 77,382 B** (**0.0188%**) | ✅ cover art |
+| *A Killer's Mind* (reflowable) | small | 9 requests / 13,618 B | ✅ "CHAPTER 1 · 2%" |
+
+Reaching the first PAINTED page costs more than opening: 23 total requests for
+`whitesand.epub`, because the spread's page images follow. Six further page
+turns cost **+60 requests**, peak heap **24.1 MB**. ⚠️ Note these are LIVE
+figures and they match the local ones closely — 11 vs the probe's 15, 9 vs 15 —
+so Cloudflare's edge does **not** interfere with the range pattern on a
+`no-store` 206, and bearer-authenticated ranges against R2 behave exactly as
+modelled. That was the largest open question and it is closed.
+
+⚠️ **AND §5 IS STALE: the omnibus IS in the bucket.** It opened. Whoever
+completed phase 0a owner step 1 (the boto3 multipart path) did not update §5,
+and this build very nearly published a doc asserting a 404 that no longer
+happens. Re-measure before repeating a fact about live state, always.
+
+**The shelf, too.** `/dev/ebooks` renders all **168 tiles** for a signed-in
+member for the first time — see §9.4; it had the identical defect and was fixed
+in `ea725c9`.
+
+### 9.8 What is STILL not verified
+
+- 🔴 **THE `blob:` CSP FIX HAS NOT BEEN EXERCISED ANYWHERE IT MATTERS, AND THE
+  DEFECT IS VISIBLE LIVE RIGHT NOW.** Confirmed on `/dev/read` with a reflowable
+  book: the book's own stylesheet reports **blocked** and the body renders in
+  **Times New Roman**, exactly as §9.3 predicted — because the dev lane serves
+  the PROD `_headers` (§6.3). ⚠️ **The fix rides the promote and cannot be seen
+  before it.** Anyone reviewing typography on `/dev/` is reviewing the old
+  policy, not the build.
+- **PDF has still never been opened signed in.** §9.4 unblocked it, and nobody
+  has done it. Every live check above was EPUB.
 - **No mobile or low-memory device**, again. Every heap figure is one Windows
   desktop with a 4,192 MB limit.
-- **foliate's vendored extras are untouched**: `search.js` is shipped and never
+- **No long reading session**: six turns live, 25 locally. No resize, no
+  font-size change mid-book, no session near the token's hour.
+- **`ebooks.heygabi.ai/read` does not exist yet** — the door proxies PROD, so
+  everything above is the dev lane.
+- **foliate's vendored extras are untouched**: `search.js` ships and is never
   called; RTL, vertical writing, annotations and TTS were not assessed.
 - **No claude.ai usage reading was taken** during this work.
-
 ---
 
 ## Related
