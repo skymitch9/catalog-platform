@@ -17,6 +17,7 @@ import {
   resetGateLimiter,
 } from '../src/gate-shadow.js';
 import { resetEstateCache } from '../src/estate-status.js';
+import { identityHash, IDENTITY_SALT } from '../src/pseudonym.js';
 import { resetRoleCache } from '../src/roles.js';
 import type { Env } from '../src/env.js';
 
@@ -336,7 +337,10 @@ test('tokenless report on a gated action: 204 + would_deny:true (measurement #2)
     assert.equal(res.status, 204);
     const [line] = logs.gateLines();
     assert.equal(line?.['tokened'], false);
-    assert.equal(line?.['email'], null);
+    // No identity to pseudonymise — null, never a fake hash, or "how many
+    // distinct people" would count noise as people.
+    assert.equal(line?.['email_hash'], null);
+    assert.equal(line?.['identity_class'], 'anonymous');
     assert.equal(line?.['lane'], 'dev');
     assert.equal(line?.['would_deny'], true);
     assert.equal(line?.['reason'], 'no_live_session');
@@ -353,7 +357,8 @@ test('tokened moderator, schedule action: the full gate runs and logs the §4 li
     assert.equal(res.status, 204);
     const [line] = logs.gateLines();
     assert.equal(line?.['tokened'], true);
-    assert.equal(line?.['email'], 'mod@example.com');
+    assert.equal(line?.['email_hash'], await identityHash('mod@example.com'));
+    assert.equal(line?.['identity_class'], 'household');
     assert.equal(line?.['ladder_role'], 'moderator');
     assert.equal(line?.['estate'], 'approved');
     assert.equal(line?.['would_deny'], false);
@@ -420,6 +425,154 @@ test('estate unreachable: the line still lands, estate null, gate still evaluate
     assert.equal(line?.['estate'], null);
     assert.equal(line?.['ladder_role'], 'moderator');
     assert.equal(line?.['would_deny'], false);
+  } finally {
+    stub.restore();
+    logs.restore();
+  }
+});
+
+/* ── RETENTION SAFETY: no cleartext address may reach a retained log ─────
+ *
+ * `[observability] enabled = true` (wrangler.toml, 2026-08-17) turns every
+ * line below into a record Cloudflare keeps for days. These tests are the
+ * mechanical guard on the precondition that made enabling it acceptable —
+ * a future edit that puts `email` back must fail here, loudly.
+ * ─────────────────────────────────────────────────────────────────────── */
+
+test('RETENTION GUARD: no gate line carries an email, in any shape, ever', async () => {
+  const logs = captureLogs();
+  const stub = stubFetch({ storedRole: 'moderator', seenStatus: 'approved' });
+  try {
+    await post(envWith(), { action: 'club.setSchedule', token: 'stub' });
+    await post(envWith(), 'not json{');
+    await post(envWith({ ENVIRONMENT: 'production', DEV_EMAIL: undefined }), { action: 'review.delete' });
+
+    for (const line of logs.gateLines()) {
+      // The serialised line is what actually lands in Workers Logs — assert
+      // against THAT, not against a field name, so a key renamed back or an
+      // address smuggled into `reason` is caught just the same.
+      const raw = JSON.stringify(line);
+      assert.ok(!raw.includes('@'), `an address reached a RETAINED log line: ${raw}`);
+      assert.ok(!('email' in line), 'the `email` key is gone for good — see src/pseudonym.ts');
+      assert.ok('email_hash' in line && 'identity_class' in line);
+    }
+  } finally {
+    stub.restore();
+    logs.restore();
+  }
+});
+
+test('the hash is STABLE per user and DIFFERENT per user — counts and grouping survive', async () => {
+  const a1 = await identityHash('mod@example.com');
+  const a2 = await identityHash('mod@example.com');
+  const b = await identityHash('someone.else@example.com');
+  assert.equal(a1, a2, 'the same person must hash the same across invocations');
+  assert.notEqual(a1, b);
+  assert.match(a1 as string, /^[0-9a-f]{16}$/);
+  assert.equal(await identityHash(null), null);
+  // The salt is domain separation, so a different salt is a different corpus:
+  // this is exactly why a soak window must never span a salt change.
+  assert.notEqual(await identityHash('mod@example.com', 'other-salt'), a1);
+  assert.ok(IDENTITY_SALT.length > 0);
+});
+
+test('an OWNER row stays distinguishable — the flip criterion counts HOUSEHOLD, not everyone', async () => {
+  const logs = captureLogs();
+  const stub = stubFetch({ seenStatus: 'approved' });
+  try {
+    await post(envWith({ DEV_EMAIL: 'owner@example.com' }), { action: 'review.delete', token: 'stub' });
+    const [line] = logs.gateLines();
+    assert.equal(line?.['identity_class'], 'owner');
+    assert.equal(line?.['ladder_role'], 'owner');
+    assert.equal(line?.['email_hash'], await identityHash('owner@example.com'));
+  } finally {
+    stub.restore();
+    logs.restore();
+  }
+});
+
+test('a revoked (non-household) identity classes as outside, not household', async () => {
+  const logs = captureLogs();
+  const stub = stubFetch({ storedRole: 'admin', seenStatus: 'revoked' });
+  try {
+    await post(envWith(), { action: 'review.delete', token: 'stub' });
+    const [line] = logs.gateLines();
+    assert.equal(line?.['identity_class'], 'outside');
+    assert.equal(line?.['would_deny'], true);
+    assert.equal(line?.['reason'], 'estate_revoked');
+  } finally {
+    stub.restore();
+    logs.restore();
+  }
+});
+
+/* ── THE OUTCOME BIT (soak blocker 4) ───────────────────────────────────── */
+
+test('succeeded rides the report: true, false, and "cannot say" stay THREE states', async () => {
+  const logs = captureLogs();
+  try {
+    const env = envWith({ ENVIRONMENT: 'production', DEV_EMAIL: undefined });
+    await post(env, { action: 'club.setSchedule', succeeded: true });
+    await post(env, { action: 'club.setSchedule', succeeded: false });
+    await post(env, { action: 'club.setSchedule' }); // an older cached client build
+    await post(env, { action: 'club.setSchedule', succeeded: 'yes' }); // never coerced
+
+    const seen = logs.gateLines().map((l) => l['succeeded']);
+    assert.deepEqual(seen, [true, false, null, null]);
+  } finally {
+    logs.restore();
+  }
+});
+
+test('a malformed report still logs, and says honestly that it cannot state an outcome', async () => {
+  const logs = captureLogs();
+  try {
+    await post(envWith(), 'not json{');
+    const [line] = logs.gateLines();
+    assert.equal(line?.['reason'], 'malformed_report');
+    assert.equal(line?.['succeeded'], null); // iron rule 2 + the honest third state
+  } finally {
+    logs.restore();
+  }
+});
+
+/* ── THE PINNED CROSS-REPO CONTRACT ─────────────────────────────────────── */
+
+test('the PINNED site payload contract — this literal is asserted in BOTH repos', async () => {
+  // The other half lives in
+  //   audiobook_catalog/site/__tests__/gate-shadow.test.js
+  //   ("pins the exact payload contract the worker parses ...")
+  // and asserts the SAME object from the SENDING side. The two halves deploy
+  // independently — the site rides an owner promote, the worker a wrangler
+  // deploy — so a field renamed on one side alone is silent data loss that
+  // neither suite would catch on its own. Change this literal only with that
+  // one, and say so in the commit.
+  const SITE_PAYLOAD = {
+    action: 'read.setSlot',
+    lane: 'prod',
+    clubId: 'club-42',
+    succeeded: true,
+    token: 'ID_TOKEN',
+  };
+
+  const logs = captureLogs();
+  const stub = stubFetch({ storedRole: 'admin', seenStatus: 'approved', managerUids: [] });
+  try {
+    const res = await post(envWith(), SITE_PAYLOAD);
+    assert.equal(res.status, 204);
+    const [line] = logs.gateLines();
+    // Every field the site sends must be READ — an ignored field is the bug
+    // this pin exists to catch.
+    assert.equal(line?.['action'], 'read.setSlot');
+    assert.equal(line?.['lane'], 'prod');
+    assert.equal(line?.['club'], 'club-42');
+    assert.equal(line?.['succeeded'], true);
+    assert.equal(line?.['tokened'], true); // the token was accepted from the BODY
+    assert.equal(line?.['would_deny'], false);
+    // …and read.setSlot must be a KNOWN action, not `unknown_action` — the
+    // client half went live in the same package that instrumented it.
+    assert.notEqual(line?.['reason'], 'unknown_action');
+    assert.ok('read.setSlot' in ACTION_GATES);
   } finally {
     stub.restore();
     logs.restore();

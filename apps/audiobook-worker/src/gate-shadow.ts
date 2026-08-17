@@ -4,10 +4,22 @@
  *
  * The worker runs the FULL future gate — verify token → estate check →
  * resolve ladder role → capability + club managerUids — and logs ONE JSON
- * line in the estate shadow vocabulary, ACTING ON NOTHING. `wrangler tail |
- * grep ab_gate_shadow` is the whole read path; nothing is stored in D1 or
- * Firestore, per the design (§4 names logging only, and the flip criterion
- * reads the tail).
+ * line in the estate shadow vocabulary, ACTING ON NOTHING. Nothing is stored
+ * in D1 or Firestore, per the design (§4 names logging only).
+ *
+ * ## The read path — RETAINED as of 2026-08-17, not a tail any more
+ *
+ * `[observability] enabled = true` in wrangler.toml sends these lines to
+ * **Workers Logs**, which is retrospective: a query can look back over the
+ * retention window instead of catching only what arrives while attached. The
+ * 2026-08-16 soak pack's blocker 1 was exactly this — every pack before the
+ * flip was a 5-minute sample and the hours between packs were unrecoverable.
+ * `wrangler tail | grep ab_gate_shadow` still works and is still the fastest
+ * live check; it is no longer the ONLY read path.
+ *
+ * ⚠️ Because the line is now RETAINED, it must not carry an address: the
+ * identity rides as `email_hash` + `identity_class` (src/pseudonym.ts, which
+ * argues the salt choice). Never put a raw email back in this line.
  *
  * ## The three iron rules, in order of importance
  *
@@ -33,6 +45,7 @@ import { effectiveLadderRole, type LadderRole } from '../../auth-worker/src/role
 import { can, canClaimManager, clubCan, type Capability } from './capabilities.js';
 import { estateCheckMode, parseOwnerEmails, type Env } from './env.js';
 import { estateStatusFor } from './estate-status.js';
+import { identityClass, identityHash } from './pseudonym.js';
 import { cachedStoredRole, clubCollectionFor, clubManagerState } from './roles.js';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -247,6 +260,22 @@ async function processReport(env: Env, req: Request, raw: unknown): Promise<void
     body && typeof body['clubId'] === 'string' && body['clubId'].length <= 200
       ? body['clubId']
       : null;
+  /**
+   * ⚠️ THE OUTCOME BIT — the fix for the 2026-08-16 soak pack's blocker 4,
+   * which found the flip criterion UNFALSIFIABLE without it. The criterion
+   * asks for "requests that **succeeded today** but the gate would refuse";
+   * with no outcome, a `would_deny:true` line on a write `firestore.rules`
+   * ALREADY refused looks byte-identical to a real regression, so the count
+   * manufactures false alarms in one direction and buries true ones in the
+   * other.
+   *
+   * Strict boolean only. Anything else — absent (an older client build still
+   * cached in someone's browser), a string, a number — reads `null`: "this
+   * report cannot say", which is the honest third state and must never be
+   * collapsed into `false`. A report that lies about the outcome is worse
+   * than one that admits it does not know.
+   */
+  const succeeded = typeof body?.['succeeded'] === 'boolean' ? body['succeeded'] : null;
   // The token rides the BODY (sendBeacon cannot set headers); a header is
   // accepted too for clients that can send one.
   const headerToken = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1];
@@ -340,7 +369,9 @@ async function processReport(env: Env, req: Request, raw: unknown): Promise<void
           clubClaimed,
         });
 
-  // ONE line, the §4 vocabulary (+ the club id the payload carried).
+  // ONE line, the §4 vocabulary (+ the club id the payload carried, the
+  // outcome bit, and the pseudonymised identity that replaced `email` when
+  // retention was turned on — see the module header and src/pseudonym.ts).
   console.log(
     JSON.stringify({
       tag: 'ab_gate_shadow',
@@ -348,11 +379,17 @@ async function processReport(env: Env, req: Request, raw: unknown): Promise<void
       lane,
       club: clubId,
       tokened: identity !== null,
-      email,
+      email_hash: await identityHash(email, env.GATE_HASH_SALT),
+      identity_class: identityClass({
+        tokened: identity !== null,
+        isOwner: email !== null && ownerEmails.includes(email),
+        estateStatus,
+      }),
       ladder_role: ladderRole,
       estate: estateStatus,
       club_manager: clubManager,
       club_claimed: clubClaimed,
+      succeeded,
       would_deny: verdict.wouldDeny,
       reason: verdict.reason,
     }),

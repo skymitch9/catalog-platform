@@ -346,6 +346,12 @@ test('enforce: admin deletes a review; ab_gate logs the allow; lane=dev hits rev
     assert.equal(logs.lines[0]?.['denied'], false);
     assert.equal(logs.lines[0]?.['action'], 'review.delete');
     assert.equal(logs.lines[0]?.['mode'], 'enforce');
+    // ⚠️ RETENTION GUARD, the enforce twin of the one in gate-shadow.test.ts:
+    // [observability] retains THIS line too, so it carries a pseudonym and a
+    // class — never an address. Same reasoning, same prohibition.
+    assert.ok(!JSON.stringify(logs.lines[0]).includes('@'), 'no address in a RETAINED line');
+    assert.ok(!('email' in (logs.lines[0] ?? {})));
+    assert.match(String(logs.lines[0]?.['email_hash']), /^[0-9a-f]{16}$/);
 
     const dev = await req(envWith(), 'DELETE', '/api/reviews/r9?lane=dev');
     assert.equal(dev.status, 200);

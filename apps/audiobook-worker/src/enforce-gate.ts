@@ -50,6 +50,7 @@ import { estateCheckMode, parseOwnerEmails, type Env } from './env.js';
 import { estateStatusFor } from './estate-status.js';
 import { ACTION_GATES, gateDecision } from './gate-shadow.js';
 import { laneFrom, type Lane } from './fs-docs.js';
+import { identityClass, identityHash } from './pseudonym.js';
 import { cachedStoredRole, clubCollectionFor, clubManagerState, SA_SCOPES } from './roles.js';
 
 /** The §1e-worded dormant answer (the brief's exact contract: 503 not_enabled). */
@@ -92,20 +93,29 @@ export interface GateContext {
 export type GateOutcome = { ok: true; ctx: GateContext } | { ok: false; response: Response };
 
 /** One ab_gate line per gated request — the enforce twin of ab_gate_shadow,
- *  so enforce-mode behaviour lands in the same instrument the soak uses. */
-function logGateLine(input: {
-  action: string;
-  lane: Lane;
-  clubId: string | null;
-  tokened: boolean;
-  email: string | null;
-  role: LadderRole | null;
-  estate: EstateStatus | null;
-  clubManager: boolean;
-  clubClaimed: boolean;
-  denied: boolean;
-  reason: string | null;
-}): void {
+ *  so enforce-mode behaviour lands in the same instrument the soak uses.
+ *
+ *  ⚠️ Identity rides PSEUDONYMISED (`email_hash` + `identity_class`), for the
+ *  same reason its shadow twin does: `[observability]` makes these lines a
+ *  RETAINED record, and a household address does not belong in one. Async
+ *  only because the digest is — see src/pseudonym.ts. */
+async function logGateLine(
+  env: Env,
+  input: {
+    action: string;
+    lane: Lane;
+    clubId: string | null;
+    tokened: boolean;
+    email: string | null;
+    isOwner: boolean;
+    role: LadderRole | null;
+    estate: EstateStatus | null;
+    clubManager: boolean;
+    clubClaimed: boolean;
+    denied: boolean;
+    reason: string | null;
+  },
+): Promise<void> {
   console.log(
     JSON.stringify({
       tag: 'ab_gate',
@@ -114,7 +124,12 @@ function logGateLine(input: {
       lane: input.lane,
       club: input.clubId,
       tokened: input.tokened,
-      email: input.email,
+      email_hash: await identityHash(input.email, env.GATE_HASH_SALT),
+      identity_class: identityClass({
+        tokened: input.tokened,
+        isOwner: input.isOwner,
+        estateStatus: input.estate,
+      }),
       ladder_role: input.role,
       estate: input.estate,
       club_manager: input.clubManager,
@@ -178,8 +193,8 @@ export async function runEnforceGate(
     };
   }
   if (!identity || !identity.uid) {
-    logGateLine({
-      action, lane, clubId, tokened: false, email: null, role: null,
+    await logGateLine(env, {
+      action, lane, clubId, tokened: false, email: null, isOwner: false, role: null,
       estate: null, clubManager: false, clubClaimed: false,
       denied: true, reason: 'no_live_session',
     });
@@ -274,8 +289,8 @@ export async function runEnforceGate(
     clubManager,
     clubClaimed: roster.claimed,
   });
-  logGateLine({
-    action, lane, clubId, tokened: true, email, role,
+  await logGateLine(env, {
+    action, lane, clubId, tokened: true, email, isOwner: ownerEmails.includes(email), role,
     estate: estate.status, clubManager, clubClaimed: roster.claimed,
     denied: verdict.wouldDeny === true,
     reason: verdict.reason,

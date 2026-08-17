@@ -49,6 +49,21 @@ export interface Env {
   ESTATE_CHECK?: string;
 
   /**
+   * OPTIONAL override for the gate log lines' identity salt (src/pseudonym.ts
+   * `IDENTITY_SALT`). Unset is the intended state: the default salt is a
+   * hardcoded, NON-SECRET domain-separation constant, because the threat the
+   * hashing addresses is accidental disclosure through a RETAINED log, not an
+   * adversary holding the source and a candidate address list. Set it — as a
+   * secret, `wrangler secret put GATE_HASH_SALT` — only if the owner wants a
+   * guessed address to be uncheckable too.
+   *
+   * ⚠️ Changing it RE-PSEUDONYMISES everyone: the same person hashes
+   * differently before and after, so a soak window must never span the change
+   * and the evidence pack must say which salt generation it counted.
+   */
+  GATE_HASH_SALT?: string;
+
+  /**
    * The audiobook catalog's Firebase service-account JSON, whole — the same
    * value and custody as auth-worker's FIREBASE_SERVICE_ACCOUNT, though THIS
    * Worker mints datastore-scoped tokens only (src/roles.ts). Piped in via

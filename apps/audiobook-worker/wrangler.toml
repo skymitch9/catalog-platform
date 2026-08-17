@@ -26,6 +26,28 @@ workers_dev = false
 # and said "send it"). The NOT-DEPLOYED header above is now historical.
 routes = [{ pattern = "audiobook-api.heygabi.ai", custom_domain = true }]
 
+# ⚠️ RETENTION — the fix for the 2026-08-16 soak pack's blocker 1, enabled
+# 2026-08-17. Without this, a shadow decision existed only as a line on an
+# attached `wrangler tail` and was UNRECOVERABLE once emitted: every evidence
+# pack was a 5-minute sample and the hours between packs were gone. With it,
+# the same lines land in Workers Logs, which is RETROSPECTIVE — the next pack
+# queries a window instead of catching what happens to arrive while watching.
+#
+# PRECONDITION, met before this was turned on: the gate log lines used to
+# carry the caller's EMAIL IN CLEARTEXT, which is defensible on an ephemeral
+# tail and not defensible in a retained record. Both lines (ab_gate_shadow and
+# its enforce twin ab_gate) now carry `email_hash` + `identity_class` instead
+# — src/pseudonym.ts, which argues the one-way hash and the salt choice.
+# ⚠️ Do not put a raw address back in a log line while this is enabled.
+#
+# Retention length is PLAN-DEPENDENT (3 days on the free tier, 7 on paid) and
+# is NOT verified here — check the dashboard before relying on a 7-day
+# lookback. head_sampling_rate is deliberately unset (= 1, keep everything):
+# the whole complaint was too few lines, and this Worker's volume is a
+# household's.
+[observability]
+enabled = true
+
 [vars]
 # Explicit, affirmative value — the canonical verifier's dev bypass requires
 # ENVIRONMENT === 'development', so anything else gets real authentication
@@ -63,3 +85,10 @@ SITE_ORIGINS = "https://audiobooks.heygabi.ai"
 #     value goes on the auth Worker under the same name — declared there in
 #     env.ts as of Phase 0.)
 # Locally they live in .dev.vars (gitignored).
+#
+# OPTIONAL, deliberately UNSET: GATE_HASH_SALT. The identity hash in the log
+# lines uses a hardcoded non-secret domain-separation salt on purpose
+# (src/pseudonym.ts argues why: the threat is accidental disclosure through a
+# retained log, not an adversary who already holds the source). Set it as a
+# secret only if the owner wants a GUESSED address to be uncheckable too —
+# and note that changing it re-pseudonymises everyone, so never mid-soak.
