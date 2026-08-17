@@ -263,6 +263,16 @@ byte-identical source, and no subrequest leaves the Worker.
 - **The logic is `site/reader.js`, not an inline script**, because `/read`'s CSP
   is `script-src 'self'` with no `'unsafe-inline'`. An inline script would be
   blocked in production and nowhere else.
+- ⚠️ **`connect-src` needs `'self'`, and it was MISSING.** `default-src 'none'`
+  blocks same-origin fetches too, and pdf.js fetches its cMaps and standard
+  fonts with `fetch()` — so without it a CJK page renders as boxes and a
+  non-embedded base-14 font renders as no text at all. Caught by serving the
+  exact policy string locally and listening for `securitypolicyviolation`;
+  fixed in `audiobook_catalog` `59147a5`. ⚠️ **The `/dev/` lane could never
+  have caught it**: `deploy.yml` copies `prod-src/site/.` to the `_site` root
+  and Cloudflare ignores nested `_headers`, so the live policy comes from the
+  PROD branch and the dev lane ships none. The promote would have been the
+  policy's first exercise.
 - ⚠️ **The vendored files were renamed `.mjs` → `.js`.** Module scripts are
   refused on a wrong MIME type, and `.mjs` is not universally mapped (measured:
   a local server served it as `text/plain`, and Chrome refused the import). The
@@ -287,6 +297,10 @@ byte-identical source, and no subrequest leaves the Worker.
 - **`Accept-Ranges` → pdf.js range-mode is an inference on the live path.** It
   was measured locally (14 ranged requests to open the handbook), and the live
   endpoint advertises the header, but the two have not been observed together.
+- **The reader's CSP has been exercised against the exact policy string in a
+  real browser** (zero violations, a real PDF rendered) — but **never on the
+  live origin**, where it cannot exist until the promote, and never over
+  `https`.
 - **Cloudflare's edge behaviour on a `no-store` 206 was not observed.** The
   header is right; nothing has confirmed the edge does not interfere.
 - **No mobile device, and no low-memory device.** Every heap figure is one
