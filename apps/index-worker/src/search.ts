@@ -42,6 +42,15 @@ export interface SearchRow {
   work_fold: string | null;
   universe: string | null;
   series: string | null;
+  /**
+   * The series registry key (migration 0004). Optional on the type so every
+   * existing SearchRow constructor keeps compiling; present on the wire
+   * because a search hit is exactly where a reader wants to jump to the whole
+   * series — and a client holding only the display name would have to fold it
+   * ITSELF to build that link, which is the second normaliser this estate
+   * keeps refusing to grow.
+   */
+  series_slug?: string | null;
   series_index: number | null;
   year: number | null;
   publisher: string | null;

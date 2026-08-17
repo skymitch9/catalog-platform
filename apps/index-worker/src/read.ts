@@ -37,7 +37,7 @@ export const readRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables }>
 
 /** The columns a reader gets back — everything in `entry`; it is all display data. */
 const ENTRY_COLS =
-  'source, source_id, title, creator, title_fold, work_fold, universe, series, series_index, year, publisher, format, kind, parent_source_id, cover_url, detail_url, pushed_at';
+  'source, source_id, title, creator, title_fold, work_fold, universe, series, series_slug, series_index, year, publisher, format, kind, parent_source_id, cover_url, detail_url, pushed_at';
 
 /**
  * GET /api/lookup?title=… — "do I own this in any format?", at the store.

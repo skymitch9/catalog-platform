@@ -61,6 +61,14 @@ export interface EntryRow {
   work_fold: string | null;
   universe: string | null;
   series: string | null;
+  /**
+   * The series registry key (migration 0004), filled in by push.ts AFTER this
+   * function — resolving it needs the registry, and the registry needs the
+   * database, which this module deliberately never touches. `null` here means
+   * "not resolved yet"; `null` in the database means the row has no series, or
+   * one whose fold is empty (the refusal).
+   */
+  series_slug: string | null;
   series_index: number | null;
   year: number | null;
   publisher: string | null;
@@ -123,6 +131,7 @@ export function entryFor(source: Source, row: PushRow, universes: UniverseIndex,
     work_fold: source === 'game' ? null : workFoldOrNull(titleFold, creatorFold),
     universe: universeFor(universes, { title: row.title, series: row.series ?? null }),
     series: row.series ?? null,
+    series_slug: null, // resolved against the registry in push.ts (see the field)
     series_index: row.series_index ?? null,
     year: row.year ?? null,
     publisher: row.publisher ?? null,

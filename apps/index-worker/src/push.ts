@@ -15,6 +15,9 @@ import { pushTokenFor } from './env.js';
 import type { EntryRow } from './rows.js';
 import { entryFor, isSource, pushBodySchema, snapshotProblems } from './rows.js';
 import { universeIndex } from './universes-data.js';
+import { seriesCanonIndex } from './series-canon-data.js';
+import { planSeries, type SeriesPlan } from './series.js';
+import { loadRegistry, planStatements } from './series-store.js';
 
 /**
  * Bearer-token check. Length-gated `crypto.subtle.timingSafeEqual` — the
@@ -68,7 +71,22 @@ pushRoutes.put('/:source', async (c) => {
   const pushedAt = new Date().toISOString();
   const entries = parsed.data.map((row) => entryFor(source, row, universeIndex, pushedAt));
 
-  await replaceSource(c.env.DB, source, entries);
+  // The series registry (migration 0004). Resolution happens HERE, on write,
+  // for the same reason the folds and the universe do (design §6): the sources
+  // push raw display strings and contain no fold code at all. One read of the
+  // registry (a few hundred rows), one pure plan, and the writes ride the same
+  // batch as the snapshot.
+  //
+  // ⚠️ `entry.universe` is still resolved from the SOURCE's spelling, above,
+  // not from the canonical display this pass rewrites `series` to. Unchanged
+  // deliberately: universes.json lists series in the spellings it was written
+  // against, and re-pointing that join is a separate, verifiable step — logged
+  // as a follow-up rather than smuggled in here.
+  const registry = await loadRegistry(c.env.DB);
+  const plan = planSeries(registry, entries, seriesCanonIndex);
+  applySeriesPlan(entries, plan);
+
+  await replaceSource(c.env.DB, source, entries, plan, pushedAt);
 
   return c.json({
     ok: true,
@@ -78,18 +96,52 @@ pushRoutes.put('/:source', async (c) => {
     // Refusals surfaced per push, so a source can see its own degenerate rows
     // without querying — matched_via-style honesty about what will not join.
     unfoldable_titles: entries.filter((e) => e.title_fold === null).length,
+    series: {
+      registered: plan.newSeries.length,
+      merged_spellings: plan.mergedSpellings,
+      pending_added: plan.newPending.length,
+      unfoldable: plan.unfoldable,
+    },
   });
 });
 
+/**
+ * Stamp each row with its slug and, where the registry holds a different
+ * spelling, REWRITE the display to the canonical one.
+ *
+ * The rewrite is the half that fixes what the owner actually sees: a consumer
+ * grouping by the free-text `series` (the library's ladders, the search
+ * results, anything not yet slug-aware) sees one spelling instead of two,
+ * without having to learn about the registry at all.
+ */
+export function applySeriesPlan(entries: EntryRow[], plan: SeriesPlan): void {
+  for (const e of entries) {
+    if (e.series === null) continue;
+    const resolved = plan.resolutions.get(e.series.trim());
+    if (!resolved) continue; // unfoldable, or no series — leave the row exactly as pushed
+    e.series_slug = resolved.slug;
+    e.series = resolved.display;
+  }
+}
+
 const INSERT_ENTRY = `INSERT INTO entry (
   source, source_id, title, creator, title_fold, work_fold, universe,
-  series, series_index, year, publisher, format, kind, parent_source_id,
+  series, series_slug, series_index, year, publisher, format, kind, parent_source_id,
   cover_url, detail_url, pushed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-async function replaceSource(db: D1Database, source: string, entries: readonly EntryRow[]): Promise<void> {
+async function replaceSource(
+  db: D1Database,
+  source: string,
+  entries: readonly EntryRow[],
+  plan: SeriesPlan,
+  now: string,
+): Promise<void> {
   const statements = [
     db.prepare('DELETE FROM entry WHERE source = ?').bind(source),
+    // Registry rows FIRST: no moment exists at which an inserted entry names a
+    // slug the `series` table does not hold.
+    ...planStatements(db, plan, now),
     ...entries.map((e) =>
       db
         .prepare(INSERT_ENTRY)
@@ -102,6 +154,7 @@ async function replaceSource(db: D1Database, source: string, entries: readonly E
           e.work_fold,
           e.universe,
           e.series,
+          e.series_slug,
           e.series_index,
           e.year,
           e.publisher,

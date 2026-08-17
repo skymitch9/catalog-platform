@@ -57,6 +57,7 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
     if (!identity) return c.json({ error: 'unauthenticated' }, 401);
 
     const email = identity.email.trim().toLowerCase();
+    c.set('email', email); // for requireOwnerStanding() below — verified once, read after
     const isOwner = parseOwnerEmails(c.env.OWNER_EMAILS).includes(email);
 
     // 2. Estate config. A missing var/secret is named as such (the
@@ -138,5 +139,43 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
           503,
         );
     }
+  };
+}
+
+/**
+ * The APPROVER gate — mounted on the series confirm queue (series-route.ts)
+ * and nothing else. Stacks ON TOP of `requireEstateMember()`: it never
+ * authenticates, it only asks whether the already-verified caller may DECIDE.
+ *
+ * ⚠️ The index has no local roles — membership IS the authorization for its
+ * read surface (this file's header), so its one local standing is
+ * `OWNER_EMAILS`, and the queue's approver is therefore the owner. That is a
+ * narrower gate than the estate's own `is_approver` flag, chosen because the
+ * shared module does not expose that flag to consumers today
+ * (`@platform/estate-auth` carries status + visibility only, §4.5). If /seen
+ * ever answers `is_approver`, THIS function is the one place to widen — and
+ * widening access is the direction that needs a decision, so it waits for one.
+ *
+ * The refusal says all three things a refusal owes a person (what happened,
+ * what it needs, how to get it) rather than a bare 403 — an approve/merge
+ * button that fails silently is how a queue rots.
+ */
+export function requireOwnerStanding(): MiddlewareHandler<{ Bindings: Env; Variables: ScopeVariables }> {
+  return async (c, next) => {
+    const email = c.get('email');
+    if (email && parseOwnerEmails(c.env.OWNER_EMAILS).includes(email)) {
+      await next();
+      return;
+    }
+    return c.json(
+      {
+        error: 'approver_only',
+        detail:
+          'the series confirm queue is an approver surface, and this account is not an approver on the index. Every series itself stays visible to you at /api/series — it is the merge DECISION that is gated.',
+        needs: 'the estate owner (OWNER_EMAILS on the index Worker)',
+        how: 'ask the owner to resolve the queue entry, or to add your address to OWNER_EMAILS in apps/index-worker/wrangler.toml',
+      },
+      403,
+    );
   };
 }

@@ -29,6 +29,7 @@ import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
 import { scanRoutes } from './scan.js';
 import { searchRoutes } from './search-route.js';
+import { seriesRoutes } from './series-route.js';
 import { healthRoutes } from './health.js';
 import { requireEstateMember } from './middleware/auth.js';
 import type { ScopeVariables } from './middleware/scope.js';
@@ -74,6 +75,14 @@ app.route('/api/search', searchRoutes);
 app.use('/api/*', requireEstateMember());
 
 app.route('/api', readRoutes);
+
+// The series registry (migration 0004 / series-route.ts). Mounted HERE, below
+// the blanket and unnamed above it, on purpose: it is /api/universe's sibling
+// — a browse of one name across every catalog — so it takes /api/universe's
+// stance (members-only, scoped to the member's visibility set) rather than
+// /api/search's anonymous carve-out, which §4.5 grants to search alone. The
+// confirm queue inside it carries its own approver gate on top.
+app.route('/api', seriesRoutes);
 
 // Shelf/cover-photo identify (docs/info/estate-scan-adoption.md, the
 // barcode build's deferred second deploy). Mounted here, not named above the

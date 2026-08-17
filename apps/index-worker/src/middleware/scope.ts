@@ -41,9 +41,17 @@ import type { Env } from '../env.js';
 import { parseOwnerEmails } from '../env.js';
 import { readEstateCache, writeEstateCache } from '../estate-cache.js';
 
-/** The context variable both scope-aware middlewares set for the routes. */
+/** The context variables both scope-aware middlewares set for the routes. */
 export interface ScopeVariables {
   visibility: Catalog[];
+  /**
+   * The verified caller's lowercased email, or null for the anonymous. Set
+   * beside `visibility` by BOTH middlewares, at the same moment and from the
+   * same identity — so a route that needs to know WHO is asking (the series
+   * confirm queue's approver gate) never re-verifies a token that has already
+   * been verified once this request.
+   */
+  email: string | null;
 }
 
 /**
@@ -75,12 +83,14 @@ export function searchScope(): MiddlewareHandler<{ Bindings: Env; Variables: Sco
       identity = null;
     }
     if (!identity) {
+      c.set('email', null);
       c.set('visibility', [...PUBLIC_CATALOGS]);
       await next();
       return;
     }
 
     const email = identity.email.trim().toLowerCase();
+    c.set('email', email);
     if (parseOwnerEmails(c.env.OWNER_EMAILS).includes(email)) {
       c.set('visibility', [...CATALOGS]); // computed, never stored (§4.3)
       await next();

@@ -36,7 +36,7 @@ import { universeIndex } from './universes-data.js';
 
 /** The same reader columns as read.ts — all display data, default-deny. */
 const ENTRY_COLS =
-  'source, source_id, title, creator, title_fold, work_fold, universe, series, series_index, year, publisher, format, kind, parent_source_id, cover_url, detail_url, pushed_at';
+  'source, source_id, title, creator, title_fold, work_fold, universe, series, series_slug, series_index, year, publisher, format, kind, parent_source_id, cover_url, detail_url, pushed_at';
 
 /**
  * Catalog (visibility vocabulary, §4.5) ↔ entry.source (push vocabulary).
