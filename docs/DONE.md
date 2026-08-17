@@ -13,6 +13,87 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📚 The estate SERIES REGISTRY — ✅ BUILT + DEPLOYED LIVE 2026-08-17
+
+**The owner's order, 2026-08-16: "I don't want duplicate series."** The index
+held one free-text `series` string per row, in whichever spelling the owning
+catalog happened to have — an m4b tag saying *"The Stormlight Archive"*, a
+library row saying *"Stormlight Archive"*, and the apex seeing two series.
+Series now have a KEY, the way books have had `work_fold` since day one.
+
+Design section: [`info/index-worker-design.md` §8.5](info/index-worker-design.md).
+Live: `https://index.heygabi.ai/api/series` (members-only — sign in on the apex
+first; a tokenless GET is a 401 by design).
+
+### What shipped
+
+| Piece | Where |
+|---|---|
+| Migration 0004: `entry.series_slug`, `series`, `series_alias`, `series_pending` | `apps/index-worker/migrations/0004_series_registry.sql` |
+| The resolver (pure) | `apps/index-worker/src/series.ts` |
+| Its D1 side + the canon reader | `src/series-store.ts`, `src/series-canon-data.ts` |
+| Push-time resolution, inside the push's own batch | `src/push.ts` |
+| The API + the approver's confirm queue | `src/series-route.ts`, `src/middleware/auth.ts` (`requireOwnerStanding`) |
+| The one-shot backfill (dry run by default) | `scripts/backfill-series.ts` |
+| Tests: 22 unit + 5 real-runtime probes | `test/series.test.ts`, `test/live-probes.ts` B11–B15 |
+
+Commits `f6a83b0`, `a1a7288`, `b78b3eb`. Worker version
+`1db25143-1dcc-47f9-9fb1-000d5627ec81`. Remote migration 0004 applied (✅ row
+seen, not assumed).
+
+### The decisions, so nobody reopens them
+
+- **The fold is `normaliseTitle` — the pinned §6 port — hyphenated. Not a new
+  normaliser.** It already strips a leading article, which is exactly why the
+  owner's own example merges with no judgement call. Empty folds are REFUSED to
+  NULL, same rule as `title_fold` (two Korean series names).
+- **Exact fold → auto-merge; near miss → confirm-first.** The owner approved
+  exactly this split. A near miss registers as its own slug AND queues; nothing
+  is merged behind anyone's back, and silence leaves two series.
+- **The near rule is DISCOVERY only** — it gates no write, so §8's "no second
+  matcher" stands. It is `data/series-canon.json`'s own `_measured` decoration
+  fold, which that file already calls a discovery tool and never a runtime rule.
+- **The canon merges what a human already decided** (3 entries, with evidence).
+  Re-queueing a decision on record would be a queue asking a question it has the
+  answer to.
+- **Members-only + scoped**, i.e. `/api/universe`'s stance, not `/api/search`'s
+  anonymous carve-out — which §4.5 grants to search ALONE. Widening it is one
+  line and an owner's call, not a side effect of building a page.
+- ⚠️ **The list is derived from scoped `entry` rows, never from the registry
+  table**, or an audiobook-only member would learn the series NAMES held in the
+  two private catalogs. `/api/series/:slug` answers `unknown_series` for a real
+  but out-of-scope slug for the same reason.
+- **Approver = `OWNER_EMAILS`**: the index has no local roles, and the shared
+  auth module does not expose the estate's `is_approver` to consumers.
+  `requireOwnerStanding()` is the one place to widen it later.
+
+### Measured live, 2026-08-17 (backfill applied to remote D1)
+
+| | |
+|---|---|
+| rows carrying a series | **1,590** |
+| distinct raw spellings → slugs | **443 → 441** |
+| rows keyed / with a series but no key | **1,588 / 2** (the two Korean names — the refusal, working) |
+| exact merges | **0** |
+| confirm-queue rows | **1** — *"The Survivalist Series"* ~ *"The Survivalist"*, both audiobook |
+
+⚠️ **Zero exact merges is the honest headline.** The cross-catalog spellings had
+already been straightened upstream (the series canon, and the audiobook
+catalog's own corrections layer), so today this registry is **preventative**: it
+makes the regression structurally impossible rather than cleaning up a mess that
+was still on the shelf. The owner's Stormlight example is already spelled
+identically in both catalogs — measured, not assumed.
+
+### NOT verified
+
+- **A signed-in production GET.** `/api/series`, `/api/series/:slug` and
+  `/api/series/pending` were confirmed live as **401 (not 404)** — routed and
+  gated — and their 200 answers were verified against a REAL Workers runtime
+  and a real D1 by `npm run probe` (B11–B15). Nobody signed in to
+  `index.heygabi.ai` itself: that needs the owner's Firebase token, and this
+  repo has no authenticated-probe mechanism.
+- **The apex `/series` page** — not built; this is the API it will read.
+
 ## 🔑 Sam's library (`library2`) — the CSP half, and the SIGNED-IN verification — ✅ DONE 2026-08-16
 
 **Appended, not edited into the entry below it** (this file is append-only).

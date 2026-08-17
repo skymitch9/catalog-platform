@@ -229,6 +229,82 @@ games. The two bridges keep running untouched meanwhile.
   projection's field list is browse-safe either way because it is default-deny.
 - **No games `work_fold` "for consistency".** NULL is the design.
 
+## 8.5 The series registry (migration 0004, BUILT + DEPLOYED 2026-08-17)
+
+The owner's order, 2026-08-16: **"I don't want duplicate series."** `entry.series`
+is free text in whichever spelling the owning catalog holds, so an m4b tag
+saying "The Stormlight Archive" and a library row saying "Stormlight Archive"
+are two series to anything that groups by that string. The registry gives a
+series what §3.1 gave a book: **a key.**
+
+| Table | Holds |
+|---|---|
+| `series` | slug → canonical `display_name`, **first writer wins**, `first_source` on the record |
+| `series_alias` | a fold → a slug it does NOT fold to on its own (`canon` / `human` merges) |
+| `series_pending` | the confirm queue: near misses, kept AFTER resolution so a decision is never re-asked |
+| `entry.series_slug` | which registry entry a row belongs to; NULL for no series and for the empty-fold refusal |
+
+**The fold is `normaliseTitle` (§6's pinned port), hyphenated — not a new
+normaliser.** It already strips a leading article, so the owner's own example
+merges mechanically. `src/series.ts` is wrappers over it in the house style of
+`titleFoldOrNull`, empty-fold refusal included (two Korean series names fold to
+`''` and take NULL rather than a shared degenerate key). ⚠️ `normaliseUniverseText`
+is deliberately not used: it KEEPS leading articles on purpose, which is the
+opposite of what a de-duplicating key needs.
+
+**The split the owner approved:**
+
+- **Exact fold equality → AUTO-MERGE.** No score, no threshold. `entry.series`
+  is REWRITTEN to the canonical display, so a consumer that never learns about
+  the registry also stops seeing two.
+- **Near miss (folds differ) → NEVER merged.** It registers as its own slug and
+  a row lands in the queue. Silence leaves two series — the honest default.
+
+⚠️ **This does not breach §8's "no second matcher".** The near key gates no
+write, ranks nothing, and its only consumer is a human's queue. The rule is not
+even invented here: it is the decoration fold `data/series-canon.json`'s
+`_measured` used to FIND the estate's three real drift groups, which that file
+states is "a DISCOVERY tool only, never a runtime rule". Reused as one.
+
+The canon itself is consulted (`src/series-canon-data.ts`): three folds a human
+already decided WITH EVIDENCE. Re-asking the queue for a decision already on
+record would be the queue asking a question it has the answer to.
+
+**API** — members-only and visibility-scoped, i.e. `/api/universe`'s stance, NOT
+`/api/search`'s anonymous carve-out (§9 Q3's amendment names search alone):
+
+```
+GET  /api/series                 per-source counts, scoped
+GET  /api/series/:slug           grouped by medium (the row's own `format`)
+GET  /api/series/pending         the confirm queue                (approver)
+POST /api/series/pending/:fold   {"action":"merge","into":…} | {"action":"separate"}  (approver)
+```
+
+⚠️ **The list is derived from SCOPED ENTRY ROWS, never from the `series`
+table.** The registry is estate-wide; listing it would tell an audiobook-only
+member the series NAMES held in the two private catalogs. For the same reason
+`/api/series/:slug` answers `unknown_series` for a slug that is real but wholly
+out of scope — a 404 that only fired for the absent would confirm the private.
+
+**Approver = `OWNER_EMAILS`.** The index has no local roles and
+`@platform/estate-auth` does not expose the estate's `is_approver` to
+consumers, so the gate stays narrow; `requireOwnerStanding()` is the one place
+to widen it if /seen ever carries the flag.
+
+**Measured on the live index, 2026-08-17** (backfill via
+`scripts/backfill-series.ts`, which calls the SAME `planSeries` the push does):
+1,590 rows carry a series / **443 distinct raw spellings → 441 slugs** / 2
+unfoldable (NULL, by design) / **1 confirm-queue row** ("The Survivalist Series"
+~ "The Survivalist", both audiobook) / 0 exact merges. ⚠️ **Zero exact merges is
+the honest headline**: the estate's cross-catalog spellings had already been
+straightened by the series canon and the audiobook corrections layer, so this
+registry is mostly PREVENTATIVE — it makes the regression structurally
+impossible rather than cleaning up a mess that was still there.
+
+**Known follow-up, deliberately not smuggled in:** `entry.universe` is still
+resolved from the SOURCE's spelling, not from the canonical display the push
+now writes. Re-pointing that join is its own verifiable step.
+
 ## 9. Open questions
 
 1. **Push trigger granularity for games** — per-mutation `waitUntil` vs cron

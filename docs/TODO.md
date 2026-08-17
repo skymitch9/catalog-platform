@@ -227,6 +227,46 @@ workflow prints the line to append locally if wanted.
 
 ---
 
+## 📚 Series registry — the API is LIVE; what still hangs off it
+
+The registry itself is **done and deployed** (2026-08-17) — the whole record,
+including the measured counts and what was NOT verified, is in
+[`DONE.md`](DONE.md); the design is
+[`info/index-worker-design.md` §8.5](info/index-worker-design.md). Only the
+work that has NOT been done is listed here.
+
+1. **The apex `/series` page** — the reason `GET /api/series` and
+   `GET /api/series/:slug` exist. The detail endpoint already returns rows
+   grouped by medium with `source`, `title`, `series_index`, `cover_url` and
+   `detail_url`, and every search hit now carries `series_slug`, so a result
+   can link straight to its series with no client-side folding. ⚠️ It is
+   **members-only** (sign-in required, like `/universes`' data), so the page
+   needs the apex's signed-in fetch, not an anonymous one. Size S.
+2. **A confirm-queue affordance for the owner.** `GET /api/series/pending` and
+   `POST /api/series/pending/:fold` exist and are approver-gated, but nothing
+   in a browser calls them — today the only way to resolve a near miss is a
+   signed-in curl. **One row is waiting**: *"The Survivalist Series"* ~ *"The
+   Survivalist"* (both audiobook, so it may belong in the audiobook catalog's
+   own corrections layer rather than as an index merge — that is the decision).
+   Natural home: the apex `/admin` card, beside Estate Operations. Size S.
+3. **Resolve `entry.universe` from the CANONICAL series display**, not from
+   the source's spelling. Push-time universe resolution still reads the raw
+   string (deliberately unchanged this pass — re-pointing a join deserves its
+   own verification). Once done, `universes.json` can list ONE spelling per
+   series instead of every variant. Needs: a re-push of all sources, and a
+   before/after count of rows carrying a universe. Size S, but measure it.
+4. **Decide whether `/api/series` should answer the anonymous internet.** It
+   currently takes `/api/universe`'s stance (members-only, scoped) because
+   §4.5's anonymous carve-out names `/api/search` alone. Widening is one line
+   in `index.ts` plus a named comment — but it is an ACCESS-INCREASING change,
+   so it waits for the owner rather than being assumed.
+5. **Widen the approver gate if the estate ever exposes `is_approver` on
+   `/seen`.** `requireOwnerStanding()` in `apps/index-worker/src/middleware/auth.ts`
+   is the single place; it is narrow today only because the shared module does
+   not carry the flag to consumers.
+
+---
+
 ## 📌 HANDOFF — 2026-08-16 ~15:45 PDT (Opus → Fable)
 
 **Everything below the line is ACTIVE. What landed today is archived in

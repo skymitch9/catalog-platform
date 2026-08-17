@@ -1,0 +1,11 @@
+# deploys.log — one line per deploy, append only.
+#
+# The 3am rollback source of truth (global rule: "every deploy appends one line
+# — timestamp / commit / holder / version"). `docs/TODO.md` §1.5 records that CI
+# deliberately does NOT write this file; the workflow prints the line and a
+# human or an agent appends it. This file was created on the first deploy that
+# went looking for it and found nothing.
+#
+# FORMAT:  <ISO timestamp>  <target>  <commit>  <holder>  <version-id>  <note>
+#
+2026-08-17T06:41Z  index-worker  a1a7288  claude-fable-5  1db25143-1dcc-47f9-9fb1-000d5627ec81  series registry (migration 0004 applied remote FIRST, ✅ row seen); backfill 443 raw → 441 slugs, 1 pending. Later commits that day (b78b3eb onward) are tests and docs only — the deployed source is a1a7288
