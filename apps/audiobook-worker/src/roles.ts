@@ -91,6 +91,17 @@ export function clubCollectionFor(lane: 'prod' | 'dev'): string {
  * any Firestore failure all answer FALSE — for the shadow gate this errs
  * toward would_deny:true, which is the honest direction for telemetry (a
  * false "would allow" could green-light an enforce flip that then denies).
+ *
+ * ⚠️ managerUids is a MAP of uid → {role, displayName, claimedAt} — that is
+ * what clubs.js createClub/claimManagerRole write and what firestore.rules
+ * checks (`club.managerUids is map`, `request.auth.uid in club.managerUids`;
+ * both measured 2026-08-16). The first cut of this function read it as an
+ * arrayValue of uid strings, which matches NO production club doc — every
+ * real club manager measured as club_manager:false in the shadow tail
+ * (over-reporting would_deny, the "honest direction" above, but still
+ * wrong). Fixed 2026-08-16 during the Phase 3 prebuild: mapValue keys are
+ * the real shape; the arrayValue reading is kept as a fallback so nothing
+ * that ever wrote an array shape is silently dropped.
  */
 export async function isClubManager(
   sa: ServiceAccount,
@@ -108,8 +119,15 @@ export async function isClubManager(
     );
     if (!res.ok) return false;
     const doc = (await res.json()) as {
-      fields?: { managerUids?: { arrayValue?: { values?: Array<{ stringValue?: string }> } } };
+      fields?: {
+        managerUids?: {
+          mapValue?: { fields?: Record<string, unknown> };
+          arrayValue?: { values?: Array<{ stringValue?: string }> };
+        };
+      };
     };
+    const mapFields = doc.fields?.managerUids?.mapValue?.fields;
+    if (mapFields && Object.prototype.hasOwnProperty.call(mapFields, uid)) return true;
     const values = doc.fields?.managerUids?.arrayValue?.values ?? [];
     return values.some((v) => v.stringValue === uid);
   } catch {
