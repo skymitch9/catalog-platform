@@ -57,6 +57,12 @@ rule):
    latent risk meanwhile, removing them from GABI's server role is one
    toggle and re-granting later is the same toggle.
 
+5. **FUTURE (design seed, logged in library_catalog docs/TODO.md —
+   "Sam asks GABI to fix her books"):** a conversational fixer riding the
+   library's existing research/apply machinery as an Anthropic tool-use loop,
+   acting with HER authority on HER instance only. Not queued; listed here so
+   the GABI queue knows its likely next horizon after the viewer.
+
 ## 1. ⚠️ Three of the four repos deploy only from a human's laptop
 
 **Raised by the owner 2026-08-12**, immediately after a manual
