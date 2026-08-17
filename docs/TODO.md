@@ -15,12 +15,30 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
-## 🔴 Audiobook Phase 3 (enforce) — BLOCKED on soak evidence; do not flip
+## 🔴 Audiobook Phase 3 (enforce) — ⚠️ SUPERSEDED 2026-08-17: owner chose FORCE-THEN-FIX
+
+**Owner decision (2026-08-17, after full explanation of both paths):** *"Yes
+let's do it. We don't have that many users just my friends so we can do our
+best to fit roles right away and then promote people as needed. As long as
+club mod and owners stays we're in good shape."* The week-long soak ceremony
+is dead; the flip happens the moment the soak-recorder build lands, so day
+one of enforce is fully recorded and the retained log becomes the live
+who-needs-a-role-bump list. ⚠️ THE FLIP'S ACCEPTANCE CRITERIA, from his
+words: **owners keep max everywhere (OWNER_EMAILS + auto-max), site
+moderators keep their standing, and club managers keep their club powers**
+(the island logic shipped 2026-08-17). Pre-flip check enumerates those three
+classes; post-flip verification exercises what it can and names what needs
+the owner's eyes. Reverting is one var back to "shadow" — the fail-safe that
+made force-then-fix acceptable. Executor: the CONDUCTOR flips
+(trust-critical), never an agent.
+
+(The original blocked-on-evidence section follows for the record; blockers
+1-3 are closed by 2026-08-17 builds, and blocker 4's "exercise the surfaces"
+now happens live under enforce.)
 
 **Evidence pack:
 [`info/audiobook-auth-soak-2026-08-16.md`](info/audiobook-auth-soak-2026-08-16.md)
-(2026-08-16 23:21 MST). Verdict: NOT ENOUGH EVIDENCE — re-run in ~7 days.**
-`ESTATE_CHECK` stays `"shadow"`. Nothing was flipped.
+(2026-08-16 23:21 MST). Verdict at the time: NOT ENOUGH EVIDENCE.
 
 Measured: prod-lane reporter live **1h 52m** (the server's 4h 17m is *not* the
 soak — until the prod promote at ~21:29 MST, prod visitors reported nothing).
