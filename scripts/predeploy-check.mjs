@@ -234,7 +234,84 @@ function checkAllHtml(files) {
   return html.length;
 }
 
-/* ── 3. The tree is clean (what actually gets uploaded) ────────────────── */
+/* ── 3. The theme registry has exactly one home ────────────────────────── */
+
+/**
+ * The drift guard for the estate theme system (owner order 2026-08-17: "when
+ * a theme is added all sites get it").
+ *
+ * `hearts` shipped into assets/theme.js + estate-theme.css on 2026-08-16 and
+ * appeared in not one cog, because every cog on the estate had written the
+ * four theme names down in its own markup. This asserts the two halves of the
+ * fix that nobody can be trusted to remember:
+ *
+ *   a) every theme in theme.js's THEMES has a token block in
+ *      estate-theme.css AND a label in LABELS — a name in the dropdown with
+ *      no palette behind it renders as whichever theme came before it;
+ *   b) NO page under public/ carries its own <option> list inside
+ *      #hg-theme-select. theme.js builds those options; a hardcoded list
+ *      silently stops offering new themes and nothing else would notice.
+ *
+ * Deliberately a DEPLOY-time check rather than a unit test: this repo has no
+ * test runner for sites/, and the failure mode is "shipped a cog that lies",
+ * which is precisely what a predeploy guard is for.
+ */
+function checkThemeRegistry(files) {
+  const themeJs = join(PUBLIC_DIR, 'assets', 'theme.js');
+  const themeCss = join(PUBLIC_DIR, 'assets', 'estate-theme.css');
+  let js, css;
+  try {
+    js = readFileSync(themeJs, 'utf8');
+    css = readFileSync(themeCss, 'utf8');
+  } catch (err) {
+    fail('assets/theme.js + estate-theme.css', `unreadable: ${err.message}`);
+    return 0;
+  }
+
+  const listMatch = /var THEMES = \[([^\]]*)\]/.exec(js);
+  if (!listMatch) {
+    fail(rel(themeJs), 'no `var THEMES = [...]` found — the registry moved or was renamed, so this check is now blind. Fix the check here before shipping.');
+    return 0;
+  }
+  const themes = listMatch[1]
+    .split(',')
+    .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+    .filter(Boolean);
+  if (themes.length === 0) {
+    fail(rel(themeJs), 'THEMES parsed as empty — refusing to certify a switcher that offers nothing.');
+    return 0;
+  }
+
+  for (const t of themes) {
+    if (!css.includes(`[data-theme="${t}"]`)) {
+      fail(
+        rel(themeCss),
+        `theme "${t}" is in theme.js's THEMES but has no [data-theme="${t}"] block here.\n` +
+          '      A name in every cog with no palette behind it renders as whichever theme came before it.',
+      );
+    }
+    if (!new RegExp(`^\\s*${t}:\\s*'`, 'm').test(js)) {
+      fail(rel(themeJs), `theme "${t}" has no entry in LABELS — the cog would show a capitalised id, not a name.`);
+    }
+  }
+
+  for (const file of files.filter((f) => extname(f) === '.html')) {
+    const src = readFileSync(file, 'utf8');
+    const sel = /<select[^>]*id="hg-theme-select"[^>]*>([\s\S]*?)<\/select>/.exec(src);
+    if (!sel) continue;
+    if (/<option/i.test(sel[1])) {
+      fail(
+        rel(file),
+        '#hg-theme-select carries hardcoded <option> elements.\n' +
+          '      assets/theme.js builds the option list from THEMES — a list written here goes stale the day\n' +
+          '      a theme is added, which is the 2026-08-16 `hearts` failure this check exists to stop.',
+      );
+    }
+  }
+  return themes.length;
+}
+
+/* ── 4. The tree is clean (what actually gets uploaded) ────────────────── */
 
 function checkCleanTree() {
   if (process.env.ALLOW_DIRTY_DEPLOY === '1') {
@@ -310,8 +387,9 @@ if (LIVE) {
 } else {
   const jsCount = checkJavaScript(files);
   const htmlCount = checkAllHtml(files);
+  const themeCount = checkThemeRegistry(files);
   checkCleanTree();
-  console.log(`  ${jsCount} JS file(s) parsed · ${htmlCount} HTML file(s) structurally checked · tree checked`);
+  console.log(`  ${jsCount} JS file(s) parsed · ${htmlCount} HTML file(s) structurally checked · ${themeCount} theme(s) registered · tree checked`);
 }
 
 if (problems.length) {

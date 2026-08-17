@@ -434,12 +434,11 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 <div id="hg-cog-panel" class="hg-cog-panel" hidden>
   <div class="hg-row">
     <label class="hg-label" for="hg-theme-select">Theme</label>
-    <select id="hg-theme-select">
-      <option value="classic">Classic</option>
-      <option value="apple">Apple</option>
-      <option value="cyberpunk">Cyberpunk</option>
-      <option value="retro">Retro</option>
-    </select>
+    <!-- ⚠️ The options are BUILT BY assets/theme.js from its THEMES registry — do
+         NOT list them here. A hardcoded list is exactly why this cog still
+         offered four themes for a day after `hearts` shipped (2026-08-16):
+         the page owns the cog's PLACE, theme.js owns its CONTENTS. -->
+    <select id="hg-theme-select"></select>
   </div>
   <div class="hg-row">
     <span class="hg-label" id="hg-mode-label">Appearance</span>
