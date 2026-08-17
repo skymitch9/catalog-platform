@@ -1,7 +1,10 @@
 # Discord Bot — Setup, Configuration, and the Option Space
 
-> **Audience:** Claude sessions and the owner. **Status:** TRACKED. **DESIGN
-> ONLY — no code, no Discord application created.**
+> **Audience:** Claude sessions and the owner. **Status:** TRACKED. ~~DESIGN
+> ONLY~~ — **phase-1 foundation + §2a poll voting BUILT 2026-08-16** in
+> `apps/discord-worker/` (owner-approved; runbook:
+> `docs/access/discord-bot.md`). **Still no Discord application created** —
+> nothing is live until the owner runs the portal steps.
 > Last verified: **2026-08-14**, against `audiobook_catalog/docs/info/
 > discord-poll-sync-research.md` (2026-08-14 research), `catalog-platform/
 > docs/PLATFORM.md`, `docs/info/index-worker-design.md`, `docs/info/
