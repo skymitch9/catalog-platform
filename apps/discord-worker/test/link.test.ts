@@ -20,6 +20,10 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import app from '../src/index.js';
 import {
@@ -477,6 +481,30 @@ test('the confirm page keeps the Discord identity OUT of its JavaScript', () => 
   const html = confirmPage('Sam');
   assert.ok(!/discordUserId/.test(html));
   assert.ok(!/1234567890123456/.test(html));
+});
+
+test('⚠️ the confirm page\'s embedded module actually PARSES as JavaScript', () => {
+  // The page's script is a STRING inside TypeScript, so tsc never looks at it
+  // and a stray quote ships silently — the button simply does nothing, with a
+  // syntax error in a console nobody is watching. This is the mechanical
+  // guard: extract it and hand it to Node's own parser. It has already caught
+  // one real breakage (mismatched quotes in the owner-action message).
+  const extracted = /<script type="module">([\s\S]*?)<\/script>/.exec(confirmPage('Sam'));
+  assert.ok(extracted?.[1], 'the confirm page must carry its module');
+
+  const file = join(tmpdir(), `gabi-page-check-${process.pid}-${Date.now()}.mjs`);
+  writeFileSync(file, extracted[1]);
+  try {
+    execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
+  } finally {
+    rmSync(file, { force: true });
+  }
+});
+
+test('the not-configured page carries NO script at all', () => {
+  // It is served when the ceremony cannot run. A page whose only job is to
+  // explain that should not also be a place a bug can live.
+  assert.ok(!/<script/i.test(notConfiguredPage()));
 });
 
 test('every page carries a what-to-do line — the no-bare-status rule, mechanically', () => {
