@@ -40,7 +40,7 @@ import {
   utcDayKey,
   type GatewayMessage,
 } from '../src/mentions.js';
-import { handleMention } from '../src/mention-flow.js';
+import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
 import { FATAL_CLOSE_CODES, GATEWAY_INTENTS } from '../src/gateway.js';
 import { classifyIntent, converse, estimateCents, GABI_CHAT_MODEL } from '../src/gabi-chat.js';
 
@@ -120,11 +120,32 @@ describe('⚠️ the posture: affirmative-only, and OFF means no socket at all',
 // ── 2. the trigger ──────────────────────────────────────────────────────────
 
 describe('⚠️ the intents stay UNPRIVILEGED — §1.5, mechanically', () => {
-  it('is exactly GUILDS | GUILD_MESSAGES, and never MESSAGE_CONTENT', () => {
-    assert.equal(GATEWAY_INTENTS, 513, 'GUILDS (1) | GUILD_MESSAGES (512)');
-    // 1 << 15 is MESSAGE_CONTENT. Requesting it is the decision the design
-    // forbids, and Discord answers close code 4014 for an unapproved one.
+  it('is exactly GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES, and never MESSAGE_CONTENT', () => {
+    // ⚠️ CHANGED 2026-08-17 from 513 to 4609 with the continuity layer.
+    // DIRECT_MESSAGES (1 << 12) makes the DM the zero-@ surface, and it is
+    // UNPRIVILEGED: Discord's own list of privileged intents is exactly
+    // GUILD_PRESENCES, GUILD_MEMBERS and MESSAGE_CONTENT. No portal toggle, no
+    // app verification, no review — which is the whole reason this was
+    // available to add and bare-text triggers still are not.
+    assert.equal(GATEWAY_INTENTS, 4609, 'GUILDS (1) | GUILD_MESSAGES (512) | DIRECT_MESSAGES (4096)');
+    assert.equal(GATEWAY_INTENTS & (1 << 0), 1 << 0, 'GUILDS');
+    assert.equal(GATEWAY_INTENTS & (1 << 9), 1 << 9, 'GUILD_MESSAGES');
+    assert.equal(GATEWAY_INTENTS & (1 << 12), 1 << 12, 'DIRECT_MESSAGES');
+  });
+
+  it('⚠️ MESSAGE_CONTENT (1 << 15) is NEVER set — the line the whole design rests on', () => {
+    // Requesting it is the decision the design forbids, and Discord answers
+    // close code 4014 for an unapproved one. This assertion is the mechanical
+    // half of §1.5 and it must survive every future widening of the surface.
     assert.equal(GATEWAY_INTENTS & (1 << 15), 0, 'the Message Content privileged intent was requested');
+  });
+
+  it('⚠️ DM TYPING (1 << 14) is not requested either — the owner asked for messages, not typing', () => {
+    // It would buy a "GABI is typing…" flourish and cost a TYPING_START event
+    // per keystroke burst in every DM, on an always-on object measured at 83%
+    // of a hard free-plan duration cap.
+    assert.equal(GATEWAY_INTENTS & (1 << 14), 0, 'DIRECT_MESSAGE_TYPING was requested');
+    assert.equal(GATEWAY_INTENTS & (1 << 11), 0, 'GUILD_MESSAGE_TYPING was requested');
   });
 
   it('an unapproved-intent close is FATAL, not retried — no hot loop on a bad ask', () => {
@@ -168,11 +189,20 @@ describe('the mention test — she answers people who addressed her, and nobody 
     assert.equal(questionFrom(`<@${APP_ID}> hi-fi audiobooks?`, APP_ID), 'hi-fi audiobooks?');
   });
 
-  it('⚠️ being LISTED in mentions without the token in the text is a reply, not a question', () => {
-    // Discord adds the replied-to author to `mentions` automatically. Someone
-    // replying to her last message is talking ABOUT her, not TO her.
+  it('⚠️ being LISTED in mentions with no token AND no proof of whose message it replies to', () => {
+    // Discord adds the replied-to author to `mentions` automatically, so the
+    // array alone never establishes that SHE was the one replied to. Without a
+    // `referenced_message` naming her as the author this is a message about
+    // her, not to her — and a reply whose original was deleted looks exactly
+    // like this, which is why it is refused rather than guessed at.
     const t = mentionTrigger(msg({ content: 'that was useful, thanks' }), APP_ID);
     assert.equal(t.kind === 'ignore' && t.why, 'no_mention_token');
+  });
+
+  it('a genuine mention is tagged via:"mention" on the channel surface', () => {
+    const t = mentionTrigger(msg(), APP_ID);
+    assert.equal(t.kind === 'ask' && t.via, 'mention');
+    assert.equal(t.kind === 'ask' && t.surface, 'discord_channel');
   });
 
   it('@everyone does not reach her', () => {
@@ -281,6 +311,7 @@ describe('⚠️ a missing Anthropic key is a LADDER, never an error in a channe
         {
           capCheck: async () => ({ ok: true }),
           recordTurn: async () => {},
+          conversation: NO_MEMORY,
           reply: async (content) => void said.push(content),
         },
         trigger,
@@ -358,6 +389,7 @@ describe('spend caps — a fuse with words on it', () => {
         {
           capCheck: async () => capDecision({ userInWindow: USER_TURNS_PER_WINDOW, globalToday: 0 }),
           recordTurn: async () => assert.fail('a refused turn must not be counted against the cap'),
+          conversation: NO_MEMORY,
           reply: async (content) => void said.push(content),
         },
         trigger,
@@ -375,15 +407,27 @@ describe('spend caps — a fuse with words on it', () => {
 // ── 5. the allowlist ────────────────────────────────────────────────────────
 
 describe('⚠️ what a mention can cause, as an explicit array', () => {
-  it('is exactly these four things', () => {
+  it('is exactly these eight things', () => {
     // Adding a row is a design decision somebody makes on purpose. This
     // assertion is the same guard the library puts on GABI_TOOL_NAMES, and it
-    // is what makes "phase A writes nothing" a mechanism rather than a promise.
+    // is what makes "she writes nothing to the estate" a mechanism rather than
+    // a promise.
+    //
+    // ⚠️ FOUR WERE ADDED 2026-08-17 with the continuity layer, and every one of
+    // them was a decision: she may now READ BACK and WRITE a half-hour rolling
+    // transcript in the bot's own Durable Object storage, attach components to
+    // her own reply, and open a modal. Note what is STILL absent and cannot
+    // arrive without failing this line: no catalogue write, no Firestore write,
+    // no change_log row, no timeout, no message delete, no role change.
     assert.deepEqual([...GABI_MENTION_ACTIONS], [
       'lookup_public_shelf',
       'classify_intent',
       'converse',
       'reply_in_channel',
+      'recall_conversation',
+      'remember_conversation',
+      'offer_choice_components',
+      'open_question_modal',
     ]);
   });
 
@@ -415,6 +459,7 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
         {
           capCheck: async () => ({ ok: true }),
           recordTurn: async () => {},
+          conversation: NO_MEMORY,
           reply: async (content) => void said.push(content),
         },
         trigger,

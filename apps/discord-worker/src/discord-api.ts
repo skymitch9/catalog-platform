@@ -290,6 +290,17 @@ export async function getGatewayBot(
  *
  * `fail_if_not_exists: false` means a deleted question becomes a plain message
  * rather than a 400 — the answer is still worth having.
+ *
+ * ⚠️ **`components` is what makes the CONTINUATION grammar work, and it is why
+ * this must stay a REGULAR bot message rather than becoming an interaction
+ * response.** Discord's own note, read 2026-08-17
+ * (<https://docs.discord.com/developers/gateway/you-might-not-need-a-privileged-intent>):
+ * content in a reply reaches an app without the Message Content intent only
+ * when the reply is *"to a regular bot message (not an interaction response)"*.
+ * Every message she posts through this function is a regular bot message, so
+ * every one of them can be replied to and heard. A refactor that answered
+ * mentions through an interaction webhook instead would make her deaf to
+ * follow-ups without changing a single line that looks related.
  */
 export async function replyToMessage(
   botToken: string,
@@ -297,7 +308,7 @@ export async function replyToMessage(
   messageId: string,
   content: string,
   mentionUserId: string | null,
-  sleep?: Sleeper,
+  opts: { components?: unknown[]; sleep?: Sleeper } = {},
 ): Promise<Response> {
   return discordFetch(
     `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages`,
@@ -312,9 +323,10 @@ export async function replyToMessage(
           users: mentionUserId ? [mentionUserId] : [],
           replied_user: false,
         },
+        ...(opts.components && opts.components.length > 0 ? { components: opts.components } : {}),
       }),
     },
-    sleep,
+    opts.sleep,
   );
 }
 

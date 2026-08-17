@@ -25,7 +25,14 @@
  * the PING handshake, buttons, slash commands — to the one URL configured
  * in the Developer Portal; there is no gateway connection.
  *
- *   POST /interactions               Ed25519-verified; PING→PONG; router
+ *   POST /interactions               Ed25519-verified; PING→PONG; router.
+ *                                    ⚠️ ALSO the continuity layer's fourth
+ *                                    door: a press on a select menu / button
+ *                                    GABI attached to an earlier answer, and
+ *                                    the modal submit it can open, both arrive
+ *                                    HERE as ordinary signed interactions —
+ *                                    no gateway, no new endpoint, no new
+ *                                    credential (conversation-flow.ts)
  *   GET  /api/health                 open; config-presence booleans, no values
  *   GET  /link, /link/callback       the identity-link ceremony (link.ts)
  *   POST /link/confirm, /link/unlink  — mounted, not implemented here
@@ -43,6 +50,7 @@ import type { AppBindings, Env } from './env.js';
 import { verifyDiscordSignature } from './verify.js';
 import {
   deferredEphemeral,
+  deferredPublic,
   displayNameOf,
   ephemeralMessage,
   isInteraction,
@@ -50,6 +58,13 @@ import {
   routeInteraction,
   type InteractionActor,
 } from './interactions.js';
+import { resumeConversation } from './conversation-flow.js';
+import {
+  buildQuestionModal,
+  CONV_MSG,
+  CONVERSATION_MAX_EXCHANGES,
+  CONVERSATION_WINDOW_MS,
+} from './conversation.js';
 import { processPollVote } from './poll-vote.js';
 import { pollSyncRoutes } from './poll-sync.js';
 import { parseServiceAccount, type ServiceAccount } from './firebase-sa.js';
@@ -66,7 +81,7 @@ import {
 import { indexBase, processHave } from './have.js';
 import { panelBase, panelDeepLink, processGabi } from './gabi.js';
 import { mentionsOn } from './mentions.js';
-import { gatewayStub } from './gateway.js';
+import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
   MOD_MSG,
@@ -103,6 +118,10 @@ app.get('/api/health', (c) =>
       'gabi_command',
       'moderation_dark',
       'gabi_mentions',
+      // ⚠️ Added 2026-08-17: the rolling per-person memory, the reply/DM doors,
+      // and the clarifying-question components. Named here so "does she
+      // remember?" is answerable in one curl rather than by pressing something.
+      'gabi_continuity',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -160,12 +179,28 @@ app.get('/api/health', (c) =>
     // phase-A mention build, checkable in one curl, and it means no gateway
     // WebSocket is open at all rather than "open but quiet".
     gabi_mentions_enabled: mentionsOn(c.env),
-    // Stated rather than inferred, because it is the claim the whole design
-    // rests on: she is reachable by an @mention and by nothing else, on
-    // unprivileged intents. If this ever reads otherwise, somebody requested
-    // Discord's Message Content intent and that is a decision worth finding.
-    gabi_mentions_trigger: 'at_mention_only',
+    // ⚠️ Stated rather than inferred, because it is the claim the whole design
+    // rests on: every door she can be reached through is one Discord delivers
+    // content for WITHOUT the Message Content intent. Three now, not one —
+    // an @mention, a reply to one of her own regular messages with the ping
+    // left on, and a direct message. If this ever reads anything with "bare" or
+    // "any_message" in it, somebody requested the privileged intent and that is
+    // a decision worth finding in one curl.
+    gabi_mentions_trigger: 'at_mention_reply_or_dm',
     gabi_mentions_privileged_intent: false,
+    // The requested intent bitfield itself, so the claim above is CHECKABLE
+    // rather than merely asserted: 4609 = GUILDS | GUILD_MESSAGES |
+    // DIRECT_MESSAGES, all unprivileged. MESSAGE_CONTENT is 1 << 15 = 32768.
+    gabi_gateway_intents: GATEWAY_INTENTS,
+    // ⚠️ The memory, in the two numbers that define it. A reader who wants to
+    // know "how much does she remember" gets an answer without reading code,
+    // and a drift in either is visible from outside.
+    gabi_memory_window_minutes: CONVERSATION_WINDOW_MS / 60_000,
+    gabi_memory_max_exchanges: CONVERSATION_MAX_EXCHANGES,
+    // Where the memory lives. Stated because the alternative answers (D1,
+    // Firestore, a second Durable Object) each carry a cost this account
+    // cannot pay, and a future reader deserves to know which one was chosen.
+    gabi_memory_store: 'gateway_durable_object_storage',
   }),
 );
 
@@ -624,6 +659,60 @@ app.post('/interactions', async (c) => {
         ),
       );
       return c.json({ type: ResponseType.DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // -----------------------------------------------------------------------
+    // CONTINUITY — a component GABI attached to an earlier answer, and the
+    // modal it can open. ⚠️ NO GATEWAY IS INVOLVED: these arrive as ordinary
+    // signed HTTP interactions on this same endpoint (conversation-flow.ts).
+    // -----------------------------------------------------------------------
+
+    case 'gabi_component': {
+      // ⚠️ The posture first, before any storage is touched. While GABI_MENTIONS
+      // is off she is not connected at all, so a button from before the flip
+      // must say so in words rather than resurrect a Durable Object nobody
+      // asked to wake — the object is the account's most expensive resource.
+      if (!mentionsOn(c.env)) return c.json(ephemeralMessage(CONV_MSG.notListening));
+
+      // "None of these" opens the free-text modal. ⚠️ A modal MUST be the
+      // immediate response to the click — it cannot be sent as a followup — so
+      // this branch never defers.
+      if (decision.action === 'more') {
+        return c.json(buildQuestionModal(decision.nonce, CONV_MSG.modalTitle));
+      }
+
+      if (!decision.actor.token) {
+        return c.json(
+          ephemeralMessage(
+            'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
+              'Nothing went wrong on the estate side — ask her again.',
+          ),
+        );
+      }
+      defer(c, resumeConversation(c.env, decision.actor, {
+        kind: 'pick',
+        nonce: decision.nonce,
+        choice: decision.choice,
+      }));
+      return c.json(deferredPublic());
+    }
+
+    case 'gabi_modal': {
+      if (!mentionsOn(c.env)) return c.json(ephemeralMessage(CONV_MSG.notListening));
+      if (!decision.actor.token) {
+        return c.json(
+          ephemeralMessage(
+            'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
+              'Nothing went wrong on the estate side — ask her again.',
+          ),
+        );
+      }
+      defer(c, resumeConversation(c.env, decision.actor, {
+        kind: 'typed',
+        nonce: decision.nonce,
+        text: decision.text,
+      }));
+      return c.json(deferredPublic());
     }
 
     case 'unknown_command':

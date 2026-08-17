@@ -14,6 +14,7 @@ import {
   routeInteraction,
 } from '../src/interactions.js';
 import { buildPollCustomId } from '../src/poll-vote.js';
+import { buildConvCustomId, buildModalCustomId } from '../src/conversation.js';
 import { app } from '../src/index.js';
 import { signedPost } from './helpers/signed-post.js';
 
@@ -84,8 +85,11 @@ test('MESSAGE_COMPONENT: a pv| id without an interaction token cannot become a v
 });
 
 test('unsupported interaction types are named, not guessed at', () => {
+  // ⚠️ Type 5 used to be here and is now MODAL_SUBMIT — routed since the
+  // continuity layer landed (2026-08-17). Autocomplete (4) and the ping-adjacent
+  // higher numbers stand in for "anything the router does not know".
   assert.deepEqual(routeInteraction({ type: 4 }), { kind: 'unsupported', type: 4 });
-  assert.deepEqual(routeInteraction({ type: 5 }), { kind: 'unsupported', type: 5 });
+  assert.deepEqual(routeInteraction({ type: 6 }), { kind: 'unsupported', type: 6 });
 });
 
 test('interactionUser: guild member.user wins, DM user is the fallback, absent is null', () => {
@@ -136,6 +140,129 @@ test('a vote click with the Firestore credential unset says so in words — vote
   assert.equal(data.data.flags, EPHEMERAL);
   assert.match(data.data.content, /NOT recorded/);
   assert.match(data.data.content, /not a permissions problem/);
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ CONTINUITY — the fourth door. These are ROUTER tests: they prove a press
+// becomes a decision, and that a press this build never produced does not.
+// ---------------------------------------------------------------------------
+
+test('MESSAGE_COMPONENT: a gc| select press becomes a gabi_component carrying the choice', () => {
+  const decision = routeInteraction({
+    type: 3,
+    token: 'tok',
+    application_id: 'app',
+    guild_id: 'g1',
+    channel_id: 'ch1',
+    data: { custom_id: buildConvCustomId('pick', 'ab12cd34'), values: ['2'] },
+    member: { user: { id: 'u42' } },
+  });
+  assert.equal(decision.kind, 'gabi_component');
+  if (decision.kind !== 'gabi_component') return;
+  assert.equal(decision.action, 'pick');
+  assert.equal(decision.nonce, 'ab12cd34');
+  assert.equal(decision.choice, '2');
+  assert.equal(decision.actor.channelId, 'ch1');
+});
+
+test('MESSAGE_COMPONENT: the "none of these" button becomes the modal-opening action', () => {
+  const d = routeInteraction({
+    type: 3,
+    token: 'tok',
+    data: { custom_id: buildConvCustomId('more', 'ab12cd34') },
+    member: { user: { id: 'u42' } },
+  });
+  assert.equal(d.kind === 'gabi_component' && d.action, 'more');
+});
+
+test('MESSAGE_COMPONENT: malformed gc| ids fall through to bad_component, never a guess', () => {
+  for (const customId of [
+    'gc|pick', //          missing nonce
+    'gc|delete|abc', //    an action this build never emits
+    'gc|pick|../etc', //   not a nonce
+    'gc|pick|a|b', //      too many parts
+  ]) {
+    assert.equal(routeInteraction({ type: 3, token: 't', data: { custom_id: customId } }).kind, 'bad_component', customId);
+  }
+});
+
+test('⚠️ a component press in a DM carries no guild_id, which is how the DM memory is found', () => {
+  const d = routeInteraction({
+    type: 3,
+    token: 'tok',
+    channel_id: 'dm1',
+    data: { custom_id: buildConvCustomId('pick', 'zz99'), values: ['0'] },
+    user: { id: 'u42' },
+  });
+  assert.equal(d.kind === 'gabi_component' && d.actor.guildId, '');
+  assert.equal(d.kind === 'gabi_component' && d.actor.channelId, 'dm1');
+});
+
+test('MODAL_SUBMIT: the typed text is read out of the Label (18) shape Discord now sends', () => {
+  const d = routeInteraction({
+    type: 5,
+    token: 'tok',
+    channel_id: 'ch1',
+    guild_id: 'g1',
+    data: {
+      custom_id: buildModalCustomId('ab12cd34'),
+      components: [
+        { type: 18, component: { type: 4, custom_id: 'gcq', value: '  the second Mistborn one  ' } },
+      ],
+    },
+    member: { user: { id: 'u42' } },
+  });
+  assert.equal(d.kind, 'gabi_modal');
+  assert.equal(d.kind === 'gabi_modal' && d.nonce, 'ab12cd34');
+  assert.equal(d.kind === 'gabi_modal' && d.text, 'the second Mistborn one');
+});
+
+test('MODAL_SUBMIT: the DEPRECATED Action Row shape is read too — both are live', () => {
+  // Discord's component reference (2026-08-17) says Text Input inside an Action
+  // Row is deprecated in modals, not removed. A build that only understood the
+  // new shape would silently receive an EMPTY question from an older client.
+  const d = routeInteraction({
+    type: 5,
+    token: 'tok',
+    data: {
+      custom_id: buildModalCustomId('ab12cd34'),
+      components: [{ type: 1, components: [{ type: 4, custom_id: 'gcq', value: 'hello' }] }],
+    },
+    member: { user: { id: 'u42' } },
+  });
+  assert.equal(d.kind === 'gabi_modal' && d.text, 'hello');
+});
+
+test('MODAL_SUBMIT: a custom_id this build never issued is bad_component, not an answer', () => {
+  assert.equal(routeInteraction({ type: 5, data: { custom_id: 'someone-elses-modal' } }).kind, 'bad_component');
+});
+
+test('⚠️ a continuity press while the posture is OFF is answered in words, and touches nothing', async () => {
+  // GABI_MENTIONS off means she is not connected at all. A button from before
+  // the flip must say so rather than wake the Durable Object, which is the
+  // account's most expensive resource. (It was 83% of a hard free-plan daily
+  // cap when this was written; the account has since moved to Workers Paid per
+  // docs/TODO.md, which makes it cheaper, not free — and the posture answer is
+  // about the SWITCH, not the money, so it holds on either plan.)
+  const res = await signedPost({
+    type: 3,
+    token: 'tok',
+    application_id: 'app',
+    channel_id: 'ch1',
+    data: { custom_id: buildConvCustomId('pick', 'ab12cd34'), values: ['0'] },
+    member: { user: { id: 'u42' } },
+  });
+  assert.equal(res.status, 200);
+  const data = (await res.json()) as { type: number; data: { content: string; flags: number } };
+  assert.equal(data.type, 4);
+  assert.equal(data.data.flags, EPHEMERAL);
+  assert.match(data.data.content, /not listening/i);
+  assert.match(data.data.content, /Nothing happened/i);
+  // ⚠️ It must SAY it is not a permissions problem, not merely avoid the word.
+  // A silent refusal sends people asking for access they already have — the
+  // estate's no-bare-status rule applied to a switch rather than to a role.
+  assert.match(data.data.content, /nothing to do with your permissions/i);
+  assert.match(data.data.content, /estate setting/i, 'it names WHAT happened, not just that it did');
 });
 
 test('health answers config-presence booleans and never values', async () => {

@@ -15,18 +15,37 @@
  *
  * ## ⚠️ THE INTENTS, AND THE MEASUREMENT THE WHOLE BUILD RESTS ON
  *
- * `IDENTIFY` asks for **`GUILDS | GUILD_MESSAGES` = 513, both unprivileged**.
- * The **Message Content privileged intent is not requested and must never be**
- * (`discord-bot-design.md` §1.5).
+ * `IDENTIFY` asks for **`GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES` = 4609, all
+ * three unprivileged**. The **Message Content privileged intent is not
+ * requested and must never be** (`discord-bot-design.md` §1.5).
  *
  * The obvious objection is that without it `MESSAGE_CREATE.content` arrives
  * blank, which would make a mention unreadable. **Measured 2026-08-17 against
  * Discord's own documentation** — <https://docs.discord.com/developers/events/gateway>
- * — the intent blanks content **except** for four cases, one of which is
- * *"Content in which the app is mentioned"*. So the exact messages this build
- * answers are the exact messages whose content still arrives. `mentions.ts`
- * treats a blank `content` as "not for her", which is both the correct reading
- * and the correct behaviour if that ever changed.
+ * and <https://docs.discord.com/developers/gateway/you-might-not-need-a-privileged-intent>
+ * — the intent blanks content **except** for four cases, and this build answers
+ * exactly three of them:
+ *
+ *  - *"Messages that @mention your app"*,
+ *  - *"Replies to your app's messages"* — with Discord's own caveat, quoted in
+ *    full in `mentions.ts`: it applies only to a reply to a **regular bot
+ *    message** with **"ping on reply" enabled**, never to a reply to a slash
+ *    command's answer,
+ *  - *"Direct Messages sent to your app"*.
+ *
+ * So the exact messages this build answers are the exact messages whose content
+ * still arrives. `mentions.ts` treats a blank `content` as "not for her", which
+ * is both the correct reading and the correct behaviour if that ever changed.
+ *
+ * ## ⚠️ THE MEMORY LIVES IN THIS OBJECT'S STORAGE, AND WHY THAT IS NOT LAZY
+ *
+ * Continuity (the owner: *"I don't want to message GABI and then message her
+ * again and she has no recollection"*) needs somewhere durable that BOTH the
+ * gateway and the HTTP interactions endpoint can reach. This object is the only
+ * always-on thing on the account, and `wrangler.toml` names a **second**
+ * always-on Durable Object as blocking. So the rolling transcript is `conv:`
+ * rows in the storage this object already had — see the §CONVERSATION MEMORY
+ * block below for the write-budget arithmetic, which is the part that matters.
  *
  * ## ⚠️ COST — AND THE REAL CONSTRAINT IS NOT MONEY, IT IS A FREE-PLAN CEILING
  *
@@ -113,7 +132,19 @@ import {
   utcDayKey,
   type CapVerdict,
 } from './mentions.js';
-import { handleMention } from './mention-flow.js';
+import { handleMention, type ConversationDeps } from './mention-flow.js';
+import {
+  appendTurns,
+  conversationKey,
+  conversationStorageKey,
+  CONVERSATION_MAX_TURNS,
+  CONVERSATION_WINDOW_MS,
+  pruneConversation,
+  type ConversationKey,
+  type ConversationRecord,
+  type ConversationTurn,
+  type PendingChoice,
+} from './conversation.js';
 
 // ---------------------------------------------------------------------------
 // The protocol, as named constants (Discord "Gateway", API v10)
@@ -130,11 +161,32 @@ const OP = {
   HEARTBEAT_ACK: 11,
 } as const;
 
-/** GUILDS (1 << 0) | GUILD_MESSAGES (1 << 9). ⚠️ Both UNPRIVILEGED. Adding
- * MESSAGE_CONTENT (1 << 15) here would be the design decision §1.5 forbids —
- * and Discord would answer close code 4014 for an unapproved privileged intent,
- * which this file treats as fatal rather than retrying. */
-export const GATEWAY_INTENTS = (1 << 0) | (1 << 9);
+/**
+ * `GUILDS (1 << 0) | GUILD_MESSAGES (1 << 9) | DIRECT_MESSAGES (1 << 12)` = **4609**.
+ *
+ * ⚠️ **ALL THREE UNPRIVILEGED.** Discord's intent table lists exactly three
+ * privileged intents — `GUILD_PRESENCES`, `GUILD_MEMBERS`, `MESSAGE_CONTENT` —
+ * and `DIRECT_MESSAGES` is not among them (read 2026-08-17,
+ * <https://docs.discord.com/developers/events/gateway> §Privileged Intents).
+ * It needs no portal toggle, no app verification and no review.
+ *
+ * ⚠️ **`DIRECT_MESSAGES` was ADDED 2026-08-17 with the continuity layer**, to
+ * make the DM the zero-@ surface: in a one-to-one channel every message is
+ * addressed to her, so nothing has to be typed to reach her. Content arrives
+ * there without `MESSAGE_CONTENT` under the same page's exception list —
+ * *"Content in DMs with the app"* — and it is not a widening of what she can
+ * see: a DM to her is, definitionally, a message somebody sent her.
+ *
+ * ⚠️ **`DIRECT_MESSAGE_TYPING` (1 << 14) is deliberately NOT requested** (owner:
+ * messages, not typing). It would buy a "GABI is typing…" affordance and cost a
+ * `TYPING_START` event for every keystroke burst in every DM — traffic on an
+ * always-on object with a measured 17% headroom, in exchange for a flourish.
+ *
+ * ⚠️ Adding MESSAGE_CONTENT (1 << 15) here would be the design decision §1.5
+ * forbids — and Discord would answer close code 4014 for an unapproved
+ * privileged intent, which this file treats as fatal rather than retrying.
+ */
+export const GATEWAY_INTENTS = (1 << 0) | (1 << 9) | (1 << 12);
 
 /**
  * ⚠️ Close codes after which reconnecting is pointless and a retry loop is
@@ -162,7 +214,9 @@ export const ALARM_MS = 30_000;
  */
 export const MAX_IDENTIFIES_PER_DAY = 400;
 
-// Storage keys. Namespaced so the caps and the session cannot collide.
+// Storage keys. Namespaced so the caps, the session and the conversations
+// cannot collide: `gw:` the connection, `cap:` the fuses, `conv:` the memory
+// (`conversation.ts` owns that third prefix and its key construction).
 const K_SESSION = 'gw:session_id';
 const K_SEQ = 'gw:seq';
 const K_RESUME_URL = 'gw:resume_url';
@@ -201,6 +255,17 @@ export class GabiGateway {
 
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
+
+    // ⚠️ THE CONVERSATION DOOR COMES FIRST, BEFORE THE POSTURE CHECK AND BEFORE
+    // THE "anything else is /start" FALLTHROUGH BELOW. A component click
+    // arrives on the HTTP interactions endpoint and needs the memory that lives
+    // in here; if these paths fell through to /start they would OPEN A GATEWAY
+    // WEBSOCKET as a side effect of somebody pressing a button, which is both
+    // surprising and, on a free plan at 83% of the duration cap, expensive.
+    // They read and write storage and touch the socket not at all.
+    if (path === '/conv/load' || path === '/conv/save' || path === '/conv/count') {
+      return this.conversationDoor(path, request);
+    }
 
     if (path === '/status') return Response.json(await this.status());
 
@@ -245,7 +310,144 @@ export class GabiGateway {
       intents: GATEWAY_INTENTS,
       privileged_intents_requested: false,
       anthropic_key_configured: Boolean(this.env.ANTHROPIC_API_KEY_GABI),
+      // ⚠️ A COUNT, never a key and never a word of what anybody said. It is
+      // the one number that says whether the memory layer is doing anything at
+      // all, and it is checkable without reading a single conversation.
+      conversations_held: (await this.state.storage.list({ prefix: 'conv:', limit: 1000 })).size,
+      conversation_window_minutes: CONVERSATION_WINDOW_MS / 60_000,
+      conversation_max_turns: CONVERSATION_MAX_TURNS,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // CONVERSATION MEMORY — the rolling per-person transcript
+  //
+  // ⚠️ IT LIVES HERE BECAUSE THIS OBJECT ALREADY EXISTS, and adding a second
+  // always-on Durable Object anywhere on this account was named as BLOCKING in
+  // wrangler.toml (the outbound socket cannot hibernate and accrues ~10,800 of
+  // the FREE plan's 13,000 GB-s/day — about 83%, leaving ~17%).
+  // Continuity therefore adds NO new object, no D1 binding, no Firestore
+  // collection and no cron. It adds rows to storage this object already had.
+  //
+  // ⚠️ docs/TODO.md records the account moving to **Workers Paid 2026-08-17**,
+  // after the sentence above was written and NOT measured by this build. The
+  // decision was deliberately not revisited: reusing the object was correct
+  // under the tighter ceiling and is still correct under the looser one.
+  //
+  // ⚠️ THE WRITE BUDGET, AND THE DEFECT CLASS THIS DOES NOT REPEAT.
+  // An earlier version of this file wrote the gateway sequence number on EVERY
+  // FRAME — a Durable Object row write per message in every channel of every
+  // guild, against a 100,000 rows/day free-plan ceiling — and was corrected to
+  // once per heartbeat (~2,100/day). Nothing here writes per frame:
+  //
+  //   * `convLoad()`  — ZERO writes on the normal path. The prune is in memory.
+  //                     Its ONE write is a DELETE, and only when a record has
+  //                     aged out entirely, which is the "deleted, not archived"
+  //                     requirement doing its own garbage collection.
+  //   * `convSave()`  — exactly ONE write, and only on an ANSWERED turn.
+  //
+  // So conversation writes are bounded by the SAME fuse that bounds the
+  // answers: GLOBAL_TURNS_PER_DAY = 200. Worst case ≈ 200 saves + 200 loads
+  // that happen to garbage-collect = **≤400 row writes/day**, on top of the
+  // ~2,100 already accrued. New total ≈ 2,500/day of 100,000 — **2.5%**.
+  // ⚠️ That bound is not a hope: it is arithmetic over an existing cap, and if
+  // the cap is ever raised this paragraph is what has to be recomputed.
+  //
+  // Size: a full record is 20 turns x 600 chars ≈ 12 KB, inside the 128 KiB
+  // per-value ceiling with an order of magnitude to spare.
+  // -------------------------------------------------------------------------
+
+  /** ⚠️ Reads and prunes. The ONLY write it can perform is the delete of a
+   * record with nothing left inside the window — never a rewrite, never a
+   * touch of `updatedAt`. */
+  private async convLoad(
+    key: ConversationKey,
+  ): Promise<{ turns: ConversationTurn[]; pending: PendingChoice | null }> {
+    const sk = conversationStorageKey(key);
+    const stored = (await this.state.storage.get<ConversationRecord>(sk)) ?? null;
+    const pruned = pruneConversation(stored, Date.now());
+    if (stored && !pruned) {
+      // Aged out. DELETED, not archived — the estate keeps half an hour of what
+      // somebody said to a librarian and then it is gone.
+      await this.state.storage.delete(sk);
+      return { turns: [], pending: null };
+    }
+    return { turns: pruned?.turns ?? [], pending: pruned?.pending ?? null };
+  }
+
+  /** Exactly one write, on an answered turn. */
+  private async convSave(
+    key: ConversationKey,
+    entry: {
+      user: string;
+      assistant: string;
+      pending: PendingChoice | null;
+      ref?: Record<string, string>;
+    },
+  ): Promise<void> {
+    const sk = conversationStorageKey(key);
+    const now = Date.now();
+    const stored = (await this.state.storage.get<ConversationRecord>(sk)) ?? null;
+    const added: ConversationTurn[] = [
+      { role: 'user', text: entry.user, at: now, ...(entry.ref ? { ref: entry.ref } : {}) },
+      { role: 'assistant', text: entry.assistant, at: now },
+    ];
+    const next = appendTurns(stored, key, added, now, entry.pending);
+    if (!next) {
+      await this.state.storage.delete(sk);
+      return;
+    }
+    await this.state.storage.put(sk, next);
+  }
+
+  /** The store, as `mention-flow.ts` wants it — bound to one key. */
+  private conversationFor(key: ConversationKey): ConversationDeps {
+    return {
+      load: () => this.convLoad(key),
+      save: (entry) => this.convSave(key, entry),
+    };
+  }
+
+  /**
+   * `POST /conv/load` and `POST /conv/save`, for the HTTP interactions endpoint
+   * — the ONE path that needs this memory from outside the object.
+   *
+   * ⚠️ `/conv/load` answers the CAP VERDICT too, in the same round trip. Two
+   * stub fetches to decide one button press would be two subrequests for facts
+   * that live one field apart in the same storage.
+   */
+  private async conversationDoor(path: string, request: Request): Promise<Response> {
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return Response.json({ ok: false, why: 'unreadable_body' }, { status: 400 });
+    }
+    const s = (k: string) => (typeof body[k] === 'string' ? (body[k] as string) : '');
+    const key = conversationKey(s('surface'), s('space'), s('person'));
+    if (!key.surface || !key.space || !key.person) {
+      return Response.json({ ok: false, why: 'incomplete_key' }, { status: 400 });
+    }
+
+    if (path === '/conv/load') {
+      const memory = await this.convLoad(key);
+      return Response.json({ ok: true, ...memory, cap: await this.capCheck(key.person) });
+    }
+
+    // ⚠️ Counting is its OWN route, not a flag on the save. Folding them
+    // together would couple "she said something" to "it counted against the
+    // cap", and the first save that should not count would make the fuse lie.
+    if (path === '/conv/count') {
+      await this.recordTurn(key.person);
+      return Response.json({ ok: true });
+    }
+
+    await this.convSave(key, {
+      user: s('user'),
+      assistant: s('assistant'),
+      pending: (body['pending'] as PendingChoice | null) ?? null,
+    });
+    return Response.json({ ok: true });
   }
 
   // -------------------------------------------------------------------------
@@ -492,17 +694,26 @@ export class GabiGateway {
     const trigger = mentionTrigger((data ?? {}) as Record<string, unknown>, appId);
     if (trigger.kind === 'ignore') return;
 
+    // ⚠️ The conversation key: (surface, space, person). The SPACE is the
+    // channel, not the guild — two channels in one server are two
+    // conversations, and a DM is its own space by construction. The PERSON is
+    // the Discord user id, so two people talking to her in the same channel
+    // never see each other's memory.
+    const key = conversationKey(trigger.surface, trigger.channelId, trigger.authorId);
+
     await handleMention(
       {
         capCheck: (userId) => this.capCheck(userId),
         recordTurn: (userId) => this.recordTurn(userId),
-        reply: async (content) => {
+        conversation: this.conversationFor(key),
+        reply: async (content, extra) => {
           const res = await replyToMessage(
             botToken,
             trigger.channelId,
             trigger.messageId,
             content,
             trigger.authorId,
+            extra?.components ? { components: extra.components } : {},
           );
           if (!res.ok) {
             // 403 = not allowed to post there. A fact about that channel's

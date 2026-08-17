@@ -8,12 +8,24 @@
 
 import { parsePollCustomId, POLL_VOTE_PREFIX, type PollVoteRef } from './poll-vote.js';
 import { MOD_CONFIRM_PREFIX } from './moderation.js';
+import {
+  GABI_CONV_PREFIX,
+  modalInputValue,
+  parseConvCustomId,
+  parseModalCustomId,
+  type ConvAction,
+} from './conversation.js';
 
 /** Discord interaction request types (the ones this Worker handles). */
 export const InteractionType = {
   PING: 1,
   APPLICATION_COMMAND: 2,
   MESSAGE_COMPONENT: 3,
+  /** ⚠️ ADDED 2026-08-17 with the continuity layer. A modal submit is a
+   * DIFFERENT interaction type from the click that opened it, arriving on the
+   * same already-live, Ed25519-verified endpoint. Until now this Worker
+   * answered type 5 with `unsupported`. */
+  MODAL_SUBMIT: 5,
 } as const;
 
 /** Discord interaction response types. */
@@ -26,6 +38,11 @@ export const ResponseType = {
   DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: 5,
   DEFERRED_UPDATE_MESSAGE: 6,
   UPDATE_MESSAGE: 7,
+  /** ⚠️ A modal must be the IMMEDIATE response to a component click — it cannot
+   * be sent as a followup, and Discord's own table says it is *"Not available
+   * for `MODAL_SUBMIT` and `PING` interactions"*. So the button that opens one
+   * is answered synchronously, and only the submit is deferred. */
+  MODAL: 9,
 } as const;
 
 /** Message flag: visible only to the interacting user. */
@@ -73,13 +90,24 @@ export interface Interaction {
   type: number;
   token?: string;
   application_id?: string;
+  /** ⚠️ ABSENT in a DM, and that absence is how the conversation SURFACE is
+   * decided for a component click — the same test `mentions.ts` applies to a
+   * gateway message, so a button pressed in a DM resumes the DM's memory. */
   guild_id?: string;
   channel_id?: string;
+  /** Discord's newer channel object. Read as a fallback for `channel_id`,
+   * which it is gradually replacing; the conversation key needs the channel and
+   * a missing one would silently split a conversation in two. */
+  channel?: { id?: string };
   data?: {
     name?: string;
     custom_id?: string;
     options?: CommandOption[];
     resolved?: { users?: Record<string, DiscordUser> };
+    /** Select menus: the chosen option values. */
+    values?: unknown;
+    /** Modal submits: the action rows / labels wrapping the text inputs. */
+    components?: unknown;
   };
   /** Guild interactions carry member.user AND the member's computed
    * permissions for this channel — the value `/timeout` and `/cleanup` mirror.
@@ -159,6 +187,11 @@ export type RouterDecision =
       contains: string;
     }
   | { kind: 'mod_confirm'; customId: string; actor: InteractionActor }
+  /** ⚠️ CONTINUITY. A click on something GABI attached to an earlier answer:
+   * `pick` chose from her select menu, `more` asks for the free-text modal. */
+  | { kind: 'gabi_component'; action: ConvAction; nonce: string; choice: string; actor: InteractionActor }
+  /** ⚠️ CONTINUITY. The modal came back with typed text. */
+  | { kind: 'gabi_modal'; nonce: string; text: string; actor: InteractionActor }
   | { kind: 'unknown_command'; name: string }
   | {
       kind: 'poll_vote';
@@ -175,10 +208,23 @@ export function interactionActor(i: Interaction): InteractionActor {
     user: interactionUser(i),
     permissions: i.member?.permissions,
     guildId: i.guild_id ?? '',
-    channelId: i.channel_id ?? '',
+    // `channel_id` first, `channel.id` as the fallback — the newer object form
+    // is what Discord is moving to, and the conversation key cannot be built
+    // without one of them.
+    channelId: i.channel_id ?? i.channel?.id ?? '',
     token: i.token ?? '',
     applicationId: i.application_id ?? '',
   };
+}
+
+/** The single chosen value of a string select, or `''`. Only one is ever
+ * offered (`min_values`/`max_values` are both 1), so anything else is a payload
+ * this build did not produce and does not act on. */
+export function selectedValue(i: Interaction): string {
+  const values = i.data?.values;
+  if (!Array.isArray(values)) return '';
+  const first = values[0];
+  return typeof first === 'string' ? first : '';
 }
 
 /** Type guard for a JSON body that is at least interaction-shaped. */
@@ -241,10 +287,33 @@ export function routeInteraction(i: Interaction): RouterDecision {
       return { kind: 'unknown_command', name };
     }
 
+    case InteractionType.MODAL_SUBMIT: {
+      const parsed = parseModalCustomId(i.data?.custom_id ?? '');
+      if (!parsed) return { kind: 'bad_component', customId: i.data?.custom_id ?? '' };
+      return {
+        kind: 'gabi_modal',
+        nonce: parsed.nonce,
+        text: modalInputValue(i.data),
+        actor: interactionActor(i),
+      };
+    }
+
     case InteractionType.MESSAGE_COMPONENT: {
       const customId = i.data?.custom_id ?? '';
       if (customId.startsWith(`${MOD_CONFIRM_PREFIX}|`)) {
         return { kind: 'mod_confirm', customId, actor: interactionActor(i) };
+      }
+      if (customId.startsWith(`${GABI_CONV_PREFIX}|`)) {
+        const conv = parseConvCustomId(customId);
+        if (conv) {
+          return {
+            kind: 'gabi_component',
+            action: conv.action,
+            nonce: conv.nonce,
+            choice: selectedValue(i),
+            actor: interactionActor(i),
+          };
+        }
       }
       if (customId.startsWith(`${POLL_VOTE_PREFIX}|`)) {
         const ref = parsePollCustomId(customId);
@@ -285,4 +354,21 @@ export function deferredEphemeral() {
     type: ResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
     data: { flags: EPHEMERAL },
   };
+}
+
+/**
+ * "GABI is thinking…", **publicly** — the ack for a continuity component.
+ *
+ * ⚠️ Deliberately NOT `DEFERRED_UPDATE_MESSAGE` (type 6). Type 6 edits the
+ * message the component was attached to, which would REPLACE her earlier answer
+ * with her new one and quietly erase the half of the conversation a reader
+ * needs to make sense of it. A conversation is a sequence of messages; type 5
+ * adds one.
+ *
+ * ⚠️ And deliberately not ephemeral: an ephemeral answer cannot be REPLIED to
+ * with the ping that Discord requires to deliver content, so it would be a dead
+ * end in the middle of a continuity feature.
+ */
+export function deferredPublic() {
+  return { type: ResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, data: {} };
 }

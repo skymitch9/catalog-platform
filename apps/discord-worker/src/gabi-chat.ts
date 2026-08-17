@@ -53,6 +53,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { classifyByKeyword, isMentionIntent, type MentionIntent } from './mentions.js';
+import { conversationChars, type ConversationTurn } from './conversation.js';
 
 /**
  * ⚠️ Pinned, not aliased. `claude-haiku-4-5` is the moving alias for this
@@ -124,18 +125,37 @@ export function accountTurn(entry: {
   usage: TurnUsage;
   discordUserId: string;
   guildId: string | null;
+  /** Which door this turn came through — `mention` / `reply` / `dm` /
+   * `component`. Defaults to the pre-continuity value so an old dashboard
+   * query does not silently start missing rows. */
+  via?: string;
+  /**
+   * ⚠️ CONTINUITY'S SHARE OF THE SPEND, MEASURED RATHER THAN ASSUMED. Context
+   * tokens are charged on every turn, so a conversation that grows makes the
+   * SAME question cost more the tenth time it is asked. `input_tokens` already
+   * contains that cost; these two columns are what make it attributable — how
+   * many remembered turns went in, and how many characters they were. Raw
+   * columns rather than a derived share, for `gabi-fixer-design.md` §7.4's
+   * reason: a stored total computed by a wrong function is wrong forever.
+   */
+  historyTurns?: number;
+  historyChars?: number;
 }): void {
   console.log(
     JSON.stringify({
       evt: 'gabi_turn',
       surface: 'discord_mention',
+      via: entry.via ?? 'mention',
       purpose: entry.purpose,
       model: GABI_CHAT_MODEL,
       input_tokens: entry.usage.inputTokens,
       output_tokens: entry.usage.outputTokens,
       est_cents: estimateCents(entry.usage),
+      history_turns: entry.historyTurns ?? 0,
+      history_chars: entry.historyChars ?? 0,
       // Discord snowflakes, not names or message text. The same no-PII line
-      // /api/health draws.
+      // /api/health draws. ⚠️ The remembered TEXT is never logged — only how
+      // much of it there was.
       discord_user_id: entry.discordUserId,
       guild_id: entry.guildId,
       at: new Date().toISOString(),
@@ -177,6 +197,56 @@ function textOf(content: readonly unknown[]): string {
   return parts.join('').trim();
 }
 
+// ---------------------------------------------------------------------------
+// Continuity — turning a stored transcript into a prompt
+// ---------------------------------------------------------------------------
+
+export interface ModelMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * The stored transcript plus what was just said, as a Messages-API `messages`
+ * array.
+ *
+ * ⚠️ **THE ALTERNATION IS ENFORCED HERE, NOT ASSUMED.** The store appends
+ * user-then-assistant pairs, so a healthy record already alternates — but the
+ * 30-minute window cuts wherever it lands, which can leave an `assistant` turn
+ * first, and a dropped reply (Discord answered 403 for that channel) can leave
+ * two `user` turns adjacent. The API requires a `messages` array that starts
+ * with `user` and alternates; violating it is a 400 that would eat the person's
+ * answer over a bookkeeping detail. So: leading assistant turns are DROPPED,
+ * consecutive same-role turns are MERGED, and the current question is always
+ * the last thing in the array.
+ */
+export function modelMessages(
+  history: readonly ConversationTurn[],
+  current: string,
+): ModelMessage[] {
+  const out: ModelMessage[] = [];
+  for (const turn of history) {
+    const text = turn.text.trim();
+    if (text.length === 0) continue;
+    if (out.length === 0 && turn.role !== 'user') continue;
+    const last = out[out.length - 1];
+    if (last && last.role === turn.role) last.content = `${last.content}\n\n${text}`;
+    else out.push({ role: turn.role, content: text });
+  }
+  const last = out[out.length - 1];
+  if (last && last.role === 'user') last.content = `${last.content}\n\n${current}`;
+  else out.push({ role: 'user', content: current });
+  return out;
+}
+
+/** How many characters of remembered conversation a turn is about to pay for. */
+export function historyCost(history: readonly ConversationTurn[]): {
+  historyTurns: number;
+  historyChars: number;
+} {
+  return { historyTurns: history.length, historyChars: conversationChars(history) };
+}
+
 function usageOf(u: unknown): TurnUsage {
   const raw = (u ?? {}) as Record<string, unknown>;
   const n = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : 0);
@@ -198,7 +268,20 @@ fix_request — they want something in the catalogue changed, corrected, added o
 question — they are asking you something else: how you work, what you can do, a general books question.
 smalltalk — a greeting, a thank-you, a joke, or anything with no task in it.
 
-When a message asks for a change to a specific book, that is fix_request even though a book is named.`;
+When a message asks for a change to a specific book, that is fix_request even though a book is named.
+
+If you are shown what was said a moment ago, use it only to understand what the current message refers to. Sort the CURRENT message, not the earlier one.`;
+
+/**
+ * ⚠️ How much conversation the CLASSIFIER sees, and why it is not the whole
+ * window. A classifier's job is "what does this message want", and a follow-up
+ * like *"what about the second one?"* needs exactly one thing to make sense: the
+ * last thing she said. Feeding it the full history would roughly quadruple the
+ * input tokens of the cheapest call in the build to settle a four-way choice
+ * that a fallback router already handles. Two turns, clipped.
+ */
+export const CLASSIFY_CONTEXT_TURNS = 2;
+export const CLASSIFY_CONTEXT_CHARS = 300;
 
 /**
  * One classification turn. Returns `null` when there is no key (the caller
@@ -208,21 +291,36 @@ When a message asks for a change to a specific book, that is fix_request even th
 export async function classifyIntent(
   apiKey: string | undefined,
   question: string,
-  who: { discordUserId: string; guildId: string | null },
+  who: { discordUserId: string; guildId: string | null; via?: string },
   overrides?: { fetch?: typeof fetch },
+  history: readonly ConversationTurn[] = [],
 ): Promise<MentionIntent | null> {
   if (!apiKey) {
     logNoKey('intent classification');
     return null;
   }
+  const recent = history.slice(-CLASSIFY_CONTEXT_TURNS);
+  const preamble =
+    recent.length > 0
+      ? `A moment ago in this conversation:\n${recent
+          .map((t) => `${t.role === 'user' ? 'Them' : 'You'}: ${t.text.slice(0, CLASSIFY_CONTEXT_CHARS)}`)
+          .join('\n')}\n\nTheir message now:\n`
+      : '';
   try {
     const res = await chatClient(apiKey, overrides).messages.create({
       model: GABI_CHAT_MODEL,
       max_tokens: CLASSIFY_MAX_TOKENS,
       system: CLASSIFY_SYSTEM,
-      messages: [{ role: 'user', content: question }],
+      messages: [{ role: 'user', content: `${preamble}${question}` }],
     });
-    accountTurn({ purpose: 'classify', usage: usageOf(res.usage), ...who });
+    accountTurn({
+      purpose: 'classify',
+      usage: usageOf(res.usage),
+      discordUserId: who.discordUserId,
+      guildId: who.guildId,
+      ...(who.via ? { via: who.via } : {}),
+      ...historyCost(recent),
+    });
     const word = textOf(res.content).toLowerCase().replace(/[^a-z_]/g, '');
     if (isMentionIntent(word)) return word;
     // A model that answered something else is not an outage; the keyword router
@@ -258,18 +356,27 @@ What is true about you right now, and you say so plainly when it comes up:
 
 An absence from the catalogue is a statement about the CATALOGUE, never about the house — books are catalogued as they are scanned, and plenty are not scanned yet. Never tell somebody they do not own a book.
 
+You can see the last half hour of this conversation. Use it: when someone says "that one" or "the second one" or "what about the sequel", they mean what you were both just talking about. Do not make them repeat themselves, and do not pretend to remember anything older than what you can actually see.
+
 Keep it to two or three sentences. This is a chat message, not an essay. No headings, no bullet lists, no preamble like "Great question" — answer the thing.`;
 
 /**
- * One conversational turn, optionally grounded with what the shelf lookup found.
+ * One conversational turn, grounded with what the shelf lookup found and with
+ * the remembered conversation.
+ *
+ * ⚠️ The history goes in as real `messages`, not as a summary pasted into the
+ * user turn. A summary is a second thing that can be wrong, and it would make
+ * the model reason about a transcript instead of continuing one.
+ *
  * Returns `null` when there is no key; the caller words something itself.
  */
 export async function converse(
   apiKey: string | undefined,
   question: string,
   grounding: string | null,
-  who: { discordUserId: string; guildId: string | null; authorName: string },
+  who: { discordUserId: string; guildId: string | null; authorName: string; via?: string },
   overrides?: { fetch?: typeof fetch },
+  history: readonly ConversationTurn[] = [],
 ): Promise<string | null> {
   if (!apiKey) {
     logNoKey('the conversational reply');
@@ -283,13 +390,15 @@ export async function converse(
       model: GABI_CHAT_MODEL,
       max_tokens: CHAT_MAX_TOKENS,
       system: CHAT_SYSTEM,
-      messages: [{ role: 'user', content: user }],
+      messages: modelMessages(history, user),
     });
     accountTurn({
       purpose: 'converse',
       usage: usageOf(res.usage),
       discordUserId: who.discordUserId,
       guildId: who.guildId,
+      ...(who.via ? { via: who.via } : {}),
+      ...historyCost(history),
     });
     const text = textOf(res.content);
     return text.length > 0 ? text : null;

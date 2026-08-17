@@ -71,8 +71,36 @@ name = "GABI_GATEWAY"
 class_name = "GabiGateway"
 
 # SQLite-backed, the current default class for new Durable Objects. The object
-# stores four small things: the resumable gateway session, the daily identify
-# budget, and the two spend counters.
+# stores the resumable gateway session, the daily identify budget, the two spend
+# counters — and, since 2026-08-17, the CONVERSATION MEMORY (`conv:` keys).
+#
+# ⚠️ THE MEMORY IS HERE BECAUSE A SECOND ALWAYS-ON OBJECT WAS BLOCKED at design
+# time (see the cost note above: this one uses ~83% of the FREE plan's daily
+# Durable Object duration). Continuity therefore added NO new object, NO D1
+# binding, NO Firestore collection and NO cron. It added rows to storage this
+# object already had.
+#
+# ⚠️ THE PLAN CHANGED UNDER THIS PARAGRAPH, and the design was NOT re-loosened.
+# docs/TODO.md records the owner upgrading to **Workers Paid on 2026-08-17**
+# ("cloudflare upgraded"), which lifts the duration pressure and raises crons
+# 5→250. That is the repo's own dated record, NOT something this build measured
+# — no deploy here has exercised the new limits. Reusing the existing object was
+# the right call under the tighter ceiling and stays the right call under the
+# looser one, so nothing was re-architected to spend the new headroom.
+#
+# ⚠️ WRITE BUDGET, and it is arithmetic over an existing cap rather than a hope.
+# A conversation row is written ONCE PER ANSWERED TURN, and answered turns are
+# already fused at GLOBAL_TURNS_PER_DAY = 200. Worst case ≈200 saves + ≈200
+# garbage-collecting deletes = **≤400 row writes/day**, on top of the ~2,100 the
+# heartbeat already accrues. New total ≈2,500/day against the FREE plan's
+# **100,000 rows/day** — about 2.5%. ⚠️ Deliberately priced against the TIGHTER
+# (free) ceiling: a bound proven under the stricter limit is still a bound under
+# the looser one, and pricing against Paid would have to be re-derived the day
+# anybody downgrades. Loads perform no write at all.
+# ⚠️ Do NOT reintroduce the defect class this avoids: an early version of
+# gateway.ts wrote the sequence number on EVERY FRAME (a row write per message
+# in every channel of every guild) and was corrected to once per heartbeat.
+# Nothing in the memory path writes per frame.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GabiGateway"]
@@ -145,13 +173,29 @@ MODERATION_ENABLED = "off"
 # has a documented SECOND step: `POST /admin/gateway/start` with an estate
 # admin's bearer, or wait up to two minutes for the cron above.
 #
-# ⚠️ WHAT IT DOES NOT DO: bare-text triggers. She answers a genuine @mention and
-# nothing else, because reading messages she was not addressed in needs
-# Discord's Message Content privileged intent — which discord-bot-design.md §1.5
-# says is NEVER requested. Measured 2026-08-17 against Discord's own docs: the
-# content of a message that MENTIONS the app arrives populated WITHOUT that
-# intent, which is exactly why this phase works and a bare-text one does not.
-# Turning on bare text is a separate owner decision, not a config change.
+# ⚠️ WHAT IT NOW GOVERNS — WIDENED 2026-08-17 with the continuity layer, and the
+# switch still governs ALL of it. Three intent-free doors, not one:
+#   1. a genuine @mention in a channel;
+#   2. a Discord REPLY to one of her own regular messages with "ping on reply"
+#      left ON. ⚠️ With the ping removed she is BLIND to it — Discord delivers no
+#      content — and there is no way for her to know it happened. Documented in
+#      docs/access/discord-bot.md rather than left to be discovered;
+#   3. a DIRECT MESSAGE, where no mention is needed at all. This added
+#      DIRECT_MESSAGES (1 << 12) to the requested intents — UNPRIVILEGED, no
+#      portal toggle, no verification (the privileged three are GUILD_PRESENCES,
+#      GUILD_MEMBERS, MESSAGE_CONTENT). DM typing (1 << 14) is deliberately NOT
+#      requested: the owner asked for messages, not a typing indicator.
+#
+# ⚠️ WHAT IT STILL DOES NOT DO: bare-text triggers. `heygabi …` typed with no
+# mention, no reply and not in a DM needs Discord's Message Content privileged
+# intent — which discord-bot-design.md §1.5 says is NEVER requested. All three
+# doors above are messages somebody DELIBERATELY addressed to her, which is why
+# none of them moves that line. Turning on bare text is a separate owner
+# decision, not a config change.
+#
+# ⚠️ It also gates the CLARIFYING-QUESTION COMPONENTS on the HTTP interactions
+# endpoint: while this is off, a press on a select menu or button from before
+# the flip is answered in words and NO Durable Object is woken.
 GABI_MENTIONS = "off"
 
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):

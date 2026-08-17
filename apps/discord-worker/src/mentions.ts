@@ -1,48 +1,75 @@
 /**
- * Conversational GABI in Discord — **phase A: @mention triggers only.**
+ * Conversational GABI in Discord — **three intent-free ways to reach her.**
  *
  * The owner's ask was *"I want to use heygabi and similar forms like Hey Gabi,
- * hey @Gabi, heyGabi etc to kick her off for a question and then she responds."*
- * This file is the half of that which needs no network: deciding **whether a
- * message is for her**, **what she was asked**, **which shape of answer it
- * wants**, and **whether she is allowed to spend anything answering it**.
+ * hey @Gabi, heyGabi etc to kick her off for a question and then she responds"*,
+ * and then, once she could be reached at all, *"I don't want to message GABI and
+ * then message her again and she has no recollection."* This file is the half of
+ * that which needs no network: deciding **whether a message is for her**, **what
+ * she was asked**, **which shape of answer it wants**, and **whether she is
+ * allowed to spend anything answering it**.
  *
- * ## ⚠️ WHY @MENTION ONLY, AND WHY THAT IS NOT A SHORTCUT
+ * ## ⚠️ THE THREE DOORS, AND THE DOCUMENTATION THAT OPENS EACH OF THEM
  *
- * A bare-text trigger — someone typing `heygabi do we have Mistborn?` with no
- * mention — requires reading the text of messages the bot was not addressed in,
- * and that is **Discord's Message Content privileged intent**, which
- * `discord-bot-design.md` §1.5 says is **never requested**. Phase A therefore
- * fires on a genuine `@GABI` mention and nothing else.
+ * Everything here rests on one measurement, so it was **read off Discord's own
+ * documentation rather than assumed** (2026-08-17,
+ * <https://docs.discord.com/developers/gateway/you-might-not-need-a-privileged-intent>,
+ * *"Exceptions: when you get message content without the privileged intent"*):
  *
- * ⚠️ **MEASURED 2026-08-17, not assumed** — the whole design rests on this, so
- * it was read off Discord's own documentation rather than inferred:
+ * > - **Messages your app sends**
+ * > - **Direct Messages sent to your app**
+ * > - **Messages that @mention your app**
+ * > - **Replies to your app's messages.** Note: this applies to replies sent
+ * >   using Discord's reply feature to a regular bot message (not an interaction
+ * >   response) and the user has "ping on reply" enabled. It does not apply to
+ * >   replies to slash command responses.
  *
- * > *"Content in messages that an app sends / Content in DMs with the app /
- * > Content in which the app is mentioned / Content of the message a message
- * > context menu command is used on"*
- * > — <https://docs.discord.com/developers/events/gateway>, the four exceptions
- * > to the `MESSAGE_CONTENT` intent's blanking of content fields.
+ * The same four exceptions appear on
+ * <https://docs.discord.com/developers/events/gateway> §Message Content Intent,
+ * where "mentioned" links to the `<@USER_ID>` message-formatting format.
  *
- * So a `MESSAGE_CREATE` for a message that mentions the app arrives **with its
- * `content` populated** on the unprivileged `GUILDS` + `GUILD_MESSAGES`
- * intents. Every other message arrives with `content: ""`, which this file
- * treats as "not for her" — and that is the mechanism, not a promise.
+ * So this file answers exactly three shapes, one per intent-free exception, and
+ * **`MESSAGE_CONTENT` (1 << 15) is still never requested**:
+ *
+ *  1. **`mention`** — a genuine `<@GABI>` in a guild channel.
+ *  2. **`reply`** — a Discord *reply* to one of GABI's own **regular** messages
+ *     with **ping-on-reply left ON**. ⚠️ The ping is what delivers the content;
+ *     a reply with the ping switched off arrives with `content: ""` and she is
+ *     **blind to it**. That is documented honestly in the runbook rather than
+ *     presented as a quirk, because there is no way for her to know it happened.
+ *     ⚠️ It also does NOT cover replies to `/have`, `/gabi` or any other slash
+ *     command answer — those are *interaction responses*, explicitly excluded by
+ *     the sentence above, and the exclusion is Discord's, not this build's.
+ *  3. **`dm`** — a direct message to the app. In a DM **every** user message is
+ *     addressed to her, so no mention is needed and none is looked for. This
+ *     needs `DIRECT_MESSAGES` (1 << 12), which is **UNPRIVILEGED** (same page's
+ *     intent table: it is not in the `GUILD_PRESENCES` / `GUILD_MEMBERS` /
+ *     `MESSAGE_CONTENT` privileged list).
+ *
+ * ⚠️ **Still NOT built, and still an owner decision: bare text.** `heygabi …`
+ * with no mention, no reply and not in a DM needs `MESSAGE_CONTENT`, which
+ * `discord-bot-design.md` §1.5 refuses. None of the three doors above moves that
+ * line by a millimetre — each one is a message somebody deliberately addressed
+ * to her.
  *
  * ## The mention test is deliberately strict
  *
- * `mentionTrigger()` requires the app's id in **BOTH** the `mentions` array AND
- * the raw `<@id>` / `<@!id>` token in the text. Three things that look like a
- * mention and are not:
+ * In a guild, `mentionTrigger()` requires the app's id in the `mentions` array
+ * **AND** either the raw `<@id>` / `<@!id>` token in the text **or** proof that
+ * the message is a reply to one of her own. Things that look like a mention and
+ * are not:
  *
  *  - **`@everyone` / `@here`** — carried by `mention_everyone`, which adds
  *    nobody to `mentions`. A bot that answered every `@everyone` would be a
  *    bot nobody keeps in their server.
  *  - **A role the bot holds** — `mention_roles`, ignored here for the same
  *    reason.
- *  - **A reply to one of her messages** — Discord adds the replied-to author to
- *    `mentions` automatically. Requiring the literal `<@id>` in the text is
- *    what separates "she is being talked TO" from "she is being talked ABOUT".
+ *  - **A reply to somebody ELSE's message that happens to list her** — the
+ *    reply arm requires `referenced_message.author.id` to be her own id, so
+ *    "talked TO" and "talked ABOUT" stay separate. ⚠️ A reply whose original was
+ *    deleted arrives with no `referenced_message` and is **ignored**: she cannot
+ *    prove the message was hers, and guessing is how a bot answers a
+ *    conversation it was never in.
  *
  * And bots never trigger her (`author.bot`, or a `webhook_id`): two bots that
  * mention each other are an infinite loop that spends real money.
@@ -51,9 +78,9 @@
  *
  * `GABI_MENTION_ACTIONS` is the whole surface. It is an **array, not a
  * subtraction**, mirroring `@lc/core`'s `GABI_TOOLS` and pinned by a test that
- * fails the build if anything is added: phase A reads and talks, and every
- * write, moderation and admin verb is absent by construction rather than by a
- * guard somebody could forget.
+ * fails the build if anything is added: this phase reads, remembers and talks,
+ * and every write, moderation and admin verb is absent by construction rather
+ * than by a guard somebody could forget.
  */
 
 import type { Env } from './env.js';
@@ -98,6 +125,23 @@ export const GABI_MENTION_ACTIONS = [
   'converse',
   /** Post one reply into the channel the mention came from. */
   'reply_in_channel',
+  /** ⚠️ ADDED WITH CONTINUITY (2026-08-17). Read back the rolling per-person
+   * transcript for this (surface, space, person) — the estate's OWN Durable
+   * Object storage, never Firestore and never a catalogue row. */
+  'recall_conversation',
+  /** ⚠️ ADDED WITH CONTINUITY. Write that transcript back, inside a 30-minute
+   * window and a 20-turn cap, and DELETE it when it ages out. This is the only
+   * persistent write anywhere in this flow, it stores message text and nothing
+   * else, and it is bounded by the same daily cap as the answers themselves. */
+  'remember_conversation',
+  /** ⚠️ ADDED WITH CONTINUITY. Attach a select menu / button to her own reply so
+   * a clarifying question can be answered with a click. Components she posts —
+   * it grants her nothing new to read. */
+  'offer_choice_components',
+  /** ⚠️ ADDED WITH CONTINUITY. Open a modal (one free-text box) when the answer
+   * is not on the menu. The typed text arrives on the ALREADY-LIVE, Ed25519-
+   * verified interactions endpoint and is treated as an ordinary question. */
+  'open_question_modal',
 ] as const;
 
 export type GabiMentionAction = (typeof GABI_MENTION_ACTIONS)[number];
@@ -116,6 +160,8 @@ export interface GatewayUser {
 export interface GatewayMessage {
   id?: unknown;
   channel_id?: unknown;
+  /** ⚠️ ABSENT in a direct message, and that absence IS the DM test. Discord
+   * sends `guild_id` on every guild `MESSAGE_CREATE`, threads included. */
   guild_id?: unknown;
   content?: unknown;
   author?: GatewayUser;
@@ -123,16 +169,35 @@ export interface GatewayMessage {
   webhook_id?: unknown;
   /** 0 = DEFAULT, 19 = REPLY. Everything else (joins, pins, threads…) is noise. */
   type?: unknown;
+  /** Present on a reply (type 19) unless the original was deleted. Its author
+   * is what proves the reply is to one of HER messages. */
+  referenced_message?: { author?: GatewayUser } | null;
 }
 
 /** Discord message types this build will answer. A system message ("X pinned a
  * message") can carry a mention and is never a question. */
 const ANSWERABLE_TYPES = new Set([0, 19]);
 
+/** Discord's message type for a reply. */
+export const MESSAGE_TYPE_REPLY = 19;
+
+/**
+ * ⚠️ WHICH intent-free door this message came through. Recorded on the trigger
+ * (and on the accounting line) because the three have genuinely different
+ * failure modes and "she didn't answer" is otherwise unanswerable:
+ * a `mention` that failed is a routing bug, a `reply` that never arrived is
+ * almost always the ping-on-reply toggle, and a missing `dm` is the intent.
+ */
+export type MentionVia = 'mention' | 'reply' | 'dm';
+
 export type MentionTrigger =
   | { kind: 'ignore'; why: string }
   | {
       kind: 'ask';
+      /** How she was reached. */
+      via: MentionVia;
+      /** The conversation store's surface label (`conversation.ts`). */
+      surface: 'discord_channel' | 'discord_dm';
       question: string;
       messageId: string;
       channelId: string;
@@ -187,12 +252,37 @@ export function questionFrom(content: string, appId: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** A one-word "?" is not a question. Same reasoning as `/gabi`'s own floor. */
+/** A one-word "?" is not a question. Same reasoning as `/gabi`'s own floor.
+ * ⚠️ Applies to the MENTION door only — see `mentionTrigger`. */
 export const MIN_MENTION_QUESTION = 3;
 
 /**
- * Is this message a question FOR her? Pure, and every rejection is named — a
- * bot that ignores things silently is a bot nobody can debug.
+ * ⚠️ The floor for a reply or a DM is ONE character, and that is deliberate
+ * rather than sloppy. A bare `@GABI` with nothing after it is somebody's stray
+ * ping; a DM that says only `hi` is a person starting a one-to-one conversation,
+ * and silence there reads as broken rather than as restraint.
+ */
+export const MIN_CONTINUATION_QUESTION = 1;
+
+/**
+ * Is this a reply to one of HER OWN messages?
+ *
+ * ⚠️ The proof is `referenced_message.author.id`, never `message_reference`
+ * alone: the latter says "this is a reply", not "a reply to her". A reply whose
+ * original was deleted carries no `referenced_message` and therefore fails
+ * here — she cannot prove the message was hers, and answering anyway would mean
+ * joining a conversation she was never in.
+ */
+export function isReplyToApp(msg: GatewayMessage, appId: string): boolean {
+  const type = typeof msg.type === 'number' ? msg.type : 0;
+  if (type !== MESSAGE_TYPE_REPLY) return false;
+  return str(msg.referenced_message?.author?.id) === appId;
+}
+
+/**
+ * Is this message a question FOR her, and through which door? Pure, and every
+ * rejection is named — a bot that ignores things silently is a bot nobody can
+ * debug.
  */
 export function mentionTrigger(msg: GatewayMessage, appId: string): MentionTrigger {
   if (!appId) return { kind: 'ignore', why: 'no_application_id' };
@@ -207,33 +297,71 @@ export function mentionTrigger(msg: GatewayMessage, appId: string): MentionTrigg
   const type = typeof msg.type === 'number' ? msg.type : 0;
   if (!ANSWERABLE_TYPES.has(type)) return { kind: 'ignore', why: `message_type_${type}` };
 
-  // ⚠️ BOTH halves. The array alone catches replies and @everyone-adjacent
-  // cases; the token alone could be typed by someone quoting an id. Together
-  // they mean "this person addressed her, on purpose".
+  const channelId = str(msg.channel_id);
+  const messageId = str(msg.id);
+  if (!channelId || !messageId) return { kind: 'ignore', why: 'no_channel_or_message_id' };
+
+  const guildId = str(msg.guild_id) || null;
+  const content = str(msg.content);
+  const who = {
+    messageId,
+    channelId,
+    guildId,
+    authorId,
+    authorName: str(author.global_name) || str(author.username) || 'there',
+  };
+
+  // ── Door 3: a DM. No mention is looked for, because in a one-to-one channel
+  // every message is addressed to her by construction. `guild_id` absent is the
+  // test; Discord sends it on every guild message, threads included.
+  if (!guildId) {
+    const question = continuationQuestion(content, appId);
+    if (question.length < MIN_CONTINUATION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
+    return { kind: 'ask', via: 'dm', surface: 'discord_dm', question, ...who };
+  }
+
+  // ⚠️ In a guild, the `mentions` array is the gate for BOTH remaining doors —
+  // and for the reply door it is not a formality: it is what proves the person
+  // left "ping on reply" ON, which is the documented condition under which
+  // Discord delivers the content at all (this file's header). A reply with the
+  // ping removed arrives blank AND unlisted, so it fails here rather than
+  // failing later with an empty question.
   const mentioned = Array.isArray(msg.mentions)
     ? msg.mentions.some((m) => str((m as GatewayUser | null)?.id) === appId)
     : false;
   if (!mentioned) return { kind: 'ignore', why: 'not_mentioned' };
 
-  const content = str(msg.content);
-  if (!mentionTokens(appId).test(content)) return { kind: 'ignore', why: 'no_mention_token' };
+  // ── Door 1: a literal `<@id>` typed in the text. The token alone could be
+  // somebody quoting an id, which is why the array above is checked too.
+  if (mentionTokens(appId).test(content)) {
+    const question = questionFrom(content, appId);
+    if (question.length < MIN_MENTION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
+    return { kind: 'ask', via: 'mention', surface: 'discord_channel', question, ...who };
+  }
 
-  const channelId = str(msg.channel_id);
-  const messageId = str(msg.id);
-  if (!channelId || !messageId) return { kind: 'ignore', why: 'no_channel_or_message_id' };
+  // ── Door 2: a reply to one of her own messages, ping left on.
+  if (isReplyToApp(msg, appId)) {
+    const question = continuationQuestion(content, appId);
+    if (question.length < MIN_CONTINUATION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
+    return { kind: 'ask', via: 'reply', surface: 'discord_channel', question, ...who };
+  }
 
-  const question = questionFrom(content, appId);
-  if (question.length < MIN_MENTION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
+  return { kind: 'ignore', why: 'no_mention_token' };
+}
 
-  return {
-    kind: 'ask',
-    question,
-    messageId,
-    channelId,
-    guildId: str(msg.guild_id) || null,
-    authorId,
-    authorName: str(author.global_name) || str(author.username) || 'there',
-  };
+/**
+ * What was said, for the two doors where the address is structural rather than
+ * typed.
+ *
+ * ⚠️ Falls back to the RAW text when greeting-stripping empties it. In a
+ * mention, `@GABI` with nothing after it is genuinely not a question. In a DM or
+ * a reply, "thanks!" and "hi" ARE the message — stripping them to nothing and
+ * then ignoring them would make her go silent in exactly the moments a person is
+ * most sure she is listening.
+ */
+function continuationQuestion(content: string, appId: string): string {
+  const stripped = questionFrom(content, appId);
+  return stripped.length > 0 ? stripped : content.replace(/\s+/g, ' ').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +479,12 @@ export function capDecision(counts: { userInWindow: number; globalToday: number 
  * outage phrased as a refusal, and never a bare status.
  */
 export const MENTION_MSG = {
-  /** Addressed by mention, as the brief asks — "Hey @Sam — …". */
+  /** Addressed by mention, as the brief asks — "Hey @Sam — …".
+   *
+   * ⚠️ Used only on the FIRST turn of a conversation, and not in a DM. Once she
+   * remembers, re-greeting somebody by ping on every reply is how a bot that
+   * gained a memory manages to sound like it lost one — and in a DM there is
+   * nobody else in the room to disambiguate. `mention-flow.ts` decides. */
   greet: (userId: string) => `Hey <@${userId}> —`,
 
   userCapped:
