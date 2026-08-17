@@ -235,20 +235,32 @@ including the measured counts and what was NOT verified, is in
 [`info/index-worker-design.md` §8.5](info/index-worker-design.md). Only the
 work that has NOT been done is listed here.
 
-1. **The apex `/series` page** — the reason `GET /api/series` and
-   `GET /api/series/:slug` exist. The detail endpoint already returns rows
-   grouped by medium with `source`, `title`, `series_index`, `cover_url` and
-   `detail_url`, and every search hit now carries `series_slug`, so a result
-   can link straight to its series with no client-side folding. ⚠️ It is
-   **members-only** (sign-in required, like `/universes`' data), so the page
-   needs the apex's signed-in fetch, not an anonymous one. Size S.
-2. **A confirm-queue affordance for the owner.** `GET /api/series/pending` and
+1. **A confirm-queue affordance for the owner.** `GET /api/series/pending` and
    `POST /api/series/pending/:fold` exist and are approver-gated, but nothing
    in a browser calls them — today the only way to resolve a near miss is a
    signed-in curl. **One row is waiting**: *"The Survivalist Series"* ~ *"The
    Survivalist"* (both audiobook, so it may belong in the audiobook catalog's
    own corrections layer rather than as an index merge — that is the decision).
    Natural home: the apex `/admin` card, beside Estate Operations. Size S.
+   ⚠️ **`/series` has since produced EVIDENCE for that decision, observed live
+   2026-08-17** — and it points at *separate*, not merge: *The Survivalist*
+   holds one volume, **Frontier Justice, Arthur T. Bradley, 2014**, while *The
+   Survivalist Series* holds books 6–9 by **A. American**. Two authors, so two
+   series that merely share a name; merging would fuse two people's work under
+   one key. Resolving it `{"action":"separate"}` would also retire the phantom
+   *"Book 1 — nobody in the estate has this one"* row `/series` now shows on
+   the A. American run — the visible cost of an unanswered queue. **Still the
+   owner's call**; recorded as evidence, not as a decision taken.
+2. **`/universes`' CSP `frame-src` does not name `auth.heygabi.ai`** — noticed
+   while writing `/series`' own rule and deliberately NOT fixed there (a page
+   nobody is building is not a page to change blind). `estate-auth.js`'s
+   `authDomain` moved to `auth.heygabi.ai` at the SSO Phase 1 cutover
+   ([`info/sso-design.md` §4.1](info/sso-design.md)); `/`, `/admin` and the new
+   `/series` name it, `/universes` and `/status` do not. ⚠️ Whether it actually
+   breaks a sign-in *started from those pages* is **UNMEASURED** — the popup
+   path may never need the iframe. Measure first (sign out, sign in from
+   `/universes`, watch the console for a frame-src refusal), then fix. Size XS,
+   and both the bare and trailing-slash rules need it — that file's 308 trap.
 3. **Resolve `entry.universe` from the CANONICAL series display**, not from
    the source's spelling. Push-time universe resolution still reads the raw
    string (deliberately unchanged this pass — re-pointing a join deserves its

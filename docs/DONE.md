@@ -13,6 +13,117 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📚 The apex `/series` page — ✅ BUILT + DEPLOYED + VERIFIED SIGNED-IN 2026-08-17
+
+*(Moved whole from `TODO.md`'s "Series registry — what still hangs off it",
+item 1: "**The apex `/series` page** — the reason `GET /api/series` and
+`GET /api/series/:slug` exist. The detail endpoint already returns rows grouped
+by medium with `source`, `title`, `series_index`, `cover_url` and `detail_url`,
+and every search hit now carries `series_slug`, so a result can link straight to
+its series with no client-side folding. ⚠️ It is **members-only** (sign-in
+required, like `/universes`' data), so the page needs the apex's signed-in
+fetch, not an anonymous one. Size S.")*
+
+**The owner's ask, in his words:** *"I want missing books to say you don't have
+book 1 but audio and ebook do and Skylar also owns it."* So the page is **not a
+list of the rows the index returned** — it is a list of **volumes in number
+order**, and the numbers nobody holds are rendered as their own dashed **GAP
+rows**. A list of what we own can never show what is missing, and what is
+missing was the request.
+
+Live: <https://heygabi.ai/series/> (sign in — the data is members-only).
+
+### What shipped
+
+| Piece | Where |
+|---|---|
+| The page + its script | `sites/heygabi-home/public/series/index.html`, `series.js` |
+| CSP, both forms (the 308 trap) | `sites/heygabi-home/public/_headers` — `/series` and `/series/` |
+| Live markers | `sites/heygabi-home/predeploy.checks.json` — `/series/` and `/series/series.js` |
+| Nav | `public/index.html` (the Universes cell became `.card.multi`), `public/universes/index.html` (cross-link) |
+
+Commits `32a6f2b`, `f2fd6dc`, `6d41982`. Deploys `1f932b64` then `f40d18c5`
+(`npm run deploy:home`; `verify:home` green both times — 11 live pages).
+
+**Structure is `/universes`, near enough line for line** — collapsed rows, a
+lazy per-item fetch on first expand, page-local render functions, the same
+neutral-boot auth (8s backstop, no signed-out flash), the same theme tokens and
+the same back arrow. Duplicated rather than shared, per that page's own header
+and this codebase's one-page-one-script convention.
+
+**The transform is the page.** `/api/series/:slug` answers rows grouped by
+MEDIUM; `series.js` regroups them by `series_index` (`volumesFrom`), works out
+which integers between the first volume and the last nobody holds (`gapPlan`),
+and prints each volume as the owner's sentence (`holdingLabel`): *"On audiobook
+(shared pool) and Skylar's library (book)."* plus, where a shelf in that series
+lacks it, *"Not in Skylar's library."* Source vocabulary → household words:
+`library` = Skylar's library, `library2` = Samantha's library, `audiobook` /
+`ebook` = shared pool, `game` = games.
+
+**Two honest refusals rather than nonsense:** numbering past 60, or more than 25
+gaps, gets a printed note instead of synthesised rows — a `series_index` that is
+really a year must not produce 2,000 dashed rows. Unnumbered volumes group last,
+in a collapsed `<details>`. Scope is the API's throughout: the page never widens
+it, and a gap is worded as *"not on any shelf you can see"*, never as a claim
+about a catalog the viewer was not shown.
+
+### ⚠️ What only a real signed-in browser found — twice
+
+The page passed every unauthenticated signal (`check:home`, `verify:home`,
+markers, both CSP headers curl-verified) while carrying two real defects. Both
+were found by **opening it signed in** — the same lesson the `/admin` role
+columns taught the day before.
+
+1. **Dungeon Crawler Carl holds 8 books and 29 game rows under one series
+   name**, so *"Not in games."* printed under every novel and *"Not in audiobook
+   (shared pool) and Skylar's library."* under every dice bag. The design
+   already said why that is wrong — `info/index-worker-design.md` §3.1 gives a
+   game `work_fold = NULL` **by design**, because *"a board game is never the
+   same work as a book"* and never answers a same-work-in-another-format
+   question. A missing-FORMAT claim is exactly that question, so the game/book
+   line is now never crossed in either direction.
+2. **The same 31 accessories buried the 8-book ladder** — the ladder being the
+   point of the page. They moved into a collapsed `<details>`, the same native
+   fold and the same class `/universes` uses for the owner's identical complaint
+   there.
+
+### Measured live, signed in as the owner, 2026-08-17
+
+| Observation | Result |
+|---|---|
+| List | **441 series, 1,588 entries**; scope read *audiobook (shared pool), Skylar's library, games and Samantha's library* |
+| Complete run | *All the Skills* — books 1–6, each on audiobook **and** Skylar's library; no gaps, no gap note |
+| Half-volumes | *The Stormlight Archive* — 1, 2, **2.5** (Edgedancer), 3, **3.5** (Dawnshard), 4, 5, printed as their real `REAL` values rather than rounded |
+| The owner's sentence | *Dungeon Crawler Carl* book 4: *"On audiobook (shared pool). Not in Skylar's library."* |
+| **The GAP rows** | *The Survivalist Series* — **books 1–5 as dashed "Book N — nobody in the estate has this one"**, then 6–9 held on audiobook, closing with *"5 numbers are missing between 1 and 9 — the dashed rows above."* |
+| Filter box | page-local, no network: "storm" → 1 of 441, "survivalist" → 2 of 441 |
+| Console | clean — no CSP refusal, no JS error |
+| CSP headers | `curl` on **both** `/series` (308) and `/series/` (200) carries `connect-src https://index.heygabi.ai` |
+
+### NOT verified
+
+- **No automated test covers the render.** `node --check` parses `series.js` and
+  `predeploy-check` asserts its markers; the volume/gap transform has **no unit
+  test** — the repo has no harness for page JS (no DOM, no build step) and one
+  was not invented for this. The live signed-in walk above is the evidence, and
+  it is a walk, not a suite.
+- **`estate-probes` was not extended.** It probes APIs, and the series API
+  already gained its own probes (B11–B15) with the registry; no apex page has a
+  probe row, because that pattern does not exist.
+- **Only ~8 of 441 series were opened by hand.** The gap ceilings
+  (`GAP_MAX_INDEX = 60`, `GAP_MAX_ROWS = 25`) never fired on any of them, so
+  **the suppression note has never been seen rendering** — that path is
+  unexercised in production.
+- **The signed-OUT page was never seen.** The owner's browser was signed in
+  throughout; the sign-in invitation and the makes-no-fetch path are asserted by
+  the markers and by reading the code, not observed.
+- **`library2` and `ebook` labels are unexercised** — `/api/health` reports rows
+  for `game`, `library` and `audiobook` only. Samantha's library is in the
+  owner's scope and contributes no rows yet.
+- **Mistborn's volumes render with blank cover frames.** Those rows carry no
+  `cover_url` in the index — inferred from other audiobook rows on the same page
+  rendering covers from the same host, **not** confirmed against the data.
+
 ## 📚 The estate SERIES REGISTRY — ✅ BUILT + DEPLOYED LIVE 2026-08-17
 
 **The owner's order, 2026-08-16: "I don't want duplicate series."** The index
