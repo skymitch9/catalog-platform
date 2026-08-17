@@ -6,8 +6,9 @@
  * recomputes it from `status`. What a consumer DOES need locally:
  *
  *   - the canonical catalog list and order (the answer's array is canonical —
- *     `audiobook, library, games, library2` — and so must every cached copy
- *     be; new catalogs append at the END, the existing entries never move);
+ *     `audiobook, library, games, library2, ebooks` — and so must every cached
+ *     copy be; new catalogs append at the END, the existing entries never
+ *     move);
  *   - the PUBLIC slice, because the anonymous rule is the consumer's to
  *     implement: an ABSENT or invalid token means no /seen call ever happens,
  *     and §4.5 says that caller sees `{audiobook}`;
@@ -24,8 +25,14 @@
  * `library2` (0007) is the second library instance — its visibility column
  * defaults to 0 on the directory, so it appears in answers only when a
  * person was deliberately granted it (or for OWNER_EMAILS, computed).
+ * `ebooks` (0008) is the household's shared ebook shelf and follows the same
+ * DEFAULT 0 rule — and it is NOT in PUBLIC_CATALOGS, deliberately: the owner
+ * directive behind it ("I don't want people scraping my books") means an
+ * anonymous or pending caller must never hold it. ⚠️ That grant INCLUDES
+ * reading a book in the browser; only DOWNLOAD separates, and download is not
+ * a catalog — it rides `download_ebooks` on the /seen and /me answers.
  */
-export const CATALOGS = ['audiobook', 'library', 'games', 'library2'] as const;
+export const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'] as const;
 export type Catalog = (typeof CATALOGS)[number];
 
 /**

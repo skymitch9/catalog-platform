@@ -52,15 +52,49 @@ const SOURCE_FOR_CATALOG: Record<Catalog, string> = {
   // `library2` rows exist and this scope entry matches nothing: fail-closed
   // by construction until federation day mints the push token.
   library2: 'library2',
+  // ⚠️ `ebooks` (0008) is the ONE catalog with no source of its own, and that
+  // is why sourcesForScope() filters. Ebook rows are pushed by the audiobook
+  // pipeline under source 'audiobook' with `format: 'ebook'` (that repo's
+  // app/index_push.py: "'audiobook' the source means the household's shared
+  // pool, and `format` carries the medium"). So ebook visibility is not a
+  // SOURCE question — it is a FORMAT question inside the audiobook source,
+  // answered by EBOOK_FORMAT below. Mapping it to '' keeps the
+  // Record<Catalog, …> exhaustive without inventing a source that would match
+  // nothing while looking exactly like a working scope entry.
+  ebooks: '',
 };
 
 export function sourcesForScope(scope: readonly Catalog[]): string[] {
-  return scope.map((c) => SOURCE_FOR_CATALOG[c]);
+  // '' is not a source — see SOURCE_FOR_CATALOG's `ebooks` note.
+  return scope.map((c) => SOURCE_FOR_CATALOG[c]).filter((s) => s !== '');
+}
+
+/**
+ * The `format` value ebook rows carry inside the `audiobook` source.
+ *
+ * ⚠️ THE HOLE THIS CLOSES, found and MEASURED 2026-08-17 while building the
+ * ebook permission gate: `audiobook` is the estate's PUBLIC slice, so before
+ * this line an ANONYMOUS caller's search returned every ebook row — title,
+ * author, cover URL, and a deep link to the shelf — which is a complete
+ * enumeration of the very shelf the gate exists to close. Gating the shelf
+ * and leaving search open would have been a cosmetic gate.
+ *
+ * So the `ebooks` catalog admits ebook ROWS to a search exactly as it admits
+ * a person to the shelf. A caller without it still gets the whole public
+ * audiobook slice; only the ebook format drops out.
+ */
+export const EBOOK_FORMAT = 'ebook';
+
+/** True when this caller may see ebook rows at all. */
+export function scopeSeesEbooks(scope: readonly Catalog[]): boolean {
+  return scope.includes('ebooks');
 }
 
 /** The reverse of SOURCE_FOR_CATALOG — entry.source vocabulary → Catalog. */
 const CATALOG_FOR_SOURCE: Record<string, Catalog> = Object.fromEntries(
-  (Object.entries(SOURCE_FOR_CATALOG) as [Catalog, string][]).map(([catalog, source]) => [source, catalog]),
+  (Object.entries(SOURCE_FOR_CATALOG) as [Catalog, string][])
+    .filter(([, source]) => source !== '')
+    .map(([catalog, source]) => [source, catalog]),
 );
 
 const VALID_SOURCE_PARAMS = new Set(['audiobook', 'library', 'game', 'all']);
@@ -125,11 +159,28 @@ searchRoutes.get('/', async (c) => {
     return c.json({ query, scope: effectiveScope, books: [], games: [], universes: [] });
   }
 
+  // ⚠️ The ebook carve-out — the SQL stays the scope (this route's whole
+  // stance), so an out-of-scope ebook never reaches the ranker, the universe
+  // counts, or the wire. Ebook rows ride the `audiobook` source with
+  // `format = 'ebook'`, and `audiobook` is the PUBLIC slice; without this
+  // clause an anonymous search enumerated the entire gated shelf. See
+  // EBOOK_FORMAT's note for the measurement.
   const placeholders = sources.map(() => '?').join(', ');
+  const binds: unknown[] = [...sources];
+  let ebookClause = '';
+  // ⚠️ Keyed on `scope` (the caller's own visibility), NOT `effectiveScope`.
+  // The `source=` param narrows which SHELF is searched; ebooks live inside
+  // the audiobook source, so reading the narrowed set here would hide a
+  // permitted member's ebooks whenever they used the audiobook preset. This
+  // clause exists to subtract from the UNPERMITTED, and nothing else.
+  if (!scopeSeesEbooks(scope)) {
+    ebookClause = ' AND (format IS NULL OR format != ?)';
+    binds.push(EBOOK_FORMAT);
+  }
   const { results } = await c.env.DB.prepare(
-    `SELECT ${ENTRY_COLS} FROM entry WHERE source IN (${placeholders})`,
+    `SELECT ${ENTRY_COLS} FROM entry WHERE source IN (${placeholders})${ebookClause}`,
   )
-    .bind(...sources)
+    .bind(...binds)
     .all();
 
   // Universe counts inherit the scope for free: searchIndex counts from the

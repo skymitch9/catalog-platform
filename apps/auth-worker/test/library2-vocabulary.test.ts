@@ -85,9 +85,12 @@ test('every consumer app resolves its OWN token — a fifth app cannot be added 
   assert.notEqual(appTokenFor(env, 'library2'), appTokenFor(env, 'library'));
 });
 
-test('library2 is a catalog, appended LAST — the canonical order never re-sorts', () => {
-  assert.deepEqual([...CATALOGS], ['audiobook', 'library', 'games', 'library2']);
-  assert.equal(CATALOGS[CATALOGS.length - 1], 'library2');
+test('library2 is a catalog at a FIXED index — the canonical order never re-sorts', () => {
+  assert.deepEqual([...CATALOGS], ['audiobook', 'library', 'games', 'library2', 'ebooks']);
+  // ⚠️ No longer LAST — `ebooks` (0008) was appended after it on 2026-08-17.
+  // What matters, and what this now pins, is that library2 did not MOVE:
+  // canonical order is append-only, so its index is fixed forever.
+  assert.equal(CATALOGS.indexOf('library2'), 3);
   assert.equal(isCatalog('library2'), true);
   // The order is load-bearing ACROSS repos (§4.5), so an arriving set is
   // re-sorted INTO the canon rather than trusted — library2 last however it
@@ -99,11 +102,11 @@ test('the visibility flag column is vis_library2, and it is the ONLY thing that 
   // A member with every OTHER flag set must still not see library2 — proving
   // the flag is read, not inferred from "approved" or from vis_library.
   assert.deepEqual(
-    storedVisibility({ vis_audiobook: 1, vis_library: 1, vis_games: 1, vis_library2: 0 }),
+    storedVisibility({ vis_audiobook: 1, vis_library: 1, vis_games: 1, vis_library2: 0, vis_ebooks: 0 }),
     ['audiobook', 'library', 'games'],
   );
   assert.deepEqual(
-    storedVisibility({ vis_audiobook: 0, vis_library: 0, vis_games: 0, vis_library2: 1 }),
+    storedVisibility({ vis_audiobook: 0, vis_library: 0, vis_games: 0, vis_library2: 1, vis_ebooks: 0 }),
     ['library2'],
   );
   // And the write side round-trips through the same word.

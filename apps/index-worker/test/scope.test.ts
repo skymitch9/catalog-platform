@@ -64,8 +64,18 @@ class FakeDB {
           scopeArgs = args.slice(1);
         }
         if (sql.includes('source IN')) {
-          const sources = scopeArgs.map(String);
+          // The trailing `AND (format IS NULL OR format != ?)` binds ONE more
+          // arg after the sources — honoured here for the same reason the
+          // source clause is: the SQL is the scope, and a fake that ignored
+          // the carve-out would pass while the shelf leaked.
+          let sources = scopeArgs.map(String);
+          let excludeFormat: string | null = null;
+          if (sql.includes('format != ?')) {
+            excludeFormat = String(sources[sources.length - 1]);
+            sources = sources.slice(0, -1);
+          }
           rows = rows.filter((r) => sources.includes(r.source));
+          if (excludeFormat !== null) rows = rows.filter((r) => r.format !== excludeFormat);
         }
         return { results: rows };
       },
@@ -112,6 +122,11 @@ function estateRows(): SearchRow[] {
     row({ title: 'Cosmere Chronicles', source: 'library', format: 'hardcover', universe: UNIVERSE }),
     row({ title: 'The Cosmere Atlas', source: 'library', format: 'hardcover', universe: UNIVERSE }),
     row({ title: 'Cosmere: The Board Game', source: 'game', format: 'boardgame', kind: 'base', universe: UNIVERSE }),
+    // ⚠️ The ebook shelf rides the AUDIOBOOK source with format 'ebook' —
+    // the audiobook pipeline's own choice ("'audiobook' the source means the
+    // household's shared pool, and `format` carries the medium"). That is
+    // why ebook visibility cannot be a source question.
+    row({ title: 'Cosmere Chronicles', source: 'audiobook', format: 'ebook', universe: UNIVERSE }),
   ];
 }
 
@@ -234,14 +249,14 @@ test('a full-visibility member sees every catalog; the owner needs no directory 
     f.restore();
   }
 
-  // OWNER_EMAILS: every catalog computed — library2 (0007) included, even
-  // though nothing pushes `library2` rows yet (federation later; the scope
-  // entry matches nothing and costs nothing) — even with the estate
-  // unreachable (§4.3).
+  // OWNER_EMAILS: every catalog computed — library2 (0007) and ebooks (0008)
+  // included, even though nothing pushes `library2` rows yet (federation
+  // later; the scope entry matches nothing and costs nothing) and `ebooks`
+  // has no source of its own at all — even with the estate unreachable (§4.3).
   const down = stubSeen('unreachable');
   try {
     const body = await search(memberEnv(new FakeDB(estateRows()), OWNER));
-    assert.deepEqual(body.scope, ['audiobook', 'library', 'games', 'library2']);
+    assert.deepEqual(body.scope, ['audiobook', 'library', 'games', 'library2', 'ebooks']);
   } finally {
     down.restore();
   }
@@ -407,6 +422,83 @@ test('/api/lookup stays members-only AND unscoped: tokenless 401; a games-only m
     const body = (await res.json()) as any;
     assert.deepEqual([...new Set(body.matches.map((m: any) => m.source))].sort(), ['audiobook', 'library'],
       'lookup is membership-gated but deliberately unscoped — owner call, untouched');
+  } finally {
+    f.restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 0008 — the ebook carve-out. Owner directive 2026-08-17: "I don't want people
+// scraping my books." Gating the shelf while leaving SEARCH open would have
+// left a complete enumeration of it — title, author, cover URL and a deep
+// link — behind a public endpoint, because ebook rows live inside the public
+// `audiobook` source. These tests fail on the pre-carve-out code.
+// ---------------------------------------------------------------------------
+
+function formatsIn(body: any): string[] {
+  const f = new Set<string>();
+  for (const b of body.books) for (const e of b.entries) f.add(e.format);
+  for (const g of body.games) f.add(g.format);
+  return [...f].sort();
+}
+
+test('⚠️ anonymous search returns NO ebook rows, even though it holds the audiobook source', async () => {
+  const body = await search(prodEnv(new FakeDB(estateRows())));
+  assert.deepEqual(body.scope, ['audiobook']);
+  // The audiobook row is still there — the public slice did not shrink.
+  assert.ok(formatsIn(body).includes('audiobook'));
+  // The ebook row is gone.
+  assert.equal(formatsIn(body).includes('ebook'), false, 'an anonymous caller must not enumerate the shelf');
+});
+
+test('an approved member WITHOUT the ebooks grant sees the pool but not the ebooks', async () => {
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook', 'library', 'games'] });
+  try {
+    const body = await search(memberEnv(new FakeDB(estateRows()), 'member@example.com'));
+    assert.equal(body.scope.includes('ebooks'), false);
+    assert.ok(formatsIn(body).includes('audiobook'));
+    assert.equal(formatsIn(body).includes('ebook'), false);
+  } finally {
+    f.restore();
+  }
+});
+
+test('a member granted `ebooks` gets the ebook rows — the grant is what admits them', async () => {
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook', 'ebooks'] });
+  try {
+    const body = await search(memberEnv(new FakeDB(estateRows()), 'reader@example.com'));
+    assert.deepEqual(body.scope, ['audiobook', 'ebooks']);
+    assert.ok(formatsIn(body).includes('ebook'), 'the grant is the whole difference');
+  } finally {
+    f.restore();
+  }
+});
+
+test("the `source=audiobook` preset does not silently re-hide a permitted member's ebooks", async () => {
+  // The narrowing param subtracts SHELVES; ebooks live inside the audiobook
+  // shelf, so keying the carve-out on the narrowed set would have hidden them
+  // from exactly the people who hold the grant.
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook', 'ebooks'] });
+  try {
+    const res = await app.request(
+      `/api/search?q=${encodeURIComponent(QUERY)}&source=audiobook`,
+      {},
+      memberEnv(new FakeDB(estateRows()), 'reader@example.com'),
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.ok(formatsIn(body).includes('ebook'));
+  } finally {
+    f.restore();
+  }
+});
+
+test('a revoked member sees nothing at all — the ebook carve-out is not the only lock', async () => {
+  const f = stubSeen({ status: 'revoked', visibility: [] });
+  try {
+    const body = await search(memberEnv(new FakeDB(estateRows()), 'gone@example.com'));
+    assert.deepEqual(body.books, []);
+    assert.equal(body.reason, 'no_catalogs_visible');
   } finally {
     f.restore();
   }

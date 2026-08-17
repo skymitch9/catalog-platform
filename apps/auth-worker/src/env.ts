@@ -190,6 +190,20 @@ export interface EstateUserRow {
   vis_games: number;
   /** 0007: the second library instance. ⚠️ DEFAULT 0 — see the migration header. */
   vis_library2: number;
+  /**
+   * 0008: the household's shared ebook shelf. ⚠️ DEFAULT 0, and NOT in
+   * PUBLIC_CATALOGS — this is the grant that also includes READING a book in
+   * the browser (one grant, not two; see 0008's header).
+   */
+  vis_ebooks: number;
+  /**
+   * 0009: the per-person ebook DOWNLOAD grant — the estate's first capability
+   * column that is not a visibility flag. ⚠️ Never read raw: the effective
+   * answer is `dl_ebooks = 1 OR is_approver = 1 OR OWNER_EMAILS`, computed by
+   * me.ts's downloadEbooks(). The admin+ half is never stored, so a demotion
+   * cannot leave a download grant behind (0006's rule).
+   */
+  dl_ebooks: number;
 }
 
 export type AppBindings = {

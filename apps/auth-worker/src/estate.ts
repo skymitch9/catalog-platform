@@ -9,6 +9,7 @@
  *   POST /api/estate/users/:id/status
  *   POST /api/estate/users/:id/approver
  *   POST /api/estate/users/:id/visibility   which catalogs the member may SEE (§4.5)
+ *   POST /api/estate/users/:id/download-ebooks  the ebook DOWNLOAD side grant (0009)
  *   GET/POST /api/estate/site-roles  audiobook site_roles federation (site-roles.ts)
  *   GET  /api/health                 open; counts, no emails
  *
@@ -31,10 +32,11 @@ import {
   seenUpsert,
   setApprover,
   setDevops,
+  setDownloadEbooks,
   setVisibility,
   statusCounts,
 } from './estate-db.js';
-import { meAnswer } from './me.js';
+import { downloadEbooks, meAnswer } from './me.js';
 import { requireApprover } from './middleware/auth.js';
 import { clearSiteRoleOnRevocation, type RoleClearResult } from './site-roles.js';
 import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
@@ -106,6 +108,9 @@ const approverBodySchema = z.object({ is_approver: z.boolean() }).strict();
 
 const devopsBodySchema = z.object({ is_devops: z.boolean() }).strict();
 
+/** 0009: the per-person ebook DOWNLOAD grant — a lone boolean, its own route. */
+const downloadEbooksBodySchema = z.object({ download_ebooks: z.boolean() }).strict();
+
 /** POST /estate/users (manual pre-seed): lowercased, must look like an email. */
 const createBodySchema = z
   .object({
@@ -127,12 +132,30 @@ const visibilityBodySchema = z.object({ visibility: visibilitySchema }).strict()
  * the JSON so the array is the one representation consumers see.
  */
 function userJson(row: EstateUserRow) {
-  const { vis_audiobook, vis_library, vis_games, vis_library2, ...rest } = row;
+  const { vis_audiobook, vis_library, vis_games, vis_library2, vis_ebooks, dl_ebooks, ...rest } = row;
   return {
     ...rest,
     is_approver: row.is_approver === 1,
     is_devops: row.is_devops === 1,
     visibility: storedVisibility(row),
+    /**
+     * 0009, TWO fields on purpose — the admin page must render a control that
+     * says both "what is stored" and "what is in force", and one boolean
+     * cannot say both:
+     *   download_ebooks          the EFFECTIVE answer (stored grant OR
+     *                            admin+) — what the person can actually do.
+     *   download_ebooks_granted  the STORED half alone — what the toggle
+     *                            writes, and the only thing un-checking can
+     *                            take away. An admin+ row reads effective=true
+     *                            with granted=false, which is exactly why the
+     *                            UI draws it on-and-locked instead of
+     *                            pretending a checkbox could turn it off.
+     * ⚠️ Kept in step with me.ts's downloadEbooks(); that function is the one
+     * implementation for the browser answer and this is the admin mirror of
+     * the same rule — change them together or the admin page lies.
+     */
+    download_ebooks: row.dl_ebooks === 1 || row.is_approver === 1,
+    download_ebooks_granted: row.dl_ebooks === 1,
   };
 }
 
@@ -189,7 +212,11 @@ estateRoutes.post('/estate/seen', async (c) => {
   // it as-is: approved → stored; pending → {audiobook}; revoked → {}.
   const visibility = isOwner ? [...CATALOGS] : effectiveVisibility(status, row);
 
-  return c.json({ status, visibility });
+  // 0009: the ebook DOWNLOAD capability rides the SAME answer, so a consumer
+  // caches one fact with one age (§4.5's one-answer rule). It is deliberately
+  // NOT a catalog — `visibility` answers "may you see the shelf", this answers
+  // "may you take the file away", and the second never implies the first.
+  return c.json({ status, visibility, download_ebooks: downloadEbooks(row, isOwner) });
 });
 
 // ---------------------------------------------------------------------------
@@ -454,6 +481,52 @@ estateRoutes.post('/estate/users/:id/visibility', requireApprover(), async (c) =
   const updated = await setVisibility(c.env.DB, {
     id,
     visibility: parsed.data.visibility,
+    actorId: c.get('actor').id,
+  });
+  return c.json({ user: updated ? userJson(updated) : null });
+});
+
+// ---------------------------------------------------------------------------
+// POST /estate/users/:id/download-ebooks — flip the per-person ebook DOWNLOAD
+// grant (0009). Owner's model, 2026-08-17: "downloadEbook is a SIDE
+// permission — admin+ hold it by default, and it is individually grantable to
+// any person at any ladder level." This route writes ONLY the hand-granted
+// half; the admin+ half is computed at read time and is not stored, so
+// un-checking an admin's toggle cannot take their download away and must not
+// pretend to (the admin page draws those rows on-and-locked).
+//
+// ⚠️ Its own route rather than a field on /visibility, deliberately: the two
+// answer different questions and a combined write would force every download
+// change to restate the whole visibility set (and vice versa) — the exact
+// shape that turns one accidental stale payload into a silent re-grant.
+//
+// ⚠️ Deliberately NOT approve-gated the way /approver and /devops are. Those
+// are estate POWERS and an unapproved holder is incoherent; this is a
+// capability whose gate is visibility. Granting download to a pending person
+// grants nothing today (their effective set holds no `ebooks`) and is a
+// legitimate thing to set up before an approval lands.
+// ---------------------------------------------------------------------------
+estateRoutes.post('/estate/users/:id/download-ebooks', requireApprover(), async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'bad_id' }, 400);
+
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = downloadEbooksBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues.slice(0, 5) }, 400);
+  }
+
+  const existing = await getUserById(c.env.DB, id);
+  if (!existing) return c.json({ error: 'not_found', id }, 404);
+
+  const updated = await setDownloadEbooks(c.env.DB, {
+    id,
+    downloadEbooks: parsed.data.download_ebooks,
     actorId: c.get('actor').id,
   });
   return c.json({ user: updated ? userJson(updated) : null });

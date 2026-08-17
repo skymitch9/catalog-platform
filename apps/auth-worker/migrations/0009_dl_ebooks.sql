@@ -1,0 +1,35 @@
+-- estate_auth 0009 — `dl_ebooks`, the estate's FIRST capability column that
+-- is not a visibility flag. It answers a different question from every
+-- vis_ column beside it, and the difference is the reason it is not one:
+--
+--   vis_ebooks (0008)  "is this shelf in the room for you?"  → see + READ
+--   dl_ebooks  (0009)  "may you take the FILE away?"          → download
+--
+-- ⚠️ THE OWNER'S EXACT MODEL (2026-08-17), recorded because the shape is
+-- deliberate and easy to 'tidy' into something wrong:
+--   * `vis_ebooks` INCLUDES reading — the shelf and the in-browser reader are
+--     one grant (0008's header argues it). This column does NOT gate reading.
+--   * `downloadEbook` is a SIDE permission: **admin+ hold it by default**,
+--     and it is **individually grantable to any person at any ladder level**.
+--
+-- So the EFFECTIVE answer is a computed OR, never this column alone:
+--
+--     download_ebooks = dl_ebooks = 1  OR  is_approver = 1  OR  OWNER_EMAILS
+--
+-- (src/me.ts `downloadEbooks()` is the ONE implementation; the audiobook
+-- Worker ORs in its own ladder 'admin'/'owner' for the same reason the estate
+-- ORs in is_approver — "admin+" means admin on either ladder.)
+--
+-- ⚠️ DEFAULT 0 and it stays 0 even for admins. The admin half of the rule is
+-- COMPUTED, never stored: writing 1 into every approver's row would make a
+-- demotion silently keep the download grant, which is precisely the failure
+-- the estate's "revoke clears powers" migration (0006) exists to prevent.
+-- A row with dl_ebooks = 1 therefore always means "this person was granted
+-- downloads BY HAND", which is the only thing worth storing.
+--
+-- ⚠️ Inert without 0008. Download presupposes visibility: a person with
+-- dl_ebooks = 1 and vis_ebooks = 0 cannot reach the shelf at all, and the
+-- consumer must check visibility FIRST. The column is stored independently
+-- on purpose (so a view grant and a download grant can be given and taken in
+-- either order) but it is never a way in.
+ALTER TABLE estate_user ADD COLUMN dl_ebooks INTEGER NOT NULL DEFAULT 0 CHECK (dl_ebooks IN (0, 1));

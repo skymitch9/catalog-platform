@@ -43,6 +43,8 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     vis_library: 1,
     vis_games: 1,
     vis_library2: 0, // the 0007 DB default
+    vis_ebooks: 0, // the 0008 DB default
+    dl_ebooks: 0, // the 0009 DB default
     ...over,
   };
 }

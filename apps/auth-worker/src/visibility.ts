@@ -16,8 +16,15 @@
  * (§4.5: "array order is canonical, never re-sorted"), so the existing
  * three never move. `library2` (0007) is the second library instance;
  * unlike the first three its column DEFAULTS TO 0 — see 0007's header.
+ * `ebooks` (0008) is the household's shared ebook shelf — also DEFAULT 0,
+ * and deliberately NOT in PUBLIC_CATALOGS: the owner directive that created
+ * it ("I don't want people scraping my books") is the opposite of public.
+ * ⚠️ The `ebooks` grant INCLUDES reading in the in-browser reader — one
+ * grant, not two. DOWNLOAD is the only capability that separates from it,
+ * and it is not a catalog at all: it is `dl_ebooks` (0009), answered by
+ * me.ts's downloadEbooks().
  */
-export const CATALOGS = ['audiobook', 'library', 'games', 'library2'] as const;
+export const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'] as const;
 export type Catalog = (typeof CATALOGS)[number];
 
 /**
@@ -26,12 +33,13 @@ export type Catalog = (typeof CATALOGS)[number];
  */
 export const PUBLIC_CATALOGS: readonly Catalog[] = ['audiobook'];
 
-/** The flag columns as estate_user stores them (0002 + 0007). */
+/** The flag columns as estate_user stores them (0002 + 0007 + 0008). */
 export interface VisibilityFlags {
   vis_audiobook: number;
   vis_library: number;
   vis_games: number;
   vis_library2: number;
+  vis_ebooks: number;
 }
 
 export function isCatalog(v: unknown): v is Catalog {
@@ -50,6 +58,7 @@ export function storedVisibility(row: VisibilityFlags): Catalog[] {
   if (row.vis_library === 1) out.push('library');
   if (row.vis_games === 1) out.push('games');
   if (row.vis_library2 === 1) out.push('library2');
+  if (row.vis_ebooks === 1) out.push('ebooks');
   return out;
 }
 
@@ -60,6 +69,7 @@ export function visibilityToFlags(visibility: readonly Catalog[]): VisibilityFla
     vis_library: visibility.includes('library') ? 1 : 0,
     vis_games: visibility.includes('games') ? 1 : 0,
     vis_library2: visibility.includes('library2') ? 1 : 0,
+    vis_ebooks: visibility.includes('ebooks') ? 1 : 0,
   };
 }
 
@@ -68,7 +78,8 @@ export function visibilityToFlags(visibility: readonly Catalog[]): VisibilityFla
  * consumers apply it as-is and never recompute:
  *
  *   approved → the stored set (the 0002 defaults grant the first three;
- *              `library2` is DEFAULT 0 — granted only by hand, 0007)
+ *              `library2` (0007) and `ebooks` (0008) are DEFAULT 0 — granted
+ *              only by hand)
  *   pending  → the public slice {audiobook} — a pending member sees what the
  *              anonymous internet sees, nothing more
  *   revoked  → {} — revocation beats the public slice on the estate's own

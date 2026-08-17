@@ -1,0 +1,44 @@
+-- estate_auth 0008 — the FIFTH visibility column: `ebooks`, the household's
+-- shared ebook shelf (ebooks.heygabi.ai). Design: estate-auth-design.md §4.5;
+-- the encoding argument is 0002's header (a new catalog is one ADD COLUMN),
+-- and 0007 is the precedent this follows in shape and in default.
+--
+-- ⚠️ WHY A COLUMN AND NOT A ROLE. Owner directive 2026-08-17: "ebooks should
+-- be like the other site where we grant permission to view it. I don't want
+-- people scraping my books." That is exactly the question §4.5 answers —
+-- which shelves are in the room for this person — so it is visibility, not a
+-- ladder rung. What a person may DO with an ebook once the shelf is visible
+-- stays the app's business (§1.2/§1.3), with one exception carried in 0009.
+--
+-- ⚠️ THE VIEW GRANT INCLUDES READING (owner's exact design, 2026-08-17):
+-- seeing the shelf and reading a book in the in-browser reader are ONE grant,
+-- not two. There is no `read_ebooks` column and there must never be one —
+-- the shelf IS the reader's front door. DOWNLOAD is the only capability that
+-- separates, and it lives in 0009 as its own column.
+--
+-- ⚠️ DEFAULT 0, following 0007 rather than 0002, and for the same class of
+-- reason: 0002's three columns defaulted to 1 because the household already
+-- expected to see the household's shelves. This grant is being ADDED to a
+-- directory that already holds pending and approved rows, and the whole point
+-- of the directive is that the ebook files are the estate's most copyable
+-- asset. ADD COLUMN backfills every existing row with 0 and new rows default
+-- to 0, so an approval that does not deliberately widen grants NOTHING here.
+-- Existing household members are granted by hand, one at a time, with the
+-- grant visible in the admin page's Ebooks column.
+--
+-- ⚠️ NOT IN PUBLIC_CATALOGS. `audiobook` remains the estate's only
+-- world-readable slice; a pending row's effective set is still {audiobook}
+-- and an anonymous caller's is still {audiobook}. `ebooks` can only ever be
+-- held by an APPROVED row that was deliberately granted it (or, computed, by
+-- OWNER_EMAILS — the break-glass answers every catalog and cannot be
+-- narrowed into a lockout).
+--
+-- ⚠️ NO NEW CONSUMER APP. Unlike 0007, this catalog needs no
+-- ESTATE_APP_TOKEN_* of its own: the gated manifest is served by
+-- apps/audiobook-worker, which already holds ESTATE_APP_TOKEN_AUDIOBOOK and
+-- already asks /seen for the whole answer. One door, one token.
+--
+-- Same inertness rule as 0002/0007: flags on pending/revoked rows are inert;
+-- /seen answers the EFFECTIVE set computed from status at read time. The
+-- stored flag is only the answer for the approved.
+ALTER TABLE estate_user ADD COLUMN vis_ebooks INTEGER NOT NULL DEFAULT 0 CHECK (vis_ebooks IN (0, 1));

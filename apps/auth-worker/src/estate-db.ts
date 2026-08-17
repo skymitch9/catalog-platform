@@ -18,7 +18,7 @@ export function normalizeEmail(email: string): string {
 
 const COLS =
   'id, email, firebase_uid, display_name, status, is_approver, is_devops, origin, note, first_seen_at, decided_at, decided_by, ' +
-  'vis_audiobook, vis_library, vis_games, vis_library2';
+  'vis_audiobook, vis_library, vis_games, vis_library2, vis_ebooks, dl_ebooks';
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<EstateUserRow | null> {
   const row = await db
@@ -132,12 +132,21 @@ export async function decideStatus(
     const row = await db
       .prepare(
         `UPDATE estate_user
-         SET status = ?, vis_audiobook = ?, vis_library = ?, vis_games = ?, vis_library2 = ?,
+         SET status = ?, vis_audiobook = ?, vis_library = ?, vis_games = ?, vis_library2 = ?, vis_ebooks = ?,
              decided_at = datetime('now'), decided_by = ?${clearPowers}
          WHERE id = ?
          RETURNING ${COLS}`,
       )
-      .bind(input.status, f.vis_audiobook, f.vis_library, f.vis_games, f.vis_library2, input.actorId, input.id)
+      .bind(
+        input.status,
+        f.vis_audiobook,
+        f.vis_library,
+        f.vis_games,
+        f.vis_library2,
+        f.vis_ebooks,
+        input.actorId,
+        input.id,
+      )
       .first<EstateUserRow>();
     return row ?? null;
   }
@@ -166,12 +175,48 @@ export async function setVisibility(
   const row = await db
     .prepare(
       `UPDATE estate_user
-       SET vis_audiobook = ?, vis_library = ?, vis_games = ?, vis_library2 = ?,
+       SET vis_audiobook = ?, vis_library = ?, vis_games = ?, vis_library2 = ?, vis_ebooks = ?,
            decided_at = datetime('now'), decided_by = ?
        WHERE id = ?
        RETURNING ${COLS}`,
     )
-    .bind(f.vis_audiobook, f.vis_library, f.vis_games, f.vis_library2, input.actorId, input.id)
+    .bind(
+      f.vis_audiobook,
+      f.vis_library,
+      f.vis_games,
+      f.vis_library2,
+      f.vis_ebooks,
+      input.actorId,
+      input.id,
+    )
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * Flip `dl_ebooks` (0009) — the per-person ebook DOWNLOAD grant. Deliberately
+ * its OWN statement rather than a field on setVisibility(): the two answer
+ * different questions ("may you see the shelf" / "may you take the file"), and
+ * a combined write would make it impossible to change one without restating
+ * the other. Stamped like every decision; never touches status or visibility.
+ *
+ * ⚠️ This writes only the HAND-GRANTED half. The admin+ half of the owner's
+ * model is computed at read time (me.ts's downloadEbooks) and must never be
+ * materialised here — 0009's header argues why storing it would survive a
+ * demotion, which is exactly what 0006 exists to prevent.
+ */
+export async function setDownloadEbooks(
+  db: D1Database,
+  input: { id: number; downloadEbooks: boolean; actorId: number },
+): Promise<EstateUserRow | null> {
+  const row = await db
+    .prepare(
+      `UPDATE estate_user
+       SET dl_ebooks = ?, decided_at = datetime('now'), decided_by = ?
+       WHERE id = ?
+       RETURNING ${COLS}`,
+    )
+    .bind(input.downloadEbooks ? 1 : 0, input.actorId, input.id)
     .first<EstateUserRow>();
   return row ?? null;
 }
