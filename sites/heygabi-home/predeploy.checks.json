@@ -18,7 +18,8 @@
       "path": "/",
       "mustContain": [
         "</html>",
-        "ebooks.heygabi.ai"
+        "ebooks.heygabi.ai",
+        "padhard.heygabi.ai"
       ]
     },
     {

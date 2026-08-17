@@ -346,6 +346,13 @@ ul.catalogues {
 #admin-card-li .card { cursor: default; }
 #admin-card-li .admin-links { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: .4rem 0 0; }
 #admin-card-li .admin-links a { color: var(--card-fg); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+/* Books wears the same shape since 2026-08-16 (owner: "2 buttons now, 1 for
+   Library and 1 for Samantha") — a div.card holding one link per household.
+   .card-links is the generalised .admin-links; new multi-destination cards
+   should use it rather than growing a third copy. */
+.card.multi { cursor: default; }
+.card-links { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: .4rem 0 0; }
+.card-links a { color: var(--card-fg); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
 
 /*
  * The whole card is the tap target — a small link inside a big card is a miss
@@ -680,16 +687,20 @@ footer a.more:hover svg { transform: translateX(3px); }
       </li>
 
       <li>
-        <a class="card" style="--hue: var(--et-hue-2); --card-bg: var(--et-card-2-bg); --card-fg: var(--et-card-2-fg); --card-muted: var(--et-card-2-muted)" href="https://library.heygabi.ai" target="_blank" rel="noopener">
+<!-- Two households since 2026-08-16 — a div wearing .card like the Admin
+             card, because it holds a destination per library rather than one
+             link (owner: "2 buttons now, 1 for Library and 1 for Samantha"). -->
+        <div class="card multi" style="--hue: var(--et-hue-2); --card-bg: var(--et-card-2-bg); --card-fg: var(--et-card-2-fg); --card-muted: var(--et-card-2-muted)">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
           </span>
           <span class="name">Books</span>
-          <p class="what">Every book in the house — paper and ebook, one shelf.</p>
-          <p class="host">library.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
-            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+          <p class="what">Paper-and-ebook shelves — one per household, linked as one estate.</p>
+          <p class="card-links">
+            <a href="https://library.heygabi.ai" target="_blank" rel="noopener">Library<span class="sr-only"> (opens in a new tab)</span></a>
+            <a href="https://padhard.heygabi.ai" target="_blank" rel="noopener">Samantha<span class="sr-only"> (opens in a new tab)</span></a>
           </p>
-        </a>
+        </div>
       </li>
 
       <li>
