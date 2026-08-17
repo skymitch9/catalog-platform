@@ -316,6 +316,69 @@ async function phaseB(): Promise<void> {
     await waitReady(INDEX_BASE);
     r = await api(INDEX_BASE, 'GET', '/api/lookup?title=taverns and dragons');
     check('B10 OWNER_EMAILS break-glass works with the auth Worker stopped (§6 row 4)', r.status === 200, `got ${r.status}`);
+
+    // --- The series registry (migration 0004), in the REAL runtime. ---------
+    // Run as the owner because /api/series is SCOPED and the owner's set is
+    // computed (§4.3) — this is about the registry, not about visibility,
+    // which scope.test.ts pins separately. The value of doing it here is that
+    // `wrangler dev` is a real Workers runtime over a real D1: the batch, the
+    // OR IGNORE inserts and `crypto.subtle.timingSafeEqual` are all genuine.
+    r = await api(INDEX_BASE, 'PUT', '/api/push/game', {
+      token: PUSH_TOKEN,
+      body: [
+        { source_id: '104', title: 'Taverns & Dragons', format: 'boardgame', kind: 'base', series: 'The Tavern Chronicles' },
+        { source_id: '105', title: 'Taverns & Dragons: Deeper', format: 'boardgame', kind: 'expansion', series: 'Tavern Chronicles' },
+      ],
+    });
+    check(
+      'B11 two spellings of one series fold to ONE registry entry at push time',
+      r.status === 200 && r.body.series?.registered === 1 && r.body.series?.merged_spellings === 1,
+      JSON.stringify(r.body),
+    );
+
+    r = await api(INDEX_BASE, 'GET', '/api/series');
+    check(
+      'B12 GET /api/series lists it once, with per-source counts',
+      r.status === 200 &&
+        r.body.series?.length === 1 &&
+        r.body.series[0].slug === 'tavern-chronicles' &&
+        r.body.series[0].sources?.game === 2,
+      JSON.stringify(r.body),
+    );
+
+    r = await api(INDEX_BASE, 'GET', '/api/series/tavern-chronicles');
+    check(
+      'B13 GET /api/series/:slug groups by medium and carries the page fields',
+      r.status === 200 &&
+        r.body.media?.[0]?.medium === 'boardgame' &&
+        r.body.media[0].entries.length === 2 &&
+        'detail_url' in r.body.media[0].entries[0],
+      JSON.stringify(r.body),
+    );
+
+    // A decorated spelling: folds DIFFERENTLY, so it must NOT merge.
+    r = await api(INDEX_BASE, 'PUT', '/api/push/game', {
+      token: PUSH_TOKEN,
+      body: [
+        { source_id: '104', title: 'Taverns & Dragons', format: 'boardgame', kind: 'base', series: 'The Tavern Chronicles' },
+        { source_id: '106', title: 'Taverns & Dragons: Origins', format: 'boardgame', kind: 'base', series: 'The Tavern Chronicles Series' },
+      ],
+    });
+    check(
+      'B14 a near miss registers separately and QUEUES — it is never merged',
+      r.status === 200 && r.body.series?.pending_added === 1,
+      JSON.stringify(r.body),
+    );
+
+    r = await api(INDEX_BASE, 'GET', '/api/series/pending');
+    check(
+      'B15 the approver reads the queue, with the evidence needed to decide it',
+      r.status === 200 &&
+        r.body.open === 1 &&
+        r.body.pending[0].closest_slug === 'tavern-chronicles' &&
+        Array.isArray(r.body.pending[0].sample_titles),
+      JSON.stringify(r.body),
+    );
   } finally {
     stopDev(index);
     stopDev(auth);
@@ -329,7 +392,7 @@ async function main(): Promise<void> {
   rmSync(INDEX_PERSIST, { recursive: true, force: true });
   mkdirSync(INDEX_PERSIST, { recursive: true });
   rmSync(AUTH_PERSIST, { recursive: true, force: true });
-  console.log('applying index migrations (0001 + 0002) to fresh local D1…');
+  console.log('applying every index migration to fresh local D1…');
   execSync(`npx wrangler d1 migrations apply index_catalog --local --persist-to "${INDEX_PERSIST}"`, {
     cwd: INDEX_DIR,
     encoding: 'utf8',
