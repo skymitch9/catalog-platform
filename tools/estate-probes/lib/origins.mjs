@@ -48,7 +48,30 @@ export const AUDIOBOOK_SITE_ORIGIN = AUDIO_ORIGIN;
 /** Not on any allow-list anywhere in the estate. Used to prove CORS refuses. */
 export const FOREIGN_ORIGIN = 'https://evil.example';
 
-export const EBOOKS_MANIFEST_URL = `${AUDIO_ORIGIN}/ebooks.json`;
+/**
+ * ⚠️ THE HEARTBEAT, NOT THE MANIFEST (changed 2026-08-17). `ebooks.json` is
+ * gated now — gitignored, stripped from both deploy lanes, and served only via
+ * audiobook-api.heygabi.ai behind the estate's `ebooks` grant. What stays
+ * public is `ebooks_status.json`: counts and times, no book ever named.
+ *
+ * ⚠️ The probes that read this were the ones that CAUGHT the change, and they
+ * caught it in the worst way — they were still PASSING against a Cloudflare
+ * edge-cached copy of the file the deploy had just stripped. A green probe
+ * against a stale cache is not evidence.
+ */
+/**
+ * ⚠️ THE /dev/ LANE ON PURPOSE. status.js argues it and the same argument
+ * holds here: /dev/ is written by EVERY pipeline run with no human in the
+ * loop, so its age is the honest signal for lane health, while the prod copy
+ * only moves when someone PROMOTES — its age measures promote cadence. A
+ * probe suite that watched prod would go red for a week of un-promoted but
+ * perfectly healthy runs.
+ */
+export const EBOOKS_HEARTBEAT_URL = `${AUDIO_ORIGIN}/dev/ebooks_status.json`;
+/** The gated endpoint itself — probed UNAUTHENTICATED, and must refuse. */
+export const EBOOKS_MANIFEST_GATED_URL = 'https://audiobook-api.heygabi.ai/api/ebooks/manifest';
+/** ⚠️ The url that must NOT answer with a manifest any more. */
+export const EBOOKS_MANIFEST_LEGACY_URL = `${AUDIO_ORIGIN}/ebooks.json`;
 
 /**
  * The one public Firestore document (`firestore.rules`: `allow read: if

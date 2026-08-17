@@ -82,13 +82,28 @@ const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
  */
 const FIRESTORE_STATUS_URL =
   'https://firestore.googleapis.com/v1/projects/audiobook-catalog/databases/(default)/documents/pipeline_status/current';
-/** The ebook-lane manifest — sync step 1b's own output, CORS-open.
- *  ⚠️ TWO copies matter and they mean different things: the /dev/ lane is
- *  written by EVERY pipeline run with no human in the loop (so it is the
+/** The ebook-lane FRESHNESS HEARTBEAT — `{generated_at, count,
+ *  needs_human_cover_count}`, written by the pipeline's publish step.
+ *
+ *  ⚠️ CHANGED 2026-08-17: this used to read `ebooks.json` itself. That file is
+ *  now GATED (owner directive: "I don't want people scraping my books") —
+ *  gitignored, stripped from both deploy lanes, and served only through
+ *  audiobook-api.heygabi.ai behind the estate's `ebooks` grant. This page asks
+ *  one operational question — *did sync step 1b run?* — and handing it a
+ *  bearer and the whole shelf to read one timestamp would be badly
+ *  over-privileged. So the pipeline publishes the timestamp instead:
+ *  `ebooks_status.json`, counts and times only, no book ever named.
+ *  Runbook: catalog-platform/docs/access/ebooks-gate.md.
+ *
+ *  ⚠️ TWO copies still matter and still mean different things: the /dev/ lane
+ *  is written by EVERY pipeline run with no human in the loop (so it is the
  *  honest signal for lane health), while the prod copy only moves when
- *  someone promotes (so its age measures promote cadence, not health). */
-const EBOOKS_MANIFEST_DEV_URL = `${AUDIO_ORIGIN}/dev/ebooks.json`;
-const EBOOKS_MANIFEST_PROD_URL = `${AUDIO_ORIGIN}/ebooks.json`;
+ *  someone promotes (so its age measures promote cadence, not health).
+ *
+ *  ⚠️ The prod copy will 'miss' until the ebook-gate work is PROMOTED — the
+ *  file is new on main. A missing heartbeat reads as unknown, not as a stall. */
+const EBOOKS_MANIFEST_DEV_URL = `${AUDIO_ORIGIN}/dev/ebooks_status.json`;
+const EBOOKS_MANIFEST_PROD_URL = `${AUDIO_ORIGIN}/ebooks_status.json`;
 
 /**
  * The standalone shelf-server force-upload's OWN status doc (owner ask
