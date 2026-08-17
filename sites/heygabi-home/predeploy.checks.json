@@ -89,6 +89,37 @@
         "Universes",
         "class=\"back\""
       ]
+    },
+    {
+      "_why": [
+        "/series (2026-08-17) is a GATED page: /api/series and /api/series/:slug both sit below the index",
+        "Worker's requireEstateMember() blanket, so every series row, every volume and every gap row is",
+        "injected only after a Firebase sign-in this unauthenticated fetch never has. What CAN be asserted",
+        "here is the SHELL and its gate: the heading, the back arrow, the ids the script fills, and the",
+        "sign-in button that is the signed-out state's whole content. The volume view itself, including the",
+        "gap rows, has to be checked by signing in — said plainly rather than implied by a green check."
+      ],
+      "path": "/series/",
+      "mustContain": [
+        "<h1>Series</h1>",
+        "class=\"back\"",
+        "id=\"ser-list\"",
+        "id=\"ser-signin\"",
+        "id=\"ser-filter\""
+      ]
+    },
+    {
+      "_why": [
+        "The page's whole behaviour lives in this module, so the markers are the three things whose absence",
+        "would mean it shipped without its reason to exist: the gap sentence the owner asked for, the",
+        "source→household vocabulary that names who holds a volume, and the detail endpoint it expands with."
+      ],
+      "path": "/series/series.js",
+      "mustContain": [
+        "nobody in the estate has this one",
+        "SOURCE_LABELS",
+        "/api/series/"
+      ]
     }
   ]
 }

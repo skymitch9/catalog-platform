@@ -636,17 +636,30 @@ footer a.more:hover svg { transform: translateX(3px); }
         <!-- Universes leads (owner, 2026-08-15): the cross-format view is the
              top category. Wears its own --et-hue-4/--et-card-4-* voice —
              PURPLE in every theme (estate-theme.css, owner order). Same-origin
-             page, so no new-tab treatment. -->
-        <a class="card" style="--hue: var(--et-hue-4); --card-bg: var(--et-card-4-bg); --card-fg: var(--et-card-4-fg); --card-muted: var(--et-card-4-muted)" href="/universes">
+             pages, so no new-tab treatment.
+
+             ⚠️ TWO DESTINATIONS SINCE 2026-08-17, when /series shipped — and
+             deliberately NOT a seventh card. The grid is 2×2 at ≥52rem and a
+             seventh cell would leave the orphan row the owner already had
+             fixed once ("move admin in so it matches with the other 5 tabs
+             and looks less silly"). So this cell takes the SAME .card.multi
+             shape the Books card took for its two households, which the CSS
+             above names as the generalised pattern for exactly this ("new
+             multi-destination cards should use it rather than growing a third
+             copy"). Cost, stated because it is a real one: this card is no
+             longer a single whole-card tap target. Universes stays first
+             inside it — it is still the lead view. -->
+        <div class="card multi" style="--hue: var(--et-hue-4); --card-bg: var(--et-card-4-bg); --card-fg: var(--et-card-4-fg); --card-muted: var(--et-card-4-muted)">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-22 12 12)"/><circle cx="19.5" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>
           </span>
-          <span class="name">Universes</span>
-          <p class="what">Every fiction across formats — its books, audio and games on one shelf.</p>
-          <p class="host">heygabi.ai/universes
-            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+          <span class="name">Universes &amp; series</span>
+          <p class="what">Every fiction across formats — and every series volume by volume, including the book nobody has.</p>
+          <p class="card-links">
+            <a href="/universes">Universes</a>
+            <a href="/series">Series</a>
           </p>
-        </a>
+        </div>
       </li>
 
       <li>

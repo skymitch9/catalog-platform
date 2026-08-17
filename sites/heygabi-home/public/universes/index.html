@@ -104,6 +104,10 @@ h1 {
   text-shadow: var(--et-glow-title);
 }
 .sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+/* estate-theme.css sets no base <a> colour, so a link outside footer/.hit
+   would render in the UA's blue — off-theme on every one of the four themes.
+   Added with the /series cross-link below. */
+.sub a { color: var(--et-accent); font-weight: 600; }
 
 [hidden] { display: none !important; }
 
@@ -380,6 +384,15 @@ footer a { color: var(--et-accent); }
     audiobooks and games together. Sourced live from the shared index, the
     same place the front door's search sends its own "everything in X"
     follow-ups.
+  </p>
+  <!-- Sibling view, added with /series on 2026-08-17. Here rather than only
+       in the footer because the reader who has just opened a series fold
+       below is exactly the reader who wants the volume-level view, and the
+       footer of a sixteen-universe list is a long way down. -->
+  <p class="sub">
+    Chasing one series in particular? <a href="/series">Series</a> lists every
+    one of them volume by volume — who holds which book in which format, and
+    which number nobody has at all.
   </p>
 
   <!--

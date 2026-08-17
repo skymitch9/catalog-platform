@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — series</title>
+<meta name="description" content="Every series the estate holds — volume by volume, who has which one in which format, and which book nobody has.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f4ed">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b09">
+
+<!--
+  /series — one collapsed row per series in the registry (migration 0004,
+  docs/info/index-worker-design.md §8.5), expanding to GET /api/series/:slug.
+  The STRUCTURAL TEMPLATE IS /universes, deliberately and almost line for
+  line: collapsed rows, a lazy per-item fetch on first expand, page-local
+  render functions, the same neutral-boot auth, the same estate theme tokens
+  and the same back-to-the-front-door arrow. Read that page beside this one;
+  where this file differs it says why.
+
+  ⚠️ WHAT THIS PAGE IS FOR, in the owner's own words (2026-08-17): "I want
+  missing books to say you don't have book 1 but audio and ebook do and
+  Skylar also owns it." So the expanded body is NOT a list of rows the API
+  returned — it is a list of VOLUMES IN NUMBER ORDER, including the numbers
+  nobody in the estate holds. A volume held by some sources names who holds
+  it and in what format; a number held by NOBODY renders as a distinct GAP
+  row. The gap is the feature: a list of what we own can never show what is
+  missing, and "what is missing" is the question this page was asked to
+  answer.
+
+  ⚠️ MEMBERS-ONLY, SAME STANCE AS /universes: series-route.ts's own header is
+  explicit that /api/series and /api/series/:slug sit BELOW the
+  requireEstateMember() blanket with no anonymous carve-out (§4.5's carve-out
+  is /api/search only). A signed-out visitor therefore gets a worded sign-in
+  invitation, never a fetch and never a wall — the same copy shape
+  universes.js uses for its own gated expands. Verified 2026-08-17: an
+  unauthenticated GET https://index.heygabi.ai/api/series answers 401
+  {"error":"unauthenticated"}.
+
+  ⚠️ THE SCOPE IS THE API'S, NEVER THIS PAGE'S. Both endpoints scope by the
+  member's own visibility set in SQL (`WHERE source IN (…)`), and the list is
+  derived from scoped ENTRY rows rather than the estate-wide `series` table
+  precisely so a member never learns the names of series only the private
+  catalogs hold. This page never widens that, never re-derives it, and never
+  infers "the estate does not have it" beyond what arrived on the wire — the
+  gap sentence is worded for the viewer's own scope for that reason.
+
+  Auth: assets/estate-auth.js, imported directly, exactly as universes.js
+  does (that file's own header explains the neutral-boot pattern). No
+  <estate-search> is embedded here: this page's job is the volume-level
+  breakdown, the front door and /universes already carry the search box, and
+  leaving the component out keeps this page's CSP tighter (no
+  'wasm-unsafe-eval', no openlibrary.org, no library.heygabi.ai — the scanner
+  and the barcode intake are not on this page).
+
+  ⚠️ CSP: public/_headers needs BOTH a "/series" and a "/series/" rule (Pages
+  308s the bare path to the trailing-slash form and the redirect's headers
+  are never the ones applied — that file's own header documents the trap),
+  and connect-src MUST name https://index.heygabi.ai. A CSP-blocked fetch()
+  REJECTS in the page and is indistinguishable from a dead host — that exact
+  miss cost an evening on /admin's federated role columns on 2026-08-16, and
+  is now written into estate-auth-design.md §1.2 and into _headers itself.
+
+  Theme: assets/estate-theme.css + theme.js, same cog markup as every other
+  apex page.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- Classic script on purpose: stamps theme/mode before first paint. -->
+<script src="/assets/theme.js"></script>
+
+<style>
+/* Working page, same language as /universes and /status: tokens only,
+   hairlines, one accent. The .hits/.hit/.hit-cover/.hit-body/.hit-title/
+   .hit-meta rules are the same contract find.js and universes.js render
+   against, copied for the same reason universes.js copied them (see this
+   page's head comment and universes.js's header: one page, one script, no
+   build step, duplication with intent). */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--et-bg);
+  background-image: var(--et-bg-texture);
+  background-size: var(--et-bg-texture-size);
+  color: var(--et-fg);
+  font: var(--et-text-body)/1.55 var(--et-font);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+main { max-width: 44rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
+
+h1 {
+  margin: 0 0 .3rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-title);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  text-transform: var(--et-title-case);
+  color: var(--et-heading-color);
+  text-shadow: var(--et-glow-title);
+}
+.sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+
+[hidden] { display: none !important; }
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: 0 0 1rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--et-hairline), transparent);
+}
+
+/* ---- sign-in strip, same button language as /universes ------------------ */
+
+.find-btn {
+  min-height: 44px;
+  padding: .5rem 1.05rem;
+  border: var(--et-btn-border);
+  border-radius: var(--et-radius);
+  background: var(--et-btn-bg);
+  color: var(--et-btn-fg);
+  box-shadow: var(--et-btn-shadow);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.find-btn:hover { filter: brightness(1.06); }
+.find-btn:disabled { opacity: .6; cursor: default; }
+
+.find-linkbtn {
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  background: none;
+  color: var(--et-accent);
+  font: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.find-linkbtn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 4px; }
+
+#ser-who { margin: 0 0 var(--et-space-2); color: var(--et-muted); font-size: var(--et-text-small); }
+#ser-status {
+  margin: 0 0 var(--et-space-3);
+  padding: .6rem .85rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: color-mix(in srgb, var(--et-surface) 55%, transparent);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+#ser-status[data-tone="warn"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); color: var(--et-fg); }
+#ser-status[data-tone="owner"] { border-color: color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline)); color: var(--et-fg); }
+
+/* ---- the filter box ------------------------------------------------------
+   PAGE-LOCAL, NO NETWORK: the registry answered 441 slugs on the live index
+   (§8.5's own measurement, 2026-08-17), which is too many rows to scroll for
+   a name you already know. This filters the rows ALREADY FETCHED — it is not
+   a search, it never calls the index, and it can therefore never widen the
+   visibility scope the list arrived with. The estate's real search lives on
+   the front door and /universes. */
+
+.ser-filter { display: flex; align-items: center; gap: .6rem; margin: 0 0 var(--et-space-3); }
+.ser-filter input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: .5rem .8rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+  color: var(--et-fg);
+  font: inherit;
+}
+.ser-filter input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
+.ser-count { color: var(--et-muted); font-size: var(--et-text-small); white-space: nowrap; }
+
+/* ---- the series list ----------------------------------------------------- */
+
+ul.ser-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+
+.ser-row {
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+  overflow: hidden;
+}
+
+.ser-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: .8rem 1rem;
+  border: 0;
+  background: none;
+  color: var(--et-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ser-toggle:hover .ser-name { color: var(--et-accent); }
+.ser-toggle:focus-visible { outline: 2px solid var(--et-accent); outline-offset: -2px; }
+.ser-toggle::after {
+  content: "";
+  flex: none;
+  width: .6rem;
+  height: .6rem;
+  border-right: 2px solid var(--et-muted);
+  border-bottom: 2px solid var(--et-muted);
+  transform: rotate(45deg);
+  transition: transform .18s ease;
+}
+.ser-toggle[aria-expanded="true"]::after { transform: rotate(-135deg); }
+
+.ser-head { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.ser-name {
+  font-weight: 700;
+  font-family: var(--et-font-display);
+  letter-spacing: var(--et-title-spacing);
+}
+.ser-counts { color: var(--et-muted); font-size: var(--et-text-small); }
+
+.ser-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--et-hairline);
+}
+
+.ser-note {
+  margin: .9rem 0 0;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+
+.find-group {
+  margin: 1rem 0 .5rem;
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+
+.find-caveat {
+  margin: 1rem 0 .3rem;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+
+ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+.hit {
+  display: flex;
+  gap: .8rem;
+  align-items: flex-start;
+  padding: .65rem .75rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: var(--et-bg);
+}
+
+.hit-cover {
+  flex: none;
+  display: block;
+  width: 2.6rem;
+  height: 3.6rem;
+  border-radius: calc(var(--et-radius) / 2);
+  border: 1px solid var(--et-hairline);
+  background: var(--et-surface);
+  overflow: hidden;
+}
+.hit-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hit-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.hit-title { font-weight: 600; }
+.hit-title a { color: var(--et-fg); text-decoration: none; }
+.hit-title a:hover { color: var(--et-accent); text-decoration: underline; }
+.hit-meta { color: var(--et-muted); font-size: var(--et-text-small); }
+
+/* The volume number badge — the spine label, so the eye can run down the
+   numbers and see where one is missing without reading a word. */
+.vol-num {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  min-height: 1.9rem;
+  padding: .15rem .3rem;
+  border-radius: calc(var(--et-radius) / 2);
+  border: 1px solid var(--et-hairline);
+  background: var(--et-surface);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Who holds it, in what format — the owner's sentence, rendered. `.held`
+   names a format the estate has; `.missed` names one it does not. Two
+   different facts, so two different weights: the miss is the point of the
+   page and must not read as a footnote. */
+.vol-held { color: var(--et-fg); font-size: var(--et-text-small); }
+.vol-missed { color: var(--et-muted); font-size: var(--et-text-small); }
+/* Each holding is a link into the owning catalog when that catalog gave the
+   index a detail_url. estate-theme.css sets no base <a> colour, so this rule
+   is what keeps them from rendering in the UA's blue. */
+.vol-held a { color: var(--et-accent); text-decoration: underline; text-underline-offset: 2px; }
+.vol-held a:hover { filter: brightness(1.12); }
+.vol-held a:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 3px; }
+
+/* ⚠️ THE GAP ROW — a number NOBODY in the viewer's scope holds. Rendered
+   distinctly on purpose (dashed, no cover slot content, danger-tinted
+   number): a gap that looks like a book is a gap nobody notices, and this
+   page exists to make them noticeable. */
+.hit.gap {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline));
+  background: color-mix(in srgb, var(--et-danger) 5%, var(--et-bg));
+}
+.hit.gap .vol-num {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline));
+  color: color-mix(in srgb, var(--et-danger) 80%, var(--et-fg));
+  background: transparent;
+}
+.hit.gap .hit-title { font-weight: 600; color: var(--et-fg); }
+
+footer {
+  margin-top: var(--et-space-4);
+  padding-top: var(--et-space-2);
+  border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
+footer a { color: var(--et-accent); }
+
+/* Back to the front door — copied VERBATIM from /universes, /status and
+   /admin: same selector, same arrow, same 44px tap target, because this
+   arrow is the estate's one way home and has to look identical wherever it
+   appears. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;
+  margin: 0 0 var(--et-space-1);
+  color: var(--et-muted);
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.back:hover { color: var(--et-fg); }
+.back:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+.back svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
+.back:hover svg { transform: translateX(-3px); }
+</style>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select">
+      <option value="classic">Classic</option>
+      <option value="apple">Apple</option>
+      <option value="cyberpunk">Cyberpunk</option>
+      <option value="retro">Retro</option>
+    </select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+</div>
+
+<main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+  <h1>Series</h1>
+  <p class="sub">
+    Every series the estate holds, volume by volume — who has which book, in
+    which format, and which number nobody has at all. Tap a series to open
+    it. Sourced live from the shared index's series registry, so a spelling
+    the catalogs disagree on is still one series here.
+  </p>
+
+  <h2 id="browse-h">Browse by series</h2>
+  <p id="ser-who" hidden></p>
+  <button id="ser-signin" class="find-btn" type="button" hidden>Sign in to see the series</button>
+  <p id="ser-status" hidden></p>
+
+  <div class="ser-filter" id="ser-filter" hidden>
+    <label class="sr-only" for="ser-filter-input">Filter series by name</label>
+    <input id="ser-filter-input" type="search" autocomplete="off" placeholder="Filter these series by name…">
+    <span class="ser-count" id="ser-count"></span>
+  </div>
+
+  <ul id="ser-list" class="ser-list" aria-label="Estate series"></ul>
+
+  <footer>
+    <p>
+      A volume listed means it is in a catalog — some entries are wanted, not
+      owned. Tap through to the owning catalog for owned-versus-wanted.
+    </p>
+    <p>
+      “Nobody has this one” means nobody on the shelves <em>you</em> can see.
+      A catalog you have no access to is not consulted and is never counted
+      against, so a gap here is a gap in your own view of the estate.
+    </p>
+    <p><a href="/universes">universes</a> · <a href="/">&larr; back to the front door</a></p>
+  </footer>
+</main>
+
+<!-- External file because _headers ships script-src 'self' — inline script
+     stays blocked, same as every other apex page. No estate-search component
+     here on purpose (see the head comment): this page is the volume-level
+     view, not a second search box. -->
+<script type="module" src="/series/series.js"></script>
+</body>
+</html>

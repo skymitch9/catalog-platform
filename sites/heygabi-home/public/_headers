@@ -153,6 +153,38 @@
 # game) — read that list fresh before editing either one; a copy that drifts
 # from "/" is how a cover host silently blanks here but not there.
 #
+# /series (added 2026-08-17, one row per registry series expanding to
+# /api/series/:slug — the volume-by-volume view with the GAP rows). Signs in
+# (series.js imports estate-auth.js directly, same as universes.js), so it
+# carries the front door's script-src (Firebase SDK) and frame-src (the
+# popup/redirect sign-in flow).
+#   connect-src ⚠️ index.heygabi.ai IS THE WHOLE PAGE. Both of its fetches go
+#               there and nowhere else, and a CSP-blocked fetch() REJECTS in
+#               the page — series.js's own catch() would then report "the
+#               index did not answer (network)", which is indistinguishable
+#               from the Worker being down. That is the exact miss that cost
+#               an evening on /admin's role columns the day before (see the
+#               connect-src note above and estate-auth-design.md §1.2), so it
+#               is named here first. Plus identitytoolkit + securetoken for
+#               sign-in and token refresh. NOT named, because this page does
+#               not call them: auth.heygabi.ai (no admin surface),
+#               openlibrary.org and 'self' (no <estate-search scan> here —
+#               the scanner's wasm fetch and ISBN resolve live on / and
+#               /universes), library.heygabi.ai (no barcode intake).
+#   script-src  no 'wasm-unsafe-eval' for the same reason — no scanner, so
+#               nothing on this page compiles WebAssembly.
+#   img-src     the SAME cover-host allow-list as "/" — a series' volumes can
+#               carry a cover from any source the estate indexes. Read that
+#               list fresh before editing either; a copy that drifts is how a
+#               cover host silently blanks here but not there.
+#   frame-src   names https://auth.heygabi.ai ALONGSIDE the firebaseapp.com
+#               entry, matching "/" and /admin rather than /universes.
+#               estate-auth.js's authDomain is auth.heygabi.ai as of the SSO
+#               Phase 1 cutover (sso-design.md §4.1), so the iframe this page
+#               needs is served from there; /universes' rule predates that
+#               move and does not name it, which is a latent gap on THAT page
+#               recorded in docs/TODO.md rather than fixed blind from here.
+#
 # BARCODE SCAN (added 2026-08-15, owner: bookstore trip — <estate-search
 # scan> on / and /universes). Three additions, both pages, both trailing-
 # slash duplicates (the 308-redirect trap this file's own header warns
@@ -196,6 +228,15 @@
 /universes/
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+# ⚠️ BOTH forms, per the trailing-slash 308 trap documented atop this file.
+/series
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/series/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # /r/* — unlisted AUTH-LOCKED doc shims (2026-08-15; first tenant: the
 # shelf-server runbook, devops-gated). The pages themselves are GITIGNORED
