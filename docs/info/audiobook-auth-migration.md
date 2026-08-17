@@ -328,9 +328,32 @@ ops; poll create/close/delete; read lifecycle/schedule; club delete.
 
 ### Phase 4 — File-level permissions (the NEW capabilities — no rules involved)
 The ROLES.md §1b ask, absorbed here because it is the same migration:
-- `GET /api/download/:bookId` — capability `download` (member+): answers a
-  short-lived signed/proxied URL to the shelf server or Drive file. This is a
-  **gated READ behind the worker** (constraint #1's second half).
+- `GET /api/download/:bookId` — capability `download` (**admin+**, see below):
+  answers a short-lived signed/proxied URL to the shelf server or Drive file.
+  This is a **gated READ behind the worker** (constraint #1's second half).
+
+  ⚠️ **The floor moved `member` → `admin` on 2026-08-17**, by owner directive,
+  verbatim: *"For ebooks I don't want a download check box, I want to use roles
+  we have. Set up the roles to match library."* The `member+` written here was a
+  placeholder committed during this design phase and never enforced by a shipped
+  route; `capabilities.ts` now floors `download` at `admin`, and
+  `capabilities.test.ts` pins it.
+
+  **The two-capability decision is UNCHANGED — only the GRANT MECHANISM moved.**
+  Reading and downloading were always meant to be two separate capabilities, and
+  they still are:
+
+  | Capability | Grant | Where it lives |
+  |---|---|---|
+  | See the shelf + read in the viewer | estate `vis_ebooks` | a checkbox on the admin page's Ebooks row |
+  | Take the file away | ladder `download`, floor `admin` | **promotion** on the Audiobook role dropdown |
+
+  What changed is that the second briefly had its OWN per-person checkbox
+  (`dl_ebooks`, migration 0009, shipped 2026-08-16) and no longer does. That
+  column, its route, its admin toggle and its `download_ebooks` wire field were
+  all removed the next day; the column survives in D1 unread (migration 0010
+  records why it was not dropped). A download grant is now exactly a promotion —
+  the way this estate's library grants every capability it grants.
 - `POST /api/upload` — capability `upload` (contributor+): lands in a staging
   INBOX **outside the rclone sync target** with validation + dedupe + promote
   (both hazards from the audiobook TODO honoured: rclone `sync` deletes
@@ -338,8 +361,10 @@ The ROLES.md §1b ask, absorbed here because it is the same migration:
   unvalidated).
 - Drive ⇄ role reconciler: **report-only first** (ROLES.md §2 — the measured
   drift is 10/15 people; the owner decides per person before anything moves).
-- **Verify:** a `member` can download and cannot upload; a `guest` sees
-  neither control and gets the §1e sentence if they hit the endpoint anyway.
+- **Verify:** an `admin` can download; a `member` can upload nothing and
+  download nothing; a `contributor` can upload and NOT download (the two floors
+  deliberately cross); a `guest` sees neither control and gets the §1e sentence
+  if they hit the endpoint anyway.
 - **Reverse:** endpoints off; nothing else depended on them.
 
 ### Phase 5 — uid-binding on member self-writes (LAST, optional-until-wanted)
@@ -418,7 +443,7 @@ the same package (audiobook_catalog `84009e7`, deployed and smoke-tested).
 |---|:--:|:--:|:--:|:--:|:--:|:--:|---|
 | `read` (site, reviews, stats, clubs) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | nothing — world-readable stays |
 | `rate` / `trackReading` / club member actions | ✅* | ✅ | ✅ | ✅ | ✅ | ✅ | rules (shape now; + uid binding after Phase 5). *Today open to all; Phase 5 narrows to "signed in", not to `member` — rating a book was never meant to need a granted role |
-| `download` (shelf/Drive file access) | | ✅ | ✅ | ✅ | ✅ | ✅ | **worker** Phase 4; Drive parity via reconciler |
+| `download` (shelf/Drive file access) | | | | | ✅ | ✅ | **worker** Phase 4; Drive parity via reconciler. ⚠️ **admin+ since 2026-08-17** (was member+) — owner: *"use roles we have… match library"*. This capability replaced the per-person `dl_ebooks` checkbox entirely: the grant IS the promotion |
 | `upload` (inbox → validated promote) | | | ✅ | ✅ | ✅ | ✅ | **worker** Phase 4 |
 | `operateClub` (schedule, polls mgmt, next meeting, membership ops, content deletes, **read lifecycle** — any club) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 + `firestore.rules` today for the read lifecycle (club managers get it on their own club). Finish/remove/reveal joined this row in the 2026-08-17 MANAGECLUB SPLIT |
 | `manageClub` (structural: features, joinMode, read `slot`, **club delete** — any club) | | | | | ✅ | ✅ | **worker** Phase 3 (club managers on their own club). ⚠️ The destructive half; option B deliberately left it here |

@@ -369,8 +369,19 @@ async function checkLive() {
       continue;
     }
     if (!res.ok) { fail(url, `HTTP ${res.status}`); continue; }
-    for (const needle of page.mustContain) {
+    for (const needle of page.mustContain ?? []) {
       if (!body.includes(needle)) fail(url, `served 200 but is MISSING: ${JSON.stringify(needle)}`);
+    }
+    // `mustNotContain` — the mirror, added 2026-08-17 when a control was
+    // REMOVED by owner directive (the ebooks download checkbox) rather than
+    // added. Removal needs a marker too: a stale bundle still carrying the old
+    // control serves 200 and satisfies every mustContain, so without this the
+    // deploy that failed to remove it is indistinguishable from the one that
+    // did. Same failure grammar, opposite sense.
+    for (const needle of page.mustNotContain ?? []) {
+      if (body.includes(needle)) {
+        fail(url, `served 200 but STILL CARRIES what should be gone: ${JSON.stringify(needle)}`);
+      }
     }
   }
   return config.pages.length;

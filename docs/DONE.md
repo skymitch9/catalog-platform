@@ -13,6 +13,88 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📥 Ebook DOWNLOAD becomes a ROLE, not a checkbox — ✅ BUILT + DEPLOYED 2026-08-17
+
+**Owner directive, verbatim:** *"For ebooks I don't want a download check box,
+I want to use roles we have. Set up the roles to match library."*
+
+⚠️ **This SUPERSEDES the `dl_ebooks` half of the ebooks-gate entry below, which
+landed the same day.** That entry is left exactly as written — this archive is
+append-only, and the fact that a design lasted one day is itself the record.
+Read this entry first; where the two disagree about downloads, this one wins.
+The **view** half of that entry (`vis_ebooks`, migration 0008) is UNCHANGED and
+still current.
+
+### The shape
+
+Downloading an ebook file stopped being a per-person estate grant and became a
+rung on the audiobook site's capability ladder — the pattern the directive names
+by "match library" (`library_catalog` `@lc/core` `capabilitiesFor`).
+
+| | Was (2026-08-16, one day) | Now |
+|---|---|---|
+| Grant | `dl_ebooks` column + a checkbox on the admin page's Ebooks row | `download` capability, floor **`admin`** |
+| Granted by | ticking a box | **promoting** on the Audiobook role dropdown |
+| Revoked by | un-ticking | demoting |
+| Answered by | `download_ebooks` on `/estate/seen` + `/estate/me` | `can(role, 'download')` from the caller's `site_roles/{uid}` doc |
+
+**Seeing the shelf did not change.** `vis_ebooks` still admits a person to the
+shelf AND to reading in the browser viewer; the Ebooks row's `visible` checkbox
+is untouched. The viewer design's two-capability decision (read vs download)
+STANDS — only the grant mechanism for the second one moved.
+
+### What was removed
+
+- `download: 'member'` → `download: 'admin'` in audiobook-worker's §6 matrix
+  (the `member` value was a phase-4 placeholder, never enforced by a live route)
+- the admin page's **download toggle** — its cell is now a NOTE reading
+  *"download: admin on the audiobook role above"*, so the row does not go
+  silently blank where a control used to be
+- `POST /estate/users/:id/download-ebooks` (route + zod schema)
+- `setDownloadEbooks()` in `estate-db.ts`; `dl_ebooks` out of `COLS` and out of
+  `EstateUserRow`
+- `downloadEbooks()` + `download_ebooks` from the `/estate/me` answer, and
+  `download_ebooks` / `download_ebooks_granted` from the admin `userJson`
+- the **`downloadEbooks` wire field** from `packages/estate-auth` — `SeenAnswer`,
+  `SeenCache`, `EstateCheckResult` and the `refresh` shape. Removed now rather
+  than carried: it was null everywhere and no user-facing consumer had shipped
+  against it, so this was the cheap moment.
+
+### What was deliberately NOT removed
+
+**The `dl_ebooks` COLUMN stays in D1**, unread. Dropping a column in SQLite/D1 is
+a table rebuild — real risk on the live estate directory to reclaim one integer
+per row — and a dropped column cannot be inspected later. Migration
+`0010_dl_ebooks_deprecated.sql` is DDL-free and exists solely to record this in
+the migration ledger, including the warning that must not be ignored: **do not
+re-add `dl_ebooks` to `COLS` or `EstateUserRow`.** The column still holds `1` for
+anyone ticked during its one-day life, so a SELECT that reached it again would
+silently resurrect those grants.
+
+### The two-repo ripple
+
+`packages/estate-auth` is **build-synced** into `library_catalog` (its
+`pretest`/`prebuild` copies the canonical module), and that repo's
+`gate.test.ts` had been taught the `downloadEbooks` key hours earlier. Its
+pinned `refresh` shapes were returned to their pre-field form
+(`{status, visibility, checkedAt}`) **in the same push**, with a header comment
+explaining the round trip so the three-key shape does not read as a test that
+forgot an update.
+
+### Verification
+
+- catalog-platform: **665 tests pass**, typecheck clean across every workspace
+- library_catalog: **full `npm test` green** (pretest re-synced the module first,
+  so the vocabulary change flowed through), typecheck clean
+- new guard tests, each pinning the decision rather than the mechanics:
+  `capabilities.test.ts` — the `admin` floor, and that the club island confers
+  no download; `ebooks.test.ts` — *a /seen answer still sending
+  `download_ebooks: true` grants nothing*; `seen.test.ts` + `me.test.ts` — the
+  field's ABSENCE from the wire and from `/me`'s every branch
+- `predeploy-check.mjs` gained **`mustNotContain`**: a removal needs a marker
+  too, or a stale bundle still carrying the old checkbox satisfies every
+  `mustContain` and looks like a successful deploy
+
 ## 🔀 The MANAGECLUB SPLIT — read lifecycle to manager-or-moderator — ✅ BUILT + DEPLOYED + SMOKE-VERIFIED 2026-08-17
 
 **Owner decision, option B verbatim:** read-lifecycle actions (finishing a

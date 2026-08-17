@@ -5,9 +5,10 @@
 > in source (`library_catalog`/`Board_Game_Catalog` `packages/core/src/capabilities.ts`,
 > `catalog-platform/apps/audiobook-worker/src/capabilities.ts`), not from memory.
 > Owner ordered this map 2026-08-17 ("make a map of what each role should do")
-> the same hour downloads moved to role floors, so it is the NORMATIVE map:
-> where live code briefly disagrees (the download floor mid-rework), this map
-> states the decided end state and flags the gap.
+> the same hour downloads moved to role floors, so it is the NORMATIVE map.
+> ⚠️ The download-floor gap this header used to flag is **CLOSED**: the code
+> now floors `download` at `admin` and `capabilities.test.ts` pins it. No row
+> below is known to disagree with source as of this date.
 
 ## The two axes — never confuse them
 

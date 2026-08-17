@@ -80,15 +80,24 @@
     },
     {
       "_why": [
-        "The ebook permission gate (estate_auth 0008/0009, owner directive 2026-08-17). Member rows are",
-        "injected only after Firebase sign-in, so what CAN be asserted unauthenticated is that the shipped",
-        "bundle carries the fifth catalog AND the download grant's own endpoint. Shipping the checkbox",
-        "without the route, or the route without the checkbox, both look exactly like a working page."
+        "The ebook permission gate (estate_auth 0008, owner directive 2026-08-17). Member rows are injected",
+        "only after Firebase sign-in, so what CAN be asserted unauthenticated is that the shipped bundle",
+        "carries the fifth catalog and the note that replaced the download toggle.",
+        "⚠️ THE MARKERS CHANGED 2026-08-17. They used to assert the DOWNLOAD CHECKBOX and its endpoint",
+        "('download-ebooks', 'download_ebooks_granted'). The owner removed that control the day after it",
+        "shipped — 'For ebooks I don't want a download check box, I want to use roles we have. Set up the",
+        "roles to match library.' Downloading is now the audiobook ladder's `download` capability (floor",
+        "admin), granted by promotion on the Audiobook role dropdown. A bundle that still carried the old",
+        "markers would be a bundle that still shipped the checkbox, so asserting them would now be exactly",
+        "backwards — mustNotContain pins the removal instead."
       ],
       "path": "/admin/admin.js",
       "mustContain": [
         "'ebooks'",
         "downloadEbooksCell",
+        "download: admin on the audiobook role above"
+      ],
+      "mustNotContain": [
         "download-ebooks",
         "download_ebooks_granted"
       ]

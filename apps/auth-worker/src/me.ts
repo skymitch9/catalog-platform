@@ -31,39 +31,19 @@ export interface MeAnswer {
    */
   is_devops: boolean;
   visibility: Catalog[];
-  /**
-   * The EFFECTIVE ebook DOWNLOAD capability (0009) — `downloadEbooks()` below
-   * is its ONE implementation. Reported effective (like is_devops, not like
-   * is_approver) so no consumer re-derives the admin+ half and drifts.
+  /*
+   * ⚠️ NO `download_ebooks` FIELD, and no `downloadEbooks()` function beneath
+   * this interface. Both existed for one day (2026-08-17) and were removed the
+   * same day by owner directive: *"For ebooks I don't want a download check
+   * box, I want to use roles we have. Set up the roles to match library."*
    *
-   * ⚠️ Download presupposes the `ebooks` grant and never substitutes for it:
-   * a person can answer true here and still have no `ebooks` in `visibility`,
-   * in which case the shelf refuses them and there is nothing to download.
-   * Consumers check visibility FIRST, always.
+   * The estate answers WHO MAY SEE a catalog — `visibility` including
+   * `ebooks`, which covers reading in the browser viewer. Whether a person may
+   * take the FILE away is now a rung on the audiobook site's own ladder
+   * (`apps/audiobook-worker/src/capabilities.ts`: `download` floors at
+   * `admin`), resolved by that Worker from its `site_roles` doc. This answer
+   * has nothing to say about it, so it says nothing.
    */
-  download_ebooks: boolean;
-}
-
-/**
- * The owner's download model (2026-08-17), in one place:
- *
- *   "downloadEbook is a SIDE permission — admin+ hold it by default, and it
- *    is individually grantable to any person at any ladder level."
- *
- * So: the hand-granted column OR the estate's own admin+ notion. `is_approver`
- * IS the estate's admin (requireApprover gates every grant surface) and
- * OWNER_EMAILS sits above it. A consumer with its own ladder — the audiobook
- * Worker's 'admin'/'owner' rungs — ORs its rung in on top of this answer, for
- * the same reason: "admin+" means admin on EITHER ladder.
- *
- * ⚠️ Deliberately NOT gated on status. The visibility gate is what a revoked
- * or pending person hits (their effective set holds no `ebooks`); mixing the
- * two here would produce a capability answer that silently means two things.
- */
-export function downloadEbooks(row: EstateUserRow | null, isOwner: boolean): boolean {
-  if (isOwner) return true;
-  if (!row) return false;
-  return row.dl_ebooks === 1 || row.is_approver === 1;
 }
 
 export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer {
@@ -71,13 +51,15 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
     // §4.3: OWNER_EMAILS is approved + approver REGARDLESS of table state,
     // and sees every catalog (`library2`'s and `ebooks`' DEFAULT 0 included —
     // the owner is the estate's operator) — the break-glass cannot be narrowed
-    // into a lockout, and that now includes the ebook shelf and its downloads.
+    // into a lockout, and that now includes the ebook shelf. (Downloading FROM
+    // that shelf is the audiobook ladder's question since 2026-08-17;
+    // OWNER_EMAILS forces `owner` there too, so the break-glass still holds end
+    // to end — it just holds in the other system.)
     return {
       status: 'approved',
       is_approver: true,
       is_devops: true,
       visibility: [...CATALOGS],
-      download_ebooks: true,
     };
   }
   if (!row) {
@@ -86,7 +68,6 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
       is_approver: false,
       is_devops: false,
       visibility: [...PUBLIC_CATALOGS],
-      download_ebooks: false,
     };
   }
   return {
@@ -96,6 +77,5 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
     is_approver: row.is_approver === 1,
     is_devops: row.is_devops === 1 || row.is_approver === 1,
     visibility: effectiveVisibility(row.status, row),
-    download_ebooks: downloadEbooks(row, false),
   };
 }

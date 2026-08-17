@@ -31,16 +31,17 @@ export interface SeenCache {
    * (a pre-visibility row, or a consumer that does not store it).
    */
   visibility?: Catalog[] | null;
-  /**
-   * The `download_ebooks` capability (estate_auth 0009), cached WITH the
-   * status for the same §4.5 one-answer reason visibility is. Optional and
-   * ignored by every consumer that does not read it — a consumer which never
-   * persists it simply reads null and asks again, which costs nothing because
-   * the status half is what drives the TTL. ⚠️ It is NOT a catalog and never
-   * appears in `visibility`: download is a side permission on top of the
-   * `ebooks` grant, not a way in (0009's header argues the shape).
+  /*
+   * ⚠️ THERE IS NO `downloadEbooks` HERE, and its absence is a DECISION, not
+   * an omission — do not "restore" it. It rode this cache for one day
+   * (2026-08-17) and was removed the same day by owner directive: *"For ebooks
+   * I don't want a download check box, I want to use roles we have. Set up the
+   * roles to match library."* Download stopped being a per-person estate fact
+   * and became a ROLE capability on the consumer's own ladder
+   * (audiobook-worker `capabilities.ts`, floor `admin`), so the estate has
+   * nothing to say about it and this cache has nothing to carry. The estate
+   * still owns the VIEW grant, which is `visibility` including `ebooks`.
    */
-  downloadEbooks?: boolean | null;
 }
 
 export function cacheIsFresh(
@@ -82,19 +83,15 @@ export interface SeenIdentity {
  * recompute it from status. `visibility` is null only when the server's
  * answer lacked a clean array (a pre-§4.5 server) — callers then fall back
  * per §4.5's fail-closed rules, they do not guess.
+ *
+ * ⚠️ No download field, deliberately (2026-08-17 rework — see SeenCache). The
+ * estate answers "may you SEE this catalog"; whether you may take a FILE away
+ * is the consumer's own ladder question, and consumers resolve it from their
+ * role matrix rather than from anything on this wire.
  */
 export interface SeenAnswer {
   status: EstateStatus;
   visibility: Catalog[] | null;
-  /**
-   * The EFFECTIVE `download_ebooks` capability (0009): the stored per-person
-   * grant OR'd with the estate's own admin+ rule, computed server-side like
-   * everything else here. Null when the server did not say — a pre-0009
-   * server, or an answer whose field was not a boolean. ⚠️ Null is NOT false
-   * with extra steps: callers fail CLOSED on null (treat as no download) but
-   * must not cache it as a decided `false`.
-   */
-  downloadEbooks: boolean | null;
 }
 
 /**
@@ -127,9 +124,11 @@ export async function postSeenAnswer(
     const status = (body as { status?: unknown } | null)?.status;
     if (!isEstateStatus(status)) return null;
     const visibility = parseVisibility((body as { visibility?: unknown }).visibility);
-    const dl = (body as { download_ebooks?: unknown }).download_ebooks;
-    const downloadEbooks = typeof dl === 'boolean' ? dl : null;
-    return { status, visibility, downloadEbooks };
+    // ⚠️ `download_ebooks` on the body is IGNORED, not parsed. The field was
+    // removed from the server the same day it shipped (2026-08-17 role-floor
+    // rework); a body still carrying it is an old auth-worker mid-deploy, and
+    // reading it would resurrect a fact this system no longer honours.
+    return { status, visibility };
   } catch {
     return null;
   }
@@ -159,23 +158,15 @@ export interface EstateCheckResult {
    * one). Null when no visibility fact exists for the answer used.
    */
   visibility: Catalog[] | null;
-  /**
-   * The `download_ebooks` capability riding with that same answer (0009).
-   * Null = not answered; fail closed, do not read it as a decided false.
-   */
-  downloadEbooks: boolean | null;
   /** True when `status` came from a cache older than the TTL (log it). */
   stale: boolean;
   /**
    * Non-null when a fresh answer arrived: persist these onto the app's cache
    * columns — visibility WITH status, the two never age separately.
-   * `downloadEbooks` rides along for the same reason; a consumer that does
-   * not store it loses nothing but a round-trip.
    */
   refresh: {
     status: EstateStatus;
     visibility: Catalog[] | null;
-    downloadEbooks: boolean | null;
     checkedAt: string;
   } | null;
 }
@@ -194,7 +185,6 @@ export async function estateCheck(
   nowMs: number = Date.now(),
 ): Promise<EstateCheckResult> {
   const cachedVisibility = cache.visibility ?? null;
-  const cachedDownload = cache.downloadEbooks ?? null;
   const usableFresh =
     cache.status !== null &&
     cacheIsFresh(cache.checkedAt, nowMs) &&
@@ -203,7 +193,6 @@ export async function estateCheck(
     return {
       status: cache.status,
       visibility: cachedVisibility,
-      downloadEbooks: cachedDownload,
       stale: false,
       refresh: null,
     };
@@ -214,12 +203,10 @@ export async function estateCheck(
     return {
       status: fresh.status,
       visibility: fresh.visibility,
-      downloadEbooks: fresh.downloadEbooks,
       stale: false,
       refresh: {
         status: fresh.status,
         visibility: fresh.visibility,
-        downloadEbooks: fresh.downloadEbooks,
         checkedAt: new Date(nowMs).toISOString(),
       },
     };
@@ -230,7 +217,6 @@ export async function estateCheck(
   return {
     status: cache.status,
     visibility: cache.status !== null ? cachedVisibility : null,
-    downloadEbooks: cache.status !== null ? cachedDownload : null,
     stale: cache.status !== null,
     refresh: null,
   };

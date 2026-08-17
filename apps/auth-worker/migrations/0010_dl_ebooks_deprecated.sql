@@ -1,0 +1,53 @@
+-- estate_auth 0010 — `dl_ebooks` (0009) IS DEPRECATED AND UNREAD.
+--
+-- This migration changes NOTHING in the schema, on purpose. It exists so the
+-- migration ledger — the one place a future session reliably reads in order —
+-- records that the column above it died the day after it was born, and why.
+--
+-- ⚠️ THE DIRECTIVE, verbatim (owner, 2026-08-17):
+--
+--     "For ebooks I don't want a download check box, I want to use roles we
+--      have. Set up the roles to match library."
+--
+-- 0009 shipped a per-person download grant: a checkbox on the admin page, a
+-- column here, a POST /estate/users/:id/download-ebooks route, and a
+-- `download_ebooks` field riding the /seen and /me answers. The owner replaced
+-- the whole mechanism the next day. Downloading an ebook file is now a RUNG:
+--
+--     apps/audiobook-worker/src/capabilities.ts  →  download: 'admin'
+--
+-- resolved from the caller's Firestore `site_roles/{uid}` doc, exactly the way
+-- the library grants every capability it grants (`@lc/core` capabilitiesFor —
+-- the "match library" pattern the directive names). To let someone download,
+-- PROMOTE them; to stop them, demote them. There is no side grant to forget
+-- about, and a demotion cannot leave a capability behind.
+--
+-- ⚠️ WHAT IS STILL TRUE, and must not be swept up with the rest: `vis_ebooks`
+-- (0008) is UNCHANGED and is still the grant that admits a person to the shelf
+-- AND to reading in the in-browser viewer. Seeing and downloading are two
+-- capabilities with two mechanisms; only the second one moved.
+--
+-- WHY THE COLUMN IS LEFT STANDING RATHER THAN DROPPED:
+--   * SQLite/D1 DROP COLUMN is a table rebuild — real risk, on a live estate
+--     directory, to reclaim one integer per row. The cost is all downside.
+--   * A dropped column cannot be inspected. Leaving it means the handful of
+--     rows that were flipped during 0009's one-day life stay legible if anyone
+--     ever asks who was granted what, which is exactly the estate's
+--     "functions that produce persisted keys are migrations, not edits"
+--     caution: destroying the record is the irreversible half.
+--   * Nothing reads it. auth-worker's COLS list no longer SELECTs it, the row
+--     type no longer declares it, setDownloadEbooks() is deleted, and both the
+--     /seen and /me answers dropped the field. It is inert, not load-bearing.
+--
+-- ⚠️ DO NOT re-add it to `COLS` in src/estate-db.ts or to `EstateUserRow` in
+-- src/env.ts. That is precisely how a dead grant comes back to life: the
+-- column still holds 1 for whoever was ticked on 2026-08-16, so a SELECT that
+-- reaches it again would resurrect those grants silently, without anybody
+-- deciding to.
+--
+-- If a future owner decision brings per-person download grants back, write a
+-- NEW migration that says so and ZEROES this column first — do not reuse the
+-- stale values.
+
+-- Intentionally no DDL. See above.
+SELECT 1;

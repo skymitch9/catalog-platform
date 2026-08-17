@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { EstateUserRow } from '../src/env.js';
-import { downloadEbooks, meAnswer } from '../src/me.js';
+import { meAnswer } from '../src/me.js';
 
 function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
   return {
@@ -23,11 +23,11 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     // Mirrors the DB defaults: 0002's three are DEFAULT 1, 0007's library2
     // is DEFAULT 0 — a fixture that granted it silently would hide the point.
     vis_library2: 0,
-    // 0008/0009 join with the same reasoning: DEFAULT 0 in the DB, so a
-    // fixture that granted the ebook shelf or its downloads by accident would
-    // hide exactly what those migrations are for.
+    // 0008 joins with the same reasoning: DEFAULT 0 in the DB, so a fixture
+    // that granted the ebook shelf by accident would hide exactly what that
+    // migration is for. (There is no dl_ebooks here: 0009 left the row shape
+    // on 2026-08-17 — see the note above the removed download tests below.)
     vis_ebooks: 0,
-    dl_ebooks: 0,
     ...over,
   };
 }
@@ -39,9 +39,6 @@ test('meAnswer: not in the directory → status null, never an error shape', () 
     is_devops: false,
     // The public slice — the same thing the anonymous internet sees (§4.5).
     visibility: ['audiobook'],
-    // 0009: a stranger holds no download grant. `ebooks` is not in the public
-    // slice either, so there is nothing to download and nothing to see.
-    download_ebooks: false,
   });
 });
 
@@ -51,7 +48,6 @@ test('meAnswer: pending → the public slice, whatever the stored flags say', ()
     is_approver: false,
     is_devops: false,
     visibility: ['audiobook'],
-    download_ebooks: false,
   });
 });
 
@@ -61,7 +57,6 @@ test('meAnswer: approved → the stored set, narrowing included', () => {
     is_approver: false,
     is_devops: false,
     visibility: ['audiobook', 'library', 'games'],
-    download_ebooks: false,
   });
   assert.deepEqual(
     meAnswer(row({ status: 'approved', vis_library: 0, vis_games: 0 }), false).visibility,
@@ -106,7 +101,6 @@ test('meAnswer: revoked → {} — revocation beats the public slice', () => {
     is_approver: false,
     is_devops: false,
     visibility: [],
-    download_ebooks: false,
   });
 });
 
@@ -119,14 +113,14 @@ test('meAnswer: is_approver mirrors the raw flag requireApprover reads', () => {
 
 test('meAnswer: OWNER_EMAILS break-glass wins over every table state (§4.3)', () => {
   // Owners see EVERY catalog — the DEFAULT 0 of library2 AND of ebooks
-  // included — and hold the download grant. The owner is the estate's
-  // operator, and break-glass is never narrowable.
+  // included. The owner is the estate's operator, and break-glass is never
+  // narrowable. (Downloading is the audiobook ladder's question since
+  // 2026-08-17; OWNER_EMAILS forces `owner` there too.)
   const want = {
     status: 'approved',
     is_approver: true,
     is_devops: true,
     visibility: ['audiobook', 'library', 'games', 'library2', 'ebooks'],
-    download_ebooks: true,
   };
   // No row at all — the empty-directory bootstrap.
   assert.deepEqual(meAnswer(null, true), want);
@@ -148,9 +142,10 @@ test('meAnswer: is_devops is EFFECTIVE — raw flag OR approver (0003)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 0008/0009 — the ebook gate the owner asked for on 2026-08-17 ("ebooks should
-// be like the other site where we grant permission to view it. I don't want
-// people scraping my books"), and the download side permission beside it.
+// 0008 — the ebook gate the owner asked for on 2026-08-17 ("ebooks should be
+// like the other site where we grant permission to view it. I don't want people
+// scraping my books"). ⚠️ 0009's download half was REMOVED from this Worker the
+// next day by a second directive — see the two tests at the bottom.
 // ---------------------------------------------------------------------------
 
 test('meAnswer: `ebooks` (0008) appears ONLY when deliberately granted, appended last', () => {
@@ -167,35 +162,36 @@ test('meAnswer: `ebooks` (0008) appears ONLY when deliberately granted, appended
   assert.deepEqual(meAnswer(row({ status: 'revoked', vis_ebooks: 1 }), false).visibility, []);
 });
 
-test('downloadEbooks: the owner model — admin+ by default, grantable at any level', () => {
-  // A plain member: no.
-  assert.equal(downloadEbooks(row({ status: 'approved' }), false), false);
-  // Granted by hand, still a plain member: yes. ("individually grantable to
-  // any person at any ladder level")
-  assert.equal(downloadEbooks(row({ status: 'approved', dl_ebooks: 1 }), false), true);
-  // An estate approver holds it WITHOUT the column being set — the admin+
-  // half is computed, never stored (0009's header argues why).
-  assert.equal(downloadEbooks(row({ status: 'approved', is_approver: 1 }), false), true);
-  assert.equal(row({ is_approver: 1 }).dl_ebooks, 0);
-  // The owner, with no row at all.
-  assert.equal(downloadEbooks(null, true), true);
-  // A stranger.
-  assert.equal(downloadEbooks(null, false), false);
+test('⚠️ /me answers NOTHING about downloads — that is the ladder’s question now', () => {
+  // The round trip this pins, so nobody re-adds the field believing it was
+  // simply forgotten:
+  //   2026-08-16  0009 adds `dl_ebooks` + a `download_ebooks` answer here
+  //   2026-08-17  the owner supersedes it — *"For ebooks I don't want a
+  //               download check box, I want to use roles we have. Set up the
+  //               roles to match library."*
+  //
+  // So this Worker answers WHO MAY SEE the shelf and stops there. Whether a
+  // person may take a file away is `can(role, 'download')` against the
+  // audiobook ladder (floor `admin`), resolved by audiobook-worker from the
+  // caller's site_roles doc — nothing in D1 and nothing on this answer.
+  for (const answer of [
+    meAnswer(null, false),
+    meAnswer(null, true),
+    meAnswer(row({ status: 'approved', vis_ebooks: 1 }), false),
+    meAnswer(row({ status: 'approved', is_approver: 1, vis_ebooks: 1 }), false),
+  ]) {
+    assert.deepEqual(
+      Object.keys(answer).sort(),
+      ['is_approver', 'is_devops', 'status', 'visibility'],
+      'no download key on any branch, including the owner break-glass',
+    );
+  }
 });
 
-test('⚠️ download NEVER implies the shelf — a granted download with no vis_ebooks sees nothing', () => {
-  // The trap this pins: `download_ebooks` is a side permission, not a way in.
-  // Someone reading only the capability would conclude this person can reach
-  // the files; they cannot, because the manifest gate reads `visibility`.
-  const answer = meAnswer(row({ status: 'approved', dl_ebooks: 1 }), false);
-  assert.equal(answer.download_ebooks, true);
-  assert.equal(answer.visibility.includes('ebooks'), false);
-});
-
-test('a revoked person keeps no download in practice — the shelf is gone either way', () => {
-  // dl_ebooks is deliberately NOT status-gated (it is a capability, not a
-  // power), so the flag still reads true here. What makes that safe is that
-  // the visibility half is empty, so there is nothing to download.
-  const answer = meAnswer(row({ status: 'revoked', dl_ebooks: 1, vis_ebooks: 1 }), false);
-  assert.deepEqual(answer.visibility, []);
+test('the ebook shelf stays a VIEW grant, and revocation still closes it', () => {
+  // The half that did NOT change on 2026-08-17. `vis_ebooks` still admits a
+  // person to the shelf and to reading in the browser viewer, and it is still
+  // inert off approval — the download rework touched none of this.
+  assert.equal(meAnswer(row({ status: 'approved', vis_ebooks: 1 }), false).visibility.includes('ebooks'), true);
+  assert.deepEqual(meAnswer(row({ status: 'revoked', vis_ebooks: 1 }), false).visibility, []);
 });

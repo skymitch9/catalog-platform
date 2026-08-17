@@ -18,7 +18,11 @@ export function normalizeEmail(email: string): string {
 
 const COLS =
   'id, email, firebase_uid, display_name, status, is_approver, is_devops, origin, note, first_seen_at, decided_at, decided_by, ' +
-  'vis_audiobook, vis_library, vis_games, vis_library2, vis_ebooks, dl_ebooks';
+  // ⚠️ `dl_ebooks` (0009) is deliberately NOT selected — the column survives in
+  // D1 but nothing reads it since the 2026-08-17 role-floor rework (0010's
+  // header carries the owner's words). Adding it back to this list is the first
+  // step of resurrecting a grant the owner removed.
+  'vis_audiobook, vis_library, vis_games, vis_library2, vis_ebooks';
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<EstateUserRow | null> {
   const row = await db
@@ -193,33 +197,20 @@ export async function setVisibility(
   return row ?? null;
 }
 
-/**
- * Flip `dl_ebooks` (0009) — the per-person ebook DOWNLOAD grant. Deliberately
- * its OWN statement rather than a field on setVisibility(): the two answer
- * different questions ("may you see the shelf" / "may you take the file"), and
- * a combined write would make it impossible to change one without restating
- * the other. Stamped like every decision; never touches status or visibility.
+/*
+ * ⚠️ `setDownloadEbooks()` USED TO LIVE HERE and was deleted 2026-08-17 — the
+ * same day the column it wrote (0009 `dl_ebooks`) shipped. Owner directive:
+ * *"For ebooks I don't want a download check box, I want to use roles we have.
+ * Set up the roles to match library."*
  *
- * ⚠️ This writes only the HAND-GRANTED half. The admin+ half of the owner's
- * model is computed at read time (me.ts's downloadEbooks) and must never be
- * materialised here — 0009's header argues why storing it would survive a
- * demotion, which is exactly what 0006 exists to prevent.
+ * There is no replacement statement in this file, and that is the point: the
+ * estate directory no longer holds an opinion about downloads. The grant now
+ * lives on the audiobook site's role ladder (`apps/audiobook-worker/src/
+ * capabilities.ts`, `download` floors at `admin`), granted by PROMOTION on the
+ * admin page's audiobook role dropdown. The D1 column still exists and no
+ * statement in this Worker reads or writes it (0010's header records why it
+ * was left standing rather than dropped).
  */
-export async function setDownloadEbooks(
-  db: D1Database,
-  input: { id: number; downloadEbooks: boolean; actorId: number },
-): Promise<EstateUserRow | null> {
-  const row = await db
-    .prepare(
-      `UPDATE estate_user
-       SET dl_ebooks = ?, decided_at = datetime('now'), decided_by = ?
-       WHERE id = ?
-       RETURNING ${COLS}`,
-    )
-    .bind(input.downloadEbooks ? 1 : 0, input.actorId, input.id)
-    .first<EstateUserRow>();
-  return row ?? null;
-}
 
 /**
  * Flip `is_approver` — the admin-API promotion path (owner decision #4:

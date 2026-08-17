@@ -19,6 +19,21 @@
  *   approved, no `ebooks` grant 403 no_ebooks_grant   "ask for the ebook shelf"
  *   approved WITH the grant     200 the manifest
  *
+ * ⚠️ SEEING the shelf and DOWNLOADING from it are two capabilities with two
+ * different grant mechanisms, and only the first is an estate question:
+ *
+ *   see the shelf + read in the viewer  →  estate `vis_ebooks` (a checkbox on
+ *                                          the admin page's Ebooks row)
+ *   take the file away                  →  the LADDER: `download`, floor
+ *                                          `admin` (capabilities.ts), granted
+ *                                          by PROMOTION, no checkbox anywhere
+ *
+ * The second replaced a per-person `dl_ebooks` toggle on 2026-08-17, the day
+ * after that toggle shipped — owner directive: *"For ebooks I don't want a
+ * download check box, I want to use roles we have. Set up the roles to match
+ * library."* Download never implies the shelf and the shelf never implies
+ * download; this route decides the first and merely REPORTS the second.
+ *
  * ⚠️ NOT GATED ON `ESTATE_CHECK`, and that is deliberate rather than an
  * oversight. The mode exists so an EXISTING behaviour can be shadowed before
  * it starts refusing people; this route has no existing behaviour to shadow —
@@ -39,8 +54,12 @@
 
 import { Hono } from 'hono';
 import { resolveIdentity } from '@platform/estate-auth';
+import { parseServiceAccount } from '@platform/firebase-sa';
+import { effectiveLadderRole, type LadderRole } from '../../auth-worker/src/role-ladder.js';
+import { can } from './capabilities.js';
 import { estateCheckMode, parseOwnerEmails, type Env } from './env.js';
 import { estateAnswerFor } from './estate-status.js';
+import { cachedStoredRole } from './roles.js';
 
 /** The one object key the pipeline writes and this route reads. */
 export const MANIFEST_KEY = 'ebooks.json';
@@ -80,9 +99,9 @@ ebookRoutes.get('/api/ebooks/manifest', async (c) => {
   //    ⚠️ The owner short-circuits BEFORE the round-trip, the same break-glass
   //    every consumer honours: the estate being wrong (or down) about its own
   //    owner must never lock the owner out of his own shelf.
-  let grant: { visible: boolean; canDownload: boolean; stale: boolean; status: string | null };
+  let grant: { visible: boolean; stale: boolean; status: string | null };
   if (isOwner) {
-    grant = { visible: true, canDownload: true, stale: false, status: 'approved' };
+    grant = { visible: true, stale: false, status: 'approved' };
   } else {
     const answer = await estateAnswerFor(c.env, {
       email,
@@ -157,14 +176,47 @@ ebookRoutes.get('/api/ebooks/manifest', async (c) => {
 
     grant = {
       visible: true,
-      // ⚠️ Two ladders, one meaning of "admin+": the estate's answer already
-      // ORs in its own approver rule; this ORs in THIS site's rung. Null (the
-      // directory did not say) reads as false — fail closed.
-      canDownload: answer.downloadEbooks === true,
       stale: answer.stale,
       status: answer.status,
     };
   }
+
+  // 2b. The DOWNLOAD capability — this site's own LADDER, not the estate.
+  //
+  // Owner directive 2026-08-17: *"For ebooks I don't want a download check
+  // box, I want to use roles we have. Set up the roles to match library."*
+  // So the question "may you take the file away" is answered exactly where
+  // every other DO-question on this site is answered: the caller's
+  // `site_roles/{uid}` rung against capabilities.ts, where `download` floors
+  // at `admin`. There is no per-person estate flag any more.
+  //
+  // ⚠️ Failure to RESOLVE a role is not a 502 here, unlike /api/me. The shelf
+  // is the `vis_ebooks` grant and it has already been decided above; a role
+  // store outage must not close a shelf the caller is entitled to. It fails
+  // CLOSED on the download half only, and says so: `role: null` alongside
+  // `can_download: false` is "we could not resolve your rung", which a reader
+  // can tell apart from `role: 'member'` — "we resolved it, and it is not
+  // enough". A silent false that meant both would be the indistinguishable
+  // failure the estate's rules forbid.
+  let role: LadderRole | null = null;
+  if (isOwner) {
+    role = 'owner';
+  } else if (identity.uid) {
+    const sa = (() => {
+      try {
+        return parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT);
+      } catch {
+        return null;
+      }
+    })();
+    if (sa) {
+      const read = await cachedStoredRole(sa, identity.uid);
+      if (read.ok) {
+        role = effectiveLadderRole({ email, ownerEmails: owners, storedRole: read.role });
+      }
+    }
+  }
+  const canDownload = role !== null && can(role, 'download');
 
   // 3. The bytes, from the private bucket. A missing binding is a
   //    configuration error and a missing object is a pipeline problem — two
@@ -213,11 +265,16 @@ ebookRoutes.get('/api/ebooks/manifest', async (c) => {
   // ⚠️ `can_download` is reported and NOT enforced here, because there is
   // nothing to download from this route: it serves a list, not a file. When
   // the reader's file-stream route lands it must make its OWN server-side
-  // check — a client that hides a button is not a gate.
+  // check — a client that hides a button is not a gate — and it must ask the
+  // SAME question this does: `can(role, 'download')`.
+  //
+  // `role` rides alongside so the page can say WHY the button is absent, and
+  // so an unresolved rung (null) is distinguishable from an insufficient one.
   return c.json(
     {
       ...(manifest as Record<string, unknown>),
-      can_download: grant.canDownload,
+      can_download: canDownload,
+      role,
       estate: { mode, status: grant.status, stale: grant.stale },
     },
     200,

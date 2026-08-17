@@ -4,10 +4,13 @@
 > resource NAMES only, never values — this repo is public on GitHub).
 > Last verified: **2026-08-17** — written at build time, every figure below
 > measured live on that date unless marked otherwise.
-> Companions: `docs/info/estate-auth-design.md` §4.5 (the visibility layer and
-> the `download_ebooks` capability), `docs/info/ebook-split-design.md` (why the
-> pool has its own address), `audiobook_catalog/docs/info/SITE_DATA.md` (what
-> is in the manifest).
+> ⚠️ **AMENDED the same day**: the per-person download checkbox this doc first
+> described was superseded by a role floor a few hours after it shipped (§3).
+> Companions: `docs/info/estate-auth-design.md` §4.5 (the visibility layer),
+> `docs/info/role-capability-map.md` (the NORMATIVE role/capability map — the
+> download row lives there), `docs/info/ebook-split-design.md` (why the pool has
+> its own address), `audiobook_catalog/docs/info/SITE_DATA.md` (what is in the
+> manifest).
 
 ## 1. What is live, in one paragraph
 
@@ -25,9 +28,9 @@ it just has nothing to show until you are signed in **and** hold the estate's
 | Piece | Where | What it does |
 |---|---|---|
 | `vis_ebooks` column | `apps/auth-worker/migrations/0008_vis_ebooks.sql` | The view grant. `DEFAULT 0`; **not** in the public slice. Includes READING. |
-| `dl_ebooks` column | `apps/auth-worker/migrations/0009_dl_ebooks.sql` | The per-person DOWNLOAD grant. `DEFAULT 0`; admin+ hold it computed, never stored. |
-| `POST /api/estate/users/:id/download-ebooks` | `apps/auth-worker/src/estate.ts` | Flips the stored half. Approver-gated. |
-| Ebooks column + download toggle | `sites/heygabi-home/public/admin/` | The UI. Admin+/owner rows render checked-and-disabled with the reason. |
+| `download` capability | `apps/audiobook-worker/src/capabilities.ts` | **The download grant.** Floor `admin` on the site-roles ladder. ⚠️ Replaced the per-person checkbox 2026-08-17 — see §3. |
+| `dl_ebooks` column | `apps/auth-worker/migrations/0009_dl_ebooks.sql` | ⚠️ **DEPRECATED AND UNREAD** since 2026-08-17 (migration `0010` records why it was left standing). Nothing SELECTs it. |
+| Ebooks column (view checkbox only) | `sites/heygabi-home/public/admin/` | The UI. ⚠️ **No download toggle** — that row's second cell is a note pointing at the Audiobook role. |
 | `GET /api/ebooks/manifest` | `apps/audiobook-worker/src/ebooks.ts` | **The gate.** Verifies the token, requires `ebooks` visibility, serves the manifest. |
 | `ebooks-gated` R2 bucket | Cloudflare account `113be82b…` | The private store. Key: `ebooks.json`. |
 | `scripts/publish_ebooks_manifest.py` | `audiobook_catalog` | The publisher (sync **step 5.8**). |
@@ -39,13 +42,27 @@ it just has nothing to show until you are signed in **and** hold the estate's
 **Grant:** `https://heygabi.ai/admin/` → find the person → the **Ebooks** row →
 tick **visible**. That is the whole grant, and it includes reading.
 
-**Download:** the **download** checkbox in the same row. Admin+ and owner rows
-show it ticked and disabled — that is correct, not a bug: their download is
-computed from their role and no checkbox can take it away. Un-tick their role
-instead.
+**Download: there is no download checkbox. Promote them.** Owner directive
+2026-08-17, verbatim: *"For ebooks I don't want a download check box, I want to
+use roles we have. Set up the roles to match library."*
 
-⚠️ **A download grant without the view grant does nothing**, and the row says
-so. Visibility is checked first, on every request.
+`https://heygabi.ai/admin/` → the same person → the **Audiobook** row's role
+dropdown → set **admin**. That is the entire download grant, and demoting them
+is the entire revocation. The Ebooks row's second cell says so in place of the
+toggle that used to be there.
+
+⚠️ **The two grants are independent and BOTH are needed to download.**
+Visibility is checked first, on every request:
+
+| They have | They can |
+|---|---|
+| `visible` only | browse the shelf, read in the browser viewer — **no file** |
+| audiobook `admin` only | nothing — they never reach a shelf to download from |
+| both | read **and** download |
+
+⚠️ A per-person `dl_ebooks` checkbox existed for ONE DAY (2026-08-16 → 08-17).
+If you find a reference to it, or to `POST /api/estate/users/:id/download-ebooks`,
+that reference is stale — the route is deleted and the column is unread.
 
 **Revoke:** un-tick **visible**. Takes effect within the estate's revocation
 delay — **10 minutes** (`REVOCATION_DELAY_MS`), because the Worker caches the
@@ -67,17 +84,28 @@ claim its last decision was something else.
 
 ## 4. Who holds it right now (measured 2026-08-17, seeded by this build)
 
-| Email | `vis_ebooks` | `dl_ebooks` | Note |
-|---|---|---|---|
-| `nbaslamking@gmail.com` | 1 | 0 | owner (also computed — the flag is belt-and-braces) |
-| `mitchlandtv@gmail.com` | 1 | 0 | owner email, approver |
-| `asprint200@gmail.com` (Amber) | 1 | 0 | |
-| `samantha.hardman82@gmail.com` | 1 | 0 | |
-| every other row (8 of them) | 0 | 0 | including `jam4weezer@gmail.com`, who holds `vis_library` |
+⚠️ **The `dl_ebooks` column below is listed for the record only — it is no
+longer read by anything.** Download is the audiobook `admin` rung now (§3).
 
-`dl_ebooks` is 0 for **everyone**: admin+ hold download by role, not by column.
-The two owner rows and the one approver therefore *have* download; nobody else
-does.
+| Email | `vis_ebooks` | audiobook role | Can download? |
+|---|---|---|---|
+| `nbaslamking@gmail.com` | 1 | owner (OWNER_EMAILS) | ✅ |
+| `mitchlandtv@gmail.com` | 1 | owner (OWNER_EMAILS) | ✅ |
+| `asprint200@gmail.com` (Amber) | 1 | none (guest) | ❌ read only |
+| `samantha.hardman82@gmail.com` | 1 | contributor | ❌ read only |
+| every other row (8 of them) | 0 | — | ❌ no shelf at all |
+
+⚠️ **NOT re-measured after the rework.** The `vis_ebooks` and audiobook-role
+columns are carried from the 2026-08-17 build-time snapshot
+(`docs/info/role-capability-map.md` §"Who holds what today"); the **Can
+download?** column is DERIVED from those two by the new rule, not observed live.
+Re-read the admin page if an exact answer matters.
+
+**Nobody's access actually changed on 2026-08-17.** Under the old rule download
+resolved as `dl_ebooks = 1 OR is_approver = 1 OR OWNER_EMAILS`, and `dl_ebooks`
+was 0 on every row — so in practice it meant owners-and-approvers. Under the new
+rule it is audiobook `admin+`, which the same two owner accounts hold. The
+rework replaced the *mechanism*; on today's data it grants the same people.
 
 ## 5. Publishing the manifest
 

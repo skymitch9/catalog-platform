@@ -44,7 +44,8 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     vis_games: 1,
     vis_library2: 0, // the 0007 DB default
     vis_ebooks: 0, // the 0008 DB default
-    dl_ebooks: 0, // the 0009 DB default
+    // ⚠️ no dl_ebooks — 0009's column left the row shape on 2026-08-17 when
+    // downloads became a role floor. The column survives in D1, unread.
     ...over,
   };
 }

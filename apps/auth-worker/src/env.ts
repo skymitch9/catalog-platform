@@ -196,14 +196,16 @@ export interface EstateUserRow {
    * the browser (one grant, not two; see 0008's header).
    */
   vis_ebooks: number;
-  /**
-   * 0009: the per-person ebook DOWNLOAD grant — the estate's first capability
-   * column that is not a visibility flag. ⚠️ Never read raw: the effective
-   * answer is `dl_ebooks = 1 OR is_approver = 1 OR OWNER_EMAILS`, computed by
-   * me.ts's downloadEbooks(). The admin+ half is never stored, so a demotion
-   * cannot leave a download grant behind (0006's rule).
+  /*
+   * ⚠️ `dl_ebooks` (migration 0009) IS ABSENT FROM THIS ROW SHAPE ON PURPOSE,
+   * and the column still exists in D1 — see 0010's header. Owner directive
+   * 2026-08-17 superseded the per-person download checkbox one day after it
+   * shipped: *"For ebooks I don't want a download check box, I want to use
+   * roles we have. Set up the roles to match library."* Download is now a ROLE
+   * capability on the audiobook ladder (`capabilities.ts`, floor `admin`), so
+   * this Worker no longer SELECTs, writes or answers the column. Re-adding it
+   * here is how the dead grant would come back to life — do not.
    */
-  dl_ebooks: number;
 }
 
 export type AppBindings = {

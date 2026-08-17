@@ -172,35 +172,41 @@ test('approved WITH the grant → 200, the whole manifest, needs_human_cover inc
   }
 });
 
-test('download is a SIDE permission: the shelf opens either way, can_download differs', async () => {
-  const without = stubFetch({
-    seen: { status: 'approved', visibility: ['ebooks'], download_ebooks: false },
-  });
+/* ── download: the LADDER's question, not the estate's (2026-08-17) ─────── */
+
+test('download is a SIDE permission: the shelf opens for a viewer who cannot download', async () => {
+  // The half that did not change: `vis_ebooks` opens the shelf, and the
+  // download answer never gates it. What DID change is where the download
+  // answer comes from — an approved member with no resolvable ladder rung
+  // holds no `download`, because the floor is `admin`.
+  const f = stubFetch({ seen: { status: 'approved', visibility: ['ebooks'] } });
   try {
     const { res, body } = await getManifest(envWith());
     assert.equal(res.status, 200, 'the shelf is a view grant — download never gates it');
     assert.equal(body.can_download, false);
+    // ⚠️ null role = "we could not resolve your rung" (no service account in
+    // this env), which a reader can tell apart from a resolved-but-too-low
+    // rung. A bare false meaning both would be the indistinguishable failure.
+    assert.equal(body.role, null);
   } finally {
-    without.restore();
-  }
-
-  resetEstateCache();
-  const withDl = stubFetch({
-    seen: { status: 'approved', visibility: ['ebooks'], download_ebooks: true },
-  });
-  try {
-    const { body } = await getManifest(envWith());
-    assert.equal(body.can_download, true);
-  } finally {
-    withDl.restore();
+    f.restore();
   }
 });
 
-test('a directory that does not report download_ebooks reads as NO download, not yes', async () => {
-  const f = stubFetch({ seen: { status: 'approved', visibility: ['ebooks'] } });
+test('⚠️ the estate CANNOT grant download any more — a directory still sending it is ignored', async () => {
+  // The regression guard on the owner's 2026-08-17 directive: *"For ebooks I
+  // don't want a download check box, I want to use roles we have. Set up the
+  // roles to match library."* An auth-worker that is mid-deploy, rolled back,
+  // or hand-patched can still put `download_ebooks: true` on the /seen answer.
+  // If that ever again turned into a download, the checkbox would be back in
+  // all but name — so this pins that it does not.
+  const f = stubFetch({
+    seen: { status: 'approved', visibility: ['ebooks'], download_ebooks: true },
+  });
   try {
-    const { body } = await getManifest(envWith());
-    assert.equal(body.can_download, false, 'null is "did not say", and this fails closed');
+    const { res, body } = await getManifest(envWith());
+    assert.equal(res.status, 200);
+    assert.equal(body.can_download, false, 'the estate does not decide this any more');
   } finally {
     f.restore();
   }
@@ -215,6 +221,11 @@ test('the owner is served without a directory round-trip — break-glass, never 
   const { res, body } = await getManifest(envWith({ DEV_EMAIL: 'owner@example.com' }));
   assert.equal(res.status, 200);
   assert.equal(body.ebooks.length, 2);
+  // The break-glass reaches the DOWNLOAD half too, and now does so through the
+  // ladder rather than the directory: OWNER_EMAILS forces the `owner` rung, and
+  // `owner` clears the `admin` floor on `download`. No service account is
+  // consulted — a broken role store cannot lock the owner out either.
+  assert.equal(body.role, 'owner');
   assert.equal(body.can_download, true);
 });
 

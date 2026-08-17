@@ -30,7 +30,11 @@
  * directive behind it ("I don't want people scraping my books") means an
  * anonymous or pending caller must never hold it. ⚠️ That grant INCLUDES
  * reading a book in the browser; only DOWNLOAD separates, and download is not
- * a catalog — it rides `download_ebooks` on the /seen and /me answers.
+ * a catalog and is NOT an estate fact at all. Since 2026-08-17 it is a ROLE
+ * capability on the consuming site's own ladder (audiobook-worker
+ * `capabilities.ts`, floor `admin`) — owner directive: *"For ebooks I don't
+ * want a download check box, I want to use roles we have."* The estate says
+ * who may SEE the shelf; the ladder says who may take a file off it.
  */
 export const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'] as const;
 export type Catalog = (typeof CATALOGS)[number];

@@ -73,8 +73,32 @@ export type Capability = (typeof CAPABILITIES)[number];
  *    book was never meant to need a granted role. (Phase 5 narrows `rate` to
  *    "signed in", not to 'member' — a token check, not a ladder check, so
  *    the floor here stays 'guest'.)
- *  - `download`/`upload` are Phase 4 surfaces — the floors are committed now
- *    so /api/me can already answer what the UI should render.
+ *  - `upload` is a Phase 4 surface — the floor is committed now so /api/me can
+ *    already answer what the UI should render.
+ *  - ⚠️ `download` FLOORS AT 'admin' (owner directive 2026-08-17, verbatim:
+ *    *"For ebooks I don't want a download check box, I want to use roles we
+ *    have. Set up the roles to match library."*). It was 'member' — a
+ *    placeholder committed during the phase-4 viewer design, never enforced by
+ *    any shipped route.
+ *
+ *    This capability is the ONE download gate for this surface, and since the
+ *    2026-08-17 rework it is the ONLY grant mechanism for taking an ebook file
+ *    away. The per-person `dl_ebooks` checkbox that briefly existed in the
+ *    estate directory is GONE: a download grant is now a PROMOTION on this
+ *    ladder, exactly as the library grants its capabilities (that repo's
+ *    `@lc/core` `capabilitiesFor` is the "match library" pattern the owner
+ *    names). Want someone downloading? Make them an admin.
+ *
+ *    ⚠️ Download is NOT how one reaches the shelf. Seeing the ebook shelf and
+ *    reading in the browser viewer remain the estate's `vis_ebooks` grant,
+ *    untouched by this floor — two capabilities, deliberately (viewer design
+ *    §decision: read vs download). A rankless person with `vis_ebooks` browses
+ *    and reads and cannot take a file; an admin without `vis_ebooks` never
+ *    reaches a shelf to download from.
+ *
+ *    ⚠️ Island-irrelevant on purpose: `download` is NOT in
+ *    CLUB_MANAGER_CAPABILITIES and must not join it. The ebook shelf is not a
+ *    club surface, so club managership confers nothing here.
  *  - `manageUsers` ('moderator', per GRANT_FLOOR) is enforced by the AUTH
  *    Worker's canGrant(), never here — carried in this map only so the §6
  *    matrix lives whole in one place and /api/me's answer is complete.
@@ -92,7 +116,9 @@ export type Capability = (typeof CAPABILITIES)[number];
 export const CAPABILITY_FLOORS: Record<Capability, LadderRole> = {
   read: 'guest',
   rate: 'guest',
-  download: 'member',
+  // 'admin' since 2026-08-17 — see the module doc. Lowering this row is a
+  // widening the owner has not approved; the checkbox it replaced is gone.
+  download: 'admin',
   upload: 'contributor',
   operateClub: 'moderator',
   manageClub: 'admin',

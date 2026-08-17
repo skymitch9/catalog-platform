@@ -67,7 +67,6 @@ test('stale cache + reachable estate refreshes and says to persist', async () =>
   assert.deepEqual(r.refresh, {
     status: 'revoked',
     visibility: null,
-    downloadEbooks: null,
     checkedAt: new Date(NOW).toISOString(),
   });
 });
@@ -131,20 +130,20 @@ test('parseVisibility: library2 (the 4th catalog, 0007) is a known name, canonic
 
 test('postSeenAnswer carries the effective visibility verbatim, canonicalised', async () => {
   const r = await postSeenAnswer(opts(okFullFetch('approved', ['games', 'audiobook'])), me);
-  assert.deepEqual(r, { status: 'approved', visibility: ['audiobook', 'games'], downloadEbooks: null });
+  assert.deepEqual(r, { status: 'approved', visibility: ['audiobook', 'games'] });
   const revoked = await postSeenAnswer(opts(okFullFetch('revoked', [])), me);
   assert.deepEqual(
     revoked,
-    { status: 'revoked', visibility: [], downloadEbooks: null },
+    { status: 'revoked', visibility: [] },
     '[] is an answer, not an absence',
   );
 });
 
 test('a missing or garbage visibility field is null, NOT a failed answer — the status half still stands', async () => {
   const noVis = await postSeenAnswer(opts(okFetch('approved')), me);
-  assert.deepEqual(noVis, { status: 'approved', visibility: null, downloadEbooks: null });
+  assert.deepEqual(noVis, { status: 'approved', visibility: null });
   const garbage = await postSeenAnswer(opts(okFullFetch('approved', 'everything')), me);
-  assert.deepEqual(garbage, { status: 'approved', visibility: null, downloadEbooks: null });
+  assert.deepEqual(garbage, { status: 'approved', visibility: null });
 });
 
 test('estateCheck: a fresh answer refreshes visibility WITH status — one write, one age', async () => {
@@ -159,7 +158,6 @@ test('estateCheck: a fresh answer refreshes visibility WITH status — one write
   assert.deepEqual(r.refresh, {
     status: 'approved',
     visibility: ['audiobook', 'games'],
-    downloadEbooks: null,
     checkedAt: new Date(NOW).toISOString(),
   });
 });
@@ -248,7 +246,14 @@ test('postSeen sends the bearer and the snake_case body the Worker expects', asy
   assert.deepEqual(got.body, { email: 'x@y.z', firebase_uid: 'u1', display_name: 'X' });
 });
 
-// --- 0008/0009: the ebook catalog and the download capability on the wire ---
+// --- 0008: the ebook catalog on the wire ---
+//
+// ⚠️ The 0009 download-capability tests that sat beside these were DELETED on
+// 2026-08-17, one day after they were written, when the owner superseded the
+// mechanism they pinned: *"For ebooks I don't want a download check box, I
+// want to use roles we have. Set up the roles to match library."*
+// `download_ebooks` is not on this wire at all any more; the replacement test
+// at the end of this file pins its ABSENCE, which is the fact worth keeping.
 
 test('parseVisibility: `ebooks` (0008) is a known name, canonicalised LAST of all', () => {
   assert.deepEqual(parseVisibility(['ebooks']), ['ebooks']);
@@ -266,57 +271,32 @@ test('parseVisibility: `ebooks` (0008) is a known name, canonicalised LAST of al
   assert.equal(parseVisibility(['ebook']), null);
 });
 
-test('postSeenAnswer reads download_ebooks as a boolean, and anything else as null', async () => {
-  const withDl: typeof fetch = async () =>
+test('⚠️ the estate answers NO download fact — a server still sending one is ignored', async () => {
+  // The round trip, pinned so it cannot be walked back by accident:
+  //   2026-08-16  the ebooks gate ships `download_ebooks` on this wire (0009)
+  //   2026-08-17  the owner replaces the per-person grant with a ROLE floor
+  //               ("use roles we have… match library"), and the field goes
+  //
+  // This test is the guard on the SECOND move. An auth-worker mid-deploy (or
+  // rolled back) can still put `download_ebooks` on the body; the client must
+  // drop it on the floor rather than surface a capability this system no
+  // longer honours. Downloading is `can(role, 'download')` on the consumer's
+  // own ladder now — see audiobook-worker's capabilities.ts.
+  const stillSendsIt: typeof fetch = async () =>
     new Response(JSON.stringify({ status: 'approved', visibility: ['ebooks'], download_ebooks: true }), {
       status: 200,
     });
-  assert.deepEqual(await postSeenAnswer(opts(withDl), me), {
-    status: 'approved',
-    visibility: ['ebooks'],
-    downloadEbooks: true,
-  });
+  const answer = await postSeenAnswer(opts(stillSendsIt), me);
+  // deepEqual, not a property check: the whole shape must be these two keys.
+  assert.deepEqual(answer, { status: 'approved', visibility: ['ebooks'] });
+  assert.ok(!('downloadEbooks' in (answer as object)), 'the field must not come back');
 
-  const falseDl: typeof fetch = async () =>
-    new Response(JSON.stringify({ status: 'approved', visibility: ['ebooks'], download_ebooks: false }), {
-      status: 200,
-    });
-  assert.equal((await postSeenAnswer(opts(falseDl), me))?.downloadEbooks, false, 'false is an ANSWER');
+  // …and it reaches neither the result nor the cache write.
+  const fresh = await estateCheck({ status: null, checkedAt: null }, me, opts(stillSendsIt), NOW);
+  assert.deepEqual(Object.keys(fresh.refresh ?? {}).sort(), ['checkedAt', 'status', 'visibility']);
+  assert.deepEqual(Object.keys(fresh).sort(), ['refresh', 'stale', 'status', 'visibility']);
 
-  // ⚠️ A pre-0009 server, or a garbage field, is null — NOT false. The two
-  // mean different things: false is "the estate decided no", null is "the
-  // estate did not say", and only the first is safe to cache as a decision.
-  const garbage: typeof fetch = async () =>
-    new Response(JSON.stringify({ status: 'approved', visibility: [], download_ebooks: 'yes' }), { status: 200 });
-  assert.equal((await postSeenAnswer(opts(garbage), me))?.downloadEbooks, null);
-});
-
-test('estateCheck carries download_ebooks with the same answer, and stales with it', async () => {
-  const withDl: typeof fetch = async () =>
-    new Response(JSON.stringify({ status: 'approved', visibility: ['audiobook', 'ebooks'], download_ebooks: true }), {
-      status: 200,
-    });
-  const fresh = await estateCheck({ status: null, checkedAt: null }, me, opts(withDl), NOW);
-  assert.equal(fresh.downloadEbooks, true);
-  assert.equal(fresh.refresh?.downloadEbooks, true);
-
-  // Unreachable estate: the capability rides the stale status, never
-  // reconstructed and never upgraded.
-  const stale = await estateCheck(
-    {
-      status: 'approved',
-      checkedAt: new Date(NOW - REVOCATION_DELAY_MS * 3).toISOString(),
-      visibility: ['ebooks'],
-      downloadEbooks: true,
-    },
-    me,
-    opts(failFetch),
-    NOW,
-  );
-  assert.equal(stale.stale, true);
-  assert.equal(stale.downloadEbooks, true);
-
-  // No status at all + unreachable: nothing is asserted about downloads.
-  const nothing = await estateCheck({ status: null, checkedAt: null, downloadEbooks: true }, me, opts(failFetch), NOW);
-  assert.equal(nothing.downloadEbooks, null);
+  // The visibility half is untouched by the removal: `ebooks` still rides the
+  // answer, because SEEING the shelf remains the estate's decision.
+  assert.deepEqual(fresh.visibility, ['ebooks']);
 });

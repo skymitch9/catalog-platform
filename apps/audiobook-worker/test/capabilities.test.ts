@@ -28,12 +28,17 @@ test('every capability names a floor that is a real ladder rung', () => {
 
 test('the §6 matrix, whole rows: what each rung holds', () => {
   assert.deepEqual(capabilitiesFor('guest'), ['read', 'rate']);
-  assert.deepEqual(capabilitiesFor('member'), ['read', 'rate', 'download']);
-  assert.deepEqual(capabilitiesFor('contributor'), ['read', 'rate', 'download', 'upload']);
+  // ⚠️ `download` LEFT the member and contributor rows on 2026-08-17. Owner
+  // directive: *"For ebooks I don't want a download check box, I want to use
+  // roles we have. Set up the roles to match library."* The floor moved
+  // 'member' → 'admin', replacing the per-person `dl_ebooks` grant entirely —
+  // a download is now a promotion. Restoring 'download' to these two rows
+  // silently re-widens the shelf's most copyable asset.
+  assert.deepEqual(capabilitiesFor('member'), ['read', 'rate']);
+  assert.deepEqual(capabilitiesFor('contributor'), ['read', 'rate', 'upload']);
   assert.deepEqual(capabilitiesFor('moderator'), [
     'read',
     'rate',
-    'download',
     'upload',
     'operateClub',
     // administerClub + claimClub floor at moderator since 2026-08-17: the
@@ -74,6 +79,22 @@ test('the club floors: operate/administer/claim are moderator+, manage and remov
   assert.equal(can('moderator', 'claimClub'), true);
   assert.equal(can('moderator', 'removeAnyReview'), false);
   assert.equal(can('admin', 'removeAnyReview'), true);
+});
+
+test('the DOWNLOAD floor is admin — the ebook grant is a promotion, not a checkbox', () => {
+  // Owner directive 2026-08-17, verbatim: "For ebooks I don't want a download
+  // check box, I want to use roles we have. Set up the roles to match
+  // library." This is the whole grant mechanism for taking an ebook file away.
+  assert.equal(CAPABILITY_FLOORS.download, 'admin');
+  for (const role of ['guest', 'member', 'contributor', 'moderator'] as const) {
+    assert.equal(can(role, 'download'), false, `${role} must not download`);
+  }
+  assert.equal(can('admin', 'download'), true);
+  assert.equal(can('owner', 'download'), true);
+  // ⚠️ And the island confers nothing here: the ebook shelf is not a club
+  // surface, so a club's own manager gains no download from managing it.
+  assert.ok(!CLUB_MANAGER_CAPABILITIES.includes('download'));
+  assert.equal(clubCan('moderator', 'download', true), false);
 });
 
 test('club managers: operate + manage + ADMINISTER their OWN club, regardless of ladder rank', () => {

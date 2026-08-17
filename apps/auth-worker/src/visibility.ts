@@ -21,8 +21,10 @@
  * it ("I don't want people scraping my books") is the opposite of public.
  * ⚠️ The `ebooks` grant INCLUDES reading in the in-browser reader — one
  * grant, not two. DOWNLOAD is the only capability that separates from it,
- * and it is not a catalog at all: it is `dl_ebooks` (0009), answered by
- * me.ts's downloadEbooks().
+ * and this Worker does not answer it: since 2026-08-17 download is a RUNG on
+ * the audiobook site's ladder (`audiobook-worker/src/capabilities.ts`, floor
+ * `admin`), not an estate column. The `dl_ebooks` column (0009) still exists
+ * in D1 and nothing reads it — see 0010's header.
  */
 export const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'] as const;
 export type Catalog = (typeof CATALOGS)[number];

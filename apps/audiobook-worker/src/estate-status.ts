@@ -39,16 +39,19 @@ export interface EstateAnswer {
 }
 
 /**
- * The WHOLE §4.5 answer — status plus the two facts that ride with it. The
- * ebook gate (src/ebooks.ts) needs all three, and they must share ONE age: a
+ * The WHOLE §4.5 answer — status plus the visibility fact that rides with it.
+ * The ebook gate (src/ebooks.ts) needs both, and they must share ONE age: a
  * visibility fact re-fetched separately from its status is exactly the
  * split-brain §4.5's one-answer rule exists to forbid.
+ *
+ * ⚠️ There is no `downloadEbooks` here since 2026-08-17 (owner: *"use roles we
+ * have… match library"*). The estate decides who SEES the shelf; who may take
+ * a file off it is this Worker's own ladder question, resolved from the
+ * caller's `site_roles` doc against `capabilities.ts` (`download` → `admin`).
  */
 export interface EstateFullAnswer extends EstateAnswer {
   /** The EFFECTIVE visibility set. ⚠️ null = "we do not know", never "no limits". */
   visibility: Catalog[] | null;
-  /** The effective ebook download capability (0009). null = the directory did not say. */
-  downloadEbooks: boolean | null;
 }
 
 /**
@@ -70,7 +73,7 @@ export async function estateAnswerFor(
   const baseUrl = env.ESTATE_AUTH_URL;
   const appToken = env.ESTATE_APP_TOKEN_AUDIOBOOK;
   if (!baseUrl || !appToken) {
-    return { status: null, stale: false, configured: false, visibility: null, downloadEbooks: null };
+    return { status: null, stale: false, configured: false, visibility: null };
   }
 
   const email = identity.email.trim().toLowerCase();
@@ -86,7 +89,6 @@ export async function estateAnswerFor(
       status: result.refresh.status,
       checkedAt: result.refresh.checkedAt,
       visibility: result.refresh.visibility,
-      downloadEbooks: result.refresh.downloadEbooks,
     });
   }
   return {
@@ -94,7 +96,6 @@ export async function estateAnswerFor(
     stale: result.stale,
     configured: true,
     visibility: result.visibility,
-    downloadEbooks: result.downloadEbooks,
   };
 }
 
