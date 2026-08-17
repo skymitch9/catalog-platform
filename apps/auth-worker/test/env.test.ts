@@ -37,10 +37,15 @@ test('appTokenFor maps each consumer to its own secret and nothing else', () => 
     ESTATE_APP_TOKEN_GAMES: 'games',
     ESTATE_APP_TOKEN_INDEX: 'idx',
     ESTATE_APP_TOKEN_AUDIOBOOK: 'ab',
+    ESTATE_APP_TOKEN_LIBRARY2: 'lib2',
   } as unknown as Env;
   assert.equal(appTokenFor(env, 'library'), 'lib');
   assert.equal(appTokenFor(env, 'games'), 'games');
   assert.equal(appTokenFor(env, 'index'), 'idx');
   assert.equal(appTokenFor(env, 'audiobook'), 'ab');
+  assert.equal(appTokenFor(env, 'library2'), 'lib2');
   assert.equal(appTokenFor({} as unknown as Env, 'library'), undefined);
+  // The second library instance's token stays optional until its Worker env
+  // is provisioned — unset means that door goes unanswered, never a crash.
+  assert.equal(appTokenFor({} as unknown as Env, 'library2'), undefined);
 });

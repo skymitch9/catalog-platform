@@ -18,7 +18,7 @@ export function normalizeEmail(email: string): string {
 
 const COLS =
   'id, email, firebase_uid, display_name, status, is_approver, is_devops, origin, note, first_seen_at, decided_at, decided_by, ' +
-  'vis_audiobook, vis_library, vis_games';
+  'vis_audiobook, vis_library, vis_games, vis_library2';
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<EstateUserRow | null> {
   const row = await db
@@ -132,12 +132,12 @@ export async function decideStatus(
     const row = await db
       .prepare(
         `UPDATE estate_user
-         SET status = ?, vis_audiobook = ?, vis_library = ?, vis_games = ?,
+         SET status = ?, vis_audiobook = ?, vis_library = ?, vis_games = ?, vis_library2 = ?,
              decided_at = datetime('now'), decided_by = ?${clearPowers}
          WHERE id = ?
          RETURNING ${COLS}`,
       )
-      .bind(input.status, f.vis_audiobook, f.vis_library, f.vis_games, input.actorId, input.id)
+      .bind(input.status, f.vis_audiobook, f.vis_library, f.vis_games, f.vis_library2, input.actorId, input.id)
       .first<EstateUserRow>();
     return row ?? null;
   }
@@ -166,12 +166,12 @@ export async function setVisibility(
   const row = await db
     .prepare(
       `UPDATE estate_user
-       SET vis_audiobook = ?, vis_library = ?, vis_games = ?,
+       SET vis_audiobook = ?, vis_library = ?, vis_games = ?, vis_library2 = ?,
            decided_at = datetime('now'), decided_by = ?
        WHERE id = ?
        RETURNING ${COLS}`,
     )
-    .bind(f.vis_audiobook, f.vis_library, f.vis_games, input.actorId, input.id)
+    .bind(f.vis_audiobook, f.vis_library, f.vis_games, f.vis_library2, input.actorId, input.id)
     .first<EstateUserRow>();
   return row ?? null;
 }

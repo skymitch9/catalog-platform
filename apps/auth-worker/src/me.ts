@@ -36,7 +36,8 @@ export interface MeAnswer {
 export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer {
   if (isOwner) {
     // §4.3: OWNER_EMAILS is approved + approver REGARDLESS of table state,
-    // and sees all three — the break-glass cannot be narrowed into a lockout.
+    // and sees every catalog (`library2`'s DEFAULT 0 included — the owner is
+    // that instance's operator) — break-glass cannot be narrowed into lockout.
     return { status: 'approved', is_approver: true, is_devops: true, visibility: [...CATALOGS] };
   }
   if (!row) {

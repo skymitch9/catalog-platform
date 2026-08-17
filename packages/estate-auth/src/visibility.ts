@@ -6,7 +6,8 @@
  * recomputes it from `status`. What a consumer DOES need locally:
  *
  *   - the canonical catalog list and order (the answer's array is canonical —
- *     `audiobook, library, games` — and so must every cached copy be);
+ *     `audiobook, library, games, library2` — and so must every cached copy
+ *     be; new catalogs append at the END, the existing entries never move);
  *   - the PUBLIC slice, because the anonymous rule is the consumer's to
  *     implement: an ABSENT or invalid token means no /seen call ever happens,
  *     and §4.5 says that caller sees `{audiobook}`;
@@ -18,8 +19,13 @@
  * shelf stays app-local forever (§1.2/§1.3).
  */
 
-/** The estate's catalogs, in canonical order (mirrors the auth Worker's list). */
-export const CATALOGS = ['audiobook', 'library', 'games'] as const;
+/**
+ * The estate's catalogs, in canonical order (mirrors the auth Worker's list).
+ * `library2` (0007) is the second library instance — its visibility column
+ * defaults to 0 on the directory, so it appears in answers only when a
+ * person was deliberately granted it (or for OWNER_EMAILS, computed).
+ */
+export const CATALOGS = ['audiobook', 'library', 'games', 'library2'] as const;
 export type Catalog = (typeof CATALOGS)[number];
 
 /**

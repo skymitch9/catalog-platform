@@ -427,6 +427,17 @@ Array order is canonical (`audiobook, library, games`), never duplicated.
 `status` keeps its exact prior meaning; the field is **additive** — a
 consumer that reads only `status` (today's `postSeen` client) is untouched.
 
+*Amended 2026-08-16 (`0007_vis_library2.sql`):* a **fourth catalog,
+`library2`** — the second library instance (friend-ingest design,
+provisioning step 8). Canonical order appends it LAST and never re-sorts the
+first three: `audiobook, library, games, library2`. Its column is
+**`DEFAULT 0`, deliberately opposite the 0002 trio's `DEFAULT 1`**: that
+catalog is another household's shelf, so ADD COLUMN backfills every existing
+row with 0 and an approval that does not deliberately widen grants nothing
+there — people are switched on by hand. `OWNER_EMAILS` sees it computed like
+everything else (the owner is that instance's operator; break-glass is never
+narrowable). The PUBLIC slice is unchanged — `{audiobook}` only.
+
 **The anonymous rule — stated here for the index to implement, because an
 absent token means no `/seen` call ever happens:** an ABSENT or invalid
 Firebase token ⇒ visibility = `{audiobook}` — the world-readable catalog per

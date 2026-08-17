@@ -527,6 +527,10 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
         <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">audiobook</button>
         <button type="button" class="chip" data-cat="library" aria-pressed="false">library</button>
         <button type="button" class="chip" data-cat="games" aria-pressed="false">games</button>
+        <!-- library2 (0007): the second library instance. Visibility DEFAULTS
+             TO 0 on the directory — every row starts unchecked here. The
+             label is a UI string; the wire vocabulary stays `library2`. -->
+        <button type="button" class="chip" data-cat="library2" aria-pressed="false">Sam's library</button>
       </div>
       <div class="cats-row-actions">
         <span id="count" class="count" aria-live="polite"></span>

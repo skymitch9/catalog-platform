@@ -1,7 +1,7 @@
 import type { RateLimiter } from './middleware/rate-limit.js';
 
 /** The consumer apps the directory knows. Adding one = a new secret + a row here. */
-export const CONSUMER_APPS = ['library', 'games', 'index', 'audiobook'] as const;
+export const CONSUMER_APPS = ['library', 'games', 'index', 'audiobook', 'library2'] as const;
 export type ConsumerApp = (typeof CONSUMER_APPS)[number];
 
 export interface Env {
@@ -88,6 +88,17 @@ export interface Env {
    * audiobook-worker), never in this repo.
    */
   ESTATE_APP_TOKEN_AUDIOBOOK?: string;
+  /**
+   * The second library instance's bearer (friend-ingest design, provisioning
+   * step 7) — declared here with the 0007 `vis_library2` column so the
+   * directory can tell which door a newcomer knocked on (origin
+   * 'seen:library2'). The secret is minted when that instance's Worker env
+   * is provisioned; until then it is simply unset (identifyApp skips unset
+   * tokens), and if the instance rides the shared `library` app token in the
+   * interim, /seen still answers its visibility correctly — the effective
+   * set is per-PERSON, not per-door.
+   */
+  ESTATE_APP_TOKEN_LIBRARY2?: string;
 
   /**
    * The audiobook catalog's Firebase service-account JSON, whole — the
@@ -177,6 +188,8 @@ export interface EstateUserRow {
   vis_audiobook: number;
   vis_library: number;
   vis_games: number;
+  /** 0007: the second library instance. ⚠️ DEFAULT 0 — see the migration header. */
+  vis_library2: number;
 }
 
 export type AppBindings = {
@@ -230,5 +243,7 @@ export function appTokenFor(env: Env, app: ConsumerApp): string | undefined {
       return env.ESTATE_APP_TOKEN_INDEX;
     case 'audiobook':
       return env.ESTATE_APP_TOKEN_AUDIOBOOK;
+    case 'library2':
+      return env.ESTATE_APP_TOKEN_LIBRARY2;
   }
 }

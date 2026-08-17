@@ -127,7 +127,7 @@ const visibilityBodySchema = z.object({ visibility: visibilitySchema }).strict()
  * the JSON so the array is the one representation consumers see.
  */
 function userJson(row: EstateUserRow) {
-  const { vis_audiobook, vis_library, vis_games, ...rest } = row;
+  const { vis_audiobook, vis_library, vis_games, vis_library2, ...rest } = row;
   return {
     ...rest,
     is_approver: row.is_approver === 1,
@@ -150,7 +150,7 @@ estateRoutes.post('/estate/seen', async (c) => {
     // A missing secret is a configuration error, not an auth failure — say
     // which, so "wrong token" and "no token was ever set" cannot be confused.
     return c.json(
-      { error: 'app_tokens_unset', fix: 'wrangler secret put ESTATE_APP_TOKEN_LIBRARY (and _GAMES, _INDEX, _AUDIOBOOK)' },
+      { error: 'app_tokens_unset', fix: 'wrangler secret put ESTATE_APP_TOKEN_LIBRARY (and _GAMES, _INDEX, _AUDIOBOOK, _LIBRARY2)' },
       503,
     );
   }
@@ -177,8 +177,10 @@ estateRoutes.post('/estate/seen', async (c) => {
   // §4.3: OWNER_EMAILS is approved regardless of table state. Computed, not
   // stored — the row keeps its honest history, the answer keeps the estate
   // recoverable when the directory is wrong about its own owner. Visibility
-  // rides the same rule: an owner sees all three regardless of stored flags,
-  // so the break-glass can never be narrowed into a lockout.
+  // rides the same rule: an owner sees EVERY catalog regardless of stored
+  // flags — `library2`'s DEFAULT 0 included, deliberately: the owner is that
+  // instance's operator (friend-ingest design §5), and the break-glass can
+  // never be narrowed into a lockout.
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
   const isOwner = owners.includes(row.email);
   const status = isOwner ? 'approved' : row.status;

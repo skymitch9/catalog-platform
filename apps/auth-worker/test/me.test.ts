@@ -20,6 +20,9 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     vis_audiobook: 1,
     vis_library: 1,
     vis_games: 1,
+    // Mirrors the DB defaults: 0002's three are DEFAULT 1, 0007's library2
+    // is DEFAULT 0 — a fixture that granted it silently would hide the point.
+    vis_library2: 0,
     ...over,
   };
 }
@@ -62,6 +65,31 @@ test('meAnswer: approved → the stored set, narrowing included', () => {
   );
 });
 
+test('meAnswer: library2 (0007) appears ONLY when deliberately granted, appended last', () => {
+  // The fixture's defaults mirror the DB's: approval alone never grants it.
+  assert.deepEqual(meAnswer(row({ status: 'approved' }), false).visibility, [
+    'audiobook',
+    'library',
+    'games',
+  ]);
+  // Granted by hand → it rides the answer, canonical order (last).
+  assert.deepEqual(meAnswer(row({ status: 'approved', vis_library2: 1 }), false).visibility, [
+    'audiobook',
+    'library',
+    'games',
+    'library2',
+  ]);
+  // Her own shape: library2 alone is a legal stored set.
+  assert.deepEqual(
+    meAnswer(row({ status: 'approved', vis_audiobook: 0, vis_library: 0, vis_games: 0, vis_library2: 1 }), false)
+      .visibility,
+    ['library2'],
+  );
+  // Pending/revoked rules unchanged: the flag is inert off-approval.
+  assert.deepEqual(meAnswer(row({ status: 'pending', vis_library2: 1 }), false).visibility, ['audiobook']);
+  assert.deepEqual(meAnswer(row({ status: 'revoked', vis_library2: 1 }), false).visibility, []);
+});
+
 test('meAnswer: revoked → {} — revocation beats the public slice', () => {
   assert.deepEqual(meAnswer(row({ status: 'revoked' }), false), {
     status: 'revoked',
@@ -79,7 +107,14 @@ test('meAnswer: is_approver mirrors the raw flag requireApprover reads', () => {
 });
 
 test('meAnswer: OWNER_EMAILS break-glass wins over every table state (§4.3)', () => {
-  const want = { status: 'approved', is_approver: true, is_devops: true, visibility: ['audiobook', 'library', 'games'] };
+  // Owners see EVERY catalog, library2's DEFAULT 0 included — the owner is
+  // that instance's operator, and break-glass is never narrowable.
+  const want = {
+    status: 'approved',
+    is_approver: true,
+    is_devops: true,
+    visibility: ['audiobook', 'library', 'games', 'library2'],
+  };
   // No row at all — the empty-directory bootstrap.
   assert.deepEqual(meAnswer(null, true), want);
   // A revoked row — the directory being wrong about its own owner.

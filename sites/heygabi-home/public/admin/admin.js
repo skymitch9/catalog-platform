@@ -76,8 +76,13 @@ import { actionBtn, confirmBtn } from '../assets/estate-controls.js';
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
 
-/** §4.5's canonical catalog order — never re-sorted, never duplicated. */
-const CATALOGS = ['audiobook', 'library', 'games'];
+/** §4.5's canonical catalog order — never re-sorted, never duplicated.
+ *  `library2` (0007) is the second library instance — visibility DEFAULTS
+ *  TO 0 there, so every row renders it unchecked until deliberately granted. */
+const CATALOGS = ['audiobook', 'library', 'games', 'library2'];
+
+/** UI labels only — the wire vocabulary stays the CATALOGS keys above. */
+const CATALOG_LABELS = { audiobook: 'audiobook', library: 'library', games: 'games', library2: "Sam's library" };
 
 /** The two apps with roles to federate. The audiobook column is a note. */
 const APPS = [
@@ -1091,7 +1096,7 @@ function catalogRow(estateUser, catKey, roleCell) {
 
   const name = document.createElement('span');
   name.className = 'cat-name';
-  name.textContent = catKey;
+  name.textContent = CATALOG_LABELS[catKey] || catKey;
   row.appendChild(name);
 
   if (Array.isArray(estateUser.visibility)) {
@@ -1173,6 +1178,16 @@ function userCard(u) {
   for (const app of APPS) {
     cats.appendChild(catalogRow(u, app.key, appRoleCell(app, u)));
   }
+
+  // The second library instance (library2, 0007): the estate's visibility
+  // checkbox renders like every catalog's — DEFAULT 0, so existing rows show
+  // it unchecked until deliberately granted — but roles are NOT federated
+  // here yet (its Worker env is a separate provisioning step; roles live on
+  // that instance's own People page). An honest note, not a broken dropdown.
+  const lib2Cell = document.createElement('span');
+  lib2Cell.className = 'cat-note';
+  lib2Cell.textContent = 'roles live on that site — not federated here yet';
+  cats.appendChild(catalogRow(u, 'library2', lib2Cell));
   li.appendChild(cats);
 
   const actions = document.createElement('div');

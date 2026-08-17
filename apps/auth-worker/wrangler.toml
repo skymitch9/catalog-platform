@@ -81,10 +81,12 @@ database_name = "estate_auth"
 database_id = "d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb"
 migrations_dir = "migrations"
 
-# Not in this file, ever: the three per-consumer secrets, plus the Firebase
+# Not in this file, ever: the per-consumer secrets, plus the Firebase
 # service-account JSON behind /api/estate/site-roles, plus the pipeline
 # trigger token behind /api/estate/ops/pipeline. At deploy time:
-#   wrangler secret put ESTATE_APP_TOKEN_LIBRARY   (and _GAMES, _INDEX)
+#   wrangler secret put ESTATE_APP_TOKEN_LIBRARY   (and _GAMES, _INDEX,
+#     _AUDIOBOOK; _LIBRARY2 joins when the second library instance's Worker
+#     env is provisioned — unset until then, deliberately)
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
 #     never paste it into a terminal line, never echo it; see firebase-sa.ts)
 #   wrangler secret put PIPELINE_TRIGGER_TOKEN     (pipe the SAME value as

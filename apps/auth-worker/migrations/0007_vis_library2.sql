@@ -1,0 +1,25 @@
+-- estate_auth 0007 — the FOURTH visibility column: `library2`, the second
+-- library instance (its own D1/bucket/hostname, same Worker code — the
+-- friend-ingest design, provisioning step 8). Design: estate-auth-design.md
+-- §4.5; encoding argument in 0002's header (a new catalog is one ADD COLUMN
+-- — this is that cheap migration, paying off argument #1).
+--
+-- ⚠️ Named for the CATALOG, not the person or the hostname: hostnames are
+-- temporary, columns are forever. `library2` matches the resource naming
+-- (`library-catalog-2nd`) and stays identity-neutral in a public repo.
+--
+-- ⚠️ DEFAULT 0 — DELIBERATELY OPPOSITE 0002's DEFAULT 1, and that is the
+-- whole point. 0002's three columns defaulted to 1 because the household
+-- expectation was "everyone already here sees the household's shelves;
+-- nothing changes for them". This catalog is ANOTHER household's shelf:
+-- the owner's family does NOT see it until each person is deliberately
+-- switched on by hand (admin UI / visibility API), and its own members do
+-- not see the household's shelves by the same token. ADD COLUMN backfills
+-- every existing row with 0 and new rows default to 0, so an approval that
+-- does not deliberately widen grants NOTHING here — the reverse of the
+-- 0002 rule, on purpose.
+--
+-- Same inertness rule as 0002: flags on pending/revoked rows are inert;
+-- /seen answers the EFFECTIVE set computed from status at read time. The
+-- stored flag is only the answer for the approved.
+ALTER TABLE estate_user ADD COLUMN vis_library2 INTEGER NOT NULL DEFAULT 0 CHECK (vis_library2 IN (0, 1));

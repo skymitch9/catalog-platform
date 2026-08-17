@@ -203,7 +203,7 @@ async function phaseA(): Promise<void> {
     r = await api('POST', '/api/estate/seen', { token: TOKENS.index, body: { email: 'bob@example.com' } });
     check('A10 /seen now answers approved', r.body.status === 'approved');
     check(
-      'A10v approval without narrowing grants ALL THREE (the 0002 defaults)',
+      'A10v approval without narrowing grants the household three and NOT library2 (0002 DEFAULT 1 / 0007 DEFAULT 0)',
       JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
       JSON.stringify(r.body.visibility),
     );
@@ -259,6 +259,35 @@ async function phaseA(): Promise<void> {
       body: { visibility: ['audiobook', 'library', 'games'] },
     });
     check('A24 re-widening restores all three', JSON.stringify(r.body.user.visibility) === '["audiobook","library","games"]');
+
+    // --- library2, the 4th catalog (0007): grantable by hand, canonical
+    // order appends it LAST, and /seen answers it like any stored flag.
+    r = await api('POST', `/api/estate/users/${bob2.id}/visibility`, {
+      body: { visibility: ['library2', 'audiobook'] },
+    });
+    check(
+      'A24v2 library2 is grantable and canonicalises LAST',
+      r.status === 200 && JSON.stringify(r.body.user.visibility) === '["audiobook","library2"]',
+      JSON.stringify(r.body.user),
+    );
+    r = await api('POST', '/api/estate/seen', { token: TOKENS.library, body: { email: 'bob@example.com' } });
+    check(
+      'A24v3 /seen carries a granted library2 verbatim',
+      r.body.status === 'approved' && JSON.stringify(r.body.visibility) === '["audiobook","library2"]',
+      JSON.stringify(r.body),
+    );
+    r = await api('GET', '/api/estate/users');
+    const bobVis = r.body.users.find((u: any) => u.email === 'bob@example.com');
+    check(
+      'A24v4 admin rows never leak the raw vis_library2 flag either',
+      !('vis_library2' in bobVis),
+      JSON.stringify(bobVis),
+    );
+    // Put bob back on the household three so later phases read as before.
+    await api('POST', `/api/estate/users/${bob2.id}/visibility`, {
+      body: { visibility: ['audiobook', 'library', 'games'] },
+    });
+
     r = await api('POST', `/api/estate/users/${bob2.id}/visibility`, { body: { visibility: ['bookface'] } });
     check('A25 an unknown catalog name is refused 400', r.status === 400, `got ${r.status}`);
     r = await api('POST', `/api/estate/users/${bob2.id}/status`, {
@@ -292,19 +321,19 @@ async function phaseA(): Promise<void> {
     r = await api('POST', '/api/estate/seen', { token: TOKENS.library, body: { email: OWNER } });
     check('A18 OWNER_EMAILS /seen answers approved regardless of table state', r.body.status === 'approved');
     check(
-      'A18v OWNER_EMAILS sees all three, computed — break-glass cannot be narrowed into lockout',
-      JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
+      'A18v OWNER_EMAILS sees every catalog (library2 included), computed — break-glass cannot be narrowed into lockout',
+      JSON.stringify(r.body.visibility) === '["audiobook","library","games","library2"]',
       JSON.stringify(r.body.visibility),
     );
 
     // GET /estate/me: the owner's own answer, break-glass included.
     r = await api('GET', '/api/estate/me');
     check(
-      'A28 /me for OWNER_EMAILS: approved + approver + all three, computed',
+      'A28 /me for OWNER_EMAILS: approved + approver + every catalog, computed',
       r.status === 200 &&
         r.body.status === 'approved' &&
         r.body.is_approver === true &&
-        JSON.stringify(r.body.visibility) === '["audiobook","library","games"]',
+        JSON.stringify(r.body.visibility) === '["audiobook","library","games","library2"]',
       JSON.stringify(r.body),
     );
 

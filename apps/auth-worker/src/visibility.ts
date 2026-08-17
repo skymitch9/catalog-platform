@@ -12,8 +12,12 @@
 /**
  * The estate's catalogs, in canonical order. Adding one = a new vis_ column
  * (an ADD COLUMN migration — see 0002's header for why flags) + a row here.
+ * New catalogs append at the END — the order is load-bearing across repos
+ * (§4.5: "array order is canonical, never re-sorted"), so the existing
+ * three never move. `library2` (0007) is the second library instance;
+ * unlike the first three its column DEFAULTS TO 0 — see 0007's header.
  */
-export const CATALOGS = ['audiobook', 'library', 'games'] as const;
+export const CATALOGS = ['audiobook', 'library', 'games', 'library2'] as const;
 export type Catalog = (typeof CATALOGS)[number];
 
 /**
@@ -22,11 +26,12 @@ export type Catalog = (typeof CATALOGS)[number];
  */
 export const PUBLIC_CATALOGS: readonly Catalog[] = ['audiobook'];
 
-/** The three flag columns as estate_user stores them. */
+/** The flag columns as estate_user stores them (0002 + 0007). */
 export interface VisibilityFlags {
   vis_audiobook: number;
   vis_library: number;
   vis_games: number;
+  vis_library2: number;
 }
 
 export function isCatalog(v: unknown): v is Catalog {
@@ -44,15 +49,17 @@ export function storedVisibility(row: VisibilityFlags): Catalog[] {
   if (row.vis_audiobook === 1) out.push('audiobook');
   if (row.vis_library === 1) out.push('library');
   if (row.vis_games === 1) out.push('games');
+  if (row.vis_library2 === 1) out.push('library2');
   return out;
 }
 
-/** The stored set as the three flag values, for writes. */
+/** The stored set as the flag values, for writes. */
 export function visibilityToFlags(visibility: readonly Catalog[]): VisibilityFlags {
   return {
     vis_audiobook: visibility.includes('audiobook') ? 1 : 0,
     vis_library: visibility.includes('library') ? 1 : 0,
     vis_games: visibility.includes('games') ? 1 : 0,
+    vis_library2: visibility.includes('library2') ? 1 : 0,
   };
 }
 
@@ -60,7 +67,8 @@ export function visibilityToFlags(visibility: readonly Catalog[]): VisibilityFla
  * The EFFECTIVE set — what `/seen` answers, already combined with status so
  * consumers apply it as-is and never recompute:
  *
- *   approved → the stored set (all three unless an approver narrowed)
+ *   approved → the stored set (the 0002 defaults grant the first three;
+ *              `library2` is DEFAULT 0 — granted only by hand, 0007)
  *   pending  → the public slice {audiobook} — a pending member sees what the
  *              anonymous internet sees, nothing more
  *   revoked  → {} — revocation beats the public slice on the estate's own

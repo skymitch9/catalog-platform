@@ -47,6 +47,11 @@ const SOURCE_FOR_CATALOG: Record<Catalog, string> = {
   audiobook: 'audiobook',
   library: 'library',
   games: 'game',
+  // The second library instance (0007). NOT federated yet — its INDEX_URL /
+  // INDEX_PUSH_TOKEN are deliberately unset (friend-ingest design §7), so no
+  // `library2` rows exist and this scope entry matches nothing: fail-closed
+  // by construction until federation day mints the push token.
+  library2: 'library2',
 };
 
 export function sourcesForScope(scope: readonly Catalog[]): string[] {

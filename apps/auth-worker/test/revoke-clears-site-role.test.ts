@@ -506,7 +506,7 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     id: 1, email: 'someone@example.com', firebase_uid: 'uid-1', display_name: 'Someone',
     status: 'approved', is_approver: 0, is_devops: 0, origin: 'seen:library', note: null,
     first_seen_at: '2026-08-14 00:00:00', decided_at: null, decided_by: null,
-    vis_audiobook: 1, vis_library: 1, vis_games: 1, ...over,
+    vis_audiobook: 1, vis_library: 1, vis_games: 1, vis_library2: 0, ...over,
   };
 }
 

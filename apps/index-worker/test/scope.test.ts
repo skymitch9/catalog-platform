@@ -234,13 +234,30 @@ test('a full-visibility member sees every catalog; the owner needs no directory 
     f.restore();
   }
 
-  // OWNER_EMAILS: all three computed, even with the estate unreachable (§4.3).
+  // OWNER_EMAILS: every catalog computed — library2 (0007) included, even
+  // though nothing pushes `library2` rows yet (federation later; the scope
+  // entry matches nothing and costs nothing) — even with the estate
+  // unreachable (§4.3).
   const down = stubSeen('unreachable');
   try {
     const body = await search(memberEnv(new FakeDB(estateRows()), OWNER));
-    assert.deepEqual(body.scope, ['audiobook', 'library', 'games']);
+    assert.deepEqual(body.scope, ['audiobook', 'library', 'games', 'library2']);
   } finally {
     down.restore();
+  }
+});
+
+test('a member granted library2 carries it in scope; with no federated rows it matches nothing', async () => {
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook', 'library2'] });
+  try {
+    const body = await search(memberEnv(new FakeDB(estateRows()), 'member@example.com'));
+    // The scope is the /seen answer verbatim — library2 rides it…
+    assert.deepEqual(body.scope, ['audiobook', 'library2']);
+    // …but the index holds no `library2` rows (INDEX_URL/push token
+    // deliberately unset until federation), so only audiobook entries match.
+    assert.deepEqual(sourcesIn(body), ['audiobook']);
+  } finally {
+    f.restore();
   }
 });
 

@@ -110,6 +110,20 @@ test('parseVisibility: canonical order enforced, duplicates collapsed, garbage r
   assert.equal(parseVisibility(undefined), null);
 });
 
+test('parseVisibility: library2 (the 4th catalog, 0007) is a known name, canonicalised LAST', () => {
+  assert.deepEqual(parseVisibility(['library2']), ['library2']);
+  assert.deepEqual(parseVisibility(['library2', 'audiobook']), ['audiobook', 'library2']);
+  assert.deepEqual(parseVisibility(['library2', 'games', 'library', 'audiobook']), [
+    'audiobook',
+    'library',
+    'games',
+    'library2',
+  ]);
+  // Only the exact name — near-misses die at the boundary like any garbage.
+  assert.equal(parseVisibility(['library-2']), null);
+  assert.equal(parseVisibility(['library3']), null);
+});
+
 test('postSeenAnswer carries the effective visibility verbatim, canonicalised', async () => {
   const r = await postSeenAnswer(opts(okFullFetch('approved', ['games', 'audiobook'])), me);
   assert.deepEqual(r, { status: 'approved', visibility: ['audiobook', 'games'] });
