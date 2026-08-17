@@ -15,6 +15,51 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🔴 Audiobook Phase 3 (enforce) — BLOCKED on soak evidence; do not flip
+
+**Evidence pack:
+[`info/audiobook-auth-soak-2026-08-16.md`](info/audiobook-auth-soak-2026-08-16.md)
+(2026-08-16 23:21 MST). Verdict: NOT ENOUGH EVIDENCE — re-run in ~7 days.**
+`ESTATE_CHECK` stays `"shadow"`. Nothing was flipped.
+
+Measured: prod-lane reporter live **1h 52m** (the server's 4h 17m is *not* the
+soak — until the prod promote at ~21:29 MST, prod visitors reported nothing).
+A 5-minute tail caught **3 worker requests, all of them the probes themselves**
+— **zero organic gate decisions**. Household false denials: **0 of 0**, i.e.
+⚠️ **unmeasured, not clean.** Per the design's own rule, a surface nobody
+exercised has not soaked.
+
+Blockers to clear before the re-run is worth taking (all out of scope for the
+read-only pack — none were done):
+
+1. 🔴 **Shadow is tail-only and unrecoverable.** No `[observability]`, D1, KV,
+   AE or logpush binding on `audiobook-worker` (nor any sibling). The ~4h
+   already soaked is **gone**, and every future pack is a 5-minute sample
+   until `[observability] enabled = true` ships. ⚠️ Enabling it also *retains*
+   the `email` the log line carries in cleartext — hash it first.
+2. 🔴 **The flip criterion is currently unfalsifiable.** `reportGate()` fires
+   from a `finally` block and the payload has no success/failure field, so a
+   `would_deny:true` line cannot be told apart from a gate merely agreeing
+   with a write `firestore.rules` already refused. Needs one `succeeded`
+   boolean.
+3. 🟠 **2 of 25 gated actions send nothing** — `warning.modDelete`
+   (`site/user-warnings.js:93`; the module doesn't import `gate-shadow.js` at
+   all) and `read.setSlot` (`site/club-reads.js:608`). ⚠️ **Owner decision
+   needed:** `warning.modDelete` reads as a moderator sweep, but the only live
+   path is an *author self-delete* on a `allow delete: if true` collection —
+   if enforce applies a moderator floor to it, **every ordinary member
+   self-deleting their own warning is denied**, and the shadow is structurally
+   blind to it.
+4. 🟠 **Exercise the surfaces deliberately** — highest value actor is a
+   **household club manager who is not ladder-admin** (`club.setWebhook` /
+   `club.clearWebhook` / `club.claimManager` are `administerClub`, admin-floor,
+   club island **off**; `club.claimManager` is additionally self-blocking —
+   it's how one *becomes* a manager).
+
+Owner action available now: `wrangler d1 execute estate_auth --remote` was
+**blocked by the permission classifier**, so the estate membership census
+(how many approved members, what visibility) is unverified.
+
 ## 0. 🤖 GABI Discord bot — LIVE 2026-08-16; the build queue that follows
 
 State: registered (**GABI**, id `1538775435880562758`), worker deployed at
