@@ -24,12 +24,16 @@
  * is two booleans, never a re-derivation. Probed once per signed-in uid; a
  * failed probe fails quiet: the links are conveniences, the pages exist
  * without them and enforce themselves.
+ *
+ * v3 (owner order 2026-08-16: "remove the admin button near the search bar
+ * since we have the admin section below"): the who-extra chip is GONE — the
+ * Admin card is now the only admin affordance on the page. The card logic
+ * below is unchanged; only the slot toggles were removed with the element.
  */
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 
 const search = document.getElementById('find-search');
-const adminSlot = document.getElementById('find-admin');
 const adminCard = document.getElementById('admin-card-li'); // the front-door Admin card (owner, 2026-08-15)
 // The card's approver-only links (Members → /admin, the todo board). Status
 // stays for both tiers. Resolved by href so index.html needs no new ids.
@@ -40,14 +44,13 @@ const approverOnlyLinks = adminCard
     })
   : [];
 
-if (search && adminSlot) {
+if (search && adminCard) {
   let probedFor = null;
 
   search.addEventListener('estate-search:auth', async (e) => {
     const user = e.detail.user;
     if (!user) {
-      adminSlot.hidden = true;
-      if (adminCard) adminCard.hidden = true;
+      adminCard.hidden = true;
       probedFor = null;
       return;
     }
@@ -61,20 +64,16 @@ if (search && adminSlot) {
       });
       if (probedFor !== user.uid) return;
       if (!r.ok) {
-        adminSlot.hidden = true;
-        if (adminCard) adminCard.hidden = true;
+        adminCard.hidden = true;
         return;
       }
       const me = await r.json();
       const approver = me?.is_approver === true;
       const devops = me?.is_devops === true || approver;
-      adminSlot.hidden = !approver;
-      if (adminCard) {
-        adminCard.hidden = !devops;
-        approverOnlyLinks.forEach((a) => {
-          a.hidden = !approver;
-        });
-      }
+      adminCard.hidden = !devops;
+      approverOnlyLinks.forEach((a) => {
+        a.hidden = !approver;
+      });
     } catch {
       /* a failed probe fails quiet — the links are conveniences */
     }

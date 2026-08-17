@@ -318,13 +318,6 @@ h2::after {
 
 #find { margin-bottom: clamp(2rem, 5vw, 3rem); }
 
-#find-admin {
-  color: var(--et-accent);
-  font-weight: 600;
-  text-decoration: underline;
-}
-#find-admin a { color: inherit; text-decoration: inherit; }
-
 /* ---- the catalogue cards ---------------------------------------------------- */
 
 ul.catalogues {
@@ -336,10 +329,11 @@ ul.catalogues {
 }
 
 @media (min-width: 52rem) {
-  /* 2×2 since Universes joined (owner: top category, 2026-08-15); the
-     approver-only Admin card, when revealed, spans the full row below. */
+  /* 2×2 since Universes joined (owner: top category, 2026-08-15). The Admin
+     card used to span the full row here; since 2026-08-16 (owner: "move
+     admin in so it matches with the other 5 tabs and looks less silly") it
+     sits in the grid as an ordinary cell at every width. */
   ul.catalogues { grid-template-columns: repeat(2, 1fr); }
-  #admin-card-li { grid-column: 1 / -1; }
 }
 /* The Admin card is a container of three destinations, not one link — a div
    wearing .card so nested anchors stay valid HTML. */
@@ -627,7 +621,9 @@ footer a.more:hover svg { transform: translateX(3px); }
       scan
       hint="“Do we own this in any format?” — one title, checked against every shelf at once. Anyone can search the audiobook shelf; household members sign in with Google to search every shelf they can see."
     >
-      <span slot="who-extra" id="find-admin" hidden> · <a href="/admin">Admin</a></span>
+<!-- The who-extra Admin chip lived here until 2026-08-16 (owner: "remove
+           the admin button near the search bar since we have the admin section
+           below") — the Admin card is now the page's one admin affordance. -->
     </estate-search>
   </section>
 
@@ -697,7 +693,7 @@ footer a.more:hover svg { transform: translateX(3px); }
           <span class="name">Books</span>
           <p class="what">Paper-and-ebook shelves — one per household, linked as one estate.</p>
           <p class="card-links">
-            <a href="https://library.heygabi.ai" target="_blank" rel="noopener">Library<span class="sr-only"> (opens in a new tab)</span></a>
+            <a href="https://library.heygabi.ai" target="_blank" rel="noopener">!Sky<span class="sr-only"> (opens in a new tab)</span></a>
             <a href="https://padhard.heygabi.ai" target="_blank" rel="noopener">Samantha<span class="sr-only"> (opens in a new tab)</span></a>
           </p>
         </div>
