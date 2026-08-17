@@ -141,14 +141,26 @@ an hour are in
    `unknown_action`, and the log line now carries `club_claimed`), and the
    site half rides the next owner-worded promote to prod.
 
-5. 🧑 **OWNER QUESTION, opened 2026-08-17 — should `manageClub` follow
-   `administerClub` down to a moderator floor?** As it stands a site
-   moderator cannot toggle a claimed club's features/joinMode, while a
-   rankless member who claimed that club can. The same inversion existed
-   before this package (manageClub has been island-held at an admin floor
-   since the matrix was written) and this build deliberately did NOT touch
-   it: lowering a floor is access-INCREASING, so it is confirmed, not
-   assumed. One line in `capabilities.ts` plus `canManageClub` in
+5. 🧑 **OWNER QUESTION — HALF ANSWERED 2026-08-17 by the MANAGECLUB SPLIT
+   (option B); the rest is still open.** The question was whether
+   `manageClub` should follow `administerClub` down to a moderator floor,
+   because a site moderator could not touch a claimed club while a rankless
+   member who claimed it could.
+   ✅ **Decided and shipped:** the READ LIFECYCLE — `read.finish`,
+   `read.remove`, `read.revealRatings` — moved to `operateClub` (island on),
+   i.e. manager-of-that-club **or** site moderator+. `firestore.rules`
+   enforces it live (36/36 smoke), the worker's dormant arms match, and the
+   UI now renders those controls for club managers and moderators. Written up
+   whole in [`DONE.md`](DONE.md).
+   ⚠️ **Still open, and NARROWER than before:** `features`, `joinMode` and
+   `deleteClub` keep the `admin` floor, so the inversion survives for those
+   three — a rankless club manager may toggle their club's features; a site
+   moderator may not. The owner's line was "running the reading" vs
+   "destroying the thing", which settles `deleteClub` (it stays) but does
+   **not** obviously settle `features`/`joinMode` — those are neither
+   destructive nor part of running the reading. That is the actual remaining
+   question. Lowering a floor is access-INCREASING, so it stays confirmed,
+   not assumed: one line in `capabilities.ts` plus `canManageClub` in
    `firestore.rules` if the answer is yes.
 
 Owner action available now: `wrangler d1 execute estate_auth --remote` was

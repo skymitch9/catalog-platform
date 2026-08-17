@@ -83,7 +83,7 @@ still approved?" — a Worker can, on every request. That is the migration.
 | `claimManagerRole` (stamps own uid into `managerUids`) | RESTRICTED field → admin-only since 2026-08-16 (TOFU claiming on unclaimed clubs) | **worker** — claiming becomes an explicit endpoint with audit |
 | `setMemberRole`, `removeMemberBySlug`, `acceptRequest`, `rejectRequest`, `inviteMember` | shape-only (presentation roles) | **worker** for the mod-tier ops; plain joins/leaves stay browser-direct |
 | `leaveClub` (incl. host-transfer transaction) | open | browser-direct (member action; the transfer is why member-doc roles stay shape-only) |
-| `deleteClub` | `canManageClub` once claimed | **worker** — `manageClub`, estate-checked |
+| `deleteClub` | `canManageClub` once claimed | **worker** — `manageClub`, estate-checked. ⚠️ **Did NOT move in the 2026-08-17 MANAGECLUB SPLIT** — this is the destructive row option B deliberately kept at the admin floor |
 | Edit-modal name/description/emoji (any member) | open by design | browser-direct |
 
 ### club-read.html (reads, discussion) via club-reads.js
@@ -91,7 +91,8 @@ still approved?" — a Worker can, on every request. That is the migration.
 |---|---|---|
 | `startRead` | open (member action) | browser-direct |
 | `setReadSchedule` (milestones — OPERATIONAL) | `canOperateClub` | **worker** — `operateClub` |
-| `finishRead` / `removeRead` / slot / ratings-reveal (STRUCTURAL) | `canManageClub` | **worker** — `manageClub` |
+| `finishRead` / `removeRead` / ratings-reveal (LIFECYCLE) | `canOperateClub` — **club managers + site moderator, `firestore.rules` TODAY** (MANAGECLUB SPLIT, 2026-08-17) | **worker** — `operateClub` |
+| read `slot` assignment (STRUCTURAL) | `canManageClub` | **worker** — `manageClub`. Left behind by the split on purpose: nothing UPDATES `slot` (stamped at create), so this guards re-slotting alone |
 | `updateReadLabel`, `commentCount`/`ratingCount` bumps | open | browser-direct |
 | `addComment`, `toggleReaction`, `togglePin` | open shape | browser-direct; `deleteComment` by a mod → **worker** later (own-delete stays direct) |
 | `setProgress` / `setChapterProgress` | open | browser-direct |
@@ -393,11 +394,21 @@ re-create the self-blocking AND diverge from `firestore.rules`, which cannot
 test a rung and enforces "signed in". `CLAIM_UNCLAIMED_FLOOR` in
 capabilities.ts is the one-line lever if the owner ever means the rung.
 
-⚠️ **Known inversion, NOT changed by this build:** `manageClub` keeps its
-`admin` floor while being island-held, so a site moderator still cannot
-toggle a claimed club's features though a rankless club manager can. That
-predates 2026-08-17; lowering it is a real widening and is an owner
-question in `docs/TODO.md`, not a silent fix.
+⚠️ **The inversion above was HALF answered later the same day — the
+MANAGECLUB SPLIT (owner decision, option B verbatim).** `manageClub` still
+keeps its `admin` floor while being island-held, so a site moderator still
+cannot toggle a claimed club's `features`/`joinMode` though a rankless club
+manager can. What the owner DID decide is the read lifecycle: `read.finish`,
+`read.remove` and `read.revealRatings` moved to `operateClub` (island on) —
+manager-of-this-club **or** site moderator+ — while `club.delete` and
+`club.updateStructural` stayed exactly where they were.
+
+The line drawn is **"running the reading" vs "destroying the thing"**, not
+"club-scoped vs site-wide". So the remaining open question is narrower than
+it was: only `features`/`joinMode`/`deleteClub` still sit above the site
+moderator. `firestore.rules` enforces the split LIVE (audiobook_catalog
+`f3f0a3f`, deployed + **36/36 REST smoke assertions**), and the worker's
+dormant arms match.
 
 ⚠️ **Unlike every other row, these two are enforced by `firestore.rules`
 TODAY**, not only by the dormant worker — the site's live gate was changed in
@@ -409,8 +420,8 @@ the same package (audiobook_catalog `84009e7`, deployed and smoke-tested).
 | `rate` / `trackReading` / club member actions | ✅* | ✅ | ✅ | ✅ | ✅ | ✅ | rules (shape now; + uid binding after Phase 5). *Today open to all; Phase 5 narrows to "signed in", not to `member` — rating a book was never meant to need a granted role |
 | `download` (shelf/Drive file access) | | ✅ | ✅ | ✅ | ✅ | ✅ | **worker** Phase 4; Drive parity via reconciler |
 | `upload` (inbox → validated promote) | | | ✅ | ✅ | ✅ | ✅ | **worker** Phase 4 |
-| `operateClub` (schedule, polls mgmt, next meeting, membership ops, content deletes — any club) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 (club managers get it on their own club) |
-| `manageClub` (structural: features, joinMode, read lifecycle, club delete — any club) | | | | | ✅ | ✅ | **worker** Phase 3 (club managers on their own club) |
+| `operateClub` (schedule, polls mgmt, next meeting, membership ops, content deletes, **read lifecycle** — any club) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 + `firestore.rules` today for the read lifecycle (club managers get it on their own club). Finish/remove/reveal joined this row in the 2026-08-17 MANAGECLUB SPLIT |
+| `manageClub` (structural: features, joinMode, read `slot`, **club delete** — any club) | | | | | ✅ | ✅ | **worker** Phase 3 (club managers on their own club). ⚠️ The destructive half; option B deliberately left it here |
 | `administerClub` (the club's own settings — the Discord webhook) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 + `firestore.rules` today — **club managers hold it on their own club** (2026-08-17) |
 | `claimClub` (writing `managerUids`) | | | | ✅ | ✅ | ✅ | **worker** Phase 3 + `firestore.rules` today — **never** club managers; an UNCLAIMED club is first-come-first-served to any live session |
 | `removeAnyReview` | | | | | ✅ | ✅ | **worker** Phase 3 |

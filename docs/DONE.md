@@ -13,6 +13,106 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔀 The MANAGECLUB SPLIT — read lifecycle to manager-or-moderator — ✅ BUILT + DEPLOYED + SMOKE-VERIFIED 2026-08-17
+
+**Owner decision, option B verbatim:** read-lifecycle actions (finishing a
+read, removing one, revealing ratings) go to MANAGER-OR-MODERATOR like the
+webhook split did; genuinely destructive actions (deleting a club, structural
+edits) STAY admin-only.
+
+**The line is "running the reading" vs "destroying the thing"** — not
+"club-scoped vs site-wide". That is the sentence to keep; every detail below
+follows from it.
+
+### What moved
+
+| Action | Was | Now |
+|---|---|---|
+| `read.finish` | `cap('manageClub', true)` | `cap('operateClub', true)` |
+| `read.remove` | `cap('manageClub', true)` | `cap('operateClub', true)` |
+| `read.revealRatings` | `cap('manageClub', true)` | `cap('operateClub', true)` |
+| `club.delete` | `cap('manageClub', true)` | **unchanged** |
+| `club.updateStructural` | `cap('manageClub', true)` | **unchanged** |
+
+`operateClub` is floor `moderator` and island-held, so `clubCan()` resolves
+`cap('operateClub', true)` as exactly **manager-of-THIS-club OR site
+moderator+** — verified against `capabilities.ts` before building, and the
+same class every other `club.*` row already sat on.
+
+⚠️ **The worker delta is the MODERATOR arm alone, and this is the part worth
+remembering.** A bound club manager could ALWAYS finish/remove/reveal on their
+own club, because `manageClub` is in `CLUB_MANAGER_CAPABILITIES` — the island
+already carried it. What was refused was the site moderator, by `manageClub`'s
+admin floor. So in the worker this is a widening for moderators and a no-op
+for managers; the change a PERSON notices is in `firestore.rules` and the UI.
+
+### The live gate (audiobook_catalog `f3f0a3f`, rules deployed)
+
+Read-doc field tiers went from two to three. `status`, `finishedAt`,
+`ratingsRevealed`, `revealedAt` left `readStructuralFieldsChanged` for a new
+`readLifecycleFieldsChanged` on `canOperateClub`; the reads `allow delete`
+moved the same way. Both lanes. Its old comment — *"Deliberately NOT
+canOperateClub: read deletes are structural"* — is precisely what option B
+overruled.
+
+⚠️ **`slot` stayed behind on `canManageClub`, measured not assumed.** Nothing
+UPDATES it: `startRead` stamps it at create (an open member action) and
+finish/remove edit the CLUB's `activeSlots` array instead. So that tier now
+guards re-slotting an existing read, which no client does.
+
+### The UI, and the bug the split exposed
+
+The Finish/Abandon/Remove block and the ratings Reveal button were gated on
+`isMod()` — display-name host/mod **plus the site admin**. That was wrong in
+BOTH directions: it drew three buttons for a display-name host whose Google
+account was never secured (rules refuse them), and it hid the controls from a
+site moderator rules now admits. Both now use the webhook field's idiom: a UI
+precondition AND the rules mirror, with a **worded refusal** in between rather
+than a control that fails. `club-read.html` resolves `getLiveUser()` for the
+island check, which it never needed before.
+
+`removeRead`'s permission error carried no `need` at all, so a refusal read as
+a bare "you don't have permission" with nothing to act on. All three now name
+*this club's manager role, or the site moderator role*.
+
+### Verified
+
+- **36/36 REST smoke assertions** against the **deployed** rules
+  (`audiobook_catalog/scripts/smoke_club_manager_rules.py`), including the
+  site-moderator override on a club they do not manage, and the guard that
+  slot / joinMode / **the club delete** all still refuse a moderator. Cleanup
+  verified independently afterwards (no scratch club, read, role doc or
+  synthetic user left).
+- worker `150/150`; audiobook vitest `569/569`; audiobook pytest `1076
+  passed`; flake8 `0` under the repo's own CI flags.
+- worker deployed, **still `ESTATE_CHECK = "shadow"`** — version
+  `fc7450f4-8537-4358-acb8-e903610ebc01`. The gate acts on nothing; this only
+  changes what the shadow log SAYS it would do.
+
+### ⚠️ Two ways the smoke script was lying, found by running it
+
+1. **A crashed run inverted the next one.** The first attempt died mid-way and
+   left `site_roles/zz-clubmgr-smoke-b = moderator` behind. On the re-run B
+   therefore passed the ROSTER gate, claimed the club, became a bound manager,
+   and **sixteen "B is refused" assertions came back 200** — not one meaning
+   what it said. The clean slate now deletes the synthetic role docs up front.
+2. **The kill was a `print()`.** A `⚠️` in printed output raises
+   `UnicodeEncodeError` on this Windows cp1252 console — after the scratch data
+   is created and before cleanup. That is *how* (1) happened.
+3. A third assertion was **vacuous**: it re-wrote `joinMode` with the value the
+   club already had. Rules gate on `diff().affectedKeys()`, so a no-op write
+   never reaches the gate and returns 200 — indistinguishable from a permitted
+   one, in the one direction where it matters.
+
+### What rides the next promote
+
+The site half (`site/club.html`, `site/club-read.html`, `site/clubs.js`,
+`site/club-reads.js`) is on `main` → `/dev/` only. ⚠️ **Until an owner-worded
+promote, prod's club UI still gates these controls on `isMod()`** — the RULES
+are project-wide and already permit the moderator, so prod is currently
+stricter in the UI than the gate behind it. That is the safe direction, but it
+means a site moderator sees no Finish/Remove/Reveal on prod yet.
+
 ## 🔒 Revocation should clear the flags, not just the status (audit finding, 2026-08-16)
 
 *Landed here 2026-08-17 by the docs hygiene sweep — the "what is left" half SHIPPED the same day it was written and the section never moved. VERIFIED in the tree 2026-08-17: `apps/auth-worker/src/estate-db.ts:128` appends `, is_approver = 0, is_devops = 0` to the revoke UPDATE, and `migrations/0006_revoke_clears_powers.sql` exists for rows revoked earlier (the 2026-08-16 handoff records it applied `--remote`, 0 rows, deployed as `43a26680`). The re-approval question the item raised is answered by construction — the flags are cleared AT REVOKE and the approve path never sets them — though nobody has exercised a revoke→re-approve round trip against the live directory.*
