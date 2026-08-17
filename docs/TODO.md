@@ -42,14 +42,19 @@ read-only pack — none were done):
    `would_deny:true` line cannot be told apart from a gate merely agreeing
    with a write `firestore.rules` already refused. Needs one `succeeded`
    boolean.
-3. 🟠 **2 of 25 gated actions send nothing** — `warning.modDelete`
-   (`site/user-warnings.js:93`; the module doesn't import `gate-shadow.js` at
-   all) and `read.setSlot` (`site/club-reads.js:608`). ⚠️ **Owner decision
-   needed:** `warning.modDelete` reads as a moderator sweep, but the only live
-   path is an *author self-delete* on a `allow delete: if true` collection —
-   if enforce applies a moderator floor to it, **every ordinary member
-   self-deleting their own warning is denied**, and the shadow is structurally
-   blind to it.
+3. 🟠 **1 of 26 gated actions sends nothing** — `read.setSlot`
+   (`site/club-reads.js:608`). ✅ **The content-warning half is CLOSED
+   2026-08-17** (owner-approved): the action was SPLIT into
+   `warning.selfDelete` (`{kind:'signedIn'}`, member floor) and
+   `warning.modDelete` (`operateClub`, unchanged), `site/user-warnings.js`
+   now imports `gate-shadow.js` and reports the right one per case, and
+   `firestore.rules` was tightened from `allow delete: if true` to
+   author-or-moderator on `user_content_warnings{,_dev}` (author bound by a
+   new `authorUid` field; rules deployed and smoke-tested). So the owner
+   decision this item asked for is answered — a member self-delete is a
+   member floor and will not be denied at enforce. ⚠️ Still unmeasured: the
+   worker must be **deployed** before `warning.selfDelete` stops logging as
+   `unknown_action`, and neither warning action has an organic report yet.
 4. 🟠 **Exercise the surfaces deliberately** — highest value actor is a
    **household club manager who is not ladder-admin** (`club.setWebhook` /
    `club.clearWebhook` / `club.claimManager` are `administerClub`, admin-floor,

@@ -59,7 +59,16 @@ export const ACTION_GATES: Readonly<Record<string, GateRule>> = {
   'review.submit': { kind: 'signedIn' },
   'review.update': { kind: 'signedIn' },
   'review.delete': cap('removeAnyReview', false),
-  // content-warning mod sweep (site-wide, not a club surface)
+  // Reader content notes, SPLIT 2026-08-17 (owner-approved) after the
+  // 2026-08-16 soak audit's blocker 3: one action could not describe both
+  // halves of this surface, and a moderator floor on the wrong half denies
+  // every member removing their OWN note. Now the floors are separate:
+  //   selfDelete — your own note. Member floor: a live session, nothing more.
+  //   modDelete  — anyone else's. Moderator floor, site-wide (not a club
+  //                surface), so the club island never holds it.
+  // firestore.rules enforces the same split today: authorUid == uid, or
+  // site_roles moderator+ (audiobook_catalog canDeleteUserWarning()).
+  'warning.selfDelete': { kind: 'signedIn' },
   'warning.modDelete': cap('operateClub', false),
   // club management (§1 club.html table)
   'club.updateStructural': cap('manageClub', true),

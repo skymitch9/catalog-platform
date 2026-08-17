@@ -160,6 +160,30 @@ test('gateDecision: review.submit needs only a live session (the Phase 5 measure
   );
 });
 
+test('gateDecision: the content-note split — self is a member floor, mod is not', () => {
+  // The 2026-08-17 split (soak blocker 3): one action could not describe both
+  // halves of the surface, and a moderator floor on a SELF delete denies every
+  // ordinary member removing their own note. A plain member passes selfDelete…
+  assert.deepEqual(
+    gateDecision({ action: 'warning.selfDelete', tokened: true, role: 'member', estateStatus: 'approved', clubManager: false }),
+    { wouldDeny: false, reason: null },
+  );
+  // …and is refused modDelete, which stays moderator+.
+  assert.deepEqual(
+    gateDecision({ action: 'warning.modDelete', tokened: true, role: 'member', estateStatus: 'approved', clubManager: false }),
+    { wouldDeny: true, reason: 'lacks_operateClub' },
+  );
+  assert.equal(
+    gateDecision({ action: 'warning.modDelete', tokened: true, role: 'moderator', estateStatus: 'approved', clubManager: false }).wouldDeny,
+    false,
+  );
+  // Content notes are site-wide, so the club island never confers modDelete.
+  assert.equal(
+    gateDecision({ action: 'warning.modDelete', tokened: true, role: 'member', estateStatus: 'approved', clubManager: true }).wouldDeny,
+    true,
+  );
+});
+
 test('gateDecision: estate revoked refuses even a standing admin role — the incident, killed', () => {
   const v = gateDecision({ action: 'review.delete', tokened: true, role: 'admin', estateStatus: 'revoked', clubManager: false });
   assert.deepEqual(v, { wouldDeny: true, reason: 'estate_revoked' });
