@@ -11,9 +11,9 @@
  * resolution from git history — it was a misread brief, not lost work.
  *
  * What it does:
- *   - reads localStorage `hg_theme` ('classic'|'apple'|'cyberpunk'|'retro')
- *     and `hg_mode` ('auto'|'light'|'dark'); origin-scoped, so each site
- *     keeps its own choice for free;
+ *   - reads localStorage `hg_theme` ('classic'|'apple'|'cyberpunk'|'retro'
+ *     |'hearts') and `hg_mode` ('auto'|'light'|'dark'); origin-scoped, so
+ *     each site keeps its own choice for free;
  *   - stamps <html data-theme="…" data-mode="light|dark"> — data-mode is
  *     always the RESOLVED mode ('auto' is resolved against
  *     prefers-color-scheme and re-resolved live when the OS flips);
@@ -26,15 +26,21 @@
  *
  * The per-site DEFAULT is identity (owner, 2026-08-13): a site declares its
  * classic look via <html data-default-theme="…"> — apex 'classic', /admin +
- * library 'apple', audiobooks 'cyberpunk', games 'retro'. Unset falls back
- * to 'apple'.
+ * library 'apple', audiobooks 'cyberpunk', games 'retro', padhard (the
+ * library's second instance) 'hearts'. Unset falls back to 'apple'.
+ *
+ * ⚠️ `data-default-theme` is deliberately NOT validated against THEMES: a
+ * consumer may declare a default this copy of the switcher has not heard of
+ * yet (vendored copies drift by days), and stamping the name it asked for
+ * degrades to an unstyled-but-honest page rather than silently wearing
+ * apple. A STORED choice is validated, because that one came from this UI.
  */
 
 (function () {
   'use strict';
 
   var docEl = document.documentElement;
-  var THEMES = ['classic', 'apple', 'cyberpunk', 'retro'];
+  var THEMES = ['classic', 'apple', 'cyberpunk', 'retro', 'hearts'];
   var MODES = ['auto', 'light', 'dark'];
   var DEFAULT_THEME = docEl.getAttribute('data-default-theme') || 'apple';
   var media = window.matchMedia('(prefers-color-scheme: dark)');

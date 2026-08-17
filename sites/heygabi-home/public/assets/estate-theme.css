@@ -3,7 +3,7 @@
  * One implementation, consumers adopt — the same move the estate made with
  * auth (packages/estate-auth), applied to design.
  *
- * FOUR NAMED THEMES, user-selectable per site, each in light AND dark:
+ * FIVE NAMED THEMES, user-selectable per site, each in light AND dark:
  *
  *   classic    — the apex's ORIGINAL look (extracted from git 3b9c6b3's
  *                inline styles, 2026-08-14): warm paper / lamp-lit library,
@@ -28,6 +28,17 @@
  *                offset shadows (no blur), Bangers/Luckiest Guy. Restraint
  *                is its stated brief — do not add pixel/neon "retro"
  *                elements to match the dropdown label.
+ *   hearts     — AUTHORED here 2026-08-16 (owner: "a pink and white theme
+ *                that kind of matches the retro theme. Like those pixel
+ *                gamer hearts"). Pink-and-white, and the arcade half of the
+ *                retro family that `retro` itself is forbidden to carry:
+ *                white card faces on a blush ground, 2px plum ink outlines,
+ *                hard no-blur shadows and press-INTO-shadow (retro's
+ *                grammar), Luckiest Guy display, and an 8-bit heart tiled
+ *                as --et-bg-texture. ⚠️ It exists precisely so nobody is
+ *                tempted to put pixel hearts INTO retro — that ban stands.
+ *                It reuses retro's already-self-hosted faces; it adds no
+ *                font (see the font rule below).
  *
  * Extraction provenance: drafted from the two sites' real stylesheets
  * 2026-08-13 (audiobook site pages' inline <style>; games styles.css incl.
@@ -767,10 +778,157 @@
   --et-btn-shadow: 2px 2px 0 rgba(0, 0, 0, .5);
 }
 
+/* ---- HEARTS — light first (pink and white, the arcade half of retro) ------ */
+/* Owner ask 2026-08-16, verbatim: "Make a new book theme with hearts. A pink
+   and white theme that kind of matches the retro theme. Like those pixel
+   gamer hearts." AUTHORED here — nothing to extract, so every value below is
+   INVENTED rather than measured, and this is the flag that says so.
+
+   How it "matches retro" without breaking retro's own no-pixels brief: it
+   borrows the GRAMMAR (2px ink outline, flat card face, hard offset shadows
+   with no blur, press-into-shadow, Luckiest Guy display) and none of the
+   palette. Retro is aged paper + charcoal; hearts is white card faces on a
+   blush ground with plum ink. ⚠️ The pixel hearts live HERE and must never
+   migrate into `retro` — that ban is still in force at the top of this file.
+
+   Contrast, checked against white (#ffffff card faces) at authoring time:
+   --et-fg #3a1f2b ≈ 13:1, --et-muted #8a5a6e ≈ 5.6:1, --et-accent #d6246e
+   ≈ 4.9:1, --et-accent-2 #8e2f6b ≈ 7.6:1. accent-2 is a TEXT role in the
+   library (series tags), which is why the second voice is a deep berry and
+   not the bubblegum — the bubblegum is decoration only (the heart tile and
+   the brand offset), never type.
+
+   The motif is an 8-bit heart drawn as an inline SVG data URI (9×8 pixel
+   grid, crispEdges, tiled at 4×). Inline and not a file, deliberately: this
+   asset is vendored into four consumers by three different mechanisms, and a
+   theme that needs a second file to look like itself breaks in whichever
+   consumer forgets to copy it. */
+
+:root[data-theme="hearts"] {
+  --et-bg: #fff5f8;
+  --et-bg-2: #ffe9f1;
+  --et-surface: #ffffff;      /* the WHITE half of "pink and white" */
+  --et-surface-edge: #fff0f5;
+  --et-fg: #3a1f2b;           /* plum ink, not black — soft but strong */
+  --et-muted: #8a5a6e;
+  --et-hairline: #f2c6d8;
+  --et-ink: #3a1f2b;
+
+  --et-hue-1: #d6246e; /* audio — the rose */
+  --et-hue-2: #4a6fb5; /* books — periwinkle, the "player 2" blue */
+  --et-hue-3: #2f8f8a; /* games — teal, the pixel-game complement */
+  --et-hue-4: #8e44ad; /* universes — purple, owner's card order */
+  --et-hue-5: #b8860b; /* admin — gold, purple's complement */
+  --et-hue-6: #4f8f6a; /* ebooks — sage, away from books' periwinkle */
+  --et-blob-1: transparent; /* atmosphere is the heart tile, not aurora */
+  --et-blob-2: transparent;
+  --et-blob-3: transparent;
+  --et-grain-opacity: 0;
+  --et-bg-texture:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='8' viewBox='0 0 9 8' shape-rendering='crispEdges'%3E%3Cg fill='%23f6c3d8'%3E%3Crect x='1' y='0' width='2' height='1'/%3E%3Crect x='6' y='0' width='2' height='1'/%3E%3Crect x='0' y='1' width='4' height='1'/%3E%3Crect x='5' y='1' width='4' height='1'/%3E%3Crect x='0' y='2' width='9' height='2'/%3E%3Crect x='1' y='4' width='7' height='1'/%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='3' y='6' width='3' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
+  --et-bg-texture-size: 54px 48px; /* 6× the 9×8 grid — a readable pixel, not noise */
+
+  --et-accent: #d6246e;
+  --et-accent-fg: #ffffff;
+  --et-accent-2: #8e2f6b; /* deep berry — a TEXT role, hence the contrast */
+  --et-heading-color: var(--et-fg);
+
+  --et-ok: #2f7d4f;
+  --et-warn: #9a5b12;
+  --et-danger: #c2273c;
+  --et-ok-bg: #dff2e5;
+  --et-warn-bg: #fceccd;
+  --et-danger-bg: #fbdde2;
+  --et-info: #3f6480;
+  --et-info-bg: #dde7ef;
+  --et-transit: #2f7d84;
+  --et-transit-bg: #d7ecec;
+
+  --et-panel-border: var(--et-ink);  /* the outline is the theme, as in retro */
+  --et-field-border: var(--et-ink);
+  --et-field-bg: #fff0f5;            /* a field sinks into the blush */
+  --et-field-shadow: inset 2px 2px 0 rgba(58, 31, 43, .08);
+
+  --et-shadow: 3px 3px 0 rgba(214, 36, 110, .18);      /* hard, NO blur */
+  --et-shadow-lift: 4px 4px 0 rgba(214, 36, 110, .28);
+  --et-glow: none;
+  --et-glow-title: none;
+  --et-brand-fill: #ffffff;
+  --et-brand-stroke: 3px var(--et-ink);
+  --et-brand-shadow: 2px 2px 0 #ff8fb8; /* the bubblegum offset — logo only */
+
+  --et-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --et-font-display: 'Luckiest Guy', 'Bangers', 'Trebuchet MS', system-ui, sans-serif;
+  --et-font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --et-title-case: none;
+  --et-title-spacing: .02em;
+  --et-font-label: 'Luckiest Guy', 'Bangers', 'Trebuchet MS', system-ui, sans-serif;
+  --et-heading-weight: 400; /* Luckiest Guy ships ONE weight, like Bangers */
+
+  --et-radius: 4px;      /* chunky and near-square — pixels, softened just enough */
+  --et-radius-lg: 6px;
+  --et-radius-xl: 6px;
+  --et-radius-pill: 4px; /* buttons are little panels here, not pills */
+  --et-border-w: 2px;
+  --et-clip-panel: none;
+
+  --et-btn-bg: var(--et-accent);
+  --et-btn-fg: #ffffff;
+  --et-btn-border: 2px solid var(--et-ink);
+  --et-btn-shadow: 2px 2px 0 rgba(58, 31, 43, .22);
+  --et-press: translate(2px, 2px); /* the press INTO the shadow, retro's move */
+}
+
+:root[data-theme="hearts"][data-mode="dark"] {
+  --et-bg: #1c1016;
+  --et-bg-2: #261520;
+  --et-surface: #2a1822;
+  --et-surface-edge: #351f2b;
+  --et-fg: #ffe7f0;
+  --et-muted: #c39aad;
+  --et-hairline: #4a2b3a;
+  --et-ink: #0d0709;
+
+  --et-hue-1: #ff7fb0;
+  --et-hue-2: #8fadea;
+  --et-hue-3: #5fc7c0;
+  --et-hue-4: #c48fe0;
+  --et-hue-5: #d4af37;
+  --et-hue-6: #8fc4a4;
+  /* Same tile, lifted off the dark ground instead of pressed into the light
+     one — a pink at .18-ish weight reads as a heart, not as dirt. */
+  --et-bg-texture:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='8' viewBox='0 0 9 8' shape-rendering='crispEdges'%3E%3Cg fill='%234a2634'%3E%3Crect x='1' y='0' width='2' height='1'/%3E%3Crect x='6' y='0' width='2' height='1'/%3E%3Crect x='0' y='1' width='4' height='1'/%3E%3Crect x='5' y='1' width='4' height='1'/%3E%3Crect x='0' y='2' width='9' height='2'/%3E%3Crect x='1' y='4' width='7' height='1'/%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='3' y='6' width='3' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
+
+  --et-accent: #ff7fb0;
+  --et-accent-fg: #2a0d19;
+  --et-accent-2: #e79ad2;
+
+  --et-ok: #7fd39a;
+  --et-warn: #e8b45c;
+  --et-danger: #ff8a94;
+  --et-ok-bg: #1e3427;
+  --et-warn-bg: #3a2c14;
+  --et-danger-bg: #3d1f24;
+  --et-info: #9dbcd6;
+  --et-info-bg: #22303b;
+  --et-transit: #6fb3b3;
+  --et-transit-bg: #1c3434;
+  --et-field-bg: #150c11;
+  --et-brand-fill: var(--et-surface);
+  --et-brand-shadow: 2px 2px 0 #ff7fb0;
+
+  --et-shadow: 3px 3px 0 rgba(0, 0, 0, .55);
+  --et-shadow-lift: 4px 4px 0 rgba(0, 0, 0, .65);
+
+  --et-btn-fg: #2a0d19;
+  --et-btn-shadow: 2px 2px 0 rgba(0, 0, 0, .55);
+}
+
 /* Texture is decoration and loses to user settings (the games app's own
    rule, kept estate-wide). */
 @media (prefers-contrast: more) {
-  :root, :root[data-theme="cyberpunk"], :root[data-theme="retro"] {
+  :root, :root[data-theme="cyberpunk"], :root[data-theme="retro"], :root[data-theme="hearts"] {
     --et-bg-texture: none;
   }
 }
@@ -801,8 +959,10 @@
 .et-btn:active { transform: var(--et-press); }
 .et-btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; }
 .et-btn:disabled { opacity: .5; cursor: default; transform: none; }
-/* Retro's press sinks the button INTO its shadow — the shadow goes with it. */
-[data-theme="retro"] .et-btn:active { box-shadow: none; }
+/* Retro's press sinks the button INTO its shadow — the shadow goes with it.
+   Hearts borrows that move (same hard-shadow grammar, different palette). */
+[data-theme="retro"] .et-btn:active,
+[data-theme="hearts"] .et-btn:active { box-shadow: none; }
 
 .et-btn--quiet {
   --et-btn-bg: var(--et-surface);

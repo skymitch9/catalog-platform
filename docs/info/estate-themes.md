@@ -10,6 +10,12 @@
 > sites' real stylesheets that day (extraction notes were audited against the
 > sources, not trusted blind). Companion: `estate-auth-design.md` (the
 > one-implementation-consumers-adopt pattern this repeats for design).
+>
+> **2026-08-16:** a fifth theme, `hearts`, was added to the canonical asset
+> (§2) for the library's second instance. ⚠️ NOT re-vendored to the manual
+> copies (games, audiobook) and the apex has NOT been redeployed — those
+> surfaces keep four themes in their cogs until someone sweeps them, which is
+> the drift §"How each consumer gets the asset" already warns about.
 
 The owner's ask, verbatim: *"make a theme drop down. Get the cyberpunk theme of
 the AUDIOBOOK, the retro game theme of the board games, and the apple theme of
@@ -20,15 +26,24 @@ same settings cog as darkmode … and let the end user select a theme per site."
 
 | File (under `sites/heygabi-home/public/assets/`) | What |
 |---|---|
-| `estate-theme.css` | THE asset: the `--et-*` token contract, four theme token sets (each light + dark), shared primitives (`.et-btn`, `.et-input`, `.et-tile`, the cog), the motion machinery |
+| `estate-theme.css` | THE asset: the `--et-*` token contract, five theme token sets (each light + dark), shared primitives (`.et-btn`, `.et-input`, `.et-tile`, the cog), the motion machinery |
 | `theme.js` | The switcher: classic pre-paint script; stamps `<html data-theme data-mode>`; persists; exposes `window.estateTheme`; wires the standard cog markup when present |
 | `motion.js` | The motion vocabulary (reveal / hero recede / apple-scoped tilt), all dead under `prefers-reduced-motion` |
 | `fonts/*.woff2` + OFL | Self-hosted latin subsets: Rajdhani ×3 + Share Tech Mono (cyberpunk), Bangers + Luckiest Guy (retro, copied from the games repo with its licence) |
 
 ## 2. The contract in one paragraph
 
-Four themes — `classic`, `apple`, `cyberpunk`, `retro` — each defined in light
-and dark; theme × mode COMPOSE. (`classic` joined 2026-08-14: the apex's
+Five themes — `classic`, `apple`, `cyberpunk`, `retro`, `hearts` — each
+defined in light
+and dark; theme × mode COMPOSE. (`hearts` joined 2026-08-16: owner ask for
+"a pink and white theme that kind of matches the retro theme. Like those
+pixel gamer hearts" — AUTHORED, not extracted, so all of its values are
+invented and the CSS says so. It borrows retro's GRAMMAR (2px ink outline,
+flat card face, hard no-blur shadows, press-into-shadow, Luckiest Guy) with
+a white-on-blush palette and an 8-bit heart tiled as `--et-bg-texture`.
+⚠️ It exists so the pixel-arcade impulse has somewhere legitimate to go —
+§6's "no arcade elements in retro" is unchanged.)
+(`classic` joined 2026-08-14: the apex's
 ORIGINAL pre-retheme look — warm paper / lamp-lit library, green + gold +
 clay, the aurora-blob backdrop — extracted faithfully from git `3b9c6b3`'s
 inline styles and promoted to a theme by owner ruling.) A page styles against `--et-*` tokens only (the full
@@ -65,6 +80,7 @@ brief, not lost work — do not reintroduce it.
 | `heygabi.ai` | `classic` | Owner ruling 2026-08-14: the front door boots its original look |
 | `/admin` | `apple` | Unchanged; flipping it to classic is a one-attribute change if asked |
 | `library.heygabi.ai` | `apple` | Owner: "make the apple theme persist on the books site too" |
+| `padhard.heygabi.ai` | `hearts` | Owner 2026-08-16: "let it be the default for padhard". Same bundle as `library.`, so the default is resolved by HOSTNAME before paint — see `library_catalog/docs/info/estate-theme.md` §4 |
 | `audiobooks.heygabi.ai` | `cyberpunk` | Its existing identity, kept |
 | `boardgames.heygabi.ai` | `retro` | Its existing identity, kept |
 
@@ -87,9 +103,11 @@ consumer without `data-default-theme="<its default>"` on `<html>`.
    `window.estateTheme.setTheme/setMode` — or use the standard cog markup
    (`button#hg-cog` + `div#hg-cog-panel` + `select#hg-theme-select` +
    `[data-hg-mode]` buttons; see the apex's `index.html`) which `theme.js`
-   wires automatically. A consumer cog must expose the Theme group (all four
-   themes) and the Mode group — the library's cog is the reference
-   presentation (a Theme select over an Auto/Light/Dark row).
+   wires automatically. A consumer cog must expose the Theme group (every
+   theme `window.estateTheme.themes` reports — build the list from the API,
+   never hardcode it, so a new theme reaches every cog on re-vendor) and the
+   Mode group — the library's cog is the reference presentation (a Theme
+   select over an Auto/Light/Dark row).
 4. **Migrate the legacy mode keys once, then let `hg_mode` own it**:
    audiobook `ab_theme` (`'dark'|'light'`) and games `bgc-theme`
    (`'system'|'light'|'dark'`) map 1:1 onto `hg_mode` (`system`→`auto`). Read
@@ -175,7 +193,7 @@ palette, not the soul**:
 
 | Key | Values | Owner |
 |---|---|---|
-| `hg_theme` | `classic` \| `apple` \| `cyberpunk` \| `retro` — the site's ONE theme | the estate (this system) |
+| `hg_theme` | `classic` \| `apple` \| `cyberpunk` \| `retro` \| `hearts` — the site's ONE theme | the estate (this system) |
 | `hg_mode` | `auto` \| `light` \| `dark` — likewise site-wide | the estate (this system) |
 | `hg_theme_page` | RETIRED same-day 2026-08-14 (§2a history note) — theme.js deletes it on boot | dead, never reintroduce |
 | `ab_theme` | legacy audiobook mode | migrate-once, then dead |
