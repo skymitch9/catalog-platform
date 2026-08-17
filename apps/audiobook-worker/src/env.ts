@@ -88,6 +88,27 @@ export interface Env {
    * nothing about the fix.
    */
   EBOOKS_GATED?: R2Bucket;
+
+  /**
+   * The PRIVATE R2 bucket holding the ebook FILES themselves (`estate-ebooks`,
+   * 167 objects / 1.393 GB as of 2026-08-17) — read by
+   * `GET /api/ebook/:anchor/file`, written by `scripts/upload_ebooks_r2.py` in
+   * `audiobook_catalog` (viewer phase 0a).
+   *
+   * ⚠️ A THIRD bucket, and the separation is again the security property.
+   * Object keys are the manifest row's `path` VERBATIM
+   * (`Brandon Sanderson/Defiant.pdf`) — no prefix, no hash — so a public URL
+   * on this bucket would be a guessable, world-readable warehouse of
+   * DRM-stripped files. `wrangler r2 bucket dev-url get estate-ebooks` answers
+   * *"Public access via the r2.dev URL is disabled"*, there is no custom
+   * domain, and this binding is meant to be the only way in. ⚠️ Never enable a
+   * public URL or attach a domain to it.
+   *
+   * Optional in the type so the route can answer a NAMED configuration refusal
+   * (`file_store_unbound`) instead of throwing a 500 that says nothing about
+   * the fix — the same reason `EBOOKS_GATED` is optional.
+   */
+  EBOOKS?: R2Bucket;
 }
 
 export type EstateCheckMode = 'off' | 'shadow' | 'enforce';

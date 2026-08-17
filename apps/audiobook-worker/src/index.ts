@@ -22,6 +22,13 @@
  *                          no ESTATE_CHECK mode switch, by design: the mode
  *                          exists to shadow an existing behaviour, and a shelf
  *                          that serves in shadow mode is an ungated shelf.
+ *   GET|HEAD /api/ebook/:anchor/file
+ *                          the viewer's gated BYTE STREAM (ebook-file.ts):
+ *                          Range/206, Accept-Ranges, no-store, the R2 body
+ *                          passed through unbuffered. Same gate as the shelf
+ *                          (ebook-gate.ts), same unconditional posture. ⚠️ It
+ *                          gates on the estate's `vis_ebooks` READ grant, NOT
+ *                          on the ladder's `download` capability (admin+).
  *   Phase 3 wave A writes  enforce-routes.ts — ⚠️ DORMANT: every one answers
  *                          503 not_enabled (touching nothing) unless
  *                          ESTATE_CHECK === 'enforce', which is the OWNER'S
@@ -37,6 +44,7 @@ import { cors } from 'hono/cors';
 import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
+import { ebookFileRoutes } from './ebook-file.js';
 import { ebookRoutes } from './ebooks.js';
 import { enforceRoutes } from './enforce-routes.js';
 import { estateStatusFor } from './estate-status.js';
@@ -73,8 +81,20 @@ function abCors() {
       const allowed = parseSiteOrigins(c.env.SITE_ORIGINS);
       return allowed.includes(origin) ? origin : null;
     },
-    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Authorization', 'Content-Type'],
+    allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // ⚠️ `Range` joined 2026-08-17 with the viewer's byte stream, and it is
+    // NOT optional. `Range` is not a CORS-safelisted request header, so every
+    // ranged fetch — 15 of them to open one EPUB, several per PDF page turn —
+    // fires a preflight, and a preflight that does not name `Range` fails as
+    // an opaque NETWORK error in the browser. That is indistinguishable from
+    // "the Worker is down", which is exactly the misdiagnosis the estate
+    // already ate once when a CSP silently blocked a subdomain.
+    allowHeaders: ['Authorization', 'Content-Type', 'Range'],
+    // ⚠️ And the reader must be able to READ these back. Cross-origin
+    // JavaScript sees only the safelisted response headers unless they are
+    // exposed, so without this pdf.js gets a 206 whose `Content-Range` it
+    // cannot see and cannot lay the document out.
+    exposeHeaders: ['Content-Range', 'Content-Length', 'Accept-Ranges', 'ETag', 'Retry-After'],
     maxAge: 600,
   });
 }
@@ -174,6 +194,14 @@ app.route('/api', gateShadowRoutes);
 // above already covers /api/*, so the tokenless OPTIONS preflight is answered
 // by the middleware and never by the auth check.
 app.route('/', ebookRoutes);
+
+// The viewer's gated byte stream (phase 1a, 2026-08-17). Same gate as the
+// shelf above — literally the same function (ebook-gate.ts) — and the same
+// unconditional posture: a byte stream that served in shadow mode would be a
+// public download endpoint. ⚠️ It gates on the estate's `vis_ebooks` READ
+// grant and NOT on the ladder's `download` capability (admin+), which would
+// lock ordinary members out of reading; see ebook-file.ts's header.
+app.route('/', ebookFileRoutes);
 
 // Phase 3 wave A — the prebuilt write routes, DORMANT until the owner flips
 // ESTATE_CHECK to 'enforce' (enforce-routes.ts carries its own mode gate as

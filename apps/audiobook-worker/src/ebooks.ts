@@ -53,133 +53,30 @@
  */
 
 import { Hono } from 'hono';
-import { resolveIdentity } from '@platform/estate-auth';
-import { parseServiceAccount } from '@platform/firebase-sa';
-import { effectiveLadderRole, type LadderRole } from '../../auth-worker/src/role-ladder.js';
 import { can } from './capabilities.js';
-import { estateCheckMode, parseOwnerEmails, type Env } from './env.js';
-import { estateAnswerFor } from './estate-status.js';
-import { cachedStoredRole } from './roles.js';
+import { resolveEbookAccess, resolveLadderRole } from './ebook-gate.js';
+import { MANIFEST_KEY } from './ebook-manifest.js';
+import { estateCheckMode, type Env } from './env.js';
 
-/** The one object key the pipeline writes and this route reads. */
-export const MANIFEST_KEY = 'ebooks.json';
-
-/** The catalog name (estate_auth 0008) that admits a person to the shelf. */
-export const EBOOKS_CATALOG = 'ebooks';
+// Re-exported from their new homes: the gate this route shares with the
+// viewer's byte stream (ebook-gate.ts) and the manifest key it shares with the
+// anchor index (ebook-manifest.ts). ⚠️ One implementation each — a second copy
+// of either is how a shelf and a reader start disagreeing about a book.
+export { MANIFEST_KEY };
+export { EBOOKS_CATALOG } from './ebook-gate.js';
 
 export const ebookRoutes = new Hono<{ Bindings: Env }>();
 
 ebookRoutes.get('/api/ebooks/manifest', async (c) => {
   const mode = estateCheckMode(c.env.ESTATE_CHECK);
 
-  // 1. Identity, verified LOCALLY (the canonical verifier). A verifier
-  //    misconfiguration is OUR 500, never the caller's 401.
-  let identity;
-  try {
-    identity = await resolveIdentity(c.req.raw, c.env);
-  } catch (err) {
-    return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
-  }
-  if (!identity) {
-    return c.json(
-      {
-        error: 'unauthenticated',
-        detail:
-          'The ebook shelf is for the household. Sign in with Google to see it — signed-out visitors get no list at all.',
-      },
-      401,
-    );
-  }
-
-  const email = identity.email.trim().toLowerCase();
-  const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
-  const isOwner = owners.includes(email);
-
-  // 2. The estate answer — status AND visibility, one answer, one age (§4.5).
-  //    ⚠️ The owner short-circuits BEFORE the round-trip, the same break-glass
-  //    every consumer honours: the estate being wrong (or down) about its own
-  //    owner must never lock the owner out of his own shelf.
-  let grant: { visible: boolean; stale: boolean; status: string | null };
-  if (isOwner) {
-    grant = { visible: true, stale: false, status: 'approved' };
-  } else {
-    const answer = await estateAnswerFor(c.env, {
-      email,
-      firebaseUid: identity.uid,
-      displayName: identity.name,
-    });
-
-    if (!answer.configured) {
-      // Fail CLOSED and say which: "the estate was never wired up" is a
-      // different problem from "you were refused", and telling someone to ask
-      // for access they may already hold is the mislabelled-outage failure
-      // §1e names explicitly.
-      return c.json(
-        {
-          error: 'estate_unconfigured',
-          detail:
-            'The shelf cannot check who you are right now because its membership directory is not configured. This is a setup problem on our side, not a decision about you — tell Mitch.',
-          fix: 'set ESTATE_AUTH_URL and the ESTATE_APP_TOKEN_AUDIOBOOK secret on audiobook-worker',
-        },
-        503,
-      );
-    }
-
-    if (answer.status === null) {
-      return c.json(
-        {
-          error: 'estate_unreachable',
-          detail:
-            'The membership directory did not answer, so the shelf cannot tell whether you may see it. This is an outage, not a permission decision — try again shortly.',
-        },
-        502,
-      );
-    }
-
-    if (answer.status === 'pending') {
-      return c.json(
-        {
-          error: 'awaiting_approval',
-          detail:
-            'You are signed in and in the queue, but nobody has approved you yet. The ebook shelf opens once an approver says so — ask Mitch, and it will be waiting here.',
-        },
-        403,
-      );
-    }
-
-    if (answer.status === 'revoked') {
-      return c.json(
-        {
-          error: 'access_revoked',
-          detail:
-            'Your access to the household sites was removed, so the ebook shelf is closed to this account. If that is a mistake, ask Mitch to restore it.',
-        },
-        403,
-      );
-    }
-
-    // Approved. ⚠️ `visibility` null means the directory answered a status
-    // without a visibility fact (a pre-§4.5 server, or a garbage field). That
-    // is NOT "no restrictions" — it is "we do not know", and this shelf fails
-    // closed on not-knowing.
-    const visible = (answer.visibility ?? []).includes(EBOOKS_CATALOG);
-    if (!visible) {
-      return c.json(
-        {
-          error: 'no_ebooks_grant',
-          detail:
-            'You are an approved member, but the ebook shelf is a separate grant and you do not hold it yet. Ask Mitch to switch on "Ebooks" for your account and this page will fill in.',
-        },
-        403,
-      );
-    }
-
-    grant = {
-      visible: true,
-      stale: answer.stale,
-      status: answer.status,
-    };
-  }
+  // 1+2. Identity and the estate's `ebooks` visibility grant — the SHARED
+  //       gate (ebook-gate.ts), which the viewer's byte stream asks too, so a
+  //       shelf and a reader can never disagree about who is admitted. Every
+  //       refusal sentence lives there and is returned unchanged.
+  const gate = await resolveEbookAccess(c);
+  if (!gate.ok) return gate.response;
+  const grant = gate.access.grant;
 
   // 2b. The DOWNLOAD capability — this site's own LADDER, not the estate.
   //
@@ -198,24 +95,7 @@ ebookRoutes.get('/api/ebooks/manifest', async (c) => {
   // can tell apart from `role: 'member'` — "we resolved it, and it is not
   // enough". A silent false that meant both would be the indistinguishable
   // failure the estate's rules forbid.
-  let role: LadderRole | null = null;
-  if (isOwner) {
-    role = 'owner';
-  } else if (identity.uid) {
-    const sa = (() => {
-      try {
-        return parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT);
-      } catch {
-        return null;
-      }
-    })();
-    if (sa) {
-      const read = await cachedStoredRole(sa, identity.uid);
-      if (read.ok) {
-        role = effectiveLadderRole({ email, ownerEmails: owners, storedRole: read.role });
-      }
-    }
-  }
+  const role = await resolveLadderRole(c.env, gate.access);
   const canDownload = role !== null && can(role, 'download');
 
   // 3. The bytes, from the private bucket. A missing binding is a
@@ -263,10 +143,16 @@ ebookRoutes.get('/api/ebooks/manifest', async (c) => {
 
   // The manifest verbatim, plus the capability answer the page renders from.
   // ⚠️ `can_download` is reported and NOT enforced here, because there is
-  // nothing to download from this route: it serves a list, not a file. When
-  // the reader's file-stream route lands it must make its OWN server-side
-  // check — a client that hides a button is not a gate — and it must ask the
-  // SAME question this does: `can(role, 'download')`.
+  // nothing to download from this route: it serves a list, not a file.
+  //
+  // ⚠️ AND IT IS NOT THE READER'S GATE EITHER — corrected 2026-08-17 when the
+  // viewer's byte stream landed. An earlier draft of this comment told the
+  // next agent that the file route "must ask the SAME question this does:
+  // `can(role, 'download')`". That was wrong by exactly one capability and
+  // would have shipped a viewer nobody below `admin` could use. Reading is the
+  // estate's `vis_ebooks` grant (ebook-gate.ts, shared by both routes);
+  // `download` gates only taking a whole file away, on a route that does not
+  // exist yet. See viewer design §6.x and ebook-file.ts's header.
   //
   // `role` rides alongside so the page can say WHY the button is absent, and
   // so an unresolved rung (null) is distinguishable from an insufficient one.

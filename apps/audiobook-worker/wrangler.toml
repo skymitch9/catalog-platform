@@ -111,3 +111,26 @@ SITE_ORIGINS = "https://audiobooks.heygabi.ai,https://ebooks.heygabi.ai"
 [[r2_buckets]]
 binding = "EBOOKS_GATED"
 bucket_name = "ebooks-gated"
+
+# The ebook FILES' private store — viewer phase 1a, added 2026-08-17 for
+# GET /api/ebook/:anchor/file. Filled by audiobook_catalog's
+# scripts/upload_ebooks_r2.py (phase 0a): 167 of 168 objects, 1.393 GB, keyed
+# on the manifest row's `path` VERBATIM ("Brandon Sanderson/Defiant.pdf") —
+# no prefix, no hash. Changing that key scheme is a MIGRATION, not an edit.
+#
+# ⚠️ A THIRD bucket on purpose, and the separation IS the security property.
+# `audiobook-covers` has a public r2.dev URL so <img> tags can hit it with no
+# credential; putting DRM-stripped book files anywhere with that posture would
+# be one config line away from being the public download endpoint this whole
+# design exists to prevent. Verified 2026-08-17:
+# `wrangler r2 bucket dev-url get estate-ebooks` -> "Public access via the
+# r2.dev URL is disabled." No custom domain. ⚠️ Never enable either.
+#
+# ⚠️ ONE FILE IS KNOWN ABSENT: the 393 MiB White Sand Omnibus, because
+# `wrangler r2 object put` refuses anything over 300 MiB (measured twice,
+# --pipe included). The route answers a NAMED 404 ("its file has not been
+# uploaded yet"), never a 403 or a 500. Fixing it needs an R2 API token and is
+# an owner step — see library_catalog/docs/info/ebook-viewer-design.md 2.2a.
+[[r2_buckets]]
+binding = "EBOOKS"
+bucket_name = "estate-ebooks"
