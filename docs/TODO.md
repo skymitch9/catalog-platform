@@ -36,11 +36,18 @@ rule):
    visible. Set owner expectations accordingly.
 3. **Slash commands** — register via the API (`/have` first, anonymous
    audiobook-scope default per design §4 decision 4).
-4. **Moderation features** (owner ask 2026-08-16: *"i plan to expand her
-   roles and have her do moderation"*): DESIGN DOC FIRST — what moderation
-   means (timeouts on command? message cleanup? auto-responses? scheduled
-   sweeps?) shapes the build far more than permission bits. The mod
-   permissions are already granted; no feature consumes them yet.
+4. **Moderation features** — SCOPE DECIDED by the owner 2026-08-16:
+   **timeouts and message cleanup**, nothing else (no auto-responses, no
+   scheduled sweeps — not declined forever, just not in scope now). Design
+   doc still comes first, but it designs exactly these two:
+   - `/timeout <user> <duration> [reason]` — invokable only by members who
+     hold Discord mod permissions THEMSELVES (mirror the caller's authority,
+     never let the bot amplify a non-mod), worded confirmations, audit line.
+   - `/cleanup <count|user|contains>` — bulk delete with rails: hard cap per
+     invocation, Discord's own 14-day bulk-delete API limit surfaced in
+     words (not a silent partial), preview-then-confirm for anything big.
+   Also from the same conversation: Interactions Endpoint URL is SAVED
+   (Discord's probe passed at save time) — the endpoint is verified live.
 
 ## 1. ⚠️ Three of the four repos deploy only from a human's laptop
 
