@@ -13,6 +13,91 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🧭 Admin page: ONE control grammar + the FULL PERMISSION MAP — ✅ BUILT + DEPLOYED 2026-08-17
+
+**Owner order, verbatim:** *"auth setting has too many different auth setting
+experiences, sometimes we double click to confirm sometimes we use the drop
+down. also at the top we have a tree for audio and ebooks but not one for the
+other sites. maybe just make a full permission map after normalizing
+everything."*
+
+**And, mid-build, from the live page (this settled the shape):** *"how come
+only audiobooks and ebooks have set role? I thought we were normalizing this.
+either they all have set role for each site or none. I think you should do a
+confirm/save button and no set role button for each role. have the save button
+appear on each persons box when a change is made."* — plus: *"what is this
+download: admin + role tag it looks bad and idk what its trying to tell me."*
+
+⚠️ **Amends the entry below** (the merged Audiobooks/Ebooks row, same day):
+its two checkboxes + one dropdown + download-note semantics all survive, but
+they now live INSIDE the permission grid, and the note itself is gone — its
+fact moved into the derived capability line. Where they describe the admin
+page's layout or its controls, this entry wins.
+
+### The before-state, measured (four gestures for one job)
+
+1. visibility checkbox — **wrote on `change`**, instantly, no confirmation;
+2. library / games / Sam's-library role dropdowns — **wrote on `change`**, and
+   announced success by *clearing* the status line (i.e. silently);
+3. audiobook role dropdown — **staged**, then needed a two-tap **"Set role"**
+   button that no other row had;
+4. estate status buttons — **one tap for Approve**, two taps for Revoke,
+   approver and devops.
+
+Plus: a role-ladder "tree" at the top for the audiobook/ebooks site and none
+for the other three; four differently-worded per-site filter sections; and a
+standalone `download: admin+ role` tag hanging off one row.
+
+### The grammar now (one page, two gestures)
+
+- **GRANT-class** (every `visible` box, every site's role dropdown — all four
+  sites identically): touching it stages and writes nothing; the control is
+  outlined; one **Save permissions** button *appears on that person's card*
+  when anything changes, commits the lot, and reports in words. No per-row
+  apply button anywhere. Per-card rather than per-row is forced by the API:
+  `POST /visibility` takes the whole canonical set, so a per-row Save would
+  silently commit another row's staged boxes.
+- **STATUS-class** (Approve, Revoke, approver, devops): two taps, all of them —
+  Approve lost its exception, since make-approver and make-devops are equally
+  additive and have confirmed since 2026-08-15.
+- **Not a control**: owner rank, a rung above your grant power, a site with no
+  account row, an unreachable Worker — all render as words naming the cause,
+  never a disabled dropdown.
+
+### The permission map
+
+Each member expands to a grid with one row per site and the same four columns
+on every row — **site · visible · role · what that role can do** — deliberately
+the anatomy of `docs/info/role-capability-map.md`, rendered live. The derived
+column reads per-rung summaries from `GET /api/estate/site-roles/tree` for
+Audiobooks/Ebooks and the map doc's one-line rung meanings for the app sites,
+and it is where the ebook `download` floor (`admin`) is now stated. The
+disclosure at the top of the page became **"Permission map — every site's
+ladder"**: one subsection per site, same order, same names, each degrading on
+its own. The four per-site role filters became one symmetric "Role, per site"
+section (ids and `ROLE_FILTER_KEYS` untouched — they are persisted vocabulary),
+and the chips were reordered to the grid's row order.
+
+### Not one byte of the wire changed
+
+Same four endpoints, same bodies, same canonical visibility array, same
+per-app vocabularies, no API contract touched. **No CSP change was needed** —
+measured: `_headers` already names library/boardgames/padhard on both `/admin`
+and `/admin/`.
+
+### Verified / not verified
+
+- Exercised, not reasoned about: a 34-check stub-DOM harness drove the real
+  module (render, staging, per-card save, a REFUSED save, sign-out) — it caught
+  a real bug before ship (the owner-fact tooltip promised auto-correction on
+  app rows, where nothing corrects them; only the audiobook ladder is
+  reconciled).
+- Markers rebuilt honestly for both `/admin/` and `/admin/admin.js` and proven
+  discriminating: **HEAD would fail 25 of them**.
+- ⚠️ **NOT verified: the signed-in rendered table.** Every marker is
+  unauthenticated chrome. The grid with real people, the Save, and the four
+  live ladders can only be checked by signing in.
+
 ## 🔗 Admin page: Audiobooks and Ebooks become ONE row — ✅ BUILT + DEPLOYED 2026-08-17
 
 **Owner order, verbatim:** *"instead of a new line for ebooks in the auth page,

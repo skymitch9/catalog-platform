@@ -239,3 +239,84 @@ Each phase reverts independently and cheaply:
 - **Phase 2**: unset `TOKEN_SIGNER_KEY` (routes fall back to 503-idle) or
   revert the three-route mount in `src/index.ts` — no data loss either way,
   `estate_session` rows are simply unread going forward.
+
+## 9. ⚠️ The `/admin` page's INTERACTION GRAMMAR — two gestures, and only two
+
+> Added **2026-08-17**, by owner order. Read this before adding any control to
+> `sites/heygabi-home/public/admin/`. The page it describes is the estate
+> member directory at <https://heygabi.ai/admin/>; the API contracts it drives
+> are §2 above and `docs/info/estate-auth-design.md` §4.4/§4.5.
+
+**Why this section exists.** The page accreted four different ways to commit
+one kind of decision, one build at a time, each defensible on its own. The
+owner, on the live page:
+
+> *"auth setting has too many different auth setting experiences, sometimes we
+> double click to confirm sometimes we use the drop down. also at the top we
+> have a tree for audio and ebooks but not one for the other sites. maybe just
+> make a full permission map after normalizing everything."*
+
+and, settling the shape himself once he saw the first cut:
+
+> *"how come only audiobooks and ebooks have set role? I thought we were
+> normalizing this. either they all have set role for each site or none. I
+> think you should do a confirm/save button and no set role button for each
+> role. have the save button appear on each persons box when a change is
+> made."*
+
+and, on the little tag that used to hang off the Audiobooks/Ebooks row:
+
+> *"what is this download: admin + role tag it looks bad and idk what its
+> trying to tell me."*
+
+### 9.1 The grammar
+
+| Class | What it covers | The gesture |
+|---|---|---|
+| **GRANT** | every `visible` checkbox, every site's role dropdown — **all four sites, identically** | Touching it **stages** and writes nothing. The control is outlined (`.perm-staged`). A single **Save permissions** button **appears on that person's card** when anything in it changes, commits everything staged in that card, and reports in words. |
+| **STATUS** | Approve, Revoke, Make/Remove approver, Make/Remove devops | **Two taps** (`confirmBtn`, `assets/estate-controls.js`): first arms, second writes, disarms itself after 4s. |
+| **NOT A CONTROL** | owner rank, a rung above your grant power, a site with no account row yet, a Worker that did not answer | **Words that name the cause** (`.perm-owner` / `.perm-note` / `.perm-warn`). Never a disabled dropdown. |
+
+**A new control picks one of the two gestures. It does not invent a third.**
+
+### 9.2 The rules behind the rules
+
+- **One Save per MEMBER, never per row.** `POST /api/estate/users/:id/visibility`
+  takes the WHOLE canonical set, not a delta — a per-row Save would silently
+  commit another row's staged boxes. Per-card is the only shape where what the
+  button commits equals what the person staged.
+- **The Save APPEARS, it does not sit there disabled** (owner's words above). A
+  permanently visible disabled button spends its life refusing.
+- **Approve is two-tap like everything else.** It was the lone one-tap action,
+  justified as "additive and low-stakes" — but make-approver and make-devops are
+  additive and low-stakes too and have confirmed since 2026-08-15, so the
+  exception was a leftover, not a rule.
+- **Every refusal keeps the server's own sentence.** A partial save says what
+  landed, what did not, that the failed edit is *still staged*, and why — the
+  Worker's own words, never a bare status (global §1e).
+- **Derived facts are derived, never editable.** The grid's fourth column reads
+  the rung's meaning off the ladder: the live per-rung summary from
+  `GET /api/estate/site-roles/tree` for Audiobooks/Ebooks, and the one-line rung
+  meanings of `docs/info/role-capability-map.md` for the app sites. The ebook
+  **download** floor (`admin`) is appended to that line — it is not a tag, a
+  badge, or a control anywhere on the page.
+- **A rung with no documented meaning says so.** No invented summaries; each
+  site's vocabulary is rendered in that site's own words and never translated.
+
+### 9.3 The anatomy (what a future build must not quietly re-shape)
+
+- `SITE_ROWS` in `admin.js` is the **one** row list: it drives each member's
+  grid, the top **Permission map** disclosure, and the order the filter chips
+  and per-site role filters read in. Adding a site is a row there — not a new
+  layout.
+- The grid's four columns are fixed: **site · visible · role · what that role
+  can do** — deliberately the anatomy of `docs/info/role-capability-map.md`.
+- The top map covers **every** site, each degrading on its own (owner: *"we have
+  a tree for audio and ebooks but not one for the other sites"*).
+- `pendingEdits` (keyed by user id) and `expandedMembers` live **outside the
+  DOM**: every card is rebuilt on each search keystroke, sort and mutation, so
+  state held in a checkbox would be silently discarded by typing.
+- ⚠️ **CSP:** the three app Workers (`library`, `boardgames`, `padhard`) are
+  already named in `_headers` for both `/admin` and `/admin/`. Federating a
+  role column needs the app row in `APPS` **and** the `connect-src` entry —
+  shipping only the first looks exactly like the other site being down.

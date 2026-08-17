@@ -15,6 +15,28 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🧑 OWNER EYEBALL: the reshaped /admin page, signed in (2026-08-17)
+
+The control-grammar reshape + full permission map shipped (see
+[`DONE.md`](DONE.md), newest entry; grammar recorded in
+[`access/estate-auth.md`](access/estate-auth.md) §9). **Everything a predeploy
+marker can assert is chrome** — the member table is injected only after
+Firebase sign-in, so the part that matters is unverified until someone signs in.
+
+🔗 <https://heygabi.ai/admin/> — three things to look at:
+
+1. **Open a member.** One row per site, the same four columns on every row
+   (site · visible · role · what that role can do), and a role dropdown on
+   *every* site — not just Audiobooks/Ebooks.
+2. **Change something.** Nothing should write; the control outlines and a
+   **Save permissions** button *appears* on that card with a count. Save →
+   one worded sentence naming exactly what changed.
+3. **"Permission map — every site's ladder"** at the top: four subsections,
+   one per site, in the same order as the grid.
+
+Report anything that still feels like a different experience per site — that
+is precisely what this was for.
+
 ## 🔴 Audiobook Phase 3 (enforce) — ⚠️ SUPERSEDED 2026-08-17: owner chose FORCE-THEN-FIX
 
 **Owner decision (2026-08-17, after full explanation of both paths):** *"Yes

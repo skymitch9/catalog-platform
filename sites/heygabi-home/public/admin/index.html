@@ -169,35 +169,51 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 .user-meta { margin: .3rem 0 .55rem; color: var(--et-muted); font-size: var(--et-text-small); }
 .user-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 
-/* The federated catalog block: one line per SURFACE — visibility checkbox
-   (the estate's fact) beside the app's own role dropdown (that app's fact).
-   ⚠️ Per surface, not per catalog, since 2026-08-17: Audiobooks and Ebooks are
-   one site behind one ladder, so that line carries two visibility boxes and one
-   dropdown. .cat is flex-wrap, so the extra box costs nothing on a phone. */
-.cats { display: grid; gap: .35rem; margin: 0 0 .65rem; }
-.cat {
-  display: flex;
+/* ═══ THE PERMISSION GRID ═══════════════════════════════════════════════
+   One member's whole permission map, rendered by admin.js (permGrid) inside
+   a per-card disclosure. FOUR COLUMNS, THE SAME FOUR FOR EVERY SITE:
+
+     site · visible · role · what that role can do
+
+   which is deliberately the same anatomy as docs/info/role-capability-map.md
+   (the owner-approved map) and the same anatomy as the "Permission map"
+   disclosure at the top of the page — the map, but live and per person.
+
+   ⚠️ REPLACED .cats/.cat/.cat-name/.cat-vis/.cat-role, 2026-08-17. Those
+   drew a row per surface with whatever cells that surface happened to have,
+   which is how the page ended up with four different ways to change a
+   permission. The grid has a fixed shape, so a new site cannot invent a new
+   layout — it fills the same four cells or says why it cannot.
+
+   The four "worded state" classes (.perm-note / .perm-warn / .perm-owner /
+   .perm-staged) are the page's whole vocabulary for a cell that is NOT a
+   control: a fact, a refusal, an owner's rank, an unsaved edit. They are
+   used identically here and in the top map. */
+.perm { border-top: 1px solid var(--et-hairline); margin: .1rem 0 .6rem; }
+.perm-summary { padding: .3em .1em; }
+.perm-scan { color: var(--et-muted); font-size: var(--et-text-small); }
+.perm-grid { display: grid; gap: 0; margin-top: .45rem; font-size: var(--et-text-small); }
+.perm-row {
+  display: grid;
+  grid-template-columns: 8.6rem minmax(8rem, auto) minmax(9rem, auto) 1fr;
+  gap: .3rem .8rem;
   align-items: center;
-  gap: .7rem;
-  flex-wrap: wrap;
-  font-size: var(--et-text-small);
+  padding: .38rem 0;
+  border-bottom: 1px solid var(--et-hairline);
 }
-/* 8.6rem, not 6.2rem, since 2026-08-17: the merged "Audiobooks/Ebooks" name is
-   the longest label on the block, and a min-width shorter than it would leave
-   that one row's checkboxes hanging further right than every other row's. The
-   row still wraps on a narrow phone — this only aligns the columns when there
-   is room for them. */
-.cat-name { min-width: 8.6rem; font-weight: 600; }
-.cat-vis {
-  display: inline-flex;
-  align-items: center;
-  gap: .3rem;
+.perm-head {
   color: var(--et-muted);
-  cursor: pointer;
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
 }
-.cat-vis input { accent-color: var(--et-accent); width: 1rem; height: 1rem; margin: 0; }
-.cat-role { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
-.cat-role select {
+.perm-name { font-weight: 600; }
+.perm-vis { display: flex; flex-wrap: wrap; gap: .1rem .7rem; }
+.perm-box { display: inline-flex; align-items: center; gap: .35rem; min-height: 30px; color: var(--et-muted); cursor: pointer; }
+.perm-box input { accent-color: var(--et-accent); width: 1rem; height: 1rem; margin: 0; }
+.perm-role { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.perm-role select, .perm-select {
   font: inherit;
   color: var(--et-fg);
   background: var(--et-bg);
@@ -206,27 +222,61 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   padding: .15em .4em;
   min-height: 30px;
 }
-.cat-role select:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
-.cat-role select:disabled { opacity: .5; }
-.cat-note { color: var(--et-muted); }
-.cat-warn { color: var(--et-warn); }
+.perm-role select:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+.perm-role select:disabled { opacity: .5; }
+.perm-cap { color: var(--et-muted); text-wrap: pretty; }
+.perm-note { color: var(--et-muted); }
+.perm-warn { color: var(--et-warn); }
+/* An owner's role is a FACT, not a control (owner decision 2026-08-16).
+   Deliberately not styled like a disabled input — a greyed-out dropdown
+   still reads as "something you could enable", and there is nothing to
+   enable. */
+.perm-owner { font-weight: 700; letter-spacing: .01em; }
+/* An UNSAVED edit is never invisible: the control that carries one is
+   outlined and the footer counts them. Nothing on this page writes as you
+   touch it, so "did that take?" must be answerable by looking. */
+.perm-staged { outline: 2px solid var(--et-warn); outline-offset: 2px; border-radius: 4px; }
+.perm-foot { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding-top: .55rem; }
+.perm-unsaved { color: var(--et-warn); font-size: var(--et-text-small); }
 
-/* The role ladder / capability map (admin.js: renderRoleTree) — the
-   owner's "role tree map" ask. Same <details> language as .adv, its own
-   id so it can sit above the controls bar, always visible once loaded
-   regardless of whether the roster itself did (independent fetch). */
-#role-ladder {
+/* Phone: the four columns stack, and each cell names its own column so a
+   stacked row is still readable as the same grid. */
+@media (max-width: 46rem) {
+  .perm-row { grid-template-columns: 1fr; gap: .15rem; padding: .5rem 0; }
+  .perm-row.perm-head { display: none; }
+  .perm-cell[data-col]::before {
+    content: attr(data-col) ' ';
+    color: var(--et-muted);
+    font-size: var(--et-text-micro);
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+}
+
+/* ═══ THE PERMISSION MAP (top of page) ══════════════════════════════════
+   admin.js: renderPermissionMap(). ⚠️ EVERY SITE, since 2026-08-17 (owner:
+   "at the top we have a tree for audio and ebooks but not one for the other
+   sites"). One subsection per site row — the same rows, in the same order,
+   as every member's grid below — each with that site's own ladder in that
+   site's own words. Same <details> language as .adv; its own id so it can
+   sit above the controls bar, and it shows whatever loaded (each site's
+   ladder degrades on its own). */
+#permission-map {
   margin: 0 0 var(--et-space-2);
   padding: .6em .9em;
   border: var(--et-border-w) solid var(--et-panel-border);
   border-radius: var(--et-radius);
   background: var(--et-surface);
 }
-#role-ladder .adv-summary { padding: .2em .1em; }
+#permission-map .adv-summary { padding: .2em .1em; }
+.ladder-site { margin-top: .8rem; }
+.ladder-site:first-child { margin-top: .3rem; }
+.ladder-site-title { display: block; padding-bottom: .25rem; border-bottom: 1px solid var(--et-hairline); }
 .role-tree-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: .6rem;
+  margin-top: .5rem;
   font-size: var(--et-text-small);
 }
 .role-tree-table th, .role-tree-table td {
@@ -378,8 +428,14 @@ ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
   padding-top: .65rem;
 }
 .adv-section { display: flex; flex-direction: column; gap: .5rem; flex: 1 1 14rem; min-width: 12rem; }
+.adv-section-wide { flex: 1 1 22rem; }
 .adv-section-title { padding-bottom: .3rem; border-bottom: 1px solid var(--et-hairline); }
 .adv-fields { display: flex; flex-wrap: wrap; gap: .6rem .9rem; }
+/* One row per site, all the same shape — the filter half of the same
+   symmetry the permission grid keeps (2026-08-17). */
+.adv-sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .6rem .9rem; }
+.adv-site { gap: .25rem; }
+.adv-site-note { margin: .1rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); }
 .sort-controls { display: flex; align-items: center; gap: .4rem; }
 
 footer {
@@ -393,10 +449,9 @@ footer {
 footer a { color: var(--et-accent); }
 code { font-family: var(--et-font-mono); font-size: .9em; }
 
-/* An owner's per-app role: a FACT, not a control (owner decision 2026-08-16).
-   Deliberately not styled like a disabled input — a greyed-out dropdown still
-   reads as "something you could enable", and there is nothing to enable. */
-.cat-owner { font-weight: 700; letter-spacing: .01em; }
+/* (The owner-fact style moved up into the permission-grid block, renamed
+   .perm-owner — the four worded-state classes now live together, because
+   they are one vocabulary and reading them apart is how they drifted.) */
 
 /* Back to the front door. Copied VERBATIM from /status — same selector, same
    arrow SVG, same 44px tap target — because this arrow is now the estate's
@@ -467,23 +522,37 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   <h1>Estate members</h1>
   <p class="sub">
     One approval here admits a person estate-wide — search on
-    <a href="/">the front door</a>, the library as a reader, the games shelf as
-    a viewer. Revoking shuts every door within ten minutes. Rows are never
-    deleted: a revoked person who comes back meets their revocation, not a
-    fresh queue entry. Per catalog, <em>visible</em> is which shelves their
-    search sees (the estate's fact); the role dropdowns are each app's own —
-    the library's <code>reader</code>, the games shelf's <code>viewer</code>
-    and the audiobook site's own cumulative ladder (<code>member</code> &lt;
-    <code>contributor</code> &lt; <code>moderator</code> &lt; <code>admin</code>
-    — note: this <code>member</code> role is NOT the same thing as being an
-    approved estate member above) are different words on purpose, and
-    changing one changes it in that app itself. Each dropdown only offers
-    roles strictly beneath your own — see "Audiobooks/Ebooks role ladder"
-    below for the full map. <strong>Audiobooks and Ebooks share one line</strong>:
-    they are one site behind one ladder, so the line carries two
-    <em>visible</em> boxes (the audiobook shelf, the ebook shelf) above the
-    single role that governs both — and downloading an ebook file is that
-    role at <code>admin</code>, not a box of its own.
+    <a href="/">the front door</a>, the library, the games shelf. Revoking
+    shuts every door within ten minutes. Rows are never deleted: a revoked
+    person who comes back meets their revocation, not a fresh queue entry.
+    Open a member to see their <strong>permission map</strong>: one row per
+    site, and the same four things on every row — <em>visible</em> (which
+    shelves their search sees, the estate's fact), the <em>role</em> (what
+    they may do there, in that site's own words), and what that role can do
+    (read off the ladder, never editable). <strong>Audiobooks and Ebooks
+    share one row</strong> — one site, one ladder, two <em>visible</em>
+    boxes — and downloading an ebook file is not a box of its own, it is the
+    <code>admin</code> rung, which the row's own <em>can do</em> line says.
+  </p>
+
+  <!-- ⚠️ THE INTERACTION GRAMMAR, stated where the person using the page can
+       read it (owner order 2026-08-17: "auth setting has too many different
+       auth setting experiences, sometimes we double click to confirm
+       sometimes we use the drop down"). Two gestures, and every control on
+       this page is one of them. docs/access/estate-auth.md §9 holds the long
+       version and the rule that new controls must pick one, not invent a
+       third. -->
+  <p class="sub">
+    <strong>Two gestures, everywhere.</strong> Anything that <em>grants</em>
+    — a <em>visible</em> box, any site's role dropdown — changes nothing when
+    you touch it: it stages, the control is outlined, and a single
+    <strong>Save permissions</strong> button <em>appears on that person's
+    card</em> the moment anything in it changes, commits every staged change
+    together, and says in words what changed. No per-row apply buttons
+    anywhere. Anything that changes someone's <em>estate status</em> —
+    Approve, Revoke, approver, devops — takes <strong>two taps</strong>: the
+    first arms the button, the second writes, and it disarms itself after a
+    few seconds. Nothing on this page writes as you touch it.
   </p>
 
   <div class="bar">
@@ -497,20 +566,24 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <p id="status" hidden></p>
 
-  <!-- The audiobook role ladder + capability map (owner ask: "see a role
-       tree map") — admin.js: renderRoleTree(), fetched from
-       GET /api/estate/site-roles/tree. Collapsed by default like Advanced
-       filters; independent of the roster load, so it can show even when
-       the roster itself is degraded (no Firestore service account yet).
-       ⚠️ Titled "Audiobooks/Ebooks" since 2026-08-17: this is ONE ladder over
-       BOTH shelves (the ebook shelf has none of its own — `download` is this
-       ladder's admin rung), so naming only the audiobook half sent people
-       looking for a second, non-existent ebook ladder. -->
-  <details id="role-ladder" class="adv" hidden>
+  <!-- THE PERMISSION MAP — admin.js: renderPermissionMap().
+       ⚠️ EVERY SITE SINCE 2026-08-17, owner verbatim: "at the top we have a
+       tree for audio and ebooks but not one for the other sites." It used to
+       be one ladder (the audiobook/ebooks one, from
+       GET /api/estate/site-roles/tree) and nothing for the library, the games
+       shelf or Sam's library — so the page taught you that one site had a
+       ladder and the others had mystery dropdowns. Now: one subsection per
+       site, in the SAME order and with the SAME row names as every member's
+       permission grid below, each rendered from that site's own answered
+       vocabulary — never a hardcoded list, never a translated one.
+       Collapsed by default like Advanced filters; each site's ladder
+       degrades on its own, so a Worker that cannot be reached costs one
+       subsection, not the map. -->
+  <details id="permission-map" class="adv" hidden>
     <summary class="adv-summary">
-      <span class="ctl-label">Audiobooks/Ebooks role ladder</span>
+      <span class="ctl-label">Permission map — every site's ladder</span>
     </summary>
-    <div id="role-ladder-body"></div>
+    <div id="permission-map-body"></div>
   </details>
 
   <!-- CONTROLS: search first, catalog chips + count/reset always visible,
@@ -545,20 +618,27 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
            different questions to filter on. Labels are plural + capitalised to
            match the row names; `data-cat` is the wire vocabulary and is
            untouched. -->
+      <!-- ⚠️ CHIP ORDER = GRID ROW ORDER, since 2026-08-17. The chips read
+           Audiobooks · Ebooks · Library · Games · Sam's library, which is the
+           order (and the grouping) of the rows inside every member's
+           permission grid and of the subsections in the map above. The wire
+           order is untouched: the visibility ARRAY is still built from
+           CATALOGS in §4.5's canonical order by admin.js, which finds boxes
+           by `data-cat` and never by position. -->
       <div class="chipset" role="group" aria-label="Sees catalog">
         <button type="button" class="chip" data-cat="audiobook" aria-pressed="false">Audiobooks</button>
-        <button type="button" class="chip" data-cat="library" aria-pressed="false">Library</button>
-        <button type="button" class="chip" data-cat="games" aria-pressed="false">Games</button>
-        <!-- library2 (0007): the second library instance. Visibility DEFAULTS
-             TO 0 on the directory — every row starts unchecked here. The
-             label is a UI string; the wire vocabulary stays `library2`. -->
-        <button type="button" class="chip" data-cat="library2" aria-pressed="false">Sam's library</button>
         <!-- ebooks (0008, owner directive 2026-08-17): the household's shared
              ebook shelf. Visibility DEFAULTS TO 0 and it is NOT in the public
              slice, so every row starts unchecked and only a deliberate grant
              opens the shelf. The label is a UI string; the wire vocabulary
              stays `ebooks`. -->
         <button type="button" class="chip" data-cat="ebooks" aria-pressed="false">Ebooks</button>
+        <button type="button" class="chip" data-cat="library" aria-pressed="false">Library</button>
+        <button type="button" class="chip" data-cat="games" aria-pressed="false">Games</button>
+        <!-- library2 (0007): the second library instance. Visibility DEFAULTS
+             TO 0 on the directory — every row starts unchecked here. The
+             label is a UI string; the wire vocabulary stays `library2`. -->
+        <button type="button" class="chip" data-cat="library2" aria-pressed="false">Sam's library</button>
       </div>
       <div class="cats-row-actions">
         <span id="count" class="count" aria-live="polite"></span>
@@ -608,55 +688,63 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
           </div>
         </div>
 
-        <!-- ⚠️ ONE role filter for BOTH shelves (2026-08-17). There has never
-             been a separate ebooks role filter and there must not be one: the
-             ebook shelf rides this same site_roles ladder, so `f-role-audiobook`
-             already answers "what may they do on the ebook shelf" too. The id
-             and ROLE_FILTER_KEYS entry stay `audiobook` — that is the persisted
-             site vocabulary; only the visible title says both names. -->
-        <div class="adv-section">
-          <span class="ctl-label adv-section-title">Audiobooks/Ebooks</span>
-          <div class="adv-fields">
-            <label class="ctl">
-              <span class="ctl-label">Site role (both shelves)</span>
+        <!-- ⚠️ ONE SECTION, THE SAME SHAPE FOR EVERY SITE (2026-08-17). The
+             four role filters used to be four differently-worded blocks —
+             each label phrased its own way, one of them carrying a
+             parenthetical about both shelves and another a hostname —
+             sitting beside the Estate section as if each were its own topic.
+             (The old wordings are deliberately NOT quoted here:
+             predeploy.checks.json pins their removal with mustNotContain, and
+             a comment repeating one verbatim would fail that check from a
+             bundle that is in fact correct.) They are one
+             facet — "what may they do THERE" — asked once per site, so they
+             are now one section holding one row per site, in the SAME order
+             as the permission map above and every member's grid below: each
+             row is the site's name, one control labelled the same way, and
+             a muted note carrying whatever is specific to that site.
+
+             ⚠️ THE IDS AND ROLE_FILTER_KEYS ARE UNTOUCHED — `f-role-audiobook`,
+             `f-role-library`, `f-role-games`, `f-role-library2`. They are the
+             persisted filter vocabulary (sessionStorage `hg-admin-view-v1`)
+             and `f-role-library2` + `f-role-audiobook` are pinned in
+             predeploy.checks.json; only the layout and the wording moved.
+
+             Ebooks has no row of its own on purpose: the ebook shelf rides
+             the audiobook site_roles ladder, so `f-role-audiobook` already
+             answers "what may they do on the ebook shelf" too. -->
+        <div class="adv-section adv-section-wide">
+          <span class="ctl-label adv-section-title">Role, per site</span>
+          <div class="adv-sites">
+            <label class="ctl adv-site">
+              <span class="ctl-label">Audiobooks/Ebooks</span>
               <select id="f-role-audiobook" class="ctl-input"><option value="any">any</option></select>
+              <span class="adv-site-note">one ladder, both shelves</span>
             </label>
-          </div>
-        </div>
-
-        <div class="adv-section">
-          <span class="ctl-label adv-section-title">Library</span>
-          <div class="adv-fields">
-            <label class="ctl">
-              <span class="ctl-label">Library role</span>
+            <label class="ctl adv-site">
+              <span class="ctl-label">Library</span>
               <select id="f-role-library" class="ctl-input"><option value="any">any</option></select>
+              <span class="adv-site-note">library.heygabi.ai</span>
             </label>
-          </div>
-        </div>
-
-        <div class="adv-section">
-          <span class="ctl-label adv-section-title">Games</span>
-          <div class="adv-fields">
-            <label class="ctl">
-              <span class="ctl-label">Games role</span>
+            <label class="ctl adv-site">
+              <span class="ctl-label">Games</span>
               <select id="f-role-games" class="ctl-input"><option value="any">any</option></select>
+              <span class="adv-site-note">boardgames.heygabi.ai</span>
             </label>
-          </div>
-        </div>
-
-        <!-- library2 (0007) — the second library instance at
-             padhard.heygabi.ai ("Sam's library"). Same Worker code as
-             library.heygabi.ai, so the same role vocabulary; the <select> is
-             populated from THAT instance's own /api/admin/users, never
-             hardcoded. Appended LAST, matching the canonical catalog order. -->
-        <div class="adv-section">
-          <span class="ctl-label adv-section-title">Sam's library</span>
-          <div class="adv-fields">
-            <label class="ctl">
-              <span class="ctl-label">Sam's library role (padhard.heygabi.ai)</span>
+            <!-- library2 (0007) — the second library instance. Same Worker
+                 code as library.heygabi.ai, so the same role vocabulary; the
+                 <select> is populated from THAT instance's own
+                 /api/admin/users, never hardcoded. Last, matching the
+                 canonical catalog order. -->
+            <label class="ctl adv-site">
+              <span class="ctl-label">Sam's library</span>
               <select id="f-role-library2" class="ctl-input"><option value="any">any</option></select>
+              <span class="adv-site-note">padhard.heygabi.ai</span>
             </label>
           </div>
+          <p class="adv-site-note">
+            Which shelves a person SEES is the chip row above — one chip per
+            site, the same five, always visible.
+          </p>
         </div>
       </div>
     </details>

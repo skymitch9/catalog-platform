@@ -58,74 +58,104 @@
     },
     {
       "_why": [
-        "⚠️ THE MERGED CATALOG ROW, 2026-08-17. Owner order: 'instead of a new line for ebooks in the auth page,",
-        "just make it Audiobook/Ebooks. also they should both be plural.' Audiobooks and Ebooks are one site behind",
-        "one site_roles ladder, so they are now ONE row and ONE advanced-filter section. The member table itself is",
-        "signed-in-only, but the CHROME that carries the merge is not: the advanced-filters section title and the",
-        "role-ladder disclosure both ship in the HTML, so both can be asserted unauthenticated.",
-        "mustNotContain pins the REMOVAL half, per the rework precedent below: the singular '>Audiobook</span>'",
-        "section title and the old 'Audiobook role ladder' summary are exactly what a stale bundle would still",
-        "carry while serving a cheerful 200 and satisfying every mustContain."
+        "⚠️ REBUILT 2026-08-17 FOR THE CONTROL-GRAMMAR RESHAPE. Owner order: 'auth setting has too many",
+        "different auth setting experiences, sometimes we double click to confirm sometimes we use the drop",
+        "down. also at the top we have a tree for audio and ebooks but not one for the other sites. maybe just",
+        "make a full permission map after normalizing everything.' The member table is signed-in-only, but",
+        "every structural piece of that reshape ships in the HTML and IS assertable unauthenticated: the",
+        "grammar stated in the intro ('Two gestures, everywhere'), the top disclosure that now covers EVERY",
+        "site (id=permission-map + its body mount), and the four role filters collapsed into one symmetric",
+        "'Role, per site' section.",
+        "mustNotContain pins the REMOVAL half, per the rework precedent: the old single-site ladder",
+        "(id=role-ladder, 'Audiobooks/Ebooks role ladder') and the old per-site filter wording ('Site role",
+        "(both shelves)') are exactly what a stale bundle would still carry while serving a cheerful 200 and",
+        "satisfying every mustContain. The two older removals ('>Audiobook</span>' and 'Audiobook role",
+        "ladder', from the 2026-08-17 row merge) are kept — they cost nothing and still pin real removals."
       ],
       "path": "/admin/",
       "mustContain": [
         "Estate members",
         "class=\"back\"",
         "id=\"f-role-library2\"",
+        "id=\"f-role-audiobook\"",
         "data-cat=\"ebooks\"",
         "Audiobooks/Ebooks",
-        "Audiobooks/Ebooks role ladder",
-        "id=\"f-role-audiobook\""
+        "Two gestures, everywhere",
+        "Save permissions",
+        "id=\"permission-map\"",
+        "id=\"permission-map-body\"",
+        "Permission map",
+        "Role, per site"
       ],
       "mustNotContain": [
         ">Audiobook</span>",
-        "Audiobook role ladder"
+        "Audiobook role ladder",
+        "Audiobooks/Ebooks role ladder",
+        "id=\"role-ladder\"",
+        "Site role (both shelves)"
       ]
     },
     {
       "_why": [
-        "The library2 (\"Sam's library\", padhard.heygabi.ai) role federation, 2026-08-16. The role CELLS are",
-        "injected only after Firebase sign-in, so what CAN be asserted unauthenticated is the module's own site",
-        "list: if padhard.heygabi.ai is not in the shipped admin.js, the fourth role column cannot exist."
+        "admin.js — ONE entry since 2026-08-17 (it was two, both fetching the same file: the library2",
+        "federation and the ebook gate. One file, one marker set, one place to look).",
+        "Everything this page RENDERS is injected only after Firebase sign-in, so what CAN be asserted",
+        "unauthenticated is the module's own anatomy — and after the control-grammar reshape that anatomy is",
+        "exactly what changed: SITE_ROWS is the one row list that drives the per-member grid, the top",
+        "permission map and the filter order; pendingEdits + savePermissions + 'Save permissions' +",
+        "perm-staged are the stage-then-Save grammar that replaced four different commit gestures;",
+        "RUNG_MEANINGS is the derived capability column; renderPermissionMap is the every-site ladder.",
+        "padhard.heygabi.ai/library2/ROLE_FILTER_KEYS keep proving all four sites are federated at all, and",
+        "MERGED_ROW keeps proving f7697f4's merged Audiobooks/Ebooks row survived the reshape (now as one",
+        "grid row with two boxes).",
+        "⚠️ THE DOWNLOAD FACT SWAPPED SIDES THE SAME DAY, and the markers swapped with it. The owner saw the",
+        "standalone tag live and killed it: 'what is this download: admin + role tag it looks bad and idk",
+        "what its trying to tell me.' So 'downloadNoteCell' and 'download: admin+ role' moved from",
+        "mustContain to mustNotContain, and what is asserted instead is where the fact went —",
+        "EBOOK_DOWNLOAD_RUNG (the documented admin floor) and the sentence the derived capability line now",
+        "appends, 'Includes downloading ebook files.' Asserting the old strings would now be exactly",
+        "backwards, which is the same trap this file already hit twice on 2026-08-16/17.",
+        "⚠️ mustNotContain pins SEVEN killed idioms, each naming a specific way the page used to disagree",
+        "with itself: saveVisibility wrote a checkbox the instant it was ticked; the one-tap button helper",
+        "(actionBtn) made Approve the only status action that did not confirm; 'Set role' was the two-tap",
+        "apply button that ONLY the audiobook row had; renderRoleTree drew a ladder for that one site and",
+        "nothing for the other three; cat-vis is the old row layout the grid replaced; downloadNoteCell and",
+        "its tag text are the note the owner rejected. A bundle still carrying any of them is a bundle still",
+        "shipping the divergence he asked to remove, and it would pass every mustContain above. The four",
+        "2026-08-17 download-rework removals are kept for the same reason they were added.",
+        "NOTE (unchanged, and the reason this file's checks can never be enough): the signed-in rendered",
+        "table — the grid, the Save, the ladders with real data — is invisible to an unauthenticated fetch",
+        "and still has to be checked by signing in."
       ],
       "path": "/admin/admin.js",
       "mustContain": [
         "padhard.heygabi.ai",
         "library2",
-        "ROLE_FILTER_KEYS"
-      ]
-    },
-    {
-      "_why": [
-        "The ebook permission gate (estate_auth 0008, owner directive 2026-08-17). Member rows are injected",
-        "only after Firebase sign-in, so what CAN be asserted unauthenticated is that the shipped bundle",
-        "carries the fifth catalog and the note that replaced the download toggle.",
-        "⚠️ THE MARKERS CHANGED 2026-08-17. They used to assert the DOWNLOAD CHECKBOX and its endpoint",
-        "('download-ebooks', 'download_ebooks_granted'). The owner removed that control the day after it",
-        "shipped — 'For ebooks I don't want a download check box, I want to use roles we have. Set up the",
-        "roles to match library.' Downloading is now the audiobook ladder's `download` capability (floor",
-        "admin), granted by promotion on the role dropdown. A bundle that still carried the old markers",
-        "would be a bundle that still shipped the checkbox, so asserting them would now be exactly",
-        "backwards — mustNotContain pins the removal instead.",
-        "⚠️ AND CHANGED AGAIN THE SAME DAY, for the row merge ('just make it Audiobook/Ebooks'). The two",
-        "rows became one, so the marker set moved with it: MERGED_ROW is the list that makes one line",
-        "cover two catalogs, downloadNoteCell is what downloadEbooksCell was renamed to, and the note's",
-        "own words shortened once the role it names stopped being a row away. The three superseded",
-        "strings are refused rather than dropped — a bundle still carrying 'downloadEbooksCell' is a",
-        "bundle still rendering two rows, and it would pass every mustContain below."
-      ],
-      "path": "/admin/admin.js",
-      "mustContain": [
+        "ROLE_FILTER_KEYS",
         "'ebooks'",
         "MERGED_ROW",
-        "downloadNoteCell",
-        "download: admin+ role"
+        "EBOOK_DOWNLOAD_RUNG",
+        "Includes downloading ebook files.",
+        "SITE_ROWS",
+        "RUNG_MEANINGS",
+        "pendingEdits",
+        "savePermissions",
+        "Save permissions",
+        "perm-staged",
+        "renderPermissionMap"
       ],
       "mustNotContain": [
         "download-ebooks",
         "download_ebooks_granted",
         "downloadEbooksCell",
-        "download: admin on the audiobook role above"
+        "download: admin on the audiobook role above",
+        "saveVisibility",
+        "downloadNoteCell",
+        "download: admin+ role",
+        "actionBtn",
+        "Set role",
+        "renderRoleTree",
+        "cat-vis"
       ]
     },
     {

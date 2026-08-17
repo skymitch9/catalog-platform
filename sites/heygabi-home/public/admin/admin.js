@@ -80,10 +80,62 @@
  * does not work from www.heygabi.ai or a local file. That is the Workers'
  * config being right, not a bug here — the page says so instead of failing
  * mutely.
+ *
+ * ## ⚠️ THE INTERACTION GRAMMAR — TWO GESTURES, AND ONLY TWO
+ *
+ * Owner order 2026-08-17, verbatim: *"auth setting has too many different auth
+ * setting experiences, sometimes we double click to confirm sometimes we use
+ * the drop down."* He was right, and the count was four: a visibility checkbox
+ * wrote the instant it was ticked; the library/games/Sam's-library dropdowns
+ * wrote the instant they changed (and said so by CLEARING the status line, i.e.
+ * silently); the audiobook dropdown staged and needed a two-tap apply button;
+ * and the estate buttons were one-tap for Approve and two-tap for everything
+ * else. Four gestures for one job — "change what this person may do".
+ *
+ * Every control on this page is now one of exactly two:
+ *
+ *   1. GRANT-CLASS — a `visible` box, any site's role dropdown, on EVERY site.
+ *      Touching it changes NOTHING: it stages (the control is outlined, the
+ *      card counts the unsaved edits) and ONE `Save permissions` button, which
+ *      APPEARS on that person's card the moment anything in it changes,
+ *      commits the lot and says in words what changed.
+ *
+ *      ⚠️ The owner settled this shape himself, 2026-08-17, from the live page:
+ *      *"how come only audiobooks and ebooks have set role? I thought we were
+ *      normalizing this. either they all have set role for each site or none. I
+ *      think you should do a confirm/save button and no set role button for
+ *      each role. have the save button appear on each persons box when a change
+ *      is made."* So: no per-row apply button anywhere, one per-card Save, and
+ *      it is hidden until there is something to save.
+ *
+ *      Per MEMBER rather than per row is also the only correct shape: POST
+ *      /visibility takes the WHOLE canonical set, not a delta, so a per-row
+ *      Save would silently commit another row's staged boxes.
+ *   2. STATUS-CLASS — Approve, Revoke, Make/Remove approver, Make/Remove
+ *      devops. All two-tap (confirmBtn): first tap arms, second writes, and it
+ *      disarms itself after 4s. ⚠️ Approve was one-tap until 2026-08-17. It
+ *      changed not because approving got riskier but because "which buttons
+ *      need two taps" was one more thing to know — and the standing owner
+ *      order of 2026-08-15 already put make-approver and make-devops (both
+ *      additive, both low-stakes) on two taps, so "only destructive things
+ *      confirm" was never the live rule and could not be made into one
+ *      without overturning that order.
+ *
+ * Anything that is NOT a control is WORDED and says why: an owner's rank
+ * (.perm-owner), a rung above your grant power or a site with no row for this
+ * person yet (.perm-note), a site whose Worker did not answer (.perm-warn).
+ * Never a disabled dropdown — a greyed control reads as "something you could
+ * enable", and there is nothing to enable.
+ *
+ * ⚠️ NOT ONE BYTE OF THE WIRE CHANGED IN THIS RESHAPE. The same four
+ * endpoints, the same bodies, the same canonical visibility array, the same
+ * per-app vocabularies. Only when the write happens, and how it is announced.
+ * A new control on this page picks one of the two gestures; it does not invent
+ * a third (docs/access/estate-auth.md §9).
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
-import { actionBtn, confirmBtn } from '../assets/estate-controls.js';
+import { confirmBtn } from '../assets/estate-controls.js';
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
@@ -124,14 +176,14 @@ const CATALOG_LABELS = {
  *
  * ⚠️ Order matters twice over: it is the order the boxes render in AND the
  * order the label is joined in ("Audiobooks/Ebooks"), and both keys must stay
- * inside CATALOGS so saveVisibility keeps posting §4.5's canonical set.
+ * inside CATALOGS so the save keeps posting §4.5's canonical set.
  */
 const MERGED_ROW = ['audiobook', 'ebooks'];
 
 /**
  * The app Workers with roles to federate, in §4.5's canonical CATALOGS order
  * minus `audiobook` (whose roles come from the auth Worker's site-roles
- * federation instead, rendered by audiobookRoleCell).
+ * federation instead; roleCell() renders both kinds from one function).
  *
  * ⚠️ `library2` appends LAST and never moves — the canonical order is
  * load-bearing across repos. It is `library_catalog`'s `[env.friend]`
@@ -150,6 +202,96 @@ const APPS = [
   { key: 'games', label: 'games', origin: 'https://boardgames.heygabi.ai', seedGap: true },
   { key: 'library2', label: "Sam's library", origin: 'https://padhard.heygabi.ai', seedGap: false },
 ];
+
+/**
+ * ⚠️ THE ROW LIST — ONE SHAPE, USED THREE TIMES (owner order 2026-08-17: "maybe
+ * just make a full permission map after normalizing everything").
+ *
+ * These rows are the page's spine. The SAME list, in the SAME order, drives:
+ *   - every member's permission grid (permGrid),
+ *   - the "Permission map" disclosure at the top (renderPermissionMap),
+ *   - and the order the filter chips and the per-site role filters read in.
+ * That is what makes the map and the live grid look like each other, which is
+ * the whole ask: the page should read like docs/info/role-capability-map.md,
+ * but for this person, right now.
+ *
+ * `catKeys` is a LIST because one row can cover more than one visibility grant
+ * — Audiobooks/Ebooks is one site behind one ladder with two grants on it
+ * (f7697f4, owner order the same day). `roleSource` says which federation
+ * answers the row's role: the auth Worker's site-roles ladder, or that app's
+ * own /api/admin surface in its own vocabulary.
+ */
+const SITE_ROWS = [
+  { id: 'audiobook', label: 'Audiobooks/Ebooks', catKeys: MERGED_ROW, roleSource: 'audiobook' },
+  { id: 'library', label: CATALOG_LABELS.library, catKeys: ['library'], roleSource: 'app' },
+  { id: 'games', label: CATALOG_LABELS.games, catKeys: ['games'], roleSource: 'app' },
+  { id: 'library2', label: CATALOG_LABELS.library2, catKeys: ['library2'], roleSource: 'app' },
+];
+
+/**
+ * What each rung MEANS, one line each — the derived capability column, and the
+ * "grants" column of every app ladder in the top map.
+ *
+ * ⚠️ COPIED FROM docs/info/role-capability-map.md (the owner-approved,
+ * NORMATIVE map, verified against source 2026-08-17), not invented here. The
+ * audiobook/ebooks row prefers the LIVE summary the auth Worker sends with its
+ * ladder (GET /site-roles/tree) and only falls back to this; the app rows have
+ * no such endpoint, so this is what they get.
+ *
+ * ⚠️ KEYED BY THE WORD, and every site's OWN words are listed, because this
+ * page never translates a vocabulary (§1.2). A rung this map has no line for
+ * renders WITHOUT a meaning rather than a guessed one — an unavailable fact is
+ * reported unavailable, never filled in with something plausible.
+ */
+const RUNG_MEANINGS = {
+  guest: 'looks — sees whatever visibility opens, changes nothing.',
+  member: 'participates — their own ratings, reviews, TBR and notes, and may retract them.',
+  contributor: 'builds the catalog — edits works/editions/copies, curates the wishlist, uploads, free barcode scans.',
+  moderator: 'spends and moderates — photo scans and paid research (both bill), others’ notes, running a club.',
+  admin: 'runs people — approves members and changes roles; on Audiobooks/Ebooks this is also the download rung.',
+  owner: 'the recovery identity — max everywhere, forced by OWNER_EMAILS at sign-in.',
+  // The older per-app words. Listed because those Workers still answer them;
+  // listing them is not translating them.
+  manager: 'runs that site — its catalog and its people.',
+  reader: 'looks, and tracks their own reading.',
+  viewer: 'looks.',
+  rater: 'looks, and rates.',
+  pending: 'nothing yet — waiting on a decision there.',
+  none: 'no site role — a guest: looks at whatever visibility opens.',
+};
+
+/**
+ * The rung at which downloading an ebook file becomes possible.
+ *
+ * ⚠️ A DOCUMENTED CONSTANT, NOT A GUESS: `download` floors at `admin` in
+ * apps/audiobook-worker/src/capabilities.ts (pinned by that repo's
+ * capabilities.test.ts) and is the ⚠️-marked row of
+ * docs/info/role-capability-map.md. The ladder endpoint answers per-rung
+ * summaries but not capability FLOORS, so this is the one download fact the page
+ * cannot read from a Worker. If the floor moves, it moves here and in that map —
+ * and the derived capability line is now the ONLY place on the page that says
+ * it (owner, 2026-08-17, on the standalone tag that used to: it "looks bad and
+ * idk what its trying to tell me").
+ */
+const EBOOK_DOWNLOAD_RUNG = 'admin';
+
+/**
+ * STAGED, UNSAVED GRANTS — the half of the grant grammar that makes "nothing
+ * writes as you touch it" true.
+ *
+ *   estate user id → { vis: { [catKey]: boolean }, roles: { [rowId]: role } }
+ *
+ * ⚠️ KEYED BY USER ID, NOT HELD IN THE DOM, on purpose: renderFilteredList()
+ * rebuilds every card from scratch on every sort, filter, search keystroke and
+ * mutation, so state living in a checkbox would be silently discarded by
+ * typing in the search box. It survives all of that, and is pruned against
+ * fresh server truth on every render (stagedRole/stagedVis) so an edit that
+ * the server has since agreed with simply stops being an edit.
+ */
+const pendingEdits = new Map();
+
+/** Which member cards are expanded — same reasoning: survives every re-render. */
+const expandedMembers = new Set();
 
 /**
  * SORT + FILTER — client-side over the directory already in memory (owner
@@ -198,7 +340,7 @@ let appDirs = Object.fromEntries(APPS.map((a) => [a.key, null]));
  * the SIGNED-IN caller's own ladder role on the audiobook site (computed
  * server-side: OWNER_EMAILS always wins); `grantable` is exactly the
  * SITE_ROLES entries canGrant() currently allows this caller to set —
- * audiobookRoleCell renders a dropdown only for rows it covers.
+ * roleCell renders a dropdown only for rows that array covers.
  */
 let siteRolesDir = null;
 
@@ -503,7 +645,7 @@ async function loadDirectory() {
   appDirs = Object.fromEntries(APPS.map((app, i) => [app.key, appResults[i]]));
   siteRolesDir = sroles;
   roleTreeDir = rtree;
-  renderRoleTree();
+  renderPermissionMap();
   // Owner: "just always auto fill and write the max role possible for each
   // site." Fire-and-forget — the render below must not wait on it.
   void reconcileOwnerRoles();
@@ -891,134 +1033,369 @@ function wireControls() {
 // Rendering
 // ---------------------------------------------------------------------------
 
-// actionBtn/confirmBtn moved to ../assets/estate-controls.js (2026-08-16) so
-// the /status page's fine-grained pipeline controls could reuse the exact
-// same two-tap idiom instead of a second implementation — see that file's
-// header comment.
+// The two-tap confirmBtn lives in ../assets/estate-controls.js (2026-08-16) so
+// the /status page's pipeline controls could reuse the exact same gesture
+// rather than grow a second implementation — see that file's header comment.
+// ⚠️ The one-tap plain-button helper that used to be imported alongside it is
+// no longer used HERE (2026-08-17): Approve was its only caller on this page,
+// and Approve now takes two taps like every other estate-status action. The
+// helper itself still exists and /status still imports it.
 
-/**
- * Save the visibility set as the checkboxes now stand — the whole array in
- * §4.5's canonical order, because the endpoint takes the set, not a delta.
- */
-async function saveVisibility(estateUser, catsEl) {
-  // ⚠️ `[data-cat]` is load-bearing, and stayed load-bearing when the rows
-  // merged: a card's `.cats` block now holds a line with TWO boxes on it
-  // (Audiobooks/Ebooks) and this selector still collects exactly the boxes that
-  // ARE catalogs, in whatever row they happen to sit. It also survived the
-  // opposite case — the DOWNLOAD checkbox that briefly sat in the ebooks row
-  // (0009) was not a catalog, and a bare input[type=checkbox] selector would
-  // have posted it as one and had the Worker's strict schema reject the whole
-  // save. The filter below is over CATALOGS, so the ORDER is canonical no
-  // matter how the rows are grouped on screen.
-  const boxes = [...catsEl.querySelectorAll('input[type="checkbox"][data-cat]')];
-  for (const b of boxes) b.disabled = true;
-  const visibility = CATALOGS.filter(
-    (cat) => boxes.find((b) => b.dataset.cat === cat)?.checked,
-  );
-  const data = await api(`/api/estate/users/${estateUser.id}/visibility`, {
-    method: 'POST',
-    body: JSON.stringify({ visibility }),
-  });
-  if (data) {
-    await loadDirectory(); // re-render from what the server now says
-  } else {
-    for (const b of boxes) b.disabled = false; // failed — leave them editable
+// ---------------------------------------------------------------------------
+// STAGED GRANTS — the machinery behind "nothing writes as you touch it".
+//
+// Every grant-class control (a `visible` box, any site's role dropdown) writes
+// into this bag instead of the network, and one Save per member drains it. See
+// the header comment's grammar section for WHY there is one Save per member
+// rather than one per row.
+// ---------------------------------------------------------------------------
+
+/** The staged bag for one member, created on demand. */
+function editsFor(u) {
+  let e = pendingEdits.get(u.id);
+  if (!e) {
+    e = { vis: {}, roles: {} };
+    pendingEdits.set(u.id, e);
   }
+  return e;
 }
 
-/** The role cell for one app: a dropdown, or the honest reason there isn't one. */
-function appRoleCell(app, estateUser) {
-  const dir = appDirs[app.key];
+/** Drop a member's bag once it holds nothing — so `pendingEdits.has` means something. */
+function pruneEmpty(u) {
+  const e = pendingEdits.get(u.id);
+  if (e && !Object.keys(e.vis).length && !Object.keys(e.roles).length) pendingEdits.delete(u.id);
+}
+
+/** What the estate directory says right now about one visibility grant. */
+function truthVis(u, catKey) {
+  return Array.isArray(u.visibility) && u.visibility.includes(catKey);
+}
+
+/**
+ * The staged value for one box, or undefined if there isn't one.
+ *
+ * ⚠️ SELF-PRUNING: an edit that the server has since agreed with (someone else
+ * ticked it, or our own save landed) stops being an edit here, which is what
+ * keeps the unsaved counter honest across a reload without any bookkeeping at
+ * the call sites.
+ */
+function stagedVis(u, catKey) {
+  const e = pendingEdits.get(u.id);
+  if (!e || !(catKey in e.vis)) return undefined;
+  if (e.vis[catKey] === truthVis(u, catKey)) {
+    delete e.vis[catKey];
+    pruneEmpty(u);
+    return undefined;
+  }
+  return e.vis[catKey];
+}
+
+function effectiveVis(u, catKey) {
+  const staged = stagedVis(u, catKey);
+  return staged === undefined ? truthVis(u, catKey) : staged;
+}
+
+/** The app entry behind a SITE_ROWS row (`null` for the audiobook row, whose roles are federated differently). */
+function appFor(row) {
+  return APPS.find((a) => a.key === row.id) ?? null;
+}
+
+/**
+ * What one site says about this person's role right now, in that site's own
+ * words, plus the honest reason when there is nothing to say:
+ *
+ *   { state: 'role', role, dir, holder?, appUser?, app? }
+ *   { state: 'noaccount', dir, app }   — the app makes its row on first sign-in
+ *   { state: 'degraded', why }         — that Worker did not answer
+ *
+ * ⚠️ 'none' is a REAL role on the audiobook ladder (guest is never stored), so
+ * that row never reports 'noaccount' — granting is picking a rung, revoking is
+ * picking none.
+ */
+function roleTruth(u, row) {
+  const email = u.email.toLowerCase();
+  if (row.roleSource === 'audiobook') {
+    const dir = siteRolesDir;
+    if (!dir || !dir.ok) return { state: 'degraded', why: dir?.why ?? 'not loaded' };
+    const holder = dir.byEmail.get(email);
+    return { state: 'role', role: holder?.role ?? 'none', holder, dir };
+  }
+  const app = appFor(row);
+  const dir = appDirs[row.id];
+  if (!dir || !dir.ok) return { state: 'degraded', why: dir?.why ?? 'not loaded' };
+  const appUser = dir.byEmail.get(email);
+  if (!appUser) return { state: 'noaccount', dir, app };
+  return { state: 'role', role: appUser.role, appUser, dir, app };
+}
+
+/** The staged role for one row, or undefined. Self-pruning, same as stagedVis. */
+function stagedRole(u, row) {
+  const e = pendingEdits.get(u.id);
+  if (!e || !(row.id in e.roles)) return undefined;
+  const truth = roleTruth(u, row);
+  if (truth.state !== 'role' || e.roles[row.id] === truth.role) {
+    delete e.roles[row.id];
+    pruneEmpty(u);
+    return undefined;
+  }
+  return e.roles[row.id];
+}
+
+/** The role to SHOW and to derive capabilities from — staged if staged, else what stands. */
+function effectiveRole(u, row) {
+  const staged = stagedRole(u, row);
+  if (staged !== undefined) return staged;
+  const truth = roleTruth(u, row);
+  return truth.state === 'role' ? truth.role : null;
+}
+
+/** How many unsaved grants this member is carrying. Prunes as it counts. */
+function countStaged(u) {
+  let n = 0;
+  for (const cat of CATALOGS) if (stagedVis(u, cat) !== undefined) n++;
+  for (const row of SITE_ROWS) if (stagedRole(u, row) !== undefined) n++;
+  return n;
+}
+
+/**
+ * ONE SAVE, ONE WORDED RESULT (the grant grammar's commit).
+ *
+ * Order matters: visibility first (one POST of the WHOLE canonical set, because
+ * that endpoint takes the set and not a delta), then one role call per site that
+ * changed, each on that site's own surface in its own vocabulary. Nothing is
+ * batched across systems — there is no transaction to be had across four
+ * Workers, so each half reports for itself and a failure leaves its own edit
+ * staged for a retry rather than pretending it landed.
+ *
+ * ⚠️ The refusal WORDS come from the API helpers, which have already put the
+ * server's own sentence on the status line. This reads that sentence back
+ * before the reload wipes it, and re-states it after — so a partial save says
+ * both what saved and exactly why the rest did not.
+ */
+async function savePermissions(u, saveBtn) {
+  const e = pendingEdits.get(u.id);
+  if (!e) return;
+  saveBtn.disabled = true;
+  setStatus('Saving…');
+
+  const saved = [];
+  const refused = [];
+  let serverWords = '';
+
+  const visKeys = Object.keys(e.vis);
+  if (visKeys.length) {
+    // ⚠️ Built from CATALOGS, so the posted array is in §4.5's canonical order
+    // no matter how the rows are grouped on screen or which boxes were touched.
+    const visibility = CATALOGS.filter((cat) => effectiveVis(u, cat));
+    const data = await api(`/api/estate/users/${u.id}/visibility`, {
+      method: 'POST',
+      body: JSON.stringify({ visibility }),
+    });
+    if (data) {
+      for (const cat of visKeys) {
+        saved.push(`${CATALOG_LABELS[cat] || cat} ${e.vis[cat] ? 'visible' : 'hidden'}`);
+      }
+      u.visibility = visibility; // keep the row truthful until the reload lands
+      e.vis = {};
+    } else {
+      serverWords ||= statusEl.textContent;
+      refused.push('the visible boxes');
+    }
+  }
+
+  for (const rowId of Object.keys(e.roles)) {
+    const row = SITE_ROWS.find((r) => r.id === rowId);
+    if (!row) { delete e.roles[rowId]; continue; }
+    const want = e.roles[rowId];
+    const truth = roleTruth(u, row);
+    let ok = false;
+
+    if (row.roleSource === 'audiobook') {
+      const email = u.email.toLowerCase();
+      ok = await postSiteRole(email, want === 'none' ? null : want);
+      if (ok && truth.state === 'role') {
+        const holder = truth.holder;
+        if (want === 'none') truth.dir.byEmail.delete(email);
+        else truth.dir.byEmail.set(email, { ...(holder ?? { uid: '', displayName: '' }), email, role: want });
+      }
+    } else if (truth.state === 'role') {
+      ok = await patchAppRole(truth.app, truth.appUser.id, want);
+      if (ok) truth.appUser.role = want; // keep the map truthful without a refetch
+    } else {
+      // The row it would have written to is gone (the site went unreachable, or
+      // the person's account row vanished) — say so rather than posting blind.
+      serverWords ||= `${row.label}: there is no account row there to change right now.`;
+    }
+
+    if (ok) {
+      saved.push(`${row.label} role ${want}`);
+      delete e.roles[rowId];
+    } else {
+      serverWords ||= statusEl.textContent;
+      refused.push(`the ${row.label} role`);
+    }
+  }
+
+  pruneEmpty(u);
+  const who = u.display_name || u.email;
+  const parts = [];
+  if (saved.length) parts.push(`Saved for ${who}: ${saved.join(', ')}.`);
+  if (refused.length) {
+    parts.push(`Not saved: ${refused.join(' and ')} — still staged, tap Save to try again.`);
+    if (serverWords) parts.push(serverWords);
+  }
+  if (!parts.length) parts.push(`Nothing was staged for ${who}.`);
+
+  await loadDirectory(); // re-render from what the servers now say (clears the line)
+  setStatus(parts.join(' '), refused.length ? 'warn' : '');
+  saveBtn.disabled = false;
+}
+
+/**
+ * The highest rung a site can express — used for the owner fact, never
+ * hardcoded, because a rename in any app would rot a literal here.
+ *
+ * ⚠️ THE TWO FEDERATIONS ANSWER THEIR LADDERS IN OPPOSITE ORDERS, and this is
+ * the one place that difference is allowed to live. The app Workers list theirs
+ * highest-first (`dir.roles[0]`); the auth Worker's site-roles ladder is
+ * cumulative and lists lowest-first (`dir.roles.at(-1)`). Getting this backwards
+ * shows an owner as the LOWEST rung on the site, which reads as a demotion that
+ * never happened.
+ */
+function topRung(row, dir) {
+  return row.roleSource === 'audiobook' ? dir.roles[dir.roles.length - 1] : dir.roles[0];
+}
+
+/**
+ * THE ROLE CONTROL FOR ONE SITE ROW — one function for all four sites, which is
+ * the point (2026-08-17). It used to be two: appRoleCell wrote on `change` with
+ * no confirmation, audiobookRoleCell staged and needed its own two-tap apply
+ * button. Same class of decision, two gestures, and the owner had to remember
+ * which row he was on.
+ *
+ * Now every row behaves identically: picking a rung STAGES it and nothing else.
+ * The card's Save writes it. The cell renders exactly one of:
+ *
+ *   - a dropdown, when this caller may actually set something here;
+ *   - a worded FACT (owner rank), which is never a control — an owner outranks
+ *     anything this page can grant (owner decision 2026-08-16: "for anyone with
+ *     owner rank dont even render options to change it. just always auto fill
+ *     and write the max role possible for each site");
+ *   - a worded REFUSAL naming its cause — no account row there yet, a rung
+ *     above your own grant power, no grant power at all, or a Worker that did
+ *     not answer.
+ *
+ * ⚠️ Never a disabled dropdown. A greyed control reads as "something you could
+ * enable", and in every one of these cases there is nothing to enable.
+ *
+ * ⚠️ Escalation is enforced SERVER-SIDE (site-roles.ts's canGrant for the
+ * audiobook ladder, each app's own `manageUsers` gate for the rest). This cell
+ * MIRRORS that rather than re-deriving it: it offers only what `grantable`
+ * names, so a control that would just be refused on submit is never drawn.
+ */
+function roleCell(u, row, onStage) {
   const cell = document.createElement('span');
+  cell.className = 'perm-role';
+  const truth = roleTruth(u, row);
 
-  if (!dir || !dir.ok) {
-    cell.className = 'cat-warn';
-    cell.textContent = dir?.why ?? 'not loaded';
+  const worded = (className, text, title) => {
+    const note = document.createElement('span');
+    note.className = className;
+    note.textContent = text;
+    if (title) note.title = title;
+    cell.appendChild(note);
     return cell;
+  };
+
+  if (truth.state === 'degraded') {
+    return worded(
+      'perm-warn',
+      `${truth.why} — roles here cannot be read or set right now`,
+      'This site answered with a problem rather than a roster. The estate row and every other site are unaffected; try Refresh.',
+    );
   }
 
-  const appUser = dir.byEmail.get(estateUser.email.toLowerCase());
-  if (!appUser) {
-    // The app creates its row on the person's first sign-in there — until
-    // then there is nothing to hold a role. Not an error.
-    cell.className = 'cat-note';
-    cell.textContent = 'no account yet — appears on first sign-in';
-    return cell;
+  // ⚠️ AN OWNER GETS A FACT, NOT A CONTROL — on every row (the audiobook row
+  // was missed when the app rows got this, owner-reported 2026-08-16: "for the
+  // audiobook portal it didnt force my role"). Read from the server's
+  // OWNER_EMAILS, never inferred from a stored role: 'owner' is deliberately
+  // never written to a site_roles doc, so inferring it from one would answer
+  // "no" for every real owner. reconcileOwnerRoles() does the correcting, once
+  // per load — never from inside a render function.
+  if (isOwnerEmail(u)) {
+    if (truth.state !== 'role') {
+      return worded('perm-owner', 'owner · no account row there yet',
+        'Owner — the site makes its row on their first sign-in there; the max rung is written once it exists.');
+    }
+    const top = topRung(row, truth.dir);
+    const behind = truth.role !== top;
+    const cellText = behind ? `owner · ${truth.role} → ${top}` : `owner · ${top}`;
+    // ⚠️ WHO FIXES A LAGGING OWNER DIFFERS BY ROW, so the tooltip must not
+    // claim otherwise (caught 2026-08-17 by exercising the render): only the
+    // audiobook ladder is reconciled from this page (reconcileOwnerRoles, once
+    // per load). An app row that is behind stays behind until someone fixes it
+    // in that app, and saying "being corrected" there would be a promise this
+    // page does not keep.
+    const behindNote = row.roleSource === 'audiobook'
+      ? `Currently ${truth.role}; this page corrects it automatically after each load.`
+      : `Currently ${truth.role}. Nothing here changes it — fix it in that site itself.`;
+    return worded(
+      behind ? 'perm-owner perm-warn' : 'perm-owner',
+      cellText,
+      behind
+        ? `Owner — should hold ${top}, this site's highest rung. ${behindNote}`
+        : `Owner — holds ${top}, this site's highest rung. Not changeable here; 'owner' itself is DB-only and has no UI path, ever.`,
+    );
   }
 
-  // ⚠️ AN OWNER'S ROLE IS NOT EDITABLE — no dropdown at all (owner decision
-  // 2026-08-16: "for anyone with owner rank dont even render options to change
-  // it. just always auto fill and write the max role possible for each site").
-  //
-  // Rendering a disabled control, or one that snaps back when the server
-  // refuses, would be the "button that looks like it worked" failure the
-  // never-show-a-bare-status rule exists to prevent. An owner outranks every
-  // grant this page can make, so there is no state a dropdown could offer that
-  // is not a refusal waiting to happen. It shows a fact instead.
-  //
-  // Each app owns its OWN vocabulary and they genuinely differ (library
-  // `owner|manager|reader`, games `owner|manager|rater|viewer`) — so "the max
-  // role possible for each site" is read from that app's own `dir.roles`
-  // (first entry, the apps list theirs highest-first) rather than hardcoding a
-  // word that would rot the next time an app renames a rung.
-  if (isOwnerEmail(estateUser)) {
-    const top = dir.roles[0];
-    cell.className = 'cat-role cat-owner';
-    cell.textContent = appUser.role === top ? top : `${appUser.role} → ${top}`;
-    cell.title =
-      appUser.role === top
-        ? `Owner — holds ${top}, this app's highest role. Not changeable here; owner is DB-only.`
-        : `Owner — should hold ${top} (this app's highest role) but currently holds ` +
-          `${appUser.role}. Not changeable here; fix it in the app itself.`;
-    if (appUser.role !== top) cell.classList.add('cat-warn');
-    return cell;
+  if (truth.state === 'noaccount') {
+    return worded('perm-note', 'no account yet — appears on first sign-in there',
+      'This site makes a person\'s row the first time they sign in there. Until then there is nothing to hold a role. Not an error.');
   }
 
+  let options;
+  if (row.roleSource === 'audiobook') {
+    const grantable = Array.isArray(truth.dir.grantable) ? truth.dir.grantable : [];
+    const canTouchCurrent = truth.role === 'none' || grantable.includes(truth.role);
+    if (!canTouchCurrent) {
+      return worded('perm-note',
+        truth.role === 'owner' ? 'owner (DB-only — no UI path, ever)' : `${truth.role} (outranks your grant power)`,
+        'You may only grant or revoke rungs strictly beneath your own, which the auth Worker enforces server-side. This row is above that line.');
+    }
+    if (!grantable.length) {
+      return worded('perm-note', 'none — you hold no grant power on this ladder',
+        'Your own rung here grants nothing beneath it, so there is no rung to offer.');
+    }
+    // 'none' is a real, storable state on this ladder (guest is never written).
+    options = ['none', ...grantable];
+  } else {
+    options = truth.dir.roles;
+  }
+
+  const shown = effectiveRole(u, row);
   const select = document.createElement('select');
-  select.setAttribute('aria-label', `${app.label} role for ${estateUser.email}`);
-  for (const role of dir.roles) {
+  select.setAttribute('aria-label', `${row.label} role for ${u.email}`);
+  for (const role of options) {
     const opt = document.createElement('option');
     opt.value = role;
     opt.textContent = role;
-    if (role === appUser.role) opt.selected = true;
     select.appendChild(opt);
   }
-  select.addEventListener('change', async () => {
-    select.disabled = true;
-    const ok = await patchAppRole(app, appUser.id, select.value);
-    if (ok) {
-      appUser.role = select.value; // keep the map truthful without a refetch
-    } else {
-      select.value = appUser.role; // refused — snap back to what stands
-    }
-    select.disabled = false;
+  select.value = options.includes(shown) ? shown : truth.role;
+  select.classList.toggle('perm-staged', stagedRole(u, row) !== undefined);
+
+  select.addEventListener('change', () => {
+    // STAGE ONLY. The network is the Save button's business.
+    editsFor(u).roles[row.id] = select.value;
+    const stillStaged = stagedRole(u, row) !== undefined;
+    select.classList.toggle('perm-staged', stillStaged);
+    onStage();
   });
-  cell.className = 'cat-role';
+
   cell.appendChild(select);
   return cell;
 }
 
-/**
- * The audiobook role cell: a none/member/contributor/moderator/admin
- * dropdown wired to the auth Worker's site-roles LADDER federation, or the
- * honest reason there isn't one. 'none' is a real state (most members hold
- * no site role — i.e. guest, never stored), so the dropdown always
- * renders when it renders at all — unlike the app cells there is no "no
- * account yet" case: revoking = picking none, granting = picking a role.
- *
- * ⚠️ Escalation is enforced SERVER-SIDE (site-roles.ts's canGrant, mirrored
- * from role-ladder.ts) — this cell mirrors that rather than re-deriving
- * it: only `dir.grantable` roles are ever offered, and a row whose CURRENT
- * role the caller may not touch (it outranks their own grant power, or is
- * 'owner' — DB-only, no UI path, ever) renders READ-ONLY rather than a
- * control that would just be refused on submit.
- *
- * Role changes are DESTRUCTIVE (they change what a member may do) — the
- * owner explicitly asked for confirmation on role changes, so this reuses
- * the two-tap confirmBtn idiom instead of applying on a bare <select>
- * change: picking a new value only STAGES it; the confirm button must be
- * tapped twice before postSiteRole() actually runs.
- */
 /**
  * Keep every OWNER at the top of the audiobook ladder, automatically.
  *
@@ -1071,194 +1448,212 @@ async function reconcileOwnerRoles() {
   }
 }
 
-function audiobookRoleCell(estateUser) {
-  const dir = siteRolesDir;
-  const cell = document.createElement('span');
-  cell.className = 'cat-role';
+/**
+ * THE DERIVED CAPABILITY LINE — the grid's fourth column.
+ *
+ * ⚠️ DERIVED, NEVER EDITABLE. It is the rung's meaning read straight off the
+ * ladder: for Audiobooks/Ebooks, the LIVE summary the auth Worker sends with
+ * its capability map (so the page cannot drift from the server's own idea of
+ * what a rung does); for the app rows, which have no such endpoint, the
+ * one-line meanings copied from the owner-approved role-capability-map.
+ *
+ * ⚠️ A rung with no documented meaning says so rather than inventing one.
+ */
+function capabilityText(u, row) {
+  const role = effectiveRole(u, row);
+  if (role === null) return 'no role here yet — nothing to derive.';
 
-  if (!dir || !dir.ok) {
-    cell.className = 'cat-warn';
-    cell.textContent = dir?.why ?? 'not loaded';
-    return cell;
+  let summary = null;
+  if (row.roleSource === 'audiobook' && roleTreeDir?.ok) {
+    summary = roleTreeDir.capabilities.find((c) => c.role === role)?.summary ?? null;
   }
+  summary ??= RUNG_MEANINGS[role] ?? null;
+  let text = summary
+    ? `${role} — ${summary}`
+    : `${role} — no documented summary for this rung (that site answers its own vocabulary).`;
 
-  const emailKey = estateUser.email.toLowerCase();
-  const holder = dir.byEmail.get(emailKey);
-  const currentRole = holder?.role ?? 'none';
-  const grantable = Array.isArray(dir.grantable) ? dir.grantable : [];
-  const canTouchCurrent = currentRole === 'none' || grantable.includes(currentRole);
+  // ⚠️ THE DOWNLOAD FACT LIVES HERE NOW, AND NOWHERE ELSE (owner, 2026-08-17,
+  // looking at the live page: *"what is this download: admin + role tag it
+  // looks bad and idk what its trying to tell me."*). It used to be a little
+  // standalone tag hanging off the Audiobooks/Ebooks row, which made it a
+  // fifth thing on a row and answered a question nobody had asked yet.
+  // Downloading is a capability of a rung, so it belongs in the column that
+  // says what a rung can do — appended only when the live summary has not
+  // already said it, so this never doubles up if the Worker's own wording
+  // grows to mention it.
+  if (row.roleSource === 'audiobook' && role === EBOOK_DOWNLOAD_RUNG && !/download/i.test(text)) {
+    text += ' Includes downloading ebook files.';
+  }
+  return text;
+}
 
-  // ⚠️ AN OWNER GETS NO CONTROL HERE EITHER (owner-reported 2026-08-16: "for
-  // the audiobook portal it didnt force my role" — the app cells got this
-  // treatment and this one was missed).
-  //
-  // ⚠️ The `currentRole === 'owner'` branch below CANNOT FIRE, and that is the
-  // whole bug. `currentRole` comes from the Firestore site_roles doc, and
-  // SITE_ROLES stops at 'admin' — 'owner' is never stored there by design, it
-  // lives in OWNER_EMAILS. So an owner's row carried 'admin' or 'none', passed
-  // the canTouchCurrent test, and was handed a dropdown. The dead branch is
-  // kept below only because a doc COULD hold a stale 'owner' string from an
-  // earlier vocabulary; it is not the owner check.
-  //
-  // Ask the server who owns the estate instead, exactly as the app cells do.
-  // The displayed value is the highest role this ladder can express (the last
-  // SITE_ROLES entry, not a hardcoded 'admin' that a rename would rot), shown
-  // as a fact with the real rank beside it.
-  if (isOwnerEmail(estateUser)) {
-    const top = dir.roles[dir.roles.length - 1];
-    const note = document.createElement('span');
-    note.className = 'cat-owner';
-    note.textContent = `owner · ${top}`;
-    note.title =
-      `Owner — outranks every role this page can grant, so there is nothing to choose. ` +
-      `'owner' itself is DB-only and is never stored in a site_roles doc; ${top} is the ` +
-      `highest role the audiobook ladder can express, and is kept set automatically.`;
-    if (currentRole !== top) {
-      // Reconciliation is done once after load (reconcileOwnerRoles), not from
-      // inside a render function — a cell that writes as a side effect of being
-      // drawn would fire again on every re-render and every filter change.
-      note.classList.add('cat-warn');
-      note.textContent = `owner · ${currentRole} → ${top}`;
-      note.title += ` Currently ${currentRole}; being corrected.`;
+/** One grid cell, carrying the column name so the phone layout can print it. */
+function permCell(className, column) {
+  const el = document.createElement('span');
+  el.className = `perm-cell ${className}`.trim();
+  if (column) el.dataset.col = column;
+  return el;
+}
+
+/**
+ * ⚠️ THE PERMISSION MAP FOR ONE MEMBER — this page's centerpiece (owner order
+ * 2026-08-17: "maybe just make a full permission map after normalizing
+ * everything").
+ *
+ * One row per site — the SAME rows, in the SAME order, as the "Permission map"
+ * disclosure at the top — and the SAME four cells on every one of them:
+ *
+ *   site │ visible │ role │ what that role can do
+ *
+ * which is deliberately the shape of docs/info/role-capability-map.md, the map
+ * the owner approved, rendered live for this person. The old block drew a line
+ * per surface with whatever cells that surface happened to own, which is how
+ * four different ways to change a permission accumulated without anyone
+ * deciding to have four.
+ *
+ * ⚠️ `catKeys` IS A LIST because one row can cover more than one grant:
+ * Audiobooks/Ebooks is one site behind one ladder with two visibility grants on
+ * it (f7697f4), so that row carries TWO boxes beside ONE dropdown, and its
+ * download note rides in the capability cell where the rung it names is stated.
+ *
+ * ⚠️ The wire vocabulary is untouched: every box still carries its own
+ * `data-cat`, and the save still rebuilds the whole array from CATALOGS, so a
+ * merged row saves both grants independently and in canonical order.
+ */
+function permGrid(u, afterStage) {
+  const grid = document.createElement('div');
+  grid.className = 'perm-grid';
+
+  const header = document.createElement('div');
+  header.className = 'perm-row perm-head';
+  for (const [label, cls] of [['Site', 'perm-name'], ['Visible', ''], ['Role', ''], ['What that role can do', '']]) {
+    const h = permCell(cls);
+    h.textContent = label;
+    header.appendChild(h);
+  }
+  grid.appendChild(header);
+
+  const capCells = new Map();
+  let refreshFoot = () => {};
+  const onStage = () => {
+    // The derived column previews the STAGED rung — that is the point of
+    // deriving it: you see what the change would mean before you commit it.
+    for (const [rowId, cell] of capCells) {
+      const row = SITE_ROWS.find((r) => r.id === rowId);
+      cell.firstChild.textContent = capabilityText(u, row);
     }
-    cell.appendChild(note);
-    return cell;
-  }
+    refreshFoot();
+    afterStage?.();
+  };
 
-  if (!canTouchCurrent) {
-    // The current holder outranks what this caller may grant/revoke (e.g.
-    // an admin viewed by a moderator, or 'owner' — DB-only for everyone).
-    const note = document.createElement('span');
-    note.className = 'cat-note';
-    note.textContent =
-      currentRole === 'owner' ? 'owner (DB-only — no UI path, ever)' : `${currentRole} (outranks your grant power)`;
-    cell.appendChild(note);
-    return cell;
-  }
+  for (const row of SITE_ROWS) {
+    const line = document.createElement('div');
+    line.className = 'perm-row';
 
-  if (grantable.length === 0) {
-    // Nothing to grant AND nothing held — no control worth showing.
-    const note = document.createElement('span');
-    note.className = 'cat-note';
-    note.textContent = 'none — you hold no grant power on this ladder';
-    cell.appendChild(note);
-    return cell;
-  }
+    const name = permCell('perm-name');
+    name.textContent = row.label;
+    line.appendChild(name);
 
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', `audiobook site role for ${estateUser.email}`);
-  for (const role of ['none', ...grantable]) {
-    const opt = document.createElement('option');
-    opt.value = role;
-    opt.textContent = role;
-    if (currentRole === role) opt.selected = true;
-    select.appendChild(opt);
-  }
-  select.value = currentRole;
-
-  const applyBtn = confirmBtn('Set role', 'quiet', async () => {
-    const role = select.value === 'none' ? null : select.value;
-    if (role === (holder?.role ?? null)) return; // no-op — nothing staged
-    select.disabled = true;
-    const ok = await postSiteRole(emailKey, role);
-    if (ok) {
-      // Keep the map truthful without a refetch (the app-cell idiom).
-      if (role) dir.byEmail.set(emailKey, { ...(holder ?? { uid: '', displayName: '' }), email: emailKey, role });
-      else dir.byEmail.delete(emailKey);
+    const vis = permCell('perm-vis', 'Visible');
+    if (Array.isArray(u.visibility)) {
+      for (const catKey of row.catKeys) {
+        const label = document.createElement('label');
+        label.className = 'perm-box';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.dataset.cat = catKey;
+        box.checked = effectiveVis(u, catKey);
+        box.classList.toggle('perm-staged', stagedVis(u, catKey) !== undefined);
+        box.setAttribute('aria-label', `${CATALOG_LABELS[catKey] || catKey} visible to ${u.email}`);
+        box.addEventListener('change', () => {
+          // STAGE ONLY — the Save button owns the network (see the grammar).
+          editsFor(u).vis[catKey] = box.checked;
+          box.classList.toggle('perm-staged', stagedVis(u, catKey) !== undefined);
+          onStage();
+        });
+        // A lone box says "visible"; a shared row names its shelf, because
+        // "visible" twice on one line is two identical controls with no way to
+        // tell them apart.
+        label.append(box, row.catKeys.length > 1 ? ` ${CATALOG_LABELS[catKey] || catKey}` : ' visible');
+        vis.appendChild(label);
+      }
     } else {
-      select.value = holder?.role ?? 'none'; // refused — snap back to what stands
+      const note = document.createElement('span');
+      note.className = 'perm-note';
+      note.textContent = 'not reported';
+      vis.appendChild(note);
     }
-    select.disabled = false;
-  });
+    line.appendChild(vis);
 
-  cell.append(select, applyBtn);
-  return cell;
-}
+    const role = roleCell(u, row, () => onStage());
+    role.classList.add('perm-cell');
+    role.dataset.col = 'Role';
+    line.appendChild(role);
 
-/**
- * The Audiobooks/Ebooks row's trailing cell — a NOTE, not a control, and
- * deliberately so.
- *
- * ⚠️ THERE IS NO DOWNLOAD CHECKBOX HERE ANY MORE. One shipped on 2026-08-16
- * (0009's per-person `dl_ebooks` grant) and the owner removed it the next day,
- * verbatim: *"For ebooks I don't want a download check box, I want to use roles
- * we have. Set up the roles to match library."* Downloading is granted by
- * PROMOTION on the role dropdown — `download` floors at `admin` in
- * audiobook-worker's capability matrix. One grant mechanism, in the place the
- * page already puts "what may they DO there".
- *
- * ⚠️ The sentence got SHORTER when the rows merged (owner order 2026-08-17).
- * Its previous wording spent half its words pointing UP at the audiobook row,
- * because the role it names was a row away and the reader had to be sent there.
- * The dropdown is now an inch to its left on the same line, so the direction is
- * noise and only the rung is news: "download: admin+ role". (The old wording is
- * deliberately not quoted here — predeploy.checks.json pins its removal with
- * `mustNotContain`, and a comment repeating it verbatim would fail that check
- * from a bundle that is in fact correct.)
- *
- * The cell exists at all so the row does not go quiet about downloads: a blank
- * space would read as "downloads are not a thing here", and someone would go
- * looking for the toggle that used to be in it. Saying where the grant moved is
- * cheaper than the question it prevents.
- */
-function downloadNoteCell(estateUser) {
-  const cell = document.createElement('span');
-  cell.className = 'cat-note';
-  // Named for what the reader must DO, and pointing at the control that does
-  // it — never a bare statement that they lack something.
-  cell.textContent = 'download: admin+ role';
-  cell.title =
-    'Downloading ebook files is a role, not a per-person grant (owner decision ' +
-    '2026-08-17). Set this person to admin on the role dropdown in this row to ' +
-    'allow it; the "Ebooks" box only opens the shelf and the in-browser reader.';
-  return cell;
-}
+    const cap = permCell('perm-cap', 'Can');
+    const capText = document.createElement('span');
+    capText.textContent = capabilityText(u, row);
+    cap.appendChild(capText);
+    capCells.set(row.id, cap);
+    line.appendChild(cap);
 
-/**
- * One catalog line: name, a visibility checkbox per catalog it covers, the role
- * cell, and any trailing note.
- *
- * ⚠️ `catKeys` IS A LIST because one line can describe more than one catalog.
- * Audiobooks and Ebooks share a row (owner order 2026-08-17) — same site, same
- * ladder, two visibility grants — so the row carries TWO checkboxes above ONE
- * dropdown. Every other row passes a single key and renders exactly as before.
- *
- * ⚠️ The wire vocabulary is untouched: each box still carries its own
- * `data-cat`, and saveVisibility still rebuilds the whole array from CATALOGS,
- * so a merged row saves both grants independently and in canonical order.
- *
- * The checkbox label follows suit — a lone box says "visible" (there is only
- * one shelf on the line to be visible in), a shared row names its catalog
- * ("Audiobooks visible" / "Ebooks visible") because "visible" twice on one line
- * would be two identical controls with no way to tell them apart.
- */
-function catalogRow(estateUser, catKeys, roleCell, trailingCell) {
-  const keys = Array.isArray(catKeys) ? catKeys : [catKeys];
-  const row = document.createElement('div');
-  row.className = 'cat';
-
-  const name = document.createElement('span');
-  name.className = 'cat-name';
-  name.textContent = keys.map((k) => CATALOG_LABELS[k] || k).join('/');
-  row.appendChild(name);
-
-  if (Array.isArray(estateUser.visibility)) {
-    for (const catKey of keys) {
-      const vis = document.createElement('label');
-      vis.className = 'cat-vis';
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.dataset.cat = catKey;
-      box.checked = estateUser.visibility.includes(catKey);
-      box.addEventListener('change', () => saveVisibility(estateUser, row.parentElement));
-      vis.append(box, keys.length > 1 ? ` ${CATALOG_LABELS[catKey] || catKey} visible` : ' visible');
-      row.appendChild(vis);
-    }
+    grid.appendChild(line);
   }
 
-  row.appendChild(roleCell);
-  if (trailingCell) row.appendChild(trailingCell);
-  return row;
+  // ── The one Save. See the header comment for why it is per member. ────────
+  const foot = document.createElement('div');
+  foot.className = 'perm-foot';
+  const hint = document.createElement('span');
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'btn small';
+  save.textContent = 'Save permissions';
+  save.addEventListener('click', () => savePermissions(u, save));
+  const discard = document.createElement('button');
+  discard.type = 'button';
+  discard.className = 'btn small quiet';
+  discard.textContent = 'Discard';
+  discard.addEventListener('click', () => {
+    pendingEdits.delete(u.id);
+    renderFilteredList(); // repaint from server truth; the card stays expanded
+  });
+  // ⚠️ THE SAVE APPEARS, IT DOES NOT SIT THERE DISABLED. Owner, 2026-08-17,
+  // looking at the live page: *"I think you should do a confirm/save button and
+  // no set role button for each role. have the save button appear on each
+  // persons box when a change is made."* A permanently-visible disabled button
+  // is a control that spends its whole life refusing, and it makes a clean card
+  // look like an unfinished one — so the whole footer is absent until something
+  // is staged, and arrives (count, Save, Discard) the moment anything in this
+  // card is touched.
+  refreshFoot = () => {
+    const n = countStaged(u);
+    foot.hidden = !n;
+    hint.className = 'perm-unsaved';
+    hint.textContent = n
+      ? `${n} unsaved change${n === 1 ? '' : 's'} — nothing is written until you Save.`
+      : '';
+    save.disabled = !n;
+  };
+  refreshFoot();
+  foot.append(save, discard, hint);
+  grid.appendChild(foot);
+
+  return grid;
+}
+
+/** The collapsed one-liner: what this member can see and be, at a glance. */
+function permScanLine(u) {
+  const sees = CATALOGS.filter((cat) => truthVis(u, cat)).map((cat) => CATALOG_LABELS[cat] || cat);
+  const roles = [];
+  for (const row of SITE_ROWS) {
+    const truth = roleTruth(u, row);
+    if (truth.state === 'role' && truth.role && truth.role !== 'none') roles.push(`${truth.role} on ${row.label}`);
+  }
+  const bits = [sees.length ? `sees ${sees.join(', ')}` : 'sees nothing yet'];
+  if (roles.length) bits.push(roles.join(' · '));
+  const n = countStaged(u);
+  if (n) bits.push(`${n} unsaved`);
+  return bits.join(' · ');
 }
 
 function userCard(u) {
@@ -1313,51 +1708,50 @@ function userCard(u) {
   meta.textContent = bits.join(' · ');
   li.appendChild(meta);
 
-  // The federated catalog block: per catalog, the estate's visibility flag
-  // (what their search may SEE) beside the app's own role (what they may DO
-  // there — each app's words, each app's decision).
-  const cats = document.createElement('div');
-  cats.className = 'cats';
-
-  // ONE ROW FOR ONE SURFACE (owner order 2026-08-17, verbatim: "instead of a
-  // new line for ebooks in the auth page, just make it Audiobook/Ebooks. also
-  // they should both be plural"). Audiobooks and Ebooks are the same site and
-  // the same site_roles ladder; ebook visibility is a second grant on it, not a
-  // second catalog with a second permission system. So: one line, two visibility
-  // boxes (vis_audiobook / vis_ebooks — unchanged wiring), one role dropdown,
-  // and the download note, which now reads naturally because the role it names
-  // is in the same row rather than an instruction to look upward.
-  cats.appendChild(catalogRow(u, MERGED_ROW, audiobookRoleCell(u), downloadNoteCell(u)));
-
-  for (const app of APPS) {
-    cats.appendChild(catalogRow(u, app.key, appRoleCell(app, u)));
-  }
-
-  // ⚠️ The second library instance (library2, 0007) used to render a note here
-  // reading "roles live on that site — not federated here yet". It is now a
-  // full member of APPS above, so it gets the same dropdown as every other app
-  // Worker (owner-reported live 2026-08-16: "in the admin page Sam's library
-  // has no roles, I should be able to set her with the same level of roles as
-  // my library"). Its visibility checkbox is unchanged — 0007's column is
-  // DEFAULT 0, so existing rows still show it unchecked until granted.
-
-  // ⚠️ THE EBOOK SHELF NO LONGER HAS A ROW OF ITS OWN (0008 shipped one on
-  // 2026-08-17; the owner merged it the same day — see MERGED_ROW above). Its
-  // `vis_ebooks` box is unchanged and unmoved in the data — it simply renders
-  // beside the audiobook one, because the shelf never had a ladder of its own:
-  // it rides the audiobook role, where `download` floors at admin.
-  li.appendChild(cats);
+  // ── THE PERMISSION MAP, behind a per-member disclosure ───────────────────
+  // Collapsed by default (owner order 2026-08-17: "expanding a member shows
+  // the complete grid"): the head line answers "who is this and what do they
+  // hold" for scanning a whole directory, and the grid answers "what exactly,
+  // and change it" for the one person you came for. Which cards are open lives
+  // in expandedMembers, NOT in the DOM, so a search keystroke or a sort change
+  // (both of which rebuild every card) does not shut the card you are working
+  // in.
+  const perm = document.createElement('details');
+  perm.className = 'perm';
+  perm.open = expandedMembers.has(li.dataset.email);
+  const permSummary = document.createElement('summary');
+  permSummary.className = 'adv-summary perm-summary';
+  const permTitle = document.createElement('span');
+  permTitle.className = 'ctl-label';
+  permTitle.textContent = 'Permissions';
+  const permScan = document.createElement('span');
+  permScan.className = 'perm-scan';
+  permScan.textContent = permScanLine(u);
+  permSummary.append(permTitle, permScan);
+  perm.appendChild(permSummary);
+  // The collapsed one-liner keeps counting unsaved edits while the card is open,
+  // so collapsing it never hides the fact that something is staged.
+  perm.appendChild(permGrid(u, () => { permScan.textContent = permScanLine(u); }));
+  perm.addEventListener('toggle', () => {
+    if (perm.open) expandedMembers.add(li.dataset.email);
+    else expandedMembers.delete(li.dataset.email);
+  });
+  li.appendChild(perm);
 
   const actions = document.createElement('div');
   actions.className = 'user-actions';
 
+  // ⚠️ EVERY ESTATE-STATUS ACTION IS TWO-TAP, INCLUDING APPROVE (2026-08-17).
+  // Revoke, approver and devops have been two-tap since the owner's order of
+  // 2026-08-15 ("so I don't accidentally remove people from key roles");
+  // Approve was the one exception, justified as "common, additive, low-stakes"
+  // — but make-approver and make-devops are additive and low-stakes too and
+  // confirm anyway, so the exception was not a rule, it was a leftover. One
+  // gesture for this whole row is one less thing to know.
   if (u.status !== 'approved') {
-    actions.appendChild(actionBtn('Approve', '', () =>
+    actions.appendChild(confirmBtn('Approve', '', () =>
       mutate(`/api/estate/users/${u.id}/status`, { status: 'approved' })));
   }
-  // Revoke and every role flip are two-tap (confirmBtn) — owner order
-  // 2026-08-15 after nearly fat-fingering a role change. Approve stays
-  // single-tap: it is the common, additive, low-stakes action.
   if (u.status !== 'revoked') {
     actions.appendChild(confirmBtn('Revoke', 'danger', () =>
       mutate(`/api/estate/users/${u.id}/status`, { status: 'revoked' })));
@@ -1383,38 +1777,110 @@ function userCard(u) {
   return li;
 }
 
+/** A small table with the given header cells. Returns { table, tbody }. */
+function ladderTable(headers) {
+  const table = document.createElement('table');
+  table.className = 'role-tree-table';
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  for (const h of headers) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    tr.appendChild(th);
+  }
+  thead.appendChild(tr);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  table.appendChild(tbody);
+  return { table, tbody };
+}
+
+/** One site's subsection in the map: a title, then its ladder or the reason there isn't one. */
+function ladderSection(title, subtitle) {
+  const section = document.createElement('section');
+  section.className = 'ladder-site';
+  const h = document.createElement('span');
+  h.className = 'ctl-label ladder-site-title';
+  h.textContent = title;
+  section.appendChild(h);
+  if (subtitle) {
+    const p = document.createElement('p');
+    p.className = 'role-tree-note';
+    p.textContent = subtitle;
+    section.appendChild(p);
+  }
+  return section;
+}
+
 /**
- * The role tree / capability map (owner ask: "see a role tree map") — a
- * small table of the whole audiobook ladder, rendered from
- * GET /api/estate/site-roles/tree regardless of whether the roster itself
- * loaded (independent fetch, independent failure mode; see fetchRoleTree).
+ * ⚠️ THE PERMISSION MAP — EVERY SITE'S LADDER, one subsection each (owner order
+ * 2026-08-17, verbatim: *"at the top we have a tree for audio and ebooks but
+ * not one for the other sites"*).
+ *
+ * It was one ladder — the audiobook/ebooks one, from GET /site-roles/tree —
+ * and nothing at all for the library, the games shelf or Sam's library. So the
+ * page taught the reader that one site had an explainable ladder and the other
+ * three had dropdowns you were expected to already understand.
+ *
+ * Now: one subsection per SITE_ROWS row, in the same order and under the same
+ * names as every member's grid below, each built from THAT site's own answered
+ * vocabulary. The Audiobooks/Ebooks ladder keeps its richer table (the auth
+ * Worker sends per-rung summaries, who may grant them, and whether Firestore
+ * rules enforce them yet); the app ladders get what their API actually answers
+ * — the ordered list of rungs — annotated with the one-line meanings from the
+ * owner-approved role-capability-map, and NOTHING invented beyond that.
+ *
+ * Each site degrades on its own: an unreachable Worker costs one subsection.
  */
-function renderRoleTree() {
-  const details = document.getElementById('role-ladder');
-  const body = document.getElementById('role-ladder-body');
+function renderPermissionMap() {
+  const details = document.getElementById('permission-map');
+  const body = document.getElementById('permission-map-body');
   if (!details || !body) return;
 
-  if (!roleTreeDir) {
+  const anyLoaded = roleTreeDir || siteRolesDir || APPS.some((a) => appDirs[a.key]);
+  if (!anyLoaded) {
     details.hidden = true;
     return;
   }
   details.hidden = false;
   body.innerHTML = '';
 
-  if (!roleTreeDir.ok) {
-    const p = document.createElement('p');
-    p.className = 'cat-warn';
-    p.textContent = roleTreeDir.why ?? 'not loaded';
-    body.appendChild(p);
-    return;
+  for (const row of SITE_ROWS) {
+    body.appendChild(row.roleSource === 'audiobook' ? audiobookLadder(row) : appLadder(row));
   }
 
-  const table = document.createElement('table');
-  table.className = 'role-tree-table';
-  const thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th>role</th><th>grants</th><th>granted by</th><th>rules-enforced</th></tr>';
-  table.appendChild(thead);
-  const tbody = document.createElement('tbody');
+  const note = document.createElement('p');
+  note.className = 'role-tree-note';
+  note.textContent =
+    'Every ladder is cumulative and every grant is strictly beneath your own rung, enforced by the site that owns it — never by this page. ' +
+    'The words differ per site on purpose and are never translated here. ' +
+    '⚠️ The audiobook "member" rung is NOT the same thing as an approved estate member in the directory below.';
+  body.appendChild(note);
+}
+
+/** The Audiobooks/Ebooks ladder — the rich one, straight from GET /site-roles/tree. */
+function audiobookLadder(row) {
+  const section = ladderSection(
+    row.label,
+    'One ladder over both shelves — the ebook shelf has none of its own, and downloading an ebook file is this ladder’s admin rung.',
+  );
+
+  if (!roleTreeDir) {
+    const p = document.createElement('p');
+    p.className = 'perm-note';
+    p.textContent = 'not loaded yet';
+    section.appendChild(p);
+    return section;
+  }
+  if (!roleTreeDir.ok) {
+    const p = document.createElement('p');
+    p.className = 'perm-warn';
+    p.textContent = `${roleTreeDir.why ?? 'not loaded'} — this ladder cannot be shown right now.`;
+    section.appendChild(p);
+    return section;
+  }
+
+  const { table, tbody } = ladderTable(['role', 'grants', 'granted by', 'rules-enforced']);
   for (const cap of roleTreeDir.capabilities) {
     const tr = document.createElement('tr');
 
@@ -1430,25 +1896,81 @@ function renderRoleTree() {
     tr.appendChild(summaryTd);
 
     const grantedByTd = document.createElement('td');
-    grantedByTd.className = 'cat-note';
+    grantedByTd.className = 'perm-note';
     grantedByTd.textContent = cap.grantedBy;
     tr.appendChild(grantedByTd);
 
     const rulesTd = document.createElement('td');
     rulesTd.textContent = cap.rulesEnforced ? 'yes' : 'not yet';
-    if (!cap.rulesEnforced) rulesTd.className = 'cat-warn';
+    if (!cap.rulesEnforced) rulesTd.className = 'perm-warn';
     tr.appendChild(rulesTd);
 
     tbody.appendChild(tr);
   }
-  table.appendChild(tbody);
-  body.appendChild(table);
+  section.appendChild(table);
 
   const note = document.createElement('p');
   note.className = 'role-tree-note';
   note.textContent =
-    'member/contributor are real and grantable here, but the audiobook site’s firestore.rules (a different, owner-gated repo) only enforces moderator/admin today — see "rules-enforced" above. (Note: this "member" role ≠ an "estate member" approved in the directory above — see the role tree\'s own row for that distinction.)';
-  body.appendChild(note);
+    'member/contributor are real and grantable here, but the audiobook site’s firestore.rules (a different, owner-gated repo) only enforces moderator/admin today — see "rules-enforced" above.';
+  section.appendChild(note);
+  return section;
+}
+
+/**
+ * An app site's ladder, from its own /api/admin/users answer.
+ *
+ * ⚠️ Two columns, not four, and that is honesty rather than laziness: these
+ * Workers answer their rung LIST, not per-rung capability metadata, so
+ * "granted by" and "rules-enforced" would be guesses. The section note carries
+ * the one fact that IS known for all of them — grants are strictly beneath the
+ * caller's own rung, enforced there.
+ */
+function appLadder(row) {
+  const app = appFor(row);
+  const section = ladderSection(row.label, app ? app.origin.replace('https://', '') : '');
+  const dir = appDirs[row.id];
+
+  if (!dir) {
+    const p = document.createElement('p');
+    p.className = 'perm-note';
+    p.textContent = 'not loaded yet';
+    section.appendChild(p);
+    return section;
+  }
+  if (!dir.ok) {
+    const p = document.createElement('p');
+    p.className = 'perm-warn';
+    p.textContent = `${dir.why ?? 'not loaded'} — this site’s ladder cannot be shown right now.`;
+    section.appendChild(p);
+    return section;
+  }
+
+  const { table, tbody } = ladderTable(['role', 'grants']);
+  for (const role of dir.roles) {
+    const tr = document.createElement('tr');
+    const roleTd = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = `badge ${role === 'owner' ? 'revoked' : 'approved'}`;
+    badge.textContent = role;
+    roleTd.appendChild(badge);
+    tr.appendChild(roleTd);
+
+    const meaningTd = document.createElement('td');
+    const meaning = RUNG_MEANINGS[role];
+    meaningTd.textContent = meaning || 'no documented summary for this rung — this site answers its own vocabulary.';
+    if (!meaning) meaningTd.className = 'perm-note';
+    tr.appendChild(meaningTd);
+
+    tbody.appendChild(tr);
+  }
+  section.appendChild(table);
+
+  const note = document.createElement('p');
+  note.className = 'role-tree-note';
+  note.textContent = 'Listed in the order this site answers them; grants are strictly beneath your own rung, enforced there.';
+  section.appendChild(note);
+  return section;
 }
 
 function renderUsers(users) {
@@ -1524,6 +2046,14 @@ function anchoredMemberEmail() {
 function revealAnchoredMember() {
   const email = anchoredMemberEmail();
   if (!email) return;
+  // ⚠️ AND OPEN THEIR PERMISSION GRID (2026-08-17). The deep link exists for
+  // the "see someone on a catalog, then grant them something" flow; landing on
+  // a collapsed card would have made the link finish one click short of the
+  // thing it was followed for.
+  if (!expandedMembers.has(email)) {
+    expandedMembers.add(email);
+    if (allEstateUsers.some((u) => u.email.toLowerCase() === email)) renderFilteredList();
+  }
   let card = usersEl.querySelector(`li.user[data-email="${CSS.escape(email)}"]`);
   if (!card && allEstateUsers.some((u) => u.email.toLowerCase() === email)) {
     state.filters = defaultFilters();
@@ -1560,6 +2090,30 @@ const authBackstop = setTimeout(() => {
   }
 }, 8000);
 
+/**
+ * Everything a signed-out page must not still be holding.
+ *
+ * ⚠️ THE LADDERS AND THE STAGED EDITS GO TOO, since 2026-08-17. The map at the
+ * top now renders from four federations rather than one, and staged grants are
+ * held in memory rather than in the DOM — so clearing only `roleTreeDir` (all
+ * this used to do, back when it was the only thing up there) would leave three
+ * ladders on screen after sign-out and would hand the NEXT person who signs in
+ * the previous one's unsaved edits.
+ */
+function clearSignedInState() {
+  usersEl.innerHTML = '';
+  gapsEl.hidden = true;
+  controlsEl.hidden = true;
+  allEstateUsers = [];
+  pendingEdits.clear();
+  expandedMembers.clear();
+  appDirs = Object.fromEntries(APPS.map((a) => [a.key, null]));
+  siteRolesDir = null;
+  roleTreeDir = null;
+  updateCountLine(0, 0);
+  renderPermissionMap();
+}
+
 function renderAuthState() {
   const signedIn = currentUser !== null;
   signinBtn.hidden = signedIn || !authResolved;
@@ -1572,25 +2126,15 @@ function renderAuthState() {
     out.textContent = 'sign out';
     out.addEventListener('click', async () => {
       await signOutUser();
-      usersEl.innerHTML = '';
-      gapsEl.hidden = true;
-      controlsEl.hidden = true;
-      allEstateUsers = [];
-      updateCountLine(0, 0);
+      clearSignedInState();
       setStatus('');
-      roleTreeDir = null;
-      renderRoleTree();
     });
     whoEl.append(`${currentUser.displayName || currentUser.email} · `, out);
     whoEl.hidden = false;
   } else {
     whoEl.hidden = true;
     whoEl.innerHTML = '';
-    usersEl.innerHTML = '';
-    gapsEl.hidden = true;
-    controlsEl.hidden = true;
-    roleTreeDir = null;
-    renderRoleTree();
+    clearSignedInState();
   }
 }
 
