@@ -13,7 +13,24 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
-## 📚 The universe join reads the SERIES, not one spelling of it — ✅ BUILT + DEPLOYED 2026-08-17
+## 🪜 Admin page: Audiobooks/Ebooks ladder rendered HIGH → LOW — ✅ BUILT 2026-08-17
+
+Owner (2026-08-17, verbatim): *"on the estate page audiobook permissions starts
+guest to admin, the rest of the sites start owner/admin down. so one site is
+lowest to high and the rest are high to low. can you make audiobook/ebook high
+to low?"*
+
+Two display surfaces in `sites/heygabi-home/public/admin/admin.js` rendered the
+auth Worker's cumulative (lowest-first) ordering directly, while the app rows
+render their Workers' highest-first lists — the inconsistency he saw:
+
+- **the role dropdown** (`roleCell`): now `[...grantable].reverse()` with
+  `'none'` closing the list (it sits beneath every rung);
+- **the permission map's Audiobooks/Ebooks ladder** (`audiobookLadder`): rows
+  now iterate `capabilities` reversed.
+
+Display-only in both places — nothing re-stored, wire order untouched, server
+`canGrant` enforcement unaffected.
 
 *(Moved whole from `TODO.md`'s "Series registry — what still hangs off it",
 item 3: "**Resolve `entry.universe` from the CANONICAL series display**, not

@@ -1367,7 +1367,12 @@ function roleCell(u, row, onStage) {
         'Your own rung here grants nothing beneath it, so there is no rung to offer.');
     }
     // 'none' is a real, storable state on this ladder (guest is never written).
-    options = ['none', ...grantable];
+    // ⚠️ HIGHEST-FIRST, to match the app rows (owner, 2026-08-17: "one site is
+    // lowest to high and the rest are high to low. can you make audiobook/ebook
+    // high to low?"). `grantable` arrives lowest-first (the auth Worker's
+    // cumulative ladder — see topRung), so it is reversed for DISPLAY only;
+    // 'none' is beneath every rung, so it closes the list.
+    options = [...grantable].reverse().concat('none');
   } else {
     options = truth.dir.roles;
   }
@@ -1881,7 +1886,10 @@ function audiobookLadder(row) {
   }
 
   const { table, tbody } = ladderTable(['role', 'grants', 'granted by', 'rules-enforced']);
-  for (const cap of roleTreeDir.capabilities) {
+  // ⚠️ HIGHEST-FIRST for display, matching the app ladders and the role
+  // dropdowns (owner, 2026-08-17: "can you make audiobook/ebook high to low?").
+  // The tree answers lowest-first; reversed here only, never re-stored.
+  for (const cap of [...roleTreeDir.capabilities].reverse()) {
     const tr = document.createElement('tr');
 
     const roleTd = document.createElement('td');
