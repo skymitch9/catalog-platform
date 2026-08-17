@@ -13,6 +13,72 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🧠 GABI CONVERSATION CONTINUITY (owner, 2026-08-17) — ✅ BUILT + DEPLOYED 2026-08-17, SHIPPED OFF
+
+Owner: *"I don't want to message GABI and then message her again and she has
+no recollection"* + approved the three-layer design: rolling per-person
+memory (~10 turns / ~30-min sliding TTL, injected as model context), reply-
+with-ping and @mention continuation in channels, **DMs as the zero-@
+surface** (DM content is exempt from the Message Content intent — the
+privacy posture is unchanged), and **components for her clarifying
+questions** (buttons/selects for discrete choices, a modal for free text,
+all on the already-live interactions endpoint). ⚠️ Owner constraint:
+*"whatever we build we need to consider for when we update the chat button
+on GABI"* — the conversation-store shape must be documented as a shared
+design the site panel can adopt, not a Discord-only one-off.
+
+**Shipped** at Worker version `5cf27f04-efa2-4a3e-833d-ba0dc1bc302b`, commits
+`3a50157` (build) + `84dd15f` (docs). Workspace tests **794 → 852, all green**;
+107/107 estate probes pass. ⚠️ **`GABI_MENTIONS` is untouched and still
+`"off"`** — the flip stays the owner's/conductor's step, and there is no
+second switch: everything below is gated by that one.
+
+**All four layers landed:**
+
+- **Memory** — `(surface, space, person)`, 30-min sliding window, 20 turns,
+  600 chars/turn, injected as real `messages` (not a summary). Aged-out state
+  is **DELETED, not archived**; a test asserts `null` specifically, because an
+  empty record would leave a row per person per channel forever holding a key
+  that says who talked to her and where.
+- **Continuation grammar** — a **reply with the ping left ON**, proved by
+  `referenced_message.author.id`, and a **DM** where no mention is looked for.
+  Intents **513 → 4609** (`+DIRECT_MESSAGES`, unprivileged). MESSAGE_CONTENT
+  (1<<15) still never requested, now asserted as its own test case; DM typing
+  (1<<14) deliberately not requested. **Bare text is still the owner's
+  decision** and nothing here moved that line.
+- **Components** — multi-match lookup → select menu + a button opening a
+  free-text modal, on the already-live Ed25519-verified `/interactions`
+  endpoint. `MODAL_SUBMIT` (type 5) is now routed; it previously answered
+  "unsupported". The trigger is **deterministic, not a model decision**, so the
+  whole path is exercised by tests supplying **no Anthropic key**.
+- **Portability** — `src/conversation.ts` is pure (no Discord types, no
+  Durable Object, no `fetch`), the record separates surface-neutral fields
+  from one opaque per-surface bag, and the contract is documented in
+  [`info/gabi-conversation-continuity.md`](info/gabi-conversation-continuity.md)
+  for the library site's GABI panel to adopt. `library_catalog` untouched.
+
+⚠️ **Where it lives, and why it cost nothing structurally:** the transcript is
+`conv:` rows in the **existing** gateway Durable Object, because a second
+always-on object was named blocking. No new object, no D1, no Firestore, no
+cron. **One row write per ANSWERED turn**, already fused at 200/day → **≤400
+writes/day (~2.5%** of the free plan's 100,000). The per-frame-write defect
+this Worker was once corrected for is **not** reintroduced.
+
+⚠️ **The honest limit, written into the runbook rather than left to be
+discovered:** a reply with **"ping on reply" switched OFF is invisible to
+her** — Discord delivers no content and no event, so she cannot know it
+happened, and from a person's side it looks exactly like a bug. Replies to
+slash-command answers never work either, by Discord's own exclusion.
+
+⚠️ **NOT VERIFIED:** nothing in this build has ever touched the live gateway
+(posture off since it was written). No real message, reply, DM, press or modal
+submit has been handled; **no model call has ever been made on this surface**,
+and `anthropic_key_gabi` still reports `false` — until that key is set she runs
+on the keyword router. The content-exception list is a documentation **reading**,
+not an observation. Runbook §12.5 carries the exact eight-step script to try
+once she is lit — including two steps that exist only so a limitation is seen
+deliberately.
+
 ## 🗣️ Conversational GABI in Discord, phase A — @mention her and she answers — ✅ BUILT 2026-08-17, SHIPPED OFF
 
 Owner (2026-08-17, verbatim): *"I want to use heygabi and similar forms like Hey
