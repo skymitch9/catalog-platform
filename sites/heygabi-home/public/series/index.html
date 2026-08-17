@@ -270,6 +270,16 @@ ul.ser-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem
   text-wrap: pretty;
 }
 
+/* The "Unnumbered (N)" fold — a native <details>, collapsed by default (no
+   `open` attribute in series.js), so the disclosure needs no extra JS. Same
+   look and same class name as /universes' own series/accessory folds, on
+   purpose: one estate, one fold. */
+details.find-series { margin: 1rem 0 .5rem; }
+details.find-series > summary { cursor: pointer; margin: 0; }
+details.find-series > summary:hover { color: var(--et-accent); }
+details.find-series > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+details.find-series > ul.hits { margin-top: .5rem; }
+
 ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 
 .hit {

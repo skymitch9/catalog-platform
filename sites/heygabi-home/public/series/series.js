@@ -393,9 +393,23 @@ function volumeRow(index, entries, seriesSources) {
   // ⚠️ Missing FROM WHAT: only the shelves that carry some other volume of
   // THIS series. Never the estate's full source list — see the file header;
   // naming a shelf that holds nothing here would invent a shelf the answer
-  // never showed, and would print "not in games" under every novel.
+  // never showed.
+  //
+  // ⚠️ AND NEVER ACROSS THE GAME/BOOK LINE, which is the half that had to be
+  // FOUND BY LOOKING AT THE LIVE PAGE rather than reasoned about. Dungeon
+  // Crawler Carl holds 8 books and 31 game accessories under one series name,
+  // so the first cut printed "Not in games." under every novel and "Not in
+  // audiobook (shared pool) and Skylar's library." under every dice bag. Both
+  // are nonsense, and the design already says why: index-worker-design.md
+  // §3.1 — a game carries work_fold = NULL BY DESIGN, because "a board game is
+  // never the same work as a book" and never answers a same-work-in-another-
+  // format question. A missing-format claim is exactly that question, so the
+  // game rows neither make one nor receive one.
   const holders = new Set(entries.map((e) => e.source));
-  const missing = [...seriesSources].filter((s) => !holders.has(s));
+  const bookish = (s) => s !== 'game';
+  const missing = [...holders].some(bookish)
+    ? [...seriesSources].filter((s) => bookish(s) && !holders.has(s))
+    : [];
   if (missing.length) {
     const gap = document.createElement('span');
     gap.className = 'vol-missed';
@@ -441,13 +455,6 @@ function noteP(text, className) {
   p.className = className || 'ser-note';
   p.textContent = text;
   return p;
-}
-
-function groupHeading(text) {
-  const h = document.createElement('h3');
-  h.className = 'find-group';
-  h.textContent = text;
-  return h;
 }
 
 /** Renders one /api/series/:slug answer into `body` (the row's expand slot). */
@@ -499,15 +506,27 @@ function renderSeriesBody(body, data) {
     }
   }
 
-  // Unnumbered last, per the brief: a companion volume or a box set with no
-  // series_index is real, but it cannot take part in the gap arithmetic, so
-  // it is kept out of it rather than given a number it does not have.
+  // Unnumbered last: a companion volume, a box set or a dice bag with no
+  // series_index is real, but it cannot take part in the gap arithmetic, so it
+  // is kept out of it rather than given a number it does not have.
+  //
+  // COLLAPSED, and for a measured reason: Dungeon Crawler Carl's 31 unnumbered
+  // game accessories buried its 8-book ladder under a wall of dice bags on the
+  // live page. That is the same complaint the owner made about /universes
+  // ("make accessories a sub category"), so it takes the same answer — a
+  // native <details>, shut by default, no extra JS.
   if (unnumbered.length) {
-    body.appendChild(groupHeading(`Unnumbered (${unnumbered.length})`));
+    const details = document.createElement('details');
+    details.className = 'find-series';
+    const summary = document.createElement('summary');
+    summary.className = 'find-group';
+    summary.textContent = `Unnumbered (${unnumbered.length})`;
+    details.appendChild(summary);
     const ul = document.createElement('ul');
     ul.className = 'hits';
     for (const entry of unnumbered) ul.appendChild(volumeRow(null, [entry], sources));
-    body.appendChild(ul);
+    details.appendChild(ul);
+    body.appendChild(details);
   }
 }
 
