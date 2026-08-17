@@ -13,6 +13,497 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔒 Revocation should clear the flags, not just the status (audit finding, 2026-08-16)
+
+*Landed here 2026-08-17 by the docs hygiene sweep — the "what is left" half SHIPPED the same day it was written and the section never moved. VERIFIED in the tree 2026-08-17: `apps/auth-worker/src/estate-db.ts:128` appends `, is_approver = 0, is_devops = 0` to the revoke UPDATE, and `migrations/0006_revoke_clears_powers.sql` exists for rows revoked earlier (the 2026-08-16 handoff records it applied `--remote`, 0 rows, deployed as `43a26680`). The re-approval question the item raised is answered by construction — the flags are cleared AT REVOKE and the approve path never sets them — though nobody has exercised a revoke→re-approve round trip against the live directory.*
+
+
+**Found by the testing audit** ("useful test not just bulk") and **half-fixed
+the same day.** `decideStatus()` revokes by setting `status = 'revoked'` and
+deliberately leaves `is_approver` / `is_devops` untouched. That was survivable
+only because both gates now check status — but it means the *flag outlives the
+status*, and every future reader of that row has to remember the gate is what
+saves them.
+
+⚠️ **The gate fix already shipped** (`middleware/auth.ts`, `approverAllows()` /
+`devopsAllows()`, both requiring `status === 'approved'`, 14 tests in
+`test/gates.test.ts`, deployed as version `d043a337`). This item is the
+**defence in depth**, not the fix.
+
+**What is left:** clear `is_approver` and `is_devops` in the same statement
+that sets `status='revoked'`, so a revoked row carries no live-looking
+privilege at all. Also decide the re-approval story — restoring someone should
+NOT silently hand back an approver flag they used to have, which is exactly the
+access-*increasing* direction the global rules say to confirm rather than
+assume.
+
+**Why it is filed rather than done:** it changes stored data and wants a
+migration for existing rows, and the risk is asymmetric — a bad UPDATE here
+strips real people's access. Small, but it needs its own careful pass.
+
+**Verification when it is built:** the live directory currently holds 3 flagged
+accounts, all `approved` (both owners + Justin), and 0 revoked — so a migration
+touches nothing today. Re-check that before running it, not after.
+
+## 1. ⚠️ Three of the four repos deploy only from a human's laptop
+
+*Landed here 2026-08-17 by the docs hygiene sweep — the whole section, §1.5's "Owner checklist (nothing deploys until these exist)" included, is spent. MEASURED 2026-08-17 with `gh`: Board_Game_Catalog's default branch is now **`main`** (checklist item 0); `CLOUDFLARE_API_TOKEN` **and** `CATALOG_PLATFORM_TOKEN` are set on `library_catalog` and `Board_Game_Catalog`, and `CLOUDFLARE_API_TOKEN` on `catalog-platform` (items 1–3); and the first real dispatches all SUCCEEDED (items 4) — library run `31813866238`, games `31814054897`, catalog-platform `31900792359` and `31940834851`. ⚠️ Two facts inside the moved text went stale and are corrected here rather than edited above: the per-repo table's "reaches production by hand" column no longer holds, and §1's "Former open questions" says `library_catalog` and `catalog-platform` are PRIVATE — measured 2026-08-17, **all four repos are PUBLIC**, so the metered-minutes reasoning built on that line no longer applies anywhere.*
+
+
+**Raised by the owner 2026-08-12**, immediately after a manual
+`npm run deploy` of `library_catalog`: *"i dont think board games has one
+either, add a todo in catalog platform to look into deploying these apps."*
+
+Correct, and it is worse than "no CI" — it is a **single point of failure that
+is a person at a specific machine.**
+
+### What is actually true (measured 2026-08-12)
+
+| Repo | `.github/workflows` | How it reaches production |
+|---|---|---|
+| `bookbuddy/audiobook_catalog` | ✅ 7 workflows — `deploy`, `promote`, `auto-promote`, `lint`, `tests`, `club-notify`, `cw-fulfill` | Push to `main` → deploy → `/dev/`; a separate **Promote to Prod** dispatch publishes the root |
+| `bookbuddy/library_catalog` | ✅ `deploy.yml` (manual dispatch, 2026-08-14) | `npm run deploy` by hand, **or** Actions → Deploy Worker (manual) once secrets exist (§1.5) |
+| `boardbuddy/Board_Game_Catalog` | ✅ `deploy.yml` (manual dispatch, 2026-08-14) | same as library |
+| `catalog-platform` | ✅ `deploy.yml` (manual dispatch, target choice, 2026-08-14) | index-worker / auth-worker / heygabi-home / all — once secrets exist (§1.5) |
+
+### 1.1 The two catalogs are structurally identical, which is the opportunity
+
+They are not two problems. Every relevant script is the same shape:
+
+| | `library_catalog` | `Board_Game_Catalog` |
+|---|---|---|
+| `predeploy` | `node scripts/check-clean.mjs` | `node scripts/check-clean.mjs` |
+| `deploy` | `npm run build && npm run deploy --workspace @lc/worker` | `npm run build && npm run deploy --workspace @bgc/worker` |
+| Target | Cloudflare Worker + D1 + R2 + `[assets]` | Cloudflare Worker + D1 + R2 + `[assets]` |
+
+So **one workflow, parameterised by workspace name, covers both.** Whatever is
+written for one should be written once and copied with a single string changed.
+
+### 1.2 ⚠️ Do not copy the audiobook workflow wholesale
+
+It is the only working example in the estate and it is tempting, but it encodes
+a **two-lane deploy** (`main` → `/dev/`, an explicit promote → prod) that exists
+because that site publishes a generated static catalog and needs a staging lane
+for data. The two Workers have no such split — they deploy one artifact to one
+custom domain. Copying the promote machinery would add a lane nobody asked for.
+
+⚠️ Also learned the hard way on 2026-08-12: `Auto-promote books to prod`
+**skipped** a commit that was a code fix rather than a catalog auto-update, so
+the fix sat on `/dev/` looking deployed while prod was stale. Any lane split
+must make "this did not reach prod" loud, not silent.
+
+### 1.3 What a workflow has to preserve
+
+These are guardrails the manual path currently provides, and a workflow that
+drops them is worse than no workflow:
+
+1. **`check-clean.mjs` refuses a dirty tree.** It exists because production in
+   the Board Game Catalog twice ran code that was in no commit. CI is clean by
+   construction, so the guard becomes free — but the *reason* must survive: the
+   deployed artifact has to be a commit.
+2. **Migrate before deploying**, so new code never meets an old schema.
+   `library_catalog` has `db:migrate`; the ordering is currently a human
+   remembering it.
+3. ⚠️ **Wrangler on Windows sometimes prints success then exits non-zero** (a
+   libuv teardown quirk). On Linux CI this stops being a problem — but do not
+   port any `|| true` written to work around it, or a real failure goes green.
+4. **Secrets.** A Cloudflare API token with Workers + D1 + R2 scope has to live
+   in repo secrets. ⚠️ Neither repo has ever needed one, so this is new
+   surface — and `audiobook_catalog` **must stay public** for unmetered Actions
+   minutes, so think about whether these two should be public too before
+   assuming the same budget applies.
+
+### 1.4 Does `catalog-platform` need deploying at all?
+
+Probably not, and that should be decided rather than defaulted. It has no
+`deploy` script and no worker. What it does have is a **build-time dependency
+edge**: `library_catalog`'s `prebuild`/`pretest`/`pretypecheck` fetch the shared
+universe list from this repo and **fail loudly** if the checkout is missing
+(`UNIVERSES.md`). So CI for `library_catalog` has to check out *two* repos, and
+that is the real coupling to solve here — not a deploy.
+
+### Former open questions — answered
+
+- `Board_Game_Catalog` is **PUBLIC** (unmetered minutes); `library_catalog` and
+  `catalog-platform` are **PRIVATE** (metered — fine for occasional manual
+  deploys, revisit if usage grows).
+- The owner decided **manual dispatch only** (2026-08-14): these Workers have no
+  dev lane, so the trigger stays a deliberate human button-press. No push
+  triggers, no schedules.
+
+### 1.5 BUILT 2026-08-14 — workflows exist; owner actions remain before first use
+
+`deploy.yml` in each of the three repos (manual `workflow_dispatch` only).
+All preserve §1.3: check-clean still runs (not disabled), D1 migrate runs
+**before** deploy, no `|| true` anywhere. The two catalog workflows check out
+`catalog-platform` as a sibling and set `CATALOG_PLATFORM_DIR`. Each fails
+early with instructions when a secret is missing (proven by a triggered run).
+`CLOUDFLARE_ACCOUNT_ID` is already set as an Actions **variable** on all three
+repos (it is not a secret). CI does **not** commit `docs/deploys.log` — the
+workflow prints the line to append locally if wanted.
+
+**Owner checklist (nothing deploys until these exist):**
+
+0. ⚠️ **Board_Game_Catalog's default branch is still `phase-1-manual-catalog`**
+   (a stale ancestor, 152 commits behind `main`) — GitHub only shows the
+   dispatch button for workflows on the *default* branch, so the deploy
+   workflow is invisible until this flips. Fix:
+   `gh repo edit skymitch9/Board_Game_Catalog --default-branch main`
+   (a session tried on 2026-08-14; repo-settings changes are permission-blocked
+   for Claude, so this one is genuinely the owner's).
+1. Create ONE Cloudflare API token at dash.cloudflare.com/profile/api-tokens:
+   'Edit Cloudflare Workers' template **plus D1 edit + Cloudflare Pages: Edit**
+   (Pages is for heygabi-home; the plain Workers template lacks it), account
+   `113be82b840c956b8378a187047ab3ea`.
+2. `gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/library_catalog`
+   (repeat for `skymitch9/Board_Game_Catalog` and `skymitch9/catalog-platform`).
+3. Create a fine-grained PAT (github.com/settings/personal-access-tokens) with
+   **Contents: Read on skymitch9/catalog-platform** (it is private), then
+   `gh secret set CATALOG_PLATFORM_TOKEN` on **library_catalog** and
+   **Board_Game_Catalog** (catalog-platform's own workflow does not need it).
+4. First real runs: dispatch from the Actions tab. For §2's pending pair,
+   dispatch catalog-platform with `target=all` (or index-worker then
+   heygabi-home — never heygabi-home alone first).
+
+## 📌 HANDOFF — 2026-08-16 ~15:45 PDT (Opus → Fable)
+
+*Landed here 2026-08-17 by the docs hygiene sweep: superseded by the 2026-08-17 work above (GABI phases 2/3, `/have`, dark moderation, the series registry and `/series`, the soak recorder). Its own "Next here" list is spent — item 1 nothing blocking, item 2 Discord bot LIVE, item 3 already self-corrected. The deploy table and the "things worth knowing" notes are kept whole here; their durable halves live in `access/backup-restore.md` and `info/estate-auth-design.md`.*
+
+
+**Everything below the line is ACTIVE. What landed today is archived in
+[`DONE.md`](DONE.md).** Nothing is in flight; the board is clear.
+
+### Deployed today from this repo
+
+| Worker / site | Version | What |
+|---|---|---|
+| `estate-auth` | `43a26680` | Revoked-approver gate fix; revocation clears `is_approver`/`is_devops` (migration **0006**, applied `--remote`, 0 rows); the Firestore ladder-role clear; owner rows render as facts |
+| `catalog-index` | `befcce25` | ⚠️ `READ_ORIGINS` set explicitly — it was ABSENT, so `readCors` defaulted to the apex alone and **both catalogs were CORS-blocked** from the shared index |
+| `heygabi-home` | `b41e1b03` | Status-page fixes (ebook row ×3, labelled Run levers, back arrows), backups graded per-store, `/admin` owner cells, predeploy guard |
+
+### ⚠️ Things worth knowing before touching this repo
+
+- **`npm run deploy:home` is now the routine** — it runs a static check (every
+  public `.js` parses, every `.html` structurally sound, tree committed-clean),
+  deploys, then fetches the live URLs and asserts each page still serves its own
+  markers. `ALLOW_DIRTY_DEPLOY=1` is the deliberate escape hatch.
+  ⚠️ `verify:home` fetches **signed out**, so a green run means the shell
+  shipped, never that gated behaviour works.
+- **Backups grade per STORE, not "newest object anywhere."** A partial
+  `backup.yml` dispatch (target input) happened twice on 2026-08-15; under the
+  old logic a database could go months unbacked while the row read green.
+- **`skymitch9/estate-backups` (the REPO) was deleted 2026-08-16.** ⚠️ The **R2
+  bucket of the same name is live and holds every backup** — do not confuse
+  them. Backups verified landing that day: 5 runs ever, all successful, newest
+  with all 8 store jobs green.
+- **Two auth gates had no tests at all** until today; a mutation opened one and
+  the whole 126-test suite still passed. `test/gates.test.ts` and
+  `test/revoke-clears-powers.test.ts` now pin them. **176 tests.**
+
+### Next here
+
+1. Nothing is blocking. The reactive pipeline (audiobook_catalog) is the queued
+   work; this repo is only involved if the status page needs a row for it.
+2. **Discord bot** — design doc on file, needs the owner's decisions.
+3. ~~Sub-item 1 — the apex `/universes` page~~ — ⚠️ **CORRECTED 2026-08-16:
+   it is BUILT and LIVE** (heygabi.ai/universes, "tap one to see its books,
+   audiobooks and games together... sourced live from the shared index").
+   The previous line here said "still unbuilt" — written without checking,
+   the exact mark-done failure recorded the same day. Both sub-items are done.
+
+## 🔎 Search normalization — `<estate-search>` — ✅ BUILT AND ADOPTED ON EVERY SURFACE (2026-08-15 → 2026-08-17)
+
+*Landed here 2026-08-17 by the docs hygiene sweep, moved whole out of `TODO.md`'s "Queued behind the Cosmere batch" (items 1 and 2 of that section are unbuilt and stayed). §0.5's adoption plan is now spent: apex ✅ (§0.3), library ✅ (`apps/web/public/estate/estate-search.js` + `SOURCE-estate-search.txt`, deploy recorded in `3cea4b7`), games ✅ (`32e2ddc`, then `fd1a9b3` "hide the estate search bar (owner order — keep, do not delete)"), audiobook ✅ (`f9e7422` "embed the shared `<estate-search>` component — the last estate surface without it"), `/universes` ✅. Every surface named in the plan has adopted it, so nothing here is queued work any more.*
+
+0. **Search normalization (owner proposal, adopted)** — ✅ **PHASE 1 BUILT
+   2026-08-15**: search improvements must reach EVERY search bar — today
+   only the apex consumes the shared index, so tiers like universe-name
+   search die at one site. §0.1–§0.4 below are the build record; §0.5 is the
+   adoption plan for what's left, sized rather than assumed.
+
+### 0.1 The component
+
+`sites/heygabi-home/public/assets/estate-search.js` — `<estate-search>`, a
+framework-agnostic custom element (Shadow DOM, no build step, `customElements
+.define`), find.js's whole behavior turned configurable. Extraction was
+verbatim where the logic was already tested by hand (ranking groups, keyboard
+nav, the debounced-abortable query pattern, the sign-in flash fix) — nothing
+about the search itself changed, only where it lives.
+
+**Config — attributes (kebab-case), each mirrored by a same-name camelCase
+property:**
+
+| Attribute | Values | Default | Does |
+|---|---|---|---|
+| `index-url` | any origin | `https://index.heygabi.ai` | the index Worker to query |
+| `source` | `all`\|`audiobook`\|`library`\|`game` | `all` | scope preset → `&source=` on `/api/search` (§0.2); NARROWS the caller's own visibility, never widens it |
+| `auth` | `authless`\|`authed` | `authless` | authless: tokenless forever, zero Firebase cost, nothing imported. authed: find.js's neutral-boot/sign-in/bearer pattern |
+| `auth-module` | a module path | sibling `estate-auth.js` (`import.meta.url`-relative) | where `auth="authed"` dynamically imports its adapter from — never a static import, so authless embeds pay nothing |
+| `min-chars` | int | 2 | query length before a search fires |
+| `debounce-ms` | int | 250 | debounce delay |
+| `placeholder` / `placeholder-authed` | text | find.js's own copy | input placeholder, signed-out/authless vs signed-in |
+| `sign-in-label` | text | "Sign in to search everything" | the sign-in button's text |
+| `hint` | text | find.js's own copy | the helper line; pass `""` to hide it, omit the attribute to keep the default |
+| `universes` | `true`\|`false` | `true` | show the cross-catalog "Universes" group + "everything in X →" follow-ups |
+
+**Config — JS-only properties** (no attribute can carry a function/object):
+
+- `.intakeFilter(data, { kind: 'search'|'universe' }) → data` — the per-site
+  INTAKE FILTER hook: runs on every parsed response before render, so a host
+  can narrow further (e.g. drop non-local entries out of a same-work group)
+  without forking the component.
+- `.authAdapter = { watchAuth, idToken, signIn, signOutUser,
+  handleRedirectResult }` — set directly to skip the dynamic import (a React
+  app that already has an estate-auth-shaped module loaded).
+
+**Events** (`bubbles: true, composed: true` — cross the shadow boundary):
+
+- `estate-search:auth` — `detail: { user, resolved }`, authed mode only.
+- `estate-search:select` — `detail: { url, hit }`, **cancelable** — fires
+  instead of the default `window.open(url, '_blank', 'noopener')` on any
+  result open (click or Enter). `preventDefault()` to hand navigation to an
+  SPA router instead — this is the hook library/games will need (§0.5).
+
+**One extension point for opinions the component must NOT hold:** a light-DOM
+child carrying `slot="who-extra"` inside `<estate-search>` renders after
+"Signed in as … · sign out" in the signed-in state. The apex uses this for
+its approver-only Admin chip (`assets/apex-admin-link.js` — the extracted,
+unchanged probeApprover() logic) instead of teaching the shared component
+what "Admin" is.
+
+### 0.2 What the server gained
+
+`apps/index-worker/src/search-route.ts`: `GET /api/search` accepts an
+optional `source` param — `audiobook`\|`library`\|`game`\|`all` — that
+INTERSECTS with the caller's own visibility from `searchScope()`, never
+widens it. A stranger requesting `source=game` gets an honest empty (`scope:
+[]`, no `reason` — this is not §4.5's account-level `no_catalogs_visible`,
+it's "you asked for a shelf you cannot see", answered the same shape as a
+zero-match query). An unrecognised value is `400 invalid_source`. The
+response's `scope` field now reflects what was ACTUALLY searched after
+narrowing, not the caller's raw visibility — universe counts inherit this for
+free, same as before. 5 new tests in `test/search.test.ts` (narrows a full
+scope; narrows-to-nothing outside visibility; `source=all` ≡ no param;
+400 on garbage); **70/70 tests pass, typecheck clean.** Deployed with
+`wrangler deploy` (index-worker) — no migration needed, additive query param
+only.
+
+### 0.3 Apex adoption — verified live
+
+`sites/heygabi-home/public/index.html`'s `#find` section now embeds
+`<estate-search id="find-search" auth="authed" hint="…">` (the `hint`
+attribute and defaults reproduce find.js's copy verbatim — no attribute
+overrides needed beyond `auth` and `hint`) with the Admin chip as its
+`slot="who-extra"` child. `assets/find.js` is deleted (dead code — nothing
+imported it, confirmed by grep before deletion); `assets/estate-search.js` +
+`assets/apex-admin-link.js` replace it. The `.find-*`/`.hit*` CSS block in
+`index.html` is gone (it now lives in the component's own scoped `<style>`,
+reading the same `--et-*` tokens so it re-skins with every theme unchanged);
+`index.html` keeps only `#find`'s section spacing and the slotted Admin
+link's own small style block, since `::slotted()` can't reach that deep.
+
+Deployed: `npx wrangler pages deploy sites/heygabi-home/public --project-name
+heygabi-home`. **Review link: https://heygabi.ai** — try: (1) type 2+
+characters signed out, confirm audiobook-only results with the "Searching
+audiobooks only. Sign in to search every shelf." note; (2) sign in, confirm
+the box widens and the Admin chip appears if you're an approver; (3) ↑/↓/
+Enter/Escape still walk and open results; (4) a universe hit's "everything in
+X →" still asks for sign-in when signed out. Behavior is pixel/behavior-
+identical to find.js's — the same markup shape renders inside the shadow
+root, same CSS custom properties, same copy.
+
+### 0.4 Tests
+
+- `apps/index-worker/test/search.test.ts`: 70/70 (5 new for `source`), plus
+  `npm run typecheck` clean.
+- The component itself ships no automated tests (browser-only custom element,
+  no existing JS test runner in `sites/heygabi-home` — same as find.js before
+  it, which also had none; this is an existing gap, not a regression).
+  Verified by hand against the review link above.
+
+### 0.5 Adoption plan for what's left (sizes, not code)
+
+Researched 2026-08-15 (read `CollectionPage.tsx` + `router.tsx` + `api.ts` in
+both React apps, and `audiobook_catalog/site/index.html`'s inline filter
+block) before sizing, rather than assuming.
+
+**library_catalog + Board_Game_Catalog (React, `apps/web`) — size M each,
+same shape (the "structurally identical" property from §1.1 holds here too):**
+
+- Both apps' own collection search (`CollectionPage.tsx` — 739 lines library,
+  399 games) is SERVER-SIDE against `/api/collection?q=…`, filtering their
+  OWN catalog's rows with facets/pagination `<estate-search>` cannot
+  replicate — that stays exactly as it is. `<estate-search>` is ADDITIVE: a
+  header/nav-level "search the whole estate" box, not a replacement.
+- ⚠️ **Neither app uses `react-router-dom`** — both ship a **hand-rolled
+  ~20KB pushState/replaceState router** (`router.tsx`). A wrapper assuming
+  `useNavigate`/`<Link>` would be wrong; it must call this repo's own
+  `navigate()`-equivalent from the `estate-search:select` handler instead.
+- The wrapper itself: a thin React component (ref to the custom element,
+  props → attributes, `intakeFilter` passed as a property not an attribute,
+  `estate-search:select` listened to and `preventDefault()`ed to route
+  through the local router). Sync machinery is close to mechanical —
+  `sync-estate-theme.mjs`/`sync-estate-auth.mjs` are the exact precedent for
+  a `sync-estate-search.mjs` copying `estate-search.js` (+ `estate-auth.js`
+  if `auth="authed"` is wanted here too) into the build.
+  ⚠️ **library_catalog materializes into `apps/web/public/estate/`;
+  Board_Game_Catalog's existing estate assets sit under `apps/web/public/
+  assets/` instead** — confirm which convention before writing the sync
+  script for games, rather than assuming it matches library.
+- `auth="authed"` here would need each app's OWN sign-in wired as the
+  adapter (or reuse of the shared Firebase project's session — the estate
+  design already assumes one Firebase project estate-wide) — undecided,
+  flag for the dispatcher.
+
+**audiobook_catalog (vanilla, `site/index.html`) — size S:**
+
+- Its own filter (the ~860-line inline block, `_buildSearchCache`/
+  `_applySearch`) is CLIENT-SIDE substring search over the already-rendered
+  table/card grid across every column (title, series, series#, author,
+  narrator, year, genre, duration, rating) with sort/pagination on top —
+  genuinely a different job (its OWN columns) and STAYS, per the owner's own
+  framing of the split.
+  `<estate-search>` is close to a real drop-in here: no framework to bridge,
+  `<script type="module" src=".../estate-search.js">` + the tag, DOM events
+  straight through — the "do we own this anywhere across catalogs" box the
+  site does not have today (confirmed: no existing cross-catalog search
+  there; it only PUSHES to the index via `app/index_push.py`, never queries
+  it). Likely placement: a small "search the whole estate" affordance
+  alongside the existing table, `source="audiobook"` NOT set (the point is
+  reaching the other two shelves, which this table cannot show).
+
+**`/universes` page (`sites/heygabi-home/public/universes/`) — size S,
+tomorrow's item per §5 below:**
+
+- ✅ **BUILT 2026-08-15** — see "Four owner-ordered upgrades" below. The
+  swap happened exactly as sized here: `<estate-search universes>` embedded
+  as the page's own search entry point, the hand-rolled expand/collapse
+  browse view (`universes.js`) kept as-is underneath it.
+
+**Cross-cutting note for the dispatcher:** every non-apex site currently gets
+`source`-scoped searches from ANONYMOUS visibility `{audiobook}` only
+(§4.5) — an authless `source="library"` or `source="game"` box returns
+empty, always, by design (§0.2's narrowing rule). Only audiobook's box is
+useful authless out of the box; library/games need `auth="authed"` wired
+before their own-shelf scoping does anything, which is real new work, not
+config.
+
+## The owner's five (picked from the research ideas, 2026-08-14 night)
+
+*Landed here 2026-08-17 by the docs hygiene sweep. All six survived to completion and were verified before the move: 1 status page + 5 `/universes` live (the TODO itself corrected "still unbuilt" on 2026-08-16), 3 backups BUILT+RUN, 4+6 covers consolidation closed (see the covers-migration entry), and 2 cross-format series completion shipped in `library_catalog` as `8bd08a9` "Cross-format series completion: the by-format headline" (`apps/web/src/pages/SeriesDetailPage.tsx`). It still read "TONIGHT … in flight" from 2026-08-14.*
+
+
+Prioritized by the owner; rejected ideas removed (dashboard, recap, game
+nights, purchase guard, and PWA — all skipped by owner decision. PWA reasoning worth keeping: the owner LIKES the idea, but the site's main job is linking into Google Drive to download m4b files — offline browsing is meaningless when the endgame needs data anyway. Re-pitch only if the site ever gains offline-useful jobs.)
+
+**TONIGHT (non-Fable agents, in flight):**
+1. **Estate status page** ("I want to see ALL the pipelines") — apex page:
+   every pipeline's last run + freshness (audiobook 8h pipeline, index pushes
+   per source, worker healths, site build stamps), red/green at a glance.
+2. **Cross-format series completion view** — library site: series ladders
+   showing gaps by format and what ANY format would complete.
+3. **Backup & restore runbook + backup workflows** — ✅ **BUILT + RUN
+   2026-08-14.** `docs/access/backup-restore.md` is the runbook (protect
+   inventory across all four repos, D1 Time Travel + export/import, Firestore
+   dump/restore, R2's real gaps, what's deliberately not backed up and why).
+   `.github/workflows/backup.yml` (manual dispatch, `d1`/`firestore`/`all`)
+   exports **all four** D1 databases — library-catalog, board-game-catalog,
+   index_catalog, estate_auth — from THIS repo alone, by database ID (proven
+   interactively: no wrangler.toml needed), because `Board_Game_Catalog` is a
+   PUBLIC repo and a GitHub Actions artifact there is downloadable by any
+   signed-in GitHub account, not just collaborators — unacceptable for a
+   database dump. `scripts/backup-firestore.mjs` (+ its restore companion
+   `scripts/restore-firestore.mjs`, dry-run by default) walks every Firestore
+   collection/subcollection recursively via the existing service account —
+   no GCS bucket, no gcloud infra. **Proof run** (workflow dispatch
+   `31855147930`): all 5 jobs green, artifacts downloaded and verified —
+   4 non-empty `.sql` exports (5.8 KB estate_auth to 3.8 MB board-game-catalog)
+   + 1 Firestore dump (56 collections, 1,294 docs, matching the local
+   pre-flight run exactly). Named gap, closed the next night (2026-08-15):
+   R2 `library-covers` had no backup path — `wrangler r2 object list` still
+   doesn't exist, but the plain Cloudflare REST API (Bearer-token auth, no
+   S3 keys) has always had list+get for R2 objects, and the existing
+   `CLOUDFLARE_API_TOKEN` already carries enough permission to use it.
+   `scripts/backup-r2.mjs` + `backup.yml`'s new `r2` job back up
+   `library-covers` (208 objects/20.6 MiB), `audiobook-covers` (1,868
+   objects/240.4 MiB), and `game-covers` (922 objects/118.8 MiB, a bucket
+   created AND actively populated the same night by a second agent on the
+   covers-consolidation plan). Full details + restore commands:
+   `docs/access/backup-restore.md` §6/§8.
+4. **Covers consolidation — research + inventory tonight** — count the
+   third-party hotlink tail, size the R2 rehost, write the execution plan.
+
+**TOMORROW:**
+5. **Universes page on the apex** — after the status page lands (same repo
+   surface); one page per universe across all three catalogs via the index.
+6. **Covers consolidation — execution** — per tonight's plan, attended. Plan:
+   `docs/info/covers-consolidation-plan.md` — 506 `item.thumbnail_url` rows /
+   1,124 distinct URLs across item+edition, 13 hosts, 0/78 sampled dead,
+   ~110–230 MB; new `game-covers` R2 bucket at `gamecovers.heygabi.ai`;
+   CSP prune is the last step, gated on a zero-rows verification query.
+
+## ✅ Covers migration — FINISHED, verified 2026-08-16
+
+*Landed here 2026-08-17 by the docs hygiene sweep: closed end to end on 2026-08-16 (every step measured or owner-confirmed), so it was finished work sitting in the ACTIVE board. Moved whole, `<details>` block included.*
+
+
+**All three steps are done.** Verified rather than assumed, because the owner
+asked for this to be picked up and the honest answer turned out to be "it
+already happened":
+
+| Step | Evidence |
+|---|---|
+| 1. Games index push lands with new cover URLs | `board-game-catalog` D1: **507 items on `gamecovers.heygabi.ai`, 330 with no cover, ZERO on any other host.** The index pushed **837 rows at 08:19:56Z** on 2026-08-16 — 507 + 330 = 837 exactly, so the push carried the migrated set |
+| 2. Deploy heygabi-home (CSP prune) | Live CSP `img-src` names `gamecovers.heygabi.ai` and no old hosts. Shipped repeatedly on 2026-08-16 |
+| 3. Apex search shows a game thumbnail | ✅ **VERIFIED BY THE OWNER, 2026-08-16** — *"yes covers are showing up in global search"* |
+
+⚠️ **The ordering hazard did not bite, and it was close.** The note warned that
+deploying step 2 before step 1 blanks apex-search game thumbnails, because the
+pruned CSP excludes the old hosts while the index still serves them. heygabi-home
+was deployed eight times on 2026-08-16 for unrelated work — but the games push
+landed at **08:19Z**, hours before the first of those deploys. Correct order by
+luck, not by design. If a future migration carries the same warning, check the
+push timestamp BEFORE deploying rather than after.
+
+✅ **Step 3 confirmed by the owner the same day.** It could not be checked from
+this session and was not guessed at: anonymous search returns **zero game rows**
+by design (the visibility narrowing rule — an anonymous caller sees the
+audiobook source only), so the only instrument that could answer it was a
+signed-in pair of eyes. The owner looked and reported covers loading in global
+search.
+
+**The migration is now closed end to end** — every step either measured or
+confirmed by someone who could see it. Nothing here is outstanding.
+
+The one deliberate refusal from the migration stands: a 7.3MB Shopify file over
+the size ceiling, left on its original URL on purpose — it is among the 330
+without a rehosted cover, not a failure.
+
+<details>
+<summary>The original ordered instructions, kept for the record</summary>
+
+## ⚠️ Covers migration — ONE ordered finish step (2026-08-15)
+
+Migration itself is DONE (1,123/1,124 rehosted to gamecovers.heygabi.ai; the
+one refusal is a 7.3MB Shopify file over the size ceiling, row left on its
+original URL on purpose). Intake hooks live. Rollback snapshots committed in
+the games repo. Remaining, IN THIS ORDER:
+1. The games index push must land with the new cover URLs. The push-token
+   pair was rotated FRESH on both workers (the agent-printed token is dead —
+   never use a token that has appeared in any transcript). The push fires on
+   the next real games item mutation OR the 24h staleness backstop
+   (~03:46Z). VERIFY on heygabi.ai/status (game source pushed_at advances)
+   or index /api/health.
+2. ONLY THEN deploy heygabi-home (the CSP prune is already committed in
+   _headers): npx wrangler pages deploy sites/heygabi-home/public
+   --project-name heygabi-home. Deploying before step 1 blanks apex-search
+   game thumbnails (CSP excludes old hosts while index still serves them).
+3. Verify: apex search a game, thumbnail loads from gamecovers.heygabi.ai.
+Nothing is user-visibly broken meanwhile — old hotlinks still serve under
+the still-deployed old CSP.
+
+</details>
+
 ## 🤖 GABI moderation — `/timeout` + `/cleanup` — ✅ BUILT + DEPLOYED 2026-08-17 (SHIPS DARK, and UNPUBLISHED)
 
 *(Moved whole from `TODO.md` §0's queue, item 2: "**Moderation features** —
