@@ -900,9 +900,15 @@ this order, with an answer before the next is shown.
    Everywhere this doc says `vis_audio` (§3.5, §7, §9 phase 1,
    `resolveAudioAccess()`), read `vis_ebooks`. Seeing the audiobook *site*
    remains `vis_audiobook`, unchanged — the gate is on the BYTES.
-2. **Offline copies — the download-policy collision.** Options 1 / 2 / 3 in §5,
-   **no default chosen**, and ⚠️ the answer applies to **audio as well as
-   ebooks**.
+2. ✅ **DECIDED 2026-08-17 — option (b), the opaque in-app cache** ("yes lets
+   do b"). Anyone holding the `vis_ebooks` grant may cache books (ebook AND
+   audio) inside the app's own browser storage for offline use; the visible
+   **Download file** button stays admin-floored and unchanged. ⚠️ Framing is
+   part of the decision: the cache is a SPEED BUMP, not a gate — a determined
+   person can extract browser storage — and the docs/UI must never claim
+   otherwise. The true gate remains who holds the grant at all. This is a
+   deliberate, owner-chosen softening of the download rule's letter for the
+   PWA's whole point; §5's analysis stands as the record of the trade.
 3. **The storage bill.** 213–853 GB in R2 at $3.20–$12.80/month, forever.
    Acceptable? (An answer of "start with the ~200 most-listened books" is a
    legitimate third option and cuts it to a few dollars.)
