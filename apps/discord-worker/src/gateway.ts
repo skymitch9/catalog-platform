@@ -28,22 +28,38 @@
  * treats a blank `content` as "not for her", which is both the correct reading
  * and the correct behaviour if that ever changed.
  *
- * ## ⚠️ COST — estimated from Cloudflare's published table, not measured
+ * ## ⚠️ COST — AND THE REAL CONSTRAINT IS NOT MONEY, IT IS A FREE-PLAN CEILING
  *
  * An outbound WebSocket **cannot hibernate**: the docs say plainly *"Hibernation
  * is only supported when a Durable Object acts as a WebSocket server. Outgoing
- * WebSockets do not hibernate."* So this object bills **duration for as long as
- * it is connected**, at the standard 128 MB allocation:
+ * WebSockets do not hibernate."* So this object accrues **duration for as long
+ * as it is connected**, at the standard 128 MB allocation:
  *
- *   0.125 GB × 2,592,000 s (30 days) = **324,000 GB-s/month**
+ *   0.125 GB × 86,400 s = **10,800 GB-s per day** (≈324,000/month)
  *
- * Workers Paid includes **400,000 GB-s/month**, so a single always-on gateway
- * sits **inside the included allowance — an estimated $0.00/month** while it is
- * the estate's only Durable Object. Priced at the full $12.50 per million GB-s
- * with no inclusion it would be **~$4.05/month**. Requests are negligible (1M
- * included; this is a handful a day). ⚠️ Both figures are **arithmetic over a
- * published price table, not an invoice** — the first month's bill is the
- * measurement, and it belongs in the design doc when it arrives.
+ * ⚠️ **MEASURED AT DEPLOY, 2026-08-17: this account is on Workers FREE, not
+ * Paid.** The deploy proved it — the cron trigger this file originally relied
+ * on was REFUSED with *"This account has reached the Workers Free limit of 5
+ * cron triggers per account"*. That correction matters more than the arithmetic
+ * did, because the free plan's Durable Object allowances are **hard daily caps,
+ * not billing thresholds**:
+ *
+ * | Free-plan allowance | Per day | This object |
+ * |---|---|---|
+ * | Duration | 13,000 GB-s | **~10,800 GB-s — about 83%** |
+ * | Requests | 100,000 | ~3,000 (alarms) + a handful of mentions |
+ * | Rows written | 100,000 | ~2,100 (one seq write per heartbeat) |
+ *
+ * **So: $0.00/month, and roughly 17% headroom on a cap that stops the object
+ * rather than billing for it.** ⚠️ Two things would eat that headroom and both
+ * should be treated as blocking: a **second always-on Durable Object anywhere
+ * on this account**, and any reconnect pattern that leaves two sockets briefly
+ * overlapping. On Workers Paid the same object sits inside the 400,000
+ * GB-s/month inclusion (~$4.05/month if ever billed at the full $12.50 per
+ * million GB-s), so upgrading removes the constraint entirely.
+ *
+ * ⚠️ Every figure above is **arithmetic over a published table, not an
+ * invoice** — the first week's real usage is the measurement.
  *
  * ## ⚠️ THE 15-MINUTE FACT, WHICH IS WHY THE ALARM EXISTS
  *
@@ -57,12 +73,20 @@
  *
  *  - a **DO alarm every 30 s** re-enters the object, and reconnects if the
  *    socket is gone. An alarm also re-creates an evicted object, which is the
- *    only mechanism that can;
- *  - a **cron trigger every 2 minutes** (`index.ts`'s `scheduled`) pokes the
- *    object, so the connection exists without anybody sending traffic and so a
- *    missed alarm is not permanent;
+ *    only mechanism that can, and each alarm schedules the next — so the chain
+ *    is **self-sustaining once something has started it**;
  *  - **RESUME with the stored `session_id` + `seq`** on reconnect, which asks
  *    Discord to replay what was missed rather than starting deaf.
+ *
+ * ⚠️ **THE STARTER IS `POST /admin/gateway/start`, AND IT IS THE ONLY ONE.**
+ * The original design had a 2-minute cron as a second, independent poker;
+ * `index.ts` still carries the `scheduled` handler for it. **The cron could not
+ * be installed** — measured at deploy 2026-08-17, this account is on Workers
+ * Free and has used all 5 of its allowed cron triggers. So the alarm chain has
+ * no backstop: if it is ever broken (the object hits the fatal flag, or an
+ * alarm is lost), a person has to POST that route to restart it. Adding the
+ * cron back is one line in `wrangler.toml` the day a trigger is freed or the
+ * account moves to Workers Paid.
  *
  * ⚠️ **HONEST LIMIT: a mention that lands inside a reconnect gap can be lost.**
  * A resume replays missed events, but a session Discord has already timed out
@@ -364,10 +388,16 @@ export class GabiGateway {
     } catch {
       return;
     }
-    if (typeof frame.s === 'number') {
-      this.seq = frame.s;
-      await this.state.storage.put(K_SEQ, frame.s);
-    }
+    // ⚠️ The sequence number is held in MEMORY on every frame and written to
+    // storage only on a heartbeat (~41 s) — see `beat()`. Writing it per frame
+    // was the first implementation and it is a real defect on this account:
+    // every message in every channel of every guild the bot is in would be a
+    // Durable Object row write, against a **100,000 rows/day** free-plan
+    // ceiling, for a value that is only ever READ after an eviction. The cost
+    // of the cheaper version is bounded and stated: after an eviction the
+    // resume replays from a seq up to one heartbeat stale, so a handful of
+    // already-answered messages can be replayed.
+    if (typeof frame.s === 'number') this.seq = frame.s;
 
     switch (frame.op) {
       case OP.HELLO: {
@@ -432,6 +462,10 @@ export class GabiGateway {
     }
     this.awaitingAck = true;
     this.send({ op: OP.HEARTBEAT, d: this.seq });
+    // The one place the sequence is persisted — once per heartbeat rather than
+    // once per frame (see `onFrame`). Fire-and-forget: a failed write costs a
+    // slightly staler resume, never a missed heartbeat.
+    if (this.seq !== null) void this.state.storage.put(K_SEQ, this.seq).catch(() => {});
   }
 
   private async onDispatch(type: string, data: unknown, botToken: string): Promise<void> {

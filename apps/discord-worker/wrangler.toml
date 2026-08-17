@@ -23,17 +23,28 @@ workers_dev = false
 #   https://discord.heygabi.ai/interactions
 routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
 
-# ⚠️ THE ONLY CRON ON THIS WORKER, and it exists for exactly one reason: a
-# Durable Object's alarm cannot fire on an object nobody has ever created, and
-# (measured 2026-08-17 from Cloudflare's own docs) "an active outbound WebSocket
-# connection keeps the Durable Object alive and prevents eviction for up to 15
-# minutes per connection". So the gateway needs a poke from OUTSIDE on a cadence
-# or it goes quietly deaf. Every two minutes; the handler is one conditional.
+# ⚠️ NO [triggers] / crons BLOCK, AND THAT IS A MEASUREMENT, NOT A PREFERENCE.
 #
-# ⚠️ Costs NOTHING while GABI_MENTIONS is off — the scheduled handler returns
-# before it creates the object, so no Durable Object duration is billed at all.
-[triggers]
-crons = ["*/2 * * * *"]
+# The design wanted a 2-minute cron as a second, independent poker for the
+# gateway Durable Object below. It was written, deployed, and REFUSED
+# (2026-08-17):
+#
+#   "This account has reached the Workers Free limit of 5 cron triggers per
+#    account. Upgrade to Workers Paid to increase this limit to 1,000"
+#
+# So two facts were measured at once: this account is on **Workers Free**, and
+# its 5 cron triggers are already spent elsewhere. The block is removed rather
+# than left in place because a wrangler.toml that cannot fully apply makes
+# EVERY future deploy of this Worker exit with a partial-failure banner — a
+# booby trap for whoever deploys next.
+#
+# ⚠️ What is lost: the gateway's alarm chain is self-sustaining once started
+# (each alarm schedules the next, and an alarm re-creates an evicted object),
+# so the cron was redundancy rather than the mechanism. Without it there is no
+# backstop if the chain ever breaks — restart it with
+# `POST /admin/gateway/start`. `src/index.ts` still carries the `scheduled`
+# handler, so restoring this is ONE line the day a trigger is freed or the
+# account moves to Workers Paid.
 
 # ⚠️ The one persistent WebSocket to Discord's gateway, so GABI HEARS ordinary
 # messages that @mention her (src/gateway.ts). A single named instance,
@@ -41,14 +52,20 @@ crons = ["*/2 * * * *"]
 # object would open one socket per caller and get the bot rate-limited into a
 # ban.
 #
-# ⚠️ COST, estimated from Cloudflare's published table — NOT an invoice.
-# Outbound WebSockets cannot hibernate ("Hibernation is only supported when a
-# Durable Object acts as a WebSocket server"), so this bills duration for as
-# long as it is connected: 128 MB × 30 days = ~324,000 GB-s/month, against the
-# 400,000 GB-s/month included on Workers Paid. That is an estimated $0.00/month
-# while this is the estate's only Durable Object, and ~$4.05/month if it were
-# ever billed at the full $12.50 per million GB-s with no inclusion. Requests
-# are negligible (1M included; this makes a few hundred a day).
+# ⚠️ COST — and on this account the binding constraint is NOT money, it is a
+# hard free-plan daily cap. Outbound WebSockets cannot hibernate ("Hibernation
+# is only supported when a Durable Object acts as a WebSocket server"), so this
+# accrues duration whenever it is connected: 128 MB × 86,400 s = ~10,800 GB-s
+# per day, against the Workers Free allowance of **13,000 GB-s/day**. That is
+# **$0.00/month and about 83% of a cap that STOPS the object rather than
+# billing for it** — roughly 17% headroom.
+# ⚠️ Two things would eat that headroom and both are blocking: a SECOND
+# always-on Durable Object anywhere on this account, and any reconnect pattern
+# leaving two sockets briefly overlapping. On Workers Paid the same object sits
+# inside the 400,000 GB-s/month inclusion (~$4.05/month if ever billed at the
+# full $12.50 per million GB-s), so upgrading removes the constraint entirely.
+# Requests (~3,000/day of 100,000) and row writes (~2,100/day of 100,000) are
+# comfortable. All arithmetic over a published table — not an invoice.
 [[durable_objects.bindings]]
 name = "GABI_GATEWAY"
 class_name = "GabiGateway"

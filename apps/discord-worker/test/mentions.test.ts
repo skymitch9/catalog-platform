@@ -95,12 +95,25 @@ describe('⚠️ the posture: affirmative-only, and OFF means no socket at all',
     assert.match(WRANGLER, /^\s*GABI_MENTIONS\s*=/m);
   });
 
-  it('the Durable Object and its cron are both declared — a poker and a listener', () => {
-    // Half of this feature is the object; the other half is the thing that
-    // wakes it. Either one missing is a bot that goes deaf without a symptom.
+  it('the Durable Object is declared and migrated — without it nothing can listen', () => {
     assert.match(WRANGLER, /class_name\s*=\s*"GabiGateway"/, 'no GabiGateway binding');
     assert.match(WRANGLER, /new_sqlite_classes\s*=\s*\[\s*"GabiGateway"\s*\]/, 'no migration for the class');
-    assert.match(WRANGLER, /^\s*crons\s*=\s*\[/m, 'no cron to poke the gateway into existing');
+  });
+
+  it('⚠️ declares NO cron — the account has none left, and a half-applying config is a trap', () => {
+    // Measured at deploy 2026-08-17: this account is on Workers Free and has
+    // spent all 5 of its cron triggers, so the 2-minute poker the design wanted
+    // was REFUSED. The block is absent rather than present-and-failing, because
+    // a wrangler.toml that cannot fully apply makes every future deploy of this
+    // Worker exit with a partial-failure banner. If this assertion ever fails,
+    // somebody added a cron back — which is correct ONLY if a trigger was freed
+    // or the account moved to Workers Paid, and that is worth saying out loud.
+    assert.doesNotMatch(
+      WRANGLER,
+      /^\s*crons\s*=\s*\[/m,
+      'a cron was added back — confirm the account can actually install it (Workers Free allows 5 ' +
+        'per account and they were all spent as of 2026-08-17), then update this test.',
+    );
   });
 });
 

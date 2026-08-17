@@ -678,18 +678,24 @@ app.post('/interactions', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// The cron — the heartbeat OUTSIDE the Durable Object.
+// The cron handler — ⚠️ WIRED BUT NOT TRIGGERED ON THIS ACCOUNT.
 //
-// ⚠️ A gateway connection that only exists while somebody is talking to it is
-// not a gateway connection. The object's own alarm heals it from the inside,
-// but an alarm cannot fire on an object nobody has ever created, and (measured
-// 2026-08-17) an outbound WebSocket only prevents eviction "for up to 15
-// minutes per connection". So something outside has to poke it on a cadence —
-// this is that something, and it is deliberately dumber than the object it
-// wakes: one conditional, one subrequest, no state.
+// The gateway Durable Object heals itself from the inside (each alarm schedules
+// the next), but an alarm cannot fire on an object nobody has ever created, and
+// a broken chain has no way back. This handler was the second, independent
+// poker for it, on a 2-minute cron.
 //
-// ⚠️ With the posture off it does NOTHING — no object is created, no Durable
-// Object duration is billed, and the cost of shipping this dark is zero.
+// ⚠️ THE CRON COULD NOT BE INSTALLED — measured at deploy 2026-08-17: *"This
+// account has reached the Workers Free limit of 5 cron triggers per account"*.
+// The `[triggers]` block was removed from wrangler.toml (leaving it makes every
+// future deploy exit with a partial-failure banner); the handler stays, because
+// restoring the redundancy is then ONE line the day a trigger is freed or the
+// account moves to Workers Paid. Until then `POST /admin/gateway/start` is the
+// only starter, and that is written down in wrangler.toml and the runbook
+// rather than left to be rediscovered.
+//
+// ⚠️ With the posture off it does NOTHING — no object is created and no Durable
+// Object duration is accrued, so shipping this dark costs exactly zero.
 // ---------------------------------------------------------------------------
 async function scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   if (!mentionsOn(env)) return;
