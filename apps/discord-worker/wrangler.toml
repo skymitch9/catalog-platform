@@ -1,0 +1,43 @@
+# The estate Discord Worker — the bot's one HTTP interactions endpoint,
+# deliberately its OWN Worker (discord-bot-design.md §1.3 / decision #2):
+# the bot token is a second wide-blast-radius shared credential and must not
+# live inside the Worker that gates the estate's membership (auth-worker).
+# Discord delivers every interaction (PING handshake, buttons, slash
+# commands) as an HTTP POST to the single URL configured in the Developer
+# Portal — no gateway, no persistent connection.
+#
+# ⚠️ NOT DEPLOYED, ON PURPOSE — the bot cannot go live until the owner
+# registers the Discord application in the Developer Portal and sets the
+# secrets below. The full runbook is docs/access/discord-bot.md. Deploy,
+# route, and secrets are a deliberate later step, never a side effect of
+# building this.
+
+name = "estate-discord"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# Added at deploy time, mirroring auth-worker / index-worker's history.
+# Discord's Interactions Endpoint URL then becomes:
+#   https://discord.heygabi.ai/interactions
+# routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
+
+[vars]
+# Explicit, affirmative value — same idiom as the sibling Workers.
+ENVIRONMENT = "production"
+
+# Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
+#   wrangler secret put DISCORD_PUBLIC_KEY        (Developer Portal → General
+#     Information → Public Key; 64 hex chars. Public by design, but kept as a
+#     secret for uniform custody with the rest)
+#   wrangler secret put DISCORD_APPLICATION_ID    (same portal page)
+#   wrangler secret put DISCORD_BOT_TOKEN         (portal → Bot → Reset Token.
+#     ⚠️ Shown once; shared across every opted-in club — the blast-radius
+#     regression discord-bot-design.md §1.2 names and accepts. Not consumed
+#     by the poll-vote path yet — message edits ride the interaction token —
+#     but required for phase-3 bot-posted messages)
+#   wrangler secret put FIREBASE_SERVICE_ACCOUNT  (pipe the JSON file in —
+#     never paste it into a terminal line, never echo it; same value and
+#     custody as auth-worker's. See src/firebase-sa.ts)
+# Locally they live in .dev.vars (gitignored).
