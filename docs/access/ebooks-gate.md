@@ -153,7 +153,7 @@ at the first byte.
 still returned the real manifest with a climbing `Age:` header, while the same
 URL **with a cache-busting query** returned the fallback — proving the origin
 was clean and the edge was not. A `Cache-Control: no-cache` *request* header
-did not shake it loose. **The fix is an owner action** (wrangler has no purge
+did not shake it loose, and **re-measured 81 minutes later it had still not expired** (`Age: 4874`) — on both `/ebooks.json` and `/dev/ebooks.json`. Do not wait it out; purge it. **The fix is an owner action** (wrangler has no purge
 command and the session token holds `zone (read)` only): Cloudflare dashboard →
 the `heygabi.ai` zone → **Caching → Configuration → Purge Custom URL**, for
 both `https://audiobooks.heygabi.ai/ebooks.json` and
