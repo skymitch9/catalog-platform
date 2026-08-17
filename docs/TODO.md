@@ -15,6 +15,33 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 0. 🤖 GABI Discord bot — LIVE 2026-08-16; the build queue that follows
+
+State: registered (**GABI**, id `1538775435880562758`), worker deployed at
+`discord.heygabi.ai` (health all-green), **invited to the owner's server with
+the moderator permission bundle** (`1116825807878` — deliberately NOT
+Administrator; blast-radius reasoning in `access/discord-bot.md` and the
+2026-08-16 conversation; widening later is a role toggle, never a re-invite).
+Interactions Endpoint URL save: owner's click, unconfirmed until interactions
+arrive.
+
+Queue, in intended order (all dispatch as OPUS agents per the model-tiering
+rule):
+1. **Phase 2 — identity-link ceremony**: OAuth2 `identify` → writes
+   `discord_links/{discordUserId}` `{slug, displayName}`; until it ships every
+   vote click gets the worded "not linked" ephemeral. Design §1.6.
+2. **Phase 3 — bot-posted poll messages with buttons** (+ tally refresh /
+   close propagation riding `club_announcements.py` cadence). ⚠️ Until this
+   ships there is NOTHING votable in Discord — the invite changes nothing
+   visible. Set owner expectations accordingly.
+3. **Slash commands** — register via the API (`/have` first, anonymous
+   audiobook-scope default per design §4 decision 4).
+4. **Moderation features** (owner ask 2026-08-16: *"i plan to expand her
+   roles and have her do moderation"*): DESIGN DOC FIRST — what moderation
+   means (timeouts on command? message cleanup? auto-responses? scheduled
+   sweeps?) shapes the build far more than permission bits. The mod
+   permissions are already granted; no feature consumes them yet.
+
 ## 1. ⚠️ Three of the four repos deploy only from a human's laptop
 
 **Raised by the owner 2026-08-12**, immediately after a manual
