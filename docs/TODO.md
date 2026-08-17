@@ -285,13 +285,21 @@ including the measured counts and what was NOT verified, is in
 [`info/index-worker-design.md` §8.5](info/index-worker-design.md). Only the
 work that has NOT been done is listed here.
 
-1. **A confirm-queue affordance for the owner.** `GET /api/series/pending` and
-   `POST /api/series/pending/:fold` exist and are approver-gated, but nothing
-   in a browser calls them — today the only way to resolve a near miss is a
-   signed-in curl. **One row is waiting**: *"The Survivalist Series"* ~ *"The
+1. **A confirm-queue affordance for the owner — THE PAGE HALF ONLY; the API
+   half landed 2026-08-17.** `GET /api/series` now carries `pending_open`,
+   `pending_detail` and `pending_url` **for approvers** (absent for everyone
+   else — a count is estate-wide information), so the page no longer has to
+   know a second endpoint exists: it reads the answer it already fetches.
+   ⚠️ **Nothing in a browser reads them yet** — measured 2026-08-17, the only
+   occurrence of "pending" in `sites/heygabi-home/public/series/series.js` is
+   the `estate_pending` auth-error case, and `/admin` mentions no series at
+   all. What remains is one banner on `/series` (or the `/admin` card beside
+   Estate Operations) rendering `pending_detail` and linking the queue. Size
+   XS now, and it is a `sites/` change plus a Pages deploy — deliberately NOT
+   done by the index-worker pass that built the API half.
+   **One row is waiting**: *"The Survivalist Series"* ~ *"The
    Survivalist"* (both audiobook, so it may belong in the audiobook catalog's
    own corrections layer rather than as an index merge — that is the decision).
-   Natural home: the apex `/admin` card, beside Estate Operations. Size S.
    ⚠️ **`/series` has since produced EVIDENCE for that decision, observed live
    2026-08-17** — and it points at *separate*, not merge: *The Survivalist*
    holds one volume, **Frontier Justice, Arthur T. Bradley, 2014**, while *The
@@ -311,12 +319,10 @@ work that has NOT been done is listed here.
    path may never need the iframe. Measure first (sign out, sign in from
    `/universes`, watch the console for a frame-src refusal), then fix. Size XS,
    and both the bare and trailing-slash rules need it — that file's 308 trap.
-3. **Resolve `entry.universe` from the CANONICAL series display**, not from
-   the source's spelling. Push-time universe resolution still reads the raw
-   string (deliberately unchanged this pass — re-pointing a join deserves its
-   own verification). Once done, `universes.json` can list ONE spelling per
-   series instead of every variant. Needs: a re-push of all sources, and a
-   before/after count of rows carrying a universe. Size S, but measure it.
+3. *(Moved whole to [`DONE.md`](DONE.md), 2026-08-17 — the universe join now
+   reads the SERIES rather than one spelling of it. The number is left
+   standing rather than renumbering the list, the same way `DONE.md`'s own
+   split kept item numbering so the archive's references still resolve.)*
 4. **Decide whether `/api/series` should answer the anonymous internet.** It
    currently takes `/api/universe`'s stance (members-only, scoped) because
    §4.5's anonymous carve-out names `/api/search` alone. Widening is one line

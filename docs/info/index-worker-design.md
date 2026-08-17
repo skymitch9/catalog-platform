@@ -275,10 +275,22 @@ record would be the queue asking a question it has the answer to.
 
 ```
 GET  /api/series                 per-source counts, scoped
+                                 + `pending_open` / `pending_detail`  (approver only)
 GET  /api/series/:slug           grouped by medium (the row's own `format`)
 GET  /api/series/pending         the confirm queue                (approver)
 POST /api/series/pending/:fold   {"action":"merge","into":…} | {"action":"separate"}  (approver)
 ```
+
+⚠️ **`pending_open` exists because a queue nobody is told about is a queue
+nobody resolves** (added 2026-08-17). The registry's first real near miss sat
+unnoticed: nothing in a browser called `/api/series/pending`, so learning that
+a decision was waiting meant remembering the endpoint. The list an approver
+already loads now says how many are open, in a sentence rather than a bare
+number ("Nothing was merged — these series stay separate until you resolve
+them"), with the URL to act on. **Approver-only and ABSENT rather than zeroed
+for everyone else** — a count of near misses spans every catalog, so it is
+estate-wide information the way the `series` table itself is — and it is a
+COUNT, never the rows.
 
 ⚠️ **The list is derived from SCOPED ENTRY ROWS, never from the `series`
 table.** The registry is estate-wide; listing it would tell an audiobook-only
@@ -301,9 +313,69 @@ straightened by the series canon and the audiobook corrections layer, so this
 registry is mostly PREVENTATIVE — it makes the regression structurally
 impossible rather than cleaning up a mess that was still there.
 
-**Known follow-up, deliberately not smuggled in:** `entry.universe` is still
-resolved from the SOURCE's spelling, not from the canonical display the push
-now writes. Re-pointing that join is its own verifiable step.
+### 8.5.1 The universe join reads the SERIES, not one spelling of it (2026-08-17)
+
+The registry's own follow-up, done. `universes.json` lists each series in ONE
+spelling ("The Stormlight Archive"), and `normaliseUniverseText` keeps leading
+articles **on purpose**, so a source pushing any other spelling of the same
+series missed the universe join outright: one book could sit in the Cosmere on
+the audiobook shelf and in no universe at all on the library shelf.
+
+The registry knows those spellings are one series, so `applySeriesPlan`
+(`src/push.ts`) asks again. The rule, in the order it applies:
+
+1. `entryFor` resolves the universe from the **pushed** spelling, unchanged.
+2. A row that came back with NOTHING is asked again with every **other**
+   spelling of its series **in the same snapshot** — canonical first, the rest
+   sorted, so the answer never depends on the order a source listed its rows.
+3. Two spellings that answer with DIFFERENT universes: the row's own spelling
+   wins, and the row is **counted as a conflict with samples**. One series in
+   two universes is a fault in `data/universes.json`; picking a winner here
+   would hide it behind a guess.
+
+⚠️ **Asking with the canonical display alone is NOT enough, and the live probe
+found that rather than the design predicting it.** The canonical display is
+"first writer wins" in fold order, so it is just as likely to *be* the unlisted
+spelling — "Stormlight Archive" sorts before "The Stormlight Archive". A
+canonical-only attempt gains nothing exactly when both spellings arrive in one
+push, which is the case that leaves one series holding two answers.
+
+⚠️ **Still exact, still additive, still no second matcher.** Every attempt is
+the same `universeFor` lookup on a string a source really pushed; nothing is
+folded and nothing is guessed. The pushed spelling is never overridden, so no
+row can LOSE a universe. Exclusions cannot be smuggled past (`universeFor`
+refuses by TITLE before it looks at any series). And a near miss lends nothing:
+only spellings that RESOLVED to the same slug are tried, and a near miss has
+its own slug — the queue's "never merged, only asked" rule holds here too.
+
+⚠️ **This does NOT mean `universes.json` may now list one spelling per series
+and drop the variants** — the hope recorded when the follow-up was logged. The
+index gains registry-backed spelling tolerance; `library_catalog` and
+`audiobook_catalog` resolve the same list with **their own** implementations
+and have no registry, so a variant removed from the list goes missing on their
+sites. The list's variants stay.
+
+**Measured per push:** the response gained a `universe` block —
+`rows` (carrying a universe), `gained_from_registry` (owed to a sibling
+spelling), `conflicts` (+ up to three samples).
+
+**Measured over the live index, 2026-08-17** (`scripts/backfill-universe.ts`,
+dry run, remote): 2,434 rows / **445 carry a universe** / **0 would change** /
+0 rows whose stored universe disagrees with today's list / 0 series naming two
+universes. The estate had no rows to fix — the same "mostly PREVENTATIVE"
+headline the registry itself earned, and for the same reason.
+
+⚠️ **The backfill's sibling report is REPORT-ONLY, and the measurement is why.**
+The tempting version — fill a universe-less row from a sibling row of the same
+series that has one — resolves MORE than the push does, because a sibling's
+universe may have come from a bookOverride TITLE. Against the real index it
+would have written **207 rows: 108 D&D games into Middle-earth** (one
+LOTR-branded D&D product), **76 Dice Throne boxes into Marvel**, 22 Ascension,
+1 Little Golden Book. Every one is a crossover product, not a universe member,
+and the next snapshot replace would have recomputed them NULL and silently
+undone it — a backfill that resolves differently from the push re-creates
+design §1's drift class. It prints them and names the honest fix: an edit to
+`data/universes.json`.
 
 ## 9. Open questions
 

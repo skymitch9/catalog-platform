@@ -13,6 +13,100 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📚 The universe join reads the SERIES, not one spelling of it — ✅ BUILT + DEPLOYED 2026-08-17
+
+*(Moved whole from `TODO.md`'s "Series registry — what still hangs off it",
+item 3: "**Resolve `entry.universe` from the CANONICAL series display**, not
+from the source's spelling. Push-time universe resolution still reads the raw
+string (deliberately unchanged this pass — re-pointing a join deserves its own
+verification). Once done, `universes.json` can list ONE spelling per series
+instead of every variant. Needs: a re-push of all sources, and a before/after
+count of rows carrying a universe. Size S, but measure it.")*
+
+Commits `5f389f3`, `4fdfe48`. Worker version
+`0dfc1c08-4546-46f6-b8b8-6b4eb6d7a2a9` (superseding `8524fd40`, which carried
+the first, weaker rule for eleven minutes). Design, with every refusal:
+[`info/index-worker-design.md` §8.5.1](info/index-worker-design.md).
+
+**The problem in one sentence:** `universes.json` lists each series in ONE
+spelling ("The Stormlight Archive") and `normaliseUniverseText` keeps leading
+articles **on purpose**, so a source pushing any other spelling missed the join
+entirely — one book, Cosmere on the audiobook shelf and no universe at all on
+the library shelf.
+
+**As built.** `entryFor` still resolves from the pushed spelling first. A row
+that comes back with nothing is then asked again with every OTHER spelling of
+its series **in the same snapshot** — canonical first, the rest sorted. Every
+attempt is the same EXACT `universeFor` lookup on a string a source really
+pushed: nothing folded, nothing guessed, the pushed answer never overridden
+(so no row can LOSE a universe), exclusions untouchable (`universeFor` refuses
+by TITLE before it looks at a series), and a near miss lending nothing (it has
+its own slug, so it is never one of the spellings tried). Two spellings that
+answer with different universes: the row's own spelling wins and the row is
+**counted as a conflict with samples** — one series in two universes is a fault
+in the list, and picking a winner would hide it.
+
+### ⚠️ The canonical display alone was NOT enough — the live probe found it
+
+The first version asked only with the canonical display, and it was wrong in a
+way no amount of reading would have shown: the canonical is **"first writer
+wins" in fold order**, so it is just as likely to BE the spelling
+`universes.json` does not list. "Stormlight Archive" sorts before "The
+Stormlight Archive". Probe B17 pushed both spellings in one snapshot, expected
+a gain, and got zero — the series ended up holding rows with two different
+answers, which is the exact failure the change existed to end. Fixed by asking
+with every sibling spelling; the case is pinned in the unit suite too.
+
+### ⚠️ The 207-row near miss: why the backfill REPORTS and never writes
+
+`scripts/backfill-universe.ts` (dry run by default, prints its SQL, additive
+only) re-runs the join over rows already in D1. Its sibling diagnostic — rows
+in a series where a sibling row DOES carry a universe — was very nearly a
+writer. Against the real index it would have written **207 rows: 108 D&D games
+into Middle-earth** (one LOTR-branded D&D product), **76 Dice Throne boxes into
+Marvel**, 22 Ascension, 1 Little Golden Book. Every one is a crossover product,
+not a universe member. It resolves MORE than the push does — a sibling's
+universe may have come from a bookOverride TITLE — so the next snapshot replace
+would have recomputed them NULL and silently undone it, which is design §1's
+drift class rebuilt by hand. It prints them instead and names the honest fix:
+an edit to `data/universes.json`.
+
+### Also landed: the confirm queue announces itself
+
+`GET /api/series` now carries `pending_open`, a sentence ("Nothing was merged —
+these series stay separate until you resolve them") and the queue URL — **for
+approvers only, and ABSENT rather than zeroed for everyone else**, because a
+count of near misses spans every catalog. The registry's first real row sat
+invisible because nothing in a browser called `/api/series/pending`. ⚠️ The
+PAGE half is still open and stays in `TODO.md` item 1: this is a `sites/`
+change plus a Pages deploy, and the index-worker pass deliberately did not
+reach across.
+
+### Measured
+
+| | |
+|---|---|
+| Live index, dry run, remote | 2,434 rows / **445 carry a universe** / **0 would change** |
+| Stored universe ≠ today's lookup | 0 |
+| One series naming two universes | 0 |
+| Unit suite | 129 in the index worker (was 119); full workspace 733, all green |
+| Live probes | **21/21** (`npm run probe`), B16–B18 new |
+| Mutation-proved | disabling the second attempt kills 2 tests; letting it override the pushed answer kills 2; dropping the approver check kills 1 |
+
+**0 rows would change is the honest headline**, and it is the registry's own
+result again: the estate's spellings had already been straightened by the
+series canon and the audiobook corrections layer, so this is **PREVENTATIVE** —
+it makes the split structurally impossible rather than cleaning up a mess that
+was still there.
+
+**NOT verified.** No source has re-pushed since the deploy, so
+`gained_from_registry` has never been non-zero on the live Worker (it is
+exercised on a real runtime by probe B17, against local D1). The approver badge
+has never been seen by a signed-in browser — no agent holds an owner ID token;
+it is verified by probe B16 through the real route and by the unit suite.
+`universes.json` was not edited, and the D&D/Dice Throne/Ascension question
+above is left as evidence, not a change.
+
 ## 📖 Ebook viewer phase 1a — the gated byte stream — ✅ BUILT + DEPLOYED 2026-08-17
 
 **New entry** (no TODO section existed here — the viewer is queued in

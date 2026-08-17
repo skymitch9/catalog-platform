@@ -341,6 +341,18 @@ apply to the two book catalogs:
   the same *work* as a book), so games only ever join the rest of the estate at
   the **universe** tier — `universe` is the one cross-format signal a games row
   carries at all.
+- ⚠️ **Since 2026-08-17 this consumer is the only one with SPELLING
+  TOLERANCE.** Its series registry knows that "The Stormlight Archive" and
+  "Stormlight Archive" are one series, so at push time a row that matched
+  nothing under its own spelling is asked again with every other spelling of
+  its series in the same snapshot (`apps/index-worker/src/push.ts`
+  `applySeriesPlan`; the rule and its refusals are
+  [`info/index-worker-design.md` §8.5.1](info/index-worker-design.md)). It is
+  still an EXACT `universeFor` lookup each time — no folding, no guessing.
+  ⚠️ **Do NOT take this as licence to reduce a series to one spelling here.**
+  The two book catalogs have no registry and match this list with their own
+  implementations, so a variant deleted from `series[]` goes missing on their
+  sites while the index carries on answering. Variants stay.
 - **This consumer DOES surface universes on screen**: `/universes` on
   `heygabi-home` (`sites/heygabi-home/public/universes/universes.js`) is a
   members-only page backed by `GET /api/universe/:name`. ⚠️ Its universe name
