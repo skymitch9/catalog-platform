@@ -909,9 +909,29 @@ this order, with an answer before the next is shown.
    otherwise. The true gate remains who holds the grant at all. This is a
    deliberate, owner-chosen softening of the download rule's letter for the
    PWA's whole point; §5's analysis stands as the record of the trade.
-3. **The storage bill.** 213–853 GB in R2 at $3.20–$12.80/month, forever.
-   Acceptable? (An answer of "start with the ~200 most-listened books" is a
-   legitimate third option and cuts it to a few dollars.)
+3. ✅ **DECIDED 2026-08-17 — measure first, then ON-DEMAND INGEST.** Owner:
+   *"do c first then we should let the users who can download click the
+   download button. upon clicking the download button it adds it to a queue
+   to be downloaded for everyone. so each book is on request then ready for
+   everyone. that should spread it out a lot of there are plenty of books
+   we've already read that most likely wont get read again for a while."*
+   The shape: no bulk upload. A book not yet in R2 shows a **request**
+   action; pressing it enqueues the book (D1 queue row); the LOCAL pipeline
+   (which holds the files) fulfils the queue on its next run via the boto3
+   multipart path; once uploaded, the book is streamable for every grant
+   holder, permanently. Long-tail books nobody asks for are never uploaded
+   and never billed. Worded states required: "not streamable yet — request
+   it" → "requested, usually ready within the hour" → ready. Reading note:
+   the trigger is interpreted as anyone holding the listen grant (the same
+   people the stream serves) — if the owner meant to floor *requesting* at
+   download-capable (admin+), that is a one-line gate change; flag at build.
+   **Duplicate clause (owner, same day):** *"my book club reads a lot of the
+   same books so 3 of us might request the same book … add a duplicate
+   clause"* — the queue is keyed on the BOOK: one row per book no matter how
+   many people press request; later requesters join the existing row's
+   requester list (so "it's ready" can tell all of them, and a book-club
+   pile never uploads twice). Requesting an already-ready book is a no-op
+   with a worded "already streamable" answer.
 4. **Does `chapters.json` stay public?** 46,659 chapter titles for 1,079 books
    are on the public site today (§7.3). Fine, or move it behind the gate?
 5. **Signed URLs — ever?** §3.4 recommends never, quoting `ebook-file.ts`'s own
@@ -925,14 +945,19 @@ this order, with an answer before the next is shown.
 
 ## 13. What was NOT verified
 
-- 🔴 **THE LIBRARY'S ACTUAL AUDIO BITRATE WAS NEVER MEASURED**, so every size
-  and cost figure in §1.3 is arithmetic over a range, not a measurement. The
-  spread is **4×** (213 GB vs 853 GB) and it decides both the bill and how many
-  books need multipart upload. ⚠️ It was deliberately not measured: reading
-  1,079 files would risk re-hydrating OneDrive placeholders, which
-  `extract_chapters.py` explicitly guards against. **`ffprobe` on a sample of
-  ~20 files answers it in a minute** and is the single highest-value
-  measurement outstanding.
+- ✅ **MEASURED 2026-08-17 (conductor), closing this doc's top unknown.** The
+  library root (`C:\Users\nbasl\OpenAudible\books`) is NOT under OneDrive —
+  all **1,073** audio files are fully local, no recall-on-access flags, so
+  the placeholder-rehydration fear was moot. Totals read off the filesystem,
+  not estimated: **630 GB (0.615 TB)** → full-library R2 bill **≈ $9.45/mo**
+  (the old 213–853 GB range is retired; the truth sat near its middle). An
+  ffprobe sample across the size percentiles shows a clean **bimodal
+  bitrate**: roughly half the library at **~64 kbps** and half at
+  **~127 kbps**, mean file 601 MB, largest 3.92 GB (72 h). ⚠️ **889 of
+  1,073 files exceed wrangler's 300 MiB wall** — boto3 multipart is not the
+  fallback ingest path, it is THE path, full stop. Under decision 3's
+  on-demand queue the actual bill starts near zero and grows only with
+  requested books (~$0.009/mo per typical book).
 - 🔴 **Nothing in this document has been exercised.** No audio file has been
   streamed through any Worker, no service worker has injected any header, no
   `<audio>` element has played anything from this estate. This is a paper study.
