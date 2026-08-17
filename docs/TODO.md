@@ -48,6 +48,14 @@ rule):
      words (not a silent partial), preview-then-confirm for anything big.
    Also from the same conversation: Interactions Endpoint URL is SAVED
    (Discord's probe passed at save time) — the endpoint is verified live.
+   ⚠️ **KILL-SWITCH CONTRACT (owner order, same evening):** moderation ships
+   DARK. `MODERATION_ENABLED = "off"` is already declared in wrangler.toml;
+   every moderation code path MUST check it and answer a worded "switched
+   off" ephemeral until the owner flips it — the flip is his evidence-gated
+   step (shadow-first idiom), never part of a deploy. The bot's mod-bundle
+   server permissions stay granted but unconsumed; if the owner wants zero
+   latent risk meanwhile, removing them from GABI's server role is one
+   toggle and re-granting later is the same toggle.
 
 ## 1. ⚠️ Three of the four repos deploy only from a human's laptop
 

@@ -27,6 +27,16 @@ routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
 # Explicit, affirmative value — same idiom as the sibling Workers.
 ENVIRONMENT = "production"
 
+# ⚠️ MODERATION KILL-SWITCH (owner order 2026-08-16: "disable her reacting to
+# any admin mod stuff for now until we get further along"). Nothing in the
+# Worker consumes this yet — no moderation feature exists — but it is
+# declared NOW so the phase-4 moderation build (timeouts + cleanup, TODO §0)
+# ships DARK behind it by contract: every mod code path must check this var
+# and answer a worded "moderation is switched off" ephemeral while it is
+# anything but "on". Flipping it is the owner's evidence-gated step, same
+# shadow-first idiom as ESTATE_CHECK — never a side effect of a deploy.
+MODERATION_ENABLED = "off"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put DISCORD_PUBLIC_KEY        (Developer Portal → General
 #     Information → Public Key; 64 hex chars. Public by design, but kept as a
