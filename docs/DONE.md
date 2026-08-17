@@ -13,6 +13,53 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📖 Ebook viewer phase 1a — the gated byte stream — ✅ BUILT + DEPLOYED 2026-08-17
+
+**New entry** (no TODO section existed here — the viewer is queued in
+`library_catalog/docs/TODO.md`, and only its Worker half lives in this repo).
+Commits `653f2a6` + `65d7ff8`, Worker version
+`41206de4-b5b8-41f6-af30-76fc482cde05`, 190 tests green. Full as-built record,
+with every measurement and a blunt NOT-VERIFIED list:
+[`info/ebook-viewer-phase1.md`](info/ebook-viewer-phase1.md). Design:
+`library_catalog/docs/info/ebook-viewer-design.md`.
+
+### As built
+
+- **`GET|HEAD /api/ebook/:anchor/file`** — the R2 body passed through
+  **unbuffered**. Three files exceed the 128 MiB isolate limit and the White
+  Sand Omnibus exceeds it threefold, so `arrayBuffer()` here is an OOM, not a
+  slow request.
+- **Range honoured honestly**: 206 with `Content-Range`, 416 (with
+  `bytes */size`) for understood-but-unsatisfiable, and **malformed or
+  multi-range IGNORED into a 200** rather than refused — different facts about
+  the request, kept apart.
+- **`Accept-Ranges: bytes` and `private, max-age=0, no-store` on EVERY answer,
+  refusals included.** pdf.js decides whether to range-stream from the first
+  response it sees, and the edge cache knows nothing about a bearer.
+- **`[[r2_buckets]] EBOOKS`** → `estate-ebooks` (public access disabled, no
+  custom domain). ⚠️ `ESTATE_CHECK` untouched, still `"shadow"`.
+- **One gate, shared with the shelf** (`ebook-gate.ts`), so the two cannot
+  disagree about who is admitted.
+- **A reading budget on BOOKS, not requests** — ranges within an open book are
+  uncapped, because a page turn is several GETs and a per-request cap would
+  throttle reading rather than scraping.
+
+### The three findings worth keeping
+
+1. ⚠️ **The stream gates on `vis_ebooks`, never on `download`** (floor
+   `admin`). A comment in `ebooks.ts` told the next agent to do the opposite;
+   following it would have shipped a viewer nobody below `admin` could use. The
+   comment is corrected and a test now pins the rule.
+2. ⚠️ **Extraction does not inherit the caller's header contract.** Moving the
+   gate into a shared module made the byte stream's 401 go out bare — 189 unit
+   tests passed because they asserted those headers only on the 429. Found by
+   curling the live deploy; the fix dresses the answer at the caller and a new
+   test walks all six refusal paths.
+3. ⚠️ **`anchor → path` reads the GATED manifest**, not the public
+   `ebooks.json` the design assumed — that file left the internet the same day.
+   Strictly better: shelf and reader resolve a book from one byte-identical
+   source, with no subrequest.
+
 ## 🤖 `/gabi` — the fixer's Discord surface, shape (b) — ✅ BUILT + DEPLOYED 2026-08-17
 
 **Moved whole from [`TODO.md`](TODO.md) §0 item 3 at completion.** Commit

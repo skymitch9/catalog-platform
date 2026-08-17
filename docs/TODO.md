@@ -37,6 +37,39 @@ Firebase sign-in, so the part that matters is unverified until someone signs in.
 Report anything that still feels like a different experience per site — that
 is precisely what this was for.
 
+## 🧑 OWNER EYEBALL: read a PDF in the browser, signed in (2026-08-17)
+
+**Viewer phases 1a + 1b shipped** — the gated byte stream
+(`audiobook-worker` `41206de4`) and the PDF reader (`audiobook_catalog`
+`af57fbb`, on the **dev lane**). As-built record with every measurement:
+[`info/ebook-viewer-phase1.md`](info/ebook-viewer-phase1.md).
+
+⚠️ **Everything an agent could verify is the UNAUTHENTICATED half.** No agent
+holds a Firebase ID token, so the live checks are 401s, their headers and CORS
+preflights. The renders were measured against **local files over a local
+server** — the full path (token → gate → R2 → range → canvas) is assembled and
+has never once been exercised end to end.
+
+🔗 <https://audiobooks.heygabi.ai/dev/ebooks> — tick **"Show PDFs"**, tap any
+PDF, press **Read**. Four things to look at:
+
+1. **Does a page appear at all?** That is the whole question. If it does, the
+   bearer-per-range design works end to end and phase 2 inherits a proven pipe.
+2. **Try the 181 MiB Stormlight handbook** (`SL001_Stormlight_Handbook_digital.pdf`).
+   It should open to page 1 in a couple of seconds having transferred ~2.5 MB,
+   not 181 MB — devtools Network, sum the sizes. This is the one that would
+   have been 183 MB before the `disableStream` fix.
+3. **Turn some pages, zoom, resize.** One canvas is live at a time by
+   construction; a page turn is a few range requests.
+4. **Open an EPUB card.** There should be NO Read button, and a one-line note
+   saying browser EPUB reading is not on yet. If a Read button appears there,
+   that is a bug.
+
+⚠️ **This is the DEV lane. `ebooks.heygabi.ai/read` does not exist until a
+promote** — `ebooks-door` proxies to the PROD origin, deliberately. What rides
+the next promote: the reader page, `site/reader.js`, the vendored pdf.js, the
+`/read` CSP block, and the shelf's Read button.
+
 ## 🔴 Audiobook Phase 3 (enforce) — ⚠️ SUPERSEDED 2026-08-17: owner chose FORCE-THEN-FIX
 
 **Owner decision (2026-08-17, after full explanation of both paths):** *"Yes
