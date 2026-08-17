@@ -9,3 +9,8 @@
 # FORMAT:  <ISO timestamp>  <target>  <commit>  <holder>  <version-id>  <note>
 #
 2026-08-17T06:41Z  index-worker  a1a7288  claude-fable-5  1db25143-1dcc-47f9-9fb1-000d5627ec81  series registry (migration 0004 applied remote FIRST, ✅ row seen); backfill 443 raw → 441 slugs, 1 pending. Later commits that day (b78b3eb onward) are tests and docs only — the deployed source is a1a7288
+2026-08-17T17:21Z  auth-worker      be4d4f8  claude-fable-5  7b8c412f-9eb1-4046-b68c-3b7d1d623824  ebook gate part 1 — migrations 0008_vis_ebooks + 0009_dl_ebooks applied REMOTE FIRST, both ✅ rows seen; then vis_ebooks=1 seeded for ids 1,87,2,25 (owner rows + Amber + Samantha), dl_ebooks left 0 for everyone
+2026-08-17T17:22Z  index-worker     be4d4f8  claude-fable-5  e31d5d29-cde5-4126-bb7c-768756ca0035  the ebook carve-out — format='ebook' rows leave any scope without the `ebooks` catalog. ⚠️ Access-REDUCING: verified live that anonymous /api/search returns audiobook-format rows only
+2026-08-17T17:26Z  audiobook-worker 4350ad1  claude-fable-5  02247cde-fc19-4065-8109-dbb23d6f441e  GET /api/ebooks/manifest + the EBOOKS_GATED binding (bucket ebooks-gated, public access DISABLED). ⚠️ ESTATE_CHECK untouched, still "shadow" — the gate deliberately does not read it. Verified live: tokenless 401 with a worded refusal
+2026-08-17T17:29Z  ebooks-door      bf1059c  claude-fable-5  1b14749d-f928-4492-8856-23bdee77308e  ask for /ebooks not /ebooks.html — Pages 308'd the .html form and the verbatim pass-through bounced every visitor off ebooks.heygabi.ai. Verified live: 200, was 308
+2026-08-17T17:31Z  heygabi-home     bf1059c  claude-fable-5  b5bcfa24 (pages)                      the Ebooks admin column + download toggle; check:home and verify:home both green (12 pages fetched live)

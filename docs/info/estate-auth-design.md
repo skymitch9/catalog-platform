@@ -468,7 +468,7 @@ consumer applies it as-is and never recomputes it from `status`:
 | `approved` | the STORED set — all three unless narrowed; an approver may narrow to `{}` (the estate's surfaces then show nothing, mirroring the revoked rule) |
 | `pending` | `{audiobook}` — a pending member sees what the anonymous internet sees, nothing more |
 | `revoked` | `{}` — **revocation beats the public slice** on the estate's own surfaces |
-| `OWNER_EMAILS` | all three, computed not stored (§4.3 — break-glass must not be narrowable into lockout) |
+| `OWNER_EMAILS` | EVERY catalog, computed not stored (§4.3 — break-glass must not be narrowable into lockout); since 0009 that includes `download_ebooks` |
 
 Array order is canonical (`audiobook, library, games`), never duplicated.
 `status` keeps its exact prior meaning; the field is **additive** — a
@@ -484,6 +484,63 @@ row with 0 and an approval that does not deliberately widen grants nothing
 there — people are switched on by hand. `OWNER_EMAILS` sees it computed like
 everything else (the owner is that instance's operator; break-glass is never
 narrowable). The PUBLIC slice is unchanged — `{audiobook}` only.
+
+*Amended 2026-08-17 (`0008_vis_ebooks.sql`, `0009_dl_ebooks.sql`):* a **fifth
+catalog, `ebooks`** — the household's shared ebook shelf at
+`ebooks.heygabi.ai`. Owner directive: *"ebooks should be like the other site
+where we grant permission to view it. I don't want people scraping my books."*
+Canonical order appends it LAST: `audiobook, library, games, library2, ebooks`.
+`DEFAULT 0` like `library2`, and for the sharper reason — the files are the
+estate's most copyable asset, so an approval that does not deliberately widen
+grants nothing here. ⚠️ **It is NOT in the PUBLIC slice and never can be**; the
+public slice remains `{audiobook}` only.
+
+⚠️ **The `ebooks` grant INCLUDES READING.** Seeing the shelf and reading a book
+in the in-browser reader are ONE grant, by owner decision. There is no
+`read_ebooks` column and there must never be one — the shelf IS the reader's
+front door. This supersedes the ebook-viewer design's §11 read-vs-download
+question with a decided answer.
+
+**`download_ebooks` — the estate's first capability that is not a catalog.**
+Owner's exact model: *"downloadEbook is a SIDE permission — admin+ hold it by
+default, and it is individually grantable to any person at any ladder level."*
+So:
+
+    download_ebooks = dl_ebooks = 1  OR  is_approver = 1  OR  OWNER_EMAILS
+
+`src/me.ts downloadEbooks()` is the ONE implementation; a consumer with its own
+ladder (the audiobook Worker's `admin`/`owner` rungs) ORs its rung in, because
+"admin+" means admin on **either** ladder. ⚠️ The admin half is **computed and
+never stored** — writing 1 into every approver's row would let a demotion keep
+the grant, exactly what `0006_revoke_clears_powers` exists to prevent. A stored
+`dl_ebooks = 1` therefore always means "granted BY HAND", which is the only
+thing worth keeping.
+
+⚠️ **Download is not a way IN.** It presupposes `ebooks` visibility and never
+substitutes for it: a person may answer `download_ebooks: true` while holding
+no `ebooks` grant, in which case the shelf refuses them and there is nothing to
+download. **Consumers check visibility FIRST, always.** The admin page says so
+in the row rather than letting the pair read as one control.
+
+The `/seen` and `/me` answers both carry `download_ebooks` alongside
+`visibility`, cached with the same age (§4.5's one-answer rule). ⚠️ On the
+wire, `null` means *the directory did not say* — a pre-0009 server or a garbage
+field — and is **not** `false`. Consumers fail closed on null but must not
+cache it as a decided `false`.
+
+**⚠️ THE HOLE THIS CLOSED, and the lesson generalises.** `ebooks` has **no
+`source` of its own in the index**: the audiobook pipeline pushes one row per
+ebook under `source: 'audiobook'` with `format: 'ebook'`, because the shared
+pool is one pool. And `audiobook` is the PUBLIC slice. So before 2026-08-17 an
+**anonymous** `GET /api/search` returned every ebook's title, author, cover URL
+and a deep link to the shelf — a complete enumeration of the very shelf being
+gated. The index Worker now carves `format = 'ebook'` rows out of any scope
+lacking the `ebooks` catalog, **in the SQL**, keyed on the caller's own
+visibility (never the `source=` narrowing param, which would have re-hidden a
+permitted member's ebooks whenever they used the audiobook preset). The general
+lesson: **a catalog whose rows ride another catalog's source is not gated by
+gating its page** — check where its rows actually live before believing the
+scope covers it.
 
 **The anonymous rule — stated here for the index to implement, because an
 absent token means no `/seen` call ever happens:** an ABSENT or invalid
