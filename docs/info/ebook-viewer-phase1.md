@@ -5,7 +5,8 @@
 > §7 lists what was **NOT** verified, and the top of it is the one that matters.
 >
 > This is the **as-built** record for viewer phases **1a** (the gated byte
-> stream, this repo) and **1b** (the PDF reader, `audiobook_catalog`). The
+> stream, this repo), **1b** (the PDF reader, `audiobook_catalog`) and **2**
+> (the EPUB reader, same repo — §9, added 2026-08-17). The
 > DESIGN is `library_catalog/docs/info/ebook-viewer-design.md`; the measured
 > EPUB fetch behaviour is `epub-streaming-findings-2026-08-17.md` beside it;
 > phase 0a (the bucket + file ingest) is `audiobook_catalog/docs/info/ebooks-r2-ingest.md`
@@ -318,13 +319,17 @@ byte-identical source, and no subrequest leaves the Worker.
 
 ---
 
-## 8. The EPUB seam — for whoever builds phase 2
+## 8. The EPUB seam — ✅ CLOSED 2026-08-17, `audiobook_catalog` `70fb145`
 
-Everything phase 2 needs is built and gated already: sign-in, the manifest
+**The as-built record for phase 2 is §9 below.** This section is kept as the
+brief that was written for it, because every warning in it turned out to be
+load-bearing and one of them turned out to be incomplete.
+
+Everything phase 2 needed was built and gated already: sign-in, the manifest
 lookup, the anchor contract, the error mapping, and a byte stream that honours
-`Range` **for both formats**. Phase 2 replaces **exactly one branch** —
-`openBook()`'s format switch in `site/reader.js`, documented there under
-`EPUB_SEAM`.
+`Range` **for both formats**. ⚠️ **The Worker needed NO change at all** — the
+prediction that phase 2 replaces exactly one branch (`openBook()`'s format
+switch in `site/reader.js`) held exactly.
 
 - ⚠️ **foliate-js, NOT epub.js.** Measured on the 393 MiB omnibus: epub.js
   fetched 412,436,591 B into **1,207 MB of JS heap**; foliate-js with a zip.js
@@ -338,8 +343,196 @@ lookup, the anchor contract, the error mapping, and a byte stream that honours
   building rather than building and removing.
 - ⚠️ `blob:` is already in `/read`'s `img-src` and `frame-src`, placed there for
   this. Omitting it gives a reader that paginates perfectly and shows no images.
+  🔴 **THIS ROW WAS INCOMPLETE AND IT COST A SILENT DEFECT.** `style-src` and
+  `font-src` needed `blob:` too — see §9.3. The claim "the EPUB build does not
+  have to touch this file" was wrong by exactly two directives.
 - The shelf's EPUB cards deliberately have **no Read button** until then, so
-  nobody is offered a door onto a refusal.
+  nobody is offered a door onto a refusal. *(Phase 2 flipped this: both formats
+  now carry the button, and the note is gone.)*
+
+---
+
+## 9. Phase 2 as built — the EPUB reader (2026-08-17)
+
+`audiobook_catalog` commits **`70fb145`** (the reader) and **`67fb3e4`** (the
+token fix in §9.4). ⚠️ **`apps/audiobook-worker` was not touched**: phase 1a's
+byte stream already honoured `Range` for both formats, which is the strongest
+evidence that §2's contract was drawn at the right place.
+
+| | |
+|---|---|
+| Renderer | **foliate-js**, pinned to commit **`78914aef4466eb960965702401634c2cb348e9b1`**, MIT, `site/static/foliate/` |
+| ZIP reader | **@zip.js/zip.js 2.7.45**, BSD-3-Clause, `site/static/zipjs/`, entry `zip-no-worker-inflate.js` (read-only, no worker) |
+| Transport | `site/epub-range.js` — range-only, bearer per request |
+| Injection point | `site/epub-loader.js` — `new EPUB(ourLoader).init()`, then `<foliate-view>.open(book)` |
+
+### 9.1 The measurement, on the file that drove the whole design
+
+393.33 MiB White Sand Omnibus (412,436,591 B), Chrome, a local server logging
+every `Range` header, the shipped CSP applied to the page:
+
+| | epub.js (the 2026-08-17 probe) | as shipped |
+|---|---|---|
+| Requests | 1 | **18** |
+| Bytes over the wire | **412,436,591** | **664,477** — 0.161% |
+| Peak JS heap | **1,207.5 MB** | **16.6 MB** |
+| Book opened (`init`) | 5,538 ms | **105 ms** |
+| First page painted | — | **1,586 ms** |
+
+490 sections, correct title, cover art rendered, **zero CSP violations**. The
+other two oversized books: `whitesand.epub` (150,104,209 B) in **23 requests /
+1,018,275 B**; the Frugal Wizard handbook (28,997,544 B) in **19 requests /
+363,046 B**.
+
+⚠️ **Reading deep into a book is not free, and the honest figure belongs here
+rather than in a footnote.** 25 page-turns cost **+60 requests / +5.8 MB** on
+the reflowable handbook and **+231 requests / +35.4 MB** on the omnibus —
+because the omnibus is a fixed-layout comic whose every page *is* a ~1.4 MB
+image. That is the content, not overhead: you pay for what you read.
+
+**Consequence for §2.5's budget:** the "~15 range GETs per open" figure it was
+sized against is right for *opening* and understates *reading*. 600 requests /
+5 min still leaves room, but the distinct-anchor axis is doing the real work,
+and a per-request cap would throttle reading — which is exactly why §2.5 chose
+books over requests.
+
+### 9.2 ⚠️ The whole-file trap, made mechanical rather than documented
+
+foliate's own `view.js` `makeBook(file)` builds
+`new ZipReader(new BlobReader(file))` over a whole in-memory `Blob`. Calling it
+undoes every number above. Three things prevent it, and only the first is code
+the reader wrote:
+
+1. `epub-loader.js` constructs the book itself and hands the finished object to
+   `view.open(book)`, which passes an already-built book straight through.
+2. ⚠️ **foliate's `vendor/zip.js` is NOT vendored**, so `makeZipLoader`'s
+   dynamic import cannot resolve. The whole-file path physically cannot run.
+3. `epub-range.js` has **no code path that fetches without a `Range` header**,
+   and treats a `200` as a named failure whose body is **cancelled, not read**.
+
+Point 3 exists because of §2.3: this endpoint **ignores** a malformed or
+multi-span `Range` and answers `200` with the whole file. That is the right
+HTTP behaviour and it means **an off-by-one in a client is a 393 MiB download
+rather than an error**. Any future client of this endpoint should assume the
+same.
+
+⚠️ **On the live lane the guard works by MIME, not by 404.** Cloudflare Pages
+answers a missing path with `200 text/html` (its SPA fallback), so the absent
+`vendor/zip.js` returns HTML — and Chrome's strict MIME check for module
+scripts refuses it. Measured live: *"Failed to fetch dynamically imported
+module"*. The guard holds, but for a different reason than it does locally, and
+a future Pages configuration change could alter that.
+
+### 9.3 🔴 The CSP defect §8 did not predict — and how it hid
+
+`style-src` and `font-src` needed `blob:`. foliate rewrites an EPUB's own
+stylesheets and embedded fonts to `blob:` URLs, and **`'self'` does not cover
+`blob:`**. Measured both ways against a real book:
+
+| policy | result |
+|---|---|
+| `style-src 'self' 'unsafe-inline'` | linked sheet yields **0 rules**; body renders in Times New Roman |
+| `style-src 'self' 'unsafe-inline' blob:` | **84 rules**; body in the book's own Palatino |
+
+`font-src` was confirmed separately by an explicit
+`securitypolicyviolation: font-src <- blob` on a blob-URL `FontFace`.
+
+**Three things about this failure generalise past EPUB:**
+
+- ⚠️ **It looks like a badly-made book, not a blocked request.** The reader
+  opens, paginates and turns pages perfectly — in the browser's default serif,
+  with every typeface and drop-cap the publisher chose thrown away.
+- ⚠️ **The page's own `securitypolicyviolation` listener never hears it.** The
+  section is a `blob:` iframe inside a **closed** shadow root, so the violation
+  fires on *that* document. Any CSP check on a page that renders third-party
+  content in a shadow-DOM iframe must listen inside it.
+- ⚠️ **`link.sheet` being non-null is NOT proof the CSS applied.** A blocked
+  stylesheet still gets a `CSSStyleSheet` object; it just has no rules in it.
+  Count `sheet.cssRules.length`. The first measurement used `link.sheet` and
+  reported the opposite of the truth — this doc's §7 discipline, "verify with
+  the right instrument", earning its keep twice in one day.
+
+⚠️ **And it will still be wrong on the `/dev/` lane until a promote.** Measured
+live after deploy: `/dev/read` serves the PROD `_headers` (§6.3 — `deploy.yml`
+copies `prod-src/site/.` to the `_site` root and Cloudflare ignores nested
+`_headers`), so the dev lane carries the pre-fix policy. **An EPUB reviewed on
+`/dev/` today will render in Times New Roman, correctly-but-plainly, and that is
+the lane, not the build.**
+
+### 9.4 🔴 The defect that made §7's top item true — and hid underneath it
+
+`getLiveUser()` in `site/identity.js` answers a flat **snapshot**
+(`{uid, email, displayName}`) and has **no `getIdToken` method** — deliberately,
+so the live Firebase `User` does not travel to every caller. **Phase 1b called
+`user.getIdToken()` on that snapshot.**
+
+Every signed-in reader therefore hit
+`TypeError: user.getIdToken is not a function` on the first gated request, and
+the surrounding catch mapped it to *"The shelf did not answer … This is an
+outage, not a permission decision"* — an outage sentence for something that was
+not an outage.
+
+⚠️ **It was invisible to every test and every agent check, because all of them
+were the signed-out half, where the line never runs.** §7's first bullet said
+"nobody has opened a real gated PDF while signed in"; this was living
+underneath that sentence. It was found the first time anyone opened
+`/dev/read` in a browser that had a session.
+
+Fixed in `67fb3e4` by exporting `getIdToken(app, force)` from `identity.js` —
+which is precisely the change **design §3.2 gap 2 asked for in advance**:
+*"the reader page needs a token getter that `account-modal.js` does not
+expose … a small, additive change."* It answers `null` rather than throwing,
+because a throw would be caught by the same outage branch and mislabelled all
+over again.
+
+**The lesson, stated for reuse:** *an unverified item is not a neutral gap. It
+is a place where a defect can sit undetected for exactly as long as the
+verification is deferred* — and this one sat there through a full phase, a
+deploy and a promote.
+
+### 9.5 One place phase 2 is better than phase 1b
+
+⚠️ **The EPUB transport re-asks for its token on every range.** pdf.js can only
+take `httpHeaders` once, at `getDocument`, which is why §7 lists token expiry
+mid-session as unhandled — that gap is now **PDF-only**. Do not "harmonise" the
+two by capturing the EPUB token.
+
+Note the load this puts on the gate: **18+ bearer-verified requests to open one
+book**, each paying token verification and the estate `/seen` cache lookup, and
+now each also asking the Firebase SDK for a (cached) token. §2.5's sizing
+already anticipated this; §6.2 of the findings doc called it correctly.
+
+### 9.6 What phase 2 deliberately did NOT build
+
+- **No 32 MiB size gate and no "too large" refusal card.** All three oversized
+  EPUBs open. It would have been dead code, and a refusal for books that work is
+  worse than no refusal at all.
+- **No stored reading position.** That is phase 3. The renderer was settled now
+  precisely so phase 3's persisted key is produced by the renderer that will
+  still be there — a stored CFI is a migration to change, not an edit.
+
+### 9.7 What was NOT verified in phase 2
+
+- 🔴 **NOBODY HAS OPENED A GATED EPUB WHILE SIGNED IN.** Every figure in §9.1 is
+  a local file over a local server. §9.4 removed the first thing that would have
+  stopped a signed-in reader; it does not prove the rest of the path.
+  <https://audiobooks.heygabi.ai/dev/read?b=&lt;anchor&gt;>
+- 🔴 **The acceptance-test book cannot be opened live at all**, and not for a
+  phase-2 reason: the 393 MiB omnibus is the one of 168 files still absent from
+  `estate-ebooks` (§5, the 300 MiB wrangler wall). The live test of the headline
+  case is blocked on an owner upload.
+- **No live EPUB range request has been observed through Cloudflare.** Whether
+  the edge preserves an 18-range pattern on a `no-store` 206, and whether 18
+  bearer-authenticated ranges behave against R2, is untested.
+- **The `blob:` CSP fix has never been exercised on any deployed origin** — see
+  §9.3: the dev lane serves the prod policy, so it cannot be until a promote.
+- **No paginated session beyond 25 turns**, and no resize, no font-size change
+  mid-book on a long read.
+- **No mobile or low-memory device**, again. Every heap figure is one Windows
+  desktop with a 4,192 MB limit.
+- **foliate's vendored extras are untouched**: `search.js` is shipped and never
+  called; RTL, vertical writing, annotations and TTS were not assessed.
+- **No claude.ai usage reading was taken** during this work.
 
 ---
 
@@ -349,7 +542,12 @@ lookup, the anchor contract, the error mapping, and a byte stream that honours
   `disableStream: false` and §3.4 public-manifest lookup are both superseded by
   §6 above.
 - `library_catalog/docs/info/epub-streaming-findings-2026-08-17.md` — the
-  measured EPUB fetch behaviour phase 2 rests on.
+  measured EPUB fetch behaviour phase 2 rests on. Its "foliate was taken from
+  `@main`" tech-debt item is closed by §9's pinned commit.
+- `audiobook_catalog/docs/info/reader-page.md` §5 — the page-side as-built for
+  phase 2 (LOCAL ONLY: that repo's `docs/` is gitignored).
+- `audiobook_catalog/site/static/foliate/VENDORED.md` — the pinned commit, and
+  why `vendor/zip.js` is deliberately absent.
 - `audiobook_catalog/docs/info/ebooks-r2-ingest.md` — phase 0a, the bucket and
   the key scheme (LOCAL ONLY).
 - [`audiobook-auth-migration.md`](audiobook-auth-migration.md) §5 Phase 4 — the
