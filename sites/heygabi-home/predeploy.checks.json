@@ -34,11 +34,22 @@
       ]
     },
     {
+      "_why": [
+        "The Drive ⇄ role parity markers (2026-08-17) pin the row that watches audiobook_catalog pipeline STEP 8 —",
+        "the one step in the estate that changes a PERSON'S ACCESS unattended. renderDriveParityRow is the row;",
+        "driveParityState is the exact Firestore field it READS (the ebook row above is the standing proof of what",
+        "inference costs on this page — three wrong colours); and 'fuse-tripped' is the state that must never",
+        "silently vanish, since it is the one saying a mass change was REFUSED and is waiting for a human. A bundle",
+        "missing any of the three would still serve a cheerful 200 with the row simply absent."
+      ],
       "path": "/status/status.js",
       "mustContain": [
         "ebookRunKind",
         "EBOOK_PRODUCING_TRIGGERS",
-        "renderPipelineEbookRow"
+        "renderPipelineEbookRow",
+        "renderDriveParityRow",
+        "driveParityState",
+        "fuse-tripped"
       ]
     },
     {

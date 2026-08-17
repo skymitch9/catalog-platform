@@ -323,7 +323,11 @@ function makeRow(id, name) {
   return li;
 }
 
-const STATE_LABELS = { ok: 'OK', warn: 'WARN', danger: 'DOWN' };
+// `skipped` and `nodata` have no CSS rule of their own on purpose: the base
+// `.dot`/`.badge` colour is already `--et-muted`, so an unlisted state renders
+// grey for free. They are two different facts and get two different words —
+// "the step ran and declined to act" is not "the step never reported".
+const STATE_LABELS = { ok: 'OK', warn: 'WARN', danger: 'DOWN', skipped: 'SKIPPED', nodata: 'NO DATA' };
 
 function updateRow(id, state, detailText, noteText, checkedAt) {
   const row = rowRegistry.get(id);
@@ -377,6 +381,7 @@ function buildPipelineSection() {
   const ul = document.getElementById('pipeline-rows');
   ul.appendChild(makeRow('pipe-audio', 'Automated Book Pipeline'));
   ul.appendChild(makeRow('pipe-ebook', 'Ebook lane'));
+  ul.appendChild(makeRow('pipe-parity', 'Drive ⇄ role parity'));
 }
 
 function buildWorkerSection() {
@@ -756,6 +761,114 @@ function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
   updateRow('pipe-ebook', state, detail, note, now);
 }
 
+/**
+ * Drive ⇄ role parity row — audiobook_catalog pipeline STEP 8, added
+ * 2026-08-17 (owner: "Wire it… with auto apply").
+ *
+ * ⚠️ THIS ROW WATCHES A STEP THAT CHANGES PEOPLE'S ACCESS WITH NOBODY
+ * WATCHING. Every other row here reports on books, bytes and hosts; this one
+ * reports on a job that can remove a person's Google Drive permission. That
+ * asymmetry is why it exists at all — an unattended mutation with no dashboard
+ * is an unattended mutation nobody would notice going wrong.
+ *
+ * It is a READ, not an inference — the same lesson the ebook row above learned
+ * the hard way over three wrong guesses. The pipeline records its own verdict
+ * in `summary.driveParityState` and this row renders it. No trigger strings, no
+ * step-state archaeology, nothing this page could be wrong about on its own.
+ *
+ * ⚠️ COUNTS, NEVER NAMES. The pipeline deliberately puts only numbers in
+ * `pipeline_status/current` because that doc is world-readable and this page
+ * renders it; the emails stay in the pipeline's local log, which is the audit
+ * trail. If a future change starts shipping names here, that is a privacy
+ * regression, not a nicer row.
+ */
+function renderDriveParityRow(fetchResult, now) {
+  if (!fetchResult.reached || !fetchResult.httpOk || !fetchResult.body || !fetchResult.body.fields) {
+    // Deliberately NOT 'danger': the pipeline row above already reports the
+    // unreachable/absent status doc, and two red rows for one outage reads as
+    // two outages. Here it is simply an absence of data.
+    updateRow('pipe-parity', 'nodata', 'Cannot read the pipeline status doc.',
+      'Same source as the pipeline row above — see its state for why.', now);
+    return;
+  }
+
+  const status = fsMap(fetchResult.body.fields);
+  const summary = status.summary || {};
+  const state = summary.driveParityState;
+  const detail = summary.driveParityDetail || '';
+
+  // Anchor the age on the RUN's own timestamps, which are timezone-aware UTC.
+  // `summary.driveParityAt` is the pipeline host's LOCAL wall clock with no
+  // offset, so ageing it in a browser in another timezone would be wrong by
+  // hours. Summary is rebuilt per run, so parity fields can only ever be from
+  // the run this doc describes — the run's anchor is the honest stamp.
+  const finishedAt = Date.parse(status.finishedAt || '');
+  const updatedAt = Date.parse(status.updatedAt || '');
+  const anchor = Number.isFinite(finishedAt) ? finishedAt : updatedAt;
+  const age = Number.isFinite(anchor) ? ` · checked ${formatAge(now - anchor)}` : '';
+
+  if (!state) {
+    updateRow('pipe-parity', 'nodata', `The last pipeline run reported no parity result${age}.`,
+      'STEP 8 records summary.driveParityState on every cycle, including idle ones. ' +
+      'A run with no result at all is either older than 2026-08-17 or a run shape that ' +
+      'skips STEP 8 by design (--rebuild-only, a single-step run).', now);
+    return;
+  }
+
+  if (state === 'in-sync') {
+    updateRow('pipe-parity', 'ok', `In sync — Drive matches roles${age}.`,
+      `Reported: ${detail}. Roles are the source of truth and Drive is downstream; ` +
+      'the reverse direction (Drive → role) is reported only and never applied — granting ' +
+      'a site role stays a human act in the admin UI.', now);
+    return;
+  }
+
+  if (state === 'applied') {
+    // Green, not amber. Drift found and CORRECTED is the system working: the
+    // whole point of auto-apply is that a demotion lands inside its own tick.
+    updateRow('pipe-parity', 'ok', `Drift corrected — ${detail}${age}.`,
+      'Green because this is the step doing its job: Drive permissions were changed to ' +
+      'match the estate roles. Who changed is in the pipeline log on the home machine, ' +
+      'deliberately not here — this doc is world-readable, so it carries counts only.', now);
+    return;
+  }
+
+  if (state === 'fuse-tripped') {
+    updateRow('pipe-parity', 'warn',
+      `⚠️ FUSE TRIPPED — ${detail}. Nothing was applied.`,
+      'Parity wanted to change more people in one tick than the cap allows, so it applied ' +
+      'NOTHING and stopped for a human. Real drift is one person at a time; a large plan is ' +
+      'usually one bad read of Drive, the estate directory or Firestore — not many ' +
+      'coincidences. Review it on the home machine: ' +
+      'python scripts/drive_role_parity.py --apply-to-drive (writes nothing).', now);
+    return;
+  }
+
+  if (state === 'skipped') {
+    updateRow('pipe-parity', 'skipped', `Not reconciled this cycle — ${detail}${age}.`,
+      'Grey, not red: nothing is wrong with anyone\'s access, the step simply could not run. ' +
+      'The usual cause is a missing Drive token on the pipeline machine — run ' +
+      'python scripts/drive_auth.py there once. Permissions stand unchanged meanwhile.', now);
+    return;
+  }
+
+  if (state === 'failed') {
+    updateRow('pipe-parity', 'warn', `Parity FAILED — ${detail}${age}.`,
+      'Amber, not red: a failed reconciliation changes nothing, so the previous permission ' +
+      'state stands, which is the safe direction. The next 8-hourly cycle retries. ' +
+      'Persisting for more than a day is worth investigating on the home machine.', now);
+    return;
+  }
+
+  // Unknown state: say so plainly rather than inventing a colour. The
+  // vocabulary lives in audiobook_catalog (_report_parity_summary), and a new
+  // word appearing here should read as "this page has not been taught it yet",
+  // never as a verdict this page made up.
+  updateRow('pipe-parity', 'nodata', `Unrecognised parity state "${state}"${age}.`,
+    `Reported detail: ${detail}. The state vocabulary is set by audiobook_catalog's ` +
+    'sync_to_drive.py; this page renders what it is given rather than guessing.', now);
+}
+
 function renderSiteRow(id, name, reached, now) {
   updateRow(id, reached ? 'ok' : 'danger', reached ? 'Reachable.' : 'Did not answer within 8s.', null, now);
 }
@@ -803,6 +916,7 @@ async function refreshAll() {
   renderIndexWorkerRow(indexHealth, t);
   renderPipelineAudioRow(pipelineStatus, t);
   renderPipelineEbookRow(ebooksDev, ebooksProd, pipelineStatus, t);
+  renderDriveParityRow(pipelineStatus, t);
 
   // Feed the pipeline-step interlock (see stepDisabledReason()) from the
   // same doc the row above just read — no extra fetch. null when the doc
