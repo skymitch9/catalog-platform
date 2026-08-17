@@ -54,21 +54,39 @@ own contributions); **contributor** builds the catalog; **moderator** spends
 money and moderates others' content; **admin** runs people; **owner** is the
 recovery identity (`OWNER_EMAILS` forces it at sign-in — the break-glass).
 
-## Audiobook / Ebooks surface — floors, with today's decisions
+## Audiobook & Ebooks — same grid as the library (owner ask, 2026-08-17)
 
-| Capability | Floor | Notes |
-|---|---|---|
-| Read the catalog | guest | The audiobook catalog is the estate's PUBLIC slice — browsing needs no grant. **Ebooks are the exception: the shelf itself needs `vis_ebooks`** (owner, 2026-08-17: no public scraping), and that grant INCLUDES reading books in the viewer. |
-| Rate / review / own TBR / own content notes | signed-in | A live session, not a rung. Self-deleting your own note rides here. |
-| **Download an ebook file** | **admin** | ⚠️ Owner decision 2026-08-17: **no per-person checkbox — the ladder is the grant** ("use roles we have… match library"). Want someone downloading, promote them. (Code floor mid-rework from the committed `member` placeholder; this row is the decided truth.) |
-| Upload | contributor | Phase-4 surface, floor pre-committed. |
-| Operate a club (schedules, polls, roster, invites, read lifecycle) | moderator — **or that club's manager** | The club island: a club's bound managers hold operate-class powers **for their own club** at any rung. Site moderator+ overrides everywhere; the island never out-ranks the ladder. Read lifecycle (finish/remove/reveal ratings) moved here 2026-08-17 (option B). |
-| Club settings (webhook set/clear) | moderator — or that club's manager | Same island rule. |
-| Claim an UNCLAIMED club | any signed-in session | First-come-first-served; how one *becomes* a manager. Claiming an already-managed club: moderator+. Revoked estate members are refused by the estate check regardless. |
-| **Delete a club / structural edits** | **admin** | Deliberately NOT island-held and NOT lowered (option B's other half): destruction stays yours. |
-| Remove anyone's review | admin | |
-| Remove others' content notes | moderator | The warnings split: self-delete is signed-in; deleting someone else's is moderator+, enforced in `firestore.rules` (`authorUid` or `site_roles` moderator+). |
-| Approve users / roles UI | moderator floor for the UI; grants strictly-beneath | Enforced by the auth worker's `canGrant`, never the page. |
+| Capability | guest | member | contributor | moderator | admin | owner |
+|---|---|---|---|---|---|---|
+| Browse the audiobook catalog ¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| See + read the ebooks shelf ² | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Rate / review / own TBR / own notes ³ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Claim an *unclaimed* club ³ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Upload | | | ✅ | ✅ | ✅ | ✅ |
+| Operate a club (reads, polls, roster, schedule) ⁴ | | | | ✅ | ✅ | ✅ |
+| Club webhook (set/clear) ⁴ | | | | ✅ | ✅ | ✅ |
+| Claim an already-managed club | | | | ✅ | ✅ | ✅ |
+| Remove others' content notes ³ | | | | ✅ | ✅ | ✅ |
+| Approve users / roles UI ⁵ | | | | ✅ | ✅ | ✅ |
+| **Download an ebook file** ⁶ | | | | | ✅ | ✅ |
+| Remove anyone's review | | | | | ✅ | ✅ |
+| **Delete a club / structural edits** ⁷ | | | | | ✅ | ✅ |
+
+¹ Public — the estate's open slice, no sign-in needed at all.
+² Gated by the **`vis_ebooks` estate grant**, not by rung — one grant covers
+viewing and reading; no public scraping (owner, 2026-08-17).
+³ Any live signed-in session, rung irrelevant — includes deleting your OWN
+notes; claiming is first-come-first-served and is how one becomes a manager.
+⁴ **The club island**: a club's bound managers also hold these for THEIR OWN
+club at any rung; site moderator+ overrides everywhere; the island never
+out-ranks the ladder. Read lifecycle moved here 2026-08-17 (option B).
+⁵ Grants strictly-beneath your own rung, enforced by the auth worker's
+`canGrant`, never the page.
+⁶ ⚠️ **By ladder only — no checkbox** (owner, 2026-08-17: "use roles we
+have… match library"); promote someone to grant it. (Code floor mid-rework
+from the committed `member` placeholder; this row is the decided truth.)
+⁷ ⚠️ Never island-held, never lowered (option B's other half) — destruction
+stays high.
 
 ## Who holds what today (snapshot 2026-08-17)
 
