@@ -1,0 +1,17 @@
+# ebooks-door — the shared ebook pool's OWN front door: https://ebooks.heygabi.ai
+#
+# Owner ask 2026-08-16/17: "we need ebooks to have its own url ... I want
+# ebooks to feel like its own thing more."
+#
+# Deliberately NOT a fourth content site (the ebook-split design rejected
+# that): this is a ~60-line door in front of the SAME audiobook Pages
+# deployment. `/` serves the pool page (/ebooks.html); every other path
+# proxies through unchanged, so relative assets, ebooks.json, fb-env.js and
+# identity.js all keep working same-origin. Content still ships through the
+# one pipeline and the one promote lane; killing this worker simply closes
+# the door — nothing else changes.
+name = "ebooks-door"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+workers_dev = false
+routes = [{ pattern = "ebooks.heygabi.ai", custom_domain = true }]
