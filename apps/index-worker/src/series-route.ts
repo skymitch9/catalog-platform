@@ -2,6 +2,7 @@
  * The series read surface, and the approver's confirm queue.
  *
  *   GET  /api/series                      every series visible to you, per-source counts
+ *                                         (+ `pending_open`, approvers only)
  *   GET  /api/series/pending              the confirm queue          (approver)
  *   POST /api/series/pending/:fold        merge, or keep separate    (approver)
  *   GET  /api/series/:slug                one series, grouped by medium
@@ -31,7 +32,9 @@
  */
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from './env.js';
+import { parseOwnerEmails } from './env.js';
 import type { ScopeVariables } from './middleware/scope.js';
 import { requireOwnerStanding } from './middleware/auth.js';
 import { sourcesForScope } from './search-route.js';
@@ -98,8 +101,45 @@ seriesRoutes.get('/series', async (c) => {
   }
 
   const series = [...bySlug.values()].sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
-  return c.json({ scope, count: series.length, series });
+  return c.json({ scope, count: series.length, series, ...(await approverBadge(c)) });
 });
+
+/**
+ * The confirm queue, ANNOUNCED on the surface the approver already loads.
+ *
+ * ⚠️ This exists because the queue's first real row sat invisible: nothing in
+ * a browser called `GET /api/series/pending`, so the only way to learn that a
+ * near miss was waiting was to remember the endpoint. A queue nobody is told
+ * about is a queue nobody resolves — the page that lists the series is the
+ * page that should say two of them are unresolved.
+ *
+ * ⚠️ APPROVER-ONLY, and ABSENT rather than zeroed for everybody else. A member
+ * who cannot act on the queue is not told how big it is: the near misses span
+ * every catalog, so their count is estate-wide information the way the
+ * `series` table itself is (this file's header). `pending_open` is a COUNT and
+ * never the rows — the candidate displays stay behind `requireOwnerStanding()`.
+ */
+async function approverBadge(
+  c: Context<{ Bindings: Env; Variables: ScopeVariables }>,
+): Promise<{ pending_open?: number; pending_detail?: string; pending_url?: string }> {
+  const email = c.get('email');
+  if (!email || !parseOwnerEmails(c.env.OWNER_EMAILS).includes(email)) return {};
+
+  const { results } = await c.env.DB.prepare(
+    'SELECT candidate_fold FROM series_pending WHERE resolved_at IS NULL',
+  ).all<{ candidate_fold: string }>();
+  const open = (results ?? []).length;
+  if (open === 0) return { pending_open: 0 };
+
+  return {
+    pending_open: open,
+    // Says what it is and what to do, never a bare number a page might render
+    // as an error badge: nothing is waiting to MERGE, the series simply stay
+    // separate until somebody decides.
+    pending_detail: `${open} near ${open === 1 ? 'miss is' : 'misses are'} waiting on a decision. Nothing was merged — these series stay separate until you resolve them.`,
+    pending_url: '/api/series/pending',
+  };
+}
 
 // --- The confirm queue. Approver-gated, and mounted BEFORE /series/:slug so
 //     `pending` is never read as a slug. ---------------------------------------

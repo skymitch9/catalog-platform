@@ -38,9 +38,13 @@ if (typeof (crypto.subtle as { timingSafeEqual?: unknown }).timingSafeEqual !== 
 }
 
 import { app } from '../src/index.js';
+import { applySeriesPlan } from '../src/push.js';
+import { entryFor } from '../src/rows.js';
 import { buildCanonIndex, seriesCanonIndex } from '../src/series-canon-data.js';
-import { emptyRegistry, planSeries, seriesFoldOrNull, seriesNearKey, slugForFold } from '../src/series.js';
+import { emptyRegistry, planSeries, seriesFoldOrNull, seriesNearKey, slugForFold, type SeriesPlan } from '../src/series.js';
 import { slugFoldRoundTrips } from '../src/series-route.js';
+import { buildUniverseIndex, universeFor } from '../src/universes.js';
+import { universeIndex } from '../src/universes-data.js';
 
 // ---------------------------------------------------------------------------
 // 1. The resolver, pure.
@@ -248,7 +252,13 @@ class FakeDB {
   private select(sql: string, args: unknown[]): unknown[] {
     if (sql.startsWith('SELECT slug, display_name FROM series')) return [...this.series.values()];
     if (sql.startsWith('SELECT alias_fold, slug FROM series_alias')) return [...this.aliases.values()];
-    if (sql.startsWith('SELECT candidate_fold FROM series_pending')) return [...this.pending.values()];
+    // ⚠️ `loadRegistry` reads OPEN AND RESOLVED (a decision is never re-asked)
+    // while the approver badge reads OPEN ONLY — same column, different WHERE.
+    // The fake honours that WHERE, or the badge would count decided rows.
+    if (sql.startsWith('SELECT candidate_fold FROM series_pending')) {
+      const all = [...this.pending.values()];
+      return sql.includes('resolved_at IS NULL') ? all.filter((p) => p.resolved_at === null) : all;
+    }
     if (sql.includes('FROM series_pending')) {
       const all = [...this.pending.values()];
       return sql.includes('resolved_at IS NULL') ? all.filter((p) => p.resolved_at === null) : all;
@@ -664,4 +674,194 @@ test('a merge into an unrelated slug is refused with the two real choices', asyn
   assert.equal(res.status, 422);
   const body = (await res.json()) as any;
   assert.deepEqual(body.choices.sort(), ['survivalist', 'survivalist-series']);
+});
+
+// ---------------------------------------------------------------------------
+// 4. The universe join, re-pointed at the CANONICAL series spelling.
+//
+// ⚠️ Every test here fails on a behaviour, not a shape: a variant spelling
+// staying universe-less, an exclusion being smuggled past, a near miss
+// inheriting its neighbour's universe, a data-file disagreement being silently
+// resolved instead of reported.
+// ---------------------------------------------------------------------------
+
+test('the RAW spelling is why this follow-up exists: the article-less variant matches nothing', () => {
+  // The premise, pinned so the fix cannot be mistaken for a fuzzier matcher.
+  // `normaliseUniverseText` KEEPS leading articles on purpose, and
+  // universes.json lists "The Stormlight Archive" — so the library's spelling
+  // misses the join outright. It is not nearly matched; it is not matched.
+  assert.equal(universeFor(universeIndex, { title: 'Words of Radiance', series: 'The Stormlight Archive' }), 'The Cosmere');
+  assert.equal(universeFor(universeIndex, { title: 'Words of Radiance', series: 'Stormlight Archive' }), null);
+});
+
+test('a variant spelling GAINS its universe from the canonical one', async () => {
+  const db = new FakeDB();
+  const env = prodEnv(db);
+
+  await push(env, 'audiobook', 'audio-token', [book('Words of Radiance', 'The Stormlight Archive')]);
+  const res = await push(env, 'library', 'library-token', [
+    book('Words of Radiance', 'Stormlight Archive', { format: 'book' }),
+  ]);
+  const body = (await res.json()) as any;
+
+  assert.equal(body.universe.gained_from_canonical, 1,
+    'the library row owes its universe to the registry, not to its own spelling');
+  assert.equal(body.universe.rows, 1);
+  assert.equal(body.universe.conflicts, 0);
+
+  const libraryRow = db.entries.find((e) => e.source === 'library');
+  assert.equal(libraryRow?.universe, 'The Cosmere',
+    'before the re-point this row was universe-less while its audiobook twin was Cosmere — one book, two answers');
+  assert.equal(libraryRow?.series, 'The Stormlight Archive');
+});
+
+test('the re-point cannot smuggle a universe past an EXCLUSION', async () => {
+  const db = new FakeDB();
+  const env = prodEnv(db);
+
+  await push(env, 'audiobook', 'audio-token', [book('Words of Radiance', 'The Stormlight Archive')]);
+  const res = await push(env, 'library', 'library-token', [
+    book('The Frugal Wizard’s Handbook for Surviving Medieval England', 'Stormlight Archive', { format: 'book' }),
+  ]);
+  const body = (await res.json()) as any;
+
+  // `universeFor` checks bookExclusions BY TITLE before it looks at any
+  // series, so both attempts refuse identically. A second attempt that skipped
+  // the exclusion would put the one Secret Project that is NOT Cosmere into
+  // the Cosmere — the fixture file's own worst case.
+  assert.equal(body.universe.gained_from_canonical, 0);
+  assert.equal(db.entries.find((e) => e.source === 'library')?.universe, null);
+});
+
+test('a NEAR MISS gains nothing: the second attempt is an EXACT lookup, never a fold', async () => {
+  const db = new FakeDB();
+  const env = prodEnv(db);
+
+  await push(env, 'audiobook', 'audio-token', [book('Words of Radiance', 'The Stormlight Archive')]);
+  const res = await push(env, 'library', 'library-token', [
+    // Same near key as "The Stormlight Archive", a DIFFERENT fold — so it
+    // queues a question and registers as its own slug, exactly as it should.
+    book('Some Other Book', 'Stormlight Archive [publication order]', { format: 'book' }),
+  ]);
+  const body = (await res.json()) as any;
+
+  assert.equal(body.series.pending_added, 1, 'a near miss still only asks');
+  assert.equal(body.universe.gained_from_canonical, 0);
+  const row = db.entries.find((e) => e.source === 'library');
+  assert.equal(row?.series, 'Stormlight Archive [publication order]',
+    'unmerged, so there is no canonical spelling to ask with');
+  assert.equal(row?.universe, null,
+    "a near miss must not inherit its neighbour's universe — that would be the near key ACTING, which it may never do");
+});
+
+test('two spellings that disagree about their universe are REPORTED, never resolved', () => {
+  // Unreachable with today's data/universes.json (no series is listed under
+  // two universes), so the rule is pinned against a synthetic list — the fault
+  // it guards is a future edit to that file, not today's contents.
+  const index = buildUniverseIndex({
+    schemaVersion: 1,
+    canonicalNames: {},
+    universes: [
+      { name: 'Universe A', decidedHow: 'seed', series: ['Canonical Name'] },
+      { name: 'Universe B', decidedHow: 'seed', series: ['Variant Name'] },
+    ],
+  });
+
+  const entries = [
+    entryFor('library', { source_id: 'x1', title: 'A Book', series: 'Variant Name', format: 'book' }, index, 'now'),
+  ];
+  assert.equal(entries[0]?.universe, 'Universe B', 'the pushed spelling answered first');
+
+  const report = applySeriesPlan(entries, planWith('Variant Name', 'canonical-name', 'Canonical Name'), index);
+
+  assert.equal(report.conflicts, 1);
+  assert.equal(entries[0]?.universe, 'Universe B',
+    "the PUSHED spelling's answer stands: picking a winner would hide a data-file fault behind a guess");
+  assert.deepEqual(report.conflictSamples[0], {
+    title: 'A Book',
+    pushed_series: 'Variant Name',
+    canonical_series: 'Canonical Name',
+    kept: 'Universe B',
+    canonical_says: 'Universe A',
+  });
+});
+
+test('the re-point never OVERWRITES a universe the pushed spelling already answered', () => {
+  const index = buildUniverseIndex({
+    schemaVersion: 1,
+    canonicalNames: {},
+    universes: [{ name: 'Universe A', decidedHow: 'seed', series: ['Canonical Name', 'Variant Name'] }],
+  });
+
+  const entries = [
+    entryFor('library', { source_id: 'x1', title: 'A Book', series: 'Variant Name', format: 'book' }, index, 'now'),
+  ];
+  const report = applySeriesPlan(entries, planWith('Variant Name', 'canonical-name', 'Canonical Name'), index);
+
+  assert.equal(entries[0]?.universe, 'Universe A');
+  assert.equal(report.gainedFromCanonical, 0, 'nothing was gained — it was already there');
+  assert.equal(report.rows, 1, 'but it is still counted in the after-count');
+});
+
+/** A one-spelling plan: `raw` resolves to `display` under `slug`. */
+function planWith(raw: string, slug: string, display: string): SeriesPlan {
+  return {
+    resolutions: new Map([[raw, { slug, display, via: 'alias' as const }]]),
+    newSeries: [],
+    newAliases: [],
+    newPending: [],
+    mergedSpellings: 1,
+    unfoldable: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 5. The confirm queue ANNOUNCES itself — the fix for a queue nobody sees.
+// ---------------------------------------------------------------------------
+
+test('GET /api/series tells an APPROVER that a near miss is waiting', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+
+  const res = await app.request('/api/series', {}, memberEnv(db, OWNER));
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.equal(body.pending_open, 1,
+    'the queue must surface on the page the approver already loads, or it sits invisible until someone remembers the API');
+  assert.ok(body.pending_detail.includes('Nothing was merged'),
+    'a bare count could read as an error badge; the sentence says the series simply stay separate');
+  assert.equal(body.pending_url, '/api/series/pending');
+});
+
+test('a NON-approver is told nothing about the queue — not even how big it is', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook'] });
+  try {
+    const res = await app.request('/api/series', {}, memberEnv(db, 'member@example.com'));
+    const body = (await res.json()) as any;
+    assert.equal('pending_open' in body, false,
+      'absent, not zeroed — a member who cannot act is not told the size of the queue');
+    assert.ok(!JSON.stringify(body).includes('candidate_'), 'and never the rows themselves');
+  } finally {
+    f.restore();
+  }
+});
+
+test('a RESOLVED queue row stops announcing itself', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+
+  await app.request(
+    '/api/series/pending/survivalist%20series',
+    { method: 'POST', body: JSON.stringify({ action: 'separate' }) },
+    memberEnv(db, OWNER),
+  );
+
+  const res = await app.request('/api/series', {}, memberEnv(db, OWNER));
+  const body = (await res.json()) as any;
+  assert.equal(body.pending_open, 0,
+    'resolved rows are KEPT so the question is never re-asked — they must not keep nagging');
+  assert.equal('pending_detail' in body, false);
 });

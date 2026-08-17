@@ -15,6 +15,7 @@ import { pushTokenFor } from './env.js';
 import type { EntryRow } from './rows.js';
 import { entryFor, isSource, pushBodySchema, snapshotProblems } from './rows.js';
 import { universeIndex } from './universes-data.js';
+import { universeFor, type UniverseIndex } from './universes.js';
 import { seriesCanonIndex } from './series-canon-data.js';
 import { planSeries, type SeriesPlan } from './series.js';
 import { loadRegistry, planStatements } from './series-store.js';
@@ -77,14 +78,11 @@ pushRoutes.put('/:source', async (c) => {
   // registry (a few hundred rows), one pure plan, and the writes ride the same
   // batch as the snapshot.
   //
-  // ⚠️ `entry.universe` is still resolved from the SOURCE's spelling, above,
-  // not from the canonical display this pass rewrites `series` to. Unchanged
-  // deliberately: universes.json lists series in the spellings it was written
-  // against, and re-pointing that join is a separate, verifiable step — logged
-  // as a follow-up rather than smuggled in here.
+  // Since 2026-08-17 the same pass also re-points the UNIVERSE join at the
+  // canonical spelling — see `applySeriesPlan`, and design §8.5.
   const registry = await loadRegistry(c.env.DB);
   const plan = planSeries(registry, entries, seriesCanonIndex);
-  applySeriesPlan(entries, plan);
+  const universe = applySeriesPlan(entries, plan, universeIndex);
 
   await replaceSource(c.env.DB, source, entries, plan, pushedAt);
 
@@ -102,26 +100,106 @@ pushRoutes.put('/:source', async (c) => {
       pending_added: plan.newPending.length,
       unfoldable: plan.unfoldable,
     },
+    // The universe join's own honesty channel: how many rows in THIS snapshot
+    // carry a universe, how many of them owe it to the canonical spelling
+    // rather than the pushed one, and how many spellings of one series
+    // disagree about their universe (a `universes.json` fault, reported not
+    // resolved).
+    universe: {
+      rows: universe.rows,
+      gained_from_canonical: universe.gainedFromCanonical,
+      conflicts: universe.conflicts,
+      ...(universe.conflicts > 0
+        ? {
+            conflict_detail:
+              'two spellings of one series map to different universes in data/universes.json; the pushed spelling’s answer was kept and nothing was guessed — fix the list with `node tools/universes.mjs`',
+            conflict_samples: universe.conflictSamples,
+          }
+        : {}),
+    },
   });
 });
 
+/** What the universe re-point did — the "before/after" the follow-up asked for. */
+export interface UniverseRepoint {
+  /** Rows carrying a universe once the pass is done (the "after" count). */
+  rows: number;
+  /** Rows that had NO universe from the pushed spelling and gained one from the canonical. */
+  gainedFromCanonical: number;
+  /** Rows where the two spellings answer with DIFFERENT universes. Never resolved here. */
+  conflicts: number;
+  /** Up to three of those, so the fault is findable without a query. */
+  conflictSamples: { title: string; pushed_series: string; canonical_series: string; kept: string; canonical_says: string }[];
+}
+
+const MAX_CONFLICT_SAMPLES = 3;
+
 /**
- * Stamp each row with its slug and, where the registry holds a different
- * spelling, REWRITE the display to the canonical one.
+ * Stamp each row with its slug, REWRITE the display to the canonical one, and
+ * re-point the universe join at that canonical spelling.
  *
  * The rewrite is the half that fixes what the owner actually sees: a consumer
  * grouping by the free-text `series` (the library's ladders, the search
  * results, anything not yet slug-aware) sees one spelling instead of two,
  * without having to learn about the registry at all.
+ *
+ * ⚠️ THE UNIVERSE RE-POINT IS STRICTLY ADDITIVE, and that is the whole design.
+ * `universes.json` lists each series in ONE spelling; a source pushing any
+ * other spelling of the same series missed the join entirely until the
+ * registry existed. So: the pushed spelling is asked first (unchanged — no
+ * row can LOSE a universe to this change), and the canonical spelling is asked
+ * only where the pushed one answered nothing. Nothing is folded, nothing is
+ * guessed, and `normaliseUniverseText`'s deliberate "The Cosmere" ≠ "Cosmere"
+ * split is untouched — the registry supplies a second EXACT string to try, it
+ * does not make the universe matcher fuzzy.
+ *
+ * ⚠️ Exclusions cannot be smuggled past. `universeFor` checks
+ * `bookExclusions` by TITLE before it looks at any series, so both calls
+ * refuse an excluded title identically; The Frugal Wizard's Handbook stays out
+ * of the Cosmere however its series is spelled.
+ *
+ * ⚠️ A DISAGREEMENT IS REPORTED, NEVER RESOLVED. If the pushed spelling says
+ * one universe and the canonical says another, the pushed spelling's answer
+ * stands and the row is counted as a conflict: two spellings of one series
+ * belonging to two universes is a fault in `data/universes.json`, and picking
+ * a winner here would hide it behind a guess.
  */
-export function applySeriesPlan(entries: EntryRow[], plan: SeriesPlan): void {
+export function applySeriesPlan(entries: EntryRow[], plan: SeriesPlan, universes: UniverseIndex): UniverseRepoint {
+  const out: UniverseRepoint = { rows: 0, gainedFromCanonical: 0, conflicts: 0, conflictSamples: [] };
+
   for (const e of entries) {
-    if (e.series === null) continue;
-    const resolved = plan.resolutions.get(e.series.trim());
-    if (!resolved) continue; // unfoldable, or no series — leave the row exactly as pushed
-    e.series_slug = resolved.slug;
-    e.series = resolved.display;
+    if (e.series !== null) {
+      const pushedSeries = e.series.trim();
+      const resolved = plan.resolutions.get(pushedSeries);
+      // `!resolved` = unfoldable, or no series — leave the row exactly as pushed.
+      if (resolved) {
+        e.series_slug = resolved.slug;
+        e.series = resolved.display;
+
+        if (resolved.display !== pushedSeries) {
+          const viaCanonical = universeFor(universes, { title: e.title, series: resolved.display });
+          if (viaCanonical !== null && e.universe === null) {
+            e.universe = viaCanonical;
+            out.gainedFromCanonical += 1;
+          } else if (viaCanonical !== null && e.universe !== null && viaCanonical !== e.universe) {
+            out.conflicts += 1;
+            if (out.conflictSamples.length < MAX_CONFLICT_SAMPLES) {
+              out.conflictSamples.push({
+                title: e.title,
+                pushed_series: pushedSeries,
+                canonical_series: resolved.display,
+                kept: e.universe,
+                canonical_says: viaCanonical,
+              });
+            }
+          }
+        }
+      }
+    }
+    if (e.universe !== null) out.rows += 1;
   }
+
+  return out;
 }
 
 const INSERT_ENTRY = `INSERT INTO entry (

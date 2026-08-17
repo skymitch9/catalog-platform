@@ -117,7 +117,11 @@ export function snapshotProblems(source: Source, rows: readonly PushRow[]): stri
  *
  * - `work_fold` exists for BOOK sources only; games rows carry NULL, always.
  * - An empty fold stores NULL (the refusal), so the row is out of key joins.
- * - `universe` is resolved here from the shared list, exclusions first.
+ * - `universe` is resolved here from the shared list, exclusions first, using
+ *   the spelling the SOURCE pushed. ⚠️ That is the FIRST of two attempts, not
+ *   the only one: `applySeriesPlan` (push.ts) asks again with the registry's
+ *   CANONICAL series spelling wherever this one answered null. This answer is
+ *   never overridden — no row can LOSE a universe to that second attempt.
  */
 export function entryFor(source: Source, row: PushRow, universes: UniverseIndex, pushedAt: string): EntryRow {
   const titleFold = titleFoldOrNull(row.title);
