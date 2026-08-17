@@ -6,11 +6,11 @@
 # commands) as an HTTP POST to the single URL configured in the Developer
 # Portal — no gateway, no persistent connection.
 #
-# ⚠️ NOT DEPLOYED, ON PURPOSE — the bot cannot go live until the owner
-# registers the Discord application in the Developer Portal and sets the
-# secrets below. The full runbook is docs/access/discord-bot.md. Deploy,
-# route, and secrets are a deliberate later step, never a side effect of
-# building this.
+# DEPLOYED 2026-08-16 late — the owner registered application "GABI"
+# (id 1538775435880562758) and handed over the two portal identifiers; the
+# deliberate not-deployed hold above is over. The full runbook stays
+# docs/access/discord-bot.md; remaining owner steps at first deploy were the
+# bot token paste and the Interactions Endpoint URL save.
 
 name = "estate-discord"
 main = "src/index.ts"
@@ -18,10 +18,10 @@ compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
-# Added at deploy time, mirroring auth-worker / index-worker's history.
-# Discord's Interactions Endpoint URL then becomes:
+# Added at deploy time (2026-08-16), mirroring auth-worker / index-worker's
+# history. Discord's Interactions Endpoint URL is:
 #   https://discord.heygabi.ai/interactions
-# routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
+routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
 
 [vars]
 # Explicit, affirmative value — same idiom as the sibling Workers.
