@@ -22,7 +22,9 @@ workers_dev = false
 # Added at deploy time, mirroring the sibling Workers' history. The hostname
 # is the owner's pick at deploy time (the site itself lives at
 # https://audiobooks.heygabi.ai; the Worker needs its own, e.g.:)
-# routes = [{ pattern = "audiobook-api.heygabi.ai", custom_domain = true }]
+# Route uncommented 2026-08-16 at first deploy (owner approved phases 0-2
+# and said "send it"). The NOT-DEPLOYED header above is now historical.
+routes = [{ pattern = "audiobook-api.heygabi.ai", custom_domain = true }]
 
 [vars]
 # Explicit, affirmative value — the canonical verifier's dev bypass requires
