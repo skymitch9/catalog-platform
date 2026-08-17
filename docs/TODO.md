@@ -15,6 +15,24 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🚪 DEV ACCESS in the estate (owner, 2026-08-17) — IN FLIGHT
+
+Owner's words: *"i need a way in the estate to manage dev access for ebook,
+add a button for give dev access also make devops always able to see dev
+envs. in the meantime grant Samantha dev permission."*
+
+- Meantime grant DONE 2026-08-17: Samantha holds the estate **devops** flag
+  (granted via /admin two-tap, badge verified on the rendered page 22:13:28).
+- This repo's half: estate directory gets a per-person **dev_access** flag
+  (D1 migration), `/api/estate/users/:id/dev-access` mutation, a **Give dev
+  access** two-tap button on each member card (confirmBtn idiom), and the
+  rule **devops ⇒ dev access, always** (his sentence) — devops rows show the
+  fact, never a redundant button. Surfaced in /api/estate/seen so app
+  workers/pages can read it.
+- audiobook_catalog's half (the dev ebook pages' worded curtain) is queued in
+  THAT repo's local TODO behind the save-spot build — ⚠️ curtain, not lock:
+  the vis_ebooks-gated manifest/stream APIs stay the real lock on both lanes.
+
 ## 🧑 OWNER EYEBALL: the reshaped /admin page, signed in (2026-08-17)
 
 The control-grammar reshape + full permission map shipped (see
