@@ -74,7 +74,11 @@ ESTATE_CHECK = "shadow"
 # PATH on the same host, measured from audiobook_catalog docs/access
 # GIT_CI_DEPLOY.md 2026-08-16). Comma-separated, exact scheme+host, no
 # trailing slash. A local dev origin joins in .dev.vars, never here.
-SITE_ORIGINS = "https://audiobooks.heygabi.ai"
+# ⚠️ ebooks.heygabi.ai joined 2026-08-17 with the gated manifest: the ebook
+# shelf is served through the ebooks-door Worker on its OWN hostname, so
+# without it here the shim's fetch dies as an opaque CORS network error —
+# which looks exactly like the Worker being down, not like a missing origin.
+SITE_ORIGINS = "https://audiobooks.heygabi.ai,https://ebooks.heygabi.ai"
 
 # Not in this file, ever — the secrets. At deploy time (owner/conductor):
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
@@ -92,3 +96,18 @@ SITE_ORIGINS = "https://audiobooks.heygabi.ai"
 # retained log, not an adversary who already holds the source). Set it as a
 # secret only if the owner wants a GUESSED address to be uncheckable too —
 # and note that changing it re-pseudonymises everyone, so never mid-soak.
+
+# The ebook manifest's PRIVATE store (owner directive 2026-08-17). Created
+# 2026-08-17 with public access DISABLED and no custom domain — verified with
+# `wrangler r2 bucket dev-url get ebooks-gated` ("Public access via the r2.dev
+# URL is disabled"), which is the whole point of it not being `audiobook-covers`.
+#
+# ⚠️ Never enable a public URL or attach a domain to this bucket. The manifest
+# names every ebook file in the house, including the `needs_human_cover` list,
+# and the Worker's binding is meant to be the only way to read it.
+#
+# Written by the audiobook pipeline (scripts/publish_ebooks_manifest.py, sync
+# step 5.8); read by GET /api/ebooks/manifest.
+[[r2_buckets]]
+binding = "EBOOKS_GATED"
+bucket_name = "ebooks-gated"

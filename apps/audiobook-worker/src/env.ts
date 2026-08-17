@@ -70,6 +70,24 @@ export interface Env {
    * `wrangler secret put` — never committed, never logged, never echoed.
    */
   FIREBASE_SERVICE_ACCOUNT?: string;
+
+  /**
+   * The PRIVATE R2 bucket holding the ebook manifest (`ebooks-gated`, key
+   * `ebooks.json`) — read by GET /api/ebooks/manifest, written by the
+   * audiobook pipeline's publish step.
+   *
+   * ⚠️ A SEPARATE bucket from `audiobook-covers` on purpose, and the
+   * separation IS the security property: the covers bucket has a public
+   * r2.dev URL enabled, so every object in it is fetchable by anyone who
+   * guesses the key. This bucket has public access DISABLED and no custom
+   * domain, so the Worker's binding is the only way in. Never move the
+   * manifest into the covers bucket "to save a binding".
+   *
+   * Optional in the type so the route can answer a NAMED configuration
+   * refusal (`manifest_store_unbound`) instead of throwing a 500 that says
+   * nothing about the fix.
+   */
+  EBOOKS_GATED?: R2Bucket;
 }
 
 export type EstateCheckMode = 'off' | 'shadow' | 'enforce';

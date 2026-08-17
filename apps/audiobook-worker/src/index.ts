@@ -16,6 +16,12 @@
  *                          service account) + the §6 capability answer.
  *   POST /api/gate/shadow  the would-deny telemetry receiver (gate-shadow.ts;
  *                          204 always, logs only, enforces nothing).
+ *   GET  /api/ebooks/manifest  the household ebook shelf, behind the estate's
+ *                          `ebooks` visibility grant (ebooks.ts). ⚠️ The one
+ *                          route here that gates UNCONDITIONALLY — it carries
+ *                          no ESTATE_CHECK mode switch, by design: the mode
+ *                          exists to shadow an existing behaviour, and a shelf
+ *                          that serves in shadow mode is an ungated shelf.
  *   Phase 3 wave A writes  enforce-routes.ts — ⚠️ DORMANT: every one answers
  *                          503 not_enabled (touching nothing) unless
  *                          ESTATE_CHECK === 'enforce', which is the OWNER'S
@@ -31,6 +37,7 @@ import { cors } from 'hono/cors';
 import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
+import { ebookRoutes } from './ebooks.js';
 import { enforceRoutes } from './enforce-routes.js';
 import { estateStatusFor } from './estate-status.js';
 import { gateShadowRoutes } from './gate-shadow.js';
@@ -161,6 +168,12 @@ app.get('/api/me', async (c) => {
 });
 
 app.route('/api', gateShadowRoutes);
+
+// The ebook shelf's gated manifest (owner directive 2026-08-17). Mounted at
+// the root because the route carries its own full path; the abCors() blanket
+// above already covers /api/*, so the tokenless OPTIONS preflight is answered
+// by the middleware and never by the auth check.
+app.route('/', ebookRoutes);
 
 // Phase 3 wave A — the prebuilt write routes, DORMANT until the owner flips
 // ESTATE_CHECK to 'enforce' (enforce-routes.ts carries its own mode gate as

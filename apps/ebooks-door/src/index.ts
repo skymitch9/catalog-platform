@@ -3,19 +3,37 @@
  *
  * `/` -> the audiobook site's /ebooks.html (served, not redirected, so the
  * URL in the bar stays ebooks.heygabi.ai). Everything else proxies to the
- * same origin the page was built for, so its relative fetches — ebooks.json,
- * fb-env.js, identity.js, estate/estate-search.js — resolve same-origin here
- * and stay in lockstep with every promote. No caching beyond what the origin
- * says; no rewriting of content.
+ * same origin the page was built for, so its relative fetches — fb-env.js,
+ * identity.js, account-modal.js, static/js/theme.js — resolve same-origin
+ * here and stay in lockstep with every promote. No caching beyond what the
+ * origin says; no rewriting of content.
  *
- * ⚠️ The pool page exists on PROD only after ebook-split phase 2 (the
- * promote). Until then `/` returns whatever prod serves for /ebooks.html —
- * the catalog SPA fallback — which is why the domain "goes live" the moment
- * the owner says promote, with no change here.
+ * ⚠️ WHAT CHANGED 2026-08-17, and why this file barely did. Owner directive:
+ * "ebooks should be like the other site where we grant permission to view it.
+ * I don't want people scraping my books." The page this door serves is now an
+ * AUTH-LOCKED SHIM — its markup, theme and bookshelf are unchanged, but the
+ * book data no longer travels with it. `ebooks.json` left the deployment AND
+ * left git (the audiobook repo is public), and the shelf fetches a bearer-
+ * gated manifest from audiobook-api.heygabi.ai instead.
+ *
+ * ⚠️ SO THIS DOOR IS NOT THE LOCK, AND MUST NEVER BE TREATED AS ONE. It is a
+ * dumb proxy; the gate is server-side, in apps/audiobook-worker's
+ * GET /api/ebooks/manifest, which verifies a Firebase ID token and requires
+ * the estate's `ebooks` visibility grant on every request. Deleting this
+ * Worker closes the pretty address and changes nothing about who can read the
+ * shelf. Conversely, no rule added here would protect anything — the manifest
+ * is not on this path at all.
+ *
+ * ⚠️ `ebooks.json` is deliberately NOT in the list of proxied fetches above
+ * any more. If a request for it ever starts succeeding through this door, the
+ * manifest is back in the public deployment and the gate has been undone.
  *
  * ⚠️ Origin is the PROD host on purpose, never /dev/ — a lane is not a
  * hostname, and this door must never quietly serve the dev lane as if it
- * were the product.
+ * were the product. The consequence for the gate: the shim reaches
+ * ebooks.heygabi.ai only once the removal is PROMOTED to prod; until then
+ * prod still serves the pre-gate page, whose relative manifest fetch 404s
+ * (the deploy workflow strips the file from both lanes on every publish).
  */
 const ORIGIN = 'https://audiobooks.heygabi.ai';
 

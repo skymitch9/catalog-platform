@@ -15,6 +15,7 @@
 
 import {
   estateCheck,
+  type Catalog,
   type EstateStatus,
   type SeenCache,
   type SeenIdentity,
@@ -38,28 +39,75 @@ export interface EstateAnswer {
 }
 
 /**
- * One person's estate status, cached per the §5.2 protocol. Unconfigured
+ * The WHOLE §4.5 answer — status plus the two facts that ride with it. The
+ * ebook gate (src/ebooks.ts) needs all three, and they must share ONE age: a
+ * visibility fact re-fetched separately from its status is exactly the
+ * split-brain §4.5's one-answer rule exists to forbid.
+ */
+export interface EstateFullAnswer extends EstateAnswer {
+  /** The EFFECTIVE visibility set. ⚠️ null = "we do not know", never "no limits". */
+  visibility: Catalog[] | null;
+  /** The effective ebook download capability (0009). null = the directory did not say. */
+  downloadEbooks: boolean | null;
+}
+
+/**
+ * One person's estate answer, cached per the §5.2 protocol. Unconfigured
  * wiring is reported as such — never invented as 'approved' or refused as
  * an error; callers decide what an unconfigured estate means per mode.
+ *
+ * ⚠️ `requireVisibility: true` — this Worker's ebook gate is a VISIBILITY
+ * decision, so a cache holding a fresh status with no visibility half is not
+ * fresh ENOUGH. One /seen call heals it into a whole answer; without the flag
+ * the gate would fall back to "we do not know" (and so refuse) for up to ten
+ * minutes after every cold isolate, which reads exactly like a revoked grant.
+ */
+export async function estateAnswerFor(
+  env: Env,
+  identity: SeenIdentity,
+  nowMs: number = Date.now(),
+): Promise<EstateFullAnswer> {
+  const baseUrl = env.ESTATE_AUTH_URL;
+  const appToken = env.ESTATE_APP_TOKEN_AUDIOBOOK;
+  if (!baseUrl || !appToken) {
+    return { status: null, stale: false, configured: false, visibility: null, downloadEbooks: null };
+  }
+
+  const email = identity.email.trim().toLowerCase();
+  const cached = cache.get(email) ?? { status: null, checkedAt: null, visibility: null };
+  const result = await estateCheck(
+    cached,
+    { ...identity, email },
+    { baseUrl, appToken, requireVisibility: true },
+    nowMs,
+  );
+  if (result.refresh) {
+    cache.set(email, {
+      status: result.refresh.status,
+      checkedAt: result.refresh.checkedAt,
+      visibility: result.refresh.visibility,
+      downloadEbooks: result.refresh.downloadEbooks,
+    });
+  }
+  return {
+    status: result.status,
+    stale: result.stale,
+    configured: true,
+    visibility: result.visibility,
+    downloadEbooks: result.downloadEbooks,
+  };
+}
+
+/**
+ * The status-only view, for callers that gate on membership alone (/api/me).
+ * Kept as its own export so nothing which needs only a status is quietly
+ * rewritten into something that reads a visibility answer it will not use.
  */
 export async function estateStatusFor(
   env: Env,
   identity: SeenIdentity,
   nowMs: number = Date.now(),
 ): Promise<EstateAnswer> {
-  const baseUrl = env.ESTATE_AUTH_URL;
-  const appToken = env.ESTATE_APP_TOKEN_AUDIOBOOK;
-  if (!baseUrl || !appToken) return { status: null, stale: false, configured: false };
-
-  const email = identity.email.trim().toLowerCase();
-  const cached = cache.get(email) ?? { status: null, checkedAt: null, visibility: null };
-  const result = await estateCheck(cached, { ...identity, email }, { baseUrl, appToken }, nowMs);
-  if (result.refresh) {
-    cache.set(email, {
-      status: result.refresh.status,
-      checkedAt: result.refresh.checkedAt,
-      visibility: result.refresh.visibility,
-    });
-  }
-  return { status: result.status, stale: result.stale, configured: true };
+  const { status, stale, configured } = await estateAnswerFor(env, identity, nowMs);
+  return { status, stale, configured };
 }
