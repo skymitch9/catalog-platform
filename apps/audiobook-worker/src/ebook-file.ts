@@ -87,6 +87,26 @@ function refuse(body: unknown, status: number, extra: Record<string, string> = {
   });
 }
 
+/**
+ * Put this route's headers on a refusal the SHARED gate wrote.
+ *
+ * ⚠️ MEASURED LIVE 2026-08-17, minutes after the first deploy: the gate's 401
+ * went out with neither `Accept-Ranges` nor `Cache-Control`, because
+ * `ebook-gate.ts` writes plain JSON responses for a route (the shelf) that
+ * needs neither. Both matter here and the 401 is the case where they matter
+ * MOST: it is the first response a signed-out reader sees, pdf.js decides
+ * whether to range-stream from the first response it sees, and a refusal that
+ * names a person's approval status must never sit in a shared cache.
+ *
+ * The gate is left alone on purpose — it belongs to two routes and only one of
+ * them serves bytes. Dressing the answer here keeps one gate and one contract.
+ */
+function dress(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries({ ...NO_STORE, ...ACCEPT_RANGES })) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 const handler = async (c: { env: Env; req: { raw: Request; param: (k: string) => string | undefined } }) => {
   const method = c.req.raw.method.toUpperCase();
 
@@ -95,7 +115,7 @@ const handler = async (c: { env: Env; req: { raw: Request; param: (k: string) =>
   //    ⚠️ Runs BEFORE anything touches a bucket, so an unauthenticated caller
   //    cannot use this route to probe which anchors exist.
   const gate = await resolveEbookAccess(c as never);
-  if (!gate.ok) return gate.response;
+  if (!gate.ok) return dress(gate.response);
   const { access } = gate;
 
   const anchor = (c.req.param('anchor') ?? '').trim();

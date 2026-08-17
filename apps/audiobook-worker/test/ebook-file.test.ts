@@ -163,6 +163,46 @@ test('⚠️ no token → 401, in words, and NOT ONE BYTE', async () => {
   assert.equal(body.error, 'unauthenticated');
   assert.match(String(body.detail), /[Ss]ign in/);
   assert.equal(JSON.stringify(body).includes('two.pdf'), false);
+  // ⚠️ MEASURED LIVE 2026-08-17 and MISSING on the first deploy: the gate's
+  // refusals are written by a module shared with the shelf, which needs
+  // neither header. Both matter here, and this is the response where they
+  // matter most — it is the FIRST one a signed-out reader gets, pdf.js decides
+  // whether to range-stream from the first response it sees, and a refusal
+  // naming a person's approval status must never sit in a shared cache.
+  assert.equal(res.headers.get('accept-ranges'), 'bytes');
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=0, no-store');
+});
+
+test('⚠️ EVERY refusal this route gives carries Accept-Ranges and no-store', async () => {
+  // The general form of the live gap above. Each of these is written by a
+  // different code path — the shared gate, the manifest lookup, the bucket —
+  // and every one of them has to look like the same endpoint to a reader.
+  const cases: Array<[Env, string, Script | null]> = [
+    [envWith({ ENVIRONMENT: 'production' }), 'b-bbbb', null],
+    [envWith(), 'b-bbbb', { seen: { status: 'revoked', visibility: [] } }],
+    [envWith(), 'b-bbbb', { seen: { status: 'approved', visibility: ['audiobook'] } }],
+    [envWith(), 'b-nope', GRANTED],
+    [envWith(), OMNIBUS_ANCHOR, GRANTED],
+    [envWith({ EBOOKS: undefined }), 'b-bbbb', GRANTED],
+  ];
+  for (const [env, anchor, script] of cases) {
+    resetEstateCache();
+    resetManifestIndex();
+    resetReadBudget();
+    const f = script ? stubFetch(script) : null;
+    try {
+      const res = await fetchFile(env, anchor);
+      assert.ok(res.status >= 400, `expected a refusal, got ${res.status}`);
+      assert.equal(res.headers.get('accept-ranges'), 'bytes', `status ${res.status}`);
+      assert.equal(
+        res.headers.get('cache-control'),
+        'private, max-age=0, no-store',
+        `status ${res.status}`,
+      );
+    } finally {
+      f?.restore();
+    }
+  }
 });
 
 test('the four estate refusals stay four distinct, worded answers', async () => {
