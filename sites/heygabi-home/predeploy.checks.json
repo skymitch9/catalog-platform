@@ -1,22 +1,25 @@
 {
   "_why": [
-    "What must be TRUE on the live host after a deploy — the half that closes 'shipped is not verified'.",
+    "What must be TRUE on the live host after a deploy \u2014 the half that closes 'shipped is not verified'.",
     "Read by scripts/predeploy-check.mjs --live, which runs automatically as the last step of npm run deploy:home.",
     "Each marker is a string that only appears if the page actually rendered its own content, so a page that",
     "deployed-but-did-not-land fails loudly instead of returning a cheerful 200. Pick markers that would DISAPPEAR",
     "if the thing broke: a heading the page owns, an element id its script fills, a function name in a module.",
-    "A marker that can never fail is worse than no marker — it buys false confidence. Add a page here the same",
+    "A marker that can never fail is worse than no marker \u2014 it buys false confidence. Add a page here the same",
     "day you add it to public/, or it ships unwatched.",
     "NOTE: signed-in surfaces cannot be asserted from here. /status's Operations section, the runbook documents",
     "and /admin's member table are all injected only after Firebase sign-in, which this unauthenticated fetch",
-    "never has. The markers below are therefore the page CHROME and its gate — proof the shell shipped, never",
+    "never has. The markers below are therefore the page CHROME and its gate \u2014 proof the shell shipped, never",
     "proof the gated content works. That still has to be checked by signing in."
   ],
   "baseUrl": "https://heygabi.ai",
   "pages": [
     {
       "path": "/",
-      "mustContain": ["</html>"]
+      "mustContain": [
+        "</html>",
+        "ebooks.heygabi.ai"
+      ]
     },
     {
       "path": "/status/",
@@ -24,7 +27,7 @@
         "Estate status",
         "id=\"pipeline-rows\"",
         "id=\"index-rows\"",
-        "Run levers — GitHub Actions",
+        "Run levers \u2014 GitHub Actions",
         "id=\"lever-rows\"",
         "Server migration"
       ]
@@ -39,23 +42,38 @@
     },
     {
       "path": "/runbooks/shelf/",
-      "mustContain": ["Shelf Server Runbook", "id=\"doc-mount\"", "class=\"back\""]
+      "mustContain": [
+        "Shelf Server Runbook",
+        "id=\"doc-mount\"",
+        "class=\"back\""
+      ]
     },
     {
       "path": "/runbooks/shelf-migration/",
-      "mustContain": ["id=\"doc-mount\"", "class=\"back\""]
+      "mustContain": [
+        "id=\"doc-mount\"",
+        "class=\"back\""
+      ]
     },
     {
       "path": "/admin/",
-      "mustContain": ["Estate members", "class=\"back\""]
+      "mustContain": [
+        "Estate members",
+        "class=\"back\""
+      ]
     },
     {
       "path": "/todo/",
-      "mustContain": ["</html>"]
+      "mustContain": [
+        "</html>"
+      ]
     },
     {
       "path": "/universes/",
-      "mustContain": ["Universes", "class=\"back\""]
+      "mustContain": [
+        "Universes",
+        "class=\"back\""
+      ]
     }
   ]
 }
