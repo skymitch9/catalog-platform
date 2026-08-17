@@ -20,9 +20,11 @@
  *      publishes (CORS-open, `Access-Control-Allow-Origin: *`, verified live)
  *      with its own `generated_at` stamp. Both records existed before this
  *      page did — nothing here is invented, only read.
- *   3. Workers        — the index (reusing #1's fetch), library, games and
- *      estate-auth /api/health endpoints.
- *   4. Sites           — a no-cors reachability probe of the three catalog
+ *   3. Workers        — the index (reusing #1's fetch), library, games,
+ *      Sam's library (padhard.heygabi.ai — library_catalog's [env.friend],
+ *      the same Worker code and so the same health envelope) and estate-auth
+ *      /api/health endpoints.
+ *   4. Sites           — a no-cors reachability probe of the four catalog
  *      site roots plus the audiobook site's /dev/ lane (its own two-lane
  *      deploy — the apex itself has no such lane, deploy.md §4 is explicit
  *      that it deliberately does not copy that architecture).
@@ -56,6 +58,17 @@ const FETCH_TIMEOUT_MS = 8_000;
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 const LIBRARY_ORIGIN = 'https://library.heygabi.ai';
 const GAMES_ORIGIN = 'https://boardgames.heygabi.ai';
+/**
+ * The SECOND library instance — "Sam's library" (library_catalog's
+ * `[env.friend]`, Worker `library-catalog-friend`, its own D1 and covers
+ * bucket). Same Worker code as LIBRARY_ORIGIN, so the same `/api/health`
+ * envelope and the same apex-only status CORS; it is a fifth worker row and
+ * a fourth site row, not a new section. ⚠️ The hostname is the only thing
+ * about that instance that is allowed to change (its wrangler.toml says so) —
+ * if it moves, this constant and tools/estate-probes/lib/origins.mjs move
+ * together.
+ */
+const LIBRARY2_ORIGIN = 'https://padhard.heygabi.ai';
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
 
@@ -356,6 +369,7 @@ function buildWorkerSection() {
   ul.appendChild(makeRow('wk-index', 'Shared index (index.heygabi.ai)'));
   ul.appendChild(makeRow('wk-library', 'Library (library.heygabi.ai)'));
   ul.appendChild(makeRow('wk-games', 'Games (boardgames.heygabi.ai)'));
+  ul.appendChild(makeRow('wk-library2', "Sam's library (padhard.heygabi.ai)"));
   ul.appendChild(makeRow('wk-auth', 'Estate auth (auth.heygabi.ai)'));
 }
 
@@ -365,6 +379,7 @@ function buildSiteSection() {
   ul.appendChild(makeRow('site-audio-dev', 'Audio — /dev/ lane'));
   ul.appendChild(makeRow('site-library', 'Books (library.heygabi.ai)'));
   ul.appendChild(makeRow('site-games', 'Games (boardgames.heygabi.ai)'));
+  ul.appendChild(makeRow('site-library2', "Sam's library (padhard.heygabi.ai)"));
 }
 
 // ---------------------------------------------------------------------------
@@ -746,16 +761,22 @@ async function refreshAll() {
 
   const now = () => Date.now();
 
-  const [indexHealth, libraryHealth, gamesHealth, authHealth, audioUp, audioDevUp, libraryUp, gamesUp, pipelineStatus, ebooksDev, ebooksProd] =
+  const [
+    indexHealth, libraryHealth, gamesHealth, library2Health, authHealth,
+    audioUp, audioDevUp, libraryUp, gamesUp, library2Up,
+    pipelineStatus, ebooksDev, ebooksProd,
+  ] =
     await Promise.all([
       fetchJSON(`${INDEX_ORIGIN}/api/health`),
       fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
       fetchJSON(`${GAMES_ORIGIN}/api/health`),
+      fetchJSON(`${LIBRARY2_ORIGIN}/api/health`),
       fetchJSON(`${AUTH_ORIGIN}/api/health`),
       probeReachable(AUDIO_ORIGIN + '/'),
       probeReachable(AUDIO_ORIGIN + '/dev/'),
       probeReachable(LIBRARY_ORIGIN + '/'),
       probeReachable(GAMES_ORIGIN + '/'),
+      probeReachable(LIBRARY2_ORIGIN + '/'),
       fetchJSON(FIRESTORE_STATUS_URL),
       fetchJSON(EBOOKS_MANIFEST_DEV_URL),
       fetchJSON(EBOOKS_MANIFEST_PROD_URL),
@@ -781,6 +802,10 @@ async function refreshAll() {
     `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
   renderWorkerHealthRow('wk-games', 'Games', gamesHealth, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}`);
+  // Same Worker code as Library, so the same summary line — read from HER
+  // instance's own health, never inferred from ours.
+  renderWorkerHealthRow('wk-library2', "Sam's library", library2Health, t, (b) =>
+    `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
   renderWorkerHealthRow('wk-auth', 'Estate auth', authHealth, t, (b) => {
     const u = b.users || {};
     return `${u.approved ?? '?'} approved · ${u.pending ?? '?'} pending · ${u.revoked ?? '?'} revoked · ${u.approvers ?? '?'} approvers`;
@@ -790,6 +815,7 @@ async function refreshAll() {
   renderSiteRow('site-audio-dev', 'Audio /dev/', audioDevUp, t);
   renderSiteRow('site-library', 'Books', libraryUp, t);
   renderSiteRow('site-games', 'Games', gamesUp, t);
+  renderSiteRow('site-library2', "Sam's library", library2Up, t);
 
   const rows = [...rowRegistry.values()];
   const okCount = rows.filter((r) => r.el.dataset.state === 'ok').length;

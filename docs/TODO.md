@@ -60,6 +60,42 @@ Owner action available now: `wrangler d1 execute estate_auth --remote` was
 **blocked by the permission classifier**, so the estate membership census
 (how many approved members, what visibility) is unverified.
 
+## 🔑 Sam's library (`library2`) joins the estate MANAGEMENT surfaces — IN FLIGHT
+
+Owner, live on the page 2026-08-16: *"in the admin page Sam's library has no
+roles, I should be able to set her with the same level of roles as my
+library."*
+
+He is right, and the fix is smaller than the ask implies — because the
+plausible premise ("add a fourth managed site to the auth Worker") is wrong.
+`padhard.heygabi.ai` runs the **same Worker code** as `library.heygabi.ai`
+(`library_catalog`'s `[env.friend]`), so it already answers
+`GET /api/admin/users` in the library's own vocabulary, already gates on its
+own `manageUsers` capability, and already CORS-locks itself to
+`https://heygabi.ai`. The admin page simply was not asking. Serving her roles
+from the auth Worker instead would have stood up a **second, competing role
+store for a catalog that already has one** — see
+`docs/info/estate-auth-design.md` §1.2's 2026-08-16 amendment.
+
+Scope, all in one pass:
+- `admin.js`: `library2` becomes a full member of `APPS` (canonical order,
+  appended last), gaining the same dropdown, the same server-enforced
+  strictly-beneath granting and the same owner-auto-max cell as library and
+  games; the old "roles live on that site — not federated here yet" note is
+  gone.
+- `admin/index.html`: a "Sam's library" role filter (`f-role-library2`).
+- `/status`: `wk-library2` + `site-library2` rows.
+- `tools/estate-probes`: padhard health as a fifth `health.mjs` target plus a
+  new `probes/library2-worker.mjs` (tokenless AND garbage-bearer 401 on the
+  role surface, apex-only CORS admit/refuse). All GET/OPTIONS — no
+  `NON_GET_ALLOWLIST` row needed.
+- `auth-worker`: **no code change**. `test/library2-vocabulary.test.ts` pins
+  the wire word (`CONSUMER_APPS`, `appTokenFor`'s distinct secret,
+  `vis_library2`, canonical-last) and carries a tripwire asserting the
+  audiobook ladder never grows a per-site rung.
+
+Remaining: deploy + live verify, then this section moves whole to `DONE.md`.
+
 ## 0. 🤖 GABI Discord bot — LIVE 2026-08-16; the build queue that follows
 
 State: registered (**GABI**, id `1538775435880562758`), worker deployed at

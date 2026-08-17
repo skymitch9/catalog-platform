@@ -1,8 +1,18 @@
 # estate-probes — Access Reference
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-16** (91/91 passing against live production,
-> measured by running `npm run probe:estate` — +13 for the audiobook-worker
+> Last verified: **2026-08-16** (102/102 passing against live production,
+> measured by running `npm run probe:estate` — **+11 for
+> `padhard.heygabi.ai`** ("Sam's library", `library_catalog`'s
+> `[env.friend]`), added the day the estate began MANAGING that instance's
+> roles from `heygabi.ai/admin`: 6 health-envelope assertions as a fifth
+> `health.mjs` target, plus 5 on the federated role surface itself
+> (`/api/admin/users` refusing a tokenless AND a garbage-bearer caller, and
+> its apex-only CORS admitting `heygabi.ai` with GET+PATCH while refusing a
+> foreign origin). All GET/OPTIONS — no `NON_GET_ALLOWLIST` row was needed
+> or added. Prior count: 91/91.
+>
+> The 91/91 reasoning, kept because it explains the two odd rows: +13 for the audiobook-worker
 > (deployed 2026-08-16 at `audiobook-api.heygabi.ai`: health + estate_check
 > mode printed every run, the worded `/api/me` 401 on tokenless AND garbage
 > bearer, site-only CORS admit/refuse, and the one by-design 204 POST to
@@ -44,17 +54,18 @@ time, by anyone with this repo checked out, with no credentials at all.
 
 | Area | File | Surface |
 |---|---|---|
-| All four `/api/health` | `probes/health.mjs` | The `{ ok, service, version?, time, detail }` envelope (`docs/info/health-envelope.md`) on auth, index, library, games |
+| All five `/api/health` | `probes/health.mjs` | The `{ ok, service, version?, time, detail }` envelope (`docs/info/health-envelope.md`) on auth, index, library, games, **library2** (`padhard.heygabi.ai`). ⚠️ `library2-health` asserts `service === "library-catalog"` — the SAME string the main library answers, correctly: `[env.friend]` is the same Worker code at another hostname, and the health route names the software, not the deploy. The origin is what separates the rows |
 | `auth.heygabi.ai` | `probes/auth-worker.mjs` | `/me`, `/hello` tokenless → 401; `/docs/:slug` tokenless → 401; `/backups` tokenless → 401 (0006, the /status "last backup age" row) plus its apex-only CORS admit/refuse; `/facts/:slug` tokenless → 401 on GET AND POST (0007, the self-service shelf-facts form) plus its apex-only CORS admit/refuse; `/ops/pipeline/step` and `/ops/pipeline/force-upload` tokenless → 401 (0008, the fine-grained pipeline step controls — owner ask 2026-08-16) plus apex-only CORS admit/refuse for both — **never a live trigger, see the note below**; admin API (`/users`) tokenless AND garbage-bearer → 401; `/hello` CORS (audiobook site admitted, foreign origin refused, POST allowed); admin API CORS (apex admitted, foreign origin refused); `/__/auth/*` proxy is live (not this Worker's 404 shape — sso-design.md §4.1 Phase 1); `/api/session` tokenless → 401, `/api/session/token` no-cookie / unknown-cookie → 401 `no_session`, `DELETE /api/session` no-cookie → 200 idempotent (§4.3 Phase 2); session-routes CORS is CREDENTIALED and admits `library.heygabi.ai` (proving it uses its own SESSION_ORIGINS list, not ADMIN_ORIGINS/ME_ORIGINS), foreign origin refused |
 | `index.heygabi.ai` | `probes/index-worker.mjs` | `/api/search` anonymous → 200 with the public-slice shape (`scope === ["audiobook"]`); `/api/universe/:name`, `/api/lookup`, `/api/scan/shelf` tokenless → 401; `/api/search` CORS (apex admitted, foreign origin refused) |
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
+| `padhard.heygabi.ai` | `probes/library2-worker.mjs` | **"Sam's library"** — the SECOND library instance (`library_catalog`'s `[env.friend]`: Worker `library-catalog-friend`, own D1 `library-catalog-2nd`, own bucket). Probed because the CODE is shared with `library.heygabi.ai` and the DEPLOY is not — a green main library says nothing about hers. `/api/admin/users` (the surface `heygabi.ai/admin`'s fourth role column drives) tokenless AND garbage-bearer → the worded 401; its `adminCors()` apex-only preflight admitting `https://heygabi.ai` with GET+PATCH and refusing a foreign origin. ⚠️ `PATCH /api/admin/users/:id/role` is deliberately NEVER exercised — it changes what a real person may do on a real catalog; its escalation rules (`canGrantRole`) are unit-tested in that repo. *(sibling repo, read-only reference: `library_catalog/apps/worker/src/routes/admin.ts`, `wrangler.toml [env.friend]`)* |
 | `boardgames.heygabi.ai` | `probes/health.mjs` | `/api/health` only — no other public surface is asked for by design |
 | `audiobook-api.heygabi.ai` | `probes/audiobook-worker.mjs` | The audiobook-worker (deployed 2026-08-16). `/api/health` → 200 with this Worker's OWN envelope `{ ok, service, time, estate_check }` (no `detail`, by design — not the estate health envelope), `estate_check` asserted ∈ {off, shadow, enforce} **and printed on every run** (the shadow flip / an accidental revert shows here without reading wrangler config); `/api/me` tokenless AND garbage-bearer → the WORDED 401 (`error: "unauthenticated"` + a non-empty human `detail` — the ROLES.md §1e contract, asserted, not just the shape); `/api/me` CORS (audiobook site admitted, foreign origin refused); `POST /api/gate/shadow` with `{ action: "probe" }` → 204 + empty body — **the one by-design non-refused POST in this suite, see the note below** |
 | discord-worker | `probes/discord-worker.mjs` | **NOT DEPLOYED — visible SKIP, on purpose.** Prints `discord-worker: not deployed yet (expected)` every run so the suite knows the worker exists. Health probes (200, `service === "estate-discord"`, config-presence booleans printed) are already written against `apps/discord-worker/src/index.ts`'s real shape; the day it deploys, setting `DISCORD_API_ORIGIN` in `lib/origins.mjs` switches them on — a one-line change |
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
 | Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on; `shelf_upload_status/current` (2026-08-16) — read permitted (200 or 404, never denied) |
 
-91 assertions as of last verification, all passing. Run the suite for the
+102 assertions as of last verification, all passing. Run the suite for the
 current count and result — this table is not re-derived automatically.
 
 ⚠️ **The read-only discipline is now a MECHANICAL GUARD, not just prose**
@@ -101,8 +112,18 @@ console cleanup, and estate-wide sign-in broke — silently, because nothing
 in this suite (or anywhere else) was watching that list. This probe reads it
 straight from the source of truth, `GET
 https://identitytoolkit.googleapis.com/admin/v2/projects/audiobook-catalog/config`,
-and asserts all four estate origins (`heygabi.ai`, `audiobooks.heygabi.ai`,
-`library.heygabi.ai`, `boardgames.heygabi.ai`) are present.
+and asserts all five estate sign-in origins (`heygabi.ai`,
+`audiobooks.heygabi.ai`, `library.heygabi.ai`, `boardgames.heygabi.ai`,
+`padhard.heygabi.ai`) are present.
+
+⚠️ **`padhard.heygabi.ai` (D5) was added 2026-08-16 and has NOT been verified
+against the live list** — this script needs a service account that was not in
+hand at the time. Her instance signs in through the same shared Firebase
+project (`authDomain: 'auth.heygabi.ai'`), so the incident this script exists
+for applies to her hostname exactly as it does to ours, and she is the one
+person in the estate who cannot debug it herself. A D5 failure on the first
+credentialed run is a genuine finding — add the host in Firebase →
+Authentication → Settings → Authorised domains — not a bug in the list.
 
 ```bash
 # PowerShell

@@ -17,7 +17,16 @@
  *   - per-app ROLES — each app's OWN /api/admin surface, in each app's OWN
  *     vocabulary, verbatim: library `owner|manager|reader|pending`, games
  *     `owner|manager|rater|viewer|pending`. ⚠️ `reader` ≠ `viewer` — the
- *     dropdowns list what each endpoint answers and never translate. The
+ *     dropdowns list what each endpoint answers and never translate.
+ *     ⚠️ THREE app Workers now, not two (2026-08-16): `library2` — the
+ *     second library instance at `padhard.heygabi.ai` ("Sam's library",
+ *     `library_catalog`'s `[env.friend]`) — runs the SAME Worker code as
+ *     library.heygabi.ai, so it answers the same `/api/admin/users` with the
+ *     same vocabulary and the same apex-only CORS lock. It is a fourth
+ *     managed site here, not a special case: same dropdown, same
+ *     strictly-beneath granting (enforced by `canGrantRole` in that repo's
+ *     `@lc/core`, server-side), same owner-auto-max rendering. The estate
+ *     never redefines what a role means there. The
  *     AUDIOBOOK catalog (world-readable site) grew rules-enforced site
  *     roles 2026-08-14 and was extended 2026-08-16 to the full estate role
  *     LADDER (ROLES.md §1, audiobook_catalog repo — read-only reference):
@@ -58,9 +67,12 @@
  *     POST /api/estate/users/:id/visibility { visibility: ['audiobook', ...] }
  *     GET  /api/estate/site-roles/tree     → { ladder, grantFloor, capabilities }
  *                                             — the role ladder + capability map
- *   library.heygabi.ai + boardgames.heygabi.ai (same CORS lock, each app's
- *   own owner-only `manageUsers` gate — this page holds no credential; the
- *   caller's own bearer must be an owner THERE to change anything there):
+ *   library.heygabi.ai + boardgames.heygabi.ai + padhard.heygabi.ai (same
+ *   CORS lock, each app's own `manageUsers` gate — this page holds no
+ *   credential; the caller's own bearer must hold that capability THERE to
+ *   change anything there. The owner is in `padhard`'s own OWNER_EMAILS
+ *   (`library_catalog` wrangler.toml `[env.friend].vars`), which is what
+ *   makes his bearer work on her instance):
  *     GET   /api/admin/users               → { app, roles, users: [{id,email,displayName,role}] }
  *     PATCH /api/admin/users/:id/role      { role: <one of that app's roles> }
  *
@@ -84,10 +96,27 @@ const CATALOGS = ['audiobook', 'library', 'games', 'library2'];
 /** UI labels only — the wire vocabulary stays the CATALOGS keys above. */
 const CATALOG_LABELS = { audiobook: 'audiobook', library: 'library', games: 'games', library2: "Sam's library" };
 
-/** The two apps with roles to federate. The audiobook column is a note. */
+/**
+ * The app Workers with roles to federate, in §4.5's canonical CATALOGS order
+ * minus `audiobook` (whose roles come from the auth Worker's site-roles
+ * federation instead, rendered by audiobookRoleCell).
+ *
+ * ⚠️ `library2` appends LAST and never moves — the canonical order is
+ * load-bearing across repos. It is `library_catalog`'s `[env.friend]`
+ * deploy: the SAME Worker code at a different hostname with its own D1, so
+ * `/api/admin/users` answers the identical `{ app, roles, users }` shape and
+ * the identical apex-only CORS lock. Nothing special-cases it.
+ *
+ * `seedGap: false` on library2 is deliberate and is the ONE difference (see
+ * renderSeedGaps): her roster is HER household's, not a subset of ours, so
+ * "listed there but not in the estate directory" is the normal state there
+ * rather than a seed that missed someone. Flagging it would be a warning
+ * that can never be cleared.
+ */
 const APPS = [
-  { key: 'library', label: 'library', origin: 'https://library.heygabi.ai' },
-  { key: 'games', label: 'games', origin: 'https://boardgames.heygabi.ai' },
+  { key: 'library', label: 'library', origin: 'https://library.heygabi.ai', seedGap: true },
+  { key: 'games', label: 'games', origin: 'https://boardgames.heygabi.ai', seedGap: true },
+  { key: 'library2', label: "Sam's library", origin: 'https://padhard.heygabi.ai', seedGap: false },
 ];
 
 /**
@@ -96,8 +125,9 @@ const APPS = [
  * spaces"). Household scale — no server round-trip, no pagination.
  */
 const NO_ACCOUNT = '__none__'; // per-app role filter: "no row in that app's roster yet" (audiobook: "no site role")
-/** Every column with a role filter: the audiobook site-roles federation + the two app Workers. */
-const ROLE_FILTER_KEYS = ['audiobook', 'library', 'games'];
+/** Every column with a role filter: the audiobook site-roles federation + the
+ *  three app Workers, in canonical CATALOGS order (library2 appended last). */
+const ROLE_FILTER_KEYS = ['audiobook', 'library', 'games', 'library2'];
 const SORT_KEYS = ['name', 'email', 'status', 'first_seen', 'decided', 'breadth'];
 const STATUS_RANK = { pending: 0, approved: 1, revoked: 2 }; // the existing pending-first instinct, made sortable
 const DEFAULT_DIR_FOR_KEY = { // the sensible starting direction when a sort key is first picked
@@ -125,7 +155,7 @@ let currentUser = null;
  *   { ok: true, roles, byEmail }          — that app's list + vocabulary
  *   { ok: false, why }                    — degraded; why is shown in-cell
  */
-let appDirs = { library: null, games: null };
+let appDirs = Object.fromEntries(APPS.map((a) => [a.key, null]));
 
 /**
  * Audiobook site-roles state, same shape contract as appDirs entries, plus
@@ -429,14 +459,16 @@ async function createMember(email) {
 
 async function loadDirectory() {
   setStatus('Loading…');
-  const [estate, library, games, sroles, rtree] = await Promise.all([
+  // One fetch per app Worker, driven by APPS rather than positional
+  // destructuring — adding a fourth managed site is a row in APPS and
+  // nothing else. A failed app fetch degrades that column only.
+  const [estate, appResults, sroles, rtree] = await Promise.all([
     api('/api/estate/users'),
-    fetchAppDirectory(APPS[0]),
-    fetchAppDirectory(APPS[1]),
+    Promise.all(APPS.map((app) => fetchAppDirectory(app))),
     fetchSiteRoles(),
     fetchRoleTree(),
   ]);
-  appDirs = { library, games };
+  appDirs = Object.fromEntries(APPS.map((app, i) => [app.key, appResults[i]]));
   siteRolesDir = sroles;
   roleTreeDir = rtree;
   renderRoleTree();
@@ -504,7 +536,7 @@ function defaultFilters() {
     visCats: [],          // subset of CATALOGS the member must SEE (AND semantics)
     // 'any' | NO_ACCOUNT | a role from that column's own vocab. audiobook =
     // the site-roles federation (NO_ACCOUNT there means "no site role").
-    appRoles: { audiobook: 'any', library: 'any', games: 'any' },
+    appRoles: Object.fromEntries(ROLE_FILTER_KEYS.map((k) => [k, 'any'])),
     q: '',
   };
 }
@@ -635,6 +667,11 @@ function compareUsers(a, b) {
 function populateRoleFilterOptions() {
   for (const key of ROLE_FILTER_KEYS) {
     const select = document.getElementById(`f-role-${key}`);
+    // A key with no <select> in the markup (a column added to the JS before
+    // its filter row exists) must not take the whole controls bar down with
+    // it — the role CELLS are the load-bearing half, the filter is a
+    // convenience. Skip it rather than throw.
+    if (!select) continue;
     const dir = roleDirFor(key);
     const current = state.filters.appRoles[key];
     const valid = ['any', NO_ACCOUNT, ...(dir?.ok ? dir.roles : [])];
@@ -753,7 +790,9 @@ function wireControls() {
   }
 
   for (const key of ROLE_FILTER_KEYS) {
-    document.getElementById(`f-role-${key}`).addEventListener('change', (e) => {
+    const select = document.getElementById(`f-role-${key}`);
+    if (!select) continue; // same reasoning as populateRoleFilterOptions
+    select.addEventListener('change', (e) => {
       state.filters.appRoles[key] = e.target.value;
       persistView();
       renderFilteredList();
@@ -1179,15 +1218,13 @@ function userCard(u) {
     cats.appendChild(catalogRow(u, app.key, appRoleCell(app, u)));
   }
 
-  // The second library instance (library2, 0007): the estate's visibility
-  // checkbox renders like every catalog's — DEFAULT 0, so existing rows show
-  // it unchecked until deliberately granted — but roles are NOT federated
-  // here yet (its Worker env is a separate provisioning step; roles live on
-  // that instance's own People page). An honest note, not a broken dropdown.
-  const lib2Cell = document.createElement('span');
-  lib2Cell.className = 'cat-note';
-  lib2Cell.textContent = 'roles live on that site — not federated here yet';
-  cats.appendChild(catalogRow(u, 'library2', lib2Cell));
+  // ⚠️ The second library instance (library2, 0007) used to render a note here
+  // reading "roles live on that site — not federated here yet". It is now a
+  // full member of APPS above, so it gets the same dropdown as every other app
+  // Worker (owner-reported live 2026-08-16: "in the admin page Sam's library
+  // has no roles, I should be able to set her with the same level of roles as
+  // my library"). Its visibility checkbox is unchanged — 0007's column is
+  // DEFAULT 0, so existing rows still show it unchecked until granted.
   li.appendChild(cats);
 
   const actions = document.createElement('div');
@@ -1310,11 +1347,18 @@ function renderUsers(users) {
  * An app listing an email the estate directory does not hold means the seed
  * missed someone (§9 step 2 is idempotent and re-runnable) — say so rather
  * than silently rendering a directory that disagrees with its apps.
+ *
+ * ⚠️ NOT every app. `library2` (padhard.heygabi.ai) is a SECOND HOUSEHOLD's
+ * instance: her roster is hers, and people on it who are not in our estate
+ * directory are the expected, permanent state — not a seed that missed
+ * someone. Flagging it would print a warning nobody can ever clear, which
+ * trains the reader to ignore the whole line. Opt in per app (`seedGap`).
  */
 function renderSeedGaps(estateUsers) {
   const known = new Set(estateUsers.map((u) => u.email.toLowerCase()));
   const lines = [];
   for (const app of APPS) {
+    if (!app.seedGap) continue;
     const dir = appDirs[app.key];
     if (!dir?.ok) continue;
     const extras = [...dir.byEmail.keys()].filter((e) => !known.has(e));

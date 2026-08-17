@@ -60,7 +60,21 @@
       "path": "/admin/",
       "mustContain": [
         "Estate members",
-        "class=\"back\""
+        "class=\"back\"",
+        "id=\"f-role-library2\""
+      ]
+    },
+    {
+      "_why": [
+        "The library2 (\"Sam's library\", padhard.heygabi.ai) role federation, 2026-08-16. The role CELLS are",
+        "injected only after Firebase sign-in, so what CAN be asserted unauthenticated is the module's own site",
+        "list: if padhard.heygabi.ai is not in the shipped admin.js, the fourth role column cannot exist."
+      ],
+      "path": "/admin/admin.js",
+      "mustContain": [
+        "padhard.heygabi.ai",
+        "library2",
+        "ROLE_FILTER_KEYS"
       ]
     },
     {

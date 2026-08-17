@@ -609,6 +609,21 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
             </label>
           </div>
         </div>
+
+        <!-- library2 (0007) — the second library instance at
+             padhard.heygabi.ai ("Sam's library"). Same Worker code as
+             library.heygabi.ai, so the same role vocabulary; the <select> is
+             populated from THAT instance's own /api/admin/users, never
+             hardcoded. Appended LAST, matching the canonical catalog order. -->
+        <div class="adv-section">
+          <span class="ctl-label adv-section-title">Sam's library</span>
+          <div class="adv-fields">
+            <label class="ctl">
+              <span class="ctl-label">Sam's library role (padhard.heygabi.ai)</span>
+              <select id="f-role-library2" class="ctl-input"><option value="any">any</option></select>
+            </label>
+          </div>
+        </div>
       </div>
     </details>
   </div>

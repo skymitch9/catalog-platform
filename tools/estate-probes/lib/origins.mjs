@@ -12,6 +12,18 @@ export const GAMES_ORIGIN = 'https://boardgames.heygabi.ai';
 export const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
 
 /**
+ * The SECOND library instance — "Sam's library" (`library_catalog`'s
+ * `[env.friend]`: Worker `library-catalog-friend`, its own D1
+ * `library-catalog-2nd` and bucket `library-2nd-covers`, hostname
+ * `padhard.heygabi.ai`). SAME Worker code as LIBRARY_ORIGIN, which is
+ * exactly why it earns probes: the code is identical, the DEPLOY is not, so
+ * "library.heygabi.ai is healthy" says nothing about hers. Mirrored in
+ * `sites/heygabi-home/public/status/status.js` (LIBRARY2_ORIGIN); if the
+ * hostname ever moves, both move together.
+ */
+export const LIBRARY2_ORIGIN = 'https://padhard.heygabi.ai';
+
+/**
  * The audiobook-worker's own hostname (2026-08-16, first deploy) — from
  * `apps/audiobook-worker/wrangler.toml`'s `routes` pattern, the canonical
  * source for that hostname (status.js does not list it yet). The SITE at

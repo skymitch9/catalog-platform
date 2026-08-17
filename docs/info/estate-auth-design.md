@@ -111,6 +111,39 @@ read-capable guest roles"). A global role set is **lossy for games** and would
 erase a distinction an owner explicitly built two migrations to create. So this
 design does not unify roles — see §4's three-layer split.
 
+*Amended 2026-08-16 — the FOURTH managed site, `library2`.* The estate admin
+page now federates the roles of **`padhard.heygabi.ai` ("Sam's library",
+`library_catalog`'s `[env.friend]`)** alongside library and games. Owner,
+reporting it live: *"in the admin page Sam's library has no roles, I should be
+able to set her with the same level of roles as my library."*
+
+⚠️ **It is a fourth FEDERATED site, not a fourth site served from the auth
+Worker — and the distinction is the whole of §1.2.** Exactly one site's roles
+come from `auth.heygabi.ai`: `audiobook`, whose Firestore `site_roles/{uid}`
+docs a browser can neither list nor write, which is the only reason a Worker
+holding a service account stands in the middle at all. Every other catalog
+owns its roles in its own Worker, and `library2` runs the *same code* as
+`library.heygabi.ai` — so it already had `GET /api/admin/users`, already spoke
+the library's vocabulary verbatim, and already CORS-locked itself to
+`https://heygabi.ai` (`ADMIN_PAGE_ORIGIN`, a constant, not an env var).
+Nothing needed building on the server at all; the missing piece was one row in
+the admin page's `APPS` list. Adding a `library2` rung to the audiobook
+Worker's ladder would have created a **second, competing role store for a
+catalog that already has one** — the centralization this section refuses.
+
+What makes the owner's bearer work on her instance is that he is in HER
+`OWNER_EMAILS` (`library_catalog` `wrangler.toml`, `[env.friend].vars`) — the
+estate page holds no credential of its own and grants nothing there that the
+signed-in person could not grant from her own People page. Escalation stays
+server-side in her Worker (`canGrantRole` in `@lc/core`: strictly beneath your
+own, and an `admin` caller can mint neither `admin` nor `owner`).
+
+One deliberate asymmetry: the admin page's **seed-gap notice does not run for
+`library2`** (`seedGap: false` in `APPS`). Her roster is her household's, so
+"listed there but not in the estate directory" is the permanent normal state
+rather than a seed that missed someone — flagging it would print a warning
+nobody could ever clear.
+
 ### 1.3 The local user rows are load-bearing and cannot move
 
 **12 foreign keys reference `app_user(id)` in the library alone** (grep over

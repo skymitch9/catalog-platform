@@ -21,6 +21,7 @@ import { probeHealth } from './probes/health.mjs';
 import { probeAuthWorker } from './probes/auth-worker.mjs';
 import { probeIndexWorker } from './probes/index-worker.mjs';
 import { probeLibraryWorker } from './probes/library-worker.mjs';
+import { probeLibrary2Worker } from './probes/library2-worker.mjs';
 import { probeAudiobookWorker } from './probes/audiobook-worker.mjs';
 import { probeDiscordWorker } from './probes/discord-worker.mjs';
 import { probeAudiobooks } from './probes/audiobooks.mjs';
@@ -76,7 +77,7 @@ function auditMethodDiscipline() {
 async function main() {
   console.log('estate-probes: read-only checks against LIVE production. No writes, no tokens minted.\n');
 
-  console.log('— /api/health, all four Workers —');
+  console.log('— /api/health, all five Workers —');
   await probeHealth();
 
   console.log('\n— auth.heygabi.ai —');
@@ -87,6 +88,9 @@ async function main() {
 
   console.log('\n— library.heygabi.ai (scan-jobs intake) —');
   await probeLibraryWorker();
+
+  console.log("\n— padhard.heygabi.ai (Sam's library — the federated role surface) —");
+  await probeLibrary2Worker();
 
   console.log('\n— audiobook-api.heygabi.ai (audiobook-worker) —');
   await probeAudiobookWorker();

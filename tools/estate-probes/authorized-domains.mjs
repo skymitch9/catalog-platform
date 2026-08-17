@@ -5,8 +5,10 @@
  * Built 2026-08-16 for a real incident: earlier tonight the apex
  * (`heygabi.ai`) was accidentally REMOVED from Firebase's authorised-domain
  * list during unrelated cleanup and estate-wide sign-in broke — and nothing
- * caught it. This probe asserts the four estate origins (`heygabi.ai`,
- * `audiobooks.heygabi.ai`, `library.heygabi.ai`, `boardgames.heygabi.ai`)
+ * caught it. This probe asserts the five estate sign-in origins
+ * (`heygabi.ai`, `audiobooks.heygabi.ai`, `library.heygabi.ai`,
+ * `boardgames.heygabi.ai`, and `padhard.heygabi.ai` — added 2026-08-16, see
+ * REQUIRED_DOMAINS below for the caveat on it)
  * are ALL present in that list, read straight from the source of truth:
  * `GET https://identitytoolkit.googleapis.com/admin/v2/projects/{project}/config`.
  *
@@ -46,15 +48,28 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { check, printTable, counts } from './lib/kit.mjs';
 
-/** The estate's four origins (bare hostnames — that is the shape Firebase's
- * authorizedDomains list uses, no scheme). Lifted from lib/origins.mjs's
- * production hosts, not re-imported, because that file's constants carry a
- * scheme (`https://...`) this comparison must NOT have. */
+/** The estate's five sign-in origins (bare hostnames — that is the shape
+ * Firebase's authorizedDomains list uses, no scheme). Lifted from
+ * lib/origins.mjs's production hosts, not re-imported, because that file's
+ * constants carry a scheme (`https://...`) this comparison must NOT have.
+ *
+ * ⚠️ D5 (`padhard.heygabi.ai`, "Sam's library") was added 2026-08-16 when
+ * the estate began MANAGING that instance's roles from heygabi.ai/admin.
+ * Her instance signs in through the same shared Firebase project
+ * (`authDomain: 'auth.heygabi.ai'` in that repo's `lib/firebase.ts`), so the
+ * same silent-removal incident that produced this script applies to her
+ * hostname exactly as it does to ours — and she is the one person in the
+ * estate who cannot debug it herself. ⚠️ NOT VERIFIED at the time it was
+ * added: this script needs a service account nobody had in hand, so a D5
+ * failure on its first credentialed run is a genuine finding (add the host
+ * in Firebase → Authentication → Settings → Authorised domains), not a bug
+ * in this list. */
 const REQUIRED_DOMAINS = [
   { id: 'D1', host: 'heygabi.ai' },
   { id: 'D2', host: 'audiobooks.heygabi.ai' },
   { id: 'D3', host: 'library.heygabi.ai' },
   { id: 'D4', host: 'boardgames.heygabi.ai' },
+  { id: 'D5', host: 'padhard.heygabi.ai' },
 ];
 
 /** Broad on purpose: identitytoolkit for the Identity Platform admin config

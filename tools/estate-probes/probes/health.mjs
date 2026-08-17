@@ -1,21 +1,29 @@
 /**
- * /api/health across all four estate Workers — the one envelope described in
+ * /api/health across all five estate Workers — the one envelope described in
  * `docs/info/health-envelope.md`: `{ ok, service, version?, time, detail }`,
  * additive over each worker's pre-existing shape. `version` is present only
- * where the worker has an APP_VERSION binding (library, games) — see that
- * doc's "Per-worker before → after" table — so it is checked where expected
- * and merely noted where it is legitimately absent, never required
+ * where the worker has an APP_VERSION binding (library, library2, games) —
+ * see that doc's "Per-worker before → after" table — so it is checked where
+ * expected and merely noted where it is legitimately absent, never required
  * everywhere.
+ *
+ * ⚠️ `library2-health` asserts `service === "library-catalog"`, the SAME
+ * string the main library answers, and that is correct rather than a
+ * copy-paste slip: `[env.friend]` is the same Worker code at a different
+ * hostname with its own D1, and the health route names the SOFTWARE, not the
+ * deploy. What separates the two rows is the origin they were read from.
  */
 
 import { get, check } from '../lib/kit.mjs';
-import { AUTH_ORIGIN, INDEX_ORIGIN, LIBRARY_ORIGIN, GAMES_ORIGIN } from '../lib/origins.mjs';
+import { AUTH_ORIGIN, INDEX_ORIGIN, LIBRARY_ORIGIN, LIBRARY2_ORIGIN, GAMES_ORIGIN } from '../lib/origins.mjs';
 
 const TARGETS = [
   { area: 'auth-health', origin: AUTH_ORIGIN, service: 'estate-auth', hasVersion: false },
   { area: 'index-health', origin: INDEX_ORIGIN, service: 'catalog-index', hasVersion: false },
   { area: 'library-health', origin: LIBRARY_ORIGIN, service: 'library-catalog', hasVersion: true },
   { area: 'games-health', origin: GAMES_ORIGIN, service: 'board-game-catalog', hasVersion: true },
+  // Appended LAST, matching the canonical catalog order everywhere else.
+  { area: 'library2-health', origin: LIBRARY2_ORIGIN, service: 'library-catalog', hasVersion: true },
 ];
 
 export async function probeHealth() {
