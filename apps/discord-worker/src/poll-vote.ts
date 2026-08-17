@@ -20,8 +20,8 @@
  * rules; no rules change needed). An unlinked Discord user gets a WORDED
  * ephemeral rejection — never a silent failure, never a name-matching guess
  * (research doc §5 option 1; the pseudo-member fallback is deliberately not
- * built). The ceremony that WRITES link docs is phase 2 and does not exist
- * yet; until it ships every vote click bounces with the unlinked message.
+ * built). The ceremony that WRITES link docs is phase 2 — BUILT 2026-08-17,
+ * see link.ts — and this module stays its only reader.
  *
  * Response discipline (§1.7): ALWAYS-DEFERRED — the route answers
  * DEFERRED_UPDATE_MESSAGE (type 6, no loading flicker for components)
@@ -43,6 +43,7 @@ import {
   type ServiceAccount,
 } from './firebase-sa.js';
 import { editOriginalMessage, followupEphemeral } from './discord-api.js';
+import { isSafeSlug, slugPathSegment } from './slug.js';
 
 // ---------------------------------------------------------------------------
 // custom_id — the vote button's routing key: `pv|clubCol|clubId|pollId|idx`
@@ -61,7 +62,18 @@ export interface PollVoteRef {
   optionIndex: number;
 }
 
-/** Firestore auto-ids and slugs; also blocks Firestore path injection. */
+/**
+ * Firestore auto-ids (clubId, pollId) — and ONLY those.
+ *
+ * ⚠️ CORRECTED 2026-08-17. This pattern also guarded the link doc's `slug`,
+ * which was wrong: a member slug is `displayName.toLowerCase()` (see slug.ts
+ * for the measurement), so almost every real slug contains a space and this
+ * regex refused it. The effect would have been silent and cruel — phase 2
+ * writes a link, phase 1 declines to read it, and the voter is told they are
+ * "not linked" while their link doc sits right there. Slugs now go through
+ * `isSafeSlug()`, and the two halves are pinned together by the contract test
+ * in test/link.test.ts.
+ */
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function buildPollCustomId(ref: PollVoteRef): string {
@@ -90,6 +102,11 @@ type FsValue = {
   stringValue?: string;
   integerValue?: string | number;
   booleanValue?: boolean;
+  /** Not read by anything here — declared so this type can DESCRIBE a real
+   * link doc, which carries `linkedAt` (link.ts writes it). A reader type
+   * that cannot express the document it reads is a type that quietly stops
+   * being checked at the call site. */
+  timestampValue?: string;
   arrayValue?: { values?: FsValue[] };
   mapValue?: { fields?: Record<string, FsValue> };
 };
@@ -139,10 +156,11 @@ export interface DiscordLink {
   displayName: string;
 }
 
-/** discord_links/{discordUserId} → who this Discord account is, or null. */
+/** discord_links/{discordUserId} → who this Discord account is, or null.
+ * The slug rule is slug.ts's, shared with the writer (link.ts). */
 export function linkFromDoc(doc: FsDoc): DiscordLink | null {
   const slug = fsString(doc.fields?.slug);
-  if (slug === null || !SAFE_ID.test(slug)) return null;
+  if (slug === null || !isSafeSlug(slug)) return null;
   const displayName = fsString(doc.fields?.displayName);
   return { slug, displayName: displayName ?? slug };
 }
@@ -223,8 +241,8 @@ export function buildPollMessage(
 export const MSG = {
   unlinked:
     "Your Discord account isn't linked to a club member, so this vote was NOT counted. " +
-    'Votes are never guessed from usernames — vote on the club page instead, or link your ' +
-    'Discord account from the club page once linking is available.',
+    'Votes are never guessed from usernames — run **/link** to connect the two (it takes about ' +
+    'twenty seconds and you can unlink whenever you like), or vote on the club page instead.',
   votingOff:
     "Discord voting isn't switched on for this club, so this vote was NOT counted. " +
     "A club manager can enable it in the club's settings — until then, vote on the club page.",
@@ -329,7 +347,7 @@ export async function processPollVote(ctx: VoteContext): Promise<void> {
       sa,
       accessToken,
       'PATCH',
-      `${ref.clubCol}/${ref.clubId}/polls/${ref.pollId}/votes/${link.slug}` +
+      `${ref.clubCol}/${ref.clubId}/polls/${ref.pollId}/votes/${slugPathSegment(link.slug)}` +
         `?updateMask.fieldPaths=optionIndex&updateMask.fieldPaths=displayName`,
       { fields: voteDocFields(ref.optionIndex, link.displayName) },
     );

@@ -10,6 +10,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@platform/estate-auth": "*",
     "@platform/firebase-sa": "*",
     "hono": "^4.6.14"
   },

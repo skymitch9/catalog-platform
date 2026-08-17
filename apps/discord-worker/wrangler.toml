@@ -27,6 +27,20 @@ routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
 # Explicit, affirmative value — same idiom as the sibling Workers.
 ENVIRONMENT = "production"
 
+# The shared estate Firebase project. Added 2026-08-17 with the identity-link
+# ceremony: the canonical verifier (@platform/estate-auth) asserts this as
+# BOTH the issuer and the audience of every Firebase ID token it accepts.
+# ⚠️ Removing it does not make the check smaller, it makes it absent — any
+# Firebase project's tokens are validly signed by Google. Same value as
+# auth-worker / index-worker / audiobook-worker; a var, not a secret (it is a
+# project name, and it ships in every browser bundle already).
+FIREBASE_PROJECT_ID = "audiobook-catalog"
+
+# The estate break-glass addresses, mirroring auth-worker's var of the same
+# name. Read by exactly one thing: the gate on POST /admin/commands/register
+# (src/commands.ts). Everything else resolves authority from site_roles/{uid}.
+OWNER_EMAILS = "nbaslamking@gmail.com,mitchlandtv@gmail.com"
+
 # ⚠️ MODERATION KILL-SWITCH (owner order 2026-08-16: "disable her reacting to
 # any admin mod stuff for now until we get further along"). Nothing in the
 # Worker consumes this yet — no moderation feature exists — but it is
@@ -50,4 +64,20 @@ MODERATION_ENABLED = "off"
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT  (pipe the JSON file in —
 #     never paste it into a terminal line, never echo it; same value and
 #     custody as auth-worker's. See src/firebase-sa.ts)
+#   wrangler secret put DISCORD_CLIENT_SECRET     (portal → OAuth2 tab →
+#     Client Secret → Reset Secret. ⚠️ NOT SET AS OF 2026-08-17 — the one
+#     remaining owner click for the identity-link ceremony. A DIFFERENT
+#     credential from the bot token: it authenticates the APPLICATION during
+#     the OAuth2 `identify` code exchange and can mint no bot powers.
+#     The same portal tab needs the redirect URI
+#       https://discord.heygabi.ai/link/callback
+#     added under Redirects, or Discord refuses the round trip.
+#     ⚠️ SHIPS DARK until both exist: /link answers a worded "linking is not
+#     configured yet" page, /api/health reports
+#     configured.discord_client_secret = false and link_ready = false, and
+#     /link says so in the slash command's ephemeral reply. Nothing crashes
+#     and nothing pretends the gap is the visitor's fault — the same
+#     ships-dark idiom as MODERATION_ENABLED above.
+#     It also derives the HMAC key for the pending-link cookie, so rotating
+#     it invalidates in-flight link attempts and nothing else.)
 # Locally they live in .dev.vars (gitignored).

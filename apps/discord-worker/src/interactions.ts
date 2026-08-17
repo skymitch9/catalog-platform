@@ -26,6 +26,12 @@ export const ResponseType = {
 /** Message flag: visible only to the interacting user. */
 export const EPHEMERAL = 64;
 
+/** The identity-link ceremony's slash command. Named here rather than in
+ * commands.ts so the ROUTER owns the vocabulary and the registry imports it —
+ * a command that Discord could send but the router would not recognise is
+ * exactly the drift this one constant prevents. */
+export const LINK_COMMAND_NAME = 'link';
+
 export interface DiscordUser {
   id: string;
   username?: string;
@@ -50,6 +56,7 @@ export function interactionUser(i: Interaction): DiscordUser | null {
 
 export type RouterDecision =
   | { kind: 'pong' }
+  | { kind: 'link_command' }
   | { kind: 'unknown_command'; name: string }
   | {
       kind: 'poll_vote';
@@ -69,18 +76,23 @@ export function isInteraction(body: unknown): body is Interaction {
 /**
  * Decide what an already-signature-verified interaction is.
  *
- * Slash commands: the registry is deliberately empty in this build — the
- * router is the FOUNDATION for §2's option space ((b) /have, (c.2) /recent,
- * …), and an unregistered command gets a worded ephemeral answer rather
- * than Discord's bare "This interaction failed".
+ * Slash commands: the registry is `commands.ts`'s ESTATE_COMMANDS, and
+ * `/link` (phase 2 — the identity-link ceremony) is its first and currently
+ * only entry. The router remains the FOUNDATION for §2's option space
+ * ((b) /have, (c.2) /recent, …), and an UNregistered command still gets a
+ * worded ephemeral answer rather than Discord's bare "This interaction
+ * failed" — which is also what a stale, since-removed command gets.
  */
 export function routeInteraction(i: Interaction): RouterDecision {
   switch (i.type) {
     case InteractionType.PING:
       return { kind: 'pong' };
 
-    case InteractionType.APPLICATION_COMMAND:
-      return { kind: 'unknown_command', name: i.data?.name ?? 'unknown' };
+    case InteractionType.APPLICATION_COMMAND: {
+      const name = i.data?.name ?? 'unknown';
+      if (name === LINK_COMMAND_NAME) return { kind: 'link_command' };
+      return { kind: 'unknown_command', name };
+    }
 
     case InteractionType.MESSAGE_COMPONENT: {
       const customId = i.data?.custom_id ?? '';

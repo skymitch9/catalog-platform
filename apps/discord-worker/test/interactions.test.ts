@@ -15,6 +15,7 @@ import {
 } from '../src/interactions.js';
 import { buildPollCustomId } from '../src/poll-vote.js';
 import app from '../src/index.js';
+import { signedPost } from './helpers/signed-post.js';
 
 test('isInteraction: needs an object with a numeric type', () => {
   assert.ok(isInteraction({ type: 1 }));
@@ -105,46 +106,12 @@ test('ephemeralMessage: type 4 with the ephemeral flag', () => {
 // Full-request fallbacks — signed requests, worded answers
 // ---------------------------------------------------------------------------
 
-const toHex = (bytes: Uint8Array): string =>
-  Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-
-async function signedPost(bodyObj: unknown): Promise<{ res: Response }> {
-  const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
-    'sign',
-    'verify',
-  ])) as CryptoKeyPair;
-  const publicKeyHex = toHex(
-    new Uint8Array((await crypto.subtle.exportKey('raw', pair.publicKey)) as ArrayBuffer),
-  );
-  const body = JSON.stringify(bodyObj);
-  const ts = '1723800100';
-  const sig = toHex(
-    new Uint8Array(
-      await crypto.subtle.sign(
-        { name: 'Ed25519' },
-        pair.privateKey,
-        new TextEncoder().encode(ts + body),
-      ),
-    ),
-  );
-  const res = await app.request(
-    '/interactions',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-signature-ed25519': sig,
-        'x-signature-timestamp': ts,
-      },
-      body,
-    },
-    { DISCORD_PUBLIC_KEY: publicKeyHex }, // note: no FIREBASE_SERVICE_ACCOUNT
-  );
-  return { res };
-}
+// The signer lives in test/helpers/ — ONE implementation, shared with
+// link.test.ts. A second copy would eventually sign something subtly
+// different and prove the wrong thing while still passing.
 
 test('an unregistered slash command gets a worded ephemeral answer, not a bare failure', async () => {
-  const { res } = await signedPost({ type: 2, data: { name: 'have' } });
+  const res = await signedPost({ type: 2, data: { name: 'have' } });
   assert.equal(res.status, 200);
   const data = (await res.json()) as { type: number; data: { content: string; flags: number } };
   assert.equal(data.type, 4);
@@ -154,7 +121,7 @@ test('an unregistered slash command gets a worded ephemeral answer, not a bare f
 
 test('a vote click with the Firestore credential unset says so in words — vote NOT recorded, no network', async () => {
   const customId = buildPollCustomId({ clubCol: 'clubs', clubId: 'c1', pollId: 'p1', optionIndex: 0 });
-  const { res } = await signedPost({
+  const res = await signedPost({
     type: 3,
     token: 'tok',
     application_id: 'app',
@@ -184,6 +151,33 @@ test('health answers config-presence booleans and never values', async () => {
     discord_application_id: false,
     discord_bot_token: false,
     firebase_service_account: false,
+    // Added with phase 2. ⚠️ The honest `false` is the contract: it is how a
+    // ships-dark feature is VISIBLE from outside rather than inferred.
+    discord_client_secret: false,
+    firebase_project_id: false,
   });
   assert.ok(!JSON.stringify(data).includes('abc'));
+});
+
+test('health: link_ready is false unless BOTH halves of the ceremony are configured', async () => {
+  const read = async (env: Record<string, string>) => {
+    const res = await app.request('/api/health', {}, env);
+    return (await res.json()) as { link_ready: boolean };
+  };
+  assert.equal((await read({ DISCORD_PUBLIC_KEY: 'abc' })).link_ready, false);
+  // The application id alone is not enough — the client secret is the new one.
+  assert.equal(
+    (await read({ DISCORD_APPLICATION_ID: 'app', FIREBASE_PROJECT_ID: 'p' })).link_ready,
+    false,
+  );
+  assert.equal(
+    (
+      await read({
+        DISCORD_APPLICATION_ID: 'app',
+        DISCORD_CLIENT_SECRET: 'shh',
+        FIREBASE_PROJECT_ID: 'p',
+      })
+    ).link_ready,
+    true,
+  );
 });

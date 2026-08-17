@@ -10,11 +10,14 @@
  * the PING handshake, buttons, slash commands — to the one URL configured
  * in the Developer Portal; there is no gateway connection.
  *
- *   POST /interactions   Ed25519-verified; PING→PONG; router
- *   GET  /api/health     open; config-presence booleans, no values
+ *   POST /interactions               Ed25519-verified; PING→PONG; router
+ *   GET  /api/health                 open; config-presence booleans, no values
+ *   GET  /link, /link/callback       the identity-link ceremony (link.ts)
+ *   POST /link/confirm, /link/unlink  — mounted, not implemented here
+ *   POST /admin/commands/register    publish the slash-command registry
  *
- * ⚠️ NOT DEPLOYED, ON PURPOSE — nothing here is live until the owner
- * registers the Discord application and runs docs/access/discord-bot.md.
+ * LIVE since 2026-08-16 at discord.heygabi.ai; the runbook remains
+ * docs/access/discord-bot.md.
  */
 
 import { Hono } from 'hono';
@@ -28,6 +31,16 @@ import {
 } from './interactions.js';
 import { processPollVote } from './poll-vote.js';
 import { parseServiceAccount, type ServiceAccount } from './firebase-sa.js';
+import { linkConfigured, linkRoutes, LINK_MSG } from './link.js';
+import {
+  ESTATE_COMMANDS,
+  isOwnerEmail,
+  linkCommandMessage,
+  putGlobalCommands,
+  readLadderRole,
+  roleIsAdmin,
+} from './commands.js';
+import { resolveIdentity } from '@platform/estate-auth';
 
 const app = new Hono<AppBindings>();
 
@@ -39,15 +52,124 @@ app.get('/api/health', (c) =>
   c.json({
     ok: true,
     service: 'estate-discord',
-    features: ['interactions_endpoint', 'poll_vote_component'],
+    features: ['interactions_endpoint', 'poll_vote_component', 'identity_link'],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
       discord_application_id: Boolean(c.env.DISCORD_APPLICATION_ID),
       discord_bot_token: Boolean(c.env.DISCORD_BOT_TOKEN),
       firebase_service_account: Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+      // ⚠️ Reports FALSE until the owner sets it (docs/access/discord-bot.md
+      // §3 step 7). An honest false is the point of this row: it is how the
+      // ships-dark state is VISIBLE rather than inferred from a page nobody
+      // loaded. Not a value, not a prefix — a boolean, like every row here.
+      discord_client_secret: Boolean(c.env.DISCORD_CLIENT_SECRET),
+      firebase_project_id: Boolean(c.env.FIREBASE_PROJECT_ID),
     },
+    // The one derived answer: both halves present, so /link can actually run.
+    link_ready: linkConfigured(c.env) && Boolean(c.env.FIREBASE_PROJECT_ID),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// The identity-link ceremony (design §1.6, phase 2). Everything about it —
+// the OAuth trip, the two proofs, the write, the revoke, the pages — is in
+// link.ts; this file only wires it, per the estate's thin-entrypoint rule.
+// ---------------------------------------------------------------------------
+app.route('/', linkRoutes);
+
+// ---------------------------------------------------------------------------
+// POST /admin/commands/register — publish the slash-command registry to
+// Discord. Estate admin only; see commands.ts for why this is a route rather
+// than a script (the credentials live in the Worker and nowhere else).
+// ---------------------------------------------------------------------------
+app.post('/admin/commands/register', async (c) => {
+  let identity;
+  try {
+    identity = await resolveIdentity(c.req.raw, c.env);
+  } catch (err) {
+    console.error('command registration verifier misconfigured:', err instanceof Error ? err.message : err);
+    return c.json({ ok: false, message: LINK_MSG.misconfigured }, 503);
+  }
+  if (!identity || !identity.uid) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'You are not signed in to the estate, so nothing was published. Send a Firebase ID ' +
+          'token as `Authorization: Bearer <token>` from an estate admin account.',
+      },
+      401,
+    );
+  }
+
+  if (!isOwnerEmail(c.env, identity.email)) {
+    let role: string | null;
+    try {
+      role = await readLadderRole(c.env, identity.uid);
+    } catch (err) {
+      // An outage is NEVER reported as a permissions refusal.
+      console.error('ladder role read failed:', err instanceof Error ? err.message : err);
+      return c.json(
+        {
+          ok: false,
+          message:
+            'Your permissions could not be checked because the estate directory did not answer ' +
+            '(a service problem, NOT a permissions one). Nothing was published — try again shortly.',
+        },
+        502,
+      );
+    }
+    if (!roleIsAdmin(role)) {
+      return c.json(
+        {
+          ok: false,
+          message:
+            'Publishing GABI’s slash commands needs the estate `admin` role, and this account ' +
+            `holds ${role ?? 'no role'}. Ask an estate admin to run it, or to grant the role from ` +
+            'the audiobook site’s admin page.',
+        },
+        403,
+      );
+    }
+  }
+
+  const applicationId = c.env.DISCORD_APPLICATION_ID;
+  const botToken = c.env.DISCORD_BOT_TOKEN;
+  if (!applicationId || !botToken) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'The bot credentials needed to publish commands are not set on the Worker (a ' +
+          'configuration gap, NOT a permissions problem). Nothing was published — see ' +
+          'docs/access/discord-bot.md §2.',
+      },
+      503,
+    );
+  }
+
+  const result = await putGlobalCommands(applicationId, botToken, ESTATE_COMMANDS);
+  if (!result.ok) {
+    console.error('slash command registration failed:', result.status, result.detail);
+    return c.json(
+      {
+        ok: false,
+        message:
+          'Discord refused the command registration (a problem between the estate and Discord, ' +
+          'NOT a permissions problem with your account). Nothing was published — try again shortly.',
+        discord_status: result.status,
+      },
+      502,
+    );
+  }
+  return c.json({
+    ok: true,
+    message:
+      `Published ${result.count} global command(s). Global commands can take up to an hour to ` +
+      'appear the first time; updates show up almost immediately.',
+    commands: ESTATE_COMMANDS.map((cmd) => cmd.name),
+  });
+});
 
 // ---------------------------------------------------------------------------
 // The interactions endpoint. Order is load-bearing: config check → signature
@@ -92,6 +214,18 @@ app.post('/interactions', async (c) => {
   switch (decision.kind) {
     case 'pong':
       return c.json({ type: ResponseType.PONG });
+
+    case 'link_command':
+      // Ephemeral by design: a link ceremony is personal, and a
+      // channel-visible message would invite the wrong person to press it.
+      return c.json(
+        ephemeralMessage(
+          linkCommandMessage(
+            new URL(c.req.url).origin,
+            linkConfigured(c.env) && Boolean(c.env.FIREBASE_PROJECT_ID),
+          ),
+        ),
+      );
 
     case 'unknown_command':
       return c.json(
