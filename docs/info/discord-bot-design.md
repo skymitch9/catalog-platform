@@ -585,6 +585,13 @@ alone.** So the exact messages this build answers are the exact messages whose
 content still arrives. Every other message arrives blank, and `mentions.ts`
 treats blank as "not for her".
 
+> ⚠️ **SUPERSEDED IN SCOPE, NOT IN PRINCIPLE, 2026-08-17 — see §7.** The
+> continuity layer added two more of the SAME exception list (a reply to one of
+> her own regular messages with the ping left on, and a DM), which moved the
+> requested intents from **513 to 4609** (`+ DIRECT_MESSAGES`, 1 << 12,
+> unprivileged). `MESSAGE_CONTENT` is still never requested. Everything below in
+> §6 that says "@mention only" now reads "@mention, reply-with-ping, or DM".
+
 ⚠️ **NOT VERIFIED LIVE.** This is a documentation reading, not an observation —
 no message has been through the real gateway (§6.7). If Discord's exception list
 ever narrows, the symptom is GABI silently ignoring mentions, and the first
@@ -735,6 +742,128 @@ blast radius: the bot would receive the text of **every message in every channel
 it can see**, in every server it is in. That is a different privacy posture from
 anything the estate has agreed to, and it is a **decision for the owner**, not a
 config change. Phase A deliberately does not build toward it.
+
+---
+
+## 7. Conversation continuity — AS BUILT (2026-08-17)
+
+> The owner's ask, verbatim: *"I don't want to message GABI and then message her
+> again and she has no recollection."* Three approved layers — a rolling memory,
+> a continuation grammar, and clarifying-question components — plus the DM as a
+> zero-@ surface. Built and **still shipped OFF** behind the same `GABI_MENTIONS`
+> switch §6.5 describes.
+>
+> ⚠️ **The STORE SHAPE has its own doc**, because it is deliberately not
+> Discord's: [`gabi-conversation-continuity.md`](gabi-conversation-continuity.md).
+> The owner's constraint was *"whatever we build we need to consider for when we
+> update the chat button on GABI"*, so the record is designed for the library
+> site's panel to adopt, with Discord-specific fields fenced into one opaque bag.
+
+### 7.1 ⚠️ The four doors, and the one sentence that opens two of them
+
+Read 2026-08-17 from
+<https://docs.discord.com/developers/gateway/you-might-not-need-a-privileged-intent>,
+§*"Exceptions: when you get message content without the privileged intent"*:
+
+> - **Messages your app sends**
+> - **Direct Messages sent to your app**
+> - **Messages that @mention your app**
+> - **Replies to your app's messages.** Note: this applies to replies sent using
+>   Discord's reply feature to a regular bot message (not an interaction
+>   response) and the user has "ping on reply" enabled. It does not apply to
+>   replies to slash command responses.
+
+| Door | Trigger | Surface |
+|---|---|---|
+| `mention` | `<@GABI>` in the text **and** her id in `mentions` | `discord_channel` |
+| `reply` | a reply to one of **her own regular messages**, ping ON, proved by `referenced_message.author.id` | `discord_channel` |
+| `dm` | any message in a DM — **no mention needed or looked for** | `discord_dm` |
+| `component` | a press on a select menu / button she attached | either |
+
+⚠️ **THE HONEST LIMIT: a reply with the ping REMOVED is invisible to her.**
+Discord delivers no content and does not list her in `mentions`, so there is no
+event — she cannot know it happened and cannot apologise for it. Said plainly in
+[`../access/discord-bot.md`](../access/discord-bot.md), because the symptom ("I
+replied and she ignored me") is indistinguishable from a bug.
+
+⚠️ **Replying to a slash-command answer does not work either**, by Discord's own
+exclusion. This is why `replyToMessage()` must stay a *regular bot message*: a
+refactor answering mentions through an interaction webhook would make her deaf to
+follow-ups without touching a line that looks related.
+
+⚠️ **Bare text is STILL the deferred owner decision of §6.8.** All four doors are
+messages somebody deliberately addressed to her; none of them moves that line.
+
+### 7.2 Intents: 513 → 4609
+
+`GUILDS (1<<0) | GUILD_MESSAGES (1<<9) | DIRECT_MESSAGES (1<<12)` = **4609**.
+
+`DIRECT_MESSAGES` is **unprivileged** — Discord's privileged list is exactly
+`GUILD_PRESENCES`, `GUILD_MEMBERS`, `MESSAGE_CONTENT` — so no portal toggle, no
+verification, no review. That is precisely why it was available and bare text is
+not. `MESSAGE_CONTENT` (1<<15) is never set, asserted by its own test case.
+`DIRECT_MESSAGE_TYPING` (1<<14) is **not** requested: the owner asked for
+messages, not a typing indicator, and it would cost a `TYPING_START` per
+keystroke burst on an always-on object.
+
+### 7.3 The memory
+
+| | |
+|---|---|
+| Window | **30 minutes**, sliding |
+| Depth | **20 turns ≈ 10 exchanges** |
+| Per-turn clip | **600 characters** |
+| Key | `(surface, space, person)` — the CHANNEL, not the guild, and the user |
+| Home | the **gateway Durable Object's own storage**, `conv:` keys |
+| Aged out | **DELETED, not archived** — `pruneConversation()` returns `null` and the caller deletes |
+
+⚠️ **No second always-on object, no D1, no Firestore, no cron.** Each was ruled
+out for a named reason (`gabi-conversation-continuity.md` §3). The write budget:
+**one row write per ANSWERED turn**, which is already fused at
+`GLOBAL_TURNS_PER_DAY = 200` → **≤400 writes/day** on top of the heartbeat's
+~2,100, i.e. **≈2.5% of the free plan's 100,000/day**. Loads write nothing.
+⚠️ The per-frame-write defect §6.6 records is **not** reintroduced: the write is
+tied to an *answer*, which is the thing the daily cap already counts.
+
+### 7.4 Clarifying questions
+
+More than one book matched → a **string select** of up to 5 candidates plus a
+**button** opening a **modal** for free text. ⚠️ The trigger is **deterministic,
+not a model decision**, which is why the whole path is exercised by tests that
+supply **no Anthropic key**.
+
+Presses and submits arrive on the **already-live, Ed25519-verified
+`/interactions` endpoint** — no gateway, no new endpoint, no new credential.
+
+⚠️ **The `custom_id` carries a bare nonce and is NOT signed**, because it carries
+no authority: the conversation key is rebuilt from *who pressed and where*, both
+proved by Discord's signature, so a stranger's press resolves a different record
+and is answered "that has moved on". Contrast `moderation.ts`, whose confirm id
+**is** MAC'd — that one authorises a deletion.
+
+### 7.5 Accounting
+
+`gabi_turn` gained `via`, `history_turns` and `history_chars` beside the raw
+token counts, so continuity's share of the spend is **attributable rather than
+inferred**. ⚠️ The remembered text is never logged — only how much of it there
+was. A full window is ≈3k input tokens ≈ **0.3¢** at Haiku 4.5's rate.
+
+### 7.6 The allowlist grew from four to eight
+
+`recall_conversation` · `remember_conversation` · `offer_choice_components` ·
+`open_question_modal`, each pinned by the same test that pins the original four.
+⚠️ Still absent and unable to arrive quietly: any catalogue write, Firestore
+write, `change_log` row, timeout, message delete, role change or command
+registration.
+
+### 7.7 ⚠️ What was NOT verified
+
+§6.7 stands in full and is extended: no live gateway, no real message, reply, DM
+or press, no model call, and the content-exception list is a **documentation
+reading**. Additionally: the `DIRECT_MESSAGES` intent has never been sent in a
+real `IDENTIFY` (if it were privileged after all, the symptom is close code
+**4014**, already treated as fatal), and the Workers Paid upgrade is
+`docs/TODO.md`'s record rather than this build's measurement.
 
 ---
 

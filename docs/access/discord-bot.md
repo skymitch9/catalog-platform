@@ -696,6 +696,11 @@ Design: [`../info/discord-bot-design.md` §6](../info/discord-bot-design.md).
 Code: `src/mentions.ts`, `src/mention-flow.ts`, `src/gabi-chat.ts`,
 `src/gateway.ts`. Live at version `fa8140f6-da59-4f0d-b918-0f6a6f7777a7`.
 
+> ⚠️ **WIDENED 2026-08-17 by the continuity layer — read [§12](#12-she-remembers-the-continuity-layer-built-2026-08-17-off) too.**
+> She now also answers a **reply** to one of her own messages (ping left on) and
+> **any direct message**, and she **remembers the last half hour**. Everything
+> in §11 still applies; §12 adds what changed.
+
 ### 11.1 What a person gets
 
 They type, in any channel the bot can see:
@@ -833,3 +838,214 @@ and logged as `gabi_turn` lines visible in `wrangler tail`.
   and the reply rendering in a real client are all unproven.
 - **No model call has ever been made on this surface** — the cents figures are
   arithmetic over the published price table, not an invoice.
+
+---
+
+## 12. She remembers — the continuity layer (built 2026-08-17, OFF)
+
+Design: [`../info/discord-bot-design.md` §7](../info/discord-bot-design.md) and
+the store shape in
+[`../info/gabi-conversation-continuity.md`](../info/gabi-conversation-continuity.md).
+Code: `src/conversation.ts`, `src/conversation-flow.ts`, plus the same four
+files §11 lists.
+
+Owner's ask, verbatim: *"I don't want to message GABI and then message her again
+and she has no recollection."*
+
+⚠️ **It ships behind the SAME switch.** `GABI_MENTIONS` is still `"off"`, so none
+of this is live and §11.2's three steps are still the way to turn it on. There is
+no second switch to find.
+
+### 12.1 The four ways to reach her
+
+| You do this | She hears it |
+|---|---|
+| `@GABI …` in a channel | ✅ as before |
+| **Reply** to one of her messages, **ping left ON** | ✅ **new** |
+| Reply to one of her messages, **ping switched OFF** | ❌ **invisible — see 12.2** |
+| Reply to a `/have` or `/gabi` **slash-command answer** | ❌ **Discord excludes it — see 12.2** |
+| **Direct message** her — no `@` needed | ✅ **new** |
+| Press a button / menu she attached | ✅ **new** |
+| `heygabi …` bare text, no `@`, in a channel | ❌ still an owner decision (§11.1) |
+
+### 12.2 ⚠️ THE ONE THING TO TELL PEOPLE: keep the ping on when you reply
+
+Discord's own rule, quoted from
+<https://docs.discord.com/developers/gateway/you-might-not-need-a-privileged-intent>
+(read 2026-08-17), on what an app can read **without** the Message Content
+privileged intent:
+
+> **Replies to your app's messages.** Note: this applies to replies sent using
+> Discord's reply feature to a regular bot message (not an interaction response)
+> and the user has **"ping on reply" enabled**. It does not apply to replies to
+> slash command responses.
+
+So:
+
+- **Ping ON** (the default — the `@ON` toggle above the message box stays lit):
+  she gets your text and answers.
+- **Ping OFF**: Discord sends her **nothing at all**. Not a blank message — no
+  event. ⚠️ **She cannot know it happened**, so she cannot say "sorry, I missed
+  that". From your side it looks exactly like a bug, and from hers there is
+  nothing to look at.
+- **Replying to a slash-command answer** (`/have`, `/gabi`) never works, ping or
+  not. Discord excludes interaction responses explicitly. Use an `@` or a DM.
+
+If somebody reports "I replied and she ignored me", this is the first thing to
+check, and it is a client setting, not a deploy.
+
+### 12.3 What she remembers, and for how long
+
+| | |
+|---|---|
+| Window | **30 minutes** from the last thing said, sliding |
+| Depth | **last ~10 exchanges** (20 turns) |
+| Scope | per **person**, per **channel** — a DM is its own conversation |
+| Then | **deleted.** Not archived, not flagged expired — gone |
+
+⚠️ Two people talking to her in the same channel have **separate** memories, and
+the same person in two channels has two. Nothing bleeds.
+
+She **greets you by name on the first message only**. A second message in the
+same conversation gets a straight answer, and a DM is never greeted by ping —
+that is deliberate, not a lost greeting.
+
+### 12.4 When she does not know which book you meant
+
+A lookup matching several books now comes back with a **dropdown** of the
+closest few plus a **"None of these — let me type it"** button, which opens a
+small text box. Picking a row, or typing into the box, continues the **same**
+conversation.
+
+⚠️ **Anybody in the channel can physically click that menu**, because Discord
+components are public. Somebody who was not the asker gets a worded *"I can't
+pick that up — either that question was for whoever asked it, or the
+conversation has moved on"*. Nothing leaks and nothing is answered.
+
+⚠️ The menu **expires after 15 minutes**, sooner than the conversation itself: a
+dropdown sitting in a channel for hours describes a search nobody remembers
+running.
+
+### 12.5 ⚠️ The exact script to try once she is lit
+
+Do these **in order, in one channel**, then the DM. Every line is what to type;
+the italics are what should come back.
+
+1. **`@GABI do we have Mistborn?`**
+   → *"Hey @you — I looked on the estate's public shelf for **Mistborn**…"*,
+   posted **as a reply to your message**, and — if more than one Mistborn book
+   is catalogued — with a **dropdown** underneath.
+2. **Pick a row from the dropdown.**
+   → a new message naming **that** book. The dropdown's question is now answered,
+   and pressing it again says so.
+3. **Reply to her last message** (hit reply, **leave the ping on**) with
+   **`what else did they write?`**
+   → she answers **without** being asked who "they" is. ⚠️ **This is the whole
+   feature.** If she asks "who?", the memory is not working — check `wrangler
+   tail` for a `gabi_turn` line with `history_turns: 0`.
+4. **Reply again, ping ON: `and the first one — is it on audio?`**
+   → still in context, still no `@`.
+5. **Now reply with the ping switched OFF.**
+   → ⚠️ **nothing happens, and that is correct** (§12.2). This step exists so the
+   limitation is seen once deliberately rather than discovered later in
+   confusion.
+6. **Wait 31 minutes, then reply again (ping on): `what about that one?`**
+   → she does **not** know. The window closed and the record was deleted. Also
+   correct, also worth seeing once.
+7. **Open a DM with GABI and type `hi`** — no `@`, no command.
+   → she answers. ⚠️ If she does not, the `DIRECT_MESSAGES` intent did not take:
+   check `/api/health` reports `gabi_gateway_intents: 4609`, then re-POST
+   `/admin/gateway/start`.
+8. **In the DM: `do we have anything by Sanderson?`** then **`which of those is
+   shortest?`**
+   → the second answers in context, with no mention anywhere.
+
+Check afterwards with `npx wrangler tail estate-discord`: each answered turn
+logs one `gabi_turn` JSON line carrying `via` (`mention` / `reply` / `dm` /
+`component`), `history_turns` and `history_chars` beside the raw token counts.
+⚠️ It logs **how much** was remembered, never **what** — no message text reaches
+the log.
+
+### 12.6 What can be checked without Discord
+
+```bash
+curl -s https://discord.heygabi.ai/api/health | jq
+```
+
+| Row | Expected |
+|---|---|
+| `features` | contains `gabi_continuity` |
+| `gabi_mentions_trigger` | `at_mention_reply_or_dm` |
+| `gabi_gateway_intents` | **4609** (= GUILDS 1 + GUILD_MESSAGES 512 + DIRECT_MESSAGES 4096) |
+| `gabi_mentions_privileged_intent` | **false**, always |
+| `gabi_memory_window_minutes` | 30 |
+| `gabi_memory_max_exchanges` | 10 |
+| `gabi_memory_store` | `gateway_durable_object_storage` |
+| `gabi_mentions_enabled` | `false` until the owner flips it |
+
+⚠️ **`gabi_gateway_intents` must never contain 32768** (`1 << 15`,
+`MESSAGE_CONTENT`). `4609 & 32768 == 0`. If it ever does, somebody requested the
+privileged intent and that is a decision, not a bug fix.
+
+The **must-not-regress** check is unchanged and still the important one:
+
+```bash
+curl -s -o NUL -w "%{http_code}\n" -X POST https://discord.heygabi.ai/interactions \
+  -H "content-type: application/json" -d "{\"type\":1}"          # expect 401
+```
+
+⚠️ Use `-o NUL`, not `-o /dev/null` — see §7's gotcha about Git Bash returning
+exit 43 / status 000 on the latter.
+
+The gateway's own view, which now reports the memory too (estate admin bearer):
+
+```bash
+curl -s -X POST https://discord.heygabi.ai/admin/gateway/start \
+  -H "Authorization: Bearer $ID_TOKEN" | jq .gateway
+```
+
+`conversations_held` is a **count** — never a key, never a word anybody said.
+
+### 12.7 Cost, and why nothing new was added to the account
+
+⚠️ **No second Durable Object, no D1 binding, no Firestore collection, no cron.**
+The transcript lives in `conv:` rows inside the gateway object that already
+existed, precisely because §11.6 names a second always-on object as blocking.
+
+**One row write per answered turn**, and answered turns are already fused at 200
+a day estate-wide. Worst case **≤400 extra row writes/day** on top of the
+heartbeat's ~2,100 — about **2.5%** of the free plan's 100,000/day. Loads write
+nothing at all.
+
+⚠️ Model spend grows with the conversation, and that is the real cost: context
+tokens are charged **every** turn. It is bounded by the 20-turn × 600-character
+clip — a full window is ≈3k input tokens, roughly **0.3¢** at Haiku 4.5's rate —
+and it is **measured**, via `history_turns` / `history_chars` on every accounting
+line.
+
+⚠️ **The plan changed under this section.** `docs/TODO.md` records the owner
+upgrading to **Workers Paid on 2026-08-17**, which lifts the duration pressure
+§11.6 describes and raises the cron limit. That is the repo's dated record, not
+something this build measured, and nothing here was re-architected to spend the
+new headroom — the arithmetic above is deliberately priced against the tighter
+free-plan ceiling, because a bound proven under the stricter limit is still a
+bound.
+
+### 12.8 ⚠️ NOT VERIFIED LIVE
+
+§11.7 stands in full and is extended:
+
+- **No real reply, DM, button press or modal submit has ever been handled.** The
+  memory, the doors, the components and the modal are exercised only by tests.
+- **The content-exception list in §12.2 is a documentation READING, not an
+  observation.** If Discord's list narrows, the symptom is her silently ignoring
+  replies or DMs.
+- **The `DIRECT_MESSAGES` intent has never been sent in a real `IDENTIFY`.** If
+  it were privileged after all, the symptom is close code **4014**, which the
+  gateway already treats as fatal rather than retrying — she would go silent
+  loudly, not quietly.
+- **No model call has ever been made on this surface**, so no real
+  `history_turns` count has been observed and the cents figures remain
+  arithmetic over the published price table.
+- **The Workers Paid upgrade is `docs/TODO.md`'s record, not a measurement taken
+  here.**
