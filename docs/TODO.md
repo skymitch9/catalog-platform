@@ -15,6 +15,59 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## ☁️ WORKERS PAID UPGRADE — OWNER DOING (decided 2026-08-17)
+
+Owner: *"I'll update cloudflare to the $5 plan."* He upgrades in the
+dashboard. AFTER it's live: re-add the gateway's `[triggers]` cron backstop
+that the free 5-cron cap refused (see discord design §DO-cost note — today
+`POST /admin/gateway/start` is the only starter with no self-heal), and the
+~83%-of-free-DO-allowance pressure disappears.
+
+## 🧠 GABI CONVERSATION CONTINUITY (owner, 2026-08-17) — IN FLIGHT
+
+Owner: *"I don't want to message GABI and then message her again and she has
+no recollection"* + approved the three-layer design: rolling per-person
+memory (~10 turns / ~30-min sliding TTL, injected as model context), reply-
+with-ping and @mention continuation in channels, **DMs as the zero-@
+surface** (DM content is exempt from the Message Content intent — the
+privacy posture is unchanged), and **components for her clarifying
+questions** (buttons/selects for discrete choices, a modal for free text,
+all on the already-live interactions endpoint). ⚠️ Owner constraint:
+*"whatever we build we need to consider for when we update the chat button
+on GABI"* — the conversation-store shape must be documented as a shared
+design the site panel can adopt, not a Discord-only one-off.
+
+## 📚 GABI READS THE ESTATE DOCS (owner, 2026-08-17) — QUEUED, needs design
+
+Owner: *"let's make sure GABI can read all of our docs and stuff so she can
+even help me if needed for let's say I don't have a Claude code session
+open."* Shape to design before building: a docs snapshot (info/access/TODO/
+DONE across repos — ⚠️ audiobook_catalog's docs are LOCAL-ONLY/gitignored, so
+this needs a publish step, and docs/access content is sensitive) served
+through a **gated** GABI tool, readable only to owner/devops-class linked
+callers — never household-general. Credential VALUES never appear in docs by
+rule; names/runbooks still deserve the gate.
+
+## 🗃️ GABI CATALOG Q&A TOOLS (owner, 2026-08-17) — QUEUED behind continuity
+
+Owner: *"I want her to be able to access our db so she can smartly answer
+questions like who's the narrator of Way of Kings?"* Read-only tool calls
+against the catalogs' existing APIs/index (narrator, duration, series order,
+cross-catalog ownership), scoped by the asker's link + visibilities; the
+GABI_TOOL_NAMES allowlist idiom from the site panel carries over. Part of
+the full-application design (see gabi-discord-app-design doc, 2026-08-17).
+
+## 🔑 GABI WRITE-VERB PERMISSION LADDER — PENDING OWNER DECISION 2026-08-17
+
+Asked: *"what api permissions should she have? Can I dm her an isbn or a
+photo and she adds it to the catalog? What if I need her to do some club
+resets like change the admin to a book club?"* Proposed ladder (GABI holds
+NOTHING herself — she borrows the linked asker's role, verified by the
+destination site): T0 lookups (live) · T1 additive-with-undo auto-apply
+(add-by-ISBN/photo, blank fills) · T2 mutations propose→confirm-button ·
+T3 people/club changes restate→confirm, asker must hold the capability ·
+T4 never-from-Discord (estate grants, deploys, money, moderation-config).
+
 ## 🚪 DEV ACCESS in the estate (owner, 2026-08-17) — IN FLIGHT
 
 Owner's words: *"i need a way in the estate to manage dev access for ebook,
