@@ -1,7 +1,7 @@
 import type { RateLimiter } from './middleware/rate-limit.js';
 
 /** The consumer apps the directory knows. Adding one = a new secret + a row here. */
-export const CONSUMER_APPS = ['library', 'games', 'index'] as const;
+export const CONSUMER_APPS = ['library', 'games', 'index', 'audiobook'] as const;
 export type ConsumerApp = (typeof CONSUMER_APPS)[number];
 
 export interface Env {
@@ -80,6 +80,14 @@ export interface Env {
   ESTATE_APP_TOKEN_LIBRARY?: string;
   ESTATE_APP_TOKEN_GAMES?: string;
   ESTATE_APP_TOKEN_INDEX?: string;
+  /**
+   * The audiobook-worker's bearer (audiobook-auth-migration.md Phase 0) —
+   * the fourth consumer of the same /seen pattern. Declared here; the
+   * secret is minted and set at deploy time (`wrangler secret put
+   * ESTATE_APP_TOKEN_AUDIOBOOK` on BOTH this Worker and the
+   * audiobook-worker), never in this repo.
+   */
+  ESTATE_APP_TOKEN_AUDIOBOOK?: string;
 
   /**
    * The audiobook catalog's Firebase service-account JSON, whole — the
@@ -220,5 +228,7 @@ export function appTokenFor(env: Env, app: ConsumerApp): string | undefined {
       return env.ESTATE_APP_TOKEN_GAMES;
     case 'index':
       return env.ESTATE_APP_TOKEN_INDEX;
+    case 'audiobook':
+      return env.ESTATE_APP_TOKEN_AUDIOBOOK;
   }
 }

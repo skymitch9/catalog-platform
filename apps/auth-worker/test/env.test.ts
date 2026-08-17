@@ -36,9 +36,11 @@ test('appTokenFor maps each consumer to its own secret and nothing else', () => 
     ESTATE_APP_TOKEN_LIBRARY: 'lib',
     ESTATE_APP_TOKEN_GAMES: 'games',
     ESTATE_APP_TOKEN_INDEX: 'idx',
+    ESTATE_APP_TOKEN_AUDIOBOOK: 'ab',
   } as unknown as Env;
   assert.equal(appTokenFor(env, 'library'), 'lib');
   assert.equal(appTokenFor(env, 'games'), 'games');
   assert.equal(appTokenFor(env, 'index'), 'idx');
+  assert.equal(appTokenFor(env, 'audiobook'), 'ab');
   assert.equal(appTokenFor({} as unknown as Env, 'library'), undefined);
 });

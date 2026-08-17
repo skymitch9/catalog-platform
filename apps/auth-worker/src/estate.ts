@@ -150,7 +150,7 @@ estateRoutes.post('/estate/seen', async (c) => {
     // A missing secret is a configuration error, not an auth failure — say
     // which, so "wrong token" and "no token was ever set" cannot be confused.
     return c.json(
-      { error: 'app_tokens_unset', fix: 'wrangler secret put ESTATE_APP_TOKEN_LIBRARY (and _GAMES, _INDEX)' },
+      { error: 'app_tokens_unset', fix: 'wrangler secret put ESTATE_APP_TOKEN_LIBRARY (and _GAMES, _INDEX, _AUDIOBOOK)' },
       503,
     );
   }
