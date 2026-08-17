@@ -194,6 +194,19 @@ export interface EstateUserRow {
    * estate-page gate, never an app permission. Approvers implicitly qualify.
    */
   is_devops: number;
+  /**
+   * 0011: the per-person DEV-LANE grant (owner 2026-08-17, *"a way in the
+   * estate to manage dev access for ebook… also make devops always able to see
+   * dev envs"*). ⚠️ The STORED flag only — it means "granted by hand". The
+   * EFFECTIVE answer is `devAccessAllows()` (middleware/auth.ts), which ORs in
+   * `is_devops` / `is_approver` and requires `status = 'approved'`; never read
+   * this number on its own to decide anything.
+   *
+   * ⚠️ Curtain, not lock: it gates the /dev/ lane's UI. `vis_ebooks` (0008),
+   * enforced by apps/audiobook-worker on the manifest and stream APIs, remains
+   * the only thing standing between anyone and an ebook's bytes.
+   */
+  dev_access: number;
   origin: string;
   note: string | null;
   first_seen_at: string;

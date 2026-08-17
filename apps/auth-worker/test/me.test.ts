@@ -12,6 +12,10 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     status: 'pending',
     is_approver: 0,
     is_devops: 0,
+    // 0011's DB default: nobody holds the dev lane by hand until an approver
+    // grants it. A fixture starting at 1 would hide the devops-implies OR,
+    // which is the whole of what that migration is for.
+    dev_access: 0,
     origin: 'seen:library',
     note: null,
     first_seen_at: '2026-08-14 00:00:00',
@@ -37,6 +41,7 @@ test('meAnswer: not in the directory → status null, never an error shape', () 
     status: null,
     is_approver: false,
     is_devops: false,
+    dev_access: false,
     // The public slice — the same thing the anonymous internet sees (§4.5).
     visibility: ['audiobook'],
   });
@@ -47,6 +52,7 @@ test('meAnswer: pending → the public slice, whatever the stored flags say', ()
     status: 'pending',
     is_approver: false,
     is_devops: false,
+    dev_access: false,
     visibility: ['audiobook'],
   });
 });
@@ -56,6 +62,7 @@ test('meAnswer: approved → the stored set, narrowing included', () => {
     status: 'approved',
     is_approver: false,
     is_devops: false,
+    dev_access: false,
     visibility: ['audiobook', 'library', 'games'],
   });
   assert.deepEqual(
@@ -100,6 +107,7 @@ test('meAnswer: revoked → {} — revocation beats the public slice', () => {
     status: 'revoked',
     is_approver: false,
     is_devops: false,
+    dev_access: false,
     visibility: [],
   });
 });
@@ -120,6 +128,10 @@ test('meAnswer: OWNER_EMAILS break-glass wins over every table state (§4.3)', (
     status: 'approved',
     is_approver: true,
     is_devops: true,
+    // 0011 rides the break-glass too: an owner locked out of the dev lane by
+    // the directory being wrong about its own owner is the failure §4.3 exists
+    // to make impossible.
+    dev_access: true,
     visibility: ['audiobook', 'library', 'games', 'library2', 'ebooks'],
   };
   // No row at all — the empty-directory bootstrap.
@@ -182,7 +194,10 @@ test('⚠️ /me answers NOTHING about downloads — that is the ladder’s ques
   ]) {
     assert.deepEqual(
       Object.keys(answer).sort(),
-      ['is_approver', 'is_devops', 'status', 'visibility'],
+      // ⚠️ `dev_access` (0011) is NOT a download key — it is the /dev/ lane
+      // curtain's answer, and it gates no bytes. The assertion below still
+      // pins the absence of any download field on every branch.
+      ['dev_access', 'is_approver', 'is_devops', 'status', 'visibility'],
       'no download key on any branch, including the owner break-glass',
     );
   }

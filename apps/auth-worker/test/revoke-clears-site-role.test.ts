@@ -504,7 +504,7 @@ test('every outcome answers in a sentence, never a bare status code', async () =
 function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
   return {
     id: 1, email: 'someone@example.com', firebase_uid: 'uid-1', display_name: 'Someone',
-    status: 'approved', is_approver: 0, is_devops: 0, origin: 'seen:library', note: null,
+    status: 'approved', is_approver: 0, is_devops: 0, dev_access: 0, origin: 'seen:library', note: null,
     first_seen_at: '2026-08-14 00:00:00', decided_at: null, decided_by: null,
     vis_audiobook: 1, vis_library: 1, vis_games: 1, vis_library2: 0, vis_ebooks: 0, ...over,
   };
@@ -522,7 +522,7 @@ function routeDb(timeline: string[]) {
             first: async () => {
               if (/^\s*UPDATE estate_user/i.test(sql)) {
                 timeline.push(`d1:update:${String(args[0])}`);
-                return { ...target, status: String(args[0]), is_approver: 0, is_devops: 0 };
+                return { ...target, status: String(args[0]), is_approver: 0, is_devops: 0, dev_access: 0 };
               }
               if (/WHERE email = \?/.test(sql)) return actor;
               if (/WHERE id = \?/.test(sql)) return target;

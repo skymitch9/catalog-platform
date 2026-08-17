@@ -36,6 +36,7 @@ it just has nothing to show until you are signed in **and** hold the estate's
 | `scripts/publish_ebooks_manifest.py` | `audiobook_catalog` | The publisher (sync **step 5.8**). |
 | The shim | `audiobook_catalog/app/web/templates/ebooks.html` | The bookshelf, unchanged, fetching the gated endpoint with a bearer. |
 | `ebooks-door` | `apps/ebooks-door` | ⚠️ A dumb proxy for the pretty address. **Not the lock.** |
+| `dev_access` column | `apps/auth-worker/migrations/0011_dev_access.sql` | ⚠️ **A CURTAIN, NOT A LOCK** (owner 2026-08-17: *"manage dev access for ebook… make devops always able to see dev envs"*). Decides only whether the **`/dev/` lane's ebook pages draw themselves**. `vis_ebooks` above remains the only thing gating the manifest and the bytes, **on both lanes**, and must never be relaxed because someone holds this. Grammar: `docs/access/estate-auth.md` §10. |
 
 ## 3. Granting and revoking (UI first — the owner's standing rule)
 

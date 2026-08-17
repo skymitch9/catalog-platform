@@ -8,6 +8,9 @@
  *   POST /api/estate/users           manual pre-seed by email (origin 'manual')
  *   POST /api/estate/users/:id/status
  *   POST /api/estate/users/:id/approver
+ *   POST /api/estate/users/:id/devops       the estate devops capability (0003)
+ *   POST /api/estate/users/:id/dev-access   the /dev/ lane grant (0011) —
+ *                                    ⚠️ devops implies it; curtain, not lock
  *   POST /api/estate/users/:id/visibility   which catalogs the member may SEE (§4.5)
  *   GET/POST /api/estate/site-roles  audiobook site_roles federation (site-roles.ts)
  *   GET  /api/health                 open; counts, no emails
@@ -30,12 +33,13 @@ import {
   manualCreate,
   seenUpsert,
   setApprover,
+  setDevAccess,
   setDevops,
   setVisibility,
   statusCounts,
 } from './estate-db.js';
 import { meAnswer } from './me.js';
-import { requireApprover } from './middleware/auth.js';
+import { devAccessAllows, requireApprover } from './middleware/auth.js';
 import { clearSiteRoleOnRevocation, type RoleClearResult } from './site-roles.js';
 import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
 
@@ -106,6 +110,9 @@ const approverBodySchema = z.object({ is_approver: z.boolean() }).strict();
 
 const devopsBodySchema = z.object({ is_devops: z.boolean() }).strict();
 
+/** 0011 — the dev-lane grant. Same one-boolean shape as the two flips above. */
+const devAccessBodySchema = z.object({ dev_access: z.boolean() }).strict();
+
 /** POST /estate/users (manual pre-seed): lowercased, must look like an email. */
 const createBodySchema = z
   .object({
@@ -132,6 +139,29 @@ function userJson(row: EstateUserRow) {
     ...rest,
     is_approver: row.is_approver === 1,
     is_devops: row.is_devops === 1,
+    /*
+     * 0011 — dev-lane access, reported as BOTH halves on purpose, because the
+     * admin page needs to tell them apart and nothing else can:
+     *
+     *   dev_access            the STORED grant — "granted by hand". This is
+     *                         what the Give/Remove dev access button toggles
+     *                         and what the badge reports, exactly as
+     *                         `is_devops` above is the raw flag.
+     *   dev_access_effective  what a gate would honour — the owner's
+     *                         *"devops always able to see dev envs"* OR,
+     *                         computed by the one implementation
+     *                         (devAccessAllows). This is what a devops row
+     *                         shows as a FACT where the button would be.
+     *
+     * ⚠️ Two fields, ONE decision: the page must never OR them together
+     * itself. `isOwner` is false here deliberately — this list is the
+     * DIRECTORY's answer about a row, and the OWNER_EMAILS break-glass is a
+     * property of the caller's identity, not of a stored row; the page already
+     * reads the owner list separately (isOwnerEmail) and renders owner rank as
+     * a fact everywhere else it appears.
+     */
+    dev_access: row.dev_access === 1,
+    dev_access_effective: devAccessAllows(row, false),
     visibility: storedVisibility(row),
     /*
      * ⚠️ NO `download_ebooks` / `download_ebooks_granted` HERE. They existed
@@ -198,13 +228,25 @@ estateRoutes.post('/estate/seen', async (c) => {
   // it as-is: approved → stored; pending → {audiobook}; revoked → {}.
   const visibility = isOwner ? [...CATALOGS] : effectiveVisibility(status, row);
 
+  // 0011: dev-lane access, EFFECTIVE and already combined with status and with
+  // the owner break-glass — the same stance `visibility` takes on this answer,
+  // and for the same reason: a consumer applies it as-is and never recomputes
+  // the owner's *"devops always able to see dev envs"* rule for itself.
+  //
+  // ⚠️ CURTAIN, NOT LOCK, and this envelope is where that could most easily go
+  // wrong. A consumer may use this to decide whether to DRAW a dev surface. It
+  // must not be used to decide whether to serve an ebook manifest or a byte
+  // range — that is `visibility` containing `ebooks` (0008), which the
+  // audiobook Worker already enforces on both lanes.
+  const devAccess = devAccessAllows(row, isOwner);
+
   // ⚠️ NO `download_ebooks` on this answer. It rode here for one day
   // (2026-08-17) and was removed the same day: downloading an ebook is a rung
   // on the consuming site's own ladder now, not an estate fact (owner: *"use
   // roles we have… match library"*). `visibility` still carries `ebooks`, which
   // is the whole of what the estate decides about the shelf — seeing it, and
   // reading in the browser viewer.
-  return c.json({ status, visibility });
+  return c.json({ status, visibility, dev_access: devAccess });
 });
 
 // ---------------------------------------------------------------------------
@@ -437,6 +479,64 @@ estateRoutes.post('/estate/users/:id/devops', requireApprover(), async (c) => {
   const updated = await setDevops(c.env.DB, {
     id,
     isDevops: parsed.data.is_devops,
+    actorId: c.get('actor').id,
+  });
+  return c.json({ user: updated ? userJson(updated) : null });
+});
+
+// ---------------------------------------------------------------------------
+// POST /estate/users/:id/dev-access — flip the estate DEV-LANE grant (0011;
+// owner order 2026-08-17: *"i need a way in the estate to manage dev access for
+// ebook, add a button for give dev access also make devops always able to see
+// dev envs"*).
+//
+// ⚠️ Written in the /devops route's EXACT shape — approver-gated, one boolean,
+// same approve-first coherence rule, same stamped write — because it is the
+// same class of decision and a second idiom for it would be one more thing to
+// know. `requireApprover()` is the authorization, mirroring the devops flip
+// exactly: whoever may make someone devops may grant the dev lane, and nobody
+// else. (An APPROVED APPROVER, or OWNER_EMAILS — approverAllows(),
+// middleware/auth.ts. A revoked approver is refused by that gate's status
+// check, so a revoked person can neither grant this to themselves nor to
+// anyone else.)
+//
+// ⚠️ THIS ROUTE WRITES ONLY THE HAND-GRANTED FLAG. It never materializes the
+// devops implication: `dev_access = 0` on a devops row is the CORRECT state,
+// and the answer is still true. Granting it to a devops row is legal but
+// pointless, so the admin page draws no button there (it renders the fact) —
+// the estate's standing rule that a control which cannot change the outcome
+// must not be drawn.
+//
+// ⚠️ Curtain, not lock: what this unlocks is the /dev/ lane's UI. `vis_ebooks`
+// (0008) is still the only thing gating ebook bytes, on both lanes.
+// ---------------------------------------------------------------------------
+estateRoutes.post('/estate/users/:id/dev-access', requireApprover(), async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'bad_id' }, 400);
+
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = devAccessBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues.slice(0, 5) }, 400);
+  }
+
+  const existing = await getUserById(c.env.DB, id);
+  if (!existing) return c.json({ error: 'not_found', id }, 404);
+  if (existing.status !== 'approved' && parsed.data.dev_access) {
+    return c.json(
+      { error: 'not_approved', detail: 'Approve this person before granting dev access.' },
+      409,
+    );
+  }
+
+  const updated = await setDevAccess(c.env.DB, {
+    id,
+    devAccess: parsed.data.dev_access,
     actorId: c.get('actor').id,
   });
   return c.json({ user: updated ? userJson(updated) : null });

@@ -274,8 +274,8 @@ and, on the little tag that used to hang off the Audiobooks/Ebooks row:
 | Class | What it covers | The gesture |
 |---|---|---|
 | **GRANT** | every `visible` checkbox, every site's role dropdown — **all four sites, identically** | Touching it **stages** and writes nothing. The control is outlined (`.perm-staged`). A single **Save permissions** button **appears on that person's card** when anything in it changes, commits everything staged in that card, and reports in words. |
-| **STATUS** | Approve, Revoke, Make/Remove approver, Make/Remove devops | **Two taps** (`confirmBtn`, `assets/estate-controls.js`): first arms, second writes, disarms itself after 4s. |
-| **NOT A CONTROL** | owner rank, a rung above your grant power, a site with no account row yet, a Worker that did not answer | **Words that name the cause** (`.perm-owner` / `.perm-note` / `.perm-warn`). Never a disabled dropdown. |
+| **STATUS** | Approve, Revoke, Make/Remove approver, Make/Remove devops, **Give/Remove dev access** (0011, 2026-08-17 — §10) | **Two taps** (`confirmBtn`, `assets/estate-controls.js`): first arms, second writes, disarms itself after 4s. |
+| **NOT A CONTROL** | owner rank, a rung above your grant power, a site with no account row yet, a Worker that did not answer, **a capability held implicitly** (devops/approver already hold dev access) | **Words that name the cause** (`.perm-owner` / `.perm-note` / `.perm-warn`, sized by `.user-fact` when it stands in the actions row). Never a disabled dropdown, and never a button whose outcome it cannot change. |
 
 **A new control picks one of the two gestures. It does not invent a third.**
 
@@ -320,3 +320,64 @@ and, on the little tag that used to hang off the Audiobooks/Ebooks row:
   already named in `_headers` for both `/admin` and `/admin/`. Federating a
   role column needs the app row in `APPS` **and** the `connect-src` entry —
   shipping only the first looks exactly like the other site being down.
+
+## 10. ⚠️ DEV-LANE ACCESS — the `dev_access` flag (migration 0011, 2026-08-17)
+
+> Owner order, verbatim: *"i need a way in the estate to manage dev access for
+> ebook, add a button for give dev access also make devops always able to see
+> dev envs."* Built the same day. Companions: `migrations/0011_dev_access.sql`
+> (the full argument), `docs/access/ebooks-gate.md` (the real ebook lock, which
+> this is **not**).
+
+### 10.1 The grammar, in one table
+
+| Fact | Where it lives | Notes |
+|---|---|---|
+| `dev_access` column | `migrations/0011_dev_access.sql` | `INTEGER NOT NULL DEFAULT 0 CHECK (0,1)`. Means **"granted by hand"** and nothing else. |
+| The decision | `src/middleware/auth.ts` → `devAccessAllows(row, isOwner)` | The **one** implementation, sitting beside `approverAllows` / `devopsAllows` deliberately. |
+| The write | `src/estate-db.ts` → `setDevAccess()` | One column, stamped `decided_at` / `decided_by`. Touches nothing else. |
+| The route | `POST /api/estate/users/:id/dev-access` | Body `{ "dev_access": true \| false }`, `.strict()`. **`requireApprover()`** — the same authorization as the devops flip, mirrored exactly. `409 not_approved` when granting to a row that is not approved. |
+| The answers | `GET /api/estate/me` + `POST /api/estate/hello` → `dev_access` (**effective**) · `POST /api/estate/seen` → `dev_access` (**effective**) · `GET /api/estate/users` → `dev_access` (**stored**) **and** `dev_access_effective` | The admin listing carries both halves because only it needs to tell them apart; everyone else gets the effective answer and never re-derives. |
+| The UI | `sites/heygabi-home/public/admin/admin.js` | Two-tap **Give / Remove dev access** button + a `dev access` badge. §9's STATUS class — not a third gesture. |
+
+### 10.2 The rule: **devops ⇒ dev access, always** — computed, never stored
+
+```
+dev access = OWNER_EMAILS
+             OR (status = 'approved' AND (dev_access = 1 OR is_devops = 1 OR is_approver = 1))
+```
+
+- ⚠️ **The implication is never written into the row.** A devops person answers
+  `true` with `dev_access = 0`. Materialising it would mean removing devops
+  silently *kept* the dev grant — precisely the failure `0009`'s per-person
+  download column shipped and `0006` ("revoke clears powers") exists to prevent.
+- `is_approver` rides in for `0003`'s own reason: approvers hold every devops
+  surface implicitly and the estate has never fenced an approver out of one.
+- **Status gates it**, matching `devopsAllows()`. Revocation *also* clears the
+  stored flag (`decideStatus()` appends `dev_access = 0`) — two independent
+  barriers, as everywhere else here.
+- **On the page:** an owner row and a devops/approver row get a **worded fact**
+  where the button would be, never a button. A control that cannot change the
+  outcome is not drawn (§9.1, third class).
+
+### 10.3 ⚠️ CURTAIN, NOT LOCK — the distinction that decides how much this matters
+
+| | The curtain | The lock |
+|---|---|---|
+| What | `dev_access` (0011) | `vis_ebooks` (0008) |
+| Gates | the **dev UI**: whether the `/dev/` lane's ebook pages draw themselves or show a worded "this is the dev lane" panel | the **ebook manifest and byte stream** — `GET /api/ebooks/manifest` and the range-served files |
+| Enforced by | the page, client-side, for tidiness | `apps/audiobook-worker`, server-side, **on both lanes** |
+| If it were bypassed | someone sees a dev page they were not invited to | someone reads or takes a book |
+
+**Nothing in the auth Worker is gated on `dev_access`** — it is an *answer*, not
+a gate. A future build must not promote it into an enforcement path, and must
+never relax `vis_ebooks` on the grounds that "dev access covers it": the two
+answer different questions, and only one of them is standing between anyone and
+a file. `docs/access/ebooks-gate.md` remains the reference for the lock.
+
+### 10.4 Not verified by the build
+
+The `/dev/` lane's own curtain lives in **`audiobook_catalog`**, queued in that
+repo — this half only publishes the answer. Nothing consumes `dev_access` yet,
+so the field's *end use* is unexercised; what is exercised is the flag, the OR,
+the route's authorization and the button (`test/dev-access.test.ts`).

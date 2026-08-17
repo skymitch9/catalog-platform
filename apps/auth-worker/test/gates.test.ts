@@ -34,6 +34,7 @@ function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
     status: 'approved',
     is_approver: 0,
     is_devops: 0,
+    dev_access: 0, // the 0011 DB default — granted by hand, never by approval
     origin: 'seen:library',
     note: null,
     first_seen_at: '2026-08-14 00:00:00',

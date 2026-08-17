@@ -1,0 +1,60 @@
+-- estate_auth 0011 — `dev_access`, the estate's per-person DEV-LANE grant.
+--
+-- ⚠️ THE DIRECTIVE, verbatim (owner, 2026-08-17):
+--
+--     "i need a way in the estate to manage dev access for ebook, add a button
+--      for give dev access also make devops always able to see dev envs."
+--
+-- Two sentences, two halves, and the second one is why this column is not
+-- simply a sixth `vis_` flag:
+--
+--   1. a PER-PERSON grant, flipped from the /admin page by a button — the
+--      same category as `is_devops` (0003): an estate-level capability, not a
+--      catalog the person may see;
+--   2. **devops IMPLIES dev access, always** — an OR computed at read time,
+--      never a second row written into this column.
+--
+-- ⚠️ THE EFFECTIVE ANSWER IS A COMPUTED OR, NEVER THIS COLUMN ALONE. One
+-- implementation: `devAccessAllows()` in src/middleware/auth.ts, sitting
+-- deliberately beside `approverAllows()` / `devopsAllows()` because it is the
+-- same shape of question and the same failure mode if it drifts:
+--
+--     dev access = approved AND (dev_access = 1 OR is_devops = 1 OR is_approver = 1)
+--                  OR OWNER_EMAILS
+--
+-- `is_approver` rides in for the reason 0003's own gate gives: approvers hold
+-- every devops surface implicitly, and the estate has never fenced an approver
+-- out of a capability a devops holds. `status = 'approved'` is required for the
+-- same reason `devopsAllows()` requires it — a revoked person's leftover flag
+-- must not keep a door open.
+--
+-- ⚠️ THE IMPLICATION IS COMPUTED, NEVER STORED — this is 0009's lesson,
+-- applied before it could be repeated. Writing 1 into every devops row would
+-- make a devops REMOVAL silently keep the dev grant, which is precisely the
+-- failure 0006 ("revoke clears powers") exists to prevent. A row with
+-- dev_access = 1 therefore always means "this person was granted the dev lane
+-- BY HAND", which is the only thing worth storing.
+--
+-- ⚠️ DEFAULT 0. ADD COLUMN backfills every existing row with 0 and new rows
+-- default to 0, so nobody gains anything the moment this lands; the people who
+-- already hold devops (and every approver) gain it by the OR above, which is
+-- the owner's second sentence honoured without a single write.
+--
+-- ⚠️ REVOCATION CLEARS IT, like every other power (0006's rule, and
+-- `decideStatus()` in src/estate-db.ts now appends `dev_access = 0` to the same
+-- statement that clears `is_approver` / `is_devops`). Two independent barriers
+-- on purpose: the effective answer already refuses a non-approved row, and the
+-- stored flag is cleared anyway so a later re-approval restores MEMBERSHIP and
+-- never powers ("they need to reearn all rights", owner 2026-08-16). No
+-- backfill is needed here — every pre-existing row, revoked ones included,
+-- starts at 0 by construction.
+--
+-- ⚠️ CURTAIN, NOT LOCK — the distinction that decides how much this column is
+-- allowed to matter. What it gates is the DEV UI: the /dev/ lane's ebook pages
+-- deciding whether to draw themselves or to show a worded "this is the dev
+-- lane" curtain. It is NOT what keeps ebook bytes safe. The real lock on both
+-- lanes is unchanged and lives elsewhere: `vis_ebooks` (0008), enforced
+-- server-side by apps/audiobook-worker on the manifest and byte-stream APIs. A
+-- future build must never quietly promote this flag into the enforcement path,
+-- and must never relax `vis_ebooks` because "dev access covers it".
+ALTER TABLE estate_user ADD COLUMN dev_access INTEGER NOT NULL DEFAULT 0 CHECK (dev_access IN (0, 1));

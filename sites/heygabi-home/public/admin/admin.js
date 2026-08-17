@@ -112,7 +112,9 @@
  *      /visibility takes the WHOLE canonical set, not a delta, so a per-row
  *      Save would silently commit another row's staged boxes.
  *   2. STATUS-CLASS — Approve, Revoke, Make/Remove approver, Make/Remove
- *      devops. All two-tap (confirmBtn): first tap arms, second writes, and it
+ *      devops, Give/Remove dev access (0011, 2026-08-17 — it joined this class
+ *      rather than inventing a third gesture, which is the whole point of the
+ *      grammar). All two-tap (confirmBtn): first tap arms, second writes, and it
  *      disarms itself after 4s. ⚠️ Approve was one-tap until 2026-08-17. It
  *      changed not because approving got riskier but because "which buttons
  *      need two taps" was one more thing to know — and the standing owner
@@ -123,7 +125,10 @@
  *
  * Anything that is NOT a control is WORDED and says why: an owner's rank
  * (.perm-owner), a rung above your grant power or a site with no row for this
- * person yet (.perm-note), a site whose Worker did not answer (.perm-warn).
+ * person yet (.perm-note), a site whose Worker did not answer (.perm-warn),
+ * a capability held implicitly — devops/approver already see the dev
+ * environments, so their card states that instead of drawing a Give-dev-access
+ * button that could not change the answer (.user-fact + the same two classes).
  * Never a disabled dropdown — a greyed control reads as "something you could
  * enable", and there is nothing to enable.
  *
@@ -1704,6 +1709,20 @@ function userCard(u) {
     head.appendChild(dv);
   }
 
+  // Dev-lane access (0011, owner 2026-08-17: "a way in the estate to manage
+  // dev access for ebook"). ⚠️ Badged on `dev_access` — the row's own HAND
+  // GRANT — and deliberately NOT on `dev_access_effective`: a devops row would
+  // otherwise wear two badges saying the same thing, and the second one would
+  // vanish the moment devops was removed, reading as a grant that was taken
+  // away when nothing about this person's own grants changed. Same stance the
+  // devops badge above takes towards approvers.
+  if (u.dev_access) {
+    const da = document.createElement('span');
+    da.className = 'badge approved';
+    da.textContent = 'dev access';
+    head.appendChild(da);
+  }
+
   li.appendChild(head);
 
   const meta = document.createElement('p');
@@ -1775,6 +1794,60 @@ function userCard(u) {
             mutate(`/api/estate/users/${u.id}/devops`, { is_devops: false }))
         : confirmBtn('Make devops', 'quiet', () =>
             mutate(`/api/estate/users/${u.id}/devops`, { is_devops: true })));
+    }
+
+    // ── DEV-LANE ACCESS (0011, owner order 2026-08-17) ────────────────────
+    // *"i need a way in the estate to manage dev access for ebook, add a
+    // button for give dev access also make devops always able to see dev
+    // envs."* Both halves are here: the button, and the reason it is
+    // sometimes NOT a button.
+    //
+    // ⚠️ THREE CASES, AND ONLY ONE OF THEM IS A CONTROL — the page's standing
+    // rule that a control which cannot change the outcome must not be drawn
+    // (§9.1's third class: words that name the cause, never a disabled or
+    // no-op control):
+    //
+    //   owner              a FACT. OWNER_EMAILS forces the answer server-side
+    //                      and no button here could change it — the same
+    //                      treatment the permission grid gives owner rank.
+    //   devops / approver  a FACT. They hold the dev lane implicitly (the
+    //                      owner's "always"), computed server-side by
+    //                      devAccessAllows(), so flipping the stored flag
+    //                      would move a number and change nothing anyone can
+    //                      see. Exactly why no devops button is drawn for an
+    //                      approver two lines above.
+    //   everyone else      the two-tap button. STATUS-class, confirmBtn, the
+    //                      shared idiom from assets/estate-controls.js.
+    //
+    // ⚠️ `dev_access_effective` is READ, never re-derived. The Worker computes
+    // "devops implies dev access" in one place; a second copy of that rule
+    // living in this file is free to drift from the one that decides.
+    const devFact = (className, text, title) => {
+      const s = document.createElement('span');
+      s.className = `user-fact ${className}`;
+      s.textContent = text;
+      s.title = title;
+      return s;
+    };
+    if (isOwnerEmail(u)) {
+      actions.appendChild(devFact(
+        'perm-owner',
+        'dev access · owner, always',
+        'Owner — OWNER_EMAILS answers yes to every estate question, dev access included. Not changeable here.',
+      ));
+    } else if (u.is_approver || u.is_devops) {
+      actions.appendChild(devFact(
+        'perm-note',
+        u.is_devops ? 'dev access · via devops' : 'dev access · via approver',
+        'Devops and approvers see the dev environments implicitly (owner: "make devops always able to see dev envs"). '
+          + 'Nothing to grant — remove devops and the dev access goes with it.',
+      ));
+    } else {
+      actions.appendChild(u.dev_access
+        ? confirmBtn('Remove dev access', 'quiet', () =>
+            mutate(`/api/estate/users/${u.id}/dev-access`, { dev_access: false }))
+        : confirmBtn('Give dev access', 'quiet', () =>
+            mutate(`/api/estate/users/${u.id}/dev-access`, { dev_access: true })));
     }
   }
 

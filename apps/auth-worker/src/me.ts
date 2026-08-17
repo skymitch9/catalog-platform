@@ -16,6 +16,10 @@
  */
 
 import type { EstateUserRow } from './env.js';
+// ⚠️ The dev-access OR is imported, never re-written here. One implementation
+// of a capability decision (0011's header); middleware/auth.ts is where the
+// estate's three predicates live side by side so none of them can drift.
+import { devAccessAllows } from './middleware/auth.js';
 import type { Catalog } from './visibility.js';
 import { CATALOGS, PUBLIC_CATALOGS, effectiveVisibility } from './visibility.js';
 
@@ -30,6 +34,25 @@ export interface MeAnswer {
    * front door's Admin card — never re-derive the implication and drift.
    */
   is_devops: boolean;
+  /**
+   * DEV-LANE ACCESS (0011, owner 2026-08-17) — the EFFECTIVE answer, computed
+   * by the ONE implementation, `devAccessAllows()` in middleware/auth.ts:
+   * `approved AND (dev_access OR is_devops OR is_approver)`, or OWNER_EMAILS.
+   * Reported effective for the same reason `is_devops` is: a browser consumer
+   * that re-derived *"devops implies dev access"* locally would be a second
+   * implementation of the owner's rule, free to drift.
+   *
+   * ⚠️ Note it is STATUS-GATED where `is_devops` above is not. That is not an
+   * oversight in either direction: this field answers what a GATE would honour
+   * (devopsAllows()'s stance), which is the only useful thing to tell a page
+   * deciding whether to draw itself.
+   *
+   * ⚠️ CURTAIN, NOT LOCK. The /dev/ lane's ebook pages read this to decide
+   * between drawing themselves and drawing a worded curtain. The bytes stay
+   * locked by `vis_ebooks` on the audiobook Worker's manifest/stream APIs, on
+   * both lanes — a `true` here has never opened a file and must never start.
+   */
+  dev_access: boolean;
   visibility: Catalog[];
   /*
    * ⚠️ NO `download_ebooks` FIELD, and no `downloadEbooks()` function beneath
@@ -59,6 +82,7 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
       status: 'approved',
       is_approver: true,
       is_devops: true,
+      dev_access: devAccessAllows(row, true),
       visibility: [...CATALOGS],
     };
   }
@@ -67,6 +91,7 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
       status: null,
       is_approver: false,
       is_devops: false,
+      dev_access: devAccessAllows(null, false),
       visibility: [...PUBLIC_CATALOGS],
     };
   }
@@ -76,6 +101,7 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
     // the same flag, so /me reports exactly what the admin gate would honour.
     is_approver: row.is_approver === 1,
     is_devops: row.is_devops === 1 || row.is_approver === 1,
+    dev_access: devAccessAllows(row, false),
     visibility: effectiveVisibility(row.status, row),
   };
 }

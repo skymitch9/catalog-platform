@@ -17,7 +17,8 @@ export function normalizeEmail(email: string): string {
 }
 
 const COLS =
-  'id, email, firebase_uid, display_name, status, is_approver, is_devops, origin, note, first_seen_at, decided_at, decided_by, ' +
+  'id, email, firebase_uid, display_name, status, is_approver, is_devops, dev_access, ' +
+  'origin, note, first_seen_at, decided_at, decided_by, ' +
   // ⚠️ `dl_ebooks` (0009) is deliberately NOT selected — the column survives in
   // D1 but nothing reads it since the 2026-08-17 role-floor rework (0010's
   // header carries the owner's words). Adding it back to this list is the first
@@ -129,7 +130,14 @@ export async function decideStatus(
   // cannot be cleared in this statement. D1 is the gate that actually admits
   // people, so it is cleared FIRST and does not depend on the Firestore half
   // landing; the route follows up separately and logs either way.
-  const clearPowers = input.status === 'revoked' ? ', is_approver = 0, is_devops = 0' : '';
+  //
+  // ⚠️ `dev_access` (0011) JOINED THE LIST THE DAY IT WAS BORN, deliberately —
+  // a power added after this rule existed and not swept up by it is exactly
+  // how the rule rots. The effective answer (devAccessAllows) already refuses
+  // a non-approved row, so this is the second of the two barriers the note
+  // above insists on, not the only one.
+  const clearPowers =
+    input.status === 'revoked' ? ', is_approver = 0, is_devops = 0, dev_access = 0' : '';
 
   if (input.visibility) {
     const f = visibilityToFlags(input.visibility);
@@ -250,6 +258,33 @@ export async function setDevops(
        RETURNING ${COLS}`,
     )
     .bind(input.isDevops ? 1 : 0, input.actorId, input.id)
+    .first<EstateUserRow>();
+  return row ?? null;
+}
+
+/**
+ * Flip `dev_access` (0011, owner order 2026-08-17) — the per-person dev-lane
+ * grant, in setDevops()'s exact mold: stamped, reconstructible, granted from
+ * the /admin UI and nowhere else routine.
+ *
+ * ⚠️ This writes ONLY the hand-granted flag. It must never be called to
+ * "materialize" the devops implication into a row: that OR is computed at read
+ * time by devAccessAllows(), so removing devops removes the implied grant in
+ * the same act. A stored copy would outlive the thing that justified it —
+ * 0009's exact mistake, and 0011's header says so at length.
+ */
+export async function setDevAccess(
+  db: D1Database,
+  input: { id: number; devAccess: boolean; actorId: number },
+): Promise<EstateUserRow | null> {
+  const row = await db
+    .prepare(
+      `UPDATE estate_user
+       SET dev_access = ?, decided_at = datetime('now'), decided_by = ?
+       WHERE id = ?
+       RETURNING ${COLS}`,
+    )
+    .bind(input.devAccess ? 1 : 0, input.actorId, input.id)
     .first<EstateUserRow>();
   return row ?? null;
 }

@@ -65,6 +65,36 @@ export function devopsAllows(row: EstateUserRow | null, isOwner: boolean): boole
   return row?.status === 'approved' && (row.is_devops === 1 || row.is_approver === 1);
 }
 
+/**
+ * DEV-LANE ACCESS (0011, owner 2026-08-17: *"a way in the estate to manage dev
+ * access for ebook, add a button for give dev access also make devops always
+ * able to see dev envs"*). The third predicate, deliberately written here
+ * rather than in me.ts or estate.ts, because the header above is the whole
+ * argument: a capability decision that is not in this file has already
+ * drifted from the two beside it.
+ *
+ * ⚠️ THE OR IS THE OWNER'S SECOND SENTENCE, COMPUTED AND NEVER STORED. A
+ * devops row answers `true` with `dev_access = 0`, so removing devops removes
+ * the implied dev access in the same act — the failure mode 0009's per-person
+ * download grant had, and 0006 ("revoke clears powers") exists to prevent.
+ * `is_approver` rides in for 0003's own reason: approvers hold every devops
+ * surface implicitly and are never fenced out of one.
+ *
+ * ⚠️ `status === 'approved'` is required, matching devopsAllows() — a revoked
+ * person's leftover flag must not keep a door open. (decideStatus() clears the
+ * stored flag at revocation too; two independent barriers, as ever.)
+ *
+ * ⚠️ CURTAIN, NOT LOCK. Nothing in THIS Worker is gated on this predicate —
+ * it is an ANSWER (/me, /seen, the admin listing), consumed by the /dev/ lane's
+ * pages to decide whether to draw themselves or a worded curtain. The ebook
+ * bytes are locked by `vis_ebooks` (0008) in apps/audiobook-worker, on both
+ * lanes, and must stay that way.
+ */
+export function devAccessAllows(row: EstateUserRow | null, isOwner: boolean): boolean {
+  if (isOwner) return true;
+  return row?.status === 'approved' && (row.dev_access === 1 || devopsAllows(row, false));
+}
+
 export function requireDevops(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     let identity;
