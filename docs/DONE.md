@@ -13,6 +13,170 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🤖 GABI moderation — `/timeout` + `/cleanup` — ✅ BUILT + DEPLOYED 2026-08-17 (SHIPS DARK, and UNPUBLISHED)
+
+*(Moved whole from `TODO.md` §0's queue, item 2: "**Moderation features** —
+SCOPE DECIDED by the owner 2026-08-16: **timeouts and message cleanup**,
+nothing else (no auto-responses, no scheduled sweeps — not declined forever,
+just not in scope now). Design doc still comes first, but it designs exactly
+these two: `/timeout <user> <duration> [reason]` — invokable only by members
+who hold Discord mod permissions THEMSELVES (mirror the caller's authority,
+never let the bot amplify a non-mod), worded confirmations, audit line.
+`/cleanup <count|user|contains>` — bulk delete with rails: hard cap per
+invocation, Discord's own 14-day bulk-delete API limit surfaced in words (not
+a silent partial), preview-then-confirm for anything big. Also from the same
+conversation: Interactions Endpoint URL is SAVED (Discord's probe passed at
+save time) — the endpoint is verified live. ⚠️ **KILL-SWITCH CONTRACT (owner
+order, same evening):** moderation ships DARK. `MODERATION_ENABLED = "off"` is
+already declared in wrangler.toml; every moderation code path MUST check it and
+answer a worded 'switched off' ephemeral until the owner flips it — the flip is
+his evidence-gated step (shadow-first idiom), never part of a deploy. The bot's
+mod-bundle server permissions stay granted but unconsumed; if the owner wants
+zero latent risk meanwhile, removing them from GABI's server role is one toggle
+and re-granting later is the same toggle.")*
+
+**Shipped:** version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab` at
+`discord.heygabi.ai`; commit `b9d10d3`. `src/moderation.ts` (decisions),
+`src/mod-actions.ts` (flows). Tests 104 → 161. Runbook:
+`access/discord-bot.md` §9.
+
+**The kill-switch contract, honoured literally.** `MODERATION_ENABLED` is read
+affirmatively — `"on"` and nothing else, so `"true"`, `"1"`, `"yes"` and every
+typo fail CLOSED, pinned by a test that names each. The check is **first** on
+every path, before permissions, before parsing, before any I/O, so a
+switched-off bot performs no network call and reveals nothing about who holds
+what permission. Each flow re-checks it a second time, deliberately
+redundantly: a moderation path guarded by exactly one gate is one refactor away
+from being guarded by none.
+
+**Mirroring the caller, never amplifying them.** `/timeout` requires the CALLER
+to hold `MODERATE_MEMBERS` and `/cleanup` requires `MANAGE_MESSAGES`, read from
+the interaction payload's own `member.permissions` (Discord's computed value,
+already proven authentic by the Ed25519 signature). `ADMINISTRATOR` implies
+both. Every refusal NAMES the permission; a DM is answered as "that only works
+in a server", which is a different problem from a permissions refusal and is
+worded as one.
+
+**The decisions worth keeping:**
+
+- ⚠️ **REGISTRATION IS A FUNCTION OF THE SWITCH.** While moderation is off, the
+  two commands are not published to Discord at all — `commandsFor(env)` returns
+  `/link` + `/have` only. Both idioms were defensible and the reasoning is
+  recorded in `commands.ts`: `/link` being visible-but-off costs a curious
+  person twenty seconds, whereas a visible `/timeout` costs a moderator the
+  seconds of an actual incident, and advertises in **every** server GABI is
+  invited to (commands are global) a capability the estate deliberately has not
+  switched on. The handlers still answer the switched-off ephemeral if an
+  interaction arrives, so the contract holds at RUNTIME regardless of what is
+  published — which is what makes hiding safe rather than merely quiet.
+  **Consequence:** the flip has a documented SECOND step, re-running
+  `POST /admin/commands/register`.
+- **The confirm button is signed, short-lived and bound.** `/cleanup` previews
+  first; the confirm's `custom_id` carries an expiry (2 minutes) and a
+  truncated HMAC keyed off the bot token under its own label. The **invoker and
+  the channel are associated data** — signed but never transmitted, recomputed
+  at press time — which binds "this person, this channel" for free and is what
+  keeps the id inside Discord's 100-character ceiling. The confirm **re-reads
+  the channel live** rather than trusting a remembered list: two minutes of
+  chat may have moved things, and deleting a remembered list would delete
+  messages nobody previewed.
+- ⚠️ **A real bug the tests caught, and it would have hit exactly one group of
+  people.** The `contains` cap was written in CHARACTERS while the custom_id
+  carries base64 of BYTES: a 32-character accented filter produced a
+  **115-character** custom_id — 15 over Discord's ceiling, i.e. a confirm
+  button that would simply not have rendered, for exactly the users whose
+  language uses accents. Now capped at 32 UTF-8 **bytes**, refused in words
+  (never truncated — truncation would delete a different set than the preview
+  showed), and pinned by a worst-case test.
+- **Rails:** a hard cap of **50** messages per run (deliberately half Discord's
+  own bulk ceiling — a mis-typed cleanup cannot be undone and nothing about
+  tidying is urgent), refused in words rather than clamped; Discord's **14-day**
+  bulk-delete limit surfaced as a named leftover, never a silent partial; pins
+  never deleted; an unreadable timestamp lands on the SAFE side of the 14-day
+  line; a preview with nothing to delete gets **no button at all**.
+- **Audit:** `discord_mod_audit`, a top-level collection the Worker owns
+  outright — no `firestore.rules` grant exists and the file has no catch-all,
+  so browsers are denied by default and the service account bypasses (the same
+  posture as `discord_poll_messages`). Pinned by a contract test on the field
+  shape and the doc id. ⚠️ Switched-off answers and permission refusals are
+  **not** audited: nothing happened, and auditing them would let any member of
+  any server fill an estate collection by spamming a command.
+- **Discord's own audit log gets a reason header** on every action, so a server
+  admin sees "GABI timed out X — spam, by @mod" rather than an unexplained bot
+  action.
+
+⚠️ **NOT VERIFIED LIVE, and cannot be while the switch is off:** no timeout, no
+message read and no deletion has ever been executed against Discord. Every
+Discord call in the moderation path is written, typed and unit-tested against
+injected dependencies, and has never run. The first real invocation will be the
+first test of role-hierarchy 403s, of the bulk-delete endpoint, and of the
+audit write.
+
+## 🤖 GABI `/have` — "is this book on the estate's shelves?" — ✅ BUILT + DEPLOYED 2026-08-17
+
+*(Moved whole from `TODO.md` §0's queue, item 1: "**More slash commands** —
+`/link` is registered by `POST /admin/commands/register`
+(`access/discord-bot.md` §4); the next is `/have`, anonymous audiobook-scope
+default per design §4 decision 4. Add it to `ESTATE_COMMANDS` and re-run the
+same route.")*
+
+**Shipped:** version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab` at
+`discord.heygabi.ai`; commit `b9d10d3`. `src/have.ts`. Runbook:
+`access/discord-bot.md` §9. ⚠️ **Not yet visible in Discord** — publishing is
+§4's admin-gated route and needs an estate admin's Firebase ID token, which no
+agent holds.
+
+**What it answers.** A worded, **ephemeral** reply listing the works that match
+a title/author/series query — title, creator, every format found (audiobook,
+ebook), and a detail link each — or a clean no-match. Deferred inside Discord's
+3-second window and answered under the 15-minute interaction token, per design
+§1.7's "build the deferred path from day one".
+
+**The scope line, which IS the design (§4 decision 4):**
+
+- ⚠️ **The call to `index.heygabi.ai/api/search` carries NO Authorization
+  header, and that absence is the decision** — an anonymous caller gets the
+  `{audiobook}` slice by the index's own §4.5 rule, which is exactly what
+  decision 4 specifies. So the default path needs no credential, and there is
+  none here to leak, misuse or accidentally widen. A test asserts the header is
+  absent, because this is precisely the thing a well-meaning refactor "fixes".
+- **`source=audiobook` is sent anyway, and it is not redundant.** It can only
+  NARROW (index `search-route.ts`), so it costs nothing today — but if the
+  index's anonymous default were ever widened, `/have` would not widen with it.
+  The scope is stated by the command, in one place, not inherited.
+
+⚠️ **The wider scope for linked members is NOT shipped, because it does not
+exist to ship.** Measured 2026-08-17 by reading the code, not the design:
+
+1. `index-worker/src/middleware/scope.ts` resolves scope from
+   `resolveIdentity()` — a **Firebase ID token and nothing else**. There is no
+   app-token path, no on-behalf-of header, no server-to-server widening on
+   `/api/search` at all.
+2. This Worker cannot mint such a token: Discord's OAuth does not produce one,
+   and `firebase-sa.ts` here is deliberately scoped to `datastore` only (a
+   recorded credential decision — it does not carry identitytoolkit).
+3. Even holding a `/seen` answer — which would need a NEW app-token pair,
+   `ESTATE_APP_TOKEN_DISCORD`, minted on auth-worker AND here — there is
+   nothing on the index to hand it to.
+
+So a linked member gets the same public slice plus **one honest sentence** that
+names what the wider shelves wait on ("the index only widens for a caller
+holding a Firebase sign-in, which Discord cannot produce — estate
+infrastructure, not a permission you are missing"). Shipping a minted-secret
+name for a path with no receiving end would have been theatre, not dark
+shipping. **Making it real is two pieces of new estate surface**, and both are
+privilege-increasing decisions for the owner, not an agent: the app-token pair,
+and an index capability that accepts an app token plus a subject.
+
+**The wording rules, pinned by tests:**
+
+- ⚠️ **Never "you don't own it".** A catalogue is not an inventory — ~100 books
+  are unscanned at any time — so a no-match says the *catalogue* has nothing
+  close and says outright that an unscanned book looks exactly like this.
+- An outage is never dressed as an answer about the book: "a service problem on
+  the estate side, NOT an answer about the book."
+- More matches than fit are **counted and stated**, never silently dropped.
+
 ## 🤖 GABI phase 3 — bot-posted poll messages with vote buttons — ✅ BUILT + DEPLOYED 2026-08-17 (SHIPS DARK)
 
 *(Moved whole from `TODO.md` §0's queue, item 1: "**Phase 3 — bot-posted poll

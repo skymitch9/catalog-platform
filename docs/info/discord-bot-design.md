@@ -294,6 +294,31 @@ would let any stranger in any server the bot is ever invited to see the
 private catalogs, which is exactly the "wider than anonymous scope" case the
 brief asked to be a deliberate, called-out decision rather than a default.
 
+**BUILT 2026-08-17** — `apps/discord-worker/src/have.ts`, live at
+`discord.heygabi.ai` (version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab`).
+Operational detail: [`../access/discord-bot.md`](../access/discord-bot.md) §9.
+⚠️ Not yet *visible*: publishing the command is §4's admin-gated route.
+
+**Shape 1 shipped exactly as recommended, and the implementation is an
+ABSENCE:** the call to `/api/search` carries no `Authorization` header at all,
+so the index's own §4.5 rule resolves it to `{audiobook}`. There is no
+credential in this path to leak or widen. `source=audiobook` is sent as well —
+narrowing-only, so it costs nothing today and means `/have` would not widen if
+the index's anonymous default ever did.
+
+⚠️ **Shape 2 was NOT built, because it cannot be built from here yet — and the
+reason corrects this section.** Measured 2026-08-17 by reading the code: the
+index resolves scope from `resolveIdentity()`, i.e. **a Firebase ID token and
+nothing else** (`index-worker/src/middleware/scope.ts`). This section's shape 2
+assumed that fetching a `/seen` answer with an app-token would be enough — it
+is not. Even holding the visibility set, **there is nothing on `/api/search` to
+hand it to**: no app-token path, no on-behalf-of header, no server-to-server
+widening exists. Shape 2 therefore needs TWO new pieces of estate surface, not
+one: an `ESTATE_APP_TOKEN_DISCORD` pair, **and** an index capability that
+accepts an app token plus a subject. Both widen access, so both are the owner's
+deliberate call. Meanwhile a linked member gets the public slice plus one
+sentence saying so.
+
 ### (c) Posting what books the owner has — browse/showcase
 
 **What:** three related surfaces, sized separately because they have

@@ -3,25 +3,34 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
 > Last verified: **2026-08-17** — LIVE at `discord.heygabi.ai`, version
-> `b64be346-876c-4cf0-8365-137afee3536a` (**phase 3**, bot-posted poll
-> messages). Application **GABI** (id `1538775435880562758`). Measured live
-> this deploy: `/api/health` `ok: true`; the four original `configured`
-> booleans `true`; `poll_sync_token` **`false`** and `poll_sync_ready`
-> **`false`** (honest — phase 3 ships dark, §8); `discord_client_secret`
-> **`false`** and `link_ready` **`false`** (honest — the link ceremony ships
-> dark, §3 step 7); `POST /polls/sync` answering **503 with the worded
-> not-configured body** both unsigned and with a bearer token;
+> `ad35e796-ffd6-44a8-b15e-83bc75bf97ab` (**`/have`** + the **moderation pair,
+> dark**, §9). Application **GABI** (id `1538775435880562758`). Measured live
+> this deploy: `/api/health` `ok: true`; `discord_public_key`,
+> `discord_application_id`, `discord_bot_token`, `firebase_service_account`,
+> `firebase_project_id` and **`poll_sync_token` all `true`**, with
+> `poll_sync_ready: true` (the token has been set since §8 was written — ⚠️
+> **not verified** is whether the pipeline's `.env` holds the same value);
+> `discord_client_secret` **`false`** and `link_ready` **`false`** (honest —
+> the link ceremony still ships dark, §3 step 7); **`moderation_enabled:
+> false`** and `have_scope: "audiobook"` (both new, both honest);
+> `POST /polls/sync` answering **401 with its worded body** unauthenticated;
 > `/interactions` still answering **401 `missing_signature_headers`** to an
-> unsigned POST — the endpoint is intact.
+> unsigned POST and to a bad signature — the endpoint is intact.
 > **Remaining steps: §3 step 7** (owner: client secret + redirect URI + the
-> Firebase authorised-domain entry) and **§8's `POLL_SYNC_TOKEN`**
-> (conductor: mint once, give to both sides). Steps 5 and 6 are done.
+> Firebase authorised-domain entry), **§4** (owner/admin: publish the commands
+> — ⚠️ **`/link` and `/have` do not exist in Discord until this is run**), a
+> club opt-in for §8, and §9's owner-only `MODERATION_ENABLED` flip. Steps 5
+> and 6 are done.
 
 The estate Discord bot's operational runbook: what exists, the secrets, and
 the exact Developer Portal steps **only the owner can perform**. The bot IS
-live; what is not yet on is **identity linking** (§3 step 7, the owner's three
-clicks) and **poll-message posting** (§8.6, one minted secret). Both are built,
-deployed and shipping dark. Design and option space:
+live. ⚠️ **Nothing is visible in Discord until §4 publishes the commands** —
+that is now the single highest-value remaining click, because `/have` (§9)
+needs nothing else at all. Still off besides that: **identity linking** (§3
+step 7, the owner's three clicks), **poll-message posting** (§8 — the token is
+set; a club still has to opt in), and **moderation** (§9.5, the owner's
+evidence-gated flip). All are built, deployed and shipping dark. Design and
+option space:
 [`../info/discord-bot-design.md`](../info/discord-bot-design.md); bot
 mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 
@@ -31,13 +40,16 @@ mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 
 | Piece | State |
 |---|---|
-| `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (104), LIVE** |
+| `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (161), LIVE** |
 | Discord application / bot user | **Exists** — GABI, `1538775435880562758` |
-| Secrets | **Four of six set.** `DISCORD_CLIENT_SECRET` (§3 step 7, owner) and `POLL_SYNC_TOKEN` (§8, conductor) are the two gaps |
+| Secrets | **Five of six set** (measured 2026-08-17). `DISCORD_CLIENT_SECRET` (§3 step 7, owner) is the only remaining gap; `POLL_SYNC_TOKEN` **is** now set on the Worker — ⚠️ **not verified** whether the pipeline's `.env` holds the same value |
 | Route `discord.heygabi.ai` | **Live** — custom domain, `wrangler.toml` `routes` |
 | Interactions Endpoint URL | **Saved and verified** — the portal's probe passed |
 | Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Built + deployed 2026-08-17, SHIPPING DARK.** Every route answers a worded "linking is not configured yet" page until `DISCORD_CLIENT_SECRET` exists. Until it is on, every vote click still gets the worded "not linked" rejection |
-| `/link` slash command | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. Publish it with §4 once the secret is set |
+| `/link` and `/have` slash commands | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. ⚠️ Neither exists in Discord until someone runs §4; `/have` needs nothing else and works the moment it is published |
+| `/have` — "is this book on the estate's shelves?" | **Built + deployed 2026-08-17** (§9). Answers at the PUBLIC audiobook scope for everyone, with **no credential on the call** — that absence IS the scope decision. Needs no switch-on beyond §4 |
+| `/timeout` + `/cleanup` (moderation) | **Built + deployed 2026-08-17, SHIPPING DARK AND UNPUBLISHED** (§9). Every path answers a worded "moderation is switched off" while `MODERATION_ENABLED` is anything but `"on"`, and the two commands are not published to Discord at all until it is |
+| `MODERATION_ENABLED` | **`"off"`** — owner's evidence-gated flip, never an agent's, never a deploy side effect (§9.5) |
 | Bot-posted poll messages with buttons, tally refresh, close propagation (phase 3) | **Built + deployed 2026-08-17, SHIPPING DARK.** `POST /polls/sync` answers a worded 503 until `POLL_SYNC_TOKEN` is minted (§8). Nothing has been posted to any channel yet |
 | `send_discord_notification.py` | **Untouched, by design** — the estate-wide new-books webhook is unchanged |
 | `club_announcements.py` | **One additive function, 2026-08-17** (`sync_poll_messages`): it POKES §8's endpoint after its own pass and can never fail because of it. Every webhook announcement it already sent is byte-for-byte unchanged — the announcements are permanent and are never replaced by the bot |
@@ -54,7 +66,7 @@ first deploy creates the Worker; locally they go in `.dev.vars`, gitignored):
 | `DISCORD_BOT_TOKEN` | Portal → Bot → **Reset Token** | ⚠️ Shown **once**; one credential shared across every opted-in club (§1.2's accepted blast-radius regression). Rotate via the same Reset Token button. Still NOT used by the poll-**vote** path (those message edits ride the 15-min interaction token) — it is consumed by exactly two things: publishing slash commands (§4) and **phase 3's sync tick** (§8), which posts and edits real channel messages with it |
 | `FIREBASE_SERVICE_ACCOUNT` | The same JSON `auth-worker` holds | ⚠️ **Pipe the file in** (`wrangler secret put FIREBASE_SERVICE_ACCOUNT < key.json`) — never paste into a terminal line, never echo |
 | `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ⚠️ **NOT SET.** A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
-| `POLL_SYNC_TOKEN` | ⚠️ **Nobody issues this one — the conductor MINTS it.** `python -c "import secrets; print(secrets.token_urlsafe(32))"` | ⚠️ **NOT SET.** The shared secret gating `POST /polls/sync` (§8). Goes to **both** sides: `wrangler secret put POLL_SYNC_TOKEN` here, and the *same value* into the audiobook pipeline's `.env` under the same name. A third, deliberately weaker credential class: holding it lets someone make the bot re-render its **own** poll messages sooner than it would have — it grants no Discord powers, holds no Firestore access of its own, and can post nothing a poll doc does not already say |
+| `POLL_SYNC_TOKEN` | ⚠️ **Nobody issues this one — the conductor MINTS it.** `python -c "import secrets; print(secrets.token_urlsafe(32))"` | ✅ **SET on the Worker** (measured 2026-08-17: `/api/health` reports `poll_sync_token: true`). ⚠️ **NOT VERIFIED:** whether the audiobook pipeline's `.env` holds the SAME value — without that the cadence trigger cannot authenticate. The shared secret gating `POST /polls/sync` (§8). Goes to **both** sides: `wrangler secret put POLL_SYNC_TOKEN` here, and the *same value* into the audiobook pipeline's `.env` under the same name. A third, deliberately weaker credential class: holding it lets someone make the bot re-render its **own** poll messages sooner than it would have — it grants no Discord powers, holds no Firestore access of its own, and can post nothing a poll doc does not already say |
 
 Two **vars** (not secrets) were added to `wrangler.toml` with the link
 ceremony, both mirroring auth-worker's: `FIREBASE_PROJECT_ID =
@@ -163,8 +175,11 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
 
 Discord does not discover commands — an application **PUTs** its command
 list and Discord shows exactly that. GABI's registry is
-`apps/discord-worker/src/commands.ts` (`ESTATE_COMMANDS`; currently one
-entry, `/link`), and it is published by calling the Worker:
+`apps/discord-worker/src/commands.ts`: `BASE_COMMANDS` (`/link`, `/have`)
+always, **plus** `MODERATION_COMMANDS` (`/timeout`, `/cleanup`) **only when
+`MODERATION_ENABLED` is `"on"`** — see §9.5 for why hiding them was chosen
+over showing a control that answers "switched off". It is published by calling
+the Worker:
 
 ```
 POST https://discord.heygabi.ai/admin/commands/register
@@ -186,8 +201,11 @@ answers as an outage, never as a permissions refusal.
 `await (await import('/assets/estate-auth.js')).idToken()` in the console,
 or take it from an authenticated request's `Authorization` header.
 
-Registration is a **bulk overwrite and idempotent** — the payload is a
-constant in the repo, so re-running it changes nothing. Commands are
+Registration is a **bulk overwrite**. ⚠️ It is idempotent *for a given switch
+state* — it is no longer a pure constant, because the payload depends on
+`MODERATION_ENABLED`. Re-running it after a flip is therefore a REAL step, not
+a no-op, and the route's own JSON answer states which commands it published and
+what the switch was. Commands are
 **global** (design §1.4: any server's own admin invites GABI, and the estate
 never enumerates the servers it is in — per-guild registration would require
 exactly that enumeration). Global commands can take up to an hour to appear
@@ -415,3 +433,159 @@ refreshes on the spot. When a manager closes the poll, the next tick strips
 the buttons, marks the winner, and the footer reads "final — this poll is
 closed". Members who have not linked their Discord account get the existing
 worded ephemeral telling them to run `/link`.
+
+
+## 9. `/have`, and the moderation pair (built dark)
+
+*(Numbered 9 for the same reason §8 is numbered 8: `DONE.md` is append-only and
+already points at earlier sections by number, so nothing is ever renumbered
+here. Built + deployed 2026-08-17, version
+`ad35e796-ffd6-44a8-b15e-83bc75bf97ab`, commit `b9d10d3`.)*
+
+### 9.1 `/have <title>` — what a person gets
+
+An **ephemeral** answer listing the works that match a title/author/series
+query — title, creator, every format found (audiobook, ebook) and a detail link
+each — or a clean no-match. GABI answers "thinking…" inside Discord's 3-second
+window and fills it in under the 15-minute interaction token, so a slow index
+never turns into "This interaction failed".
+
+| Caller | What they get today |
+|---|---|
+| Anyone, in any server, unlinked | The **public audiobook shelf** — the same slice `audiobooks.heygabi.ai` already shows the world |
+| A **linked** member (`discord_links/{id}` exists) | The **same** results, plus one sentence saying wider shelves are not reachable from Discord yet, and naming why |
+| In a DM | Works — `/have` reads nothing personal and needs no guild |
+
+⚠️ **A no-match NEVER says "you don't own it."** A catalogue is not an
+inventory — books are catalogued as they are scanned — so the answer says the
+*catalogue* has nothing close, and says outright that an unscanned book looks
+exactly like this.
+
+⚠️ **It needs no secret and no switch.** The one thing between it and a person
+is §4: publish the commands.
+
+### 9.2 The scope line, and where the wider one actually stops
+
+Design §4 decision 4 sets the default to `{audiobook}`, and the implementation
+is the *absence* of a credential rather than the presence of one:
+
+- ⚠️ **The call to `index.heygabi.ai/api/search` carries NO `Authorization`
+  header.** The index's own `searchScope()` resolves an unauthenticated caller
+  to the public slice by its §4.5 rule — so there is no token here to leak,
+  misuse or accidentally widen, and a test asserts the header is absent.
+- **`source=audiobook` is sent anyway.** It can only NARROW, so it costs
+  nothing today and guarantees `/have` would not widen if the index's anonymous
+  default ever did.
+
+⚠️ **Why linked members do NOT get more, measured 2026-08-17 by reading the
+code:** index scope resolves from `resolveIdentity()` — a **Firebase ID token
+and nothing else** (`index-worker/src/middleware/scope.ts`). Discord's OAuth
+cannot mint one; this Worker cannot either (its service account is deliberately
+`datastore`-scoped, with no identitytoolkit); and even a `/seen` answer would
+have nothing on the index to be handed to. **Making it real is two new pieces
+of estate surface** — an `ESTATE_APP_TOKEN_DISCORD` pair on auth-worker and
+here, AND an index capability that accepts an app token plus a subject. Both
+widen access, so both are the owner's call, not an agent's.
+
+### 9.3 The moderation pair — what it does in every state
+
+`/timeout <user> <duration> [reason]` and `/cleanup <count> [user] [contains]`,
+and nothing else (the owner's decided scope).
+
+| State | What `/timeout` and `/cleanup` answer |
+|---|---|
+| **`MODERATION_ENABLED` is not `"on"` (today)** | A worded ephemeral: switched off, nothing happened, this is an estate setting and not your permissions, Discord's own tools are unaffected. **No network call is made at all.** They are also **not published**, so most people never see them |
+| Switch on, caller **lacks** the permission | A worded refusal that NAMES it — Moderate Members / Manage Messages — and says GABI will not act for someone who could not act themselves |
+| Switch on, **in a DM** | "That only works inside a server" — a different answer from a permissions refusal, because it is a different problem |
+| Switch on, caller **holds** it | The action runs, with the rails in §9.4, a worded confirmation, and an audit line |
+
+⚠️ **`"on"` and nothing else.** `"true"`, `"1"`, `"yes"`, `"On "` — only the
+last works (it trims), and every other spelling means OFF. A typo fails closed,
+by design and by test.
+
+Durations: `30s`, `10m`, `1h`, `1d`, `1w`, and joins like `1h30m`. A bare number
+is refused rather than guessed at; over **28 days** is refused and names
+Discord's own ceiling.
+
+### 9.4 The `/cleanup` rails
+
+- **Hard cap 50 messages per invocation** — deliberately half Discord's own
+  bulk-delete ceiling. Over the cap is **refused in words**, never clamped.
+- **Preview, then confirm.** The first reply shows what *would* go (counts, plus
+  the oldest three as samples) and deletes nothing. The confirm button's
+  `custom_id` is HMAC-signed, **expires in two minutes**, and binds the invoker
+  and the channel as *associated data* — signed but not transmitted — so a
+  stale press, someone else's press, or a hand-typed id all fail. The confirm
+  **re-reads the channel live**; it never deletes a remembered list.
+- **Discord's 14-day bulk-delete limit is surfaced in words** as a named
+  leftover ("4 also matched but are more than 14 days old, so GABI left them
+  alone") — never a silent partial.
+- **Pins are never deleted.** An unreadable timestamp is treated as ancient,
+  i.e. the safe side of the 14-day line.
+- **A preview with nothing to delete gets no button** — a confirm that would do
+  nothing is a trap, not a choice.
+- The `contains` filter is capped at **32 UTF-8 bytes** (32 plain characters,
+  fewer with emoji or accents) because the confirm button has to carry it inside
+  Discord's 100-character `custom_id`. Over is refused in words; ⚠️ never
+  truncated, which would delete a different set than the preview showed.
+
+### 9.5 Switching moderation on — the OWNER's step, and its second half
+
+1. `MODERATION_ENABLED = "on"` in `apps/discord-worker/wrangler.toml`, then
+   deploy. ⚠️ **No agent flips this, and it is never a side effect of an
+   unrelated deploy.**
+2. ⚠️ **Re-run §4's registration route.** While the switch is off, `/timeout`
+   and `/cleanup` are **not published to Discord at all** — the registry is a
+   function of the switch. Without this second step the switch is on and the
+   commands are still invisible. (Why hidden rather than visible-and-refusing:
+   `/link` being visible-but-off costs a curious person twenty seconds, while a
+   visible `/timeout` costs a moderator the seconds of an actual incident, and
+   advertises the capability in *every* server GABI is in, since commands are
+   global. The handlers still answer the off-switch if an interaction arrives,
+   so the contract holds at runtime regardless of visibility.)
+3. Check `GET /api/health` → `moderation_enabled: true`.
+4. Make sure GABI's role in that server actually holds **Moderate Members** and
+   **Manage Messages** (the invite bundle `1116825807878` includes both — that
+   is arithmetic on the bitfield, ⚠️ **not** verified against Discord's UI), and
+   that her role sits **above** anyone she is expected to time out. Role order,
+   not permissions, is the usual cause of a 403 — and the refusal says so.
+
+**To back it out:** set it to `"off"`, deploy, re-run registration. The commands
+disappear and every path returns to the worded off-switch. Nothing persists
+except the audit lines of whatever ran.
+
+### 9.6 The audit trail
+
+`discord_mod_audit/{ISO-instant}__{nonce}` — a top-level collection the Worker
+owns outright, written with the service account. No `firestore.rules` change
+ships with it and none is needed: nothing grants a browser access and the file
+has no catch-all, so browsers are denied by default (the same posture as
+`discord_links/*` and `discord_poll_messages/*`).
+
+```
+{ action: 'timeout'|'cleanup', outcome: 'applied'|'refused_by_discord'|'failed',
+  actorId, actorName, guildId, channelId, at,
+  targetUserId?, durationSeconds?, reason?, messagesDeleted?, detail? }
+```
+
+⚠️ **Switched-off answers and permission refusals are NOT audited.** Nothing
+happened in either case, and auditing them would let any member of any server
+GABI is in fill an estate collection by spamming a command. Those go to the
+Worker log instead. Discord's **own** server audit log additionally receives a
+reason header on every real action, so a server admin sees who asked for what.
+
+### 9.7 ⚠️ NOT VERIFIED LIVE
+
+- **No moderation action has ever executed.** No timeout, no message read and no
+  deletion has touched Discord — the switch has never been on. Every Discord
+  call in that path is written, typed and unit-tested against injected
+  dependencies, and has never run. The first real invocation will also be the
+  first test of role-hierarchy 403s, of the bulk-delete endpoint, and of the
+  audit write.
+- **`/have` has never been invoked from Discord**, because the commands are not
+  published. The index side WAS exercised: `GET /api/search?q=dungeon` was
+  called live and answered `scope: ["audiobook"]` with real rows. What is
+  unproven is the Worker-to-index hop and the render inside a real Discord
+  client.
+- **Whether the audiobook pipeline's `.env` holds the same `POLL_SYNC_TOKEN`**
+  that is now set on the Worker.

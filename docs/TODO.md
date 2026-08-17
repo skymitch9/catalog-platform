@@ -78,47 +78,35 @@ Firebase authorised-domain row for `discord.heygabi.ai`) and then publishes
 `/link` via §4, and no further build is blocked on it.
 
 ⚠️ **Phase 3 (bot-posted poll messages with buttons) LANDED 2026-08-17** —
-moved whole to [`DONE.md`](DONE.md). Live at version
-`b64be346-876c-4cf0-8365-137afee3536a` and **shipping dark**: `POST /polls/sync`
-answers a worded 503 until `POLL_SYNC_TOKEN` is minted.
+moved whole to [`DONE.md`](DONE.md). Live and **shipping dark** until a club
+opts in.
 
-**The two things outstanding on this whole section are both switch-ons, not
-builds:**
+⚠️ **`/have` LANDED 2026-08-17** and ⚠️ **moderation (`/timeout` + `/cleanup`)
+LANDED 2026-08-17, DARK** — both moved whole to [`DONE.md`](DONE.md). Live at
+version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab`. **The build queue for this
+section is now empty apart from the FUTURE seed below.**
+
+**Everything outstanding on this whole section is a switch-on, not a build:**
 - 🧑 **Owner:** `access/discord-bot.md` §3 step 7 (three clicks) → identity
-  linking, then §4 to publish `/link`.
-- 🎛️ **Conductor:** mint `POLL_SYNC_TOKEN` once and give it to BOTH sides —
-  `wrangler secret put POLL_SYNC_TOKEN` in `apps/discord-worker`, and the same
-  value into the audiobook pipeline's `.env` (`access/discord-bot.md` §8.6).
-  ⚠️ Until a club also has `features.discordPollVoting = true`, a working
-  sync tick still posts nothing — correctly. Opting a club in is the third
-  step, not an afterthought.
+  linking.
+- 🧑 **Owner or admin:** run §4's `POST /admin/commands/register` — ⚠️ **until
+  someone does, `/link` and `/have` do not exist in Discord at all.** It needs
+  a Firebase ID token from an estate admin account, which no agent holds; it is
+  one authenticated POST and it is idempotent.
+- 🎛️ **Conductor / owner:** opt a club in with
+  `features.discordPollVoting = true`. `POLL_SYNC_TOKEN` is **set on the
+  Worker** (measured 2026-08-17: `/api/health` reports
+  `poll_sync_token: true`, `poll_sync_ready: true`) — ⚠️ **not verified** is
+  whether the audiobook pipeline's `.env` holds the SAME value, which is what
+  makes the tick actually fire on cadence.
+- 🧑 **Owner, evidence-gated:** flipping `MODERATION_ENABLED` to `"on"`. ⚠️ It
+  has a **second step**: re-run the registration route, because while the
+  switch is off the two moderation commands are deliberately not published to
+  Discord at all (reasoning in `commands.ts` and `DONE.md`).
 
-Queue, in intended order (all dispatch as OPUS agents per the model-tiering
-rule):
-1. **More slash commands** — `/link` is registered by
-   `POST /admin/commands/register` (`access/discord-bot.md` §4); the next is
-   `/have`, anonymous audiobook-scope default per design §4 decision 4. Add it
-   to `ESTATE_COMMANDS` and re-run the same route.
-2. **Moderation features** — SCOPE DECIDED by the owner 2026-08-16:
-   **timeouts and message cleanup**, nothing else (no auto-responses, no
-   scheduled sweeps — not declined forever, just not in scope now). Design
-   doc still comes first, but it designs exactly these two:
-   - `/timeout <user> <duration> [reason]` — invokable only by members who
-     hold Discord mod permissions THEMSELVES (mirror the caller's authority,
-     never let the bot amplify a non-mod), worded confirmations, audit line.
-   - `/cleanup <count|user|contains>` — bulk delete with rails: hard cap per
-     invocation, Discord's own 14-day bulk-delete API limit surfaced in
-     words (not a silent partial), preview-then-confirm for anything big.
-   Also from the same conversation: Interactions Endpoint URL is SAVED
-   (Discord's probe passed at save time) — the endpoint is verified live.
-   ⚠️ **KILL-SWITCH CONTRACT (owner order, same evening):** moderation ships
-   DARK. `MODERATION_ENABLED = "off"` is already declared in wrangler.toml;
-   every moderation code path MUST check it and answer a worded "switched
-   off" ephemeral until the owner flips it — the flip is his evidence-gated
-   step (shadow-first idiom), never part of a deploy. The bot's mod-bundle
-   server permissions stay granted but unconsumed; if the owner wants zero
-   latent risk meanwhile, removing them from GABI's server role is one
-   toggle and re-granting later is the same toggle.
+Queue (items 1 and 2 — `/have` and moderation — landed 2026-08-17 and moved
+whole to `DONE.md`; item 3's numbering is kept so the archive's references
+stay true). Dispatch as OPUS agents per the model-tiering rule:
 
 3. **FUTURE (design seed, logged in library_catalog docs/TODO.md —
    "Sam asks GABI to fix her books"):** a conversational fixer riding the
