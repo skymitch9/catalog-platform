@@ -413,6 +413,11 @@ function gapRow(index) {
   const li = document.createElement('li');
   li.className = 'hit gap';
   li.appendChild(numberBadge(fmtIndex(index)));
+  // An EMPTY cover slot, deliberately: it keeps this row's text on the same
+  // column as the volumes above and below it, so the eye reads one list with
+  // a hole in it rather than two kinds of row. The empty frame is honest —
+  // there is no book here to have a cover.
+  li.appendChild(coverBox(null));
 
   const body = document.createElement('div');
   body.className = 'hit-body';

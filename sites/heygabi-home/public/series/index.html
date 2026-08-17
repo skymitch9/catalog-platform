@@ -338,9 +338,11 @@ ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .vol-held a:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 3px; }
 
 /* ⚠️ THE GAP ROW — a number NOBODY in the viewer's scope holds. Rendered
-   distinctly on purpose (dashed, no cover slot content, danger-tinted
-   number): a gap that looks like a book is a gap nobody notices, and this
-   page exists to make them noticeable. */
+   distinctly on purpose (dashed everything, danger-tinted number): a gap that
+   looks like a book is a gap nobody notices, and this page exists to make
+   them noticeable. It keeps an EMPTY cover frame so its text stays on the
+   same column as the volumes around it — one list with a hole in it, not two
+   kinds of row. */
 .hit.gap {
   border-style: dashed;
   border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline));
@@ -350,6 +352,11 @@ ul.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
   border-style: dashed;
   border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline));
   color: color-mix(in srgb, var(--et-danger) 80%, var(--et-fg));
+  background: transparent;
+}
+.hit.gap .hit-cover {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--et-danger) 35%, var(--et-hairline));
   background: transparent;
 }
 .hit.gap .hit-title { font-weight: 600; color: var(--et-fg); }
