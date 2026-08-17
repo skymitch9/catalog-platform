@@ -269,10 +269,49 @@ version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab`.
 Live at version `03bd6a3a-7f05-4fbe-a846-05bc614f97e6`, commit `4715b03`;
 runbook [`access/discord-bot.md` §10](access/discord-bot.md). It ships with all
 four of the design's blockers still unsolved, which is exactly what shape (b)
-is for: no write, no model call, no new secret. **The build queue for this
-section is now EMPTY.**
+is for: no write, no model call, no new secret.
+
+⚠️ **CONVERSATIONAL GABI, phase A — "@mention her and she answers" — LANDED
+2026-08-17, shipped OFF.** Moved whole to [`DONE.md`](DONE.md); the as-built
+design is [`info/discord-bot-design.md` §6](info/discord-bot-design.md). Live at
+version `fa8140f6-da59-4f0d-b918-0f6a6f7777a7`, commits `74d6bd3` + `cfe768b`.
+**The build queue for this section is now EMPTY again.**
 
 **Everything outstanding on this whole section is a switch-on, not a build:**
+
+- 🧑 **Owner — TURN GABI'S EARS ON. Three steps, in this order**, and nothing
+  happens until all three: she is currently **not connected at all**, not
+  merely quiet.
+  1. **Paste the Anthropic key** — optional, but it is the difference between
+     a lookup bot and a conversation. Mint a **NEW** key at
+     `console.anthropic.com` (⚠️ deliberately NOT the library's
+     `ANTHROPIC_API_KEY`, so the Discord spend is separately capped and
+     rotated), put it in `apps/discord-worker/.dev.vars` after
+     `ANTHROPIC_API_KEY_GABI=`, run `wrangler secret put ANTHROPIC_API_KEY_GABI`,
+     then blank the line again. Without it she still answers *"do we have …"*
+     from the keyword router and never mentions the gap in a channel.
+  2. **Flip the posture** — `GABI_MENTIONS = "on"` in
+     `apps/discord-worker/wrangler.toml`, then deploy. ⚠️ The owner's decision,
+     never an agent's and never a side effect of a deploy.
+  3. **Start the gateway** — `POST /admin/gateway/start` with an estate admin's
+     Firebase ID token. ⚠️ **This is the ONLY starter.** The cron meant to be a
+     second, independent poker could not be installed (this account is on
+     Workers Free and its 5 cron triggers are spent), so nothing else will
+     create the object, and there is no backstop if its alarm chain breaks.
+
+  Then test it in the server by typing: **`@GABI do we have Mistborn?`**
+- 🧑 **Owner, worth knowing BEFORE step 2:** the always-on Durable Object uses
+  **~83% of this Cloudflare account's free-plan Durable Object duration
+  allowance** (10,800 of 13,000 GB-s/day). It costs **$0.00**, but that is a cap
+  which **stops** the object rather than billing for it. ⚠️ A second always-on
+  Durable Object anywhere on this account would break it; Workers Paid removes
+  the constraint entirely.
+- 🧑 **Owner decision, deliberately NOT built — bare-text triggers**
+  (`heygabi …` with no `@`). It needs Discord's Message Content privileged
+  intent, which the design has refused since §1.5: the bot would receive the
+  text of **every message in every channel it can see**, in every server it is
+  in. That is a different privacy posture from anything agreed so far.
+  Reasoning: [`info/discord-bot-design.md` §6.8](info/discord-bot-design.md).
 - ✅ **Identity linking is ON** — `access/discord-bot.md` §3 step 7's three
   clicks were done by the owner at some point before 2026-08-17's `/gabi`
   deploy, and the correction is MEASURED, not assumed: `/api/health` now

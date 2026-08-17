@@ -137,6 +137,17 @@ zero-permission path, not a stepping stone.
 | Channel: Send Messages, Embed Links | Post embeds/components | ✅ |
 | Channel: Read Message History | Edit an existing poll/RSVP message (button state, tallies) | ✅ |
 | **Message Content intent** | Reading the text of ordinary messages | ❌ **Never requested.** Every feature in §2 is slash-command or component-driven — nothing needs to read plain chat. Skipping it also sidesteps Discord's privileged-intent verification gate (irrelevant at estate scale, but it's one fewer thing to explain to a server admin approving the invite) |
+
+⚠️ **This row survived contact with a feature that looked like it needed the
+intent, and the reason is measured — see [§6](#6-conversational-gabi--phase-a-as-built-2026-08-17).**
+Phase A of conversational GABI answers ordinary chat messages, which sounds
+exactly like "reading plain chat". It does not need the intent, because
+Discord's own documentation lists four exceptions to the blanking of `content`,
+one of which is *"Content in which the app is mentioned"*. The build therefore
+fires on a genuine `@GABI` mention and treats a blank `content` as "not for
+her" — which is both the correct reading and the correct behaviour if that ever
+changed. A **bare-text** trigger (`heygabi …` with no mention) would need the
+intent and remains an explicit owner decision, not a config change.
 | Manage Server / Administrator | — | ❌ never |
 
 ### 1.6 Identity linking — summarized from the research, not repeated
@@ -545,6 +556,185 @@ so the *order* determines how much of §2 is cheap versus expensive.
   separate, unresolved question; this doc's `/have` design (§2b) explicitly
   assumes the audiobook slice stays the public default, consistent with
   that doc's own default-if-unanswered.
+
+---
+
+## 6. Conversational GABI — phase A AS BUILT (2026-08-17)
+
+> The owner's ask, verbatim: *"I want to use heygabi and similar forms like Hey
+> Gabi, hey @Gabi, heyGabi etc to kick her off for a question and then she
+> responds."* Phase A is the half of that which works **without** the privileged
+> intent §1.5 refuses. Built, deployed and **shipped OFF** at Worker version
+> `fa8140f6-da59-4f0d-b918-0f6a6f7777a7`.
+
+### 6.1 ⚠️ The measurement the whole design rests on
+
+Everything here depends on one claim, so it was **read off Discord's own
+documentation rather than assumed**:
+
+> *"Content in messages that an app sends / Content in DMs with the app /
+> **Content in which the app is mentioned** / Content of the message a message
+> context menu command is used on"*
+> — <https://docs.discord.com/developers/events/gateway>, the four exceptions to
+> the `MESSAGE_CONTENT` privileged intent blanking content fields. Read
+> 2026-08-17.
+
+**Verdict: a `MESSAGE_CREATE` for a message that @mentions the app arrives with
+`content` populated on the unprivileged `GUILDS | GUILD_MESSAGES` (513) intents
+alone.** So the exact messages this build answers are the exact messages whose
+content still arrives. Every other message arrives blank, and `mentions.ts`
+treats blank as "not for her".
+
+⚠️ **NOT VERIFIED LIVE.** This is a documentation reading, not an observation —
+no message has been through the real gateway (§6.7). If Discord's exception list
+ever narrows, the symptom is GABI silently ignoring mentions, and the first
+place to look is this paragraph.
+
+### 6.2 Where it lives
+
+| File | What it decides |
+|---|---|
+| `src/mentions.ts` | Posture, mention detection, question extraction, keyword intent routing, cap arithmetic, all wording. **Pure** — no I/O. |
+| `src/mention-flow.ts` | What happens between "mentioned" and "replied". Every side effect injected. |
+| `src/gabi-chat.ts` | The only two places money is spent, plus the accounting. |
+| `src/gateway.ts` | The `GabiGateway` Durable Object: one outbound WebSocket, heartbeat, resume, self-heal. |
+| `test/mentions.test.ts` | 30 tests across posture, trigger, ladder, caps, allowlist, accounting. |
+
+### 6.3 The trigger, and why it is strict
+
+A mention must appear in **both** the `mentions` array **and** as a literal
+`<@id>` token in the text. Three things that look like a mention and are
+deliberately ignored:
+
+- **`@everyone` / `@here`** — carried by `mention_everyone`, which adds nobody to
+  `mentions`. A bot that answered every `@everyone` is a bot nobody keeps.
+- **A role the bot holds** (`mention_roles`) — same reasoning.
+- **A reply to one of her messages** — Discord adds the replied-to author to
+  `mentions` automatically. Requiring the literal token separates "talked TO"
+  from "talked ABOUT".
+
+Bots and webhooks never trigger her: two bots mentioning each other is an
+infinite loop that spends real money. The greeting forms the owner named
+(`heygabi`, `hey Gabi`, `hey @Gabi`, `heyGabi`) are stripped from the remaining
+text as a courtesy — they are **not** the trigger.
+
+### 6.4 The ladder — she works with or without a key
+
+`ANTHROPIC_API_KEY_GABI` is a **new secret**, deliberately separate from
+`library_catalog`'s `ANTHROPIC_API_KEY` so the Discord spend is separately
+capped, rotated and audited.
+
+| | Key set | Key NOT set |
+|---|---|---|
+| **Intent** | one `claude-haiku-4-5` turn → `have_lookup` / `fix_request` / `question` / `smalltalk` | regex/keyword router in `mentions.ts` |
+| **`have_lookup`** | the zero-token public-slice lookup (`/have`'s own `lookupHave`, credential-free) | identical |
+| **`fix_request`** | propose-and-deep-link, `/gabi`'s shape (b) verbatim | identical |
+| **`question` / `smalltalk`** | one short Haiku turn in persona, optionally grounded with the lookup | a worded template plus the panel link |
+
+⚠️ **A missing key NEVER produces an error message in a channel.** It writes one
+worded line to the Worker log and gives a slightly duller GABI. `/api/health`
+reports `configured.anthropic_key_gabi: false` honestly.
+
+⚠️ **Why Haiku here when [`gabi-fixer-design.md` §7.2](../../../bookbuddy/library_catalog/docs/info/gabi-fixer-design.md)
+rejects it for the panel's loop** — both halves of that argument are about the
+panel and neither applies here. There are **no tools**, so there is no
+tool-selection accuracy to lose; and these prompts are a few hundred tokens,
+below *every* model's cache minimum, so nobody is caching and Opus 5's 0.1×
+cached-prefix advantage evaporates. The comparison is full-price $5/MTok against
+full-price $1/MTok for a four-way classification. Model is **pinned**
+(`claude-haiku-4-5-20251001`), because a model that changes under a fixed cap
+changes what the cap means.
+
+⚠️ **No `output_config.effort`** — it errors on Haiku 4.5. Passing it would turn
+every conversational reply into a 400.
+
+### 6.5 Guardrails
+
+- **Posture.** `GABI_MENTIONS`, affirmative-only, ships `"off"`. ⚠️ **OFF means
+  the gateway never opens a WebSocket** — she is not connected, not merely
+  quiet, and costs nothing. Pinned both ways by a test that reads
+  `wrangler.toml`.
+- **Caps.** 20 answered mentions per person per rolling hour, 200/day
+  estate-wide, held in the Durable Object's storage. The fuse blows **before**
+  anything that costs, and a capped person is still replied to, in words that
+  say it is GABI's cap and not something they did.
+- **Accounting.** One `gabi_turn` JSON log line per model turn, carrying raw
+  token counts beside estimated cents — raw columns rather than a total,
+  because a stored total computed by a wrong function is wrong forever
+  (`gabi-fixer-design.md` §7.4's correction, inherited).
+- **The allowlist.** `GABI_MENTION_ACTIONS` is an explicit four-item array —
+  `lookup_public_shelf`, `classify_intent`, `converse`, `reply_in_channel` —
+  pinned by a test, in the spirit of `GABI_TOOL_NAMES`. A second test greps
+  `mention-flow.ts` for write, moderation and admin verbs. **There is no write
+  path to guard**; a fix request is answered with the deep link.
+- **Reply mentions.** `allowed_mentions` is `parse: []` plus the one asker's id,
+  so neither a model nor a book title can make the bot ping `@everyone`.
+
+### 6.6 ⚠️ The runtime facts that shaped it, all measured 2026-08-17
+
+| Fact | Source | Consequence |
+|---|---|---|
+| Outbound WebSockets **cannot hibernate** — *"Hibernation is only supported when a Durable Object acts as a WebSocket server"* | Cloudflare DO WebSockets docs | The object accrues duration the whole time it is connected |
+| *"an active outbound WebSocket connection keeps the Durable Object alive and prevents eviction for **up to 15 minutes per connection**"* | same page | A connect-once design goes **quietly deaf within the hour**. Hence the 30-second alarm |
+| **This account is on Workers FREE** | the deploy itself refused the cron: *"This account has reached the Workers Free limit of 5 cron triggers per account"* | The cost model changed entirely, and the planned second poker does not exist |
+
+**Cost, corrected.** 128 MB × 86,400 s = **~10,800 GB-s/day** against the
+Workers Free allowance of **13,000 GB-s/day**. So: **$0.00/month, and about 83%
+of a cap that stops the object rather than billing for it** — roughly 17%
+headroom. ⚠️ Two things would eat that and both should be treated as blocking:
+**a second always-on Durable Object anywhere on this account**, and any
+reconnect pattern leaving two sockets briefly overlapping. On Workers Paid the
+same object sits inside the 400,000 GB-s/month inclusion (~$4.05/month if ever
+billed at the full $12.50 per million GB-s), so upgrading removes the constraint.
+Requests (~3,000/day of 100,000) and row writes (~2,100/day of 100,000) are
+comfortable. **All arithmetic over a published table — not an invoice.**
+
+**Self-healing, and its one gap.** Each alarm schedules the next and an alarm
+re-creates an evicted object, so the chain is self-sustaining *once started*.
+The cron that was meant to be an independent second poker **could not be
+installed**, so `POST /admin/gateway/start` is the only starter and there is no
+backstop if the chain ever breaks. The `scheduled` handler stays wired in
+`index.ts`; restoring the redundancy is one line in `wrangler.toml` the day a
+trigger frees up or the account moves to Workers Paid.
+
+**Flap guard.** A self-imposed ceiling of 400 IDENTIFYs per UTC day, and close
+codes 4004/4010/4011/4012/4013/4014 set a **fatal flag that stops reconnecting
+entirely** — a bad token or an unapproved intent will not fix itself, and
+hammering identify burns Discord's daily session-start budget.
+
+**Subrequests.** One mention spends **at most four** (classify, lookup,
+converse, reply); the cheapest real path is two. Nothing loops, so there is no
+path where that grows toward the 50 that would *terminate the invocation rather
+than throw*.
+
+### 6.7 ⚠️ What was NOT verified
+
+- **No live gateway READY handshake.** The local `.dev.vars` drop-box is
+  correctly **blank** (that is the drop-box discipline working), so no agent
+  holds the bot token; and `POST /admin/gateway/start` needs a Firebase ID token
+  from an estate admin, which no agent holds either. **Nothing in this build has
+  ever talked to Discord's gateway.** The protocol handling — IDENTIFY, HELLO,
+  heartbeat with jitter, RESUME, the close-code table — is written from the
+  documentation and is unexercised.
+- **The mention-content claim (§6.1) is a documentation reading, not an
+  observation.**
+- **No real @mention has been answered.** The persona, the wording, the caps and
+  the reply shape are all unexercised against a real channel.
+- **No model call has ever been made on this surface** — every test supplies no
+  key. The token counts and cents in `gabi-chat.ts` are arithmetic over the
+  published price table.
+- **Duration is estimated, not billed.** The first week's real usage is the
+  measurement.
+
+### 6.8 Bare-text triggers — the deferred owner decision
+
+`heygabi …` with no mention is the other half of the owner's ask. It needs the
+Message Content privileged intent, which §1.5 refuses, and which additionally
+brings Discord's privileged-intent verification gate and a materially wider
+blast radius: the bot would receive the text of **every message in every channel
+it can see**, in every server it is in. That is a different privacy posture from
+anything the estate has agreed to, and it is a **decision for the owner**, not a
+config change. Phase A deliberately does not build toward it.
 
 ---
 

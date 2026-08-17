@@ -687,3 +687,149 @@ curl rather than in a diff.
   `member` does not hold `runResearch`. The honest expectation is that a
   linked stranger following the link sees the library **without** the panel —
   which is what the wording promises, but it has not been observed.
+
+---
+
+## 11. GABI answers when you @mention her — phase A (built 2026-08-17, OFF)
+
+Design: [`../info/discord-bot-design.md` §6](../info/discord-bot-design.md).
+Code: `src/mentions.ts`, `src/mention-flow.ts`, `src/gabi-chat.ts`,
+`src/gateway.ts`. Live at version `fa8140f6-da59-4f0d-b918-0f6a6f7777a7`.
+
+### 11.1 What a person gets
+
+They type, in any channel the bot can see:
+
+```
+@GABI do we have Mistborn?
+```
+
+and she replies **in that channel, as a reply to their message**, addressing
+them: *"Hey @Sam — I looked on the estate's public shelf for **Mistborn**. …"*
+
+The greeting forms the owner asked for all work **as long as the `@` is there**:
+`@GABI heygabi …`, `hey @GABI, …`, `@GABI Gabi: …` — the greeting is stripped
+from the question rather than searched for.
+
+⚠️ **A bare `heygabi …` with no `@` does nothing, on purpose.** Reading messages
+she was not addressed in needs Discord's Message Content privileged intent,
+which the design has refused since §1.5. Turning that on is an owner decision
+with a materially wider privacy posture, not a config change.
+
+### 11.2 ⚠️ Switching it on — THREE steps, in this order
+
+Nothing happens until all three. She is currently **not connected at all**,
+which is different from connected-and-quiet.
+
+1. **The Anthropic key** (optional; it is the difference between a lookup bot
+   and a conversation). Mint a **NEW** key at `console.anthropic.com` — ⚠️ *not*
+   the library's `ANTHROPIC_API_KEY`, so the Discord spend is separately capped,
+   rotated and audited. Then, from `apps/discord-worker/`:
+
+   ```bash
+   # paste the value after ANTHROPIC_API_KEY_GABI= in .dev.vars (gitignored),
+   # then pipe it in WITHOUT printing it, then blank the line again:
+   wrangler secret put ANTHROPIC_API_KEY_GABI
+   ```
+
+   Confirm with `curl -s https://discord.heygabi.ai/api/health` →
+   `configured.anthropic_key_gabi: true`.
+
+2. **The posture.** `GABI_MENTIONS = "on"` in `wrangler.toml`, then
+   `npx wrangler deploy`. ⚠️ Owner's decision, never an agent's, never a side
+   effect of a deploy. Confirm: `gabi_mentions_enabled: true` on `/api/health`.
+
+3. **Start the gateway** — with an estate admin's Firebase ID token:
+
+   ```bash
+   curl -s -X POST https://discord.heygabi.ai/admin/gateway/start \
+     -H "Authorization: Bearer <estate admin Firebase ID token>"
+   ```
+
+   ⚠️ **This is the ONLY starter.** The cron that was meant to be a second,
+   independent poker could not be installed — see §11.5 — so nothing else
+   creates the object, and there is no backstop if its alarm chain breaks. The
+   response is the object's own status (`connected`, `has_session`, `fatal`,
+   `identifies_today`).
+
+**Then test it, in the server, as a person:**
+
+```
+@GABI do we have Mistborn?
+@GABI what can you actually do from here?
+@GABI can you fix the author on Mistborn?
+```
+
+Expected: a shelf answer; a short chat reply that admits she cannot change
+anything from Discord; and a propose-and-deep-link reply carrying
+`padhard.heygabi.ai`. With no Anthropic key set, the middle one degrades to a
+worded template — ⚠️ and in **no** case should a channel ever see the words
+"API key", "not configured" or a bare status.
+
+### 11.3 Turning it off
+
+Set `GABI_MENTIONS = "off"` and deploy — the object's next alarm disconnects and
+stands down. To stop it immediately without a deploy, `POST /stop` is not
+exposed publicly; use the posture flip, or `npx wrangler tail estate-discord` to
+confirm the stand-down line.
+
+### 11.4 The rails, so nobody has to read the code
+
+| Rail | Value |
+|---|---|
+| Trigger | a genuine `@` mention **only** — not `@everyone`, not a role, not a reply |
+| Intents | `GUILDS \| GUILD_MESSAGES` = 513, both **unprivileged** |
+| Per-user cap | 20 answered mentions per rolling hour |
+| Estate-wide cap | 200 answered mentions per UTC day |
+| Model | `claude-haiku-4-5-20251001`, pinned |
+| Subrequests per mention | at most 4 (classify, lookup, converse, reply) |
+| Writes | **none.** No Firestore, no catalogue, no moderation, no admin |
+| Reconnect ceiling | 400 IDENTIFYs per UTC day, then it stands down |
+
+A capped person is still **replied to**, in words that say it is GABI's cap and
+not something they did.
+
+### 11.5 ⚠️ "The fix didn't take effect" — the two things that will bite
+
+**She is silent after the posture flip.** Almost always step 3: the object has
+never been created. There is **no cron** on this Worker — the deploy that added
+one was refused with *"This account has reached the Workers Free limit of 5 cron
+triggers per account"*, and the `[triggers]` block was removed rather than left
+half-applying (a wrangler.toml that cannot fully apply makes **every** future
+deploy exit with a partial-failure banner). POST the start route.
+
+**She went silent after working.** Check `fatal` on the start route's response.
+Close codes 4004 (bad token) and 4014 (unapproved intent) set a fatal flag and
+**deliberately stop the reconnect loop** — a bad token will not fix itself and
+hammering identify burns Discord's daily session-start budget. Fix the cause,
+then POST the start route to clear it. `npx wrangler tail estate-discord` shows
+the worded line naming which.
+
+### 11.6 ⚠️ Cost — the constraint is a cap, not a bill
+
+This account is on **Workers Free** (measured at deploy, see above). An outbound
+WebSocket **cannot hibernate**, so the object accrues duration the whole time it
+is connected: **~10,800 GB-s/day against a free allowance of 13,000 GB-s/day.**
+
+**$0.00/month — and about 83% of a cap that STOPS the object rather than billing
+for it.** ⚠️ Two things would eat the remaining ~17% and both should be treated
+as blocking: **a second always-on Durable Object anywhere on this Cloudflare
+account**, and any reconnect pattern leaving two sockets briefly overlapping.
+Workers Paid removes the constraint entirely (400,000 GB-s/month included,
+~$4.05/month if ever billed at the full rate). Model spend is separate, capped,
+and logged as `gabi_turn` lines visible in `wrangler tail`.
+
+### 11.7 ⚠️ NOT VERIFIED LIVE
+
+- **Nothing in this build has ever talked to Discord's gateway.** No READY
+  handshake has been observed. The protocol handling — IDENTIFY, HELLO,
+  heartbeat jitter, RESUME, the close-code table — is written from Discord's
+  documentation and is entirely unexercised. The local `.dev.vars` drop-box is
+  correctly blank, so no agent holds the bot token to test with.
+- **The claim that mention content arrives without the privileged intent is a
+  documentation reading, not an observation.** If it is wrong, the symptom is
+  GABI silently ignoring every mention.
+- **No real @mention has been answered**, so the persona, the wording, the caps
+  and the reply rendering in a real client are all unproven.
+- **No model call has ever been made on this surface** — the cents figures are
+  arithmetic over the published price table, not an invoice.

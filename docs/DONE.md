@@ -13,6 +13,89 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🗣️ Conversational GABI in Discord, phase A — @mention her and she answers — ✅ BUILT 2026-08-17, SHIPPED OFF
+
+Owner (2026-08-17, verbatim): *"I want to use heygabi and similar forms like Hey
+Gabi, hey @Gabi, heyGabi etc to kick her off for a question and then she
+responds."*
+
+Live at Worker version `fa8140f6-da59-4f0d-b918-0f6a6f7777a7`, commits
+`74d6bd3` (the build) and `cfe768b` (the deploy's corrections). As-built design:
+[`info/discord-bot-design.md` §6](info/discord-bot-design.md).
+
+**⚠️ The measurement the whole thing rests on.** Answering ordinary chat sounds
+exactly like the thing §1.5 refuses — Discord's Message Content privileged
+intent. It is not, and this was read off Discord's own docs rather than assumed:
+the intent blanks `content` **except** for four cases, one being *"Content in
+which the app is mentioned"*
+(<https://docs.discord.com/developers/events/gateway>). So the exact messages
+this build answers are the exact messages whose content still arrives, on the
+unprivileged `GUILDS | GUILD_MESSAGES` (513) intents alone. Bare-text triggers
+(`heygabi …` with no `@`) would need the intent and are left as an explicit
+owner decision (§6.8).
+
+**What shipped.** A `GabiGateway` Durable Object holding one outbound WebSocket
+(heartbeat with the documented jitter, RESUME with a stored session, the full
+close-code table, a 30-second self-heal alarm); a strict mention test; a
+laddered intent router; and one reply per mention, addressed to the asker.
+
+**⚠️ The ladder is the point:** with `ANTHROPIC_API_KEY_GABI` (a NEW secret,
+deliberately separate from the library's key) one cheap `claude-haiku-4-5` turn
+classifies intent and another answers chat; **without it** a keyword router
+still answers lookups and still deep-links fix requests to the panel. A missing
+key never produces an error message in a channel — it logs a worded line.
+
+**Guardrails.** `GABI_MENTIONS` affirmative-only and shipped `"off"`, where OFF
+means **no WebSocket is ever opened** rather than "open but quiet". Caps of 20
+answered mentions/person/hour and 200/day estate-wide, with the fuse blowing
+*before* anything that costs and a worded refusal saying it is GABI's cap and
+not something the asker did. `GABI_MENTION_ACTIONS` is an explicit four-item
+array pinned by a test, and a second test greps the flow for write/moderation/
+admin verbs — **there is no write path to guard.** `allowed_mentions` is
+`parse: []` plus the one asker, so nothing the model writes can make the bot
+ping `@everyone`.
+
+**⚠️ THE DEPLOY CORRECTED TWO THINGS THE DESIGN HAD WRONG.**
+
+1. **This Cloudflare account is on Workers FREE, not Paid** — proved by the
+   deploy refusing the cron: *"This account has reached the Workers Free limit
+   of 5 cron triggers per account."* The cost model changed shape entirely.
+   Corrected: an always-on outbound WebSocket cannot hibernate and accrues
+   ~10,800 GB-s/day against a free allowance of **13,000 GB-s/day** — **$0.00 a
+   month, and ~83% of a cap that STOPS the object rather than billing for it.**
+   ⚠️ A second always-on Durable Object anywhere on this account would break it.
+2. **The cron could not exist**, so the planned second poker is gone and
+   `POST /admin/gateway/start` is the only starter. The `[triggers]` block was
+   removed rather than left failing — a wrangler.toml that cannot fully apply
+   makes every future deploy exit with a partial-failure banner, which is a
+   booby trap for whoever deploys next. A test now asserts the *absence* of a
+   cron and explains why. The `scheduled` handler stays wired; restoring the
+   redundancy is one line the day a trigger frees up or the account upgrades.
+
+**Two defects found by running it rather than reading it.** `hey @GABI, do we
+have X?` left the word "hey" in the search term, because stripping the mention
+removes the "gabi" the greeting pattern was anchored on. And the gateway
+sequence number was written to Durable Object storage on **every frame** — one
+row write per message in every channel of every guild, against a
+100,000-rows/day free ceiling, for a value only ever read after an eviction. It
+is now persisted once per heartbeat, at the stated cost of a resume replaying
+from a seq up to one heartbeat stale.
+
+**Verified live after deploy:** `/api/health` answers with every pre-existing
+row intact plus the new `gabi_mentions_*` rows, and `POST /interactions` still
+answers **401** to both a bad signature and missing signature headers — the
+behaviour Discord probes for and silently drops the endpoint over. 219 tests
+pass; typecheck clean on both projects.
+
+**⚠️ NOT VERIFIED, and named rather than glossed:** nothing in this build has
+ever talked to Discord's gateway. The local `.dev.vars` drop-box is correctly
+blank so no agent holds the bot token, and the start route needs an estate
+admin's Firebase ID token which no agent holds either — so the READY handshake,
+the mention-content claim, the persona, the caps and the reply shape are all
+unexercised against reality. No model call has ever been made on this surface;
+the cents figures are arithmetic over a published price table. The owner steps
+that close this are in [`TODO.md`](TODO.md).
+
 ## 🪜 Admin page: Audiobooks/Ebooks ladder rendered HIGH → LOW — ✅ BUILT 2026-08-17
 
 Owner (2026-08-17, verbatim): *"on the estate page audiobook permissions starts
