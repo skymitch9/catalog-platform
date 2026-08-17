@@ -13,6 +13,31 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## ☁️ Workers Paid upgrade + the gateway cron backstop — ✅ DONE 2026-08-17
+
+Owner upgraded in the dashboard ("cloudflare upgraded"). What it changed: DO
+duration pressure gone (~83%-of-free ceiling), crons 5→250,
+subrequests/invocation 50→10,000 (⚠️ several design docs cite the 50 ceiling
+as a constraint — still true that bounded-steps is good design, no longer a
+hard wall).
+
+~~**QUEUED behind the continuity agent**~~ — **UNBLOCKED 2026-08-17**: that
+agent finished and released `apps/discord-worker` (its work is the next entry
+below; Worker `5cf27f04-efa2-4a3e-833d-ba0dc1bc302b`).
+
+~~Still to do:~~ **DONE (conductor, `01017e2`)**: the gateway's `[triggers]`
+cron backstop re-added, the no-cron test assertion flipped to pin its
+PRESENCE in the same commit (as this item required), and the deploy
+ACCEPTED — `schedule: */2 * * * *`, Worker version
+`4b5f7b61-4645-43dc-b5f9-f0e76b320134` — the measured proof the plan change
+took (the identical block was refused under Free the same morning).
+
+- ⚠️ The continuity build **did not spend the new headroom**: its comments and
+  `wrangler.toml` still price everything against the tighter FREE ceilings, on
+  the stated reasoning that a bound proven under the stricter limit is still a
+  bound under the looser one. Those paragraphs are correct-but-conservative
+  rather than stale; whoever next touches them decides whether to re-derive.
+
 ## 🧠 GABI CONVERSATION CONTINUITY (owner, 2026-08-17) — ✅ BUILT + DEPLOYED 2026-08-17, SHIPPED OFF
 
 Owner: *"I don't want to message GABI and then message her again and she has

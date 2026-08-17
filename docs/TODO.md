@@ -32,30 +32,6 @@ bearer on its range requests (service-worker token injection vs signed URLs
 ⚠️ offline ebook copies collide with the download-is-admin-floored policy —
 that's an OWNER DECISION to surface, not a default.
 
-## ☁️ WORKERS PAID UPGRADE — ✅ DONE by owner 2026-08-17 ("cloudflare upgraded"); one follow-up queued
-
-Owner upgraded in the dashboard. What it changes: DO duration pressure gone
-(~83%-of-free ceiling), crons 5→250, subrequests/invocation 50→10,000
-(⚠️ several design docs cite the 50 ceiling as a constraint — still true
-that bounded-steps is good design, no longer a hard wall).
-
-~~**QUEUED behind the continuity agent**~~ — **UNBLOCKED 2026-08-17**: that
-agent finished and released `apps/discord-worker` (its work is in
-[`DONE.md`](DONE.md); Worker `5cf27f04-efa2-4a3e-833d-ba0dc1bc302b`).
-
-Still to do: re-add the gateway's `[triggers]` cron backstop that the free cap
-refused — `POST /admin/gateway/start` remains the only starter until then. The
-deploy accepting a 6th cron doubles as the measured proof the plan change took.
-
-- ⚠️ `apps/discord-worker/test/mentions.test.ts` **asserts that no cron is
-  declared**, and its failure message says exactly this. That assertion is to
-  be updated in the same commit, deliberately — not a test to work around.
-- ⚠️ The continuity build **did not spend the new headroom**: its comments and
-  `wrangler.toml` still price everything against the tighter FREE ceilings, on
-  the stated reasoning that a bound proven under the stricter limit is still a
-  bound under the looser one. Those paragraphs are correct-but-conservative
-  rather than stale; whoever re-adds the cron decides whether to re-derive them.
-
 ## 📚 GABI READS THE ESTATE DOCS (owner, 2026-08-17) — QUEUED, needs design
 
 Owner: *"let's make sure GABI can read all of our docs and stuff so she can
