@@ -1,0 +1,59 @@
+# The audiobook catalog's Worker — the FOURTH consumer of the estate's proven
+# pattern (audiobook-auth-migration.md §2): its OWN thin Worker, deliberately
+# NOT routes bolted onto auth-worker — a bug in a club endpoint must never be
+# able to take down grant/revoke for every app (the estate's separation of
+# concerns: "the estate answers in/out; the apps answer what/here").
+#
+# Phase 0 surface: GET /api/health, GET /api/me (server-verified Firebase
+# token → estate status + audiobook ladder role from site_roles/{uid}).
+# Phase 1 server half: POST /api/gate/shadow — the fire-and-forget would-deny
+# receiver (204 always; logs, never stores, never enforces).
+#
+# ⚠️ NOT DEPLOYED, ON PURPOSE — deploy, route, and secrets are a deliberate
+# owner/conductor step, never a side effect of building this (Phase 0's
+# "Reverse: delete the worker; nothing referenced it" depends on that).
+
+name = "audiobook-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# Added at deploy time, mirroring the sibling Workers' history. The hostname
+# is the owner's pick at deploy time (the site itself lives at
+# https://audiobooks.heygabi.ai; the Worker needs its own, e.g.:)
+# routes = [{ pattern = "audiobook-api.heygabi.ai", custom_domain = true }]
+
+[vars]
+# Explicit, affirmative value — the canonical verifier's dev bypass requires
+# ENVIRONMENT === 'development', so anything else gets real authentication
+# (conformance §8.2 #8).
+ENVIRONMENT = "production"
+# Pinned as iss AND aud in the verifier — the shared project every consumer uses.
+FIREBASE_PROJECT_ID = "audiobook-catalog"
+# Break-glass: listed emails resolve to ladder 'owner' and are never demoted.
+OWNER_EMAILS = "nbaslamking@gmail.com"
+# The estate directory consulted via POST /api/estate/seen (cached, TTL 10 min).
+ESTATE_AUTH_URL = "https://auth.heygabi.ai"
+# The estate-check mode: "off" | "shadow" | "enforce" (anything else reads as
+# "off" — affirmative values only, same philosophy as the dev bypass). Phase 0
+# ships OFF; the flip to "shadow" is Phase 1's deliberate act, and "enforce"
+# is gated on the measured soak criterion (migration design §4) — never a
+# side effect of a deploy.
+ESTATE_CHECK = "off"
+# Exact browser origins allowed on /api/* (abCors in src/index.ts) — the
+# audiobook site's prod + dev lanes share ONE origin (the dev lane is a /dev/
+# PATH on the same host, measured from audiobook_catalog docs/access
+# GIT_CI_DEPLOY.md 2026-08-16). Comma-separated, exact scheme+host, no
+# trailing slash. A local dev origin joins in .dev.vars, never here.
+SITE_ORIGINS = "https://audiobooks.heygabi.ai"
+
+# Not in this file, ever — the secrets. At deploy time (owner/conductor):
+#   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
+#     never paste it into a terminal line, never echo it; same value and
+#     custody as auth-worker's. This Worker holds the DATASTORE scope only —
+#     see src/roles.ts.)
+#   wrangler secret put ESTATE_APP_TOKEN_AUDIOBOOK (mint fresh; the SAME
+#     value goes on the auth Worker under the same name — declared there in
+#     env.ts as of Phase 0.)
+# Locally they live in .dev.vars (gitignored).

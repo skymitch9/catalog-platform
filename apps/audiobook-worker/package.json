@@ -1,0 +1,24 @@
+{
+  "name": "@platform/audiobook-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The audiobook catalog's Worker - the FOURTH consumer of the estate pattern (canonical verifier + /seen with a per-app bearer). Phase 0: /api/health + /api/me (server-resolved ladder role from site_roles). Phase 1 server half: the /api/gate/shadow would-deny receiver. Design: docs/info/audiobook-auth-migration.md (2, 4, 5).",
+  "scripts": {
+    "dev": "wrangler dev --port 8796",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@platform/estate-auth": "*",
+    "@platform/firebase-sa": "*",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.0.0"
+  }
+}
