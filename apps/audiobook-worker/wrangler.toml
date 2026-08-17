@@ -42,7 +42,11 @@ ESTATE_AUTH_URL = "https://auth.heygabi.ai"
 # ships OFF; the flip to "shadow" is Phase 1's deliberate act, and "enforce"
 # is gated on the measured soak criterion (migration design §4) — never a
 # side effect of a deploy.
-ESTATE_CHECK = "off"
+# Flipped off -> shadow 2026-08-16 the moment the client reporter shipped
+# (owner approved phases 0-2; phase 1 is exactly this). Shadow LOGS
+# would-deny decisions and acts on nothing; the flip to "enforce" is a
+# separate owner-gated decision on soak evidence, never a side effect.
+ESTATE_CHECK = "shadow"
 # Exact browser origins allowed on /api/* (abCors in src/index.ts) — the
 # audiobook site's prod + dev lanes share ONE origin (the dev lane is a /dev/
 # PATH on the same host, measured from audiobook_catalog docs/access
