@@ -144,6 +144,20 @@ One deliberate asymmetry: the admin page's **seed-gap notice does not run for
 rather than a seed that missed someone — flagging it would print a warning
 nobody could ever clear.
 
+⚠️ **FEDERATING AN APP IS TWO EDITS, AND THE SECOND IS EASY TO MISS.** Found
+live the same day, after every unauthenticated check had gone green: the
+`APPS` row shipped, padhard's own CORS was correct, `verify:home` passed,
+102/102 probes passed — and the signed-in page still read *"Sam's library …
+unreachable"* on every row. The apex's own **`Content-Security-Policy`
+`connect-src`** (`sites/heygabi-home/public/_headers`, the `/admin` **and**
+`/admin/` rules — the trailing-slash trap that file already documents) named
+`library.heygabi.ai` and `boardgames.heygabi.ai` and nothing else. A
+CSP-blocked `fetch()` REJECTS inside the page, and `fetchAppDirectory()`
+catches a rejection as `{ ok: false, why: 'unreachable' }` —
+indistinguishable from a dead host. The other site's CORS is the FIRST lock;
+this origin's CSP is the SECOND, and only a real signed-in browser session
+shows the second one failing.
+
 ### 1.3 The local user rows are load-bearing and cannot move
 
 **12 foreign keys reference `app_user(id)` in the library alone** (grep over

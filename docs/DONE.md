@@ -13,6 +13,66 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔑 Sam's library (`library2`) — the CSP half, and the SIGNED-IN verification — ✅ DONE 2026-08-16
+
+**Appended, not edited into the entry below it** (this file is append-only).
+The entry beneath this one closed with *"NOT verified: the SIGNED-IN table"*.
+It has since been verified, and doing so immediately found a real bug that
+every unauthenticated check had passed straight over.
+
+### The bug: the fourth column read "unreachable" on every row
+
+Everything that can be checked without a browser session was green — the
+`APPS` row shipped, `verify:home` passed all 9 pages, 102/102 estate probes
+passed, and padhard's own CORS preflight admitted `https://heygabi.ai` with
+GET+PATCH when curled directly. The signed-in page still showed
+*"Sam's library … unreachable"* on every member, and the role filter had no
+vocabulary at all.
+
+**Cause: the apex's own Content-Security-Policy.** `/admin` and `/admin/` in
+`sites/heygabi-home/public/_headers` named `library.heygabi.ai` and
+`boardgames.heygabi.ai` in `connect-src` and nothing else. A CSP-blocked
+`fetch()` **rejects** inside the page, and `fetchAppDirectory()` catches a
+rejection as `{ ok: false, why: 'unreachable' }` — which is
+indistinguishable from the other site being down. `/status` and `/status/`
+had the identical latent failure for the new `wk-library2` / `site-library2`
+rows.
+
+⚠️ **The durable lesson, written into `_headers` itself and into
+`estate-auth-design.md` §1.2 so the next person meets it: federating an app
+is TWO edits — the `APPS` row in `admin.js` AND the host in this origin's
+CSP — and shipping only the first looks exactly like the other site being
+down.** The other site's CORS is the first lock; this origin's CSP is the
+second, and only a real signed-in browser session shows the second one
+failing. This is the "verify with the right instrument" rule paying for
+itself: a 200, a marker match and a green probe suite all held while the
+feature was broken.
+
+Fix: commit `3f0a5ba` — `https://padhard.heygabi.ai` added to `connect-src`
+on all four rules (`/admin`, `/admin/`, `/status`, `/status/`; both forms,
+per the 308 trailing-slash trap that file documents). Redeployed from a
+second `git worktree add <tmp> HEAD` checkout.
+
+### Verified live, SIGNED IN, 2026-08-16
+
+Read off `https://heygabi.ai/admin` in a real browser session:
+
+| Verified | Observed |
+|---|---|
+| The role filter reaches her instance | "Sam's library role (padhard.heygabi.ai)" carries her Worker's full vocabulary — `owner / admin / moderator / contributor / member / guest / pending` — fetched from padhard, never hardcoded |
+| **The owner's actual ask** | **Samantha Hardman's row shows a "Sam's library" role dropdown reading `admin`**, editable exactly like her `games` cell |
+| Owner auto-max, extended identically | Both owner rows render **no control at all** on the Sam's-library cell — "Owner — holds owner, this app's highest role. Not changeable here; owner is DB-only." — the same sentence the library and games cells show |
+| No account there ≠ an error | Members who have never signed into her instance show "no account yet — appears on first sign-in", not a broken dropdown |
+| The estate visibility checkbox is unaffected | Every row still carries its own "Sam's library / visible" checkbox (0007's `DEFAULT 0` column) |
+| No JS errors | Console clean across a signed-out and a signed-in load |
+| Live CSP carries the host | `/admin/` and `/status/` response headers both match `padhard` |
+
+⚠️ **Still NOT verified, and unchanged from the entry below:** whether
+`padhard.heygabi.ai` is present in Firebase's authorised-domain list (probe
+D5 exists but needs a service account nobody had in hand). And **nothing was
+WRITTEN** — no role was granted or changed on anyone during verification;
+the dropdowns were read, never submitted.
+
 ## 🔑 Sam's library (`library2`) joins the estate MANAGEMENT surfaces — ✅ DONE 2026-08-16
 
 Owner, live on the page 2026-08-16: *"in the admin page Sam's library has no
