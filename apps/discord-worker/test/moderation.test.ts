@@ -715,15 +715,22 @@ test('auditDocId is sortable, path-safe, and collision-resistant', () => {
 // 8. REGISTRATION — the registry is a function of the switch
 // ===========================================================================
 
+// ⚠️ These two pin the WHOLE list, not just the moderation pair, and that is
+// deliberate: the assertion that matters is "the switch adds exactly two names
+// and removes exactly two", which a subset check cannot make. The base list
+// grew to three when `/gabi` shipped (2026-08-17) — a base command being added
+// SHOULD land here, as a one-line decision, rather than passing silently.
+const BASE = ['link', 'have', 'gabi'];
+
 test('while the switch is off, /timeout and /cleanup are NOT published to Discord', () => {
   const off = commandNames(commandsFor({ MODERATION_ENABLED: 'off' }));
-  assert.deepEqual(off, ['link', 'have']);
-  assert.deepEqual(commandNames(commandsFor({})), ['link', 'have']);
+  assert.deepEqual(off, BASE);
+  assert.deepEqual(commandNames(commandsFor({})), BASE);
 });
 
 test('flipping the switch adds them — one re-run of the registration route', () => {
   const on = commandNames(commandsFor({ MODERATION_ENABLED: 'on' }));
-  assert.deepEqual(on, ['link', 'have', TIMEOUT_COMMAND_NAME, CLEANUP_COMMAND_NAME]);
+  assert.deepEqual(on, [...BASE, TIMEOUT_COMMAND_NAME, CLEANUP_COMMAND_NAME]);
 });
 
 test('the moderation commands declare Discord\'s own permission gate as a second rail', () => {

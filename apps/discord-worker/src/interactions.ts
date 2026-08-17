@@ -42,6 +42,13 @@ export const LINK_COMMAND_NAME = 'link';
  * would not recognise cannot exist. */
 export const HAVE_COMMAND_NAME = 'have';
 
+/** `/gabi` — the fixer's Discord surface, shape (b) propose-and-deep-link
+ * (gabi-fixer-design.md §10.2). Same rule again: the ROUTER owns the
+ * vocabulary. ⚠️ It answers from the PUBLIC index slice and a link to the site
+ * panel — it runs no tool loop and calls no model, which is exactly why it
+ * needs none of §10.2's four blockers solved. */
+export const GABI_COMMAND_NAME = 'gabi';
+
 /** The two moderation commands (TODO §0 item 4's decided scope). Named here
  * for the same reason, and answered by the switched-off ephemeral while
  * MODERATION_ENABLED is anything but "on". */
@@ -136,6 +143,7 @@ export type RouterDecision =
   | { kind: 'pong' }
   | { kind: 'link_command' }
   | { kind: 'have_command'; query: string; actor: InteractionActor }
+  | { kind: 'gabi_command'; question: string; actor: InteractionActor }
   | {
       kind: 'timeout_command';
       actor: InteractionActor;
@@ -198,6 +206,13 @@ export function routeInteraction(i: Interaction): RouterDecision {
       if (name === LINK_COMMAND_NAME) return { kind: 'link_command' };
       if (name === HAVE_COMMAND_NAME) {
         return { kind: 'have_command', query: stringOption(i, 'title'), actor: interactionActor(i) };
+      }
+      if (name === GABI_COMMAND_NAME) {
+        return {
+          kind: 'gabi_command',
+          question: stringOption(i, 'question'),
+          actor: interactionActor(i),
+        };
       }
       // ⚠️ The two moderation commands are ROUTED even though they are not
       // published while the switch is off (commands.ts's registry is a

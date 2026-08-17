@@ -48,6 +48,20 @@ OWNER_EMAILS = "nbaslamking@gmail.com,mitchlandtv@gmail.com"
 # lane can point elsewhere; the default in code is this same host.
 INDEX_BASE_URL = "https://index.heygabi.ai"
 
+# Where `/gabi` sends people (the fixer's Discord surface, shape (b)
+# propose-and-deep-link — library_catalog gabi-fixer-design.md §10.2). This is
+# Samantha's instance, the only one whose GABI_PANEL posture is on; the main
+# library has it off by decision 8, so linking there would offer a panel that
+# does not exist.
+# ⚠️ A var, not a secret, and NOT a capability: the URL appears in the bot's own
+# replies, and following it proves nothing — the site does its own Firebase
+# sign-in and its own `runResearch` role check. That is the whole reason shape
+# (b) needs no new credential, no token custody, and no Anthropic key here.
+# ⚠️ The link is deliberately BARE (no ?q=): measured 2026-08-17, the panel
+# parses no URL parameter at all, so a query string would be a promise the page
+# cannot keep. A prefill is PANEL work, recorded in the design doc.
+GABI_PANEL_URL = "https://padhard.heygabi.ai"
+
 # ⚠️ MODERATION KILL-SWITCH (owner order 2026-08-16: "disable her reacting to
 # any admin mod stuff for now until we get further along"). Declared here
 # BEFORE the moderation build existed, so that build would ship DARK behind it

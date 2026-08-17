@@ -63,6 +63,14 @@ export interface Env {
    * (design §4 decision 4). Exists so a test or a future lane can point
    * elsewhere without editing code. */
   INDEX_BASE_URL?: string;
+  /** Where `/gabi` sends people — the site that actually runs the GABI panel
+   * (default: `https://padhard.heygabi.ai`, the only instance whose
+   * `GABI_PANEL` posture is on). A var, not a secret: it is a public hostname
+   * that appears in the bot's own replies. ⚠️ NOT a credential and NOT a
+   * capability — following the link proves nothing; the site does its own
+   * Firebase sign-in and its own role check, which is exactly why shape (b)
+   * needs no new custody. Exists so a test can point elsewhere. */
+  GABI_PANEL_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

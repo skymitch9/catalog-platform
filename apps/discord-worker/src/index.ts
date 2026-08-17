@@ -7,6 +7,12 @@
  *   /link      the identity-link ceremony (link.ts, commands.ts)
  *   /have      "is this book on the estate's shelves?" — the PUBLIC audiobook
  *              slice for everyone, no credential on the call (have.ts)
+ *   /gabi      the fixer's Discord surface, shape (b) propose-and-deep-link
+ *              (gabi.ts): a best-effort answer from the same public slice, plus
+ *              a link into the real GABI panel. ⚠️ It runs NO tool loop, calls
+ *              NO model, holds NO new secret and writes NOTHING — that is what
+ *              lets it ship without any of gabi-fixer-design.md §10.2's four
+ *              blockers being solved
  *   /timeout   ⚠️ DARK. Answers "moderation is switched off" while
  *   /cleanup   ⚠️ DARK.  MODERATION_ENABLED is anything but "on"
  *              (moderation.ts / mod-actions.ts), and is not even published to
@@ -58,6 +64,7 @@ import {
   roleIsAdmin,
 } from './commands.js';
 import { indexBase, processHave } from './have.js';
+import { panelBase, panelDeepLink, processGabi } from './gabi.js';
 import {
   moderationOn,
   MOD_MSG,
@@ -91,6 +98,7 @@ app.get('/api/health', (c) =>
       'identity_link',
       'poll_message_sync',
       'have_command',
+      'gabi_command',
       'moderation_dark',
     ],
     configured: {
@@ -129,6 +137,15 @@ app.get('/api/health', (c) =>
     // rather than inferred: if this ever reads anything but `audiobook`, the
     // privacy line moved and somebody should know why.
     have_scope: 'audiobook',
+    // ⚠️ `/gabi`'s SHAPE, stated from outside rather than inferred from a
+    // command nobody ran. `propose_and_deep_link` is the design's shape (b):
+    // the bot reads the public slice and links to the panel; it runs no tool
+    // loop and calls no model. If this ever reads anything else, the token
+    // custody question (§10.2 blocker 2) was answered by somebody and that is
+    // a decision worth finding in one curl. The URL is a var and public —
+    // reporting it leaks nothing and makes a misconfigured link visible.
+    gabi_surface: 'propose_and_deep_link',
+    gabi_panel_url: panelDeepLink(panelBase(c.env)),
   }),
 );
 
@@ -382,6 +399,33 @@ app.post('/interactions', async (c) => {
           applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
           interactionToken: decision.actor.token,
           indexBaseUrl: indexBase(c.env),
+          serviceAccountJson: c.env.FIREBASE_SERVICE_ACCOUNT,
+          discordUserId: decision.actor.user?.id ?? null,
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'gabi_command': {
+      // Shape (b), propose-and-deep-link (gabi.ts's header has the full
+      // reasoning). Deferred for the same reason as /have: it asks the index,
+      // and a round trip must never race Discord's 3-second window.
+      if (!decision.actor.token) {
+        return c.json(
+          ephemeralMessage(
+            'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
+              'Nothing went wrong on the estate side — try the command again.',
+          ),
+        );
+      }
+      defer(
+        c,
+        processGabi({
+          question: decision.question,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          indexBaseUrl: indexBase(c.env),
+          panelUrl: panelDeepLink(panelBase(c.env)),
           serviceAccountJson: c.env.FIREBASE_SERVICE_ACCOUNT,
           discordUserId: decision.actor.user?.id ?? null,
         }),

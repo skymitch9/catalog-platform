@@ -84,10 +84,15 @@ export const MIN_QUERY_LENGTH = 2;
 export const MAX_HITS = 5;
 
 /** club_announcements.py's COLOR_PURPLE — the estate's one embed colour, so a
- * GABI answer looks like a GABI answer wherever it appears. */
-const EMBED_COLOR = 10181046;
+ * GABI answer looks like a GABI answer wherever it appears. Exported since
+ * `/gabi` (gabi.ts) renders in the same colour: two embed colours would be two
+ * bots as far as a reader is concerned. */
+export const EMBED_COLOR = 10181046;
 
-const truncate = (s: string, max: number): string => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
+/** Exported for the same reason: `/gabi` truncates the same way, and a second
+ * copy would drift into eliding differently in one of the two commands. */
+export const truncate = (s: string, max: number): string =>
+  s.length <= max ? s : `${s.slice(0, max - 1)}…`;
 
 // ---------------------------------------------------------------------------
 // The wire shapes (the subset this command reads)

@@ -37,6 +37,7 @@
 import { firestoreRequest, mintAccessToken, parseServiceAccount } from './firebase-sa.js';
 import {
   CLEANUP_COMMAND_NAME,
+  GABI_COMMAND_NAME,
   HAVE_COMMAND_NAME,
   LINK_COMMAND_NAME,
   TIMEOUT_COMMAND_NAME,
@@ -53,11 +54,14 @@ const CHAT_INPUT = 1;
 const OPTION = { STRING: 3, INTEGER: 4, USER: 6 } as const;
 
 /**
- * The always-published registry: the two commands that are on.
+ * The always-published registry: the three commands that are on.
  *
  * `/link` is phase 2's ceremony; `/have` is design §2b, answering at the
  * public audiobook scope (§4 decision 4) for everyone, which is why it needs
- * no credential and no gate.
+ * no credential and no gate. `/gabi` is the fixer's surface in shape (b) —
+ * propose-and-deep-link — and is ungated for the same reason: it reads the
+ * same public slice and answers with a link to a site that does its own
+ * sign-in. Neither spends money nor writes anything.
  */
 export const BASE_COMMANDS = [
   {
@@ -77,6 +81,19 @@ export const BASE_COMMANDS = [
         name: 'title',
         type: OPTION.STRING,
         description: 'A title, author or series to look for',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: GABI_COMMAND_NAME,
+    type: CHAT_INPUT,
+    description: 'Ask GABI about the estate’s books — she answers here and links you to the full panel',
+    options: [
+      {
+        name: 'question',
+        type: OPTION.STRING,
+        description: 'What you want to know or fix — in your own words',
         required: true,
       },
     ],
