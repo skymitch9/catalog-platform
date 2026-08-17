@@ -15,6 +15,23 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🎧 AUDIOBOOK PLAYER — RESEARCH + DESIGN ONLY (owner, 2026-08-17) — IN FLIGHT, no build
+
+Owner: *"do research on any open source players we can incorprate into our
+app to play audiobooks? build out the feature design doc but don't execute
+yet. Im just curious about the feasibility."* Requirements verbatim: position
+remembering · speed to 3x · PWA (and *"ebooks need to be able to local for
+pwa also"*) · 15s back/forth default · next/prev chapter · chapter select +
+view · sleep timer · **scrub bar per chapter not per book** · future:
+bookmark a timestamp, mark-as-finished counts as read in TBR · "anything
+else you can think of". Deliverable: docs/info/audio-player-design.md +
+review artifact. ⚠️ NO CODE — feasibility only. Known seams to weigh: m4b
+chapter atoms vs the existing chapters.json pipeline; <audio> can't carry a
+bearer on its range requests (service-worker token injection vs signed URLs
+— same family as pdf.js bearer-per-range); iOS PWA background-audio limits;
+⚠️ offline ebook copies collide with the download-is-admin-floored policy —
+that's an OWNER DECISION to surface, not a default.
+
 ## ☁️ WORKERS PAID UPGRADE — ✅ DONE by owner 2026-08-17 ("cloudflare upgraded"); one follow-up queued
 
 Owner upgraded in the dashboard. What it changes: DO duration pressure gone
