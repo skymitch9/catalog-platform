@@ -2,11 +2,12 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
-> Last verified: **2026-08-16** — against the built Worker
-> (`apps/discord-worker/`, 34 tests passing) and the design docs. ⚠️ **Not
-> verified against a live Discord application: none exists yet.** Every
-> portal step below is written from `discord-bot-design.md` §1 and the
-> research doc, not from a performed registration.
+> Last verified: **2026-08-16 late** — LIVE. The owner registered application
+> **GABI** (id `1538775435880562758`) and the Worker is deployed at
+> `discord.heygabi.ai` (version `96b315e4`), all four secrets set,
+> `/api/health` answering `ok: true` with every `configured` boolean `true`.
+> Remaining owner steps at that point: §3 step 5 (Interactions Endpoint URL
+> save — the Ed25519 verification moment) and step 6 (server invite).
 
 The estate Discord bot's operational runbook: what exists, the secrets, and
 the exact Developer Portal steps **only the owner can perform** — the bot is
