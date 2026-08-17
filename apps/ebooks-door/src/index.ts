@@ -40,7 +40,14 @@ const ORIGIN = 'https://audiobooks.heygabi.ai';
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const path = url.pathname === '/' ? '/ebooks.html' : url.pathname;
+    // ⚠️ `/ebooks`, NOT `/ebooks.html` — MEASURED 2026-08-17. Cloudflare Pages
+    // 308s the `.html` form to the extensionless one, and this door passes
+    // responses through VERBATIM, so the redirect escaped with a Location on
+    // the audiobook host: every visitor to ebooks.heygabi.ai was bounced to
+    // audiobooks.heygabi.ai/ebooks and the pool never appeared on its own
+    // address at all. Asking for the canonical path in the first place is the
+    // fix; nothing about the pass-through needed to change.
+    const path = url.pathname === '/' ? '/ebooks' : url.pathname;
     const upstream = new Request(ORIGIN + path + url.search, request);
     const res = await fetch(upstream);
     // Pass through verbatim — headers, status, body. The origin's caching
