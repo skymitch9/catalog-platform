@@ -3,33 +3,40 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
 > Last verified: **2026-08-17** — LIVE at `discord.heygabi.ai`, version
-> `ad35e796-ffd6-44a8-b15e-83bc75bf97ab` (**`/have`** + the **moderation pair,
-> dark**, §9). Application **GABI** (id `1538775435880562758`). Measured live
-> this deploy: `/api/health` `ok: true`; `discord_public_key`,
+> **`03bd6a3a-7f05-4fbe-a846-05bc614f97e6`** (**`/gabi`**, the fixer's surface
+> in shape (b), §10 — joining **`/have`** and the **moderation pair, dark**,
+> §9). Application **GABI** (id `1538775435880562758`). Measured live this
+> deploy: `/api/health` `ok: true`; `discord_public_key`,
 > `discord_application_id`, `discord_bot_token`, `firebase_service_account`,
 > `firebase_project_id` and **`poll_sync_token` all `true`**, with
 > `poll_sync_ready: true` (the token has been set since §8 was written — ⚠️
 > **not verified** is whether the pipeline's `.env` holds the same value);
-> `discord_client_secret` **`false`** and `link_ready` **`false`** (honest —
-> the link ceremony still ships dark, §3 step 7); **`moderation_enabled:
-> false`** and `have_scope: "audiobook"` (both new, both honest);
-> `POST /polls/sync` answering **401 with its worded body** unauthenticated;
+> ✅ **`discord_client_secret` now `true` and `link_ready` `true`** — the owner
+> did §3 step 7's clicks between the last verification and this one, so the
+> link ceremony is **no longer dark** (this line previously said `false`;
+> corrected by re-measurement, not by assumption); **`moderation_enabled:
+> false`**, `have_scope: "audiobook"`, and the two new rows
+> `gabi_surface: "propose_and_deep_link"` /
+> `gabi_panel_url: "https://padhard.heygabi.ai/"`;
 > `/interactions` still answering **401 `missing_signature_headers`** to an
-> unsigned POST and to a bad signature — the endpoint is intact.
-> **Remaining steps: §3 step 7** (owner: client secret + redirect URI + the
-> Firebase authorised-domain entry), **§4** (owner/admin: publish the commands
-> — ⚠️ **`/link` and `/have` do not exist in Discord until this is run**), a
-> club opt-in for §8, and §9's owner-only `MODERATION_ENABLED` flip. Steps 5
-> and 6 are done.
+> unsigned POST and **401 `bad_signature`** to a bad one — the endpoint is
+> intact. Also measured: `https://padhard.heygabi.ai/api/health` reports
+> `gabi: {"panel": true}`, so §10's deep link points at a site that really does
+> run the panel.
+> **Remaining steps: §4** (owner/admin: publish the commands — ⚠️ **`/link`,
+> `/have` and `/gabi` do not exist in Discord until this is run**), a club
+> opt-in for §8, and §9's owner-only `MODERATION_ENABLED` flip. Steps 5, 6 and
+> 7 are done.
 
 The estate Discord bot's operational runbook: what exists, the secrets, and
 the exact Developer Portal steps **only the owner can perform**. The bot IS
 live. ⚠️ **Nothing is visible in Discord until §4 publishes the commands** —
-that is now the single highest-value remaining click, because `/have` (§9)
-needs nothing else at all. Still off besides that: **identity linking** (§3
-step 7, the owner's three clicks), **poll-message posting** (§8 — the token is
-set; a club still has to opt in), and **moderation** (§9.5, the owner's
-evidence-gated flip). All are built, deployed and shipping dark. Design and
+that is now the single highest-value remaining click, and it has grown more
+valuable, not less: `/have` (§9) and **`/gabi` (§10)** each need nothing else
+at all, and identity linking (§3 step 7) is now switched on, so `/link` works
+the moment it appears. Still off besides that: **poll-message posting** (§8 —
+the token is set; a club still has to opt in) and **moderation** (§9.5, the
+owner's evidence-gated flip). Both are built, deployed and shipping dark. Design and
 option space:
 [`../info/discord-bot-design.md`](../info/discord-bot-design.md); bot
 mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
@@ -42,12 +49,13 @@ mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 |---|---|
 | `apps/discord-worker/` — interactions endpoint (Ed25519 verify, PING→PONG, router) + two-way poll voting | **Built, tested (161), LIVE** |
 | Discord application / bot user | **Exists** — GABI, `1538775435880562758` |
-| Secrets | **Five of six set** (measured 2026-08-17). `DISCORD_CLIENT_SECRET` (§3 step 7, owner) is the only remaining gap; `POLL_SYNC_TOKEN` **is** now set on the Worker — ⚠️ **not verified** whether the pipeline's `.env` holds the same value |
+| Secrets | ✅ **ALL SIX SET** (re-measured 2026-08-17 at the `/gabi` deploy — this row previously said five of six: `DISCORD_CLIENT_SECRET` is now `true` and `link_ready` with it, so the owner did §3 step 7 in between); `POLL_SYNC_TOKEN` **is** now set on the Worker — ⚠️ **not verified** whether the pipeline's `.env` holds the same value |
 | Route `discord.heygabi.ai` | **Live** — custom domain, `wrangler.toml` `routes` |
 | Interactions Endpoint URL | **Saved and verified** — the portal's probe passed |
-| Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Built + deployed 2026-08-17, SHIPPING DARK.** Every route answers a worded "linking is not configured yet" page until `DISCORD_CLIENT_SECRET` exists. Until it is on, every vote click still gets the worded "not linked" rejection |
-| `/link` and `/have` slash commands | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. ⚠️ Neither exists in Discord until someone runs §4; `/have` needs nothing else and works the moment it is published |
+| Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Built + deployed 2026-08-17.** ✅ **No longer dark** — `DISCORD_CLIENT_SECRET` is set and `/api/health` reports `link_ready: true` (measured 2026-08-17). ⚠️ `/link` still has to be PUBLISHED (§4) before anyone can type it |
+| `/link`, `/have` and `/gabi` slash commands | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. ⚠️ None of the three exists in Discord until someone runs §4; `/have` and `/gabi` need nothing else and work the moment they are published |
 | `/have` — "is this book on the estate's shelves?" | **Built + deployed 2026-08-17** (§9). Answers at the PUBLIC audiobook scope for everyone, with **no credential on the call** — that absence IS the scope decision. Needs no switch-on beyond §4 |
+| `/gabi` — the fixer's Discord surface, **shape (b) propose-and-deep-link** | **Built + deployed 2026-08-17** (§10), version `03bd6a3a`. A best-effort answer from the same public slice **plus a deep link into the real GABI panel** on `padhard.heygabi.ai`. ⚠️ **No write, no model call, no new secret** — that is the whole reason it could ship without any of the design's four blockers being solved. Needs no switch-on beyond §4 |
 | `/timeout` + `/cleanup` (moderation) | **Built + deployed 2026-08-17, SHIPPING DARK AND UNPUBLISHED** (§9). Every path answers a worded "moderation is switched off" while `MODERATION_ENABLED` is anything but `"on"`, and the two commands are not published to Discord at all until it is |
 | `MODERATION_ENABLED` | **`"off"`** — owner's evidence-gated flip, never an agent's, never a deploy side effect (§9.5) |
 | Bot-posted poll messages with buttons, tally refresh, close propagation (phase 3) | **Built + deployed 2026-08-17, SHIPPING DARK.** `POST /polls/sync` answers a worded 503 until `POLL_SYNC_TOKEN` is minted (§8). Nothing has been posted to any channel yet |
@@ -65,7 +73,7 @@ first deploy creates the Worker; locally they go in `.dev.vars`, gitignored):
 | `DISCORD_APPLICATION_ID` | Same portal page → **Application ID** | |
 | `DISCORD_BOT_TOKEN` | Portal → Bot → **Reset Token** | ⚠️ Shown **once**; one credential shared across every opted-in club (§1.2's accepted blast-radius regression). Rotate via the same Reset Token button. Still NOT used by the poll-**vote** path (those message edits ride the 15-min interaction token) — it is consumed by exactly two things: publishing slash commands (§4) and **phase 3's sync tick** (§8), which posts and edits real channel messages with it |
 | `FIREBASE_SERVICE_ACCOUNT` | The same JSON `auth-worker` holds | ⚠️ **Pipe the file in** (`wrangler secret put FIREBASE_SERVICE_ACCOUNT < key.json`) — never paste into a terminal line, never echo |
-| `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ⚠️ **NOT SET.** A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
+| `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ✅ **SET** (measured 2026-08-17: `/api/health` reports `discord_client_secret: true`, `link_ready: true`). A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
 | `POLL_SYNC_TOKEN` | ⚠️ **Nobody issues this one — the conductor MINTS it.** `python -c "import secrets; print(secrets.token_urlsafe(32))"` | ✅ **SET on the Worker** (measured 2026-08-17: `/api/health` reports `poll_sync_token: true`). ⚠️ **NOT VERIFIED:** whether the audiobook pipeline's `.env` holds the SAME value — without that the cadence trigger cannot authenticate. The shared secret gating `POST /polls/sync` (§8). Goes to **both** sides: `wrangler secret put POLL_SYNC_TOKEN` here, and the *same value* into the audiobook pipeline's `.env` under the same name. A third, deliberately weaker credential class: holding it lets someone make the bot re-render its **own** poll messages sooner than it would have — it grants no Discord powers, holds no Firestore access of its own, and can post nothing a poll doc does not already say |
 
 Two **vars** (not secrets) were added to `wrangler.toml` with the link
@@ -123,12 +131,15 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
    `1116825807878`, deliberately NOT Administrator. Widening later is a role
    toggle, never a re-invite.)*
 
-7. ⚠️ **THE ONE REMAINING OWNER STEP — switch identity linking on.**
-   Three clicks, in this order. Until all three exist, the ceremony ships
-   **dark**: `/link` answers a worded "linking is not configured yet" page,
-   `/api/health` reports `configured.discord_client_secret: false` and
-   `link_ready: false`, and `/link` in Discord says so in its ephemeral
-   reply. Nothing is broken meanwhile — voting on the club page is unchanged.
+7. ✅ **DONE — identity linking is switched on** (measured 2026-08-17: `discord_client_secret: true`, `link_ready: true`). Kept in full because it is the rotation runbook, and because a re-measured correction is worth being able to see. It previously read "THE ONE REMAINING OWNER STEP"; the one remaining step is now §4.
+
+   The three clicks that switched it on, in the order they must be done —
+   kept verbatim because they are also the ROTATION runbook. Until all three
+   exist, the ceremony ships **dark**: `/link` answers a worded "linking is
+   not configured yet" page, `/api/health` reports
+   `configured.discord_client_secret: false` and `link_ready: false`, and
+   `/link` in Discord says so in its ephemeral reply. Nothing is broken
+   meanwhile — voting on the club page is unchanged.
 
    **7a. The redirect URI.** Portal → application **GABI** → **OAuth2** tab →
    **Redirects** → **Add Redirect** →
@@ -175,8 +186,8 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
 
 Discord does not discover commands — an application **PUTs** its command
 list and Discord shows exactly that. GABI's registry is
-`apps/discord-worker/src/commands.ts`: `BASE_COMMANDS` (`/link`, `/have`)
-always, **plus** `MODERATION_COMMANDS` (`/timeout`, `/cleanup`) **only when
+`apps/discord-worker/src/commands.ts`: `BASE_COMMANDS` (`/link`, `/have`,
+`/gabi`) always, **plus** `MODERATION_COMMANDS` (`/timeout`, `/cleanup`) **only when
 `MODERATION_ENABLED` is `"on"`** — see §9.5 for why hiding them was chosen
 over showing a control that answers "switched off". It is published by calling
 the Worker:
@@ -589,3 +600,90 @@ reason header on every real action, so a server admin sees who asked for what.
   client.
 - **Whether the audiobook pipeline's `.env` holds the same `POLL_SYNC_TOKEN`**
   that is now set on the Worker.
+
+---
+
+## 10. `/gabi` — the fixer's Discord surface, shape (b)
+
+*(Built + deployed 2026-08-17, version `03bd6a3a-7f05-4fbe-a846-05bc614f97e6`,
+commit `4715b03`. Design: `library_catalog/docs/info/gabi-fixer-design.md` §10
+— the three-way split, the four blockers, and why (b) is the shape that needs
+none of them. Numbered 10 for the same reason §9 is numbered 9: nothing here is
+ever renumbered.)*
+
+### 10.1 What a person gets
+
+`/gabi <question>` — an **ephemeral** answer in two halves:
+
+1. **A best-effort factual nibble** from the estate index's **public slice**,
+   the only surface this Worker can reach. The question is prose, so it is
+   reduced to a searchable term first, and the answer **states the term it
+   searched** — a bad reduction is then visible rather than mysterious.
+2. **A deep link into the real GABI panel** at `https://padhard.heygabi.ai/`,
+   with the wording *"GABI can dig deeper and propose fixes on the site"*, and
+   **the question quoted back for copy-paste**.
+
+| Caller state | What they get |
+|---|---|
+| **Linked** (`discord_links/{id}` exists) | Nibble + link + *"your Discord account is linked… but whether the panel opens is your role on that site (`runResearch`), and this bot genuinely cannot see it"* |
+| **Not linked** (a 404 on the doc) | Nibble + link + the `/link` nudge (opt-in, revocable), and the same honest sentence about the role |
+| **Link read failed / no service account / no user id** | Nibble + link + the role sentence, and ⚠️ **nothing at all about linking** |
+| **No match on the public shelf** | *"Nothing on the estate's public shelf matches that"* + the catalogue-is-not-an-inventory caveat + the link |
+| **Index down or refusing** | The service-problem sentence + **the link anyway** — a failed search is no reason to withhold the useful half |
+
+⚠️ **The third row is a deliberate difference from `/have`.** `/have`'s
+`isLinked()` folds every failure into `false`, which is right there (it changes
+a scope footnote). Here it would tell an already-linked person to run `/link`
+because Firestore blinked, so `/gabi` reads a **three-valued** state and a read
+that could not be performed says nothing.
+
+### 10.2 What it does NOT do — and why that is the point
+
+| | |
+|---|---|
+| **No write, anywhere** | No Firestore write, no catalog write, no `change_log` row. The only Firestore access is a GET of the caller's own link doc |
+| **No model call** | This Worker holds no `ANTHROPIC_API_KEY` and none was added. The tool loop stays on her site, on her key, under her sign-in |
+| **No new secret** | The one new binding is `GABI_PANEL_URL` — a public hostname in `[vars]`, present so a test can point elsewhere |
+| **No tool loop, no conversation state** | Each `/gabi` is one shot. Nothing is persisted between them |
+
+A test asserts the whole flow makes **exactly two requests** — a GET to the
+index and the PATCH that edits the deferred message — so a model call or a
+write cannot slip in later while every other test still passes.
+
+### 10.3 ⚠️ The deep link carries no `?q=`, and that is measured
+
+Read 2026-08-17 in `library_catalog/apps/web`: `App.tsx` holds the panel open
+in `useState(false)` and `GabiPanel.tsx` parses no location at all. There is no
+URL parameter to carry the question, so appending one would be a link that
+**silently lies** about carrying it. The question is quoted in the message
+instead. A `?q=` prefill is **panel work**, recorded as a follow-up in the
+design doc's §10.2 — and if it ever lands, `panelDeepLink()` in
+`apps/discord-worker/src/gabi.ts` is the one function to change.
+
+### 10.4 What can be checked without Discord
+
+```bash
+curl -s https://discord.heygabi.ai/api/health      # gabi_surface, gabi_panel_url
+curl -s https://padhard.heygabi.ai/api/health      # {"gabi":{"panel":true}}
+```
+
+⚠️ `gabi_surface` reading anything but `propose_and_deep_link` means somebody
+answered the token-custody question, which is a decision worth finding in one
+curl rather than in a diff.
+
+### 10.5 ⚠️ NOT VERIFIED LIVE
+
+- **`/gabi` has never been invoked from Discord** — the commands are not
+  published (§4). The index hop WAS exercised live this deploy
+  (`GET /api/search?q=dungeon born&source=audiobook` → 200, real rows), and so
+  was the deep-link target (`padhard.heygabi.ai` → 200,
+  `gabi.panel: true`). What is unproven is the render inside a real Discord
+  client and whether the term reduction behaves well on real questions.
+- **Nobody has followed the deep link from Discord**, so the hand-off
+  experience — arrive, sign in, find the speech-bubble button, paste — has
+  never been walked end to end by a person.
+- **Whether anyone besides Samantha can open the panel.** Her instance's
+  `ESTATE_DEFAULT_ROLE` is unset, so estate auto-grant hands out `member`, and
+  `member` does not hold `runResearch`. The honest expectation is that a
+  linked stranger following the link sees the library **without** the panel —
+  which is what the wording promises, but it has not been observed.

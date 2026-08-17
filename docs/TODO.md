@@ -200,11 +200,10 @@ Interactions Endpoint URL save: owner's click, unconfirmed until interactions
 arrive.
 
 ⚠️ **Phase 2 (the identity-link ceremony) LANDED 2026-08-17** — moved whole
-to [`DONE.md`](DONE.md). It is live and **shipping dark**: every route answers
-a worded "linking is not configured yet" page until the owner does
-`access/discord-bot.md` **§3 step 7** (client secret + redirect URI + the
-Firebase authorised-domain row for `discord.heygabi.ai`) and then publishes
-`/link` via §4, and no further build is blocked on it.
+to [`DONE.md`](DONE.md). ✅ **No longer dark**: measured 2026-08-17 at the
+`/gabi` deploy, `/api/health` reports `discord_client_secret: true` and
+`link_ready: true`, so `access/discord-bot.md` §3 step 7's clicks are done.
+`/link` still has to be PUBLISHED via §4 before anyone can type it.
 
 ⚠️ **Phase 3 (bot-posted poll messages with buttons) LANDED 2026-08-17** —
 moved whole to [`DONE.md`](DONE.md). Live and **shipping dark** until a club
@@ -212,16 +211,28 @@ opts in.
 
 ⚠️ **`/have` LANDED 2026-08-17** and ⚠️ **moderation (`/timeout` + `/cleanup`)
 LANDED 2026-08-17, DARK** — both moved whole to [`DONE.md`](DONE.md). Live at
-version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab`. **The build queue for this
-section is now empty apart from the FUTURE seed below.**
+version `ad35e796-ffd6-44a8-b15e-83bc75bf97ab`.
+
+⚠️ **`/gabi` — THE FIXER'S DISCORD SURFACE, shape (b) propose-and-deep-link
+— LANDED 2026-08-17** (queue item 3). Moved whole to [`DONE.md`](DONE.md).
+Live at version `03bd6a3a-7f05-4fbe-a846-05bc614f97e6`, commit `4715b03`;
+runbook [`access/discord-bot.md` §10](access/discord-bot.md). It ships with all
+four of the design's blockers still unsolved, which is exactly what shape (b)
+is for: no write, no model call, no new secret. **The build queue for this
+section is now EMPTY.**
 
 **Everything outstanding on this whole section is a switch-on, not a build:**
-- 🧑 **Owner:** `access/discord-bot.md` §3 step 7 (three clicks) → identity
-  linking.
-- 🧑 **Owner or admin:** run §4's `POST /admin/commands/register` — ⚠️ **until
-  someone does, `/link` and `/have` do not exist in Discord at all.** It needs
-  a Firebase ID token from an estate admin account, which no agent holds; it is
-  one authenticated POST and it is idempotent.
+- ✅ **Identity linking is ON** — `access/discord-bot.md` §3 step 7's three
+  clicks were done by the owner at some point before 2026-08-17's `/gabi`
+  deploy, and the correction is MEASURED, not assumed: `/api/health` now
+  reports `discord_client_secret: true` and `link_ready: true`. This line
+  previously said the clicks were outstanding.
+- 🧑 **Owner or admin — THE ONE REMAINING CLICK:** run §4's
+  `POST /admin/commands/register` (one button on the `/admin` page, CORS now
+  open to the apex) — ⚠️ **until someone does, `/link`, `/have` and `/gabi`
+  do not exist in Discord at all.** It needs a Firebase ID token from an estate
+  admin account, which no agent holds; it is one authenticated POST and it is
+  idempotent for a given `MODERATION_ENABLED` state.
 - 🎛️ **Conductor / owner:** opt a club in with
   `features.discordPollVoting = true`. `POLL_SYNC_TOKEN` is **set on the
   Worker** (measured 2026-08-17: `/api/health` reports
@@ -232,44 +243,6 @@ section is now empty apart from the FUTURE seed below.**
   has a **second step**: re-run the registration route, because while the
   switch is off the two moderation commands are deliberately not published to
   Discord at all (reasoning in `commands.ts` and `DONE.md`).
-
-Queue (items 1 and 2 — `/have` and moderation — landed 2026-08-17 and moved
-whole to `DONE.md`; item 3's numbering is kept so the archive's references
-stay true). Dispatch as OPUS agents per the model-tiering rule:
-
-3. ⚠️ **THE FIXER'S DISCORD SURFACE — THIS QUEUE'S NEXT-AFTER ITEM, promoted
-   2026-08-17.** No longer a design seed: the fixer's **phase 0 shipped that
-   day** on `padhard.heygabi.ai` (read-only conversational GABI, site chat
-   panel), and the owner settled the surface order in the same breath —
-   *"we can do discord right after"*. So a Discord DM front end is the next
-   thing after the panel, **ahead of the library's own write phases**.
-
-   The design is `library_catalog/docs/info/gabi-fixer-design.md` — §10 is the
-   three-way split, §13 is the file map. What matters for THIS repo:
-
-   - **Two of the three parts already exist and are front-end-agnostic**: the
-     tool allowlist (`@lc/core`'s `GABI_TOOLS`) and the key-holding, spend-gated
-     `POST /api/gabi/turn` on her Worker. Both are shipped and neither needs
-     changing. **What a Discord surface must write is the EXECUTOR** — the one
-     part that is per-front-end — and that is genuinely the whole difference.
-   - ⚠️ **§10.2's four blockers are UNCHANGED and phase 0 solved none of them:**
-     no `app_user` join (the link maps a Discord id to a club slug + firebaseUid
-     in **Firestore**, which her library Worker cannot read — no service
-     account, deliberately), **no token-custody answer** (minting a Firebase
-     token *as her* from the discord-worker's service account is precisely the
-     "actor that is not her, writing as her" the design refuses), no
-     deferred-response path, and no persisted conversation state — the browser
-     tab provides that last one for free, which is exactly why the panel did not
-     have to build it.
-   - ✅ **Start at shape (b): the bot READS and PROPOSES, and every write is a
-     deep link back to her site panel to confirm.** It needs none of the four,
-     no new auth and no new credential, and it is the honest version of "her
-     authority" — she is still the one who acts. Shape (a), a per-user scoped
-     library token, is real work and access-increasing; shape (c), a service
-     account, is **refused**.
-   - The library-side prerequisites are already true: her role is `admin`
-     (measured), the turn route is live, and the accounting table records every
-     turn on both instances.
 
 ## 📚 Series registry — the API is LIVE; what still hangs off it
 

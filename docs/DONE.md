@@ -13,6 +13,113 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🤖 `/gabi` — the fixer's Discord surface, shape (b) — ✅ BUILT + DEPLOYED 2026-08-17
+
+**Moved whole from [`TODO.md`](TODO.md) §0 item 3 at completion.** Commit
+`4715b03`, Worker version `03bd6a3a-7f05-4fbe-a846-05bc614f97e6`, 180 tests
+green. Runbook: [`access/discord-bot.md` §10](access/discord-bot.md); design:
+`library_catalog/docs/info/gabi-fixer-design.md` §10.2.
+
+### As built
+
+- **`/gabi <question>`** in `BASE_COMMANDS`, routed by `GABI_COMMAND_NAME`,
+  answered with the **deferred-ephemeral** idiom `/have` established (Discord's
+  3-second window acked, 15 minutes to fill it in).
+- **`apps/discord-worker/src/gabi.ts`** — a best-effort nibble from the index's
+  **public slice**, reusing `/have`'s own `lookupHave` rather than copying it
+  (same URL builder, same explicit `source` narrowing, same
+  no-Authorization-header decision), plus the deep link into the real GABI
+  panel at `https://padhard.heygabi.ai/`.
+- **A three-valued link state**, deliberately NOT `/have`'s boolean
+  `isLinked()`: there a failed read changes a scope footnote, here it would
+  tell an already-linked person to run `/link`. An unperformed read answers
+  `unknown` and the message says nothing about linking at all.
+- **`/api/health` gains `gabi_surface` and `gabi_panel_url`**, so the shape and
+  the link are checkable in one curl. ⚠️ `gabi_surface` reading anything but
+  `propose_and_deep_link` means somebody answered the token-custody question.
+
+### What it deliberately does not do — the whole justification
+
+**No write anywhere, no model call, no new secret.** The only new binding is
+`GABI_PANEL_URL`, a public hostname in `[vars]`. A test asserts the flow makes
+**exactly two requests** — a GET to the index and the PATCH that edits the
+deferred message — so a future model call or Firestore write cannot slip in
+while every other test still passes. That is what let shape (b) ship with **all
+four of the design's blockers still unsolved**.
+
+### Two decisions worth finding later
+
+1. ⚠️ **The deep link carries no `?q=`, and that is MEASURED.** Read 2026-08-17
+   in `library_catalog/apps/web`: `App.tsx` holds the panel open in
+   `useState(false)` and `GabiPanel.tsx` parses no location. A parameter would
+   be a link that silently lies about carrying the question, so the question is
+   quoted back for copy-paste instead. A prefill is **panel work**, filed as a
+   follow-up in the design doc — `panelDeepLink()` is the one function to change
+   if it lands.
+2. ⚠️ **The answer never promises the panel will open.** The bot can determine
+   whether a Discord account is LINKED; it cannot resolve whether that identity
+   holds `runResearch` on her instance — blocker 1, the roles live in the
+   library's own D1 with no path from Firestore — and the wording says exactly
+   that, rather than implying a door that may be locked.
+
+### Left for the conductor/owner
+
+🧑 **Publish the registry** — `POST /admin/commands/register` from the `/admin`
+page with an estate admin's own bearer. ⚠️ **`/gabi` does not exist in Discord
+until someone does**, and no agent holds the token. One click, idempotent for a
+given `MODERATION_ENABLED` state.
+
+### NOT verified
+
+`access/discord-bot.md` §10.5 carries the list. In short: the command has never
+been invoked from Discord (unpublished), nobody has followed the deep link end
+to end, and it has not been observed what a linked *stranger* sees on
+`padhard` — the honest expectation is the library without the panel, because
+`ESTATE_DEFAULT_ROLE` is unset there and `member` does not hold `runResearch`.
+Exercised live this deploy: the index hop (200, real rows), the panel host
+(200, `gabi.panel: true`), and `/interactions` still 401ing both an unsigned
+POST and a bad signature.
+
+### The item as it stood in TODO.md, moved whole
+
+Queue (items 1 and 2 — `/have` and moderation — landed 2026-08-17 and moved
+whole to `DONE.md`; item 3's numbering is kept so the archive's references
+stay true). Dispatch as OPUS agents per the model-tiering rule:
+
+3. ⚠️ **THE FIXER'S DISCORD SURFACE — THIS QUEUE'S NEXT-AFTER ITEM, promoted
+   2026-08-17.** No longer a design seed: the fixer's **phase 0 shipped that
+   day** on `padhard.heygabi.ai` (read-only conversational GABI, site chat
+   panel), and the owner settled the surface order in the same breath —
+   *"we can do discord right after"*. So a Discord DM front end is the next
+   thing after the panel, **ahead of the library's own write phases**.
+
+   The design is `library_catalog/docs/info/gabi-fixer-design.md` — §10 is the
+   three-way split, §13 is the file map. What matters for THIS repo:
+
+   - **Two of the three parts already exist and are front-end-agnostic**: the
+     tool allowlist (`@lc/core`'s `GABI_TOOLS`) and the key-holding, spend-gated
+     `POST /api/gabi/turn` on her Worker. Both are shipped and neither needs
+     changing. **What a Discord surface must write is the EXECUTOR** — the one
+     part that is per-front-end — and that is genuinely the whole difference.
+   - ⚠️ **§10.2's four blockers are UNCHANGED and phase 0 solved none of them:**
+     no `app_user` join (the link maps a Discord id to a club slug + firebaseUid
+     in **Firestore**, which her library Worker cannot read — no service
+     account, deliberately), **no token-custody answer** (minting a Firebase
+     token *as her* from the discord-worker's service account is precisely the
+     "actor that is not her, writing as her" the design refuses), no
+     deferred-response path, and no persisted conversation state — the browser
+     tab provides that last one for free, which is exactly why the panel did not
+     have to build it.
+   - ✅ **Start at shape (b): the bot READS and PROPOSES, and every write is a
+     deep link back to her site panel to confirm.** It needs none of the four,
+     no new auth and no new credential, and it is the honest version of "her
+     authority" — she is still the one who acts. Shape (a), a per-user scoped
+     library token, is real work and access-increasing; shape (c), a service
+     account, is **refused**.
+   - The library-side prerequisites are already true: her role is `admin`
+     (measured), the turn route is live, and the accounting table records every
+     turn on both instances.
+
 ## 🧭 Admin page: ONE control grammar + the FULL PERMISSION MAP — ✅ BUILT + DEPLOYED 2026-08-17
 
 **Owner order, verbatim:** *"auth setting has too many different auth setting
