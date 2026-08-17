@@ -100,19 +100,22 @@ describe('⚠️ the posture: affirmative-only, and OFF means no socket at all',
     assert.match(WRANGLER, /new_sqlite_classes\s*=\s*\[\s*"GabiGateway"\s*\]/, 'no migration for the class');
   });
 
-  it('⚠️ declares NO cron — the account has none left, and a half-applying config is a trap', () => {
-    // Measured at deploy 2026-08-17: this account is on Workers Free and has
-    // spent all 5 of its cron triggers, so the 2-minute poker the design wanted
-    // was REFUSED. The block is absent rather than present-and-failing, because
-    // a wrangler.toml that cannot fully apply makes every future deploy of this
-    // Worker exit with a partial-failure banner. If this assertion ever fails,
-    // somebody added a cron back — which is correct ONLY if a trigger was freed
-    // or the account moved to Workers Paid, and that is worth saying out loud.
-    assert.doesNotMatch(
+  it('⚠️ declares the 2-minute cron backstop — restored on Workers Paid, 2026-08-17', () => {
+    // History, both halves measured the same day: the first attempt at this
+    // block was REFUSED under Workers Free ("reached the Workers Free limit of
+    // 5 cron triggers per account") and this test pinned its ABSENCE, because
+    // a wrangler.toml that cannot fully apply makes every future deploy exit
+    // with a partial-failure banner. Then the owner moved the account to
+    // Workers Paid ("cloudflare upgraded", crons 5 → 250) and the block came
+    // back — the deploy that shipped it succeeding IS the proof the plan
+    // change took. If this assertion fails, someone removed the backstop:
+    // correct only if the account regressed to Free, and worth saying so.
+    assert.match(
       WRANGLER,
-      /^\s*crons\s*=\s*\[/m,
-      'a cron was added back — confirm the account can actually install it (Workers Free allows 5 ' +
-        'per account and they were all spent as of 2026-08-17), then update this test.',
+      /^\s*crons\s*=\s*\[\s*"\*\/2 \* \* \* \*"\s*\]/m,
+      'the gateway cron backstop is gone — without it a broken alarm chain has no self-heal and ' +
+        'POST /admin/gateway/start is the only starter. Removing it is correct only if the ' +
+        'account went back to Workers Free (measured refusal, 2026-08-17).',
     );
   });
 });
