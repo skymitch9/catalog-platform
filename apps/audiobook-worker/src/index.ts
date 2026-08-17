@@ -9,13 +9,17 @@
  * answers in/out; the apps answer what/here" — a bug in a future club
  * endpoint must never be able to take down grant/revoke for every app.
  *
- * Surface (Phase 0 + Phase 1 server half — nothing else yet):
+ * Surface:
  *   GET  /api/health       open; liveness + the current estate-check mode.
  *   GET  /api/me           server-verified Firebase token → estate status +
  *                          audiobook ladder role (site_roles/{uid} via the
  *                          service account) + the §6 capability answer.
  *   POST /api/gate/shadow  the would-deny telemetry receiver (gate-shadow.ts;
  *                          204 always, logs only, enforces nothing).
+ *   Phase 3 wave A writes  enforce-routes.ts — ⚠️ DORMANT: every one answers
+ *                          503 not_enabled (touching nothing) unless
+ *                          ESTATE_CHECK === 'enforce', which is the OWNER'S
+ *                          flip on soak evidence, never a deploy side effect.
  *
  * Refusals follow the standing rule (ROLES.md §1e): never a bare status —
  * what happened, what it needs, how to get it; the causes kept distinct
@@ -27,6 +31,7 @@ import { cors } from 'hono/cors';
 import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
+import { enforceRoutes } from './enforce-routes.js';
 import { estateStatusFor } from './estate-status.js';
 import { gateShadowRoutes } from './gate-shadow.js';
 import { meAnswer } from './me.js';
@@ -61,7 +66,7 @@ function abCors() {
       const allowed = parseSiteOrigins(c.env.SITE_ORIGINS);
       return allowed.includes(origin) ? origin : null;
     },
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
   });
@@ -156,5 +161,10 @@ app.get('/api/me', async (c) => {
 });
 
 app.route('/api', gateShadowRoutes);
+
+// Phase 3 wave A — the prebuilt write routes, DORMANT until the owner flips
+// ESTATE_CHECK to 'enforce' (enforce-routes.ts carries its own mode gate as
+// middleware; mounting here changes nothing in off/shadow by construction).
+app.route('/', enforceRoutes);
 
 export default app;
