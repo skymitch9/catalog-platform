@@ -43,3 +43,10 @@ desktop.ini
 # that property (the general rule stays: deploy only from committed-clean
 # trees; ignored files under public/r/ do not count as dirt).
 sites/heygabi-home/public/r/
+
+# Secret-bearing file patterns (credentials-catalog F-2, 2026-08-17): only the
+# literal .dev.vars was ignored while this repo is PUBLIC — any stray .env or
+# .dev.vars.friend would have committed publicly.
+.env
+.env.*
+.dev.vars.*
