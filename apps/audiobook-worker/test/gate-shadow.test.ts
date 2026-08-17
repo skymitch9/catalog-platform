@@ -201,12 +201,86 @@ test('gateDecision: the ladder floors — moderator operates, only admin manages
   assert.equal(gateDecision({ action: 'club.updateStructural', tokened: true, role: 'admin', estateStatus: 'approved', clubManager: false }).wouldDeny, false);
 });
 
-test('gateDecision: club managers hold operate+manage on their club, never administer', () => {
+test('gateDecision: club managers hold operate+manage on their club', () => {
   assert.equal(gateDecision({ action: 'club.setSchedule', tokened: true, role: 'guest', estateStatus: 'approved', clubManager: true }).wouldDeny, false);
   assert.equal(gateDecision({ action: 'club.delete', tokened: true, role: 'guest', estateStatus: 'approved', clubManager: true }).wouldDeny, false);
+});
+
+/* ── the CLUB MANAGER package, 2026-08-17 (owner-approved) ─────────────── */
+
+test('the island runs its own club: a rankless manager sets THIS club’s webhook', () => {
+  // The whole point of the flip. A bound manager needs no site-wide rank to
+  // administer the club they already run.
   assert.deepEqual(
     gateDecision({ action: 'club.setWebhook', tokened: true, role: 'guest', estateStatus: 'approved', clubManager: true }),
+    { wouldDeny: false, reason: null },
+  );
+  assert.equal(
+    gateDecision({ action: 'club.clearWebhook', tokened: true, role: 'guest', estateStatus: 'approved', clubManager: true }).wouldDeny,
+    false,
+  );
+});
+
+test('the island is ONE club wide: a manager of another club is refused here', () => {
+  // clubManager:false IS "manager of some other club" as far as this gate is
+  // concerned — the roster read is per-club, so the island simply does not
+  // reach. Refused with the honest capability name, not a bare status.
+  assert.deepEqual(
+    gateDecision({ action: 'club.setWebhook', tokened: true, role: 'guest', estateStatus: 'approved', clubManager: false }),
     { wouldDeny: true, reason: 'lacks_administerClub' },
+  );
+});
+
+test('moderator+ overrides everywhere the island grants — never out-ranked by it', () => {
+  for (const action of ['club.setWebhook', 'club.clearWebhook']) {
+    assert.equal(
+      gateDecision({ action, tokened: true, role: 'moderator', estateStatus: 'approved', clubManager: false }).wouldDeny,
+      false,
+      action,
+    );
+  }
+  // …and on the roster, which the island never holds.
+  assert.equal(
+    gateDecision({ action: 'club.claimManager', tokened: true, role: 'moderator', estateStatus: 'approved', clubManager: false, clubClaimed: true }).wouldDeny,
+    false,
+  );
+});
+
+test('claim: a member takes an UNCLAIMED club, and cannot take a managed one', () => {
+  // First-come-first-served (enforce-blocker 4 closed: an admin floor here
+  // was self-blocking, because claiming is how one BECOMES a manager).
+  assert.deepEqual(
+    gateDecision({ action: 'club.claimManager', tokened: true, role: 'member', estateStatus: 'approved', clubManager: false, clubClaimed: false }),
+    { wouldDeny: false, reason: null },
+  );
+  // Already someone's — refused, with a reason that says WHICH refusal it is
+  // so the soak can tell "already claimed" from "no session".
+  assert.deepEqual(
+    gateDecision({ action: 'club.claimManager', tokened: true, role: 'member', estateStatus: 'approved', clubManager: false, clubClaimed: true }),
+    { wouldDeny: true, reason: 'club_already_claimed' },
+  );
+});
+
+test('claim: a club’s OWN manager may not add a second manager (peer-escalation)', () => {
+  assert.deepEqual(
+    gateDecision({ action: 'club.claimManager', tokened: true, role: 'guest', estateStatus: 'approved', clubManager: true, clubClaimed: true }),
+    { wouldDeny: true, reason: 'club_already_claimed' },
+  );
+});
+
+test('claim: a revoked estate account is refused even on an unclaimed club', () => {
+  assert.deepEqual(
+    gateDecision({ action: 'club.claimManager', tokened: true, role: 'member', estateStatus: 'revoked', clubManager: false, clubClaimed: false }),
+    { wouldDeny: true, reason: 'estate_revoked' },
+  );
+});
+
+test('claim: an unknown club state reads as CLAIMED, never as free for the taking', () => {
+  // gateDecision's default when the report named no club (or the roster read
+  // failed, which roles.ts answers claimed:true) — the strict direction.
+  assert.equal(
+    gateDecision({ action: 'club.claimManager', tokened: true, role: 'member', estateStatus: 'approved', clubManager: false }).wouldDeny,
+    true,
   );
 });
 

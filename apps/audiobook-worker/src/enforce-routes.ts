@@ -32,9 +32,9 @@
  * reviews:            DELETE /api/reviews/:docId                    removeAnyReview
  * club doc:           PATCH  /api/clubs/:clubId                     manageClub / operateClub (per field tier)
  *                     DELETE /api/clubs/:clubId                     manageClub
- * webhook (RESTRICTED): PUT  /api/clubs/:clubId/webhook             administerClub
- *                     DELETE /api/clubs/:clubId/webhook             administerClub
- * manager claim:      POST   /api/clubs/:clubId/managers/claim      administerClub
+ * webhook:            PUT    /api/clubs/:clubId/webhook             administerClub (island ON since 2026-08-17)
+ *                     DELETE /api/clubs/:clubId/webhook             administerClub (island ON since 2026-08-17)
+ * manager claim:      POST   /api/clubs/:clubId/managers/claim      the claimManager rule (unclaimed: any session; claimed: moderator+)
  * member ops:         PUT    /api/clubs/:clubId/members/:slug/role  operateClub
  *                     DELETE /api/clubs/:clubId/members/:slug       operateClub
  *                     POST   /api/clubs/:clubId/requests/:slug/accept  operateClub
@@ -351,7 +351,7 @@ enforceRoutes.delete('/api/clubs/:clubId', async (c) => {
   return c.json({ success: true });
 });
 
-/* ── the RESTRICTED tier: webhook + manager claim ─────────────────────── */
+/* ── club administration: webhook (island-held) + the roster claim ────── */
 
 /**
  * PUT /api/clubs/:clubId/webhook — clubs.js setClubDiscordWebhook: the full
@@ -359,9 +359,10 @@ enforceRoutes.delete('/api/clubs/:clubId', async (c) => {
  * create, update: if validClubSettings() && canAdministerClub(...)`, lines
  * 582–583; the doc's `read: if false` is the security control and the URL
  * never returns to a browser), then the masked tail onto the club doc
- * (clubRestrictedFieldsChanged → canAdministerClub, rules 537). RESTRICTED:
- * admin+ only, never club managers — the 2026-08-16 tightening, preserved
- * by gateDecision('club.setWebhook').
+ * (clubWebhookFieldChanged → canAdministerClub). Gate: administerClub, which
+ * since 2026-08-17 the CLUB ISLAND holds — a bound manager of THIS club may
+ * set its webhook without site-wide rank, and moderator+ overrides anywhere.
+ * A manager of a DIFFERENT club is refused: the island is one club wide.
  */
 enforceRoutes.put('/api/clubs/:clubId/webhook', async (c) => {
   const body = await jsonBody(c);
@@ -430,13 +431,23 @@ enforceRoutes.delete('/api/clubs/:clubId/webhook', async (c) => {
  * POST /api/clubs/:clubId/managers/claim — the design's "claiming becomes an
  * explicit endpoint with audit" (§1). Mirrors clubs.js claimManagerRole:
  * stamp the CALLER's own uid (never a third party's — the client never could
- * either) into managerUids as {role, displayName, claimedAt} — the RESTRICTED
- * managerUids field (clubRestrictedFieldsChanged → canAdministerClub, rules
- * 537; the 2026-08-16 tightening). Gate: administerClub via
- * gateDecision('club.claimManager') — the same strict answer the soak logs
- * (rules' unclaimed-TOFU open arm is deliberately not mirrored; see
- * enforce-gate.ts's module doc). The audit is the ab_gate line plus the
- * claimedAt/displayName stamped into the entry itself.
+ * either) into managerUids as {role, displayName, claimedAt}.
+ *
+ * Gate (rewritten 2026-08-17, CLUB MANAGER package): the `claimManager` rule,
+ * not a capability floor — an UNCLAIMED club is first-come-first-served to
+ * any live session, a CLAIMED one is moderator+ (never its own managers:
+ * peer-escalation). firestore.rules enforces the identical shape today
+ * (`canWriteManagerRoster` / `selfOnlyManagerClaim`), so this route is a
+ * mirror again rather than a stricter twin.
+ *
+ * ⚠️ The claim is written under an updateTime PRECONDITION, which is what
+ * makes "first-come-first-served" true rather than merely intended: two
+ * members claiming the same unclaimed club within the same second cannot
+ * both pass the gate and both land — the second write loses the precondition
+ * and is answered as a conflict, not silently merged into a two-manager
+ * roster nobody chose.
+ *
+ * The audit is the ab_gate line plus the claimedAt/displayName in the entry.
  */
 enforceRoutes.post('/api/clubs/:clubId/managers/claim', async (c) => {
   const body = (await jsonBody(c)) ?? {};
@@ -459,9 +470,26 @@ enforceRoutes.post('/api/clubs/:clubId/managers/claim', async (c) => {
     saToken,
     clubPath,
     { managerUids: { mapValue: { fields: { [uid]: toFsValue(entry) } } } as FsValue },
-    { fieldPaths: [quoteFieldPath(['managerUids', uid])] },
+    {
+      fieldPaths: [quoteFieldPath(['managerUids', uid])],
+      ifUpdateTime: existing.value.updateTime,
+    },
   );
-  if (!patched.ok) return writeOutage(c, patched.status);
+  if (!patched.ok) {
+    if (patched.status === 400 || patched.status === 409) {
+      return c.json(
+        {
+          error: 'conflict',
+          detail:
+            'This club changed while the claim was being written — most likely ' +
+            'somebody else claimed it first. Reload the club and look at who ' +
+            'manages it now.',
+        },
+        409,
+      );
+    }
+    return writeOutage(c, patched.status);
+  }
   return c.json({ success: true });
 });
 

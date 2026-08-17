@@ -30,10 +30,10 @@ import { Hono } from 'hono';
 import { resolveIdentity, type EstateStatus } from '@platform/estate-auth';
 import { parseServiceAccount, type ServiceAccount } from '@platform/firebase-sa';
 import { effectiveLadderRole, type LadderRole } from '../../auth-worker/src/role-ladder.js';
-import { can, clubCan, type Capability } from './capabilities.js';
+import { can, canClaimManager, clubCan, type Capability } from './capabilities.js';
 import { estateCheckMode, parseOwnerEmails, type Env } from './env.js';
 import { estateStatusFor } from './estate-status.js';
-import { cachedStoredRole, clubCollectionFor, isClubManager } from './roles.js';
+import { cachedStoredRole, clubCollectionFor, clubManagerState } from './roles.js';
 
 /* ────────────────────────────────────────────────────────────────────────
  * The action vocabulary — §1's "worker" rows plus review create/update
@@ -46,7 +46,13 @@ export type GateRule =
   /** The future gate is a capability check (+ the club island where flagged). */
   | { kind: 'capability'; capability: Capability; clubManagerMayHold: boolean }
   /** The future gate is only "a live session exists" (Phase 5's measure). */
-  | { kind: 'signedIn' };
+  | { kind: 'signedIn' }
+  /**
+   * The future gate is the CLAIM gate — the one rule whose answer turns on
+   * the club's own state rather than the caller's rank alone
+   * (capabilities.ts `canClaimManager`). Never club-island-held.
+   */
+  | { kind: 'claimManager' };
 
 const cap = (capability: Capability, clubManagerMayHold: boolean): GateRule => ({
   kind: 'capability',
@@ -79,10 +85,20 @@ export const ACTION_GATES: Readonly<Record<string, GateRule>> = {
   'club.acceptRequest': cap('operateClub', true),
   'club.rejectRequest': cap('operateClub', true),
   'club.inviteMember': cap('operateClub', true),
-  // RESTRICTED tier — never club managers (the 2026-08-16 tightening)
-  'club.setWebhook': cap('administerClub', false),
-  'club.clearWebhook': cap('administerClub', false),
-  'club.claimManager': cap('administerClub', false),
+  // The CLUB MANAGER package, 2026-08-17 (owner-approved) — the RESTRICTED
+  // tier splits, because its two halves were never the same kind of thing
+  // (capabilities.ts module doc has the whole argument):
+  //   setWebhook/clearWebhook — a club's own settings. administerClub, and
+  //     the island now HOLDS it: a bound manager runs their own club's
+  //     webhook without site-wide rank. Moderator+ overrides everywhere.
+  //   claimManager — writing managerUids, the roster itself. Its OWN rule
+  //     (`claimManager`), never island-held: unclaimed is
+  //     first-come-first-served to any live session, claimed is moderator+.
+  //     An admin floor here is what made the whole surface self-blocking —
+  //     claiming is how one BECOMES a manager (soak blocker 4).
+  'club.setWebhook': cap('administerClub', true),
+  'club.clearWebhook': cap('administerClub', true),
+  'club.claimManager': { kind: 'claimManager' },
   // reads + discussion (§1 club-read.html table); the schedule name is the
   // design's own example line ("club.setSchedule")
   'club.setSchedule': cap('operateClub', true),
@@ -109,6 +125,13 @@ export interface GateInput {
   role: LadderRole;
   estateStatus: EstateStatus | null;
   clubManager: boolean;
+  /**
+   * Does the named club already have a manager roster? Only the claim rule
+   * reads it, and only an explicit `false` opens the first-come arm —
+   * omitted or unknown is treated as CLAIMED (the strict direction; see
+   * gateDecision). Every other rule ignores this field entirely.
+   */
+  clubClaimed?: boolean;
 }
 
 export interface GateVerdict {
@@ -129,6 +152,23 @@ export function gateDecision(g: GateInput): GateVerdict {
   // Firestore role doc still stands. 'owner' is the one break-glass exception.
   if (g.estateStatus === 'revoked' && g.role !== 'owner') {
     return { wouldDeny: true, reason: 'estate_revoked' };
+  }
+
+  if (rule.kind === 'claimManager') {
+    // ⚠️ UNKNOWN reads as CLAIMED (only an explicit `false` opens the
+    // first-come arm). A claim report that named no club, or whose roster
+    // read failed, must never be scored as "that club is free" — that is the
+    // one direction where a wrong guess in the soak green-lights a flip that
+    // then hands a club away.
+    const claimed = g.clubClaimed !== false;
+    if (canClaimManager(g.role, claimed)) return { wouldDeny: false, reason: null };
+    // Two different denials, kept apart on purpose: the soak must be able to
+    // tell "this club is already someone's" from "there is no live session
+    // behind this claim" — they need different answers from the site.
+    return {
+      wouldDeny: true,
+      reason: claimed ? 'club_already_claimed' : 'lacks_claim_floor',
+    };
   }
 
   const allowed = rule.clubManagerMayHold
@@ -276,11 +316,15 @@ async function processReport(env: Env, req: Request, raw: unknown): Promise<void
   }
 
   // The club island — only consulted when the report names a club and the
-  // caller resolved. Failures read as "not a manager" (roles.ts: the honest
-  // direction for telemetry).
+  // caller resolved. ONE read answers both halves (roles.ts): whether the
+  // club has any manager at all (the claim gate's input) and whether it is
+  // this caller. Failures read strict on both.
   let clubManager = false;
+  let clubClaimed = false;
   if (sa && identity?.uid && clubId) {
-    clubManager = await isClubManager(sa, clubCollectionFor(lane), clubId, identity.uid);
+    const state = await clubManagerState(sa, clubCollectionFor(lane), clubId, identity.uid);
+    clubManager = state.manager;
+    clubClaimed = state.claimed;
   }
 
   const verdict: GateVerdict =
@@ -293,6 +337,7 @@ async function processReport(env: Env, req: Request, raw: unknown): Promise<void
           role: ladderRole ?? 'guest',
           estateStatus,
           clubManager,
+          clubClaimed,
         });
 
   // ONE line, the §4 vocabulary (+ the club id the payload carried).
@@ -307,6 +352,7 @@ async function processReport(env: Env, req: Request, raw: unknown): Promise<void
       ladder_role: ladderRole,
       estate: estateStatus,
       club_manager: clubManager,
+      club_claimed: clubClaimed,
       would_deny: verdict.wouldDeny,
       reason: verdict.reason,
     }),

@@ -86,6 +86,67 @@ export function clubCollectionFor(lane: 'prod' | 'dev'): string {
   return lane === 'dev' ? 'clubs_dev' : 'clubs';
 }
 
+/** What one club-doc read answers about the manager roster. */
+export interface ClubManagerState {
+  /** Does the club have ANY manager? (firestore.rules `clubClaimed()`.) */
+  claimed: boolean;
+  /** Is THIS uid one of them? */
+  manager: boolean;
+}
+
+/**
+ * Both roster questions from ONE club-doc read — `claimed` (does anybody
+ * manage this club) and `manager` (is it you). They are read together because
+ * the 2026-08-17 claim gate needs both and two reads of the same doc could
+ * disagree across a claim landing mid-request.
+ *
+ * Missing club, missing field or any Firestore failure answers
+ * `{claimed: true, manager: false}` — the STRICTEST reading of each, which is
+ * the honest direction for a gate: an unreadable club is never treated as
+ * free for the taking, and never as yours. (Note that `claimed:true` on a
+ * failure is the opposite default from `manager`, and deliberately so: for
+ * `manager`, false is strict; for `claimed`, true is.)
+ *
+ * ⚠️ managerUids is a MAP of uid → {role, displayName, claimedAt} — see
+ * isClubManager below for the incident that pinned this shape.
+ */
+export async function clubManagerState(
+  sa: ServiceAccount,
+  clubCollection: string,
+  clubId: string,
+  uid: string,
+): Promise<ClubManagerState> {
+  try {
+    const token = await mintAccessToken(sa, SA_SCOPES);
+    const res = await firestoreRequest(
+      sa,
+      token,
+      'GET',
+      `${clubCollection}/${encodeURIComponent(clubId)}`,
+    );
+    if (!res.ok) return { claimed: true, manager: false };
+    const doc = (await res.json()) as {
+      fields?: {
+        managerUids?: {
+          mapValue?: { fields?: Record<string, unknown> };
+          arrayValue?: { values?: Array<{ stringValue?: string }> };
+        };
+      };
+    };
+    const mapFields = doc.fields?.managerUids?.mapValue?.fields;
+    const values = doc.fields?.managerUids?.arrayValue?.values ?? [];
+    const keys = mapFields ? Object.keys(mapFields) : [];
+    return {
+      claimed: keys.length > 0 || values.length > 0,
+      manager:
+        (mapFields != null && Object.prototype.hasOwnProperty.call(mapFields, uid)) ||
+        values.some((v) => v.stringValue === uid),
+    };
+  } catch {
+    return { claimed: true, manager: false };
+  }
+}
+
 /**
  * Is `uid` in the club doc's managerUids? Missing club, missing field, or
  * any Firestore failure all answer FALSE — for the shadow gate this errs
@@ -109,28 +170,5 @@ export async function isClubManager(
   clubId: string,
   uid: string,
 ): Promise<boolean> {
-  try {
-    const token = await mintAccessToken(sa, SA_SCOPES);
-    const res = await firestoreRequest(
-      sa,
-      token,
-      'GET',
-      `${clubCollection}/${encodeURIComponent(clubId)}`,
-    );
-    if (!res.ok) return false;
-    const doc = (await res.json()) as {
-      fields?: {
-        managerUids?: {
-          mapValue?: { fields?: Record<string, unknown> };
-          arrayValue?: { values?: Array<{ stringValue?: string }> };
-        };
-      };
-    };
-    const mapFields = doc.fields?.managerUids?.mapValue?.fields;
-    if (mapFields && Object.prototype.hasOwnProperty.call(mapFields, uid)) return true;
-    const values = doc.fields?.managerUids?.arrayValue?.values ?? [];
-    return values.some((v) => v.stringValue === uid);
-  } catch {
-    return false;
-  }
+  return (await clubManagerState(sa, clubCollection, clubId, uid)).manager;
 }

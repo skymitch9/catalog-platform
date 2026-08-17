@@ -26,6 +26,14 @@
  * refuse here. That is design-intended: those lines are exactly what the
  * owner reviews (claim the club, grant a role, or waive) before any flip.
  *
+ * ⚠️ ONE arm IS now mirrored, since the 2026-08-17 CLUB MANAGER package:
+ * `club.claimManager` on an UNCLAIMED club. It had to be — claiming is the
+ * only door onto the club island, so a strict gate there is self-blocking
+ * (soak enforce-blocker 4) and would make an enforce flip freeze the roster
+ * of every club forever at whoever holds it today. The mirror is narrow:
+ * unclaimed → any live session may stamp their OWN uid; claimed → moderator+
+ * only, never the club's own managers. See capabilities.ts `canClaimManager`.
+ *
  * ## Refusals — ROLES.md §1e verbatim, four causes kept distinct
  *
  * Never a bare status: what happened / what it needs / how to get it. Not
@@ -42,7 +50,7 @@ import { estateCheckMode, parseOwnerEmails, type Env } from './env.js';
 import { estateStatusFor } from './estate-status.js';
 import { ACTION_GATES, gateDecision } from './gate-shadow.js';
 import { laneFrom, type Lane } from './fs-docs.js';
-import { cachedStoredRole, clubCollectionFor, isClubManager, SA_SCOPES } from './roles.js';
+import { cachedStoredRole, clubCollectionFor, clubManagerState, SA_SCOPES } from './roles.js';
 
 /** The §1e-worded dormant answer (the brief's exact contract: 503 not_enabled). */
 export const NOT_ENABLED = {
@@ -94,6 +102,7 @@ function logGateLine(input: {
   role: LadderRole | null;
   estate: EstateStatus | null;
   clubManager: boolean;
+  clubClaimed: boolean;
   denied: boolean;
   reason: string | null;
 }): void {
@@ -109,6 +118,7 @@ function logGateLine(input: {
       ladder_role: input.role,
       estate: input.estate,
       club_manager: input.clubManager,
+      club_claimed: input.clubClaimed,
       denied: input.denied,
       reason: input.reason,
     }),
@@ -170,7 +180,8 @@ export async function runEnforceGate(
   if (!identity || !identity.uid) {
     logGateLine({
       action, lane, clubId, tokened: false, email: null, role: null,
-      estate: null, clubManager: false, denied: true, reason: 'no_live_session',
+      estate: null, clubManager: false, clubClaimed: false,
+      denied: true, reason: 'no_live_session',
     });
     return {
       ok: false,
@@ -243,11 +254,16 @@ export async function runEnforceGate(
     displayName: identity.name,
   });
 
-  // 5. The club island — consulted only where the action's rule admits it.
-  const clubManager =
-    rule.kind === 'capability' && rule.clubManagerMayHold && clubId !== null
-      ? await isClubManager(sa, clubCollectionFor(lane), clubId, identity.uid)
-      : false;
+  // 5. The club roster — consulted where the island may hold the capability
+  //    (manager?) and for the claim rule (claimed at all?). One read, both
+  //    answers, so a claim landing mid-request cannot split them.
+  const needsRoster =
+    clubId !== null &&
+    ((rule.kind === 'capability' && rule.clubManagerMayHold) || rule.kind === 'claimManager');
+  const roster = needsRoster
+    ? await clubManagerState(sa, clubCollectionFor(lane), clubId as string, identity.uid)
+    : { claimed: false, manager: false };
+  const clubManager = roster.manager;
 
   // 6. THE decision — gateDecision, the very function the soak logged.
   const verdict = gateDecision({
@@ -256,10 +272,11 @@ export async function runEnforceGate(
     role,
     estateStatus: estate.status,
     clubManager,
+    clubClaimed: roster.claimed,
   });
   logGateLine({
     action, lane, clubId, tokened: true, email, role,
-    estate: estate.status, clubManager,
+    estate: estate.status, clubManager, clubClaimed: roster.claimed,
     denied: verdict.wouldDeny === true,
     reason: verdict.reason,
   });
@@ -275,6 +292,42 @@ export async function runEnforceGate(
               'Your household access has been revoked, so this action is refused even ' +
               'though your account may still show a site role. If you believe this is ' +
               'a mistake, ask the owner to re-approve you in the estate directory.',
+          },
+          403,
+        ),
+      };
+    }
+    // The claim gate refuses for a reason the capability wording cannot say:
+    // the club is already someone's, and the fix is a person, not a role.
+    if (verdict.reason === 'club_already_claimed') {
+      return {
+        ok: false,
+        response: c.json(
+          {
+            error: 'club_already_claimed',
+            needs: 'claimClub',
+            detail:
+              'This club already has at least one manager, so it cannot be claimed ' +
+              'again — the first claim is deliberately one-time, and adding a second ' +
+              'manager is not something a manager may do for themselves. Ask a site ' +
+              'moderator or admin to add your account to this club’s managers.',
+          },
+          403,
+        ),
+      };
+    }
+    if (verdict.reason === 'lacks_claim_floor') {
+      return {
+        ok: false,
+        response: c.json(
+          {
+            error: 'insufficient_role',
+            needs: 'claimClub',
+            detail:
+              'Claiming an unclaimed club needs a live signed-in session, and yours ' +
+              'did not resolve to one the site recognises. Sign in with Google on the ' +
+              'audiobook site and try again; if it still refuses, ask the site owner ' +
+              'to check your estate access.',
           },
           403,
         ),

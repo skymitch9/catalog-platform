@@ -486,9 +486,32 @@ test('club DELETE: missing club → 404 worded', async () => {
 
 /* ── the RESTRICTED tier ───────────────────────────────────────────────── */
 
-test('webhook PUT: a club manager is refused (the 2026-08-16 tightening) — admin only', async () => {
+test('webhook PUT: the club’s OWN manager sets it, with no site-wide rank at all', async () => {
+  // The 2026-08-17 island flip. `guesty@example.com` has no site_roles doc —
+  // a rankless guest — and is bound to THIS club's roster.
   const fake = fakeFirestore({
     'clubs/c1': {
+      ...clubSeed(),
+      ...toFsFields({ managerUids: { 'dev-uid': { role: 'host', displayName: 'G', claimedAt: 1 } } }),
+    },
+  });
+  try {
+    const url = 'https://discord.com/api/webhooks/123/abc-DEF_ghi';
+    const res = await req(envWith({ DEV_EMAIL: 'guesty@example.com' }), 'PUT', '/api/clubs/c1/webhook', { url });
+    assert.equal(res.status, 200);
+    assert.equal(str(fake.docs.get('clubs/c1/settings/discord')?.fields['webhookUrl']), url);
+    assert.equal(str(fake.docs.get('clubs/c1')?.fields['discordWebhookMask']), '…_ghi');
+  } finally {
+    fake.restore();
+  }
+});
+
+test('webhook PUT: a manager of ANOTHER club is refused — the island is one club wide', async () => {
+  // Bound on c2, reaching for c1. The roster read is per-club, so the island
+  // simply does not extend; the refusal names the capability, not a status.
+  const fake = fakeFirestore({
+    'clubs/c1': clubSeed(),
+    'clubs/c2': {
       ...clubSeed(),
       ...toFsFields({ managerUids: { 'dev-uid': { role: 'host', displayName: 'G', claimedAt: 1 } } }),
     },
@@ -498,9 +521,29 @@ test('webhook PUT: a club manager is refused (the 2026-08-16 tightening) — adm
       url: 'https://discord.com/api/webhooks/123/abc-DEF_ghi',
     });
     assert.equal(res.status, 403);
-    const body = (await res.json()) as { needs?: string };
+    const body = (await res.json()) as { needs?: string; detail?: string };
     assert.equal(body.needs, 'administerClub');
+    assert.match(body.detail ?? '', /moderator/, 'says which role holds it');
     assert.ok(!fake.docs.has('clubs/c1/settings/discord'));
+  } finally {
+    fake.restore();
+  }
+});
+
+test('webhook PUT: a site moderator overrides on a club they do not manage', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'clubs/c1': {
+      ...clubSeed(),
+      ...toFsFields({ managerUids: { 'someone-else': { role: 'host', displayName: 'X', claimedAt: 1 } } }),
+    },
+  });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'mod@example.com' }), 'PUT', '/api/clubs/c1/webhook', {
+      url: 'https://discord.com/api/webhooks/123/abc-DEF_ghi',
+    });
+    assert.equal(res.status, 200);
+    assert.ok(fake.docs.has('clubs/c1/settings/discord'));
   } finally {
     fake.restore();
   }
@@ -570,16 +613,84 @@ test('claim: admin stamps their OWN uid as {role, displayName, claimedAt}; guest
     fake.restore();
   }
 
-  // The strict future gate (deliberately NOT rules' unclaimed-TOFU arm —
-  // enforce-gate.ts module doc): no role, no managership → refused.
+  // A RANKLESS member takes the unclaimed club next door — first-come-
+  // first-served, the 2026-08-17 arm that unblocks the whole surface.
   resetRoleCache(); // dev-uid's cached 'admin' from the first half must not leak
   resetEstateCache();
-  const fake2 = fakeFirestore({ 'clubs/c1': clubSeed() });
+  const fake2 = fakeFirestore({ 'clubs/c2': clubSeed() });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'guesty@example.com' }), 'POST', '/api/clubs/c2/managers/claim', {});
+    assert.equal(res.status, 200);
+    const managers = (fake2.docs.get('clubs/c2')?.fields['managerUids'] as {
+      mapValue?: { fields?: Record<string, FsValue> };
+    })?.mapValue?.fields;
+    assert.deepEqual(Object.keys(managers ?? {}), ['dev-uid'], 'their own uid, and only theirs');
+  } finally {
+    fake2.restore();
+  }
+});
+
+test('claim: a rankless member is refused on an ALREADY-managed club, in words', async () => {
+  const fake = fakeFirestore({
+    'clubs/c1': {
+      ...clubSeed(),
+      ...toFsFields({ managerUids: { 'someone-else': { role: 'host', displayName: 'X', claimedAt: 1 } } }),
+    },
+  });
   try {
     const res = await req(envWith({ DEV_EMAIL: 'guesty@example.com' }), 'POST', '/api/clubs/c1/managers/claim', {});
     assert.equal(res.status, 403);
+    const body = (await res.json()) as { error?: string; detail?: string };
+    assert.equal(body.error, 'club_already_claimed');
+    assert.match(body.detail ?? '', /moderator or admin/, 'says how to get in');
+    const managers = (fake.docs.get('clubs/c1')?.fields['managerUids'] as {
+      mapValue?: { fields?: Record<string, FsValue> };
+    })?.mapValue?.fields;
+    assert.deepEqual(Object.keys(managers ?? {}), ['someone-else'], 'roster untouched');
   } finally {
-    fake2.restore();
+    fake.restore();
+  }
+});
+
+test('claim: a club’s OWN manager cannot appoint a co-manager (peer-escalation)', async () => {
+  const fake = fakeFirestore({
+    'clubs/c1': {
+      ...clubSeed(),
+      ...toFsFields({ managerUids: { 'dev-uid': { role: 'host', displayName: 'G', claimedAt: 1 } } }),
+    },
+  });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'guesty@example.com' }), 'POST', '/api/clubs/c1/managers/claim', {});
+    assert.equal(res.status, 403);
+    assert.equal(((await res.json()) as { error?: string }).error, 'club_already_claimed');
+  } finally {
+    fake.restore();
+  }
+});
+
+test('claim: a moderator overrides onto a club somebody else already manages', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'clubs/c1': {
+      ...clubSeed(),
+      ...toFsFields({ managerUids: { 'someone-else': { role: 'host', displayName: 'X', claimedAt: 1 } } }),
+    },
+  });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'mod@example.com' }), 'POST', '/api/clubs/c1/managers/claim', {
+      displayName: 'Mod M',
+    });
+    assert.equal(res.status, 200);
+    const managers = (fake.docs.get('clubs/c1')?.fields['managerUids'] as {
+      mapValue?: { fields?: Record<string, FsValue> };
+    })?.mapValue?.fields;
+    assert.deepEqual(
+      Object.keys(managers ?? {}).sort(),
+      ['dev-uid', 'someone-else'],
+      'the override ADDS, it does not evict the existing manager',
+    );
+  } finally {
+    fake.restore();
   }
 });
 
