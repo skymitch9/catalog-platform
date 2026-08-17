@@ -7,6 +7,27 @@
 [`audiobook-auth-migration.md`](audiobook-auth-migration.md) §4 — whether
 `ESTATE_CHECK` on `apps/audiobook-worker` may move `shadow` → `enforce`.
 
+> ## ⚠️ ADDENDUM 2026-08-17 — §9's re-run command is SUPERSEDED
+>
+> **The three fixes this pack named are BUILT.** `[observability]` is on
+> (retention, blocker 1), the log line carries `succeeded` (blocker 4) and
+> `read.setSlot` reports (blocker 3, the last gap — 25 of 25 actions now
+> report). The `email` this pack flagged in §7.4 is gone from the line, since
+> retention would have made it a durable record: it is now `email_hash` +
+> `identity_class`.
+>
+> ⚠️ **Do not follow §9.** It attaches a 5-minute tail because a tail was the
+> only read path when this pack was written. The next pack must **query the
+> retained logs** instead — the exact command, the new fields, the counts, and
+> the credential gotcha (⚠️ wrangler's OAuth token is REFUSED by the
+> observability API) are in
+> [`audiobook-auth-soak-rerun-2026-08-17.md`](audiobook-auth-soak-rerun-2026-08-17.md).
+>
+> **Everything else below stands exactly as measured on 2026-08-16 and is not
+> edited** — this is an evidence record, and its findings are the reason the
+> fixes exist. The verdict (NOT ENOUGH EVIDENCE, do not flip) is unchanged:
+> the instrument was repaired, no new data has been gathered.
+
 ---
 
 ## ⚠️ VERDICT — NOT ENOUGH EVIDENCE. DO NOT FLIP. Re-run in ~7 days.

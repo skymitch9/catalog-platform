@@ -50,18 +50,64 @@ exercised has not soaked.
 Blockers to clear before the re-run is worth taking (all out of scope for the
 read-only pack — none were done):
 
-1. 🔴 **Shadow is tail-only and unrecoverable.** No `[observability]`, D1, KV,
-   AE or logpush binding on `audiobook-worker` (nor any sibling). The ~4h
-   already soaked is **gone**, and every future pack is a 5-minute sample
-   until `[observability] enabled = true` ships. ⚠️ Enabling it also *retains*
-   the `email` the log line carries in cleartext — hash it first.
-2. 🔴 **The flip criterion is currently unfalsifiable.** `reportGate()` fires
-   from a `finally` block and the payload has no success/failure field, so a
-   `would_deny:true` line cannot be told apart from a gate merely agreeing
-   with a write `firestore.rules` already refused. Needs one `succeeded`
-   boolean.
-3. 🟠 **1 of 26 gated actions sends nothing** — `read.setSlot`
-   (`site/club-reads.js:608`). ✅ **The content-warning half is CLOSED
+⚠️ **THE SOAK RECORDER LANDED 2026-08-17 — blockers 1, 2 and 3 are CLOSED.**
+Worker version **`8cdf7c88-50c5-4895-b13d-3cb2f7d35198`**; `ESTATE_CHECK` was
+**not touched** and remains `"shadow"` (this build records, it never
+enforces — the flip stays the conductor's, per the decision above). The
+re-run command, the retained lines, and two gotchas that would otherwise cost
+an hour are in
+[`info/audiobook-auth-soak-rerun-2026-08-17.md`](info/audiobook-auth-soak-rerun-2026-08-17.md).
+
+1. ✅ **CLOSED 2026-08-17 — shadow decisions now PERSIST.** `[observability]
+   enabled = true` shipped; the LIVE Worker's settings read back
+   `logs {enabled:true, persist:true, head_sampling_rate:1}`, and three
+   synthetic reports were **queried back out of Workers Logs ~5 minutes after
+   emission** — retrospectively, from a window that had already closed. That
+   is the capability day-one-of-enforce depends on, and it is measured, not
+   assumed.
+   ⚠️ Its precondition was met FIRST, as this item demanded: the cleartext
+   `email` is **gone** from both gate lines (`ab_gate_shadow` and the enforce
+   twin `ab_gate`), replaced by `email_hash` (salted SHA-256, one-way) +
+   `identity_class` (owner/household/outside/anonymous) — so the retained
+   who-needs-a-role-bump list keeps its counts, its per-person grouping and
+   its owner-vs-household split while holding no addresses. A test asserts no
+   `@` reaches a line at all.
+   ⚠️ **Two gotchas:** the observability query API **refuses wrangler's OAuth
+   token** (and wrangler 4.123 ships no observability subcommand — use the
+   dashboard's own API with its session cookie), and Workers Logs **drops
+   null-valued keys**, so *absent means null*. **Nothing for the owner to
+   click** — enablement is entirely in `wrangler deploy`.
+   ⚠️ Unfixable and unchanged: the ~4h that soaked before 2026-08-16 23:16 is
+   permanently gone. Retention starts now.
+2. ✅ **CLOSED 2026-08-17 — a would-deny can now be told from a real break.**
+   The site payload carries `succeeded`, threaded through all 24
+   `reportGate()` call sites (a local flag set on the one success path, so an
+   early `{success:false}` from *inside* a try reports honestly as a failure),
+   and the receiver parses and logs it strictly: `true`, `false`, or `null`
+   for "cannot say" — never coerced. Under force-then-fix this is the field
+   that matters most: after the flip, **`denied:true` + `succeeded:true` on
+   the shadow record is the person to promote**, while a denial on something
+   `firestore.rules` already refused is nobody's problem. Pinned by the same
+   literal in BOTH repos' tests, because the halves deploy independently.
+   ⚠️ **The site half rides the next owner-worded promote to prod.** `main` →
+   `/dev/` has it; until a promote, prod reports carry no outcome and log
+   `succeeded` absent (= "cannot say"). ⚠️ **If the flip happens before that
+   promote, day one of enforce is recorded WITHOUT the outcome bit on prod** —
+   worth sequencing deliberately rather than discovering afterwards.
+3. ✅ **CLOSED 2026-08-17 — 25 of 25 gated actions now report.**
+   `updateReadLabel()` reports `read.setSlot`; the vocabulary gap is gone.
+   ⚠️ **What that made visible, and did NOT decide — read this before the
+   flip:** `read.setSlot` carries a `manageClub` (admin) floor while the label
+   is **member-editable by design** (the migration design's own §1 table, and
+   `firestore.rules` deliberately keeps `slotLabel` out of
+   `MANAGED_READ_FIELDS`: "commentCount bumps and slot labels stay open"). So
+   an ordinary member renaming a read card is a **predicted real break** at
+   enforce — it will log `would_deny:true` with `succeeded:true`. 🧑 **Owner
+   decision:** lower the floor for this action, or route the label away from
+   `read.setSlot`. Under force-then-fix this is one of the few breaks that can
+   be named IN ADVANCE rather than discovered from the log, so it is cheap to
+   settle first. Do not "fix" it by removing the report.
+   The content-warning half was already closed earlier that day: ✅ **CLOSED
    2026-08-17** (owner-approved): the action was SPLIT into
    `warning.selfDelete` (`{kind:'signedIn'}`, member floor) and
    `warning.modDelete` (`operateClub`, unchanged), `site/user-warnings.js`
