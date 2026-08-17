@@ -101,7 +101,7 @@ Assumes §6 provisioning is done. Every step names who holds the lever.
 | # | She does | What happens | Lever, and who holds it |
 |---|---|---|---|
 | 0 | (nothing) | Her email is **pre-approved** in the estate directory with visibility including her catalog | Owner, once, at `heygabi.ai/admin` (row created via seed `--extra` or D1 — the admin API cannot create rows, only decide existing ones) |
-| 1 | Opens `https://<hers>.heygabi.ai`, taps **Sign in with Google** | Firebase sign-in; `/seen` upserts her; estate answers `approved` | Owner: hostname in Firebase Authorised domains **beforehand** (console click). She: needs a Google account — **unverified whether she has one; ask before anything else is built** |
+| 1 | Opens `https://<hers>.heygabi.ai`, taps **Sign in with Google** | Firebase sign-in; `/seen` upserts her; estate answers `approved` | Owner: hostname in Firebase Authorised domains **beforehand** (console click). She: needs a Google account — **ANSWERED 2026-08-16: she has Gmail, and she is ALREADY an approved estate member** (verified against `estate_user`: status `approved`, visibility across all three catalogs, origin `seed:audiobook` — identity on file in the estate directory, deliberately not named here because this repo is public) |
 | 2 | (nothing) | Estate-approved + locally-undecided → **auto-grant** her instance's default role, which this design sets to **`moderator`** (see §3 — a one-line, app-owned posture change on HER instance only) | Design decision, owner-approved at build time. Fallback if declined: owner promotes her via her instance's People page, remotely, during a first phone call |
 | 3 | Taps **Add**, allows camera | `/add` opens on the barcode tab | Nothing — contributor-and-up, granted at step 2 |
 | 4 | **Shelf tab** → photographs a shelf in place | Screen shows the cost (**3–7¢**); vision reads the spines; lookups run unattended; rows appear with matches, covers, "not in Open Library" verdicts | Money: owner's Anthropic key with a hard cap (§4). Her tap is the only trigger — never automatic, never retried on her behalf |
@@ -250,7 +250,15 @@ explicitly not phase 1.
 
 ## 8. What was NOT measured
 
-- **Whether she has a Google account** — the single cheapest question with the
+- ~~Whether she has a Google account~~ — **ANSWERED 2026-08-16 by the owner:
+  yes, Gmail, and she is already an APPROVED estate member with visibility into
+  all three catalogs (seeded from the audiobook side).** Two consequences for
+  the phases above: day-one step 1 (owner pre-approves her) is ALREADY DONE —
+  no seed `--extra` needed for the estate row; and the sign-in/approval
+  fall-off risk shrinks to just the ROLE gap (member holds no scan capability),
+  which the moderator-default posture on her instance addresses. The original
+  text follows for the record.
+- *(superseded)* **Whether she has a Google account** — the single cheapest question with the
   power to change the design (Firebase sign-in is non-negotiable estate-wide).
   Ask first.
 - **Shelf-photo mode on a real phone** — API-side measured; on-device is not
