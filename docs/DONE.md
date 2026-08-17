@@ -13,6 +13,87 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔑 Sam's library (`library2`) joins the estate MANAGEMENT surfaces — ✅ DONE 2026-08-16
+
+Owner, live on the page 2026-08-16: *"in the admin page Sam's library has no
+roles, I should be able to set her with the same level of roles as my
+library."*
+
+He is right, and the fix is smaller than the ask implies — because the
+plausible premise ("add a fourth managed site to the auth Worker") is wrong.
+`padhard.heygabi.ai` runs the **same Worker code** as `library.heygabi.ai`
+(`library_catalog`'s `[env.friend]`), so it already answers
+`GET /api/admin/users` in the library's own vocabulary, already gates on its
+own `manageUsers` capability, and already CORS-locks itself to
+`https://heygabi.ai`. The admin page simply was not asking. Serving her roles
+from the auth Worker instead would have stood up a **second, competing role
+store for a catalog that already has one** — see
+`docs/info/estate-auth-design.md` §1.2's 2026-08-16 amendment.
+
+Scope, all in one pass:
+- `admin.js`: `library2` becomes a full member of `APPS` (canonical order,
+  appended last), gaining the same dropdown, the same server-enforced
+  strictly-beneath granting and the same owner-auto-max cell as library and
+  games; the old "roles live on that site — not federated here yet" note is
+  gone.
+- `admin/index.html`: a "Sam's library" role filter (`f-role-library2`).
+- `/status`: `wk-library2` + `site-library2` rows.
+- `tools/estate-probes`: padhard health as a fifth `health.mjs` target plus a
+  new `probes/library2-worker.mjs` (tokenless AND garbage-bearer 401 on the
+  role surface, apex-only CORS admit/refuse). All GET/OPTIONS — no
+  `NON_GET_ALLOWLIST` row needed.
+- `auth-worker`: **no code change**. `test/library2-vocabulary.test.ts` pins
+  the wire word (`CONSUMER_APPS`, `appTokenFor`'s distinct secret,
+  `vis_library2`, canonical-last) and carries a tripwire asserting the
+  audiobook ladder never grows a per-site rung.
+
+One deliberate asymmetry worth keeping written down: **the seed-gap notice
+does not run for `library2`** (`seedGap: false` in `APPS`). Her roster is her
+household's, so "listed there but not in our estate directory" is the
+permanent normal state, not a seed that missed someone — flagging it would
+print a warning nobody could ever clear, which trains the reader to ignore the
+whole line.
+
+### Landed + verified 2026-08-16
+
+Commit `71e4a0e`. Deployed to the apex from a throwaway
+`git worktree add <tmp> HEAD` checkout, **not** from the working tree — two
+other agents were mid-flight in this repo and one had
+`public/assets/estate-theme.css` dirty at deploy time, which
+`wrangler pages deploy <dir>` would have shipped. `check:home` refused the
+direct deploy exactly as designed; the worktree pattern is the documented
+recovery and it worked first time. Deployment:
+`https://6ed48c0d.heygabi-home.pages.dev` → `heygabi.ai`.
+
+| Verified | How |
+|---|---|
+| The shipped page carries the fourth column | `verify:home` (9 pages, every marker) + a direct fetch of `https://heygabi.ai/admin/admin.js`: `padhard.heygabi.ai`, `Sam's library`, `seedGap` all present |
+| The filter row shipped | `/admin/` contains `id="f-role-library2"` |
+| `/status` rows shipped | `status.js` contains `wk-library2` and `site-library2` |
+| Her role surface refuses strangers | probes L21/L22 — `/api/admin/users` tokenless AND garbage-bearer → the worded 401 |
+| Her CORS admits only the apex | probes L23/L24/L25 — apex gets ACAO + GET/PATCH, `evil.example` gets none |
+| Her Worker is up, and it is HERS | `library2-health` H1–H6 read from `padhard.heygabi.ai` |
+| The estate suite is whole | `npm run probe:estate` → **102 passed, 0 failed** (was 91) |
+| auth-worker unregressed | `npm test` → **183 pass, 0 fail**; `npm run typecheck` clean |
+
+⚠️ **NOT verified, and it is the half that matters most to the owner: the
+SIGNED-IN table.** Everything above is the unauthenticated shell. The role
+cells, the dropdown, the owner-auto-max rendering, and an actual grant landing
+on her instance all need a Firebase sign-in this build never had. The owner
+verifies it himself at **https://heygabi.ai/admin** — expand any member and
+look for a fourth catalog row, "Sam's library", carrying a role dropdown
+beside its visibility checkbox.
+
+⚠️ **Also NOT verified: `padhard.heygabi.ai` in Firebase's authorised-domain
+list.** It was added as D5 to `tools/estate-probes/authorized-domains.mjs`,
+which needs a service account nobody had in hand. If her sign-in ever fails
+`auth/unauthorized-domain`, that is the first thing to check.
+
+⚠️ **auth-worker was NOT redeployed, deliberately.** This build changed no
+line of its `src/` — only a test file — so a deploy would have shipped an
+identical Worker, and in a shared checkout it risks publishing another agent's
+committed-but-unshipped work. Nothing about the fourth column depends on it.
+
 ## Fine-grained pipeline step controls + shelf-server force-upload (owner ask 2026-08-16) — ✅ DONE
 
 Owner: *"maybe in the admin status dashboard you give us fine control over
