@@ -485,6 +485,30 @@ there — people are switched on by hand. `OWNER_EMAILS` sees it computed like
 everything else (the owner is that instance's operator; break-glass is never
 narrowable). The PUBLIC slice is unchanged — `{audiobook}` only.
 
+> ⚠️ *Amended 2026-08-17 — **`library2` was a column nobody claimed, for a
+> day** (estate credentials catalog F-5).* The friend instance runs the main
+> library's build, and that build hard-coded `app: 'library'` plus a hard-coded
+> `ESTATE_APP_TOKEN_LIBRARY` read. Since `identifyApp` resolves the caller from
+> the **token VALUE** — there is no `app` field on the wire — every sign-in at
+> `padhard.heygabi.ai` arrived here as `library`, was stamped
+> `origin='seen:library'`, and the `ESTATE_APP_TOKEN_LIBRARY2` secret minted on
+> this Worker 2026-08-16 was presented by nothing. Fixed in the consumer:
+> `ESTATE_APP` in `library_catalog/apps/worker/wrangler.toml` — `"library"` at
+> top level, `"library2"` under `[env.friend.vars]` — with the app id selecting
+> the secret NAME so the estate's same-name-both-sides pairing rule holds.
+>
+> **The general rule this bought is worth more than the fix.** A name in the
+> visibility set narrows somebody only when BOTH (1) some consumer asserts that
+> app identity, and (2) that consumer scopes on the array it gets back.
+> `library2` failed (1) for a day. ⚠️ **The library consumer still does not do
+> (2), on either instance** — it caches and logs `visibility` and refuses on
+> `status` alone; its own authorization stays `role` (§1.2/§1.3, deliberately).
+> So asserting `library2` correctly buys **attribution, per-door rotation and
+> revocation, and a column that finally means what its name says**; it does not
+> by itself narrow who reaches her catalog. Making it do that is a separate,
+> access-REDUCING decision with its own evidence step. Neither half announces
+> itself when it is missing — which is the whole reason this paragraph exists.
+
 *Amended 2026-08-17 (`0008_vis_ebooks.sql`, `0009_dl_ebooks.sql`):* a **fifth
 catalog, `ebooks`** — the household's shared ebook shelf at
 `ebooks.heygabi.ai`. Owner directive: *"ebooks should be like the other site

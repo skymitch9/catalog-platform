@@ -25,6 +25,22 @@
  * the audiobook site's ladder (`audiobook-worker/src/capabilities.ts`, floor
  * `admin`), not an estate column. The `dl_ebooks` column (0009) still exists
  * in D1 and nothing reads it — see 0010's header.
+ *
+ * ⚠️ **A COLUMN HERE DESCRIBES A GRANT; IT DOES NOT ENFORCE ONE** —
+ * `vis_library2` is the case that proved it (estate credentials catalog F-5,
+ * 2026-08-17). This Worker computes the effective set correctly and always
+ * did; whether that set MEANS anything turns on two facts outside this file.
+ * (a) Does any consumer assert that app id? Identity comes from the bearer
+ * VALUE via `identifyApp` — there is no `app` field on the wire — so a
+ * consumer riding another app's token is indistinguishable from that app
+ * here. The friend library instance presented `ESTATE_APP_TOKEN_LIBRARY` for
+ * a day, so every one of her sign-ins arrived as `library`, stamped
+ * `origin='seen:library'`, and nothing in this Worker could have noticed.
+ * (b) Does the consumer scope on the array? The index Worker's search does;
+ * the library Workers cache and log it and gate on `status` alone. Both
+ * questions are the consumer's to answer, which is why the fix lives in the
+ * consumer's config (`ESTATE_APP` in library_catalog's wrangler.toml) and
+ * only the warning lives here.
  */
 export const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'] as const;
 export type Catalog = (typeof CATALOGS)[number];

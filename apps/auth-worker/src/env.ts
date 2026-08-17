@@ -92,11 +92,31 @@ export interface Env {
    * The second library instance's bearer (friend-ingest design, provisioning
    * step 7) — declared here with the 0007 `vis_library2` column so the
    * directory can tell which door a newcomer knocked on (origin
-   * 'seen:library2'). The secret is minted when that instance's Worker env
-   * is provisioned; until then it is simply unset (identifyApp skips unset
-   * tokens), and if the instance rides the shared `library` app token in the
-   * interim, /seen still answers its visibility correctly — the effective
-   * set is per-PERSON, not per-door.
+   * 'seen:library2'). Minted and set here 2026-08-16.
+   *
+   * ⚠️ **IT WAS AN ORPHAN FOR A DAY** — set on THIS Worker and presented by
+   * NOTHING (estate credentials catalog F-5, fixed 2026-08-17). The friend
+   * instance runs the same build as the main library, and that build hard-coded
+   * `app: 'library'` plus a hard-coded `ESTATE_APP_TOKEN_LIBRARY` read
+   * (`library_catalog/packages/estate-auth/src/gate.ts`), so padhard knocked
+   * wearing library's badge — and `identifyApp` resolves identity from the
+   * token VALUE, never from a body field, so this Worker answered `library`
+   * every time and had no way to notice. The consumer now declares its identity
+   * per wrangler env (`ESTATE_APP`), and the app id selects the secret NAME.
+   *
+   * ⚠️ **The sentence this replaces argued the orphan was harmless** — *"if the
+   * instance rides the shared `library` app token in the interim, /seen still
+   * answers its visibility correctly — the effective set is per-PERSON, not
+   * per-door"* — and it is quoted rather than deleted because it was TRUE and
+   * MISLEADING at once. True: the set is per person, so nobody received a wrong
+   * array. Misleading: it reasons about the ANSWER and is silent about the
+   * QUESTION, and the question was wrong. A shared bearer means the directory
+   * cannot attribute a sign-in (`origin='seen:library'` stamped on a newcomer
+   * who has never touched our library), cannot rotate or revoke one door
+   * without the other, and leaves `vis_library2` — a column created expressly
+   * so that another household's shelf is granted BY HAND — describing a door
+   * nobody knocks on. "The answer is still correct" is not the test for an
+   * identity; being able to tell two callers apart is.
    */
   ESTATE_APP_TOKEN_LIBRARY2?: string;
 

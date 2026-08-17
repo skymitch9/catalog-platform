@@ -35,6 +35,29 @@
  * `capabilities.ts`, floor `admin`) — owner directive: *"For ebooks I don't
  * want a download check box, I want to use roles we have."* The estate says
  * who may SEE the shelf; the ladder says who may take a file off it.
+ *
+ * ⚠️ **A NAME IN THIS ARRAY IS NOT A GATE, and `library2` is the case that
+ * proved it** (estate credentials catalog F-5, recorded 2026-08-17). TWO
+ * things must both hold before a name here narrows anybody:
+ *
+ *   1. **The consumer must ASSERT that app identity** to `/seen` — which it
+ *      does by presenting that app's bearer, because `identifyApp` on the auth
+ *      Worker resolves identity from the token VALUE and from nothing else
+ *      (there is no `app` field on the wire). The second library instance did
+ *      not: it runs the main library's build, which hard-coded `app: 'library'`
+ *      and a hard-coded `ESTATE_APP_TOKEN_LIBRARY` read, so for a day
+ *      `library2` was a column and a wire word no live caller ever claimed.
+ *      It is `ESTATE_APP` in that repo's `wrangler.toml` now.
+ *   2. **The consumer must SCOPE on the array it gets back.** The index
+ *      Worker's search does (`apps/index-worker/src/search-route.ts`).
+ *      ⚠️ **The library consumer does not** — on either instance it caches and
+ *      logs `visibility` and refuses on `status` alone; its own authorization
+ *      stays `role`. So granting or withholding `library2` today changes what
+ *      the estate's own surfaces show, not who reaches her front door.
+ *
+ * Neither half announces itself when it is absent — which is precisely why
+ * they are written down together. Before relying on a name in this array to
+ * fence anything, check both.
  */
 export const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'] as const;
 export type Catalog = (typeof CATALOGS)[number];

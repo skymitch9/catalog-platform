@@ -1,9 +1,14 @@
 # Access Reference — index
 
 > **Audience:** Claude sessions. **Status:** TRACKED (secret NAMES only,
-> never values — this repo is private but the discipline is the same either
-> way).
-> Last verified: **2026-08-16**.
+> never values). ⚠️ **THIS REPO IS PUBLIC on GitHub** — measured with
+> `gh repo view` 2026-08-17, as are the other three (`library_catalog`,
+> `audiobook_catalog`, `Board_Game_Catalog`). This line claimed the repo was
+> *private* until 2026-08-17 (estate credentials catalog F-1). The names-only
+> discipline was never conditional on that, but the premise is what a session
+> reasons FROM, and "it's private, so a name here is fine" is one short step
+> from "so a value is fine" — in a repo the whole internet can read.
+> Last verified: **2026-08-17**.
 
 *How to reach and operate things.* For how/why the system works, see
 
