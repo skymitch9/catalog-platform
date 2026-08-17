@@ -892,10 +892,14 @@ renderer, the anchor-as-key near-miss).
 Presented as a queue — per the standing rule these go **one at a time**, in
 this order, with an answer before the next is shown.
 
-1. **Which grant gates audio bytes?** A new `vis_audio` (DEFAULT 0, mirroring
-   the ebook decision), or ride the existing `vis_audiobook` (DEFAULT 1, in the
-   public slice, i.e. everyone approved gets everything). §3.5 recommends the
-   former; the decision is the owner's.
+1. ✅ **DECIDED 2026-08-17 — audio bytes ride `vis_ebooks`.** The owner's
+   words: *"MIRROR EBOOK if they can read an ebook they can listen to an
+   audio."* Not option (a) and not option (b): **one grant means "may consume
+   the estate's book files," reading or listening** — no sixth column, no new
+   admin button, and the grant stays out of the public slice with DEFAULT 0.
+   Everywhere this doc says `vis_audio` (§3.5, §7, §9 phase 1,
+   `resolveAudioAccess()`), read `vis_ebooks`. Seeing the audiobook *site*
+   remains `vis_audiobook`, unchanged — the gate is on the BYTES.
 2. **Offline copies — the download-policy collision.** Options 1 / 2 / 3 in §5,
    **no default chosen**, and ⚠️ the answer applies to **audio as well as
    ebooks**.
