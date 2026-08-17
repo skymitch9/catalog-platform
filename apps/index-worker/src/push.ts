@@ -101,18 +101,18 @@ pushRoutes.put('/:source', async (c) => {
       unfoldable: plan.unfoldable,
     },
     // The universe join's own honesty channel: how many rows in THIS snapshot
-    // carry a universe, how many of them owe it to the canonical spelling
-    // rather than the pushed one, and how many spellings of one series
-    // disagree about their universe (a `universes.json` fault, reported not
-    // resolved).
+    // carry a universe, how many of them owe it to a SIBLING spelling of their
+    // series rather than to their own, and how many rows are told two
+    // different things by two spellings of one series (a `universes.json`
+    // fault, reported rather than resolved).
     universe: {
       rows: universe.rows,
-      gained_from_canonical: universe.gainedFromCanonical,
+      gained_from_registry: universe.gainedFromRegistry,
       conflicts: universe.conflicts,
       ...(universe.conflicts > 0
         ? {
             conflict_detail:
-              'two spellings of one series map to different universes in data/universes.json; the pushed spelling’s answer was kept and nothing was guessed — fix the list with `node tools/universes.mjs`',
+              'two spellings of one series map to different universes in data/universes.json; the row’s own spelling was kept and nothing was guessed — fix the list with `node tools/universes.mjs`',
             conflict_samples: universe.conflictSamples,
           }
         : {}),
@@ -124,48 +124,67 @@ pushRoutes.put('/:source', async (c) => {
 export interface UniverseRepoint {
   /** Rows carrying a universe once the pass is done (the "after" count). */
   rows: number;
-  /** Rows that had NO universe from the pushed spelling and gained one from the canonical. */
-  gainedFromCanonical: number;
-  /** Rows where the two spellings answer with DIFFERENT universes. Never resolved here. */
+  /** Rows that had NO universe from their own spelling and gained one from a sibling spelling. */
+  gainedFromRegistry: number;
+  /** Rows where two spellings of ONE series answer with DIFFERENT universes. Never resolved here. */
   conflicts: number;
   /** Up to three of those, so the fault is findable without a query. */
-  conflictSamples: { title: string; pushed_series: string; canonical_series: string; kept: string; canonical_says: string }[];
+  conflictSamples: { title: string; pushed_series: string; other_series: string; kept: string; other_says: string }[];
 }
 
 const MAX_CONFLICT_SAMPLES = 3;
 
 /**
  * Stamp each row with its slug, REWRITE the display to the canonical one, and
- * re-point the universe join at that canonical spelling.
+ * re-point the universe join at the SERIES rather than at one spelling of it.
  *
  * The rewrite is the half that fixes what the owner actually sees: a consumer
  * grouping by the free-text `series` (the library's ladders, the search
  * results, anything not yet slug-aware) sees one spelling instead of two,
  * without having to learn about the registry at all.
  *
- * ⚠️ THE UNIVERSE RE-POINT IS STRICTLY ADDITIVE, and that is the whole design.
- * `universes.json` lists each series in ONE spelling; a source pushing any
- * other spelling of the same series missed the join entirely until the
- * registry existed. So: the pushed spelling is asked first (unchanged — no
- * row can LOSE a universe to this change), and the canonical spelling is asked
- * only where the pushed one answered nothing. Nothing is folded, nothing is
- * guessed, and `normaliseUniverseText`'s deliberate "The Cosmere" ≠ "Cosmere"
- * split is untouched — the registry supplies a second EXACT string to try, it
- * does not make the universe matcher fuzzy.
+ * ⚠️ A UNIVERSE IS A PROPERTY OF THE SERIES, NOT OF A SPELLING — that is the
+ * whole re-point. `universes.json` lists each series in ONE spelling ("The
+ * Stormlight Archive"), and `normaliseUniverseText` keeps leading articles on
+ * purpose, so any source pushing another spelling of the same series missed
+ * the join outright. The registry knows those spellings are one series, so a
+ * row with no universe of its own is asked again with every OTHER spelling of
+ * its series in this snapshot, canonical first.
  *
- * ⚠️ Exclusions cannot be smuggled past. `universeFor` checks
- * `bookExclusions` by TITLE before it looks at any series, so both calls
- * refuse an excluded title identically; The Frugal Wizard's Handbook stays out
- * of the Cosmere however its series is spelled.
+ * ⚠️ ASKING WITH THE CANONICAL SPELLING ALONE IS NOT ENOUGH, and the live
+ * probe proved it rather than the design predicting it: the canonical display
+ * is "first writer wins" in fold order, so it is just as likely to BE the
+ * unlisted spelling ("Stormlight Archive" sorts before "The Stormlight
+ * Archive"). When it is, a canonical-only attempt gains nothing and leaves one
+ * series holding rows with two different answers.
  *
- * ⚠️ A DISAGREEMENT IS REPORTED, NEVER RESOLVED. If the pushed spelling says
- * one universe and the canonical says another, the pushed spelling's answer
- * stands and the row is counted as a conflict: two spellings of one series
- * belonging to two universes is a fault in `data/universes.json`, and picking
- * a winner here would hide it behind a guess.
+ * ⚠️ STRICTLY ADDITIVE, AND STILL EXACT. The pushed spelling is asked first
+ * and is never overridden, so no row can LOSE a universe here; every extra
+ * attempt is the same EXACT `universeFor` lookup on a string a source really
+ * pushed. Nothing is folded and nothing is guessed — the registry supplies
+ * more strings to try, it does not make the universe matcher fuzzy, and
+ * `normaliseUniverseText`'s deliberate "The Cosmere" ≠ "Cosmere" split is
+ * untouched.
+ *
+ * ⚠️ A NEAR MISS CONTRIBUTES NOTHING. Only spellings that RESOLVED to the same
+ * slug are tried, and a near miss registers as its own slug — so the confirm
+ * queue's "never merged, only asked" rule holds here too: an unresolved near
+ * miss cannot lend its neighbour a universe.
+ *
+ * ⚠️ Exclusions cannot be smuggled past. `universeFor` checks `bookExclusions`
+ * by TITLE before it looks at any series, so every attempt refuses an excluded
+ * title identically; The Frugal Wizard's Handbook stays out of the Cosmere
+ * however its series is spelled.
+ *
+ * ⚠️ A DISAGREEMENT IS REPORTED, NEVER RESOLVED. If two spellings of one
+ * series answer with different universes, the row's own spelling wins and the
+ * row is counted as a conflict: one series in two universes is a fault in
+ * `data/universes.json`, and picking a winner here would hide it behind a
+ * guess.
  */
 export function applySeriesPlan(entries: EntryRow[], plan: SeriesPlan, universes: UniverseIndex): UniverseRepoint {
-  const out: UniverseRepoint = { rows: 0, gainedFromCanonical: 0, conflicts: 0, conflictSamples: [] };
+  const out: UniverseRepoint = { rows: 0, gainedFromRegistry: 0, conflicts: 0, conflictSamples: [] };
+  const spellings = spellingsBySlug(plan);
 
   for (const e of entries) {
     if (e.series !== null) {
@@ -176,20 +195,22 @@ export function applySeriesPlan(entries: EntryRow[], plan: SeriesPlan, universes
         e.series_slug = resolved.slug;
         e.series = resolved.display;
 
-        if (resolved.display !== pushedSeries) {
-          const viaCanonical = universeFor(universes, { title: e.title, series: resolved.display });
-          if (viaCanonical !== null && e.universe === null) {
-            e.universe = viaCanonical;
-            out.gainedFromCanonical += 1;
-          } else if (viaCanonical !== null && e.universe !== null && viaCanonical !== e.universe) {
+        for (const other of spellings.get(resolved.slug) ?? []) {
+          if (other === pushedSeries) continue;
+          const says = universeFor(universes, { title: e.title, series: other });
+          if (says === null) continue;
+          if (e.universe === null) {
+            e.universe = says;
+            out.gainedFromRegistry += 1;
+          } else if (says !== e.universe) {
             out.conflicts += 1;
             if (out.conflictSamples.length < MAX_CONFLICT_SAMPLES) {
               out.conflictSamples.push({
                 title: e.title,
                 pushed_series: pushedSeries,
-                canonical_series: resolved.display,
+                other_series: other,
                 kept: e.universe,
-                canonical_says: viaCanonical,
+                other_says: says,
               });
             }
           }
@@ -199,6 +220,28 @@ export function applySeriesPlan(entries: EntryRow[], plan: SeriesPlan, universes
     if (e.universe !== null) out.rows += 1;
   }
 
+  return out;
+}
+
+/**
+ * slug → every spelling of that series in this snapshot, CANONICAL FIRST and
+ * the rest sorted. Deterministic on purpose: which spelling answers first
+ * decides which universe a conflicting row keeps, and that must not depend on
+ * the order a source happened to list its rows in (`planSeries`'s own rule).
+ */
+function spellingsBySlug(plan: SeriesPlan): Map<string, string[]> {
+  const bySlug = new Map<string, { display: string; raws: Set<string> }>();
+  for (const [raw, res] of plan.resolutions) {
+    if (!res) continue;
+    const group = bySlug.get(res.slug);
+    if (group) group.raws.add(raw);
+    else bySlug.set(res.slug, { display: res.display, raws: new Set([raw]) });
+  }
+
+  const out = new Map<string, string[]>();
+  for (const [slug, group] of bySlug) {
+    out.set(slug, [group.display, ...[...group.raws].filter((s) => s !== group.display).sort()]);
+  }
   return out;
 }
 

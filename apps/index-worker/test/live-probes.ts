@@ -379,6 +379,39 @@ async function phaseB(): Promise<void> {
         Array.isArray(r.body.pending[0].sample_titles),
       JSON.stringify(r.body),
     );
+
+    // The queue ANNOUNCES itself on the list the approver already loads —
+    // exercised here rather than only in the fake, because "the badge appears"
+    // is a fact about the real route running over the real D1 row B14 wrote.
+    r = await api(INDEX_BASE, 'GET', '/api/series');
+    check(
+      'B16 GET /api/series carries the approver\'s open-queue count',
+      r.status === 200 && r.body.pending_open === 1 && typeof r.body.pending_detail === 'string',
+      JSON.stringify({ pending_open: r.body.pending_open, pending_detail: r.body.pending_detail }),
+    );
+
+    // The universe join, re-pointed at the canonical spelling. "Stormlight
+    // Archive" is not in data/universes.json — "The Stormlight Archive" is —
+    // so the second row can only reach the Cosmere through the registry.
+    r = await api(INDEX_BASE, 'PUT', '/api/push/game', {
+      token: PUSH_TOKEN,
+      body: [
+        { source_id: '201', title: 'Words of Radiance: The Game', format: 'boardgame', kind: 'base', series: 'The Stormlight Archive' },
+        { source_id: '202', title: 'Oathbringer: The Game', format: 'boardgame', kind: 'base', series: 'Stormlight Archive' },
+      ],
+    });
+    check(
+      'B17 a variant series spelling reaches its universe through the registry',
+      r.status === 200 && r.body.universe?.gained_from_registry === 1 && r.body.universe?.conflicts === 0,
+      JSON.stringify(r.body.universe),
+    );
+
+    r = await api(INDEX_BASE, 'GET', '/api/universe/The%20Cosmere');
+    check(
+      'B18 …and it shows up in the universe read, not just in the push report',
+      r.status === 200 && JSON.stringify(r.body).includes('Oathbringer: The Game'),
+      JSON.stringify(r.body).slice(0, 300),
+    );
   } finally {
     stopDev(index);
     stopDev(auth);

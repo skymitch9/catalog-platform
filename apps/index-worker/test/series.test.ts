@@ -704,7 +704,7 @@ test('a variant spelling GAINS its universe from the canonical one', async () =>
   ]);
   const body = (await res.json()) as any;
 
-  assert.equal(body.universe.gained_from_canonical, 1,
+  assert.equal(body.universe.gained_from_registry, 1,
     'the library row owes its universe to the registry, not to its own spelling');
   assert.equal(body.universe.rows, 1);
   assert.equal(body.universe.conflicts, 0);
@@ -729,7 +729,7 @@ test('the re-point cannot smuggle a universe past an EXCLUSION', async () => {
   // series, so both attempts refuse identically. A second attempt that skipped
   // the exclusion would put the one Secret Project that is NOT Cosmere into
   // the Cosmere — the fixture file's own worst case.
-  assert.equal(body.universe.gained_from_canonical, 0);
+  assert.equal(body.universe.gained_from_registry, 0);
   assert.equal(db.entries.find((e) => e.source === 'library')?.universe, null);
 });
 
@@ -746,7 +746,7 @@ test('a NEAR MISS gains nothing: the second attempt is an EXACT lookup, never a 
   const body = (await res.json()) as any;
 
   assert.equal(body.series.pending_added, 1, 'a near miss still only asks');
-  assert.equal(body.universe.gained_from_canonical, 0);
+  assert.equal(body.universe.gained_from_registry, 0);
   const row = db.entries.find((e) => e.source === 'library');
   assert.equal(row?.series, 'Stormlight Archive [publication order]',
     'unmerged, so there is no canonical spelling to ask with');
@@ -780,9 +780,9 @@ test('two spellings that disagree about their universe are REPORTED, never resol
   assert.deepEqual(report.conflictSamples[0], {
     title: 'A Book',
     pushed_series: 'Variant Name',
-    canonical_series: 'Canonical Name',
+    other_series: 'Canonical Name',
     kept: 'Universe B',
-    canonical_says: 'Universe A',
+    other_says: 'Universe A',
   });
 });
 
@@ -799,7 +799,7 @@ test('the re-point never OVERWRITES a universe the pushed spelling already answe
   const report = applySeriesPlan(entries, planWith('Variant Name', 'canonical-name', 'Canonical Name'), index);
 
   assert.equal(entries[0]?.universe, 'Universe A');
-  assert.equal(report.gainedFromCanonical, 0, 'nothing was gained — it was already there');
+  assert.equal(report.gainedFromRegistry, 0, 'nothing was gained — it was already there');
   assert.equal(report.rows, 1, 'but it is still counted in the after-count');
 });
 
@@ -814,6 +814,29 @@ function planWith(raw: string, slug: string, display: string): SeriesPlan {
     unfoldable: 0,
   };
 }
+
+test('when the CANONICAL spelling is the unlisted one, the sibling spelling still answers', async () => {
+  // ⚠️ The case the live probe found, pinned. "Stormlight Archive" sorts
+  // before "The Stormlight Archive", so first-writer-wins makes the spelling
+  // universes.json does NOT list the canonical one. Asking only with the
+  // canonical would gain nothing here and leave one series holding two
+  // different answers — which is the failure this whole re-point exists to end.
+  const db = new FakeDB();
+  const res = await push(prodEnv(db), 'library', 'library-token', [
+    book('Words of Radiance', 'Stormlight Archive', { format: 'book' }),
+    book('Oathbringer', 'The Stormlight Archive', { format: 'book' }),
+  ]);
+  const body = (await res.json()) as any;
+
+  assert.equal(body.series.registered, 1, 'one series, two spellings');
+  assert.equal(db.entries[0]?.series, 'Stormlight Archive', 'and the canonical display IS the unlisted spelling');
+  assert.equal(body.universe.gained_from_registry, 1);
+  assert.deepEqual(
+    db.entries.map((e) => e.universe),
+    ['The Cosmere', 'The Cosmere'],
+    'every row in one series carries one universe — a series is in a universe, a spelling is not',
+  );
+});
 
 // ---------------------------------------------------------------------------
 // 5. The confirm queue ANNOUNCES itself — the fix for a queue nobody sees.
