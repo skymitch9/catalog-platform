@@ -57,7 +57,7 @@ cross-catalog ownership), scoped by the asker's link + visibilities; the
 GABI_TOOL_NAMES allowlist idiom from the site panel carries over. Part of
 the full-application design (see gabi-discord-app-design doc, 2026-08-17).
 
-## 🔑 GABI WRITE-VERB PERMISSION LADDER — PENDING OWNER DECISION 2026-08-17
+## 🔑 GABI WRITE-VERB PERMISSION LADDER — ✅ APPROVED BY OWNER 2026-08-17 ("that looks good, start with that")
 
 Asked: *"what api permissions should she have? Can I dm her an isbn or a
 photo and she adds it to the catalog? What if I need her to do some club
