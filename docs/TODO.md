@@ -237,11 +237,39 @@ Queue (items 1 and 2 — `/have` and moderation — landed 2026-08-17 and moved
 whole to `DONE.md`; item 3's numbering is kept so the archive's references
 stay true). Dispatch as OPUS agents per the model-tiering rule:
 
-3. **FUTURE (design seed, logged in library_catalog docs/TODO.md —
-   "Sam asks GABI to fix her books"):** a conversational fixer riding the
-   library's existing research/apply machinery as an Anthropic tool-use loop,
-   acting with HER authority on HER instance only. Not queued; listed here so
-   the GABI queue knows its likely next horizon after the viewer.
+3. ⚠️ **THE FIXER'S DISCORD SURFACE — THIS QUEUE'S NEXT-AFTER ITEM, promoted
+   2026-08-17.** No longer a design seed: the fixer's **phase 0 shipped that
+   day** on `padhard.heygabi.ai` (read-only conversational GABI, site chat
+   panel), and the owner settled the surface order in the same breath —
+   *"we can do discord right after"*. So a Discord DM front end is the next
+   thing after the panel, **ahead of the library's own write phases**.
+
+   The design is `library_catalog/docs/info/gabi-fixer-design.md` — §10 is the
+   three-way split, §13 is the file map. What matters for THIS repo:
+
+   - **Two of the three parts already exist and are front-end-agnostic**: the
+     tool allowlist (`@lc/core`'s `GABI_TOOLS`) and the key-holding, spend-gated
+     `POST /api/gabi/turn` on her Worker. Both are shipped and neither needs
+     changing. **What a Discord surface must write is the EXECUTOR** — the one
+     part that is per-front-end — and that is genuinely the whole difference.
+   - ⚠️ **§10.2's four blockers are UNCHANGED and phase 0 solved none of them:**
+     no `app_user` join (the link maps a Discord id to a club slug + firebaseUid
+     in **Firestore**, which her library Worker cannot read — no service
+     account, deliberately), **no token-custody answer** (minting a Firebase
+     token *as her* from the discord-worker's service account is precisely the
+     "actor that is not her, writing as her" the design refuses), no
+     deferred-response path, and no persisted conversation state — the browser
+     tab provides that last one for free, which is exactly why the panel did not
+     have to build it.
+   - ✅ **Start at shape (b): the bot READS and PROPOSES, and every write is a
+     deep link back to her site panel to confirm.** It needs none of the four,
+     no new auth and no new credential, and it is the honest version of "her
+     authority" — she is still the one who acts. Shape (a), a per-user scoped
+     library token, is real work and access-increasing; shape (c), a service
+     account, is **refused**.
+   - The library-side prerequisites are already true: her role is `admin`
+     (measured), the turn route is live, and the accounting table records every
+     turn on both instances.
 
 ## 📚 Series registry — the API is LIVE; what still hangs off it
 
