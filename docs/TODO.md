@@ -15,13 +15,17 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
-## ☁️ WORKERS PAID UPGRADE — OWNER DOING (decided 2026-08-17)
+## ☁️ WORKERS PAID UPGRADE — ✅ DONE by owner 2026-08-17 ("cloudflare upgraded"); one follow-up queued
 
-Owner: *"I'll update cloudflare to the $5 plan."* He upgrades in the
-dashboard. AFTER it's live: re-add the gateway's `[triggers]` cron backstop
-that the free 5-cron cap refused (see discord design §DO-cost note — today
-`POST /admin/gateway/start` is the only starter with no self-heal), and the
-~83%-of-free-DO-allowance pressure disappears.
+Owner upgraded in the dashboard. What it changes: DO duration pressure gone
+(~83%-of-free ceiling), crons 5→250, subrequests/invocation 50→10,000
+(⚠️ several design docs cite the 50 ceiling as a constraint — still true
+that bounded-steps is good design, no longer a hard wall).
+
+**QUEUED behind the continuity agent** (it owns apps/discord-worker now):
+re-add the gateway's `[triggers]` cron backstop that the free cap refused —
+`POST /admin/gateway/start` remains the only starter until then. The deploy
+accepting a 6th cron doubles as the measured proof the plan change took.
 
 ## 🧠 GABI CONVERSATION CONTINUITY (owner, 2026-08-17) — IN FLIGHT
 
