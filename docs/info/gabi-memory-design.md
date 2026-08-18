@@ -424,3 +424,77 @@ conversation resumed after a gap.
   wrong key, not from a wrong merge.
 - **Firestore TTL policy latency is vendor-published** (deletion within 24h of
   expiry), not measured here. Retention is therefore "90 days, then soon after".
+
+---
+
+## 11. ⚠️ PERSON-KEYED, NOT CHANNEL-KEYED (owner order, 2026-08-18)
+
+> *"also make sure we attach her memory to the discord username not the channel
+> name so if they talk to her in a different channel she keep her memory and
+> personality for that person"*
+
+### 11.1 What changes
+
+| | Before | After |
+|---|---|---|
+| Conversation key | `(surface, channelId, person)` | `('discord_person', 'all', person)` |
+| Persona state | — | `pers:user:<person>` |
+| Tier-2 profile | already `discord:<snowflake>` | **unchanged** ✅ |
+
+⚠️ **The identity is the Discord SNOWFLAKE, never the display name.** The owner
+said "username"; a username is renameable and a snowflake is not, so keying on
+the name would silently split one person's memory the day they changed it — and
+merge two people if a name were reused. Tier 2 already keys on the snowflake, so
+this **unifies the spelling across all three tiers** rather than inventing a
+fourth.
+
+### 11.2 The migration is "do nothing", and that is a real answer
+
+Existing records carry channel-scoped keys. They will simply never be read
+again. With a **30-minute window** every one of them is dead data within half an
+hour of the deploy, so there is nothing to merge and nothing worth merging — the
+most a merge could recover is a conversation somebody had minutes ago and can
+simply continue.
+
+⚠️ **But dead is not gone.** Nothing reads them, so nothing deletes them — the
+old lazy prune fired on the *read* path. So the tier-2 sweep now **deletes
+expired conversation records regardless of the memory posture**, distilling first
+only when memory is on. That makes the sweep the migration, in both postures, and
+it is honest housekeeping either way: an expired conversation is data nobody can
+reach.
+
+### 11.3 ⚠️ The one real trade: a DM followed into a public channel
+
+Person-keying means what somebody told her **in a DM** can inform a reply she
+gives **in a public channel**.
+
+**What this is NOT:** a leak of other people's content. The conversation key has
+always included the author, so the material that travels is strictly *that
+person's own words and her replies to them*. Nobody else's messages were ever in
+the record.
+
+**What it IS:** a person could say something privately and see it referenced
+where their family can read it. Mild on a family server — and still a posture
+that should be written down rather than discovered.
+
+**The guard, and its honest limit:**
+
+> When answering in a **public channel**, she may *use* what she knows from a
+> private conversation, but must not **quote or restate** it — if it needs
+> saying, the person can say it.
+
+⚠️ **This is a PROMPT-LEVEL guard, not an enforced one**, and the doc says so
+plainly rather than implying a boundary that does not exist. Enforcing it would
+need per-turn surface provenance on every stored turn, which is a shape change to
+the shared conversation package for a risk the owner's context makes small. If
+the server ever stops being family-only, that is the change to make, and this
+paragraph is the note explaining why it was not made now.
+
+### 11.4 What did NOT change
+
+- **Tier 1's window and caps** — 30 minutes, 10 exchanges, 600 chars.
+- **The `(surface, space, person)` SHAPE** in `packages/gabi-conversation`. The
+  shared package is untouched; only what discord-worker *passes* changed, so the
+  site panel keeps its own keying exactly as it was. ⚠️ `CONVERSATION_SURFACES`
+  is a type-level list that nothing validates at runtime, which is what made this
+  a two-line change instead of a shared-package migration.
