@@ -960,9 +960,19 @@ this order, with an answer before the next is shown.
    proper app store app but for now lets use bucket storage"* — a native
    app with real device storage is a someday-item, not this design; R2
    streaming + the opaque PWA cache is the current architecture.
-6. **How far to go for iOS?** Given §4.1, is a "works properly in Safari, not
-   as an installed app on iPhone" answer acceptable, or does that change the
-   priority of the whole feature?
+6. ✅ **DECIDED 2026-08-17 — the Safari-first iOS posture is accepted** ("yea
+   thats fine for now"). Ship as: use Safari on iPhone (background + lock
+   screen work), install-to-home-screen is for Android; the resume path makes
+   an iOS kill cost seconds. The owner's someday app-store app (decision 5's
+   horizon note) is the eventual real cure.
+
+**ALL SIX DECISIONS ARE IN (2026-08-17) — this document is now the
+run-it-when-ready spec.** Owner: *"lets hold audiobook dev for now but make a
+full design doc for all the features. I want to be able to run it when
+ready."* Build starts on his word, phase 0a first (exact-seconds chapters),
+per §9's phase table — with `vis_ebooks` as the gate, on-demand ingest with
+the duplicate and eviction clauses, the opaque-cache offline policy, public
+chapters, SW-bearer/cookie auth, and the Safari-first iOS posture.
 
 ---
 
