@@ -96,13 +96,35 @@ test('⚠️ backup.yml\'s job matrices write exactly KNOWN_BACKUP_PREFIXES — 
   const yml = await readFile(new URL('../../../.github/workflows/backup.yml', import.meta.url), 'utf8');
 
   // d1 job: `- name: <store>` entries in the matrix include list.
-  const d1 = [...yml.matchAll(/^\s+- name: (\S+)\n\s+id: /gm)].map((m) => `d1/${m[1]}`);
+  //
+  // ⚠️ `\r?\n`, NOT `\n` — and this cost a real investigation on 2026-08-18.
+  // This is the only assertion in the file whose pattern crosses a line break,
+  // and it hardcoded `\n`. `\S` does not match `\r`, so on any checkout with
+  // CRLF endings (i.e. every Windows one, which is where this repo is
+  // developed) the capture stopped before the `\r`, the `\n` never matched,
+  // and the matcher silently found ZERO databases.
+  const d1 = [...yml.matchAll(/^\s+- name: (\S+)\r?\n\s+id: /gm)].map((m) => `d1/${m[1]}`);
   // r2 job: the `bucket: [a, b, c]` matrix.
   const r2Line = yml.match(/^\s+bucket: \[([^\]]+)\]/m);
   assert.ok(r2Line, 'could not find the r2 matrix in backup.yml');
   const r2 = r2Line[1]!.split(',').map((b) => `r2/${b.trim()}`);
   // firestore job: one fixed key.
   const firestore = [...yml.matchAll(/KEY="(firestore\/[^/]+)\//g)].map((m) => m[1]);
+
+  // ⚠️ PROVE THE PARSER WORKED BEFORE COMPARING WHAT IT FOUND. Without these
+  // three guards the CRLF bug above rendered as a deepEqual diff showing five
+  // databases MISSING from the matrix — i.e. it reported a catastrophic backup
+  // regression when the truth was that the test could not read the file. An
+  // empty parse is a broken instrument, not a measurement of zero, and the two
+  // must never be reported with the same words. (Same rule the /status rows
+  // follow: a measurement's absence is not a zero.)
+  assert.ok(
+    d1.length > 0,
+    'parsed ZERO d1 stores out of backup.yml — this is a broken matcher, not an empty matrix. ' +
+      'Check the line endings and the `- name:` / `id:` shape before believing any drift this test reports.',
+  );
+  assert.ok(firestore.length > 0, 'parsed ZERO firestore keys out of backup.yml — broken matcher, not an empty job.');
+  assert.ok(r2.length > 0, 'parsed ZERO r2 buckets out of backup.yml — broken matcher, not an empty matrix.');
 
   assert.deepEqual([...d1, ...firestore, ...r2].sort(), [...KNOWN_BACKUP_PREFIXES].sort());
 });
