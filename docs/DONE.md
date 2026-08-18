@@ -13,6 +13,59 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## ✂️ COPY TRIMMED ACROSS THE ESTATE — ✅ DONE 2026-08-17
+
+**Estate-wide ask, landed the session it was raised, so it never sat in
+`TODO.md`.** The owner, verbatim, right after he trimmed `/admin`'s header
+himself ("I think what we have is self explanatory"):
+
+> *"Let's trim text like this all over each of the sites. Only keep what's
+> mandatory and keep all the text short and useful"*
+
+`204fb9d` (the `/admin` header) is the precedent every site followed: explanatory
+prose out, the removed prose's home of record named in a comment beside the cut,
+and every string pin asserting removed text updated **in the same commit**.
+
+| Site | Commit | Words | Deployed |
+|---|---|---|---|
+| heygabi.ai — front door, `/status`, `/series`, `/universes`, shelf-migration runbook | `fd3f7f2` | 1,539 → 1,116 (−27%) | ✅ verified live |
+| `library.heygabi.ai` + `padhard.heygabi.ai` | `library_catalog` `939109f` | 323 → 196 (−39%) | ✅ both verified live |
+| `boardgames.heygabi.ai` | `Board_Game_Catalog` `e225665` | 263 → 171 (−35%) | ✅ verified live |
+| `audiobooks.heygabi.ai` | — | — | ⏳ QUEUED — another agent owns that tree (player build); the item is in its `docs/TODO.md` |
+
+**Home-of-record comments written into this repo's pages**, so nothing removed
+became unfindable: `info/estate-themes.md` (per-site theme persistence),
+`info/sso-design.md` (each catalogue asks for its own sign-in),
+`access/estate-auth.md` (the Operations gate mechanism),
+`access/backup-restore.md` (the backup inventory and read envelope),
+`info/health-envelope.md` (the six-host read list),
+`sites/heygabi-home/public/status/status.js` (the 8h threshold constants),
+`info/index-worker-design.md` (the shared index), `tools/series-canon.mjs`
+(series spelling canon).
+
+**The front door's dropped sign-in-scope sentence is not lost either**, and this
+is the shape worth copying: `assets/estate-search.js`'s `_scopeNote()` already
+prints "Searching audiobooks only. Sign in to search every shelf." beside real
+results. A worded gate that fires in context beats a paragraph that fires
+always.
+
+**KEPT DELIBERATELY across all three repos** — the trim rule stops at honesty:
+the `/status` dot legend (a colour with no key is a bare status), "Status: not
+yet run", "not configured", "cannot start, stop, or read these runs", "a green
+dot means answered, not returned 200", "cannot see the pipeline's next run",
+"some entries are wanted, not owned", "nobody has this one means nobody on the
+shelves *you* can see", every empty state, every worded refusal and gate, and
+both markers that stop a number being over-read ("flattened view, not the
+database", "the estimate is tokens only").
+
+**`predeploy.checks.json` needed no change, and that is verified rather than
+assumed:** every marker it pins is a heading or an id, none of which the trim
+touches, and every removed string was grepped across the tree first. Static and
+live predeploy checks pass; `npm test --workspaces` 914 pass / 0 fail.
+
+**Side effect worth naming:** the shelf-migration runbook's facts form carried
+two first names in a PUBLIC repo. The trim removed both.
+
 ## 🗃️ GABI CATALOG Q&A TOOLS — ✅ TIER 0 DONE 2026-08-18
 
 ⚠️ Moved WHOLE from `TODO.md`, unsummarised, per this file's own rule. The
