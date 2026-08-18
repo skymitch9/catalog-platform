@@ -130,17 +130,70 @@ async function listAllObjects(bucket) {
   return all;
 }
 
+/**
+ * ⚠️ RETRY EXISTS BECAUSE ONE TRANSIENT 500 KILLED A WHOLE BUCKET — MEASURED.
+ *
+ * Run 32111218016 (2026-08-18): `audiobook-covers` listed 1,972 objects, got
+ * roughly three minutes into downloading them, and died on ONE object with
+ *
+ *     GET audiobook-covers/<key> failed (HTTP 500):
+ *     {"code":10001,"message":"We encountered an internal error. Please try again."}
+ *
+ * Cloudflare's own error text says *"please try again"* and this script did
+ * not. That was survivable while backups were a manual button-press somebody
+ * watched; it is not survivable now the workflow runs DAILY AND UNATTENDED,
+ * where the failure mode is a bucket quietly missing from a night's backup.
+ *
+ * Retries are deliberately narrow:
+ *   - only 5xx and 429 (server-side and rate-limit). A 401/403/404 is a real
+ *     answer about permissions or a vanished key and retrying it just turns a
+ *     clear failure into a slow one;
+ *   - 4 attempts, exponential backoff with jitter (~0.5s, 1s, 2s);
+ *   - every retry is LOGGED, so a bucket that only succeeds by retrying looks
+ *     different in the log from one that succeeded first time. A silent retry
+ *     would hide a degrading bucket, which is its own kind of dishonesty;
+ *   - after the last attempt it throws exactly as before. A backup that cannot
+ *     read an object still FAILS — the size check below and the zero-object
+ *     rule above are unchanged. This makes the job survive a blip, not
+ *     tolerate a broken bucket.
+ */
+const GET_ATTEMPTS = 4;
+const isRetryable = (status) => status >= 500 || status === 429;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function getObjectBytes(bucket, key) {
   // Object keys can contain characters that need escaping per path segment,
   // but literal '/' must stay unescaped (Cloudflare's own docs: send slashes
   // literally, do not percent-encode them).
   const encodedKey = key.split('/').map(encodeURIComponent).join('/');
-  const res = await cfFetch(`/accounts/${ACCOUNT_ID}/r2/buckets/${bucket}/objects/${encodedKey}`);
-  if (!res.ok) {
+  const path = `/accounts/${ACCOUNT_ID}/r2/buckets/${bucket}/objects/${encodedKey}`;
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= GET_ATTEMPTS; attempt++) {
+    let res;
+    try {
+      res = await cfFetch(path);
+    } catch (err) {
+      // A dropped socket / DNS blip is the same class of problem as a 500.
+      lastError = new Error(`GET ${bucket}/${key} failed (network): ${err.message}`);
+      if (attempt === GET_ATTEMPTS) break;
+      const wait = Math.round(250 * 2 ** attempt * (1 + Math.random()));
+      console.log(`  retry ${attempt}/${GET_ATTEMPTS - 1} for ${key} after ${wait}ms — ${err.message}`);
+      await sleep(wait);
+      continue;
+    }
+
+    if (res.ok) return Buffer.from(await res.arrayBuffer());
+
     const text = await res.text();
-    throw new Error(`GET ${bucket}/${key} failed (HTTP ${res.status}): ${text.slice(0, 500)}`);
+    lastError = new Error(`GET ${bucket}/${key} failed (HTTP ${res.status}): ${text.slice(0, 500)}`);
+    if (!isRetryable(res.status) || attempt === GET_ATTEMPTS) break;
+
+    const wait = Math.round(250 * 2 ** attempt * (1 + Math.random()));
+    console.log(`  retry ${attempt}/${GET_ATTEMPTS - 1} for ${key} after ${wait}ms — HTTP ${res.status}`);
+    await sleep(wait);
   }
-  return Buffer.from(await res.arrayBuffer());
+  throw lastError;
 }
 
 async function backupBucket(bucket) {
