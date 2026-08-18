@@ -288,10 +288,29 @@ at completion. What landed, and what did not:
   cover photo yields a title+author string, and this estate has twice measured
   a title+author match scoring **1.0 on the wrong book**. *"Additive with easy
   undo"* does not cover a wrong book added under a name that already matched.
-- ⛔ **Still open: T2/T3 confirm verbs.** The instance-choice select menu built
-  for T1 is the first working example of the exact machinery they need — a
-  pending choice whose press performs an ACTION rather than producing a
-  sentence. A T2 confirm is that with one option and a restatement.
+- ⛔ **Still open: T2/T3 confirm verbs — ✅ DESIGNED 2026-08-18, not built.**
+  Full grammar: [`info/gabi-confirm-lanes-design.md`](info/gabi-confirm-lanes-design.md).
+  The instance-choice select menu is the right machinery, but ⚠️ **"one option
+  and a restatement" understates it**: the hard part is the restatement still
+  being TRUE when somebody presses, which needs **compare-and-set on the
+  `before` values** and a worded 409 — the `firestore.rules` `hasAll` incident
+  generalised. Also decided: the proposal lives in the existing `pending.*`
+  slot (**zero new Durable Object writes**), the capability is checked at
+  **both** propose and press, ⚠️ **club deletion is T4 not T3**, and ⚠️ **T2
+  cannot touch the audiobook surface until it has an audit seam** (it has no
+  `change_log`). Phase 1 is **one verb** (`fix-field`), ~200 k. **5 owner
+  questions** in §11 — the first is `changed_how` `'human'` vs `'auto'`, which
+  no later migration can recover.
+- 💤 **Someday: bare `heygabi` triggers** —
+  [`info/gabi-bare-text-triggers-memo.md`](info/gabi-bare-text-triggers-memo.md).
+  ⚠️ **The estate's docs carry a superseded fact**: the privileged-intent gate is
+  no longer *100 servers* but **10,000 unique users** (Discord, June 2026) — so
+  there is **no gate**, just a portal toggle, reversible in a minute. ⚠️ The
+  intent **cannot be scoped to channels** (verified against Discord's docs);
+  only the handler can drop messages, and the memo pins what "unlogged" can
+  honestly promise. **Recommendation: not yet** (DMs already give a zero-`@`
+  surface; deferring costs nothing) — **owner's decision, with flip conditions
+  written down.**
 - 🧑 **OWNER EYEBALL — nothing here is verified by a real Discord message yet.**
   No `change_log` row wearing `gabi-discord` exists in production, and the
   async sweep report has never been posted by a live gateway. `access/discord-bot.md`
