@@ -2,9 +2,12 @@
 
 > **Audience:** Claude sessions + the owner. **Status:** TRACKED (this repo is
 > public on GitHub — resource and secret NAMES only, never values).
-> Last verified: **2026-08-17**. **DESIGN ONLY — nothing here is built.**
-> Every figure marked *measured* was taken on this machine on 2026-08-17;
-> everything else is reasoned and labelled as such.
+> Last verified: **2026-08-18**. **PHASES 1, 2, 5 AND 6 ARE BUILT AND LIVE;
+> phases 3 and 4 (the Discord door and GABI's tools) are not.**
+> Figures marked *measured* were taken on this machine on 2026-08-17 unless a
+> later date is given. **§10 is the as-built account**, and where the build
+> departed from this design it says so there rather than by silently editing
+> the paragraph that turned out to be wrong.
 
 Owner brief, verbatim (2026-08-17): *"let's make sure GABI can read all of our
 docs and stuff so she can even help me if needed for let's say I don't have a
@@ -550,6 +553,11 @@ Discord: DM GABI *"how do I promote to prod?"* and check the answer cites
 
 ## 8. ⚠️ What was NOT verified
 
+⚠️ **This is the DESIGN-TIME list, kept as written rather than edited**, because
+several of its lines were answered by the build and the answers matter more than
+the questions did. Read **§10.8** beside it: it says which of these held, which
+did not, and what the current not-verified list is.
+
 - **Nothing here is built.** No script, no route, no bucket, no binding exists.
 - **No R2 put has been attempted** to any bucket from `catalog-platform`; the
   wrangler-vs-REST recommendation rests on `backup-r2.mjs`'s 2026-08-15 note
@@ -586,3 +594,195 @@ Discord: DM GABI *"how do I promote to prod?"* and check the answer cites
    the apex with a real search bar and deliberate visual design — not a
    utilitarian dump. ALL FOUR QUESTIONS ANSWERED — the design is fully
    decided and buildable.
+
+---
+
+## 10. AS BUILT — phases 1, 2, 5 and 6 (2026-08-18)
+
+> Everything in this section is **measured on this machine on 2026-08-18**
+> unless it says otherwise. Where the build departed from the design above, the
+> departure is named here rather than by quietly editing the paragraph that
+> turned out to be wrong.
+
+### 10.1 What exists
+
+| Piece | Where | State |
+|---|---|---|
+| Publisher | `audiobook_catalog/scripts/publish_docs_snapshot.py` | tracked, 33 tests |
+| Pipeline STEP 9 | `audiobook_catalog/scripts/sync_to_drive.py` — `_publish_docs_snapshot()`, called on the busy **and** the idle path | tracked |
+| Bucket | `estate-docs-gated`, objects `snapshot.json.gz` + `receipt.json` | created 2026-08-18 |
+| Worker routes | `apps/auth-worker/src/estate-docs.ts` | deployed |
+| Binding | `ESTATE_DOCS` in `apps/auth-worker/wrangler.toml` | deployed |
+| Page | `sites/heygabi-home/public/docs/{index.html,docs.js}` | deployed — <https://heygabi.ai/docs/> |
+| Probes | `tools/estate-probes/probes/auth-worker.mjs` A36–A39 | 111/111 pass |
+
+**Bucket privacy, verified the day it was created** —
+`npx wrangler r2 bucket dev-url get estate-docs-gated` answered
+*"Public access via the r2.dev URL is disabled."* ⚠️ Never attach a domain or
+enable a public URL; §3.3 is the reason and it has not changed.
+
+### 10.2 The corpus, measured on the first real publish
+
+| | |
+|---|---:|
+| Markdown files published | **119** |
+| Raw bytes | **3,105,573** |
+| Sections | **1,413** |
+| Gzipped bundle | **1,248,434** (40.1% of raw) |
+| Denylisted, excluded | 1 — `audiobook_catalog/docs/access/CREDENTIALS.md` |
+| Non-`.md`, excluded by construction | 7 |
+| Scanner findings | **0** (after tuning — see 10.4) |
+
+§0 predicted "comfortably under 1 MB" gzipped. **It is 1.19 MB** — still one R2
+GET on a cold isolate, so the architecture stands, but the estimate was low and
+is corrected here rather than left to be rediscovered.
+
+Sections came to 1,413, not the 2,176 H1–H3 headings §1 measured, because the
+publisher cuts at **H2** and descends to H3 only when a section exceeds 8 KB.
+That was always the design (§2.3); the two numbers are not the same quantity.
+
+### 10.3 Three departures from the design above
+
+1. **The publisher lives in `audiobook_catalog`, not `catalog-platform`**
+   (§2.2 recommended the latter). Two reasons: `audiobook_catalog/docs/` exists
+   only on this machine, so the publish step has to run there regardless; and
+   STEP 9 is a step of *that* repo's pipeline, where `publish_ebooks_manifest.py`
+   is the exact precedent for a Python module the pipeline imports and calls. A
+   Node script in a sibling repo invoked by absolute path would have added a
+   cross-repo path dependency to the estate's only unattended job.
+
+2. **Sections carry their own text; there is no whole-file copy and no byte
+   offsets** (§2.3 sketched `{sections:[{heading,level,start,end}], text}`).
+   Storing both would double the corpus, and ⚠️ offsets are a cross-language
+   hazard: Python indexes `str` by code point and a Worker indexes by UTF-16
+   code unit, so one astral emoji anywhere in a file would silently shift every
+   offset after it. The symptom would be a section starting mid-word, and
+   nothing would point back at the cause.
+
+3. **The Worker revalidates on a five-minute lease rather than caching flatly
+   once per isolate** (§5.2). Past the lease one `head()` compares etags, and
+   only a changed etag pays for a download. Without it a long-lived isolate
+   serves a snapshot the staleness warning still calls fresh — the warning would
+   be reporting the publisher's clock while the reader sees the isolate's, which
+   is §6's own trap wearing a new hat.
+
+### 10.4 The scanner's first real run — the numbers shadow-first existed for
+
+§8 recorded that the rule set had never been run and that its false-positive
+rate was unknown. It has now been run:
+
+| Pass | Findings | Verdict |
+|---|---:|---|
+| First | **5** | **all five FALSE** |
+| After tuning | **0** | — |
+
+Two classes, both worth recording because both are shapes this estate's docs
+produce constantly:
+
+- ⚠️ **A plain MDN link matched the high-entropy base64 rule** — because `/` is
+  in the base64 alphabet, so `…/docs/Web/API/HTMLMediaElement/playbackRate` is a
+  40-plus character run of base64-legal characters with respectable entropy.
+  Fix: URLs are stripped from a line before the entropy rules run. The prefix
+  rules still see the whole line, because a key pasted into a query string is
+  still a key.
+- **Three matched `secret:list:friend`**, an npm script name, on the
+  `secret|token|password` + `:` + value rule. Fix: an all-lowercase, digit-free
+  value is an identifier, not a credential — no issuer this estate uses mints
+  lowercase-only tokens.
+
+⚠️ **This is ONE clean pass, not a week of them.** The scanner stays in
+**shadow** and the pipeline passes no override. Flipping to enforce is still a
+deliberate act (`--scanner enforce`, or `DOCS_SCANNER_MODE=enforce`), because a
+false positive inside an unattended 8-hourly job stops the corpus refreshing
+with nobody watching.
+
+⚠️ **It refuses; it does not strip.** Two tests pin that pair: one plants a fake
+credential in a scratch docs tree and asserts the run exits non-zero, and its
+partner asserts the offending file is still in the bundle **whole**. Findings
+carry path, line and rule and **never the matched text** — a findings log that
+quotes what it found has published the secret to a second place.
+
+### 10.5 The transport question, answered by measurement
+
+§2.2 recommended wrangler on the grounds that it needs no new credential. That
+turned out to be the only path that works today:
+
+| Transport | Result |
+|---|---|
+| `wrangler r2 object put` (wrangler's own OAuth) | **works** |
+| S3/boto3 with the estate R2 API token from `.env` | **AccessDenied** |
+
+The token was checked against a bucket it *does* cover in the same run
+(`PUT estate-ebooks` → OK), so this is a scope fact about the token rather than
+a broken credential: it is scoped to a named bucket list and a new bucket is not
+on it. `--transport s3` exists and is one owner action away (dash → R2 → API
+tokens → add this bucket), but nothing needs it.
+
+### 10.6 ⚠️ Two defects the build found, both worth remembering
+
+1. **"Idempotent by content" was true of the code and false of the behaviour.**
+   The sha-skip hashed the *gzipped bundle*, which carries `generated_at`, so it
+   changed on every invocation — the 8-hourly step would have re-PUT 1.2 MB
+   forever while printing *"no change in the included set"* directly beside it.
+   `content_sha()` now covers each repo's HEAD plus every file's path and text,
+   and nothing else. Found by running the publisher twice, not by reading it.
+
+2. **The docs page showed no snapshot date until someone typed** — while its own
+   footer said *"anything written since the date above is not in it yet"*. The
+   freshness display, built specifically to defeat silent staleness, was itself
+   silent on arrival. `GET …/docs/search` with an empty `q` now answers **200**
+   carrying the snapshot envelope (an empty query is the starting state, not an
+   error), and the page makes exactly one such call on sign-in. It earns its keep
+   twice: that call is also the earliest moment a signed-in **non-devops**
+   visitor gets the worded refusal, rather than a search box that silently did
+   nothing until they used it.
+
+### 10.7 The page (phase 6)
+
+Owner's bar, verbatim (2026-08-18): *"sure, but make it with a search bar and
+pretty to look at."*
+
+⚠️ **Content-free by construction**, which is what makes committing it to a
+public repo safe: view the source signed out and there is no documentation — no
+path, no heading, no snippet. Everything arrives from behind `requireDevops()`;
+a 200 IS the capability probe.
+
+- search-as-you-type (190 ms debounce, previous request aborted) against the
+  live corpus — not a filter over a list the page holds, because it holds none;
+- `<mark>` highlighting in both the snippets and the rendered section;
+- results as SECTIONS with a repo chip and file path, spined in the estate's own
+  three shelf colours (`--et-hue-1/2/3`) rather than a fourth palette nobody has
+  seen before;
+- a reader rendering one section properly — headings, fenced code, pipe tables,
+  lists, blockquotes, inline code/bold/italic/links — naming the source file and
+  the publish date **inside** the document rather than beside it;
+- ⚠️ **no `innerHTML` anywhere**, pinned by a `mustNotContain` in
+  `predeploy.checks.json`. The corpus is our own writing, so this is not a
+  defence against a hostile author: it is a defence against the ordinary case, a
+  `<script>` inside a code fence or an angle bracket in a shell one-liner, which
+  an innerHTML renderer would either execute or silently eat.
+
+### 10.8 ⚠️ What is STILL not verified
+
+- **Phases 3 and 4 do not exist.** No Discord door, no GABI tools, no `email` on
+  the link doc, no `ESTATE_APP_TOKEN_DISCORD`. ⚠️ The owner's original ask —
+  answers when no Claude session is open — is **not yet met**; today the docs
+  are reachable from a browser and nowhere else.
+- **The gate is verified only at its refusing edge.** Tokenless calls answer 401
+  with the worded sentence (live, on all three routes), and the page was driven
+  signed in as the OWNER. ⚠️ **No account that is signed in but NOT devops has
+  been tested against these routes** — the 403 path is asserted in code and in
+  copy, not observed.
+- **The staleness path has never fired.** `STALE_AFTER_HOURS = 72` is a reasoned
+  threshold, unit-tested against a synthetic clock; no real snapshot has yet been
+  three days old.
+- **The scanner's false-positive rate rests on ONE pass** (10.4), not a week.
+- **The growth tripwire has never fired.** 10 MB / 25 MB are reasoned numbers and
+  the corpus is at 3.1 MB.
+- **Retrieval quality is now partly observed, not fully.** *"revocation delay"*
+  returns 10 of 10 sections with the right file and section on top, and *"promote
+  to prod"* returns 20 of 123 — both checked live, signed in. Whether
+  heading-level scoring holds up across the questions the owner actually asks is
+  still unknown.
+- **Nothing links to `/docs/`.** Deliberate (see `TODO.md`), but it means the
+  page is reachable only by typing the URL.
