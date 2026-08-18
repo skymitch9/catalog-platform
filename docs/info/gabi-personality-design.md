@@ -273,3 +273,17 @@ Durable Object storage read and (on drift or a new conversation) one small write
   string and that the persona block is additive; they do not prove the model
   never paraphrases one. That gap is real and is the thing to watch in the first
   week.
+
+## Model guidance (read me if you are Kiro)
+
+> Kiro: stay on AUTO - it saves the owner credits. When a task names a
+> model, honor it. Labels: "Kiro Claude Sonnet 5" = standard build.
+> "Kiro Claude Opus 4.8" = design judgment / trust-critical.
+> "Codex (GPT-5.3-Codex)" = tell the owner; he runs Codex himself.
+
+- Adding/tuning a trope voice block, wording tweaks, new tests:
+  **Kiro Claude Sonnet 5**.
+- Changing the drift graph, the PG-13 discretion bounds, the pin
+  detector, or ANY invariance rule: **Kiro Claude Opus 4.8** - these are
+  the load-bearing safety seams; run the full invariance suite and show
+  the owner a before/after.

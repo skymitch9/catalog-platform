@@ -498,3 +498,19 @@ paragraph is the note explaining why it was not made now.
   site panel keeps its own keying exactly as it was. ⚠️ `CONVERSATION_SURFACES`
   is a type-level list that nothing validates at runtime, which is what made this
   a two-line change instead of a shared-package migration.
+
+## Model guidance (read me if you are Kiro)
+
+> Kiro: stay on AUTO - it saves the owner credits. When a phase below
+> names a model, honor that name; the naming exists so AUTO stays cheap
+> and safe. Labels: "Kiro Claude Sonnet 5" = standard build. "Kiro Claude
+> Opus 4.8" = design judgment or trust-critical. "Codex (GPT-5.3-Codex)"
+> = tell the owner; he runs Codex himself.
+
+- Tier 3 (archive + retention): **Kiro Claude Sonnet 5** - mechanical,
+  fully specced above, test-backed.
+- Tier 4 recall tool + any change to the privacy posture, retention
+  semantics, or profile distillation prompt: **Kiro Claude Opus 4.8** -
+  privacy-adjacent judgment.
+- Any re-architecture of the storage or identity keying: **Kiro Claude
+  Opus 4.8**, and present the design to the owner before building.
