@@ -191,7 +191,37 @@
 
 ## 2. ⚠️ Why every D1 backup lands in `catalog-platform`, not in the repo that owns the database
 
-Evidence, gathered 2026-08-14:
+> 🔴 **STALE EVIDENCE WARNING — RE-MEASURED 2026-08-18.** The visibility table
+> below is from 2026-08-14 and **three of its four rows are now wrong**. All
+> four repos are **PUBLIC** today:
+>
+> ```
+> $ gh repo view skymitch9/<repo> --json visibility -q .visibility   # 2026-08-18
+> catalog-platform    PUBLIC      (was private on 2026-08-14)
+> library_catalog     PUBLIC      (was private on 2026-08-14)
+> Board_Game_Catalog  PUBLIC
+> audiobook_catalog   PUBLIC
+> ```
+>
+> **This does NOT break anything**, and the reason is worth stating: the
+> argument below is about *workflow artifacts*, and **no job in `backup.yml`
+> uses artifacts any more** — every one writes into the **private
+> `estate-backups` R2 bucket** (see this file's top banner). The bucket's
+> privacy, not the repo's, is what protects a dump today.
+>
+> ⚠️ **What it DOES change is the docs rule:** *"back it up from the private
+> repo"* is no longer a true sentence about any repo here, so **every tracked
+> doc in every repo must be names-only, with no secret values** — there is no
+> longer a private repo to relax that in. The one deliberately gitignored docs
+> tree (`audiobook_catalog/docs/`) exists precisely because of this, and
+> `docs/access/keys/*` is ignored for the same reason.
+>
+> The reasoning below is kept as history because the *conclusion* — one
+> workflow, in one place, backing up all five D1 databases — is still right,
+> and for a second reason it already gives: one visibility question to answer
+> instead of four drifting ones. It just no longer rests on a privacy claim.
+
+Evidence, gathered 2026-08-14 **(⚠️ two rows since falsified — see above)**:
 
 ```
 $ gh repo view skymitch9/catalog-platform  --json isPrivate   →  true   (PRIVATE)
