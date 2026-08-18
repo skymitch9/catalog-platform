@@ -924,8 +924,18 @@ you doubt it), so the above ran on a placeholder. ⚠️ **The production key wa
 deliberately NOT used even for the dry run**, so that no invocation of a restore
 tool in this drill named the production project at all.
 
-⚠️ **STILL NOT VERIFIED:** the `--commit` write path. It is now blocked on one
-key download rather than on the absence of a target.
+✅ **DRILLED 2026-08-18 ~16:0x Phoenix — the `--commit` write path is
+PROVEN.** The owner generated the drill key by conductor-driven browser
+(saved gitignored as `audiobook_catalog/docs/access/keys/
+estate-restore-drill-sa.json`), and the full rehearsal ran end to end
+against `estate-restore-drill`: dry run printed the drill project name,
+`--commit` restored `reviews_dev` ("restored 4 docs (8 timestamps
+revived)"), and an INDEPENDENT read-back with firebase-admin measured
+**4 docs, 8 real Firestore Timestamps, 0 `_seconds` maps** — the §4.2
+reviver works in the written data, not just in the tool's report. With
+this, every restore path in the estate (D1 remote, R2 archive, Firestore
+write) is drilled, not inferred. The production key was never used at any
+step.
 
 ⚠️ `restore-firestore.mjs` **overwrites** each restored document wholesale and
 **never deletes** documents absent from the backup. A targeted restore cannot
