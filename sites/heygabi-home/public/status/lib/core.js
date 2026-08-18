@@ -230,6 +230,69 @@ export function tickAll() {
   for (const id of rowRegistry.keys()) tickRow(id);
 }
 
+/**
+ * Attach a collapsible log tail to a row — the owner's "click into the health
+ * check" (2026-08-18: *"lets make it so i can see logs for some of this stuff
+ * if they arent working by clicking into the health checks"*).
+ *
+ * ⚠️ COLLAPSED BY DEFAULT, ALWAYS, even on a red row. Auto-expanding forty
+ * lines of log would push every row below it off the screen at exactly the
+ * moment a reader is trying to compare rows — and the page's job is still to
+ * say WHICH thing is broken first. The summary line on the toggle carries the
+ * age, so the tail's staleness is visible without opening it.
+ *
+ * ⚠️ THE AGE IS MANDATORY AND IS THE LOG'S OWN, not the board's. These lines
+ * were tailed on the home machine and published; debugging this morning's
+ * problem with last night's output is the specific failure a log block without
+ * a timestamp invites.
+ *
+ * ⚠️ EVERY LINE IS textContent. Log output is the least trustworthy string on
+ * the estate — it contains whatever a filename, a book title or an exception
+ * put there — and this page already carries a mustNotContain pin on
+ * `.innerHTML =` for exactly this reason.
+ */
+export function setRowLog(id, log) {
+  const row = rowRegistry.get(id);
+  if (!row || !log) return;
+  if (row.logEl) row.logEl.remove();
+
+  const details = document.createElement('details');
+  details.className = 'row-log';
+
+  const summary = document.createElement('summary');
+  const ageText = log.modified_at && Number.isFinite(Date.parse(log.modified_at))
+    ? `written ${formatAge(Date.now() - Date.parse(log.modified_at))}`
+    : 'age unknown';
+  const count = Array.isArray(log.lines) ? log.lines.length : 0;
+  summary.textContent = log.error
+    ? `Log: ${log.error}`
+    : `Recent log — last ${count} line${count === 1 ? '' : 's'}, ${ageText}`;
+  details.append(summary);
+
+  const meta = document.createElement('p');
+  meta.className = 'row-note';
+  // The PATH earns its place: it is what an operator opens on the machine when
+  // forty lines are not enough.
+  meta.textContent = [log.path, log.note].filter(Boolean).join(' — ');
+  details.append(meta);
+
+  if (count) {
+    const pre = document.createElement('pre');
+    pre.className = 'log-tail';
+    pre.textContent = log.lines.join(String.fromCharCode(10));
+    details.append(pre);
+  } else if (!log.error) {
+    const p = document.createElement('p');
+    p.className = 'empty-say';
+    // ⚠️ "The log is empty" and "we could not read it" are different sentences.
+    p.textContent = 'The tail carried no lines — the log exists but has nothing recent in it.';
+    details.append(p);
+  }
+
+  row.el.querySelector('.row-body').append(details);
+  row.logEl = details;
+}
+
 /** Set a row's visible name after creation (some labels ship with the data). */
 export function setRowName(id, name) {
   const row = rowRegistry.get(id);

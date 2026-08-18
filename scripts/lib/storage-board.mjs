@@ -110,13 +110,39 @@ export function monthlyCostUsd(bytes) {
  * `info` may be null when the call failed — that is a STATE, not a zero.
  */
 export function bucketRow(spec, info, error) {
-  const bytes = info ? parseSize(info.bucket_size) : null;
+  const rawBytes = info ? parseSize(info.bucket_size) : null;
+  const rawObjects = info ? parseCount(info.object_count) : null;
+
+  // ⚠️ A ZERO FROM THIS ENDPOINT IS NOT A MEASUREMENT OF EMPTY. Measured
+  // 2026-08-18, and it is the nastiest thing in this module: Cloudflare's
+  // bucket-metrics endpoint intermittently answers a perfectly well-formed
+  // SUCCESS carrying `object_count: "0", bucket_size: "0 B"` for buckets that
+  // demonstrably hold data. One run reported all eight buckets correctly
+  // (84.4 GB); a run minutes later reported six of them — including
+  // `estate-backups`, which holds 2.94 GB — as completely empty, with no error
+  // anywhere. Serial `wrangler r2 bucket info` calls by hand returned 477 /
+  // 79.1 GB three times in a row at the same moment, so the data was fine and
+  // the reading was not.
+  //
+  // ⚠️ THE null-NOT-ZERO RULE ELSEWHERE IN THIS FILE DOES NOT CATCH IT, because
+  // "0" parses flawlessly. So a zero has to be treated as UNVERIFIED in its own
+  // right: the pusher retries it, and a zero that SURVIVES the retries is
+  // reported as unknown rather than as empty.
+  //
+  // The cost is that a genuinely empty bucket would read "unknown" forever, and
+  // that is the trade taken deliberately. The estate has no empty buckets; and
+  // rendering `estate-backups` as "0 B" is the single most alarming wrong
+  // answer this panel can produce — once it has cried that wolf, the row stops
+  // being believed on the day it matters.
+  const unverifiedZero = rawObjects === 0 && rawBytes === 0;
+  const bytes = unverifiedZero ? null : rawBytes;
   return {
     name: spec.name,
     label: spec.label,
     holds: spec.holds,
-    objects: info ? parseCount(info.object_count) : null,
+    objects: unverifiedZero ? null : rawObjects,
     bytes,
+    unverified_zero: unverifiedZero || false,
     size_text: info?.bucket_size ?? null,
     cost_usd_month: monthlyCostUsd(bytes),
     created: info?.created ?? null,
@@ -124,7 +150,12 @@ export function bucketRow(spec, info, error) {
     // ⚠️ Carried so the page can say WHY a bucket it cannot measure is still
     // listed, instead of dropping it and leaving a silent hole.
     reachable_from: spec.reachable_from,
-    error: error ? String(error).slice(0, 300) : null,
+    error: error
+      ? String(error).slice(0, 300)
+      : unverifiedZero
+        ? 'reported 0 objects / 0 B, which this endpoint also does when it declines to answer — ' +
+          'treated as UNKNOWN rather than empty (see the note in scripts/lib/storage-board.mjs)'
+        : null,
   };
 }
 

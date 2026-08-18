@@ -60,6 +60,7 @@ import {
   makeRow,
   probeReachable,
   rowRegistry,
+  setRowLog,
   setRowName,
   tickAll,
   updateRow,
@@ -1078,6 +1079,27 @@ function lastWriteFor(name, board) {
   return null;
 }
 
+/**
+ * Hang each pushed log tail on the row it explains — the owner's "click into
+ * the health check".
+ *
+ * ⚠️ THE MAPPING LIVES IN THE PUSH, NOT HERE. Each source carries the row id
+ * it belongs to (scripts/lib/logs-board.mjs), so adding a job means adding it
+ * in ONE place. A second copy of the mapping on this side would be a second
+ * thing to forget, and the symptom of forgetting is a silently log-less row.
+ *
+ * ⚠️ A source whose row is not on this page is skipped in silence, and that
+ * is correct: `processing-push` explains the GABI Knowledge page rather than a
+ * Health row, and setRowLog() ignores an id it does not know.
+ */
+function renderRowLogs(board) {
+  const logs = objectSection(board, 'logs');
+  const sources = logs && Array.isArray(logs.sources) ? logs.sources : [];
+  for (const src of sources) {
+    if (src && src.row) setRowLog(src.row, src);
+  }
+}
+
 function renderStorage(board) {
   if (!storageBucketsEl || !storageTotalsEl) return;
   const section = objectSection(board, 'storage');
@@ -1148,6 +1170,9 @@ async function loadStorage() {
   }
   lastStorageGood = result;
   renderStorage(result.board);
+  // The same board read feeds the log tails — one fetch, two consumers, rather
+  // than a second poll of the same endpoint.
+  renderRowLogs(result.board);
 }
 
 // ---------------------------------------------------------------------------

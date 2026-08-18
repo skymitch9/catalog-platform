@@ -40,6 +40,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildStorageSection } from './lib/storage-board.mjs';
+import { mergeAndPush } from './lib/board-draft.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,6 +60,32 @@ const valueOf = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] 
  * that both fails AND prints nothing parseable throws, and the caller turns
  * that into one row's error rather than a dead panel.
  */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * `bucket info`, with a zero treated as a reason to ask again.
+ *
+ * ⚠️ MEASURED 2026-08-18: Cloudflare's bucket-metrics endpoint intermittently
+ * returns a well-formed SUCCESS carrying 0 objects / 0 B for a bucket that
+ * holds gigabytes. Six of eight buckets came back empty in one run — including
+ * estate-backups — while three serial calls by hand at the same moment returned
+ * the right figures every time. So the reading is what fails, not the data, and
+ * a retry is the cheapest thing that distinguishes them.
+ *
+ * A zero that survives every attempt is handed on as a zero and the projection
+ * turns it into "unknown" — this layer retries, it does not interpret.
+ */
+async function bucketInfoVerified(name, attempts = 3) {
+  let last = null;
+  for (let i = 0; i < attempts; i++) {
+    last = await bucketInfo(name);
+    const zero = String(last?.object_count ?? '') === '0' && /^0\s*B$/i.test(String(last?.bucket_size ?? ''));
+    if (!zero) return last;
+    if (i < attempts - 1) await sleep(400 * (i + 1));
+  }
+  return last;
+}
+
 async function bucketInfo(name) {
   let stdout = '';
   try {
@@ -85,7 +112,7 @@ async function bucketInfo(name) {
 }
 
 async function main() {
-  const section = await buildStorageSection(bucketInfo);
+  const section = await buildStorageSection(bucketInfoVerified);
 
   if (has('--print')) console.log(JSON.stringify(section, null, 2));
 
@@ -100,46 +127,15 @@ async function main() {
     return 0;
   }
 
-  // ── READ-MODIFY-WRITE the shared draft (contract §9) ──────────────────────
-  fs.mkdirSync(path.dirname(DRAFT), { recursive: true });
-  let board = {};
-  if (fs.existsSync(DRAFT)) {
-    // The BOM strip is not decoration: PowerShell's Out-File writes one and
-    // JSON.parse rejects it with what looks like a syntax error in a perfect
-    // file (docs/access/agent-board.md §8).
-    const raw = fs.readFileSync(DRAFT, 'utf8').replace(/^﻿/, '');
-    try {
-      board = JSON.parse(raw);
-    } catch (err) {
-      // ⚠️ REFUSE rather than start a fresh board. Overwriting an unreadable
-      // draft would delete every other pusher's section, and "you cannot
-      // recover a section you did not write" — the read door is requireDevops()
-      // so no script can fetch it back.
-      console.error(`[storage] REFUSING: ${DRAFT} exists and is not readable JSON (${err.message}).`);
-      console.error('  Fix or remove the draft by hand. Overwriting it would delete the other pushers’ sections.');
-      return 1;
-    }
-    if (board === null || typeof board !== 'object' || Array.isArray(board)) {
-      console.error(`[storage] REFUSING: ${DRAFT} is not a JSON object.`);
-      return 1;
-    }
-  }
-  board.storage = section;
-  fs.writeFileSync(DRAFT, `${JSON.stringify(board, null, 2)}\n`, 'utf8');
-
-  // ── Push the WHOLE draft through the one implementation of the POST ───────
-  const by = valueOf('--by') || 'storage-board@home-pc';
-  const args = [path.join(ROOT, 'scripts', 'push-agent-board.mjs'), DRAFT, '--by', by, '--sections', 'storage'];
-  try {
-    const { stdout } = await execFileAsync(process.execPath, args, { cwd: ROOT, timeout: 120_000 });
-    process.stdout.write(stdout);
-  } catch (err) {
-    process.stdout.write(err?.stdout || '');
-    process.stderr.write(err?.stderr || '');
-    console.error('[storage] the push failed — the draft on disk is still correct, so a retry will send it.');
-    return 1;
-  }
-  return 0;
+  // ⚠️ THE DRAFT MERGE IS SHARED (scripts/lib/board-draft.mjs), not copied.
+  // Contract §9's rule — read the draft, set your key, push it WHOLE — is four
+  // lines of discipline, and four lines copied into three pushers is three
+  // chances for one to drift into deleting somebody else's section.
+  return mergeAndPush({
+    root: ROOT,
+    sections: { storage: section },
+    by: valueOf('--by') || 'storage-board@home-pc',
+  });
 }
 
 main().then((code) => process.exit(code)).catch((err) => {

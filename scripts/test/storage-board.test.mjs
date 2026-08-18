@@ -170,3 +170,48 @@ test('bucketRow: a null info yields a fully-formed row of unknowns', () => {
   assert.equal(row.size_text, null);
   assert.equal(row.name, 'estate-audio');
 });
+
+// ---------------------------------------------------------------------------
+// The success-with-zero trap
+// ---------------------------------------------------------------------------
+
+test('⚠️ A ZERO READING IS UNKNOWN, NOT EMPTY — the worst bug this panel could ship', () => {
+  // Measured 2026-08-18: Cloudflare's bucket-metrics endpoint intermittently
+  // answers a well-formed SUCCESS carrying 0 objects / 0 B for a bucket holding
+  // gigabytes. Six of eight came back "empty" in one run — including
+  // estate-backups, which holds 2.94 GB — with no error anywhere, while serial
+  // calls by hand returned the right figures three times running.
+  //
+  // null-not-zero does not catch this, because "0" parses perfectly. So a zero
+  // is unverified in its own right.
+  const row = bucketRow(
+    STORAGE_BUCKETS.find((b) => b.name === 'estate-backups'),
+    { object_count: '0', bucket_size: '0 B' },
+    null,
+  );
+  assert.equal(row.bytes, null, 'must NOT be 0 — "0 B" on the backup bucket is the alarm that gets ignored');
+  assert.equal(row.objects, null);
+  assert.equal(row.cost_usd_month, null);
+  assert.equal(row.unverified_zero, true);
+  assert.match(row.error, /declines to answer/);
+  assert.match(row.error, /UNKNOWN rather than empty/);
+});
+
+test('a zero that is only in ONE of the two fields is still a real reading', () => {
+  // 0 objects but a non-zero size, or vice versa, is not the endpoint's
+  // decline-shape — it is something genuinely odd, and hiding it would be worse
+  // than showing it.
+  const a = bucketRow(STORAGE_BUCKETS[0], { object_count: '0', bucket_size: '1.5 MB' }, null);
+  assert.equal(a.unverified_zero, false);
+  assert.equal(a.objects, 0);
+  assert.equal(a.bytes, 1_500_000);
+});
+
+test('an unverified zero is excluded from the totals, and the count says so', async () => {
+  const s = await buildStorageSection(async (name) =>
+    name === 'estate-audio' ? { object_count: '0', bucket_size: '0 B' } : LIVE[name]);
+  assert.equal(s.measured, 7, 'the zero bucket is not counted as measured');
+  assert.equal(s.of, 8);
+  // 79.1 GB must NOT be silently counted as 0 in a total presented as complete.
+  assert.ok(s.total_bytes < 6e9, `the unread bucket must be excluded, got ${s.total_bytes}`);
+});

@@ -197,7 +197,8 @@
         ".statusnav",
         ".freshstrip",
         ".proc-row",
-        ".usage-tile"
+        ".usage-tile",
+        ".log-tail"
       ]
     },
     {
@@ -238,7 +239,8 @@
       "mustContain": [
         "formatAge",
         "updateRow",
-        "sayEmpty"
+        "sayEmpty",
+        "setRowLog"
       ]
     },
     {
@@ -321,6 +323,7 @@
       "path": "/status/status.js",
       "mustContain": [
         "renderStorage",
+        "renderRowLogs",
         "./lib/storage-view.js",
         "ebookLaneVerdict",
         "./lib/ebook-lane.js",
