@@ -567,19 +567,18 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     heygabi.ai
   </a>
   <h1>Estate members</h1>
+  <!-- ⚠️ TRIMMED 2026-08-17 on the owner's order ("Let's get less text at
+       the top of admin — I think what we have is self explanatory"). The
+       three explanatory paragraphs that lived here (estate-wide approval
+       semantics, three-sections note, the two-gesture grammar) are not
+       lost: the interaction grammar's home of record is
+       docs/access/estate-auth.md §9, and the page's own controls carry
+       their meanings in tooltips and worded refusals. Do not grow this
+       header back — one line, that is the owner's stated appetite. -->
   <p class="sub">
-    One approval here admits a person estate-wide — search on
-    <a href="/">the front door</a>, the library, the games shelf. Revoking
-    shuts every door within ten minutes. Rows are never deleted: a revoked
-    person who comes back meets their revocation, not a fresh queue entry.
-    Open a member to see their <strong>permission map</strong>: one row per
-    site, and the same four things on every row — <em>visible</em> (which
-    shelves their search sees, the estate's fact), the <em>role</em> (what
-    they may do there, in that site's own words), and what that role can do
-    (read off the ladder, never editable). <strong>Audiobooks and Ebooks
-    share one row</strong> — one site, one ladder, two <em>visible</em>
-    boxes — and downloading an ebook file is not a box of its own, it is the
-    <code>admin</code> rung, which the row's own <em>can do</em> line says.
+    One approval admits a person estate-wide; revoking shuts every door in
+    minutes. Grants stage until the card's <strong>Save permissions</strong>;
+    status buttons take two taps.
   </p>
 
   <!-- ⚠️ THE THREE SECTIONS, stated where the person using the page reads it
@@ -587,36 +586,12 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
        also make the effort to have a pending area too... make pending,
        revoked, and current members list all collapsable"). The CSS block for
        .dir-group holds the long version. -->
-  <p class="sub">
-    <strong>Three lists, not one.</strong> <em>Current members</em>,
-    <em>Pending</em> and <em>Revoked</em> are separate collapsible sections,
-    each carrying its own live count. Current is open, Pending opens itself
-    whenever somebody is actually waiting, and Revoked starts collapsed —
-    revoked rows are kept forever (a returning person meets their revocation)
-    but they are not who you came here to read. Search, filters and sort still
-    run across the whole directory; they only change which rows land in each
-    section.
-  </p>
 
-  <!-- ⚠️ THE INTERACTION GRAMMAR, stated where the person using the page can
-       read it (owner order 2026-08-17: "auth setting has too many different
-       auth setting experiences, sometimes we double click to confirm
-       sometimes we use the drop down"). Two gestures, and every control on
-       this page is one of them. docs/access/estate-auth.md §9 holds the long
-       version and the rule that new controls must pick one, not invent a
-       third. -->
-  <p class="sub">
-    <strong>Two gestures, everywhere.</strong> Anything that <em>grants</em>
-    — a <em>visible</em> box, any site's role dropdown — changes nothing when
-    you touch it: it stages, the control is outlined, and a single
-    <strong>Save permissions</strong> button <em>appears on that person's
-    card</em> the moment anything in it changes, commits every staged change
-    together, and says in words what changed. No per-row apply buttons
-    anywhere. Anything that changes someone's <em>estate status</em> —
-    Approve, Revoke, approver, devops — takes <strong>two taps</strong>: the
-    first arms the button, the second writes, and it disarms itself after a
-    few seconds. Nothing on this page writes as you touch it.
-  </p>
+  <!-- ⚠️ THE INTERACTION GRAMMAR (two gestures — staged Save, two-tap
+       status) is deliberately NO LONGER prose on this page (owner trim,
+       2026-08-17); the one-line sub above carries it. The grammar's home of
+       record stays docs/access/estate-auth.md §9, with the rule that new
+       controls must pick one gesture, not invent a third. -->
 
   <div class="bar">
 <!-- Ships hidden: the sign-in-flash rule (find.js's fix, applied here after the
