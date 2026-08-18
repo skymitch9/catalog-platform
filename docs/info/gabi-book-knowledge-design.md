@@ -1111,14 +1111,21 @@ is reasoned or vendor-published.**
 - ⚠️ **CFI → chunk mapping is chapter-grained at best** (§4.4) and has never
   been exercised against a real stored CFI.
 - ⚠️ **Retrieval quality — MEASURED 2026-08-18, and the docs build's warning
-  reproduced exactly.** A 12-question pilot over Primal Hunter books 1–3 scored
-  **6/9 top-3 on relevance-mode questions** at the best chunk size, **9/12
-  overall answered correctly with correct book+chapter attribution**, and
-  **12/12 once `earliest` and `presence` modes were added** (§6.2). The failures
-  were not close: the true passage sat at rank 34–60 of 200 for a
+  reproduced exactly.** A 12-question pilot over Primal Hunter books 1–3, graded
+  at each of the three chunk settings:
+
+  | | 800/100 *(recommended)* | 1,500/200 *(old guess)* | 3,000/300 |
+  |---|---:|---:|---:|
+  | Top-3 hit, relevance-mode questions (9) | **6/9** | 4/9 | 4/9 |
+  | Answered correctly, `relevant`+`latest` only (12) | **10/12** | 8/12 | 8/12 |
+  | Answered correctly, all four modes (12) | **12/12** | 10/12 | 10/12 |
+
+  The failures were not close: the true passage sat at rank 34–60 of 200 for a
   first-appearance question. ⚠️ **Attribution was never wrong when retrieval
-  succeeded** — no answer cited the wrong book or chapter — so the risk in this
-  design is *misses*, not *false citations*.
+  succeeded** — across all 12 questions no answer cited the wrong book, the wrong
+  chapter, or a timestamp outside the cited chunk — so the risk in this design is
+  **misses, not false citations**, and a miss is the failure mode a worded
+  refusal can cover.
   ⚠️ **What that pilot did NOT establish:** it is a **simulation**, not the live
   Worker — the same model family answering under the same grounding contract, in
   a scratch harness, with the retrieval hand-invoked. Lexical only, **no
