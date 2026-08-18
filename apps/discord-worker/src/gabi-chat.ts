@@ -53,7 +53,17 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { classifyByKeyword, isMentionIntent, type MentionIntent } from './mentions.js';
-import { conversationChars, type ConversationTurn } from './conversation.js';
+import { historyCost, modelMessages, type ConversationTurn } from './conversation.js';
+
+/**
+ * ⚠️ **MOVED, not deleted (2026-08-18).** `ModelMessage`, `modelMessages()` and
+ * `historyCost()` now live in `@platform/gabi-conversation`: the alternation
+ * rule ("drop leading assistant turns, merge consecutive same-role turns") and
+ * the history accounting are the site panel's problem too, and a second copy of
+ * either is exactly the duplication that package exists to prevent. They are
+ * re-exported from here so every existing importer and test is unchanged.
+ */
+export { modelMessages, historyCost, type ModelMessage } from './conversation.js';
 import {
   MAX_TOOL_CALLS_PER_TURN,
   MAX_TOOL_ITERATIONS,
@@ -258,55 +268,6 @@ function textOf(content: readonly unknown[]): string {
   return parts.join('').trim();
 }
 
-// ---------------------------------------------------------------------------
-// Continuity — turning a stored transcript into a prompt
-// ---------------------------------------------------------------------------
-
-export interface ModelMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-/**
- * The stored transcript plus what was just said, as a Messages-API `messages`
- * array.
- *
- * ⚠️ **THE ALTERNATION IS ENFORCED HERE, NOT ASSUMED.** The store appends
- * user-then-assistant pairs, so a healthy record already alternates — but the
- * 30-minute window cuts wherever it lands, which can leave an `assistant` turn
- * first, and a dropped reply (Discord answered 403 for that channel) can leave
- * two `user` turns adjacent. The API requires a `messages` array that starts
- * with `user` and alternates; violating it is a 400 that would eat the person's
- * answer over a bookkeeping detail. So: leading assistant turns are DROPPED,
- * consecutive same-role turns are MERGED, and the current question is always
- * the last thing in the array.
- */
-export function modelMessages(
-  history: readonly ConversationTurn[],
-  current: string,
-): ModelMessage[] {
-  const out: ModelMessage[] = [];
-  for (const turn of history) {
-    const text = turn.text.trim();
-    if (text.length === 0) continue;
-    if (out.length === 0 && turn.role !== 'user') continue;
-    const last = out[out.length - 1];
-    if (last && last.role === turn.role) last.content = `${last.content}\n\n${text}`;
-    else out.push({ role: turn.role, content: text });
-  }
-  const last = out[out.length - 1];
-  if (last && last.role === 'user') last.content = `${last.content}\n\n${current}`;
-  else out.push({ role: 'user', content: current });
-  return out;
-}
-
-/** How many characters of remembered conversation a turn is about to pay for. */
-export function historyCost(history: readonly ConversationTurn[]): {
-  historyTurns: number;
-  historyChars: number;
-} {
-  return { historyTurns: history.length, historyChars: conversationChars(history) };
-}
 
 function usageOf(u: unknown): TurnUsage {
   const raw = (u ?? {}) as Record<string, unknown>;

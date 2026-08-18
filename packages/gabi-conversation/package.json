@@ -1,0 +1,18 @@
+{
+  "name": "@platform/gabi-conversation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The ONE GABI conversation substrate: the record shape, the 30-minute/20-turn window arithmetic, the storage-key rule, and the alternation enforcement every surface needs. Pure — no I/O, no Discord types, no Durable Object, no D1. Consumed in-repo by @platform/discord-worker and cross-repo by library_catalog (scripts/sync-gabi-conversation.mjs, the estate-auth materialise pattern). See docs/info/gabi-conversation-continuity.md.",
+  "main": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

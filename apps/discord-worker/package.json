@@ -13,6 +13,7 @@
     "@anthropic-ai/sdk": "^0.115.0",
     "@platform/estate-auth": "*",
     "@platform/firebase-sa": "*",
+    "@platform/gabi-conversation": "*",
     "hono": "^4.6.14"
   },
   "devDependencies": {
