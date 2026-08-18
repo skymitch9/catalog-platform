@@ -170,19 +170,53 @@ statement about a **broken pusher**, not an unbuilt one: if you see it, check
 page draws the bar and never estimates one; a missing percentage draws no bar at
 all rather than an empty one.
 
-⚠️ **AND TODAY THE PIPELINE HAS NO SUCH COUNT, so the push omits `percent`
-entirely.** Measured 2026-08-18: faster-whisper's worker
-(`estate-training-data/work/_whisper_worker.py`) prints a genuine progress line
-every 60 seconds — hours of audio, wall minutes, realtime factor — but
-`app/tools/ingest_books.py` runs it through `subprocess.run(...,
-capture_output=True)`, so those lines sit unread in a pipe until the book
-finishes. Nothing on disk counts finished units mid-book. An elapsed-versus-
-duration guess was considered and rejected twice over: the field is where the
-page gets the bar it promises never to estimate, and the two transcriptions
-timed that day ran at very different realtime factors, so the "~85×" figure is
-a range, not a rate. The reason lives in `step`, in words, where it renders as
-a sentence. **Closing this gap means the ingester tee-ing that worker's output
-to a file** — a pipeline change, not a pusher one.
+**Where the number comes from — added 2026-08-18, when the gap was closed.**
+For audiobooks it is `transcribed span ÷ container duration`, published by
+`audiobook_catalog/scripts/transcribe_audiobook.py` into
+`estate-training-data/work/transcribe_progress.json` and read from there:
+
+| Field | Meaning |
+|---|---|
+| `source_m4b`, `title` | which book |
+| `audio_seconds_done` / `audio_hours_done` | the END TIMESTAMP of the last segment the model handled — how much of the BOOK is done, not how long the run has lasted |
+| `container_duration_s` | ffprobe's reading of the m4b |
+| `percent` | the ratio above, or **`null`** when the duration is unknown |
+| `started_at` | when the run began — hours old on a 20-hour book, legitimately |
+| `updated_at` | when this measurement was taken; the **only** clock staleness is judged on |
+
+⚠️ **THE TEE LIVES IN THE TRANSCRIBER, NOT IN THE NIGHTLY, AND THAT CHOICE IS
+THE FEATURE.** `transcribe_audiobook.py` is the one file *both* invocation paths
+share: the nightly runs it as a subprocess, and a hand-run chain calls it
+directly with `--m4b` and writes no nightly log line at all. Putting the tee in
+`ingest_books.py` would have left every hand run invisible — and hand runs are
+the ones somebody is watching. The progress file is therefore the only signal
+that sees every transcription, and the pusher consults it **first**, with the
+nightly log as the fallback.
+
+⚠️ **IT IS A MEASUREMENT AND MUST STAY ONE.** It is the same ratio the
+transcriber's own truncation gate uses to decide whether a finished transcript
+is complete — span from the model's segment timestamps, duration from ffprobe.
+An elapsed-versus-duration guess stays forbidden in this field: the page draws
+its bar from it and promises never to estimate, and the two transcriptions timed
+that day ran at very different realtime factors, so "~85×" is a range, not a
+rate.
+
+⚠️ **`percent: null` MUST NOT BECOME `0`.** The writer emits null deliberately
+when it cannot compute the ratio. A reader that coerces — `Number(null)` is `0`,
+which is finite and inside 0–100 — turns "could not compute" into a 0% bar
+reading *"this book has not started"*. That was a real bug in the first draft of
+the reader, **caught by a test rather than by review**, and it is why the check
+is `typeof === 'number'`.
+
+**Two absences the reader keeps apart, because both are normal:**
+
+- **No file at all** — nothing is transcribing, *or* a book started less than
+  ~90 seconds ago (ffmpeg, then the model load, then the first progress line).
+  The row falls back to the log, names the book, and carries **no** `percent`.
+- **A file older than the staleness cut-off** (10 minutes = ten missed
+  heartbeats) — the run was killed before the transcriber's cleanup could delete
+  it. Treated as absent. The transcriber deletes the file on *every* exit it
+  survives; the cut-off is the second layer, for the run killed outright.
 
 **`queue`** — accepted in **both** shapes: an array of `{lane, count}` rows or a
 plain `{lane: count}` map. Six lines of tolerance in `normaliseQueue()` beats

@@ -231,6 +231,32 @@ instead of overwriting them.
 Unregister-ScheduledTask -TaskName EstateProcessingBoardPush -Confirm:$false
 ```
 
-⚠️ **Do not "fix" the missing progress bars.** `percent` is absent from every
-in-flight row on purpose — nothing on disk counts finished units mid-book. The
-measurement and the two rejected alternatives are in the contract's §6.
+### The progress file — where the percentage comes from
+
+`audiobook_catalog/scripts/transcribe_audiobook.py` relays the Whisper worker's
+stdout byte-for-byte **and** writes
+`C:\Users\nbasl\estate-training-data\work\transcribe_progress.json` on each of
+its 60-second progress lines. The pusher reads that file; the field list and the
+reasoning live in the contract's §6.
+
+```powershell
+Get-Content C:\Users\nbasl\estate-training-data\work\transcribe_progress.json
+```
+
+| Symptom | What it means |
+|---|---|
+| file absent, a book **is** transcribing | it started under ~90 s ago (ffmpeg → model load → first progress line). The card names the book and draws no bar. |
+| file absent, nothing transcribing | correct — the transcriber deletes it on every exit it survives |
+| file present, `updated_at` over 10 min old | the run was **killed** before cleanup. Treated as absent; the next run overwrites it. |
+| card shows a book but no bar | `percent` was `null` (no container duration) or failed validation. **Not** a zero. |
+
+⚠️ **`percent` is `transcribed span ÷ container duration` — a MEASUREMENT, the
+same ratio the transcriber's truncation gate uses.** Never swap it for an
+elapsed-time estimate, however much smoother the bar would move: the page draws
+that bar and promises never to estimate.
+
+⚠️ **One progress file, one path, last writer wins.** The nightly's single-flight
+lock does not cover hand-run chains, so two transcriptions could in principle
+overlap and the file would describe whichever wrote last. It always describes a
+*real, currently-running* book — just not necessarily the only one.
+`source_m4b` names which.

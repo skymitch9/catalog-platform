@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   LOCK_STALE_HOURS,
+  PROGRESS_STALE_MS,
   buildProcessingSection,
   inFlightFromLog,
   laneForSource,
@@ -32,6 +33,7 @@ import {
   logEvents,
   phoenixToIso,
   queueRows,
+  readProgressRecord,
   titleMap,
 } from '../lib/processing-board.mjs';
 
@@ -210,7 +212,7 @@ test('the whole section matches the contract, and carries no percent it cannot m
   // reason must be in words the owner can read.
   assert.ok(!('percent' in live), 'percent must be ABSENT, not 0 and not an estimate');
   assert.ok(!('eta' in live), 'the pipeline states no ETA, so the push must not carry one');
-  assert.match(live.step, /no percentage is available/);
+  assert.match(live.step, /no measurement published yet/);
 });
 
 test('⚠️ joined_at is the state file\'s updated_at and nothing else', () => {
@@ -241,6 +243,127 @@ test('a book with no title in any log shows its id and SAYS it is standing in', 
   assert.match(row.note, /no title recorded/);
 });
 
+// ---------------------------------------------------------------------------
+// transcribe_progress.json — the measured percentage
+// ---------------------------------------------------------------------------
+
+/** A real record, field for field as scripts/transcribe_audiobook.py writes it
+ *  (its own test file pins the writer against this same shape). */
+const PROGRESS = {
+  source_m4b: 'C:\\Users\\nbasl\\OpenAudible\\books\\Zogarth\\The Primal Hunter 12 - A LitRPG Adventure.m4b',
+  title: 'The Primal Hunter 12 - A LitRPG Adventure',
+  audio_seconds_done: 18000.0,
+  audio_hours_done: 5.0,
+  container_duration_s: 72451.188,
+  percent: 24.8,
+  started_at: '2026-08-18T19:37:33Z',
+  updated_at: '2026-08-18T19:39:33Z',
+  wall_minutes: 2.0,
+  realtime_factor: 150.0,
+  words: 40000,
+};
+
+const PROGRESS_NOW = Date.parse('2026-08-18T19:40:00Z');
+
+test('a fresh progress record is read whole, with both of its clocks', () => {
+  const r = readProgressRecord(PROGRESS, PROGRESS_NOW);
+  assert.equal(r.title, 'The Primal Hunter 12 - A LitRPG Adventure');
+  assert.equal(r.percent, 24.8);
+  assert.equal(r.started_at, '2026-08-18T19:37:33.000Z');
+  assert.equal(r.updated_at, '2026-08-18T19:39:33.000Z');
+  assert.ok(Math.abs(r.hours_done - 5) < 1e-9);
+  assert.ok(Math.abs(r.hours_total - 20.125) < 1e-3);
+});
+
+test('⚠️ a record older than the staleness cut-off is ABSENT, not live', () => {
+  // The run was killed and never reached the transcriber's cleanup. A dead
+  // run's last measurement sitting on the page as a live book is worse than
+  // showing nothing: it is a confident wrong answer.
+  const old = { ...PROGRESS, updated_at: new Date(PROGRESS_NOW - PROGRESS_STALE_MS - 1000).toISOString() };
+  assert.equal(readProgressRecord(old, PROGRESS_NOW), null);
+  const justInside = { ...PROGRESS, updated_at: new Date(PROGRESS_NOW - PROGRESS_STALE_MS + 1000).toISOString() };
+  assert.ok(readProgressRecord(justInside, PROGRESS_NOW));
+});
+
+test('⚠️ staleness is measured on updated_at, NEVER on started_at', () => {
+  // A 20-hour audiobook's run legitimately started hours ago. Measuring age on
+  // started_at would hide every long book — exactly the ones worth watching.
+  const longRun = { ...PROGRESS, started_at: '2026-08-18T05:00:00Z' };
+  assert.ok(readProgressRecord(longRun, PROGRESS_NOW));
+});
+
+test('a record with no readable updated_at is not "fresh"', () => {
+  assert.equal(readProgressRecord({ ...PROGRESS, updated_at: undefined }, PROGRESS_NOW), null);
+  assert.equal(readProgressRecord({ ...PROGRESS, updated_at: 'soon' }, PROGRESS_NOW), null);
+});
+
+test('a clock skewed into the future is a broken clock, not a fresh reading', () => {
+  const ahead = { ...PROGRESS, updated_at: new Date(PROGRESS_NOW + 60 * 60 * 1000).toISOString() };
+  assert.equal(readProgressRecord(ahead, PROGRESS_NOW), null);
+});
+
+test('⚠️ a bad percentage costs ONLY the percentage — the book is still named', () => {
+  for (const bad of [null, undefined, 'lots', NaN, -5, 140]) {
+    const r = readProgressRecord({ ...PROGRESS, percent: bad }, PROGRESS_NOW);
+    assert.ok(r, `a record with percent=${String(bad)} still names a real book`);
+    assert.ok(!('percent' in r), `percent=${String(bad)} must be dropped, not clamped or zeroed`);
+  }
+});
+
+test('a record with nothing to name the book with is dropped', () => {
+  assert.equal(readProgressRecord({ ...PROGRESS, title: '', source_m4b: '' }, PROGRESS_NOW), null);
+  assert.equal(readProgressRecord(null, PROGRESS_NOW), null);
+  assert.equal(readProgressRecord([PROGRESS], PROGRESS_NOW), null, 'an array is not a record');
+  assert.equal(readProgressRecord('{}', PROGRESS_NOW), null);
+});
+
+test('the m4b path stands in when the title is missing', () => {
+  const r = readProgressRecord({ ...PROGRESS, title: undefined }, PROGRESS_NOW);
+  assert.match(r.title, /The Primal Hunter 12/);
+});
+
+test('⚠️ the in-flight card carries a MEASURED percent when a progress file is live', () => {
+  const s = section({ progress: PROGRESS, nowMs: PROGRESS_NOW });
+  assert.equal(s.in_flight.length, 1);
+  const row = s.in_flight[0];
+  assert.equal(row.title, 'The Primal Hunter 12 - A LitRPG Adventure');
+  assert.equal(row.percent, 24.8);
+  assert.equal(row.lane, 'audiobook');
+  assert.equal(row.started_at, '2026-08-18T19:37:33.000Z');
+  assert.equal(row.updated_at, '2026-08-18T19:39:33.000Z');
+  assert.match(row.step, /5\.00h of 20\.13h transcribed/);
+  assert.match(row.step, /measured from the model's own segment timestamps/);
+});
+
+test('⚠️ THE PROGRESS FILE WINS OVER THE LOG — it sees hand runs the log cannot', () => {
+  // The nightly log names "I'm Glad My Mom Died"; the progress file names the
+  // Primal Hunter book a hand-run chain is transcribing. The hand run is the
+  // one actually on the GPU, and it writes no log line at all.
+  const s = section({ progress: PROGRESS, nowMs: PROGRESS_NOW });
+  assert.equal(s.in_flight.length, 1, 'one book on one GPU — never two rows');
+  assert.match(s.in_flight[0].title, /Primal Hunter/);
+});
+
+test('⚠️ NO progress file behaves exactly as it did before the tee existed', () => {
+  const s = section({ progress: null });
+  assert.equal(s.in_flight.length, 1);
+  assert.ok(!('percent' in s.in_flight[0]), 'absent file means absent percent, not zero');
+  assert.equal(s.in_flight[0].title, "I'm Glad My Mom Died", 'the log is still the fallback');
+});
+
+test('a stale progress file falls back to the log rather than blanking the card', () => {
+  const stale = { ...PROGRESS, updated_at: '2026-08-18T18:00:00Z' };
+  const s = section({ progress: stale });
+  assert.equal(s.in_flight.length, 1);
+  assert.equal(s.in_flight[0].title, "I'm Glad My Mom Died");
+  assert.ok(!('percent' in s.in_flight[0]));
+});
+
+test('the packs note no longer claims hand runs are invisible', () => {
+  const s = section();
+  assert.match(s.packs.note, /hand-run chain shows up too/);
+});
+
 test('packs carry their own clock, and the note names the second one', () => {
   const s = section();
   assert.equal(s.packs.packed, 2);
@@ -251,7 +374,7 @@ test('packs carry their own clock, and the note names the second one', () => {
   assert.equal(s.packs.as_of, '2026-08-18T19:25:44.000Z', 'as_of is when the STATE was read');
   assert.match(s.packs.note, /published pack index generated 2026-08-18T16:04:10Z/);
   assert.match(s.packs.note, /1 book failed/);
-  assert.match(s.packs.note, /started by hand does not write this log/);
+  assert.match(s.packs.note, /queue and history below are the nightly ingester's/);
 });
 
 test('a version drift across packs is called out — the packs are not interchangeable', () => {

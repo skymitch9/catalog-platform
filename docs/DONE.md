@@ -13,6 +13,76 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📊 Per-book % progress — the gap, filled — ✅ DONE 2026-08-18
+
+Owner, on reading the pusher report an hour after it landed: **"fill the gap"**.
+Moved whole from [`TODO.md`](TODO.md)'s "Status-page expansion", where item 2b
+had just been written:
+
+> 2b. **Per-book % progress for a book being transcribed** — the one part of item
+>    2 the pusher could not deliver. ⚠️ **Not a pusher bug and not fixable in the
+>    pusher.** faster-whisper's worker prints a real progress line every 60 s, but
+>    `app/tools/ingest_books.py` runs it with `subprocess.run(...,
+>    capture_output=True)`, so nothing on disk counts finished units mid-book. The
+>    page shows the book, its lane, when it started and a sentence saying why
+>    there is no bar — never an estimate, because `percent` is what the renderer
+>    draws a bar from. **The fix is in the INGESTER: tee the worker's stdout to a
+>    file (or write a small progress JSON) and the pusher reads it.** Fences kept
+>    that file out of scope while a live transcription chain was running. Size S.
+
+⚠️ **THE TEE WENT SOMEWHERE BETTER THAN THE ITEM PROPOSED, and that is the
+decision worth keeping.** The item said "the ingester". The conductor's review
+put it in `audiobook_catalog/scripts/transcribe_audiobook.py` instead — the one
+file **both** invocation paths share. The nightly runs it as a subprocess; a
+hand-run chain calls it directly with `--m4b` and writes no nightly log line at
+all. In the ingester the fix would have covered the nightly only, leaving every
+hand run invisible — and hand runs are the ones somebody is actually watching.
+
+**What shipped:**
+
+- **`transcribe_audiobook.py`** — reads the Whisper worker's stdout line by
+  line, **echoes every byte through unchanged**, and on each `[whisper] …h audio
+  | …` line writes `estate-training-data/work/transcribe_progress.json`
+  (tmp-then-`os.replace`, atomic). Cleared on every exit it survives — success,
+  non-zero worker, truncation, exception. `tests/test_transcribe_progress.py`,
+  19 tests.
+- **`scripts/lib/processing-board.mjs`** — `readProgressRecord()` validates and
+  staleness-checks the file; the in-flight card reads it **first** and falls back
+  to the nightly log.
+
+**The four properties that had to hold, in priority order:**
+
+1. ⚠️ **The relay must not cost a book.** The worker's stdout used to be
+   *inherited*; now a Python process reads it on the way past. It is relayed as
+   **bytes, never decoded text** — re-encoding the `DONE {json}` line (which
+   carries an m4b path, and book titles have curly apostrophes) would invent a
+   `UnicodeEncodeError` on any non-UTF-8 console: a brand-new way for a
+   twenty-minute GPU run to die, in the name of a status page. stderr stays
+   unpiped, so a traceback lands where it always did and there is no second pipe
+   to deadlock on.
+2. ⚠️ **A failed status write must never propagate.** `write_progress` returns
+   `False` and swallows everything. A full disk is a reason for the page to go
+   quiet, never a reason to lose a book.
+3. ⚠️ **`percent` stays a MEASUREMENT** — `transcribed span ÷ container
+   duration`, the same ratio the truncation gate uses. Never elapsed time.
+4. ⚠️ **A stale file must not outlive its run.** Deleted on exit *and*
+   staleness-checked at 10 minutes (ten missed 60-second heartbeats), for the run
+   that was killed outright and never reached the cleanup.
+
+**One real bug, caught by a test rather than by review:** the first draft of the
+reader used `Number(raw.percent)`. `Number(null)` is `0` — finite, inside 0–100
+— so the writer's deliberate `percent: null` would have rendered a **0% bar**
+meaning *"this book has not started"*. The check is now `typeof === 'number'`,
+and the contract's §6 records it so the next reader does not reintroduce it.
+
+**Verified by execution, against a live 20-hour book.** The edit was developed as
+an in-repo candidate copy, `py_compile`d, tested (19 + 5 green), dry-run through
+the real CLI, and only then landed with `os.replace` — atomic, so the fresh
+process Primal Hunter 13 launched at 13:00:32 could see the old file or the new
+one and never half of either. Full suite afterwards: **1,492 passed**, the single
+failure being the pre-existing `test_universes.py` count drift already documented
+as unrelated.
+
 ## 📡 Processing tab: THE PUSHER — ✅ DONE 2026-08-18
 
 Moved whole from [`TODO.md`](TODO.md)'s "Status-page expansion", where it read:

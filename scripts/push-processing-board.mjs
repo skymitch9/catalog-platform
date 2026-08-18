@@ -66,6 +66,15 @@ const RECEIPTS_DIR = join(TRAINING_ROOT, 'receipts');
 const CPU_LOG = join(TRAINING_ROOT, 'logs', 'cpu_ingest.log');
 const NIGHTLY_LOG = join(CATALOG_ROOT, 'output_files', 'ingest_nightly.log');
 const LOCK_PATH = join(CATALOG_ROOT, 'output_files', 'ingest_books.lock');
+/**
+ * ⚠️ THE ONLY SIGNAL THAT SEES EVERY TRANSCRIPTION.
+ * `audiobook_catalog/scripts/transcribe_audiobook.py` writes this on each of
+ * the Whisper worker's 60-second progress lines and deletes it on every exit.
+ * The tee lives in THAT script rather than in the nightly precisely because
+ * both invocation paths pass through it — the nightly's subprocess and a
+ * hand-run `--m4b` chain — and a hand run writes no nightly log line at all.
+ */
+const PROGRESS_PATH = join(TRAINING_ROOT, 'work', 'transcribe_progress.json');
 
 const DEFAULT_BOARD_FILE = join(REPO_ROOT, '.local', 'agent-board.json');
 const PUSHER = join(REPO_ROOT, 'scripts', 'push-agent-board.mjs');
@@ -242,6 +251,11 @@ async function main() {
     packIndex: readPackIndex(INDEX_PATH),
     receipt: readNewestReceipt(RECEIPTS_DIR),
     lock: readLock(LOCK_PATH),
+    // ⚠️ An unreadable or half-written progress file reads as null and the
+    // in-flight card falls back to the log, exactly as before the tee existed.
+    // The transcriber writes it tmp-then-rename so a torn read should be
+    // impossible, but "should be" is not a guarantee worth a wrong percentage.
+    progress: readJson(PROGRESS_PATH),
     stateReadAt,
     nowMs: Date.now(),
     maxHistory: args.maxHistory,

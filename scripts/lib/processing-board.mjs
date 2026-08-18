@@ -35,16 +35,27 @@
  *                          dangling "transcribing …" line into a live claim.
  *
  * ⚠️ THERE IS NO HONEST `percent` FOR A BOOK BEING TRANSCRIBED, AND THIS FILE
- * NEVER INVENTS ONE. faster-whisper's worker prints a real progress line every
- * 60 s, but app/tools/ingest_books.py runs it with `capture_output=True`, so
- * those lines exist only inside a pipe that is never read until the subprocess
- * exits. Nothing on disk counts finished units mid-book. The contract is
- * explicit that `percent` is "the pipeline's own count of finished units" and
- * that the page draws a bar from it and never estimates — so an elapsed-time
- * guess in that field would render as a measurement. It goes in `step`, in
- * words, or nowhere. (An elapsed-vs-duration estimate would also be bad: the
- * two transcriptions measured on 2026-08-18 ran at wildly different realtime
- * factors, so the "~85x" figure is a range, not a rate.)
+ * IS A MEASUREMENT OR IT IS ABSENT. Originally there was no honest percentage
+ * to publish at all: the Whisper worker printed a real progress line every
+ * 60 s, but the transcriber ran it with captured output, so those lines sat
+ * unread in a pipe until the book finished. Later on 2026-08-18
+ * `scripts/transcribe_audiobook.py` grew a tee — it relays the worker's stdout
+ * byte-for-byte AND writes `estate-training-data/work/transcribe_progress.json`
+ * on each progress line. That file is the pipeline's own count of finished
+ * units, and `percent = transcribed span / container duration` is the SAME
+ * ratio the transcriber's own truncation gate uses.
+ *
+ * ⚠️ THE TEE WENT IN THE TRANSCRIBER, NOT THE NIGHTLY, and a reader here must
+ * know why: that script is the one file BOTH invocation paths share. The
+ * nightly runs it as a subprocess; a hand-run chain calls it directly with
+ * `--m4b` and writes no nightly log line at all. The progress file — not the
+ * log — is therefore the only signal that sees EVERY transcription, which is
+ * why it is consulted FIRST below and the log is the fallback.
+ *
+ * ⚠️ AN ELAPSED-TIME GUESS IS STILL FORBIDDEN in that field and no later edit
+ * may quietly introduce one: the page draws a bar from it and promises never
+ * to estimate. The two transcriptions timed on 2026-08-18 ran at very
+ * different realtime factors, so "~85x" is a range, not a rate.
  */
 
 /** Phoenix is a FIXED UTC-7 all year — no DST, ever. That is why a log
@@ -57,6 +68,24 @@ export const PHOENIX_OFFSET = '-07:00';
  *  this is one the ingester itself would steal, so it is not evidence of a live
  *  run and must not be read as one. */
 export const LOCK_STALE_HOURS = 12;
+
+/**
+ * How old a `transcribe_progress.json` may be before it is treated as ABSENT.
+ *
+ * ⚠️ The transcriber deletes this file on every exit it survives — success,
+ * non-zero worker, truncation and exception alike. This cut-off is the second
+ * layer, for the run that was KILLED and never reached that cleanup: a machine
+ * that lost power, a task-scheduler stop, a `taskkill`. Without it a dead run's
+ * last measurement would sit on the owner's page as a live book forever, which
+ * is worse than showing nothing — it is a confident wrong answer.
+ *
+ * Sized off the writer, not off a round number: the worker prints a progress
+ * line every 60 seconds, so a healthy run refreshes this file once a minute.
+ * Ten minutes is ten missed heartbeats — long enough that a stuttering GPU or a
+ * slow disk cannot flap the page, short enough that a killed run clears within
+ * one poll of the 15-minute pusher.
+ */
+export const PROGRESS_STALE_MS = 10 * 60 * 1000;
 
 /**
  * How many history rows a push carries.
@@ -210,6 +239,63 @@ export function inFlightFromLog(events, lock, nowMs) {
 }
 
 /**
+ * `transcribe_progress.json` → a validated live measurement, or null.
+ *
+ * Pure: takes the already-parsed object so every rejection path can be pinned
+ * by a test without a filesystem.
+ *
+ * ⚠️ EVERY FIELD IS CHECKED, AND A BAD ONE COSTS ONLY ITSELF. A record with a
+ * readable title but a nonsense percentage still names the book being
+ * transcribed — dropping the whole row would trade a real fact for a missing
+ * one. So `percent` is validated separately and simply omitted when it does not
+ * survive; the row is dropped only when there is no book to name.
+ *
+ * ⚠️ `updated_at` IS THE ONLY CLOCK THAT COUNTS HERE. `started_at` dates the
+ * run and can be hours old on a 20-hour audiobook; using it for staleness would
+ * hide every long book. They are two different facts and the page shows both.
+ */
+export function readProgressRecord(raw, nowMs) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const source = typeof raw.source_m4b === 'string' ? raw.source_m4b.trim() : '';
+  if (!title && !source) return null; // nothing to name the book with
+
+  const updatedMs = Date.parse(raw.updated_at);
+  // ⚠️ NO TIMESTAMP IS NOT "FRESH". A record whose age cannot be established
+  // cannot be shown as live — that is the same rule the usage tiles follow.
+  if (!Number.isFinite(updatedMs)) return null;
+  if (nowMs - updatedMs > PROGRESS_STALE_MS) return null;
+  // A clock skewed into the future is a broken clock, not a fresh reading.
+  if (updatedMs - nowMs > PROGRESS_STALE_MS) return null;
+
+  const out = {
+    title: title || source,
+    updated_at: new Date(updatedMs).toISOString(),
+  };
+  const startedMs = Date.parse(raw.started_at);
+  if (Number.isFinite(startedMs)) out.started_at = new Date(startedMs).toISOString();
+
+  // ⚠️ `typeof === 'number'` AND NOT `Number(...)`, and this is not pedantry:
+  // `Number(null)` is 0, which is finite and inside 0–100, so a coercing check
+  // turns "the writer could not compute a percentage" into a 0% bar reading
+  // "this book has not started". The writer emits `percent: null` on purpose
+  // when the container duration is unknown. Caught by a test, not by review.
+  const pct = raw.percent;
+  if (typeof pct === 'number' && Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+    out.percent = Math.round(pct * 10) / 10;
+  }
+
+  const done = raw.audio_seconds_done;
+  const total = raw.container_duration_s;
+  if (typeof done === 'number' && typeof total === 'number' && Number.isFinite(done) && Number.isFinite(total) && total > 0) {
+    out.hours_done = done / 3600;
+    out.hours_total = total / 3600;
+  }
+  return out;
+}
+
+/**
  * Queue depth per lane, from the ingester's CPU/GPU split plus the state file.
  *
  * The ingester counts two buckets; the owner asked for four lanes. The one
@@ -311,6 +397,7 @@ function historyRow(bookId, entry, titles) {
  * @param {object|null} [input.packIndex]  parsed packs/_index.json.gz
  * @param {object|null} [input.receipt]    the newest receipts/*.json
  * @param {object|null} [input.lock]       { present, heldSinceMs }
+ * @param {object|null} [input.progress]   parsed work/transcribe_progress.json
  * @param {string} input.stateReadAt    ISO — when ingest_state.json was read
  * @param {number} input.nowMs
  * @param {number} [input.maxHistory]
@@ -323,6 +410,7 @@ export function buildProcessingSection(input) {
     packIndex = null,
     receipt = null,
     lock = null,
+    progress = null,
     stateReadAt,
     nowMs,
     maxHistory = MAX_HISTORY,
@@ -333,19 +421,41 @@ export function buildProcessingSection(input) {
   const titles = titleMap([...logEvents(cpuLog), ...nightly]);
 
   // --- in flight -----------------------------------------------------------
+  // ⚠️ THE PROGRESS FILE WINS OVER THE LOG, and the order is the design. The
+  // log only ever sees the nightly; the progress file sees every transcription
+  // including a hand-run chain, and it carries a measured percentage the log
+  // cannot. The log stays as the fallback for the ~90 seconds between a book
+  // starting and its first progress line, and for a run whose status write
+  // failed (which is allowed to fail, and says so rather than stopping).
+  const measured = readProgressRecord(progress, nowMs);
   const live = inFlightFromLog(nightly, lock, nowMs);
   const in_flight = [];
-  if (live) {
+  if (measured) {
+    const row = { title: measured.title, lane: 'audiobook', updated_at: measured.updated_at };
+    if (measured.started_at) row.started_at = measured.started_at;
+    // ⚠️ MEASURED, NOT ESTIMATED — transcribed span over container duration,
+    // the same ratio the transcriber's truncation gate uses. This is the ONE
+    // place a `percent` may be set, and only from a validated live record.
+    if (measured.percent !== undefined) row.percent = measured.percent;
+    const hours =
+      measured.hours_total !== undefined
+        ? `${measured.hours_done.toFixed(2)}h of ${measured.hours_total.toFixed(2)}h transcribed`
+        : null;
+    row.step = hours
+      ? `transcribing on the GPU — ${hours}, measured from the model's own segment timestamps`
+      : "transcribing on the GPU — the run reported progress but not how long the book is";
+    in_flight.push(row);
+  } else if (live) {
     in_flight.push({
       title: live.title,
       lane: 'audiobook',
       started_at: live.started_at,
-      // ⚠️ NO `percent` KEY. See this file's header: nothing on disk counts
-      // finished units mid-book, and the page draws a bar from `percent`.
+      // ⚠️ NO `percent` KEY, and absent is not zero. The book has started but
+      // has not yet published a measurement — the first progress line lands
+      // about 90 seconds in, after the model loads.
       step:
-        `transcribing on the GPU (batch ${live.batch}) — no percentage is available: the ` +
-        'transcriber only reports progress when it finishes a book, so the ingester has no ' +
-        'unit count to publish mid-run',
+        `transcribing on the GPU (batch ${live.batch}) — no measurement published yet; the ` +
+        'worker reports progress once a minute and the first line lands after the model loads',
     });
   }
 
@@ -399,9 +509,14 @@ export function buildProcessingSection(input) {
   if (failed) notes.push(`${failed} book${failed === 1 ? '' : 's'} failed and ${failed === 1 ? 'is' : 'are'} not in the knowledge base`);
   if (versions.size > 1) notes.push(`⚠️ packs span ingester versions ${[...versions].sort().join(', ')} — they are not interchangeable`);
   if (dropped) notes.push(`the ${dropped} oldest history rows were trimmed by the pusher to stay inside the board size cap`);
+  // ⚠️ THIS SENTENCE WAS WRONG BEFORE THE TEE and is worth keeping accurate:
+  // the in-flight card now reads the transcriber's own progress file, which
+  // every invocation path writes, so a hand-run chain DOES appear. The queue
+  // and history still come from the nightly's log and state, and that
+  // difference is exactly what the reader needs to know.
   notes.push(
-    'Only the nightly ingester is visible here — a transcription run started by hand does not write this log ' +
-      'and will not appear above',
+    "Books in flight come from the transcriber's own progress file, so a hand-run chain shows up too; the " +
+      'queue and history below are the nightly ingester\'s',
   );
   packs.note = `${notes.join('. ')}.`;
 

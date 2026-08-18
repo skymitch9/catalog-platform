@@ -952,20 +952,11 @@ agent because they share the /status page surface.
 > of the remaining items are left as they were — 0, 2, 4 — so the references
 > above and in DONE.md still point at the same things.
 >
-> ⚠️ **Item 2 SHIPPED LATER THE SAME DAY** — the page *and* its pusher — and
-> was moved whole to [`DONE.md`](DONE.md), except for **one part of the ask
-> that could not be met and is restated as item 2b below**. It is left in the
-> numbering because 0 and 4 refer to it.
-2b. **Per-book % progress for a book being transcribed** — the one part of item
-   2 the pusher could not deliver. ⚠️ **Not a pusher bug and not fixable in the
-   pusher.** faster-whisper's worker prints a real progress line every 60 s, but
-   `app/tools/ingest_books.py` runs it with `subprocess.run(...,
-   capture_output=True)`, so nothing on disk counts finished units mid-book. The
-   page shows the book, its lane, when it started and a sentence saying why
-   there is no bar — never an estimate, because `percent` is what the renderer
-   draws a bar from. **The fix is in the INGESTER: tee the worker's stdout to a
-   file (or write a small progress JSON) and the pusher reads it.** Fences kept
-   that file out of scope while a live transcription chain was running. Size S.
+> ⚠️ **Item 2 SHIPPED IN FULL LATER THE SAME DAY** — the page, its pusher, AND
+> the per-book percentage — and was moved whole to [`DONE.md`](DONE.md). It is
+> left in the numbering because 0 and 4 refer to it. (Item 2b, the missing
+> progress bar, existed for about an hour: the owner read the report, said
+> *"fill the gap"*, and it was filled. It is archived with item 2.)
 4. ⚠️ **Incremental knowledge is a REQUIREMENT, not a nice-to-have** (owner:
    "I don't want to wait until every book is processed to use Gabi's
    knowledge. I want to use her while the knowledge base grows"). The serving
