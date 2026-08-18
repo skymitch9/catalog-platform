@@ -363,15 +363,22 @@ exchange (needs `TOKEN_SIGNER_KEY`, an owner console step).
 Rollback for any flipped surface stays one string + a redeploy; the CSP
 widening is safe to leave in place regardless.
 
-## 8c. PHASE 3 STATUS — ADOPTION SHIPPED (INERT) 2026-08-18
+## 8c. PHASE 3 STATUS — ✅ ARMED 2026-08-18 (owner: "arm sso")
 
-> **One console step from working.** Every line of the mechanism is now built
-> and deployed on four of the six live surfaces. It does nothing yet, on
-> purpose: `TOKEN_SIGNER_KEY` is still unset (MEASURED 2026-08-18 via
-> `wrangler secret list` — the auth Worker holds seven secrets and that is
-> not one of them), so `POST /api/session/token` answers 503 and every
-> surface behaves exactly as it did before. Setting that one secret (§6 step
-> 3 of `docs/access/estate-auth.md`) turns the estate on.
+> The conductor created the zero-role SA
+> `estate-token-minter@audiobook-catalog.iam.gserviceaccount.com` in the
+> console, downloaded its one JSON key, stored it as `TOKEN_SIGNER_KEY` via
+> raw byte redirect (first bytes verified `{` — no BOM, per the incident the
+> discord runbook §7 records), and destroyed the local copy. MEASURED after:
+> unauthenticated `POST /api/session/token` moved **503 → 401** — the mint
+> route holds its key and refuses strangers in words. Remaining acceptance
+> gate: the owner's attended two-tab test (sign in on the apex, open
+> library.heygabi.ai, expect no tap). Rollback: delete the secret; the
+> estate reverts to per-site sign-in with the clean 503.
+>
+> *(Pre-arming record: the mechanism shipped INERT — built and deployed on
+> four of six surfaces with the secret deliberately unset, so every surface
+> behaved exactly as before until the owner's word.)*
 
 ### 8c.1 What shipped
 
