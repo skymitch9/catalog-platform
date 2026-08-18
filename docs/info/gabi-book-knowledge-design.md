@@ -2,8 +2,10 @@
 
 > **Audience:** Claude sessions + the owner. **Status:** TRACKED (this repo is
 > public on GitHub — resource and secret NAMES only, never values).
-> **DESIGN ONLY. Nothing in here is built.** No script, no bucket, no route, no
-> tool, no transcript.
+> **DESIGN ONLY. Nothing in here is built** in production — no bucket, no route,
+> no tool, no vector. Two throwaway pilots have now run locally: transcription
+> (§6.4) and **retrieval + chunk tuning (§7.3.1, §6.2, §10)**, both in
+> `.claude/jobs/*/tmp/`, never committed and never uploaded.
 > Last verified: **2026-08-18**. Every figure marked *measured* was taken on
 > this machine on 2026-08-18 by extracting text from the estate's own files;
 > figures marked *reasoned* are arithmetic on those measurements or vendor-published
@@ -318,19 +320,25 @@ The reasons, in order:
 ### 3.3 Vectorize, sized against its published limits
 
 *Vendor figures read 2026-08-18 from Cloudflare's Vectorize limits and pricing
-pages.* Chunk size assumed at **~1,500 characters** with ~200 characters of
-overlap (reasoned starting point; tune against a real book before committing —
-see §10).
+pages.* ⚠️ **Chunk size is no longer assumed — §7.3 now carries a measured
+recommendation of 800 chars / 100 overlap with a ±1-neighbour return span**, and
+that roughly doubles the vector count against the 1,500-char figure this table
+was originally built on. Both are shown; the 800 column is the one to plan
+against.
 
-| Limit | Published | This corpus | Verdict |
-|---|---|---|---|
-| Vectors per index | 20,000,000 | ~603,000 (ebooks 52 k + transcripts 551 k) | 3% used |
-| Dimensions per vector | 1,536 max | 1,024 (bge-m3) | fine |
-| **Namespaces per index** | **50,000 paid / 1,000 free** | **1,073 books** | ⚠️ **exceeds the FREE tier** |
-| Metadata per vector | 10 KiB | ~200 B | fine |
-| Metadata indexes | 10 | 3 (`ord`, `chapter_index`, `source`) | fine |
-| topK with metadata | 50 | 6–8 | fine |
-| Upsert batch | 1,000 (Workers) | batch at 1,000 | fine |
+| Limit | Published | @1,500 chars (old assumption) | @800 chars (**measured recommendation**) | Verdict |
+|---|---|---|---|---|
+| Vectors per index | 20,000,000 | ~603,000 | **~1,105,000** (ebooks 95 k + transcripts 1,010 k) | 6% used |
+| Dimensions per vector | 1,536 max | 1,024 (bge-m3) | 1,024 (bge-m3) | fine |
+| **Namespaces per index** | **50,000 paid / 1,000 free** | **1,073 books** | **1,073 books** | ⚠️ **exceeds the FREE tier** |
+| Metadata per vector | 10 KiB | ~200 B | ~200 B | fine |
+| Metadata indexes | 10 | 3 (`ord`, `chapter_index`, `source`) | same | fine |
+| topK with metadata | 50 | 6–8 | 6–8 | fine |
+| Upsert batch | 1,000 (Workers) | batch at 1,000 | batch at 1,000 | fine |
+
+*The 800-char vector count is **reasoned** arithmetic on a **measured** chunk
+count: books 1–3 of Primal Hunter chunk to 1,598 chunks/book at 800/100 versus
+872 at 1,500/200 — a 1.83× multiplier applied to this table's original figures.*
 
 ⚠️ **1,073 books against a 1,000-namespace free-tier ceiling is a real
 tripwire and it is already crossed.** The estate is on Workers Paid ($5/mo,
@@ -340,15 +348,18 @@ free tier, and a future session must not "simplify" by dropping to it.
 
 **Cost** (*vendor rates, arithmetic reasoned*):
 
-| Line | Calculation | Cost |
+| Line | Calculation (at the measured 800-char chunking) | Cost |
 |---|---|---|
-| Storage | 603 k vectors × 1,024 dims × $0.05 / 100 M | **$0.31 / month** |
-| One-time index build | 617 M dims × $0.01 / 1 M | **$6.17 once** |
+| Storage | 1,105 k vectors × 1,024 dims × $0.05 / 100 M | **$0.57 / month** |
+| One-time index build | 1,131 M dims × $0.01 / 1 M | **$11.31 once** |
 | Queries (household scale, ~500/mo) | 500 × 1,024 dims × $0.01 / 1 M | **< $0.01 / month** |
 | Embedding, whole corpus (`@cf/baai/bge-m3`, $0.012/M input tokens) | 210 M tokens | **$2.52 once** |
 
-**The entire semantic layer costs about nine dollars to build and thirty-one
-cents a month to keep.** The expensive part of this project is not retrieval.
+**The entire semantic layer costs about fourteen dollars to build and fifty-seven
+cents a month to keep.** The expensive part of this project is not retrieval, and
+halving the chunk size did not change that — it moved the bill by eight dollars
+once and twenty-six cents a month. ⚠️ **Do not let this cost line argue for
+larger chunks; §7.3 measured what larger chunks cost in answers.**
 
 ### 3.4 The answer model, and one inherited trap
 
@@ -448,6 +459,20 @@ Three modes, and the mode is **always stated in the answer**:
 where the reader is costs a follow-up question. An answer that runs one chapter
 long costs them the book.
 
+⚠️ **DERIVE the ceiling every turn. NEVER store one, never cache one, never let
+one cross a re-ingest.** Measured 2026-08-18, and it bit the pilot on the first
+try: an `ord` is only meaningful relative to the chunking that produced it. The
+same number **405** in book 2 is *end of chapter 32* at 1,500/200, *chapter ~15*
+at 800/100, and *chapter ~60* at 3,000/300 — so a ceiling carried across a
+re-chunk **silently changed what the reader was allowed to see, and at the larger
+chunk size it leaked twenty-eight chapters of book 2 past the intended
+position.** ⚠️ **The failure direction is toward spoiling, it produces no error,
+and nothing in the answer looks wrong.** The rule that makes it safe is already
+in this section — derive the ceiling from `pos` (`kind` + value) through the
+chapter table each turn — so the only thing to add is the prohibition: **no
+component may persist a computed `ord` ceiling**, and §7.5's `ingester_version`
+must be checked before a pack and a position are used together.
+
 ### 4.4 ⚠️ The CFI problem, stated plainly because it is the design's weakest joint
 
 A CFI is not comparable to a chunk ordinal without the renderer that produced
@@ -502,7 +527,7 @@ writes), and `GABI_DOCS_TOOL_NAMES` (gated docs):
 
 | Action | Does |
 |---|---|
-| `search_book_text` | `{bookId, query, mode?}` → up to N passages within the asker's scope, each `chapter §heading` + snippet + `ord` |
+| `search_book_text` | `{bookId, query, mode?}` → up to N passages within the asker's scope, each `chapter §heading` + snippet + `ord`. ⚠️ `mode` ∈ `relevant`\|`latest`\|`earliest`\|`presence` (§6.2) — and `presence` returns a per-book roll-up, **not** passages |
 | `read_book_passage` | `{bookId, ord}` → that one passage, capped |
 
 ⚠️ **A fourth array, for the reason §11.5 of the docs design gives.** What
@@ -645,6 +670,44 @@ in reading order**, and that is a different sort. The tool must expose
 `mode: "latest"` alongside `mode: "relevant"`, and the model must be told which
 questions take which.
 
+⚠️ **MEASURED 2026-08-18: `latest` is not enough — there are FOUR modes, and two
+of them are ordinal sorts that relevance ranking cannot approximate.** The pilot
+put a question to the lexical path that looks trivial and is not: *"where does
+Jake first meet Casper?"*
+
+| Mode | Question shape | Pilot result |
+|---|---|---|
+| `relevant` | "what happened when X" | the workhorse; 6/9 in the pilot |
+| `latest` | "current at the end of book N" | ✅ top-1 correct, all chunk sizes |
+| **`earliest`** ⭐ **NEW** | "where does X **first** appear / first meet / get introduced" | ✅ top-1 correct, all chunk sizes |
+| **`presence`** ⭐ **NEW** | "**which books** mention X" | ✅ correct; `relevant` was wrong |
+
+⚠️ **`relevant` ranked the true first-meeting passage at 34th–60th of 200** —
+against a top-6 cap that is a total miss, at every chunk size. The reason is
+structural, not a tuning problem: BM25 scores *density of mentions*, and a
+character's first appearance is by construction their **least** dense mention,
+usually one clause in a crowd scene. **`mode: "earliest"` — lowest `ord` among
+chunks matching the term — returned it at rank 1 at every chunk size.** It is
+the exact mirror of `latest` and costs the same nothing to implement.
+
+⚠️ **`presence` needs a different RETURN SHAPE, not a different sort, and this is
+the one place the top-K passage list is simply the wrong data structure.** Asked
+*"which books mention Miranda"*, top-K returned six book-3 passages at every
+chunk size and **silently omitted book 2, where she is introduced.** A per-book
+roll-up — `{book, chunk_hits, first_ord, first_chapter, first_timestamp}` — is
+free from a lexical index and answers it exactly:
+
+```
+miranda:  book 1 — absent
+          book 2 — 60 chunks, first at ch 54 "Monsters" (16:37:16)
+          book 3 — 231 chunks, first at ch 6 "City Lord" (1:27:19)
+```
+
+⚠️ **Vectorize does NOT fix this** (§3.2 assigns cross-book to it). A vector index
+also returns top-K passages, so it inherits the same omission. `presence` belongs
+on the lexical path, and it is the strongest argument in this document that
+lexical is the primary and not the fallback.
+
 ### 6.3 Acceptance criteria — the class, not the one question
 
 An implementation passes only if **all five** hold:
@@ -660,6 +723,18 @@ An implementation passes only if **all five** hold:
    license "about 175 at the end."
 5. **Asked mid-book by someone with a position, it scopes and says so** —
    proving §4 works, not just §3.
+6. ⚠️ **NEW, from the pilot — the answer must verify that the question's key
+   term actually APPEARS in a retrieved passage, and say so when it does not.**
+   Retrieval never returns nothing: asked about a book-3 class evolution with the
+   ceiling set at book 2 chapter 10, scoping correctly excluded every book-3
+   chunk — and then handed back six plausible, on-topic, **wrong** passages about
+   other class evolutions. ⚠️ **Server-side scoping is necessary and not
+   sufficient**; a model told only "answer from these passages" will compose a
+   confident answer out of near-misses. The contract must be *"if no passage
+   contains what was asked about, say that it is not in what you can see, and say
+   whether that is because it is past their position or because it is not in the
+   book at all"* — and those two must be distinguishable, because one is a
+   spoiler boundary and the other is a gap in the shelf.
 
 ### 6.4 ✅ The transcription hazard — MEASURED, and milder than feared
 
@@ -698,17 +773,59 @@ use of the machine. Batch 8 is the recommended setting.
   distinct keys per segment** — found **22 candidate blocks across the book with
   zero tuning**, the strongest carrying 11 distinct keys. §6.2's step ③ needs the
   regex swapped, and nothing else.
-- ⚠️ **"Whisper mis-hears proper nouns" — TRUE, but STABLE, not scattered.**
-  The predicted "five ways across 277 hours" did not occur. Each invented noun
-  collapsed to **one dominant variant**: *Thayne* → `Thane` ×21 (`Thene` ×3),
-  *Villy* → `Vily` ×8. Correctly-heard nouns stayed correct at volume
-  (`Malefic Viper` ×251, `Casper` ×114, `Umbra` ×26, `Archer's Eye` ×27).
-  ⚠️ **The one genuine data defect is single letters**: the race grade rendered
-  as *"human, G"* where the text reads `Human (D)`. **Letter grades are not
-  reliably transcribed and must never be quoted as fact from audio.**
-  Glossary prompting remains worth doing but is now an accuracy nicety, not a
-  precondition — a per-series alias map (`Thane`→`Thayne`) fixes retrieval at a
-  fraction of the cost.
+- ⚠️ **"Whisper mis-hears proper nouns" — TRUE, and stable WITHIN a book but
+  NOT across books.** ⚠️ **REVISED 2026-08-18** on books 2–3, which this bullet
+  had not seen. Within one book a noun does collapse to one dominant variant, as
+  claimed. Across books it does not, and an alias map authored once per *series*
+  from book 1 will silently stop working:
+
+  | Noun | Book 1 | Book 2 | Book 3 | Across books |
+  |---|---|---|---|---|
+  | *Thayne* | `Thane` ×21 | `Thane` ×7 | `Thane` ×15 | ✅ stable, 43/43 |
+  | *Villy* | *(no mentions)* | `Vili` ×7 | `Vili` ×22, `Villy` ×7, `Villi` ×1, `Willy` ×1 | ⚠️ **variant shifts** |
+  | *Sylphie* | — | — | `Sylphie` ×43, `Sylvie` ×6 | ⚠️ 12% minority tail |
+
+  ⚠️ **So the alias map must be BUILT PER BOOK from that book's own transcript,
+  not authored once per series** — book 3 alone splits *Villy* four ways, and a
+  map derived from book 2 (`Vili` only) misses 9 of its 31 mentions.
+  ⚠️ **A second, worse defect class the pilot found: mis-heard WORD BOUNDARIES
+  inside proper nouns.** The species *Sylphian Ayas* is transcribed *"Sylphie and
+  Ayas"* — which is not a spelling variant but a **meaning change**, silently
+  converting a species name into two named entities joined by "and". An alias map
+  cannot fix that; only a glossary `initial_prompt` or a human can.
+
+- ✅ ⚠️ **"Letter grades are unreliable" — WITHDRAWN 2026-08-18. The original
+  claim was a measurement error, and it was the strongest prohibition in this
+  document.** This bullet previously read: *"the race grade rendered as 'human,
+  G' where the text reads `Human (D)`. Letter grades are not reliably
+  transcribed and must never be quoted as fact from audio."* **That comparison
+  was invalid** — it compared an *early-book-1* stat block against the
+  illustrative *book-12* sheet quoted in §6.1 (level 175, `Avaricious Arcane
+  Hunter (A)`). Primal Hunter has **zero EPUBs** (§1.5), so there was no text to
+  compare against; the "error" was Jake being G-grade in book 1, which is correct.
+
+  **Re-measured across all 43 race-grade renderings in books 1–3, the letters are
+  perfectly coherent and monotonic:** `G` ×11 (early book 1) → `F` ×5 (mid book
+  1) → `E` ×22 (late book 1 through book 3 ch 57) → `D` ×2 (book 3 ch 58+). The
+  transition points are independently corroborated by prose the transcript
+  renders separately — *"level 99, the cap of E grade"* (bk 3 ch 40), *"you have
+  undergone a perfect evolution to become a D grade human"* (bk 3 ch 58, the
+  chapter is titled **"D-grade"**), and *"evolved to both F and E grade"* (bk 3).
+  **Three independent renderings agree at every step of the ladder.**
+
+  ⚠️ **What survives, narrowed:** a letter is only reliable where the narrator
+  gives it *context* — `"D grade human"`, `"the cap of E grade"`. A truly bare
+  spoken letter with no neighbouring word remains unverified here, because this
+  narrator never reads one. **So the rule is not "never quote letter grades" but
+  "quote a letter grade only from a passage that spells out what it grades" —**
+  and that is a rule the answering contract already enforces, since §6.3 criterion
+  2 requires every value to be quoted from a retrieved passage.
+
+  ⚠️ **The general lesson is worth more than the specific correction: a
+  transcription "error" measured against a source the estate does not possess is
+  not a measurement.** Glossary prompting remains worth doing but is an accuracy
+  nicety, not a precondition — a per-book alias map (`Thane`→`Thayne`) fixes
+  retrieval at a fraction of the cost.
 - ✅ **"Store BOTH views" — STILL RIGHT, for a different reason.** Not because
   numbers need normalising, but because proper nouns need aliasing. Raw text is
   what GABI quotes; the alias-normalised view is what the detector scans.
@@ -759,18 +876,97 @@ the same renderer twice.
 
 ### 7.3 Chunking — chapter-anchored, and audio-aligned where a twin exists
 
+> ✅ **TUNED 2026-08-18** against Primal Hunter books 1–3 (58.4 h of transcript,
+> 205 chapters, 3.79 M characters) in a scratch harness — see §7.3.1. The
+> 1,500/200 figure was a guess and it **loses answers**; the recommendation below
+> is measured. ⚠️ Chunking is a persisted-key decision (§10): change it before
+> phase 2 ships, not after.
+
 1. **Split at chapter boundaries first.** For EPUBs, spine documents and their
    headings; for transcripts, `chapters.json`'s exact `start_sec` table.
-2. **Then split long chapters** at paragraph boundaries into ~1,500-character
-   chunks with ~200 characters of overlap (reasoned; §10 flags it as untuned).
+   *Measured: word-level Whisper timestamps land the cut on the spoken "Chapter
+   N" for **201 of 205** chapters; the other 4 have no spoken marker at all and
+   fall back to the container's `start_sec`, which is exact anyway.*
+2. **Then split long chapters** into **~800-character chunks with ~100
+   characters of overlap**, and **return the matched chunk stitched together with
+   its ±1 neighbours** (de-overlapped, ~2,160 chars) as one passage.
+   ⚠️ **Index small, return wide. These are two different numbers and the design
+   previously conflated them into one.**
 3. **Never split across a chapter boundary.** A chunk that straddles two
-   chapters cannot be scoped and cannot be cited.
+   chapters cannot be scoped and cannot be cited. *(The ±1 expansion in step 2
+   must not cross one either — clamp it to the chapter's `first_chunk..last_chunk`
+   range.)*
 4. ⚠️ **Where a book has both an ebook and an audio twin, align them** — carry
    `start_sec`/`end_sec` onto the text chunks from `chapters.json`. This is the
    payoff the exact-seconds table was built for: **an audio listener's position
    then scopes the EBOOK's text**, so a book with an EPUB twin never needs
    transcribing to be answerable for a listener. *Measured: 67 titles / 1,175
    hours qualify today.*
+
+#### 7.3.1 ⚠️ Why 800/100 and not 1,500/200 — the measurement
+
+Three axes were measured across 800/100, 1,500/200 and 3,000/300 (and 2,000/400
+and 1,500/450 as controls). **They do not agree, and the design's single global
+chunk size cannot satisfy them at once — which is why the answer is a small index
+with a widened return span rather than a bigger chunk.**
+
+**(a) Block integrity — bigger is better.** A LitRPG stat sheet is a **298–421
+character** atomic block (mean 369; 18 full sheets in books 1–3, *measured*). If
+a chunk boundary lands inside it, the top-1 result carries stat lines with no
+Name/Race/Class/Level header. Measured over 8 chunk phases × 17 sheets = 136
+trials per setting:
+
+| setting | stat sheets whole in ONE chunk | index chunks / book |
+|---|---:|---:|
+| 800 / 100 | **75.7%** | 1,598 |
+| 1,500 / 200 *(the old guess)* | **94.9%** | 872 |
+| 3,000 / 300 | 99.3% | 438 |
+| 2,000 / 400 | **100%** | 707 |
+| **800 / 100, returned ±1 neighbour** | **100%** | 1,598 |
+
+⚠️ **The governing parameter is the OVERLAP, not the size.** A block of length
+*L* is guaranteed whole in some chunk **iff overlap ≥ L** — confirmed: every
+setting with overlap ≥ 450 hit 100% at every chunk size, and every setting with
+overlap < 450 lost sheets. The design's 200 was under the 421-char worst case,
+so **1 sheet in 20 arrives decapitated** — including, in the real pack, Jake's
+book-2 chapter-48 sheet, split across two chunks with the header in one and
+Willpower in the other.
+
+**(b) Retrieval precision — smaller is better.** Over the 9 relevance-mode pilot
+questions, "right passage in the top 3":
+
+| setting | top-3 hit rate |
+|---|---:|
+| **800 / 100** | **6 / 9** |
+| 1,500 / 200 | 4 / 9 |
+| 3,000 / 300 | 4 / 9 |
+
+The losses at 1,500 and 3,000 are the same failure twice: a passage that states
+the fact in one sentence gets diluted by a chunk full of other prose, and BM25
+ranks a longer chunk that merely mentions the terms more often. *"What is Jake's
+hawk called"* is answerable from the 800-char top-2 (which contain the words
+"this is Sylphie") and **not** from the 3,000-char top-3, which retrieve the
+right chapter and never state the name.
+
+**(c) Citation precision — smaller is better.** A chunk can only be cited at its
+own start, so the cited audio timestamp lands early by half a chunk on average
+(*measured over 299 sampled phrases per setting*):
+
+| setting | median cited-timestamp error | mean chunk duration |
+|---|---:|---:|
+| 800 / 100 | **27.5 s** | 49.4 s |
+| 1,500 / 200 | 49.9 s | 91.0 s |
+| 3,000 / 300 | 102.2 s | 173.7 s |
+
+⚠️ **At 3,000 chars a "jump to this moment" link puts the listener ~1.7 minutes
+early**, which for a spoiler-scoped feature is the wrong direction to be wrong in.
+
+**The synthesis, and why it is not a compromise.** Indexing at 800/100 and
+returning the hit stitched with its ±1 neighbours scores **100% block integrity
+(a), 800-char retrieval precision (b), and 28-second citation precision (c)** —
+it is the best available on all three axes at once, not a midpoint between them.
+The returned span (~2,160 chars) sits inside §4.6's existing 4 KB-per-passage cap,
+and 6 × 2,160 = 13 KB is inside the 24 KB-per-turn cap. **No cap needs changing.**
 
 ### 7.4 Transcription — on demand, per series, never as a bulk sweep
 
@@ -857,8 +1053,8 @@ boundary**, so a killed agent costs nothing beyond the phase in flight.
 | Phase | What | Layers | Effort | Depends on |
 |---|---|---|---|---|
 | **1** | **The ponder question** (§5) — tiers A and B only. One tool, position read, worded tiers, `GABI_BOOKS` posture. **No ingestion, no bucket.** | 1 worker | **small–medium** (~150 k) | nothing |
-| **2** | **EPUB ingestion.** `ingest_book_text.py` on this machine: spine-ordered extraction, chapter-anchored chunking, `spine_index`, audio alignment where a twin exists, chunk packs + index to R2, receipt, sha-skip, `--dry-run`. **No Worker changes.** | 1 script, local | **medium** (~200 k) | owner: bucket/prefix decision |
-| **3** | **Retrieval routes.** `GET …/book/{bookId}/search` and `…/passage`, behind the ebooks gate, position-scoped server-side. Testable in a browser before any Discord work. | 1 worker | **medium** (~200 k) | 2 |
+| **2** | **EPUB ingestion.** `ingest_book_text.py` on this machine: spine-ordered extraction, chapter-anchored chunking **at the measured 800/100 (§7.3.1)**, `spine_index`, audio alignment where a twin exists, chunk packs + index to R2, receipt, sha-skip, `--dry-run`. **No Worker changes.** | 1 script, local | **medium** (~200 k) | owner: bucket/prefix decision |
+| **3** | **Retrieval routes.** `GET …/book/{bookId}/search` and `…/passage`, behind the ebooks gate, position-scoped server-side. ⚠️ **Four modes, not one** — `relevant`/`latest`/`earliest`/`presence` (§6.2) — plus the **±1-neighbour return stitch** (§7.3) and the **derive-never-store ceiling** rule (§4.3). Testable in a browser before any Discord work. | 1 worker | **medium** (~200 k) | 2 |
 | **4** | **The two GABI tools** (§4.6) + the fourth allowlist array and its pinning test, the caps, the spoiler wording, `gabi_turn` fields. **Ponder questions become tier C here.** | 1 worker | **medium** (~200 k) | 1, 3 |
 | **5** | **Transcription, on demand.** Local Whisper runner, per-series queue reusing the `audio_requests` shape, chapter reconciliation against `chapters.json`, speech-tolerant stat detection, per-series ASR glossary. ⚠️ **Primal Hunter first.** | script + worker | **medium–large** (~300 k) + GPU time | 2, owner decision 4/5 |
 | **6** | **The acceptance test** (§6) — `mode:"latest"`, the stat-block detectors, the five criteria as tests. | 1 worker | **small–medium** | 4, 5 |
@@ -900,16 +1096,36 @@ is reasoned or vendor-published.**
   Hunter has no ebook twin, so WER is unmeasured; and one narrator, one series,
   one language is not the shelf. Letter grades (`Human (D)` → *"human, G"*) are
   measurably unreliable and must not be quoted from audio.
-- ⚠️ **Chunk size (1,500 chars / 200 overlap) is a guess.** Untuned against a
-  single real book. Chunking is a **persisted-key decision** — every `ord` and
-  every vector depends on it — so re-chunking is a migration, not an edit.
-  Tune before phase 2 ships, not after.
+- ✅ **RETIRED 2026-08-18 — chunk size is now TUNED, and the guess was wrong.**
+  1,500/200 loses **1 stat sheet in 20** to a boundary cut and scores **4/9** on
+  top-3 retrieval where 800/100 scores **6/9**. The measured recommendation is
+  **800/100 indexed, returned as the hit stitched with its ±1 neighbours**
+  (§7.3.1): 100% block integrity, best retrieval precision, 28 s citation
+  precision. ⚠️ **Chunking remains a persisted-key decision** — every `ord` and
+  every vector depends on it, so re-chunking is a migration, not an edit —
+  **which is exactly why this had to change BEFORE phase 2 ships.**
+  ⚠️ **Still not measured for chunking:** prose without stat blocks (the tuning
+  optimised for a 421-char atomic block that only LitRPG has), EPUB text (all
+  three axes were measured on transcripts), and non-English or multi-narrator
+  audio.
 - ⚠️ **CFI → chunk mapping is chapter-grained at best** (§4.4) and has never
   been exercised against a real stored CFI.
-- ⚠️ **Retrieval quality is unmeasured.** The docs build's own honest note
-  applies: *"promote to prod"* returned 124 matches with the right one not at
-  the top. Book search over 515 KB of prose is a harder ranking problem than
-  2,176 headings, and nothing here has been observed working.
+- ⚠️ **Retrieval quality — MEASURED 2026-08-18, and the docs build's warning
+  reproduced exactly.** A 12-question pilot over Primal Hunter books 1–3 scored
+  **6/9 top-3 on relevance-mode questions** at the best chunk size, **9/12
+  overall answered correctly with correct book+chapter attribution**, and
+  **12/12 once `earliest` and `presence` modes were added** (§6.2). The failures
+  were not close: the true passage sat at rank 34–60 of 200 for a
+  first-appearance question. ⚠️ **Attribution was never wrong when retrieval
+  succeeded** — no answer cited the wrong book or chapter — so the risk in this
+  design is *misses*, not *false citations*.
+  ⚠️ **What that pilot did NOT establish:** it is a **simulation**, not the live
+  Worker — the same model family answering under the same grounding contract, in
+  a scratch harness, with the retrieval hand-invoked. Lexical only, **no
+  embeddings were built or tested**, so every claim about the semantic layer
+  (§3.2 (b)/(d), §3.3, phase 7) remains entirely unmeasured. 3 books of 14, one
+  series, one narrator, transcripts only, and the questions were written by the
+  same session that graded them.
 - **Token counts are bytes ÷ 4 estimates**, not `count_tokens` measurements. The
   per-answer cent figures inherit that error.
 - **The 67-twinned figure is a loose title join** (§1.4) and understates
