@@ -19,6 +19,20 @@
  * under it) and commits sequentially per collection, cheapest safe choice at
  * household data volumes (thousands of docs, not millions).
  *
+ * ## Timestamps are revived on the way in (drill fix, 2026-08-18)
+ *
+ * The dump stores a Firestore `Timestamp` as the plain object
+ * `{_seconds,_nanoseconds}` that `JSON.stringify` produces. Until 2026-08-18
+ * this script handed that straight to `batch.set()`, which wrote it back as a
+ * **map, not a timestamp** — 2,139 fields across the 56 collections of the
+ * 2026-08-16 dump (docs/access/RECOVERY.md §4.2). Every document now goes
+ * through `reviveTimestamps()` first, and the count converted is PRINTED per
+ * collection in both dry-run and commit mode, so the scope is never silent.
+ * See `scripts/lib/firestore-timestamps.mjs` for the one ambiguity this
+ * accepts, and `scripts/test/firestore-timestamps.test.mjs` for the offline
+ * round-trip proof (dump → revive → the SDK's own serializer → an identical
+ * `timestampValue`).
+ *
  * ## ⚠️ This OVERWRITES. It does not merge, and it does not delete first.
  *
  * `set()` replaces every field of a restored document with exactly what the
@@ -44,9 +58,10 @@
  */
 
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { reviveTimestamps, countSerializedTimestamps } from './lib/firestore-timestamps.mjs';
 
 const args = process.argv.slice(2);
 const dirIdx = args.indexOf('--dir');
@@ -92,7 +107,21 @@ if (targets.length === 0) {
 console.error(`Project: ${serviceAccount.project_id ?? '(unknown)'}`);
 console.error(`Mode: ${commit ? '⚠️  LIVE — writing for real' : 'DRY RUN — pass --commit to write'}`);
 console.error(`Targets (${targets.length}):`);
-for (const t of targets) console.error(`  ${t.path}`);
+
+// Read each target once up front, so the dry run reports the SAME numbers the
+// commit path will act on — docs, timestamps, and (RECOVERY.md §4.2) how many
+// `{_seconds,_nanoseconds}` values will be converted back to real Timestamps.
+let totalTimestamps = 0;
+for (const t of targets) {
+  t.docs = JSON.parse(readFileSync(join(dir, t.file), 'utf8'));
+  t.timestamps = t.docs.reduce((n, d) => n + countSerializedTimestamps(d.data), 0);
+  totalTimestamps += t.timestamps;
+  console.error(`  ${t.path}  (${t.docs.length} docs, ${t.timestamps} timestamps to revive)`);
+}
+console.error(
+  `\n${totalTimestamps} serialized timestamp(s) will be written back as real Firestore ` +
+    'Timestamps, not maps (scripts/lib/firestore-timestamps.mjs — RECOVERY.md §4.2).',
+);
 
 if (!commit) {
   console.error('\nDry run only. Re-run with --commit to actually write. Nothing was touched.');
@@ -104,20 +133,24 @@ const db = getFirestore(app);
 
 const BATCH_SIZE = 450;
 
+const toTimestamp = (seconds, nanoseconds) => new Timestamp(seconds, nanoseconds);
+
 for (const t of targets) {
-  const docs = JSON.parse(readFileSync(join(dir, t.file), 'utf8'));
+  const docs = t.docs;
   const col = db.collection(t.path);
   let written = 0;
   for (let i = 0; i < docs.length; i += BATCH_SIZE) {
     const slice = docs.slice(i, i + BATCH_SIZE);
     const batch = db.batch();
     for (const { id, data } of slice) {
-      batch.set(col.doc(id), data);
+      // ⚠️ reviveTimestamps, not `data` — see this file's header and
+      // RECOVERY.md §4.2. Writing `data` raw stores every timestamp as a map.
+      batch.set(col.doc(id), reviveTimestamps(data, toTimestamp));
     }
     await batch.commit();
     written += slice.length;
   }
-  console.error(`  ${t.path}: restored ${written} docs`);
+  console.error(`  ${t.path}: restored ${written} docs (${t.timestamps} timestamps revived)`);
 }
 
 console.error('\nDone.');

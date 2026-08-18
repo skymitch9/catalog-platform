@@ -37,6 +37,27 @@
  * stale the way FIREBASE.md's collection table can. One JSON file per
  * collection PATH (slashes become `__`), plus `_summary.json` with counts.
  *
+ * ## ⚠️ Discovery is the mechanism — and its ONE blind spot, closed 2026-08-18
+ *
+ * The restore drill (docs/access/RECOVERY.md §1b, holes #2/#3) found
+ * `readingPositions` and `discord_links` absent from the newest dump's 56
+ * collections and asked whether the collection list was an explicit list that
+ * had gone stale. MEASURED: it is not — it is `listCollections()` discovery,
+ * top to bottom, so both collections are captured AUTOMATICALLY the moment
+ * they hold a document. Nothing here had to change to protect them.
+ *
+ * What DID have to change is the honesty of the absence. Firestore's
+ * `listCollections()` returns only collections that currently contain at least
+ * one document, so "expected collection missing" and "collection is empty" and
+ * "collection was renamed / its writer broke" all look IDENTICAL in a dump:
+ * a silent gap. That is how those two went unnoticed until a drill went
+ * looking. `EXPECTED_COLLECTIONS` below is therefore a WARNING list, not a
+ * target list — the walk is still pure discovery, but anything expected and
+ * not found is printed as a `::warning::` and recorded in `_summary.json` as
+ * `missingExpected`, so the next absence is visible in the run log instead of
+ * needing another drill to find it. It never fails the backup: a genuinely
+ * empty collection is a normal state, not an error.
+ *
  * Mirrors seed-estate.mjs's rule: **a zero-collection read is a failed read,
  * not an empty project** — refuses to write a backup that looks complete but
  * silently caught nothing (wrong project, mis-scoped credential, expired key).
@@ -48,9 +69,12 @@
  *
  *   BACKUP_OUT_DIR=./backups/firestore-manual node scripts/backup-firestore.mjs
  *
- * The GitHub Actions workflow (`.github/workflows/backup.yml`) sets
- * FIREBASE_SERVICE_ACCOUNT_JSON from the repo secret of the same name and
- * uploads BACKUP_OUT_DIR as a private artifact. The credential is never
+ * The GitHub Actions workflow (`.github/workflows/backup.yml` — daily 09:12
+ * UTC plus manual dispatch) sets FIREBASE_SERVICE_ACCOUNT_JSON from the repo
+ * secret of the same name, then tars BACKUP_OUT_DIR and writes it into the
+ * private `estate-backups` R2 bucket. (It used to upload a workflow artifact;
+ * that was retired 2026-08-15 — artifacts on a public repo are one anonymous
+ * login away from anyone.) The credential is never
  * written to disk here — `cert()` takes the parsed object directly, so there
  * is no temp file to forget to clean up.
  */
@@ -80,6 +104,38 @@ try {
 
 const app = initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore(app);
+
+/**
+ * Root collections the estate expects to exist. ⚠️ NOT a target list — the
+ * walk is discovery (see the header). Absence is WARNED about, never fatal,
+ * because an empty collection is a legitimate state.
+ *
+ * The first nine are the root collections the restore drill NAMED with
+ * document counts in the 2026-08-16 dump (RECOVERY.md §4.1). The last two are
+ * the drill's holes #2/#3 — `readingPositions` and `discord_links` (first
+ * writer landed 2026-08-17, apps/discord-worker/src/link.ts) — which had never
+ * appeared in a dump and, until this list existed, could not be distinguished
+ * from "does not exist".
+ *
+ * ⚠️ The `_dev` twins are deliberately NOT listed. The drill counted 16 root
+ * collections — these nine plus seven `_dev` twins — but did not record WHICH
+ * seven, and listing a twin that does not exist would print a warning that is
+ * simply wrong. A guess dressed as an expectation is worse than a shorter
+ * list. Add each twin here when a run confirms it, not before.
+ */
+const EXPECTED_COLLECTIONS = [
+  'reviews',
+  'readingLists',
+  'profiles',
+  'leaderboard',
+  'club_seen',
+  'clubs',
+  'users',
+  'site_roles',
+  'pipeline_runs',
+  'readingPositions',
+  'discord_links',
+];
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const outDir = process.env.BACKUP_OUT_DIR ?? join('backups', `firestore-${stamp}`);
@@ -126,6 +182,12 @@ for (const root of roots) {
   await dumpCollection(root, root.id);
 }
 
+// ⚠️ RECOVERY.md §1b holes #2/#3. Discovery cannot tell "empty" from "gone",
+// so say out loud which expected collections this run did not find. Non-fatal
+// by design — see EXPECTED_COLLECTIONS's comment.
+const found = new Set(roots.map((r) => r.id));
+const missingExpected = EXPECTED_COLLECTIONS.filter((c) => !found.has(c));
+
 writeFileSync(
   join(outDir, '_summary.json'),
   JSON.stringify(
@@ -134,6 +196,10 @@ writeFileSync(
       generatedAt: new Date().toISOString(),
       totalCollections,
       totalDocs,
+      // Recorded in the dump itself so a future restore drill can read what
+      // was expected AT BACKUP TIME, not what a later list says.
+      expectedCollections: EXPECTED_COLLECTIONS,
+      missingExpected,
       collections: summary,
     },
     null,
@@ -141,4 +207,20 @@ writeFileSync(
   ),
 );
 
-console.error(`\nDone: ${totalCollections} collections, ${totalDocs} documents -> ${outDir}`);
+if (missingExpected.length > 0) {
+  // `::warning::` so it surfaces on the GitHub Actions run summary, not only
+  // in the log body. One line per collection: an incident reads the names.
+  for (const c of missingExpected) {
+    console.error(
+      `::warning::Expected root collection '${c}' holds no documents and is NOT in this backup. ` +
+        'That is normal for a collection nothing has written to yet, and a real gap if it ' +
+        'should have data — Firestore listCollections() cannot tell the two apart. ' +
+        'See docs/access/RECOVERY.md §1b.',
+    );
+  }
+}
+
+console.error(
+  `\nDone: ${totalCollections} collections, ${totalDocs} documents -> ${outDir}` +
+    (missingExpected.length > 0 ? `\n⚠️  Expected but absent: ${missingExpected.join(', ')}` : ''),
+);

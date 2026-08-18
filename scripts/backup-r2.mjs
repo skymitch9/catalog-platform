@@ -62,8 +62,17 @@
  *   node scripts/backup-r2.mjs library-covers audiobook-covers   # BACKUP_OUT_DIR per bucket, auto-named
  *
  * `.github/workflows/backup.yml`'s `r2` job sets CLOUDFLARE_API_TOKEN /
- * CLOUDFLARE_ACCOUNT_ID from repo secrets and uploads BACKUP_OUT_DIR as a
- * private artifact, one per bucket, same shape as the D1/Firestore jobs.
+ * CLOUDFLARE_ACCOUNT_ID from repo secrets, then tars BACKUP_OUT_DIR and writes
+ * it into the private `estate-backups` R2 bucket, one object per bucket, same
+ * shape as the D1/Firestore jobs. (It used to upload a workflow artifact;
+ * retired 2026-08-15 — artifacts on a public repo are one anonymous login away
+ * from anyone.)
+ *
+ * ⚠️ WHICH buckets that job dumps, and which it deliberately skips and why, is
+ * argued in backup.yml's own header beside the matrix it explains — not
+ * repeated here, so the two cannot drift. As of 2026-08-18 the matrix is
+ * library-covers, audiobook-covers, game-covers, ebooks-gated,
+ * estate-docs-gated.
  */
 
 import { mkdirSync, writeFileSync, statSync } from 'node:fs';

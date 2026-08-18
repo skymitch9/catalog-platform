@@ -1,10 +1,64 @@
-name: Backup (manual)
+name: Backup (daily + manual)
 
-# ⚠️ MANUAL DISPATCH ONLY, same posture as deploy.yml (docs/TODO.md §1) — a
+# ⚠️ CADENCE ADDED 2026-08-18 — this used to be dispatch-only. Read this before
+# removing the cron; the change is one `schedule:` block and is trivially
+# reversible, but the reasoning is measured, not aesthetic.
+#
+# The old posture was "manual dispatch only, same posture as deploy.yml — a
 # backup is a deliberate button-press, never a schedule, so nobody has to
-# reason about a cron quietly touching credentials at 3am. See
-# docs/access/backup-restore.md for the full runbook (what's protected, how
-# to restore, what is deliberately NOT backed up here).
+# reason about a cron quietly touching credentials at 3am". The owner decision
+# that phrase inherited (2026-08-14, now in docs/DONE.md) is about the DEPLOY
+# workflows — *"these Workers have no dev lane, so the trigger stays a
+# deliberate human button-press"*. That argument is about a live blast radius:
+# a deploy changes what the estate serves. A backup does not. It writes new
+# objects into one private bucket and changes nothing anyone can reach.
+#
+# What the restore drill MEASURED (docs/access/RECOVERY.md §1c, 2026-08-18)
+# as the price of the dispatch-only posture, over LESS THAN TWO DAYS of
+# nobody pressing the button:
+#
+#   estate_auth        6 migrations behind, 4 columns on estate_user
+#   estate_session     0 rows backed up vs 11 live — every session
+#   site_role_grant_log 0 vs 14 — the whole grant audit trail
+#   library-catalog    5 migrations, +84 works / +77 editions / +94 copies,
+#                      +469 change_log, +245 research_finding, and the whole
+#                      `ebook_holding` table (126 rows) absent
+#   audiobook-covers   +103 objects
+#
+# ⚠️ THE CREDENTIAL OBJECTION IS ANSWERED, NOT IGNORED. The secrets are the
+# same two this workflow already uses on every manual dispatch, they are never
+# printed (§ the guard steps below), and a scheduled run reaches them by
+# exactly the same GitHub-hosted path a dispatched run does. The cron adds a
+# CALLER, not a new trust boundary.
+#
+# ## Why 09:12 UTC daily — the choice, measured
+#
+# * DAILY, not weekly: the drift table above is under two days old. A weekly
+#   cron bounds the loss at a week; daily bounds it at a day, and the cost
+#   difference is zero (below).
+# * COST IS ZERO MINUTES. `catalog-platform` is a PUBLIC repo (verified
+#   2026-08-18, `gh api repos/... --jq .visibility` -> public), and GitHub does
+#   not meter Actions minutes on public repos. Measured on the newest
+#   `target=all` run (31937416822, 2026-08-16): 144 s wall clock, ~458 s of
+#   runner time across 9 jobs, and the API's own billing endpoint reports
+#   `total_ms: 0` for every job. R2 storage is the only real cost and it is
+#   bounded by the retention job (8 generations per store).
+# * 09:12 UTC because: it is OFF the hour (GitHub queues scheduled workflows in
+#   a burst at :00 and the delay can run to tens of minutes), it is ~04:12
+#   America/Chicago — after the household's day has ended so the snapshot
+#   catches it whole, and before the morning — and it is the same part of the
+#   day the two existing real backups happen to have landed in (08:49Z and
+#   19:16Z), so nothing about the observed runtime is a surprise.
+# * ⚠️ GitHub DISABLES scheduled workflows on a repo with 60 days of no
+#   activity, and emails the owner first. If backups quietly stop, check
+#   Actions → this workflow for the "disabled" banner before suspecting the
+#   credentials.
+# * The `workflow_dispatch` button is untouched — an on-demand backup before a
+#   risky change is still one click, and `target` still narrows it.
+#
+# See docs/access/backup-restore.md for the full runbook (what's protected, how
+# to restore, what is deliberately NOT backed up here) and
+# docs/access/RECOVERY.md for the drill that produced this cadence.
 #
 # ⚠️ 2026-08-15 rewrite: this workflow used to run from the PRIVATE
 # skymitch9/estate-backups repo and upload each job's output as a workflow
@@ -30,7 +84,7 @@ name: Backup (manual)
 # job that prunes each <kind>/<store> prefix down to the newest 8 objects,
 # every run, regardless of which target was dispatched:
 #
-#   d1        → `wrangler d1 export` for all four estate D1 databases, by
+#   d1        → `wrangler d1 export` for all FIVE estate D1 databases, by
 #                database ID — this job needs NO wrangler.toml and NO sibling
 #                checkout, because `wrangler d1 export <id> --remote` is an
 #                account-level operation (proven interactively 2026-08-14: it
@@ -51,13 +105,44 @@ name: Backup (manual)
 #   r2        → scripts/backup-r2.mjs, a full object dump (manifest.json +
 #                every object's bytes) of the R2 buckets that hold
 #                user/pipeline content — `library-covers`, `audiobook-covers`,
-#                `game-covers` — via the plain Cloudflare REST API (list +
-#                get, Bearer-token auth), no S3-compatible credentials
-#                needed. Same tar+gzip-then-put shape as firestore, since a
-#                bucket dump can be hundreds to thousands of files
-#                (audiobook-covers alone is ~1,868 objects). `bgc-photos` is
-#                deliberately excluded: unbound and 0 objects as of
-#                2026-08-15 — add it here the day it goes live.
+#                `game-covers`, and (added 2026-08-18) the two tiny gated
+#                buckets `ebooks-gated` and `estate-docs-gated` — via the
+#                plain Cloudflare REST API (list + get, Bearer-token auth), no
+#                S3-compatible credentials needed. Same tar+gzip-then-put
+#                shape as firestore, since a bucket dump can be hundreds to
+#                thousands of files (audiobook-covers alone is ~1,868
+#                objects).
+#
+#                ⚠️ WHICH R2 BUCKETS ARE **DELIBERATELY** LEFT OUT, AND WHY —
+#                this is the list the restore drill asked for (RECOVERY.md
+#                §1b), kept here beside the matrix it explains rather than in
+#                a doc that can drift from it:
+#
+#                  estate-ebooks   168 objects / 1.81 GB of ebook FILES. A
+#                                  local master exists and is authoritative:
+#                                  audiobook_catalog/scripts/upload_ebooks_r2.py
+#                                  re-uploads the whole bucket from disk. So
+#                                  this is RECOVERABLE, not lost — the copy
+#                                  would cost ~1.8 GB per generation × 8
+#                                  generations to protect something a script
+#                                  already rebuilds. ⚠️ The residual risk is
+#                                  real and named: that protection lasts
+#                                  exactly as long as the owner's disk. Add it
+#                                  here the day the local master stops being
+#                                  a safe assumption.
+#                  estate-audio    0 objects — empty by design (on-request
+#                                  fulfilment). Would be estate-ebooks's twin
+#                                  at 630 GB if it ever fills; that is a
+#                                  decision to make then, not now.
+#                  bgc-photos      0 objects (feature not live).
+#                  library-2nd-covers  0 objects.
+#                  estate-backups  the backup bucket itself — backing it up
+#                                  into itself is not a copy. Getting a copy
+#                                  OFF Cloudflare is an open owner step
+#                                  (RECOVERY.md §9 item 7).
+#
+#                The three zero-object buckets join the matrix the day any of
+#                them holds anything.
 #
 #   retention → scripts/prune-r2-backups.mjs, keeps the newest 8 objects per
 #                <kind>/<store> prefix in estate-backups and deletes the
@@ -66,7 +151,22 @@ name: Backup (manual)
 #                retention is bucket hygiene, not scoped to what this
 #                particular run touched.
 #
-# ⚠️ WHY ALL FOUR D1 BACKUPS LAND HERE AND NOT IN THE REPO THAT OWNS EACH DB:
+#                ⚠️ "8 DEEP" WAS A SETTING AND NOT YET A FACT — RESOLVED
+#                2026-08-18. The drill found the bucket holding 2 generations
+#                per store against a configured 8 and flagged it as possibly a
+#                prune bug. It is not: the cause is a YOUNG SYSTEM. This
+#                workflow only started writing into R2 (rather than uploading
+#                artifacts) on 2026-08-15 evening, and exactly TWO runs have
+#                used that path — 31903443263 (2026-08-15T19:16Z) and
+#                31937416822 (2026-08-16T08:49Z). The retention job's own log
+#                on the second of those reads `2 object(s), keeping 2,
+#                deleting 0` for all 8 prefixes and `Deleted 0 object(s)
+#                total`, which is exactly correct behaviour for a bucket that
+#                has never held more than 8. The daily cron above is what
+#                makes 8 real: it fills to the configured depth in 8 days, and
+#                the first deletion is expected on day 9.
+#
+# ⚠️ WHY EVERY D1 BACKUP LANDS HERE AND NOT IN THE REPO THAT OWNS EACH DB:
 # `Board_Game_Catalog` is a PUBLIC repo (verified via `gh repo view`,
 # 2026-08-14). GitHub's own docs + the linked community reports say
 # downloading a workflow artifact needs only "read access to the repository" —
@@ -79,6 +179,15 @@ name: Backup (manual)
 # up all four from here possible without a cross-repo checkout.
 
 on:
+  # ⚠️ A scheduled run has NO `inputs`, so `inputs.target` is null on every
+  # cron tick and every `if:` below would evaluate false. `github.event_name ==
+  # 'schedule'` is therefore part of each job's condition: a cron run always
+  # backs up EVERYTHING, which is also the only cadence that makes sense for an
+  # unattended run — a partial scheduled backup would leave stores silently
+  # stale while the summary read fresh (apps/auth-worker/src/backups.ts grades
+  # per-store precisely because of that failure mode).
+  schedule:
+    - cron: '12 9 * * *' # daily 09:12 UTC — see the header for why this hour
   workflow_dispatch:
     inputs:
       target:
@@ -105,7 +214,7 @@ env:
 
 jobs:
   d1:
-    if: inputs.target == 'd1' || inputs.target == 'all'
+    if: github.event_name == 'schedule' || inputs.target == 'd1' || inputs.target == 'all'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -116,6 +225,17 @@ jobs:
           - name: library-catalog
             id: 6022ea5e-2510-450e-81ce-7d847fa31379
             owner_repo: skymitch9/library_catalog
+          # Added 2026-08-18. The restore drill found this one LIVE and with no
+          # backup anywhere (RECOVERY.md §1b hole #1): the padhard.heygabi.ai
+          # shelf, a second library instance holding user-entered catalog data
+          # with no other copy — the exact argument that makes `library-catalog`
+          # High priority. It was absent from this matrix, from the retention
+          # job's prefix list and from backups.ts's KNOWN_BACKUP_PREFIXES alike,
+          # which is why all three now have a test asserting they agree
+          # (apps/auth-worker/test/backups.test.ts).
+          - name: library-catalog-2nd
+            id: 9dcf4af9-d1a2-4de4-adcf-ac7eea77f1c8
+            owner_repo: skymitch9/library_catalog (apps/worker, env `friend`)
           - name: board-game-catalog
             id: 7dd22702-f0e2-4fc7-b201-d16d60176efa
             owner_repo: skymitch9/Board_Game_Catalog
@@ -161,7 +281,7 @@ jobs:
           echo "::notice::Wrote estate-backups/$KEY"
 
   firestore:
-    if: inputs.target == 'firestore' || inputs.target == 'all'
+    if: github.event_name == 'schedule' || inputs.target == 'firestore' || inputs.target == 'all'
     runs-on: ubuntu-latest
     env:
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -202,12 +322,19 @@ jobs:
           echo "::notice::Wrote estate-backups/$KEY"
 
   r2:
-    if: inputs.target == 'r2' || inputs.target == 'all'
+    if: github.event_name == 'schedule' || inputs.target == 'r2' || inputs.target == 'all'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        bucket: [library-covers, audiobook-covers, game-covers]
+        # ⚠️ ebooks-gated + estate-docs-gated added 2026-08-18 (RECOVERY.md §1b
+        # holes #5/#6): 2 objects / 107 kB and 2 objects / 1.27 MB. Both are
+        # republished by a pipeline step, but BOTH publishers run on the
+        # owner's machine — `estate-docs-gated` is rebuilt from three docs
+        # trees that exist together nowhere else — so the copy is worth
+        # essentially nothing to take and is the only estate-side copy there
+        # is. The buckets NOT here are argued in the header above.
+        bucket: [library-covers, audiobook-covers, game-covers, ebooks-gated, estate-docs-gated]
     steps:
       - name: Guard — CLOUDFLARE_API_TOKEN must exist
         run: |
@@ -260,7 +387,7 @@ jobs:
       - name: Prune estate-backups to the newest 8 per store
         run: |
           node scripts/prune-r2-backups.mjs estate-backups \
-            d1/library-catalog d1/board-game-catalog d1/index_catalog d1/estate_auth \
+            d1/library-catalog d1/library-catalog-2nd d1/board-game-catalog d1/index_catalog d1/estate_auth \
             firestore/audiobook-catalog \
-            r2/library-covers r2/audiobook-covers r2/game-covers \
+            r2/library-covers r2/audiobook-covers r2/game-covers r2/ebooks-gated r2/estate-docs-gated \
             --keep 8

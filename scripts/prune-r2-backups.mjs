@@ -21,13 +21,33 @@
  * ## Usage
  *
  *   CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... \
- *     node scripts/prune-r2-backups.mjs estate-backups d1/library-catalog d1/board-game-catalog ... --keep 8
+ *     node scripts/prune-r2-backups.mjs estate-backups d1/library-catalog d1/library-catalog-2nd ... --keep 8
  *
  * Each positional argument after the bucket name is a "<kind>/<store>"
  * prefix to prune independently. `--keep N` defaults to 8. Logs every key
  * kept and every key deleted; never touches a prefix with N or fewer
  * objects (nothing to delete, but still logged so a silent zero-object
  * prefix is visible, not silently "nothing happened").
+ *
+ * ## ⚠️ The prefix list lives in backup.yml, and drift is now mechanical
+ *
+ * This script takes the prefixes as ARGUMENTS; the authoritative list is the
+ * retention step's invocation in `.github/workflows/backup.yml`, and it must
+ * match `KNOWN_BACKUP_PREFIXES` in `apps/auth-worker/src/backups.ts` exactly.
+ * The restore drill found `library-catalog-2nd` missing from all three places
+ * at once (RECOVERY.md §1b hole #1) despite backups.ts's header having always
+ * said to update them together. `apps/auth-worker/test/backups.test.ts` now
+ * PARSES this invocation out of backup.yml and fails if the two lists differ —
+ * written advice promoted to a mechanical guard.
+ *
+ * ## Why the bucket held 2 generations against a configured 8
+ *
+ * Not a bug in this script — measured 2026-08-18. Only two runs had ever
+ * written into `estate-backups` (the R2-writing rewrite landed 2026-08-15
+ * evening), and the retention log from the second reads
+ * `2 object(s), keeping 2, deleting 0` for every prefix — exactly right. The
+ * daily cron added 2026-08-18 fills to 8 in eight days; the first real
+ * deletion is expected on day nine.
  */
 
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;

@@ -45,6 +45,11 @@ import { requireDevops } from './middleware/auth.js';
 
 export const KNOWN_BACKUP_PREFIXES = [
   'd1/library-catalog',
+  // The second library instance (the `padhard.heygabi.ai` shelf). Added
+  // 2026-08-18: the restore drill found it live with 6 works / 34 change_log
+  // rows / 32 migrations and NO backup anywhere (RECOVERY.md §1b hole #1) —
+  // absent from all three of the places a store has to be listed.
+  'd1/library-catalog-2nd',
   'd1/board-game-catalog',
   'd1/index_catalog',
   'd1/estate_auth',
@@ -52,6 +57,14 @@ export const KNOWN_BACKUP_PREFIXES = [
   'r2/library-covers',
   'r2/audiobook-covers',
   'r2/game-covers',
+  // The two gated manifest/doc buckets, added 2026-08-18 (RECOVERY.md §1b
+  // holes #5/#6). Tiny — 107 kB and 1.27 MB — and both are republished by a
+  // publisher that runs on the OWNER'S MACHINE, which is the whole reason
+  // they are worth a copy that does not depend on that machine.
+  // ⚠️ `estate-ebooks` (1.81 GB) and `estate-audio` are deliberately NOT here
+  // — see .github/workflows/backup.yml's `r2` job for that reasoning.
+  'r2/ebooks-gated',
+  'r2/estate-docs-gated',
 ] as const;
 
 export interface BackupPrefixSummary {

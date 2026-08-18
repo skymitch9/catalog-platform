@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
  * Reorder a `wrangler d1 export` dump so it actually replays.
- * (docs/access/RECOVERY.md §3b is the runbook; this is the tool it calls.)
+ * (docs/access/RECOVERY.md §3b is the runbook; this is the tool it calls, and
+ * docs/access/backup-restore.md §4b is the restore recipe it belongs to.)
+ *
+ * ⚠️ THIS IS A MANDATORY STEP OF THE D1 RESTORE PATH, not an optional tidy-up.
+ * Two of the estate's four exports do not replay without it.
  *
  * ## The bug this exists for — MEASURED 2026-08-17, not theorised
  *
@@ -37,21 +41,29 @@
  * ## What it does
  *
  * Splits the dump into statements (respecting single-quoted string literals,
- * including SQLite's doubled-quote escape) and re-emits them as:
- *
- *   1. PRAGMAs            (kept first, in order)
- *   2. every CREATE TABLE (so no INSERT can reference a missing table)
- *   3. every INSERT
- *   4. everything else    (CREATE INDEX / TRIGGER / VIEW — after the data,
- *                          which is also faster to build)
- *
- * No statement is rewritten, dropped or deduplicated; only reordered.
+ * including SQLite's doubled-quote escape) and re-emits them as PRAGMAs →
+ * every CREATE TABLE → every INSERT → everything else (indexes/triggers/
+ * views). No statement is rewritten, dropped or deduplicated; only reordered.
+ * The parsing lives in `scripts/lib/d1-dump.mjs` so it is unit-tested against
+ * the drill's exact failing pattern — see
+ * `scripts/test/reorder-d1-dump.test.mjs`.
  *
  * Verified on the drill: after reordering, both failing dumps imported clean
  * (rc=0) through `wrangler d1 execute --local --file=`, and a node:sqlite load
  * of the same files reported `PRAGMA integrity_check` = ok with ZERO
  * `foreign_key_check` violations and full row counts (library-catalog 3,649
  * rows / 26 tables; board-game-catalog 5,870 rows / 17 tables).
+ *
+ * ## ⚠️ It also refuses to let an estate_auth restore proceed blind
+ *
+ * When the dump contains an `estate_user` table, this prints the BACKUP's
+ * approved/revoked/approver/devops counts and the §3d warning before writing
+ * anything. Restoring `estate_auth` is a security event — the drill measured a
+ * backup that would silently re-approve a revoked member while every row count
+ * matched. Passing `--yes-i-checked-membership` acknowledges the warning and
+ * suppresses the non-zero exit; without it the tool still WRITES the reordered
+ * file (so nothing is blocked) but exits 3, so a script that chains straight
+ * into an import stops and a human has to look.
  *
  * ## Usage
  *
@@ -64,33 +76,19 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { splitStatements, reorderStatements, summarizeEstateAuth, estateAuthWarning } from './lib/d1-dump.mjs';
 
-const [inPath, outPath] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const acknowledged = argv.includes('--yes-i-checked-membership');
+const [inPath, outPath] = argv.filter((a) => !a.startsWith('--'));
+
 if (!inPath || !outPath) {
-  console.error('Usage: node scripts/reorder-d1-dump.mjs <in.sql> <out.sql>');
+  console.error('Usage: node scripts/reorder-d1-dump.mjs <in.sql> <out.sql> [--yes-i-checked-membership]');
   process.exit(2);
 }
 
 const sql = readFileSync(inPath, 'utf8');
-
-// Statement splitter that respects single-quoted string literals. SQLite
-// escapes an embedded quote by doubling it, which this handles naturally:
-// the closing quote flips `inStr` out and the immediately following quote
-// flips it straight back in, so `'it''s'` stays one literal.
-const stmts = [];
-let buf = '';
-let inStr = false;
-for (let i = 0; i < sql.length; i++) {
-  const ch = sql[i];
-  buf += ch;
-  if (ch === "'") inStr = !inStr;
-  else if (ch === ';' && !inStr) {
-    const s = buf.trim();
-    if (s) stmts.push(s);
-    buf = '';
-  }
-}
-if (buf.trim()) stmts.push(buf.trim());
+const stmts = splitStatements(sql);
 
 if (stmts.length < 2) {
   console.error(
@@ -100,24 +98,16 @@ if (stmts.length < 2) {
   process.exit(1);
 }
 
-const pragmas = [];
-const tables = [];
-const inserts = [];
-const rest = [];
-
-for (const s of stmts) {
-  if (/^PRAGMA\b/i.test(s)) pragmas.push(s);
-  else if (/^CREATE\s+TABLE\b/i.test(s)) tables.push(s);
-  else if (/^INSERT\s+INTO\b/i.test(s)) inserts.push(s);
-  else rest.push(s);
-}
+const { pragmas, tables, inserts, rest, ordered } = reorderStatements(stmts);
 
 if (tables.length === 0) {
   console.error(`No CREATE TABLE statements found in ${inPath} — wrong file, or the split failed.`);
   process.exit(1);
 }
 
-writeFileSync(outPath, [...pragmas, ...tables, ...inserts, ...rest].join('\n') + '\n');
+writeFileSync(outPath, ordered.join('\n') + '\n');
+
+const estateAuth = summarizeEstateAuth(stmts);
 
 console.log(
   JSON.stringify({
@@ -128,5 +118,21 @@ console.log(
     create_table: tables.length,
     inserts: inserts.length,
     other_ddl: rest.length,
+    estate_auth: estateAuth
+      ? { rows: estateAuth.rows, by_status: estateAuth.byStatus, approvers: estateAuth.approvers, devops: estateAuth.devops, parsed: estateAuth.parsed }
+      : null,
   }),
 );
+
+if (estateAuth) {
+  // stderr, so it is impossible to lose it by piping stdout's JSON somewhere.
+  console.error(estateAuthWarning(estateAuth));
+  if (!acknowledged) {
+    console.error(
+      'The reordered file WAS written — nothing is blocked. Exiting 3 so an automated\n' +
+        'chain stops here and a human reads the block above. Re-run with\n' +
+        '--yes-i-checked-membership once you have captured the CURRENT membership state.',
+    );
+    process.exit(3);
+  }
+}

@@ -47,12 +47,63 @@ test('KNOWN_BACKUP_PREFIXES matches the exact set backup.yml writes and prune-r2
       'd1/estate_auth',
       'd1/index_catalog',
       'd1/library-catalog',
+      // Added 2026-08-18 by the restore-drill follow-up: the padhard shelf had
+      // no backup at all (RECOVERY.md §1b hole #1).
+      'd1/library-catalog-2nd',
       'firestore/audiobook-catalog',
       'r2/audiobook-covers',
+      // Added 2026-08-18: tiny gated manifest/doc buckets (§1b holes #5/#6).
+      'r2/ebooks-gated',
+      'r2/estate-docs-gated',
       'r2/game-covers',
       'r2/library-covers',
     ].sort(),
   );
+});
+
+/**
+ * ⚠️ MECHANICAL GUARD, not advice. backups.ts's header has always TOLD the
+ * next person to update all three places when a store is added — and the
+ * restore drill found `library-catalog-2nd` missing from all three anyway.
+ * This reads the retention job's real argument list out of backup.yml and
+ * compares it to KNOWN_BACKUP_PREFIXES, so the two lists can no longer drift
+ * silently: adding a store to one and not the other fails here.
+ *
+ * The third place (the d1/r2 job matrices that WRITE the objects) is covered
+ * by the next test.
+ */
+test('⚠️ backup.yml\'s retention job prunes exactly KNOWN_BACKUP_PREFIXES — no drift', async () => {
+  const yml = await readFile(new URL('../../../.github/workflows/backup.yml', import.meta.url), 'utf8');
+  const invocation = yml.match(/node scripts\/prune-r2-backups\.mjs([\s\S]*?)--keep\s+(\d+)/);
+  assert.ok(invocation, 'could not find the prune-r2-backups.mjs invocation in backup.yml');
+
+  const pruned = invocation[1]!
+    .replace(/\\\s*\n/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.includes('/'));
+  assert.deepEqual(pruned.sort(), [...KNOWN_BACKUP_PREFIXES].sort());
+  assert.equal(Number(invocation[2]), 8, 'retention depth changed — RECOVERY.md §1b hole #10 tracks this number');
+});
+
+/**
+ * ⚠️ The WRITE side of the same drift. Every `<kind>/<store>` this Worker
+ * reports on must be a store some job in backup.yml actually writes, and
+ * vice versa — a prefix that is graded but never written reads `danger`
+ * forever, and a store that is written but ungraded is invisible.
+ */
+test('⚠️ backup.yml\'s job matrices write exactly KNOWN_BACKUP_PREFIXES — no drift', async () => {
+  const yml = await readFile(new URL('../../../.github/workflows/backup.yml', import.meta.url), 'utf8');
+
+  // d1 job: `- name: <store>` entries in the matrix include list.
+  const d1 = [...yml.matchAll(/^\s+- name: (\S+)\n\s+id: /gm)].map((m) => `d1/${m[1]}`);
+  // r2 job: the `bucket: [a, b, c]` matrix.
+  const r2Line = yml.match(/^\s+bucket: \[([^\]]+)\]/m);
+  assert.ok(r2Line, 'could not find the r2 matrix in backup.yml');
+  const r2 = r2Line[1]!.split(',').map((b) => `r2/${b.trim()}`);
+  // firestore job: one fixed key.
+  const firestore = [...yml.matchAll(/KEY="(firestore\/[^/]+)\//g)].map((m) => m[1]);
+
+  assert.deepEqual([...d1, ...firestore, ...r2].sort(), [...KNOWN_BACKUP_PREFIXES].sort());
 });
 
 test('summarizeBackups: empty bucket -> every prefix null/0, newestOverall null', async () => {
@@ -141,7 +192,10 @@ test('gradeBackupAge: boundaries are inclusive-ok — exactly 14d/45d do NOT tri
 test('gradeBackups: one row per kind, covering exactly the known prefixes', () => {
   const { kinds } = gradeBackups(summaryAged(1), NOW);
   assert.deepEqual(kinds.map((k) => k.kind), ['d1', 'firestore', 'r2']);
-  assert.deepEqual(kinds.map((k) => k.stores), [4, 1, 3]);
+  // 5 D1 databases (library-catalog-2nd joined 2026-08-18), 1 Firestore
+  // project, 5 R2 buckets (ebooks-gated + estate-docs-gated joined the same
+  // day) — RECOVERY.md §1b.
+  assert.deepEqual(kinds.map((k) => k.stores), [5, 1, 5]);
   // Every known prefix belongs to exactly one kind — no store can go ungraded.
   assert.equal(kinds.reduce((n, k) => n + k.stores, 0), KNOWN_BACKUP_PREFIXES.length);
 });
