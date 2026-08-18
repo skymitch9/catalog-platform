@@ -488,30 +488,28 @@ including the measured counts and what was NOT verified, is in
 [`info/index-worker-design.md` §8.5](info/index-worker-design.md). Only the
 work that has NOT been done is listed here.
 
-1. **A confirm-queue affordance for the owner — THE PAGE HALF ONLY; the API
-   half landed 2026-08-17.** `GET /api/series` now carries `pending_open`,
-   `pending_detail` and `pending_url` **for approvers** (absent for everyone
-   else — a count is estate-wide information), so the page no longer has to
-   know a second endpoint exists: it reads the answer it already fetches.
-   ⚠️ **Nothing in a browser reads them yet** — measured 2026-08-17, the only
-   occurrence of "pending" in `sites/heygabi-home/public/series/series.js` is
-   the `estate_pending` auth-error case, and `/admin` mentions no series at
-   all. What remains is one banner on `/series` (or the `/admin` card beside
-   Estate Operations) rendering `pending_detail` and linking the queue. Size
-   XS now, and it is a `sites/` change plus a Pages deploy — deliberately NOT
-   done by the index-worker pass that built the API half.
-   **One row is waiting**: *"The Survivalist Series"* ~ *"The
-   Survivalist"* (both audiobook, so it may belong in the audiobook catalog's
-   own corrections layer rather than as an index merge — that is the decision).
-   ⚠️ **`/series` has since produced EVIDENCE for that decision, observed live
-   2026-08-17** — and it points at *separate*, not merge: *The Survivalist*
-   holds one volume, **Frontier Justice, Arthur T. Bradley, 2014**, while *The
-   Survivalist Series* holds books 6–9 by **A. American**. Two authors, so two
-   series that merely share a name; merging would fuse two people's work under
-   one key. Resolving it `{"action":"separate"}` would also retire the phantom
-   *"Book 1 — nobody in the estate has this one"* row `/series` now shows on
-   the A. American run — the visible cost of an unanswered queue. **Still the
+1. 🧑 **OWNER DECISION — one near miss is waiting, and the evidence is in.**
+   ⚠️ **The build half of this item is finished and moved whole to
+   [`DONE.md`](DONE.md) (2026-08-18)** — both the API half (2026-08-17) and
+   the `/series` banner that reads it. What is left here is not work; it is a
+   decision only the owner can take, so the item is split rather than parked:
+   a finished build does not sit in the active list waiting for a human, and a
+   human's pending decision does not get archived as done.
+   **The row**: *"The Survivalist Series"* ~ *"The Survivalist"* (both
+   audiobook, so it may belong in the audiobook catalog's own corrections
+   layer rather than as an index merge — that is the decision).
+   ⚠️ **`/series` has produced EVIDENCE for it, observed live 2026-08-17** —
+   and it points at *separate*, not merge: *The Survivalist* holds one volume,
+   **Frontier Justice, Arthur T. Bradley, 2014**, while *The Survivalist
+   Series* holds books 6–9 by **A. American**. Two authors, so two series that
+   merely share a name; merging would fuse two people's work under one key.
+   Resolving it `{"action":"separate"}` would also retire the phantom
+   *"Book 1 — nobody in the estate has this one"* row `/series` shows on the
+   A. American run — the visible cost of an unanswered queue. **Still the
    owner's call**; recorded as evidence, not as a decision taken.
+   ⚠️ **There is no UI for the resolving POST and that was deliberate** — see
+   `DONE.md`. Taking the decision today means one authenticated
+   `POST /api/series/pending/:fold` with an owner's own bearer.
 2. **`/universes`' CSP `frame-src` does not name `auth.heygabi.ai`** — noticed
    while writing `/series`' own rule and deliberately NOT fixed there (a page
    nobody is building is not a page to change blind). `estate-auth.js`'s

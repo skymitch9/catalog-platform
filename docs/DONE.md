@@ -13,6 +13,71 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📚 THE CONFIRM QUEUE IS ANNOUNCED — `/series` READS IT — ✅ DONE 2026-08-18
+
+The page half of the series registry's confirm-queue affordance, moved from
+[`TODO.md`](TODO.md) §"Series registry" item 1. The API half landed
+2026-08-17 and **nothing in a browser read it** for a day: `GET /api/series`
+carried `pending_open` / `pending_detail` / `pending_url` for approvers and
+`/series` ignored all three, so the estate's one real near miss stayed
+invisible on the surface built to surface it.
+
+⚠️ **The still-OPEN half stayed in `TODO.md` rather than riding along**: the
+Survivalist decision is the owner's, and archiving a human's pending decision
+as "done" because the code around it shipped is exactly the silent-staleness
+this archive exists to avoid. A finished build does not sit in the active
+list; a waiting decision does.
+
+**Shipped** (`3a3b0f2`, `sites/heygabi-home/public/series/`):
+
+| Piece | What it does |
+|---|---|
+| `#ser-pending` | The banner. Ships **hidden and empty**; filled only from the list answer |
+| `renderPending()` | `pending_detail` **verbatim** — the Worker's own sentence, not re-worded here |
+| `pendingOpenBtn` | Fetches the queue and renders each open row in words |
+| `predeploy.checks.json` | `id="ser-pending"` + `pending_detail`, in both `/series/` blocks |
+
+**Two decisions, and their reasons, because both are the kind that get
+"helpfully" undone later:**
+
+1. ⚠️ **The page runs NO approver check of its own, on purpose.** The three
+   fields are **absent rather than zeroed** for a non-approver, so *presence
+   is the gate*. The page holds a Firebase user and a bearer token and
+   deliberately does not use them for this: the index's approver set is
+   `OWNER_EMAILS`, which the browser must never hold a copy of, and a
+   client-side list would be a second source of truth that drifts silently
+   the day the Worker's changes. Rule, in the file: fields absent → nothing;
+   `pending_open === 0` → nothing; `> 0` → the banner.
+2. ⚠️ **The queue is FETCHED, not linked — because a link here would lie.**
+   `pending_url` sits below `requireOwnerStanding()`, which authenticates by
+   `Authorization: Bearer` **only**. An `<a href>` cannot carry a header, so
+   the obvious implementation of "link the queue" hands the owner a raw
+   `{"error":"unauthenticated"}` 401 — a dead link *and* a bare HTTP status
+   shown to a person. The disclosure button calls the same URL through
+   `callIndex()`. The path is still **read from the response** (the whole
+   point of the field: the page need not know a second endpoint exists), but
+   guarded to a same-origin `/api/` path — a URL out of a response body is a
+   place a bearer token could be sent somewhere it should not go.
+
+**Deliberately NOT built: the resolving POST.** The banner reads the queue; it
+does not decide it. `POST /api/series/pending/:fold` either merges two series
+under one **persisted key** or records that they are genuinely different, and
+the row is kept after resolution so the decision is never re-asked — an
+irreversible, once-only write that deserves a considered affordance rather
+than a button bolted to a notice. The banner says so in words instead of
+offering a one-click merge.
+
+Toned `--et-accent-2` (the "yours to act on" colour `#ser-status` already uses
+for `data-tone="owner"`), never `--et-danger`: nothing is broken and nothing
+is waiting to merge — two series simply stay two until somebody decides.
+
+⚠️ **NOT VERIFIED, and it cannot be from an unauthenticated fetch:** that the
+banner *renders*. The predeploy markers prove the shell and the module
+shipped; the fields only exist for a signed-in approver, so whether the words
+appear needs the owner's own eyes at
+**<https://heygabi.ai/series/>** — signed in, the banner sits directly under
+the status line, above the filter box.
+
 ## ✂️ COPY TRIMMED ACROSS THE ESTATE — ✅ DONE 2026-08-17
 
 **Estate-wide ask, landed the session it was raised, so it never sat in
