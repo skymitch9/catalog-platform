@@ -391,7 +391,7 @@ async function savePref(key, value) {
   let res;
   try {
     res = await fetch(PREFS_URL, {
-      method: 'PUT',
+      method: 'POST',
       headers: { Authorization: `Bearer ${await idToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(prefsState.prefs),
     });

@@ -8,7 +8,7 @@
  * ⚠️ THE TWO DOORS ARE DELIBERATELY DIFFERENT, AND NOT IN THE WAY THE AGENT
  * BOARD'S ARE:
  *
- *   PUT  requireDevops()                    — a PERSON, in a browser. Only a
+ *   POST requireDevops()                    — a PERSON, in a browser. Only a
  *                                             human decides what interrupts a
  *                                             human.
  *   GET  requireDevops() OR the conductor   — a person to render the toggles,
@@ -204,8 +204,20 @@ notifyPrefsRoutes.get('/estate/ops/notify-prefs', async (c: Context<AppBindings>
   return c.json(answer);
 });
 
-/** PUT — a person, and only a person. */
-notifyPrefsRoutes.put('/estate/ops/notify-prefs', requireDevops(), async (c: Context<AppBindings>) => {
+/**
+ * POST — a person, and only a person.
+ *
+ * ⚠️ POST AND NOT PUT, AND THIS WAS FOUND BY CHECKING THE PREFLIGHT RATHER THAN
+ * BY ASSUMING THE CORS MOUNT WAS ENOUGH. `adminCors()` answers
+ * `Access-Control-Allow-Methods: GET,POST,OPTIONS` — mounting it on this path
+ * makes the route reachable, but a PUT still fails the browser's preflight
+ * while answering `curl` perfectly. That is the same shape as the ingestion
+ * pause card's bug (bc6fc2b), one layer deeper: there the MOUNT was missing,
+ * here the mount was present and the METHOD was not in it. Measured live
+ * 2026-08-18 before this was shipped. Every other write door in this Worker is
+ * a POST; matching them costs nothing and widens no CORS policy.
+ */
+notifyPrefsRoutes.post('/estate/ops/notify-prefs', requireDevops(), async (c: Context<AppBindings>) => {
   let body: unknown;
   try {
     body = await c.req.json();

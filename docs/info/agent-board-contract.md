@@ -365,7 +365,7 @@ generalises to anything else that flows the other way.**
 |---|---|
 | **Where** | `estate_prefs` table (migration 0014, additive), key `notify` |
 | **Read** | `GET /api/estate/ops/notify-prefs` — `requireDevops()` **OR the conductor bearer** |
-| **Write** | `PUT` same path — `requireDevops()` **only, never the conductor** |
+| **Write** | `POST` same path — `requireDevops()` **only, never the conductor**. ⚠️ POST not PUT: `adminCors()` allows `GET,POST,OPTIONS`, so a PUT passes the mount and still fails the browser preflight while answering `curl` |
 | **Classes** | served by the Worker (`NOTIFY_CLASSES`), not hard-coded in the page |
 | **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) — the one control on that page |
 
@@ -385,7 +385,7 @@ the names of four toggles and whether they are on.
 
 ⚠️ **THE WRITE DOOR IS NEVER THE MACHINE'S.** A machine must not be able to
 quietly switch off the alert that would have said it was misbehaving. Verified
-live 2026-08-18: `PUT` with a valid conductor bearer answers **401**.
+live 2026-08-18: `POST` with a valid conductor bearer answers **401**.
 
 ⚠️ **Defaults are asymmetric on purpose** — `red` ON, everything else OFF. A
 phone that buzzes for every routine success is a phone that gets silenced, and a
