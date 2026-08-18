@@ -340,6 +340,58 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   border-radius: var(--et-radius-lg);
   background: var(--et-surface);
 }
+/* Ingestion pause card (owner order 2026-08-18). Same panel shell as
+   .ops-run / .step-row so it reads as one more control in the same family,
+   with the status dot vocabulary the read-only rows already use — an owner
+   who has learnt "amber means look at me" on this page does not have to
+   learn a second colour language for the one control that stops everything. */
+.ing-card {
+  display: grid;
+  gap: .7rem;
+  padding: .85rem .95rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+}
+.ing-status { display: flex; align-items: flex-start; gap: .75rem; }
+.ing-status-body { flex: 1 1 auto; min-width: 0; }
+.ing-status[data-state="ok"]      .dot { background: var(--et-ok);     box-shadow: 0 0 0 3px var(--et-ok-bg); }
+.ing-status[data-state="warn"]    .dot { background: var(--et-warn);   box-shadow: 0 0 0 3px var(--et-warn-bg); }
+.ing-status[data-state="danger"]  .dot { background: var(--et-danger); box-shadow: 0 0 0 3px var(--et-danger-bg); }
+.ing-status[data-state="pending"] .dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+.ing-headline { margin: 0; font-weight: 700; text-wrap: pretty; }
+.ing-lines { display: grid; gap: .2rem; margin: .3rem 0 0; }
+.ing-lines p { margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.ing-buttons { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.ing-timer { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.ing-label { font-size: var(--et-text-small); font-weight: 600; flex: 0 0 auto; }
+.ing-tz {
+  margin-left: .3rem;
+  padding: .05em .55em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius-pill);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+  white-space: nowrap;
+}
+.ing-input {
+  min-height: 34px;
+  padding: .25em .6em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: var(--et-bg, var(--et-surface));
+  color: var(--et-fg);
+  font: inherit;
+  font-size: var(--et-text-small);
+}
+.ing-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .ing-status[data-state="pending"] .dot { animation: none !important; }
+}
+
 .ops-run-msg { font-size: var(--et-text-small); color: var(--et-muted); flex: 1 1 16rem; text-wrap: pretty; }
 .ops-run-msg[data-tone="ok"] { color: var(--et-ok); }
 .ops-run-msg[data-tone="warn"] { color: var(--et-danger); }
@@ -484,6 +536,72 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       Run controls — devops and approvers only.
     </p>
     <div id="ops-controls">
+      <!-- Ingestion pause / resume (owner order 2026-08-18, verbatim: "give
+           me a way to pause and start the process flow on the GABI dashboard.
+           Tonight starting at 7pm I need all of this paused until midnight.
+           So let me also set pause timers on the ui. I can say don't even
+           check to start until x time.").
+
+           ⚠️ IT SITS FIRST, ABOVE THE RUN BUTTON, ON PURPOSE. "Is anything
+           currently paused" is the question that has to be answered BEFORE
+           someone presses Run — a Run button pressed against a paused
+           ingestion produces a silence that looks identical to a broken
+           pipeline, and the owner would have no way to tell the two apart.
+           Putting the state line at the top of Operations means the first
+           thing the section says is whether the machine is even listening.
+
+           ⚠️ SAME TWO-TAP GRAMMAR AS EVERY OTHER MUTATING CONTROL HERE
+           (assets/estate-controls.js confirmBtn — the idiom /admin's
+           revoke/role buttons and the pipeline steps above already use). The
+           two datetime pickers are NOT a third gesture: an input is not a
+           commit, and each picker's value only reaches the control document
+           through a confirmBtn that arms and confirms exactly like the
+           others. Nothing on this card writes on a single tap.
+
+           ⚠️ TIMES ARE PHOENIX TIME, SAID OUT LOUD ON BOTH LABELS. A
+           datetime-local input hands back a bare wall clock with no zone;
+           assets/ingestion-time.js pins it to America/Phoenix rather than to
+           whatever zone the phone is carrying, so a pause set from a laptop
+           on Eastern still means 7pm at home. -->
+      <h3 class="step-list-h">Ingestion — pause &amp; resume</h3>
+      <p class="section-note step-section-note">
+        Stops and starts the ingestion process flow on the home machine.
+        Everything here needs a second tap to confirm, and both times are read
+        as <strong>Phoenix time</strong>.
+      </p>
+      <div id="ingestion-card" class="ing-card">
+        <div id="ingestion-status" class="ing-status" data-state="pending">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="ing-status-body">
+            <p id="ingestion-headline" class="ing-headline">Reading the ingestion control…</p>
+            <div id="ingestion-lines" class="ing-lines"></div>
+          </div>
+        </div>
+
+        <div id="ingestion-buttons" class="ing-buttons"></div>
+
+        <div class="ing-timer">
+          <label class="ing-label" for="ingestion-pause-until">
+            Pause until… <span class="ing-tz">Phoenix time</span>
+          </label>
+          <input id="ingestion-pause-until" class="ing-input" type="datetime-local">
+          <span id="ingestion-pause-until-slot"></span>
+        </div>
+
+        <div class="ing-timer">
+          <!-- The owner's own phrase, kept as the label rather than
+               paraphrased into "defer next check": it is the sentence he
+               will look for. -->
+          <label class="ing-label" for="ingestion-dont-check">
+            Don’t even check to start until… <span class="ing-tz">Phoenix time</span>
+          </label>
+          <input id="ingestion-dont-check" class="ing-input" type="datetime-local">
+          <span id="ingestion-dont-check-slot"></span>
+        </div>
+
+        <p id="ingestion-msg" class="ops-run-msg"></p>
+      </div>
+
       <div class="ops-run">
         <button id="ops-run-pipeline" class="btn" type="button">▶ Run Automated Book Pipeline</button>
         <span id="ops-run-msg" class="ops-run-msg"></span>

@@ -396,3 +396,409 @@ opsRoutes.post('/estate/ops/pipeline/force-upload', requireDevops(), async (c) =
       'anything moved.',
   });
 });
+
+// ---------------------------------------------------------------------------
+// Ingestion pause / resume (owner order 2026-08-18, verbatim: "give me a way
+// to pause and start the process flow on the GABI dashboard. Tonight starting
+// at 7pm I need all of this paused until midnight. So let me also set pause
+// timers on the ui. I can say don't even check to start until x time.").
+//
+// ⚠️ THIS IS A STATE DOCUMENT, NOT A REQUEST DOCUMENT — the one place this
+// pair of routes deliberately departs from everything above it in this file.
+// The triggers above write into `pipeline_requests`, which is create-only,
+// unreadable, consumed once and deleted; that shape is right for "do a thing
+// now" and wrong for "and stay this way for five hours". A pause has to
+// SURVIVE being read: the home machine consults it before every run, and this
+// page has to be able to render what is currently true (an owner who cannot
+// see that his 7pm pause landed has not been given a pause control, he has
+// been given a button). So the control lives in its own single document that
+// is read and merged, never queued.
+//
+// ⚠️ THE CONTRACT IS OWNED ELSEWHERE, AND WAS RECONCILED AGAINST THE READER
+// BEFORE THIS SHIPPED (2026-08-18). The processor that obeys this document is
+// audiobook_catalog's `app/core/ingest_control.py` — read directly, since the
+// concurrent build had landed it in that repo's working tree but had not yet
+// committed it or written its info doc. Two things came back different from
+// the shape this route was first written to, and BOTH were changed here
+// rather than there, per the brief's rule that their names win:
+//
+//   1. the document is `ingestion_control/state`, not `.../current`
+//      (CONTROL_COLLECTION / CONTROL_DOC in that file; the /dev/ lane uses
+//      `ingestion_control_dev`, which this apex-only page never touches);
+//   2. their `paused` flag is an UNCONDITIONAL block — see the note below,
+//      which is the more consequential of the two.
+// The field names themselves matched exactly (paused, paused_until,
+// dont_check_until, pause_windows[{from,until}], updated_by, updated_at).
+//
+// ⚠️ "PAUSE UNTIL" WRITES `paused: false`, DELIBERATELY, AND IT IS NOT A HALF
+// SET FLAG. control_blocks_start() checks, in order: unreadable → paused ===
+// true → paused_until in the future → inside a pause window. Step 2 never
+// consults the timer, so writing BOTH would leave the flag true at midnight
+// and the machine paused indefinitely — the exact opposite of "paused until
+// midnight". A timed pause is therefore a timer with the flag OFF, and it
+// expires by itself, which is what the owner asked for. "Pause now" is the
+// flag with no timer; Resume clears everything.
+// ---------------------------------------------------------------------------
+
+/**
+ * The control document — path pinned to audiobook_catalog's CONTROL_COLLECTION
+ * + CONTROL_DOC. Prod collection unconditionally, same reasoning as
+ * PIPELINE_REQUESTS_COLLECTION above: production is the lane that actually
+ * ingests on the home machine, and a dev-lane pause that paused nothing would
+ * be worse than no control at all.
+ */
+export const INGESTION_CONTROL_DOC = 'ingestion_control/state';
+
+/** The four writable actions the status card offers. `resume` is the one
+ *  that must always work: it clears every pause the others can set. */
+export const INGESTION_ACTIONS = ['pause', 'resume', 'pause_until', 'dont_check_until'] as const;
+export type IngestionAction = (typeof INGESTION_ACTIONS)[number];
+
+export function isIngestionAction(value: unknown): value is IngestionAction {
+  return typeof value === 'string' && (INGESTION_ACTIONS as readonly string[]).includes(value);
+}
+
+export interface IngestionWindow {
+  from: string | null;
+  until: string | null;
+}
+
+export interface IngestionControl {
+  paused: boolean;
+  paused_until: string | null;
+  dont_check_until: string | null;
+  pause_windows: IngestionWindow[];
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+type FsValue = Record<string, unknown>;
+
+/** Decode the handful of Firestore REST typed values this document uses.
+ *  Deliberately narrow — an unexpected type decodes to null rather than to
+ *  something plausible, so a malformed field reads as "unset", never as a
+ *  pause that is not really there. */
+function fsValue(v: unknown): unknown {
+  if (v === null || typeof v !== 'object') return null;
+  const o = v as FsValue;
+  if ('nullValue' in o) return null;
+  if (typeof o.stringValue === 'string') return o.stringValue;
+  if (typeof o.booleanValue === 'boolean') return o.booleanValue;
+  if (typeof o.timestampValue === 'string') return o.timestampValue;
+  if (o.mapValue && typeof o.mapValue === 'object') {
+    return fsMap((o.mapValue as { fields?: Record<string, unknown> }).fields ?? {});
+  }
+  if (o.arrayValue && typeof o.arrayValue === 'object') {
+    const values = (o.arrayValue as { values?: unknown[] }).values ?? [];
+    return values.map(fsValue);
+  }
+  return null;
+}
+
+function fsMap(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(fields)) out[k] = fsValue(fields[k]);
+  return out;
+}
+
+function asIsoOrNull(v: unknown): string | null {
+  return typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : null;
+}
+
+/**
+ * A Firestore REST document (or null / 404 shape) → the plain control object.
+ * Pure, so every normalization below is testable without a live project.
+ * A document that exists but is empty decodes to the same "nothing is
+ * paused" shape as a fresh one, which is the safe reading: a control
+ * surface must never invent a pause nobody set.
+ */
+export function decodeIngestionControl(doc: unknown): IngestionControl | null {
+  const fields = (doc as { fields?: Record<string, unknown> } | null)?.fields;
+  if (!fields) return null;
+  const m = fsMap(fields);
+  const rawWindows = Array.isArray(m.pause_windows) ? (m.pause_windows as unknown[]) : [];
+  return {
+    paused: m.paused === true,
+    paused_until: asIsoOrNull(m.paused_until),
+    dont_check_until: asIsoOrNull(m.dont_check_until),
+    pause_windows: rawWindows
+      .filter((w): w is Record<string, unknown> => !!w && typeof w === 'object')
+      .map((w) => ({ from: asIsoOrNull(w.from), until: asIsoOrNull(w.until) })),
+    updated_by: typeof m.updated_by === 'string' ? m.updated_by : null,
+    updated_at: asIsoOrNull(m.updated_at),
+  };
+}
+
+/** The control object → Firestore REST typed fields. `null` is written as an
+ *  explicit nullValue rather than omitted, so clearing a timer actually
+ *  clears it instead of leaving the previous value in place. */
+export function ingestionControlFields(control: IngestionControl) {
+  return {
+    paused: { booleanValue: control.paused },
+    paused_until: control.paused_until
+      ? { stringValue: control.paused_until }
+      : { nullValue: null as null },
+    dont_check_until: control.dont_check_until
+      ? { stringValue: control.dont_check_until }
+      : { nullValue: null as null },
+    pause_windows: {
+      arrayValue: {
+        values: control.pause_windows.map((w) => ({
+          mapValue: {
+            fields: {
+              from: w.from ? { stringValue: w.from } : { nullValue: null as null },
+              until: w.until ? { stringValue: w.until } : { nullValue: null as null },
+            },
+          },
+        })),
+      },
+    },
+    updated_by: control.updated_by
+      ? { stringValue: control.updated_by.slice(0, 120) }
+      : { nullValue: null as null },
+    updated_at: control.updated_at
+      ? { stringValue: control.updated_at }
+      : { nullValue: null as null },
+  };
+}
+
+/** An empty control — what a missing document means. */
+export function emptyIngestionControl(): IngestionControl {
+  return {
+    paused: false,
+    paused_until: null,
+    dont_check_until: null,
+    pause_windows: [],
+    updated_by: null,
+    updated_at: null,
+  };
+}
+
+/**
+ * Compute the document to write. Pure: (current, action, until, actor, now)
+ * → the next control, or an error string for the caller to turn into a 400.
+ *
+ * ⚠️ SELF-CLEARING IS PART OF EVERY WRITE, not a separate sweep (owner ask:
+ * "past times self-clear on next write"). Any timer already in the past is
+ * dropped here, so the document can never accumulate a museum of expired
+ * pauses that a later reader has to reason about. It is done on WRITE and
+ * never on read: a GET that mutated would make simply LOOKING at this page
+ * change the machine's state, which is the kind of surprise a control
+ * surface must not have.
+ *
+ * `resume` is deliberately total — it clears the flag, both timers, and any
+ * window currently in force, because the one thing an owner must be able to
+ * trust about a Resume button is that pressing it leaves nothing behind.
+ */
+export function nextIngestionControl(input: {
+  current: IngestionControl | null;
+  action: IngestionAction;
+  until?: unknown;
+  actor: string;
+  nowMs: number;
+}): { control: IngestionControl } | { error: string; detail: string } {
+  const now = input.nowMs;
+  const nowIso = new Date(now).toISOString();
+  const base = input.current ?? emptyIngestionControl();
+
+  // Self-clear: anything whose moment has passed is gone from this write on.
+  const keptWindows = base.pause_windows.filter(
+    (w) => w.until !== null && Date.parse(w.until) > now,
+  );
+  const keptPausedUntil =
+    base.paused_until && Date.parse(base.paused_until) > now ? base.paused_until : null;
+  const keptDontCheck =
+    base.dont_check_until && Date.parse(base.dont_check_until) > now ? base.dont_check_until : null;
+
+  const next: IngestionControl = {
+    paused: base.paused,
+    paused_until: keptPausedUntil,
+    dont_check_until: keptDontCheck,
+    pause_windows: keptWindows,
+    updated_by: input.actor,
+    updated_at: nowIso,
+  };
+
+  if (input.action === 'pause') {
+    next.paused = true;
+    next.paused_until = null; // an indefinite pause has no end time by definition
+    return { control: next };
+  }
+
+  if (input.action === 'resume') {
+    next.paused = false;
+    next.paused_until = null;
+    next.dont_check_until = null;
+    // A window in force would otherwise re-pause it seconds later, which
+    // would read as "Resume did nothing".
+    next.pause_windows = keptWindows.filter(
+      (w) => w.from !== null && Date.parse(w.from) > now,
+    );
+    return { control: next };
+  }
+
+  // The two timed actions share their validation: a real ISO instant, in the
+  // future. "In the past" is refused rather than silently accepted, because
+  // the write would self-clear it on the spot and the owner would be looking
+  // at a control that reported success and changed nothing.
+  const until = typeof input.until === 'string' ? Date.parse(input.until) : NaN;
+  if (!Number.isFinite(until)) {
+    return {
+      error: 'invalid_until',
+      detail: 'That time could not be read. Pick a date and time and try again.',
+    };
+  }
+  if (until <= now) {
+    return {
+      error: 'until_in_the_past',
+      detail: 'That time has already passed — pick a time in the future.',
+    };
+  }
+  const untilIso = new Date(until).toISOString();
+
+  if (input.action === 'pause_until') {
+    // Timer ON, flag OFF — see the section header. The flag is cleared
+    // EXPLICITLY rather than left alone, because a "Pause until midnight"
+    // pressed while an indefinite pause was already in force would otherwise
+    // inherit that flag and never expire.
+    next.paused = false;
+    next.paused_until = untilIso;
+    return { control: next };
+  }
+
+  next.dont_check_until = untilIso;
+  return { control: next };
+}
+
+/**
+ * GET /api/estate/ops/ingestion — read the control document.
+ *
+ * Read through the WORKER rather than straight off the public Firestore REST
+ * path the way the status page reads pipeline_status/current. Two reasons,
+ * and the second is the load-bearing one: (1) this card is gated to devops
+ * anyway, so there is nothing to gain from an anonymous read; (2) it means
+ * this page never needs `allow read: if true` on the control collection, so
+ * the audiobook_catalog side is free to keep the document closed like
+ * pipeline_requests. Choosing the public path would have quietly imposed a
+ * rules change on a repo this build is not allowed to touch.
+ *
+ * Answers 200 with `control: null` when the document does not exist — a
+ * missing control is a real, ordinary state ("nobody has ever paused"), not
+ * an error, and the card words it as such.
+ */
+opsRoutes.get('/estate/ops/ingestion', requireDevops(), async (c) => {
+  const { sa, unset } = serviceAccountOrUnset(c);
+  if (!sa) return unset!;
+
+  const accessToken = await mintAccessToken(sa);
+  let res: Response;
+  try {
+    res = await firestoreRequest(sa, accessToken, 'GET', INGESTION_CONTROL_DOC);
+  } catch {
+    return c.json({ error: 'firestore_unreachable' }, 502);
+  }
+  if (res.status === 404) {
+    return c.json({ exists: false, control: null, now: new Date().toISOString(), doc: INGESTION_CONTROL_DOC });
+  }
+  if (!res.ok) return c.json({ error: 'firestore_error', status: res.status }, 502);
+
+  const doc = await res.json().catch(() => null);
+  const control = decodeIngestionControl(doc);
+  return c.json({
+    exists: control !== null,
+    control,
+    now: new Date().toISOString(),
+    doc: INGESTION_CONTROL_DOC,
+  });
+});
+
+/**
+ * POST /api/estate/ops/ingestion — pause, resume, or set a timer.
+ *
+ * Same requireDevops() tier as every other control in this file, so the
+ * refusal wording the status page already has for 401/403 covers this too.
+ *
+ * ⚠️ NO BUSY-CHECK, DELIBERATELY, unlike every route above. checkPipelineBusy()
+ * exists to stop a caller QUEUEING a run that would be refused — but pausing
+ * during a run is not a mistake, it is the single most likely moment someone
+ * reaches for this control. And Resume must never be blocked by anything: a
+ * control that can be set but not cleared is worse than no control.
+ *
+ * The write is a PATCH with an explicit updateMask (never a whole-document
+ * PUT), so fields this route does not own — anything the home machine adds
+ * later — survive untouched. `pause_windows` is in the mask ONLY when a
+ * window actually expired and was dropped, so an ordinary pause/resume can
+ * never clobber a window list written by the other side.
+ */
+opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { action?: unknown; until?: unknown } | null;
+  const action = body?.action;
+  if (!isIngestionAction(action)) {
+    return c.json(
+      { error: 'invalid_action', detail: 'Unknown control.', choices: INGESTION_ACTIONS },
+      400,
+    );
+  }
+
+  const { sa, unset } = serviceAccountOrUnset(c);
+  if (!sa) return unset!;
+  const accessToken = await mintAccessToken(sa);
+
+  let current: IngestionControl | null = null;
+  try {
+    const readRes = await firestoreRequest(sa, accessToken, 'GET', INGESTION_CONTROL_DOC);
+    if (readRes.ok) current = decodeIngestionControl(await readRes.json().catch(() => null));
+    else if (readRes.status !== 404) {
+      return c.json({ error: 'firestore_error', status: readRes.status }, 502);
+    }
+  } catch {
+    return c.json({ error: 'firestore_unreachable' }, 502);
+  }
+
+  const actor = c.get('actor');
+  const computed = nextIngestionControl({
+    current,
+    action,
+    until: body?.until,
+    actor: `estate-ops:${actor.email}`,
+    nowMs: Date.now(),
+  });
+  if ('error' in computed) return c.json(computed, 400);
+  const control = computed.control;
+
+  const windowsChanged =
+    (current?.pause_windows.length ?? 0) !== control.pause_windows.length;
+  const mask = ['paused', 'paused_until', 'dont_check_until', 'updated_by', 'updated_at'];
+  if (windowsChanged) mask.push('pause_windows');
+  const query = mask.map((f) => `updateMask.fieldPaths=${f}`).join('&');
+
+  const allFields = ingestionControlFields(control) as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const f of mask) fields[f] = allFields[f];
+
+  let writeRes: Response;
+  try {
+    writeRes = await firestoreRequest(sa, accessToken, 'PATCH', `${INGESTION_CONTROL_DOC}?${query}`, {
+      fields,
+    });
+  } catch {
+    return c.json({ error: 'firestore_unreachable' }, 502);
+  }
+  if (!writeRes.ok) return c.json({ error: 'firestore_error', status: writeRes.status }, 502);
+
+  // The audit line — who paused what, when. Same shape and role as the
+  // pipeline_step_requested / role-grant lines.
+  console.log(
+    JSON.stringify({
+      evt: 'ingestion_control_set',
+      actor: actor.email,
+      action,
+      paused: control.paused,
+      paused_until: control.paused_until,
+      dont_check_until: control.dont_check_until,
+      at: control.updated_at,
+    }),
+  );
+
+  return c.json({ ok: true, action, control, doc: INGESTION_CONTROL_DOC });
+});

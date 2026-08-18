@@ -50,6 +50,12 @@
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
 import { actionBtn, confirmBtn } from '../assets/estate-controls.js';
+import {
+  describeIngestion,
+  isoToPhoenixLocal,
+  phoenixLocalToIso,
+  wordTime,
+} from '../assets/ingestion-time.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
 const TICK_INTERVAL_MS = 5_000;
@@ -1468,6 +1474,239 @@ if (opsForceUploadBtn) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Ingestion pause / resume (owner order 2026-08-18, verbatim: "give me a way
+// to pause and start the process flow on the GABI dashboard. Tonight starting
+// at 7pm I need all of this paused until midnight. So let me also set pause
+// timers on the ui. I can say don't even check to start until x time.").
+//
+// ⚠️ EVERY WORD ON THIS CARD IS DECIDED IN assets/ingestion-time.js, NOT HERE.
+// That file is pure, has no imports, and is pinned by
+// scripts/test/ingestion-time.test.mjs; this file cannot be tested at all
+// (it imports the Firebase SDK through estate-auth.js). So the split is
+// deliberate: everything that could be silently WRONG — the Phoenix
+// conversion, "midnight tonight", whether a lapsed timer still reads as
+// paused — lives on the tested side, and what is left here is DOM plumbing.
+//
+// ⚠️ READ AND WRITTEN THROUGH THE WORKER, not straight off Firestore's public
+// REST path the way the pipeline_status row above is. The control document
+// stays closed on the audiobook_catalog side that way — see ops.ts's
+// GET /estate/ops/ingestion header for the full reasoning.
+//
+// ⚠️ SAME TWO-TAP GRAMMAR, NO THIRD GESTURE. All four controls are
+// confirmBtn (assets/estate-controls.js). The pickers are inputs, not
+// commits: a typed time does nothing at all until its "Set" button is armed
+// and tapped a second time.
+// ---------------------------------------------------------------------------
+
+const ingStatusEl = document.getElementById('ingestion-status');
+const ingHeadlineEl = document.getElementById('ingestion-headline');
+const ingLinesEl = document.getElementById('ingestion-lines');
+const ingMsgEl = document.getElementById('ingestion-msg');
+const ingPauseUntilInput = document.getElementById('ingestion-pause-until');
+const ingDontCheckInput = document.getElementById('ingestion-dont-check');
+
+/** The last control document read, kept so the ticker can re-word it (a
+ *  pause "until 7:05 PM" has to stop saying "paused" at 7:05 even if no
+ *  fetch happens to land in that second) without a network round trip. */
+let lastIngestionControl = null;
+let ingestionKnown = false; // false until a read has actually succeeded
+
+function setIngestionMsg(text, tone) {
+  if (!ingMsgEl) return;
+  ingMsgEl.textContent = text || '';
+  ingMsgEl.dataset.tone = tone || '';
+}
+
+/** Paint the status half from a control document (or null for "none yet"). */
+function renderIngestion(control, nowMs = Date.now()) {
+  if (!ingStatusEl) return;
+  const d = describeIngestion(control, nowMs);
+  ingStatusEl.dataset.state = d.badge;
+  ingHeadlineEl.textContent = d.headline;
+  ingLinesEl.innerHTML = '';
+  for (const line of d.lines) {
+    const p = document.createElement('p');
+    p.textContent = line;
+    ingLinesEl.appendChild(p);
+  }
+}
+
+/**
+ * A failed READ must never leave the last good reading on screen looking
+ * current — the silent-staleness trap this page exists to close, and it is
+ * far worse on a control than on a row: an owner deciding whether his 7pm
+ * pause landed would be reading a sentence from before he set it.
+ */
+function failIngestion(detail) {
+  if (!ingStatusEl) return;
+  ingestionKnown = false;
+  lastIngestionControl = null;
+  ingStatusEl.dataset.state = 'danger';
+  ingHeadlineEl.textContent = 'Cannot tell whether ingestion is paused.';
+  ingLinesEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.textContent = `${detail} The buttons below still work — this is only the reading.`;
+  ingLinesEl.appendChild(p);
+}
+
+async function loadIngestionControl() {
+  if (!ingStatusEl) return;
+  const token = await idToken();
+  if (!token) return; // probeOpsApprover() retries on the next auth event
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/ingestion`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+  } catch {
+    failIngestion('The auth Worker did not answer (network).');
+    return;
+  }
+  if (res.status === 401 || res.status === 403) {
+    failIngestion('This account is not allowed to read the ingestion control.');
+    return;
+  }
+  if (res.status === 503) {
+    let body = null;
+    try { body = await res.json(); } catch { /* status still speaks */ }
+    failIngestion(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`);
+    return;
+  }
+  if (!res.ok) {
+    failIngestion(`The ingestion endpoint answered HTTP ${res.status}.`);
+    return;
+  }
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    failIngestion('The answer was unreadable.');
+    return;
+  }
+  ingestionKnown = true;
+  lastIngestionControl = body?.control ?? null;
+  renderIngestion(lastIngestionControl);
+  prefillIngestionInputs(lastIngestionControl);
+}
+
+/** Show what is already set in the pickers, so "Pause until…" opens on the
+ *  time currently in force rather than on an empty box that implies nothing
+ *  is set. Never overwrites a value the owner is part-way through typing. */
+function prefillIngestionInputs(control) {
+  if (ingPauseUntilInput && !ingPauseUntilInput.value) {
+    ingPauseUntilInput.value = isoToPhoenixLocal(control?.paused_until);
+  }
+  if (ingDontCheckInput && !ingDontCheckInput.value) {
+    ingDontCheckInput.value = isoToPhoenixLocal(control?.dont_check_until);
+  }
+}
+
+/**
+ * The one write path. `until` is already an ISO instant (converted from
+ * Phoenix wall-clock by the caller) or undefined.
+ *
+ * ⚠️ Every refusal is worded, never a bare status — the estate's standing
+ * rule, and the four causes are kept distinct because their fixes differ.
+ */
+async function sendIngestionControl(action, until, verb) {
+  const token = await idToken();
+  if (!token) {
+    setIngestionMsg('Sign-in lapsed — sign in again.', 'warn');
+    return;
+  }
+  setIngestionMsg(`${verb}…`);
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/ingestion`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(until ? { action, until } : { action }),
+    });
+  } catch {
+    setIngestionMsg('The auth Worker did not answer (network). Nothing changed — try again shortly.', 'warn');
+    return;
+  }
+  let body = null;
+  try { body = await res.json(); } catch { /* status still speaks */ }
+
+  if (res.ok) {
+    ingestionKnown = true;
+    lastIngestionControl = body?.control ?? null;
+    renderIngestion(lastIngestionControl);
+    setIngestionMsg('Saved. The home machine reads this before every run.', 'ok');
+    return;
+  }
+  if (res.status === 400) {
+    setIngestionMsg(body?.detail || 'That request could not be read — check the time and try again.', 'warn');
+  } else if (res.status === 401) {
+    setIngestionMsg('Sign-in lapsed — sign in again, then set it.', 'warn');
+  } else if (res.status === 403) {
+    setIngestionMsg(
+      'This account does not hold devops, so it cannot pause or resume ingestion. ' +
+        'An admin can grant devops from /admin ("Make devops").',
+      'warn',
+    );
+  } else if (res.status === 503) {
+    setIngestionMsg(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`, 'warn');
+  } else {
+    setIngestionMsg(
+      `Something went wrong on the server${body?.error ? ` (${body.error})` : ''} — nothing is guaranteed to have changed. ` +
+        'Re-read the status line above before assuming either way.',
+      'warn',
+    );
+  }
+}
+
+/** Read a picker as PHOENIX wall-clock and refuse, in words, anything that
+ *  is empty or already past — a control that reports success and changes
+ *  nothing is the failure mode worth spending two branches on. */
+function readPhoenixPicker(input, what) {
+  const raw = input?.value || '';
+  if (!raw) return { error: `Pick a date and time first — ${what} needs one.` };
+  const iso = phoenixLocalToIso(raw);
+  if (!iso) return { error: 'That date and time could not be read. Pick it again.' };
+  if (Date.parse(iso) <= Date.now()) {
+    return { error: `${wordTime(iso, Date.now()) || 'That time'} has already passed — pick a time in the future.` };
+  }
+  return { iso };
+}
+
+function buildIngestionCard() {
+  const holder = document.getElementById('ingestion-buttons');
+  if (!holder) return;
+
+  holder.appendChild(
+    confirmBtn('Pause now', 'quiet', () => sendIngestionControl('pause', undefined, 'Pausing'), 'warn'),
+  );
+  holder.appendChild(
+    confirmBtn('Resume', 'quiet', () => sendIngestionControl('resume', undefined, 'Resuming')),
+  );
+
+  const pauseSlot = document.getElementById('ingestion-pause-until-slot');
+  if (pauseSlot) {
+    pauseSlot.appendChild(
+      confirmBtn('Set pause', 'quiet', () => {
+        const r = readPhoenixPicker(ingPauseUntilInput, 'the pause');
+        if (r.error) { setIngestionMsg(r.error, 'warn'); return; }
+        return sendIngestionControl('pause_until', r.iso, `Pausing until ${wordTime(r.iso, Date.now())}`);
+      }, 'warn'),
+    );
+  }
+
+  const dontSlot = document.getElementById('ingestion-dont-check-slot');
+  if (dontSlot) {
+    dontSlot.appendChild(
+      confirmBtn('Set check time', 'quiet', () => {
+        const r = readPhoenixPicker(ingDontCheckInput, 'the check time');
+        if (r.error) { setIngestionMsg(r.error, 'warn'); return; }
+        return sendIngestionControl('dont_check_until', r.iso, `Holding off until ${wordTime(r.iso, Date.now())}`);
+      }, 'warn'),
+    );
+  }
+}
+
 const opsSigninBtn = document.getElementById('ops-signin');
 const opsWhoEl = document.getElementById('ops-who');
 const opsNoteEl = document.getElementById('ops-note');
@@ -1571,6 +1810,7 @@ function renderOpsAuthState() {
     backupsSectionEl.hidden = false;
     loadBackups();
     loadShelfUploadStatus();
+    loadIngestionControl();
     // Interlock state may already be known from the last refreshAll() pass
     // (the ops section can reveal well after boot); render it immediately
     // instead of waiting up to 60s for the next tick.
@@ -1688,11 +1928,30 @@ buildLeverList();
 buildBackupsSection();
 buildPipelineStepsSection();
 buildShelfUploadSection();
+buildIngestionCard();
 
 document.getElementById('refresh').addEventListener('click', () => refreshAll());
 
 refreshAll();
 setInterval(tickAll, TICK_INTERVAL_MS);
+
+// The ingestion card has TWO clocks, and they are separate on purpose.
+//
+//   Every 5s, from memory: re-word the last reading. "Paused until 7:05 PM"
+//   has to stop saying "paused" AT 7:05, and a card that only re-words when
+//   a fetch happens to land would keep claiming a pause that had expired —
+//   the same staleness the row ticker exists to prevent, on the one surface
+//   where it would mislead an owner into pressing Resume on nothing.
+//
+//   Every 60s, over the network: re-read the document, so a pause set from
+//   the phone (or by the home machine itself) shows up on a screen already
+//   open. Visible tabs only, same as refreshAll().
+setInterval(() => {
+  if (ingestionKnown) renderIngestion(lastIngestionControl);
+}, TICK_INTERVAL_MS);
+setInterval(() => {
+  if (!document.hidden && opsSectionEl && !opsSectionEl.hidden) loadIngestionControl();
+}, REFRESH_INTERVAL_MS);
 
 // Auto-refresh every 60s, but only while the tab is actually visible — a
 // backgrounded tab gains nothing from polling five hosts, and refreshing

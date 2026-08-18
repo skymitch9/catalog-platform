@@ -23,6 +23,18 @@
       ]
     },
     {
+      "_why": [
+        "The ingestion pause card (2026-08-18, owner: 'give me a way to pause and start the process flow on the",
+        "GABI dashboard... let me also set pause timers on the ui. I can say don't even check to start until x",
+        "time.'). The card's BUTTONS are built by status.js after sign-in and cannot be asserted from here, but",
+        "its shell ships in this HTML and every marker below is a piece whose absence would leave a control that",
+        "still returns a cheerful 200 while doing nothing: id=ingestion-card is the card, id=ingestion-status and",
+        "id=ingestion-headline are where the running/paused sentence lands (a blank there is the exact failure",
+        "the card exists to prevent), and the two picker ids are the timers.",
+        "'Phoenix time' is asserted as TEXT, not as an element: a datetime-local input with no zone stated is a",
+        "control that silently means a different hour on a travelling phone, and that label is the only thing on",
+        "the page saying which zone the picker is read in."
+      ],
       "path": "/status/",
       "mustContain": [
         "Estate status",
@@ -30,7 +42,30 @@
         "id=\"index-rows\"",
         "Run levers \u2014 GitHub Actions",
         "id=\"lever-rows\"",
-        "Server migration"
+        "Server migration",
+        "id=\"ingestion-card\"",
+        "id=\"ingestion-status\"",
+        "id=\"ingestion-headline\"",
+        "id=\"ingestion-pause-until\"",
+        "id=\"ingestion-dont-check\"",
+        "Phoenix time"
+      ]
+    },
+    {
+      "_why": [
+        "ingestion-time.js (2026-08-18) is the PURE half of the pause card \u2014 the Phoenix conversion and every",
+        "word the card says. Its correctness is pinned by scripts/test/ingestion-time.test.mjs, so these markers",
+        "are about the file having actually SHIPPED: status.js imports it, and a missing module takes the whole",
+        "page's script down at parse time with the usual cheerful 200 on the route.",
+        "'America/Phoenix' and 'midnight tonight' are the two strings whose disappearance would mean the estate's",
+        "timezone or the owner's own phrasing had been refactored away."
+      ],
+      "path": "/assets/ingestion-time.js",
+      "mustContain": [
+        "America/Phoenix",
+        "phoenixLocalToIso",
+        "describeIngestion",
+        "midnight tonight"
       ]
     },
     {
@@ -40,7 +75,11 @@
         "driveParityState is the exact Firestore field it READS (the ebook row above is the standing proof of what",
         "inference costs on this page — three wrong colours); and 'fuse-tripped' is the state that must never",
         "silently vanish, since it is the one saying a mass change was REFUSED and is waiting for a human. A bundle",
-        "missing any of the three would still serve a cheerful 200 with the row simply absent."
+        "missing any of the three would still serve a cheerful 200 with the row simply absent.",
+        "The ingestion pause card (2026-08-18) adds three: the route it reads and writes (a bundle pointing at a",
+        "route the Worker does not serve would leave the card permanently unreadable), buildIngestionCard (the",
+        "four two-tap buttons — without it the card renders a status line and no controls), and ingestion-time.js",
+        "(the import itself, since the two files must ship together or the page's script dies at parse time)."
       ],
       "path": "/status/status.js",
       "mustContain": [
@@ -49,7 +88,10 @@
         "renderPipelineEbookRow",
         "renderDriveParityRow",
         "driveParityState",
-        "fuse-tripped"
+        "fuse-tripped",
+        "/api/estate/ops/ingestion",
+        "buildIngestionCard",
+        "ingestion-time.js"
       ]
     },
     {
