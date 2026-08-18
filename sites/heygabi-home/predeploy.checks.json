@@ -253,7 +253,8 @@
         "renderMarkdown",
         "describeFailure",
         "not your permissions",
-        "snapshot.warning"
+        "snapshot.warning",
+        "primeSnapshot"
       ],
       "mustNotContain": [
         ".innerHTML ="

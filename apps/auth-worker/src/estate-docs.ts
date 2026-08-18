@@ -557,10 +557,26 @@ estateDocsRoutes.get('/estate/docs/search', wordTheRefusal(), requireDevops(), a
   const snapshot = snapshotMeta(bundle, Date.now());
 
   if (q.length === 0) {
-    return c.json(
-      { error: 'no_query', detail: 'Ask me something — send a `q` parameter with what to look for.', snapshot },
-      400,
-    );
+    // ⚠️ 200, NOT 400 — an empty query is the STARTING STATE, not a mistake.
+    // Found live on the first signed-in run of /docs (2026-08-18): the page
+    // had no snapshot date to show until someone typed, so its own footer
+    // ("anything written since the date above…") referred to a date that was
+    // not on screen. This is the one cheap call that primes it, and it doubles
+    // as the earliest possible moment a non-devops visitor can be told so —
+    // before, the gate only spoke after they had typed into a box that
+    // silently did nothing.
+    return c.json({
+      ok: true,
+      snapshot,
+      query: '',
+      terms: [],
+      matched: 'all',
+      empty_query: true,
+      count: 0,
+      total: 0,
+      results: [],
+      detail: 'Type something and I’ll search the estate’s docs section by section.',
+    });
   }
 
   const result = searchBundle(bundle, q, limit);

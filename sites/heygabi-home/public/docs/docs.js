@@ -259,7 +259,24 @@ function markText(str, terms) {
 // Search
 // ---------------------------------------------------------------------------
 
-async function runSearch(query) {
+/**
+ * One cheap call the moment a devops-class person arrives, before they type.
+ *
+ * ⚠️ FOUND LIVE, NOT REASONED (2026-08-18, first signed-in run): the snapshot
+ * strip only appeared after a search, so the footer's own sentence — "anything
+ * written since the date above is not in it yet" — pointed at a date that was
+ * not on screen. A page that talks about its own freshness must show it before
+ * it is asked to.
+ *
+ * It earns its keep twice: the empty-query answer is also the earliest moment a
+ * signed-in NON-devops visitor can be refused in words. Before this, they were
+ * handed a search box that silently did nothing until they typed into it.
+ */
+async function primeSnapshot() {
+  await runSearch('', { prime: true });
+}
+
+async function runSearch(query, opts = {}) {
   if (inflight) inflight.abort();
   const controller = new AbortController();
   inflight = controller;
@@ -308,6 +325,10 @@ async function runSearch(query) {
 
   hideGate();
   renderSnapshot(body.snapshot);
+  // The prime call only wanted the snapshot envelope; rendering its
+  // deliberately-empty result set would paint "no matching sections" over a
+  // page nobody has searched yet.
+  if (opts.prime) return;
   lastTerms = Array.isArray(body.terms) ? body.terms : [];
   lastResults = Array.isArray(body.results) ? body.results : [];
   lastBody = body;
@@ -458,7 +479,7 @@ function renderReader(section, snapshot) {
   el('reader-when').textContent = parts.join(' ');
 
   const bodyEl = el('reader-body');
-  bodyEl.replaceChildren(renderMarkdown(section.text, lastTerms));
+  bodyEl.replaceChildren(renderMarkdown(stripLeadingHeading(section.text, section.heading), lastTerms));
 
   const idx = Number(section.id.split('#').pop());
   const prev = el('reader-prev');
@@ -474,6 +495,22 @@ function renderReader(section, snapshot) {
   seedsEl.hidden = true;
   reader.hidden = false;
   reader.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+/**
+ * A section's text opens with its own `## Heading` line, which the reader has
+ * already rendered as the document title — so rendering it again printed every
+ * section's name twice, immediately above itself (seen live, 2026-08-18).
+ * Dropped ONLY when it genuinely matches the heading the Worker named: a
+ * hard-split continuation ("… (cont. 3)") carries no heading line of its own,
+ * and a first line that happens to be a different heading is real content.
+ */
+function stripLeadingHeading(text, heading) {
+  const lines = text.split('\n');
+  const first = HEADING_RE.exec(lines[0] || '');
+  if (!first) return text;
+  if (first[2].trim() !== String(heading || '').trim()) return text;
+  return lines.slice(1).join('\n').replace(/^\n+/, '');
 }
 
 function backToResults() {
@@ -827,6 +864,7 @@ watchAuth((user) => {
   renderSeeds();
   seedsEl.hidden = false;
   hideGate();
+  primeSnapshot();
 
   // A deep link (#<section id>) opens straight into the reader; otherwise the
   // box takes focus, because this page has exactly one thing to do.

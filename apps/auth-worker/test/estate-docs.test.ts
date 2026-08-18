@@ -356,6 +356,27 @@ test('⚠️ all four §4.5 refusal causes have their OWN sentence, and the outa
 // Route-level config failure (no identity involved)
 // ---------------------------------------------------------------------------
 
+test('⚠️ an EMPTY query is the starting state, not an error — 200 carrying the snapshot', async () => {
+  // Found live on /docs's first signed-in run (2026-08-18): with an empty `q`
+  // answering 400, the page had no snapshot date to show until someone typed,
+  // and its own footer referred to "the date above" while no date was on
+  // screen. The 200 is what lets the page prime its freshness strip — and it
+  // is also the earliest moment a signed-in NON-devops visitor can be refused
+  // in words, instead of being handed a box that silently does nothing.
+  __resetDocsCache();
+  const bundle = bundleFixture();
+  const bucket = bucketWith(bundle);
+  const loaded = await loadBundle(bucket, Date.parse(bundle.generated_at) + 3600_000);
+  const meta = snapshotMeta(loaded, Date.parse(bundle.generated_at) + 3600_000);
+  // The envelope the empty-query branch sends is exactly this metadata plus an
+  // empty result set — asserted through the pure pieces, since the route
+  // itself cannot get past requireDevops() with a stub env (see this file's
+  // header). The status is pinned by the probe suite live.
+  assert.equal(meta.generated_at, bundle.generated_at);
+  assert.equal(meta.files, 2);
+  assert.deepEqual(searchBundle(loaded, '', 8).hits, []);
+});
+
 test('the routes never crash bare on a stub env — every path is a worded 4xx/5xx', async () => {
   for (const path of ['/estate/docs/search?q=x', '/estate/docs/section?id=a%230', '/estate/docs/receipt']) {
     const res = await estateDocsRoutes.request(
