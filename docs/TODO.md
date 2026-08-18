@@ -31,27 +31,33 @@ rendering an empty board, which reads as *"nothing left to do on this project"*.
 auth-worker tests, `wrangler deploy` from `apps/auth-worker/`. No Pages deploy —
 the public page is a content-free shim and does not change.
 
-## 🖥️ /status: archive health row + click-into-logs (owner asks, 2026-08-18 ~14:15)
+## 🖥️ /status — the 2026-08-18 wave, and what is left
 
-Owner, verbatim: "add a health check for if the last upload to blob storage is
-good. also lets make it so i can see logs for some of this stuff if they arent
-working by clicking into the health checks."
+Both asks from ~14:15 ("a health check for if the last upload to blob storage is
+good" and "let me see logs by clicking into the health checks") are **BUILT and
+deployed**, along with the storage panel, the worker event ring, notification
+preferences and the todo-board refresh. The paperwork moved whole to
+[`DONE.md`](DONE.md).
 
-1. **Archive-upload health row** on /status Health: last archive upload's
-   verdict (time, size-verified?, failures, seed progress). The data lives on
-   the home machine (`audiobook_catalog/output_files/audio_archive.log` +
-   manifest + lock) — push it through the agent-board door like `processing`
-   (its own section), the 15-min task already fires. Render: green = last
-   upload verified, amber = failures being retried, red = task not firing /
-   last upload failed — worded, never a bare colour.
-2. **Click-to-expand log tails on health rows**: a failing row expands to its
-   recent log lines. Home-machine jobs need their tails PUSHED (size-capped
-   ring per source — archive, ingest, processing push); worker rows via
-   Workers Logs or a pushed ring. This activates the blueprint's deferred
-   "log ring buffer" item.
+**What is genuinely left, named rather than implied:**
 
-⚠️ QUEUED behind the dashboard-quality agent (same surface, one writer) —
-dispatch to it (or a successor) when it lands. Conductor holds the queue.
+1. ⚠️ **The retrieval proof has never run.** The archive row's "Restore proven"
+   line reads *"never — nothing has been read back out of the bucket and
+   checked"*, which is TRUE and is the estate's largest unverified backup step.
+   The field is plumbed end to end: write
+   `audiobook_catalog/output_files/audio_archive_restore_test.json` as
+   `{at, verdict, detail, file}` and the next storage push renders it.
+2. **Wire the remaining Workers to the event ring** — `catalog-index` and
+   `audiobook-worker` are ~5 lines each once a secret exists;
+   `discord-worker` was left deliberately untouched (another agent's tree).
+   ⚠️ **Mint `ESTATE_EVENTS_TOKEN` rather than spreading the conductor token** —
+   the reasoning is [`info/worker-event-ring.md`](info/worker-event-ring.md) §4,
+   and the per-worker status table is §6.
+3. **Nothing SENDS a notification yet.** The preferences and the contract for
+   reading them are live; the conductor honouring them is the other half.
+4. **The three cover buckets** are measured from the home machine like
+   everything else. Binding them into a Worker is an owner decision and only
+   matters if the panel should survive the PC being off.
 
 > **Split 2026-08-16** per the global "Access & information docs" rule:
 > `TODO.md` is **ACTIVE ONLY**, [`DONE.md`](DONE.md) is the dated archive
