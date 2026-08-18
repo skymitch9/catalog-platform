@@ -428,7 +428,7 @@ describe('spend caps — a fuse with words on it', () => {
 // ── 5. the allowlist ────────────────────────────────────────────────────────
 
 describe('⚠️ what a mention can cause, as an explicit array', () => {
-  it('is exactly these thirteen things', () => {
+  it('is exactly these sixteen things', () => {
     // Adding a row is a design decision somebody makes on purpose. This
     // assertion is the same guard the library puts on GABI_TOOL_NAMES, and it
     // is what makes "she writes nothing to the estate" a mechanism rather than
@@ -480,7 +480,53 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
       'resolve_link_identity',
       'delegate_add_isbn',
       'delegate_run_details',
+      // ⚠️⚠️ THREE MORE ADDED 2026-08-18 WITH TIER 0b, and they are the FIRST
+      // ROWS IN THIS ARRAY THAT READ A GATED SURFACE. Every read above this
+      // point is of something already published to the open internet — the
+      // index's public slice, the audiobook site's `catalog.csv`. These reach
+      // the estate's own docs corpus: break-glass SQL, deploy levers, secret
+      // NAMES and where they live, the /admin grant grammar, and household
+      // members' emails and role assignments.
+      //
+      // Adding them answers the owner's ORIGINAL ask, which the browser page
+      // did not: "let's make sure GABI can read all of our docs and stuff so
+      // she can even help me if needed for let's say I don't have a Claude code
+      // session open."
+      //
+      // What makes them safe is the same thing that makes Tier 1 safe, applied
+      // to a read: GABI HOLDS NOTHING. She asserts an email the person proved
+      // themselves (the /link document, verified server-side by the canonical
+      // Firebase verifier), and the AUTH WORKER resolves that email against the
+      // estate directory and applies `devopsAllows()` — the same predicate the
+      // browser door uses. A non-devops household member gets a worded refusal
+      // and she never sees a byte of the corpus on their behalf. Revoke someone
+      // in /admin and their next question is refused, with no deploy.
+      //
+      // ⚠️ And they ship OFF, behind `GABI_DOCS`, unlike Tier 1 which the owner
+      // approved switched on. Flipping this one is design §7's owner step 4.
+      //
+      // Note what is STILL absent and cannot arrive without failing this line:
+      // no docs WRITE, no publish trigger, no TODO append, no edit of an
+      // existing value, no delete, no role change, no approval, no estate grant
+      // or revoke, no deploy, no secret, no moderation verb.
+      'resolve_link_email',
+      'search_estate_docs',
+      'read_estate_doc',
     ]);
+  });
+
+  it('⚠️ the allowlist still contains nothing that WRITES to the estate docs', () => {
+    // A docs *assistant*, not a docs editor. If "GABI writes to docs/TODO.md"
+    // is ever wanted it is a T1/T2 verb with its own design and its own confirm
+    // lane — not a fourth row in the Tier-0b block above.
+    for (const name of GABI_MENTION_ACTIONS) {
+      assert.doesNotMatch(
+        name,
+        /^(write|edit|publish|append|update|delete|remove)_.*doc/,
+        `'${name}' would let a Discord message change the estate's documentation`,
+      );
+    }
+    assert.equal(GABI_MENTION_ACTIONS.filter((n) => n.includes('doc')).length, 2);
   });
 
   it('the flow source still contains no moderation, admin or Firestore verb', () => {
@@ -508,10 +554,23 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
     }
   });
 
-  it('⚠️ THE NEW PROPERTY: credentials live in ONE module, and the read paths name none', () => {
+  it('⚠️ THE NEW PROPERTY: credentials live in TWO modules, and the read paths name none', () => {
     // The half that makes the repointed assertion above mean something. Any
-    // credential moving out of `delegated-exec.ts` — into the chat path, the
-    // tool executor, or the public-catalogue reader — fails the build here.
+    // credential moving out of the executors — into the chat path, the tool
+    // executor, or the public-catalogue reader — fails the build here.
+    //
+    // ⚠️ **WIDENED 2026-08-18 FROM ONE MODULE TO TWO, DELIBERATELY.** Tier 0b
+    // (GABI reads the estate docs) added a SECOND trust edge with its own
+    // secret — `ESTATE_APP_TOKEN_DISCORD_DOCS`, two holders, distinct from the
+    // Tier-1 token that is shared with both library Workers. It gets its own
+    // executor, `src/estate-docs-exec.ts`, for exactly the reason
+    // `delegated-exec.ts` exists.
+    //
+    // ⚠️ Widening a mechanical guard is a decision somebody makes on purpose
+    // and writes down — never a quiet relaxation. The property is now "TWO
+    // named modules, each one trust edge", not "credentials are allowed in the
+    // chat path". `test/estate-docs.test.ts` pins the other half: that neither
+    // executor reaches for the other's secret.
     const CREDENTIALS = [/firestoreRequest/, /mintAccessToken/, /parseServiceAccount/, /ESTATE_APP_TOKEN/];
     for (const file of [
       'src/mention-flow.ts',
@@ -540,6 +599,11 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
     const exec = repoFile('src/delegated-exec.ts');
     assert.match(exec, /firestoreRequest/);
     assert.match(exec, /ESTATE_APP_TOKEN_DISCORD/);
+    // …and so does the second one, so the widening cannot pass by the docs
+    // credential having quietly moved somewhere unlisted either.
+    const docsExec = repoFile('src/estate-docs-exec.ts');
+    assert.match(docsExec, /firestoreRequest/);
+    assert.match(docsExec, /ESTATE_APP_TOKEN_DISCORD_DOCS/);
   });
 
   it('a fix request proposes and deep-links — it never claims to have changed anything', async () => {

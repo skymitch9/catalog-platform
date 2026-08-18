@@ -12,6 +12,24 @@
  * assert the dangerous names stay absent — the same instrument
  * `test/mentions.test.ts` already points at `mention-flow.ts`.
  *
+ * ⚠️ **THE ESTATE DOCS CORPUS IS GATED, AND THIS FILE STILL HOLDS NO
+ * CREDENTIAL — the two are reconciled by an INJECTED PORT.** Tier 0b (added
+ * 2026-08-18) reads material that is emphatically not public: break-glass SQL,
+ * deploy levers, secret names, household members' emails and role assignments.
+ * The sentence above therefore stays literally true — no `fetch` in this file
+ * reaches anything but `catalog.csv` — because the corpus is reached through
+ * `ctx.docs.port`, an interface this file cannot construct, whose only
+ * implementation (`estate-docs-exec.ts`) holds the bearer. What changed is the
+ * SCOPE of the claim, and it is narrowed rather than dropped:
+ *
+ * > This file names no secret and opens no gated connection. It hands an
+ * > injected port an email it did not choose, and the AUTH WORKER decides.
+ *
+ * ⚠️ And the decision genuinely is not here. A non-devops asker's question
+ * reaches the auth Worker, is refused 403 there, and comes back as a worded
+ * `tool_result` — GABI never sees a byte of corpus on their behalf, and that is
+ * a property of the other end rather than of a check this file could forget.
+ *
  * ## ⚠️ A FAILED TOOL IS REPORTED, NEVER FAKED
  *
  * Every failure comes back as a `tool_result` with `is_error: true` and a
@@ -35,12 +53,44 @@ import {
   type CatalogLoad,
   type LookupField,
 } from './catalog-data.js';
-import { gabiToolByName, isGabiToolName, toolBook, type GabiToolName } from './gabi-tools.js';
+import {
+  gabiDocsToolByName,
+  gabiToolByName,
+  isGabiDocsToolName,
+  isGabiToolName,
+  toolBook,
+  type GabiDocsToolName,
+  type GabiToolName,
+} from './gabi-tools.js';
+import {
+  DOCS_MSG,
+  DOCS_SEARCH_HITS,
+  identityMessage,
+  snapshotNote,
+  type DocsSnapshotMeta,
+  type DocsToolContext,
+} from './estate-docs.js';
 
 export interface ToolContext {
   catalogBaseUrl: string;
   /** Test seam: the same shape `chatClient` takes, for the same reason. */
   fetchOverride?: typeof fetch;
+  /**
+   * ⚠️ **TIER 0b — the estate docs corpus, and it is OPTIONAL BY DESIGN.**
+   *
+   * Absent means this surface cannot read the docs at all — which is the state
+   * of every caller that has not been given one, the state while `GABI_DOCS` is
+   * off, and the state while the app token is unset. It is an injected context
+   * rather than an import so that THIS FILE holds no credential: the port's
+   * implementation (`estate-docs-exec.ts`) is the only module here that names a
+   * service account or an app bearer, and `test/estate-docs.test.ts` reads
+   * these sources and fails the build if that changes.
+   *
+   * ⚠️ It carries the asker and the per-TURN budget, so no tool call can ask on
+   * somebody else's behalf and no tool call can escape the turn's ceiling by
+   * being the fourth one.
+   */
+  docs?: DocsToolContext;
 }
 
 /** What one executed call produced. `isError` becomes the `tool_result` block's
@@ -91,19 +141,21 @@ export async function runTool(
   ctx: ToolContext,
 ): Promise<ToolOutcome> {
   const label = typeof name === 'string' ? name : String(name);
-  if (!isGabiToolName(name) || !gabiToolByName(name)) {
+  const isDocs = isGabiDocsToolName(name) && Boolean(gabiDocsToolByName(name));
+  if (!isDocs && (!isGabiToolName(name) || !gabiToolByName(name))) {
     return {
       name: label,
       isError: true,
       result: {
         error: 'unknown_tool',
-        allowed: 'catalog_lookup, series_volumes',
+        allowed: 'catalog_lookup, series_volumes, search_estate_docs, read_estate_doc',
         note: 'That tool does not exist on this surface. Nothing was run.',
       },
     };
   }
   const args = (input ?? {}) as Record<string, unknown>;
   try {
+    if (isDocs) return await runDocsTool(name as GabiDocsToolName, args, ctx);
     switch (name as GabiToolName) {
       case 'catalog_lookup':
         return await catalogLookup(args, ctx);
@@ -291,6 +343,182 @@ async function seriesLookup(args: Record<string, unknown>, ctx: ToolContext): Pr
         'The volumes are in reading order. "volumes_owned" is the catalogue\'s own summary of ' +
         'which numbers the estate holds — quote it rather than inferring gaps from the list, and ' +
         'never say a missing number means the house does not own that book.',
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// TIER 0b — the estate docs corpus
+//
+// ⚠️ EVERY REFUSAL IN HERE IS WORDED AND CARRIES `isError: true`. The model
+// relays the sentence; the person never sees a bare status. And the four
+// distinct causes stay four distinct sentences all the way to the channel,
+// because the FIXES differ — run /link, re-run /link, ask an approver, wait a
+// minute. Collapsing them is how an outage becomes "you don't have access".
+// ---------------------------------------------------------------------------
+
+/** Refused before any I/O, in the model's own tool-result shape. */
+function docsRefusal(name: string, error: string, say: string, note?: string): ToolOutcome {
+  return {
+    name,
+    isError: true,
+    result: {
+      error,
+      // ⚠️ `say` is relayed to a person through the model, so it is a sentence
+      // and not a code. Every branch below supplies one.
+      say,
+      ...(note ? { note } : {}),
+    },
+  };
+}
+
+/**
+ * Run one docs tool on the ASKER'S behalf.
+ *
+ * ⚠️ **THE ORDER OF THESE CHECKS IS THE DESIGN.** Cheapest and most local
+ * first, so a switched-off posture or a spent budget costs no subrequest and no
+ * Firestore read; identity next, because it is one read and it decides three of
+ * the four refusals; the corpus call last, because only the auth Worker can
+ * decide the fourth.
+ */
+async function runDocsTool(
+  name: GabiDocsToolName,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolOutcome> {
+  const docs = ctx.docs;
+
+  // 1. This surface has no docs port at all — a lane that never had one (a
+  //    test), or production with the posture off or the token unset. Never
+  //    phrased as a permissions problem.
+  if (!docs) {
+    return docsRefusal(name, 'docs_not_available', DOCS_MSG.notConfigured);
+  }
+
+  // 2. The daily fuse, read once before the turn. ⚠️ A capped person is TOLD it
+  //    is a cap on our side and not something they did.
+  if (docs.capped) {
+    return docsRefusal(name, 'docs_capped', DOCS_MSG.capped);
+  }
+
+  // 3. The per-turn ceiling, checked before spending a subrequest on a result
+  //    there is no room to return.
+  if (!docs.budget.take(0, 0)) {
+    return docsRefusal(name, 'docs_turn_budget_spent', DOCS_MSG.turnBudgetSpent);
+  }
+
+  // 4. Who is asking, on the estate. One memoised read per turn.
+  const who = await docs.port.askerEmail(docs.discordUserId);
+  if (!who.ok) {
+    return docsRefusal(
+      name,
+      `docs_identity_${who.reason}`,
+      identityMessage(who.reason),
+      who.reason === 'outage'
+        ? 'This is an outage on the estate side. It says NOTHING about whether this person may read the docs — do not answer as if they were refused.'
+        : 'This is about the /link ceremony, not about permissions. Relay the sentence as it is.',
+    );
+  }
+
+  const call =
+    name === 'search_estate_docs'
+      ? await docs.port.search(who.email, str(args.query), DOCS_SEARCH_HITS)
+      : await docs.port.section(who.email, str(args.id));
+
+  // 5. The auth Worker refused, or could not answer. ⚠️ Its own `detail` is
+  //    relayed VERBATIM — it is the authority, so it is the only thing that can
+  //    honestly say why, and a sentence written here would be a second copy of
+  //    a decision that already has one.
+  if (!call.ok) {
+    return docsRefusal(
+      name,
+      call.status === 403 ? 'docs_not_devops' : call.status === 0 ? 'docs_unreachable' : 'docs_refused',
+      call.message ?? DOCS_MSG.estateUnreachable,
+      call.status >= 500 || call.status === 0
+        ? 'An outage on our side. Say so — it is NOT a statement about this person’s access.'
+        : 'The estate refused this read. Relay the sentence exactly; do not soften it, and do not offer to look anyway.',
+    );
+  }
+
+  const body = call.body ?? {};
+  const snapshot = (body.snapshot ?? null) as DocsSnapshotMeta | null;
+  const freshness = snapshotNote(snapshot);
+
+  if (name === 'search_estate_docs') {
+    const results = Array.isArray(body.results) ? body.results : [];
+    const shaped = results.map((r) => {
+      const hit = r as Record<string, unknown>;
+      return {
+        id: hit.id,
+        repo: hit.repo,
+        path: hit.path,
+        heading: hit.heading,
+        snippet: hit.snippet,
+      };
+    });
+    // ⚠️ Charged AFTER the call and BEFORE the model sees it. A result that does
+    // not fit is refused rather than trimmed: a silently truncated runbook is a
+    // runbook missing the step that mattered.
+    const bytes = JSON.stringify(shaped).length;
+    if (!docs.budget.take(bytes, 0)) {
+      return docsRefusal(name, 'docs_turn_budget_spent', DOCS_MSG.turnBudgetSpent);
+    }
+    return {
+      name,
+      isError: false,
+      result: {
+        corpus: 'the estate’s internal docs',
+        snapshot,
+        // ⚠️ EVERY ANSWER CARRIES THE PUBLISH DATE (design §6). It rides in the
+        // result rather than the prompt so that dropping it is a visible defect.
+        freshness,
+        query: str(args.query) || undefined,
+        matched: body.matched,
+        count: shaped.length,
+        total: body.total,
+        results: shaped,
+        note:
+          shaped.length === 0
+            ? 'Nothing matched. ⚠️ That is a statement about the DOCS, never about the estate — say the docs do not cover it rather than answering from your own knowledge. ' +
+              freshness
+            : 'These are SNIPPETS, not the whole section. If one looks like the answer, call read_estate_doc with its id before stating any command, path or step. ' +
+              'Name the file you are quoting so somebody can check you. ' +
+              freshness,
+      },
+    };
+  }
+
+  const section = (body.section ?? {}) as Record<string, unknown>;
+  const text = typeof section.text === 'string' ? section.text : '';
+  const bytes = text.length;
+  if (!docs.budget.take(bytes, 1)) {
+    return docsRefusal(
+      name,
+      'docs_turn_budget_spent',
+      DOCS_MSG.turnBudgetSpent,
+      'The section was NOT read — do not summarise it from the snippet as though you had.',
+    );
+  }
+  return {
+    name,
+    isError: false,
+    result: {
+      corpus: 'the estate’s internal docs',
+      snapshot,
+      freshness,
+      id: section.id,
+      repo: section.repo,
+      path: section.path,
+      title: section.title,
+      heading: section.heading,
+      text,
+      truncated: section.truncated === true || undefined,
+      note:
+        'Quote what this section actually says. ⚠️ If it does not give the command, the path or the ' +
+        'step being asked for, say so — do not fill the gap from your own knowledge, because a ' +
+        'plausible command that is not in the runbook is worse than no command. ' +
+        `Name the file (${String(section.path ?? 'the source')}) so somebody can check you. ` +
+        freshness,
     },
   };
 }

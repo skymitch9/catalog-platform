@@ -55,6 +55,8 @@ import {
 import type { CapVerdict } from './mentions.js';
 import { delegatedWritesOn, libraryInstances, type WriteCapVerdict } from './delegated.js';
 import { makeDelegate } from './delegated-exec.js';
+import { docsOn, type DocsCapVerdict } from './estate-docs.js';
+import { makeDocsPort } from './estate-docs-exec.js';
 import {
   handlePick,
   handleTypedQuestion,
@@ -88,6 +90,11 @@ interface LoadedMemory {
   cap: CapVerdict;
   /** ⚠️ TIER 1: the per-person daily WRITE fuse, answered in the same load. */
   writeCap: WriteCapVerdict;
+  /** ⚠️ TIER 0b: the per-person daily DOCS fuse, answered in the same load —
+   *  a typed follow-up can be a docs question, and asking for three fuses in
+   *  three round trips would be three subrequests for facts that live one key
+   *  apart in the same storage. */
+  docsCap: DocsCapVerdict;
 }
 
 /**
@@ -121,6 +128,7 @@ class StubMemory {
       pending: body.pending ?? null,
       cap: body.cap ?? { ok: true },
       writeCap: body.writeCap ?? { ok: true },
+      docsCap: body.docsCap ?? { ok: true },
     };
     return this.loaded;
   }
@@ -156,6 +164,15 @@ class StubMemory {
 
   async recordWrite(): Promise<void> {
     await this.post('/conv/wcount', {});
+  }
+
+  /** ⚠️ Read from the memoised load — the DO answered all three fuses at once. */
+  async docsCapCheck(): Promise<DocsCapVerdict> {
+    return (await this.ensure()).docsCap;
+  }
+
+  async recordDocsTurn(): Promise<void> {
+    await this.post('/conv/dcount', {});
   }
 }
 
@@ -213,6 +230,13 @@ export async function resumeConversation(
     // (one counter per person, wherever they were reached from), so it is read
     // and written over the same stub the memory uses.
     const delegate = makeDelegate(env);
+    // ⚠️ TIER 0b. A typed follow-up in the modal reaches the SAME ladder as a
+    // DM, so it must reach the same docs tools — otherwise "how do I promote?"
+    // answers from the corpus when typed in a channel and from the model's
+    // general knowledge when typed into her own follow-up box, which is the
+    // worst possible inconsistency for a feature whose whole promise is that it
+    // does not guess. Same env, same ships-dark condition, same per-person fuse.
+    const docsPort = makeDocsPort(env);
     const deps = {
       capCheck: () => memory.capCheck(),
       recordTurn: () => memory.recordTurn(),
@@ -226,6 +250,15 @@ export async function resumeConversation(
             },
           }
         : {}),
+      ...(docsPort
+        ? {
+            docs: {
+              port: docsPort,
+              capCheck: () => memory.docsCapCheck(),
+              record: () => memory.recordDocsTurn(),
+            },
+          }
+        : {}),
     };
     const cfg = {
       indexBaseUrl: indexBase(env),
@@ -233,6 +266,7 @@ export async function resumeConversation(
       catalogBaseUrl: catalogBase(env),
       instances: libraryInstances(env),
       delegatedWrites: delegatedWritesOn(env),
+      docsEnabled: docsOn(env),
       ...(env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: env.ANTHROPIC_API_KEY_GABI } : {}),
     };
     const who = {

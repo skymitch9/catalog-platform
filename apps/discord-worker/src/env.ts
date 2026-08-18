@@ -167,6 +167,82 @@ export interface Env {
   LIBRARY_MAIN_URL?: string;
   LIBRARY_FRIEND_URL?: string;
 
+  /**
+   * ⚠️ **THE DOCS KILL SWITCH — GABI reads the estate's own documentation**
+   * (src/estate-docs.ts; design docs/info/gabi-docs-assistant-design.md
+   * phase 4).
+   *
+   * Owner ask 2026-08-17, verbatim: *"let's make sure GABI can read all of our
+   * docs and stuff so she can even help me if needed for let's say I don't have
+   * a Claude code session open."* Phases 1/2/5/6 answered that in a BROWSER;
+   * this is the half that answers it in Discord, which is where the owner
+   * actually is when no session is open.
+   *
+   * Affirmative-only in the exact idiom of `MODERATION_ENABLED`,
+   * `GABI_MENTIONS` and `GABI_DELEGATED_WRITES`: `"on"` and nothing else;
+   * `"true"`, `"1"`, `"yes"` and every typo mean OFF.
+   *
+   * ⚠️ **IT SHIPS OFF, and that is a departure from `GABI_DELEGATED_WRITES`
+   * rather than an oversight.** Tier 1 shipped `"on"` because the owner approved
+   * that capability in words. This one reaches PII plus an operations runbook —
+   * break-glass SQL, deploy levers, secret NAMES and where they live, the
+   * `/admin` grant grammar, and household members' emails and role assignments.
+   * Design §7's owner step 4 is explicit that flipping it is *"a deliberate act,
+   * never a side effect of a deploy."*
+   *
+   * ⚠️ OFF does not mean silent: a docs question still gets *"reading the estate
+   * docs from Discord is switched off"* rather than falling through to a shelf
+   * search that finds nothing and reads as broken. The switch removes the
+   * capability; it must not remove the sentence.
+   *
+   * ⚠️ **ON IS NOT A GRANT.** With this on, every docs question is still checked
+   * per-asker against the estate directory by the auth Worker — a non-devops
+   * household member gets a worded refusal and GABI never sees a byte of the
+   * corpus on their behalf.
+   */
+  GABI_DOCS?: string;
+
+  /**
+   * ⚠️ **The bot's bearer for the estate docs corpus (door B).**
+   *
+   * One value, TWO holders, same NAME on both: here and `apps/auth-worker`.
+   *
+   * ⚠️ **IT IS NOT `ESTATE_APP_TOKEN_DISCORD` ABOVE, and the two must never be
+   * merged.** That one is shared with BOTH library Workers for the Tier-1
+   * delegated writes. Reusing it here would mean a leak from either library
+   * instance also opened break-glass SQL, deploy levers, secret names and
+   * household members' emails — and re-minting it to add the auth Worker as a
+   * fourth holder would break Tier 1, since a secret cannot be read back. A
+   * fresh trust edge gets a fresh pair; that is the estate's standing rule and
+   * this is the case it was written for.
+   *
+   * ⚠️ **IT AUTHORISES NO READ.** It proves only *"this request came from the
+   * estate's Discord Worker"*. Every call also carries the asker's PROVEN email
+   * (the one `link.ts` verified server-side and stored on the `discord_links`
+   * document), and the auth Worker resolves THAT email against the directory and
+   * applies `devopsAllows()` — the same predicate the browser door uses. So the
+   * worst a leak buys is reading the corpus on behalf of people who could
+   * already read it, and revoking someone's devops in `/admin` shuts the door on
+   * their next question with no deploy.
+   *
+   * ⚠️ **SHIPS DARK while unset**: `estate-docs-exec.ts` returns a null port,
+   * the docs tools are never described to the model, `/api/health` reports
+   * `configured.estate_app_token_discord_docs: false` and
+   * `gabi_docs_ready: false`, and every other answer is unchanged.
+   *
+   * ⚠️ Read by exactly ONE module — `src/estate-docs-exec.ts` — and
+   * `test/estate-docs.test.ts` fails the build if that stops being true.
+   */
+  ESTATE_APP_TOKEN_DISCORD_DOCS?: string;
+
+  /**
+   * The estate's auth Worker, which serves the docs corpus behind its devops
+   * gate. A var, not a secret: it is a public hostname (`auth.heygabi.ai`) and
+   * the credential is the bearer, not the address. Exists so a test or a future
+   * lane can point elsewhere; the default in code is the live host.
+   */
+  AUTH_BASE_URL?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

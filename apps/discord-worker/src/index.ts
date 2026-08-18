@@ -84,11 +84,19 @@ import { mentionsOn } from './mentions.js';
 import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
   GABI_DELEGATED_VERB_NAMES,
+  GABI_DOCS_TOOL_NAMES,
   GABI_TOOL_NAMES,
   GABI_TOOLS,
   MAX_TOOL_ITERATIONS,
 } from './gabi-tools.js';
 import { delegatedWritesOn, libraryInstances } from './delegated.js';
+import {
+  DOCS_BYTES_PER_TURN,
+  DOCS_SECTIONS_PER_TURN,
+  DOCS_TURNS_PER_DAY,
+  docsOn,
+} from './estate-docs.js';
+import { authBase } from './estate-docs-exec.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -140,6 +148,11 @@ app.get('/api/health', (c) =>
       // standing, checked by the destination catalog. Named here so "can she
       // actually add a book?" is answerable in one curl.
       'gabi_delegated_writes',
+      // ⚠️ Added 2026-08-18: TIER 0b — she reads the estate's own internal
+      // documentation, on the ASKER'S OWN standing, checked per question by the
+      // auth Worker. Named here so "can she answer how do I promote?" is
+      // answerable in one curl rather than by DMing her.
+      'gabi_estate_docs',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -171,6 +184,14 @@ app.get('/api/health', (c) =>
       // ⚠️ A boolean about a NAME. It is not proof the three holders agree —
       // only a real delegated call answering something other than 401 is that.
       estate_app_token_discord: Boolean(c.env.ESTATE_APP_TOKEN_DISCORD),
+      // ⚠️ TIER 0b, and it is a DIFFERENT secret from the row above — that one
+      // is shared with both library Workers for the delegated writes; this one
+      // has exactly two holders (this Worker and the auth Worker) because the
+      // docs corpus is a separate, higher-value trust edge. Same honest-false
+      // discipline as every row here.
+      // ⚠️ A boolean about a NAME. It is not proof the two holders agree — only
+      // a real docs call answering something other than 401 is that.
+      estate_app_token_discord_docs: Boolean(c.env.ESTATE_APP_TOKEN_DISCORD_DOCS),
     },
     // The one derived answer: both halves present, so /link can actually run.
     link_ready: linkConfigured(c.env) && Boolean(c.env.FIREBASE_PROJECT_ID),
@@ -263,6 +284,31 @@ app.get('/api/health', (c) =>
     // somebody answered the token-custody question and that should be findable.
     gabi_catalog_url: `${catalogBase(c.env).replace(/\/+$/, '')}${CATALOG_PATH}`,
     gabi_catalog_scope: 'public_audiobook_catalogue_no_credential',
+    // ⚠️ THE DOCS KILL SWITCH and its readiness, VISIBLE from outside — same
+    // reasoning as the three switches above. `gabi_docs_ready` is the derived
+    // answer a reader would otherwise have to AND together themselves: the
+    // switch is on, the docs app token exists, and the service account that
+    // reads the /link document exists. All three or she cannot read the docs,
+    // and she says so in words rather than failing.
+    gabi_docs_enabled: docsOn(c.env),
+    gabi_docs_ready:
+      docsOn(c.env) &&
+      Boolean(c.env.ESTATE_APP_TOKEN_DISCORD_DOCS) &&
+      Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    // ⚠️ THE DOCS TOOL ALLOWLIST, VISIBLE FROM OUTSIDE — and kept in its own row
+    // rather than folded into `gabi_tools` above, because the two read
+    // different things: those reach a PUBLIC csv, these reach a GATED corpus
+    // carrying break-glass SQL, secret names and household emails. If this list
+    // ever grows a verb that writes, or `gabi_docs_scope` ever stops naming a
+    // per-asker check, that is a decision worth finding in one curl.
+    gabi_docs_tools: GABI_DOCS_TOOL_NAMES,
+    gabi_docs_scope: 'gated_estate_docs_per_asker_devops_check',
+    gabi_docs_authority: authBase(c.env),
+    // The caps, stated rather than inferred. A docs turn is roughly an order of
+    // magnitude heavier than an ordinary one, so its fuses are its own.
+    gabi_docs_bytes_per_turn: DOCS_BYTES_PER_TURN,
+    gabi_docs_sections_per_turn: DOCS_SECTIONS_PER_TURN,
+    gabi_docs_turns_per_day: DOCS_TURNS_PER_DAY,
   }),
 );
 

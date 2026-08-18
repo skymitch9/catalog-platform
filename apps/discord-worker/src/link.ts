@@ -39,6 +39,7 @@
  *     displayName  string  — the estate display name, original case
  *     linkedAt     timestamp
  *     firebaseUid  string  — who proved the estate side
+ *     email        string  — the VERIFIED estate email (added 2026-08-18)
  *   }
  *
  * `slug` and `displayName` are the two fields poll-vote.ts's `linkFromDoc()`
@@ -46,6 +47,38 @@
  * displayName}` — the exact doc id and field shape a browser writes via
  * `castVote()`. The derivation is stated once, in slug.ts, and pinned by a
  * contract test so the writer and the reader cannot drift apart.
+ *
+ * ## ⚠️ `email` — added 2026-08-18 for the GABI docs assistant (design §4.3)
+ *
+ * The estate directory is keyed by EMAIL (`seenBodySchema` in auth-worker's
+ * `estate.ts` requires one; `firebase_uid` is nullish and is stored, not looked
+ * up by). Before this field the chain was broken in the middle: GABI could
+ * prove *which Discord account* asked and *which estate member* it was, and
+ * still could not ask the directory about them — this Worker cannot mint a
+ * Firebase ID token, and `firebase-sa.ts` is scoped to `datastore` only, which
+ * `have.ts`'s header records as a deliberate credential decision rather than an
+ * oversight.
+ *
+ * ⚠️ **The email was ALREADY IN HAND and simply was not persisted.**
+ * `proveBothIdentities()` below verifies a Firebase ID token through the
+ * canonical `@platform/estate-auth` verifier — project-pinned issuer AND
+ * audience, unverified emails refused — at exactly the moment this document is
+ * written. Storing it makes the email as strong a claim as `firebaseUid`
+ * already was: proven once, server-side, by the same verifier. It is NOT a
+ * self-reported string and must never become one.
+ *
+ * ⚠️ **LINKS WRITTEN BEFORE THIS CHANGE HAVE NO EMAIL AND CANNOT BE UPGRADED
+ * FROM THE OUTSIDE.** The owner's decision (design §9.1, 2026-08-18, verbatim:
+ * *"1.a i think its just me"*) is **RELINK, NOT BACKFILL** — those people run
+ * `/link` once more, which is self-verifying because a post-change link carries
+ * the email by construction. ⚠️ An un-upgraded link must produce the WORDED
+ * "re-link to use this" refusal, never a bare "not authorised" — that is what
+ * `docs.ts`'s `DOCS_MSG.linkHasNoEmail` is for, and `docs-exec.ts` tells the two
+ * apart by reading this field rather than by guessing.
+ *
+ * ⚠️ Nothing else reads it. The vote path still reads `slug`/`displayName`; the
+ * Tier-1 delegated writes still read `firebaseUid`. Adding a field to this
+ * document does not widen any of them.
  *
  * ## Ships dark
  *
@@ -147,6 +180,9 @@ export function linkDocFields(input: {
   slug: string;
   displayName: string;
   firebaseUid: string;
+  /** ⚠️ The VERIFIED estate email, lowercased. Proven by the canonical Firebase
+   *  verifier in `proveBothIdentities()` — never a value anybody typed. */
+  email: string;
   linkedAt: Date;
 }) {
   return {
@@ -154,11 +190,19 @@ export function linkDocFields(input: {
     displayName: { stringValue: input.displayName },
     linkedAt: { timestampValue: input.linkedAt.toISOString() },
     firebaseUid: { stringValue: input.firebaseUid },
+    email: { stringValue: input.email },
   };
 }
 
-/** The update mask that writes exactly those four fields and nothing else. */
-const LINK_UPDATE_MASK = ['slug', 'displayName', 'linkedAt', 'firebaseUid']
+/**
+ * The update mask that writes exactly those five fields and nothing else.
+ *
+ * ⚠️ A field missing from this mask is a field the PATCH silently does not
+ * write — the document would come back looking correct in code and be missing
+ * the column in Firestore. `email` joined the list 2026-08-18 with the field
+ * itself; the two must be edited together, always.
+ */
+const LINK_UPDATE_MASK = ['slug', 'displayName', 'linkedAt', 'firebaseUid', 'email']
   .map((f) => `updateMask.fieldPaths=${f}`)
   .join('&');
 
@@ -268,6 +312,10 @@ interface Proven {
   discordUserId: string;
   discordUsername: string;
   uid: string;
+  /** ⚠️ The verified estate email, lowercased — the estate directory's KEY.
+   *  Comes from `resolveIdentity()`, which refuses unverified emails, so this
+   *  is a proof and not a claim. Persisted since 2026-08-18 (design §4.3). */
+  email: string;
   displayName: string;
   slug: string;
 }
@@ -309,6 +357,12 @@ async function proveBothIdentities(c: {
     return { ok: false, status: 401, message: LINK_MSG.notSignedIn };
   }
 
+  // ⚠️ Lowercased HERE, once, at the moment of proof — the estate directory
+  // normalizes on lookup (`normalizeEmail`, auth-worker's estate-db.ts) and a
+  // document holding `Owner@Example.com` while the table holds the lowercase
+  // form is a link that resolves to nobody, worded as "you aren't devops".
+  const email = identity.email.trim().toLowerCase();
+
   const displayName = estateDisplayName(identity);
   const slug = slugifyName(displayName);
   if (!isSafeSlug(slug)) {
@@ -321,6 +375,7 @@ async function proveBothIdentities(c: {
       discordUserId: pending.discordUserId,
       discordUsername: pending.discordUsername,
       uid: identity.uid,
+      email,
       displayName,
       slug,
     },
@@ -358,6 +413,7 @@ linkRoutes.post('/link/confirm', async (c) => {
           slug: proof.value.slug,
           displayName: proof.value.displayName,
           firebaseUid: proof.value.uid,
+          email: proof.value.email,
           linkedAt: new Date(),
         }),
       },

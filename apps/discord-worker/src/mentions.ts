@@ -182,6 +182,32 @@ export const GABI_MENTION_ACTIONS = [
    * destination gates it on `runResearch` rather than `editCatalog`, and why
    * there is a per-person daily write cap on top of the turn cap. */
   'delegate_run_details',
+
+  // ── ⚠️ TIER 0b, ADDED 2026-08-18 — the estate's OWN documentation, and the
+  // first rows in this list that read a GATED surface. The owner's original ask
+  // ("...so she can even help me if needed for let's say I don't have a Claude
+  // code session open") is what these answer; phases 1/2/5/6 answered it in a
+  // browser, which is not where he is when no session is open. ────────────────
+
+  /** Read the `discord_links/{id}` document THIS PERSON created, for its
+   * `email` and nothing else — the estate directory's KEY. ⚠️ Distinct from
+   * `resolve_link_identity` above, which reads `firebaseUid` for the catalog
+   * write path: a directory question needs the directory's key, and the two
+   * absences mean different things (no document = run /link; no email = re-run
+   * /link, because that link predates the role check). */
+  'resolve_link_email',
+  /** Search the estate's GATED docs corpus **on the asker's behalf**. ⚠️ The
+   * first read in this list that is not public. GABI holds no permission of her
+   * own: the auth Worker resolves the asker's proven email against the estate
+   * directory and applies the same `devopsAllows()` the browser door uses. A
+   * non-devops household member gets a worded refusal and she never sees a byte
+   * of corpus on their behalf. */
+  'search_estate_docs',
+  /** Read ONE section of one estate document — same gate, same per-asker check.
+   * ⚠️ Bounded three times: 8 KB per section by the publisher, 24 KB / 4
+   * sections per TURN by GABI's own budget, and a separate daily fuse, because
+   * a docs turn is roughly an order of magnitude heavier than an ordinary one. */
+  'read_estate_doc',
 ] as const;
 
 export type GabiMentionAction = (typeof GABI_MENTION_ACTIONS)[number];

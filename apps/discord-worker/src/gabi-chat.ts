@@ -161,6 +161,21 @@ export function accountTurn(entry: {
    * `MAX_TOOL_ITERATIONS`. A turn that keeps hitting the ceiling is a prompt
    * problem, and this is how it becomes visible rather than merely expensive. */
   toolIterations?: number;
+  /**
+   * ⚠️ **DOCS ACCOUNTING (design §5.5), added 2026-08-18 with Tier 0b.** Two raw
+   * columns, for the same reason every other pair here is raw: a docs turn is
+   * roughly an order of magnitude heavier than an ordinary one, and its cost is
+   * *how many sections* and *how many bytes* came back. A derived "used docs"
+   * boolean would answer none of the questions anybody will actually ask.
+   *
+   * ⚠️ **THE RETRIEVED TEXT IS NEVER LOGGED — only how much of it there was.**
+   * The corpus's audience is the estate's devops; this log stream's audience is
+   * anyone who can run `wrangler tail`. Logging the text would put runbook
+   * content, secret names and household emails into a second place with a wider
+   * gate than the one the whole feature is built around.
+   */
+  docsSections?: number;
+  docsBytes?: number;
 }): void {
   console.log(
     JSON.stringify({
@@ -177,6 +192,8 @@ export function accountTurn(entry: {
       tool_calls: entry.toolCalls ?? 0,
       tools: entry.tools ?? [],
       tool_iterations: entry.toolIterations ?? 0,
+      docs_sections: entry.docsSections ?? 0,
+      docs_bytes: entry.docsBytes ?? 0,
       // Discord snowflakes, not names or message text. The same no-PII line
       // /api/health draws. ⚠️ The remembered TEXT is never logged — only how
       // much of it there was.
@@ -461,11 +478,52 @@ You have two tools that read the estate's own audiobook catalogue. Use them:
 - When a tool result carries a "coverage" sentence, keep what it says: you are counting ONE shelf, and the library and board-game catalogues are not reachable from Discord. Give the breakdown, never a bare number.
 - A question that names several authors or universes is several lookups. Make them all in one go rather than asking the person to repeat themselves.`;
 
+/**
+ * ⚠️ **THE DOCS ADDENDUM — appended ONLY on a turn where the docs tools are
+ * actually offered** (design phase 4).
+ *
+ * Kept out of `CHAT_TOOLS_SYSTEM` rather than folded into it, for two reasons.
+ * It is input tokens on every turn that carries it, and the overwhelming
+ * majority of turns are about books; and describing a capability the model does
+ * not have on this turn is how a model ends up apologising for not doing
+ * something nobody offered it.
+ *
+ * Every line is a failure this estate has either seen or designed against:
+ *
+ *  1. **Look it up, never remember it.** A model knows how software generally
+ *     works and will happily explain a "typical" deploy — which is an answer
+ *     about the WORLD, not about this house, and the whole feature exists to
+ *     answer the second question.
+ *  2. **Say the date.** The publisher rides an 8-hourly pipeline that can pause;
+ *     a stale snapshot is only visible in the reply (design §6).
+ *  3. **Name the file.** A runbook answer with no source is unfalsifiable, and
+ *     these answers get acted on — somebody runs the command.
+ *  4. **Absence is an answer.** The one rule `/have` already carries about the
+ *     catalogue, applied to docs: "not in the snapshot" is never "not true".
+ *  5. **Never invent a command.** A plausible command that is not in the runbook
+ *     is worse than no command, because it will be run.
+ */
+const CHAT_DOCS_SYSTEM = `
+You can also read the estate's own internal documentation — the runbooks, access references, design docs and work log the household keeps. Two tools: search_estate_docs, then read_estate_doc for the section that looks right.
+
+- Use them for any question about how THIS estate works or how to do something operational here: deploys, promotions, rollbacks, which secret a thing needs, where something lives, why a decision was made. You know how software works in general; you do not know how this house does it, and that is the only question being asked.
+- Search first, then read the one or two sections that actually matter. There is a strict budget per answer — spending it on near-misses leaves nothing for the real one.
+- ⚠️ Say the snapshot's publish date in your answer, and name the file you are quoting so somebody can check you. If the result carries a staleness warning, say that out loud instead of presenting the answer as current.
+- ⚠️ Never state a command, a path, a flag or a step that did not come back from these tools. If the docs do not give it, say the docs do not give it. A plausible-looking command that is not in the runbook is worse than no command, because somebody will run it.
+- If nothing matches, say the docs do not cover it. That is a real answer and it is never the same as the thing not being true.
+- If a tool refuses, relay its sentence as it is. Do not soften it, do not apologise for the estate, and do not offer to look it up another way.`;
+
 export interface ToolTurnResult {
   text: string | null;
   toolCalls: number;
   tools: string[];
   iterations: number;
+  /** ⚠️ What the docs budget actually spent this turn. `sections > 0` is what
+   *  makes this a DOCS turn for the daily fuse — a turn where she never reached
+   *  for the corpus must not be charged one, or the fuse lies. */
+  docsSections: number;
+  docsBytes: number;
+  docsUsed: boolean;
 }
 
 /** Text blocks plus a note when the loop ran out of iterations. */
@@ -519,10 +577,29 @@ export async function converseWithTools(
   overrides?: { fetch?: typeof fetch },
   history: readonly ConversationTurn[] = [],
 ): Promise<ToolTurnResult> {
-  const empty: ToolTurnResult = { text: null, toolCalls: 0, tools: [], iterations: 0 };
+  // ⚠️ The docs surface is decided ONCE, here, from whether the caller handed us
+  // a docs context at all. `mention-flow.ts` builds that context only when the
+  // `GABI_DOCS` posture is on AND a port is configured, so this file never has
+  // to know about either — and the gated tools are never described to a model on
+  // a turn that could not have used them.
+  const docsOffered = Boolean(toolCtx.docs);
+  const docsSpend = () => toolCtx.docs?.budget.spent() ?? { bytes: 0, sections: 0 };
+  const finish = (text: string | null, toolCalls: number, tools: string[], iterationCount: number): ToolTurnResult => {
+    const spent = docsSpend();
+    return {
+      text,
+      toolCalls,
+      tools,
+      iterations: iterationCount,
+      docsSections: spent.sections,
+      docsBytes: spent.bytes,
+      docsUsed: toolCtx.docs?.budget.used() ?? false,
+    };
+  };
+
   if (!apiKey) {
     logNoKey('the conversational reply');
-    return empty;
+    return finish(null, 0, [], 0);
   }
 
   const user = grounding
@@ -531,7 +608,7 @@ export async function converseWithTools(
   const messages: { role: 'user' | 'assistant'; content: unknown }[] = modelMessages(history, user);
 
   const client = chatClient(apiKey, overrides);
-  const tools = toolsForApi();
+  const tools = toolsForApi({ docs: docsOffered });
   const executed: string[] = [];
   let iterations = 0;
 
@@ -545,7 +622,8 @@ export async function converseWithTools(
       const res = await client.messages.create({
         model: GABI_CHAT_MODEL,
         max_tokens: CHAT_MAX_TOKENS,
-        system: CHAT_TOOLS_SYSTEM,
+        system: docsOffered ? `${CHAT_TOOLS_SYSTEM}
+${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
         messages: messages as never,
         ...(last ? {} : { tools: tools as never }),
       });
@@ -560,18 +638,14 @@ export async function converseWithTools(
         toolCalls: executed.length,
         tools: [...executed],
         toolIterations: iterations,
+        ...(docsOffered ? { docsSections: docsSpend().sections, docsBytes: docsSpend().bytes } : {}),
       });
 
       const blocks = content(res);
       const calls = toolUseBlocks(blocks);
       if (res.stop_reason !== 'tool_use' || calls.length === 0) {
         const text = textOf(blocks);
-        return {
-          text: text.length > 0 ? text : null,
-          toolCalls: executed.length,
-          tools: executed,
-          iterations,
-        };
+        return finish(text.length > 0 ? text : null, executed.length, executed, iterations);
       }
 
       // ⚠️ Truncated rather than refused: the calls beyond the cap come back as
@@ -614,12 +688,12 @@ export async function converseWithTools(
     // Unreachable: the `last` iteration above sends no tools, so it always
     // returns. Kept as a named outcome rather than a fallthrough, because a
     // loop that can end without a value is a loop that will one day go silent.
-    return { text: null, toolCalls: executed.length, tools: executed, iterations };
+    return finish(null, executed.length, executed, iterations);
   } catch (err) {
     console.error(
       'GABI mentions: the tool-using turn failed:',
       err instanceof Error ? err.message : err,
     );
-    return { text: null, toolCalls: executed.length, tools: executed, iterations };
+    return finish(null, executed.length, executed, iterations);
   }
 }

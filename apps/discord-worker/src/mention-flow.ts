@@ -99,6 +99,12 @@ import {
 } from './mentions.js';
 import { DELEGATE_MSG, delegatedIntent, type LibraryInstance } from './delegated.js';
 import {
+  makeDocsBudget,
+  type DocsCapVerdict,
+  type DocsPort,
+  type DocsToolContext,
+} from './estate-docs.js';
+import {
   runDelegated,
   resumeDelegated,
   type DelegatedDeps,
@@ -163,6 +169,30 @@ export interface MentionDeps {
    * offer the slow verb's follow-up rather than silently dropping it.
    */
   followUp?(content: string): Promise<void>;
+  /**
+   * ⚠️ **TIER 0b (2026-08-18): the estate docs corpus, OPTIONAL BY DESIGN.**
+   *
+   * Absent means this surface cannot read the docs — the state of every caller
+   * that has not been given one, and of production while `GABI_DOCS` is off or
+   * the app token is unset. Like `delegated`, it is an injected port rather than
+   * an import so THIS FILE holds no credential.
+   *
+   * ⚠️ Its `capCheck`/`record` pair is the THIRD fuse, kept deliberately apart
+   * from `capCheck`/`recordTurn` (turns, rolling hour) and the delegated write
+   * cap (writes, UTC day). A docs turn is ≈6k input tokens of retrieved runbook;
+   * folding it into the turn cap would either make forty answers cost the docs
+   * budget or make forty docs questions cheap, and both are wrong.
+   */
+  docs?: DocsDeps;
+}
+
+/** The docs port plus its own fuse. ⚠️ `record()` is called ONLY when a turn
+ *  actually reached the corpus — charging a turn that never did would make the
+ *  fuse lie about what it is protecting. */
+export interface DocsDeps {
+  port: DocsPort;
+  capCheck(userId: string): Promise<DocsCapVerdict>;
+  record(userId: string): Promise<void>;
 }
 
 export interface MentionConfig {
@@ -184,17 +214,96 @@ export interface MentionConfig {
    */
   instances?: readonly LibraryInstance[];
   delegatedWrites?: boolean;
+  /**
+   * ⚠️ TIER 0b. The `GABI_DOCS` posture, affirmative-only and read at the
+   * composition root. Defaults to FALSE here so a caller that predates the docs
+   * feature — or forgets the flag — cannot accidentally offer a model the
+   * estate's gated corpus. Both this AND `deps.docs` must be present before a
+   * single docs tool is described to the model.
+   */
+  docsEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
 }
 
 /** The executor's world, built from the config in one place so the two callers
  * (gateway message, component press) cannot drift. */
-function toolContext(cfg: MentionConfig): ToolContext {
+function toolContext(cfg: MentionConfig, docs?: DocsToolContext): ToolContext {
   return {
     catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
     ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
+    ...(docs ? { docs } : {}),
   };
+}
+
+/**
+ * ⚠️ **THE ONE PLACE THAT DECIDES WHETHER THIS TURN MAY TOUCH THE CORPUS, and
+ * it needs THREE things to be true.**
+ *
+ * 1. the `GABI_DOCS` posture is on (an owner decision, never a deploy's side
+ *    effect);
+ * 2. this surface was actually given a port (so it ships dark on a Worker whose
+ *    app token or service account is unset);
+ * 3. …and only then is the daily fuse read.
+ *
+ * Returning `undefined` means the docs tools are not even DESCRIBED to the
+ * model this turn — cheaper, and it stops her apologising for not doing
+ * something nobody offered her.
+ *
+ * ⚠️ **A CAPPED PERSON STILL GETS THE TOOLS OFFERED, with `capped: true`.** The
+ * executor then refuses in words and the model relays it. Withholding the tools
+ * instead would leave a docs question answered from the model's general
+ * knowledge — a confident, plausible, unsourced answer about how this estate
+ * works, which is the single worst thing this feature could produce.
+ *
+ * ⚠️ The cap is read ONCE per turn rather than per tool call: it is one storage
+ * read, and a fuse that re-read itself mid-loop could refuse the fourth call of
+ * a turn it had already admitted.
+ */
+async function docsContextFor(
+  deps: Pick<MentionDeps, 'docs'>,
+  cfg: MentionConfig,
+  discordUserId: string,
+): Promise<DocsToolContext | undefined> {
+  if (!cfg.docsEnabled || !deps.docs) return undefined;
+  let capped = false;
+  try {
+    capped = !(await deps.docs.capCheck(discordUserId)).ok;
+  } catch (err) {
+    // ⚠️ A fuse that cannot be read is treated as BLOWN, not as open. The
+    // failure mode of guessing "not capped" is an uncapped spend nobody sees;
+    // the failure mode of guessing "capped" is one worded refusal.
+    console.error('GABI docs: the daily fuse could not be read:', err instanceof Error ? err.message : err);
+    capped = true;
+  }
+  return { port: deps.docs.port, discordUserId, budget: makeDocsBudget(), capped };
+}
+
+/**
+ * Charge the daily docs fuse — **only if this turn actually reached the
+ * corpus**.
+ *
+ * ⚠️ `budget.used()` is the discriminator, and it is the whole point. Most
+ * turns in a book channel never touch the docs; charging them would burn a
+ * forty-a-day allowance on conversations about narrators and make the fuse
+ * describe something other than what it protects. Equally, a turn that DID pull
+ * runbook text must be charged even if the model's final answer went another
+ * way — the tokens were spent either way.
+ *
+ * ⚠️ Never throws. A fuse that could not be written must not cost somebody the
+ * answer they already received; the miscount is logged and the turn stands.
+ */
+async function chargeDocsTurn(
+  deps: Pick<MentionDeps, 'docs'>,
+  discordUserId: string,
+  docs: DocsToolContext | undefined,
+): Promise<void> {
+  if (!deps.docs || !docs?.budget.used()) return;
+  try {
+    await deps.docs.record(discordUserId);
+  } catch (err) {
+    console.error('GABI docs: the daily fuse could not be charged:', err instanceof Error ? err.message : err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +472,7 @@ async function answerQuestion(
   who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
   cfg: MentionConfig,
   now: number,
+  docs?: DocsToolContext,
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -389,7 +499,7 @@ async function answerQuestion(
         question,
         facts,
         who,
-        toolContext(cfg),
+        toolContext(cfg, docs),
         overrides,
         history,
       );
@@ -457,7 +567,7 @@ async function answerQuestion(
             question,
             grounding,
             who,
-            toolContext(cfg),
+            toolContext(cfg, docs),
             overrides,
             history,
           )
@@ -595,7 +705,12 @@ export async function handleMention(
       return { answered: true, intent: 'fix_request' };
     }
 
-    const answer = await answerQuestion(trigger.question, memory.turns, who, cfg, now);
+    // ⚠️ Built AFTER the turn cap and AFTER the Tier-1 pre-router: a capped
+    // turn and a DM'd barcode both end before this line, so neither pays the
+    // storage read that the docs fuse costs.
+    const docs = await docsContextFor(deps, cfg, trigger.authorId);
+
+    const answer = await answerQuestion(trigger.question, memory.turns, who, cfg, now, docs);
     await say(answer.content, answer.components);
     await deps.conversation.save({
       user: trigger.question,
@@ -607,6 +722,7 @@ export async function handleMention(
       ref: { message_id: trigger.messageId, ...(trigger.guildId ? { guild_id: trigger.guildId } : {}) },
     });
     await deps.recordTurn(trigger.authorId);
+    await chargeDocsTurn(deps, trigger.authorId, docs);
     return { answered: true, intent: answer.intent };
   } catch (err) {
     console.error('GABI mentions: handling failed:', err instanceof Error ? err.message : err);
@@ -769,13 +885,15 @@ export async function handleTypedQuestion(
     const verdict = await deps.capCheck(who.discordUserId);
     if (!verdict.ok) return { kind: 'capped', content: verdict.message };
 
-    const answer = await answerQuestion(question, memory.turns, { ...who, via: 'component' }, cfg, now);
+    const docs = await docsContextFor(deps, cfg, who.discordUserId);
+    const answer = await answerQuestion(question, memory.turns, { ...who, via: 'component' }, cfg, now, docs);
     await deps.conversation.save({
       user: question,
       assistant: answer.content,
       pending: answer.pending,
     });
     await deps.recordTurn(who.discordUserId);
+    await chargeDocsTurn(deps, who.discordUserId, docs);
     return {
       kind: 'answered',
       content: truncate(answer.content, DISCORD_CONTENT_MAX),

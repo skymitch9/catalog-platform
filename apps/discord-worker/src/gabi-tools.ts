@@ -263,18 +263,169 @@ export function gabiToolByName(name: unknown): GabiTool | null {
   return GABI_TOOLS.find((t) => t.name === name) ?? null;
 }
 
-/** The `tools` array as the Messages API wants it — the executor's own fields
- * (`reads`, `methods`, `mutates`) are ours and are never sent. */
-export function toolsForApi(): {
+// ---------------------------------------------------------------------------
+// TIER 0b — the READ-ONLY DOCS category. A separate allowlist, deliberately.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **A THIRD ARRAY, NOT A THIRD PAIR OF ENTRIES IN `GABI_TOOL_NAMES`** — the
+ * same reasoning that keeps the Tier-1 verbs in their own array, applied to a
+ * different axis.
+ *
+ * Tier 0 above and this list are both read-only and both chosen by the model,
+ * so `mutates` cannot tell them apart. What separates them is **what they
+ * read**, and it is the whole security story:
+ *
+ * | | Tier 0 catalogue tools | Tier 0b docs tools |
+ * |---|---|---|
+ * | surface | `catalog.csv`, **published to the open internet** | the estate docs corpus, **PII + an operations runbook** |
+ * | credential | none — the absence IS the scope decision | an app bearer, in ONE module |
+ * | who may read it | anyone with a browser | **devops-class only**, decided by the auth Worker |
+ * | offered to the model | always | only with `GABI_DOCS=on` AND a configured port |
+ * | posture | no switch — nothing to switch off | ⚠️ ships OFF behind `GABI_DOCS` |
+ *
+ * Merging them would mean a single `toolsForApi()` hands a model the gated
+ * surface on every turn of every conversation in the server, and that the
+ * build-failing guard could no longer assert *"the catalogue tools reach
+ * nothing gated"* — the sentence that currently makes Tier 0 safe by
+ * construction. Two arrays keep both claims true and separately checkable.
+ *
+ * ⚠️ **NOTHING HERE WRITES, AND NOTHING HERE EVER WILL.** A docs *assistant*,
+ * not a docs editor: no publish trigger, no doc edit, no TODO append. If "GABI
+ * writes to docs/TODO.md" is ever wanted it is a T1/T2 verb with its own design
+ * and its own confirm lane, not a third entry in this array.
+ */
+export const GABI_DOCS_TOOL_NAMES = ['search_estate_docs', 'read_estate_doc'] as const;
+
+export type GabiDocsToolName = (typeof GABI_DOCS_TOOL_NAMES)[number];
+
+/** Which shipped slice this is. Tier 0b = read the estate's own GATED docs
+ *  corpus, on the asker's behalf, and answer from it. */
+export const GABI_DOCS_TOOL_TIER = '0b';
+
+/** One docs tool. Same shape as `GabiTool` but a DIFFERENT `reads` category,
+ *  because the category is the thing the guard checks. */
+export interface GabiDocsTool {
+  name: GabiDocsToolName;
+  description: string;
+  input_schema: GabiTool['input_schema'];
+  /** ⚠️ The gated category. `test/gabi-tools.test.ts` asserts every Tier-0 tool
+   *  reads `public_audiobook_catalogue` and every entry here reads this — so a
+   *  docs tool that drifted into the public list, or vice versa, fails the
+   *  build rather than quietly changing what a model may reach. */
+  reads: 'gated_estate_docs';
+  methods: readonly ('GET')[];
+  mutates: boolean;
+}
+
+export const GABI_DOCS_TOOLS: readonly GabiDocsTool[] = [
+  {
+    name: 'search_estate_docs',
+    description:
+      "Search the estate's own internal documentation — every docs/ file across the three repos " +
+      '(runbooks, access references, design docs, the work log and its archive), published as one ' +
+      'snapshot. Returns matching SECTIONS, each with its repo, file path, heading and a short ' +
+      'snippet, plus a section id you can pass to read_estate_doc. ' +
+      'Call this whenever somebody asks how something in the estate WORKS or how to DO something ' +
+      'operational — "how do I promote the audiobook site", "what is the rollback procedure", ' +
+      '"which secret does X need", "why did we decide Y", "where does Z live". ' +
+      '⚠️ NEVER answer an operational question about this estate from your own memory: you know how ' +
+      'software generally works, you do not know how THIS house does it, and that is the only ' +
+      'question being asked. If nothing comes back, say the docs do not cover it — that is a real ' +
+      'answer and is never the same as it not being true.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'The words to look for, as the person said them. Two or three specific terms beat a ' +
+            'whole sentence — "promote prod", "rollback tag", "revocation delay".',
+        },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    reads: 'gated_estate_docs',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'read_estate_doc',
+    description:
+      'Read ONE section of an estate document in full, by the section id a search result gave you. ' +
+      'Call this after search_estate_docs when a snippet looks like the answer but you need the ' +
+      'actual steps, commands or table rather than the first few lines. ' +
+      'Read the one or two sections that matter, not everything that matched — there is a strict ' +
+      'budget per answer and spending it on near-misses leaves nothing for the real one. ' +
+      '⚠️ Quote what the section actually says, and never fill a gap from memory: a plausible-looking ' +
+      'command that is not in the runbook is worse than saying the runbook does not give one.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description:
+            'The section id exactly as a search result gave it — it looks like ' +
+            '`<repo>/docs/<file>.md#<n>`. Do not construct one yourself; ids only exist inside the ' +
+            'snapshot that produced them.',
+        },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    reads: 'gated_estate_docs',
+    methods: ['GET'],
+    mutates: false,
+  },
+];
+
+/** The one place anything decides whether a docs tool name is allowed.
+ *  Default-deny, and an ARRAY for the same reason `isGabiToolName` is one. */
+export function isGabiDocsToolName(name: unknown): name is GabiDocsToolName {
+  return typeof name === 'string' && (GABI_DOCS_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+/** The definition for an allowlisted docs name, or `null`. Never throws. */
+export function gabiDocsToolByName(name: unknown): GabiDocsTool | null {
+  if (!isGabiDocsToolName(name)) return null;
+  return GABI_DOCS_TOOLS.find((t) => t.name === name) ?? null;
+}
+
+/**
+ * The `tools` array as the Messages API wants it — the executor's own fields
+ * (`reads`, `methods`, `mutates`) are ours and are never sent.
+ *
+ * ⚠️ **THE DOCS TOOLS ARE OPT-IN PER CALL, AND THE DEFAULT IS OFF.** Called
+ * with no argument this returns Tier 0 and nothing else, which is what every
+ * pre-existing caller gets and what `test/gabi-tools.test.ts` pins. Only a
+ * caller that has checked the `GABI_DOCS` posture AND holds a configured docs
+ * port passes `{ docs: true }` — so the gated surface is never described to a
+ * model on a turn that could not use it anyway.
+ *
+ * ⚠️ **NO DELEGATED VERB APPEARS IN EITHER SHAPE.** A write a model may choose
+ * is a write that happens when a model misreads a sentence; that wall is
+ * asserted in both modes by the build-failing guard.
+ */
+export function toolsForApi(opts: { docs?: boolean } = {}): {
   name: string;
   description: string;
   input_schema: GabiTool['input_schema'];
 }[] {
-  return GABI_TOOLS.map((t) => ({
-    name: t.name,
+  const base = GABI_TOOLS.map((t) => ({
+    name: t.name as string,
     description: t.description,
     input_schema: t.input_schema,
   }));
+  if (!opts.docs) return base;
+  return [
+    ...base,
+    ...GABI_DOCS_TOOLS.map((t) => ({
+      name: t.name as string,
+      description: t.description,
+      input_schema: t.input_schema,
+    })),
+  ];
 }
 
 // ---------------------------------------------------------------------------

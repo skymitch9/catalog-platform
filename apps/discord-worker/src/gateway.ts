@@ -124,6 +124,8 @@ import type { Env } from './env.js';
 import { createChannelMessage, getGatewayBot, replyToMessage } from './discord-api.js';
 import { delegatedWritesOn, libraryInstances, writeCapDecision } from './delegated.js';
 import { makeDelegate } from './delegated-exec.js';
+import { docsCapDecision, docsOn } from './estate-docs.js';
+import { makeDocsPort } from './estate-docs-exec.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -232,6 +234,13 @@ const kUserCap = (id: string) => `cap:user:${id}`;
  * Two fuses with different horizons must not share a record that one of them
  * prunes on a schedule the other does not want. */
 const kUserWriteCap = (id: string) => `wcap:user:${id}`;
+/** ⚠️ Its OWN prefix again, for the third time and the same reason. Three fuses
+ * protect three different things over three different horizons: a TURN is
+ * fractions of a cent and forgiven in a rolling hour; a WRITE is a row in
+ * somebody's catalog and ~2¢ of research on their key; a DOCS turn is ≈6k input
+ * tokens of retrieved runbook. A record one of them prunes on a schedule the
+ * others do not want is a record that makes two of them lie. */
+const kUserDocsCap = (id: string) => `dcap:user:${id}`;
 
 interface IdentifyBudget {
   day: string;
@@ -451,6 +460,10 @@ export class GabiGateway {
         // for the same reason the turn fuse rides the load — they live one key
         // apart in the same storage, and a press that may write needs both.
         writeCap: await this.writeCapCheck(key.person),
+        // ⚠️ TIER 0b: the DOCS fuse rides the same round trip as the other two,
+        // for the same reason — all three live a key apart in the same storage,
+        // and a press that may read the corpus needs all three.
+        docsCap: await this.docsCapCheck(key.person),
       });
     }
 
@@ -467,6 +480,14 @@ export class GabiGateway {
     // writes is exactly one of each.
     if (path === '/conv/wcount') {
       await this.recordWrite(key.person);
+      return Response.json({ ok: true });
+    }
+
+    // ⚠️ And the docs counter is its own route again, for the third time and the
+    // same reason: a turn, a write and a docs read are three different events,
+    // and a turn that answered from the corpus is one of each of two of them.
+    if (path === '/conv/dcount') {
+      await this.recordDocsTurn(key.person);
       return Response.json({ ok: true });
     }
 
@@ -737,6 +758,14 @@ export class GabiGateway {
     // outlive a secret rotation.
     const delegate = makeDelegate(this.env);
 
+    // ⚠️ TIER 0b. `null` when the estate has not finished the wiring — no
+    // service account, or no docs app token — which is how "ships dark" is
+    // expressed here: the docs tools are never described to the model and every
+    // other answer is untouched. Built per message rather than held on the
+    // object because it memoises the asker's link lookup FOR ONE TURN, and a
+    // port that outlived its turn would answer for the wrong person.
+    const docsPort = makeDocsPort(this.env);
+
     await handleMention(
       {
         capCheck: (userId) => this.capCheck(userId),
@@ -748,6 +777,15 @@ export class GabiGateway {
                 delegate,
                 writeCapCheck: (userId: string) => this.writeCapCheck(userId),
                 recordWrite: (userId: string) => this.recordWrite(userId),
+              },
+            }
+          : {}),
+        ...(docsPort
+          ? {
+              docs: {
+                port: docsPort,
+                capCheck: (userId: string) => this.docsCapCheck(userId),
+                record: (userId: string) => this.recordDocsTurn(userId),
               },
             }
           : {}),
@@ -791,6 +829,7 @@ export class GabiGateway {
         catalogBaseUrl: catalogBase(this.env),
         instances: libraryInstances(this.env),
         delegatedWrites: delegatedWritesOn(this.env),
+        docsEnabled: docsOn(this.env),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
     );
@@ -893,6 +932,39 @@ export class GabiGateway {
   private async recordWrite(userId: string): Promise<void> {
     const day = utcDayKey(Date.now());
     const key = kUserWriteCap(userId);
+    const stored = (await this.state.storage.get<GlobalCap>(key)) ?? { day, count: 0 };
+    await this.state.storage.put(
+      key,
+      stored.day === day ? { day, count: stored.count + 1 } : { day, count: 1 },
+    );
+  }
+
+  /**
+   * ⚠️ **THE THIRD FUSE — docs turns, not turns and not writes** (Tier 0b,
+   * 2026-08-18).
+   *
+   * Same `{day, count}` shape and same UTC day key as the write cap above,
+   * deliberately: a rolling list of timestamps would cost a row write per docs
+   * call to store, and two numbers do not. It is a separate counter because it
+   * protects a separate thing — ≈6k input tokens of retrieved documentation per
+   * turn, which an hour does not forgive and which has nothing to do with how
+   * many books somebody looked up.
+   *
+   * ⚠️ Storage cost is at most **one row write per DOCS turn**, and docs turns
+   * are themselves capped at 40 per person per day by this very counter. On top
+   * of the ~2,500/day this object already accrues against 100,000, that is
+   * noise. A turn that never touched the corpus performs no write at all —
+   * `mention-flow.ts` only charges when the budget was actually used.
+   */
+  private async docsCapCheck(userId: string): Promise<ReturnType<typeof docsCapDecision>> {
+    const day = utcDayKey(Date.now());
+    const stored = (await this.state.storage.get<GlobalCap>(kUserDocsCap(userId))) ?? { day, count: 0 };
+    return docsCapDecision(stored.day === day ? stored.count : 0);
+  }
+
+  private async recordDocsTurn(userId: string): Promise<void> {
+    const day = utcDayKey(Date.now());
+    const key = kUserDocsCap(userId);
     const stored = (await this.state.storage.get<GlobalCap>(key)) ?? { day, count: 0 };
     await this.state.storage.put(
       key,

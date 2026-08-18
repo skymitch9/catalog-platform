@@ -21,9 +21,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { app } from '../src/index.js';
 import {
@@ -97,6 +98,7 @@ test('CONTRACT: a slug with a SPACE survives the writer→reader round trip', ()
     slug: slugifyName(displayName),
     displayName,
     firebaseUid: 'uid-123',
+    email: 'sam@example.test',
     linkedAt: new Date('2026-08-17T10:00:00.000Z'),
   });
   assert.deepEqual(linkFromDoc({ fields: written }), {
@@ -113,6 +115,7 @@ test('CONTRACT: writer → reader → vote doc, the whole chain, for every real 
       slug: slugifyName(derived),
       displayName: derived,
       firebaseUid: 'uid-1',
+      email: 'unused@example.com',
       linkedAt: new Date(0),
     });
     const link = linkFromDoc({ fields });
@@ -134,11 +137,12 @@ test('CONTRACT: a name-less Google account falls back to email, exactly as the b
   assert.equal(estateDisplayName({ name: 'Named', email: 'reader@example.com' }), 'Named');
 });
 
-test('the link doc carries linkedAt and firebaseUid alongside the two read fields', () => {
+test('the link doc carries linkedAt, firebaseUid and email alongside the two read fields', () => {
   const fields = linkDocFields({
     slug: 'sam vimes',
     displayName: 'Sam Vimes',
     firebaseUid: 'uid-abc',
+    email: 'sam@example.test',
     linkedAt: new Date('2026-08-17T10:00:00.000Z'),
   });
   assert.deepEqual(fields, {
@@ -146,9 +150,37 @@ test('the link doc carries linkedAt and firebaseUid alongside the two read field
     displayName: { stringValue: 'Sam Vimes' },
     linkedAt: { timestampValue: '2026-08-17T10:00:00.000Z' },
     firebaseUid: { stringValue: 'uid-abc' },
+    // ⚠️ ADDED 2026-08-18 for the GABI docs assistant (design §4.3). The estate
+    // directory is keyed by EMAIL, and before this the chain was broken in the
+    // middle: GABI could prove which estate member asked and still could not
+    // ask the directory about them. The value was always in hand — the same
+    // Firebase verifier that proves `firebaseUid` proves this — it simply was
+    // not persisted.
+    email: { stringValue: 'sam@example.test' },
   });
-  // The reader ignores the two extra fields rather than choking on them.
+  // The vote reader ignores the three extra fields rather than choking on them.
   assert.deepEqual(linkFromDoc({ fields }), { slug: 'sam vimes', displayName: 'Sam Vimes' });
+});
+
+test('⚠️ the update mask writes EVERY field the doc shape declares', () => {
+  // A field present in `linkDocFields` but missing from `LINK_UPDATE_MASK` is a
+  // field the PATCH silently does not write: the code looks right and Firestore
+  // is missing the column. That is exactly how `email` could have shipped
+  // broken, so the two are asserted against each other rather than by eye.
+  const source = readFileSync(fileURLToPath(new URL('../src/link.ts', import.meta.url)), 'utf8');
+  const mask = /const LINK_UPDATE_MASK = \[([^\]]*)\]/.exec(source);
+  assert.ok(mask, 'LINK_UPDATE_MASK could not be found — has it been renamed?');
+  const masked = [...(mask[1] as string).matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+  const declared = Object.keys(
+    linkDocFields({
+      slug: 's',
+      displayName: 'd',
+      firebaseUid: 'u',
+      email: 'e@x.test',
+      linkedAt: new Date(0),
+    }),
+  ).sort();
+  assert.deepEqual(masked, declared, 'the written shape and the update mask have drifted apart');
 });
 
 test('isSafeSlug refuses what Firestore refuses, and what would escape a path', () => {

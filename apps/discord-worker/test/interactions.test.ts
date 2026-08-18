@@ -297,6 +297,13 @@ test('health answers config-presence booleans and never values', async () => {
     // ships-dark gate rather than a ladder: with it unset she says "I'm not
     // wired up to write yet" in words, and every read-only answer is unchanged.
     estate_app_token_discord: false,
+    // Added with TIER 0b (2026-08-18) — the DOCS door's bearer, and ⚠️ a
+    // DIFFERENT secret from the row above rather than a reuse of it. That one
+    // is shared with both library Workers; this one has exactly two holders
+    // (this Worker and the auth Worker), because the estate docs corpus carries
+    // break-glass SQL, secret names and household emails and must not be opened
+    // by a leak from a catalog. Same honest-false, ships-dark contract.
+    estate_app_token_discord_docs: false,
   });
   assert.ok(!JSON.stringify(data).includes('abc'));
 });

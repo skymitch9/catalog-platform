@@ -269,6 +269,54 @@ GABI_DELEGATED_WRITES = "on"
 LIBRARY_MAIN_URL = "https://library.heygabi.ai"
 LIBRARY_FRIEND_URL = "https://padhard.heygabi.ai"
 
+# ⚠️ THE DOCS KILL SWITCH — GABI reads the estate's OWN documentation
+# (src/estate-docs.ts; design docs/info/gabi-docs-assistant-design.md phase 4).
+#
+# Owner ask 2026-08-17, verbatim: "let's make sure GABI can read all of our docs
+# and stuff so she can even help me if needed for let's say I don't have a
+# Claude code session open." Phases 1/2/5/6 answered that in a BROWSER
+# (https://heygabi.ai/docs/); THIS is the half that answers it in Discord, which
+# is where he actually is when no session is open.
+#
+# Affirmative-only in the exact idiom of MODERATION_ENABLED, GABI_MENTIONS and
+# GABI_DELEGATED_WRITES above: "on" and nothing else; "true", "1", "yes" and
+# every typo mean OFF, and test/estate-docs.test.ts pins that both ways.
+#
+# ⚠️ IT SHIPS OFF, and that is a DEPARTURE FROM GABI_DELEGATED_WRITES rather
+# than an oversight. Tier 1 ships "on" because the owner approved that
+# capability in words. This one reaches PII plus an operations runbook —
+# break-glass SQL, deploy levers, secret NAMES and where they live, the /admin
+# grant grammar, and household members' emails and role assignments. Design §7's
+# owner step 4 is explicit: flipping it is "a deliberate act, never a side
+# effect of a deploy."
+#
+# ⚠️ OFF DOES NOT MEAN SILENT. A docs question still gets "reading the estate
+# docs from Discord is switched off" rather than falling through to a shelf
+# search for a phrase about deploys, which returns nothing and reads as broken.
+# The switch removes the capability; it must not remove the sentence.
+#
+# ⚠️ ON IS NOT A GRANT. With this on, EVERY docs question is still checked
+# per-asker against the estate directory by the auth Worker: she asserts the
+# email the person proved themselves at /link, and auth.heygabi.ai applies the
+# same devopsAllows() the browser door uses. A non-devops household member gets
+# a worded refusal and GABI never sees a byte of the corpus on their behalf.
+# Revoke someone's devops in /admin and their next question is refused, with no
+# deploy and no second place to remember.
+#
+# ⚠️ THE FLIP HAS A SECOND STEP: the owner (or anyone who linked before
+# 2026-08-18) must re-run /link ONCE, because links written before that date
+# carry no email and cannot be upgraded from the outside. That is the owner's
+# own decision, design §9.1: "1.a i think its just me". An un-upgraded link is
+# told so in words — "your link was made before I could check estate roles" —
+# never refused as though it were a permissions problem.
+GABI_DOCS = "off"
+
+# The estate's auth Worker, which serves the docs corpus behind its devops gate.
+# ⚠️ A var, not a secret: it is a public hostname and the credential is the
+# BEARER, not the address. Present so a test or a future lane can point
+# elsewhere; the default in code (src/estate-docs-exec.ts) is this same host.
+AUTH_BASE_URL = "https://auth.heygabi.ai"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)
@@ -289,6 +337,31 @@ LIBRARY_FRIEND_URL = "https://padhard.heygabi.ai"
 #     DISCORD_CLIENT_SECRET and POLL_SYNC_TOKEN below.
 #     ⚠️ Read by exactly ONE module — src/delegated-exec.ts — and
 #     test/mentions.test.ts fails the build if that stops being true.)
+#   wrangler secret put ESTATE_APP_TOKEN_DISCORD_DOCS  (TIER 0b, added
+#     2026-08-18. ⚠️ NOT A PORTAL VALUE — the conductor MINTS it
+#     (`openssl rand -hex 32`) and pipes the SAME value to exactly TWO holders
+#     under the SAME NAME: here, and apps/auth-worker.
+#     ⚠️ IT IS NOT ESTATE_APP_TOKEN_DISCORD ABOVE. That one is shared with BOTH
+#     library Workers for the Tier-1 delegated writes. Reusing it here would
+#     mean a leak from either library instance also opened the estate's docs
+#     corpus — break-glass SQL, deploy levers, secret names and household
+#     members' emails — and re-minting it to add the auth Worker as a fourth
+#     holder would BREAK Tier 1, since a secret cannot be read back. A fresh
+#     trust edge gets a fresh pair; that is the estate's standing rule and this
+#     is the case it was written for.
+#     ⚠️ HOLDING IT AUTHORISES NO READ. It proves only "this request came from
+#     the estate's Discord Worker". Every call also carries the asker's PROVEN
+#     email (the one link.ts verified server-side and stored on the
+#     discord_links document), and the auth Worker resolves THAT email against
+#     the directory and applies devopsAllows(). So a leak buys the ability to
+#     read on behalf of people who could already read it — and revoking someone
+#     in /admin still shuts the door on their next question with no deploy.
+#     ⚠️ SHIPS DARK until set: the docs tools are never described to the model,
+#     /api/health reports configured.estate_app_token_discord_docs = false and
+#     gabi_docs_ready = false, and every other answer is unchanged. Same
+#     ships-dark idiom as DISCORD_CLIENT_SECRET and POLL_SYNC_TOKEN below.
+#     ⚠️ Read by exactly ONE module — src/estate-docs-exec.ts — and
+#     test/estate-docs.test.ts fails the build if that stops being true.)
 #   wrangler secret put DISCORD_PUBLIC_KEY        (Developer Portal → General
 #     Information → Public Key; 64 hex chars. Public by design, but kept as a
 #     secret for uniform custody with the rest)
