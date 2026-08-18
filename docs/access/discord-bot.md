@@ -310,6 +310,12 @@ estate makes.
   Anthropic rejected every call while the key itself was perfectly valid,
   and the tail's non-ASCII-header warning printed the FULL key value (so an
   affected key should be rotated, not just re-stored).
+  ⚠️ OWNER DECISION 2026-08-18 ("Leave key as is"): the current
+  ANTHROPIC_API_KEY_GABI's value DID pass through the owner's private
+  Cloudflare tail during the diagnosis and he ACCEPTED that exposure after
+  it was laid out (blast radius: his own account's log stream + one Claude
+  session). Do not re-raise rotation for this key unless NEW exposure
+  occurs — a decided risk, not an oversight.
   ⚠️ **The first "fix" was measured NOT to work and is REVOKED as ritual**
   (same night, rotated key, same 401): setting
   `$OutputEncoding = UTF8Encoding($false)` + trimming, then
