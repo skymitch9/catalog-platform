@@ -1399,21 +1399,62 @@ written to `clubs/{id}/settings/discord.discordChannelId`.
 **Turning it off:** untick the box. The Worker refuses the club on the very
 next tick; already-posted messages stay where they are (see §14.6).
 
-### 14.9 ⚠️ NOT VERIFIED LIVE
+### 14.9 Verified live 2026-08-18 (deploy `6ccb1c99-bd45-4b92-a22b-cd3377cfed57`)
+
+| Probe | Result |
+|---|---|
+| `GET /api/health` | `features` includes `club_question_sync`; `question_sync_ready: true`; `moderation_enabled: false` (untouched) |
+| `POST /questions/sync`, no token | **401**, worded body ("did not carry the shared pipeline token… nothing was changed") |
+| `POST /questions/sync`, wrong token | **401**, same worded body |
+| `POST /questions/sync`, real token, `lane: dev` | **200** — `clubs_considered: 4`, `clubs_opted_in: 0`, `baselined: 0`, `posted: 0`, `skipped: 0`, 0 notes |
+| `POST /questions/sync`, real token, `lane: prod` | **200** — `clubs_considered: 3`, `clubs_opted_in: 0`, `baselined: 0`, `posted: 0`, `skipped: 0` |
+| Same dev tick run 3× | **byte-identical** each time, 0 notes — a stable no-op |
+| `lane: "staging"` | **400**, *"Unknown lane… nothing was posted."* |
+| `POST /polls/sync`, wrong token | **401** — unaffected by this build |
+| `POST /interactions`, unsigned | **401** — unaffected by this build |
+
+**What that actually proves:** the route's gate, the lane parse, and — the one
+worth having — **the Firestore service-account read path works live**, since it
+enumerated real clubs on both lanes. It also proves the feature **ships dark and
+inert**: `clubs_opted_in: 0` on both lanes, so nothing was posted anywhere.
+
+### 14.10 ⚠️ NOT VERIFIED LIVE
 
 - **No question has ever been posted to a real Discord channel by this code.**
-  Measured 2026-08-18: **0 clubs** have `features.discordQuestions` set on
-  either lane (the key did not exist until today), so the tick has only ever
-  run over the top-level club loop. Every orchestration rule above is pinned by
-  45 injected-dependency tests; none of it has met real Discord.
+  0 clubs have `features.discordQuestions` set on either lane (the key did not
+  exist until today). Every orchestration rule above is pinned by 45
+  injected-dependency tests; none of it has met real Discord.
+- ⚠️ **`baselined: 0` above means the baseline WRITE has never executed.** The
+  read path returned "no baseline" for zero clubs because zero clubs got that
+  far. §14.5 — the rail this whole feature's usability rests on — is proven by
+  test only.
+- **Nothing downstream of the opt-in has run live**: the post path, the record
+  write, the per-tick cap, the oldest-first ordering, and the channel
+  resolution have each executed only against injected stubs.
 - **The webhook → `channel_id` round trip is still unproven** — the same gap
   §8.3 already records, inherited unchanged because this reuses that resolver.
 - **`question_sync_ready: true` does NOT mean questions are live.** It is a
-  fact about the Worker's three secrets, not about any club opting in. With no
-  club opted in it reads `true` while nothing posts anywhere.
+  fact about the Worker's three secrets, not about any club opting in.
+- **The Edit Club checkbox has not been clicked in a browser.** It follows the
+  same `FEATURE_DEFAULTS` + `updateClubDetails` path as six existing toggles and
+  is covered by the site suite, but no one has used it. ⚠️ It is also on the
+  audiobook site's **`/dev/` lane only** until a promote.
 - **The Firestore read cost of `listQuestions`** (a masked list of a read's
   comments, filtered in the Worker) has not been measured against a busy read.
   At estate scale — ≤2 active reads per club, tens of comments — it is cheap by
   inspection; it is the only part of the tick whose cost grows with ordinary
   member activity, and the line to revisit if a read's comments ever run to
   thousands.
+
+### 14.11 ⚠️ "curl says 403 / 000 and the route looks dead"
+
+Two client artefacts cost time verifying this build. Neither is the Worker.
+
+- **Python `urllib` gets a bare `403` from `discord.heygabi.ai`** — its default
+  `User-Agent` (`Python-urllib/3.x`) is WAF-blocked in front of the Worker. The
+  route never sees the request, so the 403 is not one of its answers (it only
+  ever returns 200/400/401/503). **Fix: send a normal `User-Agent` header.**
+- **Git Bash `curl -o <file> -w '%{http_code}'` reports `000`** and writes no
+  file, which reads exactly like a dead host. Same family as the existing
+  `curl -o /dev/null` artefact. **Fix: use PowerShell's `Invoke-WebRequest`, or
+  pipe the body straight to a parser instead of `-o`.**

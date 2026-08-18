@@ -46,10 +46,19 @@ vitest 725 (+1 case). Design of record and as-built:
 [`info/discord-bot-design.md`](info/discord-bot-design.md) §8; owner switch-on
 steps: [`access/discord-bot.md`](access/discord-bot.md) §14.
 
+**Verified live** (deploy `6ccb1c99-bd45-4b92-a22b-cd3377cfed57`): the gate
+(401 unsigned/wrong-token, worded body), the lane parse (400, worded), the
+health rows, and the **Firestore service-account read path** — a real
+authorized tick enumerated `clubs_considered` 4 dev / 3 prod with
+`clubs_opted_in: 0` and `posted: 0`, byte-identical across three runs.
+`/polls/sync` and `/interactions` still 401, unaffected.
+
 ⚠️ **NOT verified live:** no question has ever reached a real Discord channel
-(0 clubs opted in — the key did not exist before today), the webhook →
-`channel_id` resolution is still unproven (inherited from the poll-sync build),
-and the Edit Club checkbox has not been clicked in a browser.
+(0 clubs opted in — the key did not exist before today); `baselined: 0` means
+the baseline WRITE never ran, so the baseline rail is proven by test only, as
+is everything downstream of the opt-in; the webhook → `channel_id` resolution
+is still unproven (inherited from the poll-sync build); and the Edit Club
+checkbox has not been clicked in a browser.
 
 ## 🔗 GABI'S DEEP LINKS — ASKER-AWARE AND PREFILLED, SHIPPED 2026-08-18 (moved from TODO.md 2026-08-18)
 

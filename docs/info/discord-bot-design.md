@@ -984,12 +984,28 @@ baseline exists to hold back.
 - **Active reads only.** The site caps a club at two, which bounds the sweep
   naturally rather than by an arbitrary rail.
 
-### 8.6 ⚠️ What was NOT verified
+### 8.6 What was verified live (2026-08-18, deploy `6ccb1c99`)
+
+The gate (401 unsigned/wrong-token, worded), the lane parse (400 on an unknown
+lane, worded), the health rows, and — the one worth having — **the Firestore
+service-account read path**, which enumerated real clubs on both lanes:
+`clubs_considered` 4 dev / 3 prod, `clubs_opted_in` **0**, `posted` 0. Three
+consecutive dev ticks were byte-identical with zero notes. `/polls/sync` and
+`/interactions` still answer 401, unaffected.
+
+That confirms the feature **ships dark and inert**: with no club opted in,
+nothing is posted anywhere.
+
+### 8.7 ⚠️ What was NOT verified
 
 - **No question has ever reached a real Discord channel.** 0 clubs have
   `features.discordQuestions` set on either lane — the key did not exist before
   this build. The orchestration is pinned by 45 injected-dependency tests; none
   of it has met real Discord.
+- ⚠️ **`baselined: 0` means the baseline WRITE never executed.** §8.4 — the rail
+  this feature's usability rests on — is proven by test only. Everything
+  downstream of the opt-in (post, record write, cap, ordering, channel
+  resolution) has likewise run against injected stubs and nothing else.
 - **The webhook → `channel_id` resolution is still unproven live**, inherited
   unchanged from §2(a)'s build, which never had an opted-in club either.
 - **`listQuestions`' read cost against a busy read is unmeasured.** It is a
@@ -997,7 +1013,8 @@ baseline exists to hold back.
   the only part of the tick whose cost grows with ordinary member activity.
 - **The Edit Club checkbox has not been exercised in a browser** — it follows
   the same `FEATURE_DEFAULTS` + `updateClubDetails` path as six existing
-  toggles and is covered by the site suite, but no one has clicked it.
+  toggles and is covered by the site suite, but no one has clicked it. It is
+  also on the audiobook site's `/dev/` lane only until a promote.
 
 Operational detail and the owner's switch-on steps:
 [`../access/discord-bot.md`](../access/discord-bot.md) §14.
