@@ -7,12 +7,18 @@
  * docs/info/agent-board-contract.md — a DOC, not a schema, and this file's
  * tolerance is the other half of that decision.
  *
- * ⚠️ THE PUSHER FOR THIS SECTION DOES NOT EXIST YET (2026-08-18). The
- * transcription/packing pipeline on the home machine will grow a push step;
- * until it does, every list here renders its own worded "nothing pushed yet"
- * rather than an empty box. That is the whole reason this file is written
- * defensively: it must be correct BEFORE its data source ships, and it must
- * not need editing when that source starts sending fields it has never seen.
+ * ⚠️ THE PUSHER EXISTS — `scripts/push-processing-board.mjs`, shipped later on
+ * 2026-08-18, running every 15 minutes from the scheduled task
+ * `EstateProcessingBoardPush` plus once off the back of every ingestion run.
+ * This comment used to say it did not, and the empty-state sentences below were
+ * written for a page waiting on an unbuilt source.
+ *
+ * ⚠️ THAT INVERTS WHAT AN EMPTY SECTION MEANS, which is why the wording was
+ * corrected with it: "the home machine is not pushing one yet" describes
+ * something nobody has built and needs no action, while the truth today is a
+ * pusher that IS built and is NOT PUSHING — which is a broken job, and the log
+ * to read is `audiobook_catalog/output_files/processing_push.log`. A stale
+ * reassurance is worse than a stale fact: it tells a reader to expect nothing.
  *
  * ⚠️ RENDER WHAT IS THERE, NAME WHAT IS NOT. Four different silences —
  * nothing ever pushed / pushed but this section is empty / the poll failed /
@@ -467,7 +473,7 @@ async function refreshBoard() {
       // agents/events/usage; the home machine's processing push is unbuilt, so
       // this sentence names the missing PUSHER rather than implying the
       // pipeline is idle.
-      sayEmpty(inflightEl, 'The last board carried no processing section — the home-machine pipeline is not pushing one yet. This says nothing about whether books are being processed.');
+      sayEmpty(inflightEl, 'The last board carried no processing section. The home-machine pusher exists and runs every 15 minutes, so this means it is FAILING, not that it was never built — check output_files/processing_push.log on the home machine. It says nothing about whether books are actually being processed.');
       sayEmpty(historyEl, 'No processing section in the last board, so no history to show.');
       renderQueue([]);
       renderPacks(null, now);

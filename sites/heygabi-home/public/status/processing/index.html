@@ -24,25 +24,16 @@
   two pages: /status/agents renders `agents`/`events`/`usage`, this one renders
   `processing`. The contract is docs/info/agent-board-contract.md.
 
-  ⚠️ THE HOME-MACHINE PUSHER DOES NOT EXIST YET, AND THIS PAGE SAYS SO RATHER
-  THAN LOOKING EMPTY. "Nothing has been pushed" is a STATE with its own
-  sentence — an empty box here would read as "nothing is being processed",
-  which is a claim this page has no way to make. Every list carries a worded
-  empty state naming which of the four causes applies (never pushed / pushed
-  but this section is empty / the poll failed / not wired up yet).
+  ⚠️ THE HOME-MACHINE PUSHER EXISTS as of later the same day
+  (scripts/push-processing-board.mjs, every 15 minutes via the scheduled task
+  EstateProcessingBoardPush). This comment used to say it did not, which
+  inverted what an empty section means: a missing `processing` block is now a
+  FAILING pusher, not an unbuilt one, and the log to read is
+  audiobook_catalog/output_files/processing_push.log. The lists still render
+  worded empty states rather than empty boxes — four different silences with
+  four different fixes — but none of them tells the reader to expect nothing.
 
-  ⚠️ THE AGE IS THE HEADLINE. The freshness strip is the first thing inside the
-  gate, above all data, and its tone comes from the WORKER'S pushed_at — never
-  from a timestamp inside the blob, which is the pusher's own clock and can be
-  wrong. A failed poll says so and states how old what is on screen is.
-
-  ⚠️ NOTHING HERE TRIGGERS ANYTHING. This is a window, not a console: the
-  pipeline levers live on /status/pipelines behind their own confirmations.
-
-  Styling: assets/status-shell.css (shared by all four pages) — the .proc-*
-  and .queue-* rules at its foot belong to this page. CSP: the /status/
-  processing rules in public/_headers.
--->
+  -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
 

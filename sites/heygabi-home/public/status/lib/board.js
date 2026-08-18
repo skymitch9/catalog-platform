@@ -18,9 +18,11 @@
  *      read — never leaving a good reading on screen looking current, and
  *      never wiping the page clean either, which would read as "everything
  *      stopped" when the truth is "we could not ask".
- *   3. **"Nothing pushed yet" is a STATE, not an error.** The home-machine
- *      side of `processing` does not exist yet; a page that shouted about it
- *      would be crying wolf about a thing nobody has built.
+ *   3. **"Nothing pushed yet" is a STATE, not an error** — on a board that has
+ *      genuinely never been written. ⚠️ It stopped meaning "nobody has built
+ *      the other end" on 2026-08-18, when the processing pusher shipped: an
+ *      absent section now means a pusher that is failing, and the pages say so
+ *      rather than reassuring a reader about an unbuilt thing that exists.
  *   4. **Thresholds are round numbers chosen for a 30-second poll**, and they
  *      are labelled as judgement, not measurement: the conductor pushes when
  *      something changes, so a quiet hour is genuinely quiet. Amber at 15
