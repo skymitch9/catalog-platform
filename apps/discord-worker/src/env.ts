@@ -243,6 +243,61 @@ export interface Env {
    */
   AUTH_BASE_URL?: string;
 
+  /**
+   * ⚠️ **TIER 0c — the household's own BOOK TEXT, and it ships OFF.**
+   *
+   * Affirmative-only `"on"`, the exact idiom of `GABI_DOCS` above. Design §4.6
+   * pins it: *"Posture `GABI_BOOKS`, affirmative-only `on` — ships dark."*
+   * Flipping it is the owner's own deliberate act (design §9, owner step 2),
+   * never a side effect of a deploy.
+   *
+   * ⚠️ OFF does not mean silent, for the same reason the docs posture's does
+   * not: a question about what HAPPENS in a book must not fall through to a
+   * catalogue lookup that returns a narrator and reads as an answer. See
+   * `BOOKS_MSG.switchedOff`.
+   *
+   * ⚠️ **ON IS NOT A GRANT.** Every book call is still resolved per-asker
+   * against the estate directory's `vis_ebooks` by the audiobook Worker — the
+   * same predicate the ebook shelf and the byte streams use.
+   */
+  GABI_BOOKS?: string;
+
+  /**
+   * ⚠️ **The bot's bearer for the book-text routes (door B).**
+   *
+   * One value, TWO holders, same NAME on both: here and
+   * `apps/audiobook-worker`.
+   *
+   * ⚠️ **IT IS ITS OWN PAIR** — not `ESTATE_APP_TOKEN_DISCORD` (shared with both
+   * library Workers for Tier-1 writes) and not `ESTATE_APP_TOKEN_DISCORD_DOCS`
+   * (the auth Worker's docs corpus). This one opens the household's **derived
+   * book text**, which the owner's standing directive is explicit about: *"I
+   * don't want people scraping my books."* Derived full text is a MORE
+   * attractive scrape target than the files — smaller, cleaner, searchable — so
+   * a leak from a library instance or from the docs corpus must not open it.
+   *
+   * ⚠️ **IT AUTHORISES NO READ.** It proves only *"this request came from the
+   * estate's Discord Worker"*. Every call also carries the asker's PROVEN email,
+   * and the audiobook Worker resolves THAT against `vis_ebooks`.
+   *
+   * ⚠️ **SHIPS DARK while unset**: `book-knowledge-exec.ts` returns a null port,
+   * the book tools are never described to the model, `/api/health` reports
+   * `gabi_books_ready: false`, and every other answer is unchanged.
+   *
+   * ⚠️ Read by exactly ONE module — `src/book-knowledge-exec.ts` — and
+   * `test/book-knowledge.test.ts` fails the build if that stops being true.
+   */
+  ESTATE_APP_TOKEN_BOOKS?: string;
+
+  /**
+   * The estate's audiobook Worker, which serves the book-text routes behind the
+   * `vis_ebooks` gate. A var, not a secret: it is a public hostname
+   * (`audiobook-api.heygabi.ai`) and the credential is the bearer, not the
+   * address. Exists so a test or a future lane can point elsewhere; the default
+   * in code is the live host.
+   */
+  AUDIOBOOK_API_URL?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

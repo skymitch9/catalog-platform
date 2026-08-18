@@ -151,7 +151,15 @@ export interface GabiTool {
     type: 'object';
     properties: Record<
       string,
-      { type: string; description: string; enum?: readonly string[] }
+      {
+        type: string;
+        description: string;
+        enum?: readonly string[];
+        /** ⚠️ Present only for `type: 'array'`, and only ever a scalar element
+         *  type. A nested object schema here would be a tool taking structured
+         *  input a model composes, which nothing on this surface does. */
+        items?: { type: string };
+      }
     >;
     required: readonly string[];
     additionalProperties: false;
@@ -392,6 +400,234 @@ export function gabiDocsToolByName(name: unknown): GabiDocsTool | null {
   return GABI_DOCS_TOOLS.find((t) => t.name === name) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// TIER 0c — the BOOK-TEXT category. A FOURTH allowlist, deliberately.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **A FOURTH ARRAY, NOT FOUR MORE ENTRIES IN AN EXISTING ONE** — design
+ * §4.6, and the same axis the docs array was split on, one step further.
+ *
+ * What separates the tool families is **what they read**:
+ *
+ * | | Tier 0 | Tier 0b docs | Tier 0c books |
+ * |---|---|---|---|
+ * | surface | `catalog.csv`, public | the estate docs corpus | **the household's own book TEXT** |
+ * | who may read it | anyone with a browser | devops-class only | anyone the estate grants `vis_ebooks` |
+ * | scoped per person by | nothing | their role | ⚠️ **their reading position** |
+ * | posture | none | `GABI_DOCS` | `GABI_BOOKS`, ships dark |
+ *
+ * The third row is the one that makes this its own array rather than more docs
+ * entries. A book answer is bounded by where the asker has got to, and merging
+ * these into `toolsForApi()`'s default would hand a model an **unscoped book
+ * surface on every turn of every conversation** — which is the spoiler failure
+ * §4.1 calls first-class rather than a filter bolted on.
+ *
+ * ⚠️ **FOUR TOOLS, WHERE DESIGN §4.6 NAMED TWO — and that is a reconciliation
+ * with phase 3, not a widening of what may be read.** §4.6 was written before
+ * the retrieval routes existed. What they turned out to require:
+ *
+ *  1. `apps/audiobook-worker/src/book-routes.ts` refuses a CONSTRUCTED book id
+ *     (*"Book ids come from the knowledge-base listing; do not construct one"*),
+ *     so discovery has to be a tool — a model cannot guess its way in, and
+ *     nothing else on this surface knows which books are packed.
+ *  2. `presence` is a mode whose answer is a **per-book roll-up across several
+ *     books**, so it takes a list of books and returns no passages at all.
+ *     Design §6.2 is explicit that top-K silently omits the book a character is
+ *     introduced in; expressing that as a `mode` on a single-book search cannot
+ *     ask the question it exists to ask.
+ *
+ * Both extra tools read the SAME surface through the SAME gate as the two §4.6
+ * named, with the same caps and the same posture. Nothing here reaches anything
+ * the design did not already put behind `vis_ebooks`.
+ *
+ * ⚠️ **NOTHING HERE WRITES, AND NOTHING HERE EVER WILL.** No ingest trigger, no
+ * re-chunk, no position write. GABI reads the household's books; she does not
+ * keep anybody's bookmark.
+ */
+export const GABI_BOOKS_TOOL_NAMES = [
+  'list_book_knowledge',
+  'search_book_text',
+  'read_book_passage',
+  'book_presence',
+] as const;
+
+export type GabiBooksToolName = (typeof GABI_BOOKS_TOOL_NAMES)[number];
+
+/** Which shipped slice this is. Tier 0c = read the TEXT of the household's own
+ *  books, on the asker's behalf, bounded by where they have got to. */
+export const GABI_BOOKS_TOOL_TIER = '0c';
+
+/** One book tool. Same shape as `GabiTool` but a DIFFERENT `reads` category,
+ *  because the category is the thing the guard checks. */
+export interface GabiBooksTool {
+  name: GabiBooksToolName;
+  description: string;
+  input_schema: GabiTool['input_schema'];
+  /** ⚠️ The gated category, design §4.6's own word for it. `test/gabi-tools.
+   *  test.ts` asserts every Tier-0 tool reads `public_audiobook_catalogue`,
+   *  every docs tool reads `gated_estate_docs` and every entry here reads this —
+   *  so a book tool that drifted into a public list fails the build rather than
+   *  quietly changing what a model may reach. */
+  reads: 'gated_book_text';
+  methods: readonly ('GET')[];
+  mutates: boolean;
+}
+
+export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
+  {
+    name: 'list_book_knowledge',
+    description:
+      'Find out which of the household\'s books you have actually READ — the ones whose full text is ' +
+      'in your knowledge base — and get their book ids. ' +
+      '⚠️ CALL THIS FIRST, every time, before any other book-text tool: book ids come from this ' +
+      'listing and nowhere else. Never construct one, never reuse one from memory, and never assume ' +
+      'a book is in there because the catalogue has it — the catalogue is 1,079 audiobooks and your ' +
+      'knowledge base is a much smaller, GROWING subset. ' +
+      'If the book somebody asked about is not in the listing, say you have not read that one yet ' +
+      'rather than answering from your own memory of it. That is a real answer, it is honest, and ' +
+      'the book may well be there next week.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Words from the title or series to narrow the listing — "primal hunter", "way of kings". ' +
+            'Leave it out to see everything that is in the knowledge base.',
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+    reads: 'gated_book_text',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'search_book_text',
+    description:
+      'Search the actual text of ONE book and get back the passages that match, each with its ' +
+      'chapter, its position (ord) and — for a book you know from the audio — its timestamp. ' +
+      'This is how you answer a question about what HAPPENS in a book rather than what the ' +
+      'catalogue records about it. ' +
+      '⚠️ Pick the mode deliberately, because they are four different questions and not four sorts ' +
+      'of one: "relevant" is the workhorse; "latest" gets the LAST time something appears, which is ' +
+      'the mode for "what is X at the END of the book" (a stat sheet, a rank, a total) because the ' +
+      'best-scoring passage is almost never the last one; "earliest" is its mirror, for a first ' +
+      'appearance or an introduction, which scores badly by construction; "presence" answers ' +
+      'whether a term is in this book at all. ' +
+      '⚠️ Quote and cite what comes back. Never fill a gap from what you remember about the book — ' +
+      'you may well have read it in training, and an answer sourced from there is exactly the thing ' +
+      'this tool exists to replace.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        bookId: {
+          type: 'string',
+          description: 'The book id exactly as list_book_knowledge gave it. Do not construct one.',
+        },
+        query: {
+          type: 'string',
+          description:
+            'The words to look for. Two or three specific terms beat a whole sentence — a name, a ' +
+            'place, a title, "stat sheet", "level up".',
+        },
+        mode: {
+          type: 'string',
+          enum: ['relevant', 'latest', 'earliest', 'presence'],
+          description:
+            "Default 'relevant'. Use 'latest' for anything asked about the END or the current state " +
+            "of something, 'earliest' for a first appearance or introduction, 'presence' to ask only " +
+            'whether it is in the book.',
+        },
+      },
+      required: ['bookId', 'query'],
+      additionalProperties: false,
+    },
+    reads: 'gated_book_text',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'read_book_passage',
+    description:
+      'Read ONE passage of a book in full, by the ord a search result gave you. ' +
+      'Call this when a snippet looks like the answer but you need the whole thing — the rest of a ' +
+      'stat block, the sentence after the one that matched. ' +
+      'Read the one or two that matter, not everything that came back: there is a strict budget per ' +
+      'answer and spending it on near-misses leaves nothing for the real one. ' +
+      '⚠️ If the budget refuses, say you did not read it. Do not summarise a passage from its ' +
+      'snippet as though you had.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        bookId: {
+          type: 'string',
+          description: 'The book id exactly as list_book_knowledge gave it.',
+        },
+        ord: {
+          type: 'number',
+          description:
+            'The ord a search result gave you. Ords only mean anything inside the book that produced ' +
+            'them — do not construct one and do not carry one between books.',
+        },
+      },
+      required: ['bookId', 'ord'],
+      additionalProperties: false,
+    },
+    reads: 'gated_book_text',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'book_presence',
+    description:
+      'Ask ONE question across SEVERAL books at once — where does this name, place or term appear, ' +
+      'and where does it first show up? Returns a per-book roll-up (how many mentions, the first ' +
+      'and last sighting with its chapter) rather than passages. ' +
+      '⚠️ This is the right tool for "which book does X first appear in" and "does X ever come up in ' +
+      'this series", and searching each book separately is the WRONG way to ask it: a ranked search ' +
+      'returns the densest mentions, which is systematically not the book somebody is introduced in. ' +
+      '⚠️ A count of zero is a REAL and useful answer — it means the term is genuinely absent from ' +
+      'that book, which is different from the book not being in your knowledge base, and the result ' +
+      'tells you which of the two it is. Say which.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        bookIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'The books to check, in reading order, as ids from list_book_knowledge. At most six — ' +
+            'a series arc, not a shelf.',
+        },
+        query: {
+          type: 'string',
+          description: 'The name, place or term to look for.',
+        },
+      },
+      required: ['bookIds', 'query'],
+      additionalProperties: false,
+    },
+    reads: 'gated_book_text',
+    methods: ['GET'],
+    mutates: false,
+  },
+];
+
+/** The one place anything decides whether a book tool name is allowed.
+ *  Default-deny, and an ARRAY for the same reason `isGabiToolName` is one. */
+export function isGabiBooksToolName(name: unknown): name is GabiBooksToolName {
+  return typeof name === 'string' && (GABI_BOOKS_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+/** The definition for an allowlisted book name, or `null`. Never throws. */
+export function gabiBooksToolByName(name: unknown): GabiBooksTool | null {
+  if (!isGabiBooksToolName(name)) return null;
+  return GABI_BOOKS_TOOLS.find((t) => t.name === name) ?? null;
+}
+
 /**
  * The `tools` array as the Messages API wants it — the executor's own fields
  * (`reads`, `methods`, `mutates`) are ours and are never sent.
@@ -407,25 +643,23 @@ export function gabiDocsToolByName(name: unknown): GabiDocsTool | null {
  * is a write that happens when a model misreads a sentence; that wall is
  * asserted in both modes by the build-failing guard.
  */
-export function toolsForApi(opts: { docs?: boolean } = {}): {
+export function toolsForApi(opts: { docs?: boolean; books?: boolean } = {}): {
   name: string;
   description: string;
   input_schema: GabiTool['input_schema'];
 }[] {
-  const base = GABI_TOOLS.map((t) => ({
+  const wire = (t: { name: string; description: string; input_schema: GabiTool['input_schema'] }) => ({
     name: t.name as string,
     description: t.description,
     input_schema: t.input_schema,
-  }));
-  if (!opts.docs) return base;
-  return [
-    ...base,
-    ...GABI_DOCS_TOOLS.map((t) => ({
-      name: t.name as string,
-      description: t.description,
-      input_schema: t.input_schema,
-    })),
-  ];
+  });
+  const out = GABI_TOOLS.map(wire);
+  // ⚠️ Each gated family is its own opt-in. A caller that has checked the docs
+  // posture has said NOTHING about the books posture, and a single `gated: true`
+  // would make one owner decision silently grant the other.
+  if (opts.docs) out.push(...GABI_DOCS_TOOLS.map(wire));
+  if (opts.books) out.push(...GABI_BOOKS_TOOLS.map(wire));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
