@@ -568,10 +568,10 @@ Discord: DM GABI *"how do I promote to prod?"* and check the answer cites
 
 ## 9. Open questions for the owner — one at a time, in this order
 
-1. **Relink or backfill?** After phase 3, existing Discord links carry no email.
-   Do the handful of linked people re-run `/link` (ten seconds each, zero code),
-   or should a one-off `firebaseUid → email` backfill be written? *(Blocks
-   phase 3; everything else can proceed.)*
+1. ✅ **DECIDED 2026-08-18 — RELINK, no backfill** (owner: "1.a i think its
+   just me"). After phase 3 lands, the linked people (likely just the owner)
+   re-run `/link` once — self-verifying, since a post-phase-3 link carries
+   the email by construction. Phase 3 is unblocked.
 2. **STEP 9 or a fourth scheduled task?** Hang the publisher off the 8-hourly
    audiobook pipeline (free cadence, but it stops if that pipeline stops), or
    give it its own daily `EstateDocsPublish` task (one more moving part, no
