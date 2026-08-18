@@ -203,17 +203,31 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
           `did not run. (${publishedAge}, ${builtAge}.)${prodNote}`,
       };
     }
+    // ⚠️ DIRECTION MATTERS IN THE WORDS. Measured live 2026-08-18: the
+    // published heartbeat can be NEWER than the recorded build, when a publish
+    // ran outside the run this status doc describes. Saying "the last run built
+    // a newer manifest" there would be flatly false — the same class of error
+    // as the colours this pass went looking for, just in a sentence.
+    const publishedIsNewer = generatedAt > builtAt;
     return {
       state: 'warn',
       detail:
-        `⚠️ ${shelf} · the last run built a NEWER manifest than the one published ` +
-        `(${builtAge}, ${publishedAge})`,
+        `⚠️ ${shelf} · ` +
+        (publishedIsNewer
+          ? `the published manifest is NEWER than the one the last recorded run built (${publishedAge}, ${builtAge})`
+          : `the last run built a NEWER manifest than the one published (${builtAge}, ${publishedAge})`),
       note:
-        'Amber because the manifest this run built never reached the live site. The shelf itself is ' +
-        'unchanged, so no reader is missing a book yet — but the publish step did not land, and the next ' +
-        'real change would not land either. Do NOT soften this to green because the counts happen to ' +
-        'match: on 2026-08-18 this exact reading was a pipeline defect (publish gated on uploaded_count) ' +
-        `and this row is what found it.${prodNote}`,
+        (publishedIsNewer
+          ? 'Amber because a publish landed that this status document does not account for — the live ' +
+            'manifest is newer than anything the last recorded run built, so the two sources disagree ' +
+            'about what ran. The counts match, so no reader is missing a book; what is unreliable is the ' +
+            'record, not the shelf.'
+          : 'Amber because the manifest this run built never reached the live site. The shelf itself is ' +
+            'unchanged, so no reader is missing a book yet — but the publish step did not land, and the ' +
+            'next real change would not land either.') +
+        ' Do NOT soften this to green because the counts happen to match: on 2026-08-18 this reading was a ' +
+        'real pipeline defect (publish gated on uploaded_count) and this row is what found it.' +
+        `${prodNote}`,
     };
   }
 

@@ -238,3 +238,26 @@ test('ebookRunKind: an unrecognised trigger says NOTHING rather than guessing', 
   assert.equal(ebookRunKind('manual-step:catalog', []).produces, false);
   for (const t of EBOOK_PRODUCING_TRIGGERS) assert.equal(ebookRunKind(t, []).produces, true);
 });
+
+test('⚠️ DIRECTION: a published manifest NEWER than the recorded build says so', () => {
+  // Measured live 2026-08-18: a publish ran outside the run the status doc
+  // describes, so the heartbeat was NEWER than summary.ebookManifestAt. The
+  // first wording of this branch said "the last run built a NEWER manifest than
+  // the one published", which in that direction is flatly false — the same
+  // class of error as the wrong colours, just in a sentence.
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T18:00:00.000Z' },
+  });
+  assert.equal(v.state, 'warn');
+  assert.match(v.detail, /published manifest is NEWER than the one the last recorded run built/);
+  assert.match(v.note, /the record, not the shelf/);
+});
+
+test('the other direction still reads the other way round', () => {
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T09:00:00.000Z' },
+  });
+  assert.equal(v.state, 'warn');
+  assert.match(v.detail, /the last run built a NEWER manifest than the one published/);
+  assert.match(v.note, /the publish step did not land/);
+});
