@@ -4,8 +4,10 @@
 > public on GitHub — resource and secret NAMES only, never values).
 > Last verified: **2026-08-18**. **ALL SIX PHASES ARE BUILT AND DEPLOYED.**
 > §10 is the as-built for phases 1/2/5/6; **§11 is the as-built for phases 3
-> and 4** — the Discord door and GABI's two docs tools. ⚠️ Phase 4 ships
-> **dark** behind `GABI_DOCS`, which is one owner flip (§7 owner step 4).
+> and 4** — the Discord door and GABI's two docs tools. ⚠️ **§12 is the incident
+> report for the first live docs question**, which was answered from the book
+> shelf: offering a model the tools turned out not to be the same as routing to
+> them. `GABI_DOCS` was flipped **on** by the owner 2026-08-18.
 > Figures marked *measured* were taken on this machine on 2026-08-17 unless a
 > later date is given. **§10 and §11 are the as-built account**, and where the
 > build departed from this design they say so there rather than by silently
@@ -1007,3 +1009,113 @@ that gives the split teeth: **neither executor names the other's secret.**
   in a channel.
 - **The staleness path still has never fired** (unchanged from §10.8) — the live
   snapshot was 0 days old at every check.
+
+---
+
+## 12. ⚠️ INCIDENT — the first live docs question was answered from the book shelf (2026-08-18)
+
+Minutes after the owner flipped `GABI_DOCS = "on"` and deployed, he DM'd the
+exact question this feature was built for and got the wrong kind of answer
+entirely. **His transcript is now a regression test**
+(`apps/discord-worker/test/estate-docs.test.ts` §10).
+
+### What he asked, and what he got
+
+> **how do I promote the audiobook site?**
+
+> I looked on the estate's public shelf for **promote audiobook site**.
+> Nothing on the estate's public shelf matches that. ⚠️ That's a statement about
+> the **catalogue**, not about the house — books get catalogued as they are
+> scanned, and a real book nobody has scanned yet looks exactly like this.
+> I can dig into the actual rows and put a change in front of you to approve
+> here: https://padhard.heygabi.ai/
+
+### The diagnosis, reproduced before anything was changed
+
+The reply reassembles **byte for byte** from `MENTION_MSG.searched` +
+`MENTION_MSG.none` + `MENTION_MSG.panel`, which identifies the branch exactly:
+
+```
+classifyByKeyword("how do I promote the audiobook site?")  ->  question
+```
+
+⚠️ **Not `fix_request`** — no `FIX_PATTERNS` entry matches that sentence, and the
+absence of the `cannotChange` line in his paste rules that branch out. It fell to
+`question`, whose branch **unconditionally** runs a public-shelf lookup, grounds
+the model on the miss, and whose fallback is *that miss plus the FIXER panel
+link* when the model turn produces no text.
+
+**So the docs plumbing was never reached, and nothing had gone wrong with it.**
+The corpus, the gate, the token and the tools were all fine.
+
+### ⚠️ The design error, named
+
+> **Offering the tools is not the same as routing to them.**
+
+Phase 4 made the docs tools *available* on `question` turns and assumed a model
+would reach for them. §11.5 even records the offer mechanism approvingly. But a
+model that is handed a shelf miss as grounding and four tools has to *choose* to
+ignore the grounding — and on this question it did not produce text at all.
+
+This is the same lesson `delegated.ts` already learned for writes and stated in
+its own header: *an ISBN is a checksummed number or it is not*, so detection is
+deterministic and **never a model's decision**. Reading a runbook deserved the
+same treatment and did not get it.
+
+### The fix
+
+1. **`docsIntent()`** — a deterministic detector in `estate-docs.ts`, run ahead
+   of every intent branch (ahead of the metadata fast path, ahead of
+   `classifyIntent`). Narrow by construction: **STRONG** operations terms fire
+   alone; **WEAK** terms (`secret`, `token`, `gate`, `worker`, `backup`,
+   `config`, `docs`) need an operational question *shape* **and** lose to a
+   shelf-shaped question — because each of them is also a book. ⚠️ *The Secret
+   History* is the worked trap and is pinned as a test.
+2. **Three deterministic answers with no model call and no shelf lookup**:
+   capped, not linked, and — the one that shaped this — **the pre-upgrade
+   link**, which is the state the owner was actually in. The design promised him
+   a specific sentence and now always delivers it.
+3. **Past those, the turn runs with NO grounding.** The shelf miss was not
+   merely useless, it was misleading. This also drops the `/have` subrequest
+   these questions used to burn.
+4. **A docs question that fails now fails as a DOCS question** —
+   `DOCS_MSG.noAnswer`, never a catalogue miss and never an offer to change a
+   book row.
+5. Posture off → the switched-off sentence; on-but-unconfigured →
+   `notConfigured`; a surface predating the feature falls through **unchanged**.
+
+### ⚠️ A second, independent defect found while diagnosing
+
+`converseWithTools` ran the whole tool loop under `max_tokens: 400` — a ceiling
+chosen for what a *person reads*. But `max_tokens` bounds everything the model
+**emits**, and in a tool loop most of that is `tool_use` JSON nobody sees. Going
+from two tools to four, plus a second system-prompt block, made truncation
+**mid-`tool_use`** likelier; that returns `stop_reason: 'max_tokens'` with no
+text block, so the loop returned `null` — **and logged nothing at all.** The
+reply was the only evidence it had happened.
+
+Fixed both halves: `CHAT_TOOL_MAX_TOKENS = 1024` for the loop (the reply is still
+truncated to Discord's ceiling, so this changes what she can *think*, never what
+she can *say*), and a greppable `console.error` on the no-text outcome naming
+`stop_reason`, iterations, tool calls and whether docs were offered.
+
+⚠️ This one was **latent before the docs build** and made worse by it. Any turn
+that ran out of tokens mid-tool-call has always failed this way, silently.
+
+### What the owner should now see
+
+| His state | Question | Reply |
+|---|---|---|
+| **Has re-run `/link`** (devops) | *"how do I promote the audiobook site?"* | an answer from the runbook, **citing the file path and the snapshot's publish date** — no shelf, no panel link |
+| **Has NOT re-linked** (pre-upgrade) | same | *"Your link was made before I could check estate roles. Re-run /link once and I'll be able to answer this."* — and nothing else. No shelf search, no fixer link. |
+
+### Lessons recorded
+
+- ⚠️ **A capability that is "available to the model" is not routed.** For
+  anything with a deterministic trigger, route deterministically and let the
+  model handle the ambiguous remainder.
+- ⚠️ **A fallback inherits the branch it sits in.** The `question` branch's
+  fallback made sense for book questions and was nonsense for anything else; it
+  shipped because nothing had ever reached it from a non-book question.
+- ⚠️ **A null that logs nothing is a defect on its own**, independent of what
+  caused it. The instrument was worth more than the fix.

@@ -15,7 +15,19 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
-## 🔴 GABI READS THE ESTATE DOCS — BUILT + DEPLOYED, DARK PENDING TWO OWNER STEPS (2026-08-18)
+## 🟡 GABI READS THE ESTATE DOCS — LIVE; ONE OWNER STEP LEFT (the relink) (2026-08-18)
+
+⚠️ **Step 2 (flip `GABI_DOCS`) is DONE — the owner flipped it on 2026-08-18.**
+⚠️ **The first live question failed** and was fixed the same day: she answered
+*"how do I promote the audiobook site?"* from the **book shelf**. Full incident,
+diagnosis and fix in
+[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md) **§12**;
+his transcript is now a regression test in both link states. **Deployed and
+verified.**
+
+**What is left is step 1 below — the relink — which was never done.** Until it
+is, every docs question correctly answers *"your link was made before I could
+check estate roles."*
 
 All six phases shipped and are archived in [`DONE.md`](DONE.md); the as-built is
 [`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md) §§10-11
@@ -37,15 +49,11 @@ and I'll be able to answer this."* — which is the designed sentence, not a fau
 but it will be the first thing you see otherwise. `/unlink` first is not needed;
 the ceremony overwrites.
 
-### 🧑 Step 2 — flip the posture
+### ✅ Step 2 — flip the posture — DONE 2026-08-18
 
-`GABI_DOCS = "off"` → `"on"` in `apps/discord-worker/wrangler.toml`, then
-`npx wrangler deploy` from that directory. ⚠️ A deliberate act, never a side
-effect of a deploy (design §7 owner step 4): this corpus is PII plus an
-operations runbook — break-glass SQL, deploy levers, secret names, household
-emails and role assignments.
-
-Confirm afterwards: <https://discord.heygabi.ai/api/health> → `gabi_docs_ready: true`.
+`GABI_DOCS = "on"`, deployed, and <https://discord.heygabi.ai/api/health> reports
+`gabi_docs_ready: true`. Turning her back off is the same one line to `"off"`
+plus a deploy.
 
 ### Then test it — DM her
 
