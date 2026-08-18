@@ -41,6 +41,7 @@
         "GABI Knowledge",
         "id=\"storage-section\"",
         "id=\"storage-buckets\"",
+        "id=\"storage-archive\"",
         "id=\"storage-fresh\"",
         "Estate status",
         "id=\"pipeline-rows\"",
@@ -282,6 +283,8 @@
       "mustContain": [
         "describeBucket",
         "describeTotals",
+        "describeArchive",
+        "Restore proven",
         "formatBytes",
         "not zero"
       ]

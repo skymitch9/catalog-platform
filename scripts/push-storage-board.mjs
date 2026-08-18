@@ -40,6 +40,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildStorageSection } from './lib/storage-board.mjs';
+import { buildArchiveBlock } from './lib/archive-board.mjs';
+import { tailFile } from './lib/logs-board.mjs';
 import { mergeAndPush } from './lib/board-draft.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -111,8 +113,94 @@ async function bucketInfo(name) {
   return JSON.parse(stdout.slice(start, end + 1));
 }
 
+/**
+ * Where the archive's artefacts live. Same resolution as push-logs-board.mjs —
+ * the audiobook repo is a SIBLING and its location is not guaranteed.
+ */
+function resolveArchiveRoot() {
+  const explicit = valueOf('--root');
+  if (explicit) return path.resolve(explicit);
+  for (const g of [
+    path.resolve(ROOT, '..', 'bookbuddy', 'audiobook_catalog'),
+    path.resolve(ROOT, '..', 'audiobook_catalog'),
+  ]) {
+    if (fs.existsSync(path.join(g, 'output_files'))) return g;
+  }
+  return null;
+}
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\ufeff/, ''));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The archive task's next fire, from Task Scheduler itself.
+ *
+ * ⚠️ READ, NEVER COMPUTED. "It runs hourly so the next one is an hour after
+ * the last" is an inference that goes wrong the moment the task is disabled,
+ * retried, or missed while the machine slept — and a status row confidently
+ * predicting a run that will not happen is worse than one saying nothing. A
+ * failure here yields null and the row says the next run is unknown.
+ */
+async function archiveNextRun(taskName = 'AudiobookArchiveR2') {
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-Command',
+        `(Get-ScheduledTaskInfo -TaskName '${taskName}' -ErrorAction Stop | Select-Object -ExpandProperty NextRunTime).ToUniversalTime().ToString('o')`],
+      { timeout: 30_000 },
+    );
+    const iso = stdout.trim();
+    return Number.isFinite(Date.parse(iso)) ? new Date(Date.parse(iso)).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const section = await buildStorageSection(bucketInfoVerified);
+
+  // ── The archive block ───────────────────────────────────────────
+  //
+  // ⚠️ IT RIDES INSIDE `storage` RATHER THAN BEING ITS OWN SECTION, because
+  // the owner's correction was that this whole surface is ONE question ("is my
+  // library backed up, and is it moving") rather than two. One section is also
+  // one per-section timestamp, so the panel cannot show a fresh bucket count
+  // beside an archive figure measured an hour earlier.
+  const archiveRoot = resolveArchiveRoot();
+  if (archiveRoot) {
+    const out = path.join(archiveRoot, 'output_files');
+    const logPath = path.join(out, 'audio_archive.log');
+    let logText = null;
+    try {
+      // ⚠️ A TAIL, NOT A READ. audio_archive.log was 179 KB mid-seed and grows
+      // with every file; the denominator lives in its most recent progress
+      // line, so the last window is all this needs.
+      logText = tailFile(logPath, 200).lines.join('\n');
+    } catch { /* no log yet — buildArchiveBlock reports the percent as unknown */ }
+
+    section.archive = buildArchiveBlock({
+      manifest: readJson(path.join(out, 'audio_archive_manifest.json')),
+      lock: readJson(path.join(out, 'audio_archive.lock')),
+      logText,
+      // ⚠️ The retrieval proof is written by whoever RUNS one, not by this
+      // pusher — a job cannot certify its own output. It is carried through
+      // from a file the prover writes; absent means NOT PROVEN, which the row
+      // states in those words rather than leaving the line blank.
+      restore: readJson(path.join(out, 'audio_archive_restore_test.json')),
+      nowMs: Date.now(),
+    });
+    section.archive.next_run_at = await archiveNextRun();
+  } else {
+    section.archive = {
+      available: false,
+      note: 'The audiobook repo could not be found from this machine, so the archive’s progress is unknown — this is not a measurement of zero.',
+    };
+  }
 
   if (has('--print')) console.log(JSON.stringify(section, null, 2));
 
@@ -120,6 +208,13 @@ async function main() {
   const size = Number.isFinite(section.total_bytes) ? `${(section.total_bytes / 1e9).toFixed(1)} GB` : 'size unknown';
   const cost = Number.isFinite(section.total_cost_usd_month) ? `$${section.total_cost_usd_month.toFixed(2)}/mo` : 'cost unknown';
   console.log(`[storage] ${measured} · ${size} · ${cost}`);
+  const a = section.archive;
+  if (a?.available) {
+    const pct = Number.isFinite(a.percent) ? `${a.percent.toFixed(1)}%` : 'percent unknown';
+    console.log(`[archive] ${pct} · ${a.files_done}/${a.files_total ?? '?'} files · ${a.transfer} · ${a.failure_count} failure(s)`);
+  } else {
+    console.log('[archive] not measured — see the note in the pushed section.');
+  }
   for (const b of section.buckets.filter((x) => x.error)) console.log(`  [WARN] ${b.name}: ${b.error}`);
 
   if (has('--dry-run')) {

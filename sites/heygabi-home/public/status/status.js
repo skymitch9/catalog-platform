@@ -71,7 +71,7 @@ import { ebookLaneVerdict } from './lib/ebook-lane.js';
 // The blob-storage panel (owner ask 2026-08-18). PUSHED, not probed — see the
 // section comment in index.html for why a Worker route was rejected.
 import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness } from './lib/board.js';
-import { describeBucket, describeTotals } from './lib/storage-view.js';
+import { describeArchive, describeBucket, describeTotals } from './lib/storage-view.js';
 import { mountGate } from './lib/gate.js';
 import { idToken } from '../assets/estate-auth.js';
 
@@ -1040,6 +1040,7 @@ async function loadBackups() {
 
 const storageFreshEl = document.getElementById('storage-fresh');
 const storageTotalsEl = document.getElementById('storage-totals');
+const storageArchiveEl = document.getElementById('storage-archive');
 const storageBucketsEl = document.getElementById('storage-buckets');
 const STORAGE_SECTIONS = ['storage'];
 
@@ -1116,6 +1117,44 @@ function renderStorage(board) {
         'it says nothing about what is in the buckets.'),
     );
     return;
+  }
+
+  // ── The ARCHIVE row goes FIRST, because it is the question ──────────────
+  //
+  // ⚠️ Owner, on the first version of this panel: "it doesnt say anything
+  // useful... I want it to have %s, last run, etc." Bucket sizes are reference;
+  // whether his library is safe yet is the thing he came to find out. So the
+  // percentage leads and everything else is subordinate to it.
+  if (storageArchiveEl) {
+    storageArchiveEl.replaceChildren();
+    const arc = describeArchive(section.archive, Date.now());
+    const card = el('div', 'archive-card');
+    card.dataset.tone = arc.tone;
+
+    const head = el('div', 'complete-headline');
+    head.append(el('span', 'complete-count', arc.headline));
+    head.append(el('span', 'complete-label', arc.detail));
+    card.append(head);
+
+    // The bar is drawn ONLY from a real percentage — never an estimate, the
+    // same promise /status/processing makes about per-book progress.
+    if (Number.isFinite(arc.percent)) {
+      const bar = el('div', 'proc-bar');
+      const fill = el('span', 'proc-fill');
+      fill.style.width = `${Math.max(0, Math.min(100, arc.percent))}%`;
+      bar.append(fill);
+      card.append(bar);
+    }
+
+    if (arc.facts.length) {
+      const dl = el('dl', 'archive-facts');
+      for (const f of arc.facts) {
+        dl.append(el('dt', null, f.label));
+        dl.append(el('dd', null, f.value));
+      }
+      card.append(dl);
+    }
+    storageArchiveEl.append(card);
   }
 
   const totals = describeTotals(section);

@@ -180,42 +180,42 @@
       cannot hide behind a fresh one.
     </p>
     <ul id="backups-rows" class="rows"></ul>
-  </section>
 
-  <!-- Blob storage (owner ask 2026-08-18: a storage panel — per bucket, how
-       many objects, how big, and what it costs a month).
+    <!-- BLOB STORAGE lives here, inside Backups, since 2026-08-18 (owner, on
+         seeing it as a section of its own: "add it to back ups instead since
+         its a backup"). He is right: an archive of the library and a nightly
+         database dump answer the same question, and splitting them meant
+         reading two places to find out whether anything is safe.
 
-       ⚠️ PUSHED, NOT PROBED, and the reason is worth knowing before anyone
-       "fixes" it into a Worker route. Only FIVE of the eight buckets are bound
-       to a Worker in this repo (auth-worker holds estate-backups and
-       estate-docs-gated; audiobook-worker holds the other three). The three
-       COVER buckets live behind other repos' Workers, and binding another
-       repo's data store into the auth Worker to read a number would widen that
-       Worker's blast radius to include deleting cover art. On top of that a
-       Worker can only measure a bucket by LISTING it — O(objects), billed as
-       Class A operations, on every page load — whereas `wrangler r2 bucket
-       info` answers from Cloudflare's own accounting in one call per bucket.
-       So the home machine measures all eight and pushes them.
-       Design + the rejected alternatives: scripts/lib/storage-board.mjs.
+         ⚠️ PUSHED, NOT PROBED, and the reason survives the move. Only five of
+         the eight buckets are bound to a Worker in this repo; the three cover
+         buckets live behind other repos' Workers, and binding another repo's
+         data store into the auth Worker to read a number would let an
+         auth-worker bug delete cover art. A Worker can also only measure a
+         bucket by LISTING it — O(objects), billed per page load — where
+         `wrangler r2 bucket info` answers from Cloudflare's own accounting in
+         one call. The home machine measures all eight and pushes them.
 
-       ⚠️ The freshness strip is this section's own, and it reads the `storage`
-       section's stamp — not the board's. A processing push every 15 minutes
-       must never make these figures look freshly measured. -->
-  <section id="storage-section" aria-labelledby="storage-h" hidden>
-    <h2 id="storage-h">Blob storage</h2>
+         ⚠️ Its freshness strip reads the `storage` SECTION's stamp, not the
+         board's, so the 15-minute processing push cannot make these figures
+         look freshly measured. -->
+    <h3 class="step-list-h">Blob storage</h3>
     <div id="storage-fresh" class="freshstrip" data-tone="none">
       <span class="fresh-age">reading&hellip;</span>
       <span class="fresh-note">Asking the estate Worker for the last pushed board.</span>
     </div>
+    <div id="storage-section">
+      <div id="storage-archive"></div>
+      <div id="storage-totals"></div>
+      <div id="storage-buckets"></div>
+    </div>
     <p class="section-note">
-      Every R2 bucket the estate owns. Sizes are Cloudflare&rsquo;s own rounded
-      figures and the cost is <em>storage only</em> &mdash; R2 also bills
-      operations, which this cannot see. Egress is free, which is why the estate
-      is on R2 at all.
+      Sizes are Cloudflare&rsquo;s own rounded figures and the cost is
+      <em>storage only</em> &mdash; R2 also bills operations, which this cannot
+      see. Egress is free, which is why the estate is on R2 at all.
     </p>
-    <div id="storage-totals"></div>
-    <div id="storage-buckets"></div>
   </section>
+
 
   <!-- Deploys (2026-08-18, blueprint: "last deploy per worker from
        deploys.log"). ⚠️ AND IT IS NOT deploys.log. That file lives in the
@@ -306,8 +306,11 @@
 
   <footer>
     <p>
-      These rows read six public hosts and send no credentials; every endpoint
-      answers signed-out by design.
+      The rows above the sign-in read <strong>seven</strong> public hosts and
+      send no credentials &mdash; six estate hosts plus Google&rsquo;s Firestore
+      API, which serves the pipeline&rsquo;s own status document. Everything
+      behind the sign-in (backups, blob storage, the runbooks) sends your
+      identity token to <code>auth.heygabi.ai</code> and nowhere else.
     </p>
     <p>
       Not shown: GitHub Actions run status — that needs a token this page cannot

@@ -102,3 +102,122 @@ export function describeTotals(section) {
         : ` · all ${s.of} buckets measured`),
   };
 }
+
+/**
+ * The ARCHIVE row — the one the owner actually wanted.
+ *
+ * ⚠️ HE SAW THE FIRST VERSION AND SAID "it doesnt say anything useful... I want
+ * it to have %s, last run, etc." Object counts and a monthly cost do not answer
+ * the only question a backup surface is asked: **is my library safe yet, and is
+ * it still moving?** So this row leads with the percentage and the transfer
+ * state, and everything else is subordinate to those two.
+ *
+ * ⚠️ THE COLOUR IS ABOUT WHETHER IT IS WORKING, NOT ABOUT HOW FAR IT HAS GOT.
+ * A seed that is 3% done and uploading is GREEN — it is doing exactly what it
+ * should. Amber is for a run that stopped talking, or files it could not take;
+ * red is for a manifest that cannot be read at all. Grading progress itself
+ * would paint the row red for a week and teach him to ignore it, which is the
+ * whole lesson of the ebook lane.
+ */
+export function describeArchive(a, nowMs = Date.now()) {
+  if (!a || a.available === false) {
+    return {
+      tone: 'nodata',
+      headline: '—',
+      detail: (a && a.note) || 'The archive could not be measured, so how much of the library is backed up is unknown from here — not zero.',
+      facts: [],
+    };
+  }
+
+  const pct = Number.isFinite(a.percent) ? a.percent : null;
+  const facts = [];
+
+  // 1. HOW FAR — files, and the bytes behind them.
+  if (Number.isFinite(a.files_done)) {
+    facts.push({
+      label: 'Files uploaded',
+      value: Number.isFinite(a.files_total)
+        ? `${a.files_done.toLocaleString()} of ${a.files_total.toLocaleString()}`
+        : `${a.files_done.toLocaleString()} (total unknown)`,
+    });
+  }
+  if (Number.isFinite(a.bytes_done)) facts.push({ label: 'Data uploaded', value: formatBytes(a.bytes_done) });
+
+  // 2. WHETHER IT IS MOVING — and, if it is, what it is on right now.
+  const transferWords = {
+    running: 'Uploading now',
+    idle: 'Idle — no run in progress',
+    stalled: '⚠️ Stalled — the run stopped reporting',
+    unknown: 'Unknown — a run holds the lock but is not reporting',
+  };
+  facts.push({ label: 'Transfer', value: transferWords[a.transfer] || String(a.transfer || 'unknown') });
+  if (a.transfer === 'running' && a.current_file) facts.push({ label: 'Current file', value: a.current_file });
+
+  // 3. LAST RUN — the owner asked for this by name.
+  const lastUp = a.last_upload_at && Number.isFinite(Date.parse(a.last_upload_at))
+    ? `${formatAgeShort(nowMs - Date.parse(a.last_upload_at))} ago`
+    : 'not recorded';
+  facts.push({ label: 'Last upload', value: lastUp });
+  if (Number.isFinite(a.run_files)) {
+    facts.push({
+      label: 'This run',
+      value: `${a.run_files.toLocaleString()} files${Number.isFinite(a.run_bytes) ? ` · ${formatBytes(a.run_bytes)}` : ''}`,
+    });
+  }
+  facts.push({
+    label: 'Next run',
+    value: a.next_run_at && Number.isFinite(Date.parse(a.next_run_at))
+      ? new Date(a.next_run_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      // ⚠️ Read from Task Scheduler, never computed from "it runs hourly" — a
+      // row confidently predicting a run that will not happen is worse than one
+      // that says it does not know.
+      : 'unknown — Task Scheduler did not answer',
+  });
+
+  // 4. FAILURES — a count with no names is un-actionable.
+  facts.push({
+    label: 'Failures',
+    value: Number.isFinite(a.failure_count)
+      ? (a.failure_count === 0 ? 'none' : `${a.failure_count} — ${a.failures.map((f) => f.name).join(', ')}`)
+      : 'not reported',
+  });
+
+  // 5. THE TWO DIFFERENT PROMISES, kept apart on purpose.
+  if (a.integrity) facts.push({ label: 'Integrity', value: a.integrity });
+  facts.push({
+    label: 'Restore proven',
+    // ⚠️ NULL IS "NOT PROVEN", AND IT MUST SAY SO. A blank line here reads as
+    // fine, and the estate's recovery runbook names this as its largest
+    // unverified step. Hashing on the way UP is not proof anything can be read
+    // back DOWN.
+    value: a.restore_test && a.restore_test.at
+      ? `${a.restore_test.verdict === 'pass' ? '✓ passed' : `⚠️ ${a.restore_test.verdict}`} ${formatAgeShort(nowMs - Date.parse(a.restore_test.at))} ago${a.restore_test.detail ? ` — ${a.restore_test.detail}` : ''}`
+      : '⚠️ never — nothing has been read back out of the bucket and checked',
+  });
+
+  const tone = a.transfer === 'stalled' || (Number.isFinite(a.failure_count) && a.failure_count > 0)
+    ? 'warn'
+    : a.transfer === 'unknown' ? 'nodata' : 'ok';
+
+  return {
+    tone,
+    headline: pct === null ? '—' : `${pct.toFixed(1)}%`,
+    percent: pct,
+    detail:
+      pct === null
+        ? 'The log carries no progress line, so how far through the library this is cannot be said — the file count below is what is known.'
+        : `of the audiobook library is archived to blob storage.`,
+    facts,
+  };
+}
+
+/** Compact age for a facts table — the row already carries the long form. */
+function formatAgeShort(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return 'an unknown time';
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'less than a minute';
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
