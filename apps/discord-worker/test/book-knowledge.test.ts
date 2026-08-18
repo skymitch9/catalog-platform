@@ -229,6 +229,86 @@ describe('⚠️ booksIntent separates "what happens in it" from "what do we hav
     }
   });
 
+  // ── ⚠️ THE REGRESSION TEST THAT IS A TRANSCRIPT ─────────────────────────
+  //
+  // The owner's FIRST live book question, 2026-08-18, verbatim — and the wrong
+  // answer it got, which reassembles from MENTION_MSG.searched + none + panel
+  // and so names the branch exactly: booksIntent returned false, the turn fell
+  // to `question`, and that branch unconditionally runs a public-shelf lookup.
+  //
+  //   > @GABI Tell me jakes status sheet at the end of the 9th book
+  //   > "I looked on the estate's public shelf for jakes status sheet at end
+  //    9th. Nothing on the estate's public shelf matches that…"
+  //
+  // ⚠️ Exactly the docs assistant's §12 incident, one lane over: OFFERING the
+  // tools is not the same as ROUTING to them. Three separate misses, each now
+  // its own assertion, because a single "it routes now" would go green again if
+  // two of the three regressed.
+  it("⚠️ INCIDENT 2026-08-18 — the owner's first live book question routes to the BOOKS", () => {
+    assert.equal(booksIntent('Tell me jakes status sheet at the end of the 9th book'), true);
+  });
+
+  it("⚠️ miss 1 — \"status sheet\", not just \"stat sheet\"", () => {
+    // The books themselves use both: the Primal Hunter transcripts say "he
+    // checked his status menu". A detector that knows only `stat sheet` does
+    // not know the word the reader is holding while they type.
+    assert.equal(booksIntent('what is his status sheet'), true);
+    assert.equal(booksIntent('what is his stat sheet'), true);
+    assert.equal(booksIntent('show me the status screen'), true);
+  });
+
+  it('⚠️ miss 2 — "at the end of THE 9TH book", with words between "of" and "book"', () => {
+    assert.equal(booksIntent('what happened at the end of the 9th book'), true);
+    assert.equal(booksIntent('who died at the end of the third volume'), true);
+  });
+
+  it('⚠️ miss 3 — an ORDINAL names a volume just as well as a number does', () => {
+    // Every anchor existed as `book 9` and none as `9th book`.
+    assert.equal(booksIntent('what is his level in the 9th book'), true);
+    assert.equal(booksIntent('what is his level in the ninth book'), true);
+    assert.equal(booksIntent('what is his level in book 9'), true);
+    assert.equal(booksIntent('what is his level in the last book'), true);
+  });
+
+  it("⚠️ a CHARACTER's possessive plus an attribute is a book question — the catalogue holds no character names", () => {
+    // ⚠️ The apostrophe is optional because nobody types one into a DM.
+    assert.equal(booksIntent('tell me jakes status sheet'), true);
+    assert.equal(booksIntent("tell me Jake's inventory"), true);
+    assert.equal(booksIntent('what are carls titles'), true);
+    // ⚠️ A PRONOUN is not a possessive here, deliberately. "what about her
+    // skills" has no anchor and no name, so it falls to the weak half and stays
+    // out — the detector is narrow on purpose, and a follow-up like this is
+    // answered by the tools already being offered on an ordinary question turn.
+    assert.equal(booksIntent('what about her skills'), false);
+    assert.equal(booksIntent('what about her skills in book 9'), true);
+  });
+
+  it('⚠️ AND THE SHELF LANE IS UNTOUCHED — the fix must not eat "do we have this"', () => {
+    // Each of these names a book the same way the owner's question did, and
+    // each is still a CATALOGUE question. Widening the detector without this
+    // assertion is how one lane gets fixed by breaking the other.
+    for (const q of [
+      'do we have the 9th Primal Hunter book?',
+      "what's the 9th book in the series?",
+      "what's the title of book 3?",
+      'what titles do we have in the series?',
+      'how many books are in the series?',
+      'is Dungeon Crawler Carl on the shelf?',
+      'how long is book 4?',
+    ]) {
+      assert.equal(booksIntent(q), false, q);
+    }
+  });
+
+  it("⚠️ the bound was ALREADY right on the owner's sentence — only the router missed", () => {
+    // Worth pinning: the diagnosis found boundFromQuestion returning whole_book
+    // correctly all along. The defect was one layer up, and a future reader
+    // should not go looking for it in the scoping code.
+    assert.deepEqual(boundFromQuestion('Tell me jakes status sheet at the end of the 9th book'), {
+      scope: 'whole_book',
+    });
+  });
+
   it('empty and junk are not book questions', () => {
     assert.equal(booksIntent(''), false);
     assert.equal(booksIntent('   '), false);

@@ -486,7 +486,11 @@ export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
       'knowledge base is a much smaller, GROWING subset. ' +
       'If the book somebody asked about is not in the listing, say you have not read that one yet ' +
       'rather than answering from your own memory of it. That is a real answer, it is honest, and ' +
-      'the book may well be there next week.',
+      'the book may well be there next week. ' +
+      '⚠️ It matches TITLES and ids, not characters — a query of "Jake" finds nothing. When somebody ' +
+      'names only a character, work out which series they mean (from the conversation, or from what ' +
+      'you know of the books) and look that SERIES up here to get its ids — then confirm against the ' +
+      'text before answering. Guessing where to LOOK is fine; guessing the ANSWER is not.',
     input_schema: {
       type: 'object',
       properties: {

@@ -125,14 +125,59 @@ export function boundParams(bound: QuestionBound): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 /**
+ * ⚠️ **HOW A BOOK GETS NAMED, INCLUDING WITHOUT ITS TITLE** (incident §12b —
+ * the owner's first live book question, 2026-08-18).
+ *
+ * He asked about *"the **9th book**"*. Every anchor below existed in the form
+ * `book 9` and none in the form `9th book`, and that is a third of why the
+ * question missed. An ordinal is how people actually refer to a volume in a
+ * series they are in the middle of.
+ */
+const ORDINAL_WORDS =
+  'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|last|final';
+const NUMBER_WORDS =
+  'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen';
+/** `book 9`, `book nine`, `vol. 3`. */
+const BOOK_N = new RegExp(
+  `\\b(?:book|volume|vol\\.?|part|installment)\\s*(?:\\d{1,2}|${NUMBER_WORDS})\\b`,
+  'i',
+);
+/** `9th book`, `the ninth book`, `the last book`. */
+const NTH_BOOK = new RegExp(
+  `\\b(?:\\d{1,2}(?:st|nd|rd|th)|${ORDINAL_WORDS})\\s+(?:book|volume|part|installment)\\b`,
+  'i',
+);
+
+/**
+ * The nouns a LitRPG question asks for by name.
+ *
+ * ⚠️ **`status` sits beside `stat`, and that one missing word is what sent the
+ * owner's first live question to the catalogue.** The books use both — the
+ * Primal Hunter transcripts say *"he checked his **status** menu"* — so a
+ * detector that knows only `stat sheet` does not know the word the reader is
+ * holding while they type.
+ */
+const SHEET_NOUNS = 'sheet|block|screen|page|menu|window|panel';
+const ATTRIBUTE_NOUNS =
+  'stats?|status|level|levels|class|classes|rank|ranks|build|builds|skills?|inventory|titles?|powers?|abilities|profession';
+/** The same list minus `title`, for the WEAK half — see the note beside it. */
+const WEAK_ATTRIBUTE_NOUNS =
+  'stats?|status|level|levels|class|classes|rank|ranks|build|builds|skills?|inventory|powers?|abilities|profession';
+
+/**
  * Questions that are unmistakably about a book's CONTENTS. ⚠️ Each of these is
  * a sentence the catalogue cannot answer at all: it records a narrator, a
  * running time and a series position, and nothing whatsoever about the story.
  */
 const BOOKS_STRONG = [
   /\b(what|who|where|when|why|how)\b[^?]*\bin (book|chapter|volume) \d/i,
-  /\bstat (sheet|block|screen|page)\b/i,
-  /\bat the end of (book|the book|chapter)\b/i,
+  // ⚠️ `stat sheet` AND `status sheet` — the 2026-08-18 miss, in one word.
+  new RegExp(`\\b(?:stat|status)\\s*(?:${SHEET_NOUNS})\\b`, 'i'),
+  // ⚠️ WAS `at the end of (book|the book|chapter)`, which required a book word
+  // IMMEDIATELY after `of`. "at the end of **the 9th** book" has two words in
+  // between, so it missed. Now the endpoint phrase and the book word merely
+  // have to be in that order in the same sentence.
+  /\b(?:at|by|towards?|near)\s+the\s+end\s+of\b[^?]*\b(book|volume|part|series|chapter|it)\b/i,
   /\bwhat happens\b/i,
   /\bhow does (it|the book|the series) end\b/i,
   /\b(remind me|refresh my memory)\b[^?]*\b(what|who|where|how)\b/i,
@@ -140,7 +185,12 @@ const BOOKS_STRONG = [
   /\bfirst (appear|appears|appearance|meet|meets|introduced|mentioned)\b/i,
   /\bdoes .* (ever )?(appear|show up|come up|get mentioned)\b/i,
   /\bquote\b[^?]*\bfrom (the )?book\b/i,
-  /\bwhat (level|class|rank|title|skill|skills|stats?) (is|does|did|was)\b/i,
+  new RegExp(`\\bwhat (?:${ATTRIBUTE_NOUNS}) (?:is|does|did|was|were|are)\\b`, 'i'),
+  // ⚠️ **A CHARACTER'S POSSESSIVE PLUS AN ATTRIBUTE — "jakes status sheet".**
+  // The apostrophe is optional because nobody types one into a DM. This is the
+  // shape that identifies a book by its CHARACTER instead of its title, and the
+  // catalogue cannot answer it even in principle: it holds no character names.
+  new RegExp(`\\b[a-z][\\w'’-]*'?s\\s+(?:${ATTRIBUTE_NOUNS}|${SHEET_NOUNS})\\b`, 'i'),
 ];
 
 /** Questions about the SHELF, not the story. ⚠️ Kept local rather than shared
@@ -161,10 +211,18 @@ const BOOKS_SHELF_SHAPED = [
 const BOOKS_WEAK = [
   /\b(chapter|prologue|epilogue|plot|character|characters|scene|passage|storyline)\b/i,
   /\b(happens?|happened|said|says|kills?|killed|dies?|died|fights?|meets?|becomes?)\b/i,
+  // ⚠️ The LitRPG nouns, weak on their own and needing an anchor.
+  // ⚠️ **`title` is deliberately ABSENT here** while staying in the STRONG
+  // possessive pattern above. "Jake's titles" is a LitRPG award; *"what's the
+  // title of book 3"* is a CATALOGUE question, and one word decides which lane
+  // a reader lands in.
+  new RegExp(`\\b(?:${WEAK_ATTRIBUTE_NOUNS})\\b`, 'i'),
 ];
 
 const BOOKS_ANCHOR = [
-  /\b(book|volume|vol\.?) \d/i,
+  BOOK_N,
+  // ⚠️ ADDED after the 2026-08-18 miss. `9th book`, `the ninth book`.
+  NTH_BOOK,
   /\bchapter \d/i,
   /\bin ["“][^"”]{3,}["”]/i,
   /\bin (the )?(book|series|story|novel)\b/i,
