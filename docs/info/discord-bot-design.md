@@ -673,7 +673,13 @@ every conversational reply into a 400.
   `lookup_public_shelf`, `classify_intent`, `converse`, `reply_in_channel` —
   pinned by a test, in the spirit of `GABI_TOOL_NAMES`. A second test greps
   `mention-flow.ts` for write, moderation and admin verbs. **There is no write
-  path to guard**; a fix request is answered with the deep link.
+  path to guard**; a fix request is answered with the deep link. ⚠️ **Both
+  halves of that sentence moved later.** Tier 1 gave her a narrow, additive
+  write path (`delegated.ts`), and on 2026-08-18 the deep link stopped being a
+  constant: it resolves the **asker's own catalog** from their linked identity
+  and carries `?gabi=<question>`, so the panel opens loaded. The decision table
+  lives in `apps/discord-worker/src/panel.ts`; the operator's view is
+  [`access/discord-bot.md` §10.3](../access/discord-bot.md).
 - **Reply mentions.** `allowed_mentions` is `parse: []` plus the one asker's id,
   so neither a model nor a book title can make the bot ping `@everyone`.
 

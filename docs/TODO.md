@@ -560,31 +560,11 @@ is for: no write, no model call, no new secret.
 design is [`info/discord-bot-design.md` §6](info/discord-bot-design.md). Live at
 version `fa8140f6-da59-4f0d-b918-0f6a6f7777a7`, commits `74d6bd3` + `cfe768b`.
 
-⚠️ **ONE BUILD ITEM CAME BACK, and it is one line: `panelDeepLink()` must
-carry the question.** `/gabi`'s deep link into the fixer panel has always
-pointed at a bare `/`, so the asker retypes in the browser what they just
-typed in Discord. **The PANEL half is now built and deployed** (`library_catalog`
-`8745191`, both instances, 2026-08-18) — it reads a question out of the URL,
-prefills the box and opens itself, without sending.
-
-⚠️ **THE PARAMETER IS `?gabi=`, NOT the `?q=` the design named** — and that is
-a measurement. `q` is already the library app's own collection search on `/`,
-the exact path this link points at (`router.tsx` `parseCollection`), so `?q=`
-would filter the book list to the question as well as prefill the panel: an
-empty catalogue under a floating panel, the link looking broken at the moment
-it worked. The full record, including the regression test that pins `?q=` NOT
-prefilling, is in `library_catalog/docs/DONE.md` and
-`library_catalog/docs/info/gabi-fixer-design.md` §10.2.
-
-**What is left here:** `panelDeepLink()` in
-[`apps/discord-worker/src/gabi.ts`](../apps/discord-worker/src/gabi.ts)
-returns `` `${base}/` `` and should append
-`?gabi=<encodeURIComponent(question)>`; its callers in `conversation-flow.ts`,
-`gateway.ts` and `index.ts` already hold the question. Size XS, plus a
-discord-worker deploy. ⚠️ **`GET /api/health`'s `gabi_panel_url` takes the same
-function and has NO question**, so it must keep working with the argument
-absent. Until this lands the panel reads a parameter nothing sends — the
-harmless direction, and why the panel half went first.
+⚠️ **THE DEEP LINK — asker-aware destination AND `?gabi=` prefill — LANDED
+2026-08-18.** Moved whole to [`DONE.md`](DONE.md). Live at version
+`c9af75f0-f8e3-4de6-b6ac-81a02c98ce9f`, commits `02c5834` + `a4b5d53`. It grew
+from the one-line prefill item recorded here into two halves, because the owner
+hit the second one live: the link pointed at `padhard.heygabi.ai` for everybody.
 
 **Everything else outstanding on this whole section is a switch-on, not a build:**
 

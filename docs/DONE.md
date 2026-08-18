@@ -13,6 +13,144 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔗 GABI'S DEEP LINKS — ASKER-AWARE AND PREFILLED, SHIPPED 2026-08-18 (moved from TODO.md 2026-08-18)
+
+Arrived in TODO.md as a one-line prefill item (*"`panelDeepLink()` must carry
+the question"*) and left as two, because the owner hit the second half live the
+same day. Verbatim: ***"why is it showing padhard and not the generic site"***.
+
+**Live** at version `c9af75f0-f8e3-4de6-b6ac-81a02c98ce9f`, commits `02c5834`
+(the build) + `a4b5d53` (the prefill re-measured against the deployed panel).
+
+### Half 1 — the destination was a constant, and it was the wrong one
+
+Every fixer/panel deep link pointed at `GABI_PANEL_URL` =
+`https://padhard.heygabi.ai`. That was **correct when it was written**: design
+decision 8 put the `GABI_PANEL` posture ON for `friend` and OFF for the main
+library, so padhard genuinely was the only host where a GABI conversation could
+happen at all. The posture moved; the constant did not.
+
+⚠️ **The apex is NOT the fix.** `heygabi.ai` is a front door that runs no
+panel, so "point it at the generic site" read literally is the same dead end
+wearing a friendlier hostname. The destination is now **the asker's own
+catalog**, resolved from the identity they linked themselves.
+
+**No new machinery and no new credential** — it reuses Tier 1's `whoami` port,
+read-only, as an injected `Pick<DelegatePort, 'linkedUid' | 'whoami'>` that
+[`src/panel.ts`](../apps/discord-worker/src/panel.ts) cannot construct.
+`panel.ts` was added to the credential-seam guard in `estate-docs.test.ts` for
+exactly that reason: a module that reads an identity to decide a hostname is
+the shape of thing that grows a service account if nobody is watching.
+
+| `whoami` says | The link points at |
+|---|---|
+| `runResearch` on exactly one instance | that instance |
+| `runResearch` on both | **the main library** |
+| an account but no capability, on one | that instance — still *their* site |
+| an account but no capability, on both | the main library |
+| unlinked, or nothing resolved | the configured `GABI_PANEL_URL` |
+
+⚠️ **The last row is deliberate and is not a dead end.** Somebody with no
+account anywhere gets a **real panel** that will ask them to sign in — strictly
+better than the apex, which has nothing to sign in to — plus whatever `/link`
+nudge the flow already words. ⚠️ **An unreachable shelf never re-routes
+anybody**: a `whoami` that could not be reached is not evidence that somebody
+has no account there, and conflating the two is how an outage becomes "you have
+no account".
+
+⚠️ **A tie goes to the main library rather than asking, which is the OPPOSITE
+of Tier 1's decision** — recorded because the inconsistency is intentional. A
+*write* to the wrong shelf is a tidy-up somebody has to notice first, so that
+path asks; a *link* to the wrong shelf costs one click, so asking would be four
+words of ceremony for nothing.
+
+**Where it applies, and where it deliberately does not:**
+
+| Emission site | Now |
+|---|---|
+| `/gabi` command (`gabi.ts`) | **asker-aware** — the identity read it already did now yields the uid too, so it costs **+2 subrequests**, not +4 |
+| `fix_request` branch (`mention-flow.ts`) | **asker-aware** — the exact lane the owner hit |
+| `question` branch fallback | **asker-aware**, and moved BELOW the model call so a turn she answers in her own voice dials nothing |
+| book-pick fallback (`handlePick`) | **asker-aware**, prefilled with the ORIGINAL question rather than the label pressed |
+| `GET /api/health` `gabi_panel_url` | **static, on purpose** — it reports the configured var so a misconfigured link is one `curl` away; it is a config row, not a person's link |
+| `DELEGATE_MSG.noAccountAnywhere` | **unchanged** — it names both sites because that person has an account on neither, so there is nothing to resolve |
+
+⚠️ **Not gated on `GABI_DELEGATED_WRITES`.** `whoami` mutates nothing and needs
+no capability; switching writes off must not send everybody back to the pilot
+host. It IS gated on the port existing at all, which is a real production state
+(no app token or no service account) — and there every surface behaves exactly
+as it did before this landed.
+
+⚠️ **One behaviour moved.** On `/gabi` with a port, a link document carrying no
+`firebaseUid` — a pre-uid link — now reads as *not linked* rather than *linked*,
+because that is what it is: it cannot prove an estate account and re-running
+`/link` is the fix. It is what the delegated path already tells that same
+person, and one surface contradicting another about whether somebody is linked
+is worse than either answer.
+
+### Half 2 — the link arrived empty
+
+The panel half was already built and deployed (`library_catalog` `8745191`,
+both instances, 2026-08-18): it reads a question out of the URL, prefills the
+box, opens itself, and **never sends**.
+
+⚠️ **THE PARAMETER IS `?gabi=`, NOT the `?q=` the design named** — and that is
+a measurement. `q` is already the library app's own collection search on `/`,
+the exact path this link points at (`router.tsx` `parseCollection`), so `?q=`
+would filter the book list to the question as well as prefill the panel: an
+empty catalogue under a floating panel, the link looking broken at the moment
+it worked. The full record, including the regression test that pins `?q=` NOT
+prefilling, is in `library_catalog/docs/DONE.md` and
+`library_catalog/docs/info/gabi-fixer-design.md` §10.2.
+
+⚠️ **RE-MEASURED HERE against the DEPLOYED bundle rather than trusting that
+note**, 2026-08-18: `/assets/index-rvJiy8K2.js`, byte-identical on
+`library.heygabi.ai` and `padhard.heygabi.ai`, contains
+
+```js
+const ag = "gabi", V0 = 500;
+const n = e.replace(/\s+/g, " ").trim();
+return n ? (n.length > V0 ? n.slice(0, V0).trimEnd() : n) : null;
+```
+
+The param name and the 500 cap were right. The panel also `trimEnd()`s **after**
+slicing, which the first commit did not — aligned in `a4b5d53`, so the URL a
+person can read in Discord is character-for-character what the box will hold
+rather than a longer string that quietly shrinks on arrival. The panel's reader
+is reproduced in `test/panel.test.ts` as an oracle, so a drift in either
+direction fails the build.
+
+⚠️ **`GET /api/health` calls the same function with NO question**, so the
+prefill argument is optional and a test pins the bare link. A required argument
+would have turned a health row into a crash.
+
+### The subrequest discipline, because the commonest turn pays it
+
+**1 link read + 2 `whoami`**, memoised per turn (the BASE is memoised, not the
+finished link, so two prefills cost one identity), and **paid only when a link
+is actually built**. Both conversational fallbacks were moved below the model
+call for this: building them eagerly would have charged every question in the
+server for a string most turns throw away.
+
+### Verified live 2026-08-18
+
+| Check | Result |
+|---|---|
+| `GET /api/health` | `ok: true`, 12 features, **all rows intact** incl. `gabi_docs_ready: true`, `gabi_delegated_ready: true` |
+| `gabi_panel_url` health row | `https://padhard.heygabi.ai/` — bare, unchanged, correct (a config report) |
+| `POST /interactions` unsigned | **401** |
+| `POST /interactions` bad signature | **401** |
+| `library.heygabi.ai/?gabi=…` | **200** |
+| `padhard.heygabi.ai/?gabi=…` | **200** |
+| Suites | **1,108 pass / 0 fail** workspace-wide (was 1,083) |
+| Docs routing | untouched — `docsIntent()` and both 2026-08-18 transcript regressions still green; `"put a change in front of you"` kept verbatim because that suite matches on it |
+
+⚠️ **NOT verified:** that the panel *visibly* prefills in a browser. The reader
+function was measured in the deployed bundle (above) and both URLs answer 200,
+but nobody drove a signed-in session through it — and the panel is role-gated
+(`gabiPanel` posture AND `runResearch`), so a rendering check needs an account
+that holds both.
+
 ## 📚 GABI READS THE ESTATE DOCS — ALL SIX PHASES SHIPPED 2026-08-18 (moved from TODO.md 2026-08-18)
 
 Owner: *"let's make sure GABI can read all of our docs and stuff so she can

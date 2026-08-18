@@ -2,10 +2,23 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
-> Last verified: **2026-08-17** — LIVE at `discord.heygabi.ai`, version
+> Last verified: **2026-08-18** — LIVE at `discord.heygabi.ai`, version
+> **`c9af75f0-f8e3-4de6-b6ac-81a02c98ce9f`** (the **asker-aware, prefilled deep
+> link**, §10.3). Measured live this deploy: `/api/health` `ok: true`, 12
+> features, all rows intact including `gabi_docs_ready: true`,
+> `gabi_delegated_ready: true` and `gabi_panel_url:
+> "https://padhard.heygabi.ai/"` (a config report, deliberately still bare and
+> still the static fallback); `/interactions` **401** to an unsigned POST and
+> **401** to a bad signature; `library.heygabi.ai/?gabi=…` and
+> `padhard.heygabi.ai/?gabi=…` both **200**. ⚠️ **NOT verified:** that the panel
+> visibly prefills in a browser — the reader function was measured in the
+> deployed bundle, but nobody drove a signed-in, `runResearch`-holding session
+> through it.
+>
+> Previously verified **2026-08-17** at version
 > **`03bd6a3a-7f05-4fbe-a846-05bc614f97e6`** (**`/gabi`**, the fixer's surface
 > in shape (b), §10 — joining **`/have`** and the **moderation pair, dark**,
-> §9). Application **GABI** (id `1538775435880562758`). Measured live this
+> §9). Application **GABI** (id `1538775435880562758`). Measured live that
 > deploy: `/api/health` `ok: true`; `discord_public_key`,
 > `discord_application_id`, `discord_bot_token`, `firebase_service_account`,
 > `firebase_project_id` and **`poll_sync_token` all `true`**, with
@@ -663,21 +676,54 @@ A test asserts the whole flow makes **exactly two requests** — a GET to the
 index and the PATCH that edits the deferred message — so a model call or a
 write cannot slip in later while every other test still passes.
 
-### 10.3 ⚠️ The deep link carries no `?q=`, and that is measured
+### 10.3 ⚠️ The deep link — asker-aware, and prefilled with `?gabi=`
 
-Read 2026-08-17 in `library_catalog/apps/web`: `App.tsx` holds the panel open
-in `useState(false)` and `GabiPanel.tsx` parses no location at all. There is no
-URL parameter to carry the question, so appending one would be a link that
-**silently lies** about carrying it. The question is quoted in the message
-instead. A `?q=` prefill is **panel work**, recorded as a follow-up in the
-design doc's §10.2 — and if it ever lands, `panelDeepLink()` in
-`apps/discord-worker/src/gabi.ts` is the one function to change.
+⚠️ **SUPERSEDED 2026-08-18.** This section used to read *"the deep link carries
+no `?q=`, and that is measured"*, on a 2026-08-17 reading that `GabiPanel.tsx`
+parsed no location. Both halves changed, and both changed because the owner hit
+them live: ***"why is it showing padhard and not the generic site"***.
+
+**Where it points.** No longer `GABI_PANEL_URL` for everybody, and ⚠️ **not the
+apex** — `heygabi.ai` runs no panel, so sending somebody there is the same dead
+end wearing a friendlier hostname. It resolves the **asker's own catalog** from
+their linked identity, reusing Tier 1's `whoami` port read-only:
+
+| `whoami` | destination |
+|---|---|
+| `runResearch` on one instance | that instance |
+| `runResearch` on both | the main library |
+| an account, no capability | that instance; on both → the main library |
+| unlinked / unresolved / outage | the configured `GABI_PANEL_URL` |
+
+⚠️ It is **not** gated on `GABI_DELEGATED_WRITES` (a `whoami` mutates nothing),
+but it **is** gated on the port existing — `estate_app_token_discord` **and**
+`firebase_service_account`. With either unset every surface falls back to the
+static link and behaves exactly as it did before this landed. `/api/health`'s
+`gabi_delegated_ready` tells you which state the Worker is in.
+
+**What it carries.** `?gabi=<question>` — ⚠️ **NOT `?q=`**, which is the library
+app's own collection search on the same path and would empty the book list under
+a floating panel. Measured off the deployed bundle 2026-08-18
+(`/assets/index-rvJiy8K2.js`, byte-identical on both instances): the panel
+collapses whitespace, trims, caps at **500** chars and `trimEnd()`s.
+`panelDeepLink()` mirrors that step for step, so what the URL shows is what the
+box will hold. The panel prefills and opens itself; it **never sends**.
+
+The decision table and the whole rationale live in
+`apps/discord-worker/src/panel.ts`; the regression suite is `test/panel.test.ts`.
+
+⚠️ `GET /api/health`'s `gabi_panel_url` still calls the same function with **no
+question** and stays bare. It is a **config report** — "is the fallback var set
+correctly" — not a person's link, and it is deliberately not asker-aware.
 
 ### 10.4 What can be checked without Discord
 
 ```bash
-curl -s https://discord.heygabi.ai/api/health      # gabi_surface, gabi_panel_url
-curl -s https://padhard.heygabi.ai/api/health      # {"gabi":{"panel":true}}
+curl -s https://discord.heygabi.ai/api/health   # gabi_surface, gabi_panel_url, gabi_delegated_ready
+curl -s https://padhard.heygabi.ai/api/health   # {"gabi":{"panel":true}}
+curl -s https://library.heygabi.ai/api/health   # the other deep-link target
+# the prefill contract, read off the LIVE bundle rather than trusted:
+curl -s https://library.heygabi.ai/assets/index-rvJiy8K2.js | grep -o '="gabi",[A-Za-z0-9$_]*=500'
 ```
 
 ⚠️ `gabi_surface` reading anything but `propose_and_deep_link` means somebody
