@@ -289,6 +289,18 @@ estate makes.
 
 ## 7. Gotchas (the ones that cost time elsewhere)
 
+- ⚠️ **"GABI hears but never answers, and the tail shows `401 invalid
+  x-api-key`" = a BOM in the secret, not a bad key.** Incident 2026-08-18:
+  piping a value to `wrangler secret put` from PowerShell prepended an
+  invisible UTF-8 byte-order-mark (`EF BB BF`) to the stored secret;
+  Anthropic rejected every call while the key itself was perfectly valid,
+  and the tail's non-ASCII-header warning printed the FULL key value (so an
+  affected key should be rotated, not just re-stored). The fix, now the
+  required ritual for EVERY PowerShell secret pipe: force
+  `$OutputEncoding = New-Object System.Text.UTF8Encoding($false)` first,
+  `.TrimStart([char]0xFEFF).Trim()` the value, and prove the value against
+  the live API (a 1-token call) BEFORE storing — an upload succeeding proves
+  transport, not the value.
 - **The portal silently removes a saved Interactions URL** if invalid
   signatures ever stop being rejected. If interactions stop arriving, check
   the portal field *first* — it may simply be empty again.
