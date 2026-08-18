@@ -229,7 +229,66 @@ MODERATION_ENABLED = "off"
 # POST /admin/gateway/start needed. Turning her back off is this one line.
 GABI_MENTIONS = "on"
 
+# ⚠️ THE TIER-1 KILL SWITCH — GABI's first WRITE capability (src/delegated.ts).
+#
+# Owner ask 2026-08-17: "Can I dm her an isbn or a photo and she adds it to the
+# catalog?" and "Hey Gabi, fix all my missing details… Hey @Sam i went ahead and
+# fixed all your missing stuff." Approved as Tier 1 of the T0–T4 ladder ("that
+# looks good, start with that", then "all of it"): additive writes with easy
+# undo, auto-applied and then reported.
+#
+# Affirmative-only in the exact idiom of MODERATION_ENABLED and GABI_MENTIONS
+# above: "on" and nothing else; "true", "1", "yes" and every typo mean OFF, and
+# test/delegated.test.ts pins that both ways.
+#
+# ⚠️ It ships "on" because the owner's approval was explicit, not because a
+# capability like this defaults open. OFF means no write, no site call and no
+# credential read — but NOT silence: a DM'd ISBN still gets "adding books from
+# Discord is switched off" rather than falling through to a shelf search for a
+# thirteen-digit number, which returns nothing and reads as broken.
+#
+# ⚠️ WHAT SHE CAN DO WITH IT ON, and the boundary is the whole design:
+#   - add a book by ISBN         (needs the asker's `editCatalog` THERE)
+#   - run the missing-details sweep, attributed to the asker (`runResearch`)
+# and NOTHING ELSE. She holds no permissions of her own: she asserts an identity
+# the person proved themselves (the /link document), and the DESTINATION CATALOG
+# checks that person's real stored role before it acts. A barcode whose book is
+# already on that shelf is handed back UNANSWERED — the four-way rescan question
+# is a mutation of existing data and belongs to a confirm lane that does not
+# exist yet.
+GABI_DELEGATED_WRITES = "on"
+
+# The two catalogs a delegated verb may be routed to. Vars, not secrets: they
+# are public hostnames that appear in her own replies.
+#
+# ⚠️ TWO, because there really are two Workers with two D1 databases — one build
+# deployed to two targets (library_catalog/docs/access/second-instance.md). A
+# person holding a role on BOTH is asked which one they meant; she never guesses,
+# because a book added to the wrong household's shelf is a tidy-up somebody has
+# to notice first.
+LIBRARY_MAIN_URL = "https://library.heygabi.ai"
+LIBRARY_FRIEND_URL = "https://padhard.heygabi.ai"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
+#   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
+#     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)
+#     and pipes the SAME value to THREE holders under the SAME NAME: here, and
+#     both library Workers (`npm run secret -- ESTATE_APP_TOKEN_DISCORD` and
+#     `npm run secret:friend -- ESTATE_APP_TOKEN_DISCORD`, in library_catalog).
+#     The estate's one-value-many-holders idiom, DONOR_TOKEN's exactly.
+#     ⚠️ HOLDING IT AUTHORISES NO WRITE. It proves only "this request came from
+#     the estate's Discord Worker"; the destination then resolves the
+#     on-behalf-of Firebase uid to its own app_user row and checks THAT person's
+#     capability. So a leak buys the ability to act for people who already hold
+#     the capability, on a surface where every write is stamped `gabi-discord`
+#     and is revertible in the app — a smaller blast radius than the bot token's.
+#     ⚠️ SHIPS DARK until set: she answers "I'm not wired up to write to the
+#     catalogs yet" in words, /api/health reports
+#     configured.estate_app_token_discord = false and gabi_delegated_ready =
+#     false, and every read-only answer is unchanged. Same ships-dark idiom as
+#     DISCORD_CLIENT_SECRET and POLL_SYNC_TOKEN below.
+#     ⚠️ Read by exactly ONE module — src/delegated-exec.ts — and
+#     test/mentions.test.ts fails the build if that stops being true.)
 #   wrangler secret put DISCORD_PUBLIC_KEY        (Developer Portal → General
 #     Information → Public Key; 64 hex chars. Public by design, but kept as a
 #     secret for uniform custody with the rest)

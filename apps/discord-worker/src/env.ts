@@ -103,6 +103,70 @@ export interface Env {
    * toward the panel. ⚠️ A missing key must NEVER produce an error message in a
    * channel — the absence is logged as a worded line and nothing else. */
   ANTHROPIC_API_KEY_GABI?: string;
+  /**
+   * ⚠️ **THE TIER-1 KILL SWITCH — the delegated WRITE verbs** (`delegated.ts`).
+   *
+   * Affirmative-only, the exact idiom of `MODERATION_ENABLED` and
+   * `GABI_MENTIONS` above: `"on"` and nothing else. Absent, empty, `"true"`,
+   * `"1"`, `"yes"` and every typo all mean OFF.
+   *
+   * ⚠️ **OFF means no write, no site call and no credential read** — but it
+   * does NOT mean silence. A DM'd ISBN still gets *"adding books from Discord
+   * is switched off"* rather than falling through to a shelf search for a
+   * thirteen-digit number, which returns nothing and reads as broken. The
+   * switch removes the capability; it must not remove the sentence.
+   *
+   * ⚠️ **It ships `"on"`, and that is the OWNER'S EXPLICIT DECISION rather than
+   * a default** (2026-08-17: *"Can I dm her an isbn or a photo and she adds it
+   * to the catalog?"* → the T0–T4 ladder → *"that looks good, start with
+   * that"* → *"all of it"*). The switch exists because a capability like this
+   * must have an off lever that is one line and needs no code change — not
+   * because the decision to enable it was unmade.
+   */
+  GABI_DELEGATED_WRITES?: string;
+
+  /**
+   * ⚠️ **The bot's bearer for the two library instances' delegated door.**
+   *
+   * One value, THREE holders, the same NAME on all three — the estate's
+   * established pairing idiom (`DONOR_TOKEN`'s): minted once, piped here and to
+   * BOTH `library_catalog` Workers.
+   *
+   * ⚠️ **It authorises no write.** It proves only *"this request came from the
+   * estate's Discord Worker"*. The destination site then resolves the
+   * on-behalf-of Firebase uid to its own `app_user` row and checks THAT
+   * person's capability. So the worst a leak buys is the ability to act for
+   * people who already hold the capability, on a surface whose every write is
+   * stamped and revertible.
+   *
+   * ⚠️ **SHIPS DARK while unset**: `delegated.ts` answers a worded "not wired up
+   * yet" line, `/api/health` reports `configured.estate_app_token_discord:
+   * false`, and nothing crashes.
+   *
+   * ⚠️ It is read by exactly ONE module — `delegated-exec.ts` — and
+   * `test/delegated.test.ts` fails the build if that stops being true. The
+   * lookup and chat paths must stay credential-free by construction.
+   */
+  ESTATE_APP_TOKEN_DISCORD?: string;
+
+  /**
+   * The two library instances GABI may be asked to write to. Vars, not secrets:
+   * they are public hostnames that appear in her own replies.
+   *
+   * ⚠️ **TWO, because there really are two Workers with two D1 databases** —
+   * `library` (the main shelf) and `library2` (padhard). That is measured
+   * reality, not future-proofing: `library_catalog/docs/access/second-instance.md`
+   * documents one build deploying to two targets, and a build that knew about
+   * only one would silently write the wrong household's catalog for anybody who
+   * holds a role on both.
+   *
+   * Absent means that instance is not offered at all — which is the honest
+   * behaviour for a single-instance estate, and the reason these default in
+   * code rather than being required.
+   */
+  LIBRARY_MAIN_URL?: string;
+  LIBRARY_FRIEND_URL?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

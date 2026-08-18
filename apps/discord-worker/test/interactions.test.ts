@@ -292,8 +292,48 @@ test('health answers config-presence booleans and never values', async () => {
     // ships-dark gate: with no key she still answers @mentions from the keyword
     // router, so this row means "duller", not "broken".
     anthropic_key_gabi: false,
+    // Added with TIER 1 (2026-08-18) — the delegated write door's bearer, and
+    // the same honest-false contract as every row above. ⚠️ Its `false` is a
+    // ships-dark gate rather than a ladder: with it unset she says "I'm not
+    // wired up to write yet" in words, and every read-only answer is unchanged.
+    estate_app_token_discord: false,
   });
   assert.ok(!JSON.stringify(data).includes('abc'));
+});
+
+test('health: gabi_delegated_ready needs the switch AND the app token AND the SA', async () => {
+  // ⚠️ Three things, ANDed here rather than left for a reader to AND themselves
+  // — the same shape as `poll_sync_ready` below, and for the same reason: a
+  // half-configured write door must be visibly not-ready from outside.
+  const read = async (env: Record<string, string>) => {
+    const res = await app.request('/api/health', {}, env);
+    return (await res.json()) as {
+      gabi_delegated_enabled: boolean;
+      gabi_delegated_ready: boolean;
+      gabi_delegated_verbs: string[];
+    };
+  };
+  assert.equal((await read({})).gabi_delegated_ready, false, 'unset is OFF, never open');
+  assert.equal(
+    (await read({ GABI_DELEGATED_WRITES: 'true' })).gabi_delegated_enabled,
+    false,
+    '"true" is not "on" — affirmative-only, exactly like MODERATION_ENABLED',
+  );
+  assert.equal(
+    (await read({ GABI_DELEGATED_WRITES: 'on', ESTATE_APP_TOKEN_DISCORD: 't' })).gabi_delegated_ready,
+    false,
+    'no service account means no way to answer "who is this?" — not ready',
+  );
+  const live = await read({
+    GABI_DELEGATED_WRITES: 'on',
+    ESTATE_APP_TOKEN_DISCORD: 't',
+    FIREBASE_SERVICE_ACCOUNT: '{}',
+  });
+  assert.equal(live.gabi_delegated_ready, true);
+  // ⚠️ The write surface, stated from outside. A verb that mutates existing
+  // data, deletes anything or touches a role appearing here would mean the
+  // T0–T4 ladder moved, and this is where that becomes visible in one curl.
+  assert.deepEqual(live.gabi_delegated_verbs, ['whoami', 'add-isbn', 'run-details']);
 });
 
 test('health: link_ready is false unless BOTH halves of the ceremony are configured', async () => {

@@ -97,6 +97,13 @@ import {
   type MentionTrigger,
   type MentionVia,
 } from './mentions.js';
+import { DELEGATE_MSG, delegatedIntent, type LibraryInstance } from './delegated.js';
+import {
+  runDelegated,
+  resumeDelegated,
+  type DelegatedDeps,
+  type DelegatedOutcome,
+} from './delegated-flow.js';
 
 /** Discord's own ceiling on a message body. Truncating here rather than
  * discovering it as a 400 that loses the whole answer. */
@@ -136,6 +143,26 @@ export interface MentionDeps {
    * a future one-shot lane) but it must be an explicit no-op that somebody
    * wrote down, never a dependency somebody forgot to pass. */
   conversation: ConversationDeps;
+  /**
+   * ⚠️ **TIER 1 (2026-08-18): the write port, and it is OPTIONAL BY DESIGN.**
+   *
+   * Absent means this surface cannot write at all — which is the state of every
+   * caller that has not been given one, and the state of production while the
+   * app token is unset. It is an injected port rather than an import so that
+   * THIS FILE holds no credential: the implementation
+   * (`delegated-exec.ts`) is the only module that names a service account or an
+   * app bearer, and `test/delegated.test.ts` reads these sources and fails the
+   * build if that changes. See `delegated.ts`'s header for the property this
+   * replaced and the owner decision that ended it.
+   */
+  delegated?: DelegatedDeps;
+  /**
+   * Post a SECOND, later message — the async report after a sweep. Absent means
+   * the surface has no way to speak again (a test, or a lane where the only
+   * channel is an interaction response), and the flow then simply does not
+   * offer the slow verb's follow-up rather than silently dropping it.
+   */
+  followUp?(content: string): Promise<void>;
 }
 
 export interface MentionConfig {
@@ -148,6 +175,15 @@ export interface MentionConfig {
    * the addition; it defaults to the live public host. */
   catalogBaseUrl?: string;
   anthropicKey?: string;
+  /**
+   * ⚠️ TIER 1. The catalogs a delegated verb may be routed to, and the
+   * affirmative-only kill switch. Both default to "no writes": an empty
+   * instance list or `delegatedWrites: false` behaves as the surface did before
+   * Tier 1 existed, except that a detected ISBN is answered in words rather
+   * than searched for on a shelf.
+   */
+  instances?: readonly LibraryInstance[];
+  delegatedWrites?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
 }
@@ -434,6 +470,48 @@ async function answerQuestion(
 }
 
 // ---------------------------------------------------------------------------
+// Tier 1 — the delegated verbs, wired to this surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a delegated verb, or explain in words why she is not going to.
+ *
+ * ⚠️ **Three "no" states, and they are three different sentences** because they
+ * have three different fixes: the switch is off (a lever on our side), the
+ * wiring is incomplete (a setup step), or this surface simply has no write port
+ * (a lane that never had one — a test, or a future read-only surface). None of
+ * them is ever phrased as a permissions problem, and none of them falls through
+ * to a shelf search for a barcode.
+ *
+ * ⚠️ The COMPONENTS are rendered here rather than in `delegated-flow.ts`,
+ * deliberately: that file must know nothing about Discord's wire shapes, which
+ * is what lets its whole ladder be tested with no renderer at all.
+ */
+async function delegatedAnswer(
+  intent: NonNullable<ReturnType<typeof delegatedIntent>>,
+  discordUserId: string,
+  deps: MentionDeps,
+  cfg: MentionConfig,
+  now: number,
+): Promise<DelegatedOutcome> {
+  if (cfg.delegatedWrites === false) {
+    return { content: DELEGATE_MSG.switchedOff, pending: null, components: null };
+  }
+  if (!deps.delegated) {
+    return { content: DELEGATE_MSG.notConfigured, pending: null, components: null };
+  }
+  const instances = cfg.instances ?? [];
+  if (instances.length === 0) {
+    return { content: DELEGATE_MSG.notConfigured, pending: null, components: null };
+  }
+
+  const outcome = await runDelegated(intent, { discordUserId }, deps.delegated, instances, now);
+  return outcome.pending
+    ? { ...outcome, components: buildChoiceComponents(outcome.pending) }
+    : outcome;
+}
+
+// ---------------------------------------------------------------------------
 // Door 1/2/3 — a message (mention, reply, or DM)
 // ---------------------------------------------------------------------------
 
@@ -484,6 +562,39 @@ export async function handleMention(
       return { answered: true, intent: 'capped' };
     }
 
+    // ── ⚠️ 3. THE TIER-1 PRE-ROUTER, before the model and before the shelf ──
+    //
+    // A checksummed ISBN, or an unambiguous "fix my missing details". Neither
+    // is a model decision (`delegated.ts` says why at length), and both are
+    // deterministic enough to be answered without spending a token.
+    //
+    // ⚠️ It sits AFTER the turn cap and BEFORE `answerQuestion` for the same
+    // reason the metadata fast path does: a DM'd barcode is not a shelf query,
+    // and falling through would search the index for a thirteen-digit number
+    // and report, correctly and uselessly, that nothing matches it.
+    const doing = delegatedIntent(trigger.question);
+    if (doing) {
+      const outcome = await delegatedAnswer(doing, trigger.authorId, deps, cfg, now);
+      await say(outcome.content, outcome.components);
+      await deps.conversation.save({
+        user: trigger.question,
+        assistant: outcome.content,
+        pending: outcome.pending,
+        ref: { message_id: trigger.messageId, ...(trigger.guildId ? { guild_id: trigger.guildId } : {}) },
+      });
+      await deps.recordTurn(trigger.authorId);
+
+      // ⚠️ AWAITED, not fired and forgotten. A promise nobody awaits inside a
+      // Worker is a promise the runtime may cancel — the failure this estate
+      // has already paid for twice. The person already has their "on it", so
+      // the wait costs them nothing.
+      if (outcome.followUp && deps.followUp) {
+        const report = await outcome.followUp();
+        await deps.followUp(truncate(report, DISCORD_CONTENT_MAX));
+      }
+      return { answered: true, intent: 'fix_request' };
+    }
+
     const answer = await answerQuestion(trigger.question, memory.turns, who, cfg, now);
     await say(answer.content, answer.components);
     await deps.conversation.save({
@@ -514,7 +625,19 @@ export async function handleMention(
 // ---------------------------------------------------------------------------
 
 export type ResumeOutcome =
-  | { kind: 'answered'; content: string; intent: MentionIntent | 'pick' }
+  | {
+      kind: 'answered';
+      content: string;
+      intent: MentionIntent | 'pick' | 'delegated';
+      /**
+       * ⚠️ TIER 1. Present only when the press started something SLOW (the
+       * details sweep). The caller must say `content` first, then await this
+       * and say what it returns — the interactions endpoint does that by
+       * editing the same deferred message twice, which is why this is a
+       * closure rather than a second message id.
+       */
+      followUp?: () => Promise<string>;
+    }
   | { kind: 'stale'; content: string }
   | { kind: 'capped'; content: string }
   | { kind: 'error'; content: string };
@@ -553,6 +676,37 @@ export async function handlePick(
 
     const verdict = await deps.capCheck(who.discordUserId);
     if (!verdict.ok) return { kind: 'capped', content: verdict.message };
+
+    // ── ⚠️ TIER 1: "your shelf or the main library?" being answered ──────────
+    //
+    // A different kind of press entirely: this one WRITES. It is handled before
+    // the book-pick rendering below rather than beside it, so the two can never
+    // be confused by a record whose `kind` was not read — the discriminant is
+    // checked first and the book path is what remains.
+    if (pending.kind === 'instance_pick') {
+      if (!deps.delegated || (cfg.instances ?? []).length === 0) {
+        return { kind: 'error', content: DELEGATE_MSG.notConfigured };
+      }
+      const done = await resumeDelegated(
+        pending,
+        option,
+        { discordUserId: who.discordUserId },
+        deps.delegated,
+        cfg.instances ?? [],
+      );
+      await deps.conversation.save({
+        user: `Do it on ${option.label}`,
+        assistant: done.content,
+        pending: null,
+      });
+      await deps.recordTurn(who.discordUserId);
+      return {
+        kind: 'answered',
+        content: truncate(done.content, DISCORD_CONTENT_MAX),
+        intent: 'delegated',
+        ...(done.followUp ? { followUp: done.followUp } : {}),
+      };
+    }
 
     // Deterministic first: the chosen row, rendered, plus the deep link. That
     // is a complete, useful answer with NO model call, which is why this whole

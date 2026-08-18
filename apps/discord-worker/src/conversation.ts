@@ -93,6 +93,17 @@ export interface PendingOption {
   label: string;
   /** The full rendering she answers with once it is chosen. */
   detail: string;
+  /**
+   * ⚠️ **`instance_pick` ONLY** — which catalog this row means (`library` /
+   * `library2`). Absent on a `book_pick`, whose rows are books.
+   *
+   * It is stored rather than re-derived from the row's position, because the
+   * offered set depends on where the person actually holds a role: a menu built
+   * for somebody with one account and a menu built for somebody with two are
+   * different menus, and an index into "the instances" would silently mean a
+   * different shelf for a different person.
+   */
+  instance?: string;
 }
 
 /**
@@ -106,14 +117,45 @@ export interface PendingOption {
  * protecting, so nothing is MAC'd — unlike `moderation.ts`'s confirm id, which
  * authorises a DELETION and therefore is.
  */
-export interface PendingChoice {
-  kind: 'book_pick';
+interface PendingBase {
   nonce: string;
   /** What she asked, so a resumed answer can restate it rather than assume. */
   question: string;
   options: PendingOption[];
   at: number;
 }
+
+/**
+ * ⚠️ **TWO kinds, and the second one RESUMES AN ACTION rather than an answer**
+ * (added 2026-08-18 with Tier 1).
+ *
+ * `book_pick` is the original: several books matched, she does not know which
+ * was meant, and pressing a row makes her *say* something. Nothing is at stake
+ * in a wrong press but a wrong sentence.
+ *
+ * `instance_pick` is *"your shelf or the main library?"*, offered only when the
+ * asker holds the needed capability on **both** catalogs. Pressing a row makes
+ * her **write** to that one. Two consequences, both deliberate:
+ *
+ *  1. **The verb and its ISBN are stored on the pending record**, not re-parsed
+ *     from the conversation. The message that asked may have aged out of the
+ *     window, and re-reading it later is how a press ends up performing a
+ *     different request than the one it was offered for.
+ *  2. **The stakes are still not a capability question**, so the nonce stays
+ *     unsigned exactly as `PendingBase` describes: a press is resolved against
+ *     the PRESSER's own conversation record, so somebody else clicking the same
+ *     public menu finds no such pending question — and even if they did, the
+ *     destination site checks *their* role before writing anything.
+ */
+export type PendingChoice =
+  | ({ kind: 'book_pick' } & PendingBase)
+  | ({
+      kind: 'instance_pick';
+      /** ⚠️ Pinned to the delegated allowlist's names by the delegated flow. */
+      verb: 'add-isbn' | 'run-details';
+      /** Present for `add-isbn` and for nothing else. */
+      isbn?: string;
+    } & PendingBase);
 
 export interface ConversationRecord {
   v: number;
@@ -336,14 +378,15 @@ const clip = (s: string, max: number): string => (s.length <= max ? s : `${s.sli
  * book. The index is re-checked against the stored options on the way back.
  */
 export function buildChoiceComponents(pending: PendingChoice): unknown[] {
-  return [
+  const rows: unknown[] = [
     {
       type: COMPONENT.ACTION_ROW,
       components: [
         {
           type: COMPONENT.STRING_SELECT,
           custom_id: buildConvCustomId('pick', pending.nonce),
-          placeholder: 'Which one did you mean?',
+          placeholder:
+            pending.kind === 'instance_pick' ? 'Which catalog?' : 'Which one did you mean?',
           min_values: 1,
           max_values: 1,
           options: pending.options.slice(0, MAX_CHOICE_OPTIONS).map((o, i) => ({
@@ -354,7 +397,18 @@ export function buildChoiceComponents(pending: PendingChoice): unknown[] {
         },
       ],
     },
-    {
+  ];
+
+  // ⚠️ The free-text escape hatch is offered for a BOOK pick and withheld for an
+  // INSTANCE pick, and that asymmetry is the point. "Which book did you mean?"
+  // has answers that are not on the menu — the matcher may simply have missed
+  // it. "Which catalog?" does not: the two rows ARE the set of shelves this
+  // person may write to, computed from their own roles moments ago. A "let me
+  // type it" button there would invite an answer that can only be refused, and
+  // walking away is already the third option — the question ages out in fifteen
+  // minutes having written nothing.
+  if (pending.kind !== 'instance_pick') {
+    rows.push({
       type: COMPONENT.ACTION_ROW,
       components: [
         {
@@ -364,8 +418,9 @@ export function buildChoiceComponents(pending: PendingChoice): unknown[] {
           custom_id: buildConvCustomId('more', pending.nonce),
         },
       ],
-    },
-  ];
+    });
+  }
+  return rows;
 }
 
 /**

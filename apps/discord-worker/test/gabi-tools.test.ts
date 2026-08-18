@@ -25,12 +25,17 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import {
+  GABI_DELEGATED_TIER,
+  GABI_DELEGATED_VERBS,
+  GABI_DELEGATED_VERB_NAMES,
   GABI_TOOLS,
   GABI_TOOL_NAMES,
   GABI_TOOL_TIER,
   MAX_TOOL_CALLS_PER_TURN,
   MAX_TOOL_ITERATIONS,
+  gabiDelegatedVerbByName,
   gabiToolByName,
+  isGabiDelegatedVerb,
   isGabiToolName,
   toolBook,
   toolsForApi,
@@ -136,10 +141,11 @@ describe('⚠️ TIER 0 IS READ-ONLY — a write tool must fail this file', () =
     assert.deepEqual(
       writers,
       [],
-      `these declare mutates: ${writers.join(', ')}. From Discord GABI has NO path to a catalogue ` +
-        'write at all — no app_user join, no token custody, no write route — so a write tool here ' +
-        'would not be a phase, it would be a new credential on the bot everyone in the server can ' +
-        'talk to.',
+      `these declare mutates: ${writers.join(', ')}. ⚠️ A write path DOES exist from Discord ` +
+        'since 2026-08-18 (Tier 1, owner-approved) — but it is not a TOOL and must never become ' +
+        'one. The Tier-1 verbs are triggered by a checksummed ISBN or by a pattern, never by a ' +
+        'model, and they live in their own allowlist (see the Tier-1 block below). A write here ' +
+        'would hand the model the ability to add a book because it misread a sentence.',
     );
   });
 
@@ -212,6 +218,84 @@ describe('⚠️ TIER 0 IS READ-ONLY — a write tool must fail this file', () =
     const source = repoFile('src/catalog-data.ts').replace(/\/\*[\s\S]*?\*\//g, '');
     assert.doesNotMatch(source, /authorization/i, 'catalog-data.ts grew a credential');
     assert.doesNotMatch(source, /method:\s*'(?:POST|PATCH|PUT|DELETE)'/);
+  });
+});
+
+// ── 2b. ⚠️ TIER 1 — the WRITE allowlist, and the wall between it and the model
+
+describe('⚠️ TIER 1 — the delegated verbs are their own allowlist', () => {
+  it('declares itself tier 1, and is exactly these three verbs', () => {
+    assert.equal(GABI_DELEGATED_TIER, 1);
+    // ⚠️ Adding a row here is a design decision somebody makes on purpose, and
+    // these names are the LIBRARY WORKER'S OWN ROUTE NAMES — the other end pins
+    // the identical array (`DELEGATED_VERBS` in
+    // library_catalog/apps/worker/src/routes/gabi-delegated.ts). Two
+    // allowlists, two ends, neither a denylist.
+    assert.deepEqual([...GABI_DELEGATED_VERB_NAMES], ['whoami', 'add-isbn', 'run-details']);
+  });
+
+  it('every name has a definition and every definition has a name', () => {
+    assert.deepEqual(
+      GABI_DELEGATED_VERBS.map((v) => v.name).sort(),
+      [...GABI_DELEGATED_VERB_NAMES].sort(),
+    );
+    assert.equal(new Set(GABI_DELEGATED_VERBS.map((v) => v.name)).size, GABI_DELEGATED_VERBS.length);
+  });
+
+  it('⚠️ NO DELEGATED VERB IS EVER SHOWN TO THE MODEL — the wall between the tiers', () => {
+    // The single most important line in this file since Tier 1 landed. A write
+    // that a model may choose is a write that happens when a model misreads a
+    // sentence; `toolsForApi()` is the ONLY thing handed to the Messages API,
+    // and it must contain the read-only tools and nothing else.
+    const offered = toolsForApi().map((t) => t.name);
+    assert.deepEqual(offered, [...GABI_TOOL_NAMES]);
+    for (const verb of GABI_DELEGATED_VERB_NAMES) {
+      assert.ok(!offered.includes(verb as never), `'${verb}' is offered to the model`);
+      assert.equal(isGabiToolName(verb), false, `'${verb}' leaked into the READ-ONLY allowlist`);
+    }
+    // …and the reverse: a read-only tool must not become a delegated verb.
+    for (const tool of GABI_TOOL_NAMES) {
+      assert.equal(isGabiDelegatedVerb(tool), false, `'${tool}' leaked into the WRITE allowlist`);
+    }
+  });
+
+  it('each verb declares the capability its equivalent BUTTON needs', () => {
+    // ⚠️ Recorded, not enforced — the enforcement is the destination site's own
+    // `can(user.role, capability)`. Pinned here because a verb whose declared
+    // capability drifts from the one the site checks is a document that lies
+    // about what a person needs, which is how a refusal stops being actionable.
+    assert.equal(gabiDelegatedVerbByName('add-isbn')?.requiredCapability, 'editCatalog');
+    assert.equal(gabiDelegatedVerbByName('run-details')?.requiredCapability, 'runResearch');
+    assert.equal(gabiDelegatedVerbByName('whoami')?.requiredCapability, 'none');
+  });
+
+  it('the one non-mutating verb is the one that reads, and only POST is issued', () => {
+    for (const verb of GABI_DELEGATED_VERBS) {
+      assert.deepEqual([...verb.methods], ['POST']);
+      assert.equal(verb.mutates, verb.name !== 'whoami', `'${verb.name}' mis-declares mutates`);
+    }
+    // Only the sweep spends money, and that is why it needs the higher rung.
+    assert.deepEqual(GABI_DELEGATED_VERBS.filter((v) => v.spends).map((v) => v.name), ['run-details']);
+  });
+
+  it('⚠️ no T2/T3/T4 verb is reachable — the ladder is a wall, not a default', () => {
+    const NEVER = [
+      'set-author', 'edit-work', 'update-book', 'delete-book', 'remove-copy', 'merge-series',
+      'set-cover', 'set-role', 'grant-role', 'revoke-access', 'approve-user', 'club-admin',
+      'reset-club', 'kick-member', 'deploy', 'promote', 'rotate-secret', 'timeout', 'cleanup',
+    ];
+    for (const name of NEVER) {
+      assert.equal(isGabiDelegatedVerb(name), false, `'${name}' is reachable from a Discord message`);
+      assert.equal(gabiDelegatedVerbByName(name), null);
+    }
+    // Belt and braces against that list going stale.
+    for (const name of GABI_DELEGATED_VERB_NAMES) {
+      assert.doesNotMatch(
+        name,
+        /(delete|remove|revoke|grant|role|approve|deploy|promote|secret|kick|club|merge|edit|set)/,
+        `'${name}' names a power above Tier 1`,
+      );
+    }
   });
 });
 

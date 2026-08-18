@@ -428,7 +428,7 @@ describe('spend caps — a fuse with words on it', () => {
 // ── 5. the allowlist ────────────────────────────────────────────────────────
 
 describe('⚠️ what a mention can cause, as an explicit array', () => {
-  it('is exactly these ten things', () => {
+  it('is exactly these thirteen things', () => {
     // Adding a row is a design decision somebody makes on purpose. This
     // assertion is the same guard the library puts on GABI_TOOL_NAMES, and it
     // is what makes "she writes nothing to the estate" a mechanism rather than
@@ -460,14 +460,44 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
       // change_log row, no timeout, no message delete, no role change.
       'lookup_catalog_metadata',
       'call_catalog_tools',
+      // ⚠️⚠️ THREE MORE ADDED 2026-08-18 WITH TIER 1, and they are the FIRST
+      // THREE ROWS IN THIS ARRAY THAT ARE NOT READS. Adding them was an owner
+      // decision, made in these words: "Can I dm her an isbn or a photo and she
+      // adds it to the catalog?" → the T0–T4 ladder → "that looks good, start
+      // with that" → "all of it".
+      //
+      // What makes them safe is not that they are small. It is that GABI holds
+      // NOTHING: she asserts an identity the person proved themselves (the
+      // /link document), and the DESTINATION CATALOG checks that person's own
+      // role — `editCatalog` to add, `runResearch` to sweep — before it acts.
+      // Every write is stamped `gabi-discord`, auto-applied, and revertible in
+      // the app.
+      //
+      // Note what is STILL absent and cannot arrive without failing this line:
+      // no edit of an existing value, no delete, no role change, no approval,
+      // no estate grant or revoke, no deploy, no secret, no moderation verb, no
+      // club operation. Those are T2+ and T4, and this build has neither.
+      'resolve_link_identity',
+      'delegate_add_isbn',
+      'delegate_run_details',
     ]);
   });
 
-  it('and the flow source contains no write, moderation or admin verb', () => {
+  it('the flow source still contains no moderation, admin or Firestore verb', () => {
+    // ⚠️ REWORDED 2026-08-18, and the change is the point. This test used to
+    // pin that the mention path was 100% CREDENTIAL-FREE, and `docs/TODO.md`
+    // recorded that shipping any write "means deciding to give up that property
+    // on purpose". The owner's Tier-1 approval IS that decision — quoted in the
+    // allowlist above and at length in `src/delegated.ts`'s header.
+    //
+    // ⚠️ Never worked around: the assertion is not deleted, it is REPOINTED at
+    // the narrower property that replaced it, and the next test pins the half
+    // that gives it teeth.
     const source = repoFile('src/mention-flow.ts').replace(/\/\*[\s\S]*?\*\//g, '');
     for (const forbidden of [
       /firestoreRequest/,
       /mintAccessToken/,
+      /ESTATE_APP_TOKEN/,
       /timeoutGuildMember/,
       /bulkDeleteMessages/,
       /deleteChannelMessage/,
@@ -476,6 +506,40 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
     ]) {
       assert.doesNotMatch(source, forbidden, `mention-flow.ts now reaches for ${forbidden}`);
     }
+  });
+
+  it('⚠️ THE NEW PROPERTY: credentials live in ONE module, and the read paths name none', () => {
+    // The half that makes the repointed assertion above mean something. Any
+    // credential moving out of `delegated-exec.ts` — into the chat path, the
+    // tool executor, or the public-catalogue reader — fails the build here.
+    const CREDENTIALS = [/firestoreRequest/, /mintAccessToken/, /parseServiceAccount/, /ESTATE_APP_TOKEN/];
+    for (const file of [
+      'src/mention-flow.ts',
+      'src/delegated.ts',
+      'src/delegated-flow.ts',
+      'src/gabi-chat.ts',
+      'src/tool-exec.ts',
+      'src/catalog-data.ts',
+      'src/gabi-tools.ts',
+      // ⚠️ `src/have.ts` is NOT on this list, and pretending otherwise would
+      // make the test a lie. It has held `isLinked` — a service-account read of
+      // the same /link document — since long before Tier 1, for the `/have`
+      // slash command's scope note. The mention path imports three pure things
+      // from it (`lookupHave`, `renderHit`, `truncate`) and never `isLinked`,
+      // so the property being pinned here is about what these modules NAME, in
+      // their own source, which is exactly what the assertion this one replaced
+      // measured too.
+    ]) {
+      const source = repoFile(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      for (const cred of CREDENTIALS) {
+        assert.doesNotMatch(source, cred, `${file} now names a credential — it must not`);
+      }
+    }
+    // And the one module that DOES hold them still does, so this test cannot
+    // pass by the credentials having quietly moved somewhere unlisted.
+    const exec = repoFile('src/delegated-exec.ts');
+    assert.match(exec, /firestoreRequest/);
+    assert.match(exec, /ESTATE_APP_TOKEN_DISCORD/);
   });
 
   it('a fix request proposes and deep-links — it never claims to have changed anything', async () => {
@@ -498,7 +562,14 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
         { indexBaseUrl: 'https://index.example', panelUrl: 'https://panel.example/' },
       );
       assert.equal(out.intent, 'fix_request');
-      assert.match(said[0]!, /can't actually change anything/i);
+      // ⚠️ REWORDED 2026-08-18 with Tier 1. The old sentence — "I can't
+      // actually change anything in Discord yet" — became a LIE the day she
+      // could add a book, and an overstated limit is as wrong as an overstated
+      // power. What is pinned now is the line that is still true and still the
+      // point: editing a value already recorded is a T2 mutation, it needs a
+      // confirm lane this build does not have, and she says so plainly instead
+      // of guessing.
+      assert.match(said[0]!, /changing something already recorded is a job for the site/i);
       assert.match(said[0]!, /https:\/\/panel\.example\//, 'the deep link is the useful half');
       assert.doesNotMatch(said[0]!, /I(?:'ve| have) (?:updated|changed|fixed)/i);
     } finally {

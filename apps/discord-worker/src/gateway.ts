@@ -121,7 +121,9 @@
  */
 
 import type { Env } from './env.js';
-import { getGatewayBot, replyToMessage } from './discord-api.js';
+import { createChannelMessage, getGatewayBot, replyToMessage } from './discord-api.js';
+import { delegatedWritesOn, libraryInstances, writeCapDecision } from './delegated.js';
+import { makeDelegate } from './delegated-exec.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -226,6 +228,10 @@ const K_IDENTIFIES = 'gw:identifies';
 const K_LAST_READY = 'gw:last_ready_at';
 const K_GLOBAL_CAP = 'cap:global';
 const kUserCap = (id: string) => `cap:user:${id}`;
+/** ⚠️ Its OWN prefix, not a field inside `cap:user:` — see `writeCapCheck`.
+ * Two fuses with different horizons must not share a record that one of them
+ * prunes on a schedule the other does not want. */
+const kUserWriteCap = (id: string) => `wcap:user:${id}`;
 
 interface IdentifyBudget {
   day: string;
@@ -264,7 +270,12 @@ export class GabiGateway {
     // WEBSOCKET as a side effect of somebody pressing a button, which is both
     // surprising and, on a free plan at 83% of the duration cap, expensive.
     // They read and write storage and touch the socket not at all.
-    if (path === '/conv/load' || path === '/conv/save' || path === '/conv/count') {
+    if (
+      path === '/conv/load' ||
+      path === '/conv/save' ||
+      path === '/conv/count' ||
+      path === '/conv/wcount'
+    ) {
       return this.conversationDoor(path, request);
     }
 
@@ -432,7 +443,15 @@ export class GabiGateway {
 
     if (path === '/conv/load') {
       const memory = await this.convLoad(key);
-      return Response.json({ ok: true, ...memory, cap: await this.capCheck(key.person) });
+      return Response.json({
+        ok: true,
+        ...memory,
+        cap: await this.capCheck(key.person),
+        // ⚠️ TIER 1: the WRITE fuse rides the same round trip as the turn fuse,
+        // for the same reason the turn fuse rides the load — they live one key
+        // apart in the same storage, and a press that may write needs both.
+        writeCap: await this.writeCapCheck(key.person),
+      });
     }
 
     // ⚠️ Counting is its OWN route, not a flag on the save. Folding them
@@ -440,6 +459,14 @@ export class GabiGateway {
     // cap", and the first save that should not count would make the fuse lie.
     if (path === '/conv/count') {
       await this.recordTurn(key.person);
+      return Response.json({ ok: true });
+    }
+
+    // ⚠️ And the write counter is its own route again, for the same reason
+    // once more: a turn and a write are different events, and a press that
+    // writes is exactly one of each.
+    if (path === '/conv/wcount') {
+      await this.recordWrite(key.person);
       return Response.json({ ok: true });
     }
 
@@ -702,11 +729,28 @@ export class GabiGateway {
     // never see each other's memory.
     const key = conversationKey(trigger.surface, trigger.channelId, trigger.authorId);
 
+    // ⚠️ TIER 1. `null` when the estate has not finished the wiring (no service
+    // account, or no app token) — which is how "ships dark" is expressed here:
+    // `mention-flow.ts` says a worded line and the read-only ladder is
+    // untouched. The port is built per message rather than held on the object
+    // because it closes over nothing worth keeping and a stale one would
+    // outlive a secret rotation.
+    const delegate = makeDelegate(this.env);
+
     await handleMention(
       {
         capCheck: (userId) => this.capCheck(userId),
         recordTurn: (userId) => this.recordTurn(userId),
         conversation: this.conversationFor(key),
+        ...(delegate
+          ? {
+              delegated: {
+                delegate,
+                writeCapCheck: (userId: string) => this.writeCapCheck(userId),
+                recordWrite: (userId: string) => this.recordWrite(userId),
+              },
+            }
+          : {}),
         reply: async (content, extra) => {
           const res = await replyToMessage(
             botToken,
@@ -722,12 +766,31 @@ export class GabiGateway {
             console.error(`GABI gateway: Discord refused the reply (HTTP ${res.status}).`);
           }
         },
+        // ⚠️ A NEW message rather than a reply to the original: the sweep's
+        // report can land minutes later, and threading it onto a message that
+        // has scrolled away is how a report goes unread. It pings the asker by
+        // mention instead — the owner's own shape for it ("Hey @Sam i went
+        // ahead and fixed all your missing stuff").
+        followUp: async (content) => {
+          const res = await createChannelMessage(botToken, trigger.channelId, {
+            content,
+            // Resolve ONLY the person who asked. Her report can carry a book
+            // title containing anything at all, and a title must never become
+            // a way to ping a server.
+            allowed_mentions: { parse: [], users: [trigger.authorId] },
+          });
+          if (!res.ok) {
+            console.error(`GABI gateway: Discord refused the follow-up (HTTP ${res.status}).`);
+          }
+        },
       },
       trigger,
       {
         indexBaseUrl: indexBase(this.env),
         panelUrl: panelDeepLink(panelBase(this.env)),
         catalogBaseUrl: catalogBase(this.env),
+        instances: libraryInstances(this.env),
+        delegatedWrites: delegatedWritesOn(this.env),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
     );
@@ -799,6 +862,42 @@ export class GabiGateway {
     const global = (await this.state.storage.get<GlobalCap>(K_GLOBAL_CAP)) ?? { day, count: 0 };
     const next: GlobalCap = global.day === day ? { day, count: global.count + 1 } : { day, count: 1 };
     await this.state.storage.put(K_GLOBAL_CAP, next);
+  }
+
+  /**
+   * ⚠️ **THE SECOND FUSE — writes, not turns** (Tier 1, 2026-08-18).
+   *
+   * A separate counter in a separate key namespace (`wcap:`), because the two
+   * caps protect different things over different horizons: a turn is fractions
+   * of a cent and forgiven in an hour, while a write is a row in somebody's
+   * catalog and ~2¢ of research on their key, neither of which an hour undoes.
+   * A single shared counter would either make twenty answers cost the write
+   * budget or make twenty writes cheap — both wrong.
+   *
+   * ⚠️ **A day KEY rather than a rolling window**, deliberately unlike
+   * `pruneWindow` above: a rolling list of write timestamps would grow one row
+   * write per delegated call to store, and `{day, count}` is two numbers. UTC,
+   * for `utcDayKey`'s stated reason — a DST-shifting reset is a bug waiting to
+   * be filed.
+   *
+   * ⚠️ Storage adds at most **one row write per delegated call**, on top of the
+   * ~2,500/day this object already accrues against 100,000 — and delegated
+   * calls are themselves capped at 20 per person per day by this very counter.
+   */
+  private async writeCapCheck(userId: string): Promise<ReturnType<typeof writeCapDecision>> {
+    const day = utcDayKey(Date.now());
+    const stored = (await this.state.storage.get<GlobalCap>(kUserWriteCap(userId))) ?? { day, count: 0 };
+    return writeCapDecision(stored.day === day ? stored.count : 0);
+  }
+
+  private async recordWrite(userId: string): Promise<void> {
+    const day = utcDayKey(Date.now());
+    const key = kUserWriteCap(userId);
+    const stored = (await this.state.storage.get<GlobalCap>(key)) ?? { day, count: 0 };
+    await this.state.storage.put(
+      key,
+      stored.day === day ? { day, count: stored.count + 1 } : { day, count: 1 },
+    );
   }
 }
 

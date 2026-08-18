@@ -156,6 +156,32 @@ export const GABI_MENTION_ACTIONS = [
    * before dispatch, every tool declares `mutates: false`, and
    * `test/gabi-tools.test.ts` fails the build if either stops being true. */
   'call_catalog_tools',
+
+  // ── ⚠️ TIER 1, ADDED 2026-08-18 — the first three rows here that are not
+  // reads. The owner approved them explicitly ("Can I dm her an isbn or a
+  // photo and she adds it to the catalog?" → the T0–T4 ladder → "that looks
+  // good, start with that" → "all of it"), and every one of them acts with
+  // the ASKER'S OWN standing, checked by the destination site. See
+  // `delegated.ts`. ─────────────────────────────────────────────────────────
+
+  /** Read the `discord_links/{id}` document THIS PERSON created, for its
+   * `firebaseUid` and nothing else. ⚠️ The first credentialled read in this
+   * flow, and it lives in one module (`delegated-exec.ts`) reached only
+   * through an injected port. It answers "who is this?" — never guessed from
+   * a Discord name (`link.ts` rule 1). */
+  'resolve_link_identity',
+  /** Ask one catalog to add a book by ISBN **on the asker's behalf**. Purely
+   * additive — a work, a printing and one owned copy — auto-applied and then
+   * reported, and every row stamped `gabi-discord` so it is separable and
+   * revertible in the app. ⚠️ A barcode whose book is already on that shelf is
+   * handed back UNANSWERED: the rescan and pre-order questions are mutations
+   * of existing data and belong to a confirm lane that does not exist yet. */
+  'delegate_add_isbn',
+  /** Ask one catalog to run its missing-details sweep once, attributed to the
+   * asker. ⚠️ It SPENDS on that instance's own key, which is why the
+   * destination gates it on `runResearch` rather than `editCatalog`, and why
+   * there is a per-person daily write cap on top of the turn cap. */
+  'delegate_run_details',
 ] as const;
 
 export type GabiMentionAction = (typeof GABI_MENTION_ACTIONS)[number];
@@ -510,11 +536,21 @@ export const MENTION_MSG = {
     "I've hit my answering budget for today across the whole estate — a cap on my side, nothing to do " +
     'with your question. It resets overnight. The site can still help in the meantime.',
 
-  /** What she can and cannot do from Discord, in her own voice. Used by the
-   * fix path and available to the conversational one as grounding. */
+  /**
+   * What she can and cannot do from Discord, in her own voice. Used by the
+   * fix path and available to the conversational one as grounding.
+   *
+   * ⚠️ **REWORDED 2026-08-18 with Tier 1, because the old sentence became a
+   * lie.** It used to say she could not change *anything* from Discord. She now
+   * can — additively: send her an ISBN and she adds the book, ask her to fix
+   * your missing details and she runs the sweep. What she still will not do
+   * from here is change a value that is already recorded, which is a T2
+   * mutation and needs a confirm button this build does not have. A sentence
+   * that overstates the limit is as wrong as one that overstates the power.
+   */
   cannotChange:
-    "I can look things up from here, but I can't actually change anything in Discord yet — " +
-    'the editing lives on the site, where I can show you the change and you approve it.',
+    'I can add a book from an ISBN and fill in blanks from here, but changing something already ' +
+    'recorded is a job for the site — that is where I can show you the change and you approve it.',
 
   unreachable:
     "I couldn't reach the estate's catalogue just then — that's a problem on our side, not an answer " +

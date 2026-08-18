@@ -1,6 +1,36 @@
 /**
- * GABI's Discord tool allowlist — **Tier 0, and it is READ-ONLY BY
- * CONSTRUCTION.**
+ * GABI's Discord allowlists — **two of them, and they are deliberately not one
+ * list.**
+ *
+ * `GABI_TOOL_NAMES` (Tier 0) is what a MODEL may call during a turn, and it is
+ * READ-ONLY BY CONSTRUCTION. `GABI_DELEGATED_VERB_NAMES` (Tier 1, added
+ * 2026-08-18) is what a DETERMINISTIC router may ask the destination site to do
+ * on the asker's behalf, and every entry writes.
+ *
+ * ## ⚠️ WHY TWO ARRAYS RATHER THAN ONE WITH A `mutates` FLAG
+ *
+ * Because the two lists answer different questions and are reached by different
+ * machinery, and merging them would put a write inside the surface a model
+ * chooses from. Read the difference off the types below:
+ *
+ * | | Tier 0 tools | Tier 1 delegated verbs |
+ * |---|---|---|
+ * | chosen by | the **model**, mid-turn | a **regex**, before any model call |
+ * | sent to the model | yes (`toolsForApi`) | ⚠️ **never** |
+ * | credential | none — public CSV | the bot's app bearer, in ONE module |
+ * | authority | none needed (public) | the **asker's own role**, checked by the destination site |
+ * | `mutates` | `false`, every entry, asserted | `true`, every entry, asserted |
+ *
+ * A model that could pick "add this book" is a model that adds books when it
+ * misreads a sentence. `delegated.ts` decides instead: an ISBN is a checksummed
+ * number or it is not, and *"fix all my missing details"* matches a pattern or
+ * it does not. **`toolsForApi()` returns Tier 0 and nothing else**, and
+ * `test/gabi-tools.test.ts` fails the build if a delegated name ever appears in
+ * what is handed to the Messages API.
+ *
+ * ---
+ *
+ * ## Tier 0 — READ-ONLY BY CONSTRUCTION
  *
  * ## The idiom, borrowed on purpose
  *
@@ -22,13 +52,24 @@
  * ## ⚠️ WHY THIS SURFACE IS STRICTER THAN THE PANEL'S
  *
  * The library's own allowlist is phase-0 read-only *for now*, with a designed
- * phase 1 that adds writers behind a confirm lane. **This one has no such
- * phase.** From Discord GABI has no path to a catalogue write at all
- * (`gabi.ts` §"What this is NOT": no `app_user` join, no token custody, no
- * write route), so a write tool here would not be a phase — it would be a new
- * credential and a new blast radius on the bot everyone in the server can talk
- * to. Every tool below therefore declares `mutates: false` and
+ * phase 1 that adds writers behind a confirm lane. **This list has no such
+ * phase and never will.** Every tool below declares `mutates: false` and
  * `methods: ['GET']`, and the test asserts both.
+ *
+ * ⚠️ **WHAT CHANGED 2026-08-18, stated here rather than discovered.** This
+ * paragraph used to say *"from Discord GABI has no path to a catalogue write at
+ * all"*. That is no longer true: the owner approved Tier 1 explicitly —
+ * *"Can I dm her an isbn or a photo and she adds it to the catalog?"* … *"all
+ * of it"* — so a write path now exists, in `delegated.ts` / `delegated-exec.ts`.
+ * The sentence that replaces it is narrower and still mechanical:
+ *
+ * > **The MODEL still has no path to a catalogue write.** The write path is not
+ * > a tool, is not described to the model, and cannot be reached by anything
+ * > the model emits.
+ *
+ * And the credential is not "on the bot" in any diffuse sense — it lives in
+ * exactly one module, holds no authority by itself, and the destination site
+ * checks the asker's own role before it acts. See `delegated.ts`'s header.
  *
  * ## ⚠️ WHAT EACH TOOL READS, MEASURED (2026-08-18)
  *
@@ -237,7 +278,7 @@ export function toolsForApi(): {
 }
 
 // ---------------------------------------------------------------------------
-// The result shape the model receives
+// The Tier-0 result shape the model receives
 // ---------------------------------------------------------------------------
 
 /** One book, as the model sees it. Field names are the ones a model will
@@ -253,6 +294,115 @@ export interface ToolBook {
   genre?: string;
   universe?: string;
   also_in_print_or_ebook?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// TIER 1 — the DELEGATED VERBS. A separate allowlist, deliberately.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE WRITE ALLOWLIST.** Nothing GABI can ask a catalog to DO is absent
+ * from this array, and it is an array rather than a subtraction for the estate's
+ * stated reason: *"allowed fields as an explicit array, never
+ * SELECT-*-minus-exclusions — the exclusion form leaks when a column is added."*
+ *
+ * ⚠️ These names are the LIBRARY WORKER'S ROUTE NAMES, mirrored. The other end
+ * pins the identical array in `library_catalog/apps/worker/src/routes/
+ * gabi-delegated.ts` (`DELEGATED_VERBS`), and each end's own test fails the
+ * build if its half changes. Two allowlists at two ends, neither a denylist.
+ *
+ * ⚠️ Note what is NOT here and cannot arrive without failing
+ * `test/gabi-tools.test.ts`: no role change, no approval, no estate grant or
+ * revoke, no deploy, no secret, no delete of anything, no moderation verb, no
+ * club operation, and no edit of an existing value. **Everything here is
+ * additive or a read**, which is precisely what makes this Tier 1 rather than
+ * Tier 2+ — a mutation of existing data needs a confirm button that this build
+ * does not have.
+ */
+export const GABI_DELEGATED_VERB_NAMES = ['whoami', 'add-isbn', 'run-details'] as const;
+
+export type GabiDelegatedVerbName = (typeof GABI_DELEGATED_VERB_NAMES)[number];
+
+/** Which shipped slice this is. Tier 1 = additive writes with easy undo,
+ * auto-applied and then reported (the owner-approved ladder). */
+export const GABI_DELEGATED_TIER = 1;
+
+/** One delegated verb: what it does, what it costs, and what it needs. */
+export interface GabiDelegatedVerb {
+  name: GabiDelegatedVerbName;
+  /** For a human reading this file and for the report. NEVER sent to a model. */
+  description: string;
+  /**
+   * The capability the DESTINATION SITE requires of the asker — the same one
+   * the equivalent button in the web app is gated on. ⚠️ Recorded here for
+   * review and for the refusal wording; it is **not** the check. The check is
+   * the library Worker's own `can(user.role, capability)` against `app_user` on
+   * that instance, because a check the caller performs is a check the caller
+   * can skip.
+   */
+  requiredCapability: 'none' | 'editCatalog' | 'runResearch';
+  /** HTTP method the executor may use. */
+  methods: readonly ('POST')[];
+  /** Whether it changes anything. ⚠️ `whoami` is the only `false`. */
+  mutates: boolean;
+  /**
+   * Whether one call may cost money on somebody's key. `run-details` can spend
+   * ~2¢ per book on the destination instance's own key, which is why it needs
+   * `runResearch` and why the per-person daily write cap exists.
+   */
+  spends: boolean;
+}
+
+export const GABI_DELEGATED_VERBS: readonly GabiDelegatedVerb[] = [
+  {
+    name: 'whoami',
+    description:
+      'Ask ONE catalog instance what standing the asker has there — known or not, their role, ' +
+      'and whether they hold the capabilities the two writing verbs need. Writes nothing, spends ' +
+      'nothing, and is how instance routing is decided: somebody with an account on both shelves ' +
+      'gets asked which one they meant instead of being guessed at.',
+    requiredCapability: 'none',
+    methods: ['POST'],
+    mutates: false,
+    spends: false,
+  },
+  {
+    name: 'add-isbn',
+    description:
+      'Add a book to one catalog by ISBN, on the asker’s behalf. Purely additive: a new work with ' +
+      'its printing and one owned copy, or a first printing on a work that had none. ⚠️ A barcode ' +
+      'whose book is already on that shelf is HANDED BACK unanswered — the four-way rescan ' +
+      'question and the pre-order question are mutations of existing data and belong to a confirm ' +
+      'lane that does not exist yet.',
+    requiredCapability: 'editCatalog',
+    methods: ['POST'],
+    mutates: true,
+    spends: false,
+  },
+  {
+    name: 'run-details',
+    description:
+      'Run the missing-details sweep on one catalog once, attributed to the asker, and report what ' +
+      'it filled AND what it could not. Costs money on that instance’s own key (donor copies ' +
+      'first, which are free), which is why it needs the spending capability rather than the ' +
+      'editing one.',
+    requiredCapability: 'runResearch',
+    methods: ['POST'],
+    mutates: true,
+    spends: true,
+  },
+];
+
+/** The one place anything decides whether a delegated verb name is allowed.
+ * Default-deny, and an ARRAY for the same reason `isGabiToolName` is one. */
+export function isGabiDelegatedVerb(name: unknown): name is GabiDelegatedVerbName {
+  return typeof name === 'string' && (GABI_DELEGATED_VERB_NAMES as readonly string[]).includes(name);
+}
+
+/** The definition for an allowlisted verb, or `null`. Never throws on junk. */
+export function gabiDelegatedVerbByName(name: unknown): GabiDelegatedVerb | null {
+  if (!isGabiDelegatedVerb(name)) return null;
+  return GABI_DELEGATED_VERBS.find((v) => v.name === name) ?? null;
 }
 
 /** ⚠️ Absent fields are OMITTED, not emitted as `null` or `"unknown"`. A model

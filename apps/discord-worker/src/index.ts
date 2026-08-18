@@ -82,7 +82,13 @@ import { indexBase, processHave } from './have.js';
 import { panelBase, panelDeepLink, processGabi } from './gabi.js';
 import { mentionsOn } from './mentions.js';
 import { catalogBase, CATALOG_PATH } from './catalog-data.js';
-import { GABI_TOOL_NAMES, GABI_TOOLS, MAX_TOOL_ITERATIONS } from './gabi-tools.js';
+import {
+  GABI_DELEGATED_VERB_NAMES,
+  GABI_TOOL_NAMES,
+  GABI_TOOLS,
+  MAX_TOOL_ITERATIONS,
+} from './gabi-tools.js';
+import { delegatedWritesOn, libraryInstances } from './delegated.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -128,6 +134,12 @@ app.get('/api/health', (c) =>
       // during a turn. Named here so "can she answer who narrates X?" is
       // answerable in one curl rather than by asking her.
       'gabi_catalog_tools',
+      // ⚠️ Added 2026-08-18: TIER 1, and the first feature in this list that
+      // WRITES — DM her an ISBN and she adds the book; ask her to fix your
+      // missing details and she runs the sweep, always with the ASKER'S OWN
+      // standing, checked by the destination catalog. Named here so "can she
+      // actually add a book?" is answerable in one curl.
+      'gabi_delegated_writes',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -151,6 +163,14 @@ app.get('/api/health', (c) =>
       // (src/mentions.ts), she just has no conversational half. A missing key
       // never produces an error message in a channel.
       anthropic_key_gabi: Boolean(c.env.ANTHROPIC_API_KEY_GABI),
+      // ⚠️ TIER 1. Reports FALSE until the conductor mints it and pipes the
+      // SAME value to BOTH library Workers — one value, three holders, same
+      // name (the DONOR_TOKEN idiom). Same honest-false discipline as every row
+      // here, and its absence is a LADDER not a fault: with it unset she says
+      // "I'm not wired up to write yet" and every read-only answer is unchanged.
+      // ⚠️ A boolean about a NAME. It is not proof the three holders agree —
+      // only a real delegated call answering something other than 401 is that.
+      estate_app_token_discord: Boolean(c.env.ESTATE_APP_TOKEN_DISCORD),
     },
     // The one derived answer: both halves present, so /link can actually run.
     link_ready: linkConfigured(c.env) && Boolean(c.env.FIREBASE_PROJECT_ID),
@@ -185,6 +205,25 @@ app.get('/api/health', (c) =>
     // phase-A mention build, checkable in one curl, and it means no gateway
     // WebSocket is open at all rather than "open but quiet".
     gabi_mentions_enabled: mentionsOn(c.env),
+    // ⚠️ THE TIER-1 KILL SWITCH and its readiness, VISIBLE from outside — same
+    // reasoning as `moderation_enabled` and `gabi_mentions_enabled` above.
+    // `gabi_delegated_ready` is the derived answer a reader would otherwise
+    // have to AND together themselves: the switch is on, the app token exists,
+    // and the service account that reads the /link document exists. All three
+    // or she cannot write, and she says so in words rather than failing.
+    gabi_delegated_enabled: delegatedWritesOn(c.env),
+    gabi_delegated_ready:
+      delegatedWritesOn(c.env) &&
+      Boolean(c.env.ESTATE_APP_TOKEN_DISCORD) &&
+      Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    // ⚠️ The WRITE surface, stated rather than inferred — the exact mirror of
+    // `have_scope` above. These are the only things she can ask a catalog to
+    // do, they are the library Workers' own route names, and both ends pin the
+    // array with a build-failing test. If this ever grows a verb that changes
+    // an existing value, deletes something, or touches a role, the T0–T4 ladder
+    // moved and somebody should find that in one curl.
+    gabi_delegated_verbs: GABI_DELEGATED_VERB_NAMES,
+    gabi_delegated_targets: libraryInstances(c.env).map((i) => i.baseUrl),
     // ⚠️ Stated rather than inferred, because it is the claim the whole design
     // rests on: every door she can be reached through is one Discord delivers
     // content for WITHOUT the Message Content intent. Three now, not one —

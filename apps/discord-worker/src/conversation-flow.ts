@@ -53,6 +53,8 @@ import {
   type PendingChoice,
 } from './conversation.js';
 import type { CapVerdict } from './mentions.js';
+import { delegatedWritesOn, libraryInstances, type WriteCapVerdict } from './delegated.js';
+import { makeDelegate } from './delegated-exec.js';
 import {
   handlePick,
   handleTypedQuestion,
@@ -84,6 +86,8 @@ interface LoadedMemory {
   turns: ConversationTurn[];
   pending: PendingChoice | null;
   cap: CapVerdict;
+  /** ⚠️ TIER 1: the per-person daily WRITE fuse, answered in the same load. */
+  writeCap: WriteCapVerdict;
 }
 
 /**
@@ -116,6 +120,7 @@ class StubMemory {
       turns: Array.isArray(body.turns) ? body.turns : [],
       pending: body.pending ?? null,
       cap: body.cap ?? { ok: true },
+      writeCap: body.writeCap ?? { ok: true },
     };
     return this.loaded;
   }
@@ -142,6 +147,15 @@ class StubMemory {
 
   async recordTurn(): Promise<void> {
     await this.post('/conv/count', {});
+  }
+
+  /** ⚠️ Read from the memoised load — the DO answered both fuses at once. */
+  async writeCapCheck(): Promise<WriteCapVerdict> {
+    return (await this.ensure()).writeCap;
+  }
+
+  async recordWrite(): Promise<void> {
+    await this.post('/conv/wcount', {});
   }
 }
 
@@ -192,15 +206,33 @@ export async function resumeConversation(
     }
 
     const memory = new StubMemory(stub, key);
+    // ⚠️ TIER 1. A press can be the answer to "your shelf or the main
+    // library?", which WRITES — so this path needs the same port the gateway
+    // has, built from the same env, and it is `null` on the same ships-dark
+    // condition. The write cap lives in the Durable Object beside the turn cap
+    // (one counter per person, wherever they were reached from), so it is read
+    // and written over the same stub the memory uses.
+    const delegate = makeDelegate(env);
     const deps = {
       capCheck: () => memory.capCheck(),
       recordTurn: () => memory.recordTurn(),
       conversation: memory.conversation(),
+      ...(delegate
+        ? {
+            delegated: {
+              delegate,
+              writeCapCheck: () => memory.writeCapCheck(),
+              recordWrite: () => memory.recordWrite(),
+            },
+          }
+        : {}),
     };
     const cfg = {
       indexBaseUrl: indexBase(env),
       panelUrl: panelDeepLink(panelBase(env)),
       catalogBaseUrl: catalogBase(env),
+      instances: libraryInstances(env),
+      delegatedWrites: delegatedWritesOn(env),
       ...(env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: env.ANTHROPIC_API_KEY_GABI } : {}),
     };
     const who = {
@@ -215,6 +247,15 @@ export async function resumeConversation(
         : await handleTypedQuestion(deps, { nonce: input.nonce, text: input.text }, who, cfg);
 
     await say(outcome.content);
+
+    // ⚠️ A slow verb was started by the press. The SAME message is edited a
+    // second time when it lands — not a new one — because the interaction token
+    // is good for fifteen minutes and an edit keeps the report attached to the
+    // question it answers. Awaited rather than registered: a promise nobody
+    // awaits inside a Worker may be cancelled, and this one is the whole point.
+    if (outcome.kind === 'answered' && outcome.followUp) {
+      await say(await outcome.followUp());
+    }
   } catch (err) {
     console.error('GABI continuity: the resume failed:', err instanceof Error ? err.message : err);
     try {
