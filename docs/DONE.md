@@ -13,6 +13,67 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📚 GABI HAS READ THE LIBRARY — Tier 0c — ✅ DONE 2026-08-18
+
+Design phase 4 (`docs/info/gabi-book-knowledge-design.md`). Built across two
+sessions: the first died mid-run on an Anthropic 529 outage with
+`book-knowledge.ts` and `book-knowledge-exec.ts` uncommitted on disk (its last
+words were *"Now the credential module and the tool definitions"* — the
+credential module was in fact already written), the second finished it. ⚠️ The
+restart handoff described the files as `book-packs.ts` / `book-retrieval.ts` /
+`book-routes.ts`; those were **phase 3's**, already committed. Reconciled from
+disk.
+
+**What shipped** — four commits on `main`, `apps/discord-worker` only:
+
+- **A FOURTH tool allowlist**, `GABI_BOOKS_TOOL_NAMES`, alongside Tier 0
+  (public catalogue), Tier 0b (docs corpus) and the Tier-1 write verbs. What
+  separates the families is what they READ, and this one reads a surface scoped
+  **per person by reading position**, which neither of the others is. Merging it
+  would hand a model an unscoped book surface on every turn of every
+  conversation.
+- **Four tools where §4.6 named two**, and it is a reconciliation with phase 3
+  rather than a widening: the routes REFUSE a constructed book id so discovery
+  had to be a tool, and `presence` is a roll-up across several books rather than
+  a mode of a single-book search. The design doc's §4.6 now carries the
+  as-built note.
+- **The executor**, keeping `tool-exec.ts`'s property intact — it still names no
+  secret and opens no gated connection, reaching the corpus only through an
+  injected port it cannot construct.
+- **The fourth daily fuse** (`bcap:user:*`, 40/day), its own key namespace
+  beside the turn, write and docs fuses. A book turn is ~6k tokens of somebody's
+  NOVEL; one shared counter would price all four wrongly. Charged only when the
+  turn actually opened a book.
+- **The bound, derived per turn from the question and threaded through the
+  context.** A test hands the executor a model trying to widen its own spoiler
+  scope and asserts the wire still carries the turn's bound.
+- **The pre-router**, so a plot question never falls through to a catalogue
+  lookup that returns a narrator and reads as an answer.
+- **`books_passages` / `books_bytes` on `gabi_turn`** — counts, never the text.
+- **42 tests** (556 total, all passing) and a widened credential guard:
+  credentials now live in exactly THREE modules, written down rather than
+  assumed.
+
+**Owner-facing**: `GABI_BOOKS = "on"`, `ESTATE_APP_TOKEN_BOOKS` minted and
+stored on its two holders (`estate-discord` and `audiobook-worker`), deployed.
+`/api/health` → `gabi_books_ready: true`.
+
+**Verified BY EXECUTION against the live routes**, not reasoned about:
+
+| Check | Result |
+|---|---|
+| knowledge base | **158 packs**, `index_present: true` |
+| `latest` on Primal Hunter 1, whole book | ord 1547, ch 68, 12 stat keys, `stitch: full` |
+| `through_chapter=20` | ceiling **422**, 423/1667 visible, top hit ord **421** — inside the bound |
+| `unknown` scope | unbounded **plus the ask sentence** — never a silent whole-book read |
+| `presence` "Villy" across books 1–3 | book 1 **0 hits**, first sighting book 2 ch 24, book 3 26 hits — §6.2's exact case |
+| an un-ingested id | 200, `ingested: false`, the honest sentence, `did_you_mean` |
+
+⚠️ **NOT done, deliberately, and each is an item rather than an omission:** the
+panel half of the tool surface (it would make a two-holder secret a
+three-holder one — a decision), and the empty `title` on every listing row.
+Access reference: [`access/gabi-book-knowledge.md`](access/gabi-book-knowledge.md).
+
 ## 🖥️ THE /status SPLIT — FOUR PAGES — ✅ DONE 2026-08-18
 
 Built across two sessions: the first died mid-run on an Anthropic 529 outage

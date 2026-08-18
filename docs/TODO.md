@@ -154,6 +154,34 @@ falling through to a shelf search that finds nothing and reads as broken.
 - **The scanner is still in SHADOW.** Flipping it to enforce still wants a week
   of clean output; today's evidence is a handful of clean passes, not a week.
 
+## 📚 GABI READS THE HOUSEHOLD'S BOOKS — LIVE 2026-08-18; two pieces did NOT ship
+
+The build is in [`DONE.md`](DONE.md); this is only what it deliberately left.
+Reference: [`access/gabi-book-knowledge.md`](access/gabi-book-knowledge.md).
+
+**1. ⚠️ OWNER DECISION — does the SITE PANEL get the book tools too?**
+Not built, and not a forgotten half. `library_catalog`'s `@lc/core` tool array
+is about that app's own D1 catalogue; the estate docs corpus set the precedent
+by living on the Discord Worker alone; and design §9 scopes phase 4 to one
+Worker. Building it would make `ESTATE_APP_TOKEN_BOOKS` a **three-holder**
+secret where the design's custody note pins it at two — the "fresh trust edge,
+fresh pair" rule, so it is a decision rather than an edit.
+→ Ask the owner: *"should the site panel read book text too, or is Discord
+enough for now?"* If yes, the shape needs settling first (third holder vs. a
+browser-token door A path) — do not guess.
+
+**2. Every knowledge-base listing row has an EMPTY `title`.**
+Measured 2026-08-18 against the live route: `index_present: true`, and the rows
+carry `source`, `chunks`, `chapters` and `ingester_version` — but no `title`.
+`book_id` is a slug of the title so nothing is broken, and GABI reads fine; a UI
+that renders `title` will render blanks. The fix is in the INGESTER's index
+writer, not in the serving layer.
+
+**3. Not measured: how the four tools behave in a real conversation.**
+The routes were exercised directly and the executor is unit-tested, but no
+end-to-end Discord turn has been graded. The owner's live test is the first one
+— see the test lines in the finisher's report.
+
 ## 🔑 ESTATE SSO — BUILT + DEPLOYED, INERT PENDING ONE OWNER CONSOLE STEP (2026-08-18)
 
 Owner ask, verbatim, after hitting it himself: *"Ebooks makes me login every
@@ -862,29 +890,11 @@ designing a federation for a catalog that does not yet have any books in it.
 - **Two builds were IN FLIGHT and died on 529s — their uncommitted files are
   ON DISK in this repo, intact.** Do not revert them; finish them.
 
-### In-flight build A: GABI book-knowledge SERVING layer
-Uncommitted in apps/discord-worker: book-packs.ts, book-retrieval.ts,
-book-routes.ts (+ an index.ts route-inventory doc-block edit). Agent's last
-words: "Now the credential module and the tool definitions." Possibly also
-panel-side edits in library_catalog (@lc/core GABI_TOOLS) — check git status
-there too. Brief essentials for the finisher agent (model: opus):
-- Canon: docs/info/gabi-book-knowledge-design.md incl. retrieval-pilot
-  corrections. Four modes (relevant/latest/earliest/presence), ±1-neighbour
-  stitch AT RETRIEVAL (not in packs), ord ceilings DERIVED per turn never
-  stored, per-book alias maps.
-- Packs: 157 live, OPAQUE GZIP (reader must gunzip explicitly — R2 inflates
-  silently if Content-Encoding is set; that metadata was deliberately
-  removed). Index text/_index.json.gz = 182 books (25 needs-OCR). 9 twin
-  bookIds packed twice — don't double-count availability.
-- ⚠️ INCREMENTAL KNOWLEDGE IS AN OWNER REQUIREMENT: serve what exists, honest
-  "not in my knowledge base yet", new packs picked up without redeploy.
-- Tools registered on BOTH surfaces separately (discord-worker gabi-tools.ts
-  AND library_catalog @lc/core) — allowlists deliberately separate.
-- Verify: 12 pilot questions vs DEPLOYED routes; then hand the owner test
-  lines (Discord @GABI + site panel: "what's Jake's stat sheet at the end of
-  book 1?"). Owner wants a LIVE TEST — promised today/tonight.
-- Pre-existing red: apps/discord-worker typecheck TS2345
-  test/question-sync.test.ts:801.
+### In-flight build A: GABI book-knowledge SERVING layer — ✅ FINISHED 2026-08-18, moved whole to [`DONE.md`](DONE.md)
+Four tools live in Discord, `GABI_BOOKS` on, all four retrieval modes exercised
+against the deployed routes. Two things it deliberately did NOT do are recorded
+as their own items below: the PANEL half (a three-holder-secret decision, not an
+omission) and the empty `title` on every knowledge-base listing row.
 
 ### In-flight build B: /status SPLIT (4 pages) — ✅ FINISHED 2026-08-18, moved whole to [`DONE.md`](DONE.md)
 All four pages are live and were checked signed in. The one piece of it still

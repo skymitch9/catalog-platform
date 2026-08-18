@@ -521,6 +521,26 @@ question, and that is correct.
 
 ### 4.6 The tool surface
 
+> ⚠️ **AS BUILT 2026-08-18 — FOUR TOOLS, NOT TWO, and the two extras are a
+> reconciliation with phase 3 rather than a widening of what may be read.** This
+> section was written before the retrieval routes existed. What they turned out
+> to require: (a) `book-routes.ts` REFUSES a constructed book id, so discovery
+> has to be a tool (`list_book_knowledge`) — nothing else on the Discord surface
+> knows which of the 182 indexed books are packed, and the whole point of
+> incremental knowledge is that the answer changes nightly with no deploy; and
+> (b) `presence` is a mode whose answer is a per-book roll-up **across several
+> books**, so it takes a list and returns no passages — expressed as a `mode` on
+> a single-book search it cannot ask the question §6.2 built it for.
+> Both extras read the same surface through the same gate, with the same caps
+> and the same posture. Shipped names: `list_book_knowledge`,
+> `search_book_text`, `read_book_passage`, `book_presence`.
+>
+> ⚠️ **The panel half was NOT built and is NOT scheduled here.** Phase 4 is one
+> Worker (§9), the docs corpus set the precedent by living on the Discord Worker
+> alone, and `library_catalog`'s `@lc/core` tool array is about that app's own
+> D1 catalogue. Adding it would make `ESTATE_APP_TOKEN_BOOKS` a THREE-holder
+> secret where §4.6's custody note pins it at two — a decision, not an edit.
+
 Two tools, both read-only, in **their own array** — a fourth alongside
 `GABI_TOOL_NAMES` (T0 public catalogue), `GABI_DELEGATED_VERB_NAMES` (T1
 writes), and `GABI_DOCS_TOOL_NAMES` (gated docs):
@@ -1086,7 +1106,7 @@ boundary**, so a killed agent costs nothing beyond the phase in flight.
 | **1** | **The ponder question** (§5) — tiers A and B only. One tool, position read, worded tiers, `GABI_BOOKS` posture. **No ingestion, no bucket.** | 1 worker | **small–medium** (~150 k) | nothing |
 | **2** | **EPUB ingestion.** `ingest_book_text.py` on this machine: spine-ordered extraction, chapter-anchored chunking **at the measured 800/100 (§7.3.1)**, `spine_index`, audio alignment where a twin exists, chunk packs + index to R2, receipt, sha-skip, `--dry-run`. **No Worker changes.** | 1 script, local | **medium** (~200 k) | owner: bucket/prefix decision |
 | **3** | **Retrieval routes.** `GET …/book/{bookId}/search` and `…/passage`, behind the ebooks gate, position-scoped server-side. ⚠️ **Four modes, not one** — `relevant`/`latest`/`earliest`/`presence` (§6.2) — plus the **±1-neighbour return stitch** (§7.3) and the **derive-never-store ceiling** rule (§4.3). Testable in a browser before any Discord work. | 1 worker | **medium** (~200 k) | 2 |
-| **4** | **The two GABI tools** (§4.6) + the fourth allowlist array and its pinning test, the caps, the spoiler wording, `gabi_turn` fields. **Ponder questions become tier C here.** | 1 worker | **medium** (~200 k) | 1, 3 |
+| **4** | ✅ **DONE 2026-08-18.** **The GABI tools** (§4.6 — four as built) + the fourth allowlist array and its pinning test, the caps, the spoiler wording, `gabi_turn` fields. 42 tests; `GABI_BOOKS` flipped **on** and deployed the same day. | 1 worker | **medium** (~200 k) | 1, 3 |
 | **5** | **Transcription, on demand.** Local Whisper runner, per-series queue reusing the `audio_requests` shape, chapter reconciliation against `chapters.json`, speech-tolerant stat detection, per-series ASR glossary. ⚠️ **Primal Hunter first.** | script + worker | **medium–large** (~300 k) + GPU time | 2, owner decision 4/5 |
 | **6** | **The acceptance test** (§6) — `mode:"latest"`, the stat-block detectors, the five criteria as tests. | 1 worker | **small–medium** | 4, 5 |
 | **7** *(optional)* | **Vectorize semantic layer.** One namespace per book, embeddings via `@cf/baai/bge-m3`, hybrid merge, cross-book search. | worker + script | **medium** | 3 |
@@ -1097,8 +1117,11 @@ boundary**, so a killed agent costs nothing beyond the phase in flight.
 1. **Decide the bucket/prefix** (decision 2 below) and, if a new bucket, create
    it — then run `npx wrangler r2 bucket dev-url get <name>` and confirm
    **disabled**. ⚠️ Never attach a domain.
-2. **Flip `GABI_BOOKS=on`** when phase 1 is verified — a deliberate act, never a
-   side effect of a deploy.
+2. ✅ **DONE 2026-08-18 — `GABI_BOOKS=on`**, flipped by the finisher agent's own
+   hand as the delivery step of the live test the owner was promised, by the
+   conductor-hand precedent `wrangler.toml` records for `GABI_DOCS`. It remains
+   a deliberate act, never a side effect of a deploy, and off is one line back
+   (`docs/access/gabi-book-knowledge.md` §3).
 3. **Phase 5 only:** install the local Whisper toolchain and confirm GPU
    throughput on one book before committing a series.
 4. **Phase 7 only:** create the Vectorize index (Workers Paid required — §3.3).
@@ -1117,8 +1140,12 @@ words-per-audio-hour ratio in §1.3, the Primal Hunter zero-ebook finding, the
 extraction wall-clocks, the PDF scan ratio, the GPU/CPU/RAM. **Everything else
 is reasoned or vendor-published.**
 
-- ⚠️ **NOTHING IS BUILT.** No script, no bucket, no prefix, no route, no tool,
-  no chunk, no transcript, no vector.
+- ✅ **RETIRED 2026-08-18 — phases 2, 3 and 4 are built, deployed and exercised
+  live.** 158 packs in `ebooks-gated/text/`, the four retrieval routes answering,
+  and the four Discord tools switched on. ⚠️ **Still not built:** the semantic
+  layer (phase 7), the gated books page (phase 8), and the PANEL half of the tool
+  surface — see §4.6's as-built note for why the last of those is a decision
+  rather than an omission.
 - ✅ **RETIRED 2026-08-18 — one transcript now exists.** Primal Hunter book 1
   (20.17 h) was transcribed on this machine and the stat blocks inspected; see
   §6.4 for the measured verdict (**recoverable**; 85.3× realtime; numbers arrive
