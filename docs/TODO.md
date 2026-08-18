@@ -323,6 +323,30 @@ never entered: the intent classifier claimed the turn for `have_lookup`, which i
 a pure public-index lookup that never calls a model, so the four tools sat on a
 table the turn never walked into.
 
+⚠️ **AND THEN A SECOND DEFECT ON THE SAME QUESTION AT 16:25, also fixed the same
+day (`f538de8`).** Routing was FIXED — she engaged the question. The answer was
+still wrong, in a new way: she said *"we've got 38 Sanderson audiobooks… have you
+worked through The Stormlight Archive and Mistborn? What's the Cosmere stuff you
+have tackled?"* — ⚠️ **she INTERVIEWED the asker for data her own tools already
+held.** The evidence no tool ran is inside the sentence: "38 Sanderson
+audiobooks" is a CATALOGUE count, there is no *"you have reviewed N"* fact, and
+every question she asked is one `my_reviews` answers exactly.
+
+| | The miss | The lesson |
+|---|---|---|
+| 15:40 | the lane was never entered | offering a tool is not routing to it |
+| 16:25 | the lane was entered, the tool was never called | ⚠️ **ENTERING THE LANE IS NOT CALLING THE TOOL** |
+
+⚠️ **The fix is NOT a sterner prompt** — *"you must call the tool"* is the same
+category of hope as *"be honest"*. `my_unread` already computed the right answer;
+only whether it RAN was wrong. So the arithmetic moved AHEAD of the model
+(`src/shelf-flow.ts`), the move that makes the suggestion lane un-interviewable.
+⚠️ Her wall-of-titles instinct was **half right** and that half is kept: the
+delivery shape is a grouped summary with counts, leading with the series they
+have STARTED and naming what they DID review — shorter than the wall and more
+useful than the interview. One refining question is welcome AFTER a real answer,
+never instead of one.
+
 ⚠️ **THE THIRD OF THIS CLASS IN ONE DAY** (docs §12, books §10b/§10c), and all
 three teach the same sentence: **OFFERING A TOOL IS NOT ROUTING TO IT.** The fix
 EXTENDS that structure rather than rivalling it — `shelfIntent` + `shelfFollowUp`

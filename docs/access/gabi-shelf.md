@@ -50,6 +50,20 @@ set. The field is `not_reviewed_count`, every row carries `basis: no_review`, an
 the note forbids the words "unread" and "backlog". If those words appear in an
 answer, chase the note.
 
+**c) "She asked me what I'd read instead of telling me."**
+⚠️ **That was a real defect and it is fixed** (2026-08-18, `f538de8`). She
+answered *"what have I not read by Sanderson"* by interviewing the asker —
+*"have you worked through Stormlight and Mistborn?"* — which is a question
+`my_reviews` answers. The lane now does the arithmetic **before** the model is
+consulted, so the finished result is in front of her and there is nothing to
+interview about. If she ever opens a shelf answer with a question about what you
+have read, that is this defect returning and it is serious.
+
+⚠️ **The delivery shape is deliberate too**: grouped by series with counts,
+leading with the series you have started, naming what you DID review, with the
+full list on request. That is not truncation — it is the alternative to a wall of
+thirty-eight titles, and it is why the answer looks like a summary.
+
 ---
 
 ## 4. Known gaps
