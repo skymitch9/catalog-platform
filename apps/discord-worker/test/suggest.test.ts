@@ -16,6 +16,8 @@
  *  6. **The clarifying question is asked ONCE and skipped when it is known.**
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import type { CatalogRow } from '../src/catalog-data.js';
@@ -389,5 +391,68 @@ describe('⚠️ the grounding contract is enforced in the DATA', () => {
     // ⚠️ Absent fields are OMITTED rather than nulled — a model shown
     // `narrator: null` will sometimes fill it in.
     assert.doesNotMatch(rendered, /null|undefined/);
+  });
+});
+
+// ── 7. ⚠️ WIRED, NOT MERELY WRITTEN ───────────────────────────────────────
+
+/**
+ * ⚠️ **THE LESSON OF THE DAY THIS SHIPPED, APPLIED TO ITSELF.** Three features
+ * in one day had a detector or a tool that existed, worked, and was never
+ * reached — the docs lane, the book follow-up, and the shelf tools. Every one of
+ * them passed its own unit tests while being unreachable in production.
+ *
+ * So "is it wired" is asserted as a property of the FLOW's source, exactly as the
+ * credential guards are, and the ORDER is asserted with it — because on this
+ * surface the order is the behaviour.
+ */
+describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () => {
+  const flow = readFileSync(
+    fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+    'utf8',
+  );
+
+  it('the pre-router is called and the lane has an answer function', () => {
+    assert.match(flow, /if \(suggestIntent\(question\)\)/, 'the suggestion pre-router is not wired');
+    assert.match(flow, /await suggestAnswer\(/, 'the suggestion lane has no answer function');
+  });
+
+  it('⚠️ ORDER: docs → SUGGEST → shelf → books', () => {
+    // An operational question that happens to say "recommend" is still
+    // operational; a first-person "what should I read next" is a recommendation
+    // rather than a reading list. Both halves are decisions, so both are pinned.
+    const at = (needle: string) => flow.indexOf(needle);
+    const docs = at('if (docsIntent(question))');
+    const suggest = at('if (suggestIntent(question))');
+    const shelf = at('if (shelfLaneIntent(question))');
+    const books = at('if (booksIntent(question) || booksFollowUp(question, history))');
+    for (const [name, i] of Object.entries({ docs, suggest, shelf, books })) {
+      assert.ok(i > 0, `${name} router not found in the flow`);
+    }
+    assert.ok(docs < suggest, 'the suggestion lane must not outrank the docs lane');
+    assert.ok(suggest < shelf, 'the shelf lane would answer a recommendation with a reading list');
+    assert.ok(shelf < books, 'a first-person question must not be claimed by the book lane');
+  });
+
+  it('⚠️ the gate is asked BEFORE the gathering', () => {
+    // Somebody who may not be suggested a physical book must not have their
+    // reading list read in order to be told so.
+    const lane = flow.slice(flow.indexOf('async function suggestAnswer'));
+    const gate = lane.indexOf('await suggestGate(');
+    const gather = lane.indexOf('await gatherSuggestions(');
+    assert.ok(gate > 0 && gather > 0);
+    assert.ok(gate < gather, 'the shelf is read before the gate refuses');
+  });
+
+  it('⚠️ the lane names NO credential — the five-module guard is untouched', () => {
+    const strip = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const f of ['../src/suggest.ts', '../src/suggest-flow.ts', '../src/devops-gate.ts']) {
+      const source = strip(
+        readFileSync(fileURLToPath(new URL(f, import.meta.url).href), 'utf8'),
+      );
+      for (const forbidden of [/firestoreRequest/, /mintAccessToken/, /parseServiceAccount/, /FIREBASE_SERVICE_ACCOUNT/, /ESTATE_APP_TOKEN/, /DISCORD_BOT_TOKEN/]) {
+        assert.doesNotMatch(source, forbidden, `${f} now names ${forbidden}`);
+      }
+    }
   });
 });

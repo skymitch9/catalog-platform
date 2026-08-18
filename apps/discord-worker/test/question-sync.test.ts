@@ -797,7 +797,18 @@ test('the dark answer comes BEFORE the auth refusal, even for a signed caller', 
 
 test('the gate fails CLOSED: wrong or absent token gets a worded 401 and posts nothing', async () => {
   const env = { POLL_SYNC_TOKEN: 'right', DISCORD_BOT_TOKEN: 'b', FIREBASE_SERVICE_ACCOUNT: '{}' };
-  for (const headers of [{}, { authorization: 'Bearer wrong' }, { authorization: 'right' }]) {
+  // ⚠️ ANNOTATED, and not cosmetically: unannotated, TypeScript infers this array
+  // as `{ authorization?: undefined } | { authorization: string }`, whose first
+  // member is not assignable to `Record<string, string>`. So `npm run typecheck`
+  // — which runs tsc over `tsconfig.test.json` as well as `src` — was RED here
+  // while `npm test` was green, and a build command that is red for everybody is
+  // a build command nobody runs. Found 2026-08-18 by a build that ran both.
+  const headerCases: Record<string, string>[] = [
+    {},
+    { authorization: 'Bearer wrong' },
+    { authorization: 'right' },
+  ];
+  for (const headers of headerCases) {
     const res = await syncRequest(env, headers);
     assert.equal(res.status, 401);
     const body = (await res.json()) as { ok: boolean; message: string };

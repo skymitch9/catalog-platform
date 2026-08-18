@@ -611,3 +611,42 @@ describe('⚠️ who set a pin is recorded and does not evaporate', () => {
     assert.doesNotMatch(code, /OWNER_EMAILS|devopsAllows|@[a-z]+\.(?:com|ai)/i);
   });
 });
+
+// ── 11. ⚠️ WIRED, NOT MERELY WRITTEN ──────────────────────────────────────
+
+describe('⚠️ the persona lanes are REACHABLE, and in the right order', () => {
+  const flow = repoFile('src/mention-flow.ts');
+
+  it('both detectors are called and both lanes have answer functions', () => {
+    assert.match(flow, /personaAdminCommand\(question\)/, 'the devops set/clear is not wired');
+    assert.match(flow, /personaQuery\(question\)/, 'the visibility query is not wired');
+    assert.match(flow, /await personaAdminAnswer\(/);
+    assert.match(flow, /await personaVisibilityAnswer\(/);
+  });
+
+  it('⚠️ the ADMIN command is checked BEFORE the QUESTION', () => {
+    // "make <@1> cozy" contains a persona noun and could be read as an enquiry.
+    // An instruction misread as a question does nothing and looks broken; a
+    // question misread as an instruction changes somebody's state. So the
+    // ambiguous reading loses to the explicit verb.
+    const admin = flow.indexOf('personaAdminCommand(question)');
+    const query = flow.indexOf('personaQuery(question)');
+    assert.ok(admin > 0 && query > 0);
+    assert.ok(admin < query, 'a set instruction can be swallowed by the query detector');
+  });
+
+  it('⚠️ the hidden PIN still runs first of all — the existing behaviour is intact', () => {
+    const pin = flow.indexOf('personaCommand(question)');
+    const admin = flow.indexOf('personaAdminCommand(question)');
+    assert.ok(pin > 0 && pin < admin, 'the hidden self-pin lost its place in the order');
+  });
+
+  it('⚠️ on THEMSELVES no devops check happens — anybody may choose their own voice', () => {
+    const lane = flow.slice(flow.indexOf('async function personaAdminAnswer'));
+    const onSelf = lane.indexOf('const onSelf =');
+    const check = lane.indexOf('await checkDevops(');
+    assert.ok(onSelf > 0 && check > 0);
+    assert.ok(onSelf < check, 'an ordinary person is told they lack a role for something they had');
+    assert.match(lane.slice(0, check + 200), /if \(!onSelf\)/);
+  });
+});
