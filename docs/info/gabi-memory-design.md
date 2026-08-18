@@ -503,9 +503,12 @@ paragraph is the note explaining why it was not made now.
 
 > Kiro: stay on AUTO - it saves the owner credits. When a phase below
 > names a model, honor that name; the naming exists so AUTO stays cheap
-> and safe. Labels: "Kiro Claude Sonnet 5" = standard build. "Kiro Claude
-> Opus 4.8" = design judgment or trust-critical. "Codex (GPT-5.3-Codex)"
-> = tell the owner; he runs Codex himself.
+> and safe. Labels (verified against Kiro pricing: Auto = 1.0x credits,
+> pinned Sonnet = 1.3x, pinned Opus = 2.2x): "Kiro Claude Sonnet 5" =
+> STAY ON AUTO, do not pin (standard build). "Kiro Claude Opus 4.8" =
+> actually pin Opus - the 2.2x is worth it (design judgment or
+> trust-critical). "Codex (GPT-5.3-Codex)" = tell the owner; he runs
+> Codex himself.
 
 - Tier 3 (archive + retention): **Kiro Claude Sonnet 5** - mechanical,
   fully specced above, test-backed.

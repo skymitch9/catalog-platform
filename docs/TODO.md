@@ -1066,9 +1066,13 @@ owner:**
   on AUTO (it costs the owner fewer credits); when a design doc or task
   below names a model, honor that naming — it exists precisely so AUTO
   stays safe and cheap. The naming convention:
-  - **"Kiro Claude Sonnet 5"** — standard builds, mechanical execution,
-    doc updates, test-backed changes. Most tasks.
-  - **"Kiro Claude Opus 4.8"** — design judgment, trust-critical changes
+  - **"Kiro Claude Sonnet 5" = STAY ON AUTO.** Verified 2026-08-18 from
+    Kiro's own pricing: Auto is the 1.0x credit baseline; manually pinning
+    Sonnet costs 1.3x and Opus 2.2x for the same task. So a Sonnet-class
+    label means "Auto is fine here" — do not pin. Standard builds,
+    mechanical execution, doc updates, test-backed changes. Most tasks.
+  - **"Kiro Claude Opus 4.8" = actually PIN Opus (2.2x, worth it here)** —
+    design judgment, trust-critical changes
     (auth, rules deploys, migrations, anything touching money or grants),
     debugging that resists two attempts on Sonnet.
   - **"Codex (GPT-5.3-Codex)"** — isolated, spec-complete greenfield
