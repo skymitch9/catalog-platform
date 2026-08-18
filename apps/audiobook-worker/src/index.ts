@@ -29,6 +29,18 @@
  *                          (ebook-gate.ts), same unconditional posture. ⚠️ It
  *                          gates on the estate's `vis_ebooks` READ grant, NOT
  *                          on the ladder's `download` capability (admin+).
+ *   GET  /api/audio/status the projection of what is streamable right now
+ *                          (audio-status.ts) — bookId/anchor/title/size/since
+ *                          and ⚠️ never `path`. Same gate.
+ *   GET|HEAD /api/audio/:anchor/file
+ *                          the audiobook BYTE STREAM (audio-file.ts), a
+ *                          near-copy of the ebook one per design §7.2: shares
+ *                          range.ts and the gate, copies the rest. ⚠️ Gated on
+ *                          the SAME `vis_ebooks` grant — owner decision 1,
+ *                          2026-08-17: "MIRROR EBOOK if they can read an ebook
+ *                          they can listen to an audio." Its own budget
+ *                          (listen-budget.ts), sized for hours of ranges
+ *                          instead of one book-open.
  *   Phase 3 wave A writes  enforce-routes.ts — ⚠️ DORMANT: every one answers
  *                          503 not_enabled (touching nothing) unless
  *                          ESTATE_CHECK === 'enforce', which is the OWNER'S
@@ -43,6 +55,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
 import { parseServiceAccount } from '@platform/firebase-sa';
+import { audioFileRoutes } from './audio-file.js';
+import { audioStatusRoutes } from './audio-status.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
 import { ebookFileRoutes } from './ebook-file.js';
 import { ebookRoutes } from './ebooks.js';
@@ -202,6 +216,19 @@ app.route('/', ebookRoutes);
 // grant and NOT on the ladder's `download` capability (admin+), which would
 // lock ordinary members out of reading; see ebook-file.ts's header.
 app.route('/', ebookFileRoutes);
+
+// The audiobook player's two routes (audio phase 1, 2026-08-18). Same gate as
+// the ebook pair — literally the same function (ebook-gate.ts) — because owner
+// decision 1 fused the grants: one `vis_ebooks` means "may consume the estate's
+// book files", reading OR listening. ⚠️ Seeing the audiobook SITE is still
+// `vis_audiobook` and is untouched; this is a gate on the BYTES.
+//
+// ⚠️ The status route is a PROJECTION, not the manifest — `path` never leaves
+// (audio-status.ts's header). And the byte route carries its OWN budget
+// (listen-budget.ts), because sharing read-budget.ts's counters would let a
+// 13-hour listen exhaust a reader's page turns and vice versa.
+app.route('/', audioStatusRoutes);
+app.route('/', audioFileRoutes);
 
 // Phase 3 wave A — the prebuilt write routes, DORMANT until the owner flips
 // ESTATE_CHECK to 'enforce' (enforce-routes.ts carries its own mode gate as

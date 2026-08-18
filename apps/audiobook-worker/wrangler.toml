@@ -143,3 +143,32 @@ bucket_name = "ebooks-gated"
 [[r2_buckets]]
 binding = "EBOOKS"
 bucket_name = "estate-ebooks"
+
+# The AUDIOBOOK files' private store — audio player phase 1, added 2026-08-18
+# for GET|HEAD /api/audio/:anchor/file. Filled ON DEMAND by audiobook_catalog's
+# scripts/upload_audio_r2.py via app/tools/fulfill_audio_requests.py (sync
+# STEP 5.9), keyed on the library-relative path VERBATIM
+# ("Brandon Sanderson/Skyward.m4b") — the same scheme as estate-ebooks, and
+# changing it is a MIGRATION, not an edit.
+#
+# ⚠️ A FOURTH bucket on purpose. The library is 630 GB / 1,073 files, mean file
+# 601 MB, largest 3.92 GB (MEASURED 2026-08-17) — a public URL on this bucket
+# would be a guessable, world-readable warehouse of the household's audio.
+# Verified at creation 2026-08-17:
+#   wrangler r2 bucket dev-url get estate-audio  -> "Public access via the
+#     r2.dev URL is disabled."
+#   wrangler r2 bucket domain list estate-audio  -> no custom domains.
+# ⚠️ Never enable either. This binding is meant to be the only way in.
+#
+# ⚠️ THE BUCKET IS EMPTY AND THAT IS THE DESIGN, not a broken ingest. Owner
+# decision 3 (audio-player-design.md §12): "each book is on request then ready
+# for everyone." A book arrives because somebody pressed "request it"; the
+# route answers a worded not_streamable 404 for everything else.
+#
+# ⚠️ The audio MANIFEST is NOT here — it rides in `ebooks-gated` under key
+# audio_manifest.json, beside the ebook one, because owner decision 1 fused the
+# two grants into one ("if they can read an ebook they can listen to an audio").
+# src/audio-manifest.ts's header argues it.
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "estate-audio"

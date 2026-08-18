@@ -109,6 +109,36 @@ export interface Env {
    * the fix — the same reason `EBOOKS_GATED` is optional.
    */
   EBOOKS?: R2Bucket;
+
+  /**
+   * The PRIVATE R2 bucket holding the AUDIOBOOK files (`estate-audio`) — read
+   * by `GET|HEAD /api/audio/:anchor/file`, written by
+   * `scripts/upload_audio_r2.py` in `audiobook_catalog` (audio phase 0b).
+   *
+   * ⚠️ A FOURTH bucket, and the separation is again the security property —
+   * more so than for ebooks, because the object keys are library-relative
+   * paths verbatim (`Brandon Sanderson/Skyward.m4b`) over a **630 GB** library
+   * whose mean file is 601 MB. A public URL here would be a guessable,
+   * world-readable warehouse of the household's audio. Verified 2026-08-17:
+   * `wrangler r2 bucket dev-url get estate-audio` → *"Public access via the
+   * r2.dev URL is disabled"*; `wrangler r2 bucket domain list estate-audio` →
+   * no custom domains. ⚠️ Never enable either.
+   *
+   * ⚠️ **It is EMPTY by design and stays mostly empty.** Ingest is on demand
+   * (owner decision 3): a book reaches this bucket because somebody pressed
+   * "request it" and the 8-hourly pipeline fulfilled the queue. An absent
+   * object is a book nobody asked for, not a book that was lost — which is why
+   * the route answers a worded `not_streamable` 404 rather than a 500.
+   *
+   * ⚠️ The audio MANIFEST is deliberately NOT in this bucket: it lives beside
+   * the ebook one in `EBOOKS_GATED` under key `audio_manifest.json`. See
+   * `audio-manifest.ts`'s header for that argument.
+   *
+   * Optional in the type so the route can answer a NAMED configuration refusal
+   * (`file_store_unbound`) instead of throwing a 500 that says nothing about
+   * the fix — the same reason the other two are optional.
+   */
+  AUDIO?: R2Bucket;
 }
 
 export type EstateCheckMode = 'off' | 'shadow' | 'enforce';
