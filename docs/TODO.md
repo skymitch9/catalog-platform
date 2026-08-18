@@ -199,7 +199,25 @@ carry `source`, `chunks`, `chapters` and `ingester_version` — but no `title`.
 that renders `title` will render blanks. The fix is in the INGESTER's index
 writer, not in the serving layer.
 
-**3. ⚠️ One word in `apps/audiobook-worker/src/book-retrieval.ts` — NOT fixed.**
+**3. ⚠️ OWNER DECISION — should book TEXT be answerable in a shared CHANNEL at
+all, or DM-only?**
+Raised 2026-08-18 while investigating the channel lane; **not decided, and not
+restricted by the agent.** Two things are true in a channel that are not true in
+a DM:
+- **The gate is per-ASKER, the audience is not.** `vis_ebooks` decides whether
+  the person asking may read the household's book text — and then the passage is
+  posted where everyone in the channel can read it, grant or no grant. That is
+  inherent to answering in public, not a bug.
+- **The spoiler bound protects the ASKER, not the bystanders.** It is derived
+  from the asker's own sentence; another reader in the channel who is six
+  chapters behind gets spoiled by an answer that was correctly scoped for
+  somebody else.
+→ Ask him: *"book answers in a shared channel, or DM-only?"* If he wants a
+restriction it is a small change (the trigger already knows `surface`); if he is
+happy as-is, record it as decided and this item closes. ⚠️ Do NOT restrict it
+unilaterally — he has been testing in a channel all day and it works.
+
+**4. ⚠️ One word in `apps/audiobook-worker/src/book-retrieval.ts` — NOT fixed.**
 `looksLikeStatQuestion()` fires on "stat sheet" and not on "status sheet", the
 word the transcripts actually use. Measured: the auto detector returns passages
 that MENTION the words (`stat_keys: 0`) where the forced one returns the actual
@@ -208,7 +226,7 @@ blocks (`stat_keys: 12`). The Discord lane works around it by sending
 the browser door, and anything built on them later. Outside the finisher's
 fence, so it is recorded rather than done.
 
-**4. Not measured: how the four tools behave in a real conversation.**
+**5. Not measured: how the four tools behave in a real conversation.**
 The routes were exercised directly (including the exact call the fixed routing
 now makes) and the executor is unit-tested, but no end-to-end Discord turn has
 been graded. ⚠️ The owner's FIRST live turn found a routing defect that no unit

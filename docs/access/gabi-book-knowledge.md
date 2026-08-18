@@ -173,6 +173,16 @@ Invoke-RestMethod "https://audiobook-api.heygabi.ai/api/books/available?limit=5"
   one-line script before touching anything else; the reply text tells you the
   branch, because a shelf answer reassembles from `MENTION_MSG.searched` +
   `MENTION_MSG.none`.
+- ⚠️ **A FOLLOW-UP IS ROUTED ON THE CONVERSATION, NOT THE SENTENCE.** She
+  offered a retry, the owner accepted it in five words, and the stateless
+  detector sent it to the catalogue (design §10c). `booksFollowUp()` reads the
+  remembered window — which is keyed **per channel** — so a bare "go on" after
+  moving to a DM or another channel will NOT continue a book conversation. That
+  is correct, and it is the thing to explain rather than to fix.
+- ⚠️ **NEVER let her say "budget", "cap" or "quota" to a person.** She did, the
+  owner read it as a malfunction, and nothing was wrong. The words are banned by
+  test from every `BOOKS_MSG` sentence; if one reappears, look for a tool
+  DESCRIPTION that uses it — the model quotes those verbatim.
 - ⚠️ **`book-retrieval.ts`'s `looksLikeStatQuestion()` has the same `stat` /
   `status` gap** and it is NOT fixed — the Discord side works around it by
   sending `stat_block=true` whenever the query is stat-shaped. Every other

@@ -1303,6 +1303,105 @@ Edge.**
 
 ---
 
+## 10c. ⚠️ INCIDENT — she offered a retry, he accepted it, and she sent it to the shelf (2026-08-18)
+
+Channel lane, ~1:08 PM Phoenix, the same afternoon as §10b. **Both transcripts
+are regression tests** (`test/book-knowledge.test.ts` §5).
+
+Her long turn answered two of three questions correctly and ended:
+
+> I've run out of **budget** to pull that passage, so I'll dig into it fresh if
+> you want — **just say the word!**
+
+He said the word:
+
+> **@GABI dig fresh into jake sheet**
+
+> I looked on the estate's public shelf for *dig fresh into jake sheet*…
+
+### Defect 1 — `booksIntent` is STATELESS on a surface that has a memory
+
+⚠️ **A follow-up is elliptical BY CONSTRUCTION.** It omits everything the
+previous turn established, which is exactly the material the detector needs.
+Judged alone, *"dig fresh into jake sheet"* is five words carrying none of the
+meaning. **An assistant that offers a retry and then cannot recognise the
+acceptance is worse than one that never offered.**
+
+`booksFollowUp(question, history)` now runs beside `booksIntent` over the
+remembered window. Narrow three ways, because a wrong continuation answers a
+catalogue question out of a novel: a prior **user** message in the window must
+itself be book-lane (never her own replies — model prose with no reliable
+marker); the follow-up must be ≤12 words; and it must open like a continuation
+or reuse a content word. ⚠️ A shelf-shaped follow-up still goes to the shelf —
+*"do we have book 10?"* after a book conversation is a catalogue question, and a
+lane may not capture people.
+
+⚠️ **`say the word` is in the opener list because SHE SAYS IT.** An opener list
+that does not contain the phrases the assistant itself uses cannot hear its own
+invitations.
+
+### Defect 2 — the word "budget" reads as a malfunction
+
+He asked, reasonably: *"she keeps mentioning budgets, what is this"*.
+
+⚠️ **Nothing was wrong.** A three-part question spent the per-turn ceiling
+exactly as designed and the retry she offered was real. But naming our internal
+accounting makes a working system sound **rationed and broken at once**.
+
+Traced to source: `BOOKS_MSG.turnBudgetSpent` literally ended *"…I will go again
+with a fresh budget"*, and two tool descriptions said *"a strict budget per
+answer"*. **The model was quoting us.** All reworded to say what it means for
+them — *"that one is a longer pull than fits in this reply. Ask me again and
+I'll go straight at it with a clean run"* — with a test asserting no `BOOKS_MSG`
+sentence contains budget/quota/ration/allowance/cap/limit, and that the
+replacement still promises the retry.
+
+⚠️ **NO CAP CHANGE, and the measurement says so:** the book-9 status sheet is
+**4,370 bytes** against a 24 KB per-turn ceiling — a fresh turn fits it six
+times over. The ceiling was never the problem; one turn doing three jobs was,
+and the fix for that is the retry working.
+
+### Defect 3 — a spoiler bound became a FALSE STATEMENT about the story
+
+She said Villy is *"not in books 1 or 2"*. ⚠️ **That is false** — measured live,
+book 2 has him at ord 520, chapter 24. His question bounded her to chapter 20,
+that **one** bound applied to the whole cross-book roll-up, and book 2's
+chapter-24 sighting was hidden by it. The roll-up reported this honestly in
+`hidden_by_scope`; her answer did not repeat it.
+
+When any book has hidden mentions the note now leads with the count and forbids
+calling the term absent from that book. ⚠️ It fails in the **safe** direction —
+hiding rather than spoiling — which is precisely why it produced a confident
+wrong answer instead of an error.
+
+### ⚠️ What actually differs between a CHANNEL and a DM — the whole list
+
+Investigated because every live test so far has been the channel lane. **The
+book tools, `booksIntent`, the tool loop, the caps, the prompt and the four
+fuses are all shared**; `handleMention` has no `surface` branch. Three
+differences exist, and only the third has a consequence worth knowing:
+
+| | Channel | DM |
+|---|---|---|
+| **Trigger** | must @mention her, or reply with ping on | every message | 
+| **Greeting** | *"Hey @name —"* on the first turn only | never |
+| **Memory** | keyed `(discord_channel, channelId, person)` | `(discord_dm, dmChannelId, person)` |
+
+The trigger difference is not a book decision: `MESSAGE_CONTENT` is deliberately
+never requested (§1.5 of the bot design), and Discord sends `content` only for
+mentions, ping-on replies and DMs.
+
+⚠️ **The memory difference now carries the lane.** A conversation is per
+CHANNEL, so `booksFollowUp` sees a book-lane window in the channel he was in —
+and moving from a channel to a DM (or to another channel) starts a fresh
+conversation with no book history, so a bare *"go on"* there will not continue.
+That is correct and it is worth telling him.
+
+**There is NO channel restriction on book text, and none was added here** — see
+decision 8 in §11, which is the owner's to make rather than an agent's.
+
+---
+
 ## 11. Owner decisions — ONE AT A TIME, in this order
 
 Each carries a recommendation. Nothing in §9 should start before decision 1 is
