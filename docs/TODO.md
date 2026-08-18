@@ -838,6 +838,81 @@ designing a federation for a catalog that does not yet have any books in it.
 
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
+## 🔄 HANDOFF — PC restart 2026-08-18 ~09:45 Phoenix (IDE update; owner-initiated)
+
+> Written during an Anthropic 529 outage that had already stopped all agents.
+> Next session: read this section FIRST, then git status both repos.
+
+### State at restart
+- **All agent work already landed today is deployed and verified**: panel-v2
+  (both library instances), ingestion pause card on /status, nightly ingestion
+  build (157 packs in ebooks-gated/text/, index at text/_index.json.gz,
+  scheduled Windows task proven firing every 30 min — SURVIVES REBOOT, first
+  real window tonight 00:00–07:45 Phoenix), library worker deploy (universe
+  tags live), details queue = 0 missing / 0 coverless (badge is fetched once
+  per page load — stale-tab gotcha), TBR entry "The Court of the Dead" for the
+  owner, DONE.md paperwork current.
+- **Two builds were IN FLIGHT and died on 529s — their uncommitted files are
+  ON DISK in this repo, intact.** Do not revert them; finish them.
+
+### In-flight build A: GABI book-knowledge SERVING layer
+Uncommitted in apps/discord-worker: book-packs.ts, book-retrieval.ts,
+book-routes.ts (+ an index.ts route-inventory doc-block edit). Agent's last
+words: "Now the credential module and the tool definitions." Possibly also
+panel-side edits in library_catalog (@lc/core GABI_TOOLS) — check git status
+there too. Brief essentials for the finisher agent (model: opus):
+- Canon: docs/info/gabi-book-knowledge-design.md incl. retrieval-pilot
+  corrections. Four modes (relevant/latest/earliest/presence), ±1-neighbour
+  stitch AT RETRIEVAL (not in packs), ord ceilings DERIVED per turn never
+  stored, per-book alias maps.
+- Packs: 157 live, OPAQUE GZIP (reader must gunzip explicitly — R2 inflates
+  silently if Content-Encoding is set; that metadata was deliberately
+  removed). Index text/_index.json.gz = 182 books (25 needs-OCR). 9 twin
+  bookIds packed twice — don't double-count availability.
+- ⚠️ INCREMENTAL KNOWLEDGE IS AN OWNER REQUIREMENT: serve what exists, honest
+  "not in my knowledge base yet", new packs picked up without redeploy.
+- Tools registered on BOTH surfaces separately (discord-worker gabi-tools.ts
+  AND library_catalog @lc/core) — allowlists deliberately separate.
+- Verify: 12 pilot questions vs DEPLOYED routes; then hand the owner test
+  lines (Discord @GABI + site panel: "what's Jake's stat sheet at the end of
+  book 1?"). Owner wants a LIVE TEST — promised today/tonight.
+- Pre-existing red: apps/discord-worker typecheck TS2345
+  test/question-sync.test.ts:801.
+
+### In-flight build B: /status SPLIT (4 pages)
+Blueprint = "Ops IA" section below in this file (BUILD TO THIS). Agent's last
+words: "JS parses. Now the Agents page." Uncommitted work likely in
+sites/heygabi-home/public/status/ + apps/auth-worker/src/ops.ts.
+- Check whether ESTATE_CONDUCTOR_TOKEN secret was created (wrangler secret
+  list on auth-worker + docs/access/keys/ custody file). Secret handling ONLY
+  per docs/access/discord-bot.md §7 file-redirect ritual.
+- Pause card RELOCATES to /status/pipelines intact (37 tests + predeploy pins
+  must move with it).
+- Processing tab renders a pushed state blob; contract to be documented in
+  docs/info/; agents tab GET behind requireDevops, POST behind the token;
+  usage figures block included.
+
+### Primal Hunter / GPU
+Books 1–9 transcribed+packed. Book 10 was mid-transcription at restart — its
+partial is LOST BY DESIGN (tonight's window re-transcribes; truncation gate
+rejects partials). Books 10–14: whatever the adopter (dead at reboot) copied
+to C:\Users\nbasl\estate-training-data\ is durable; the nightly task
+re-queues the rest automatically. NOTHING TO DO except verify tomorrow that
+the window ran (receipts in estate-training-data, packs in the index).
+
+### Owner-pending (present ONE AT A TIME when he's back)
+32 unsettled seriesIndex judgment calls (board books + Ballad of Songbirds
+and Snakes), HP/PJ set-edition rows for publisher/year fill, Ender set year
+suspect (1991 = Xenocide's year). Night-report artifact:
+https://claude.ai/code/artifact/af0f9cf0-aefc-4ed2-9993-d049df2ad1a4 — update
+from any session by passing url to the Artifact tool; needs final PH + build
+numbers before the OLD restart-report ritual is considered closed.
+
+### Verification commands
+git status (this repo + library_catalog + bookbuddy/audiobook_catalog);
+schtasks task per audiobook_catalog ingestion docs; /status card renders
+tonight's hold; library.heygabi.ai/tbr shows Court of the Dead.
+
 ## 🖥️ Status-page expansion — owner asks, 2026-08-18 (execute as agent bandwidth frees)
 
 All from the owner's messages of 2026-08-18 morning; queued behind the pause-UI
