@@ -390,7 +390,7 @@ describe('⚠️ GABI_DOCS is affirmative-only and ships OFF', () => {
 
 // ── 8. ⚠️ THE CREDENTIAL SEAM, WIDENED DELIBERATELY ─────────────────────────
 
-describe('⚠️ credentials live in exactly two modules', () => {
+describe('⚠️ credentials live in exactly two modules (docs half; see book-knowledge.test.ts for the third)', () => {
   const CREDENTIALS = [
     /firestoreRequest/,
     /mintAccessToken/,
@@ -402,8 +402,9 @@ describe('⚠️ credentials live in exactly two modules', () => {
 
   it('the conversational path names none of them', () => {
     // ⚠️ The property `delegated-exec.ts` established was "credentials live in
-    // ONE module". Tier 0b widens that to TWO, on purpose and in writing —
-    // never to "credentials are allowed in the chat path".
+    // ONE module". Tier 0b widened that to TWO and Tier 0c to THREE
+    // (`book-knowledge-exec.ts`), each time on purpose and in writing — never
+    // to "credentials are allowed in the chat path".
     for (const file of [
       'src/mention-flow.ts',
       'src/gabi-chat.ts',
@@ -419,6 +420,12 @@ describe('⚠️ credentials live in exactly two modules', () => {
       'src/panel.ts',
       'src/gabi-tools.ts',
       'src/estate-docs.ts',
+      // ⚠️ ADDED 2026-08-18 with Tier 0c. `book-knowledge.ts` is the book
+      // feature's whole contract and holds no credential; the seam is
+      // `book-knowledge-exec.ts`, and `test/book-knowledge.test.ts` carries the
+      // widening's own reasoning. Listed here too so the docs guard and the
+      // book guard cannot disagree about which files are clean.
+      'src/book-knowledge.ts',
       // ⚠️ `src/have.ts` is deliberately ABSENT from this list, and pretending
       // otherwise would make the test a lie. It has held `isLinked` — a
       // service-account read of the same /link document — since long before
