@@ -323,8 +323,17 @@ function renderIndexSection(fetchResult, now) {
       continue;
     }
 
-    const ageMs = now - Date.parse(src.pushed_at);
     const rowsText = src.rows.toLocaleString();
+    const pushedMs = Date.parse(src.pushed_at);
+    if (!Number.isFinite(pushedMs)) {
+      // ⚠️ Same trap as the pipeline row: NaN loses every threshold comparison
+      // below, so an unreadable timestamp would fall through to GREEN. Green
+      // must be a finding, not what is left when nothing else matched.
+      updateRow(`idx-${key}`, 'nodata', `${cfg.label}: ${rowsText} rows · push timestamp is unreadable ("${src.pushed_at}").`,
+        `The rows are real; how fresh they are cannot be said from this answer. ${cfg.note}`, now);
+      continue;
+    }
+    const ageMs = now - pushedMs;
 
     // ⚠️ A QUIET CATALOG IS NOT A BROKEN ONE, and until 2026-08-18 these rows
     // said otherwise. `library` and `game` have NO cron behind them: they push
