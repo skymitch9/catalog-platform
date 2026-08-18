@@ -298,6 +298,26 @@ export interface Env {
    */
   AUDIOBOOK_API_URL?: string;
 
+  /**
+   * ⚠️ **TIER 2 — GABI REMEMBERS YOU BETWEEN CONVERSATIONS, and it ships OFF.**
+   *
+   * Affirmative-only `"on"`, the idiom of `GABI_DOCS` and `GABI_BOOKS`.
+   * `docs/info/gabi-memory-design.md` §9 owner step 1: a feature that writes
+   * down what people say about themselves is not one to enable as a side effect
+   * of a deploy.
+   *
+   * ⚠️ OFF means she is exactly the bot she was before it existed: the 30-minute
+   * verbatim window still works, nothing is written, nothing is read, and no
+   * prompt changes. There is no "switched off" sentence because nobody asks a
+   * question only memory could answer — they simply notice she does not
+   * remember, which is the pre-feature behaviour.
+   *
+   * ⚠️ ON IS NOT A GRANT. A profile is built ONLY from that person's own
+   * messages, is capped at 2 KB, and can be shown and cleared by them at any
+   * time with `/gabi memory`.
+   */
+  GABI_MEMORY?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

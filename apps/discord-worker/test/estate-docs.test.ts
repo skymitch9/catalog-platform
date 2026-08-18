@@ -402,9 +402,10 @@ describe('⚠️ credentials live in exactly two modules (docs half; see book-kn
 
   it('the conversational path names none of them', () => {
     // ⚠️ The property `delegated-exec.ts` established was "credentials live in
-    // ONE module". Tier 0b widened that to TWO and Tier 0c to THREE
-    // (`book-knowledge-exec.ts`), each time on purpose and in writing — never
-    // to "credentials are allowed in the chat path".
+    // ONE module". Tier 0b widened that to TWO, Tier 0c to THREE
+    // (`book-knowledge-exec.ts`) and Tier 2 to FOUR (`memory-exec.ts`), each
+    // time on purpose and in writing — never to "credentials are allowed in the
+    // chat path".
     for (const file of [
       'src/mention-flow.ts',
       'src/gabi-chat.ts',
@@ -426,6 +427,11 @@ describe('⚠️ credentials live in exactly two modules (docs half; see book-kn
       // widening's own reasoning. Listed here too so the docs guard and the
       // book guard cannot disagree about which files are clean.
       'src/book-knowledge.ts',
+      // ⚠️ ADDED 2026-08-18 with Tier 2 (memory). Same reasoning once more: the
+      // contract is clean, the seam is `memory-exec.ts`, and
+      // `test/memory.test.ts` carries this widening's own account. Listed here
+      // too so the guards cannot disagree about which files are clean.
+      'src/memory.ts',
       // ⚠️ `src/have.ts` is deliberately ABSENT from this list, and pretending
       // otherwise would make the test a lie. It has held `isLinked` — a
       // service-account read of the same /link document — since long before
