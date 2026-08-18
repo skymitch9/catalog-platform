@@ -306,25 +306,86 @@ export function readProgressRecord(raw, nowMs) {
  * function cannot name, and it is reported as its own row instead of being
  * silently folded into a lane it might not belong to.
  *
- * ⚠️ THE GPU BUCKET IS NOT SPLIT INTO reviewed/rest. That split lives in
- * build_queue()'s tier 4 vs tier 5 and appears nowhere on disk. Reporting a
- * guessed `audiobook-with-review` count would be exactly the invented figure
- * this whole surface exists to avoid, so the bucket is reported whole with a
- * note saying the split is not knowable from here.
+ * ⚠️ THE GPU BUCKET IS SPLIT INTO reviewed/rest ONLY WHEN THE INGESTER EXPORTS
+ * THE SPLIT, and never otherwise. That split lives in build_queue()'s tier 4 vs
+ * tier 5. Until 2026-08-18 it appeared nowhere on disk, so this file reported
+ * the bucket whole and said the split was not knowable — the right answer then,
+ * because a guessed `audiobook-with-review` count is exactly the invented figure
+ * this surface exists to avoid.
+ *
+ * Now `app/tools/ingest_books.py` writes `estate-training-data/queue_summary.json`
+ * at run start, counting build_queue()'s own tiers, and `splitAudiobookLane()`
+ * below reads it. ⚠️ THE EXPORT IS STILL NOT TRUSTED ON SIGHT — it is a separate
+ * artefact with its own clock and can describe a DIFFERENT queue than the log
+ * line beside it (a `--cpu-only` or `--limit` run filters the work list the log
+ * reports, and a summary left over from an earlier run describes a backlog that
+ * has since moved). So the split is taken only when the export's own arithmetic
+ * agrees with the measured GPU bucket, and the whole-bucket row is what happens
+ * in every other case. Absent, stale, malformed and disagreeing all land on the
+ * same safe answer, which is the pre-2026-08-18 behaviour unchanged.
  */
-export function queueRows(queue, needsOcr) {
+
+/**
+ * The reviewed/rest rows for the GPU bucket, or null to report it whole.
+ *
+ * ⚠️ THE EQUALITY CHECK IS THE WHOLE GUARANTEE, and it is the same idiom the
+ * CPU bucket uses below: two numbers computed by different code at different
+ * moments are allowed to name one lane only when they agree. `reviewed + rest`
+ * must equal the GPU bucket the ingester logged. If build_queue() gains a tier 7
+ * that needs the GPU, this arithmetic stops matching and the page falls back to
+ * the honest whole bucket instead of quietly under-reporting the backlog.
+ */
+function splitAudiobookLane(queue, summary) {
+  if (!summary || typeof summary !== 'object') return null;
+  const lanes = summary.lanes;
+  if (!lanes || typeof lanes !== 'object') return null;
+
+  const reviewed = lanes['audiobook-with-review'];
+  const rest = lanes.audiobook;
+  // ⚠️ `typeof === 'number'`, not `Number(...)`: `Number(null)` is 0, which
+  // would turn "the exporter could not count this tier" into a measured zero.
+  // Same trap readProgressRecord documents, same defence.
+  if (typeof reviewed !== 'number' || !Number.isFinite(reviewed) || reviewed < 0) return null;
+  if (typeof rest !== 'number' || !Number.isFinite(rest) || rest < 0) return null;
+  if (reviewed + rest !== queue.gpu) return null;
+
+  return [
+    {
+      lane: 'audiobook-with-review',
+      count: reviewed,
+      note:
+        'Audiobooks somebody has reviewed — build_queue() tier 4, which runs BEFORE the ' +
+        'rest of the shelf. Counted by the ingester at run start and checked against the ' +
+        `GPU bucket it logged (${reviewed} + ${rest} = ${queue.gpu}).`,
+    },
+    {
+      lane: 'audiobook',
+      count: rest,
+      note:
+        'The rest of the audio shelf — build_queue() tier 5, transcribed after every ' +
+        'reviewed book is done.',
+    },
+  ];
+}
+
+export function queueRows(queue, needsOcr, summary = null) {
   if (!queue) return [];
   const rows = [];
   const known = Number.isFinite(needsOcr) ? needsOcr : null;
 
-  rows.push({
-    lane: 'audiobook',
-    count: queue.gpu,
-    note:
-      "The ingester's GPU bucket — audiobooks still to transcribe. Which of them " +
-      'have reviews (the tier that runs first) is decided inside build_queue() and ' +
-      'is not written down anywhere this page can read, so it is not split out here.',
-  });
+  const split = splitAudiobookLane(queue, summary);
+  if (split) {
+    rows.push(...split);
+  } else {
+    rows.push({
+      lane: 'audiobook',
+      count: queue.gpu,
+      note:
+        "The ingester's GPU bucket — audiobooks still to transcribe. Which of them " +
+        'have reviews (the tier that runs first) is decided inside build_queue() and ' +
+        'the run that logged this queue did not export the split, so it is not split out here.',
+    });
+  }
 
   if (known !== null && queue.cpu === known) {
     rows.push({
@@ -398,6 +459,9 @@ function historyRow(bookId, entry, titles) {
  * @param {object|null} [input.receipt]    the newest receipts/*.json
  * @param {object|null} [input.lock]       { present, heldSinceMs }
  * @param {object|null} [input.progress]   parsed work/transcribe_progress.json
+ * @param {object|null} [input.queueSummary] parsed queue_summary.json — the
+ *        ingester's own per-tier counts. Optional by design: absent means the
+ *        audiobook lane is reported whole, never that a tier is empty.
  * @param {string} input.stateReadAt    ISO — when ingest_state.json was read
  * @param {number} input.nowMs
  * @param {number} [input.maxHistory]
@@ -411,6 +475,7 @@ export function buildProcessingSection(input) {
     receipt = null,
     lock = null,
     progress = null,
+    queueSummary = null,
     stateReadAt,
     nowMs,
     maxHistory = MAX_HISTORY,
@@ -520,5 +585,10 @@ export function buildProcessingSection(input) {
   );
   packs.note = `${notes.join('. ')}.`;
 
-  return { in_flight, queue: queueRows(latestQueueLine(nightly), needsOcr), packs, history };
+  return {
+    in_flight,
+    queue: queueRows(latestQueueLine(nightly), needsOcr, queueSummary),
+    packs,
+    history,
+  };
 }

@@ -75,6 +75,18 @@ const LOCK_PATH = join(CATALOG_ROOT, 'output_files', 'ingest_books.lock');
  * hand-run `--m4b` chain — and a hand run writes no nightly log line at all.
  */
 const PROGRESS_PATH = join(TRAINING_ROOT, 'work', 'transcribe_progress.json');
+/**
+ * build_queue()'s own per-tier counts, written by `app/tools/ingest_books.py`
+ * at run start. It is what lets the page separate the reviewed audiobooks
+ * (tier 4, which transcribe first) from the rest of the shelf (tier 5).
+ *
+ * ⚠️ OPTIONAL, AND UNREADABLE MEANS THE LANE IS REPORTED WHOLE — never that a
+ * tier is empty. It is also NOT deleted between runs, so it can outlive the
+ * queue it describes; processing-board.mjs therefore checks its arithmetic
+ * against the GPU bucket in the log before believing it, and this reader
+ * deliberately does no validation of its own (one place decides, not two).
+ */
+const QUEUE_SUMMARY_PATH = join(TRAINING_ROOT, 'queue_summary.json');
 
 const DEFAULT_BOARD_FILE = join(REPO_ROOT, '.local', 'agent-board.json');
 const PUSHER = join(REPO_ROOT, 'scripts', 'push-agent-board.mjs');
@@ -256,6 +268,7 @@ async function main() {
     // The transcriber writes it tmp-then-rename so a torn read should be
     // impossible, but "should be" is not a guarantee worth a wrong percentage.
     progress: readJson(PROGRESS_PATH),
+    queueSummary: readJson(QUEUE_SUMMARY_PATH),
     stateReadAt,
     nowMs: Date.now(),
     maxHistory: args.maxHistory,

@@ -153,6 +153,55 @@ test('no queue line means NO ROWS — the page says "unknown, not zero" for itse
   assert.deepEqual(queueRows(null, 25), []);
 });
 
+// --- the reviewed/rest split -----------------------------------------------
+// The ingester exports build_queue()'s tier counts; this page may use them only
+// when their arithmetic matches the GPU bucket it already measured.
+
+test('the reviewed split appears when the ingester exports it and the numbers agree', () => {
+  const rows = queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25, {
+    lanes: { 'audiobook-with-review': 21, audiobook: 1018 },
+  });
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['audiobook-with-review'].count, 21);
+  assert.equal(byLane.audiobook.count, 1018);
+  assert.match(byLane['audiobook-with-review'].note, /21 \+ 1018 = 1039/);
+  // The CPU lanes must be untouched by the split.
+  assert.equal(byLane['deferred-pdf'].count, 25);
+  assert.equal(byLane.epub.count, 0);
+});
+
+test('⚠️ a split whose arithmetic does NOT match the GPU bucket is refused, not shown', () => {
+  // 21 + 900 = 921, but the ingester logged 1039 on the GPU. The export
+  // describes a different queue (an older run, or a tier this code cannot see),
+  // so the honest answer is the whole bucket.
+  const rows = queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25, {
+    lanes: { 'audiobook-with-review': 21, audiobook: 900 },
+  });
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane.audiobook.count, 1039, 'the measured bucket wins over a disagreeing export');
+  assert.ok(!('audiobook-with-review' in byLane));
+});
+
+test('⚠️ a null tier count is NOT zero — Number(null) would make it a measured 0', () => {
+  const rows = queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25, {
+    lanes: { 'audiobook-with-review': null, audiobook: 1039 },
+  });
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.ok(!('audiobook-with-review' in byLane), 'an uncounted tier must never render as "0 reviewed"');
+  assert.equal(byLane.audiobook.count, 1039);
+});
+
+test('a missing, malformed or empty queue summary leaves the pre-export behaviour exactly as it was', () => {
+  const whole = queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25);
+  for (const bad of [null, undefined, {}, { lanes: null }, { lanes: {} }, 'nope', []]) {
+    assert.deepEqual(
+      queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25, bad),
+      whole,
+      `a ${JSON.stringify(bad)} summary must not change a single row`,
+    );
+  }
+});
+
 const STATE = {
   version: 1,
   books: {
