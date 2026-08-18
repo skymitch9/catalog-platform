@@ -36,12 +36,21 @@
 > | **The three store lists are now guarded by a test**, not by a comment | §3 |
 > | **"8 generations" was 2 because the system is young**, not a prune bug | §3 |
 >
-> ⚠️ **NOT changed, and still open — these need the owner's hands**, not a
-> code change. All three are argued in [`RECOVERY.md`](RECOVERY.md) §9:
-> a `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can actually reach (§7 of that
-> file — a Firestore restore is blocked from this machine today), an
-> off-Cloudflare copy of `estate-backups`, and one throwaway remote-import
-> drill to close the largest unverified step.
+> ✅ **ALL THREE OF THOSE ARE NOW CLOSED OR ONE CLICK AWAY (2026-08-18, second
+> pass).** This paragraph used to read *"NOT changed, and still open — these
+> need the owner's hands"* and listed three items. Current state, all argued in
+> [`RECOVERY.md`](RECOVERY.md) §9:
+>
+> | Was open | Now |
+> |---|---|
+> | A `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can reach | ✅ **CLOSED — and the premise was wrong.** ⚠️ The claim that *"a Firestore restore is blocked from this machine"* was **false**: two working copies were already here, gitignored, and one authenticated a live Firestore read on 2026-08-18. RECOVERY.md §7a |
+> | An off-Cloudflare copy of `estate-backups` | ✅ **CLOSED 2026-08-18** — the mirror, RECOVERY.md §2a |
+> | One throwaway remote-import drill | ✅ **DRILLED 2026-08-18** — a real remote D1 created, imported from the mirror's own bytes, verified 4/4 tables, deleted. RECOVERY.md §3c-drill |
+>
+> ⏳ **What genuinely remains** is one console click: a service-account key for
+> the new `estate-restore-drill` Firebase project, which turns the Firestore
+> `--commit` path (§5 below) from unrehearsed into rehearsed. RECOVERY.md §4.3b
+> has the clicks and the commands.
 >
 > **Proof run for all of the above** (`target=all`, run
 > [`32111218016`](https://github.com/skymitch9/catalog-platform/actions/runs/32111218016),
@@ -622,6 +631,15 @@ it is lossless, merely not self-describing, and changing it would invalidate
 every backup already in `estate-backups`. The one ambiguity accepted (a genuine
 map whose only two keys are `_seconds`/`_nanoseconds`) is argued in that
 module's header. **[RECOVERY.md](RECOVERY.md) §4.2** has the original evidence.
+
+🟡 **UPDATE 2026-08-18 — there IS a rehearsal target now.** The paragraph below
+says *"this project has no sandbox/staging Firestore instance, so there is no
+target to rehearse a live write against that isn't the real thing."* That was
+true when written and is not any more: **`estate-restore-drill`** exists, with
+its own `(default)` Firestore database, created entirely from the CLI
+([`RECOVERY.md`](RECOVERY.md) §4.3a). The `--commit` path is still unrehearsed,
+but it is now blocked on one service-account key download (§4.3b of that file),
+not on the absence of anywhere safe to point it.
 
 **Not live-tested tonight, stated plainly:** the dry-run path (argument
 parsing, path decoding, listing what would be touched) was run against the

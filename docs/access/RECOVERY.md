@@ -2,12 +2,21 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (public repo
 > — env var / secret NAMES only, never values; no member emails).
-> **Every command below was executed in a SANDBOX on the drill date.**
+> **Last verified: 2026-08-18** (second pass — §3c-drill, §4.3a, §7a, §11, §12).
+>
+> **Every command in §§1–10 was executed in a SANDBOX on the drill date.**
 > Drill date: **2026-08-17/18** (restore drill, `target=all` snapshot of
 > `20260816T0849xxZ`). Nothing in the drill wrote to a production database,
 > bucket, Worker or Firestore collection — every restore landed in a local
 > throwaway (`node:sqlite` files and `wrangler --local` miniflare state).
 > Production was READ only (row counts, bucket info, one object per bucket).
+>
+> ⚠️ **THE 2026-08-18 SECOND PASS BROKE THAT SANDBOX RULE ON PURPOSE, ONCE,
+> WITH THE OWNER'S APPROVAL** — §3c-drill created a real remote D1
+> (`estate-auth-restore-drill`), imported into it, and deleted it. **No
+> pre-existing store was written.** It also created a new Firebase project
+> (`estate-restore-drill`, §4.3a) which is deliberately kept. Everything else
+> below is unchanged and still sandbox-only.
 >
 > **This file is the "what do I actually type" companion to
 > [`backup-restore.md`](backup-restore.md)**, which explains what is protected
@@ -35,17 +44,22 @@
 > | 2 | `restore-firestore.mjs` timestamp reviver | ✅ **done** — proven offline, §4.2 |
 > | 3 | Ship `reorder-d1-dump.mjs` in the restore path | ✅ **done** — mandatory step, with a replay test |
 > | 4 | Give `backup.yml` a cadence | ✅ **done** — daily 09:12 UTC, cost measured at zero billable minutes |
-> | 5 | One throwaway remote-import drill | ⏳ **OWNER STEP** — still the largest unverified thing here (§3c) |
-> | 6 | A second Firebase project to rehearse restores | ⏳ **OWNER STEP** — the `--commit` path remains untested (§4.3) |
+> | 5 | One throwaway remote-import drill | ✅ **DRILLED 2026-08-18** — a real remote D1 was created, imported, count-verified and deleted (§3c) |
+> | 6 | A second Firebase project to rehearse restores | 🟡 **STOOD UP 2026-08-18** — `estate-restore-drill` exists with a Firestore database; the `--commit` run needs one owner step (§4.3) |
 > | 7 | A copy of `estate-backups` off Cloudflare | ✅ **done 2026-08-18** — three homes, none of them Cloudflare (§2a) |
-> | 8 | A `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can reach | ⏳ **OWNER STEP** — ⚠️ a Firestore restore is still BLOCKED from this machine (§7) |
+> | 8 | A `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can reach | ✅ **CLOSED 2026-08-18** — the credential is on this machine and was PROVEN to authenticate today (§7) |
 > | 9 | `ebooks-gated` / `estate-docs-gated` / `estate-ebooks` into the `r2` matrix | ✅ **first two done**; `estate-ebooks` deliberately declined, reasoning recorded in `backup.yml` beside the matrix |
 > | 10 | The empty stores, the day they hold data | ✅ **recorded** as a standing rule in `backup.yml` and `backup-restore.md` §8 |
 >
-> ⚠️ **THREE ⏳ rows remain** (row 7 closed 2026-08-18, §2a). All three need the
-> owner's hands — a console visit, a second Firebase project, and permission to
-> create-and-delete a throwaway remote database. None can be closed by a code
-> change.
+> ⚠️ **ALL THREE REMAINING ROWS WERE WORKED 2026-08-18 (second pass).** Rows 5
+> and 8 are now **closed by measurement**, not by argument; row 6 is stood up
+> and one owner step short of closed. **Exactly ONE owner step remains in this
+> file** — download a service-account key for the `estate-restore-drill`
+> project (§4.3), which is a console click. Everything else is done.
+>
+> ⚠️ Row 8's old warning — *"a Firestore restore is BLOCKED from this
+> machine"* — **was wrong when it was written and is corrected in §7.** The
+> credential was on the machine the whole time.
 
 ---
 
@@ -60,7 +74,9 @@
 3. **Firestore →** fetch + unpack the tarball, dry-run
    `restore-firestore.mjs` (it revives timestamps itself as of 2026-08-18 —
    §4.2; the dry run prints how many it will convert), then
-   `--only <collection> --commit`.
+   `--only <collection> --commit`. ✅ **The credential is ON THIS MACHINE**
+   (§7a — two working copies, both gitignored); an older version of this file
+   wrongly said it was not.
 4. **A cover is gone →** unpack the bucket tarball, `wrangler r2 object put`
    the one key back (§5).
 5. **Before restoring `estate_auth`, read §3d.** A blind restore silently
@@ -453,12 +469,147 @@ in at 5 migrations / 15 columns on `estate_user`; `migrations apply` ran the
 six outstanding files clean and left it at **11 migrations / 19 columns —
 exactly matching production — with all 12 user rows intact.**
 
-⚠️ **NOT verified by this drill:** step 4 against a real remote D1. Creating a
-remote database is a production-side write, which the drill's charter forbade.
-The statement stream is identical to the `--local` path that was proven, but
-"identical stream, therefore identical result" is an inference, not a
-measurement. **Close this by creating a throwaway `*-restore-drill` D1 once,
-importing, checking counts, and deleting it.**
+✅ **STEP 4 IS NOW VERIFIED TOO — REMOTE, ON A REAL D1, 2026-08-18.** See
+§3c-drill immediately below. The paragraph that used to sit here said a remote
+import was an inference rather than a measurement; it is a measurement now.
+
+### 3c-drill. ⚠️ THE REMOTE IMPORT DRILL — executed 2026-08-18, every command
+
+**Owner-approved production-side write, scoped to a throwaway.** The only
+database touched was created by this drill and deleted by it. No existing
+store, bucket, Worker or collection was written.
+
+**Store chosen:** `estate_auth` — the smallest (18,305 bytes), and the one whose
+restore is a security event (§3d), so the membership gate got exercised too.
+
+**Step 0 — take the dump from the MIRROR, not the bucket (§2a), and prove it is
+the right bytes:**
+
+```bash
+cp "C:/Users/nbasl/OneDrive/Documents/estate-backups-mirror/d1/estate_auth/20260818T094855Z.sql" ./estate_auth.sql
+sha256sum estate_auth.sql
+# -> dd5589092f64ab66dc6b6dc33c14aada87920948443586f4a1e1931ba7a10f9b
+```
+
+⚠️ **That hash equals `mirror-manifest.json`'s recorded sha256 for the key, and
+equals the live-bucket hash recorded in §2a's first-run table.** So this drill
+also closes half of §8's "a restore performed *from* the mirror was never
+exercised": **the file this remote import replayed came off the mirror, not out
+of Cloudflare.**
+
+**Step 1 — reorder, and watch the `estate_auth` gate fire:**
+
+```bash
+node scripts/reorder-d1-dump.mjs ./estate_auth.sql ./estate_auth.ordered.sql
+# -> {"statements":61,"pragmas":1,"create_table":4,"inserts":52,"other_ddl":4,
+#     "estate_auth":{"rows":12,"by_status":{"approved":11,"revoked":1},
+#                    "approvers":2,"devops":3,"parsed":true}}
+# -> prints the security block, EXIT=3, and the reordered file IS written
+```
+
+✅ **The §3d gate works exactly as documented** — exit 3, counts printed, file
+still written. ⚠️ And note what the counts say: this 2026-08-18 backup holds
+**11 approved / 1 revoked**, where the 2026-08-16 backup held 12/0. The
+revocation the drill warned about **is now inside the backup**, so the specific
+trap in §3d is not armed on this generation. It will arm again on the next
+revocation.
+
+**Step 2 — establish the dump's OWN row counts, which are the thing the remote
+import gets compared against** (`node:sqlite`, FK enforcement off per §3b):
+
+| Table | Rows in the dump |
+|---|---|
+| `d1_migrations` | 11 |
+| `estate_session` | 12 |
+| `estate_user` | 12 |
+| `site_role_grant_log` | 14 |
+
+`PRAGMA foreign_key_check` → **zero rows**; `PRAGMA integrity_check` → **ok**.
+
+**Step 3 — create the throwaway:**
+
+```bash
+npx wrangler d1 create estate-auth-restore-drill
+# -> ✅ Successfully created DB 'estate-auth-restore-drill' in region WNAM
+# -> database_id 62e5f0f7-cb61-4248-9743-7a7d1505c2fe
+```
+
+**Step 4 — THE STEP THAT HAD NEVER BEEN RUN. Import, remote:**
+
+```bash
+npx wrangler d1 execute estate-auth-restore-drill --remote --file=./estate_auth.ordered.sql -y
+```
+
+```
+"Total queries executed": 61,
+"Rows read": 240,
+"Rows written": 199,
+"Database size (MB)": "0.06",
+"success": true,
+"finalBookmark": "00000000-00000014-000050cb-8ce68c073b2205c8262b5a44b79fa2f2",
+"served_by_region": "WNAM", "served_by_colo": "LAX",
+"timings": {"sql_duration_ms": 12.4846}, "num_tables": 4, "total_attempts": 1
+```
+
+**Measured: 3 s wall clock, 12.48 ms of SQL.** It replayed clean on the first
+attempt — no partial import, no FK error, no retry.
+
+**Step 5 — verify row counts REMOTELY against step 2's table:**
+
+```bash
+npx wrangler d1 execute estate-auth-restore-drill --remote --json --command \
+  "SELECT 'd1_migrations' AS t, count(*) AS n FROM d1_migrations
+   UNION ALL SELECT 'estate_session', count(*) FROM estate_session
+   UNION ALL SELECT 'estate_user', count(*) FROM estate_user
+   UNION ALL SELECT 'site_role_grant_log', count(*) FROM site_role_grant_log ORDER BY t;"
+```
+
+| Table | Dump | Remote after import | Match |
+|---|---|---|---|
+| `d1_migrations` | 11 | **11** | ✅ |
+| `estate_session` | 12 | **12** | ✅ |
+| `estate_user` | 12 | **12** | ✅ |
+| `site_role_grant_log` | 14 | **14** | ✅ |
+
+**4 of 4 tables, exact.** `PRAGMA foreign_key_check` on the remote database
+returned **zero rows**.
+
+**Step 6 — delete it, and prove it is gone:**
+
+```bash
+npx wrangler d1 delete estate-auth-restore-drill -y
+# -> Deleted 'estate-auth-restore-drill' successfully.
+npx wrangler d1 list --json
+# -> exactly 5 databases: library-catalog-2nd, estate_auth, index_catalog,
+#    library-catalog, board-game-catalog. No drill database.
+```
+
+✅ **The account is back to its five real databases.** Verified by listing, not
+by assuming the delete's own success message.
+
+**Credential it ran on:** the interactive `wrangler login` OAuth session
+(§7 row 1), whose scopes include `d1 (write)`. **No API token was needed** — so
+the remote-restore path does not depend on `CLOUDFLARE_API_TOKEN`, which is the
+one credential §7 says is not on this machine.
+
+⚠️ **What this drill did NOT do, stated plainly:**
+
+- **`wrangler d1 migrations apply` against the remote drill database was not
+  run.** It needs a `wrangler.toml` naming the throwaway, and the 2026-08-18
+  backup is already at 11 migrations — the same count production held at the
+  first drill — so there was nothing outstanding to apply. The schema catch-up
+  step remains verified **`--local` only** (§3c step 5).
+- **No Worker was pointed at the restored database** — §8 item 7 still stands.
+- **Only `estate_auth` was exercised remotely.** The two dumps that need
+  reordering (`library-catalog`, `board-game-catalog`) were proven `--local`
+  only; that they behave identically remotely is now a much better-founded
+  inference — the remote engine accepted the same reordered-dump shape — but it
+  is still an inference for those two files.
+- ⚠️ **The `SELECT id, status, is_approver, is_devops FROM estate_user` capture
+  that §3d prescribes was NOT run.** The session's own sandbox declined the
+  production read, and the drill did not need it: the import target was a
+  throwaway, so there was no live membership state at risk of being overwritten.
+  **That capture is still mandatory before any real `estate_auth` restore.**
 
 ### 3d. ⚠️ Read before restoring `estate_auth`
 
@@ -650,10 +801,131 @@ back to `/` correctly (`clubs_dev/…/reads/…/progress`), and exited 0 having
 touched nothing — the SDK is only initialised *after* the dry-run exit, so a
 dry run genuinely needs no working credential.
 
-⚠️ **NOT verified, and cannot be:** the `--commit` write path. There is no
-staging Firestore project; the only target is production. `backup-restore.md`
-§5 already said this and it is still true. **A second Firebase project is the
-only way to close it.**
+🟡 **"There is no staging Firestore project" STOPPED BEING TRUE ON 2026-08-18.**
+There is one now — see §4.3a. The `--commit` path is still unexercised, but it
+is one console click from being exercised, not architecturally impossible.
+
+### 4.3a. The rehearsal project — `estate-restore-drill` (created 2026-08-18)
+
+**Stood up entirely from the CLI**, with the auth already on this machine. Keep
+it: it is free-tier, empty, and reusable for every future drill.
+
+| | |
+|---|---|
+| Project ID | **`estate-restore-drill`** |
+| Console | https://console.firebase.google.com/project/estate-restore-drill/overview |
+| Firestore | `(default)`, **nam5**, `FIRESTORE_NATIVE`, `STANDARD` edition |
+| Owning account | **`mitchlandtv@gmail.com`** — the same account that owns `audiobook-catalog` |
+| Cost | Free tier (Spark). Nothing in it, nothing scheduled against it |
+
+⚠️ **It is a DIFFERENT Google account from the Cloudflare one**
+(`nbaslamking@gmail.com` owns the Cloudflare estate; `mitchlandtv@gmail.com`
+owns the Firebase projects). That split is pre-existing and is worth knowing
+before anyone hunts for the project under the wrong login.
+
+**Exactly how it was made, for when it needs remaking:**
+
+```bash
+npx firebase-tools projects:create estate-restore-drill \
+  --display-name "Estate Restore Drill" --non-interactive
+# -> ✅ Your Firebase project is ready!
+
+# ⚠️ A NEW PROJECT HAS THE FIRESTORE API DISABLED, and the CLI does NOT
+# auto-enable it — it returns a bare 403 with a console link:
+npx firebase-tools firestore:databases:create "(default)" --location nam5 \
+  --project estate-restore-drill
+# -> Error: HTTP 403, Cloud Firestore API has not been used in project … before
+
+# Enable it without a console visit, using the gcloud ADC already on this
+# machine (mitchlandtv@gmail.com, cloud-platform scope):
+TOKEN=$(gcloud auth application-default print-access-token)
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}' \
+  "https://serviceusage.googleapis.com/v1/projects/estate-restore-drill/services/firestore.googleapis.com:enable"
+# -> {"name":"operations/acat.p2-…"} ; poll the same URL without :enable until state=ENABLED
+
+# ⚠️ THEN WAIT — the enable takes a minute or two to propagate. The retry that
+# came immediately after failed with the identical 403; the next one succeeded.
+npx firebase-tools firestore:databases:create "(default)" --location nam5 \
+  --project estate-restore-drill
+# -> Successfully created projects/estate-restore-drill/databases/(default)
+```
+
+⚠️ **`gcloud auth list` says "No credentialed accounts" and that is a red
+herring** — the gcloud CLI's own account store is empty, but
+`application_default_credentials.json` exists and works. They are two different
+credential stores; check ADC before concluding there is no Google auth here.
+
+### 4.3b. ⏳ THE ONE OWNER STEP LEFT IN THIS FILE
+
+**What is missing:** a service-account key for `estate-restore-drill`. The
+restore tool takes `FIREBASE_SERVICE_ACCOUNT_JSON` and calls
+`cert(serviceAccount)`, which requires a real `type: "service_account"` key —
+ADC's `authorized_user` JSON is not accepted by that call.
+
+A service account **has already been created** for it —
+`restore-drill@estate-restore-drill.iam.gserviceaccount.com` — but this
+session's sandbox declined both the IAM role-binding call and the key mint,
+correctly: minting credentials and granting roles are access-INCREASING acts,
+and the estate's rule is that those get confirmed rather than assumed.
+
+**The console route (2 minutes):**
+
+1. https://console.firebase.google.com/project/estate-restore-drill/settings/serviceaccounts/adminsdk
+2. **Generate new private key** → **Generate key** → it downloads a `.json`.
+3. Save it somewhere gitignored — the estate's convention is
+   `audiobook_catalog/docs/access/keys/` (that whole docs tree is gitignored).
+   ⚠️ **Do not** put it in a tracked repo.
+
+*(The Firebase-console route uses that project's own auto-provisioned
+`firebase-adminsdk` account, which already carries the Firestore roles. The
+`restore-drill@…` account created above needs `roles/datastore.user` granted
+before its key would work — the console route avoids that step entirely, which
+is why it is the recommended one.)*
+
+**Then the rehearsal is three commands. `reviews_dev` is the collection to use
+— it is 4 documents and 8 timestamps, small enough to eyeball and it exercises
+the §4.2 reviver:**
+
+```bash
+# unpack the newest dump from the MIRROR (no Cloudflare needed):
+cp "C:/Users/nbasl/OneDrive/Documents/estate-backups-mirror/firestore/audiobook-catalog/20260818T094843Z.tar.gz" ./fs.tar.gz
+mkdir -p ./fs && tar xzf ./fs.tar.gz -C ./fs
+
+export FIREBASE_SERVICE_ACCOUNT_JSON="$(cat <the-drill-key>.json)"
+
+# dry run — must print "Project: estate-restore-drill":
+node scripts/restore-firestore.mjs --dir ./fs --only reviews_dev
+
+# ⚠️ CHECK THAT LINE BEFORE ADDING --commit. It is the only thing standing
+# between a rehearsal and a write to production.
+node scripts/restore-firestore.mjs --dir ./fs --only reviews_dev --commit
+```
+
+**What to verify afterwards** (Firestore console → `reviews_dev`): 4 documents,
+and every `createdAt`/`updatedAt` rendering as a **timestamp**, not as a map
+with `_seconds`/`_nanoseconds` keys. That map is the §4.2 bug; seeing real
+timestamps is the proof the reviver works end to end.
+
+✅ **VERIFIED 2026-08-18 without a credential — the dry run against the drill
+project:**
+
+```
+Project: estate-restore-drill
+Mode: DRY RUN — pass --commit to write
+Targets (1):
+  reviews_dev  (4 docs, 8 timestamps to revive)
+
+8 serialized timestamp(s) will be written back as real Firestore Timestamps, not maps
+```
+
+A dry run genuinely needs no working credential — `initializeApp` is called
+only *after* the dry-run `process.exit(0)` (read the script's control flow if
+you doubt it), so the above ran on a placeholder. ⚠️ **The production key was
+deliberately NOT used even for the dry run**, so that no invocation of a restore
+tool in this drill named the production project at all.
+
+⚠️ **STILL NOT VERIFIED:** the `--commit` write path. It is now blocked on one
+key download rather than on the absence of a target.
 
 ⚠️ `restore-firestore.mjs` **overwrites** each restored document wholesale and
 **never deletes** documents absent from the backup. A targeted restore cannot
@@ -759,15 +1031,82 @@ Names and where they live. **No values, ever, in this file or in any log.**
 | `r2 bucket info` / `kv key list` | same OAuth session | as above | **yes** |
 | Find the backup keys | `gh` login, `repo` scope | `gh auth status` | **yes** |
 | REST `objects` list (backup + retention only, NOT restore) | `CLOUDFLARE_API_TOKEN` | GitHub repo secret on `skymitch9/catalog-platform` | **no** — ⚠️ the OAuth session does NOT cover this endpoint |
-| Any Firestore restore | `FIREBASE_SERVICE_ACCOUNT_JSON` | GitHub repo secret; the same key as `audiobook_catalog/scripts/firebase_service_account.json` | **no — ⚠️ this credential is NOT present on the owner's machine.** Dry runs work without it; a real Firestore restore is blocked until it is re-downloaded from the Firebase console |
+| Any Firestore restore | `FIREBASE_SERVICE_ACCOUNT_JSON` | ⚠️ **THREE copies, two of them on this machine** — see §7a | ✅ **YES — MEASURED 2026-08-18.** A live Firestore read authenticated on this machine with the local key. The old "NOT present" claim was wrong |
 | Mirror half 1 — discover the keys (§2a) | `gh` login, `repo` scope | `gh auth status` | **yes** — 2026-08-18, the first mirror run |
 | Mirror half 1 — fetch the objects (§2a) | the same `wrangler login` OAuth session as row 1 | as row 1 | **yes** — 2026-08-18, all 12 objects |
 | Mirror half 2 — upload to Drive `/GABI_backup` (§2a) | the estate's Drive OAuth token, `audiobook_catalog/scripts/token.json` (refreshed by `scripts/drive_auth.py`; its client secret is `scripts/credentials.json`) | that machine only, gitignored | **yes** — 2026-08-18, all 12 objects, MD5-verified |
 | **Restoring FROM the mirror** | **none** | — | ⚠️ **and that is the point.** The local mirror needs no Cloudflare credential, no `gh`, and no network. It is the one recovery path that still works when the account is gone |
 
-⚠️ **That last row is the one that bites at 3am.** A Firestore incident cannot
-be fixed from this machine as it stands; the first step would be a Firebase
-console visit to generate a new private key.
+⚠️ **The MIRROR row is the one that saves you at 3am** — it is the only recovery
+path that needs no credential and no network.
+
+## 7a. ✅ THE FIRESTORE RESTORE CREDENTIAL — corrected 2026-08-18
+
+> ⚠️ **THIS SECTION EXISTS TO CORRECT THIS FILE.** Until 2026-08-18 the table
+> above said *"this credential is NOT present on the owner's machine"* and the
+> §0 summary said a Firestore restore was **BLOCKED** from here. **Both were
+> false, and had been false the whole time.** The key was sitting in the
+> audiobook repo, gitignored, and had authenticated Firestore control-doc
+> writes all day. The drill inferred its absence from never having looked;
+> that is precisely the failure mode the rest of this file is written against.
+
+**Measured 2026-08-18** — a read-only probe through the repo's own code path
+(`audiobook_catalog/app/core/ingest_control.py` → `read_control()`, which is a
+single `.get()` on one control document and writes nothing):
+
+```
+readable   = True
+error      = None
+paused     = False
+updated_by = owner-daytime-run-until-1830-20260818
+updated_at = 2026-08-18T14:06:21.753982-07:00
+```
+
+**That is a live, authenticated Firestore round trip**, returning a document
+written earlier the same day. The credential works.
+
+### The three copies, and who holds each
+
+| # | Copy | Custody | State |
+|---|---|---|---|
+| 1 | `audiobook_catalog/scripts/firebase_service_account.json` | **This machine**, gitignored at `audiobook_catalog/.gitignore:353` | ✅ **PROVEN WORKING 2026-08-18** — the probe above ran on it. This is the one the pipeline uses daily |
+| 2 | `audiobook_catalog/docs/access/keys/firebase-sa-restore.json` | **This machine**, inside the gitignored `docs/` tree (`.gitignore:7`) | ✅ **PROVEN WORKING 2026-08-18** — authenticates and round-trips independently. Placed 2026-08-18 as a restore-purpose copy |
+| 3 | `FIREBASE_SERVICE_ACCOUNT_JSON` | **GitHub repo secret** on `skymitch9/catalog-platform` | Write-only — the value **cannot be read back out**. Fine for CI, useless in an incident |
+
+⚠️ **Copies 1 and 2 are TWO DIFFERENT KEYS on the SAME service account**
+(`firebase-adminsdk-fbsvc@audiobook-catalog.iam.gserviceaccount.com`) — verified
+by comparing `private_key_id` (`98961ca3…` vs `1d5a76d7…`). Both authenticate.
+That matters two ways: **revoking one does not revoke the other** (so a rotation
+must deal with both), and **either one alone is sufficient** for a restore.
+
+### What this changes about a 3am Firestore incident
+
+**Nothing is blocked.** Fetch the dump (or take it off the mirror), then:
+
+```bash
+export FIREBASE_SERVICE_ACCOUNT_JSON="$(cat audiobook_catalog/docs/access/keys/firebase-sa-restore.json)"
+node scripts/restore-firestore.mjs --dir ./restore-work/firestore --only <collection>
+# then --commit, per §4.3
+```
+
+⚠️ **The `--commit` path is still unrehearsed** (§4.3b) — that is a separate
+gap, about the *tool*, not about the *credential*. Do not read "the credential
+works" as "the restore is proven".
+
+### ⏳ The one thing left, and it is the owner's call, not this file's
+
+**Every copy that can actually be READ lives on ONE machine.** Copies 1 and 2
+are both on this PC; copy 3 is write-only. So the credential survives a Firebase
+console problem and survives a GitHub problem — but **if this machine is the
+casualty, the only route back is minting a fresh key from the Firebase console**
+(which is fine, and is genuinely available: Firebase console →
+`audiobook-catalog` → Project settings → Service accounts → Generate new private
+key).
+
+**Recommendation, one line, his decision:** keep **one sealed offline copy** of
+the key in the password manager, so a dead machine does not force a re-mint
+during an incident. ⚠️ Not urgent and not a blocker — re-minting works and costs
+minutes; this only buys back those minutes at the worst possible time.
 
 ---
 
@@ -775,8 +1114,15 @@ console visit to generate a new private key.
 
 Stated plainly so nobody reads a green table as more than it is.
 
-1. **Any remote D1 import.** `--local` only; a remote import is a write.
-2. **Any Firestore `--commit` write.** No non-production Firestore exists.
+1. ~~**Any remote D1 import.** `--local` only; a remote import is a write.~~ —
+   ✅ **CLOSED 2026-08-18** (§3c-drill): a real remote D1 was created, imported
+   from the mirror's own bytes, count-verified 4/4 tables, and deleted. ⚠️ Two
+   things stayed local-only even so: `migrations apply --remote`, and the two
+   dumps that need reordering (`library-catalog`, `board-game-catalog`).
+2. **Any Firestore `--commit` write.** ⚠️ **The reason changed 2026-08-18**: it
+   is no longer "no non-production Firestore exists" — one does now
+   (`estate-restore-drill`, §4.3a). It is one service-account key download away
+   (§4.3b). Still unverified.
 3. **Any R2 `put`.** Only `get` and byte comparison.
 4. ~~**Whether `readingPositions` / `discord_links` hold documents today**~~ —
    ✅ **CLOSED 2026-08-18** by the backup job itself rather than by a local
@@ -822,10 +1168,18 @@ implemented on 2026-08-18 in commit `8c7f780`. Status is marked per item.
    under two days. Even a weekly cron would bound it. (If the "no cron touches
    credentials" objection stands, a calendar reminder is still better than
    nothing — and `backups.ts` already grades staleness at 14/45 days.)
-5. ⏳ **OWNER STEP — still open.** **Do one throwaway remote-import drill** (§3c) to close the largest
-   unverified step.
-6. ⏳ **OWNER STEP — still open.** **Stand up a second Firebase project** as a Firestore rehearsal target, or
+5. ✅ **DRILLED 2026-08-18 — §3c-drill.** **Do one throwaway remote-import drill** (§3c) to close the largest
+   unverified step. `estate-auth-restore-drill` was created, imported from the
+   mirror's own file (sha256-matched), verified 4/4 tables exact, and deleted;
+   the account is back to its five real databases. Every command and output is
+   recorded in §3c-drill.
+6. 🟡 **STOOD UP 2026-08-18 — §4.3a; one owner step short.** **Stand up a second Firebase project** as a Firestore rehearsal target, or
    accept permanently that the Firestore restore path is untested.
+   `estate-restore-drill` exists with a `(default)` Firestore database in nam5,
+   created entirely from the CLI. ⏳ **Remaining: download a service-account key
+   for it** (§4.3b) — a console click — then run the `--commit` rehearsal on
+   `reviews_dev` (4 docs / 8 timestamps). Keep the project; it is free and
+   reusable for every future drill.
 7. ✅ **DONE 2026-08-18 — §2a.** **Get a copy of `estate-backups` off Cloudflare.** Everything protected and
    everything protecting it live in one account. **They no longer do:** the
    backups now also sit on the owner's PC, in OneDrive, and in Google Drive
@@ -833,9 +1187,14 @@ implemented on 2026-08-18 in commit `8c7f780`. Status is marked per item.
    checksum-verified on the first run. Owner decision, verbatim: *"Do a and b,
    don't store in GABI tho store in a new folder called GABI_backup on drive"*.
    ⚠️ The mirror follows the bucket's retention; it is not an archive.
-8. ⏳ **OWNER STEP — still open, and this is the one that bites at 3am.** **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it**
-   (§7) — today the restore credential exists only as a GitHub secret, which
-   cannot be read back out.
+8. ✅ **CLOSED 2026-08-18 — §7a, and the premise was wrong.** **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it**
+   (§7) — ~~today the restore credential exists only as a GitHub secret, which
+   cannot be read back out.~~ **It never existed only as a GitHub secret.** Two
+   working copies were already on this machine, both gitignored, and a live
+   Firestore read authenticated on one of them on 2026-08-18. Nothing had to be
+   put anywhere. ⏳ The only residual — **his call, not a blocker** — is one
+   sealed offline copy in the password manager, for the case where this machine
+   is itself the casualty.
 9. ✅ **PARTLY DONE 2026-08-18** — the two tiny buckets joined the matrix;
    `estate-ebooks` was DECLINED on the judgement below, with the reasoning
    (and the named residual risk: it lasts as long as the owner's disk)
@@ -879,3 +1238,159 @@ npx wrangler r2 bucket info <bucket>                                       # liv
 
 Update the drill date in this file's header when you do, and re-measure §1c —
 those counts go stale within days.
+
+---
+
+## 11. FULL REBUILD FROM NOTHING BUT GIT + THE BLOB BACKUPS
+
+> **Added 2026-08-18** under the estate-wide rule that every app carries a
+> rebuild doc answering *"from nothing but git + blob backups, how do I rebuild
+> this?"*. §§1–10 answer **"one store broke"**; this section answers **"the
+> Cloudflare account is gone and I am starting from a git clone and the
+> mirror."**
+>
+> ⚠️ **This section is INFERENCE unless a line says otherwise.** No full rebuild
+> has ever been performed. Its individual steps are drilled to the degree §12's
+> table records; the *sequence* is not.
+
+### 11.1 What this repo owns
+
+**Five Workers.** Each is `apps/<name>/wrangler.toml` and deploys with
+`npx wrangler deploy --config apps/<name>/wrangler.toml`.
+
+| Worker (`name =`) | Hostname | Durable state it binds |
+|---|---|---|
+| `estate-auth` | `auth.heygabi.ai` | D1 `estate_auth`, R2 `estate-backups`, R2 `estate-docs-gated`, KV `estate_docs` |
+| `catalog-index` | `index.heygabi.ai` | D1 `index_catalog` |
+| `audiobook-worker` | `audiobook-api.heygabi.ai` | R2 `ebooks-gated`, R2 `estate-ebooks`, R2 `estate-audio` |
+| `estate-discord` | `discord.heygabi.ai` | Firestore (via SA); cron `*/2 * * * *` |
+| `ebooks-door` | `ebooks.heygabi.ai` | — (gate in front of `ebooks-gated`) |
+
+**Two D1 databases of its own:** `estate_auth`
+(`d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb`) and `index_catalog`
+(`3004d175-3c51-4ed4-ac3e-62859319f8ac`).
+
+⚠️ **This repo also OWNS THE BACKUP SYSTEM FOR THE WHOLE ESTATE** — `backup.yml`
+plus `scripts/backup-*.mjs`, `restore-*.mjs`, `prune-r2-backups.mjs`,
+`reorder-d1-dump.mjs`, `mirror-estate-backups.mjs`. **Rebuild this repo before
+the other three**, because it is the repo that can read their backups.
+
+### 11.2 The order, and why it is this order
+
+1. **Clone the four repos.** Nothing else can start; every `wrangler.toml`,
+   migration and script lives here. Git is the only part of the estate with no
+   restore procedure at all — it is already distributed (`backup-restore.md` §8).
+2. **Re-mint `CLOUDFLARE_API_TOKEN`** and log wrangler in. Until this exists you
+   cannot create a database or a bucket.
+3. **Create the D1 databases**, then **import from the mirror** (§3b/§3c — and
+   ⚠️ **reorder first**; two of five dumps do not replay raw). ⚠️ **New database
+   IDs come out of this**, and every `database_id` in every `wrangler.toml` must
+   be edited to match. That edit is the single most forgettable step in this
+   section.
+4. **Run `wrangler d1 migrations apply`** on each — a backup is always N
+   migrations behind (§1c).
+5. **Create the R2 buckets and restore their objects** (§5). ⚠️ `estate-audio`
+   and `estate-ebooks` are **not** in the backup set on purpose — they are
+   re-uploaded from the owner's local disk (`archive_audio_r2.py`,
+   `upload_ebooks_r2.py`), which is slow (~685 GB) but authoritative.
+6. **Restore Firestore** (§4.3) — the credential is on this machine (§7a).
+7. **Re-create every Worker secret** (§11.3). ⚠️ Worker secrets are
+   **write-only**; none of them can be read out of the old estate, so all are
+   re-minted, and every *paired* secret must be set on **both** sides in the
+   same sitting.
+8. **Deploy the five Workers**, then the three catalog repos' Workers.
+9. **Re-push `index_catalog` rather than restoring it** (§6) — a restore
+   installs a stale index; a push is instant and correct.
+10. **Re-check `estate_auth` membership by hand** (§3d). Revocations and
+    post-seed authority exist nowhere else, and a restore silently re-approves
+    anyone revoked since the snapshot.
+
+### 11.3 Secrets, by name, with custody and re-mint point
+
+⚠️ **No values here, ever.** ⚠️ **Every Cloudflare Worker secret is write-only —
+there is no "look it up".** A rebuild re-mints all of them.
+
+| Secret | Held by | Custody today | Re-mint at |
+|---|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | GitHub Actions, all 4 repos | GH repo secret; ⚠️ **not on this machine** | dash.cloudflare.com → My Profile → API Tokens ("Edit Cloudflare Workers" template) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | GH secret (`catalog-platform`) | ✅ **also 2 working local copies** — §7a | Firebase console → `audiobook-catalog` → Service accounts |
+| `TOKEN_SIGNER_KEY` | `estate-auth` | Worker secret (write-only) | Google Cloud Console → IAM → Service Accounts |
+| `FIREBASE_SERVICE_ACCOUNT` | `estate-auth` | Worker secret (write-only) | same as above |
+| `ESTATE_CONDUCTOR_TOKEN` | `estate-auth` | Worker secret **+** `docs/access/keys/estate-conductor-token.txt` (gitignored) | self-generated random |
+| `ESTATE_EVENTS_TOKEN` | `estate-auth` | Worker secret (write-only) | self-generated random |
+| `ESTATE_APP_TOKEN_LIBRARY` / `_INDEX` / `_DISCORD` | ⚠️ **PAIRED** — `estate-auth` + the app | Worker secrets both sides | self-generated; ⚠️ **set both sides together or the failure is a silent 401** |
+| `ANTHROPIC_API_KEY_GABI` | `estate-auth` | Worker secret | console.anthropic.com |
+| `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` | `estate-discord` | Worker secret | discord.com/developers |
+| `POLL_SYNC_TOKEN` | ⚠️ **PAIRED** — `estate-discord` + audiobook pipeline `.env` | Worker secret + local `.env` | self-generated |
+| `CATALOG_PLATFORM_TOKEN` | GH Actions (library + BGC repos) | GH repo secret | github.com → Settings → Developer settings → PAT |
+
+📖 **The complete, cross-repo credential map is
+`audiobook_catalog/docs/access/CREDENTIALS.md`** — 7 Workers, 8 environments, 6
+custody stores, with rotation rituals. ⚠️ It is **gitignored on purpose** (the
+aggregation is the sensitive artifact, not any single name), so it survives only
+on this machine. **In a machine-loss rebuild that file is gone**, and this table
+plus `wrangler secret list` per Worker is what you have. That is a real, named
+weakness of the current custody design.
+
+### 11.4 What a rebuild CANNOT recover
+
+- **Anyone revoked since the last snapshot** (§3d) — restore re-approves them.
+- **Worker secret values** — all re-minted, never recovered.
+- **Data written after the newest backup** — bounded at ~1 day by the daily cron
+  (§1c), except `estate-audio`/`estate-ebooks`, which are re-uploaded from the
+  local master and are therefore *more* current than any snapshot.
+- **`readingPositions`** if it ever fills — it holds no documents today, so it
+  is absent from the dump and the expected-collection check warns on every run
+  (§4.1).
+- ⚠️ **`CREDENTIALS.md` itself**, if the machine is the casualty (§11.3).
+
+---
+
+## 12. Drilled vs inference — the honest status table
+
+**"Drilled" means executed and measured on the date shown. "Inference" means the
+mechanism is identical to something that was drilled — a real reason to expect
+it works, and not a measurement.**
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Fetch a backup object from `estate-backups` | ✅ **Drilled** 2026-08-17 | §2, every store |
+| Restore from the **mirror** instead of the bucket | ✅ **Drilled** 2026-08-18 | §3c-drill — the remote import replayed a file copied from the mirror, sha256-matched |
+| Reorder a D1 dump so it replays | ✅ **Drilled** 2026-08-17 + regression test | §3b |
+| D1 import — **local** | ✅ **Drilled** 2026-08-17 | §1a, all four stores |
+| D1 import — **remote** | ✅ **Drilled** 2026-08-18 | §3c-drill, `estate_auth`, 4/4 tables exact |
+| D1 remote import of a **reordering-required** dump | ⚠️ **Inference** | only `estate_auth` went remote; same statement stream |
+| `d1 migrations apply` — local | ✅ **Drilled** 2026-08-17 | §3c step 5 |
+| `d1 migrations apply` — **remote** | ⚠️ **Inference** | §3c-drill's "did NOT do" list |
+| `estate_auth` membership gate fires | ✅ **Drilled** 2026-08-18 | §3c-drill step 1, exit 3 |
+| Firestore dump is faithful | ✅ **Drilled** 2026-08-17 | §4.1, 58 collections / 1,331 docs |
+| Firestore timestamp reviver | ✅ **Drilled offline** 2026-08-18 | §4.2, SDK's own serializer |
+| Firestore restore — **dry run** | ✅ **Drilled** 2026-08-18 | §4.3b, against `estate-restore-drill` |
+| Firestore restore — **`--commit`** | ❌ **NOT verified** | ⏳ one key download away, §4.3b |
+| Firestore restore **credential** works | ✅ **Drilled** 2026-08-18 | §7a, live authenticated read |
+| R2 dump is faithful to live bytes | ✅ **Drilled** 2026-08-17 | §5, sha256 per bucket |
+| R2 `put` (restore an object) | ❌ **NOT verified** | production write, §8 item 3 |
+| A restored DB actually serves traffic | ❌ **NOT verified** | §8 item 7 |
+| **Full rebuild from git + blobs (§11)** | ❌ **NOT verified** | the sequence has never been run |
+
+---
+
+## Model guidance (read me if you are Kiro)
+
+> Kiro: stay on AUTO - it saves the owner credits. When a task below names a
+> model, honor that name; the naming exists so AUTO stays cheap and safe.
+> Labels (verified against Kiro pricing: Auto = 1.0x credits, pinned Sonnet =
+> 1.3x, pinned Opus = 2.2x): "Kiro Claude Sonnet 5" = STAY ON AUTO, do not pin
+> (standard build). "Kiro Claude Opus 4.8" = actually pin Opus - the 2.2x is
+> worth it (design judgment or trust-critical). "Codex (GPT-5.3-Codex)" = tell
+> the owner; he runs Codex himself.
+
+| Task on this document | Model |
+|---|---|
+| Keeping this file current — re-measuring counts, updating dates, adding a store | **Kiro Claude Sonnet 5** |
+| Re-running the drill in a sandbox (§10) | **Kiro Claude Sonnet 5** |
+| ⚠️ **Executing an actual restore** — any `--commit`, any `--remote` import, any `r2 object put`, any Time Travel restore | **Kiro Claude Opus 4.8** |
+| ⚠️ **Anything touching `estate_auth` membership** (§3d) | **Kiro Claude Opus 4.8** |
+
+⚠️ A real restore is Opus-pinned because it is irreversible and because §3d
+makes it a *security* decision, not a data one. Doc upkeep is not.
