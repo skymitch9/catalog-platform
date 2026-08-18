@@ -915,6 +915,15 @@ tonight's hold; library.heygabi.ai/tbr shows Court of the Dead.
 
 ## 🖥️ Status-page expansion — owner asks, 2026-08-18 (execute as agent bandwidth frees)
 
+0. **Ebook-lane status semantics** (owner, 2026-08-18, verbatim intent): the
+   ebook lane shows YELLOW after a run that simply had nothing to change.
+   **A completed run with zero changes needed is GREEN.** Yellow/amber is
+   reserved for a run that TRIED to apply a change and could not (or partial
+   failure); red for a failed run. "No change is not a bug unless a change
+   was trying to come through." Find where the lane's status is computed,
+   fix the mapping, and audit the OTHER lanes for the same
+   no-op-rendered-as-warning mistake while in there.
+
 All from the owner's messages of 2026-08-18 morning; queued behind the pause-UI
 agent because they share the /status page surface.
 
