@@ -109,6 +109,7 @@ import {
   booksOn,
 } from './book-knowledge.js';
 import { audiobookApiBase } from './book-knowledge-exec.js';
+import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -364,6 +365,13 @@ app.get('/api/health', (c) =>
     // of a permission question, and these are what stops that being unlimited.
     gabi_books_max_reply_parts: BOOKS_MAX_REPLY_PARTS,
     gabi_books_passage_run_max: BOOKS_PASSAGE_RUN_MAX,
+    // ⚠️ TIER 2 — the durable per-person profile. `ready` is the AND a reader
+    // would otherwise compute: the posture is on AND the service account that
+    // stores profiles exists. No app token appears here, and that absence is the
+    // design's own argument for Firestore — no new trust edge.
+    gabi_memory_enabled: memoryOn(c.env),
+    gabi_memory_ready: memoryOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    gabi_memory_profile_max_bytes: PROFILE_MAX_BYTES,
   }),
 );
 

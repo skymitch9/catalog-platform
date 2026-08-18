@@ -26,6 +26,7 @@ import {
   DISTILL_SYSTEM,
   emptyProfile,
   MEMORY_MSG,
+  memoryCommand,
   memoryOn,
   parseProfile,
   personKey,
@@ -224,7 +225,66 @@ describe('⚠️ the person key is the estate email where one exists', () => {
   });
 });
 
-// ── 7. ⚠️ THE CREDENTIAL SEAM, WIDENED A THIRD TIME AND IN WRITING ─────────
+// ── 7. ⚠️ the control a person has over it ─────────────────────────────────
+
+describe('⚠️ seeing and clearing it is DETERMINISTIC, never a model judgement', () => {
+  it('the ways people actually ask to see it', () => {
+    for (const q of [
+      'memory',
+      '/gabi memory',
+      'memory show',
+      'what do you know about me?',
+      'what do you remember about me',
+      'show me my profile',
+      "what's in my memory",
+    ]) {
+      assert.equal(memoryCommand(q), 'show', q);
+    }
+  });
+
+  it('the ways people actually ask to be forgotten', () => {
+    for (const q of [
+      'forget everything',
+      'forget what you know about me',
+      'forget what you remember about me',
+      'memory forget',
+      '/gabi memory clear',
+      'clear my memory',
+      'delete your notes about me',
+    ]) {
+      assert.equal(memoryCommand(q), 'forget', q);
+    }
+  });
+
+  it('⚠️ FORGET WINS OVER SHOW when a sentence contains both', () => {
+    // "forget what you remember about me" contains a show-shaped clause.
+    // Reading a privacy request as a request to DISPLAY would be the worst
+    // possible misreading of this control.
+    assert.equal(memoryCommand('forget what you remember about me'), 'forget');
+    assert.equal(memoryCommand('please forget everything you know about me'), 'forget');
+  });
+
+  it('ordinary questions are not memory commands', () => {
+    for (const q of [
+      'what do you know about Brandon Sanderson?',
+      'do we have any Mistborn?',
+      "what's Jake's stat sheet at the end of book 9?",
+      'remind me what happens in chapter 4',
+      '',
+    ]) {
+      assert.equal(memoryCommand(q), null, q);
+    }
+  });
+
+  it('⚠️ a failed delete is NEVER reported as success', () => {
+    // Somebody who asked to be forgotten and was told "done" would walk away
+    // believing it. The two sentences are distinct and say what is true.
+    assert.notEqual(MEMORY_MSG.cleared, MEMORY_MSG.trouble);
+    assert.match(MEMORY_MSG.trouble, /Nothing has been deleted/i);
+  });
+});
+
+// ── 8. ⚠️ THE CREDENTIAL SEAM, WIDENED A THIRD TIME AND IN WRITING ─────────
 
 describe('⚠️ credentials live in exactly FOUR modules', () => {
   const CREDENTIALS = [

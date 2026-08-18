@@ -121,6 +121,16 @@ import {
   type BooksToolContext,
 } from './book-knowledge.js';
 import {
+  MEMORY_MSG,
+  memoryCommand,
+  personKey,
+  profileForDisplay,
+  profileIsEmpty,
+  profilePromptBlock,
+  type MemoryPort,
+  type MemoryProfile,
+} from './memory.js';
+import {
   runDelegated,
   resumeDelegated,
   type DelegatedDeps,
@@ -266,6 +276,18 @@ export interface MentionDeps {
    * my books"* is about.
    */
   books?: BooksDeps;
+  /**
+   * ⚠️ **TIER 2 (2026-08-18): the durable per-person profile, OPTIONAL BY
+   * DESIGN.** Absent means she is exactly the bot she was before memory existed
+   * — the 30-minute window still works and nothing is written or read. An
+   * injected port for the fourth time, so THIS FILE holds no credential.
+   *
+   * ⚠️ It has NO fuse of its own, and that is deliberate rather than an
+   * oversight: a profile read is one Firestore GET and the write happens once
+   * per CONVERSATION on the cron, not per turn. There is nothing here for a
+   * per-person daily counter to protect.
+   */
+  memory?: MemoryPort;
 }
 
 /** The docs port plus its own fuse. ⚠️ `record()` is called ONLY when a turn
@@ -330,6 +352,12 @@ export interface MentionConfig {
    * a single book tool is described to the model.
    */
   booksEnabled?: boolean;
+  /**
+   * ⚠️ TIER 2. The `GABI_MEMORY` posture, affirmative-only and read at the
+   * composition root. Defaults to FALSE so a caller that predates memory — or
+   * forgets the flag — cannot start writing notes about people.
+   */
+  memoryEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
 }
@@ -517,6 +545,72 @@ async function chargeBooksTurn(
   } catch (err) {
     console.error('GABI books: the daily fuse could not be charged:', err instanceof Error ? err.message : err);
   }
+}
+
+/**
+ * Load this person's durable profile, or nothing.
+ *
+ * ⚠️ **Keyed on the DISCORD id in phase 1, not the estate email.** The design
+ * (§3.3) says the email is the key where a link exists — and resolving it costs
+ * a second Firestore read on every single turn, for a join that only matters
+ * once the site panel also writes profiles. So phase 1 keys on the snowflake,
+ * the panel will key on the email, and the one-time merge is phase 4. ⚠️ The two
+ * namespaces (`discord:` / `estate:`) cannot collide, which is what makes
+ * deferring the merge safe rather than merely cheap.
+ */
+async function profileFor(
+  deps: Pick<MentionDeps, 'memory'>,
+  cfg: MentionConfig,
+  discordUserId: string,
+): Promise<MemoryProfile | null> {
+  if (!cfg.memoryEnabled || !deps.memory) return null;
+  const key = personKey({ discordUserId });
+  if (!key) return null;
+  try {
+    return await deps.memory.load(key);
+  } catch (err) {
+    // ⚠️ A profile that cannot be read costs the turn NOTHING. Failing open here
+    // means she is briefly a fresh bot; failing closed would mean no answer at
+    // all, which is a far worse trade for a nicety.
+    console.error('GABI memory: the profile could not be read:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** The rendered block, or `undefined` when there is nothing worth saying. */
+function memoryBlockFrom(profile: MemoryProfile | null): string | undefined {
+  return profileIsEmpty(profile) || !profile ? undefined : profilePromptBlock(profile);
+}
+
+/**
+ * ⚠️ **SEEING AND CLEARING, ANSWERED DETERMINISTICALLY AND WITHOUT A MODEL.**
+ *
+ * A privacy control must not depend on a model correctly guessing that somebody
+ * meant it. *"Forget what you know about me"* is answered by deleting, every
+ * time, and the confirmation is only sent if the delete actually succeeded — a
+ * cheerful "done!" over a failed delete is the worst possible lie here.
+ */
+async function memoryAnswer(
+  action: 'show' | 'forget',
+  deps: Pick<MentionDeps, 'memory'>,
+  cfg: MentionConfig,
+  discordUserId: string,
+): Promise<AnsweredQuestion> {
+  const done = (content: string): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'question',
+    components: null,
+  });
+  if (!cfg.memoryEnabled || !deps.memory) return done(MEMORY_MSG.off);
+  const key = personKey({ discordUserId });
+  if (!key) return done(MEMORY_MSG.none);
+
+  if (action === 'forget') {
+    const ok = await deps.memory.clear(key);
+    return done(ok ? MEMORY_MSG.cleared : MEMORY_MSG.trouble);
+  }
+  return done(profileForDisplay(await profileFor(deps, cfg, discordUserId)));
 }
 
 // ---------------------------------------------------------------------------
@@ -715,6 +809,9 @@ async function docsAnswer(
   cfg: MentionConfig,
   docs: DocsToolContext,
   overrides: { fetch?: typeof fetch } | undefined,
+  /** ⚠️ Tier 2 rides EVERY lane. Who she is talking to is not a property of
+   *  which router won. */
+  memoryBlock?: string,
 ): Promise<AnsweredQuestion> {
   const done = (content: string): AnsweredQuestion => ({
     content,
@@ -743,6 +840,7 @@ async function docsAnswer(
     toolContext(cfg, docs),
     overrides,
     history,
+    memoryBlock,
   );
 
   // ⚠️ A docs question that goes wrong fails as a DOCS question. The sentence
@@ -773,6 +871,7 @@ async function booksAnswer(
   cfg: MentionConfig,
   books: BooksToolContext,
   overrides: { fetch?: typeof fetch } | undefined,
+  memoryBlock?: string,
 ): Promise<AnsweredQuestion> {
   // ⚠️ Every book answer carries the overflow sentence, so a long one becomes
   // consecutive messages rather than a question about whether to continue. The
@@ -809,6 +908,7 @@ async function booksAnswer(
     toolContext(cfg, undefined, books),
     overrides,
     history,
+    memoryBlock,
   );
 
   // ⚠️ A book question that goes wrong fails as a BOOK question, and the
@@ -835,8 +935,20 @@ async function answerQuestion(
   panel: PanelLink,
   docs?: DocsToolContext,
   books?: BooksToolContext,
+  /** ⚠️ Tier 2. The rendered block, and the deps needed to SHOW or CLEAR it. */
+  memory?: { block?: string; deps: Pick<MentionDeps, 'memory'>; discordUserId: string },
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
+
+  // ── ⚠️ THE MEMORY CONTROL, AHEAD OF EVERY OTHER ROUTER ────────────────────
+  //
+  // "Forget what you know about me" must never reach a shelf search, a docs
+  // search or a book search — and it must never be a model's judgement call.
+  // This is a privacy control, so it is deterministic and it goes first.
+  const memoryAsk = memoryCommand(question);
+  if (memoryAsk && memory) {
+    return await memoryAnswer(memoryAsk, memory.deps, cfg, memory.discordUserId);
+  }
 
   // ── ⚠️ THE DOCS PRE-ROUTER, AHEAD OF EVERY INTENT BRANCH ─────────────────
   //
@@ -849,7 +961,7 @@ async function answerQuestion(
   // the docs feature (`docsEnabled` undefined) falls through UNCHANGED rather
   // than being handed a sentence about a capability it never had.
   if (docsIntent(question)) {
-    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides);
+    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides, memory?.block);
     if (cfg.docsEnabled === true) {
       // The posture is on but no port was built — the app token or the service
       // account is missing. A setup gap, and never phrased as a permissions one.
@@ -881,7 +993,7 @@ async function answerQuestion(
   // what makes it a book question. `history` is the same remembered window in a
   // channel and in a DM.
   if (booksIntent(question) || booksFollowUp(question, history)) {
-    if (books) return await booksAnswer(question, history, who, cfg, books, overrides);
+    if (books) return await booksAnswer(question, history, who, cfg, books, overrides, memory?.block);
     if (cfg.booksEnabled === true) {
       // The posture is on but no port was built — the book app token or the
       // service account is missing. A setup gap, never a permissions one.
@@ -921,6 +1033,7 @@ async function answerQuestion(
         toolContext(cfg, docs, books),
         overrides,
         history,
+        memory?.block,
       );
       return { content: spoken.text ?? facts, pending: null, intent, components: null };
     }
@@ -990,9 +1103,10 @@ async function answerQuestion(
             toolContext(cfg, docs, books),
             overrides,
             history,
+            memory?.block,
           )
         ).text
-      : await converse(cfg.anthropicKey, question, grounding, who, overrides, history);
+      : await converse(cfg.anthropicKey, question, grounding, who, overrides, history, memory?.block);
 
   // ⚠️ No key, or a turn that failed: she still says something useful. The
   // person asked a question; a silence would be the bot looking broken.
@@ -1212,10 +1326,18 @@ export async function handleMention(
     // ⚠️ Built AFTER the turn cap and AFTER the Tier-1 pre-router: a capped
     // turn and a DM'd barcode both end before this line, so neither pays the
     // storage read that the docs fuse costs.
-    const docs = await docsContextFor(deps, cfg, trigger.authorId);
-    // ⚠️ The BOUND is derived from THIS question, here, and travels with the
-    // context — never stored, never carried from an earlier turn (design §4.3).
-    const books = await booksContextFor(deps, cfg, trigger.authorId, trigger.question);
+    // ⚠️ **IN PARALLEL, AND THAT IS A LATENCY DECISION.** These were serial
+    // awaits; tier 2 would have added a third round trip (an OAuth mint and a
+    // Firestore GET) to the front of every turn, on a surface where the owner
+    // has already reported slowness. Nothing here depends on anything else here,
+    // so the turn pays the slowest of the three rather than their sum.
+    const [docs, books, profile] = await Promise.all([
+      docsContextFor(deps, cfg, trigger.authorId),
+      // ⚠️ The BOUND is derived from THIS question, here, and travels with the
+      // context — never stored, never carried from an earlier turn (design §4.3).
+      booksContextFor(deps, cfg, trigger.authorId, trigger.question),
+      profileFor(deps, cfg, trigger.authorId),
+    ]);
 
     const answer = await answerQuestion(
       trigger.question,
@@ -1226,6 +1348,7 @@ export async function handleMention(
       panelFor(deps, cfg, trigger.authorId),
       docs,
       books,
+      { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: trigger.authorId },
     );
     await say(answer.content, answer.components, answer.overflowNote);
 
@@ -1437,11 +1560,15 @@ export async function handleTypedQuestion(
     const verdict = await deps.capCheck(who.discordUserId);
     if (!verdict.ok) return { kind: 'capped', content: verdict.message };
 
-    const docs = await docsContextFor(deps, cfg, who.discordUserId);
-    // ⚠️ A typed follow-up reaches the SAME ladder as a DM, so it derives its
-    // own bound from its own text. Reusing the bound of the question that opened
-    // the box would let a spoiler scope outlive the sentence that set it.
-    const books = await booksContextFor(deps, cfg, who.discordUserId, question);
+    // ⚠️ Parallel here too, for the same reason — and a typed follow-up reaches
+    // the SAME ladder as a DM, so it derives its own bound from its own text.
+    // Reusing the bound of the question that opened the box would let a spoiler
+    // scope outlive the sentence that set it.
+    const [docs, books, profile] = await Promise.all([
+      docsContextFor(deps, cfg, who.discordUserId),
+      booksContextFor(deps, cfg, who.discordUserId, question),
+      profileFor(deps, cfg, who.discordUserId),
+    ]);
     const answer = await answerQuestion(
       question,
       memory.turns,
@@ -1451,6 +1578,7 @@ export async function handleTypedQuestion(
       panelFor(deps, cfg, who.discordUserId),
       docs,
       books,
+      { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: who.discordUserId },
     );
     await deps.conversation.save({
       user: question,

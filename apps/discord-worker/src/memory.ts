@@ -314,6 +314,13 @@ export const MEMORY_MSG = {
 
   cleared: "Done — I've forgotten all of that. The note is empty again.",
 
+  /** ⚠️ Said when a DELETE FAILED. A cheerful "done!" over a failed delete is
+   *  the worst possible lie this feature could tell: somebody asked to be
+   *  forgotten and would walk away believing they had been. */
+  trouble:
+    "I couldn't clear that just now — something on our side didn't answer. Nothing has been " +
+    'deleted, so please try again in a minute rather than assuming it is gone.',
+
   /** ⚠️ The heading over a shown profile. It says WHERE it came from and that it
    *  is editable, because a profile somebody cannot see is a dossier. */
   heading:
@@ -346,6 +353,58 @@ export function profileForDisplay(profile: MemoryProfile | null): string {
   }
   lines.push('', `_From ${profile.sources} conversation${profile.sources === 1 ? '' : 's'}._`);
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ SEEING AND CLEARING IT — a detector, not a slash command
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE TRANSPARENCY AFFORDANCE SHIPS WITH THE WRITING, NOT AFTER IT** — the
+ * owner's requirement, and design §3.6. A profile somebody cannot see is a
+ * dossier.
+ *
+ * It is a DETECTOR rather than a new slash command on purpose:
+ *
+ *  - `/gabi` already takes a free-text `question`, so `/gabi memory` needs no
+ *    Discord command registration — which would be an owner step in the
+ *    developer portal, and would make the see-it affordance land *after* the
+ *    writing rather than with it;
+ *  - it therefore works identically on every surface she has — a DM, an
+ *    @mention in a channel, and `/gabi` — instead of only where a command was
+ *    registered;
+ *  - and it is deterministic, so *"forget what you know about me"* can never be
+ *    answered by a model deciding it probably meant something else.
+ *
+ * ⚠️ **`forget` is checked BEFORE `show`.** *"forget what you remember about
+ * me"* contains both; reading it as a request to display would be the worst
+ * possible misreading of a privacy control.
+ */
+export type MemoryCommand = 'show' | 'forget' | null;
+
+const MEMORY_FORGET = [
+  /\bforget (what|everything|all|it|me|that)\b/i,
+  /\bforget\b[^?]*\b(about me|you know|you remember|my (profile|memory|notes?))\b/i,
+  /\b(clear|delete|wipe|erase|reset)\b[^?]*\b(my|your)\b[^?]*\b(memory|profile|notes?|note)\b/i,
+  /^\s*(?:\/gabi\s+)?memory\s+(forget|clear|delete|wipe|reset)\s*$/i,
+];
+
+const MEMORY_SHOW = [
+  /^\s*(?:\/gabi\s+)?memory\s*$/i,
+  /^\s*(?:\/gabi\s+)?memory\s+(show|what|list)\s*$/i,
+  /\bwhat do you (know|remember)\b[^?]*\babout me\b/i,
+  /\bwhat have you (written down|noted|remembered)\b[^?]*\b(about|on) me\b/i,
+  /\b(show|see) (me )?(my|your) (profile|memory|notes?)\b/i,
+  /\bwhat('s| is) in my (profile|memory)\b/i,
+];
+
+export function memoryCommand(text: string): MemoryCommand {
+  const q = (text ?? '').trim();
+  if (!q) return null;
+  // ⚠️ FORGET FIRST. See the header.
+  if (MEMORY_FORGET.some((re) => re.test(q))) return 'forget';
+  if (MEMORY_SHOW.some((re) => re.test(q))) return 'show';
+  return null;
 }
 
 // ---------------------------------------------------------------------------

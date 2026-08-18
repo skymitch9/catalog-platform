@@ -59,6 +59,8 @@ import { docsOn, type DocsCapVerdict } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
 import { booksOn, type BooksCapVerdict } from './book-knowledge.js';
 import { makeBooksPort } from './book-knowledge-exec.js';
+import { memoryOn } from './memory.js';
+import { makeMemoryPort } from './memory-exec.js';
 import {
   handlePick,
   handleTypedQuestion,
@@ -259,6 +261,11 @@ export async function resumeConversation(
     // when typed into her follow-up box. Same env, same ships-dark condition,
     // same per-person fuse.
     const booksPort = makeBooksPort(env);
+    // ⚠️ TIER 2, and the same argument as the other three: a typed follow-up in
+    // the modal reaches the SAME ladder as a DM, so it must see the same profile
+    // — otherwise she remembers you in a channel and forgets you in her own
+    // follow-up box.
+    const memoryPort = makeMemoryPort(env);
     const deps = {
       capCheck: () => memory.capCheck(),
       recordTurn: () => memory.recordTurn(),
@@ -290,6 +297,7 @@ export async function resumeConversation(
             },
           }
         : {}),
+      ...(memoryPort ? { memory: memoryPort } : {}),
     };
     const cfg = {
       indexBaseUrl: indexBase(env),
@@ -299,6 +307,7 @@ export async function resumeConversation(
       delegatedWrites: delegatedWritesOn(env),
       docsEnabled: docsOn(env),
       booksEnabled: booksOn(env),
+      memoryEnabled: memoryOn(env),
       ...(env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: env.ANTHROPIC_API_KEY_GABI } : {}),
     };
     const who = {

@@ -128,6 +128,8 @@ import { docsCapDecision, docsOn } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
 import { booksCapDecision, booksOn } from './book-knowledge.js';
 import { makeBooksPort } from './book-knowledge-exec.js';
+import { memoryOn } from './memory.js';
+import { makeMemoryPort } from './memory-exec.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -792,6 +794,12 @@ export class GabiGateway {
     // its turn would answer for the wrong person.
     const booksPort = makeBooksPort(this.env);
 
+    // ⚠️ TIER 2. `null` with no service account — the ships-dark state. Built per
+    // message like the others; it holds no per-turn state worth keeping and a
+    // cached OAuth token that outlived a secret rotation would fail every
+    // profile read with no obvious cause.
+    const memoryPort = makeMemoryPort(this.env);
+
     await handleMention(
       {
         capCheck: (userId) => this.capCheck(userId),
@@ -824,6 +832,7 @@ export class GabiGateway {
               },
             }
           : {}),
+        ...(memoryPort ? { memory: memoryPort } : {}),
         reply: async (content, extra) => {
           const res = await replyToMessage(
             botToken,
@@ -866,6 +875,7 @@ export class GabiGateway {
         delegatedWrites: delegatedWritesOn(this.env),
         docsEnabled: docsOn(this.env),
         booksEnabled: booksOn(this.env),
+        memoryEnabled: memoryOn(this.env),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
     );

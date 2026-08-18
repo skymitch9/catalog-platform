@@ -416,6 +416,9 @@ export async function converse(
   who: { discordUserId: string; guildId: string | null; authorName: string; via?: string },
   overrides?: { fetch?: typeof fetch },
   history: readonly ConversationTurn[] = [],
+  /** ⚠️ Tier 2 applies to SMALL TALK too, and arguably most of all: "how's the
+   *  reading going" is the turn where being a fresh bot is most obvious. */
+  memoryBlock?: string,
 ): Promise<string | null> {
   if (!apiKey) {
     logNoKey('the conversational reply');
@@ -428,7 +431,8 @@ export async function converse(
     const res = await chatClient(apiKey, overrides).messages.create({
       model: GABI_CHAT_MODEL,
       max_tokens: CHAT_MAX_TOKENS,
-      system: CHAT_SYSTEM,
+      system: memoryBlock ? `${CHAT_SYSTEM}
+${memoryBlock}` : CHAT_SYSTEM,
       messages: modelMessages(history, user),
     });
     accountTurn({
@@ -696,6 +700,13 @@ export async function converseWithTools(
   toolCtx: ToolContext,
   overrides?: { fetch?: typeof fetch },
   history: readonly ConversationTurn[] = [],
+  /**
+   * ⚠️ **TIER 2 — the durable profile, already rendered** (design §6). A STRING
+   * rather than the profile object, deliberately: this file makes the model call
+   * and nothing else, and handing it a document shape would put the schema in a
+   * second place. `mention-flow.ts` decides whether there is one at all.
+   */
+  memoryBlock?: string,
 ): Promise<ToolTurnResult> {
   // ⚠️ The docs surface is decided ONCE, here, from whether the caller handed us
   // a docs context at all. `mention-flow.ts` builds that context only when the
@@ -767,7 +778,16 @@ ${CHAT_CUT_SHORT}`
         // ⚠️ Each addendum rides ONLY the turn its tools are offered on, and the
         // two are independent: a book turn on a surface with docs switched off
         // describes books and not docs, and vice versa.
-        system: [CHAT_TOOLS_SYSTEM, ...(docsOffered ? [CHAT_DOCS_SYSTEM] : []), ...(booksOffered ? [CHAT_BOOKS_SYSTEM] : [])].join('\n'),
+        system: [
+          CHAT_TOOLS_SYSTEM,
+          ...(docsOffered ? [CHAT_DOCS_SYSTEM] : []),
+          ...(booksOffered ? [CHAT_BOOKS_SYSTEM] : []),
+          // ⚠️ LAST, so the freshest thing in the system prompt is who she is
+          // talking to — and absent entirely when there is nothing to say, since a
+          // block reading "here is what you know: nothing" spends tokens teaching
+          // her she is ignorant.
+          ...(memoryBlock ? [memoryBlock] : []),
+        ].join('\n'),
         messages: messages as never,
         ...(last ? {} : { tools: tools as never }),
       });

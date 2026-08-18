@@ -353,6 +353,34 @@ GABI_BOOKS = "on"
 # (src/book-knowledge-exec.ts) is this same host.
 AUDIOBOOK_API_URL = "https://audiobook-api.heygabi.ai"
 
+# ⚠️ TIER 2 — GABI REMEMBERS YOU BETWEEN CONVERSATIONS. Affirmative-only: "on"
+# and nothing else.
+#
+# What it turns on: a short (<=2 KB) note per PERSON, distilled from their own
+# conversations when one goes quiet, and read back on every turn so the first
+# thing she says after a gap is not the first thing she said before it. The
+# owner's ask: "so its not a fresh bot to talk to each time."
+#
+# ⚠️ IT SHIPS OFF, and it stays off until the owner flips it (design §9 owner
+# step 1). A feature that writes down what people say about themselves is not
+# one to enable as a side effect of a deploy — the GABI_BOOKS precedent.
+#
+# ⚠️ OFF IS SILENT, and that is correct here where it was not for books: nobody
+# asks a question that only memory could answer, so there is no sentence to say.
+# The 30-minute verbatim window still works exactly as it does today, nothing is
+# written, nothing is read, and no prompt changes.
+#
+# ⚠️ ON IS NOT A GRANT. A profile is built ONLY from that person's own messages
+# (the conversation key has always included the author, so a channel of five
+# people is five records), and they can see and clear it at any time with
+# `/gabi memory` or by asking her to forget.
+#
+# Storage: gabi_profiles/{personKey} in Firestore, using the service account
+# this Worker ALREADY holds for discord_links. ⚠️ No new secret, no new holder,
+# no new trust edge — that was the deciding argument for Firestore over D1
+# (docs/info/gabi-memory-design.md §4.1).
+GABI_MEMORY = "off"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)
