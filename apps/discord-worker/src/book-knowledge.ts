@@ -515,13 +515,22 @@ export const BOOKS_MSG = {
     "That one is a longer pull than fits in this reply. Ask me again and I'll go straight at it " +
     'with a clean run — it will come back in full.',
 
-  /** ⚠️ The sentence that makes incremental knowledge honest, and the owner
-   *  asked for this specific behaviour: *"I don't want to wait until every book
-   *  is processed to use Gabi's knowledge."* */
+  /**
+   * ⚠️ The sentence that makes incremental knowledge honest, and the owner asked
+   * for this specific behaviour: *"I don't want to wait until every book is
+   * processed to use Gabi's knowledge."*
+   *
+   * ⚠️ **NO TIMESCALE, EVER** (incident §10d). It used to promise *"it may well
+   * be in there next week"* — a date she has no way of knowing. Processing is
+   * not on a schedule she can see, and a book she promises for next week that
+   * lands in an hour, or in three months, makes her wrong in both directions.
+   * Books join her knowledge as they finish processing; **when** is not hers to
+   * say, and saying so plainly is more useful than a guess.
+   */
   notIngested:
     "I haven't read that one yet — it isn't in my knowledge base. I can still tell you what the " +
-    'catalogue knows about it, and it may well be in there next week; books are being added as ' +
-    'they finish processing.',
+    'catalogue knows about it. Books join what I have read as they finish processing, so it may ' +
+    'turn up later — I have no way of knowing when.',
 
   noAnswer:
     'I went looking through the book and could not put an answer together just then — that is a ' +

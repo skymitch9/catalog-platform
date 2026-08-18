@@ -673,7 +673,10 @@ function notIngested(name: string, body: Record<string, unknown>): ToolOutcome {
         '⚠️ This book is NOT in the knowledge base. That is a gap in what has been processed, and it ' +
         'is NOT a fact about the story — never say something does not happen in a book you have not ' +
         'read. Say you have not read it yet, offer what the catalogue knows, and if did_you_mean ' +
-        'looks like what they meant, ask.',
+        'looks like what they meant, ask. ⚠️ did_you_mean IS the list of what you actually DO have ' +
+        'from around here — if you name the furthest volume you have reached, take it from that ' +
+        'list and from nothing else, least of all from what you said a moment ago. ⚠️ And put no ' +
+        'date on when this one might arrive; you cannot know.',
     },
   };
 }
@@ -714,8 +717,11 @@ async function listKnowledge(
             'answering from your own memory of it. Say you have not read it yet; books are added as ' +
             'they finish processing. catalog_lookup can still say what the catalogue records.'
           : 'Use these book ids exactly. ⚠️ A title missing from this list is a book you have NOT ' +
-            'read — say so plainly rather than answering about it. The knowledge base grows: ' +
-            'absence today is not absence next week.',
+            'read — say so plainly rather than answering about it. ⚠️ THIS LIST, FROM THIS TURN, IS ' +
+            'THE ONLY THING THAT MAY DECIDE WHAT YOU HAVE READ: do not say how far into a series you ' +
+            'have got from what you said earlier in the conversation. The knowledge base grows as ' +
+            'books finish processing — absence today is not absence forever, and you cannot say ' +
+            'when.',
     },
   };
 }

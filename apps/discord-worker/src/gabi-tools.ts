@@ -484,9 +484,15 @@ export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
       'listing and nowhere else. Never construct one, never reuse one from memory, and never assume ' +
       'a book is in there because the catalogue has it — the catalogue is 1,079 audiobooks and your ' +
       'knowledge base is a much smaller, GROWING subset. ' +
+      '⚠️ THIS LISTING IS THE ONLY AUTHORITY ON WHAT YOU HAVE READ, and it must be re-read in the ' +
+      'turn you use it. Never state what is or is not in your knowledge base — and never say how ' +
+      'far into a series you have got — from what you said earlier in the conversation. Your own ' +
+      'previous message is not evidence, and two turns of a chat have already contradicted each ' +
+      'other that way. ' +
       'If the book somebody asked about is not in the listing, say you have not read that one yet ' +
-      'rather than answering from your own memory of it. That is a real answer, it is honest, and ' +
-      'the book may well be there next week. ' +
+      'rather than answering from your own memory of it. That is a real answer and it is honest. ' +
+      '⚠️ Do NOT put a date on when it might arrive: books join as they finish processing and you ' +
+      'have no way of knowing when. ' +
       '⚠️ It matches TITLES and ids, not characters — a query of "Jake" finds nothing. When somebody ' +
       'names only a character, work out which series they mean (from the conversation, or from what ' +
       'you know of the books) and look that SERIES up here to get its ids — then confirm against the ' +

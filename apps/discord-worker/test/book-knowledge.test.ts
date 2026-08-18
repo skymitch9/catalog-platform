@@ -449,6 +449,29 @@ describe('⚠️ the refusals stay distinct, because the fixes differ', () => {
     assert.match(BOOKS_MSG.turnBudgetSpent, /ask me again/i);
   });
 
+  it('⚠️ SHE INVENTS NO TIMESCALE — the "next week" she could not know', () => {
+    // Incident 2026-08-18 (design §10d). notIngested used to promise "it may
+    // well be in there next week". She cannot see the processing schedule; a
+    // book promised for next week that lands in an hour — or in three months —
+    // makes her wrong in both directions. PH 10-14 landed the same afternoon.
+    const TIMESCALE = /(next week|next month|tomorrow|soon|shortly|within (a|the) \w+|by (monday|tuesday|wednesday|thursday|friday|the weekend))/i;
+    for (const [key, sentence] of Object.entries(BOOKS_MSG)) {
+      assert.doesNotMatch(sentence, TIMESCALE, `BOOKS_MSG.${key} invents a schedule she cannot see`);
+    }
+    // ⚠️ It must still say the honest thing: it MAY arrive, and she cannot say when.
+    assert.match(BOOKS_MSG.notIngested, /no way of knowing when/i);
+  });
+
+  it('⚠️ INCIDENT 2026-08-18 — no MODEL-FACING text invents a timescale either', () => {
+    // The wording leaked the same way "budget" did: the model quotes tool
+    // descriptions and result notes verbatim. Banning it only in the sentences a
+    // person sees would leave the actual source in place.
+    const TIMESCALE = /next week/i;
+    for (const tool of GABI_BOOKS_TOOLS) {
+      assert.doesNotMatch(tool.description, TIMESCALE, `${tool.name}'s description dates it`);
+    }
+  });
+
   it('⚠️ "not ingested" and "switched off" are not the same sentence', () => {
     assert.notEqual(BOOKS_MSG.notIngested, BOOKS_MSG.switchedOff);
     assert.notEqual(BOOKS_MSG.notIngested, BOOKS_MSG.notConfigured);
@@ -612,6 +635,52 @@ describe('⚠️ the executor refuses in words, and never fakes an answer', () =
     );
     assert.equal(out.isError, true);
     assert.equal(called, false, 'a partial sweep was run and would have been reported as a whole one');
+  });
+
+  it("⚠️ INCIDENT 2026-08-18 — an un-ingested book's result CARRIES what she does have", async () => {
+    // Turn 2: "Book 12 is as far as I've gotten into the series so far."
+    // Turn 3, one minute later: "the furthest I've gotten is book 9."
+    // ⚠️ Book 9 was ground truth. The "book 12" claim was CONFABULATED — an
+    // availability claim made from conversation memory instead of from a call,
+    // and two adjacent turns contradicted each other because of it.
+    //
+    // The structural half of the fix: the answer she needs is already IN the
+    // result. `did_you_mean` is the real list of what is packed nearby, and the
+    // note now says to take any "furthest volume" claim from there and from
+    // nothing else. This pins that the data survives to the model.
+    const p = port({
+      search: async () =>
+        OK({
+          ingested: false,
+          book_id: 'the-primal-hunter-12',
+          did_you_mean: [
+            { book_id: 'the-primal-hunter-9-a-litrpg-adventure' },
+            { book_id: 'the-primal-hunter-8-a-litrpg-adventure' },
+          ],
+          knowledge_base_size: 159,
+        }),
+    });
+    const out = await runTool(
+      'search_book_text',
+      { bookId: 'the-primal-hunter-12', query: 'stat sheet', mode: 'latest' },
+      ctxFor(p),
+    );
+    const r = out.result as { did_you_mean: unknown[]; note: string; knowledge_base_size: number };
+    assert.equal(out.isError, false);
+    assert.equal(r.did_you_mean.length, 2, 'the list of what she DOES have was dropped');
+    assert.equal(r.knowledge_base_size, 159);
+    // ⚠️ The instruction that makes the data load-bearing rather than decorative.
+    assert.match(r.note, /did_you_mean IS the list of what you actually DO have/);
+    assert.match(r.note, /from nothing else/i);
+    // ⚠️ And it must not invite a guess about WHEN this one arrives.
+    assert.match(r.note, /put no date on when this one might arrive/i);
+  });
+
+  it('⚠️ the listing note forbids answering availability from the conversation', async () => {
+    const out = await runTool('list_book_knowledge', { query: 'primal' }, ctxFor(port()));
+    const note = (out.result as { note: string }).note;
+    assert.match(note, /THIS LIST, FROM THIS TURN/);
+    assert.match(note, /do not say how far into a series you have got/i);
   });
 
   it('the knowledge-base listing says the WHOLE size, not just what matched', async () => {
