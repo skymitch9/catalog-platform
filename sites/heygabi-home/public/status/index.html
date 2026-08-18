@@ -384,7 +384,7 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
     </div>
   </div>
-  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+  <p class="hg-cog-note">Remembered on this site only.</p>
 </div>
 
 <main>
@@ -393,13 +393,19 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     heygabi.ai
   </a>
   <h1>Estate status</h1>
+  <!-- ⚠️ TRIMMED 2026-08-17 on the owner's estate-wide order ("Let's trim text
+       like this all over each of the sites. Only keep what's mandatory and keep
+       all the text short and useful"), matching the /admin precedent (204fb9d).
+       KEPT deliberately: the dot legend (a colour with no key is a bare status,
+       which his no-bare-status rule forbids) and the Operations gate sentence.
+       DROPPED: that watching needs no sign-in, and that rows carry only counts
+       and timestamps — both are stated in full in this page's own footer and in
+       docs/info/health-envelope.md, which is their home of record. -->
   <p class="sub">
-    Every pipeline and service, read straight from each one's own public
-    health endpoint — no sign-in required to watch, and nothing below shows
-    more than counts and timestamps. A quiet dot, not a dashboard: green
-    means the last check was healthy, amber means it is worth a glance, red
-    means something stopped answering the way it should. Approvers may sign
-    in for an Operations section with run controls; nobody else sees it.
+    Every pipeline and service, read straight from its own public health
+    endpoint. Green means the last check was healthy, amber worth a glance, red
+    stopped answering. Approvers may sign in for Operations; nobody else sees
+    it.
   </p>
 
   <div class="bar">
@@ -427,11 +433,13 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
        leaks nothing the gate does not already defend. -->
   <section id="migration-section" aria-labelledby="mig-h" hidden>
     <h2 id="mig-h">Server migration</h2>
+    <!-- The "not yet run" half is an HONESTY MARKER and stays through every
+         trim: it is the only thing on the page saying this project does not
+         exist yet. -->
     <p class="section-note">
-      The family audiobook shelf build — a physical server mirroring the
-      library from Drive, every book at its own URL on
-      <code>shelf.heygabi.ai</code>. Status: <strong>not yet run</strong> —
-      these two pages are the whole project.
+      A physical server mirroring the library from Drive, every book at its own
+      URL on <code>shelf.heygabi.ai</code>. Status: <strong>not yet run</strong>
+      — these two pages are the whole project.
     </p>
     <ul class="lever-list">
       <li><a href="/runbooks/shelf-migration/">Instructions manual →</a> — who does what: Skylar's steps, Justin's steps, the two handoffs.</li>
@@ -468,10 +476,12 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <section id="ops-section" aria-labelledby="ops-h" hidden>
     <h2 id="ops-h">Operations</h2>
+    <!-- Trimmed 2026-08-17 (owner's estate-wide trim). The removed sentence
+         named the gate's mechanism (GET /api/estate/me must confirm devops or
+         approver before this section un-hides); nobody signed out ever reads
+         it, and its home of record is docs/access/estate-auth.md. -->
     <p class="section-note">
-      Run controls, devops/admin-only. Nothing here is visible or usable
-      signed out — this section only appears once
-      <code>GET /api/estate/me</code> confirms a devops or approver account.
+      Run controls — devops and approvers only.
     </p>
     <div id="ops-controls">
       <div class="ops-run">
@@ -492,10 +502,11 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
            publishing steps additionally carry a standing "updates the live
            site" warning. -->
       <h3 class="step-list-h">Pipeline steps</h3>
+      <!-- The two-tap sentence is the interaction GRAMMAR and stays: a control
+           that writes on the second tap must say so before the first. -->
       <p class="section-note step-section-note">
-        Run one stage of the pipeline in isolation — for partial or recovery
-        work, never the whole thing. Read-only steps run immediately;
-        everything else needs a second tap to confirm.
+        One stage in isolation, for recovery work. Read-only steps run
+        immediately; everything else needs a second tap to confirm.
       </p>
       <ul id="pipeline-steps" class="step-list"></ul>
       <p id="pipeline-steps-msg" class="ops-run-msg"></p>
@@ -523,12 +534,12 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
            (status.js's backups-row message) — keep that phrase in the
            heading or that reference dangles. -->
       <h3 class="step-list-h">Run levers — GitHub Actions</h3>
+      <!-- "cannot start, stop, or read these runs" is an HONESTY MARKER about
+           this page's limits and stays through every trim. -->
       <p class="section-note step-section-note">
-        Everything that runs somewhere <em>else</em>. Each row opens its real
-        workflow on GitHub in a new tab, where GitHub's own sign-in gates it —
-        this page holds no GitHub credential and cannot start, stop, or read
-        these runs. The three <code>Deploy</code> rows land on one shared
-        workflow; pick the target there.
+        Each row opens its real workflow on GitHub, gated by GitHub's own
+        sign-in — this page cannot start, stop, or read these runs. The three
+        <code>Deploy</code> rows share one workflow; pick the target there.
       </p>
       <ul id="lever-rows" class="lever-list"></ul>
 
@@ -547,10 +558,11 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
         <button id="ops-force-upload" class="btn quiet" type="button">⇪ Force full upload to shelf server</button>
         <span id="ops-force-upload-msg" class="ops-run-msg"></span>
       </div>
+      <!-- HONESTY MARKER — kept whole: a button that answers "not configured"
+           must say so before it is pressed. -->
       <p class="force-upload-note">
-        The physical shelf server build is not finished — this reports
-        "not configured" honestly until it exists. See
-        <a href="/runbooks/shelf/">the shelf runbook</a> for status.
+        The shelf server does not exist yet — this reports "not configured"
+        until it does. See <a href="/runbooks/shelf/">the shelf runbook</a>.
       </p>
       <ul id="shelf-upload-rows" class="rows"></ul>
     </div>
@@ -575,37 +587,44 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
        bucket" would hide a database nobody has exported in months. -->
   <section id="backups-section" aria-labelledby="backups-h" hidden>
     <h2 id="backups-h">Backups</h2>
+    <!-- Trimmed 2026-08-17 (owner's estate-wide trim). KEPT: "no cron" and the
+         oldest-store grading, because both change how a reader reads the dot.
+         DROPPED: the bucket inventory and the read-path's privacy envelope
+         (counts and timestamps only, never a listing or an object URL) — that
+         envelope's home of record is docs/access/backup-restore.md, and
+         apps/auth-worker/test/backups.test.ts pins the JSON shape a 200
+         carries — which is the enforcement prose never was. -->
     <p class="section-note">
-      The private <code>estate-backups</code> R2 bucket — D1 exports, a
-      Firestore dump, and the three cover-image buckets, written only by a
-      manual run of <code>backup.yml</code> (no cron). Each row is graded on
-      its <em>oldest</em> store, so one stale database cannot hide behind a
-      fresh one. Read via <code>GET /api/estate/backups</code>, which returns
-      counts and timestamps only — never a bucket listing, an object, or a
-      URL that could fetch one.
+      The private <code>estate-backups</code> R2 bucket, written only by a
+      manual run of <code>backup.yml</code> — no cron. Each row is graded on its
+      <em>oldest</em> store, so one stale database cannot hide behind a fresh
+      one.
     </p>
     <ul id="backups-rows" class="rows"></ul>
   </section>
 
   <section aria-labelledby="idx-h">
     <h2 id="idx-h">Shared index</h2>
+    <!-- The second sentence is an HONESTY MARKER — it stops a fresh-looking age
+         being read as fresh DATA. Kept. -->
     <p class="section-note">
-      <code>index.heygabi.ai</code> — one cross-catalog pointer table, fed by
-      snapshot pushes from each catalog. A source's row age is how long ago
-      it last pushed, not how old the data inside it is.
+      <code>index.heygabi.ai</code> — one cross-catalog pointer table. A row's
+      age is how long since that source last pushed, not how old its data is.
     </p>
     <ul id="index-rows" class="rows"></ul>
   </section>
 
   <section aria-labelledby="pipe-h">
     <h2 id="pipe-h">Book pipeline</h2>
+    <!-- "cannot see the next run" is an HONESTY MARKER and stays. The dropped
+         half named the threshold arithmetic (8h + slack) shared with the
+         Audiobook row; that was never doc'd and its home of record is the
+         constants in ./status.js, which is where a change to it must be made. -->
     <p class="section-note">
-      The audiobook sync pipeline's own records, not inferred from anything
-      downstream — its Firestore heartbeat and the ebook-lane manifest it
-      writes, both read straight rather than guessed at. This page cannot see
-      the pipeline's <em>next</em> Task Scheduler run (that lives only on the
-      home machine); ages below are checked against the last recorded run,
-      same 8h+slack thresholds as the Audiobook row above.
+      The audiobook pipeline's own records — its Firestore heartbeat and the
+      ebook-lane manifest — read straight, never inferred. This page cannot see
+      the pipeline's <em>next</em> run (that lives only on the home machine);
+      ages are measured from the last recorded one.
     </p>
     <ul id="pipeline-rows" class="rows"></ul>
   </section>
@@ -618,33 +637,30 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <section aria-labelledby="site-h">
     <h2 id="site-h">Sites</h2>
+    <!-- HONESTY MARKER, kept nearly whole: this is the sentence that stops a
+         green dot being over-read. -->
     <p class="section-note">
-      Reachability only — these hosts send no CORS header for a browser to
-      read a status code from, so a green dot here means "answered a
-      request," not "returned 200."
+      Reachability only — these hosts send no CORS header, so a green dot means
+      "answered a request," not "returned 200."
     </p>
     <ul id="site-rows" class="rows"></ul>
   </section>
 
   <footer>
+    <!-- ⚠️ TRIMMED 2026-08-17 (owner's estate-wide trim order). The exact
+         six-host read list and the Firebase auth hosts sign-in adds were
+         removed from the page; they are NOT lost — docs/info/health-envelope.md
+         is their home of record, and it is the doc to update when a host is
+         added. What stays here is the CLAIM a reader cannot verify for himself
+         (no credentials are sent) and the honesty marker naming what is absent
+         from the page. -->
     <p>
-      The status rows above read six hosts and nothing else:
-      <code>index.heygabi.ai</code>, <code>auth.heygabi.ai</code>,
-      <code>library.heygabi.ai</code>, <code>boardgames.heygabi.ai</code>,
-      <code>audiobooks.heygabi.ai</code> (its <code>/dev/</code> lane and
-      <code>/ebooks.json</code> included) and
-      <code>firestore.googleapis.com</code> (one public document,
-      <code>pipeline_status/current</code>). No credentials are sent or
-      needed for any of that — every endpoint above answers signed-out by
-      design. Signing in for Operations only adds Firebase's own auth hosts
-      (identitytoolkit, securetoken) and does not change what the rows read.
+      These rows read six public hosts and send no credentials; every endpoint
+      answers signed-out by design.
     </p>
     <p>
-      Not shown: GitHub Actions run status (the audiobook pipeline's own CI)
-      would need a token this page cannot hold client-side — the Run levers
-      list in Operations links straight to those Actions pages instead of
-      trying to embed them, since GitHub already gates them with its own
-      sign-in.
+      Not shown: GitHub Actions run status — that needs a token this page cannot
+      hold, so the Run levers link straight to those pages instead.
     </p>
     <p><a href="/">← back to the front door</a></p>
   </footer>

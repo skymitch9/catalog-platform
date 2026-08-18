@@ -428,7 +428,7 @@ footer a { color: var(--et-accent); }
       <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
     </div>
   </div>
-  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+  <p class="hg-cog-note">Remembered on this site only.</p>
 </div>
 
 <main>
@@ -437,11 +437,15 @@ footer a { color: var(--et-accent); }
     heygabi.ai
   </a>
   <h1>Series</h1>
+  <!-- Trimmed 2026-08-17 (owner's estate-wide trim: "Only keep what's mandatory
+       and keep all the text short and useful"). Dropped: "tap a series to open
+       it" (the rows do that visibly) and the canon note — one registry entry
+       absorbs the spellings the catalogs disagree on. That canon's home of
+       record is tools/series-canon.mjs and the shared index's series registry;
+       nothing on this page can change it. -->
   <p class="sub">
     Every series the estate holds, volume by volume — who has which book, in
-    which format, and which number nobody has at all. Tap a series to open
-    it. Sourced live from the shared index's series registry, so a spelling
-    the catalogs disagree on is still one series here.
+    which format, and which number nobody has at all.
   </p>
 
   <h2 id="browse-h">Browse by series</h2>
@@ -462,10 +466,12 @@ footer a { color: var(--et-accent); }
       A volume listed means it is in a catalog — some entries are wanted, not
       owned. Tap through to the owning catalog for owned-versus-wanted.
     </p>
+    <!-- Both footer paragraphs are HONESTY MARKERS and survive every trim: the
+         first stops "listed" being read as "owned", the second stops a gap being
+         read as an estate-wide fact rather than a fact about your own view. -->
     <p>
-      “Nobody has this one” means nobody on the shelves <em>you</em> can see.
-      A catalog you have no access to is not consulted and is never counted
-      against, so a gap here is a gap in your own view of the estate.
+      “Nobody has this one” means nobody on the shelves <em>you</em> can see — a
+      catalog you cannot reach is never consulted, and never counted against.
     </p>
     <p><a href="/universes">universes</a> · <a href="/">&larr; back to the front door</a></p>
   </footer>

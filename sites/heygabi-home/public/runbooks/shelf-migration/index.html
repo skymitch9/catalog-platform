@@ -147,7 +147,11 @@
 <section id="facts-card" hidden aria-labelledby="facts-h">
   <div class="facts-box">
     <h2 id="facts-h" class="facts-h">Server facts</h2>
-    <p class="facts-sub">What you know about the box, Justin — this saves straight into the runbook&rsquo;s &sect;0 so nobody has to relay it by hand.</p>
+    <!-- Trimmed 2026-08-17 (owner's estate-wide trim). This also dropped a
+         first name from a PUBLIC repo, which it should not have carried. The
+         destination fact (saves into the runbook's §0) is kept — it is what
+         tells someone their typing is not going nowhere. -->
+    <p class="facts-sub">Saves straight into the runbook&rsquo;s &sect;0.</p>
     <form id="facts-form" class="facts-form">
       <div class="f-row">
         <label class="f-label" for="f-hardware">Server hardware</label>
@@ -163,7 +167,7 @@
       </div>
       <div class="f-row">
         <label class="f-label" for="f-lib">Library size</label>
-        <input id="f-lib" name="library_size" maxlength="100" autocomplete="off" placeholder="e.g. ~310 GB (ask Skylar if unsure)">
+        <input id="f-lib" name="library_size" maxlength="100" autocomplete="off" placeholder="e.g. ~310 GB">
       </div>
       <div class="f-row">
         <label class="f-label" for="f-notes">Anything odd about this machine?</label>

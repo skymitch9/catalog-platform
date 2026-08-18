@@ -581,7 +581,13 @@ footer a.more:hover svg { transform: translateX(3px); }
       <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
     </div>
   </div>
-  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+  <!-- ⚠️ TRIMMED 2026-08-17, owner's estate-wide order ("Let's trim text like
+       this all over each of the sites. Only keep what's mandatory and keep all
+       the text short and useful"). The long form said each catalogue keeps its
+       own look until changed there; that per-site scoping rule's home of record
+       is docs/info/estate-themes.md. One line here, on every page that has this
+       cog — do not grow it back. -->
+  <p class="hg-cog-note">Remembered on this site only.</p>
 </div>
 
 <main>
@@ -614,11 +620,18 @@ footer a.more:hover svg { transform: translateX(3px); }
   -->
   <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
     <h2 id="find-h">One question, three shelves</h2>
+    <!-- ⚠️ The hint lost its second sentence in the 2026-08-17 estate-wide trim
+         (owner: "Only keep what's mandatory and keep all the text short and
+         useful"). It said anyone may search audio and members sign in for every
+         shelf. That fact is NOT lost and is NOT prose any more: the component's
+         own _scopeNote() prints "Searching audiobooks only. Sign in to search
+         every shelf." beside real results, which is the worded gate and stays
+         (assets/estate-search.js). Do not restate it here. -->
     <estate-search
       id="find-search"
       auth="authed"
       scan
-      hint="“Do we own this in any format?” — one title, checked against every shelf at once. Anyone can search the audiobook shelf; household members sign in with Google to search every shelf they can see."
+      hint="“Do we own this in any format?” — one title, checked against every shelf at once."
     >
 <!-- The who-extra Admin chip lived here until 2026-08-16 (owner: "remove
            the admin button near the search bar since we have the admin section
@@ -761,7 +774,13 @@ footer a.more:hover svg { transform: translateX(3px); }
 
   <footer class="rise" style="animation-delay:.26s">
     <p>Not a shop and not a library — nothing here is for sale or for loan.</p>
-    <p>No tracking and no cookies. The page itself needs no account; the search asks for a sign-in because it looks across the private shelves. Each catalogue handles its own sign-in and will ask before it shows you anything.</p>
+    <!-- Trimmed 2026-08-17 (owner's estate-wide trim order). The removed half
+         explained that each catalogue handles its own sign-in and asks first;
+         that is the estate SSO model, whose home of record is
+         docs/info/sso-design.md. The two facts kept here are the ones a
+         stranger cannot learn any other way: the privacy claim, and WHY the
+         search asks for a sign-in. -->
+    <p>No tracking and no cookies. The search asks for a sign-in because it looks across the private shelves.</p>
   </footer>
 
 </main>
