@@ -80,6 +80,7 @@ import {
   BOOKS_SEARCH_HITS,
   booksIdentityMessage,
   boundParams,
+  looksLikeStatQuery,
   type BooksToolContext,
 } from './book-knowledge.js';
 
@@ -800,6 +801,13 @@ async function searchBook(
     q: query,
     mode: modeRaw,
     limit: String(BOOKS_SEARCH_HITS),
+    // ⚠️ ASK for the stat-block detector when the query is stat-shaped, rather
+    // than leaving it to the route's own `looksLikeStatQuestion()` — which has
+    // the same "stat sheet" / "status sheet" blind spot the router had, and
+    // which measurably returned prose that MENTIONED the words instead of the
+    // blocks themselves. Only ever `true`: unset leaves the route's judgement
+    // in place, and `false` would suppress a detector that was right.
+    ...(modeRaw !== 'presence' && looksLikeStatQuery(query) ? { stat_block: 'true' } : {}),
     // ⚠️ THE BOUND, DERIVED FROM THIS TURN'S QUESTION AND NEVER STORED. It is
     // threaded from the context rather than read from `args`: a model asked to
     // choose its own spoiler scope chooses the generous one, because the

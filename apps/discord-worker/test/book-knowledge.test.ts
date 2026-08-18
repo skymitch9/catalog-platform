@@ -46,6 +46,7 @@ import {
   booksIdentityMessage,
   booksIntent,
   booksOn,
+  looksLikeStatQuery,
   boundFromQuestion,
   boundParams,
   makeBooksBudget,
@@ -309,6 +310,14 @@ describe('⚠️ booksIntent separates "what happens in it" from "what do we hav
     });
   });
 
+  it('looksLikeStatQuery knows both words, and stays off ordinary questions', () => {
+    assert.equal(looksLikeStatQuery('status sheet'), true);
+    assert.equal(looksLikeStatQuery('stat sheet'), true);
+    assert.equal(looksLikeStatQuery('his level'), true);
+    assert.equal(looksLikeStatQuery('who is the dwarf'), false);
+    assert.equal(looksLikeStatQuery(''), false);
+  });
+
   it('empty and junk are not book questions', () => {
     assert.equal(booksIntent(''), false);
     assert.equal(booksIntent('   '), false);
@@ -460,6 +469,27 @@ describe('⚠️ the executor refuses in words, and never fakes an answer', () =
     assert.equal(out.isError, false);
     assert.equal(sent!.scope, 'through_chapter');
     assert.equal(sent!.chapter, '4');
+  });
+
+  it('⚠️ a stat-shaped query ASKS for the stat-block detector — measured, not assumed', async () => {
+    // ⚠️ book-retrieval.ts's own looksLikeStatQuestion() fires on "stat sheet"
+    // and NOT on "status sheet" — the same word gap the router had. Measured
+    // live on Primal Hunter 9: auto returned passages that merely MENTIONED the
+    // words (stat_keys 0), forced returned the actual blocks (stat_keys 12).
+    let sent: Record<string, string> | null = null;
+    const p = port({
+      search: async (_e, _b, params) => {
+        sent = params;
+        return OK({ ingested: true, passages: [] });
+      },
+    });
+    await runTool('search_book_text', { bookId: 'ph-9', query: 'status sheet', mode: 'latest' }, ctxFor(p));
+    assert.equal(sent!.stat_block, 'true');
+
+    await runTool('search_book_text', { bookId: 'ph-9', query: 'who is the dwarf', mode: 'relevant' }, ctxFor(p));
+    // ⚠️ UNSET, not "false" — leaving the route's own judgement in place. Sending
+    // false would suppress a detector that was right.
+    assert.equal(sent!.stat_block, undefined);
   });
 
   it('an invented mode is refused by name, and nothing is read', async () => {

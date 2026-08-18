@@ -243,6 +243,33 @@ const BOOKS_ANCHOR = [
  * question with shelf words in it, and answering it from the catalogue is the
  * exact failure §4.5 row 4 is about.
  */
+/**
+ * ⚠️ **DOES THIS SEARCH WANT A STAT BLOCK?** — measured 2026-08-18, live.
+ *
+ * `book-retrieval.ts` has its own `looksLikeStatQuestion()` and it has the SAME
+ * blind spot this module's router had: it fires on *"stat sheet"* and not on
+ * *"status sheet"*, which is the word the Primal Hunter transcripts actually
+ * use. Measured on book 9, `mode=latest`, `q="status sheet"`:
+ *
+ * | | top hits |
+ * |---|---|
+ * | detector auto (off) | ord 1800 `stat_keys: 0`, 1795 `12`, 1649 `0` — passages that MENTION the words |
+ * | detector forced on | ord 1796 `stat_keys: 12`, 403 `12` — actual stat BLOCKS |
+ *
+ * The route already accepts `stat_block=true` as an override, so the fix is to
+ * ASK for it rather than to reach across into the other Worker's detector. ⚠️
+ * Only ever `true`: an unset value leaves the route's own judgement in place,
+ * and sending `false` would suppress a detector that was right.
+ */
+const STAT_QUERY_RE = new RegExp(
+  `\\b(?:(?:stat|status)\\s*(?:${SHEET_NOUNS})|${WEAK_ATTRIBUTE_NOUNS})\\b`,
+  'i',
+);
+
+export function looksLikeStatQuery(query: string): boolean {
+  return STAT_QUERY_RE.test((query ?? '').trim());
+}
+
 export function booksIntent(text: string): boolean {
   const q = (text ?? '').trim();
   if (!q) return false;
