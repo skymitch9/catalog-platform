@@ -354,3 +354,42 @@ row, indented — against a 256 KB limit, with a queue of 1,064 more books behin
 it. `MAX_HISTORY` is 500 (~140 KB). Raising it much past 800 needs the draft
 written compact first, or the push starts answering `board_too_large` on a night
 that ingested well.
+
+## 10. NOTIFICATION PREFERENCES ARE NOT ON THIS BOARD — read this before adding them
+
+Owner ask, 2026-08-18 (item 7): which event classes are worth a buzz on his
+phone. The obvious home was a `prefs` section here. **It is not, and the reason
+generalises to anything else that flows the other way.**
+
+| | |
+|---|---|
+| **Where** | `estate_prefs` table (migration 0014, additive), key `notify` |
+| **Read** | `GET /api/estate/ops/notify-prefs` — `requireDevops()` **OR the conductor bearer** |
+| **Write** | `PUT` same path — `requireDevops()` **only, never the conductor** |
+| **Classes** | served by the Worker (`NOTIFY_CLASSES`), not hard-coded in the page |
+| **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) — the one control on that page |
+
+⚠️ **THE BOARD FLOWS ONE WAY: machines push, people read.** A preference flows
+the other way. Storing one here would mean either the browser holding the
+conductor's push token — a machine credential that must never reach a page — or
+the next 15-minute push silently overwriting whatever the owner just toggled,
+because the board is one last-write-wins blob. Both are worse than a table.
+
+⚠️ **THE READ DOOR ADMITS A MACHINE, AND THAT IS THE FIX FOR A MISTAKE THIS
+BOARD ALREADY MADE.** §9 has to warn that "you cannot recover a section you did
+not write" precisely because the board's read door is `requireDevops()` only, so
+no script can read it back. **A preference nothing can READ is a preference
+nothing can OBEY.** The prefs GET therefore accepts the conductor's existing
+bearer rather than minting a second credential; what leaks if that token leaks is
+the names of four toggles and whether they are on.
+
+⚠️ **THE WRITE DOOR IS NEVER THE MACHINE'S.** A machine must not be able to
+quietly switch off the alert that would have said it was misbehaving. Verified
+live 2026-08-18: `PUT` with a valid conductor bearer answers **401**.
+
+⚠️ **Defaults are asymmetric on purpose** — `red` ON, everything else OFF. A
+phone that buzzes for every routine success is a phone that gets silenced, and a
+silenced phone misses the red one too. The page distinguishes *"nobody has chosen
+yet, these are the defaults"* from *"he chose these"*, because a default
+presented as a decision is a decision nobody made.
+

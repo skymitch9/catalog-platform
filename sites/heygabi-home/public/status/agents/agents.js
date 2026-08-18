@@ -26,7 +26,7 @@
  * surface that guesses is a status surface nobody can act on.
  */
 
-import { TICK_INTERVAL_MS, el, sayEmpty } from '../lib/core.js';
+import { AUTH_ORIGIN, TICK_INTERVAL_MS, el, sayEmpty } from '../lib/core.js';
 import { mountGate } from '../lib/gate.js';
 import {
   BOARD_POLL_MS,
@@ -56,6 +56,7 @@ const freshEl = document.getElementById('board-fresh');
 const agentListEl = document.getElementById('agent-rows');
 const eventListEl = document.getElementById('event-rows');
 const usageEl = document.getElementById('usage-block');
+const prefsEl = document.getElementById('notify-prefs');
 
 /** The last SUCCESSFUL read, kept whole. Two jobs: a failed poll can say how
  *  old the picture on screen is instead of pretending there is none, and the
@@ -266,6 +267,162 @@ function renderUsage(usage, nowMs) {
 }
 
 // ---------------------------------------------------------------------------
+// Notification preferences (owner ask 2026-08-18, item 7)
+//
+// ⚠️ THE ONLY CONTROL ON THIS PAGE, AND THE ONLY ONE THAT SHOULD BE. Every
+// other block here is a machine-pushed reading; a browser rewriting one would
+// be lying to the owner about his own estate. Preferences are the exception
+// because they flow the other way: he decides, the conductor obeys.
+//
+// ⚠️ THEY ARE NOT IN THE PUSHED BOARD, deliberately. The board is one
+// last-write-wins blob written by machines every 15 minutes, so a preference
+// stored there would be silently overwritten by the next push — and the write
+// door would have to be the conductor's machine token, which must never reach a
+// page. They live in their own table behind their own doors.
+//
+// ⚠️ THE CLASSES AND THEIR WORDING COME FROM THE SERVER. A label that lives
+// here while the behaviour lives in the conductor is two things that drift, and
+// the owner then switches off something that does not do what its label says.
+// ---------------------------------------------------------------------------
+
+const PREFS_URL = `${AUTH_ORIGIN}/api/estate/ops/notify-prefs`;
+
+let prefsState = null;
+let prefsSaving = false;
+
+function setPrefsNote(text, tone) {
+  if (!prefsEl) return;
+  let note = prefsEl.querySelector('.prefs-note');
+  if (!note) {
+    note = el('p', 'section-note prefs-note');
+    prefsEl.append(note);
+  }
+  note.textContent = text;
+  if (tone) note.dataset.tone = tone; else delete note.dataset.tone;
+}
+
+function renderPrefs() {
+  if (!prefsEl) return;
+  prefsEl.replaceChildren();
+
+  if (!prefsState) {
+    prefsEl.append(el('p', 'empty-say', 'Notification preferences could not be read — see the note below.'));
+    return;
+  }
+  const classes = Array.isArray(prefsState.classes) ? prefsState.classes : [];
+  if (!classes.length) {
+    prefsEl.append(el('p', 'empty-say', 'The estate reported no notification classes, so there is nothing to choose between.'));
+    return;
+  }
+
+  const list = el('ul', 'prefs-list');
+  for (const cls of classes) {
+    const on = Boolean(prefsState.prefs && prefsState.prefs[cls.key]);
+    const li = el('li', 'prefs-row');
+
+    const label = document.createElement('label');
+    label.className = 'prefs-label';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = on;
+    box.disabled = prefsSaving;
+    box.addEventListener('change', () => savePref(cls.key, box.checked));
+    label.append(box);
+    label.append(el('span', 'prefs-name', cls.label || cls.key));
+    li.append(label);
+    // ⚠️ Every toggle says what it MEANS. A switch whose effect a reader has
+    // to guess at gets guessed at wrongly, and this one decides what wakes him.
+    if (cls.detail) li.append(el('p', 'prefs-detail', cls.detail));
+    list.append(li);
+  }
+  prefsEl.append(list);
+
+  // ⚠️ "Nobody has chosen yet" is DIFFERENT from "he chose these", and the
+  // page says which. A default presented as a decision is a decision nobody
+  // made — and here that would mean believing he had opted out of something.
+  const who = str(prefsState.updated_by);
+  const when = ageOf(prefsState.updated_at, Date.now());
+  setPrefsNote(
+    prefsState.configured
+      ? `Set${who ? ` by ${who}` : ''}${when ? ` ${when}` : ''}. The conductor reads this each time it checks in.`
+      : 'Nobody has chosen yet — these are the estate’s defaults: tell me when something breaks, stay quiet otherwise.',
+  );
+}
+
+async function loadPrefs() {
+  if (!prefsEl) return;
+  let res;
+  try {
+    res = await fetch(PREFS_URL, { headers: { Authorization: `Bearer ${await idToken()}` }, cache: 'no-store' });
+  } catch {
+    prefsState = null;
+    renderPrefs();
+    setPrefsNote('The auth Worker did not answer, so your notification choices could not be read. Nothing was changed.', 'danger');
+    return;
+  }
+  if (!res.ok) {
+    prefsState = null;
+    renderPrefs();
+    // ⚠️ A permission refusal and an outage get different words — the estate's
+    // standing rule. Mislabelling an outage sends someone asking for access
+    // they already hold.
+    setPrefsNote(
+      res.status === 401 || res.status === 403
+        ? 'This account is not allowed to change notification settings. An admin can grant devops from /admin.'
+        : `The preferences endpoint answered HTTP ${res.status}, so your choices could not be read.`,
+      'danger',
+    );
+    return;
+  }
+  prefsState = await res.json().catch(() => null);
+  renderPrefs();
+}
+
+async function savePref(key, value) {
+  if (!prefsState || prefsSaving) return;
+  const previous = Boolean(prefsState.prefs[key]);
+  prefsSaving = true;
+  // Optimistic, but the note says it is IN FLIGHT — a toggle that flips and
+  // then silently reverts on a failed save is how a setting gets believed.
+  prefsState.prefs[key] = value;
+  renderPrefs();
+  setPrefsNote('Saving\u2026');
+
+  let res;
+  try {
+    res = await fetch(PREFS_URL, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${await idToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(prefsState.prefs),
+    });
+  } catch {
+    prefsState.prefs[key] = previous;
+    prefsSaving = false;
+    renderPrefs();
+    setPrefsNote('The auth Worker did not answer — nothing was saved, and the switch has been put back.', 'danger');
+    return;
+  }
+  prefsSaving = false;
+  if (!res.ok) {
+    // ⚠️ PUT BACK WHAT HE SEES to match what is STORED. Leaving the new
+    // position on screen after a failed save is the worst outcome available:
+    // he believes he has turned an alert on, and it is off.
+    prefsState.prefs[key] = previous;
+    const body = await res.json().catch(() => null);
+    renderPrefs();
+    setPrefsNote(
+      res.status === 401 || res.status === 403
+        ? 'You are not allowed to change these. Nothing was saved and the switch has been put back.'
+        : `${body?.detail || `The estate refused the change (HTTP ${res.status}).`} Nothing was saved and the switch has been put back.`,
+      'danger',
+    );
+    return;
+  }
+  prefsState = await res.json().catch(() => prefsState);
+  renderPrefs();
+}
+
+// ---------------------------------------------------------------------------
 // The poll
 // ---------------------------------------------------------------------------
 
@@ -306,7 +463,7 @@ const agentsSectionEl = document.getElementById('agents-section');
 
 const gate = mountGate({
   sections: [agentsSectionEl],
-  onAllowed: () => { refreshBoard(); },
+  onAllowed: () => { refreshBoard(); loadPrefs(); },
 });
 
 // The owner's ask: a 30-second poll. Visible tabs only — a backgrounded tab

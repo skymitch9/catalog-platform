@@ -21,6 +21,7 @@ import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { agentBoardRoutes } from './agent-board.js';
+import { notifyPrefsRoutes } from './notify-prefs.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
 import { estateDocsRoutes } from './estate-docs.js';
@@ -89,6 +90,14 @@ app.use('/api/estate/ops/pipeline/*', adminCors());
 // method, and a mount that answers OPTIONS costs nothing the GET did not
 // already allow.
 app.use('/api/estate/ops/agent-board', adminCors());
+// ⚠️ NOTIFICATION PREFERENCES NEED THIS LINE OR THE TOGGLES DO NOT WORK IN A
+// BROWSER, and they would look perfectly correct to curl while failing. Both
+// halves carry an Authorization header and the PUT carries Content-Type, so
+// every call from the apex is a PREFLIGHTED cross-origin request. This is the
+// exact omission that shipped with the ingestion pause card (bc6fc2b) and made
+// a working handler unreachable — a route does not imply a CORS mount, and
+// Hono's mounts are exact-or-wildcard, never prefix-implicit.
+app.use('/api/estate/ops/notify-prefs', adminCors());
 // ⚠️ THE INGESTION PAUSE CARD SHIPPED WITHOUT THIS MOUNT (bc6fc2b, 2026-08-18)
 // and was therefore UNREACHABLE FROM A BROWSER — found 2026-08-18 while moving
 // the card to /status/pipelines. Both its routes carry an Authorization header,
@@ -155,6 +164,8 @@ app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
 app.route('/api', agentBoardRoutes);
+// Notification preferences — a person writes them, the conductor reads them.
+app.route('/api', notifyPrefsRoutes);
 app.route('/api', todoRoutes);
 // ⚠️ ORDER IS LOAD-BEARING: estateDocsRoutes BEFORE docsRoutes.
 // docsRoutes owns GET /estate/docs/:slug, and its slug pattern

@@ -125,6 +125,24 @@
          push age — they are two different clocks and can disagree. -->
     <div id="usage-block"></div>
 
+    <!-- Notification preferences (owner ask 2026-08-18, item 7): which event
+         classes are worth a buzz on his phone.
+
+         ⚠️ THIS IS THE ONLY CONTROL ON THIS PAGE, and it is deliberately the
+         only one: everything else here is a machine-pushed reading that a
+         browser must not be able to rewrite. Preferences flow the other way —
+         a person decides, and the conductor obeys — so they live in their own
+         table behind GET/PUT /api/estate/ops/notify-prefs rather than in the
+         pushed board, which the next push would overwrite.
+
+         ⚠️ The WRITE door is requireDevops() and never the conductor's bearer:
+         a machine must not be able to quietly switch off the alert that would
+         have said it was misbehaving. The classes and their wording are served
+         by the Worker, not hard-coded here, so a toggle's label and its
+         behaviour cannot drift apart. -->
+    <h3 class="step-list-h">Notify me when</h3>
+    <div id="notify-prefs"></div>
+
     <p class="section-note">
       Pushed with <code>scripts/push-agent-board.mjs</code>. Nothing on this
       page can start, stop or kill an agent — the write door is a machine

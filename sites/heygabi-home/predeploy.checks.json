@@ -117,6 +117,7 @@
       "path": "/status/agents/",
       "mustContain": [
         "GABI Knowledge",
+        "id=\"notify-prefs\"",
         "class=\"statusnav\"",
         "id=\"board-fresh\"",
         "id=\"agent-rows\"",
@@ -138,6 +139,7 @@
         "fetchBoard",
         "renderFreshness",
         "PAGE_SECTIONS",
+        "/api/estate/ops/notify-prefs",
         "session_pct",
         "weekly_pct",
         "fable_pct"
@@ -198,7 +200,8 @@
         ".freshstrip",
         ".proc-row",
         ".usage-tile",
-        ".log-tail"
+        ".log-tail",
+        ".prefs-row"
       ]
     },
     {
