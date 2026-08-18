@@ -132,7 +132,47 @@ h1 {
 #status[data-tone="warn"] { color: var(--et-warn); }
 #status[data-tone="owner"] { color: var(--et-accent); }
 
-ul.users { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+/* ═══ THE DIRECTORY, IN THREE SECTIONS ═════════════════════════════════
+   Owner order 2026-08-17, verbatim: *"i revoked access to an account on
+   /admin, its still in the list, lets move these to a revoked section, lets
+   also make the effort to have a pending area too while we're in here. make
+   pending, revoked, and current members list all collapsable."*
+
+   It was ONE flat list of every row in the directory, so a person you had
+   just revoked sat between two current members wearing a small red badge —
+   which is exactly the complaint. The estate has three statuses and only
+   three (`estate_user.status` is `CHECK (status IN
+   ('pending','approved','revoked'))`, auth-worker migration 0001), so the
+   list is now three sections in the order you act on them: who is IN, who is
+   WAITING, who is OUT.
+
+   ⚠️ #users is a <div> now, not a <ul> — a <details> is not a legal child of
+   a list. Each section owns its own <ul class="users-list">; the cards inside
+   are byte-for-byte the same `li.user` they always were (admin.js: userCard).
+
+   The disclosure is the page's EXISTING one — .adv-summary, the same summary
+   language as Advanced filters and the Permission map — deliberately not a
+   second one invented here (§9's standing rule: reuse the idiom or you have
+   taught the reader two ways to open a thing). Only the caret's open-state
+   rule is new, because .adv[open] is scoped to .adv. */
+.users { display: grid; gap: .8rem; margin: 0; }
+.dir-group {
+  padding: .5em .9em .7em;
+  border: var(--et-border-w) solid var(--et-panel-border);
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+}
+.dir-group[open] > .dir-summary::before { transform: rotate(90deg); }
+/* The live count, in the header, always — collapsed or not. A section you
+   cannot see into still has to say how many are in it, or collapsing Revoked
+   would hide the very fact ("there are two of them") the owner opened this
+   page to learn. */
+.dir-count { color: var(--et-muted); font-size: var(--et-text-small); font-weight: 700; }
+/* Empty sections say WHY they are empty in words — never a bare empty box,
+   and never the same sentence for two different reasons: "nobody is waiting"
+   and "one pending person is hidden by your filters" are opposite facts. */
+.dir-empty { margin: .55rem 0 .1rem; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+ul.users-list { list-style: none; margin: .55rem 0 0; padding: 0; display: grid; gap: .6rem; }
 .user {
   padding: .85rem 1rem;
   border: var(--et-border-w) solid var(--et-panel-border);
@@ -542,6 +582,22 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     <code>admin</code> rung, which the row's own <em>can do</em> line says.
   </p>
 
+  <!-- ⚠️ THE THREE SECTIONS, stated where the person using the page reads it
+       (owner order 2026-08-17: "lets move these to a revoked section, lets
+       also make the effort to have a pending area too... make pending,
+       revoked, and current members list all collapsable"). The CSS block for
+       .dir-group holds the long version. -->
+  <p class="sub">
+    <strong>Three lists, not one.</strong> <em>Current members</em>,
+    <em>Pending</em> and <em>Revoked</em> are separate collapsible sections,
+    each carrying its own live count. Current is open, Pending opens itself
+    whenever somebody is actually waiting, and Revoked starts collapsed —
+    revoked rows are kept forever (a returning person meets their revocation)
+    but they are not who you came here to read. Search, filters and sort still
+    run across the whole directory; they only change which rows land in each
+    section.
+  </p>
+
   <!-- ⚠️ THE INTERACTION GRAMMAR, stated where the person using the page can
        read it (owner order 2026-08-17: "auth setting has too many different
        auth setting experiences, sometimes we double click to confirm
@@ -757,7 +813,14 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     </details>
   </div>
 
-  <ul id="users" class="users"></ul>
+  <!-- THE DIRECTORY — admin.js: renderFilteredList() → directorySection().
+       ⚠️ A <div>, not a <ul>, since 2026-08-17: it holds three <details>
+       sections (Current members / Pending / Revoked), and each of THOSE holds
+       the <ul class="users-list"> of cards. A <details> is not a legal child
+       of a list, which is the whole reason the element changed.
+       Filters and sort still run across the WHOLE directory first; the
+       sections only decide which of the surviving rows goes where. -->
+  <div id="users" class="users"></div>
 
   <!-- Seed-gap notices: an app listing someone the directory does not. -->
   <p id="gaps" hidden></p>

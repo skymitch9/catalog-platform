@@ -81,7 +81,16 @@
         "(id=role-ladder, 'Audiobooks/Ebooks role ladder') and the old per-site filter wording ('Site role",
         "(both shelves)') are exactly what a stale bundle would still carry while serving a cheerful 200 and",
         "satisfying every mustContain. The two older removals ('>Audiobook</span>' and 'Audiobook role",
-        "ladder', from the 2026-08-17 row merge) are kept — they cost nothing and still pin real removals."
+        "ladder', from the 2026-08-17 row merge) are kept — they cost nothing and still pin real removals.",
+        "⚠️ THE THREE-SECTION DIRECTORY (2026-08-17, owner: 'i revoked access to an account on /admin, its",
+        "still in the list, lets move these to a revoked section, lets also make the effort to have a pending",
+        "area too while we're in here. make pending, revoked, and current members list all collapsable'). The",
+        "SECTIONS themselves are drawn by admin.js after sign-in and are pinned in that file's entry below;",
+        "what ships in this HTML and is assertable unauthenticated is the shape they need — the intro that",
+        "states the page has three lists, and the .dir-group/.dir-empty/.users-list CSS the sections are built",
+        "from. The removal half is the one that matters most here and is a single string: the directory mount",
+        "was '<ul id=\"users\"' and is now a <div>, because a <details> is not a legal child of a list. A stale",
+        "bundle serving the old <ul> would render three sections into an invalid tree and still return 200."
       ],
       "path": "/admin/",
       "mustContain": [
@@ -96,14 +105,20 @@
         "id=\"permission-map\"",
         "id=\"permission-map-body\"",
         "Permission map",
-        "Role, per site"
+        "Role, per site",
+        "Three lists, not one",
+        "id=\"users\" class=\"users\"",
+        ".dir-group",
+        ".dir-empty",
+        "ul.users-list"
       ],
       "mustNotContain": [
         ">Audiobook</span>",
         "Audiobook role ladder",
         "Audiobooks/Ebooks role ladder",
         "id=\"role-ladder\"",
-        "Site role (both shelves)"
+        "Site role (both shelves)",
+        "<ul id=\"users\""
       ]
     },
     {
@@ -134,9 +149,18 @@
         "its tag text are the note the owner rejected. A bundle still carrying any of them is a bundle still",
         "shipping the divergence he asked to remove, and it would pass every mustContain above. The four",
         "2026-08-17 download-rework removals are kept for the same reason they were added.",
+        "⚠️ THE THREE-SECTION DIRECTORY (2026-08-17). The sections ARE this module — the HTML ships only an",
+        "empty mount — so these are the markers that prove the reshape landed rather than the shell around it.",
+        "DIRECTORY_GROUPS is the one list that names the three statuses and their defaults; directorySection is",
+        "the builder; openGroups is what stops a search keystroke or a mutation re-render slamming a section",
+        "the reader opened; 'Current members' is the section header the owner asked for by name; 'Nobody is",
+        "waiting.' is the worded empty state (his standing rule: never a bare empty box); and 'hidden by the",
+        "current search or filters' is the OTHER empty state — the one that must never be confused with the",
+        "first, since printing 'nobody is waiting' while a filter hides a pending person says the opposite of",
+        "the truth. A bundle missing any of these renders a flat list again and returns a cheerful 200.",
         "NOTE (unchanged, and the reason this file's checks can never be enough): the signed-in rendered",
-        "table — the grid, the Save, the ladders with real data — is invisible to an unauthenticated fetch",
-        "and still has to be checked by signing in."
+        "table — the grid, the Save, the ladders with real data, and now the three sections themselves — is",
+        "invisible to an unauthenticated fetch and still has to be checked by signing in."
       ],
       "path": "/admin/admin.js",
       "mustContain": [
@@ -153,7 +177,13 @@
         "savePermissions",
         "Save permissions",
         "perm-staged",
-        "renderPermissionMap"
+        "renderPermissionMap",
+        "DIRECTORY_GROUPS",
+        "directorySection",
+        "openGroups",
+        "Current members",
+        "Nobody is waiting.",
+        "hidden by the current search or filters"
       ],
       "mustNotContain": [
         "download-ebooks",

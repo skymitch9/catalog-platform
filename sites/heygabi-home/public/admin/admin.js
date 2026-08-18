@@ -137,6 +137,32 @@
  * per-app vocabularies. Only when the write happens, and how it is announced.
  * A new control on this page picks one of the two gestures; it does not invent
  * a third (docs/access/estate-auth.md §9).
+ *
+ * ## THE DIRECTORY IS THREE COLLAPSIBLE SECTIONS (2026-08-17)
+ *
+ * Owner, from the live page: *"i revoked access to an account on /admin, its
+ * still in the list, lets move these to a revoked section, lets also make the
+ * effort to have a pending area too while we're in here. make pending, revoked,
+ * and current members list all collapsable."*
+ *
+ * Current members (approved) · Pending · Revoked, in that order, each a native
+ * <details> carrying a live count, each holding the SAME `li.user` cards as
+ * before. See DIRECTORY_GROUPS / directorySection() / renderFilteredList().
+ *
+ * Three things about it are worth knowing before touching it:
+ *
+ *   - It is a REGROUPING, not a redesign. No card, badge, dropdown, Save
+ *     button, dev-access button or owner fact changed; the two gestures above
+ *     are untouched and so is every endpoint.
+ *   - The MOVE is free. A status write already went through mutate() →
+ *     loadDirectory() → renderFilteredList(), so approving or revoking someone
+ *     re-fetches and re-deals the sections on the refresh cycle the page has
+ *     always run. Nothing moves a card by hand, which is what keeps the
+ *     sections honest: they are the server's `status` column, dealt out.
+ *   - Filters and sort are unchanged and still run over the WHOLE directory.
+ *     The status FILTER survives on purpose (it narrows to one section and is
+ *     the only way to see a status alone), and an emptied section says so in
+ *     words rather than claiming the estate is empty.
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
@@ -297,6 +323,71 @@ const pendingEdits = new Map();
 
 /** Which member cards are expanded — same reasoning: survives every re-render. */
 const expandedMembers = new Set();
+
+/**
+ * ⚠️ THE DIRECTORY IS THREE SECTIONS, NOT ONE LIST (owner order 2026-08-17,
+ * verbatim: *"i revoked access to an account on /admin, its still in the list,
+ * lets move these to a revoked section, lets also make the effort to have a
+ * pending area too while we're in here. make pending, revoked, and current
+ * members list all collapsable."*).
+ *
+ * The three keys are the WHOLE status vocabulary and are not a UI invention:
+ * `estate_user.status` is `CHECK (status IN ('pending','approved','revoked'))`
+ * in the auth Worker's migration 0001, and STATUS_RANK below has ranked the
+ * same three since sorting existed. This groups by exactly that column —
+ * nothing here re-derives or re-interprets what a status means.
+ *
+ * ⚠️ A ROW IS NEVER DROPPED FOR HAVING AN UNEXPECTED STATUS. A status outside
+ * these three would be a schema change, so it "cannot happen" — but a page
+ * that silently vanishes a member on a value it does not recognise is the
+ * worst possible failure for a page whose only job is showing who has access.
+ * directorySection()'s caller collects any leftover status into its own
+ * section, named after the status, rather than filtering it away.
+ *
+ * `defaultOpen` is only consulted while the reader has NOT touched that
+ * section (see openGroups): Current is where the work is; Pending opens itself
+ * whenever somebody is actually waiting, because a pending person is an action
+ * outstanding; Revoked starts shut, since "revoked rows clutter the list I
+ * read" is the complaint that produced this whole change.
+ */
+const DIRECTORY_GROUPS = [
+  {
+    key: 'approved',
+    title: 'Current members',
+    defaultOpen: () => true,
+    empty: 'Nobody is approved yet — approve someone from Pending and they appear here.',
+    hiddenNoun: (n) => (n === 1 ? 'current member' : 'current members'),
+  },
+  {
+    key: 'pending',
+    title: 'Pending',
+    defaultOpen: (n) => n > 0,
+    empty: 'Nobody is waiting.',
+    hiddenNoun: (n) => (n === 1 ? 'pending person' : 'pending people'),
+  },
+  {
+    key: 'revoked',
+    title: 'Revoked',
+    defaultOpen: () => false,
+    empty: 'Nobody has been revoked.',
+    hiddenNoun: (n) => (n === 1 ? 'revoked person' : 'revoked people'),
+  },
+];
+
+/**
+ * Which sections the reader has DELIBERATELY opened or shut, by group key.
+ *
+ * ⚠️ Absent means "still on the default" — not "closed". The distinction is the
+ * point: `defaultOpen` has to keep applying (Pending opening itself the moment
+ * a person appears in it) right up until the reader expresses a preference, and
+ * from then on their choice must survive the re-render that every search
+ * keystroke, sort change and mutation triggers. Same reasoning, same shape and
+ * the same deliberate NON-persistence as expandedMembers above: held in memory,
+ * cleared on sign-out, never in the DOM (which is rebuilt) and never in
+ * sessionStorage (which would outlive the directory it describes and pin
+ * Pending shut on a later day when somebody genuinely is waiting).
+ */
+const openGroups = new Map();
 
 /**
  * SORT + FILTER — client-side over the directory already in memory (owner
@@ -921,11 +1012,123 @@ function updateCountLine(shown, total) {
   countEl.textContent = total ? `Showing ${shown} of ${total}` : '';
 }
 
-/** Filter + sort `allEstateUsers` and paint. Every control change and every mutation re-render go through here. */
+/**
+ * One collapsible section of the directory: a counted header, and either the
+ * cards or a sentence saying why there are none.
+ *
+ * `shown` are the members of this group that survived the filters, already
+ * sorted; `inDirectory` is how many rows this group holds in total, ignoring
+ * filters — the two together are what let an empty section tell the truth.
+ *
+ * ⚠️ THE CARDS ARE UNTOUCHED. userCard() builds exactly what it built when the
+ * page was one flat list — same head, same badges, same permission grid, same
+ * per-card Save, same two-tap status buttons. This function decides WHERE a
+ * card goes and nothing whatsoever about what is in it; every existing gesture
+ * keeps working unchanged inside its section.
+ */
+function directorySection(group, shown, inDirectory) {
+  const details = document.createElement('details');
+  details.className = 'dir-group';
+  details.dataset.group = group.key;
+  const want = openGroups.has(group.key)
+    ? openGroups.get(group.key)
+    : group.defaultOpen(shown.length);
+  details.open = want;
+
+  // ⚠️ `toggle` CANNOT TELL A CLICK FROM THE LINE ABOVE, so it is compared
+  // against what we asked for rather than trusted. Setting `.open = true`
+  // queues a toggle event of its own; recording that would turn the DEFAULT
+  // into a recorded PREFERENCE on the very first paint — after which Pending
+  // could never collapse itself again once it emptied, which is half the
+  // behaviour that was asked for. An event whose state still matches `want`,
+  // from a section the reader has not yet touched, is that echo and is ignored.
+  // (The spec coalesces a queued toggle with a real one, so a click landing
+  // before the echo fires arrives here as a single event carrying the FINAL
+  // state — which no longer matches `want` and is therefore recorded.)
+  details.addEventListener('toggle', () => {
+    if (details.open === want && !openGroups.has(group.key)) return;
+    openGroups.set(group.key, details.open);
+  });
+
+  // The page's EXISTING disclosure language (.adv-summary — Advanced filters,
+  // the Permission map, every member's own Permissions grid), not a second one
+  // invented here.
+  const summary = document.createElement('summary');
+  summary.className = 'adv-summary dir-summary';
+  const title = document.createElement('span');
+  title.className = 'ctl-label';
+  title.textContent = group.title;
+  const count = document.createElement('span');
+  count.className = 'dir-count';
+  // The count is of what is SHOWN, so it always agrees with what opening the
+  // section reveals. When filters are hiding people the empty/short state says
+  // so in words below, and the "Showing N of M" line above says it for the
+  // directory as a whole.
+  count.textContent = `· ${shown.length}`;
+  summary.append(title, count);
+  details.appendChild(summary);
+
+  if (shown.length) {
+    const list = document.createElement('ul');
+    list.className = 'users-list';
+    for (const u of shown) list.appendChild(userCard(u));
+    details.appendChild(list);
+    return details;
+  }
+
+  // ⚠️ EMPTY IS TWO DIFFERENT FACTS AND MUST NEVER BE ONE SENTENCE. "Nobody is
+  // waiting" is a statement about the estate; "your filters hide the one person
+  // who is" is a statement about this screen. Printing the first when the second
+  // is true tells the owner nobody needs approving while somebody does.
+  const note = document.createElement('p');
+  note.className = 'dir-empty';
+  note.textContent = inDirectory
+    ? `${inDirectory} ${group.hiddenNoun(inDirectory)} hidden by the current search or filters — Reset shows ${inDirectory === 1 ? 'them' : 'them all'}.`
+    : group.empty;
+  details.appendChild(note);
+  return details;
+}
+
+/**
+ * Filter + sort `allEstateUsers`, then deal the survivors into their status
+ * sections and paint. Every control change and every mutation re-render go
+ * through here — which is also what makes a status change MOVE someone: mutate()
+ * awaits loadDirectory(), which re-fetches and re-renders, so an approve lands
+ * the card in Current and a revoke lands it in Revoked on the same refresh cycle
+ * the page has always done. No card is moved by hand and no local status is
+ * guessed at; the sections are drawn from the server's answer.
+ */
 function renderFilteredList() {
   const view = allEstateUsers.filter(matchesFilters).sort(compareUsers);
   usersEl.innerHTML = '';
-  for (const u of view) usersEl.appendChild(userCard(u));
+
+  const known = new Set(DIRECTORY_GROUPS.map((g) => g.key));
+  for (const group of DIRECTORY_GROUPS) {
+    usersEl.appendChild(directorySection(
+      group,
+      view.filter((u) => u.status === group.key),
+      allEstateUsers.filter((u) => u.status === group.key).length,
+    ));
+  }
+
+  // The safety net described on DIRECTORY_GROUPS: an unrecognised status gets
+  // its own named section rather than disappearing. Silent is the one thing a
+  // directory of who-has-access may never be.
+  const strays = [...new Set(allEstateUsers.map((u) => u.status).filter((s) => !known.has(s)))];
+  for (const status of strays) {
+    usersEl.appendChild(directorySection(
+      {
+        key: `other:${status}`,
+        title: `Status: ${status}`,
+        defaultOpen: () => true,
+        empty: `Nobody currently has the status “${status}”.`,
+        hiddenNoun: (n) => `${n === 1 ? 'person' : 'people'} with the status “${status}”`,
+      },
+      view.filter((u) => u.status === status),
+      allEstateUsers.filter((u) => u.status === status).length,
+    ));
+  }
+
   updateCountLine(view.length, allEstateUsers.length);
   updateAdvHint();
 }
@@ -2144,6 +2347,13 @@ function revealAnchoredMember() {
     card = usersEl.querySelector(`li.user[data-email="${CSS.escape(email)}"]`);
   }
   if (!card) return;
+  // ⚠️ AND OPEN THE SECTION THEY LANDED IN (2026-08-17, with the three-section
+  // reshape). Revoked is collapsed by default, so following a catalog's
+  // #member= link to a revoked person would otherwise scroll to a shut box and
+  // highlight nothing — the deep link finishing one click short again, which is
+  // the exact failure the grid-opening line above exists to prevent.
+  const section = card.closest('details.dir-group');
+  if (section) section.open = true; // its own toggle listener records the choice
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   card.classList.add('anchored');
   setTimeout(() => card.classList.remove('anchored'), 2600);
@@ -2188,6 +2398,10 @@ function clearSignedInState() {
   allEstateUsers = [];
   pendingEdits.clear();
   expandedMembers.clear();
+  // Which directory sections were opened is this reader's choice, not the next
+  // one's — the same reasoning that clears the expanded cards and the staged
+  // edits directly above.
+  openGroups.clear();
   appDirs = Object.fromEntries(APPS.map((a) => [a.key, null]));
   siteRolesDir = null;
   roleTreeDir = null;
