@@ -219,6 +219,27 @@ Steps 1-2 are Phase 1's console gate; step 3 is Phase 2's. None of the three
 touches an existing surface's config — they only make dormant capability
 reachable.
 
+> ⚠️ **STEP 3 IS NOW THE ONLY THING BETWEEN THE ESTATE AND WORKING SSO.**
+> As of 2026-08-18 every other piece is built and deployed: the routes, the
+> minter, the revocation check, the widened origin list, and client adoption
+> on the apex, `www`, `library`, `padhard` and `boardgames`
+> (`docs/info/sso-design.md` §8c). All of it sits inert because this secret
+> is unset — MEASURED that day with `wrangler secret list`, which returns
+> seven secrets, none of them this one. Setting it turns single sign-on on
+> across the estate with **no further deploy**.
+
+> ⚠️ **DO NOT PIPE THIS KEY IN WITHOUT KILLING THE BOM FIRST.** A separate
+> incident the same day (see `docs/access/discord-bot.md`) established that
+> **PowerShell secret pipes prepend an invisible UTF-8 BOM**, and the stored
+> value then fails while *looking* perfectly valid. This key is the worst
+> place in the estate for that failure: a BOM'd `TOKEN_SIGNER_KEY` either
+> fails to parse or throws deep inside `importPrivateKey`, so instead of the
+> clean 503 the unset-idiom promises, the mint route 500s or mints tokens
+> Google refuses — and the symptom appears on every estate surface at once,
+> as "SSO just doesn't work", with nothing pointing back at this line. Force
+> UTF8-**no**-BOM encoding, trim, and verify the stored value works before
+> trusting it; that doc carries the exact ritual.
+
 ## 7. Gotchas
 
 | Gotcha | Detail |
@@ -226,7 +247,10 @@ reachable.
 | The 503-unset idiom is deliberate, not a bug | Every route needing `TOKEN_SIGNER_KEY` answers `503 {error:'token_signer_unset', fix:'wrangler secret put TOKEN_SIGNER_KEY'}` — never 500, never a confusing 401 — so the routes sit safely idle pre-§6 step 3. Same pattern as the pre-existing `FIREBASE_SERVICE_ACCOUNT` (`service_account_unset`) and per-app `/seen` tokens (`app_tokens_unset`). |
 | Session validity beats config-error, on purpose | `POST /api/session/token` checks the cookie's validity BEFORE checking whether the signer key is configured — a caller with no session learns nothing about backend configuration state (mirrors `requireApprover`/`requireDevops` outranking the 503-unset routes elsewhere in this Worker). |
 | The cookie's `Domain` is env-driven | `COOKIE_DOMAIN` (default `.heygabi.ai`) — `wrangler dev` needs a non-production value since `Domain=.heygabi.ai` can never be set from a `localhost` origin. |
-| `SESSION_ORIGINS` is its own CORS list | Not `ADMIN_ORIGINS` (apex-only) or `ME_ORIGINS` (apex + audiobook) — the session routes must admit all four estate surfaces including library and games. Defaults to the production four if unset; see `env.ts`. |
+| `SESSION_ORIGINS` is its own CORS list | Not `ADMIN_ORIGINS` (apex-only) or `ME_ORIGINS` (apex + audiobook) — the session routes must admit every estate surface, including library and games. Defaults to the production list if unset; see `env.ts`. ⚠️ **Widened 4 → 7 on 2026-08-18** (`www`, `ebooks`, `padhard` — each measured live, see `sso-design.md` §8c.4). |
+| ⚠️ A surface missing from `SESSION_ORIGINS` fails **silently** | The preflight comes back with no `Access-Control-Allow-Origin`, the browser refuses the call, and the page's bootstrap reads that as "no session" and stays quiet. Nothing logs, nothing breaks, sign-in simply never travels to that one site. Pinned by tests in `test/env.test.ts` for exactly this reason. When adding an estate hostname, add it here in the same commit. |
+| Client adoption hangs off ONE call per surface | Apex: `handleRedirectResult()`. Library/games: `watchAuth()`. Both are the call every auth-aware page already makes at boot, so a new page gets SSO by obeying a rule it already had. Don't add per-page bootstrap calls — see `sso-design.md` §8c.2. |
+| `credentials: 'include'` is required in BOTH directions | Omitting it is the nastiest failure in this feature: the browser silently drops the `Set-Cookie` on the way back **while every status code still reads 200**. If sign-in seems not to travel and the network tab looks clean, check this first. |
 | The real end-to-end exchange is NOT verified by this build | `signInWithCustomToken(token)` actually succeeding against Google's real `identitytoolkit` endpoint needs the owner's real `TOKEN_SIGNER_KEY` — the test suite proves the JWT this Worker produces is a correctly-shaped, correctly-signed RS256 token (verified cryptographically against a throwaway keypair in `test/token-signer.test.ts`), which is everything provable without that key. `sso-design.md` §10 names this as the standing not-verified item; Phase 3 (adoption) is where it gets exercised for real. |
 
 ## 8. Rollback

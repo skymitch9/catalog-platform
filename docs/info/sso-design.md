@@ -363,6 +363,162 @@ exchange (needs `TOKEN_SIGNER_KEY`, an owner console step).
 Rollback for any flipped surface stays one string + a redeploy; the CSP
 widening is safe to leave in place regardless.
 
+## 8c. PHASE 3 STATUS — ADOPTION SHIPPED (INERT) 2026-08-18
+
+> **One console step from working.** Every line of the mechanism is now built
+> and deployed on four of the six live surfaces. It does nothing yet, on
+> purpose: `TOKEN_SIGNER_KEY` is still unset (MEASURED 2026-08-18 via
+> `wrangler secret list` — the auth Worker holds seven secrets and that is
+> not one of them), so `POST /api/session/token` answers 503 and every
+> surface behaves exactly as it did before. Setting that one secret (§6 step
+> 3 of `docs/access/estate-auth.md`) turns the estate on.
+
+### 8c.1 What shipped
+
+| Piece | State | Where |
+|---|---|---|
+| `POST /api/session`, `POST /api/session/token`, `DELETE /api/session` | **LIVE** — deployed 2026-08-18, version `97133712` | `apps/auth-worker/src/session.ts` |
+| **Estate-revocation check on the mint route** | **ADDED 2026-08-18** — see §8c.3 | `session.ts` |
+| `SESSION_ORIGINS` widened 4 → 7 | **LIVE**, all seven verified admitted | `apps/auth-worker/src/env.ts` |
+| Apex + `www` adoption | **DEPLOYED** (run `32089931060`) | `sites/heygabi-home/public/assets/estate-auth.js` |
+| Library + `padhard` adoption | **DEPLOYED** both instances | `library_catalog` `apps/web/src/lib/firebase.ts` |
+| Board games adoption | **DEPLOYED** | `Board_Game_Catalog` `apps/web/src/lib/firebase.ts` |
+| **audiobooks + ebooks adoption** | ⛔ **QUEUED, NOT BUILT** — §8c.5 | `audiobook_catalog/site/identity.js` |
+
+### 8c.2 The adoption shape, and the one trick worth reusing
+
+Three functions per surface — `publishEstateSession()`, `inheritEstateSession()`,
+and a once-guarded bootstrap — plus a `DELETE` on sign-out. What made this a
+small diff instead of a wide one: **each surface already had exactly one
+function every auth-aware page calls at boot**, so the bootstrap hangs off
+that and no page or component needed editing at all.
+
+| Surface | The chokepoint hooked | Why it is reliable |
+|---|---|---|
+| apex | `handleRedirectResult()` | The module's standing rule is already *"every page that offers sign-in must call this on load"* — 7+ callers do |
+| library / games | `watchAuth()` | The one call `App.tsx`, the hooks and the estate-search adapter all make |
+
+A new page therefore inherits SSO by obeying a rule it already had to obey.
+The bootstrap is never awaited by a render path: it resolves on its own and
+fires the auth listener the UI already re-renders from.
+
+⚠️ **`credentials: 'include'` is required in BOTH directions** and its
+absence is the nastiest possible failure: the browser silently drops the
+`Set-Cookie` on the way back while every status code still reads 200.
+
+### 8c.3 The revocation gap Phase 2 left, closed here
+
+§4.3's flow diagram names four steps; the Phase 2 build implemented three.
+**`estate_user.status ≠ revoked?` was missing.** A revoked member's cookie
+kept minting sign-in sessions estate-wide for up to its 30 days.
+
+Their *API access* was never at risk — every consumer verifies the ID token
+and consults the directory on the §3.1 10-minute TTL, and that enforcement is
+untouched by this whole design — but they would have gone on being **signed
+in** on every surface, name on the UI, long after the estate said otherwise.
+That is a revocation promise the owner would reasonably believe was kept.
+
+Now: `403 estate_revoked`, and the session row is killed so a revoked browser
+stops re-asking on every page load. Two deliberate refinements:
+- **an ABSENT directory row is not a revocation** — that is a newcomer whose
+  `/hello` has not landed, and failing closed on absence would turn a
+  directory hiccup into an estate-wide sign-out;
+- **the owner break-glass comes first**, as it does at every other gate: an
+  incident that corrupts the directory must never lock the owner out of the
+  admin page he would fix it from.
+
+Four tests cover it (`test/session.test.ts`), including that an approved
+member still mints and that the break-glass survives a revoked row.
+
+### 8c.4 The origin list — measured, not assumed
+
+`SESSION_ORIGINS` held the design's original four. The estate runs seven,
+and **a surface missing from the list fails SILENTLY**: no
+`Access-Control-Allow-Origin`, the browser refuses, and the page's bootstrap
+reads that as "no session" and stays quiet. Each addition was measured live
+2026-08-18:
+
+| Origin | Why it needed its own entry |
+|---|---|
+| `www.heygabi.ai` | Serves the apex with **its own 200**, not a redirect to the bare domain — a genuine separate origin |
+| `ebooks.heygabi.ai` | `apps/ebooks-door` proxies the audiobook `/ebooks` page verbatim, so `identity.js` runs there under **this** origin. This is the exact hostname behind the owner's complaint |
+| `padhard.heygabi.ai` | The library's friend instance — same bundle, two Workers, so it inherits the code either way; only this entry makes the call succeed |
+
+Pinned by tests in `test/env.test.ts`, including that the list admits no
+wildcard and no look-alike domain.
+
+### 8c.5 ⛔ QUEUED: the audiobook + ebooks adoption
+
+**Not built this pass, and the reason is coordination, not difficulty**: a
+concurrent agent was working in `audiobook_catalog` (`site/read.html`,
+`reader.js`, `epub-loader.js`, possibly `identity.js`) on a P1 iOS reader
+bug. Colliding in `identity.js` would have risked the exact file both needed.
+
+⚠️ **This is the half the owner will notice most** — `ebooks.heygabi.ai` is
+the site he actually complained about. Its origin is already authorised
+server-side, so this is a client-only change.
+
+The recipe, mirroring the three surfaces already done:
+
+1. In `site/identity.js`, import `signInWithCustomToken` from the Firebase
+   auth CDN module already imported there.
+2. Add `publishEstateSession()` / `inheritEstateSession()` / a once-guarded
+   `startEstateSso()`, copied from
+   `sites/heygabi-home/public/assets/estate-auth.js` (same vanilla-ESM
+   dialect — it is a paste, not a port).
+3. Hook the bootstrap into **`handleRedirectResult(app)`**, which is this
+   module's documented every-page-on-load call, exactly as the apex does.
+4. Call `publishEstateSession()` after `signInWithGoogle()` succeeds, and
+   `DELETE /api/session` inside `signOutGoogle()` alongside `logout()`.
+5. ⚠️ **Honour owner decision Q5's guard**: skip the silent inherit when a
+   **legacy v1 mirror row** exists (`getSession().legacy === true`). A legacy
+   identity must never be yanked out from under someone — the existing
+   upgrade button stays the one door.
+6. On success the auth mirror updates itself: `attachAuthMirror`'s
+   `onAuthStateChanged` listener fires on the custom-token sign-in and calls
+   `mirrorUser()`, so `getSession()` goes right without extra work. Reload is
+   NOT needed (unlike the redirect path, which reloads because much of the
+   page renders synchronously at load).
+7. Deploy is the audiobook two-lane rule: **pushing `main` publishes `/dev/`
+   only.** The change reaches `audiobooks.heygabi.ai` and
+   `ebooks.heygabi.ai` only on the next **promote**, which is a separate,
+   explicit owner-requested step.
+
+### 8c.6 The Safari answer — reasoned, NOT measured
+
+⚠️ **Stated honestly because the brief demanded a citation or a measurement,
+and only one of those is available here: no iOS device was in reach, so
+nothing below is a measurement.**
+
+The argument that this survives Safari is §3.1's, and it is a strong one:
+**every hop is same-site.** ITP, Chrome's storage partitioning and Firefox's
+TCP all key on the **registrable domain (eTLD+1)**, which is `heygabi.ai`
+for `auth.`, `library.`, `ebooks.` and the apex alike. A `fetch()` from
+`library.heygabi.ai` to `auth.heygabi.ai` is a **first-party, same-site**
+request; `SameSite=Lax` is satisfied; no third-party-cookie machinery
+applies in any 2026 browser. The cookie is additionally **server-set via
+`Set-Cookie`**, not written by script, so ITP's 7-day cap on
+**client-side-set** (`document.cookie`) storage does not reach it, and
+`heygabi.ai` is not CNAME-cloaked to a third party, which is the other
+trigger for the tighter caps.
+
+**Expected outcome: silent inheritance on Safari, Chrome and Firefox alike.**
+
+**What could still bite, and what it would cost:** if some ITP heuristic did
+cap this cookie at 7 days, the degradation is a **re-tap roughly weekly on
+the phone** — a nuisance, not a breakage, and squarely inside owner decision
+Q6's tolerance.
+
+⚠️ **There is deliberately NO "continue as <name>" one-tap fallback, and it
+is worth being clear that this is a design consequence rather than an
+omission.** The architecture is all-or-nothing per browser: rendering
+"continue as Alice" requires knowing Alice's name, which requires the same
+cookie whose arrival is the very thing in question. A second store holding
+the name would face the identical partitioning question while adding a way
+for the UI to claim a session the mint route then refuses. So the two live
+outcomes are **silent inheritance** or **exactly today's "Sign in" button** —
+which is precisely the degradation the brief required, and never a loop.
+
 ## 9. Owner decision points
 
 > ✅ **ALL APPROVED BY THE OWNER 2026-08-16** ("I'm plenty awake, run the

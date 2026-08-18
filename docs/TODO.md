@@ -15,6 +15,50 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🔑 ESTATE SSO — BUILT + DEPLOYED, INERT PENDING ONE OWNER CONSOLE STEP (2026-08-18)
+
+Owner ask, verbatim, after hitting it himself: *"Ebooks makes me login every
+time why is it not inheriting login from main page?"* — approved 2026-08-18
+("3 yes"). Design of record: [`info/sso-design.md`](info/sso-design.md); the
+as-built account is **§8c** there.
+
+**Phases 1–3 are built and deployed. The whole thing does nothing yet**, on
+purpose: `TOKEN_SIGNER_KEY` is unset (measured 2026-08-18, `wrangler secret
+list`), so the mint route 503s and every surface behaves exactly as before.
+
+### 🔴 The one owner step that switches it on
+
+Create the zero-IAM-role `estate-token-minter` service account and
+`wrangler secret put TOKEN_SIGNER_KEY` — [`access/estate-auth.md`](access/estate-auth.md)
+§6 step 3, which now carries the full context. **No redeploy follows it.**
+⚠️ That section also carries the **BOM warning**: a PowerShell-piped secret
+picks up an invisible UTF-8 BOM, and a BOM'd signing key fails *while looking
+valid*, estate-wide, with nothing pointing back at the cause.
+
+### Adopted this pass
+
+`heygabi.ai` + `www` · `library.heygabi.ai` · `padhard.heygabi.ai` ·
+`boardgames.heygabi.ai` — all deployed and verified serving the code.
+
+### ⛔ Still queued
+
+- **`audiobook_catalog/site/identity.js`** — covers `audiobooks.heygabi.ai`
+  **and `ebooks.heygabi.ai`, the site the owner actually complained about.**
+  Deliberately skipped: a concurrent agent held that tree for a P1 iOS reader
+  bug. Step-by-step recipe in `sso-design.md` §8c.5, including Q5's
+  legacy-mirror guard. ⚠️ Audiobook two-lane rule applies — pushing `main`
+  publishes `/dev/` only; it reaches both live hostnames on the next
+  **promote**.
+- **Phase 4 (optional polish)** — sessions list + per-device revoke on the
+  apex `/admin` page. Never built ⇒ sign-out stays "this origin + the
+  cookie", which is livable indefinitely.
+
+### Owner test, once the secret is set
+
+Sign in on `heygabi.ai`, then open `library.heygabi.ai` in a new tab —
+expect to arrive **already signed in**, no tap. ⚠️ Not testable by any agent:
+it needs a real signed-in browser.
+
 ## 🎧 AUDIOBOOK PLAYER — RESEARCH + DESIGN ONLY (owner, 2026-08-17) — IN FLIGHT, no build
 
 Owner: *"do research on any open source players we can incorprate into our
@@ -686,9 +730,11 @@ model is still useful even though the rationing is over.
 Agents now run non-Fable by default. Work banked here genuinely benefits from
 Fable and waits for the owner to release it (e.g. after a weekly reset):
 
-1. **SSO build, phases 1-4** (sso-design.md) — service-account signing, estate
-   cookie sessions, per-surface adoption. Awaiting the owner's go on the design
-   regardless (it overturns the no-central-cookie rule).
+1. ~~**SSO build, phases 1-4**~~ — ⚠️ **STALE, see the live SSO section at the
+   top of this file.** The owner approved the design 2026-08-16 and phases
+   1–3 shipped 2026-08-18; "awaiting the owner's go" is two decisions out of
+   date. Kept rather than deleted because this queue exists to record which
+   work suits which model, and phase 4 is still unbuilt.
 2. **Rules tightening deploy (club permissions 0b)** — deny manager writes on
    unclaimed clubs once every active club is claimed. Precondition-gated.
 3. **Edit-audit phases A2/A3** (edit-audit-design.md §6) — override-aware
