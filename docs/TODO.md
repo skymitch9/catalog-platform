@@ -749,6 +749,13 @@ work that has NOT been done is listed here.
    path may never need the iframe. Measure first (sign out, sign in from
    `/universes`, watch the console for a frame-src refusal), then fix. Size XS,
    and both the bare and trailing-slash rules need it — that file's 308 trap.
+   ⚠️ **Datapoint, 2026-08-18:** the /status split's three NEW rules
+   (`/status/processing`, `/status/pipelines`, `/status/agents`) DO name
+   `auth.heygabi.ai` in `frame-src`, and **sign-in was exercised on all three
+   signed in with no console refusal**. That does not prove the old rules are
+   broken — the popup path may genuinely not need the iframe — but it does mean
+   `/status` and `/universes` are now the only two pages on the old shape, and
+   the split's pages are the control group for measuring it.
 3. *(Moved whole to [`DONE.md`](DONE.md), 2026-08-17 — the universe join now
    reads the SERIES rather than one spelling of it. The number is left
    standing rather than renumbering the list, the same way `DONE.md`'s own
@@ -965,6 +972,16 @@ already tolerated by the renderer:
 ⚠️ `joined_at` is the date the pack became **servable**, not the date it was
 transcribed — the page will not derive one from the other, because they are
 different facts and the owner's ask was the first one.
+
+### The agent board needs an estate probe (repo rule, not yet honoured)
+`tools/estate-probes` carries a **new-endpoint-gets-a-probe** rule, and
+`GET|POST /api/estate/ops/agent-board` shipped 2026-08-18 without one. It is a
+natural probe target because its whole unauthenticated edge is worth pinning:
+GET answers `401 unauthenticated`, POST with no bearer answers `401`, POST with
+a wrong bearer answers `401 bad_token` — all three were exercised by hand
+against the live host the day it shipped, and none of that is watched. **Left
+undone deliberately**: `tools/` was outside the finishing agent's fence, and
+widening a fence mid-build is how two agents end up editing one file. Size XS.
 
 ### Worker log ring buffer (owner asked for "logs for the pods/workers")
 ⚠️ **There are no pods or containers** — the estate is Workers plus pipelines on
