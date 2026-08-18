@@ -57,6 +57,7 @@ import {
 } from '../src/book-knowledge.js';
 import { audiobookApiBase, DEFAULT_AUDIOBOOK_API } from '../src/book-knowledge-exec.js';
 import { runTool } from '../src/tool-exec.js';
+import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
 
 function repoFile(relative: string): string {
   return readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url).href), 'utf8');
@@ -445,8 +446,20 @@ describe('⚠️ the refusals stay distinct, because the fixes differ', () => {
     for (const [key, sentence] of Object.entries(BOOKS_MSG)) {
       assert.doesNotMatch(sentence, MECHANICS, `BOOKS_MSG.${key} names our internal accounting`);
     }
-    // ⚠️ And it still has to MEAN something to the person: it promises a retry.
-    assert.match(BOOKS_MSG.turnBudgetSpent, /ask me again/i);
+    // ⚠️ **AND IT NO LONGER ASKS PERMISSION** (owner decision 2026-08-18, option
+    // C). It used to end "ask me again and I'll get it", which measured as a
+    // LOOP rather than a pause: he asked again, she re-pulled the same passage,
+    // re-printed the whole sheet and ran out in the same place. A permission
+    // turn is not a pause, it is a chance to repeat yourself.
+    assert.doesNotMatch(BOOKS_MSG.turnBudgetSpent, /\?/, 'the ceiling sentence asks a question again');
+    assert.doesNotMatch(BOOKS_MSG.turnBudgetSpent, /ask me again/i);
+    // What replaced it: she says she gave what she had, and the parts bound has
+    // its own sentence for the one case where somebody must go elsewhere.
+    assert.match(BOOKS_MSG.moreToCome, /as much as I'll put in one go/i);
+    // ⚠️ NO URL. The reader is keyed by `anchor` and a pack by `bookId` — two
+    // different identifiers on purpose — and ebooks.heygabi.ai/read does not
+    // exist yet. A plausible link that 404s is worse than no link.
+    assert.doesNotMatch(BOOKS_MSG.moreToCome, /https?:\/\//);
   });
 
   it('⚠️ SHE INVENTS NO TIMESCALE — the "next week" she could not know', () => {
@@ -781,5 +794,216 @@ describe('⚠️ credentials live in exactly THREE modules', () => {
     // ⚠️ A secret must never be a var. If this ever matches, somebody put a
     // bearer in a tracked file.
     assert.doesNotMatch(toml, /^ESTATE_APP_TOKEN_BOOKS\s*=/m);
+  });
+});
+
+// ── 10. ⚠️ AUTO-CONTINUE — the loop of 1:31 PM, and what replaced it ────────
+//
+// He asked for the end-of-book-9 sheet plus abilities plus passives. She
+// delivered core stats, titles and twenty class skills, stopped at profession
+// skills, and ASKED PERMISSION. He said "get professions too" — and she
+// re-pulled the SAME passage (same timestamps, 72538–72706), re-printed the
+// ENTIRE sheet, ran out at exactly the same place, and asked again.
+//
+// ⚠️ Three defects in one loop, all three pinned here:
+//   1. a permission turn is not a pause, it is a chance to repeat yourself;
+//   2. continuing by RE-SEARCHING is an infinite loop by construction — a
+//      ranked search returns its best match every time, and the tail of a sheet
+//      is never the best match;
+//   3. re-printing what was already sent is what consumed the room the rest of
+//      it needed. The repeat CAUSED the second cutoff.
+// ---------------------------------------------------------------------------
+
+describe('⚠️ continuing pages FORWARD by ordinal, and never re-searches', () => {
+  it('a count walks ord, ord+1, ord+2 — in order — and hands back where to resume', async () => {
+    const asked: string[] = [];
+    const p = port({
+      passage: async (_e, _b, params) => {
+        asked.push(params.ord as string);
+        const ord = Number(params.ord);
+        return OK({
+          ingested: true,
+          book_id: 'ph-9',
+          source: 'transcript',
+          passage: { ord, text: `passage ${ord}`, chapter_index: 78, stitch: 'full' },
+        });
+      },
+    });
+    const out = await runTool('read_book_passage', { bookId: 'ph-9', ord: 1796, count: 3 }, ctxFor(p));
+    assert.equal(out.isError, false);
+    // ⚠️ ORDER IS THE POINT. A sheet printed out of order is not a sheet.
+    assert.deepEqual(asked, ['1796', '1797', '1798']);
+    const r = out.result as {
+      passages: { ord: number }[];
+      count: number;
+      next_ord: number;
+      note: string;
+    };
+    assert.deepEqual(
+      r.passages.map((x) => x.ord),
+      [1796, 1797, 1798],
+    );
+    assert.equal(r.count, 3);
+    // ⚠️ THE ANCHOR THAT ENDS THE LOOP: where to pick up, handed over rather
+    // than left for the model to derive. A model that has to work out its own
+    // next position is a model that will re-run the search instead.
+    assert.equal(r.next_ord, 1799);
+    assert.match(r.note, /call this again with ord = next_ord/i);
+    assert.match(r.note, /Do NOT search again/i);
+    assert.match(r.note, /PRINT ONLY WHAT IS NEW/i);
+  });
+
+  it('the run is bounded — a model asking for fifty pages gets four', async () => {
+    let calls = 0;
+    const p = port({
+      passage: async (_e, _b, params) => {
+        calls += 1;
+        return OK({
+          ingested: true,
+          passage: { ord: Number(params.ord), text: 'x', chapter_index: 1, stitch: 'full' },
+        });
+      },
+    });
+    await runTool('read_book_passage', { bookId: 'ph-9', ord: 10, count: 50 }, ctxFor(p));
+    assert.equal(calls, 4);
+  });
+
+  it('⚠️ a run that stops mid-way KEEPS what it read and says why', async () => {
+    // The person gets the part that worked. Discarding a successful first page
+    // because the third failed turns a partial outage into a total one.
+    const p = port({
+      passage: async (_e, _b, params) =>
+        Number(params.ord) < 12
+          ? OK({
+              ingested: true,
+              passage: { ord: Number(params.ord), text: 'y', chapter_index: 1, stitch: 'full' },
+            })
+          : { ok: false, status: 502, body: null, message: 'the shelf wobbled' },
+    });
+    const out = await runTool('read_book_passage', { bookId: 'ph-9', ord: 10, count: 4 }, ctxFor(p));
+    assert.equal(out.isError, false, 'a later-page failure discarded the pages that worked');
+    const r = out.result as { count: number; stopped_because: string; note: string };
+    assert.equal(r.count, 2);
+    assert.equal(r.stopped_because, 'the shelf wobbled');
+    assert.match(r.note, /stopped early/i);
+  });
+
+  it('the FIRST page failing is still a plain failure — there is nothing to keep', async () => {
+    const p = port({
+      passage: async () => ({ ok: false, status: 502, body: null, message: 'nope' }),
+    });
+    const out = await runTool('read_book_passage', { bookId: 'ph-9', ord: 10, count: 3 }, ctxFor(p));
+    assert.equal(out.isError, true);
+  });
+});
+
+describe('⚠️ a long answer becomes consecutive messages, never a permission question', () => {
+  const LONG = Array.from(
+    { length: 60 },
+    (_, i) => `Skill ${i + 1}: a line of the sheet that is long enough to matter.`,
+  ).join('\n');
+
+  function modelReply(text: string): Response {
+    return new Response(
+      JSON.stringify({
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        model: 'test',
+        content: [{ type: 'text', text }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  }
+
+  async function ask(text: string, opts: { noFollowUp?: boolean } = {}): Promise<string[]> {
+    const said: string[] = [];
+    await handleMention(
+      {
+        capCheck: async () => ({ ok: true }),
+        recordTurn: async () => {},
+        conversation: NO_MEMORY,
+        reply: async (content: string) => {
+          said.push(content);
+        },
+        ...(opts.noFollowUp
+          ? {}
+          : {
+              followUp: async (content: string) => {
+                said.push(content);
+              },
+            }),
+        books: {
+          port: port(),
+          capCheck: async () => ({ ok: true }),
+          record: async () => {},
+        },
+      } as never,
+      {
+        kind: 'ask',
+        question: 'what is jakes status sheet at the end of book 9',
+        authorId: '1234',
+        authorName: 'owner',
+        guildId: 'g1',
+        channelId: 'c1',
+        messageId: 'm1',
+        surface: 'discord_channel',
+        via: 'mention',
+      } as never,
+      {
+        indexBaseUrl: 'https://index.test',
+        panelUrl: 'https://padhard.heygabi.ai/',
+        catalogBaseUrl: 'https://catalog.test',
+        anthropicKey: 'test-key-not-real',
+        booksEnabled: true,
+        fetchOverride: (async () => modelReply(text)) as unknown as typeof fetch,
+      } as never,
+    );
+    return said;
+  }
+
+  it('⚠️ it arrives as several LABELLED messages, in order, with no question asked', async () => {
+    const said = await ask(LONG);
+    assert.ok(said.length > 1, 'a long sheet was not continued at all');
+    // ⚠️ Labelled so a missing middle is VISIBLE: "(3/3)" landing after "(1/3)"
+    // says the second one never arrived.
+    said.forEach((m, i) => {
+      assert.match(
+        m,
+        new RegExp(`\\*\\*\\(${i + 1}/${said.length}\\)\\*\\*`),
+        `part ${i + 1} of ${said.length} is mislabelled`,
+      );
+    });
+    // ⚠️ THE POINT OF THE WHOLE CHANGE: no permission turn anywhere in it.
+    for (const m of said) {
+      assert.doesNotMatch(m, /want me to (keep going|continue)|shall I continue|say the word/i);
+    }
+  });
+
+  it('⚠️ every message stays inside the 2,000-character ceiling, LABEL INCLUDED', async () => {
+    // The label is added after the split, so the split must leave room for it.
+    // Getting this wrong is a 400 from Discord on the longest answers only.
+    const said = await ask(LONG);
+    for (const m of said) assert.ok(m.length <= 2000, `a part was ${m.length} characters`);
+  });
+
+  it('⚠️ it is BOUNDED — a very long answer stops and says where the rest is', async () => {
+    const huge = Array.from(
+      { length: 900 },
+      (_, i) => `Line ${i}: more of the sheet than anybody asked for.`,
+    ).join('\n');
+    const said = await ask(huge);
+    assert.ok(said.length <= 4, `auto-continue ran to ${said.length} messages`);
+    // ⚠️ Unbounded auto-continue is a way to serially dump a book into a shared
+    // channel — the posture the vis_ebooks gate exists to hold.
+    assert.match(said[said.length - 1] as string, /as much as I'll put in one go/i);
+  });
+
+  it('a surface with no follow-up channel still says the answer was cut', async () => {
+    const said = await ask(LONG, { noFollowUp: true });
+    assert.equal(said.length, 1);
+    assert.match(said[0] as string, /as much as I'll put in one go/i);
   });
 });

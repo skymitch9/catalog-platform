@@ -102,6 +102,8 @@ import {
 import { authBase } from './estate-docs-exec.js';
 import {
   BOOKS_BYTES_PER_TURN,
+  BOOKS_MAX_REPLY_PARTS,
+  BOOKS_PASSAGE_RUN_MAX,
   BOOKS_PASSAGES_PER_TURN,
   BOOKS_TURNS_PER_DAY,
   booksOn,
@@ -357,6 +359,11 @@ app.get('/api/health', (c) =>
     gabi_books_bytes_per_turn: BOOKS_BYTES_PER_TURN,
     gabi_books_passages_per_turn: BOOKS_PASSAGES_PER_TURN,
     gabi_books_turns_per_day: BOOKS_TURNS_PER_DAY,
+    // ⚠️ Auto-continue's two bounds, stated rather than inferred (owner decision
+    // 2026-08-18, option C). A long answer becomes consecutive messages instead
+    // of a permission question, and these are what stops that being unlimited.
+    gabi_books_max_reply_parts: BOOKS_MAX_REPLY_PARTS,
+    gabi_books_passage_run_max: BOOKS_PASSAGE_RUN_MAX,
   }),
 );
 

@@ -397,19 +397,61 @@ export const BOOKS_PRESENCE_MAX = 6;
 export const BOOKS_LIST_LIMIT = 25;
 
 /**
- * ⚠️ **THE PER-TURN RETRIEVAL CEILING — 24 KB and at most 6 passages.**
+ * ⚠️ **THE PER-TURN RETRIEVAL CEILING — 48 KB and at most 12 passages.**
  *
- * ≈6k input tokens at bytes÷4 — the same envelope the docs budget already
- * proved. ⚠️ Counted across the WHOLE turn, not per call: one assistant turn may
- * emit several `tool_use` blocks at once, and a budget that reset between
- * tool-loop iterations would not be a budget.
+ * ⚠️ **RAISED FROM 24 KB / 6 ON 2026-08-18 BY OWNER DECISION** (*"I think c"* —
+ * both a modest raise and auto-continue). What it was measured against: he asked
+ * for the end-of-book-9 sheet **plus abilities plus passives**, she delivered
+ * core stats, titles and twenty class skills, and then ran out at profession
+ * skills. A late-book abilities list simply spans more chunks than one 24 KB
+ * turn holds.
  *
- * ⚠️ **It REFUSES rather than trims**, and the refusal says the passage was NOT
- * read. A silently truncated passage is a plot point missing the sentence that
- * mattered.
+ * ⚠️ **The number is not arbitrary — it is TWICE THE ROUTE'S OWN PER-REQUEST
+ * CEILING, and that is why it is clean.** `book-retrieval.ts` caps a single
+ * search at `MAX_SEARCH_BYTES` = 24 KB and `MAX_PASSAGES` = 6, and clamps the
+ * `limit` parameter to 6 regardless of what is asked. So one search can never
+ * exceed half of this, and a turn is exactly *two full searches* — the shape of
+ * the question that broke it (the sheet, then the abilities). Picking 10 would
+ * have made the second search silently partial.
+ *
+ * ≈12k input tokens at bytes÷4. Counted across the WHOLE turn, not per call: one
+ * assistant turn may emit several `tool_use` blocks at once, and a budget that
+ * reset between tool-loop iterations would not be a budget.
+ *
+ * ⚠️ **It still REFUSES rather than trims**, and the refusal still says the
+ * passage was NOT read. A silently truncated passage is a plot point missing the
+ * sentence that mattered. What changed is that hitting it no longer asks
+ * permission to continue — see `BOOKS_MSG.moreToCome`.
  */
-export const BOOKS_BYTES_PER_TURN = 24 * 1024;
-export const BOOKS_PASSAGES_PER_TURN = 6;
+export const BOOKS_BYTES_PER_TURN = 48 * 1024;
+export const BOOKS_PASSAGES_PER_TURN = 12;
+
+/**
+ * ⚠️ **HOW MANY CONSECUTIVE PASSAGES ONE `read_book_passage` CALL MAY WALK.**
+ *
+ * This is the mechanism that broke the 1:31 PM loop. He asked *"get professions
+ * too"*, she re-ran the same search, the same top hit ranked first again, she
+ * re-printed the whole sheet and ran out at the same place. **Re-running a query
+ * to continue is an infinite loop by construction** — a ranked search returns
+ * its best match forever, and the tail is never the best match.
+ *
+ * Continuing is a POSITION problem, not a relevance problem, so it is answered
+ * by ordinals: read `ord + 1`, `ord + 2`, … from where the last passage stopped.
+ * Four at a time is a section of a stat sheet and four subrequests, well inside
+ * the Worker's ceiling.
+ */
+export const BOOKS_PASSAGE_RUN_MAX = 4;
+
+/**
+ * ⚠️ **HOW MANY DISCORD MESSAGES ONE ANSWER MAY BECOME.**
+ *
+ * Auto-continue means she stops asking permission to keep going — but an answer
+ * that can become unlimited consecutive messages is a way to serially dump a
+ * book into a channel, which is the exact posture the `vis_ebooks` gate exists
+ * to hold. Four messages is a long stat sheet with its skills; past that she
+ * says where the whole thing lives instead.
+ */
+export const BOOKS_MAX_REPLY_PARTS = 4;
 
 /**
  * ⚠️ **THE FOURTH FUSE — book turns per person per UTC day** (design §4.6).
@@ -512,8 +554,33 @@ export const BOOKS_MSG = {
    * and never what it is called in here.
    */
   turnBudgetSpent:
-    "That one is a longer pull than fits in this reply. Ask me again and I'll go straight at it " +
-    'with a clean run — it will come back in full.',
+    "That is everything I can pull in one go. I've given you what I have rather than stopping " +
+    'short of it.',
+
+  /**
+   * ⚠️ **THE SENTENCE THAT REPLACED A PERMISSION QUESTION** (owner decision
+   * 2026-08-18, option C).
+   *
+   * She used to stop mid-answer and ask whether to continue. Measured on his
+   * transcript, that produced a LOOP: he said *"get professions too"*, she
+   * re-pulled the same passage, re-printed the whole sheet, ran out at exactly
+   * the same place and asked again. ⚠️ **A permission turn is not a pause, it is
+   * a chance to repeat yourself.**
+   *
+   * So there is no asking any more: she keeps going across consecutive messages
+   * up to `BOOKS_MAX_REPLY_PARTS`. This is what she says only when THAT bound is
+   * reached — the one case where a person genuinely has to go elsewhere.
+   *
+   * ⚠️ **NO URL, deliberately.** The reader is keyed by `anchor`
+   * (`sha256(path)[:12]`) and a pack is keyed by `bookId`; the two are different
+   * identifiers on purpose (design §4.2), so a link cannot be constructed from
+   * what this side holds — and `ebooks.heygabi.ai/read` does not exist yet
+   * (`ebook-viewer-phase1.md`). A plausible-looking link that 404s is worse than
+   * no link.
+   */
+  moreToCome:
+    "That's as much as I'll put in one go — the rest is in the book itself on the shelf. Tell me " +
+    'which part you want and I will go straight to it.',
 
   /**
    * ⚠️ The sentence that makes incremental knowledge honest, and the owner asked

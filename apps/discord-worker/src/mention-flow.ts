@@ -109,6 +109,7 @@ import {
   type DocsToolContext,
 } from './estate-docs.js';
 import {
+  BOOKS_MAX_REPLY_PARTS,
   BOOKS_MSG,
   booksIdentityMessage,
   booksFollowUp,
@@ -171,6 +172,10 @@ export function splitForDiscord(content: string, max = DISCORD_CONTENT_MAX): str
 /** ⚠️ Said when a long answer cannot be split because the surface has nowhere
  *  to put the rest. Never a bare `…`: the reader is told the answer was cut and
  *  where the whole thing lives. */
+/** ⚠️ Room reserved for a `**(2/3)** ` prefix. Twelve characters covers up to
+ *  a 99-part answer, and the parts bound is four. */
+export const PART_LABEL_ROOM = 12;
+
 export const CUT_FOR_LENGTH =
   '\n\n…that is as much as fits in one Discord message. The whole thing is at ' +
   'https://heygabi.ai/docs/ , or ask me for the part you need.';
@@ -665,6 +670,17 @@ export interface AnsweredQuestion {
   pending: PendingChoice | null;
   intent: MentionIntent;
   components: unknown[] | null;
+  /**
+   * ⚠️ **AUTO-CONTINUE, and the sentence that ends it** (owner decision
+   * 2026-08-18, option C).
+   *
+   * Present only on lanes that may run to several messages without asking
+   * permission first. Its presence is what switches `say()` from "truncate with
+   * a pointer" to "keep going, up to a bound" — and its text is what she says
+   * when that bound is reached. Absent on every other lane, which therefore
+   * behaves exactly as it did before.
+   */
+  overflowNote?: string;
 }
 
 /**
@@ -758,11 +774,16 @@ async function booksAnswer(
   books: BooksToolContext,
   overrides: { fetch?: typeof fetch } | undefined,
 ): Promise<AnsweredQuestion> {
+  // ⚠️ Every book answer carries the overflow sentence, so a long one becomes
+  // consecutive messages rather than a question about whether to continue. The
+  // permission turn is retired here: measured, it did not pause the answer, it
+  // gave the model a chance to re-print it (design §10e).
   const done = (content: string): AnsweredQuestion => ({
     content,
     pending: null,
     intent: 'question',
     components: null,
+    overflowNote: BOOKS_MSG.moreToCome,
   });
 
   // ⚠️ Cheapest first, and no I/O for a cap we already know about.
@@ -1075,28 +1096,67 @@ export async function handleMention(
     // 2,000 characters loses its last steps, and the old `truncate` said so with
     // a single `…`. Chunks after the first ride `followUp`; a surface without
     // one is told in words that the answer was cut rather than left to guess.
-    const say = async (body: string, components?: unknown[] | null) => {
+    const say = async (body: string, components?: unknown[] | null, overflow?: string) => {
       const whole = `${greeting} ${body}`.trim();
       said = true;
-      const parts = splitForDiscord(whole);
+      let parts = splitForDiscord(whole);
+
+      // ⚠️ **AUTO-CONTINUE, BOUNDED** (owner decision 2026-08-18, option C). An
+      // `overflow` sentence means this lane may run across consecutive messages
+      // without asking permission first — and MUST NOT run on for ever.
+      // Unbounded auto-continue is a way to serially dump a book into a shared
+      // channel, which is the posture `vis_ebooks` exists to hold. Past the
+      // bound she says where the rest lives, in her own words.
+      let overflowed = false;
+      const bound = () => {
+        if (overflow && parts.length > BOOKS_MAX_REPLY_PARTS) {
+          parts = parts.slice(0, BOOKS_MAX_REPLY_PARTS);
+          overflowed = true;
+        }
+      };
+      bound();
+
+      // ⚠️ Re-split with room reserved for the "(2/3)" label once we know there
+      // will be more than one message. Labelling parts that were split at the
+      // full ceiling is how a labelled part goes over it and 400s.
+      if (parts.length > 1) {
+        parts = splitForDiscord(whole, DISCORD_CONTENT_MAX - PART_LABEL_ROOM);
+        bound();
+      }
+
       if (parts.length > 1 && !deps.followUp) {
         // ⚠️ ROOM IS RESERVED FOR THE NOTICE FIRST. Appending it and then
         // truncating to the ceiling cuts off the very sentence that explains
         // the cut — which is how a "worded" truncation silently becomes a bare
         // ellipsis again.
-        const room = DISCORD_CONTENT_MAX - CUT_FOR_LENGTH.length;
+        const notice = overflow ? `\n\n${overflow}` : CUT_FOR_LENGTH;
+        const room = DISCORD_CONTENT_MAX - notice.length;
         await deps.reply(
-          `${truncate(parts[0] as string, room)}${CUT_FOR_LENGTH}`,
+          `${truncate(parts[0] as string, room)}${notice}`,
           components ? { components } : undefined,
         );
         return;
       }
-      await deps.reply(parts[0] as string, components ? { components } : undefined);
+
+      // ⚠️ ORDER IS GUARANTEED BY SERIAL AWAITS, and the label makes a gap
+      // visible: if part 3 of 4 never lands, "(4/4)" arriving after "(2/4)"
+      // says so. Discord does not promise ordering for concurrent sends, which
+      // is why these are not fired in parallel however slow that is.
+      const total = parts.length;
+      const label = (i: number) => (total > 1 ? `**(${i + 1}/${total})** ` : '');
+      const tail = overflowed && overflow ? `\n\n${overflow}` : '';
+
+      await deps.reply(
+        `${label(0)}${parts[0] as string}${total === 1 ? tail : ''}`,
+        components ? { components } : undefined,
+      );
       // ⚠️ Each continuation is its own try: a failed second message must never
       // discard the first, and must never look like the whole turn failed.
-      for (const part of parts.slice(1)) {
+      for (let i = 1; i < parts.length; i++) {
         try {
-          await deps.followUp?.(part);
+          await deps.followUp?.(
+            `${label(i)}${parts[i] as string}${i === parts.length - 1 ? tail : ''}`,
+          );
         } catch (err) {
           console.error(
             'GABI mentions: a continuation message failed to post; the answer is incomplete in the ' +
@@ -1167,7 +1227,7 @@ export async function handleMention(
       docs,
       books,
     );
-    await say(answer.content, answer.components);
+    await say(answer.content, answer.components, answer.overflowNote);
 
     // ⚠️ EVERYTHING PAST THE POST IS BOOKKEEPING, AND BOOKKEEPING MUST NOT
     // SPEAK. Before this, a throw from `save`, `recordTurn` or the docs fuse

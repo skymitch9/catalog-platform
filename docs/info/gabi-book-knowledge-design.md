@@ -1402,6 +1402,61 @@ decision 8 in §11, which is the owner's to make rather than an agent's.
 
 ---
 
+## 10e. ⚠️ INCIDENT — the permission question was a LOOP, not a pause (2026-08-18)
+
+Channel lane, 1:31–1:33 PM. He asked for the end-of-book-9 sheet **plus
+abilities plus passives**. She delivered core stats, titles and twenty class
+skills — correct, cited, well-formed — then stopped at profession skills and
+asked permission to continue.
+
+He said *"get professions too"*. **She re-pulled the same passage** (same
+timestamps, 72538–72706), **re-printed the entire sheet**, ran out at exactly
+the same place, and asked permission again.
+
+### Three defects in one loop
+
+1. ⚠️ **A permission turn is not a pause — it is a chance to repeat yourself.**
+   The retry she offered was real, but nothing carried across it about *where
+   she had got to*, so the next turn started from the same question and
+   therefore the same answer.
+2. ⚠️ **Continuing by RE-SEARCHING is an infinite loop by construction.** A
+   ranked search returns its best match every time, and the tail of a list is by
+   definition not the best match for the query that found the head. Continuing is
+   a **position** problem, not a relevance problem.
+3. ⚠️ **The repeat CAUSED the second cutoff.** Re-printing the stats, titles and
+   class skills consumed exactly the room the professions needed. The failure was
+   self-inflicted and would have recurred for ever.
+
+### The fix — owner decision, option C (*"I think c"*)
+
+**Auto-continue.** No permission question: a long answer is delivered as
+labelled consecutive messages (`**(2/3)**`), split with room reserved for the
+label, sent **serially** so ordering is guaranteed, bounded at
+`BOOKS_MAX_REPLY_PARTS` = 4. Past the bound she says where the rest lives.
+⚠️ Unbounded auto-continue would be a way to serially dump a book into a shared
+channel, which is the posture `vis_ebooks` exists to hold.
+
+**Paging forward.** `read_book_passage` gains `count` (≤4) and every result
+carries **`next_ord`** — the anchor that ends the loop, handed over rather than
+left to be derived, because a model that has to work out its own next position
+will re-run the search instead. The tool description and the result note both say
+*page forward, never search again* and *print only what is new*.
+
+**A modest raise**, 24 KB → **48 KB** and 6 → **12 passages** per turn. ⚠️ The
+number is not arbitrary: `book-retrieval.ts` caps one search at
+`MAX_SEARCH_BYTES` = 24 KB / `MAX_PASSAGES` = 6 and **clamps the `limit`
+parameter to 6 regardless of what is asked**, so 48 KB is exactly two full
+searches — the shape of the question that broke it. Picking 10 would have made
+the second search silently partial.
+
+⚠️ **The overflow sentence carries NO URL.** The reader is keyed by `anchor`
+(`sha256(path)[:12]`) and a pack by `bookId` — different identifiers on purpose
+(§4.2) — so a deep link cannot be constructed from this side, and
+`ebooks.heygabi.ai/read` does not exist yet (`ebook-viewer-phase1.md` §565). A
+plausible link that 404s is worse than no link.
+
+---
+
 ## 11. Owner decisions — ONE AT A TIME, in this order
 
 Each carries a recommendation. Nothing in §9 should start before decision 1 is

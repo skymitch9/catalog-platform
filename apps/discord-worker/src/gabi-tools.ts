@@ -562,14 +562,21 @@ export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
   {
     name: 'read_book_passage',
     description:
-      'Read ONE passage of a book in full, by the ord a search result gave you. ' +
-      'Call this when a snippet looks like the answer but you need the whole thing — the rest of a ' +
-      'stat block, the sentence after the one that matched. ' +
-      'Read the one or two that matter, not everything that came back: only so much book text fits ' +
-      'in one reply, and spending it on near-misses leaves nothing for the real one. ' +
-      '⚠️ If a read comes back refused, say you did not read that passage — and say it in ordinary ' +
-      'words, never by naming a budget, a cap or a quota. Do not summarise a passage from its ' +
-      'snippet as though you had.',
+      'Read a passage of a book in full, by the ord a search result gave you — and optionally the ' +
+      'few that FOLLOW it, which is how you continue something that ran on. ' +
+      'Call this when a snippet looks like the answer but you need the whole thing (the rest of a ' +
+      'stat block, the sentence after the one that matched), and call it with a higher ord when a ' +
+      'list or a sheet carried on past where you stopped. ' +
+      '⚠️ TO CONTINUE, PAGE FORWARD — NEVER SEARCH AGAIN. If you printed a passage ending at ord N ' +
+      'and the thing you were listing was not finished, call this with ord N+1 (and a count) to get ' +
+      'what comes next. Re-running the same search returns the same best-ranked passage every time, ' +
+      'because the tail of a list is never the best match for the query — that is an infinite loop ' +
+      'and it has already happened to a real person. ' +
+      '⚠️ When you continue, print ONLY the new material. Do not re-print what you already sent: ' +
+      'repeating the sheet is what used up the room the rest of it needed. ' +
+      '⚠️ If a read comes back refused, say you did not read that passage — in ordinary words, never ' +
+      'by naming a budget, a cap or a quota. Do not summarise a passage from its snippet as though ' +
+      'you had.',
     input_schema: {
       type: 'object',
       properties: {
@@ -580,8 +587,16 @@ export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
         ord: {
           type: 'number',
           description:
-            'The ord a search result gave you. Ords only mean anything inside the book that produced ' +
-            'them — do not construct one and do not carry one between books.',
+            'The ord a search result gave you, or one PAST the last you printed when you are ' +
+            'continuing. Ords only mean anything inside the book that produced them — do not carry ' +
+            'one between books.',
+        },
+        count: {
+          type: 'number',
+          description:
+            'How many consecutive passages to read, starting at ord. Default 1, at most 4. Use it ' +
+            'when you are continuing a list or a sheet that ran on, so one call gets the whole tail ' +
+            'instead of one chunk of it.',
         },
       },
       required: ['bookId', 'ord'],

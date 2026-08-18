@@ -76,6 +76,7 @@ import {
 import {
   BOOKS_LIST_LIMIT,
   BOOKS_MSG,
+  BOOKS_PASSAGE_RUN_MAX,
   BOOKS_PRESENCE_MAX,
   BOOKS_SEARCH_HITS,
   booksIdentityMessage,
@@ -924,16 +925,55 @@ async function readPassage(
     );
   }
 
-  const call = await books.port.passage(email, bookId, {
-    ord: String(Math.floor(ord)),
-    ...boundParams(books.bound),
-  });
-  if (!call.ok) return callFailure(name, call);
+  // ⚠️ **WALKING FORWARD IS THE WHOLE POINT OF `count`** (owner decision
+  // 2026-08-18, and the loop it ended). Continuing a list is a POSITION problem,
+  // not a relevance one: a ranked search returns its best match every time and
+  // the tail of a sheet is never the best match, so "search again to continue"
+  // is an infinite loop by construction. Reading ord+1, ord+2 … is not.
+  const runs = Math.min(Math.max(1, Math.floor(num(args.count) ?? 1)), BOOKS_PASSAGE_RUN_MAX);
+  const start = Math.floor(ord);
 
-  const body = call.body ?? {};
-  if (body.ingested === false) return notIngested(name, body);
+  const collected: Record<string, unknown>[] = [];
+  let body: Record<string, unknown> = {};
+  let stopped: string | null = null;
 
-  const passage = (body.passage ?? null) as Record<string, unknown> | null;
+  for (let i = 0; i < runs; i++) {
+    const call = await books.port.passage(email, bookId, {
+      ord: String(start + i),
+      ...boundParams(books.bound),
+    });
+    // ⚠️ A failure on a LATER page keeps what already came back rather than
+    // discarding the run — the person gets the part that worked, and the reason
+    // the rest did not.
+    if (!call.ok) {
+      if (collected.length === 0) return callFailure(name, call);
+      stopped = call.message ?? BOOKS_MSG.estateUnreachable;
+      break;
+    }
+    body = call.body ?? {};
+    if (body.ingested === false) {
+      if (collected.length === 0) return notIngested(name, body);
+      break;
+    }
+    const one = (body.passage ?? null) as Record<string, unknown> | null;
+    if (!one) {
+      // End of the book, or the spoiler ceiling. Both are real stopping points
+      // and neither is an error; the route's own sentence says which.
+      if (collected.length === 0) break;
+      stopped = typeof body.detail === 'string' ? body.detail : null;
+      break;
+    }
+    const oneText = typeof one.text === 'string' ? one.text : '';
+    if (!books.budget.take(oneText.length, 1)) {
+      // ⚠️ The ceiling reached MID-RUN. Everything already collected was read
+      // and may be printed; this one was not. She says so and does not ask.
+      stopped = BOOKS_MSG.turnBudgetSpent;
+      break;
+    }
+    collected.push(one);
+  }
+
+  const passage = collected[0] ?? null;
   if (!passage) {
     // ⚠️ TWO DIFFERENT FACTS, and the route distinguishes them in its `detail`:
     // "past where you asked me to stop" and "there is no passage there". Both
@@ -954,16 +994,14 @@ async function readPassage(
     };
   }
 
-  const text = typeof passage.text === 'string' ? passage.text : '';
-  if (!books.budget.take(text.length, 1)) {
-    return booksRefusal(
-      name,
-      'books_turn_budget_spent',
-      BOOKS_MSG.turnBudgetSpent,
-      'The passage was NOT read — do not summarise it from the snippet as though you had. Say so in ' +
-        'ordinary words and offer to go again. ⚠️ NEVER name a budget, a cap or a quota.',
-    );
-  }
+  const bytes = collected.reduce(
+    (n, p) => n + (typeof p.text === 'string' ? (p.text as string).length : 0),
+    0,
+  );
+  const lastOrd = collected.reduce(
+    (n, p) => (typeof p.ord === 'number' && p.ord > n ? p.ord : n),
+    start,
+  );
 
   return {
     name,
@@ -974,13 +1012,32 @@ async function readPassage(
       title: body.title,
       source: body.source,
       scope: body.scope,
+      // ⚠️ Kept as `passage` AND `passages`: the singular is what every existing
+      // caller and every earlier prompt expects, the plural is the run. Dropping
+      // the singular would have been a silent contract change on a shape a model
+      // is already trained on by its own description.
       passage,
-      bytes: text.length,
+      passages: collected,
+      count: collected.length,
+      // ⚠️ **THE CONTINUATION ANCHOR.** The single most important field for the
+      // loop this ended: where to pick up if the thing being printed is still
+      // not finished. It rides in the RESULT rather than being recomputed,
+      // because a model that has to derive its own next position is a model that
+      // will re-run the search instead.
+      next_ord: lastOrd + 1,
+      ...(stopped ? { stopped_because: stopped } : {}),
+      bytes,
       note:
-        'Quote what this passage actually says and cite the chapter (and the timestamp if there is ' +
+        'Quote what these passages actually say and cite the chapter (and the timestamp if there is ' +
         'one). ⚠️ A stitch of "reduced" means a neighbouring chunk was dropped at a chapter edge, ' +
         'so a block may be missing its header — say what you can see rather than completing it ' +
-        'from memory.' +
+        'from memory. ' +
+        '⚠️ IF WHAT YOU ARE PRINTING IS STILL NOT FINISHED, call this again with ord = next_ord ' +
+        `(${lastOrd + 1}). Do NOT search again — the same best-ranked passage comes back every ` +
+        'time and you will print the same thing twice. ' +
+        '⚠️ AND PRINT ONLY WHAT IS NEW. Do not re-print the part you already sent; repeating it is ' +
+        'what used up the room the rest of it needed.' +
+        (stopped ? ` ⚠️ The run stopped early: ${stopped} Say what you did not get to.` : '') +
         (body.source === 'transcript'
           ? ' ⚠️ This is a TRANSCRIPT of the audio, not the written book. Say so when you quote it.'
           : ''),

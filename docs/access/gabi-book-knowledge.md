@@ -73,9 +73,24 @@ Four tools, all read-only, all GET, none of which can write anything:
 | `read_book_passage` | one passage by `ord`, stitched with its ±1 neighbours |
 | `book_presence` | one term rolled up across ≤6 books, in reading order |
 
-Caps (per person): **24 KB and ≤6 passages per turn** (refuses rather than
-trims), **40 book turns per UTC day** (`bcap:user:*` in the gateway Durable
-Object — its own key namespace, not the docs one).
+Caps (per person), **raised and extended 2026-08-18 by owner decision (option
+C: auto-continue AND a modest raise)**:
+
+| Cap | Value | Note |
+|---|---|---|
+| Retrieved bytes per turn | **48 KB** (was 24 KB) | ⚠️ exactly **2× the route's own `MAX_SEARCH_BYTES`**, so a turn is two full searches — the shape of "the sheet, then the abilities" that broke it |
+| Passages per turn | **12** (was 6) | 2× the route's `MAX_PASSAGES`, which clamps `limit` to 6 whatever is asked |
+| Consecutive passages per `read_book_passage` | **4** | how continuing works: `ord`, `ord+1`, … |
+| Discord messages per answer | **4** | auto-continue is bounded, or it is a way to serially dump a book |
+| Book turns per UTC day | 40 | `bcap:user:*` in the gateway DO — its own key namespace, not the docs one |
+
+⚠️ **Auto-continue replaced a permission question.** She no longer stops
+mid-answer to ask whether to keep going; the reply is delivered as labelled
+consecutive messages (`**(2/3)**`), sent serially so ordering is guaranteed.
+Past the 4-message bound she says the rest is in the book on the shelf — **with
+no URL, deliberately**: the reader is keyed by `anchor` and a pack by `bookId`
+(two different identifiers, design §4.2), so a deep link cannot be built from
+this side, and `ebooks.heygabi.ai/read` does not exist yet.
 
 ---
 
@@ -173,6 +188,13 @@ Invoke-RestMethod "https://audiobook-api.heygabi.ai/api/books/available?limit=5"
   one-line script before touching anything else; the reply text tells you the
   branch, because a shelf answer reassembles from `MENTION_MSG.searched` +
   `MENTION_MSG.none`.
+- ⚠️ **TO CONTINUE A CUT-OFF ANSWER, PAGE FORWARD BY ORDINAL — NEVER RE-SEARCH.**
+  A ranked search returns its best match every time and the tail of a stat sheet
+  is never the best match, so "search again to continue" is an infinite loop by
+  construction. It happened to the owner live: he asked for the professions, she
+  re-pulled the same passage, re-printed the whole sheet and stopped in exactly
+  the same place, twice. `read_book_passage` takes `count` and returns
+  `next_ord` for this reason.
 - ⚠️ **A FOLLOW-UP IS ROUTED ON THE CONVERSATION, NOT THE SENTENCE.** She
   offered a retry, the owner accepted it in five words, and the stateless
   detector sent it to the catalogue (design §10c). `booksFollowUp()` reads the
