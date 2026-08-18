@@ -864,6 +864,32 @@ agent because they share the /status page surface.
    ceilings already support this; the available-books check is the piece to
    make explicit.
 
+### Ops IA — the /status SPLIT (owner mock 2026-08-18, organized by conductor; BUILD TO THIS)
+
+Owner: "maybe a health page that also has logs for the pods/workers/containers,
+a page for data processing, a page for running the pipelines and their logs...
+take this and organize it into pages you think make sense." Four pages, one
+shared nav shell, all under the existing auth gate:
+
+| Page | Job | Contents |
+|---|---|---|
+| **/status** (Health) | Front door: is everything up? | Green/amber/red per component (workers, gateway DO, crons, D1/Firestore/R2); last deploy per worker from deploys.log; **recent log lines per worker** (see log note); backup freshness (last daily run + which mirrors confirmed) |
+| **/status/processing** (Data processing) | GABI's knowledge base growing | Items 2 above: in-flight books + %, processed history, "joined GABI's knowledge base <date>" per book; queue depth by lane (audiobook-with-review / EPUB / text-PDF / deferred-PDF); pack counts + ingester_version |
+| **/status/pipelines** (Pipelines) | Run + control | The pause/resume + timers card (relocates here from /status once built); nightly-window state (Phoenix clock, next window, GPU guard reading); run history with per-run logs (ingestion, backups, Drive sync, detail sweeps); manual triggers only where already safe |
+| **/status/agents** (Agents) | Claude capacity | Item 1 above (running agents + model, 30 s poll of conductor-pushed state); event feed (dispatched/landed/failed); usage figures live HERE (item 3) — they are Claude capacity, same subject |
+
+⚠️ **Log honesty:** there are no pods/containers — the estate is Workers +
+local PC pipelines. Workers cannot be live-tailed from a static page; the
+plan is a **log ring buffer**: workers write structured error/event rows to
+D1 (capped, newest-N), pages render it, deep-dive links out to the
+Cloudflare dashboard. Local pipeline logs already exist on the PC; the
+ingestion build publishes recent tails to the same state endpoint. Never
+fake a "live" tail that is actually stale — timestamp every log block.
+
+Build order: pause-UI agent lands → nav shell + page split + Agents/
+Processing pages (one agent, one surface) → ring buffer wiring can trail as
+a follow-up without blocking the split.
+
 Raised mid-conversation and **not yet decided** — recorded because it reframes
 the federation question above rather than adding to it.
 
