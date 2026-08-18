@@ -98,8 +98,41 @@ export async function resolveEbookAccess(c: Ctx): Promise<EbookGateResult> {
     };
   }
 
-  const email = identity.email.trim().toLowerCase();
-  const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
+  return resolveEbookAccessForEmail(
+    c.env,
+    identity.email,
+    identity.uid ?? null,
+    identity.name ?? undefined,
+  );
+}
+
+/**
+ * ⚠️ **THE SAME DECISION, REACHED FROM A PROVEN EMAIL RATHER THAN A TOKEN — and
+ * it is deliberately the SAME FUNCTION BODY, not a second copy.**
+ *
+ * Extracted 2026-08-18 when the book-knowledge routes gained a second door: a
+ * server-to-server caller (the Discord Worker) that holds an app token and names
+ * the asker's proven email, exactly as `auth-worker/src/estate-docs.ts`'s door B
+ * does for the docs corpus. That file states the rule this extraction honours:
+ *
+ * > *"BOTH DOORS END AT THE SAME PREDICATE … There is no second copy of the
+ * > decision and no weaker variant."*
+ *
+ * ⚠️ **THE TRUST BOUNDARY.** The holder of the app token can name ANY email and
+ * this Worker will answer for that person's standing. That is safe only because
+ * of what sits on the other end: the discord-worker can send exactly one email —
+ * the one `link.ts` proved server-side through the person's own Discord OAuth
+ * *and* their own Firebase sign-in. ⚠️ A future caller must never pass a
+ * user-supplied string here; it gets its own token pair and its own review.
+ */
+export async function resolveEbookAccessForEmail(
+  env: Env,
+  rawEmail: string,
+  uid: string | null,
+  displayName?: string,
+): Promise<EbookGateResult> {
+  const email = rawEmail.trim().toLowerCase();
+  const owners = parseOwnerEmails(env.OWNER_EMAILS);
   const isOwner = owners.includes(email);
 
   // 2. The estate answer — status AND visibility, one answer, one age (§4.5).
@@ -111,17 +144,17 @@ export async function resolveEbookAccess(c: Ctx): Promise<EbookGateResult> {
       ok: true,
       access: {
         email,
-        uid: identity.uid ?? null,
+        uid,
         isOwner: true,
         grant: { visible: true, stale: false, status: 'approved' },
       },
     };
   }
 
-  const answer = await estateAnswerFor(c.env, {
+  const answer = await estateAnswerFor(env, {
     email,
-    firebaseUid: identity.uid,
-    displayName: identity.name,
+    firebaseUid: uid ?? undefined,
+    displayName,
   });
 
   if (!answer.configured) {
@@ -208,7 +241,7 @@ export async function resolveEbookAccess(c: Ctx): Promise<EbookGateResult> {
     ok: true,
     access: {
       email,
-      uid: identity.uid ?? null,
+      uid,
       isOwner: false,
       grant: { visible: true, stale: answer.stale, status: answer.status },
     },

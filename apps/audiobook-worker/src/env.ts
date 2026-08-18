@@ -41,6 +41,25 @@ export interface Env {
   ESTATE_APP_TOKEN_AUDIOBOOK?: string;
 
   /**
+   * ⚠️ **DOOR B'S BEARER for the book-knowledge routes** (`book-routes.ts`) —
+   * a secret (`wrangler secret put ESTATE_APP_TOKEN_BOOKS`), whose matching
+   * value lives on the callers: `apps/discord-worker` and `library_catalog`'s
+   * Worker.
+   *
+   * ⚠️ **A FRESH PAIR, not a reuse of `ESTATE_APP_TOKEN_AUDIOBOOK`.** That one
+   * is this Worker's OUTBOUND credential to the estate directory; this one is an
+   * INBOUND grant to read the household's derived book text. Sharing a value
+   * between an outbound and an inbound trust edge means a leak in either
+   * direction opens both.
+   *
+   * ⚠️ **UNSET IS THE SHIPS-DARK STATE.** With no value, door B does not exist
+   * and every request falls through to door A (a browser's Firebase token). It
+   * authorises no read by itself: the accompanying `X-Estate-On-Behalf-Of` email
+   * is resolved against the estate directory and must hold `vis_ebooks`.
+   */
+  ESTATE_APP_TOKEN_BOOKS?: string;
+
+  /**
    * The estate-check mode (migration design §2/§4): 'off' | 'shadow' |
    * 'enforce'. Governs BOTH the /api/gate/shadow receiver (inert unless
    * shadow/enforce) and whether /api/me's answer demotes a revoked caller

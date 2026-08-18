@@ -41,6 +41,19 @@
  *                          they can listen to an audio." Its own budget
  *                          (listen-budget.ts), sized for hours of ranges
  *                          instead of one book-open.
+ *   GET  /api/books/available   what is in GABI's knowledge base RIGHT NOW
+ *                          (book-routes.ts) — an R2 LISTING, not a compiled-in
+ *                          list, so a book ingested overnight is answerable in
+ *                          the morning with no deploy.
+ *   GET  /api/books/presence   one term rolled up across up to 6 books:
+ *                          hits, first sighting, and ⚠️ zero as a real answer.
+ *   GET  /api/book/:bookId/search   the four retrieval modes (relevant /
+ *                          latest / earliest / presence), server-side scoped by
+ *                          a ceiling DERIVED from the question every turn, and
+ *                          returned as the hit stitched with its ±1 neighbours.
+ *   GET  /api/book/:bookId/passage  one passage by ord, same gate, same ceiling.
+ *                          ⚠️ All four also accept an app bearer + the asker's
+ *                          proven email (door B), for GABI's two chat surfaces.
  *   Phase 3 wave A writes  enforce-routes.ts — ⚠️ DORMANT: every one answers
  *                          503 not_enabled (touching nothing) unless
  *                          ESTATE_CHECK === 'enforce', which is the OWNER'S
@@ -57,6 +70,7 @@ import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { audioFileRoutes } from './audio-file.js';
 import { audioStatusRoutes } from './audio-status.js';
+import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
 import { ebookFileRoutes } from './ebook-file.js';
 import { ebookRoutes } from './ebooks.js';
@@ -229,6 +243,20 @@ app.route('/', ebookFileRoutes);
 // 13-hour listen exhaust a reader's page turns and vice versa.
 app.route('/', audioStatusRoutes);
 app.route('/', audioFileRoutes);
+
+// The book-knowledge retrieval routes (design phase 3, 2026-08-18). Same gate as
+// every route above — literally the same function (ebook-gate.ts) — because the
+// derived text IS the book, chunked, and design decision 3 keeps it behind the
+// grant that already guards the files it came from.
+//
+// ⚠️ These carry a SECOND door: an app bearer plus the asker's proven email, for
+// GABI on Discord and in the site panel, which hold no Firebase token of the
+// person asking. Both doors end at the same predicate — see book-routes.ts.
+//
+// ⚠️ They serve WHATEVER PACKS EXIST at query time, discovered by an R2 listing
+// rather than compiled in, so a book ingested overnight is answerable in the
+// morning with no deploy (owner requirement, docs/TODO.md status-page item 4).
+app.route('/', bookRoutes);
 
 // Phase 3 wave A — the prebuilt write routes, DORMANT until the owner flips
 // ESTATE_CHECK to 'enforce' (enforce-routes.ts carries its own mode gate as
