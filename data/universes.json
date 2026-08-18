@@ -397,7 +397,8 @@
         "Heroes Of Olympus",
         "From the World of Percy Jackson",
         "The Heroes of Olympus",
-        "The Trials of Apollo"
+        "The Trials of Apollo",
+        "The Nico di Angelo Adventures"
       ],
       "notes": "Camp Half-Blood continuity. 'From the World of Percy Jackson' is Sun and the Star, the Nico di Angelo novel co-written with Mark Oshiro — same continuity, found during review rather than in the first proposal.",
       "confirmed": "Owner approved 2026-08-11, including the third series found during review.",
@@ -2339,6 +2340,14 @@
       "universe": "Cytoverse",
       "series": "Skyward",
       "why": "Spelling variant of the already-listed 'The Skyward Series'. library_catalog D1 spells it 'Skyward' on all 5 rows (works 412-414, 462, 463, created/retitled 2026-08-18 by the box-set split of work 412), while audiobook_catalog's catalog.csv uses 'The Skyward Series' — the two catalogs spell the same series differently. normaliseUniverseText keeps leading articles by design, so the listed spelling misses all five. Add the spelling, never override. Measured 2026-08-18.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-18",
+      "action": "add-series",
+      "universe": "Riordanverse",
+      "series": "The Nico di Angelo Adventures",
+      "why": "Second publisher imprint label for a book this universe ALREADY claims. library_catalog D1 work 456 'The Sun and the Star' stores series 'The Nico di Angelo Adventures' and resolves to no universe, while this file lists the same book under 'From the World of Percy Jackson' (added 2026-08-11 during owner review, and named in Riordanverse's own notes). Measured 2026-08-18: 1 D1 row in that series, universe NULL; who --title 'The Sun and the Star' --series 'From the World of Percy Jackson' already answers Riordanverse. NOT a spelling fold — the two labels share no words, so normaliseUniverseText could never bridge them; this is an add-series in the shape The Trials of Apollo took in a7beeba. It differs from that one in that NO new book enters the universe today (the book was already claimed under the other label); what it also does is forward-claim future Nico di Angelo Adventures volumes, which is correct because the imprint is Camp Half-Blood continuity by construction — Nico, Will, Camp Half-Blood, co-written with Mark Oshiro. Owner-approved implicitly 2026-08-18 via 'Yes to the clean up pack', which named this addition as item 4.",
       "decidedHow": "human"
     }
   ]
