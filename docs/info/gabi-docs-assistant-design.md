@@ -7,7 +7,10 @@
 > and 4** — the Discord door and GABI's two docs tools. ⚠️ **§12 is the incident
 > report for the first live docs question**, which was answered from the book
 > shelf: offering a model the tools turned out not to be the same as routing to
-> them. `GABI_DOCS` was flipped **on** by the owner 2026-08-18.
+> them. **§13 is the second incident** — the silent partial, where a turn posted
+> a narration and went quiet for ever; it shares a root cause with §12's second
+> defect and is the reason the "nothing may die after a post" invariant exists.
+> `GABI_DOCS` was flipped **on** by the owner 2026-08-18.
 > Figures marked *measured* were taken on this machine on 2026-08-17 unless a
 > later date is given. **§10 and §11 are the as-built account**, and where the
 > build departed from this design they say so there rather than by silently
@@ -1119,3 +1122,107 @@ that ran out of tokens mid-tool-call has always failed this way, silently.
   shipped because nothing had ever reached it from a non-book question.
 - ⚠️ **A null that logs nothing is a defect on its own**, independent of what
   caused it. The instrument was worth more than the fix.
+
+---
+
+## 13. ⚠️ INCIDENT — the silent partial (2026-08-18, third failure)
+
+The third live attempt at the same question. Router, docs door, search and the
+model turn all worked. GABI posted **exactly this** and then nothing, ever:
+
+> Perfect — found it. Let me read the promoting section:
+
+No follow-up. No error. No wobble sentence. The owner had asked three times.
+
+### The killer
+
+⚠️ **`mention-flow.ts` posts exactly ONCE, at the end of a turn** — it never
+streams intermediate blocks. So that announcement *was* the turn's final answer.
+It reached the channel through `converseWithTools`'s exit guard:
+
+```ts
+if (res.stop_reason !== 'tool_use' || calls.length === 0) {
+  return finish(textOf(blocks), …);   // "this is the answer"
+}
+```
+
+Two ways in, and both were live:
+
+1. **`stop_reason: 'end_turn'` with no `tool_use`** — the model narrated the step
+   it was about to take and simply ended its turn. Haiku does this.
+2. **`stop_reason: 'max_tokens'` reached mid-`tool_use`** — the text block was
+   emitted, the tool call was cut off, and because the stop reason is then not
+   `'tool_use'`, the guard short-circuits and ships the narration.
+
+⚠️ **Neither throws**, which is why the wobble fallback never fired: it only
+covers a `null` text, and this path returns a perfectly well-formed string that
+happens not to be an answer.
+
+⚠️ **This is the SAME root cause as §12's second defect**, with the truncation
+landing a few tokens later. §12 raised `CHAT_TOOL_MAX_TOKENS` 400 → 1024, which
+moved the failure from *"empty text → wobble"* to *"narration → silence"*. **The
+ceiling was never the bug; the exit guard was.** Raising it was right and
+insufficient, and treating it as the fix is what let a third failure happen.
+
+### The fix
+
+- **`needsFinishing()`** — a truncated turn is unfinished by definition;
+  otherwise a trailing colon or semicolon is a promise of more. Deliberately
+  narrow: broader heuristics ("starts with *Let me…*") would eat real answers
+  that merely open with a narration, which is a normal way to answer.
+- **On unfinished, nudge and continue** — with tools still available while
+  iterations remain, so the model can take the step it announced. Bounded by
+  `MAX_TOOL_ITERATIONS`; the final pass sends no tools, so it must produce prose.
+  ⚠️ A dangling `tool_use` is dropped from the echoed turn — echoing one without
+  its matching `tool_result` is a 400.
+- **A last-resort net in `finish()`** — if a turn *still* ends on a dangling
+  colon, the cut-short sentence is appended. Nobody sees a bare promise again.
+
+### Discord's 2,000-character ceiling (measured, because it was a suspect)
+
+Not the cause here — the announcement was short — but a real defect found while
+looking. Every reply was `truncate(content, 2000)`: **a hard cut at 1,999
+characters plus a single `…`**. For a book answer that is fine; for a runbook
+answer the half that gets cut is the half with the last steps in it.
+
+Now **split** on paragraph, then line, then space boundaries and posted across
+messages via `followUp`. A surface with no second channel is told the answer was
+cut, in words, with a link to the whole thing — and ⚠️ **room is reserved for
+that notice first**, because appending it and then truncating to the ceiling cuts
+off the very sentence explaining the cut. (That bug was written, caught by its
+own test, and fixed before shipping.)
+
+### ⚠️ The invariant this incident produced
+
+> **Nothing may die between a posted message and the turn's end without a worded
+> follow-up — and nothing may speak after a successful answer to contradict it.**
+
+Both halves were broken:
+
+- Post-answer bookkeeping (memory, turn cap, docs fuse) had no catch of its own,
+  so a throw there fell into the outer handler and posted *"I couldn't reach the
+  estate's catalogue just then"* **after the answer had already landed** — a lie
+  about a turn that worked.
+- The outer handler had no idea whether anything had already been said, so its
+  only sentence claimed nothing was searched — which contradicts what the reader
+  can see on screen.
+
+Now: bookkeeping failures are logged and swallowed; the outer catch tracks
+whether the channel has been spoken to and says *"…and then I fell over partway
+through that"* when it has.
+
+⚠️ These are mirror images of each other — **one says nothing when it should
+speak, the other speaks when it should stay quiet.** Both break the same rule:
+the channel must reflect what actually happened.
+
+### Lessons recorded
+
+- ⚠️ **A well-formed string is not an answer.** Null-checks caught the empty
+  case and sailed straight past the narration. Validate the *shape of the
+  outcome*, not just its presence.
+- ⚠️ **Raising a limit moves a failure; it does not remove one.** §12's token
+  bump was correct and treated as sufficient. The next symptom was a different
+  face of the same guard.
+- ⚠️ **Every early return from a loop is an exit that can ship something.** The
+  guard had one job — "is the model done?" — and answered it with a stop-reason
+  comparison that was true for three quite different situations.

@@ -18,12 +18,19 @@
 ## 🟡 GABI READS THE ESTATE DOCS — LIVE; ONE OWNER STEP LEFT (the relink) (2026-08-18)
 
 ⚠️ **Step 2 (flip `GABI_DOCS`) is DONE — the owner flipped it on 2026-08-18.**
-⚠️ **The first live question failed** and was fixed the same day: she answered
-*"how do I promote the audiobook site?"* from the **book shelf**. Full incident,
-diagnosis and fix in
-[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md) **§12**;
-his transcript is now a regression test in both link states. **Deployed and
-verified.**
+⚠️ **THREE live failures on the night of the flip, all fixed and deployed.**
+Both incidents are written up in
+[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md):
+
+| # | Symptom | Cause | Where |
+|---|---|---|---|
+| 1 | answered from the **book shelf** | offering the docs tools is not routing to them | **§12** |
+| 2 | *"…couldn't put an answer together"* | tool loop truncated, returned null | §12 (2nd defect) |
+| 3 | posted *"Let me read the promoting section:"* then **silence for ever** | the loop's exit guard treats any non-`tool_use` stop as the final answer | **§13** |
+
+⚠️ **#2 and #3 share a root cause.** §12 raised the token ceiling, which moved
+the failure rather than removing it — the exit guard was always the bug. Every
+transcript is now a regression test.
 
 **What is left is step 1 below — the relink — which was never done.** Until it
 is, every docs question correctly answers *"your link was made before I could
