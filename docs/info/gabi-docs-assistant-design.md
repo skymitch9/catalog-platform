@@ -577,10 +577,8 @@ Discord: DM GABI *"how do I promote to prod?"* and check the answer cites
    fourth scheduled task. Staleness stays visible regardless (every answer
    carries its snapshot date), and a manual publish remains available before
    fresh questions. Phase 5 is unblocked.
-3. **Does the corpus include the `DONE.md` archives?** They are 778 KB of the
-   3 MB and are history rather than current state. Including them means GABI can
-   answer *"when did we do X and why"*; excluding them cuts the corpus by a
-   quarter and removes the growth pressure of §5.4. *(Recommendation: include
-   for now, and revisit at the 10 MB WARN.)*
+3. ✅ **DECIDED 2026-08-18 — the `DONE.md` archives are IN** ("yes include
+   them"). GABI can answer *"when did we do X and why"*. The §5.4 growth
+   tripwire (WARN at 10 MB) is the standing revisit point.
 4. **Phase 6 — is a web docs-search page wanted at all**, or is Discord the
    whole ask? *(Purely additive; costs nothing to defer.)*
