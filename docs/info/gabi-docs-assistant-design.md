@@ -580,8 +580,9 @@ Discord: DM GABI *"how do I promote to prod?"* and check the answer cites
 3. ✅ **DECIDED 2026-08-18 — the `DONE.md` archives are IN** ("yes include
    them"). GABI can answer *"when did we do X and why"*. The §5.4 growth
    tripwire (WARN at 10 MB) is the standing revisit point.
-4. ✅ **DECIDED 2026-08-18 — deferred, per the recommendation** ("sure").
-   Discord is the build; the devops-gated web page stays phase 6, an
-   optional cheap follow-up if the owner finds himself wishing for a
-   browsable version. ALL FOUR QUESTIONS ANSWERED — the design is fully
+4. ✅ **DECIDED 2026-08-18 — BUILD the web page** (owner, clarifying moments
+   after an ambiguous "sure": *"sure, but make it with a search bar and
+   pretty to look at"*). Phase 6 is IN scope: a devops-gated docs page on
+   the apex with a real search bar and deliberate visual design — not a
+   utilitarian dump. ALL FOUR QUESTIONS ANSWERED — the design is fully
    decided and buildable.
