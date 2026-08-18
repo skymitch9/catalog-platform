@@ -263,19 +263,47 @@ export function parseAdminOrigins(raw: string | undefined): string[] {
     .filter((o) => o.length > 0);
 }
 
-/** The four estate origins the session routes admit in production (design §4.3). */
+/**
+ * Every estate origin the credentialed session routes admit in production
+ * (design §4.3). ⚠️ This is an ORIGIN list, not a site list. The cookie's
+ * `Domain=.heygabi.ai` reaches all of them automatically, but credentialed
+ * CORS is exact-origin by construction, so a surface MISSING from this array
+ * cannot call the routes at all — its preflight comes back with no
+ * `Access-Control-Allow-Origin` and the browser refuses. From the page's
+ * point of view that is a SILENT failure (the bootstrap reads it as "no
+ * session" and stays quiet, which is the designed degradation), so the list
+ * is worth keeping exhaustive rather than approximately right.
+ *
+ * Widened 2026-08-18 for Phase 3 adoption, from the original four. Every
+ * addition was MEASURED live that day, not assumed:
+ *   - `www.heygabi.ai` — serves the apex with a 200 of its OWN rather than
+ *     redirecting to the bare domain, so it is a genuine separate origin
+ *     running estate-auth.js, and needs its own entry.
+ *   - `ebooks.heygabi.ai` — the ebooks door (apps/ebooks-door) proxies the
+ *     audiobook site's /ebooks page verbatim, so identity.js executes there
+ *     under THIS origin. Per-origin Firebase persistence is precisely why
+ *     the owner reported "Ebooks makes me login every time"; without this
+ *     row the bootstrap could not fix the complaint that prompted the build.
+ *   - `padhard.heygabi.ai` — the library's friend instance. Same web bundle
+ *     as library.heygabi.ai (two Workers, one build), so it inherits the
+ *     adoption code either way; only this entry makes the call it then
+ *     attempts actually succeed.
+ */
 export const DEFAULT_SESSION_ORIGINS = [
   'https://heygabi.ai',
+  'https://www.heygabi.ai',
   'https://audiobooks.heygabi.ai',
+  'https://ebooks.heygabi.ai',
   'https://library.heygabi.ai',
+  'https://padhard.heygabi.ai',
   'https://boardgames.heygabi.ai',
 ];
 
 /**
- * SESSION_ORIGINS, parsed — unset falls back to the production four (never
- * to ADMIN_ORIGINS/ME_ORIGINS, which is either too narrow or the wrong set
- * of surfaces entirely), so the credentialed routes are correct even before
- * an operator ever visits `.dev.vars` or the production vars.
+ * SESSION_ORIGINS, parsed — unset falls back to the production list above
+ * (never to ADMIN_ORIGINS/ME_ORIGINS, which is either too narrow or the
+ * wrong set of surfaces entirely), so the credentialed routes are correct
+ * even before an operator ever visits `.dev.vars` or the production vars.
  */
 export function parseSessionOrigins(raw: string | undefined): string[] {
   if (raw === undefined) return DEFAULT_SESSION_ORIGINS;

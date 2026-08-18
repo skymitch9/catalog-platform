@@ -22,6 +22,8 @@ import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { resolveIdentity } from '@platform/estate-auth';
 import type { AppBindings } from './env.js';
+import { parseOwnerEmails } from './env.js';
+import { getUserByEmail } from './estate-db.js';
 import { b64url } from './firebase-sa.js';
 import { createSession, getSession, revokeSession, sessionIsLive, touchSession, SESSION_TTL_SECONDS } from './session-db.js';
 import { mintCustomToken, tokenSignerOrUnset, CUSTOM_TOKEN_TTL_SECONDS } from './token-signer.js';
@@ -91,6 +93,40 @@ sessionRoutes.post('/session/token', async (c) => {
   if (!row) return c.json({ error: 'no_session' }, 401);
   if (row.revoked_at !== null) return c.json({ error: 'session_revoked' }, 401);
   if (!sessionIsLive(row)) return c.json({ error: 'session_expired' }, 401);
+
+  // ⚠️ THE ESTATE-REVOCATION CHECK — design §4.3's flow names it explicitly
+  // ("cookie → session row live? → estate_user.status ≠ revoked? → mint")
+  // and it was missing from the Phase 2 build; added 2026-08-18 with Phase 3,
+  // BEFORE any surface could call this for real.
+  //
+  // Why it matters even though no Worker trusts this cookie for authority:
+  // the estate's revocation promise is "every door shuts within minutes".
+  // Without this check a revoked member kept minting sign-in sessions on
+  // every estate surface for up to the cookie's 30 days. Their API calls
+  // would still have been refused (every consumer verifies the ID token and
+  // consults the directory with the §3.1 10-minute TTL — that enforcement is
+  // untouched by this design and was never the hole), but they would have
+  // gone on being SIGNED IN estate-wide, name on the audiobook UI included,
+  // long after the estate said otherwise. That is a revocation promise the
+  // owner would reasonably believe was kept and that was not being kept.
+  //
+  // Deliberately refuses ONLY an explicit `revoked` row. A MISSING row is not
+  // a revocation — it is a person the directory has not met yet (enrollment
+  // is the /hello and /seen pipes' job, not this route's), and failing closed
+  // on absence would turn a directory hiccup into an estate-wide sign-out.
+  // The owner break-glass comes first for the same reason it does everywhere
+  // else: an incident that corrupts the directory must never lock the owner
+  // out of the admin page he would fix it from.
+  const email = row.email.trim().toLowerCase();
+  if (!parseOwnerEmails(c.env.OWNER_EMAILS).includes(email)) {
+    const member = await getUserByEmail(c.env.DB, email);
+    if (member && member.status === 'revoked') {
+      // Kill the session row too, so a revoked member stops re-asking every
+      // page load: the estate said no once, and that answer is durable.
+      await revokeSession(c.env.DB, id);
+      return c.json({ error: 'estate_revoked' }, 403);
+    }
+  }
 
   const { sa, unset } = tokenSignerOrUnset(c.env.TOKEN_SIGNER_KEY);
   if (!sa) return c.json(unset, 503);

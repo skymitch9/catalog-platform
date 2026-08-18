@@ -17,12 +17,28 @@ import type { EstateSessionRow } from '../src/session-db.js';
 class FakeSessionDB {
   rows = new Map<string, EstateSessionRow>();
 
+  /**
+   * The estate directory, as far as these tests are concerned: email →
+   * status. Added 2026-08-18 with the estate-revocation check on
+   * POST /session/token (session.ts, design §4.3's "estate_user.status ≠
+   * revoked?" step). Empty by default, which is the "directory has never
+   * met this person" case the route deliberately treats as NOT a
+   * revocation — so every pre-existing test keeps exercising exactly the
+   * path it was written for.
+   */
+  members = new Map<string, { status: 'pending' | 'approved' | 'revoked' }>();
+
   prepare(sql: string) {
     const self = this;
     return {
       bind(...args: unknown[]) {
         return {
           async first<T>(): Promise<T | null> {
+            if (sql.includes('FROM estate_user WHERE email')) {
+              const [email] = args as [string];
+              const member = self.members.get(email);
+              return (member ? ({ email, ...member } as unknown as T) : null);
+            }
             if (sql.startsWith('INSERT INTO estate_session')) {
               const [id, email, firebase_uid, created_at, last_used_at, expires_at] = args as [
                 string,
@@ -292,6 +308,83 @@ test('POST /session/token: a live session + a configured signer → 200 with a r
   // The minted uid is the SESSION's uid, not anything from the request.
   const payload = JSON.parse(Buffer.from(body.token.split('.')[1], 'base64url').toString());
   assert.equal(payload.uid, 'uid-1');
+});
+
+// ---------------------------------------------------------------------------
+// The estate-revocation check on the mint route (design §4.3, added with
+// Phase 3 on 2026-08-18). The estate's promise is that revocation shuts every
+// door within minutes; these four tests are what hold this route to it.
+// ---------------------------------------------------------------------------
+
+/** A live, unexpired session row for `email` — the starting point for the four below. */
+function liveRow(email: string, id = 'sid-est'): EstateSessionRow {
+  return {
+    id,
+    email,
+    firebase_uid: 'uid-est',
+    created_at: new Date().toISOString(),
+    last_used_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 10).toISOString(),
+    revoked_at: null,
+  };
+}
+
+test('POST /session/token: a REVOKED estate member → 403 estate_revoked, and the session row is killed so they stop re-asking', async () => {
+  const db = new FakeSessionDB();
+  db.rows.set('sid-est', liveRow('gone@example.com'));
+  db.members.set('gone@example.com', { status: 'revoked' });
+  const res = await sessionRoutes.request(
+    '/session/token',
+    { method: 'POST', headers: { Cookie: `${SESSION_COOKIE}=sid-est` } },
+    baseEnv(db, { TOKEN_SIGNER_KEY: await generateTestServiceAccountJson() }),
+  );
+  assert.equal(res.status, 403);
+  assert.equal((await res.json() as any).error, 'estate_revoked');
+  // No token was minted, and the row is now revoked — the estate said no once
+  // and that answer is durable, not re-litigated on every page load.
+  assert.notEqual(db.rows.get('sid-est')!.revoked_at, null);
+});
+
+test('POST /session/token: an APPROVED estate member still mints normally — the check refuses only `revoked`', async () => {
+  const db = new FakeSessionDB();
+  db.rows.set('sid-est', liveRow('member@example.com'));
+  db.members.set('member@example.com', { status: 'approved' });
+  const res = await sessionRoutes.request(
+    '/session/token',
+    { method: 'POST', headers: { Cookie: `${SESSION_COOKIE}=sid-est` } },
+    baseEnv(db, { TOKEN_SIGNER_KEY: await generateTestServiceAccountJson() }),
+  );
+  assert.equal(res.status, 200);
+  assert.equal(typeof (await res.json() as any).token, 'string');
+});
+
+test('POST /session/token: an ABSENT directory row is NOT a revocation — a person the directory has not met still mints', async () => {
+  // Failing closed on absence would turn a directory hiccup, or simply a
+  // newcomer whose /hello has not landed yet, into an estate-wide sign-out.
+  const db = new FakeSessionDB();
+  db.rows.set('sid-est', liveRow('newcomer@example.com'));
+  const res = await sessionRoutes.request(
+    '/session/token',
+    { method: 'POST', headers: { Cookie: `${SESSION_COOKIE}=sid-est` } },
+    baseEnv(db, { TOKEN_SIGNER_KEY: await generateTestServiceAccountJson() }),
+  );
+  assert.equal(res.status, 200);
+});
+
+test('POST /session/token: the OWNER break-glass survives even a revoked directory row', async () => {
+  // An incident that corrupts the directory must never lock the owner out of
+  // the admin page he would fix it from — the same break-glass every other
+  // gate in this Worker carries.
+  const db = new FakeSessionDB();
+  db.rows.set('sid-est', liveRow(OWNER));
+  db.members.set(OWNER, { status: 'revoked' });
+  const res = await sessionRoutes.request(
+    '/session/token',
+    { method: 'POST', headers: { Cookie: `${SESSION_COOKIE}=sid-est` } },
+    baseEnv(db, { TOKEN_SIGNER_KEY: await generateTestServiceAccountJson() }),
+  );
+  assert.equal(res.status, 200);
+  assert.equal(db.rows.get('sid-est')!.revoked_at, null);
 });
 
 // ---------------------------------------------------------------------------
