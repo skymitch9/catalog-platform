@@ -131,7 +131,14 @@ import {
   type MemoryProfile,
 } from './memory.js';
 import { personaCommand, PERSONA_ACK, type Trope } from './personality.js';
-import { SHELF_MSG, type ShelfPort } from './shelf.js';
+import {
+  SHELF_MSG,
+  shelfFollowUp,
+  shelfIdentityMessage,
+  shelfLaneIntent,
+  shelfPublicIntent,
+  type ShelfPort,
+} from './shelf.js';
 import {
   runDelegated,
   resumeDelegated,
@@ -955,6 +962,83 @@ async function booksAnswer(
 }
 
 /**
+ * ⚠️ **THE SHELF PRE-ROUTER — "what haven't I read" is not "what do we have".**
+ *
+ * The THIRD member of the family `docsAnswer` and `booksAnswer` belong to, built
+ * to the same shape on purpose after the same failure happened a third time:
+ * *"@GABI what haven't I read by Sanderson?"* — one of `my_unread`'s own
+ * prescribed lines — was answered *"nothing on the estate's public shelf matches
+ * **not read by Sanderson**"*. The four shelf tools were live, offered and
+ * unreachable, because the intent classifier had already sent the turn to the
+ * public-index branch, which never calls a model at all.
+ *
+ * ⚠️ **The identity check is CONDITIONAL, and that is the one way this differs
+ * from its two siblings.** `book_reviews` reads content the estate sites publish
+ * to anonymous visitors, so *"what did Sam think of Mistborn?"* must be answered
+ * for somebody who has never linked. Requiring `/link` there would refuse a
+ * question the web answers to strangers — so only the PERSONAL half waits behind
+ * the link document.
+ */
+async function personalShelfAnswer(
+  question: string,
+  history: readonly ConversationTurn[],
+  who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
+  cfg: MentionConfig,
+  shelfCtx: { port: ShelfPort; discordUserId: string },
+  overrides: { fetch?: typeof fetch } | undefined,
+  memoryBlock?: string,
+): Promise<AnsweredQuestion> {
+  // ⚠️ Every shelf answer carries the overflow sentence: a TBR of forty rows or
+  // a year of reviews becomes labelled consecutive messages rather than a
+  // truncation with an ellipsis. REUSED machinery, per design §3 — a second
+  // implementation of "this answer is long" is a second place for the
+  // permission-loop to come back.
+  const done = (content: string): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'question',
+    components: null,
+    overflowNote: SHELF_MSG.moreToCome,
+  });
+
+  // ⚠️ Identity BEFORE the model, for the reason both siblings give: the relink
+  // sentence must be worded by us from the link document rather than left to a
+  // model that might paraphrase it — or, worse, answer from the public
+  // catalogue and present it as the person's own list.
+  //
+  // ⚠️ **BUT NOT FOR THE PUBLIC HALF.** A question about what somebody ELSE
+  // said is answered from public site content, so it never reads the link
+  // document at all — the same property `tool-exec.ts` gives `book_reviews`.
+  if (!shelfPublicIntent(question)) {
+    const asker = await shelfCtx.port.asker(shelfCtx.discordUserId);
+    if (!asker.ok) return done(shelfIdentityMessage(asker.reason));
+  }
+
+  const spoken = await converseWithTools(
+    cfg.anthropicKey,
+    question,
+    // ⚠️ NO PUBLIC-SHELF GROUNDING, and here that is not merely a saving — the
+    // grounding IS the bug this router fixes. Handing the model "nothing on the
+    // public shelf matches *not read by Sanderson*" and asking it to answer a
+    // question about somebody's own reading is how the miss got said out loud.
+    null,
+    who,
+    // ⚠️ SHELF + the Tier-0 catalogue (which `toolsForApi` always returns), and
+    // deliberately neither docs nor book text: "what have I not got to by
+    // Sanderson" needs the catalogue to know what Sanderson the house holds and
+    // the shelf to know what the asker has reviewed. Describing the corpus or
+    // the book text on this turn is input tokens spent on a capability the
+    // router has already decided was not asked for.
+    toolContext(cfg, undefined, undefined, shelfCtx),
+    overrides,
+    history,
+    memoryBlock,
+  );
+
+  return done(spoken.text ?? SHELF_MSG.noAnswer);
+}
+
+/**
  * Turn a question plus a remembered conversation into what she says next.
  *
  * Pure of the STORE — it reads history and returns what should be remembered,
@@ -1050,6 +1134,42 @@ async function answerQuestion(
     }
   }
 
+  // ── ⚠️ THE SHELF PRE-ROUTER — the THIRD of this family ───────────────────
+  //
+  // Added 2026-08-18 after the miss `shelf.ts`'s `shelfIntent` header records in
+  // full: the owner asked "what haven't I read by Sanderson?" — `my_unread`'s own
+  // prescribed line — and was told nothing on the public shelf matched. The tools
+  // were live and offered; the router had already sent the turn elsewhere.
+  //
+  // ⚠️ **IT SITS BEFORE THE BOOK ROUTER, and that ordering is the decision.**
+  // "What did I say about Mistborn" satisfies `booksIntent` (a weak verb plus a
+  // series anchor) while being a question about the asker's own REVIEW, not about
+  // the book's text. A first-person question about somebody's own record is never
+  // a question about what happens in a novel, so first person wins.
+  //
+  // ⚠️ And it sits AFTER the docs router, which is narrower still: an operational
+  // question that happens to contain "I" is still an operational question.
+  //
+  // ⚠️ The three states are deliberately distinct, and a surface that predates the
+  // feature (`shelfEnabled` undefined) falls through UNCHANGED rather than being
+  // handed a sentence about a capability it never had.
+  if (shelfLaneIntent(question)) {
+    if (shelfCtx) {
+      return await personalShelfAnswer(question, history, who, cfg, shelfCtx, overrides, extraBlock);
+    }
+    if (cfg.shelfEnabled === true) {
+      // The posture is on but no port was built — no service account. A setup
+      // gap, and never phrased as a permissions one.
+      return { content: SHELF_MSG.notConfigured, pending: null, intent: 'question', components: null };
+    }
+    if (cfg.shelfEnabled === false) {
+      // ⚠️ OFF IS NOT SILENT, for the reason the docs and books lanes are not: a
+      // question about somebody's own list must not fall through to a catalogue
+      // search that finds nothing and reads as an answer about them.
+      return { content: SHELF_MSG.switchedOff, pending: null, intent: 'question', components: null };
+    }
+  }
+
   // ── ⚠️ THE BOOK PRE-ROUTER, ahead of every intent branch for the same reason ──
   //
   // A question about a book's CONTENTS must never fall through to a catalogue
@@ -1080,6 +1200,22 @@ async function answerQuestion(
       // answering a plot question with a narrator.
       return { content: BOOKS_MSG.switchedOff, pending: null, intent: 'question', components: null };
     }
+  }
+
+  // ── ⚠️ THE SHELF FOLLOW-UP — after the book lane, on purpose ─────────────
+  //
+  // A lane belongs to the CONVERSATION, not to one sentence: "what else?" after
+  // "what's on my TBR" is a shelf question carrying none of the words that make
+  // it one. `booksFollowUp` learned this first (design §10c) and this is the
+  // same mechanism, deliberately not a rival one.
+  //
+  // ⚠️ **It runs AFTER both book routers rather than beside the shelf one
+  // above.** An elliptical message is genuinely ambiguous; the book lane's
+  // follow-up router shipped first and has regression tests pinning what it
+  // claims, and a new lane must not quietly re-route traffic those tests already
+  // cover. This one takes only what the book lane declined.
+  if (shelfCtx && shelfFollowUp(question, history)) {
+    return await personalShelfAnswer(question, history, who, cfg, shelfCtx, overrides, extraBlock);
   }
 
   const intent =

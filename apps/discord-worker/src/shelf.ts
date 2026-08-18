@@ -27,6 +27,204 @@
 import type { Env } from './env.js';
 
 // ---------------------------------------------------------------------------
+// ⚠️ THE SHELF INTENT ROUTER — deterministic, and NEVER a model's decision
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **WHY THIS EXISTS: the acceptance test it was written against, live.**
+ *
+ * Minutes after `GABI_SHELF` was flipped on (2026-08-18), the owner asked in the
+ * channel the exact question `my_unread`'s own description prescribes — and got,
+ * verbatim:
+ *
+ * > **User:** `@GABI what haven't I read by Sanderson?`
+ * > **GABI:** I looked on the estate's public shelf for **not read by
+ * > Sanderson**. Nothing on the estate's public shelf matches that. ⚠️ That's a
+ * > statement about the catalogue, not about the house…
+ *
+ * ⚠️ **THE SHELF LANE WAS NEVER ENTERED.** Not an identity failure — an unlinked
+ * asker would have got `SHELF_MSG.notLinked`, and that sentence never appeared.
+ * The four tools shipped with an allowlist, an executor and a port, and were
+ * *offered* on `question` turns via `toolsForApi({ shelf: true })` — but the
+ * intent classifier read the sentence as `have_lookup`, and that branch is a
+ * pure public-index lookup that never calls a model at all. So the tools were on
+ * the table in a room the turn never walked into.
+ *
+ * ⚠️ **THIS IS THE THIRD OF THE SAME CLASS IN ONE DAY**, and the two before it
+ * are the pattern this deliberately EXTENDS rather than rivals:
+ *
+ * | | The miss | The fix |
+ * |---|---|---|
+ * | docs §12 | "how do I promote the audiobook site?" answered from the book shelf | `docsIntent` + a pre-router above every intent branch |
+ * | books §10b/§10c | a plot question answered with a narrator; then an invited follow-up sent to the catalogue | `booksIntent` + `booksFollowUp`, same pre-router shape |
+ * | **shelf (here)** | **a first-person question answered from the public catalogue** | **`shelfIntent` + `shelfFollowUp`, the same shape again** |
+ *
+ * > **The lesson all three teach in the same words: OFFERING A TOOL IS NOT
+ * > ROUTING TO IT.** A model that is handed a shelf tool on a turn the router
+ * > already sent somewhere else never sees it.
+ *
+ * ## The shape of the rule: FIRST PERSON is the whole signal
+ *
+ * The catalogue answers questions about the HOUSE. This lane answers questions
+ * about the PERSON — and the grammar that separates them is possessive and
+ * experiential: *my* list, *I* have read, *I* rated, what did *I* think.
+ *
+ * ⚠️ **`what haven't I read by Sanderson` and `what Sanderson do we have` differ
+ * by exactly one pronoun**, and that one pronoun is the difference between a
+ * reading list and a catalogue row. Nothing subtler is needed and nothing
+ * subtler would be safe.
+ *
+ * ⚠️ **The public-review shapes are a SECOND, SEPARATE detector** (`shelfPublicIntent`)
+ * and not a row of this list, because they differ in the one way that matters:
+ * *"what did Sam think of X?"* needs **no identity at all** — reviews are public
+ * site content the websites show anonymous visitors. Folding them together would
+ * make the router demand a `/link` for a question the web answers to strangers.
+ */
+
+/** ⚠️ Fires ALONE. Each names the asker's own record explicitly. */
+const SHELF_STRONG = [
+  // "my TBR", "my reading list", "my reviews", "my ratings", "my shelf"
+  /\bmy\s+(?:tbr|t\.b\.r\.?|to[-\s]?be[-\s]?read(?:\s+list)?|reading\s+list|read\s+list|want[-\s]?to[-\s]?read|reviews?|ratings?|shelf)\b/i,
+  /\bon\s+my\s+(?:list|shelf|tbr|pile)\b/i,
+  // ⚠️ THE OWNER'S OWN LIVE LINE. The apostrophe is optional and may be curly —
+  // Discord's clients substitute ’ for ' as you type, and a detector that only
+  // knows the straight one misses every message typed on a phone.
+  /\bwhat\s+(?:have|has)\s+i\s+(?:not\s+)?(?:read|reviewed|rated|finished|got(?:ten)?\s+to)\b/i,
+  /\bwhat\s+haven[’']?t\s+i\s+(?:read|reviewed|rated|finished|got(?:ten)?\s+(?:round\s+)?to)\b/i,
+  /\bhave\s+i\s+(?:read|reviewed|rated|finished)\b/i,
+  /\bhaven[’']?t\s+i\s+(?:read|reviewed)\b/i,
+  /\bdid\s+i\s+(?:read|review|rate|like|finish|enjoy)\b/i,
+  /\bwhat\s+did\s+i\s+(?:say|think|rate|make)\b/i,
+  /\bwhat\s+do\s+i\s+think\s+(?:of|about)\b/i,
+  /\bwhat\s+i\s+(?:have\s+)?(?:not\s+)?(?:read|reviewed)\b/i,
+  // "what else is there by X" — my_unread's own prescribed line. It is
+  // first-person by implication rather than by pronoun, so it is listed rather
+  // than derived.
+  /\bwhat\s+else\s+(?:is\s+there|have\s+we\s+got|do\s+we\s+have)\s+by\b/i,
+];
+
+/**
+ * ⚠️ **PUBLIC REVIEWS — a different question with a different gate.** These
+ * reach `book_reviews`, which reads content the estate sites publish to anybody,
+ * so this half must NEVER be made to wait behind an identity check.
+ */
+const SHELF_PUBLIC = [
+  // ⚠️ `(?!i\b)` keeps "what did I think of X" out of the public half — that one
+  // is the asker's OWN review and belongs above, behind the identity check.
+  /\bwhat\s+did\s+(?!i\b)[\w<@!>’'.-]+\s+(?:think|say)\s+(?:of|about)\b/i,
+  /\bhow\s+did\s+(?!i\b)[\w<@!>’'.-]+\s+(?:rate|find)\b/i,
+  /\bwho\s+(?:has\s+|\'?s\s+)?reviewed\b/i,
+  /\b(?:any|the|what)\s+reviews?\s+(?:of|for|on)\b/i,
+  /\bwhat\s+(?:does|did)\s+(?:anyone|anybody|everyone|the\s+household|the\s+family)\s+(?:think|say)\b/i,
+];
+
+/** The weaker half — a shelf noun that only counts in a first-person sentence. */
+const SHELF_WEAK = [
+  /\btbr\b/i,
+  /\breading\s+list\b/i,
+  /\bunread\b/i,
+  /\bnot\s+reviewed\b/i,
+  /\breviews?\b/i,
+  /\brate[ds]?\b/i,
+  /\bfinished\b/i,
+];
+
+/** ⚠️ The pronoun that turns a shelf noun into somebody's own shelf. */
+const SHELF_FIRST_PERSON = /\b(?:i|i[’']ve|i[’']m|my|mine|me)\b/i;
+
+/**
+ * Does this message ask about the ASKER'S OWN record — their list, their
+ * reviews, what they have and have not got to?
+ *
+ * ⚠️ **Narrow on purpose**, exactly as `docsIntent` and `booksIntent` are. A
+ * false positive answers *"what have we got by Sanderson"* out of somebody's
+ * reading list; a false negative merely leaves the model to reach for the tools
+ * itself, which is the behaviour that was already there — and which is precisely
+ * what proved insufficient.
+ */
+export function shelfIntent(text: string): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  if (SHELF_STRONG.some((re) => re.test(q))) return true;
+  return SHELF_WEAK.some((re) => re.test(q)) && SHELF_FIRST_PERSON.test(q);
+}
+
+/** ⚠️ The public half, kept separate because it needs NO identity. */
+export function shelfPublicIntent(text: string): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  return SHELF_PUBLIC.some((re) => re.test(q));
+}
+
+/** Either half. The router uses this to claim the turn and `shelfPublicIntent`
+ *  to decide whether an identity is needed first. */
+export function shelfLaneIntent(text: string): boolean {
+  return shelfIntent(text) || shelfPublicIntent(text);
+}
+
+/**
+ * Is this short message a continuation of a shelf conversation?
+ *
+ * ⚠️ **The same three narrowings `booksFollowUp` uses, and deliberately the same
+ * shape** — a prior shelf-lane USER turn inside the remembered window, a SHORT
+ * message, and either a continuation opener or a reused content word. A follow-up
+ * is elliptical by construction, so judging it alone judges it without the half
+ * that carries the meaning.
+ *
+ * ⚠️ **It runs AFTER the book lane's own follow-up router**, and that ordering is
+ * a decision rather than an accident: an elliptical message is genuinely
+ * ambiguous, the book lane's follow-up router shipped first with its own
+ * regression tests, and a new lane must not quietly re-route traffic those tests
+ * already pinned. This one claims only what the book lane declined.
+ */
+const SHELF_FOLLOW_UP_MAX_WORDS = 12;
+
+const SHELF_CONTINUATION_OPENER =
+  /^(?:@?[\w-]+[,:]?\s+)?(?:yes|yeah|yep|sure|please|ok|okay|do it|go|go on|go ahead|keep|continue|carry on|again|more|and|also|what about|how about|then|now|list|show|tell|give|what else)\b/i;
+
+const SHELF_FOLLOW_UP_STOPWORDS = new Set([
+  'this', 'that', 'they', 'them', 'then', 'there', 'here', 'with', 'from', 'into', 'what', 'when',
+  'were', 'will', 'your', 'yours', 'mine', 'have', 'been', 'about', 'would', 'could', 'should',
+  'just', 'like', 'know', 'tell', 'want', 'need', 'give', 'make', 'does', 'done', 'said', 'says',
+  'more', 'over', 'some', 'only', 'also', 'again', 'please',
+]);
+
+function shelfContentWords(text: string): Set<string> {
+  return new Set(
+    (text ?? '')
+      .toLowerCase()
+      .split(/[^a-z0-9']+/)
+      .filter((w) => w.length >= 4 && !SHELF_FOLLOW_UP_STOPWORDS.has(w)),
+  );
+}
+
+export function shelfFollowUp(
+  text: string,
+  history: readonly { role: string; text: string }[],
+): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  // ⚠️ Already unambiguous alone. Returning true would hide which half of the
+  // router decided, and the two are debugged separately.
+  if (shelfLaneIntent(q)) return false;
+  if (q.split(/\s+/).filter(Boolean).length > SHELF_FOLLOW_UP_MAX_WORDS) return false;
+
+  // ⚠️ Only USER messages are consulted. Her own replies are model prose with no
+  // reliable marker, and matching on her wording would make the router depend on
+  // what a model happened to say that turn.
+  const priorShelfLane = (history ?? []).filter((t) => t.role === 'user' && shelfLaneIntent(t.text));
+  if (priorShelfLane.length === 0) return false;
+
+  if (SHELF_CONTINUATION_OPENER.test(q)) return true;
+
+  const mine = shelfContentWords(q);
+  return priorShelfLane.some((t) => {
+    for (const w of shelfContentWords(t.text)) if (mine.has(w)) return true;
+    return false;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The posture
 // ---------------------------------------------------------------------------
 
@@ -180,6 +378,24 @@ export const SHELF_MSG = {
   emptyTbr:
     "There's nothing on your reading list at the moment. Add something from either site and it will " +
     'show up here.',
+
+  /**
+   * ⚠️ **A SHELF QUESTION THAT GOES WRONG FAILS AS A SHELF QUESTION.** The
+   * sentence this replaces was a public-catalogue miss — *"nothing on the
+   * estate's public shelf matches that"* — which is a statement about the house
+   * offered in reply to a question about the person. It is never phrased as
+   * "you have nothing", because a wobble on our side says nothing at all about
+   * what is on somebody's list.
+   */
+  noAnswer:
+    "I had a look at your shelf and then lost my thread — that's a wobble on my side rather than an " +
+    'answer about your list. Ask me again and I will go back to it.',
+
+  /** ⚠️ The auto-continue sentence, REUSED machinery rather than a second
+   *  implementation (design §3): a long list becomes labelled consecutive
+   *  messages instead of a permission question. */
+  moreToCome:
+    "There's more of it than fits here — say the word and I'll carry on from where I stopped.",
 } as const;
 
 export function shelfIdentityMessage(reason: ShelfIdentityFailure): string {

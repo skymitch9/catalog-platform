@@ -17,8 +17,12 @@ import {
   bookIdFromTitle,
   SHELF_MSG,
   SHELF_UNREAD_ROWS,
+  shelfFollowUp,
   shelfIdentityMessage,
+  shelfIntent,
+  shelfLaneIntent,
   shelfOn,
+  shelfPublicIntent,
   UNREAD_NOTE,
   type ShelfPort,
 } from '../src/shelf.js';
@@ -299,10 +303,16 @@ describe("⚠️ another person's reviews are public; their TBR is not", () => {
 // ── 6. the posture and ⚠️ the fifth credential module ──────────────────────
 
 describe('⚠️ credentials live in exactly FIVE modules', () => {
-  it('GABI_SHELF is affirmative-only and ships off', () => {
+  it('GABI_SHELF is affirmative-only, and is now ON by owner order', () => {
     assert.equal(shelfOn({ GABI_SHELF: 'on' }), true);
     for (const v of ['true', '1', '', undefined]) assert.equal(shelfOn({ GABI_SHELF: v as string }), false);
-    assert.match(repoFile('wrangler.toml'), /^GABI_SHELF = "off"$/m);
+    // ⚠️ **THIS PIN SAID `"off"` UNTIL 2026-08-18, AND THE CHANGE IS
+    // DELIBERATE.** It shipped dark on the `GABI_BOOKS` precedent — it reaches a
+    // named person's own reading list — and the owner then flipped it (commit
+    // f46c115). The assertion MOVES WITH the decision rather than being deleted,
+    // so the posture stays something somebody chose on purpose and a silent flip
+    // back still fails the build.
+    assert.match(repoFile('wrangler.toml'), /^GABI_SHELF = "on"$/m);
   });
 
   it('⚠️ shelf.ts — the contract — names no credential', () => {
@@ -324,5 +334,148 @@ describe('⚠️ credentials live in exactly FIVE modules', () => {
     // asker's display name. Both come from the link document.
     assert.match(source, /stringValue: asker\.uid/);
     assert.match(source, /stringValue: asker\.displayName/);
+  });
+});
+
+// ── 7. ⚠️ THE ROUTING REGRESSION — the miss that shipped, and every line the
+//        build itself prescribed ────────────────────────────────────────────
+
+/**
+ * ⚠️ **THE TRANSCRIPT IS THE TEST.** Live, minutes after `GABI_SHELF` was
+ * flipped on (2026-08-18):
+ *
+ * > **User:** `@GABI what haven't I read by Sanderson?`
+ * > **GABI:** I looked on the estate's public shelf for **not read by
+ * > Sanderson**. Nothing on the estate's public shelf matches that…
+ *
+ * The tools were live, offered and unreachable. ⚠️ **Not an identity failure** —
+ * an unlinked asker would have seen `SHELF_MSG.notLinked`, and it never appeared.
+ * The intent classifier claimed the turn for the public-index branch, which never
+ * calls a model at all, so nothing the model could have chosen ever mattered.
+ *
+ * ⚠️ **AND EVERY OTHER PRESCRIBED LINE IS TESTED WITH IT**, because the whole
+ * point of the discovery is that a build can ship prescribed test lines that are
+ * quietly unreachable. These are lifted verbatim from the four tool descriptions
+ * in `gabi-tools.ts` — the sentences the build itself told the owner to type.
+ */
+describe('⚠️ the shelf lane is REACHABLE — the routing regression', () => {
+  it('⚠️ THE LIVE MISS: "what haven\'t I read by Sanderson?"', () => {
+    assert.equal(shelfIntent("what haven't I read by Sanderson?"), true);
+    // ⚠️ Discord clients substitute a curly apostrophe as you type. A detector
+    // that knows only the straight one misses every message sent from a phone.
+    assert.equal(shelfIntent('what haven’t I read by Sanderson?'), true);
+    assert.equal(shelfLaneIntent("@GABI what haven't I read by Sanderson?"), true);
+  });
+
+  it('every line my_tbr prescribes routes to the shelf', () => {
+    for (const line of [
+      "what's on my list?",
+      'what is on my TBR',
+      'what was I planning to get to on my reading list',
+      'show me my reading list',
+    ]) {
+      assert.equal(shelfIntent(line), true, `my_tbr line unreachable: ${line}`);
+    }
+  });
+
+  it('every line my_reviews prescribes routes to the shelf', () => {
+    for (const line of [
+      'what did I think of Mistborn',
+      'what have I reviewed',
+      'what did I rate that',
+      'have I reviewed The Way of Kings',
+      'my reviews please',
+    ]) {
+      assert.equal(shelfIntent(line), true, `my_reviews line unreachable: ${line}`);
+    }
+  });
+
+  it('every line my_unread prescribes routes to the shelf', () => {
+    for (const line of [
+      'what have I not got to yet',
+      "what haven't I read by Brandon Sanderson",
+      'what else is there by Sanderson',
+      'what have I not read',
+    ]) {
+      assert.equal(shelfIntent(line), true, `my_unread line unreachable: ${line}`);
+    }
+  });
+
+  it('⚠️ book_reviews is the PUBLIC half and needs no link', () => {
+    for (const line of [
+      'what did Sam think of Project Hail Mary?',
+      'what did <@123456789> think about Dune',
+      'any reviews of Tress of the Emerald Sea',
+      'who has reviewed Mistborn',
+      'how did Sam rate it',
+    ]) {
+      assert.equal(shelfPublicIntent(line), true, `public review line unreachable: ${line}`);
+      assert.equal(shelfLaneIntent(line), true);
+    }
+    // ⚠️ The asker's OWN review is NOT the public half — it waits behind the
+    // link document, because it is a query built from their identity.
+    assert.equal(shelfPublicIntent('what did I think of Dune'), false);
+  });
+
+  it('⚠️ a catalogue question is NOT a shelf question — one pronoun apart', () => {
+    for (const line of [
+      'what have we got by Sanderson',
+      'do we have Mistborn',
+      'who narrates The Way of Kings',
+      'how many Cosmere books do we have',
+      'what order do the Stormlight books go in',
+      'how long is Project Hail Mary',
+    ]) {
+      assert.equal(shelfLaneIntent(line), false, `catalogue question stolen by the shelf: ${line}`);
+    }
+  });
+
+  it('⚠️ CROSS-LANE: the book lane keeps every line its own tests pin', () => {
+    // The shelf router runs BEFORE the book router, so anything the book lane
+    // owns must not match this one. These are the shapes `booksIntent` exists
+    // for — a plot question, a stat sheet, a first appearance.
+    for (const line of [
+      "what's Jake's status sheet at the end of book 9",
+      'what happens in book 3',
+      'who is introduced in the prologue',
+      'does Kaladin ever appear in Mistborn',
+      'first appearance of Hoid',
+    ]) {
+      assert.equal(shelfLaneIntent(line), false, `book-lane line stolen by the shelf: ${line}`);
+    }
+  });
+
+  it('⚠️ a docs question is not a shelf question, however first-person', () => {
+    for (const line of ['how do I promote the audiobook site', 'what is my rollback procedure']) {
+      assert.equal(shelfIntent(line), false, `docs line stolen by the shelf: ${line}`);
+    }
+  });
+
+  it('the follow-up needs a prior shelf turn, and stays short', () => {
+    const history = [{ role: 'user', text: "what's on my TBR" }, { role: 'assistant', text: '…' }];
+    assert.equal(shelfFollowUp('what else?', history), true);
+    assert.equal(shelfFollowUp('go on', history), true);
+    // ⚠️ No prior shelf turn: an ordinary short message is NOT captured.
+    assert.equal(shelfFollowUp('what else?', []), false);
+    // ⚠️ Long enough to carry its own subject — judged on that instead.
+    assert.equal(
+      shelfFollowUp(
+        'and while we are at it who narrates the audiobook edition of the third one please',
+        history,
+      ),
+      false,
+    );
+    // ⚠️ Already unambiguous alone — the strong half decided, not this.
+    assert.equal(shelfFollowUp('what have I reviewed', history), false);
+  });
+
+  it('⚠️ the pre-router is WIRED, not merely written', () => {
+    // The docs lane's own lesson, applied to itself: a detector nothing calls is
+    // a detector that cannot route. This reads the flow's source, exactly as the
+    // credential guards do, because "is it wired" is a property of the file.
+    const flow = repoFile('src/mention-flow.ts');
+    assert.match(flow, /if \(shelfLaneIntent\(question\)\)/, 'the shelf pre-router is not wired');
+    assert.match(flow, /shelfFollowUp\(question, history\)/, 'the shelf follow-up is not wired');
+    assert.match(flow, /personalShelfAnswer/, 'the shelf lane has no answer function');
   });
 });
