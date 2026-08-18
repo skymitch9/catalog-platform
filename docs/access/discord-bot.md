@@ -75,6 +75,7 @@ first deploy creates the Worker; locally they go in `.dev.vars`, gitignored):
 | `FIREBASE_SERVICE_ACCOUNT` | The same JSON `auth-worker` holds | ⚠️ **Pipe the file in** (`wrangler secret put FIREBASE_SERVICE_ACCOUNT < key.json`) — never paste into a terminal line, never echo |
 | `DISCORD_CLIENT_SECRET` | Portal → **OAuth2** tab → **Client Secret** (Reset Secret) | ✅ **SET** (measured 2026-08-17: `/api/health` reports `discord_client_secret: true`, `link_ready: true`). A *different* credential from the bot token: it authenticates the **application** during the identity-link code exchange and can mint no bot powers. It also derives the HMAC key for the 15-minute pending-link cookie, so rotating it invalidates in-flight link attempts and nothing else. Set it per §3 step 7 |
 | `POLL_SYNC_TOKEN` | ⚠️ **Nobody issues this one — the conductor MINTS it.** `python -c "import secrets; print(secrets.token_urlsafe(32))"` | ✅ **SET on the Worker** (measured 2026-08-17: `/api/health` reports `poll_sync_token: true`). ⚠️ **NOT VERIFIED:** whether the audiobook pipeline's `.env` holds the SAME value — without that the cadence trigger cannot authenticate. The shared secret gating `POST /polls/sync` (§8). Goes to **both** sides: `wrangler secret put POLL_SYNC_TOKEN` here, and the *same value* into the audiobook pipeline's `.env` under the same name. A third, deliberately weaker credential class: holding it lets someone make the bot re-render its **own** poll messages sooner than it would have — it grants no Discord powers, holds no Firestore access of its own, and can post nothing a poll doc does not already say |
+| `ESTATE_APP_TOKEN_DISCORD` | ⚠️ **Nobody issues this one either — the conductor MINTS it** (`openssl rand -hex 32`) | ✅ **SET on all three holders 2026-08-18, and the pairing VERIFIED LIVE**: a real bearer call to both library instances answered 200/403 with worded bodies, a wrong bearer answered 401. The bearer for GABI's **Tier-1 delegated write door** (§13). **One value, THREE holders, the same NAME on each**: here, plus both library Workers (`npm run secret -- ESTATE_APP_TOKEN_DISCORD` and `npm run secret:friend -- ESTATE_APP_TOKEN_DISCORD` in `library_catalog`) — the `DONOR_TOKEN` idiom. ⚠️ **Holding it authorises NO WRITE.** It proves only "this request came from the estate's Discord Worker"; the destination then resolves the on-behalf-of Firebase uid to its OWN `app_user` row and checks THAT person's capability. So a leak buys the ability to act for people who already hold the capability, on a surface where every write is stamped `gabi-discord` and is revertible in the app — a smaller blast radius than the bot token's. Read by exactly one module (`src/delegated-exec.ts`), pinned by a build-failing test |
 
 Two **vars** (not secrets) were added to `wrangler.toml` with the link
 ceremony, both mirroring auth-worker's: `FIREBASE_PROJECT_ID =
@@ -1061,3 +1062,90 @@ bound.
   arithmetic over the published price table.
 - **The Workers Paid upgrade is `docs/TODO.md`'s record, not a measurement taken
   here.**
+
+## 13. ⚠️ TIER 1 — she can now WRITE (built + deployed 2026-08-18)
+
+Owner ask 2026-08-17: *"Can I dm her an isbn or a photo and she adds it to the
+catalog?"* and *"Hey Gabi, fix all my missing details… Hey @Sam i went ahead and
+fixed all your missing stuff."* Approved as Tier 1 of the T0–T4 ladder (*"that
+looks good, start with that"*, then *"all of it"*). Design of record:
+[`../info/gabi-application-map.md` §2a–2d](../info/gabi-application-map.md).
+
+### 13.1 What she can do, and what she cannot
+
+| She can | She cannot |
+|---|---|
+| add a book from a **checksummed ISBN** you DM her | change any value already recorded (T2 — needs a confirm lane that does not exist) |
+| run a catalog's **missing-details sweep**, attributed to you | answer the four-way rescan question or the pre-order question — she hands both back with **nothing written** |
+| tell you which catalogs you may do that on | grant, revoke, approve, deploy, moderate or touch a role (T4 — a wall) |
+
+### 13.2 The one lever, and the one secret
+
+| Thing | Value | Effect |
+|---|---|---|
+| `GABI_DELEGATED_WRITES` (var, `wrangler.toml`) | `"on"` | affirmative-only. **Anything else means OFF**, and OFF means no write, no site call, no credential read — but she still *says so* rather than searching the shelf for a barcode |
+| `ESTATE_APP_TOKEN_DISCORD` (secret, §2) | set | unset ⇒ she answers *"I'm not wired up to write to the catalogs yet"* and every read-only answer is unchanged |
+
+**Turning it off is one line** in `wrangler.toml` plus a deploy. Nothing else
+changes; the read-only ladder is untouched either way.
+
+### 13.3 The security shape, in one paragraph
+
+GABI holds **no permissions**. She asserts an *identity* — the
+`discord_links/{id}` document the person created through their own Discord OAuth
+**and** their own Firebase sign-in — and the **destination catalog** checks that
+person's real stored role (`editCatalog` to add, `runResearch` to sweep, the
+same capability the equivalent button needs) before anything happens. Two
+independent facts must both be true: the caller is the bot, and the asker holds
+the capability. Every refusal is the destination's own worded sentence, relayed
+verbatim, because it is the only thing that can honestly say which of the four
+causes applies.
+
+### 13.4 The owner's live test — the exact messages to send
+
+DM **GABI** (no `@` needed in a DM), one at a time:
+
+1. `9780765311788` — a real ISBN (Mistborn, Tor). Expect either *"Added
+   **Mistborn**…"*, or *"That barcode is already on library.heygabi.ai"*, or the
+   deliberate refusal explaining that the book is there but the barcode is not
+   on any of its printings and she will not guess which of four things you mean.
+2. `9780765311789` — the same ISBN with **one digit changed**. Expect her to
+   ignore it as an ISBN entirely (it fails its check digit) and answer as an
+   ordinary message. That refusal is the feature.
+3. `fix all my missing details` — expect *"On it — I'll report back"* within a
+   second or two, then a **second message a minute or two later** that pings you
+   and says what was filled **and what could not be**.
+
+If you hold a role on **both** catalogs, steps 1 and 3 will first ask *"Which
+catalog?"* with a two-row select menu. Pressing a row is what performs the
+write; walking away writes nothing and the question ages out in fifteen minutes.
+
+🔗 Where to see the result:
+- <https://library.heygabi.ai/> — the book's own page, and its **Changes** panel
+  (the rows say `gabi-discord`)
+- <https://library.heygabi.ai/research> — the details queue's **auto-applied**
+  list, where a sweep is undone in one tap
+- <https://padhard.heygabi.ai/> — the same two, on the other shelf
+
+### 13.5 Caps
+
+| Fuse | Limit | Why it is separate |
+|---|---|---|
+| turns | 20/person/hour, 200/day estate-wide | a model turn is a fraction of a cent, forgiven in an hour |
+| **writes** | **20/person/UTC day** | a write is a row in somebody's catalog plus ~2¢ of research on their key — an hour does not undo it |
+
+The write fuse is checked **before** the link read and before any site is
+dialled, and it counts every call that reached a destination, refusals included.
+
+### 13.6 ⚠️ NOT VERIFIED LIVE
+
+- **No real Discord DM has ever driven this end to end.** The bearer pairing IS
+  verified (a real authenticated call to both library instances, 2026-08-18);
+  what has not happened is a person sending GABI an ISBN and a book appearing.
+  That needs the owner and a Discord client — see §13.4.
+- **No book has been added by this path**, so no `change_log` row wearing
+  `gabi-discord` exists yet in production. Until one does, the provenance claim
+  is a design, not an observation.
+- **No sweep has been triggered through it**, so the async follow-up message has
+  never been posted by a real gateway.
+- **Photo intake is not built** — measured and deferred, application map §2d.

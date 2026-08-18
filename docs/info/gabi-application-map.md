@@ -21,8 +21,8 @@ the same tool-allowlist philosophy — surfaced through:
 | Surface | State | How you reach her |
 |---|---|---|
 | Site panel (library / padhard) | LIVE | the chat button |
-| Discord channel | BUILT, dark | `@GABI …` mention, or reply-with-ping |
-| Discord DM | BUILDING | just message her — no @ needed |
+| Discord channel | LIVE | `@GABI …` mention, or reply-with-ping |
+| Discord DM | LIVE | just message her — no @ needed |
 | Site panel v2 | FUTURE | same chat button, adopts the shared conversation store |
 
 **The one security principle everything hangs on: GABI owns no permissions.**
@@ -48,25 +48,183 @@ T1's auto-apply inherits the §12 precedent (blank fills auto, everything
 else confirms). T3 keeps the "island" property: club powers come from the
 asker's own standing, GABI is only the hands.
 
+## 2a. ⚠️ T1 AS BUILT — shipped and deployed 2026-08-18
+
+Owner approval, verbatim: *"that looks good, start with that"* then *"all of
+it"*. Two verbs are live; the photo verb is **measured and deliberately not
+built** (§2d).
+
+### The delegation contract
+
+```
+POST  https://library.heygabi.ai/api/gabi/delegated/{whoami,add-isbn,run-details}
+POST  https://padhard.heygabi.ai/api/gabi/delegated/{whoami,add-isbn,run-details}
+Authorization: Bearer <ESTATE_APP_TOKEN_DISCORD>
+{ "onBehalfOf": "<firebaseUid>", "isbn": "978…" }      ← isbn on add-isbn only
+```
+
+| Layer | What it proves | What it does NOT prove |
+|---|---|---|
+| `ESTATE_APP_TOKEN_DISCORD` | the caller is the estate's Discord Worker | **anything at all about what may be written** |
+| `onBehalfOf` uid | the `discord_links/{id}` doc the person created via their own Discord OAuth **and** their own Firebase sign-in | that they have an account on *this* instance |
+| `app_user` lookup + `can(role, capability)` **on the destination** | the asker's real stored role there | — |
+
+⚠️ **The authority check is the DESTINATION'S, and only the destination's.**
+The bot performs no role check of its own — a check the caller performs is a
+check the caller can skip, and a second copy of a role matrix is the copy that
+goes stale. GABI relays the destination's own worded refusal verbatim.
+
+| Verb | Capability | The button it borrows from |
+|---|---|---|
+| `whoami` | none (writes nothing, spends nothing) | — |
+| `add-isbn` | `editCatalog` | the scan review screen's **Add** |
+| `run-details` | `runResearch` | the details queue's **Run** |
+
+**Four refusal causes, four sentences** (the no-bare-status rule): no account
+here · estate-revoked · awaiting approval · role too low. Plus two the bot
+words itself because the site cannot: **unlinked** (run `/link`) and
+**unreachable** (an outage, never dressed as a permissions problem).
+
+### Instance routing
+
+`whoami` is asked of **both** shelves in parallel, then:
+
+| Answer | What she does |
+|---|---|
+| capability on exactly one | go |
+| capability on **both** | ⚠️ **ask** — a select menu, "your shelf or the main library?". Nothing is written, nothing is called, and the fuse is not spent |
+| known somewhere, permitted nowhere | call that shelf and relay **its** refusal |
+| known nowhere | worded: sign in once, that is what creates the account |
+| nothing reachable | worded as an outage — ⚠️ never as "you have no account" |
+
+⚠️ `whoami` answers **200 with `known:false`** for a stranger, on purpose: on a
+household where somebody has one account, one shelf always says "not here", and
+turning the ordinary case into an error would make routing indistinguishable
+from an outage.
+
+### Provenance and undo
+
+| Write | Stamp | Undo |
+|---|---|---|
+| add-isbn | `change_log` rows with `changed_by = <asker>`, `changed_how = 'auto'`, `note LIKE 'gabi-discord%'` | the book's own **Changes** panel; the rows are a work + a printing + a copy |
+| run-details | `research_run.triggered_by = <asker>` where the cron writes `NULL` | the details queue's existing **auto-applied → Undo** list, unchanged |
+
+So *"what has GABI added"* and *"what did GABI fill for me"* are each one query,
+and neither needed a new column.
+
+### ⚠️ What T1 deliberately will not do
+
+A barcode whose book is **already on that shelf** raises the four-way rescan
+question (`@lc/core/rescan.ts`) or the pre-order question. Nothing the catalog
+knows can tell those apart, and this repo already carries residue from the
+version that guessed. Both are handed back **with nothing written** — they are
+T2 mutations, and the confirm lane does not exist yet.
+
+### Caps
+
+The existing turn fuse (20/hour/person, 200/day estate-wide) is untouched. A
+**second** fuse counts writes: **20 per person per UTC day**, its own `wcap:`
+key namespace in the gateway object, checked *before* the link read. Two fuses
+because a turn is a fraction of a cent forgiven in an hour, and a write is a row
+in somebody's catalog plus ~2¢ of research on their key.
+
+## 2b. ⚠️ The property that ended, on purpose
+
+Until this build the mention path was **100% credential-free** and
+`test/mentions.test.ts` asserted it against `mention-flow.ts`'s source;
+`docs/TODO.md` recorded that shipping any write *"means deciding to give up that
+property on purpose"*. **The owner's T1 approval is that decision.**
+
+The assertion was not deleted or worked around. It was **repointed** at the
+narrower property that replaced it, and a second test gives that one teeth:
+
+> **Credentials appear only in `delegated-exec.ts`.** `mention-flow.ts`,
+> `delegated.ts`, `delegated-flow.ts`, `gabi-chat.ts`, `tool-exec.ts`,
+> `catalog-data.ts` and `gabi-tools.ts` name no Firestore client, no service
+> account and no app token, and reach the write path only through an injected
+> port they cannot construct.
+
+(`have.ts` is excluded and the test says why: its `isLinked` has read the same
+link document for `/have`'s scope note since long before T1, and the mention
+path never calls it.)
+
+## 2c. ⚠️ The model chooses nothing
+
+The delegated verbs are **not tools**, are never described to the model, and
+`toolsForApi()` — the only thing handed to the Messages API — returns the
+read-only Tier-0 tools and nothing else, pinned by a build-failing test. A verb
+fires on a **checksummed ISBN** or an unambiguous pattern, decided before any
+model call. A write a model may choose is a write that happens when a model
+misreads a sentence.
+
+The checksum is load-bearing rather than decorative: a bare 13-digit run is also
+a phone number, an order id and a timestamp, and a real ISBN with **one digit
+changed** resolves — confidently, with a cover — to a different book
+(`library_catalog/docs/info/isbn-ladder.md` §2).
+
+## 2d. 📷 Photo intake — MEASURED, and deliberately NOT built
+
+The owner's ask was *"an isbn **or a photo**"*. The ISBN half shipped; the photo
+half is recorded here as a design rather than half-built, for a reason that is
+about correctness rather than effort.
+
+**Measured 2026-08-18, from the sources:**
+
+| Fact | Where |
+|---|---|
+| the scan-photo endpoint is `POST /api/scan-jobs/single`, body `{ data: <base64, no data: prefix>, mediaType }` | `library_catalog/apps/worker/src/routes/scan-jobs.ts` |
+| accepted types jpeg/png/webp; **5 MB decoded ceiling**, 413 with words above it | same file, `MAX_PHOTO_BYTES` |
+| gated `scanPhoto` = **moderator+**, because it bills the vision API | `packages/core/src/capabilities.ts` |
+| the photo is **never stored** — no R2 binding exists and must not | `wrangler.toml` §7 |
+| it produces a **scan job in `review`**, i.e. a PROPOSAL — it does not add anything | `readPhoto()` |
+| turning reviewed lines into rows is `addLineToCatalog`, which lives in the **web app** and asks the pre-order and rescan questions | `apps/web/src/lib/catalog-add.ts` |
+| ⚠️ **today a photo DM with no text is silently ignored** — `mentionTrigger` reads `content`, which is empty, and returns `empty_question` | `apps/discord-worker/src/mentions.ts` |
+
+**Why it is deferred rather than shipped.** An ISBN is a *checksummed
+identifier* that resolves to a specific edition. A cover photo yields a **title
+and author string** — and this estate has measured, twice, a title+author match
+scoring **1.0 on both axes and being the wrong book** (*Firefight*, *Unsouled*;
+isbn-ladder.md §4.4–4.5). T1 is "additive with easy undo", and a wrong book
+added under a name that already matched is precisely the write that is *not*
+easily undone, because it looks right. The existing photo flow makes a proposal
+a person confirms, deliberately.
+
+**The bounded follow-up, if the owner wants it** (recommended shape): a fourth
+delegated verb `add-photo`, gated `scanPhoto`, which fetches the Discord
+attachment, forwards the bytes to `/api/scan-jobs/single`, and replies *"I read
+N books off that photo — here they are; open this to confirm"* with the deep
+link. **Proposal-only**: it reuses the whole existing review flow and adds no
+new matching risk. Not verified: whether Discord delivers `attachments` under
+the same intent-free exceptions as `content` (the docs gate both on Message
+Content, and DMs/@mentions are exceptions to both — but no live attachment has
+been tested), and whether a signed `cdn.discordapp.com` URL is fetchable from a
+Worker within its ~24 h signature window.
+
 ## 3. Feature suggestions, by effort
 
 **Near (machinery exists, wiring needed)**
 - **Catalog Q&A tools (T0)** — read-only tool calls against the catalogs'
   APIs, scoped by the asker's visibilities. The panel's GABI_TOOL_NAMES
   allowlist idiom carries over verbatim.
-- **ISBN intake by DM (T1)** — the library's add-by-ISBN ladder already
-  exists end to end; Discord is just a new front door to it.
-- **"Fix my missing details" (T1)** — triggers the sweep the catalogs
-  already run hourly, attributed to the asker, results messaged back.
+- ~~**ISBN intake by DM (T1)**~~ — **SHIPPED 2026-08-18**, §2a. The prediction
+  that "Discord is just a new front door" held for the lookup ladder and did
+  **not** hold for the commit half: the web app's `addLineToCatalog` asks a
+  four-way question a bot must not answer, so the delegated verb writes only
+  the additive cases and hands the question back.
+- ~~**"Fix my missing details" (T1)**~~ — **SHIPPED 2026-08-18**, §2a. It is
+  literally the hourly sweep, one function, with `triggeredBy` carrying the
+  asker where the cron passes `NULL`.
 - **Docs assistant (owner/devops only)** — publish a docs snapshot behind an
   estate-gated endpoint; she answers "how do I promote?" when no Claude
   session is open. ⚠️ Needs its own design pass: audiobook docs are
   local-only today, and access-runbook content deserves the devops gate.
 
 **Middle (new but bounded)**
-- **Photo intake (T1)** — DM a cover photo; attachment URL → the existing
-  scanPhoto flow → propose/add. Photo quality and size need a worded
-  refusal path.
+- **Photo intake (T1)** — ⚠️ **measured 2026-08-18 and deliberately not built;
+  §2d has the numbers, the reason and the recommended shape.** Short version: a
+  cover photo yields a title+author string, and a title+author match has scored
+  1.0 on the wrong book twice in this estate. Proposal-only is the honest
+  version, and it is a bounded follow-up.
 - **T2/T3 confirm verbs** — the continuity build's buttons/modals are the
   exact machinery confirms need; the verbs plug in behind them.
 - **Proactive pings** — poll posting (built, needs a channel), new-book
@@ -107,10 +265,14 @@ asker's own standing, GABI is only the hands.
 
 ## 5. Build order of record
 
-1. Conversation continuity (IN FLIGHT 2026-08-17)
-2. Wake-up: her key + `GABI_MENTIONS=on` + gateway start + live `@GABI` test
-3. Catalog Q&A tools (T0)
-4. T1 intake: ISBN → fills → photo
-5. Docs assistant (design first: snapshot + devops gate)
-6. T2/T3 confirm verbs on the components machinery
+1. ~~Conversation continuity~~ **SHIPPED 2026-08-17**
+2. ~~Wake-up: her key + `GABI_MENTIONS=on` + gateway start~~ **SHIPPED 2026-08-17**
+3. ~~Catalog Q&A tools (T0)~~ **SHIPPED 2026-08-18**
+4. **T1 intake: ISBN ✅ + blank fills ✅ SHIPPED 2026-08-18** (§2a); photo
+   **measured and deferred** with a recorded design (§2d)
+5. Docs assistant (design first: snapshot + devops gate) — in flight
+6. **T2/T3 confirm verbs on the components machinery.** ⚠️ The instance-choice
+   menu built for T1 is the first working instance of exactly this shape: a
+   `PendingChoice` whose press performs an ACTION rather than producing a
+   sentence. A T2 confirm is that with one option and a restatement.
 7. Panel chat-button unification; moderation revival when the owner says so
