@@ -76,6 +76,148 @@ export function docsOn(env: Pick<Env, 'GABI_DOCS'>): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// ⚠️ THE DOCS INTENT ROUTER — deterministic, and NEVER a model's decision
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **WHY THIS EXISTS: the acceptance test it was written against.**
+ *
+ * Minutes after `GABI_DOCS` was flipped on (2026-08-18), the owner DM'd the
+ * exact question this feature was built for — *"how do I promote the audiobook
+ * site?"* — and got, verbatim:
+ *
+ * > I looked on the estate's public shelf for **promote audiobook site**.
+ * > Nothing on the estate's public shelf matches that. ⚠️ That's a statement
+ * > about the **catalogue**, not about the house — books get catalogued as they
+ * > are scanned…
+ * > I can dig into the actual rows and put a change in front of you to approve
+ * > here: https://padhard.heygabi.ai/
+ *
+ * **Reproduced exactly**, and the cause was routing, not the docs plumbing:
+ * `classifyByKeyword` returns `question` for that sentence (no FIX pattern
+ * matches it), and the `question` branch *unconditionally* runs a public-shelf
+ * lookup, grounds the model on the miss, and falls back to **that miss plus the
+ * FIXER panel link** when the model turn yields no text. So a runbook question
+ * was answered as a book question — a statement about the catalogue in reply to
+ * something that was never about the catalogue, which is the precise wording
+ * failure `/have` exists to prevent — and whether any docs tool was consulted
+ * at all was left entirely to the model.
+ *
+ * ⚠️ **Offering the tools is not the same as routing to them.** That was the
+ * design error: phase 4 made the docs tools *available* on `question` turns and
+ * assumed a model would reach for them. This makes the reach deterministic for
+ * the questions that are unambiguously operational, exactly as `delegated.ts`
+ * makes an ISBN deterministic rather than trusting a model to notice one.
+ *
+ * ## The shape of the rule
+ *
+ * An **operations vocabulary**, split by how ambiguous each term is in a
+ * household that mostly talks about books:
+ *
+ *  - **STRONG** terms fire on their own. Nobody DMs a librarian about
+ *    "wrangler" or "the rollback procedure" meaning a novel.
+ *  - **WEAK** terms fire only alongside an operational question SHAPE, because
+ *    each of them is also a book. ⚠️ `secret` is the worked example: *The Secret
+ *    History*, *The Secret Garden*. `token`, `gate`, `worker`, `backup` and
+ *    `config` are the same class of trap.
+ *
+ * ⚠️ A WEAK term additionally loses to a shelf-shaped question, so *"do we have
+ * The Secret History"* stays a book lookup. A STRONG term wins even then,
+ * because *"do we have a runbook for promoting?"* is a docs question wearing a
+ * shelf question's grammar.
+ */
+
+/** ⚠️ Unambiguous here. Each of these was chosen because it appears in this
+ *  estate's runbooks and does not appear in its catalogue. */
+const DOCS_STRONG = [
+  /\bpromot(e|ing|ion)\b/i,
+  /\bdeploy(s|ed|ing|ment)?\b/i,
+  /\broll\s*backs?\b/i,
+  /\broll(ing)?\s+(it|this|that|them)?\s*back\b/i,
+  /\brunbooks?\b/i,
+  /\bwrangler\b/i,
+  /\bcloudflare\b/i,
+  /\bbreak[-\s]?glass\b/i,
+  /\bmigrat(e|ion|ions)\b/i,
+  /\bkill[-\s]?switch\b/i,
+  /\bdev\s?ops\b/i,
+  /\bcron\b/i,
+  /\bscheduled task\b/i,
+  /\br2 bucket\b/i,
+  /\bkv namespace\b/i,
+  /\bfirestore rules\b/i,
+  /\bd1\b/i,
+  /\bestate docs\b/i,
+  /\/admin\b/i,
+  /\/dev\/\b/i,
+  /\bdev lane\b/i,
+  /\bgithub actions?\b/i,
+  /\bworkflow file\b/i,
+  /\bprod(uction)?\b/i,
+  /\brevocation\b/i,
+  /\brotate (the )?(secret|token|key)\b/i,
+  /\benv(ironment)? var(iable)?s?\b/i,
+  /\bpipelines?\b/i,
+  /\bsnapshots?\b/i,
+];
+
+/** ⚠️ Also book words. These need an operational question shape AND must lose
+ *  to a shelf-shaped question. */
+const DOCS_WEAK = [
+  /\bsecrets?\b/i,
+  /\btokens?\b/i,
+  /\bgates?\b/i,
+  /\bworkers?\b/i,
+  /\bbackups?\b/i,
+  /\brestore\b/i,
+  /\bconfig(uration)?\b/i,
+  /\bdocs?\b/i,
+  /\barchitecture\b/i,
+];
+
+/** The grammar of somebody asking how a THING IS DONE, rather than what a book
+ *  is. ⚠️ Deliberately excludes "how many", which is a catalogue count. */
+const DOCS_SHAPE = [
+  /\bhow (do|can|would|should) (i|we|you)\b/i,
+  /\bhow does .*\bwork\b/i,
+  /\bhow is .*\b(set up|configured|deployed|wired)\b/i,
+  /\bwhat('s| is| are) the (process|procedure|steps?|command|way|lever)/i,
+  /\bwhere (is|are|do|does|should) /i,
+  /\bwhich .*\b(do|does) (i|we) need\b/i,
+  /\bwhy (did|do) we\b/i,
+  /\bsteps? to\b/i,
+  /\bhow to\b/i,
+];
+
+/** A question about the SHELF. ⚠️ Kept local rather than imported from
+ *  `mentions.ts`: the docs detector owns its own exclusions, and a shared list
+ *  would make one feature's tuning silently move the other's boundary. */
+const DOCS_SHELF_SHAPED = [
+  /\bdo (we|you|i) (have|own)\b/i,
+  /\bhave (we|you|i) got\b/i,
+  /\bon the (shelf|shelves)\b/i,
+  /\bin the (catalogue|catalog|library|collection)\b/i,
+  /\b(narrat|author|series|audiobook|paperback|hardcover)/i,
+];
+
+/**
+ * Does this message want the estate's DOCUMENTATION rather than its catalogue?
+ *
+ * ⚠️ **Narrow on purpose.** A false positive answers a book question with "the
+ * docs do not cover it", which is worse than the miss it replaces. A false
+ * negative merely leaves the model to reach for the tools itself, which is the
+ * pre-fix behaviour and is still available — the tools stay offered on ordinary
+ * `question` turns either way.
+ */
+export function docsIntent(text: string): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  if (DOCS_STRONG.some((re) => re.test(q))) return true;
+  if (DOCS_SHELF_SHAPED.some((re) => re.test(q))) return false;
+  return DOCS_WEAK.some((re) => re.test(q)) && DOCS_SHAPE.some((re) => re.test(q));
+}
+
+// ---------------------------------------------------------------------------
 // The caps — design §5.3. Each is its own fuse; none replaces another.
 // ---------------------------------------------------------------------------
 
@@ -217,6 +359,21 @@ export const DOCS_MSG = {
   capped:
     "I've been through a lot of the docs for you today, so I'm going to stop there — that's a cap on " +
     'my side, not anything you did. It resets overnight, and https://heygabi.ai/docs/ has no such cap.',
+
+  /**
+   * ⚠️ **The fallback when the docs path produced no sentence** — the model
+   * turn failed, or ran out of output tokens mid-thought.
+   *
+   * It exists because the OLD fallback for this shape of question was a
+   * public-shelf miss plus the fixer panel link, which is what the owner
+   * actually received on 2026-08-18. A docs question that goes wrong must fail
+   * as a DOCS question: never a statement about the book catalogue, and never
+   * an offer to put a catalogue change in front of him.
+   */
+  noAnswer:
+    "I went looking in the estate's docs and couldn't put an answer together just then — that's a " +
+    'wobble on my side, not a sign the docs are missing it. Ask me again, or narrow it down a bit ' +
+    'and I will have another go.',
 
   /** ⚠️ The per-turn ceiling, worded for the MODEL to relay. It must be able to
    *  tell the person it ran out of room rather than implying the corpus did. */

@@ -82,6 +82,26 @@ export const CLASSIFY_MAX_TOKENS = 24;
  * ceiling is 2000 characters and a wall of text from a bot is a bot people mute. */
 export const CHAT_MAX_TOKENS = 400;
 
+/**
+ * ⚠️ **THE TOOL LOOP GETS A HIGHER CEILING, AND 400 WAS A LATENT BUG.**
+ *
+ * `CHAT_MAX_TOKENS` bounds what a person READS, and 400 tokens ≈ 1,600
+ * characters is the right size for a Discord message. But `max_tokens` bounds
+ * everything the model EMITS, and in a tool loop most of that is `tool_use`
+ * blocks the person never sees — schemas echoed back as JSON arguments.
+ *
+ * ⚠️ Found while diagnosing the 2026-08-18 live failure. Adding the two docs
+ * tools took the offered set from two tools to four and the system prompt from
+ * one block to two, which makes a longer `tool_use` emission likelier — and a
+ * turn that runs out of tokens **mid-`tool_use`** comes back with
+ * `stop_reason: 'max_tokens'`, no text block, and therefore no answer at all.
+ * The loop then returned `null` and the caller fell through to its fallback.
+ *
+ * The reply is still truncated to Discord's ceiling by `mention-flow.ts`, so
+ * raising this changes what she can THINK, never what she can SAY.
+ */
+export const CHAT_TOOL_MAX_TOKENS = 1024;
+
 /** A turn that runs away must fail, not vanish — the same rule the panel's loop
  * applies, at a length appropriate to a chat reply. */
 export const CHAT_TIMEOUT_MS = 20_000;
@@ -621,7 +641,7 @@ export async function converseWithTools(
       const last = i === MAX_TOOL_ITERATIONS;
       const res = await client.messages.create({
         model: GABI_CHAT_MODEL,
-        max_tokens: CHAT_MAX_TOKENS,
+        max_tokens: CHAT_TOOL_MAX_TOKENS,
         system: docsOffered ? `${CHAT_TOOLS_SYSTEM}
 ${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
         messages: messages as never,
@@ -645,6 +665,19 @@ ${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
       const calls = toolUseBlocks(blocks);
       if (res.stop_reason !== 'tool_use' || calls.length === 0) {
         const text = textOf(blocks);
+        if (text.length === 0) {
+          // ⚠️ THE SILENT PATH THAT LET THE 2026-08-18 FAILURE SHIP. A turn can
+          // end with no text and no exception — most often `stop_reason:
+          // 'max_tokens'` reached mid-`tool_use` — and the caller then falls
+          // through to a fallback that may have nothing to do with the
+          // question. It used to log NOTHING, so the reply was the only
+          // evidence it had happened. Now it is one greppable line.
+          console.error(
+            `GABI mentions: the tool-using turn produced no text (stop_reason=${String(res.stop_reason)}, ` +
+              `iterations=${iterations}, tool_calls=${executed.length}, docs=${docsOffered}). ` +
+              'The caller will use its fallback.',
+          );
+        }
         return finish(text.length > 0 ? text : null, executed.length, executed, iterations);
       }
 

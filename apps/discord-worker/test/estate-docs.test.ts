@@ -61,6 +61,11 @@ import {
 } from '../src/estate-docs.js';
 import { authBase, DEFAULT_AUTH_BASE } from '../src/estate-docs-exec.js';
 import { runTool } from '../src/tool-exec.js';
+import { docsIntent, type DocsPort } from '../src/estate-docs.js';
+import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
+import { classifyByKeyword, MENTION_MSG, type CapVerdict } from '../src/mentions.js';
+import { metadataAsk } from '../src/catalog-data.js';
+import { delegatedIntent } from '../src/delegated.js';
 
 function repoFile(relative: string): string {
   return readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url).href), 'utf8');
@@ -352,10 +357,23 @@ describe('⚠️ GABI_DOCS is affirmative-only and ships OFF', () => {
     }
   });
 
-  it('⚠️ wrangler.toml ships it OFF — flipping it is an owner decision', () => {
-    // Unlike GABI_DELEGATED_WRITES, which the owner approved switched on. This
-    // one reaches PII plus an operations runbook.
-    assert.match(WRANGLER, /^\s*GABI_DOCS\s*=\s*"off"/m, 'the docs posture no longer ships off');
+  it('⚠️ the posture is one of the two REAL values — never a typo that silently disables it', () => {
+    // ⚠️ This assertion was `= "off"` when the feature shipped, and was changed
+    // on 2026-08-18 when the OWNER flipped it on — which is the decision the
+    // "off" default existed to force, so the test follows the decision rather
+    // than fighting it.
+    //
+    // What it pins now is the failure that would actually hurt: the switch is
+    // affirmative-only, so `"true"`, `"1"` or `"On "` all mean OFF. A typo here
+    // would disable the whole feature while LOOKING enabled in the diff, and
+    // nothing else in the build would notice.
+    const declared = /^\s*GABI_DOCS\s*=\s*"([^"]*)"/m.exec(WRANGLER);
+    assert.ok(declared, 'GABI_DOCS is no longer declared in wrangler.toml');
+    assert.ok(
+      declared[1] === 'on' || declared[1] === 'off',
+      `GABI_DOCS is "${declared[1]}" — only "on" and "off" mean anything; everything else is OFF`,
+    );
+    assert.equal(docsOn({ GABI_DOCS: declared[1] }), declared[1] === 'on');
   });
 
   it('the auth host is declared, not hardcoded at a call site', () => {
@@ -718,5 +736,404 @@ describe('⚠️ the docs tools refuse in words, never as a bare status', () => 
     assert.equal(body.count, 0);
     assert.match(String(body.note), /statement about the DOCS/);
     assert.match(String(body.note), /2026-08-18/, 'even an empty answer carries the date');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The harness: drive the REAL handleMention, count what it touched
+// ---------------------------------------------------------------------------
+
+/** An Anthropic Messages response, as the SDK expects to parse it. */
+function modelResponse(content: unknown[], stopReason = 'end_turn'): Response {
+  return new Response(
+    JSON.stringify({
+      id: 'msg_test',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-haiku-4-5-20251001',
+      content,
+      stop_reason: stopReason,
+      usage: { input_tokens: 10, output_tokens: 5 },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+interface OwnerRun {
+  question?: string;
+  said: string[];
+  docsPort?: DocsPort | null;
+  docsEnabled?: boolean;
+  onShelfFetch?: () => void;
+  onModelCall?: () => void;
+  /** When set, the first model turn emits a tool_use for this tool. */
+  wantsTool?: string;
+  /** What the model finally says. */
+  modelText?: string;
+}
+
+/**
+ * ⚠️ Drives `handleMention` end to end — the same entry point the Discord
+ * gateway uses — so the assertions are about the SHIPPED ladder and not about a
+ * reimplementation of it. The shelf goes through `globalThis.fetch` (that is how
+ * `lookupHave` reaches the index); the model goes through `cfg.fetchOverride`.
+ */
+async function runOwnerQuestion(opts: OwnerRun): Promise<{ answered: boolean }> {
+  const question = opts.question ?? 'how do I promote the audiobook site?';
+  const docsEnabled = 'docsEnabled' in opts ? opts.docsEnabled : true;
+  const port = opts.docsPort ?? null;
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes('anthropic')) {
+      // Should never happen — the model rides fetchOverride.
+      return modelResponse([{ type: 'text', text: 'unexpected' }]);
+    }
+    opts.onShelfFetch?.();
+    return new Response(JSON.stringify({ books: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  let modelTurn = 0;
+  const fetchOverride = (async () => {
+    opts.onModelCall?.();
+    modelTurn += 1;
+    if (modelTurn === 1 && opts.wantsTool) {
+      return modelResponse(
+        [{ type: 'tool_use', id: 'toolu_1', name: opts.wantsTool, input: { query: 'promote prod', id: 'x#1' } }],
+        'tool_use',
+      );
+    }
+    if (modelTurn === 1 && !opts.wantsTool && opts.question) {
+      // The classifier turn on a non-docs question.
+      return modelResponse([{ type: 'text', text: 'have_lookup' }]);
+    }
+    return modelResponse([{ type: 'text', text: opts.modelText ?? 'ok' }]);
+  }) as unknown as typeof fetch;
+
+  try {
+    return await handleMention(
+      {
+        capCheck: async () => ({ ok: true }) as CapVerdict,
+        recordTurn: async () => {},
+        conversation: NO_MEMORY,
+        reply: async (content: string) => {
+          opts.said.push(content);
+        },
+        ...(port
+          ? {
+              docs: {
+                port,
+                capCheck: async () => ({ ok: true }) as const,
+                record: async () => {},
+              },
+            }
+          : {}),
+      },
+      {
+        kind: 'ask',
+        question,
+        authorId: '1234',
+        authorName: 'owner',
+        guildId: null,
+        channelId: 'c1',
+        messageId: 'm1',
+        surface: 'discord_dm',
+        via: 'dm',
+      } as never,
+      {
+        indexBaseUrl: 'https://index.test',
+        panelUrl: 'https://padhard.heygabi.ai/',
+        catalogBaseUrl: 'https://catalog.test',
+        anthropicKey: 'test-key-not-real',
+        ...(docsEnabled === undefined ? {} : { docsEnabled }),
+        fetchOverride,
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// ── 10. ⚠️ THE LIVE FAILURE OF 2026-08-18, AS A REGRESSION TEST ─────────────
+//
+// Minutes after GABI_DOCS was flipped on, the owner DM'd the exact question
+// this feature exists for and got a public-shelf miss plus the fixer panel
+// link. His transcript is the acceptance test; these pin it in BOTH link
+// states, because the fix had to be correct whether or not he had re-linked.
+// ---------------------------------------------------------------------------
+
+/** ⚠️ Verbatim. Do not tidy this string — it is the artefact. */
+const OWNERS_QUESTION = 'how do I promote the audiobook site?';
+
+/** The reply he actually received, reassembled from the templates that
+ *  produced it. Every assertion below is written against THIS, not against a
+ *  paraphrase of it. */
+const HIS_BROKEN_REPLY = [
+  MENTION_MSG.searched('promote audiobook site'),
+  MENTION_MSG.none,
+  '',
+  MENTION_MSG.panel('https://padhard.heygabi.ai/'),
+].join('\n');
+
+describe('⚠️ REGRESSION: "how do I promote the audiobook site?"', () => {
+  it('the routing that produced the failure is understood, not guessed', () => {
+    // ⚠️ The diagnosis, pinned. It was NOT classified as a fix_request — no FIX
+    // pattern matches it. It fell to `question`, whose branch unconditionally
+    // searches the book shelf and whose fallback is that miss plus the FIXER
+    // panel link. If either of these two facts ever changes, the reasoning in
+    // `docsIntent`'s header stops describing reality.
+    assert.equal(classifyByKeyword(OWNERS_QUESTION), 'question');
+    assert.equal(metadataAsk(OWNERS_QUESTION), null);
+    assert.equal(delegatedIntent(OWNERS_QUESTION), null);
+  });
+
+  it('⚠️ it is now recognised as a DOCS question, deterministically', () => {
+    assert.equal(docsIntent(OWNERS_QUESTION), true);
+  });
+
+  it('⚠️ STATE (a) — upgraded devops link: the docs tools are reached, and the shelf is NOT', async () => {
+    const said: string[] = [];
+    let shelfCalls = 0;
+    let docsSearches = 0;
+
+    const outcome = await runOwnerQuestion({
+      said,
+      onShelfFetch: () => {
+        shelfCalls += 1;
+      },
+      docsPort: {
+        async askerEmail() {
+          return { ok: true, email: 'owner@example.test' } as const;
+        },
+        async search() {
+          docsSearches += 1;
+          return {
+            ok: true,
+            status: 200,
+            body: {
+              snapshot: { generated_at: '2026-08-18T04:00:00Z', stale: false },
+              results: [
+                {
+                  id: 'audiobook_catalog/docs/access/PROMOTE.md#1',
+                  repo: 'audiobook_catalog',
+                  path: 'audiobook_catalog/docs/access/PROMOTE.md',
+                  heading: 'Promoting to prod',
+                  snippet: 'Run the promote workflow…',
+                },
+              ],
+              total: 1,
+            },
+          };
+        },
+        async section() {
+          return { ok: true, status: 200, body: {} };
+        },
+      },
+      // The model answers from the tool result on the second pass.
+      modelText: 'Promoting runs the promote workflow — see audiobook_catalog/docs/access/PROMOTE.md, from the docs snapshot published 2026-08-18.',
+      wantsTool: 'search_estate_docs',
+    });
+
+    assert.equal(outcome.answered, true);
+    assert.equal(docsSearches, 1, '⚠️ the docs corpus was never consulted');
+    assert.equal(shelfCalls, 0, '⚠️ a runbook question still searched the book shelf');
+    const reply = said.join('\n');
+    assert.match(reply, /PROMOTE\.md/, 'the answer does not cite the file');
+    assert.match(reply, /2026-08-18/, 'the answer does not carry the snapshot date');
+    // ⚠️ And none of the failing reply survives anywhere in it.
+    assert.doesNotMatch(reply, /public shelf/i, 'the shelf-miss wording came back');
+    assert.doesNotMatch(reply, /put a change in front of you/i, 'the fixer panel link came back');
+  });
+
+  it('⚠️ STATE (b) — pre-upgrade link: the RELINK sentence, and nothing else', async () => {
+    const said: string[] = [];
+    let shelfCalls = 0;
+    let docsSearches = 0;
+    let modelCalls = 0;
+
+    const outcome = await runOwnerQuestion({
+      said,
+      onShelfFetch: () => {
+        shelfCalls += 1;
+      },
+      onModelCall: () => {
+        modelCalls += 1;
+      },
+      docsPort: {
+        async askerEmail() {
+          // The state the owner is actually in until he re-runs /link.
+          return { ok: false, reason: 'no_email' } as const;
+        },
+        async search() {
+          docsSearches += 1;
+          return { ok: true, status: 200, body: {} };
+        },
+        async section() {
+          return { ok: true, status: 200, body: {} };
+        },
+      },
+    });
+
+    assert.equal(outcome.answered, true);
+    const reply = said.join('\n');
+
+    // ⚠️ The design's own promised sentence, verbatim.
+    assert.match(reply, /Your link was made before I could check estate roles/);
+    assert.match(reply, /Re-run \/link once/);
+
+    // ⚠️ NEVER a shelf search, and never the propose-and-deep-link flow.
+    assert.equal(shelfCalls, 0, 'a pre-upgrade link still searched the book shelf');
+    assert.equal(docsSearches, 0, 'a pre-upgrade link still reached the gated corpus');
+    assert.equal(modelCalls, 0, 'a deterministic refusal still spent a model call');
+    assert.doesNotMatch(reply, /public shelf/i);
+    assert.doesNotMatch(reply, /put a change in front of you/i);
+    assert.doesNotMatch(reply, /padhard\.heygabi\.ai/);
+
+    // ⚠️ And it is NOT the unlinked sentence — the two states have two fixes.
+    assert.doesNotMatch(reply, /Run \/link and try me again/);
+  });
+
+  it('⚠️ his exact broken reply can no longer be produced in either state', async () => {
+    for (const reason of ['no_email', 'unlinked', 'outage'] as const) {
+      const said: string[] = [];
+      await runOwnerQuestion({
+        said,
+        docsPort: {
+          async askerEmail() {
+            return { ok: false, reason } as const;
+          },
+          async search() {
+            return { ok: true, status: 200, body: {} };
+          },
+          async section() {
+            return { ok: true, status: 200, body: {} };
+          },
+        },
+      });
+      const reply = said.join('\n');
+      assert.notEqual(reply.trim(), HIS_BROKEN_REPLY.trim(), `state ${reason} still produces the failing reply`);
+      assert.doesNotMatch(reply, /Nothing on the estate's public shelf matches that/);
+    }
+  });
+
+  it('⚠️ with the posture OFF a docs question is told so — never a shelf miss', async () => {
+    const said: string[] = [];
+    let shelfCalls = 0;
+    await runOwnerQuestion({
+      said,
+      docsEnabled: false,
+      docsPort: null,
+      onShelfFetch: () => {
+        shelfCalls += 1;
+      },
+    });
+    const reply = said.join('\n');
+    assert.match(reply, /switched off/i);
+    assert.match(reply, /heygabi\.ai\/docs/, 'the off sentence should still point somewhere useful');
+    assert.equal(shelfCalls, 0, 'a switched-off docs question fell through to the shelf');
+    assert.doesNotMatch(reply, /public shelf/i);
+  });
+
+  it('⚠️ a surface that predates the docs feature falls through UNCHANGED', async () => {
+    // `docsEnabled` undefined = a caller that never knew about docs. It must
+    // keep its old behaviour rather than be handed a sentence about a
+    // capability it never had.
+    const said: string[] = [];
+    let shelfCalls = 0;
+    await runOwnerQuestion({
+      said,
+      docsEnabled: undefined,
+      docsPort: null,
+      onShelfFetch: () => {
+        shelfCalls += 1;
+      },
+    });
+    assert.equal(shelfCalls, 1, 'the pre-docs ladder changed for a caller that never opted in');
+  });
+});
+
+describe('⚠️ docsIntent is narrow — book questions must not be eaten', () => {
+  it('fires on operational questions', () => {
+    for (const q of [
+      'how do I promote the audiobook site?',
+      'and how do I roll it back?',
+      'what is the rollback procedure',
+      'how do I deploy the worker',
+      'where is the runbook for the pipeline',
+      'why did we decide to use wrangler',
+      'how does the revocation delay work',
+      'what are the steps to rotate the secret',
+      'do we have a runbook for promoting?',
+    ]) {
+      assert.equal(docsIntent(q), true, `MISSED a docs question: ${q}`);
+    }
+  });
+
+  it('⚠️ does NOT fire on book questions — including the ones with ops-shaped words', () => {
+    for (const q of [
+      'do we have Mistborn?',
+      'who narrates The Way of Kings?',
+      'what Stormlight books do we have',
+      'how many Sanderson books do we have',
+      'fix the author on Steelheart',
+      'morning!',
+      'thanks!',
+      'what can you do?',
+      // ⚠️ The worked traps: real books whose titles are operations words.
+      'do we have The Secret History',
+      'do we have The Secret Garden?',
+      'have we got any books about gates',
+      'is The Book of Tokens on the shelf',
+    ]) {
+      assert.equal(docsIntent(q), false, `⚠️ ATE a book question: ${q}`);
+    }
+  });
+
+  it('an empty or whitespace message is never a docs question', () => {
+    for (const q of ['', '   ', '\n']) assert.equal(docsIntent(q), false);
+  });
+});
+
+describe('⚠️ every pre-existing intent still routes as it did', () => {
+  it('a genuine shelf question still reaches the shelf, with docs fully configured', async () => {
+    const said: string[] = [];
+    let shelfCalls = 0;
+    let docsSearches = 0;
+    await runOwnerQuestion({
+      question: 'do we have Mistborn?',
+      said,
+      onShelfFetch: () => {
+        shelfCalls += 1;
+      },
+      docsPort: {
+        async askerEmail() {
+          return { ok: true, email: 'owner@example.test' } as const;
+        },
+        async search() {
+          docsSearches += 1;
+          return { ok: true, status: 200, body: {} };
+        },
+        async section() {
+          return { ok: true, status: 200, body: {} };
+        },
+      },
+    });
+    assert.equal(shelfCalls, 1, '⚠️ a book question stopped reaching the shelf');
+    assert.equal(docsSearches, 0, '⚠️ a book question reached the gated corpus');
+    assert.match(said.join('\n'), /public shelf/i);
+  });
+
+  it('the keyword router is unchanged for every intent it already had', () => {
+    assert.equal(classifyByKeyword('do we have Mistborn?'), 'have_lookup');
+    assert.equal(classifyByKeyword('fix the author on Steelheart'), 'fix_request');
+    // ⚠️ "good morning" is the pattern; a bare "morning!" is not, and falls to
+    // `question`. Pinned as it ACTUALLY behaves rather than as it reads.
+    assert.equal(classifyByKeyword('good morning'), 'smalltalk');
+    assert.equal(classifyByKeyword('morning!'), 'question');
+    assert.equal(classifyByKeyword('what can you do?'), 'question');
   });
 });

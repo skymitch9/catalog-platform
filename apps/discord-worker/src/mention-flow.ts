@@ -99,6 +99,9 @@ import {
 } from './mentions.js';
 import { DELEGATE_MSG, delegatedIntent, type LibraryInstance } from './delegated.js';
 import {
+  DOCS_MSG,
+  docsIntent,
+  identityMessage,
   makeDocsBudget,
   type DocsCapVerdict,
   type DocsPort,
@@ -460,6 +463,73 @@ export interface AnsweredQuestion {
 }
 
 /**
+ * ⚠️ **THE DOCS PRE-ROUTER — a runbook question is not a shelf query.**
+ *
+ * Runs at the very top of `answerQuestion`, ahead of the metadata fast path and
+ * ahead of every intent branch, for the same reason the Tier-1 ISBN pre-router
+ * sits ahead of them: falling through would search the book catalogue for
+ * *"promote audiobook site"*, find nothing, and report that miss — a statement
+ * about the catalogue in reply to a question that was never about it.
+ *
+ * ⚠️ **It answers deterministically in the three cases where a model must not
+ * be consulted at all**, because each of them is a promise the design made in
+ * words:
+ *
+ *  1. **The link predates the email field** → the relink sentence, always.
+ *     Never a shelf search, never the propose-and-deep-link flow. This is the
+ *     state the owner is in until he re-runs `/link`, so it is the FIRST thing
+ *     this router had to get right.
+ *  2. **Not linked / the estate is unreachable** → their own sentences, kept
+ *     apart so an outage never reads as "you never linked".
+ *  3. **Capped** → the cap sentence, without spending a model call to say it.
+ *
+ * Only past all three does it spend a turn — and it spends it with **no shelf
+ * grounding at all**, which also saves the `/have` subrequest the old path
+ * burned on every one of these questions.
+ */
+async function docsAnswer(
+  question: string,
+  history: readonly ConversationTurn[],
+  who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
+  cfg: MentionConfig,
+  docs: DocsToolContext,
+  overrides: { fetch?: typeof fetch } | undefined,
+): Promise<AnsweredQuestion> {
+  const done = (content: string): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'question',
+    components: null,
+  });
+
+  // ⚠️ Cheapest first, and no I/O for a cap we already know about.
+  if (docs.capped) return done(DOCS_MSG.capped);
+
+  // ⚠️ Identity BEFORE the model. The relink case must be worded by us, from
+  // the link document, rather than left to a model that might paraphrase it or
+  // — worse — answer the question from its own knowledge instead.
+  const asker = await docs.port.askerEmail(docs.discordUserId);
+  if (!asker.ok) return done(identityMessage(asker.reason));
+
+  const spoken = await converseWithTools(
+    cfg.anthropicKey,
+    question,
+    // ⚠️ NO GROUNDING. The old path handed the model a public-shelf miss and
+    // asked it to answer a runbook question around it; the grounding was not
+    // just useless but actively misleading.
+    null,
+    who,
+    toolContext(cfg, docs),
+    overrides,
+    history,
+  );
+
+  // ⚠️ A docs question that goes wrong fails as a DOCS question. The sentence
+  // this replaces was a catalogue miss plus an offer to change a book row.
+  return done(spoken.text ?? DOCS_MSG.noAnswer);
+}
+
+/**
  * Turn a question plus a remembered conversation into what she says next.
  *
  * Pure of the STORE — it reads history and returns what should be remembered,
@@ -475,6 +545,31 @@ async function answerQuestion(
   docs?: DocsToolContext,
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
+
+  // ── ⚠️ THE DOCS PRE-ROUTER, AHEAD OF EVERY INTENT BRANCH ─────────────────
+  //
+  // Added 2026-08-18 after the live failure `estate-docs.ts`'s `docsIntent`
+  // header records in full: the owner asked "how do I promote the audiobook
+  // site?" and was told nothing on the book shelf matched. Offering the docs
+  // tools was never the same as routing to them.
+  //
+  // ⚠️ The three states are deliberately distinct, and a surface that predates
+  // the docs feature (`docsEnabled` undefined) falls through UNCHANGED rather
+  // than being handed a sentence about a capability it never had.
+  if (docsIntent(question)) {
+    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides);
+    if (cfg.docsEnabled === true) {
+      // The posture is on but no port was built — the app token or the service
+      // account is missing. A setup gap, and never phrased as a permissions one.
+      return { content: DOCS_MSG.notConfigured, pending: null, intent: 'question', components: null };
+    }
+    if (cfg.docsEnabled === false) {
+      // ⚠️ OFF IS NOT SILENT. The docs half of the design says so explicitly: a
+      // docs question must not fall through to a shelf search that finds
+      // nothing and reads as broken.
+      return { content: DOCS_MSG.switchedOff, pending: null, intent: 'question', components: null };
+    }
+  }
 
   const intent =
     (await classifyIntent(cfg.anthropicKey, question, who, overrides, history)) ??
