@@ -19,6 +19,7 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import {
   KNOWN_BACKUP_PREFIXES,
+  generationOf,
   summarizeBackups,
   gradeBackups,
   gradeBackupAge,
@@ -304,4 +305,33 @@ test('GET /estate/backups: ESTATE_BACKUPS unbound -> 503 with a fix string, neve
   // as "never a bare crash", matching docs.ts/todo.ts's own stance that the
   // gate is proven live, not against a bare stub.
   assert.ok(res.status >= 400);
+});
+
+// ---------------------------------------------------------------------------
+// Generations — ⚠️ one night can be several objects (2026-08-18)
+// ---------------------------------------------------------------------------
+
+test('generationOf matches scripts/lib/backup-keys.mjs — the two copies must agree', () => {
+  assert.equal(generationOf('d1/estate_auth/20260818T072356Z.sql'), '20260818T072356Z');
+  assert.equal(generationOf('firestore/audiobook-catalog/20260818T072358Z.tar.gz'), '20260818T072358Z');
+  assert.equal(generationOf('r2/audiobook-covers/20260818T073345Z.tar.gz.part-aa'), '20260818T073345Z');
+  assert.equal(generationOf('r2/audiobook-covers/20260818T073345Z.tar.gz.part-ab'), '20260818T073345Z');
+  assert.equal(generationOf('r2/x/20260818T073345Z'), '20260818T073345Z');
+});
+
+test('⚠️ a split night counts as ONE backup, not as its part count', async () => {
+  // The measured case: the audiobook-covers tarball outgrew wrangler's 300 MiB
+  // upload cap and is now written as parts. Counting objects would report this
+  // prefix as healthier (more backups) than it is.
+  const uploaded = new Date('2026-08-18T07:33:45.000Z');
+  const bucket = new FakeBucket({
+    'r2/audiobook-covers': [
+      { key: 'r2/audiobook-covers/20260818T073345Z.tar.gz.part-aa', uploaded },
+      { key: 'r2/audiobook-covers/20260818T073345Z.tar.gz.part-ab', uploaded },
+      { key: 'r2/audiobook-covers/20260816T084918Z.tar.gz', uploaded: new Date('2026-08-16T08:49:18.000Z') },
+    ],
+  });
+  const summary = await summarizeBackups(bucket);
+  assert.equal(summary.prefixes['r2/audiobook-covers']!.count, 2, 'two nights, three objects');
+  assert.equal(summary.prefixes['r2/audiobook-covers']!.newest, uploaded.toISOString());
 });

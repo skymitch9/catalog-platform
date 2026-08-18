@@ -359,11 +359,65 @@ jobs:
           tar czf "backups/r2-${{ matrix.bucket }}-$STAMP.tar.gz" -C "backups/r2-${{ matrix.bucket }}-$STAMP" .
           bytes=$(wc -c < "backups/r2-${{ matrix.bucket }}-$STAMP.tar.gz")
           echo "::notice::r2-${{ matrix.bucket }}-$STAMP.tar.gz is $bytes bytes."
+      # ⚠️ SPLIT WHEN OVERSIZED — MEASURED 2026-08-18, on a real failed backup.
+      #
+      # `wrangler r2 object put` refuses anything over 300 MiB:
+      #     Error: Wrangler only supports uploading files up to 300 MiB in size
+      # and on run 32112007920 the audiobook-covers dump tarred to 328,774,189
+      # bytes (313.5 MiB) and was rejected. The download had already succeeded;
+      # the whole backup was lost at the last step. ⚠️ game-covers measured
+      # 178,897,690 bytes (170.6 MiB) the same day and is growing — this is not
+      # a one-bucket problem, which is why the split is generic rather than
+      # special-cased.
+      #
+      # There is no way round the ceiling with the credentials this estate has:
+      # the plain Cloudflare REST `PUT .../objects/{key}` carries the same
+      # limit, and multipart upload needs S3-compatible access keys that
+      # deliberately do not exist here (scripts/backup-r2.mjs's header says
+      # why). So: split into 200 MiB parts and upload each as its own object,
+      # `<STAMP>.tar.gz.part-aa`, `.part-ab`, …
+      #
+      # The threshold is 250 MiB, not 300, so there is headroom rather than a
+      # cliff — a bucket that grows between the check and the next run does not
+      # discover the limit the hard way. `split -d` is avoided on purpose:
+      # the default alphabetic suffixes sort lexicographically in `cat`, `ls`
+      # and R2's own listing alike.
+      #
+      # ⚠️ RESTORE: reassemble before untarring —
+      #     cat <STAMP>.tar.gz.part-* > dump.tar.gz
+      # docs/access/RECOVERY.md §5 and backup-restore.md §6 carry this.
+      #
+      # ⚠️ Retention had to learn about this: one generation is now potentially
+      # several keys, so scripts/prune-r2-backups.mjs keeps the newest 8
+      # GENERATIONS (grouped by stamp), never the newest 8 keys, and deletes a
+      # generation's parts together. A half-deleted generation cannot be
+      # reassembled and must never exist.
       - name: Upload to R2 (estate-backups)
         run: |
-          KEY="r2/${{ matrix.bucket }}/$STAMP.tar.gz"
-          npx wrangler r2 object put "estate-backups/$KEY" --file "backups/r2-${{ matrix.bucket }}-$STAMP.tar.gz" --remote -y
-          echo "::notice::Wrote estate-backups/$KEY"
+          FILE="backups/r2-${{ matrix.bucket }}-$STAMP.tar.gz"
+          BASE="r2/${{ matrix.bucket }}/$STAMP.tar.gz"
+          MAX_SINGLE=262144000   # 250 MiB — below wrangler's 300 MiB hard cap
+          bytes=$(wc -c < "$FILE")
+
+          if [ "$bytes" -le "$MAX_SINGLE" ]; then
+            npx wrangler r2 object put "estate-backups/$BASE" --file "$FILE" --remote -y
+            echo "::notice::Wrote estate-backups/$BASE"
+          else
+            echo "::warning::$FILE is $bytes bytes, over the ${MAX_SINGLE}-byte single-object threshold (wrangler's hard cap is 300 MiB) — splitting into 200 MiB parts. Restore must 'cat <STAMP>.tar.gz.part-* > dump.tar.gz' first; see docs/access/RECOVERY.md §5."
+            split -b 200m "$FILE" "$FILE.part-"
+            n=0
+            for part in "$FILE".part-*; do
+              suffix="${part##*.}"
+              npx wrangler r2 object put "estate-backups/$BASE.$suffix" --file "$part" --remote -y
+              echo "::notice::Wrote estate-backups/$BASE.$suffix"
+              n=$((n+1))
+            done
+            if [ "$n" -eq 0 ]; then
+              echo "::error::split produced no parts for $FILE — refusing to report a successful backup."
+              exit 1
+            fi
+            echo "::notice::$BASE was written as $n part(s)."
+          fi
 
   retention:
     # Runs on every dispatch regardless of `target` — pruning is bucket

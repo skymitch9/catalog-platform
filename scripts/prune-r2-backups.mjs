@@ -50,6 +50,8 @@
  * deletion is expected on day nine.
  */
 
+import { groupByGeneration } from './lib/backup-keys.mjs';
+
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 
@@ -115,19 +117,36 @@ async function deleteObject(bucket, key) {
 let totalDeleted = 0;
 for (const prefix of prefixes) {
   const objects = await listAllObjects(bucket, `${prefix}/`);
-  // Lexicographic sort == chronological sort for the UTC-timestamp keys
-  // backup.yml writes (see header comment). Newest last -> newest first.
-  const sorted = [...objects].sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
-  const keep = sorted.slice(0, KEEP);
-  const drop = sorted.slice(KEEP);
+  // ⚠️ GENERATIONS, not keys. An oversized bucket dump is split into
+  // `<STAMP>.tar.gz.part-aa`, `.part-ab`, … so one generation can be several
+  // objects — counting keys would make 8 "generations" into one night's parts
+  // and delete every real backup behind it. `groupByGeneration` returns newest
+  // first and keeps each generation's parts together, so a whole generation is
+  // always kept or always deleted; a half-deleted generation cannot be
+  // reassembled and must never exist.
+  const generations = groupByGeneration(objects);
+  const keep = generations.slice(0, KEEP);
+  const drop = generations.slice(KEEP);
 
-  console.log(`\n=== ${prefix} — ${objects.length} object(s), keeping ${keep.length}, deleting ${drop.length} ===`);
-  for (const o of keep) console.log(`  keep:   ${o.key}`);
-  for (const o of drop) {
-    await deleteObject(bucket, o.key);
-    console.log(`  delete: ${o.key}`);
-    totalDeleted += 1;
+  console.log(
+    `\n=== ${prefix} — ${generations.length} generation(s) / ${objects.length} object(s), ` +
+      `keeping ${keep.length}, deleting ${drop.length} ===`,
+  );
+  for (const g of keep) {
+    const parts = g.objects.length > 1 ? ` (${g.objects.length} parts)` : '';
+    console.log(`  keep:   ${g.stamp}${parts}`);
+    for (const o of g.objects) console.log(`            ${o.key}`);
+  }
+  for (const g of drop) {
+    for (const o of g.objects) {
+      await deleteObject(bucket, o.key);
+      console.log(`  delete: ${o.key}`);
+      totalDeleted += 1;
+    }
   }
 }
 
-console.log(`\nDone. Deleted ${totalDeleted} object(s) total across ${prefixes.length} prefix(es), keeping up to ${KEEP} each.`);
+console.log(
+  `\nDone. Deleted ${totalDeleted} object(s) total across ${prefixes.length} prefix(es), ` +
+    `keeping up to ${KEEP} GENERATION(s) each.`,
+);

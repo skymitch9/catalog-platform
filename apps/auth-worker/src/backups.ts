@@ -69,7 +69,31 @@ export const KNOWN_BACKUP_PREFIXES = [
 
 export interface BackupPrefixSummary {
   newest: string | null; // ISO 8601, or null when the prefix has never been written
+  /**
+   * ⚠️ GENERATIONS, not objects. An oversized bucket dump is split into
+   * `<STAMP>.tar.gz.part-aa`, `.part-ab`, … (measured 2026-08-18: the
+   * `audiobook-covers` tarball hit 313.5 MiB against `wrangler r2 object
+   * put`'s 300 MiB hard cap), so one night can be several keys. Counting
+   * objects would report "9 backups" for a single split night and read
+   * healthier than the estate is. `scripts/prune-r2-backups.mjs` groups the
+   * same way, for the harsher reason that counting keys there DELETES real
+   * backups.
+   */
   count: number;
+}
+
+/**
+ * The generation stamp a key belongs to — everything up to the first `.` of
+ * the basename. ⚠️ Deliberately a second copy of
+ * `scripts/lib/backup-keys.mjs`'s `generationOf`, for the same reason
+ * KNOWN_BACKUP_PREFIXES is a literal copy: there is no shared module between a
+ * Node script and this Worker. If the key grammar ever changes, change both —
+ * the test file asserts this function against the same cases.
+ */
+export function generationOf(key: string): string {
+  const base = key.slice(key.lastIndexOf('/') + 1);
+  const dot = base.indexOf('.');
+  return dot === -1 ? base : base.slice(0, dot);
 }
 
 export interface BackupsSummary {
@@ -97,13 +121,15 @@ export async function summarizeBackups(bucket: ListableBucket): Promise<BackupsS
   for (const prefix of KNOWN_BACKUP_PREFIXES) {
     const listed = await bucket.list({ prefix: `${prefix}/` });
     let newestMs: number | null = null;
+    const generations = new Set<string>();
     for (const obj of listed.objects) {
+      generations.add(generationOf(obj.key));
       const ms = obj.uploaded instanceof Date ? obj.uploaded.getTime() : Date.parse(String(obj.uploaded));
       if (Number.isFinite(ms) && (newestMs === null || ms > newestMs)) newestMs = ms;
     }
     prefixes[prefix] = {
       newest: newestMs === null ? null : new Date(newestMs).toISOString(),
-      count: listed.objects.length,
+      count: generations.size,
     };
     if (newestMs !== null && (newestOverallMs === null || newestMs > newestOverallMs)) {
       newestOverallMs = newestMs;
