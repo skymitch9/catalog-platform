@@ -99,6 +99,18 @@
 > Had it counted keys, a future split night would have consumed the allowance
 > and deleted real backups behind it.
 >
+> **FINAL PROOF — the exact shape the nightly cron runs** (`target=all`, run
+> [`32113993309`](https://github.com/skymitch9/catalog-platform/actions/runs/32113993309),
+> 2026-08-18T07:58Z): **12/12 jobs green, all eleven stores written.**
+> Retention closed with
+> `Done. Deleted 0 object(s) total across 11 prefix(es), keeping up to 8
+> GENERATION(s) each`, and `r2/audiobook-covers` read
+> **`4 generation(s) / 6 object(s)`** — two split nights of two parts plus two
+> single-object nights, grouped correctly. The Firestore dump came back
+> `58 collections, 1331 documents` with `⚠️ Expected but absent:
+> readingPositions` and nothing else, so the expected-collection check is
+> working and `discord_links` is protected.
+>
 > ⚠️ **NOT verified:** that any of the three new stores RESTORES. Their paths
 > are identical to their siblings' (a D1 `.sql`, two bucket tarballs), which is
 > an inference from an identical mechanism, not a measurement. The next drill
