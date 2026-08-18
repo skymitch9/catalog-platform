@@ -79,22 +79,30 @@ answer wins and is relayed in words — never a silent no-op, never a bare statu
 `PendingChoice` kind.** Not its own document, not a new key namespace, not a new
 Durable Object.
 
-⚠️ **Where the type lives is changing under this design, in a way that helps.**
-Observed in the working tree 2026-08-18, mid-flight from a concurrent build:
-`packages/gabi-conversation/` — `@platform/gabi-conversation`, described in its
-own `package.json` as *"The ONE GABI conversation substrate … Pure — no I/O, no
-Discord types, no Durable Object, no D1. Consumed in-repo by
-`@platform/discord-worker` and cross-repo by `library_catalog`."*
+⚠️ **`PendingChoice` MOVED while this design was being written, in a way that
+helps — measured, not assumed.** Commit `98e5991` (2026-08-18, *"The
+conversation substrate leaves Discord: one shape, two surfaces"*) extracted the
+surface-neutral half into **`packages/gabi-conversation/`**
+(`@platform/gabi-conversation`), consumed in-repo by the Discord Worker and
+cross-repo by `library_catalog`. `conversation.ts` re-exports it, so no importer
+changed.
 
-**If that lands, `confirm_change` belongs in the shared package, not in the
-Discord Worker**, and §5's surface-neutral claim stops being an aspiration and
-becomes structural: the panel imports the same type rather than reimplementing
-it. ⚠️ **Not verified — observed uncommitted, not confirmed landed** (§12).
-Phase 1 should check where `PendingChoice` actually lives before adding to it.
+**So `confirm_change` is added to `packages/gabi-conversation/src/index.ts`, not
+to the Discord Worker** — and §5's surface-neutral claim stops being an
+aspiration and becomes structural: the panel imports the same type rather than
+reimplementing it. The extraction's own comment on `PendingChoice` anticipates
+this lane in as many words:
+
+> *"The field stays neutral rather than Discord-only because **a T2 confirm on
+> the panel is the same shape**."*
+
+⚠️ Note what stayed behind in the Worker, because §5.3 depends on the split:
+**the `gc|…` custom_id vocabulary, the select menu, the modal and `CONV_MSG`'s
+sentences are Discord-only.** That is exactly the seam this design needs — the
+*structure* is shared, the *rendering* is not.
 
 ```ts
-// the shared substrate (or apps/discord-worker/src/conversation.ts
-// if the package extraction has not landed) — the third kind
+// packages/gabi-conversation/src/index.ts — the third kind
 export type PendingChoice =
   | ({ kind: 'book_pick' }     & PendingBase)
   | ({ kind: 'instance_pick' } & PendingBase & { verb: …; isbn?: string })
@@ -640,11 +648,14 @@ grammar in three places.
   not from a live database.
 - **Whether the panel's store can hold `PendingChoice`** is asserted from
   continuity §1.3's table, not from panel-v2's (in-flight) code.
-- ⚠️ **`packages/gabi-conversation/` was observed UNCOMMITTED in the working
-  tree** (2026-08-18) while this doc was written — a concurrent build, read but
-  not touched. Its `package.json` and file list were read; **its `src/index.ts`
-  was not**, and it may not land in this shape or at all. §2's note about where
-  `confirm_change` belongs is conditional on it.
+- ✅ **`packages/gabi-conversation/` IS landed** — re-checked after it committed
+  as `98e5991`, and `PendingChoice` was read at
+  `packages/gabi-conversation/src/index.ts:181`. §2 states this as measured
+  rather than assumed. ⚠️ What was **not** read: the package's tests, and
+  whether `library_catalog`'s cross-repo sync
+  (`scripts/sync-gabi-conversation.mjs`, named in the package description) has
+  actually run — so *"the panel imports the same type"* is a claim about the
+  package's intent, not an observed import.
 - **The role/capability names** are taken from `role-capability-map.md`
   (compiled 2026-08-17 from source). The exact capability constant for club
   operations was **not** re-read from `capabilities.ts` for this doc.
