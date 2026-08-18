@@ -1211,6 +1211,98 @@ is reasoned or vendor-published.**
 
 ---
 
+## 10b. ⚠️ INCIDENT — the first live book question was answered from the book shelf (2026-08-18)
+
+Minutes after `GABI_BOOKS` was flipped on and deployed, the owner asked the
+question this feature exists for and got the catalogue. **His transcript is now
+a regression test** (`apps/discord-worker/test/book-knowledge.test.ts` §5).
+
+> **@GABI Tell me jakes status sheet at the end of the 9th book**
+
+> I looked on the estate's public shelf for **jakes status sheet at end 9th**.
+> Nothing on the estate's public shelf matches that. ⚠️ That's a statement about
+> the **catalogue**, not about the house…
+
+⚠️ **This is the docs assistant's §12 incident, one lane over, in the same
+week.** That design doc states the lesson in bold — *offering the tools is not
+the same as routing to them* — and this build applied it to the docs lane's
+detector while shipping a book detector with three holes in it.
+
+### The diagnosis, reproduced before anything was changed
+
+```
+booksIntent("Tell me jakes status sheet at the end of the 9th book")  ->  false
+classifyByKeyword(...)                                                ->  question
+```
+
+The `question` branch unconditionally runs a public-shelf lookup and grounds the
+model on the miss. The reply reassembles from `MENTION_MSG.searched` +
+`MENTION_MSG.none`, which names the branch exactly — the same instrument §12
+used.
+
+⚠️ **The BOUND was already correct.** `boundFromQuestion` returned
+`{whole_book}` all along; the defect was one layer up. That is pinned as its own
+test so a later reader does not go hunting in the scoping code.
+
+### Three misses, and the shape that generalises them
+
+| # | Miss | Why it matters |
+|---|---|---|
+| 1 | **`status sheet`**, where the detector knew only `stat sheet` | the books use both — the transcripts say *"he checked his **status** menu"*. A detector that knows one word does not know the word the reader is holding while they type |
+| 2 | **`at the end of THE 9TH book`** | the pattern required a book word *immediately* after `of`; two words in between and it missed |
+| 3 | **`9th book`** | every anchor existed as `book 9`, none as `9th book`. An ordinal is how people name a volume in a series they are mid-way through |
+
+The generalising shape, now STRONG: **a character's possessive plus an
+attribute** — *"jakes status sheet"*, apostrophe optional because nobody types
+one into a DM. It identifies a book by its CHARACTER rather than its title,
+which the catalogue cannot answer even in principle — it holds no character
+names.
+
+⚠️ **The shelf lane is pinned intact** by its own test: seven catalogue
+questions that name a book exactly the way his did (*"do we have the 9th Primal
+Hunter book?"*, *"what's the title of book 3?"*) still route to the shelf.
+`title` sits in the STRONG possessive list and **out** of the weak one —
+*"Jake's titles"* is a LitRPG award, *"the title of book 3"* is a catalogue row,
+and one word decides which lane a reader lands in.
+
+### The character-with-no-title half
+
+His question never named the series. `list_book_knowledge` matches **titles and
+ids, not characters**, so a query of *"Jake"* finds nothing. The tool
+description and the system prompt now say what to do instead: work out the
+series from the conversation or from what you know of the books, look the
+SERIES up to get its ids, take the volume they named, then search.
+⚠️ **Guessing where to LOOK is fine and expected; guessing the ANSWER is not.**
+If she cannot tell which series, she asks — never the catalogue, and never
+*"nothing matched"*.
+
+### ⚠️ A second defect found while exercising the FIX
+
+`book-retrieval.ts`'s own `looksLikeStatQuestion()` has **the identical word
+gap**: it fires on `stat sheet` and not on `status sheet`. Measured live on book
+9, `mode=latest`, `q="status sheet"`:
+
+| | top hits |
+|---|---|
+| detector auto (off) | ord 1800 `stat_keys: 0`, 1795 `12`, 1649 `0` — passages that MENTION the words |
+| detector forced on | ord 1796 `stat_keys: 12`, 403 `12` — the actual stat BLOCKS |
+
+The Discord side now sends `stat_block=true` (the override the route already
+accepts) whenever the query is stat-shaped — only ever `true`, never `false`,
+and never on `mode=presence`. ⚠️ **The Worker's own detector still has the gap
+for every OTHER caller** (the browser door, and anything built on these routes
+later). One word in `book-retrieval.ts`; it belongs to whoever owns that Worker.
+
+### What the owner should now see
+
+*"Tell me jakes status sheet at the end of the 9th book"* → measured live
+against the deployed routes, the fixed path returns ord 1796, ch 78 *"Into the
+Abyss"*, 20 h 09 m, `stat_keys: 12`, `stitch: full`, containing:
+**Name, Jake Thane. Race, Human. Level 204. Class, Arcane Hunter of Horizon's
+Edge.**
+
+---
+
 ## 11. Owner decisions — ONE AT A TIME, in this order
 
 Each carries a recommendation. Nothing in §9 should start before decision 1 is

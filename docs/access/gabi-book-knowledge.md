@@ -164,6 +164,20 @@ Invoke-RestMethod "https://audiobook-api.heygabi.ai/api/books/available?limit=5"
   across a re-chunk leaked 28 chapters in testing. Nothing on the Discord side
   computes or stores one: it sends `scope=whole_book|through_chapter|unknown`
   and the pack derives the ceiling every turn.
+- ⚠️ **ROUTING IS THE DEFECT CLASS THIS FEATURE FAILS BY, TWICE NOW.** The first
+  live question (*"jakes status sheet at the end of the 9th book"*) was answered
+  from the catalogue because `booksIntent()` missed three ways at once —
+  `status` vs `stat`, words between "end of" and "book", and `9th book` vs
+  `book 9`. Design §10b has the full account. **If a book question ever gets a
+  shelf answer again, look at `booksIntent()` FIRST** and reproduce it with a
+  one-line script before touching anything else; the reply text tells you the
+  branch, because a shelf answer reassembles from `MENTION_MSG.searched` +
+  `MENTION_MSG.none`.
+- ⚠️ **`book-retrieval.ts`'s `looksLikeStatQuestion()` has the same `stat` /
+  `status` gap** and it is NOT fixed — the Discord side works around it by
+  sending `stat_block=true` whenever the query is stat-shaped. Every other
+  caller of these routes still gets the auto detector, which measurably returns
+  passages that MENTION the words instead of the blocks themselves.
 - ⚠️ **A book turn burns THREE fuses** — the ordinary turn cap, and the books
   day cap, and (if she also read docs) the docs cap. They are separate counters
   in separate key namespaces on purpose.

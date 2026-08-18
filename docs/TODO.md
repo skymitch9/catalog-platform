@@ -177,10 +177,21 @@ carry `source`, `chunks`, `chapters` and `ingester_version` — but no `title`.
 that renders `title` will render blanks. The fix is in the INGESTER's index
 writer, not in the serving layer.
 
-**3. Not measured: how the four tools behave in a real conversation.**
-The routes were exercised directly and the executor is unit-tested, but no
-end-to-end Discord turn has been graded. The owner's live test is the first one
-— see the test lines in the finisher's report.
+**3. ⚠️ One word in `apps/audiobook-worker/src/book-retrieval.ts` — NOT fixed.**
+`looksLikeStatQuestion()` fires on "stat sheet" and not on "status sheet", the
+word the transcripts actually use. Measured: the auto detector returns passages
+that MENTION the words (`stat_keys: 0`) where the forced one returns the actual
+blocks (`stat_keys: 12`). The Discord lane works around it by sending
+`stat_block=true`; **every other caller of these routes still has the gap** —
+the browser door, and anything built on them later. Outside the finisher's
+fence, so it is recorded rather than done.
+
+**4. Not measured: how the four tools behave in a real conversation.**
+The routes were exercised directly (including the exact call the fixed routing
+now makes) and the executor is unit-tested, but no end-to-end Discord turn has
+been graded. ⚠️ The owner's FIRST live turn found a routing defect that no unit
+test would have caught — design §10b — so the second live turn is worth
+watching just as closely.
 
 ## 🔑 ESTATE SSO — BUILT + DEPLOYED, INERT PENDING ONE OWNER CONSOLE STEP (2026-08-18)
 
