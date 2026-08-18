@@ -43,6 +43,67 @@
 > off-Cloudflare copy of `estate-backups`, and one throwaway remote-import
 > drill to close the largest unverified step.
 >
+> **Proof run for all of the above** (`target=all`, run
+> [`32111218016`](https://github.com/skymitch9/catalog-platform/actions/runs/32111218016),
+> 2026-08-18T07:23Z). **Ten of eleven stores landed**, including all three new
+> ones on their first ever run:
+>
+> ```
+> estate-backups/d1/library-catalog-2nd/20260818T072359Z.sql      <- NEW, first copy ever
+> estate-backups/r2/ebooks-gated/20260818T072354Z.tar.gz          <- NEW, first copy ever
+> estate-backups/r2/estate-docs-gated/20260818T072357Z.tar.gz     <- NEW, first copy ever
+> estate-backups/d1/library-catalog/20260818T072356Z.sql
+> estate-backups/d1/board-game-catalog/20260818T072400Z.sql
+> estate-backups/d1/index_catalog/20260818T072357Z.sql
+> estate-backups/d1/estate_auth/20260818T072356Z.sql
+> estate-backups/firestore/audiobook-catalog/20260818T072358Z.tar.gz
+> estate-backups/r2/library-covers/20260818T072357Z.tar.gz
+> estate-backups/r2/game-covers/20260818T072355Z.tar.gz
+> ```
+>
+> `retention` then listed **11 prefixes** (was 8) and logged
+> `Deleted 0 object(s) total across 11 prefix(es), keeping up to 8 each` — the
+> three new stores at 1 generation, the eight existing ones at 3.
+>
+> **Two things this run MEASURED that nothing else could have:**
+>
+> 1. **The Firestore dump is now 58 collections / 1,331 documents** (was 56 /
+>    1,303) and the new expected-collection check fired for exactly one name.
+>    So: `discord_links` **is present and backed up** — discovery caught it
+>    with no code change, as predicted — and `readingPositions` **holds no
+>    documents today**, which is why it is absent. That closes RECOVERY.md
+>    §8's unverified item 4 without needing a local Firebase credential.
+> 2. ⚠️ **`r2 (audiobook-covers)` FAILED on a transient Cloudflare HTTP 500**
+>    (`code 10001`, *"We encountered an internal error. Please try again."*)
+>    one object into ~1,972, three minutes in. Not caused by any change here —
+>    it is a pre-existing fragility the daily cadence would have hit
+>    unattended. Fixed by a narrow retry in `backup-r2.mjs` (§3.2) and
+>    re-proven by run
+>    [`32112803753`](https://github.com/skymitch9/catalog-platform/actions/runs/32112803753)
+>    — but the retry only got it as far as a SECOND, harder failure: the
+>    archive had outgrown `wrangler r2 object put`'s 300 MiB cap (§3.3). Both
+>    are fixed and both are proven below.
+>
+> **Split-path proof** (`target=r2`, run
+> [`32112803753`](https://github.com/skymitch9/catalog-platform/actions/runs/32112803753)):
+> all five buckets green. `audiobook-covers` tarred to 328,773,109 bytes and
+> was written as **two parts** —
+> `20260818T074352Z.tar.gz.part-aa` / `.part-ab` — and ⚠️ **retention counted
+> them as ONE generation**, which is the assertion that matters:
+>
+> ```
+> === r2/audiobook-covers — 3 generation(s) / 4 object(s), keeping 3, deleting 0 ===
+> Done. Deleted 0 object(s) total across 11 prefix(es), keeping up to 8 GENERATION(s) each.
+> ```
+>
+> Had it counted keys, a future split night would have consumed the allowance
+> and deleted real backups behind it.
+>
+> ⚠️ **NOT verified:** that any of the three new stores RESTORES. Their paths
+> are identical to their siblings' (a D1 `.sql`, two bucket tarballs), which is
+> an inference from an identical mechanism, not a measurement. The next drill
+> should exercise them.
+>
 > Previously verified **2026-08-15** — `backup.yml` rewired to write into the
 > private `estate-backups` R2 bucket instead of workflow artifacts (this
 > banner and §1/§3/§6/§8 below). Bucket created fresh this session, confirmed
@@ -285,6 +346,77 @@ outlive the newest-8 window, download the object and keep it somewhere
 durable (the same Drive account already used for the audiobook library, or
 any offline copy).
 
+### 3.2 ⚠️ One transient Cloudflare 500 used to lose a whole bucket
+
+**Measured 2026-08-18, on the first run after the daily cron landed** (run
+`32111218016`): `audiobook-covers` listed 1,972 objects, spent ~3 minutes
+downloading them, and died on ONE object with
+
+```
+GET audiobook-covers/<key> failed (HTTP 500):
+{"code":10001,"message":"We encountered an internal error. Please try again."}
+```
+
+Cloudflare's own error text says *"please try again"* and `backup-r2.mjs` did
+not. Survivable while a backup was a button-press somebody watched; **not**
+survivable unattended, where the failure mode is a bucket quietly missing from
+a night's backup. `backup-r2.mjs` now retries — **narrowly, on purpose**:
+
+- **5xx and 429 only.** A 401/403/404 is a real answer about permissions or a
+  vanished key; retrying it turns a clear failure into a slow one.
+- **4 attempts**, exponential backoff with jitter (~0.5 s / 1 s / 2 s). A
+  dropped socket counts as the same class of problem as a 500.
+- **Every retry is logged.** A bucket that only succeeds by retrying must read
+  differently in the log from one that succeeded first time — a silent retry
+  would hide a degrading bucket.
+- **It still fails after the last attempt**, and the byte-size check and the
+  zero-object rule are untouched. This survives a blip; it does not tolerate a
+  broken bucket.
+
+⚠️ **A failed job does NOT poison the others.** `fail-fast: false` on both
+matrices means one bucket dying leaves the other four (and every D1 export, and
+Firestore) landing normally — which is exactly what happened on that run: ten
+of eleven stores were written and only `audiobook-covers` was missed. Check the
+run's job list, not just its overall red/green.
+
+### 3.3 ⚠️ `audiobook-covers` outgrew the uploader — dumps over 250 MiB are SPLIT
+
+**Measured 2026-08-18** (run `32112007920`, immediately after §3.2's retry made
+the download succeed): the archive built fine and the *upload* failed.
+
+```
+r2-audiobook-covers-<STAMP>.tar.gz is 328774189 bytes.     # 313.5 MiB
+Error: Wrangler only supports uploading files up to 300 MiB in size
+```
+
+A hard ceiling (300 MiB = 314,572,800 bytes), not a blip, and **there is no way
+round it with the credentials this estate has**: the plain Cloudflare REST
+`PUT .../objects/{key}` carries the same limit, and multipart upload needs
+S3-compatible access keys that deliberately do not exist here (§6's reasoning).
+
+⚠️ **This is not a one-bucket problem.** `game-covers` measured **178,897,690
+bytes (170.6 MiB)** the same day and is growing — 57% of the way to the same
+wall. So the fix is generic, not special-cased: **any archive over 250 MiB**
+(threshold set below the cap so there is headroom rather than a cliff) is split
+into 200 MiB parts and uploaded as `<STAMP>.tar.gz.part-aa`, `.part-ab`, …
+Restore concatenates them (§6, `RECOVERY.md` §5).
+
+⚠️ **RETENTION HAD TO LEARN ABOUT THIS FIRST, AND IT IS THE DANGEROUS HALF.**
+One generation is now potentially several keys. "Keep the newest 8 **keys**"
+would let one split night fill the whole allowance and **delete every real
+backup behind it**. `scripts/prune-r2-backups.mjs` therefore groups by
+generation stamp (`scripts/lib/backup-keys.mjs`) and keeps the newest 8
+**generations**, deleting a generation's parts *together* — a half-deleted
+generation cannot be reassembled and must never exist.
+`scripts/test/backup-keys.test.mjs` builds exactly that losing fixture and
+asserts the new behaviour drops only the oldest night. `backups.ts`'s per-prefix
+`count` counts generations for the same reason, less harshly: counting objects
+would report one split night as nine backups and read healthier than the estate
+is.
+
+⚠️ **The last GOOD `audiobook-covers` backup before this fix was 2026-08-16.**
+Two runs failed in between — one on §3.2's transient 500, one on this ceiling.
+
 **Two secrets this workflow needs, both on `catalog-platform` only:**
 
 | Secret | What | How to get it |
@@ -515,6 +647,10 @@ empty local store if you forget it.
 npx wrangler r2 object get "estate-backups/r2/library-covers/<timestamp>.tar.gz" --file ./r2-dump.tar.gz --remote
 mkdir -p ./restore-work/library-covers && tar xzf ./r2-dump.tar.gz -C ./restore-work/library-covers
 
+# ⚠️ audiobook-covers is SPLIT (§3.3) — fetch every part and concatenate first:
+#   cat ./r2-dump.tar.gz.part-* > ./r2-dump.tar.gz
+# A dump missing any part cannot be untarred at all. RECOVERY.md §5 has the loop.
+
 node -e '
   const fs = require("fs");
   const { execFileSync } = require("child_process");
@@ -638,7 +774,7 @@ else. Note who currently holds either before relying on this path.
 | `scripts/lib/firestore-timestamps.mjs` | The reviver itself: pure, dependency-free, with the one accepted ambiguity argued in its header |
 | `scripts/lib/d1-dump.mjs` | The dump splitter/reorderer + the `estate_auth` membership reader §4c prints from |
 | `scripts/test/*.test.mjs` | The offline proofs for both of the above — `npm run test:scripts`, also run by the root `npm test`. No network, no credential, no write |
-| `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before |
+| `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before. ⚠️ **Retries 5xx/429 with backoff as of 2026-08-18** — see §3.2 |
 | `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite) |
 | `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported. **A mandatory step of the D1 restore path, with a regression test** (2026-08-18), and the place §4c's `estate_auth` warning is printed |
 | `scripts/seed-estate.mjs` | `estate_auth`'s independent rebuild path, §9 |

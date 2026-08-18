@@ -128,7 +128,7 @@ Ranked by blast radius. These are not "stale" — no copy exists anywhere.
 | 7 | **KV `estate_docs`** (`3278d5e3…`) | **0 keys today** (`wrangler kv key list` → `[]`) | Nothing to lose right now; it is a declared store with no backup path, so it becomes a hole the day it is used |
 | 8 | **R2 `estate-audio`** | 0 objects — empty by design (on-request fulfilment) | Nothing to lose; would become hole #4's twin at 630 GB scale if it ever filled |
 | 9 | **R2 `library-2nd-covers`**, **R2 `bgc-photos`** | 0 objects each | Nothing to lose today; both belong in the matrix the day they hold anything |
-| 10 | **R2 `estate-backups` itself** | 16 objects, 917 MB — 8 stores × **2** generations | Single-copy, single-region, single-account. Retention is configured for 8 but only two `target=all` runs have ever landed, so "8 deep" is a setting, not a fact |
+| 10 | **R2 `estate-backups` itself** | 16 objects, 917 MB — 8 stores × **2** generations | Single-copy, single-region, single-account. Retention is configured for 8 but only two `target=all` runs have ever landed, so "8 deep" is a setting, not a fact. ✅ **The 8-vs-2 question is answered — young system, not a prune bug** (§9, and `backup-restore.md` §3's retention note). ⏳ The single-copy half is still open and is owner step #2 |
 
 **Not a hole, confirmed:** the four git repos (distributed by git), and the
 OpenAudible `.m4b` library (Google Drive sync, `sync_to_drive.py`). Both are
@@ -402,6 +402,20 @@ the Actions run summary) and lands in `_summary.json` as `missingExpected`.
 Never fatal: an empty collection is a legitimate state. The next gap of this
 shape shows up in a run log instead of needing another drill.
 
+✅ **AND THE OPEN QUESTION IS NOW ANSWERED — MEASURED 2026-08-18T07:23Z**, on
+the first backup run after the change (run `32111218016`). The dump came back
+**58 collections / 1,331 documents**, up from 56 / 1,303:
+
+| Collection | Drill (2026-08-16) | Measured 2026-08-18 |
+|---|---|---|
+| `discord_links` | absent | ✅ **present and backed up** — it holds documents now, so discovery caught it with no code change, exactly as predicted |
+| `readingPositions` | absent | ⚠️ **still absent, and now we know WHY**: the expected-collection check fired for it and only it. It holds **no documents today** — it is empty, not missing from the dump by accident |
+
+That closes §8's unverified item 4 ("whether they hold documents today"). ⚠️ The
+answer for `readingPositions` is *"nothing has written to it yet"*, which means
+it is not a backup hole today and becomes one the moment it is used — and the
+warning will keep saying so on every run until then.
+
 ⚠️ The `_dev` twins are deliberately **not** in that list: the drill counted 16
 root collections — nine named with counts plus seven `_dev` twins — but did not
 record *which* seven, and listing a twin that does not exist would print a
@@ -521,6 +535,31 @@ from the **live** bucket and SHA-256'd against the backup's copy — **all three
 matched byte-for-byte.** The dumps are faithful to production, not merely
 internally consistent.
 
+⚠️ **A BIG BUCKET'S DUMP IS SPLIT INTO PARTS — REASSEMBLE FIRST (2026-08-18).**
+`wrangler r2 object put` refuses anything over **300 MiB**, and the
+`audiobook-covers` tarball measured **328,774,189 bytes (313.5 MiB)** on
+2026-08-18. Oversized archives are therefore written as
+`<STAMP>.tar.gz.part-aa`, `.part-ab`, … — fetch every part and `cat` them back
+together **in order** before untarring. The parts are plain byte slices of one
+archive; no part is independently useful.
+
+```bash
+# a SPLIT dump (audiobook-covers, as of 2026-08-18) — fetch each part, then cat:
+for p in aa ab; do
+  npx wrangler r2 object get "estate-backups/r2/audiobook-covers/<STAMP>.tar.gz.part-$p"     --file "./r2-dump.tar.gz.part-$p" --remote
+done
+cat ./r2-dump.tar.gz.part-* > ./r2-dump.tar.gz     # alphabetical order IS cat order
+```
+
+⚠️ **How to know whether it is split, and how many parts** — `wrangler r2
+object` has no `list`, so read the run log (§2 method A): each part logs its own
+`Wrote estate-backups/…part-XX` line, and the job prints `<key> was written as
+N part(s)`. ⚠️ **A dump missing any part cannot be untarred at all.** Retention
+deletes a generation's parts together, so a surviving generation is always
+complete.
+
+Everything else is a single object:
+
 ```bash
 npx wrangler r2 object get "estate-backups/r2/library-covers/<STAMP>.tar.gz" \
   --file ./r2-dump.tar.gz --remote
@@ -599,8 +638,11 @@ Stated plainly so nobody reads a green table as more than it is.
 1. **Any remote D1 import.** `--local` only; a remote import is a write.
 2. **Any Firestore `--commit` write.** No non-production Firestore exists.
 3. **Any R2 `put`.** Only `get` and byte comparison.
-4. **Whether `readingPositions` / `discord_links` hold documents today** — no
-   Firebase credential on this machine.
+4. ~~**Whether `readingPositions` / `discord_links` hold documents today**~~ —
+   ✅ **CLOSED 2026-08-18** by the backup job itself rather than by a local
+   credential (§4.1): `discord_links` is present and backed up;
+   `readingPositions` holds no documents. The dump is 58 collections / 1,331
+   documents.
 5. **Cloudflare plan tier**, so the Time Travel window is 7 or 30 days —
    unknown.
 6. **Restore of the second library instance** (`library-catalog-2nd`) — there

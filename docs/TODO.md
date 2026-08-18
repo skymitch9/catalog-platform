@@ -49,6 +49,16 @@ and why). RECOVERY.md's header carries the per-recommendation status table.
 - The three newly-covered stores (`library-catalog-2nd`, `ebooks-gated`,
   `estate-docs-gated`) have **never been through a restore drill**. Their paths
   are identical to their siblings' — an inference, not a measurement.
+- ⚠️ **`audiobook-covers` is now stored as multiple parts** — it outgrew
+  `wrangler r2 object put`'s 300 MiB cap at 313.5 MiB. A restore must
+  `cat <STAMP>.tar.gz.part-* > dump.tar.gz` first, and **a dump missing any
+  part cannot be untarred at all**. Verified only as far as "the parts are
+  written and retention counts them as one generation" — **reassembling and
+  untarring a split dump has NOT been exercised.** That is the first thing the
+  next drill should do.
+- ⚠️ **`game-covers` is 57% of the way to the same wall** (170.6 MiB of 300).
+  It will cross it on its own; the split path is already generic, so nothing
+  needs doing — but expect its objects to become parts without warning.
 
 ## 🟡 GABI READS THE ESTATE DOCS — LIVE; ONE OWNER STEP LEFT (the relink) (2026-08-18)
 
