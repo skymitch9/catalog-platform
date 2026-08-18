@@ -13,6 +13,43 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🗃️ GABI CATALOG Q&A TOOLS — ✅ TIER 0 DONE 2026-08-18
+
+⚠️ Moved WHOLE from `TODO.md`, unsummarised, per this file's own rule. The
+original entry, verbatim:
+
+> ## 🗃️ GABI CATALOG Q&A TOOLS (owner, 2026-08-17) — QUEUED behind continuity
+>
+> Owner: *"I want her to be able to access our db so she can smartly answer
+> questions like who's the narrator of Way of Kings?"* Read-only tool calls
+> against the catalogs' existing APIs/index (narrator, duration, series order,
+> cross-catalog ownership), scoped by the asker's link + visibilities; the
+> GABI_TOOL_NAMES allowlist idiom from the site panel carries over. Part of
+> the full-application design (see gabi-discord-app-design doc, 2026-08-17).
+
+**Shipped** (commit `1659252`, `estate-discord` version
+`c56b618b-ebe7-4f9d-9cf7-3a35324a0407`): `catalog_lookup` and `series_volumes`,
+both read-only, both credential-free, behind a `GABI_TOOL_NAMES` allowlist with
+a build-failing test (`apps/discord-worker/test/gabi-tools.test.ts`).
+
+⚠️ **The load-bearing measurement, because it inverts the item's own
+assumption:** "the catalogs' existing APIs/index" **cannot** answer the owner's
+question. `apps/index-worker/migrations/0001_entry.sql` has no narrator column,
+no duration column and no genre column — the index is a cross-catalog POINTER
+table by its own schema's declaration. The narrator lives on the audiobook
+site's published `catalog.csv` (public, 200, CORS `*`, 1,079 rows, narrator and
+duration filled on every one), which is what the tools read.
+
+Verified against the live catalogue, not fixtures: *who narrates Way of Kings*
+→ Kate Reading, Michael Kramer, 45:30, 2010, Stormlight #1, The Cosmere.
+Brandon Sanderson → 38 audiobooks (Cosmere 22, Cytoverse 7, Reckoners 6,
+unfiled 3; 9 with a library print/ebook edition).
+
+**Two pieces did NOT ship and are back in `TODO.md` with their measurements:**
+`person_context` (the TBR store is keyed on a display NAME, not a uid) and
+cross-catalog counting (the index answers 401 to an anonymous caller on
+everything but `/api/search`).
+
 ## ☁️ Workers Paid upgrade + the gateway cron backstop — ✅ DONE 2026-08-17
 
 Owner upgraded in the dashboard ("cloudflare upgraded"). What it changed: DO

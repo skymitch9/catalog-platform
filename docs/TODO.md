@@ -43,14 +43,59 @@ through a **gated** GABI tool, readable only to owner/devops-class linked
 callers — never household-general. Credential VALUES never appear in docs by
 rule; names/runbooks still deserve the gate.
 
-## 🗃️ GABI CATALOG Q&A TOOLS (owner, 2026-08-17) — QUEUED behind continuity
+## 🗃️ GABI CATALOG Q&A — TIER 0 SHIPPED 2026-08-18; two pieces did NOT
 
-Owner: *"I want her to be able to access our db so she can smartly answer
-questions like who's the narrator of Way of Kings?"* Read-only tool calls
-against the catalogs' existing APIs/index (narrator, duration, series order,
-cross-catalog ownership), scoped by the asker's link + visibilities; the
-GABI_TOOL_NAMES allowlist idiom from the site panel carries over. Part of
-the full-application design (see gabi-discord-app-design doc, 2026-08-17).
+Tier 0 (`catalog_lookup`, `series_volumes`) is live — the original item moved
+whole to [`DONE.md`](DONE.md). What remains is here because it was measured as
+out of reach, not because nobody got to it.
+
+**1. `person_context` — the asker's own TBR and reading positions. NOT BUILT.**
+Measured 2026-08-18 rather than attempted:
+
+- **TBR is keyed on a DISPLAY NAME, not a uid.** `readingLists/{displayNameLower}_{bookId}`
+  (audiobook_catalog `site/reviews.js`, whose own comment says the order is the
+  REVERSE of a review's and may not be harmonised because the ids already exist
+  in production). Two members sharing a display name would read each other's
+  list. That is an identity-safety question, not a plumbing one, and it wants
+  the owner's call before anything reads it.
+- **Reading positions ARE properly keyed** — `readingPositions/{uid}_{bookId}`,
+  and `discord_links/{discordUserId}` carries `firebaseUid`, so the join is
+  sound. What it needs is a Firestore `:runQuery` with a `__name__` prefix
+  range plus a typed-value decoder; this Worker has only ever done single-doc
+  GETs.
+- ⚠️ **It would also put `firestoreRequest` / `mintAccessToken` into the mention
+  path**, which today is 100% credential-free — a property `test/mentions.test.ts`
+  currently asserts against `mention-flow.ts`'s source. Shipping it means
+  deciding to give up that property on purpose.
+
+**2. Cross-catalog counting. STRUCTURALLY UNREACHABLE from Discord.**
+The owner asked the live bot *"how many books do we have in all the libraries
+from Brandon Sanderson and his related authors, include universes like Wheel of
+Time, Cosmere and Reckoners"*. Measured against the live index, anonymously:
+
+| endpoint | result |
+|---|---|
+| `GET /api/search?source=audiobook` | **200** — the public audiobook slice |
+| `GET /api/universes` | **401 `{"error":"unauthenticated"}`** |
+| `GET /api/universe/:name` | **401** |
+| `GET /api/series` | **401** |
+
+Only `/api/search` sits above the index's `requireEstateMember()` blanket, and
+`searchScope()` resolves an anonymous caller to `{audiobook}`. Widening needs a
+Firebase ID token Discord cannot produce. Tier 0 therefore counts the audiobook
+shelf exactly and **says so on every result** (`COVERAGE_NOTE`), rather than
+implying an estate-wide total. Closing this needs one of: an estate app-token
+pair for the index (`ESTATE_APP_TOKEN_DISCORD`) with a server-to-server
+widening path that does not exist yet, or public read-only universe/series
+counts on the index — an owner decision about what the anonymous internet may
+count, not a build task.
+
+**Also measured, and worth knowing before anyone "fixes" it:** the estate's
+shared universe list holds **16 universes and Wheel of Time is not one of
+them**, and the audiobook shelf holds **zero** Robert Jordan rows. So the right
+answer to that part of the owner's question is "that isn't a universe we
+record", which Tier 0 now says explicitly (it returns the real 16 rather than a
+bare 0).
 
 ## 🔑 GABI WRITE-VERB PERMISSION LADDER — ✅ APPROVED BY OWNER 2026-08-17 ("that looks good, start with that")
 
