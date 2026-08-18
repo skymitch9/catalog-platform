@@ -11,6 +11,8 @@ import { test } from 'node:test';
 
 import {
   describeBucket,
+  describeProofAge,
+  describeRestore,
   describeTotals,
   formatBytes,
   formatCost,
@@ -118,4 +120,62 @@ test('describeTotals/describeBucket survive a board shape nobody has invented ye
   assert.equal(describeTotals(undefined).headline, '—');
   assert.equal(describeBucket(null, null).tone, 'nodata');
   assert.equal(describeBucket('nonsense', null).tone, 'nodata');
+});
+
+// ---------------------------------------------------------------------------
+// The restore proof — the line whose job is telling him the backups are readable
+// ---------------------------------------------------------------------------
+
+test('⚠️ "ok" IS A PASS — the first real proof recorded that word and rendered as a warning', () => {
+  // Shipped wrong for exactly one push: the renderer recognised only "pass", so
+  // the conductor's verdict "ok" came out as "⚠️ ok" — a warning glyph on a
+  // PASSING test, on the one line that exists to say the backups are provably
+  // readable. A vocabulary this small has no business being one hardcoded string.
+  const v = describeRestore(
+    { at: new Date(Date.now() - 300_000).toISOString(), verdict: 'ok', detail: 'sha256-identical round trip' },
+    Date.now(),
+  );
+  assert.match(v, /^✓ passed/);
+  assert.doesNotMatch(v, /⚠️/);
+  assert.match(v, /sha256-identical/);
+});
+
+test('every success word the provers actually use reads as a pass', () => {
+  for (const verdict of ['ok', 'OK', 'pass', 'passed', 'success', 'succeeded']) {
+    const v = describeRestore({ at: new Date(Date.now() - 60_001).toISOString(), verdict }, Date.now());
+    assert.match(v, /^✓ passed/, `"${verdict}" should read as a pass`);
+  }
+});
+
+test('⚠️ an unrecognised verdict SHOWS THE WORD rather than guessing at it', () => {
+  // Same rule the Drive-parity row follows: a new verdict is the prover saying
+  // something new, and flattening it is how a page contradicts its own source.
+  const v = describeRestore({ at: new Date(Date.now() - 60_001).toISOString(), verdict: 'partial' }, Date.now());
+  assert.match(v, /⚠️ partial/);
+});
+
+test('⚠️ NEVER PROVEN is the default and says so in words', () => {
+  for (const bad of [null, undefined, {}, { verdict: 'ok' }, { at: 'nonsense', verdict: 'ok' }]) {
+    const v = describeRestore(bad, Date.now());
+    assert.match(v, /never — nothing has been read back out of the bucket/);
+  }
+});
+
+test('⚠️ a proof stamped in the FUTURE says the clock disagrees, not "unknown"', () => {
+  // Measured 2026-08-18: the first proof carried 22:35Z while the page rendered
+  // at 21:52Z. Clamping that to "an unknown time" threw away a real fact and
+  // made a successful test look unmeasurable.
+  const now = Date.now();
+  const v = describeRestore({ at: new Date(now + 43 * 60_000).toISOString(), verdict: 'ok' }, now);
+  assert.match(v, /^✓ passed/, 'a clock gap must not turn a pass into a failure');
+  assert.match(v, /in the FUTURE/);
+  assert.match(v, /clock is ahead/);
+});
+
+test('a small clock skew reads as "just now" rather than shouting', () => {
+  const now = Date.now();
+  assert.match(describeProofAge(-30_000), /just now/);
+  assert.match(describeProofAge(5_000), /just now/);
+  assert.match(describeProofAge(90 * 60_000), /ago/);
+  assert.match(describeProofAge(NaN), /unreadable/);
 });

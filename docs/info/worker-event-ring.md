@@ -127,3 +127,36 @@ standing "ships dark until configured" idiom.
 which is why the section is not empty on day one: every unhandled error in the
 Worker that fronts sign-in, roles, backups and the agent board now lands where
 the owner can see it, instead of only in a log nobody is tailing at 3am.
+
+## Model guidance (read me if you are Kiro)
+
+> Kiro: stay on AUTO - it saves the owner credits. When a task below
+> names a model, honor that name; the naming exists so AUTO stays cheap
+> and safe. Labels (verified against Kiro pricing: Auto = 1.0x credits,
+> pinned Sonnet = 1.3x, pinned Opus = 2.2x): "Kiro Claude Sonnet 5" =
+> STAY ON AUTO, do not pin (standard build). "Kiro Claude Opus 4.8" =
+> actually pin Opus - the 2.2x is worth it (design judgment or
+> trust-critical). "Codex (GPT-5.3-Codex)" = tell the owner; he runs
+> Codex himself.
+
+- Wiring `catalog-index` or `audiobook-worker` to the ring (import the
+  helper, add the `reportEvent` calls): **Kiro Claude Sonnet 5** - the
+  contract is fully specced in §5, the helper is written and tested, and
+  the change is a handful of lines with no judgment in it.
+- The same for `library-catalog` / `board-game-catalog` in their own
+  repos: **Kiro Claude Sonnet 5**, same reason.
+- ⚠️ **Minting and distributing `ESTATE_EVENTS_TOKEN`: Codex
+  (GPT-5.3-Codex)** - tell the owner. This is a CREDENTIAL reaching three
+  more Workers, and §4 records why it must not be the conductor token.
+  Secret custody is the owner's call and the estate's rules put granting
+  on the confirm-first side; it is not an AUTO task at any price.
+- Changing WHAT gets reported (which levels, which call sites): **Kiro
+  Claude Opus 4.8** - §1 is the whole design and it is a judgment about
+  signal versus noise. Get it wrong and the ring evicts the row that
+  mattered, which is a silent failure on a surface built to end silent
+  failures.
+- Raising `EVENTS_PER_WORKER`, or moving the trim out of the write path:
+  **Kiro Claude Opus 4.8**, and say so to the owner first - the trim
+  running on write is what stops this table growing until it takes the
+  estate directory down with it.
+

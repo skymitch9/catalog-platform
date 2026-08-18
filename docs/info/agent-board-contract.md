@@ -393,3 +393,33 @@ silenced phone misses the red one too. The page distinguishes *"nobody has chose
 yet, these are the defaults"* from *"he chose these"*, because a default
 presented as a decision is a decision nobody made.
 
+## Model guidance (read me if you are Kiro)
+
+> Kiro: stay on AUTO - it saves the owner credits. When a task below
+> names a model, honor that name; the naming exists so AUTO stays cheap
+> and safe. Labels (verified against Kiro pricing: Auto = 1.0x credits,
+> pinned Sonnet = 1.3x, pinned Opus = 2.2x): "Kiro Claude Sonnet 5" =
+> STAY ON AUTO, do not pin (standard build). "Kiro Claude Opus 4.8" =
+> actually pin Opus - the 2.2x is worth it (design judgment or
+> trust-critical). "Codex (GPT-5.3-Codex)" = tell the owner; he runs
+> Codex himself.
+
+- Adding a new SECTION to the board (a pusher writes it, a page renders
+  it): **Kiro Claude Sonnet 5** - §9 and §2 spec the whole contract, the
+  draft-merge is a shared module, and per-section stamping is automatic.
+- Writing a new PUSHER: **Kiro Claude Sonnet 5** - use
+  `scripts/lib/board-draft.mjs`; ⚠️ never hand-roll the read-modify-write,
+  because a push carrying only your section DELETES everyone else's and
+  the read door is `requireDevops()` so nothing can fetch them back.
+- ⚠️ **Changing the stamping rule in `stampSections()`, or what the
+  freshness strip measures: Kiro Claude Opus 4.8.** This is the code that
+  decides whether a stale picture can look fresh - the exact bug §9
+  shipped with and §0013 fixed. It is trust-critical: getting it wrong
+  restores a lie that renders as a working page.
+- Anything touching `notify-prefs` doors or defaults (§10): **Kiro Claude
+  Opus 4.8** - the write door being closed to machines is a security
+  property, and the defaults decide what wakes a person at night.
+- Widening who may READ the board, or putting the push token anywhere
+  new: **Codex (GPT-5.3-Codex)** - tell the owner. Same rule as the event
+  ring: credentials and read-access are confirm-first, never AUTO.
+

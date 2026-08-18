@@ -190,9 +190,7 @@ export function describeArchive(a, nowMs = Date.now()) {
     // fine, and the estate's recovery runbook names this as its largest
     // unverified step. Hashing on the way UP is not proof anything can be read
     // back DOWN.
-    value: a.restore_test && a.restore_test.at
-      ? `${a.restore_test.verdict === 'pass' ? '✓ passed' : `⚠️ ${a.restore_test.verdict}`} ${formatAgeShort(nowMs - Date.parse(a.restore_test.at))} ago${a.restore_test.detail ? ` — ${a.restore_test.detail}` : ''}`
-      : '⚠️ never — nothing has been read back out of the bucket and checked',
+    value: describeRestore(a.restore_test, nowMs),
   });
 
   const tone = a.transfer === 'stalled' || (Number.isFinite(a.failure_count) && a.failure_count > 0)
@@ -221,3 +219,52 @@ function formatAgeShort(ms) {
   if (h < 24) return `${h}h ${m % 60}m`;
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
+
+/**
+ * Verdicts that mean the round trip WORKED.
+ *
+ * ⚠️ "pass" ALONE WAS NOT ENOUGH, AND IT SHIPPED WRONG FOR ONE PUSH. The
+ * conductor's first real retrieval proof recorded `verdict: "ok"`, and a
+ * renderer that only recognised "pass" rendered it as **"⚠️ ok"** — a warning
+ * glyph on a PASSING test, on the one line whose entire job is telling the owner
+ * his backups have been proven readable. A vocabulary this small has no business
+ * being a single hardcoded string.
+ */
+const RESTORE_PASS = new Set(['ok', 'pass', 'passed', 'success', 'succeeded']);
+
+/**
+ * The restore-proof line.
+ *
+ * ⚠️ AN UNRECOGNISED VERDICT SHOWS THE WORD IT WAS GIVEN and flags it, rather
+ * than being flattened to "failed" — the same rule the Drive-parity row follows.
+ * A new verdict is the prover saying something new; guessing at it is how a page
+ * ends up contradicting the tool it is reporting on.
+ */
+export function describeRestore(t, nowMs = Date.now()) {
+  if (!t || !t.at || !Number.isFinite(Date.parse(t.at))) {
+    return '⚠️ never — nothing has been read back out of the bucket and checked';
+  }
+  const verdict = String(t.verdict || '').trim().toLowerCase();
+  const passed = RESTORE_PASS.has(verdict);
+  const head = passed ? '✓ passed' : `⚠️ ${t.verdict || 'no verdict recorded'}`;
+  const when = describeProofAge(nowMs - Date.parse(t.at));
+  return `${head} ${when}${t.detail ? ` — ${t.detail}` : ''}`;
+}
+
+/**
+ * How long ago the proof ran.
+ *
+ * ⚠️ A PROOF STAMPED IN THE FUTURE IS NOT "AN UNKNOWN TIME". Measured
+ * 2026-08-18: the first recorded proof carried 22:35Z while the page rendered it
+ * at 21:52Z — 43 minutes ahead. Clamping that to "unknown" threw away a fact
+ * worth having (two clocks disagree) and made a successful test look
+ * unmeasurable. Small skew reads as "just now"; a real gap SAYS the prover's
+ * clock is ahead, because that is the true and actionable statement.
+ */
+export function describeProofAge(ms) {
+  if (!Number.isFinite(ms)) return 'at an unreadable time';
+  if (ms < -120_000) return `— recorded ${formatAgeShort(-ms)} in the FUTURE, so the prover's clock is ahead of this page`;
+  if (ms < 60_000) return 'just now';
+  return `${formatAgeShort(ms)} ago`;
+}
+
