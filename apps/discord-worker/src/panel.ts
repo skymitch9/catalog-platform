@@ -71,12 +71,29 @@ import type { DelegatePort, LibraryInstance, WhoAmI } from './delegated.js';
  * cannot place. ⚠️ Not the apex: `heygabi.ai` runs no panel. */
 export const DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai';
 
-/** ⚠️ MEASURED, not chosen: `?q=` is taken by the library app's own collection
- * search on the same path. The full record is in `docs/TODO.md` and
- * `library_catalog/docs/info/gabi-fixer-design.md` §10.2. */
+/**
+ * ⚠️ **MEASURED, not chosen**, and re-measured against the DEPLOYED bundle on
+ * 2026-08-18 rather than taken from a note. `library.heygabi.ai` and
+ * `padhard.heygabi.ai` serve the identical `/assets/index-rvJiy8K2.js`, which
+ * contains, minified:
+ *
+ * ```js
+ * const ag = "gabi", V0 = 500;
+ * function LD(t) {
+ *   const e = new URLSearchParams(t).get(ag);
+ *   if (e === null) return null;
+ *   const n = e.replace(/\s+/g, " ").trim();
+ *   return n ? (n.length > V0 ? n.slice(0, V0).trimEnd() : n) : null;
+ * }
+ * ```
+ *
+ * ⚠️ **NOT `?q=`** — that is the library app's own collection search on `/`, the
+ * exact path this link points at, so `?q=` would filter the book list to the
+ * question as well: an empty catalogue under a floating panel.
+ */
 export const PANEL_PREFILL_PARAM = 'gabi';
 
-/** The panel's own cap on what it will prefill. Longer text is truncated HERE
+/** The panel's own cap, read off the same bundle (`V0 = 500`). Truncated HERE
  * rather than sent and silently dropped there, so what the link promises and
  * what the box shows are the same thing. */
 export const PANEL_PREFILL_MAX = 500;
@@ -100,13 +117,20 @@ export function panelBase(env: Pick<Env, 'GABI_PANEL_URL'>): string {
  * question to give it; a required argument would turn a health row into a lie
  * or a crash.
  *
- * The text is normalised (newlines and runs of spaces collapse — a Discord
- * message is multi-line and a query string is not), capped, and encoded. Empty
- * or whitespace-only prefill yields the bare link rather than `?gabi=`.
+ * ⚠️ **The normalisation MIRRORS the panel's own reader, step for step** — the
+ * measured `replace(/\s+/g, ' ')`, `trim()`, `slice(0, 500)`, `trimEnd()`. That
+ * is deliberate: doing it here means the URL a person can see in Discord is
+ * character-for-character what the box will hold, instead of a longer string
+ * that quietly shrinks on arrival. Empty or whitespace-only yields the bare
+ * link rather than a dangling `?gabi=`.
  */
 export function panelDeepLink(base: string, prefill?: string): string {
   const root = `${base.replace(/\/+$/, '')}/`;
-  const text = (prefill ?? '').replace(/\s+/g, ' ').trim().slice(0, PANEL_PREFILL_MAX);
+  const text = (prefill ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, PANEL_PREFILL_MAX)
+    .trimEnd();
   if (!text) return root;
   return `${root}?${PANEL_PREFILL_PARAM}=${encodeURIComponent(text)}`;
 }

@@ -113,6 +113,29 @@ describe('⚠️ the link carries the question the panel will prefill', () => {
     assert.equal(PANEL_PREFILL_MAX, 500);
   });
 
+  it('⚠️ what we send is BYTE-FOR-BYTE what the panel will hold', () => {
+    // The panel's own reader, MEASURED off the deployed bundle 2026-08-18
+    // (`/assets/index-rvJiy8K2.js`, identical on both instances). Reproduced
+    // here so a drift in either direction fails the build rather than showing
+    // somebody a link whose text quietly shrinks on arrival.
+    const panelWouldRead = (raw: string): string | null => {
+      const n = raw.replace(/\s+/g, ' ').trim();
+      if (!n) return null;
+      return n.length > 500 ? n.slice(0, 500).trimEnd() : n;
+    };
+    for (const raw of [
+      'fix the author on Mistborn',
+      '  fix\n\nmy   missing details ',
+      `${'word '.repeat(120)}tail`,
+      'a'.repeat(499) + ' ' + 'b'.repeat(40),
+    ]) {
+      const sent = new URL(panelDeepLink(DEFAULT_PANEL_BASE, raw)).searchParams.get(
+        PANEL_PREFILL_PARAM,
+      );
+      assert.equal(sent, panelWouldRead(raw), `the panel would not hold what we sent for: ${raw.slice(0, 40)}`);
+    }
+  });
+
   it('an absent or blank question yields the bare link, never a dangling param', () => {
     assert.equal(panelDeepLink(DEFAULT_PANEL_BASE), FALLBACK);
     assert.equal(panelDeepLink(DEFAULT_PANEL_BASE, ''), FALLBACK);
