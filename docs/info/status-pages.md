@@ -103,6 +103,15 @@ silence.
   markers in `sites/heygabi-home/predeploy.checks.json` move with it. A pin left
   on the old file fails every deploy for a control that works perfectly one page
   over; a pin deleted instead of moved silently stops watching.
+- ⚠️ **`verify:home` right after a deploy can report false MISSINGs.** Measured
+  2026-08-18: the run chained inside `deploy:home` failed 15 markers across
+  `pipelines.js`, `agents.js`, `lib/*.js` and `status-shell.css`, all "served
+  200 but is MISSING"; a second run minutes later failed 9; a third passed all
+  24. Fetching the same URLs directly showed the correct new content the whole
+  time — it is **edge propagation lag, not a failed upload**. Re-run
+  `npm run verify:home` before believing it, and only investigate a marker that
+  survives a re-run. (The pattern is diagnostic: a genuinely missing file fails
+  the same way every time, and fails for *every* marker on that path.)
 - **The gate can only be checked signed in.** `predeploy-check --live` fetches
   unauthenticated, so every marker it asserts is page **chrome**. Proof that the
   gated content works is a human in a browser, and nothing else.

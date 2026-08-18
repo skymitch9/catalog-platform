@@ -879,18 +879,10 @@ there too. Brief essentials for the finisher agent (model: opus):
 - Pre-existing red: apps/discord-worker typecheck TS2345
   test/question-sync.test.ts:801.
 
-### In-flight build B: /status SPLIT (4 pages)
-Blueprint = "Ops IA" section below in this file (BUILD TO THIS). Agent's last
-words: "JS parses. Now the Agents page." Uncommitted work likely in
-sites/heygabi-home/public/status/ + apps/auth-worker/src/ops.ts.
-- Check whether ESTATE_CONDUCTOR_TOKEN secret was created (wrangler secret
-  list on auth-worker + docs/access/keys/ custody file). Secret handling ONLY
-  per docs/access/discord-bot.md §7 file-redirect ritual.
-- Pause card RELOCATES to /status/pipelines intact (37 tests + predeploy pins
-  must move with it).
-- Processing tab renders a pushed state blob; contract to be documented in
-  docs/info/; agents tab GET behind requireDevops, POST behind the token;
-  usage figures block included.
+### In-flight build B: /status SPLIT (4 pages) — ✅ FINISHED 2026-08-18, moved whole to [`DONE.md`](DONE.md)
+All four pages are live and were checked signed in. The one piece of it still
+open is a NEW item, not a leftover: nothing pushes the `processing` section
+yet — see "Processing tab: the pusher" below.
 
 ### Primal Hunter / GPU
 Books 1–9 transcribed+packed. Book 10 was mid-transcription at restart — its
@@ -927,18 +919,17 @@ tonight's hold; library.heygabi.ai/tbr shows Court of the Dead.
 All from the owner's messages of 2026-08-18 morning; queued behind the pause-UI
 agent because they share the /status page surface.
 
-1. **Agents tab** — live list of running Claude agents + which model each runs
-   on. Design agreed with owner: a small state endpoint the conductor PUSHES to
-   on every agent event (dispatch/landing/failure) + heartbeats; the page polls
-   it every 30 s. (Owner asked for "a poll by you every 30 s" — the page polls
-   30 s; the conductor pushes event-driven, which was explained and accepted.)
+> ⚠️ **Items 1 and 3 SHIPPED 2026-08-18 and were moved whole to
+> [`DONE.md`](DONE.md)** with the /status split that carries them. The numbers
+> of the remaining items are left as they were — 0, 2, 4 — so the references
+> above and in DONE.md still point at the same things. Item **2 is HALF done**:
+> the page exists and is live, and what is missing is the pusher, restated
+> below as its own item.
 2. **Ingestion/processing tab** — which books are being processed right now,
    per-book % progress, a history of everything processed, and next to each
    processed book a label saying **when it became part of GABI's knowledge
    base** (pack ingested + servable). Data source: the transcription batch's
    progress/log + the pack manifests (ingester_version) in ebooks-gated.
-3. **Usage figures on the status page** — session % / weekly % / Fable %
-   pushed by the conductor to the same state endpoint on its usage pulses.
 4. ⚠️ **Incremental knowledge is a REQUIREMENT, not a nice-to-have** (owner:
    "I don't want to wait until every book is processed to use Gabi's
    knowledge. I want to use her while the knowledge base grows"). The serving
@@ -948,31 +939,43 @@ agent because they share the /status page surface.
    ceilings already support this; the available-books check is the piece to
    make explicit.
 
-### Ops IA — the /status SPLIT (owner mock 2026-08-18, organized by conductor; BUILD TO THIS)
+### Ops IA — the /status SPLIT — ✅ BUILT 2026-08-18, blueprint moved whole to [`DONE.md`](DONE.md)
 
-Owner: "maybe a health page that also has logs for the pods/workers/containers,
-a page for data processing, a page for running the pipelines and their logs...
-take this and organize it into pages you think make sense." Four pages, one
-shared nav shell, all under the existing auth gate:
+The four pages are live behind the devops gate:
+[Health](https://heygabi.ai/status/) ·
+[Processing](https://heygabi.ai/status/processing/) ·
+[Pipelines](https://heygabi.ai/status/pipelines/) ·
+[Agents](https://heygabi.ai/status/agents/). Reference lives by topic now:
+[`info/status-pages.md`](info/status-pages.md) (who owns what, the module map,
+the three traps) and [`info/agent-board-contract.md`](info/agent-board-contract.md)
+(the pushed blob). Custody of the push bearer:
+[`access/agent-board.md`](access/agent-board.md).
 
-| Page | Job | Contents |
-|---|---|---|
-| **/status** (Health) | Front door: is everything up? | Green/amber/red per component (workers, gateway DO, crons, D1/Firestore/R2); last deploy per worker from deploys.log; **recent log lines per worker** (see log note); backup freshness (last daily run + which mirrors confirmed) |
-| **/status/processing** (Data processing) | GABI's knowledge base growing | Items 2 above: in-flight books + %, processed history, "joined GABI's knowledge base <date>" per book; queue depth by lane (audiobook-with-review / EPUB / text-PDF / deferred-PDF); pack counts + ingester_version |
-| **/status/pipelines** (Pipelines) | Run + control | The pause/resume + timers card (relocates here from /status once built); nightly-window state (Phoenix clock, next window, GPU guard reading); run history with per-run logs (ingestion, backups, Drive sync, detail sweeps); manual triggers only where already safe |
-| **/status/agents** (Agents) | Claude capacity | Item 1 above (running agents + model, 30 s poll of conductor-pushed state); event feed (dispatched/landed/failed); usage figures live HERE (item 3) — they are Claude capacity, same subject |
+**Two follow-ups the split deliberately did NOT block on:**
 
-⚠️ **Log honesty:** there are no pods/containers — the estate is Workers +
-local PC pipelines. Workers cannot be live-tailed from a static page; the
-plan is a **log ring buffer**: workers write structured error/event rows to
-D1 (capped, newest-N), pages render it, deep-dive links out to the
-Cloudflare dashboard. Local pipeline logs already exist on the PC; the
-ingestion build publishes recent tails to the same state endpoint. Never
-fake a "live" tail that is actually stale — timestamp every log block.
+### Processing tab: THE PUSHER (the half that is missing)
+The page is live and honest — every section says *"the home-machine pipeline is
+not pushing one yet"* rather than looking idle — but **nothing writes the
+`processing` section**. The remaining work is on the home machine: the
+transcription/packing pipeline gains a step that POSTs `in_flight`, `queue`,
+`packs` and `history` to `/api/estate/ops/agent-board` using
+`scripts/push-agent-board.mjs`. Field-by-field contract, already written and
+already tolerated by the renderer:
+[`info/agent-board-contract.md`](info/agent-board-contract.md) §6.
+⚠️ `joined_at` is the date the pack became **servable**, not the date it was
+transcribed — the page will not derive one from the other, because they are
+different facts and the owner's ask was the first one.
 
-Build order: pause-UI agent lands → nav shell + page split + Agents/
-Processing pages (one agent, one surface) → ring buffer wiring can trail as
-a follow-up without blocking the split.
+### Worker log ring buffer (owner asked for "logs for the pods/workers")
+⚠️ **There are no pods or containers** — the estate is Workers plus pipelines on
+a home PC, and that word must not become a promise the estate cannot keep.
+Workers cannot be live-tailed from a static page. The plan: workers write
+structured error/event rows to a **capped D1 table** (newest-N), Health renders
+it, and deep-dive links out to the Cloudflare dashboard. Local pipeline logs
+already exist on the PC; the ingestion push can carry recent tails on the same
+board. Never fake a "live" tail that is actually stale — **timestamp every log
+block**. Health currently says the section is not built rather than showing an
+empty box that reads as silence.
 
 Raised mid-conversation and **not yet decided** — recorded because it reframes
 the federation question above rather than adding to it.

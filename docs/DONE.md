@@ -13,6 +13,112 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🖥️ THE /status SPLIT — FOUR PAGES — ✅ DONE 2026-08-18
+
+Built across two sessions: the first died mid-run on an Anthropic 529 outage
+with its work uncommitted on disk, the second finished it. Live and checked
+**signed in as the owner's account**, not merely deployed:
+[Health](https://heygabi.ai/status/) ·
+[Processing](https://heygabi.ai/status/processing/) ·
+[Pipelines](https://heygabi.ai/status/pipelines/) ·
+[Agents](https://heygabi.ai/status/agents/).
+
+Durable reference moved OUT of the work log by topic, per the docs rule:
+[`info/status-pages.md`](info/status-pages.md),
+[`info/agent-board-contract.md`](info/agent-board-contract.md),
+[`access/agent-board.md`](access/agent-board.md).
+Commits `765de77` (the split) and `e126e55` (custody). Migration 0012 applied
+`--remote` before the Worker deploy — it is one `CREATE TABLE IF NOT EXISTS`
+on a new object, nothing existing touched, which is what made it safe unattended.
+
+⚠️ **Two latent bugs this build FOUND rather than added, both of the same
+family — a rule that matches paths exactly while a human reads it as a prefix:**
+
+1. **`/api/estate/ops/ingestion` had no CORS mount**, so the ingestion pause
+   card shipped (bc6fc2b) **unreachable from a browser** while answering `curl`
+   perfectly. Every call carries an Authorization header, which makes it a
+   preflighted cross-origin request; the OPTIONS came back with no
+   `Access-Control-Allow-Origin` and the fetch never reached the handler. Hono
+   mounts are exact-or-wildcard, never prefix-implicit, so `/ops/pipeline*`
+   never covered it. Nothing caught it because **no human had ever rendered
+   that card signed in** — its own doc says so.
+2. **`_headers` does not match by prefix either.** `/status` covers the literal
+   path and nothing under it, so the three new pages were one commit away from
+   shipping with **no CSP and no `X-Frame-Options` at all** — signed-in devops
+   surfaces, frameable. Six rules now, both slash forms each.
+
+**What was moved rather than rebuilt:** the ingestion pause card relocated from
+Health to Pipelines **intact**, and its predeploy pins moved with it — three
+markers out of the `/status/status.js` entry and into
+`/status/pipelines/pipelines.js`. A pin left on the old file fails every deploy
+for a control working perfectly one page over; a pin deleted instead of moved
+silently stops watching. Its pure half (`assets/ingestion-time.js`, 23 tests)
+did not move at all — only its caller did.
+
+**The gate is one file for four pages** (`status/lib/gate.js`) because four
+copies is four chances for one to fail **open**, and that failure is invisible:
+a page that reveals controls to the wrong person looks exactly like a page that
+works.
+
+---
+
+The three items below are moved **whole** from [`TODO.md`](TODO.md).
+
+### In-flight build B: /status SPLIT (4 pages)
+Blueprint = "Ops IA" section below in this file (BUILD TO THIS). Agent's last
+words: "JS parses. Now the Agents page." Uncommitted work likely in
+sites/heygabi-home/public/status/ + apps/auth-worker/src/ops.ts.
+- Check whether ESTATE_CONDUCTOR_TOKEN secret was created (wrangler secret
+  list on auth-worker + docs/access/keys/ custody file). Secret handling ONLY
+  per docs/access/discord-bot.md §7 file-redirect ritual.
+- Pause card RELOCATES to /status/pipelines intact (37 tests + predeploy pins
+  must move with it).
+- Processing tab renders a pushed state blob; contract to be documented in
+  docs/info/; agents tab GET behind requireDevops, POST behind the token;
+  usage figures block included.
+
+### Status-page expansion items 1 and 3 (owner asks, 2026-08-18)
+
+1. **Agents tab** — live list of running Claude agents + which model each runs
+   on. Design agreed with owner: a small state endpoint the conductor PUSHES to
+   on every agent event (dispatch/landing/failure) + heartbeats; the page polls
+   it every 30 s. (Owner asked for "a poll by you every 30 s" — the page polls
+   30 s; the conductor pushes event-driven, which was explained and accepted.)
+3. **Usage figures on the status page** — session % / weekly % / Fable %
+   pushed by the conductor to the same state endpoint on its usage pulses.
+
+⚠️ Item **2** (the processing tab) stayed in `TODO.md`: its PAGE shipped here,
+its PUSHER did not. Items 0 and 4 were never part of this build.
+
+### Ops IA — the /status SPLIT (owner mock 2026-08-18, organized by conductor; BUILD TO THIS)
+
+Owner: "maybe a health page that also has logs for the pods/workers/containers,
+a page for data processing, a page for running the pipelines and their logs...
+take this and organize it into pages you think make sense." Four pages, one
+shared nav shell, all under the existing auth gate:
+
+| Page | Job | Contents |
+|---|---|---|
+| **/status** (Health) | Front door: is everything up? | Green/amber/red per component (workers, gateway DO, crons, D1/Firestore/R2); last deploy per worker from deploys.log; **recent log lines per worker** (see log note); backup freshness (last daily run + which mirrors confirmed) |
+| **/status/processing** (Data processing) | GABI's knowledge base growing | Items 2 above: in-flight books + %, processed history, "joined GABI's knowledge base <date>" per book; queue depth by lane (audiobook-with-review / EPUB / text-PDF / deferred-PDF); pack counts + ingester_version |
+| **/status/pipelines** (Pipelines) | Run + control | The pause/resume + timers card (relocates here from /status once built); nightly-window state (Phoenix clock, next window, GPU guard reading); run history with per-run logs (ingestion, backups, Drive sync, detail sweeps); manual triggers only where already safe |
+| **/status/agents** (Agents) | Claude capacity | Item 1 above (running agents + model, 30 s poll of conductor-pushed state); event feed (dispatched/landed/failed); usage figures live HERE (item 3) — they are Claude capacity, same subject |
+
+⚠️ **Log honesty:** there are no pods/containers — the estate is Workers +
+local PC pipelines. Workers cannot be live-tailed from a static page; the
+plan is a **log ring buffer**: workers write structured error/event rows to
+D1 (capped, newest-N), pages render it, deep-dive links out to the
+Cloudflare dashboard. Local pipeline logs already exist on the PC; the
+ingestion build publishes recent tails to the same state endpoint. Never
+fake a "live" tail that is actually stale — timestamp every log block.
+
+Build order: pause-UI agent lands → nav shell + page split + Agents/
+Processing pages (one agent, one surface) → ring buffer wiring can trail as
+a follow-up without blocking the split.
+
+⚠️ **The ring buffer is still UNBUILT** and stayed in `TODO.md` as its own item
+— it was explicitly allowed to trail the split, and it did.
+
 ## 🔒 THE BACKUPS LEAVE CLOUDFLARE — ✅ DONE 2026-08-18
 
 Moved whole from [`TODO.md`](TODO.md), where it was **owner step 2** of the
