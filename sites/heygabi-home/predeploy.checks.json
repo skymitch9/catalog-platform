@@ -39,6 +39,9 @@
       "path": "/status/",
       "mustContain": [
         "GABI Knowledge",
+        "id=\"storage-section\"",
+        "id=\"storage-buckets\"",
+        "id=\"storage-fresh\"",
         "Estate status",
         "id=\"pipeline-rows\"",
         "id=\"index-rows\"",
@@ -261,6 +264,25 @@
     },
     {
       "_why": [
+        "storage-view.js (2026-08-18) — the blob-storage panel's WORDS. Pinned separately from status.js for the",
+        "usual ES-module reason: a missing lib/ file takes the importing page's script down at parse time while",
+        "the route still serves a cheerful 200.",
+        "⚠ 'not zero' is pinned as a STRING, not as an identifier, and it is the most important marker here. The",
+        "panel's whole contract is that an unmeasured bucket reads as UNKNOWN — a size of '—' and a sentence",
+        "saying so — because rendering a bucket nobody could measure as 0 B is, on the BACKUPS bucket, the most",
+        "alarming wrong answer this estate could publish. A refactor that dropped that wording would look",
+        "perfectly fine on a page where every bucket happened to answer."
+      ],
+      "path": "/status/lib/storage-view.js",
+      "mustContain": [
+        "describeBucket",
+        "describeTotals",
+        "formatBytes",
+        "not zero"
+      ]
+    },
+    {
+      "_why": [
         "ingestion-time.js (2026-08-18) is the PURE half of the pause card \u2014 the Phoenix conversion and every",
         "word the card says. Its correctness is pinned by scripts/test/ingestion-time.test.mjs, so these markers",
         "are about the file having actually SHIPPED: status.js imports it, and a missing module takes the whole",
@@ -298,6 +320,8 @@
       ],
       "path": "/status/status.js",
       "mustContain": [
+        "renderStorage",
+        "./lib/storage-view.js",
         "ebookLaneVerdict",
         "./lib/ebook-lane.js",
         "renderPipelineEbookRow",

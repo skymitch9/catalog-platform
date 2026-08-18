@@ -67,6 +67,10 @@ import {
 // The ebook lane's verdict — pure, and pinned by scripts/test/ebook-lane.test.mjs.
 // EBOOK_PRODUCING_TRIGGERS and ebookRunKind moved there with it on 2026-08-18.
 import { ebookLaneVerdict } from './lib/ebook-lane.js';
+// The blob-storage panel (owner ask 2026-08-18). PUSHED, not probed — see the
+// section comment in index.html for why a Worker route was rejected.
+import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness } from './lib/board.js';
+import { describeBucket, describeTotals } from './lib/storage-view.js';
 import { mountGate } from './lib/gate.js';
 import { idToken } from '../assets/estate-auth.js';
 
@@ -1012,6 +1016,141 @@ async function loadBackups() {
 }
 
 // ---------------------------------------------------------------------------
+// Blob storage (owner ask 2026-08-18: "a storage panel — objects, size, last
+// write, monthly cost, per bucket").
+//
+// ⚠️ THIS IS THE ONLY SECTION ON THIS PAGE THAT READS THE PUSHED BOARD, and it
+// therefore carries its OWN freshness strip rather than borrowing the page's
+// "checked Ns ago" rows. Those rows are probes this browser just made; these
+// figures were measured on the home machine and published, and the gap between
+// those two can be hours. One strip per clock.
+//
+// ⚠️ It measures itself against the `storage` SECTION's stamp, not the board's
+// (migration 0013). The processing pusher writes the same row every 15 minutes;
+// without per-section stamps this panel would claim to have been re-measured
+// every quarter of an hour while nothing of the sort had happened.
+//
+// ⚠️ NO THRESHOLDS AND NO COLOURS BEYOND "measured / not measured". A bucket
+// growing is not a fault, and this page has no idea what size is "too big" —
+// inventing an amber for it would be exactly the crying-wolf the /status colour
+// rule was written to stop. The one warning it does raise is a total that
+// covers fewer buckets than exist, which is a fact about the READING.
+// ---------------------------------------------------------------------------
+
+const storageFreshEl = document.getElementById('storage-fresh');
+const storageTotalsEl = document.getElementById('storage-totals');
+const storageBucketsEl = document.getElementById('storage-buckets');
+const STORAGE_SECTIONS = ['storage'];
+
+/** Last successful board read, so the strip can age itself between polls. */
+let lastStorageGood = null;
+
+/**
+ * Last-write, per bucket, from whatever actually WROTE it.
+ *
+ * ⚠️ `wrangler r2 bucket info` does NOT carry a last-write time, and this page
+ * refuses to derive one — a bucket's newest object is only discoverable by
+ * listing it, which is the O(objects) cost the pushed design exists to avoid.
+ * So the fact is sourced from the job that owns the bucket, and a bucket whose
+ * writer reports nothing says "last write not reported" rather than showing a
+ * timestamp that means something else.
+ */
+function lastWriteFor(name, board) {
+  if (name === 'estate-backups') {
+    // The backups section already knows: the Worker lists that bucket anyway,
+    // because it has to grade generations. Reuse the reading rather than take
+    // a second one.
+    const row = rowRegistry.get('backup-age');
+    if (row && row.checkedAt && row.el.dataset.state !== 'pending') {
+      const text = row.detailEl.textContent || '';
+      const m = /(\d+[a-z ]*(?:ago))/i.exec(text);
+      if (m) return `newest backup ${m[1]}`;
+    }
+    return null;
+  }
+  const proc = objectSection(board, 'processing');
+  if (name === 'ebooks-gated' && proc) {
+    const packs = objectSection(proc, 'packs');
+    if (packs && packs.as_of && Number.isFinite(Date.parse(packs.as_of))) {
+      return `pack manifest read ${formatAge(Date.now() - Date.parse(packs.as_of))}`;
+    }
+  }
+  return null;
+}
+
+function renderStorage(board) {
+  if (!storageBucketsEl || !storageTotalsEl) return;
+  const section = objectSection(board, 'storage');
+
+  if (!section) {
+    // ⚠️ FOUR SILENCES, ONE SENTENCE EACH — the board contract's rule. This is
+    // "pushed, but this section is absent", which means the storage pusher has
+    // not run, NOT that the estate has no storage.
+    storageTotalsEl.replaceChildren();
+    storageBucketsEl.replaceChildren();
+    storageBucketsEl.append(
+      el('p', 'empty-say',
+        'The last board carried no storage section. That means scripts/push-storage-board.mjs has not run — ' +
+        'it says nothing about what is in the buckets.'),
+    );
+    return;
+  }
+
+  const totals = describeTotals(section);
+  storageTotalsEl.replaceChildren();
+  const head = el('div', 'complete-headline');
+  head.dataset.tone = totals.tone;
+  head.append(el('span', 'complete-count', totals.headline));
+  head.append(el('span', 'complete-label', 'across every estate bucket'));
+  storageTotalsEl.append(head);
+  storageTotalsEl.append(el('p', 'section-note', totals.detail));
+
+  const buckets = Array.isArray(section.buckets) ? section.buckets : [];
+  storageBucketsEl.replaceChildren();
+  if (!buckets.length) {
+    storageBucketsEl.append(el('p', 'empty-say', 'The storage section carried no buckets.'));
+    return;
+  }
+  const list = el('ul', 'rows');
+  for (const raw of buckets) {
+    const b = raw && typeof raw === 'object' ? raw : {};
+    const d = describeBucket(b, lastWriteFor(b.name, board));
+    const li = el('li', 'row');
+    li.dataset.state = d.tone;
+    const dot = el('span', 'dot');
+    dot.setAttribute('aria-hidden', 'true');
+    li.append(dot);
+
+    const body = el('div', 'row-body');
+    const headRow = el('div', 'row-head');
+    headRow.append(el('span', 'row-name', `${b.label || b.name || 'unnamed bucket'}`));
+    headRow.append(el('span', 'badge', d.size));
+    body.append(headRow);
+    body.append(el('p', 'row-detail', d.detail));
+    // The bucket's real name earns its place: it is what an operator types.
+    const sub = [b.name, d.sub].filter(Boolean).join(' — ');
+    if (sub) body.append(el('p', 'row-note', sub));
+    li.append(body);
+    list.append(li);
+  }
+  storageBucketsEl.append(list);
+}
+
+async function loadStorage() {
+  const result = await fetchBoard(await idToken());
+  renderFreshness(storageFreshEl, result, lastStorageGood?.pushedAt ?? null, Date.now(), STORAGE_SECTIONS);
+  if (result.status !== 'ok') {
+    // ⚠️ The panel is LEFT AS IT WAS on a failed poll — blanking it would read
+    // as "the buckets are gone". The strip above has already said, in words,
+    // that what is on screen is not current.
+    if (result.status === 'never') renderStorage(null);
+    return;
+  }
+  lastStorageGood = result;
+  renderStorage(result.board);
+}
+
+// ---------------------------------------------------------------------------
 // The devops gate + wiring
 //
 // ⚠️ THE GATE IS lib/gate.js AND IS SHARED BY ALL FOUR PAGES. What it reveals
@@ -1023,13 +1162,31 @@ async function loadBackups() {
 const migrationSectionEl = document.getElementById('migration-section');
 const commandmentsSectionEl = document.getElementById('commandments-section');
 const backupsSectionEl = document.getElementById('backups-section');
+const storageSectionEl = document.getElementById('storage-section');
 
-mountGate({
-  sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl],
-  // Idempotent by design — the gate re-runs this on every auth event, and
-  // loadBackups() simply re-renders the same rows with a fresh reading.
-  onAllowed: () => { loadBackups(); },
+const gate = mountGate({
+  sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl],
+  // Idempotent by design — the gate re-runs this on every auth event, and both
+  // loaders simply re-render the same rows with a fresh reading.
+  onAllowed: () => { loadBackups(); loadStorage(); },
 });
+
+// The storage panel is PUSHED data, so it re-polls on the board's own cadence
+// rather than with this page's probe refresh — visible tabs only, same rule as
+// the other two pushed pages.
+setInterval(() => {
+  if (!document.hidden && gate.isAllowed()) loadStorage();
+}, BOARD_POLL_MS);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && gate.isAllowed()) loadStorage();
+});
+// ...and its strip re-words itself between polls, so "as of 29 seconds ago"
+// cannot still say so two minutes later because a fetch happened not to land.
+setInterval(() => {
+  if (lastStorageGood && storageFreshEl) {
+    renderFreshness(storageFreshEl, lastStorageGood, lastStorageGood.pushedAt, Date.now(), STORAGE_SECTIONS);
+  }
+}, TICK_INTERVAL_MS);
 
 buildDeploySection();
 buildIndexSection();

@@ -11,6 +11,12 @@
  *
  *   node scripts/push-agent-board.mjs board.json
  *   node scripts/push-agent-board.mjs board.json --by "conductor@home-pc"
+ *   node scripts/push-agent-board.mjs board.json --by "x@host" --sections storage
+ *
+ *   \u26a0\ufe0f --sections names the sections THIS push just wrote, so the Worker
+ *   restamps only those and every other section keeps its own age. Omit it and
+ *   the Worker falls back to diffing content, which never over-reports
+ *   freshness but does keep an old stamp on a re-measured, unchanged section.
  *   node scripts/push-agent-board.mjs board.json --url https://auth.heygabi.ai
  *   node scripts/push-agent-board.mjs --check          # read the board back
  *
@@ -50,11 +56,20 @@ function die(message, hint) {
 }
 
 function parseArgs(argv) {
-  const out = { file: null, by: null, baseUrl: DEFAULT_BASE_URL, tokenFile: DEFAULT_TOKEN_FILE, check: false };
+  const out = { file: null, by: null, sections: null, baseUrl: DEFAULT_BASE_URL, tokenFile: DEFAULT_TOKEN_FILE, check: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--check') out.check = true;
     else if (a === '--by') out.by = argv[++i];
+    // \u26a0\ufe0f --sections DECLARES WHICH SECTIONS THIS PUSH IS AUTHORITATIVE FOR.
+    // Without it the Worker decides by diffing content, which is correct but
+    // conservative: a section re-pushed byte-identical keeps its OLD stamp, so
+    // a measurement that genuinely re-ran reads as stale. Naming your section
+    // says "I am authoritative for this and I just wrote it", and the Worker
+    // restamps it from ITS OWN clock \u2014 never from anything sent here. Naming a
+    // section you did NOT write would backdate someone else's staleness into
+    // looking fresh, so name only your own. Contract \u00a79.
+    else if (a === '--sections') out.sections = argv[++i];
     else if (a === '--url') out.baseUrl = (argv[++i] || '').replace(/\/+$/, '');
     else if (a === '--token-file') out.tokenFile = argv[++i];
     else if (a === '--token') {
@@ -63,7 +78,7 @@ function parseArgs(argv) {
         'A secret on a command line lands in shell history and the process table. ' +
           'Use $ESTATE_CONDUCTOR_TOKEN or --token-file.',
       );
-    } else if (a.startsWith('--')) die(`Unknown option "${a}".`, 'Options: --check --by --url --token-file');
+    } else if (a.startsWith('--')) die(`Unknown option "${a}".`, 'Options: --check --by --sections --url --token-file');
     else if (!out.file) out.file = a;
     else die(`Two board files given ("${out.file}" and "${a}") — this pushes exactly one.`);
   }
@@ -166,6 +181,7 @@ async function main() {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...(args.by ? { 'X-Estate-Pushed-By': args.by } : {}),
+        ...(args.sections ? { 'X-Estate-Sections': args.sections } : {}),
       },
       body: payload,
     });

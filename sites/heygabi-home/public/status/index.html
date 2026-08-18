@@ -182,6 +182,41 @@
     <ul id="backups-rows" class="rows"></ul>
   </section>
 
+  <!-- Blob storage (owner ask 2026-08-18: a storage panel — per bucket, how
+       many objects, how big, and what it costs a month).
+
+       ⚠️ PUSHED, NOT PROBED, and the reason is worth knowing before anyone
+       "fixes" it into a Worker route. Only FIVE of the eight buckets are bound
+       to a Worker in this repo (auth-worker holds estate-backups and
+       estate-docs-gated; audiobook-worker holds the other three). The three
+       COVER buckets live behind other repos' Workers, and binding another
+       repo's data store into the auth Worker to read a number would widen that
+       Worker's blast radius to include deleting cover art. On top of that a
+       Worker can only measure a bucket by LISTING it — O(objects), billed as
+       Class A operations, on every page load — whereas `wrangler r2 bucket
+       info` answers from Cloudflare's own accounting in one call per bucket.
+       So the home machine measures all eight and pushes them.
+       Design + the rejected alternatives: scripts/lib/storage-board.mjs.
+
+       ⚠️ The freshness strip is this section's own, and it reads the `storage`
+       section's stamp — not the board's. A processing push every 15 minutes
+       must never make these figures look freshly measured. -->
+  <section id="storage-section" aria-labelledby="storage-h" hidden>
+    <h2 id="storage-h">Blob storage</h2>
+    <div id="storage-fresh" class="freshstrip" data-tone="none">
+      <span class="fresh-age">reading&hellip;</span>
+      <span class="fresh-note">Asking the estate Worker for the last pushed board.</span>
+    </div>
+    <p class="section-note">
+      Every R2 bucket the estate owns. Sizes are Cloudflare&rsquo;s own rounded
+      figures and the cost is <em>storage only</em> &mdash; R2 also bills
+      operations, which this cannot see. Egress is free, which is why the estate
+      is on R2 at all.
+    </p>
+    <div id="storage-totals"></div>
+    <div id="storage-buckets"></div>
+  </section>
+
   <!-- Deploys (2026-08-18, blueprint: "last deploy per worker from
        deploys.log"). ⚠️ AND IT IS NOT deploys.log. That file lives in the
        repo at docs/deploys.log and is NOT published to the web — publishing
