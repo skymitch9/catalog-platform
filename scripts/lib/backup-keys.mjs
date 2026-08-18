@@ -72,3 +72,44 @@ export function groupByGeneration(objects) {
     }))
     .sort((a, b) => (a.stamp < b.stamp ? 1 : a.stamp > b.stamp ? -1 : 0));
 }
+
+/**
+ * The `<kind>/<store>` prefixes the backup system actually covers, read out of
+ * `.github/workflows/backup.yml`'s retention invocation.
+ *
+ * ⚠️ WHY PARSED AND NOT COPIED. This list already exists in three places
+ * (backup.yml's job matrices, backup.yml's prune arguments, and
+ * `apps/auth-worker/src/backups.ts`'s `KNOWN_BACKUP_PREFIXES`), and the restore
+ * drill found `library-catalog-2nd` missing from all three at once despite a
+ * header telling every reader to keep them together. `backups.test.ts` promoted
+ * that advice to a mechanical guard by PARSING this same invocation; a fourth
+ * hand-maintained copy for the mirror would reintroduce exactly the drift that
+ * guard exists to kill. So the mirror derives its expected set instead of
+ * declaring one, and a store added to backup.yml is mirrored the same night
+ * with no second edit.
+ *
+ * The parse is deliberately identical in shape to `backups.test.ts`'s: find the
+ * `node scripts/prune-r2-backups.mjs … --keep N` invocation, unfold its shell
+ * line continuations, and keep the tokens containing a `/`.
+ *
+ * @param {string} ymlText contents of `.github/workflows/backup.yml`
+ * @returns {{prefixes: string[], keep: number}}
+ */
+export function readWorkflowPrefixes(ymlText) {
+  const invocation = ymlText.match(/node scripts\/prune-r2-backups\.mjs([\s\S]*?)--keep\s+(\d+)/);
+  if (!invocation) {
+    throw new Error(
+      'Could not find the prune-r2-backups.mjs invocation in backup.yml. ' +
+        'The mirror derives the store list from it rather than keeping a fourth copy — ' +
+        'see this function’s header.',
+    );
+  }
+  const prefixes = invocation[1]
+    .replace(/\\\s*\n/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.includes('/'));
+  if (prefixes.length === 0) {
+    throw new Error('backup.yml’s retention invocation parsed to zero prefixes — refusing to mirror nothing.');
+  }
+  return { prefixes, keep: Number(invocation[2]) };
+}

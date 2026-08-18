@@ -13,6 +13,99 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔒 THE BACKUPS LEAVE CLOUDFLARE — ✅ DONE 2026-08-18
+
+Moved whole from [`TODO.md`](TODO.md), where it was **owner step 2** of the
+restore-drill follow-up: *"Get a copy of `estate-backups` off Cloudflare.
+Everything protected and everything protecting it live in one bucket, one
+account, one region. Needs a decision about where the copy goes before anything
+can be built."* The decision came, and the build followed the same day.
+
+**Owner decision 2026-08-18, verbatim:** *"Do a and b, don't store in GABI tho
+store in a new folder called GABI_backup on drive"* — BOTH a nightly local-PC
+mirror AND a Google Drive mirror, the Drive copy in a **new top-level folder**
+deliberately outside the estate's book folder tree.
+
+**Three homes, none of them Cloudflare:**
+
+| Home | Location |
+|---|---|
+| This PC | `C:\Users\nbasl\OneDrive\Documents\estate-backups-mirror\` |
+| OneDrive | the same folder — inside the synced tree, so the second cloud costs **no code of ours** |
+| Google Drive | `/GABI_backup`, My Drive **root**, created **unshared** |
+
+**What was built:**
+
+| Piece | Where | Why there |
+|---|---|---|
+| `mirror-estate-backups.mjs` | `catalog-platform/scripts/` | Speaks the R2 key grammar its sibling `backup-*.mjs` scripts define, and shares `lib/backup-keys.mjs` with them |
+| `mirror_to_drive.py` | `audiobook_catalog/scripts/` | The estate's Drive OAuth token lives there and nowhere else — the same reasoning that put `publish_docs_snapshot.py` there rather than here |
+| **STEP 10** | `audiobook_catalog/scripts/sync_to_drive.py` | Both halves, both cycle paths, each its own failure domain |
+
+⚠️ **It deliberately does NOT run in `backup.yml`.** A mirror running inside the
+same CI, on the same account's credentials, is not an off-Cloudflare copy — it
+is the same egg in the same basket with an extra step. It runs on the owner's
+machine, hung off the one unattended job already there.
+
+⚠️ **Both cycle paths, and that is not optional.** The backup workflow runs
+daily at 09:12 UTC whether or not the audiobook library gained a book. A mirror
+wired only to the busy path would track the estate's backups exactly as often
+as the owner buys audiobooks — and a disaster-recovery copy that silently stops
+refreshing is worse than none, because the dashboard still says one exists.
+
+**Two things it had to get right, both traced to real failed runs:**
+
+| Trap | What the code does |
+|---|---|
+| The workflow log contains both the rendered `##[notice]Wrote estate-backups/<key>` **and the shell that printed it** (`echo "::notice::Wrote estate-backups/$KEY"`) | Anchored on `##[notice]`, never on the words. A naive grep would try to fetch an object literally named `$KEY`. Pinned by a test |
+| Runs `32111218016` and `32112007920` each lost `audiobook-covers` mid-generation — one to a transient 500, one to the 300 MiB upload cap | Only **complete** generations are mirrored: a split archive counts as complete only when the run DECLARED a part count and that many parts were logged. **No declaration ⇒ incomplete**, because a missing part is indistinguishable from an unannounced one and "I cannot tell" resolves to "don't trust it". A half-mirrored split archive cannot be untarred **at all**, so mirroring one and reporting success is the worst available outcome |
+
+⚠️ **The store list is DERIVED, not copied.** `readWorkflowPrefixes()` parses
+`backup.yml`'s own retention invocation — the same technique `backups.test.ts`
+uses — so the mirror inherits both the store set and the `--keep` depth. A
+fourth hand-maintained copy of that list is exactly the drift that let
+`library-catalog-2nd` go unbacked-up; a store added to `backup.yml` is now
+mirrored the same night with no second edit.
+
+⚠️ **Retention: the mirror FOLLOWS the bucket. It is not an archive.** Both
+halves keep the newest N generations (N from `backup.yml`, 8 today) and delete
+the rest, **whole generations at a time**. A generation pruned upstream ages
+out of the mirror. A copy meant to outlive the bucket's retention must be taken
+by hand and put where neither script manages it. Drive **trashes** rather than
+hard-deletes — 30 days of recovery from a retention bug; the local half does
+not.
+
+⚠️ **How it enumerates the bucket, and what that costs.** Not a listing:
+`wrangler r2 object` has no `list`, and the REST endpoint needs
+`CLOUDFLARE_API_TOKEN`, a GitHub secret **not on this machine**. It reads the
+keys off the workflow log (RECOVERY §2 method A). **Consequence: the mirror
+sees what the workflow LOGGED, not what the bucket HOLDS** — an out-of-band
+deletion would go unnoticed. Accepted limitation, not an oversight; the day
+that token lands locally, swapping discovery for a real listing is a small
+edit.
+
+**First full run, measured 2026-08-18:**
+
+| | |
+|---|---|
+| Stores | **11 / 11** |
+| Objects | **12** (audiobook-covers is 2 parts) |
+| Bytes | **539,573,402** (514.6 MiB), identical on both mirrors |
+| Generation | `20260818T0948xxZ`, run `32123529431` — the first scheduled daily backup |
+| Discovery cost | **one** workflow-log read; the newest run satisfied all 11 stores |
+| Integrity, local | `d1/estate_auth` re-fetched from the live bucket and SHA-256'd: `dd558909…a10f9b` — **live bucket = mirror = manifest**, three-way |
+| Integrity, Drive | **12/12** objects, Drive's server-computed `md5Checksum` vs a local MD5. Not a spot-check — every object |
+| Idempotency | second run of each half: 0 fetched / 12 skipped, 0 uploaded / 12 skipped |
+| Suites | `test:scripts` **31/31**, audiobook pytest **1,339 passed** |
+
+⚠️ **NOT verified:** a restore performed *from* the mirror, and retention
+deleting anything (the mirror holds one generation; the first prune cannot
+happen until nine daily backups exist). Both are tracked in `TODO.md`.
+
+**Runbook:** `access/RECOVERY.md` **§2a** (locations, restore-from-mirror,
+retention semantics, credentials) and `audiobook_catalog/docs/access/PIPELINE.md`
+(the STEP 10 row and section).
+
 ## 🔒 THE RESTORE DRILL, AND THE HARDENING THAT FOLLOWED IT — ✅ DONE 2026-08-18
 
 Moved whole from [`TODO.md`](TODO.md) — the drill (commit `8522b7c`) and the

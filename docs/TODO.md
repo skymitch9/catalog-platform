@@ -15,7 +15,13 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
-## 🟡 BACKUPS ARE HARDENED — FOUR OWNER STEPS LEFT (2026-08-18)
+## 🟡 BACKUPS ARE HARDENED — THREE OWNER STEPS LEFT (2026-08-18)
+
+> ✅ **Owner step 2 — "get a copy of `estate-backups` off Cloudflare" — is
+> DONE (2026-08-18) and moved whole to [`DONE.md`](DONE.md).** The mirror is
+> built, wired into the pipeline as STEP 10, and populated: 11/11 stores,
+> 12 objects, 539,573,402 bytes, on this PC + OneDrive + Google Drive
+> `/GABI_backup`. Runbook: `access/RECOVERY.md` §2a.
 
 The restore drill (`8522b7c`) and the hardening that implemented seven of its
 ten recommendations (`8c7f780`) are **finished and archived whole in
@@ -34,9 +40,8 @@ and why). RECOVERY.md's header carries the per-recommendation status table.
 | # | Owner step | Why it matters | Where |
 |---|---|---|---|
 | 1 | **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it** | ⚠️ **The one that bites at 3am.** The restore credential exists only as a GitHub secret, which cannot be read back out. **A Firestore incident cannot be fixed from this machine as it stands** — the first step would be a Firebase-console trip to mint a new private key. This is a custody decision (where does it live, how is it protected), not a task | RECOVERY §7, §9.8 |
-| 2 | **Get a copy of `estate-backups` off Cloudflare** | Everything protected and everything protecting it live in one bucket, one account, one region. Needs a decision about where the copy goes before anything can be built | RECOVERY §8.8, §9.7 |
-| 3 | **Do one throwaway remote-import drill** | The largest unverified step in the whole runbook: no D1 import has ever been proven against a real REMOTE database, only `--local`. Closing it means creating a `*-restore-drill` D1, importing, checking counts, deleting it — a production-side write the drill's charter forbade | RECOVERY §3c, §9.5 |
-| 4 | **Stand up a second Firebase project**, or accept the gap permanently | The Firestore `--commit` write path has never been exercised: the only target is production. This is the "accept it or pay for it" call | RECOVERY §4.3, §9.6 |
+| 2 | **Do one throwaway remote-import drill** | The largest unverified step in the whole runbook: no D1 import has ever been proven against a real REMOTE database, only `--local`. Closing it means creating a `*-restore-drill` D1, importing, checking counts, deleting it — a production-side write the drill's charter forbade | RECOVERY §3c, §9.5 |
+| 3 | **Stand up a second Firebase project**, or accept the gap permanently | The Firestore `--commit` write path has never been exercised: the only target is production. This is the "accept it or pay for it" call | RECOVERY §4.3, §9.6 |
 
 **Not owner steps, but the first things to check later:**
 
@@ -59,6 +64,16 @@ and why). RECOVERY.md's header carries the per-recommendation status table.
 - ⚠️ **`game-covers` is 57% of the way to the same wall** (170.6 MiB of 300).
   It will cross it on its own; the split path is already generic, so nothing
   needs doing — but expect its objects to become parts without warning.
+- ⚠️ **The mirror's first PRUNE has never run** (`access/RECOVERY.md` §2a). It
+  holds one generation; the first deletion cannot happen until nine daily
+  backups exist, ~2026-08-27. Check then that it deletes whole generations and
+  that a split archive's parts go together.
+- ⚠️ **A restore performed FROM the mirror has not been exercised.** The
+  mirrored bytes are proven identical to the bucket's (three-way SHA-256 match
+  on `estate_auth`, 12/12 MD5 on Drive), so it is the same operation on the
+  same bytes — but that is an inference from a byte comparison. The next drill
+  should restore from the local mirror rather than from R2, which also
+  exercises the split-archive `cat` that is still unproven.
 
 ## 🟡 GABI READS THE ESTATE DOCS — LIVE; ONE OWNER STEP LEFT (the relink) (2026-08-18)
 

@@ -37,15 +37,15 @@
 > | 4 | Give `backup.yml` a cadence | ✅ **done** — daily 09:12 UTC, cost measured at zero billable minutes |
 > | 5 | One throwaway remote-import drill | ⏳ **OWNER STEP** — still the largest unverified thing here (§3c) |
 > | 6 | A second Firebase project to rehearse restores | ⏳ **OWNER STEP** — the `--commit` path remains untested (§4.3) |
-> | 7 | A copy of `estate-backups` off Cloudflare | ⏳ **OWNER STEP** — single bucket, single account, still true |
+> | 7 | A copy of `estate-backups` off Cloudflare | ✅ **done 2026-08-18** — three homes, none of them Cloudflare (§2a) |
 > | 8 | A `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can reach | ⏳ **OWNER STEP** — ⚠️ a Firestore restore is still BLOCKED from this machine (§7) |
 > | 9 | `ebooks-gated` / `estate-docs-gated` / `estate-ebooks` into the `r2` matrix | ✅ **first two done**; `estate-ebooks` deliberately declined, reasoning recorded in `backup.yml` beside the matrix |
 > | 10 | The empty stores, the day they hold data | ✅ **recorded** as a standing rule in `backup.yml` and `backup-restore.md` §8 |
 >
-> ⚠️ **The four ⏳ rows are the whole of what is left, and all four need the
-> owner's hands** — a console visit, a second project, a decision about where
-> an off-Cloudflare copy lives, and permission to create-and-delete a throwaway
-> remote database. None can be closed by a code change.
+> ⚠️ **THREE ⏳ rows remain** (row 7 closed 2026-08-18, §2a). All three need the
+> owner's hands — a console visit, a second Firebase project, and permission to
+> create-and-delete a throwaway remote database. None can be closed by a code
+> change.
 
 ---
 
@@ -69,6 +69,12 @@
 6. **Backups run themselves now** — daily 09:12 UTC. If the newest object is
    more than ~a day old, something is wrong; check Actions for a
    *disabled scheduled workflow* banner first (`backup-restore.md` §3.0).
+7. **⚠️ Cloudflare itself is down/gone, or you just want to BROWSE the
+   backups → §2a, the mirror.** The same files are on this PC at
+   `C:\Users\nbasl\OneDrive\Documents\estate-backups-mirror\`, in OneDrive,
+   and in Google Drive `/GABI_backup`. Every recipe below works unchanged —
+   you skip the fetch and use the local file. It is also the only way to
+   *list* the backups; the bucket cannot be browsed.
 
 ---
 
@@ -128,7 +134,7 @@ Ranked by blast radius. These are not "stale" — no copy exists anywhere.
 | 7 | **KV `estate_docs`** (`3278d5e3…`) | **0 keys today** (`wrangler kv key list` → `[]`) | Nothing to lose right now; it is a declared store with no backup path, so it becomes a hole the day it is used |
 | 8 | **R2 `estate-audio`** | 0 objects — empty by design (on-request fulfilment) | Nothing to lose; would become hole #4's twin at 630 GB scale if it ever filled |
 | 9 | **R2 `library-2nd-covers`**, **R2 `bgc-photos`** | 0 objects each | Nothing to lose today; both belong in the matrix the day they hold anything |
-| 10 | **R2 `estate-backups` itself** | 16 objects, 917 MB — 8 stores × **2** generations | Single-copy, single-region, single-account. Retention is configured for 8 but only two `target=all` runs have ever landed, so "8 deep" is a setting, not a fact. ✅ **The 8-vs-2 question is answered — young system, not a prune bug** (§9, and `backup-restore.md` §3's retention note). ⏳ The single-copy half is still open and is owner step #2 |
+| 10 | **R2 `estate-backups` itself** | 16 objects, 917 MB — 8 stores × **2** generations | Single-copy, single-region, single-account. Retention is configured for 8 but only two `target=all` runs have ever landed, so "8 deep" is a setting, not a fact. ✅ **The 8-vs-2 question is answered — young system, not a prune bug** (§9, and `backup-restore.md` §3's retention note). ✅ **The single-copy half is closed too, 2026-08-18** — the mirror (§2a) puts every generation on the owner's PC, in OneDrive and in Google Drive `/GABI_backup`. Single-*region* and single-*account* are no longer true of the bytes, only of the bucket |
 
 **Not a hole, confirmed:** the four git repos (distributed by git), and the
 OpenAudible `.m4b` library (Google Drive sync, `sync_to_drive.py`). Both are
@@ -190,6 +196,10 @@ useless for "give me the file".
 **Then fetch it.** `--remote` is required; without it wrangler silently reads
 an empty local simulator.
 
+> ⚠️ **BEFORE YOU FETCH ANYTHING — CHECK THE MIRROR FIRST (§2a).** If the
+> incident is "Cloudflare is unreachable / the account is gone", none of the
+> commands below will work at all, and the files are already on this PC.
+
 ```bash
 npx wrangler r2 object get "estate-backups/d1/library-catalog/<STAMP>.sql" \
   --file ./library-catalog.sql --remote
@@ -206,6 +216,132 @@ Cloudflare REST list endpoint — that path needs the API token
 (`CLOUDFLARE_API_TOKEN`, held as a repo secret; see `backup-restore.md` §1 for
 the permission-group nuance). Restoring never needs the REST list; only
 backing up does.
+
+---
+
+## 2a. ⚠️ THE MIRROR — the backups that are NOT in Cloudflare
+
+**Built and populated 2026-08-18.** This closes owner step #7 (§9.7): until
+that date, everything the estate protected *and* everything protecting it lived
+in one Cloudflare account, so an account-level incident took the backups with
+it. It no longer does.
+
+Owner decision 2026-08-18, verbatim: *"Do a and b, don't store in GABI tho
+store in a new folder called GABI_backup on drive"*.
+
+### Where the copies are
+
+| Home | Location | How it gets there |
+|---|---|---|
+| **This PC** | `C:\Users\nbasl\OneDrive\Documents\estate-backups-mirror\` | `scripts/mirror-estate-backups.mjs` (this repo), run by the pipeline |
+| **OneDrive** | the same folder — it is inside the synced tree | Microsoft's client. **No code of ours**, which is why it costs nothing |
+| **Google Drive** | `/GABI_backup` (My Drive **root**, top level) | `audiobook_catalog/scripts/mirror_to_drive.py` |
+
+**Three homes, none of them Cloudflare.** The layout under each root is the
+bucket's own key grammar — `<kind>/<store>/<STAMP><suffix>` — so a mirrored
+file *is* the object, byte for byte, under the name you would have fetched.
+
+### Restoring from the mirror
+
+**Every recipe in this file works unchanged; you simply skip the fetch.**
+Wherever §3–§5 say
+
+```bash
+npx wrangler r2 object get "estate-backups/<key>" --file ./x --remote
+```
+
+use the local file instead:
+
+```bash
+cp "C:/Users/nbasl/OneDrive/Documents/estate-backups-mirror/<key>" ./x
+```
+
+⚠️ **Split archives still need reassembling** (§5) — the mirror stores the
+parts exactly as the bucket does, and holds them together or not at all:
+
+```bash
+cat "C:/Users/nbasl/OneDrive/Documents/estate-backups-mirror/r2/audiobook-covers/<STAMP>.tar.gz.part-"* > ./r2-dump.tar.gz
+```
+
+**And you can browse it, which you cannot do to the bucket.** `wrangler r2
+object` has no `list`, so §2 exists purely to work out a key; on the mirror,
+`ls` answers that question. `mirror-manifest.json` at the root records every
+key with its byte size and **sha256** — that is the file to diff against when
+you need to prove a restored artefact is the backed-up one.
+
+### ⚠️ Retention: the mirror FOLLOWS the bucket. It is not an archive.
+
+Both halves keep the newest **N generations** per store and delete the rest,
+whole generations at a time (a half-split archive cannot be untarred at all).
+**N is read out of `backup.yml`'s own `--keep` argument** — 8 today — so the
+mirror's depth cannot drift from the bucket's.
+
+**A generation pruned upstream ages out of the mirror on the next run.**
+Anything inside either mirror root is subject to deletion by these scripts. If
+you want a copy that outlives the bucket's 8-generation retention — before a
+risky migration, say — take one by hand and put it somewhere neither script
+manages. The Drive half **trashes** rather than hard-deletes, so a retention
+bug there has 30 days of recovery; the local half does not.
+
+### ⚠️ What the mirror can and cannot see
+
+It reads the keys off the **backup workflow's log** (§2 method A), not off a
+bucket listing. `wrangler r2 object` has no `list`, and the REST list endpoint
+needs `CLOUDFLARE_API_TOKEN`, which is a GitHub repo secret and **is not on
+this machine** (§7). Every `::notice::Wrote estate-backups/<key>` line is a
+literal key, and `<base> was written as N part(s).` is what makes "is this
+generation COMPLETE?" decidable — a split archive missing a part is skipped
+rather than mirrored, because run 32111218016 and run 32112007920 each produced
+exactly that shape and an unrestorable mirror reporting success is the worst
+available outcome.
+
+**Consequence, stated plainly: the mirror sees what the workflow LOGGED, not
+what the bucket HOLDS.** An object deleted out of band would not be noticed.
+The day a `CLOUDFLARE_API_TOKEN` lands on this machine, swapping discovery for
+a real listing is a small edit.
+
+### When it runs, and how to run it by hand
+
+It is **STEP 10 of `audiobook_catalog/scripts/sync_to_drive.py`**, on both the
+busy and the idle path — the backup workflow runs daily at 09:12 UTC whether or
+not the audiobook library gained a book, so a busy-path-only mirror would track
+the backups as often as the owner buys audiobooks. Each half is its own failure
+domain: a WARN, the previously mirrored generation stands, the next cycle
+retries. It can never fail the pipeline.
+
+⚠️ **It deliberately does NOT run in `backup.yml`.** A mirror running inside
+the same CI, on the same account's credentials, is not an off-Cloudflare copy —
+it is the same egg in the same basket with an extra step.
+
+```bash
+# half 1 — bucket -> local (from catalog-platform)
+node scripts/mirror-estate-backups.mjs --dry-run     # plan, writes nothing
+node scripts/mirror-estate-backups.mjs
+
+# half 2 — local -> Drive (from audiobook_catalog)
+python scripts/mirror_to_drive.py --dry-run
+python scripts/mirror_to_drive.py
+```
+
+### First full run — measured 2026-08-18
+
+| | |
+|---|---|
+| Stores mirrored | **11 / 11** (every prefix `backup.yml` writes) |
+| Objects | **12** (audiobook-covers is 2 parts) |
+| Bytes | **539,573,402** (514.6 MiB), identical on both mirrors |
+| Generation | `20260818T0948xxZ`, from run `32123529431` — the first scheduled daily backup |
+| Discovery cost | **one** workflow-log read; the newest run satisfied all 11 stores |
+| Integrity, local | `d1/estate_auth/20260818T094855Z.sql` re-fetched from the live bucket and SHA-256'd: `dd558909…a10f9b` — **live bucket = mirror = manifest, three-way match** |
+| Integrity, Drive | **all 12 objects**, Drive's server-computed `md5Checksum` vs a local MD5, on the second run — 12/12 verified. Not a spot-check: every object |
+| Idempotency | second run of each half: **0 fetched / 12 skipped**, **0 uploaded / 12 skipped** |
+
+⚠️ **NOT verified:** a restore performed *from* the mirror (the mirrored bytes
+are proven identical to the bucket's, so a restore from them is the same
+operation on the same bytes — but that is an inference from a byte comparison,
+not an exercised restore). Nor has retention been observed deleting anything:
+the mirror holds one generation, and the first prune cannot happen until nine
+daily backups have accumulated.
 
 ---
 
@@ -624,6 +760,10 @@ Names and where they live. **No values, ever, in this file or in any log.**
 | Find the backup keys | `gh` login, `repo` scope | `gh auth status` | **yes** |
 | REST `objects` list (backup + retention only, NOT restore) | `CLOUDFLARE_API_TOKEN` | GitHub repo secret on `skymitch9/catalog-platform` | **no** — ⚠️ the OAuth session does NOT cover this endpoint |
 | Any Firestore restore | `FIREBASE_SERVICE_ACCOUNT_JSON` | GitHub repo secret; the same key as `audiobook_catalog/scripts/firebase_service_account.json` | **no — ⚠️ this credential is NOT present on the owner's machine.** Dry runs work without it; a real Firestore restore is blocked until it is re-downloaded from the Firebase console |
+| Mirror half 1 — discover the keys (§2a) | `gh` login, `repo` scope | `gh auth status` | **yes** — 2026-08-18, the first mirror run |
+| Mirror half 1 — fetch the objects (§2a) | the same `wrangler login` OAuth session as row 1 | as row 1 | **yes** — 2026-08-18, all 12 objects |
+| Mirror half 2 — upload to Drive `/GABI_backup` (§2a) | the estate's Drive OAuth token, `audiobook_catalog/scripts/token.json` (refreshed by `scripts/drive_auth.py`; its client secret is `scripts/credentials.json`) | that machine only, gitignored | **yes** — 2026-08-18, all 12 objects, MD5-verified |
+| **Restoring FROM the mirror** | **none** | — | ⚠️ **and that is the point.** The local mirror needs no Cloudflare credential, no `gh`, and no network. It is the one recovery path that still works when the account is gone |
 
 ⚠️ **That last row is the one that bites at 3am.** A Firestore incident cannot
 be fixed from this machine as it stands; the first step would be a Firebase
@@ -649,8 +789,15 @@ Stated plainly so nobody reads a green table as more than it is.
    is no backup to restore.
 7. **That a restored database actually serves traffic.** Row counts and schema
    were compared; no Worker was pointed at a restored database.
-8. **`estate-backups` durability itself** — single bucket, single account, and
-   the drill made no off-Cloudflare copy.
+8. ~~**`estate-backups` durability itself** — single bucket, single account, and
+   the drill made no off-Cloudflare copy.~~ — ✅ **CLOSED 2026-08-18** by the
+   mirror (§2a): three homes, none of them Cloudflare, checksum-verified.
+   ⚠️ What is **still** unverified is a restore performed *from* the mirror —
+   the bytes are proven identical to the bucket's, so it is the same operation
+   on the same bytes, but that is an inference from a byte comparison rather
+   than an exercised restore. Retention has also never been observed deleting
+   anything: the mirror holds one generation and the first prune cannot happen
+   until nine daily backups have accumulated.
 
 ---
 
@@ -679,8 +826,13 @@ implemented on 2026-08-18 in commit `8c7f780`. Status is marked per item.
    unverified step.
 6. ⏳ **OWNER STEP — still open.** **Stand up a second Firebase project** as a Firestore rehearsal target, or
    accept permanently that the Firestore restore path is untested.
-7. ⏳ **OWNER STEP — still open.** **Get a copy of `estate-backups` off Cloudflare.** Everything protected and
-   everything protecting it live in one account.
+7. ✅ **DONE 2026-08-18 — §2a.** **Get a copy of `estate-backups` off Cloudflare.** Everything protected and
+   everything protecting it live in one account. **They no longer do:** the
+   backups now also sit on the owner's PC, in OneDrive, and in Google Drive
+   `/GABI_backup` — 11/11 stores, 12 objects, 539,573,402 bytes, mirrored and
+   checksum-verified on the first run. Owner decision, verbatim: *"Do a and b,
+   don't store in GABI tho store in a new folder called GABI_backup on drive"*.
+   ⚠️ The mirror follows the bucket's retention; it is not an archive.
 8. ⏳ **OWNER STEP — still open, and this is the one that bites at 3am.** **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it**
    (§7) — today the restore credential exists only as a GitHub secret, which
    cannot be read back out.
