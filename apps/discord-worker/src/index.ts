@@ -67,6 +67,7 @@ import {
 } from './conversation.js';
 import { processPollVote } from './poll-vote.js';
 import { pollSyncRoutes } from './poll-sync.js';
+import { questionSyncRoutes } from './question-sync.js';
 import { parseServiceAccount, type ServiceAccount } from './firebase-sa.js';
 import { linkConfigured, linkRoutes, LINK_MSG } from './link.js';
 import {
@@ -131,6 +132,11 @@ app.get('/api/health', (c) =>
       'poll_vote_component',
       'identity_link',
       'poll_message_sync',
+      // ⚠️ Added 2026-08-18: GABI's book-club discussion questions, posted
+      // into each opted-in club's own channel. Named here so "does she post
+      // the questions in Discord?" is answerable in one curl rather than by
+      // waiting eight hours for a pipeline tick.
+      'club_question_sync',
       'have_command',
       'gabi_command',
       'moderation_dark',
@@ -201,6 +207,18 @@ app.get('/api/health', (c) =>
     // All three or it is dark — reported as one honest boolean, not three
     // rows a reader has to AND together themselves.
     poll_sync_ready:
+      Boolean(c.env.POLL_SYNC_TOKEN) &&
+      Boolean(c.env.DISCORD_BOT_TOKEN) &&
+      Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    // ⚠️ The same three secrets, so this is IDENTICAL to the row above by
+    // construction — stated as its own row anyway, because a reader asking
+    // "can she post club questions?" should not have to know that the answer
+    // happens to be spelled `poll_sync_ready`. If the two ever diverge (a
+    // question-only secret, say), this row is already the place that says so.
+    // ⚠️ Neither row says a club has OPTED IN: that is per-club
+    // `features.discordQuestions`, and with none set this reads `true` while
+    // nothing posts anywhere. Readiness is about the Worker, not the clubs.
+    question_sync_ready:
       Boolean(c.env.POLL_SYNC_TOKEN) &&
       Boolean(c.env.DISCORD_BOT_TOKEN) &&
       Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
@@ -328,6 +346,17 @@ app.route('/', linkRoutes);
 // the trigger carries no club data).
 // ---------------------------------------------------------------------------
 app.route('/', pollSyncRoutes);
+
+// ---------------------------------------------------------------------------
+// POST /questions/sync — GABI's book-club discussion questions (2026-08-18).
+// The SAME pipeline poke, on the same cadence, gated by the same
+// POLL_SYNC_TOKEN — a SEPARATE route so a question sweep that fails can never
+// take the poll tick's tallies down with it. What it posts are the "Post as
+// GABI" starter questions from the club read page, which are ordinary comments
+// carrying `isBot: true` and are NOT polls; see question-sync.ts's header for
+// the measurement that decided the whole shape.
+// ---------------------------------------------------------------------------
+app.route('/', questionSyncRoutes);
 
 // ---------------------------------------------------------------------------
 // POST /admin/commands/register — publish the slash-command registry to

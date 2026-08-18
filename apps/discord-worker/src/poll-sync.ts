@@ -382,14 +382,20 @@ export async function runPollSync(deps: SyncDeps, clubCol: ClubCollection): Prom
 // The real dependencies — Firestore REST + the bot token
 // ---------------------------------------------------------------------------
 
-type FsValue = {
+/** ⚠️ EXPORTED (2026-08-18) so `question-sync.ts` decodes Firestore REST with
+ * the SAME shapes rather than declaring a third near-identical copy. It gained
+ * `integerValue` at the same time, for the question baseline's epoch-ms field —
+ * nothing in this file reads it, but a type that cannot describe the documents
+ * its own collections hold is a type that quietly stops being checked. */
+export type FsValue = {
   stringValue?: string;
+  integerValue?: string | number;
   booleanValue?: boolean;
   timestampValue?: string;
   arrayValue?: { values?: FsValue[] };
   mapValue?: { fields?: Record<string, FsValue> };
 };
-type FsDoc = { name?: string; fields?: Record<string, FsValue> };
+export type FsDoc = { name?: string; fields?: Record<string, FsValue> };
 
 /** Firestore REST returns the full resource path; the doc id is its tail. */
 export function docIdFromName(name: string | undefined): string | null {
@@ -413,7 +419,13 @@ export function recordFromDoc(doc: FsDoc): MessageRecord | null {
   };
 }
 
-async function listAll(
+/** Page a Firestore REST collection listing to exhaustion.
+ *
+ * ⚠️ EXPORTED (2026-08-18) rather than copied into `question-sync.ts`. Both
+ * ticks list club collections the same way and both must page the same way; a
+ * second implementation that forgot `nextPageToken` would look correct on
+ * every small club and silently truncate the first large one. */
+export async function listAll(
   sa: ServiceAccount,
   accessToken: string,
   path: string,

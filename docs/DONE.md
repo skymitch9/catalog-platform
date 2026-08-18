@@ -13,6 +13,44 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 💬 GABI POSTS BOOK-CLUB QUESTIONS INTO DISCORD — SHIPPED 2026-08-18
+
+Owner's ask, verbatim: ***"you know how for bookclub gabi can post questions in
+each book club? lets add that feature to the discord bot."***
+
+`apps/discord-worker/src/question-sync.ts` + `POST /questions/sync`, poked by
+`audiobook_catalog/app/club_announcements.py`'s new `sync_question_messages()`
+on the existing ~8h cadence with the **same** `POLL_SYNC_TOKEN`. Per-club
+opt-in `features.discordQuestions` (default OFF, a checkbox in Edit Club).
+Ships dark and inert: no club has the key set.
+
+⚠️ **The measurement inverted the obvious guess, and that decided the build.**
+"GABI posts questions" sounds like the poll machinery with different content.
+It is not: the questions are static prompts in
+`audiobook_catalog/site/discussion_prompts.json`, surfaced to hosts/mods on the
+read page, and "Post as GABI" writes an **ordinary comment** with `isBot: true`.
+So they are open discussion prompts, not votable polls — the Discord message
+carries **no components**, and there is **nothing to sync back**.
+
+⚠️ **Baseline-first silence** is the rail that makes it switchable-on: a club
+accumulates a question per section per book, so the first tick a club is seen on
+posts NOTHING and records the instant. Only questions posted after that appear.
+
+Reused rather than reinvented: the channel binding (`discordChannelId` → else
+the club's announcement webhook → else a named skip), the shared pipeline
+token, and the cadence. A **separate route** from `/polls/sync` so the two keep
+independent failure domains, exercised in both directions by test.
+
+Suites: workspace 1,121 → **1,166**; audiobook pytest 1,330 → **1,339**; site
+vitest 725 (+1 case). Design of record and as-built:
+[`info/discord-bot-design.md`](info/discord-bot-design.md) §8; owner switch-on
+steps: [`access/discord-bot.md`](access/discord-bot.md) §14.
+
+⚠️ **NOT verified live:** no question has ever reached a real Discord channel
+(0 clubs opted in — the key did not exist before today), the webhook →
+`channel_id` resolution is still unproven (inherited from the poll-sync build),
+and the Edit Club checkbox has not been clicked in a browser.
+
 ## 🔗 GABI'S DEEP LINKS — ASKER-AWARE AND PREFILLED, SHIPPED 2026-08-18 (moved from TODO.md 2026-08-18)
 
 Arrived in TODO.md as a one-line prefill item (*"`panelDeepLink()` must carry

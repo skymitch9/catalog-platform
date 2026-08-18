@@ -1203,3 +1203,217 @@ dialled, and it counts every call that reached a destination, refusals included.
 - **No sweep has been triggered through it**, so the async follow-up message has
   never been posted by a real gateway.
 - **Photo intake is not built** — measured and deferred, application map §2d.
+
+
+## 14. GABI's book-club QUESTIONS in Discord (built 2026-08-18)
+
+*(Numbered 14 for the same reason §8 and §9 are numbered as they are:
+`DONE.md` is append-only, so sections are only ever appended.)*
+
+The owner's ask, verbatim: *"you know how for bookclub gabi can post questions
+in each book club? lets add that feature to the discord bot."*
+
+### 14.1 ⚠️ What the site feature actually is — the measurement that decided everything
+
+It is **not a poll**, and getting that backwards would have built the wrong
+thing. Measured 2026-08-18 against `audiobook_catalog/site/club-read.html` and
+`site/club-reads.js`:
+
+| | |
+|---|---|
+| Where the questions come from | `site/discussion_prompts.json` — `{ "<Book Title>": { prompts: [{ chapter_index, question }] } }`, written offline by `app/tools/generate_prompts.py`. A static site asset; nothing per-club, nothing live. |
+| Who sees them | Hosts/mods only, on the read page, one per section, while `club.promptsEnabled !== false` (`starterQuestionHtml()`). |
+| The trigger | **A human presses "Post as GABI".** There is no automatic posting anywhere, then or now. |
+| What that writes | `addComment(..., { asBot: true })` → an ORDINARY COMMENT at `clubs/{id}/reads/{readId}/comments/{commentId}` with `isBot: true`, `slug: 'gabi'`, `displayName: 'GABI'`, the section's `milestoneId` (or `'general'` + `partIndex`), and the question as `text`. |
+
+So they are **open discussion prompts, not votable polls**. That is why the
+Discord message carries **no buttons** and why there is **nothing to sync
+back**: a poll has a vote that belongs in Firestore; a discussion question's
+replies are Discord's own conversation. This is a one-way publisher.
+
+### 14.2 What runs, and who starts it
+
+| | |
+|---|---|
+| Endpoint | `POST https://discord.heygabi.ai/questions/sync` |
+| Auth | `Authorization: Bearer <POLL_SYNC_TOKEN>` — the **same** shared secret as §8, no new credential |
+| Body | `{"lane":"prod"}` or `{"lane":"dev"}` (absent = prod) |
+| Trigger | `audiobook_catalog/app/club_announcements.py` → `sync_question_messages()`, on the existing ~8h pipeline cadence, immediately after the poll poke |
+| Code | `apps/discord-worker/src/question-sync.ts` |
+| Override URL | `DISCORD_QUESTION_SYNC_URL` in the pipeline env (sibling of `DISCORD_POLL_SYNC_URL`) |
+
+⚠️ **A SEPARATE ROUTE from `/polls/sync`, deliberately.** They share a cadence
+and a token and nothing else: a question sweep that fails must never take the
+poll tick's tallies down with it. Both pokes catch everything, log one line and
+return; neither can fail a pipeline run, and neither can fail the other
+(exercised in both directions by `tests/test_club_announcements.py`).
+
+By hand:
+
+```bash
+curl -s -X POST https://discord.heygabi.ai/questions/sync \
+  -H "Authorization: Bearer $POLL_SYNC_TOKEN" \
+  -H 'content-type: application/json' -d '{"lane":"dev"}'
+```
+
+### 14.3 What one tick does, per opted-in club
+
+1. **Opt-in check** — `features.discordQuestions === true` on the club doc.
+   Absent, `false`, or a non-boolean all mean OFF. A club that never opted in
+   makes no note; it is the normal case, not an event.
+2. ⚠️ **Baseline check, BEFORE anything else.** A club with no baseline doc is
+   new to this feature: the tick records `baselinedAt = now`, **posts nothing
+   at all**, says so in words, and returns. See §14.5 — this is the rail that
+   makes the feature switchable-on.
+3. **Active reads only** (`status === 'active'`). The site caps a club at two.
+   A question posted onto a finished read stays on the site.
+4. **GABI's comments only** (`isBot: true`). A member's comment is never
+   republished — that would be broadcasting somebody's words without consent.
+5. Anything created **at or before** the baseline is history and is skipped.
+   Anything already carrying a record is skipped. The rest go out oldest-first
+   across every read, capped at **5 per tick** (the remainder is *said*, never
+   dropped).
+6. Each post writes its record **immediately**, before the next post, so a tick
+   killed halfway leaves every message it sent recorded.
+
+### 14.4 What a posted question looks like
+
+An embed, no components:
+
+> **Lessons in Chemistry — Part 2**
+>
+> *(blockquoted)* How does Garmus use the 1950s lab to critique institutional barriers?
+>
+> Something to chew on for Part 2. Say it here if you like — or [take it to the
+> club page](https://audiobooks.heygabi.ai/club-read.html?club=…&read=…#c-…),
+> where it sits with the rest of the discussion.
+>
+> *Night Watch · a question from GABI*
+
+- ⚠️ **No model call, and that is a decision.** The question text is already
+  written and a human already chose it; paraphrasing it would spend money to
+  make the club page and the channel say different things. GABI's voice here is
+  the **frame** around a question she already asked, rendered deterministically
+  so it is testable and free.
+- **The deep link lands on the QUESTION**, not the page: `club-read.html` reads
+  `#c-<commentId>`, finds that comment, opens its section and scrolls to it
+  (measured 2026-08-18). Dev-lane clubs link into `/dev/`.
+- **Spoilers**: the section is named in the **title**, prominently, so anyone
+  behind can skip the message — and the question is **not** hidden behind
+  spoiler bars. That matches the site's own posture for *comments* (collapsed
+  under a heading, never locked); the site locks **polls** by reading position
+  (`isPollLocked`) and deliberately does not lock discussion comments. A channel
+  cannot gate per-reader anyway, so the honest option is to label loudly rather
+  than imply a protection that is not there. **If the owner wants spoiler bars,
+  this is the line to change** — one `||…||` wrap in `buildQuestionMessage`.
+- A section that cannot be named honestly (a chapter-grouped read whose label
+  the site derives client-side) **drops out of the title** rather than
+  appearing as something wrong.
+
+### 14.5 ⚠️ Baseline-first silence — read this before switching a club on
+
+A club accumulates a GABI question **per section per book**. If the first tick
+posted them, a club switching this on would get a wall of history and would
+switch it straight back off.
+
+So the **first tick a club is ever seen on posts NOTHING** and records the
+instant in `discord_question_state/{clubCol}__{clubId}`. Only questions created
+**after** that instant are ever posted — the same discipline
+`club_announcements.py` already uses for its own first run.
+
+**What that means in practice:** switching it on is quiet. Nothing appears
+until somebody presses "Post as GABI" again — which is the right moment for a
+question to arrive in a channel anyway. An opted-out club is not even
+baselined, so it gets its baseline on the tick it actually opts in, however
+long it was off.
+
+### 14.6 State — two collections this Worker owns outright
+
+```
+discord_question_messages/{clubCol}__{clubId}__{readId}__{commentId}
+  { clubCol, clubId, readId, commentId, channelId, messageId, postedAt, updatedAt }
+
+discord_question_state/{clubCol}__{clubId}
+  { clubCol, clubId, baselinedAt (epoch ms), updatedAt }
+```
+
+- **Not beside the club**, for `poll-sync.ts`'s reason: a comment doc is
+  browser-writable under `firestore.rules`, and Worker bookkeeping inside a doc
+  a browser can rewrite is a collision waiting to happen.
+- **No rules change needed.** `firestore.rules` has no catch-all, so browsers
+  are denied by default; the service account bypasses rules. Same posture as
+  `discord_links/*` and `discord_poll_messages/*`.
+- **Composite keys** because the two lanes are separate universes that could
+  legitimately hold the same Firestore auto-id.
+
+**Idempotence:** record PRESENT ⇒ already in the channel, skipped outright;
+ABSENT ⇒ post and record. A question's text never changes on the site (there is
+no edit affordance on a bot comment), so unlike a poll there is no re-render
+pass at all.
+
+⚠️ **Deletion is deliberately NOT propagated.** A host can delete a GABI comment
+on the site; the Discord message stays. By the time a tick could notice, the
+message may already carry a conversation, and deleting somebody's discussion to
+mirror a site-side tidy-up is worse than a stale prompt.
+
+### 14.7 Which channel it posts to
+
+Identical to §8.3, reusing the **same binding** rather than inventing a second
+one: `discordChannelId` on `clubs/{id}/settings/discord` wins; else the club's
+existing `webhookUrl` resolved through `GET /webhooks/{id}/{token}`; else a
+named skip saying exactly which field to add.
+
+⚠️ `discordChannelId` rides alongside `webhookUrl` with **no rules change**:
+`validClubSettings()` requires `webhookUrl` to be present and well-shaped but
+uses no `hasOnly`, so an extra field is accepted (read 2026-08-18,
+`firestore.rules`).
+
+### 14.8 ⚠️ Switching it on — THE OWNER'S STEPS
+
+Steps 1–3 are one-time and are **already done if `/polls/sync` is live** — the
+token, the bot and the channel are all shared.
+
+1. **`POLL_SYNC_TOKEN` set on both sides** (§8.6 steps 1–3). Confirm:
+   `curl -s https://discord.heygabi.ai/api/health` → `question_sync_ready: true`.
+2. **The estate bot is in the club's Discord server**, with **Send Messages**
+   and **Embed Links** in the target channel. This needs Manage-Server rights
+   *in that server* — the club's own admin does it, not the estate.
+3. **The club has a Discord channel bound**: either it already pasted an
+   announcement webhook in Edit Club (nothing more to do), or an explicit
+   `discordChannelId` on `clubs/{id}/settings/discord`.
+4. ⚠️ **Tick the box.** On the club page → **Edit Club** → *"GABI's questions in
+   Discord"*. Host/mod/site-moderator only. This is the whole opt-in; it sets
+   `features.discordQuestions = true`.
+5. **Nothing happens yet, and that is correct** — the next tick baselines the
+   club silently (§14.5).
+6. **Press "Post as GABI"** on a read section. The next pipeline run (≤8h), or
+   the curl in §14.2, puts it in the channel.
+
+**Exactly what the owner needs to hand over / know:** nothing new. No new
+secret, no new bot invite beyond the one `/polls/sync` already needs, no new
+channel id if the club already has an announcement webhook. If a club has
+**never** set a webhook, the one ID needed is that channel's **Discord channel
+id** (right-click the channel → Copy Channel ID, with Developer Mode on),
+written to `clubs/{id}/settings/discord.discordChannelId`.
+
+**Turning it off:** untick the box. The Worker refuses the club on the very
+next tick; already-posted messages stay where they are (see §14.6).
+
+### 14.9 ⚠️ NOT VERIFIED LIVE
+
+- **No question has ever been posted to a real Discord channel by this code.**
+  Measured 2026-08-18: **0 clubs** have `features.discordQuestions` set on
+  either lane (the key did not exist until today), so the tick has only ever
+  run over the top-level club loop. Every orchestration rule above is pinned by
+  45 injected-dependency tests; none of it has met real Discord.
+- **The webhook → `channel_id` round trip is still unproven** — the same gap
+  §8.3 already records, inherited unchanged because this reuses that resolver.
+- **`question_sync_ready: true` does NOT mean questions are live.** It is a
+  fact about the Worker's three secrets, not about any club opting in. With no
+  club opted in it reads `true` while nothing posts anywhere.
+- **The Firestore read cost of `listQuestions`** (a masked list of a read's
+  comments, filtered in the Worker) has not been measured against a busy read.
+  At estate scale — ≤2 active reads per club, tens of comments — it is cheap by
+  inspection; it is the only part of the tick whose cost grows with ordinary
+  member activity, and the line to revisit if a read's comments ever run to
+  thousands.
