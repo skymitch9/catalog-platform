@@ -279,6 +279,105 @@ export function booksIntent(text: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// ⚠️ THE FOLLOW-UP — a lane belongs to the CONVERSATION, not to one sentence
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **INCIDENT 2026-08-18 (design §10c): SHE INVITED A FOLLOW-UP AND THEN
+ * ROUTED IT TO THE SHELF.**
+ *
+ * Her own turn ended *"I'll dig into it fresh if you want — just say the
+ * word!"*. The owner said the word — *"dig fresh into jake sheet"* — and the
+ * per-message detector, seeing five words it had never met, sent it to the
+ * catalogue.
+ *
+ * ⚠️ **The defect is that `booksIntent` is STATELESS on a surface that has a
+ * memory.** A follow-up is elliptical BY CONSTRUCTION: it omits everything the
+ * previous turn established, which is precisely the material the detector needs.
+ * Judging it alone judges it without the half that carries the meaning — and an
+ * assistant that offers a retry and then cannot recognise the acceptance is
+ * worse than one that never offered.
+ *
+ * So the lane is a property of the CONVERSATION. Nothing here fires without a
+ * prior book-lane turn inside the remembered window (`gabi-conversation`'s 30
+ * minutes — the same store and the same window in a channel and in a DM).
+ *
+ * ⚠️ **Narrow three ways at once**, because a wrong continuation is worse than a
+ * missed one — it answers a catalogue question out of a novel:
+ *
+ *  1. a prior USER message in the window must itself be book-lane;
+ *  2. the follow-up must be SHORT — a long sentence carries its own subject and
+ *     is judged on that;
+ *  3. it must either OPEN like a continuation ("dig…", "yes", "go on") or reuse
+ *     a content word from the book-lane turn it continues.
+ *
+ * ⚠️ And a shelf-shaped follow-up still goes to the shelf: *"do we have book
+ * 10?"* after a book conversation is a catalogue question. A lane may not
+ * capture people.
+ */
+const FOLLOW_UP_MAX_WORDS = 12;
+
+const CONTINUATION_OPENER =
+  // ⚠️ `say the word` is here because SHE SAYS IT — `BOOKS_MSG.turnBudgetSpent`
+  // and her own prose offer the retry in those words, so the acceptance comes
+  // back in them too. An opener list that does not contain the phrases the
+  // assistant itself uses is a list that cannot hear its own invitations.
+  /^(?:@?[\w-]+[,:]?\s+)?(?:yes|yeah|yep|sure|please|ok|okay|do it|go|go on|go ahead|keep|continue|carry on|again|more|and|also|what about|how about|then|now|dig|look|search|check|find|read|pull|get|show|tell|give|try|say the word)\b/i;
+
+/** ⚠️ Glue, not subjects. Matching on these would make every short sentence a
+ *  continuation of every other one. */
+const FOLLOW_UP_STOPWORDS = new Set([
+  'this', 'that', 'they', 'them', 'then', 'there', 'here', 'with', 'from', 'into', 'what', 'when',
+  'were', 'will', 'your', 'yours', 'mine', 'have', 'been', 'about', 'would', 'could', 'should',
+  'just', 'like', 'know', 'tell', 'want', 'need', 'give', 'make', 'does', 'done', 'said', 'says',
+  'more', 'over', 'some', 'only', 'also', 'fresh', 'again', 'please',
+]);
+
+/** Words long enough to be a subject rather than glue. */
+function contentWords(text: string): Set<string> {
+  return new Set(
+    (text ?? '')
+      .toLowerCase()
+      .split(/[^a-z0-9']+/)
+      .filter((w) => w.length >= 4 && !FOLLOW_UP_STOPWORDS.has(w)),
+  );
+}
+
+/**
+ * Is this short message a continuation of a book conversation?
+ *
+ * `history` is the remembered window, oldest first. ⚠️ **Only USER messages are
+ * consulted.** Her own replies are model prose with no reliable marker, and
+ * matching on her wording would make the router depend on what a model happened
+ * to say that turn.
+ */
+export function booksFollowUp(
+  text: string,
+  history: readonly { role: string; text: string }[],
+): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  // ⚠️ Already unambiguous alone. Returning true here would hide which half of
+  // the router decided, and the two are debugged separately.
+  if (booksIntent(q)) return false;
+  // ⚠️ A shelf question stays a shelf question, however book-ish the context.
+  if (BOOKS_SHELF_SHAPED.some((re) => re.test(q))) return false;
+
+  if (q.split(/\s+/).filter(Boolean).length > FOLLOW_UP_MAX_WORDS) return false;
+
+  const priorBookLane = (history ?? []).filter((t) => t.role === 'user' && booksIntent(t.text));
+  if (priorBookLane.length === 0) return false;
+
+  if (CONTINUATION_OPENER.test(q)) return true;
+
+  const mine = contentWords(q);
+  return priorBookLane.some((t) => {
+    for (const w of contentWords(t.text)) if (mine.has(w)) return true;
+    return false;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The caps — design §4.6. Each is its own fuse; none replaces another.
 // ---------------------------------------------------------------------------
 
@@ -396,11 +495,25 @@ export const BOOKS_MSG = {
     "I've read a lot of book text for you today, so I'm going to stop there — that's a cap on my " +
     'side, not anything you did. It resets overnight.',
 
-  /** ⚠️ The per-turn ceiling, worded for the MODEL to relay. She must be able to
-   *  say she ran out of room rather than implying the book did. */
+  /**
+   * ⚠️ The per-turn ceiling, worded for the MODEL to relay — and **the word
+   * "budget" is banned from it**, along with "cap", "quota" and "limit".
+   *
+   * Incident 2026-08-18 (design §10c): the old sentence here ended *"…I will go
+   * again with a fresh budget"*, the model picked the word up and told the owner
+   * *"I've hit my budget on the long passages"* and *"I've run out of budget"*,
+   * and he asked — reasonably — *"she keeps mentioning budgets, what is this"*.
+   *
+   * ⚠️ **Internal mechanics read as a MALFUNCTION to the person on the other
+   * end.** Nothing was wrong: a three-part question spent the per-turn ceiling
+   * exactly as designed, and the retry she offered was real. But a sentence that
+   * names our accounting makes a working system sound rationed and broken at the
+   * same time. She says what it means for THEM — one more ask and she gets it —
+   * and never what it is called in here.
+   */
   turnBudgetSpent:
-    'I have already pulled as much of the book as I can carry in one answer. Say what you want me ' +
-    'to dig into and I will go again with a fresh budget.',
+    "That one is a longer pull than fits in this reply. Ask me again and I'll go straight at it " +
+    'with a clean run — it will come back in full.',
 
   /** ⚠️ The sentence that makes incremental knowledge honest, and the owner
    *  asked for this specific behaviour: *"I don't want to wait until every book

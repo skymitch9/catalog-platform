@@ -44,6 +44,7 @@ import {
   BOOKS_TURNS_PER_DAY,
   booksCapDecision,
   booksIdentityMessage,
+  booksFollowUp,
   booksIntent,
   booksOn,
   looksLikeStatQuery,
@@ -318,6 +319,71 @@ describe('⚠️ booksIntent separates "what happens in it" from "what do we hav
     assert.equal(looksLikeStatQuery(''), false);
   });
 
+  // ── ⚠️ THE SECOND TRANSCRIPT — SHE OFFERED A RETRY AND THEN REFUSED IT ────
+  //
+  // Channel lane, 2026-08-18 ~1:08 PM Phoenix. Her long turn ended:
+  //
+  //   > "I've run out of budget to pull that passage, so I'll dig into it fresh
+  //    if you want — just say the word!"
+  //
+  // The owner said the word:
+  //
+  //   > @GABI dig fresh into jake sheet
+  //   > "I looked on the estate's public shelf for dig fresh into jake sheet…"
+  //
+  // ⚠️ booksIntent is STATELESS on a surface that has a memory. A follow-up is
+  // elliptical BY CONSTRUCTION — it omits everything the previous turn set up,
+  // which is exactly what the detector needs.
+  const asked = (text: string) => ({ role: 'user', text });
+  const BOOK_LANE_HISTORY = [
+    asked("what's Jake's stat sheet at the end of book 1?"),
+    { role: 'assistant', text: "…I'll dig into it fresh if you want — just say the word!" },
+  ];
+
+  it("⚠️ INCIDENT 2026-08-18 — the owner's ACCEPTANCE of her offered retry stays in the book lane", () => {
+    assert.equal(booksIntent('dig fresh into jake sheet'), false, 'alone it is not a book question');
+    assert.equal(booksFollowUp('dig fresh into jake sheet', BOOK_LANE_HISTORY), true);
+  });
+
+  it('the ordinary acceptances continue too', () => {
+    for (const q of ['yes please', 'go ahead', 'do it', 'say the word then', 'and book 2?']) {
+      assert.equal(booksFollowUp(q, BOOK_LANE_HISTORY), true, q);
+    }
+  });
+
+  it('⚠️ a follow-up with NO book conversation behind it does NOT get the book lane', () => {
+    // The whole guard: nothing here fires on its own. An empty window, or a
+    // window whose questions were about the shelf, leaves the lane closed.
+    assert.equal(booksFollowUp('dig fresh into jake sheet', []), false);
+    assert.equal(
+      booksFollowUp('dig fresh into jake sheet', [asked('do we have any Sanderson?')]),
+      false,
+    );
+  });
+
+  it('⚠️ a SHELF question after a book conversation still goes to the shelf', () => {
+    // A lane may not capture people.
+    for (const q of ['do we have book 10?', 'have we got the audiobook?']) {
+      assert.equal(booksFollowUp(q, BOOK_LANE_HISTORY), false, q);
+    }
+  });
+
+  it('a LONG new sentence is judged on its own subject, not on the window', () => {
+    assert.equal(
+      booksFollowUp(
+        'can you tell me which board games we own that play well with exactly five people',
+        BOOK_LANE_HISTORY,
+      ),
+      false,
+    );
+  });
+
+  it('booksFollowUp never double-claims what booksIntent already owns', () => {
+    // Returning true for both would hide which half of the router decided, and
+    // the two are debugged separately.
+    assert.equal(booksFollowUp("what's Jake's stat sheet at the end of book 1?", BOOK_LANE_HISTORY), false);
+  });
+
   it('empty and junk are not book questions', () => {
     assert.equal(booksIntent(''), false);
     assert.equal(booksIntent('   '), false);
@@ -366,6 +432,21 @@ describe('⚠️ the refusals stay distinct, because the fixes differ', () => {
     assert.equal(said.size, 3);
     assert.match(booksIdentityMessage('unlinked'), /\/link/);
     assert.match(booksIdentityMessage('outage'), /not your\s+permissions|our side/i);
+  });
+
+  it('⚠️ SHE NEVER SAYS "BUDGET" — the word that read as a malfunction', () => {
+    // Incident 2026-08-18: the old turnBudgetSpent sentence ended "…I will go
+    // again with a fresh budget", the model picked the word up and said "I've
+    // hit my budget on the long passages", and the owner asked "she keeps
+    // mentioning budgets, what is this". Nothing was wrong — a three-part
+    // question spent the per-turn ceiling exactly as designed — but naming our
+    // accounting makes a working system sound rationed AND broken.
+    const MECHANICS = /(budget|quota|ration|allowance|cap|limit)/i;
+    for (const [key, sentence] of Object.entries(BOOKS_MSG)) {
+      assert.doesNotMatch(sentence, MECHANICS, `BOOKS_MSG.${key} names our internal accounting`);
+    }
+    // ⚠️ And it still has to MEAN something to the person: it promises a retry.
+    assert.match(BOOKS_MSG.turnBudgetSpent, /ask me again/i);
   });
 
   it('⚠️ "not ingested" and "switched off" are not the same sentence', () => {

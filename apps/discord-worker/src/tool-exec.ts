@@ -720,6 +720,35 @@ async function listKnowledge(
   };
 }
 
+/**
+ * ⚠️ **THE FALSE NEGATIVE THIS FEATURE CAN SAY OUT LOUD.** Found in the owner's
+ * 2026-08-18 transcript: he asked three things in one message, one of which
+ * bounded him to chapter 20, and the SAME bound then applied to a cross-book
+ * presence roll-up — hiding Villy's real first appearance (book 2, chapter 24,
+ * measured) and producing *"not in books 1 or 2"*, which is false.
+ *
+ * The roll-up reported it honestly in `hidden_by_scope`; the answer did not
+ * repeat it. So when anything was hidden, the note stops being advice and
+ * becomes the loudest line in the result.
+ */
+function presenceNote(books: unknown): string {
+  const rows = Array.isArray(books) ? books : [];
+  const hidden = rows.reduce((n, r) => {
+    const h = (r as Record<string, unknown>)?.hidden_by_scope;
+    return n + (typeof h === 'number' ? h : 0);
+  }, 0);
+  if (hidden > 0) {
+    return (
+      `⚠️ ${hidden} mention(s) sit PAST where this reader has got to and were hidden from this ` +
+      'roll-up. YOU MUST NOT say the term is absent from any book with a non-zero hidden_by_scope — ' +
+      'that would be a false statement about the story, and it is the one mistake a spoiler bound ' +
+      'can make you make. Say instead that you kept to where they are and offer to look further. ' +
+      PRESENCE_NOTE
+    );
+  }
+  return PRESENCE_NOTE;
+}
+
 const PRESENCE_NOTE =
   '⚠️ chunk_hits: 0 is a REAL answer — the term is genuinely absent from that book. But a book ' +
   'marked ingested: false was NOT checked at all, and reporting that as absence is the one thing ' +
@@ -825,7 +854,7 @@ async function searchBook(
     return {
       name,
       isError: false,
-      result: { mode: 'presence', query, books: body.books, note: PRESENCE_NOTE },
+      result: { mode: 'presence', query, books: body.books, note: presenceNote(body.books) },
     };
   }
 
@@ -839,7 +868,9 @@ async function searchBook(
       name,
       'books_turn_budget_spent',
       BOOKS_MSG.turnBudgetSpent,
-      'Those passages were NOT read. Do not describe them.',
+      'Those passages were NOT read — do not describe them. Say so in ordinary words and offer to ' +
+        'go again. ⚠️ NEVER name a budget, a cap or a quota: it reads as a malfunction when nothing ' +
+        'is wrong.',
     );
   }
 
@@ -923,7 +954,8 @@ async function readPassage(
       name,
       'books_turn_budget_spent',
       BOOKS_MSG.turnBudgetSpent,
-      'The passage was NOT read — do not summarise it from the snippet as though you had.',
+      'The passage was NOT read — do not summarise it from the snippet as though you had. Say so in ' +
+        'ordinary words and offer to go again. ⚠️ NEVER name a budget, a cap or a quota.',
     );
   }
 

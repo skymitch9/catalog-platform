@@ -559,9 +559,10 @@ export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
       'Read ONE passage of a book in full, by the ord a search result gave you. ' +
       'Call this when a snippet looks like the answer but you need the whole thing — the rest of a ' +
       'stat block, the sentence after the one that matched. ' +
-      'Read the one or two that matter, not everything that came back: there is a strict budget per ' +
-      'answer and spending it on near-misses leaves nothing for the real one. ' +
-      '⚠️ If the budget refuses, say you did not read it. Do not summarise a passage from its ' +
+      'Read the one or two that matter, not everything that came back: only so much book text fits ' +
+      'in one reply, and spending it on near-misses leaves nothing for the real one. ' +
+      '⚠️ If a read comes back refused, say you did not read that passage — and say it in ordinary ' +
+      'words, never by naming a budget, a cap or a quota. Do not summarise a passage from its ' +
       'snippet as though you had.',
     input_schema: {
       type: 'object',

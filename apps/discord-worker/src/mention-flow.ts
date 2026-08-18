@@ -111,6 +111,7 @@ import {
 import {
   BOOKS_MSG,
   booksIdentityMessage,
+  booksFollowUp,
   booksIntent,
   boundFromQuestion,
   makeBooksBudget,
@@ -852,7 +853,13 @@ async function answerQuestion(
   // ⚠️ It sits AFTER the docs router on purpose: `docsIntent` is the narrower
   // detector of the two, and an operational question that happens to name a book
   // is still an operational question.
-  if (booksIntent(question)) {
+  // ⚠️ `booksFollowUp` is the SECOND half of this router, added 2026-08-18 after
+  // she invited a retry ("just say the word!"), the owner said the word, and the
+  // stateless detector sent "dig fresh into jake sheet" to the catalogue. A
+  // follow-up is elliptical by construction; judged alone it carries none of
+  // what makes it a book question. `history` is the same remembered window in a
+  // channel and in a DM.
+  if (booksIntent(question) || booksFollowUp(question, history)) {
     if (books) return await booksAnswer(question, history, who, cfg, books, overrides);
     if (cfg.booksEnabled === true) {
       // The posture is on but no port was built — the book app token or the
