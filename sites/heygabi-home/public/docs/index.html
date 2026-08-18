@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>heygabi.ai — docs</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f4ed">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b09">
+
+<!--
+  /docs — SEARCH ACROSS THE ESTATE'S OWN DOCUMENTATION, devops-gated.
+  Design of record: docs/info/gabi-docs-assistant-design.md, phase 6.
+
+  Owner brief, verbatim (2026-08-17): *"let's make sure GABI can read all of
+  our docs and stuff so she can even help me if needed for let's say I don't
+  have a Claude code session open."* And the page's own bar, set the following
+  day when he was asked whether it was wanted at all: *"sure, but make it with
+  a search bar and pretty to look at."* Both halves are requirements. The
+  search bar is REAL — search-as-you-type against the auth Worker's corpus
+  route — and the reading experience is deliberate, not a utilitarian dump.
+
+  ⚠️ CONTENT-FREE BY CONSTRUCTION, and that is the lock. View this file's
+  source signed out and there is no documentation here: no path, no heading,
+  no snippet, not one sentence of a runbook. Everything the page shows arrives
+  from GET /api/estate/docs/search|section on auth.heygabi.ai, behind
+  requireDevops() (devops OR approver OR owner). A 200 IS the capability
+  probe; 401/403 leave a worded refusal and nothing else. That is why
+  committing this page to a PUBLIC repo is safe and deliberate — the same
+  reasoning /runbooks/shelf/ carries, applied to a search box.
+
+  ⚠️ THE CORPUS IS NOT PUBLIC. It carries secret NAMES and where they live,
+  deploy and rollback levers, break-glass SQL, the /admin grant grammar, and
+  household members' email addresses and role assignments — PII plus an
+  operations runbook. The R2 bucket behind it (estate-docs-gated) has no
+  public URL and no custom domain, and this page has no way to widen that: it
+  holds no credential of its own and asks on the signed-in person's behalf.
+
+  ⚠️ CSP: public/_headers needs BOTH a "/docs" and a "/docs/" rule — Pages
+  308s the bare path to the trailing-slash form and the redirect's headers are
+  never the ones applied (that file's own header documents the trap). And
+  connect-src MUST name https://auth.heygabi.ai: a CSP-blocked fetch() REJECTS
+  in the page and is indistinguishable from a dead host, which is the exact
+  miss that cost an evening on /admin's federated role columns.
+
+  ⚠️ THE SNAPSHOT'S DATE IS PART OF THE PAGE, not a footnote. The corpus is
+  republished by a script on the owner's machine riding the 8-hourly audiobook
+  pipeline; when that pipeline is paused or exits early on a quiet cycle, the
+  corpus silently stops refreshing. The strip under the title always names the
+  publish date, and past the Worker's 72-hour threshold it turns amber and
+  says so in words. A docs page that looks equally confident when it is nine
+  days behind is worse than no docs page.
+
+  STRUCTURAL TEMPLATE: /series and /universes — estate theme tokens, the cog,
+  the back arrow, neutral-boot auth via assets/estate-auth.js. Where this page
+  differs it says why, in place.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%235b4b8a'/%3E%3Cpath%20d='M8%208.5h7.2c.9%200%201.6.7%201.6%201.6v13.4H9.6c-.9%200-1.6-.7-1.6-1.6z'%20fill='%23fbfaf7'/%3E%3Cpath%20d='M24%208.5h-7.2c-.9%200-1.6.7-1.6%201.6v13.4h6.8c.9%200%201.6-.7%201.6-1.6z'%20fill='%23c9b6f0'/%3E%3Crect%20x='15.2'%20y='8.5'%20width='1.6'%20height='15'%20fill='%23f0c14b'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- Classic script on purpose: stamps theme/mode before first paint. -->
+<script src="/assets/theme.js"></script>
+
+<style>
+/* ---------------------------------------------------------------------------
+   THE DOCS IDENTITY — a member of the estate's family, not a new species.
+   Tokens only, never a [data-theme] selector (estate-theme.css's contract: if
+   a page needs one, a token is missing).
+
+   The one identity choice: an OPEN BOOK read as a GUTTER. Every result and the
+   reader itself carry a vertical rule down their left edge, tinted per source
+   repo — the estate's three shelves already have spine colours (--et-hue-1/2/3
+   for audio, books, games), so the three docs trees inherit the same three
+   voices rather than inventing a fourth palette. A person who has used
+   /universes will recognise the language; a person reading a runbook can tell
+   at a glance which repo they are in without reading the path.
+   --------------------------------------------------------------------------- */
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--et-bg);
+  background-image: var(--et-bg-texture);
+  background-size: var(--et-bg-texture-size);
+  color: var(--et-fg);
+  font: var(--et-text-body)/1.6 var(--et-font);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+main { max-width: 52rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---- page chrome -------------------------------------------------------- */
+
+.back {
+  display: inline-flex; align-items: center; gap: .45rem; min-height: 44px;
+  margin: 0 0 var(--et-space-1);
+  color: var(--et-muted); font-size: .8125rem; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; text-decoration: none;
+}
+.back:hover { color: var(--et-fg); }
+.back:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+.back svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
+.back:hover svg { transform: translateX(-3px); }
+
+h1 {
+  margin: 0 0 .25rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-title);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  text-transform: var(--et-title-case);
+  color: var(--et-heading-color);
+  text-shadow: var(--et-glow-title);
+}
+.sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; max-width: 40rem; }
+
+/* ---- the snapshot strip -------------------------------------------------
+   ⚠️ ALWAYS VISIBLE, NEVER A FOOTNOTE. A snapshot has an age, and a stale one
+   is not evidence. `data-tone="stale"` is set by docs.js from the Worker's own
+   `snapshot.stale` — the threshold lives server-side and this page owns no
+   copy of it, the same discipline /status keeps for the backup thresholds. */
+
+.snapstrip {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .8rem;
+  margin: 0 0 var(--et-space-3);
+  padding: .55rem .85rem;
+  border: 1px solid var(--et-hairline);
+  border-left: 3px solid color-mix(in srgb, var(--et-accent) 60%, var(--et-hairline));
+  border-radius: var(--et-radius);
+  background: color-mix(in srgb, var(--et-surface) 60%, transparent);
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+}
+.snapstrip b { color: var(--et-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.snapstrip[data-tone="stale"] {
+  border-color: color-mix(in srgb, var(--et-warn) 50%, var(--et-hairline));
+  border-left-color: var(--et-warn);
+  background: color-mix(in srgb, var(--et-warn) 8%, var(--et-surface));
+  color: var(--et-fg);
+}
+.snapstrip .dot { color: var(--et-hairline); }
+
+/* ---- the search bar — the owner asked for this by name ------------------
+   Sticky, because a corpus of 1,400 sections means scrolling, and a search box
+   you have to scroll back up to reach is a search box you stop using. */
+
+.searchwrap {
+  position: sticky; top: 0; z-index: 5;
+  margin: 0 0 var(--et-space-3);
+  padding: .55rem 0 .5rem;
+  background: linear-gradient(var(--et-bg) 78%, transparent);
+}
+.searchbar {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .15rem .35rem .15rem .9rem;
+  border: var(--et-border-w) solid var(--et-field-border, var(--et-hairline));
+  border-radius: 999px;
+  background: var(--et-field-bg, var(--et-surface));
+  box-shadow: var(--et-field-shadow, var(--et-shadow));
+  transition: border-color var(--et-dur-fast) var(--et-ease), box-shadow var(--et-dur-fast) var(--et-ease);
+}
+.searchbar:focus-within {
+  border-color: var(--et-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--et-accent) 22%, transparent);
+}
+.searchbar svg { flex: none; color: var(--et-muted); }
+.searchbar input {
+  flex: 1; min-width: 0; min-height: 46px;
+  border: 0; background: none; color: var(--et-fg);
+  font: inherit; font-size: 1.02rem;
+}
+.searchbar input::placeholder { color: var(--et-muted); }
+.searchbar input:focus { outline: none; }
+.searchbar input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.clearbtn {
+  flex: none; display: none; align-items: center; justify-content: center;
+  width: 34px; height: 34px; margin-right: .3rem;
+  border: 0; border-radius: 999px; background: none;
+  color: var(--et-muted); font: inherit; font-size: 1.15rem; line-height: 1; cursor: pointer;
+}
+.clearbtn:hover { color: var(--et-fg); background: color-mix(in srgb, var(--et-fg) 8%, transparent); }
+.searchbar[data-filled="1"] .clearbtn { display: inline-flex; }
+
+.searchmeta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem;
+  margin: .5rem .25rem 0;
+  color: var(--et-muted); font-size: var(--et-text-small);
+}
+.searchmeta .loose {
+  padding: .05rem .5rem; border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--et-warn) 50%, var(--et-hairline));
+  color: var(--et-fg);
+}
+
+/* Suggested phrases — the empty state does a job rather than sitting blank.
+   A corpus you cannot see the shape of is a corpus you do not know how to
+   query, so the page offers four real questions to start from. */
+.seeds { display: flex; flex-wrap: wrap; gap: .45rem; margin: var(--et-space-2) 0 0; padding: 0; list-style: none; }
+.seeds button {
+  min-height: 36px; padding: .3rem .8rem;
+  border: 1px solid var(--et-hairline); border-radius: 999px;
+  background: color-mix(in srgb, var(--et-surface) 70%, transparent);
+  color: var(--et-muted); font: inherit; font-size: var(--et-text-small); cursor: pointer;
+}
+.seeds button:hover { color: var(--et-fg); border-color: var(--et-accent); }
+.seeds button:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+
+/* ---- the gate ----------------------------------------------------------- */
+
+.gate {
+  margin: 0 0 var(--et-space-3); padding: 1rem 1.15rem;
+  border: 1px dashed var(--et-hairline); border-radius: var(--et-radius-lg);
+  background: color-mix(in srgb, var(--et-surface) 50%, transparent);
+  color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty;
+}
+.gate p { margin: 0 0 .75rem; }
+.gate p:last-child { margin-bottom: 0; }
+.gate[data-tone="refused"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--et-danger) 40%, var(--et-hairline));
+  color: var(--et-fg);
+}
+.gate[data-tone="outage"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--et-warn) 45%, var(--et-hairline));
+  color: var(--et-fg);
+}
+.find-btn {
+  min-height: 44px; padding: .5rem 1.05rem;
+  border: var(--et-btn-border); border-radius: var(--et-radius);
+  background: var(--et-btn-bg); color: var(--et-btn-fg);
+  box-shadow: var(--et-btn-shadow); font: inherit; font-weight: 600; cursor: pointer;
+}
+.find-btn:hover { filter: brightness(1.06); }
+.find-btn:disabled { opacity: .6; cursor: default; }
+.find-linkbtn {
+  border: 0; padding: 0; min-height: 0; background: none;
+  color: var(--et-accent); font: inherit; font-weight: 600; cursor: pointer;
+  text-decoration: underline;
+}
+.find-linkbtn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; border-radius: 4px; }
+#who { margin: 0 0 var(--et-space-2); color: var(--et-muted); font-size: var(--et-text-small); }
+
+/* ---- results ------------------------------------------------------------ */
+
+ul.results { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+
+.result {
+  --spine: var(--et-accent);
+  position: relative;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-left: 3px solid var(--spine);
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+  overflow: hidden;
+}
+/* The three docs trees inherit the estate's own three shelf voices rather
+   than a fourth palette. A reader who knows /universes already reads these. */
+.result[data-repo="catalog-platform"]  { --spine: var(--et-hue-3); }
+.result[data-repo="library_catalog"]   { --spine: var(--et-hue-2); }
+.result[data-repo="audiobook_catalog"] { --spine: var(--et-hue-1); }
+
+.result button.open {
+  display: block; width: 100%; padding: .8rem 1rem .85rem;
+  border: 0; background: none; color: inherit; font: inherit;
+  text-align: left; cursor: pointer;
+}
+.result button.open:hover .r-head { color: var(--et-accent); }
+.result button.open:focus-visible { outline: 2px solid var(--et-accent); outline-offset: -3px; }
+
+.r-top { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .55rem; margin-bottom: .3rem; }
+.chip {
+  padding: .1rem .5rem; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--spine) 45%, var(--et-hairline));
+  background: color-mix(in srgb, var(--spine) 12%, transparent);
+  color: color-mix(in srgb, var(--spine) 75%, var(--et-fg));
+  font-family: var(--et-font-mono); font-size: var(--et-text-micro);
+  letter-spacing: .02em; white-space: nowrap;
+}
+.r-path {
+  color: var(--et-muted); font-family: var(--et-font-mono);
+  font-size: var(--et-text-micro); word-break: break-all;
+}
+.r-head {
+  font-family: var(--et-font-display); font-weight: 700;
+  font-size: 1.02rem; letter-spacing: var(--et-title-spacing);
+  color: var(--et-fg); text-wrap: pretty;
+}
+.r-snip { margin: .3rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+
+/* ⚠️ THE HIGHLIGHT. `mark` is the whole point of a search result — without it
+   the reader re-scans 400 characters to find what they typed. estate-theme.css
+   sets no `mark` colour, so the UA's fluorescent yellow would fight every
+   theme; this keeps it inside the token vocabulary. */
+mark {
+  padding: 0 .12em; border-radius: 3px;
+  background: color-mix(in srgb, var(--et-accent) 26%, transparent);
+  color: var(--et-fg);
+  font-weight: 600;
+}
+
+.emptystate {
+  margin: var(--et-space-2) 0 0; padding: 1rem 1.15rem;
+  border: 1px dashed var(--et-hairline); border-radius: var(--et-radius-lg);
+  color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty;
+}
+
+/* ---- the reader ---------------------------------------------------------
+   One section, rendered — the "clean rendered view" half of the brief. It
+   REPLACES the results list rather than sitting beside it: a runbook section
+   deserves the full column width, and a two-pane layout on a phone gives both
+   halves too little. */
+
+.reader {
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-left: 3px solid var(--spine, var(--et-accent));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+  overflow: hidden;
+}
+.reader[data-repo="catalog-platform"]  { --spine: var(--et-hue-3); }
+.reader[data-repo="library_catalog"]   { --spine: var(--et-hue-2); }
+.reader[data-repo="audiobook_catalog"] { --spine: var(--et-hue-1); }
+
+.reader-head {
+  padding: .9rem 1.15rem;
+  border-bottom: 1px solid var(--et-hairline);
+  background: color-mix(in srgb, var(--spine) 6%, transparent);
+}
+.reader-title {
+  margin: .35rem 0 .2rem;
+  font-family: var(--et-font-display); font-weight: 700;
+  font-size: 1.25rem; letter-spacing: var(--et-title-spacing);
+  color: var(--et-heading-color); text-wrap: pretty;
+}
+/* ⚠️ SOURCE AND DATE ARE PART OF THE DOCUMENT, not chrome. A section read
+   without knowing which file it came from or how old it is invites exactly
+   the mistake this whole feature exists to avoid. */
+.reader-src { color: var(--et-muted); font-family: var(--et-font-mono); font-size: var(--et-text-micro); word-break: break-all; }
+.reader-when { margin: .25rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); }
+.reader-body { padding: .35rem 1.15rem 1.2rem; }
+
+.reader-body h2, .reader-body h3, .reader-body h4 {
+  font-family: var(--et-font-display);
+  letter-spacing: var(--et-title-spacing);
+  color: var(--et-heading-color);
+  margin: 1.4rem 0 .5rem;
+  text-wrap: pretty;
+}
+.reader-body h2 { font-size: 1.1rem; }
+.reader-body h3 { font-size: 1rem; }
+.reader-body h4 { font-size: .95rem; color: var(--et-fg); }
+.reader-body p { margin: .7rem 0; text-wrap: pretty; }
+.reader-body ul, .reader-body ol { margin: .7rem 0; padding-left: 1.35rem; }
+.reader-body li { margin: .28rem 0; text-wrap: pretty; }
+.reader-body a { color: var(--et-accent); text-decoration: underline; text-underline-offset: 2px; }
+.reader-body a:hover { filter: brightness(1.12); }
+.reader-body code {
+  padding: .1em .35em; border-radius: 4px;
+  border: 1px solid var(--et-hairline);
+  background: color-mix(in srgb, var(--et-fg) 6%, transparent);
+  font-family: var(--et-font-mono); font-size: .9em;
+}
+.reader-body pre {
+  margin: .8rem 0; padding: .8rem .95rem;
+  border: 1px solid var(--et-hairline); border-radius: var(--et-radius);
+  background: color-mix(in srgb, var(--et-fg) 5%, var(--et-bg));
+  /* Wide code must scroll INSIDE its own box — the page body never scrolls
+     sideways, on a phone least of all. */
+  overflow-x: auto;
+}
+.reader-body pre code { padding: 0; border: 0; background: none; font-size: .85rem; line-height: 1.5; }
+.reader-body blockquote {
+  margin: .8rem 0; padding: .5rem .95rem;
+  border-left: 3px solid color-mix(in srgb, var(--et-accent) 45%, var(--et-hairline));
+  background: color-mix(in srgb, var(--et-accent) 5%, transparent);
+  color: var(--et-muted);
+}
+.reader-body blockquote p { margin: .3rem 0; }
+.reader-body hr { margin: 1.2rem 0; border: 0; border-top: 1px solid var(--et-hairline); }
+.tablewrap { margin: .8rem 0; overflow-x: auto; }
+.reader-body table { border-collapse: collapse; width: 100%; font-size: var(--et-text-small); }
+.reader-body th, .reader-body td {
+  padding: .4rem .6rem; border: 1px solid var(--et-hairline); text-align: left; vertical-align: top;
+}
+.reader-body th { background: color-mix(in srgb, var(--et-fg) 6%, transparent); font-weight: 700; }
+
+.reader-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem;
+  padding: .75rem 1.15rem; border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted); font-size: var(--et-text-small);
+}
+.reader-nav { display: flex; gap: .4rem; margin-left: auto; }
+.reader-nav button {
+  min-height: 36px; padding: .25rem .8rem;
+  border: 1px solid var(--et-hairline); border-radius: var(--et-radius);
+  background: var(--et-bg); color: var(--et-fg); font: inherit;
+  font-size: var(--et-text-small); cursor: pointer;
+}
+.reader-nav button:hover:not(:disabled) { border-color: var(--et-accent); color: var(--et-accent); }
+.reader-nav button:disabled { opacity: .4; cursor: default; }
+
+footer {
+  margin-top: var(--et-space-4); padding-top: var(--et-space-2);
+  border-top: 1px solid var(--et-hairline);
+  color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty;
+}
+footer p { margin: 0 0 .5rem; max-width: 46rem; }
+footer a { color: var(--et-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+</style>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <!-- ⚠️ Options are BUILT BY assets/theme.js from its THEMES registry — do
+         NOT list them here. The page owns the cog's PLACE, theme.js owns its
+         CONTENTS; a hardcoded list is why the cog offered four themes for a
+         day after `hearts` shipped. -->
+    <select id="hg-theme-select"></select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Remembered on this site only.</p>
+</div>
+
+<main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+  <h1>Docs</h1>
+  <p class="sub">
+    Every runbook, design note and decision the estate has written down — three
+    repositories, searched together, section by section.
+  </p>
+
+  <!-- Filled by docs.js from the Worker's own `snapshot` envelope. Hidden
+       until there is a real date to name: an empty date field would be a
+       claim about freshness that nothing has verified. -->
+  <p class="snapstrip" id="snapstrip" hidden></p>
+
+  <p id="who" hidden></p>
+  <div class="gate" id="gate">
+    <p id="gate-text">Checking sign-in&hellip;</p>
+    <button id="signin" class="find-btn" type="button" hidden>Sign in with Google</button>
+  </div>
+
+  <div class="searchwrap" id="searchwrap" hidden>
+    <div class="searchbar" id="searchbar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+      <label class="sr-only" for="q">Search the estate docs</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search the docs — try “revocation delay”">
+      <button id="clear" class="clearbtn" type="button" aria-label="Clear the search">&times;</button>
+    </div>
+    <p class="searchmeta" id="searchmeta" hidden></p>
+  </div>
+
+  <ul class="seeds" id="seeds" hidden></ul>
+
+  <ul class="results" id="results" aria-label="Matching sections"></ul>
+  <div id="empty" class="emptystate" hidden></div>
+
+  <div class="reader" id="reader" hidden>
+    <div class="reader-head">
+      <p class="reader-src" id="reader-src"></p>
+      <h2 class="reader-title" id="reader-title"></h2>
+      <p class="reader-when" id="reader-when"></p>
+    </div>
+    <div class="reader-body" id="reader-body"></div>
+    <div class="reader-foot">
+      <button class="find-linkbtn" id="reader-back" type="button">&larr; back to results</button>
+      <span class="reader-nav">
+        <button id="reader-prev" type="button">&uarr; previous section</button>
+        <button id="reader-next" type="button">next section &darr;</button>
+      </span>
+    </div>
+  </div>
+
+  <footer>
+    <!-- Both lines are HONESTY MARKERS and survive every trim. The first stops
+         a snapshot being read as live truth; the second stops an empty result
+         being read as "the estate does not do that". -->
+    <p>
+      This searches a SNAPSHOT of the docs, republished by the home machine —
+      anything written since the date above is not in it yet.
+    </p>
+    <p>
+      No results means nothing in the docs says it, which is not the same as it
+      not being true.
+    </p>
+    <p><a href="/status/">status</a> · <a href="/">&larr; back to the front door</a></p>
+  </footer>
+</main>
+
+<!-- External module because _headers ships script-src 'self' — inline script
+     stays blocked, same as every other apex page. -->
+<script type="module" src="/docs/docs.js"></script>
+</body>
+</html>

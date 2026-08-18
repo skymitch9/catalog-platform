@@ -266,6 +266,49 @@
   X-Robots-Tag: noindex, nofollow
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'unsafe-inline'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# /docs (added 2026-08-18, GABI docs assistant phase 6) — search across the
+# estate's own documentation, devops-gated. ⚠️ BOTH forms, per the
+# trailing-slash 308 trap this file's own header documents; the splat form is
+# NOT used here because /docs/docs.js must also be covered and an exact rule
+# per file is clearer than a splat that quietly widens to future children.
+#   connect-src ⚠️ https://auth.heygabi.ai IS THE WHOLE PAGE. Both fetches
+#               (GET /api/estate/docs/search and .../section) go there and
+#               nowhere else, and a CSP-blocked fetch() REJECTS in the page —
+#               docs.js's own catch() would then report "the docs service did
+#               not answer (network)", which is indistinguishable from the
+#               Worker being down. That is the exact miss that cost an evening
+#               on /admin's federated role columns (see the connect-src note
+#               atop this file), so it is named first. Plus identitytoolkit +
+#               securetoken for sign-in and token refresh. NOT named, because
+#               this page does not call them: index.heygabi.ai (no search
+#               component here), 'self' (no wasm, no same-origin fetch),
+#               openlibrary.org and library.heygabi.ai (no scanner, no intake).
+#   script-src  'self' (the page's own /docs/docs.js module) + www.gstatic.com
+#               (Firebase SDK) + apis.google.com (the sign-in popup helper). No
+#               'wasm-unsafe-eval' — nothing here compiles WebAssembly.
+#   img-src     'self' data: ONLY. This page renders documentation, never a
+#               cover, so the estate's cover-host list is deliberately absent —
+#               a shorter list that matches what the page actually fetches.
+#   style-src   'self' (assets/estate-theme.css) + 'unsafe-inline' for the
+#               page's own <style> block, same as every other apex page.
+#   frame-src   the project's authDomain, https://auth.heygabi.ai (the SSO
+#               Phase 1 cutover — estate-auth.js's authDomain points there) and
+#               accounts.google.com, matching / and /admin and /series.
+/docs
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/docs/
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/docs/docs.js
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 # Cache-Control on everything (2026-08-15, owner: "can we make giving roles
 # hard refresh or something?"): a devops grant looked broken because the
 # grantee's browser kept running the PREVIOUS deploy's scripts from cache.

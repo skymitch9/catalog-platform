@@ -204,6 +204,62 @@
       ]
     },
     {
+      "_why": [
+        "/docs (2026-08-18, GABI docs assistant phase 6) is a GATED page and, unusually, a CONTENT-FREE one:",
+        "every heading, path, snippet and section body arrives from auth.heygabi.ai behind requireDevops(),",
+        "so an unauthenticated fetch can only ever see the shell. That is the point — view the source signed",
+        "out and there is no documentation here. So the markers are the SHELL and its GATE, and each is a",
+        "piece whose absence would leave a page that still returns a cheerful 200 while doing nothing:",
+        "id=q is the search input the owner asked for by name ('make it with a search bar'), id=results is",
+        "where hits land, id=snapstrip is the always-visible publish date (a docs page that looks equally",
+        "confident when it is nine days behind is worse than none), id=reader/id=reader-body are the section",
+        "view, and id=signin plus the worded gate line are the signed-out state — never a blank.",
+        "⚠️ The gate line is asserted as TEXT, not only as an element: a bundle that shipped the markup with",
+        "an empty gate would satisfy an id-only marker and still show a person a bare box."
+      ],
+      "path": "/docs/",
+      "mustContain": [
+        "<h1>Docs</h1>",
+        "class=\"back\"",
+        "id=\"q\"",
+        "id=\"searchbar\"",
+        "id=\"results\"",
+        "id=\"snapstrip\"",
+        "id=\"reader\"",
+        "id=\"reader-body\"",
+        "id=\"signin\"",
+        "Checking sign-in"
+      ]
+    },
+    {
+      "_why": [
+        "docs.js — everything this page DOES lives here, and none of it is visible to an unauthenticated",
+        "fetch, so the markers are the module's own anatomy. Each names a decision a stale bundle would",
+        "silently lose: the two Worker routes (a page still pointing at the old KV /:slug endpoint would 404",
+        "forever and read as 'no docs published'), markText is the result highlighting, renderMarkdown is the",
+        "rendered section view, describeFailure is the one place an HTTP outcome becomes a sentence, and",
+        "'not your permissions' is the outage wording that must never collapse back into a permission",
+        "refusal — the estate's standing rule, and the row most easily mislabelled.",
+        "⚠️ mustNotContain pins the one thing this renderer must never acquire. Every node is built with",
+        "textContent precisely because the corpus is full of angle brackets in shell one-liners and <script>",
+        "inside code fences; an innerHTML assignment reappearing here would either execute those or silently",
+        "eat them, and would pass every mustContain above."
+      ],
+      "path": "/docs/docs.js",
+      "mustContain": [
+        "/api/estate/docs/search",
+        "/api/estate/docs/section",
+        "markText",
+        "renderMarkdown",
+        "describeFailure",
+        "not your permissions",
+        "snapshot.warning"
+      ],
+      "mustNotContain": [
+        ".innerHTML ="
+      ]
+    },
+    {
       "path": "/universes/",
       "mustContain": [
         "Universes",
