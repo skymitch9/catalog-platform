@@ -195,14 +195,162 @@ the whole point of person-keying.
 
 ---
 
+## 5a. ⚠️ ASKING WHAT SHE IS BEING — the visibility half (added 2026-08-18)
+
+Owner order: **(a)** any user asking about their OWN assigned personality gets a
+plain factual in-voice answer; asking about somebody ELSE's gets a worded
+not-yours refusal. **(b)** owner/devops get a ROSTER.
+
+### ⚠️ This does NOT undo §5's secrecy, and the line is checkable
+
+§5 forbids **advertising the mechanism**. It does not require her to be evasive
+about herself when somebody asks a direct question — and evasion would be worse
+than the disclosure, because a straight question met with a dodge reads as a
+malfunction.
+
+| Question | Answer |
+|---|---|
+| *"what personality are you using with me?"* | ✅ the trope, and whether it is fixed or drifting |
+| *"what personality do you use with Sam?"* | ⚠️ worded not-yours refusal |
+| *"how do I pin a personality?"* | ⚠️ **no detector fires.** She has no sentence about the mechanism, so she has none to give |
+| *"list everyone's personality"* | devops only — the roster |
+
+⚠️ **She answers the question asked and nothing adjacent.** *"It is staying that
+way"* is a fact about her; *"say **be tsundere** to fix it"* is the
+advertisement the owner forbade, and **no string reachable from this feature
+contains it** (pinned by test).
+
+⚠️ **NO COMMAND REGISTRATION**, for the reason the pin has none: a slash command
+appears in an autocomplete menu, which is advertising by another route. This is a
+detector, the same family as the memory control and the pin.
+
+### ⚠️ The answer is a CONSTANT per trope, not a model turn
+
+§1's rule cuts both ways: personality is tone and never truth, so a question
+about a **fact** is answered from the record and not from a model that might
+improvise a nicer-sounding trope name than the one actually stored. A per-trope
+opener keeps it in voice without letting the voice write it.
+
+⚠️ **THE STATE IS READ LIVE, IN THE TURN THAT ANSWERS.** She must never say what
+she is being from what she said earlier — the same availability-grounding rule
+the book listing carries in capitals, applied to herself.
+
+⚠️ **THE WRITER IS NOT NAMED TO THE TARGET.** Whether an operator set it is
+roster material; telling somebody *"an operator made me cosy at you"* turns an
+invisible knob into a notification, which is exactly what §5b is specified not to
+send.
+
+### 5a.2 The roster
+
+Devops-class only, via the **docs-lane identity gate** (§5c). One line per person
+on record:
+
+```
+**Personality roster** — 3 on record, read just now.
+• <@222> — **cosy** · pinned by <@999> · last shift 2h ago
+• <@333> — **peppy** · pinned by themselves · last shift 1m ago
+• <@111> — **noir** · drifting · last shift 20m ago
+```
+
+- ⚠️ Rendered as `<@id>`, **never a stored name** — Discord resolves it to
+  whatever the person is called today, so the roster cannot go stale the way the
+  shelf lane's display-name snapshot does.
+- Pinned rows sort above drifting ones; an operator scanning it wants the
+  deliberate ones first.
+- ⚠️ **An UNRECORDED writer says so** rather than being guessed at. Records
+  written before this feature carry none, and printing "pinned by themselves"
+  would invent a fact about somebody's history.
+- ⚠️ **Bounded** at `PERSONA_ROSTER_MAX` (100), with the COUNT printed beside the
+  rows so a roster at the bound is visibly at it. Long rosters ride the existing
+  auto-continue rather than being truncated.
+
+---
+
+## 5b. ⚠️ THE DEVOPS SET/CLEAR — pin any trope on any person
+
+Owner order: devops may pin any of the **eleven** on anybody (*"make Sam's
+personality cozy"*) or return them to drift.
+
+| Rule | Decision |
+|---|---|
+| semantics | ⚠️ **IDENTICAL TO A SELF-PIN** — same key, same `pinned` field, same immediate effect. A second mechanism with its own precedence would be a second thing deciding what she sounds like, and the two would disagree the first time somebody used both |
+| conflict | **last-write-wins.** A devops pin is not a *stronger* pin: a person may un-pin what an operator set, exactly as they could un-pin their own |
+| provenance | the WRITER is recorded (`self` \| `devops:<snowflake>`) with a timestamp, and the roster shows it |
+| notification | ⚠️ **NONE.** The knob stays invisible, by the same order that made the self-pin invisible |
+| invalid trope | in-voice *"**grumpycat** isn't one I know how to be."* ⚠️ It does **not** list the eleven — the trope roster is not a menu for end users |
+| non-devops on others | worded role refusal naming the role and the fix |
+| on themselves | ⚠️ **just the existing hidden pin**, checked BEFORE the devops gate so an ordinary person is never told they lack a role for something they already had |
+
+### ⚠️ A BARE NAME IS REFUSED, NEVER RESOLVED
+
+Only a **Discord mention** targets another person. *"make Sam cosy"* is ambiguous
+the moment two people answer to Sam, and the estate's own rule is that an
+access-changing instruction read generously is how the wrong person gets acted
+on. She asks for a mention instead — a snowflake cannot be misread.
+
+⚠️ **THE DETECTOR NEEDS A PERSONA SUBJECT AS WELL AS A VERB.** *"make @x an
+admin"* and *"set @x's reminder"* must not be read as persona verbs; an operator
+verb with no subject is the classic over-broad detector, and this one would act
+on the wrong system entirely.
+
+⚠️ **CLEAR IS CHECKED FIRST**, exactly as in §5's pin detector: *"stop making @x
+tsundere"* contains a trope name and a set-shaped verb, and reading it as a SET
+would be the opposite of what was said. `stop making` sits beside `stop being`
+because an operator un-does what they did **in the words they did it in**.
+
+---
+
+## 5c. ⚠️ THE DEVOPS GATE — asked, never decided here
+
+Both §5a's roster and §5b's set/clear need one boolean: *is this person
+devops-class?* The estate directory owns that answer and the auth Worker applies
+`devopsAllows()` — the same predicate the browser door uses.
+
+⚠️ **A SECOND HOLDER OF THAT DECISION WOULD BE A SECOND THING TO FORGET TO
+REVOKE**, and revoking somebody's devops in `/admin` has to shut every door at
+once. So the gate is a **real call whose status is the answer**, made through the
+existing docs port:
+
+| outcome | means |
+|---|---|
+| `200` | the auth Worker served the corpus to this identity → **devops** |
+| `403` | the auth Worker refused this identity → **not devops** |
+| anything else, or no answer | ⚠️ **UNKNOWN, worded as an outage** |
+
+⚠️ **A NETWORK OR SERVER FAILURE IS NOT A PERMISSION FAILURE.** A 500 read as
+"not devops" sends an operator to ask for access they already hold.
+
+⚠️ **The cost of the reuse, stated rather than discovered:** with `GABI_DOCS` off
+there is nothing to ask, and both features answer *"I can't check who's
+allowed"* — a SETUP sentence, never a permissions one. That coupling is the price
+of not minting a second credential for a single boolean, and it is deliberate.
+
+---
+
 ## 6. Where the state lives
 
 `pers:user:<discordUserId>` in the gateway Durable Object, beside the four cap
 counters and in the same idiom:
 
 ```jsonc
-{ "trope": "deadpan", "exchanges": 6, "since": 1755561000000, "pinned": "noir" }
+{
+  "trope": "deadpan", "exchanges": 6, "since": 1755561000000, "pinned": "noir",
+  // ⚠️ Added 2026-08-18 with §5b. `self` | `devops:<snowflake>`, plus when.
+  // ABSENT means "unrecorded" and is never guessed at as `self` — the roster
+  // prints the difference. A CLEAR drops both: a drifting persona has no author.
+  "writer": "devops:1538775435880562758", "pinnedAt": 1755561000000
+}
 ```
+
+⚠️ **The writer is the SNOWFLAKE, never a display name.** A name is renameable
+and the roster would then credit a pin to somebody who no longer exists under
+that spelling — the same wart the shelf lane's reviews join lives with.
+
+⚠️ **PROVENANCE MUST SURVIVE A DRIFT STEP.** `advancePersona` spreads the prior
+state rather than rebuilding it field by field; an earlier shape did the latter,
+and adding `writer` to it without the spread would have silently dropped who
+pinned somebody the first time she stepped — a roster telling a confident lie
+about its own history. Pinned by test.
 
 ⚠️ **Its OWN key, not a field on the conversation record.** The conversation
 record's shape lives in `packages/gabi-conversation`, which the site panel also

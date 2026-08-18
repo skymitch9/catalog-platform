@@ -98,7 +98,12 @@ import {
   type MentionTrigger,
   type MentionVia,
 } from './mentions.js';
-import { DELEGATE_MSG, delegatedIntent, type LibraryInstance } from './delegated.js';
+import {
+  DELEGATE_MSG,
+  delegatedIntent,
+  type DelegatePort,
+  type LibraryInstance,
+} from './delegated.js';
 import {
   DOCS_MSG,
   docsIntent,
@@ -130,7 +135,34 @@ import {
   type MemoryPort,
   type MemoryProfile,
 } from './memory.js';
-import { personaCommand, PERSONA_ACK, type Trope } from './personality.js';
+import {
+  devopsWriter,
+  personaAdminCommand,
+  personaCommand,
+  personaQuery,
+  personaSelfAnswer,
+  renderPersonaRoster,
+  PERSONA_ACK,
+  PERSONA_ADMIN_MSG,
+  PERSONA_VISIBILITY_MSG,
+  TROPE_VOICES,
+  type PersonaRosterRow,
+  type PersonaState,
+  type PersonaWriter,
+  type Trope,
+} from './personality.js';
+import { checkDevops, type DevopsVerdict } from './devops-gate.js';
+import {
+  formatAsked,
+  formatFromProfileNotes,
+  renderSuggestions,
+  suggestIntent,
+  SUGGEST_ASSUMED_NOTE,
+  SUGGEST_MSG,
+  SUGGEST_NOTE,
+  type SuggestFormat,
+} from './suggest.js';
+import { gatherSuggestions, suggestGate } from './suggest-flow.js';
 import {
   SHELF_MSG,
   shelfFollowUp,
@@ -311,8 +343,23 @@ export interface MentionDeps {
    * posture off.
    */
   persona?: {
-    pin(userId: string, trope: Trope): Promise<void>;
-    clear(userId: string): Promise<void>;
+    /** ⚠️ `writer` records WHO pinned it — absent means the person themselves.
+     *  Optional so no existing caller breaks; the roster prints "writer not
+     *  recorded" rather than guessing when it is missing. */
+    pin(userId: string, trope: Trope, writer?: PersonaWriter): Promise<void>;
+    clear(userId: string, writer?: PersonaWriter): Promise<void>;
+    /**
+     * ⚠️ **READ LIVE, IN THE TURN THAT ANSWERS.** Added 2026-08-18 with the
+     * visibility feature. She must never say what she is being from what she
+     * said earlier in the conversation — her own previous message is not
+     * evidence, which is the same availability-grounding rule the book listing
+     * carries in capitals.
+     */
+    read?(userId: string): Promise<PersonaState | null>;
+    /** ⚠️ Every persona on record, read from state that turn. Devops-gated by the
+     *  caller; this port performs NO authority check of its own, because a check
+     *  performed by the thing being protected is a check that can be skipped. */
+    roster?(): Promise<PersonaRosterRow[]>;
   };
 }
 
@@ -397,6 +444,18 @@ export interface MentionConfig {
    * Absent means the posture is off, and she is exactly the bot she was before.
    */
   personaBlock?: string;
+  /**
+   * ⚠️ **PERSONALITY, the posture itself** — needed here as well as the rendered
+   * block, because the VISIBILITY lane has to answer *"I'm not running
+   * personalities at the moment"* when it is off. `personaBlock` cannot carry
+   * that: its absence is ambiguous between "switched off" and "this surface
+   * never had one".
+   */
+  personalityEnabled?: boolean;
+  /** ⚠️ The `GABI_SUGGEST` posture, affirmative-only, read at the composition
+   *  root. Defaults to FALSE so a caller that predates the feature falls through
+   *  unchanged rather than being handed a sentence about a lane it never had. */
+  suggestEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
 }
@@ -1039,6 +1098,290 @@ async function personalShelfAnswer(
 }
 
 /**
+ * ⚠️ **THE SUGGESTION LANE — the format question, the gate, and the grounding.**
+ *
+ * Owner ask, verbatim: *"I also need Gabi to give book suggestions and clarify
+ * if I want audio physical or ebook. For physical I only want her to suggest a
+ * physical book to a linked person who can view a book from the table she's
+ * suggesting"*.
+ *
+ * The order below is the design, and each step can refuse before the next costs
+ * anything:
+ *
+ *  1. **Which format?** — from the question, else from the profile, else ONE
+ *     clarifying question and nothing else happens this turn.
+ *  2. **The gate** — audio ungated, ebook behind `vis_ebooks`, physical behind
+ *     *"can this person open that shelf"*. ⚠️ **Asked before anything is
+ *     gathered**, so somebody who may not be suggested a physical book does not
+ *     have their reading list read in order to be told so.
+ *  3. **The gathering** — the catalogue and the asker's own shelf, in parallel,
+ *     both read THIS turn.
+ *  4. **The turn** — grounded on a closed list of real rows.
+ */
+async function suggestAnswer(
+  question: string,
+  history: readonly ConversationTurn[],
+  who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
+  cfg: MentionConfig,
+  overrides: { fetch?: typeof fetch } | undefined,
+  ctx: {
+    shelf?: { port: ShelfPort; discordUserId: string };
+    books?: BooksToolContext;
+    delegated?: { port: DelegatePort; instances: readonly LibraryInstance[] };
+    profileNotes?: readonly string[];
+  },
+  memoryBlock?: string,
+): Promise<AnsweredQuestion> {
+  const done = (content: string, overflow = true): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'question',
+    components: null,
+    ...(overflow ? { overflowNote: SUGGEST_MSG_MORE } : {}),
+  });
+
+  // ── 1. ⚠️ ONE clarifying question, and only when it is genuinely needed ──
+  const stated = formatAsked(question);
+  const learned = stated ? null : formatFromProfileNotes(ctx.profileNotes);
+  const format: SuggestFormat | null = stated ?? learned;
+  if (!format) {
+    // ⚠️ NOTHING IS READ AND NOTHING IS GATED. She asked a question; the next
+    // message answers it and comes back through this same lane with a format.
+    return { content: SUGGEST_MSG.clarify, pending: null, intent: 'question', components: null };
+  }
+
+  // ── 2. ⚠️ THE GATE, BEFORE THE GATHERING ────────────────────────────────
+  const gate = await suggestGate(format, {
+    discordUserId: who.discordUserId,
+    ...(ctx.books ? { books: ctx.books.port } : {}),
+    ...(ctx.delegated ? { delegated: ctx.delegated } : {}),
+  });
+  if (!gate.ok) return done(gate.message, false);
+
+  // ── 3. the gathering, both halves in this turn ───────────────────────────
+  const gathered = await gatherSuggestions({
+    catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
+    format,
+    ...(ctx.shelf ? { shelf: ctx.shelf } : {}),
+    ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
+  });
+  // ⚠️ NO CATALOGUE MEANS NO SUGGESTION, and it is worded as our outage. An
+  // empty list dressed as an answer would say "there is nothing for you" about a
+  // shelf of 1,079 books.
+  if (!gathered) return done(SUGGEST_MSG.estateUnreachable, false);
+  if (gathered.candidates.length === 0) return done(SUGGEST_MSG.nothingLeft(format), false);
+
+  // ── 4. ⚠️ GROUNDED ON A CLOSED LIST OF ROWS READ THIS TURN ───────────────
+  const grounding = [
+    renderSuggestions(gathered.candidates, format),
+    SUGGEST_NOTE,
+    learned ? SUGGEST_ASSUMED_NOTE(learned) : '',
+    gathered.shelfUnavailable ? SUGGEST_SHELF_DOWN_NOTE : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const spoken = await converseWithTools(
+    cfg.anthropicKey,
+    question,
+    grounding,
+    who,
+    // ⚠️ The shelf and catalogue tools stay in front of her so a follow-up
+    // inside the same turn — "anything shorter?" — is one more lookup rather
+    // than an apology. Docs and book text are not: neither can answer "what
+    // should I read".
+    toolContext(cfg, undefined, undefined, ctx.shelf),
+    overrides,
+    history,
+    memoryBlock,
+  );
+
+  // ⚠️ With no key the CANDIDATES THEMSELVES are already a correct, complete and
+  // honest answer — real rows with real reasons. Falling back to them beats
+  // falling back to an apology.
+  return done(spoken.text ?? `${renderSuggestions(gathered.candidates, format)}`);
+}
+
+/** ⚠️ Kept beside the lane rather than in `suggest.ts` because it is a property
+ *  of THIS surface's auto-continue, not of the suggestion contract. */
+const SUGGEST_MSG_MORE =
+  "There's more where that came from — say the word and I'll keep going.";
+
+/** ⚠️ The suggestions are still REAL ROWS; what failed is the personalisation.
+ *  She must not imply she checked what they had already got to when she could
+ *  not. */
+const SUGGEST_SHELF_DOWN_NOTE =
+  "⚠️ Their own shelf could NOT be read this turn, so these are NOT filtered by what they have " +
+  'already written about. Say so in one short clause — never imply you checked.';
+
+/**
+ * ⚠️ **THE PERSONALITY VISIBILITY LANE** — three questions, three answers, and
+ * two of them are refusals.
+ *
+ * Owner order 2026-08-18. ⚠️ **It does NOT undo the hidden pin's secrecy**: the
+ * instruction was *"don't tell end users"* about the COMMAND, and no string
+ * reachable from here names it. Answering *"what are you being with me"* with a
+ * dodge would read as a malfunction, which is worse than the fact.
+ */
+async function personaVisibilityAnswer(
+  ask: NonNullable<ReturnType<typeof personaQuery>>,
+  cfg: MentionConfig,
+  deps: Pick<MentionDeps, 'persona'>,
+  discordUserId: string,
+  docs?: DocsToolContext,
+): Promise<AnsweredQuestion> {
+  const done = (content: string): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'smalltalk',
+    components: null,
+  });
+
+  // ⚠️ OFF IS NOT SILENT. A straight question met with nothing reads as a bug
+  // rather than as a switch — the same rule every other lane's off obeys.
+  if (cfg.personalityEnabled === false) return done(PERSONA_VISIBILITY_MSG.switchedOff);
+
+  if (ask.kind === 'other') return done(PERSONA_VISIBILITY_MSG.notYours);
+
+  if (ask.kind === 'self') {
+    // ⚠️ READ LIVE, THIS TURN. Never from what she said earlier — her own
+    // previous message is not evidence, and two turns of a chat have already
+    // contradicted each other that way on the book lane.
+    const state = deps.persona?.read ? await deps.persona.read(discordUserId) : null;
+    return done(personaSelfAnswer(state));
+  }
+
+  // ── the ROSTER, devops only ──────────────────────────────────────────────
+  const verdict = await checkDevops(docs?.port, discordUserId);
+  const refusal = devopsRefusal(verdict, {
+    notDevops: PERSONA_VISIBILITY_MSG.notDevops,
+    unlinked: PERSONA_VISIBILITY_MSG.rosterNotLinked,
+    linkIncomplete: PERSONA_VISIBILITY_MSG.rosterLinkIncomplete,
+    unreachable: PERSONA_VISIBILITY_MSG.rosterUnreachable,
+    notConfigured: PERSONA_VISIBILITY_MSG.rosterNotConfigured,
+  });
+  if (refusal) return done(refusal);
+
+  if (!deps.persona?.roster) return done(PERSONA_VISIBILITY_MSG.rosterNotConfigured);
+  const rows = await deps.persona.roster();
+  // ⚠️ The auto-continue note rides this one: a household roster is short today
+  // and a server's is not, and a truncated roster is a roster that lies by
+  // omission about who is on it.
+  return {
+    content: renderPersonaRoster(rows),
+    pending: null,
+    intent: 'smalltalk',
+    components: null,
+    overflowNote: "That's as far as one message goes — say the word and I'll list the rest.",
+  };
+}
+
+/**
+ * ⚠️ **THE DEVOPS SET/CLEAR** — *"make Sam's personality cozy"*.
+ *
+ * Semantics identical to a self-pin, by design: same key, same field, same
+ * last-write-wins, same immediate effect. What differs is only that the WRITER
+ * is recorded and the roster shows it.
+ *
+ * ⚠️ **NO NOTIFICATION TO THE TARGET.** The knob stays invisible, which is the
+ * same order that made the self-pin invisible.
+ */
+async function personaAdminAnswer(
+  cmd: NonNullable<ReturnType<typeof personaAdminCommand>>,
+  cfg: MentionConfig,
+  deps: Pick<MentionDeps, 'persona'>,
+  askerId: string,
+  docs?: DocsToolContext,
+): Promise<AnsweredQuestion> {
+  const done = (content: string): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'smalltalk',
+    components: null,
+  });
+
+  if (cfg.personalityEnabled === false) return done(PERSONA_VISIBILITY_MSG.switchedOff);
+  if (cmd.kind === 'needs-mention') return done(PERSONA_ADMIN_MSG.needsMention);
+
+  // ⚠️ **ON THEMSELVES IT IS JUST THE EXISTING HIDDEN PIN**, and it needs no
+  // devops standing at all — anybody may choose how she is with them. Checked
+  // BEFORE the gate so an ordinary person mentioning themselves is never told
+  // they lack a role for something they already had.
+  const onSelf = cmd.target === askerId;
+
+  if (!onSelf) {
+    const verdict = await checkDevops(docs?.port, askerId);
+    const refusal = devopsRefusal(verdict, {
+      notDevops: PERSONA_ADMIN_MSG.notDevops,
+      unlinked: PERSONA_VISIBILITY_MSG.rosterNotLinked,
+      linkIncomplete: PERSONA_VISIBILITY_MSG.rosterLinkIncomplete,
+      unreachable: PERSONA_VISIBILITY_MSG.rosterUnreachable,
+      notConfigured: PERSONA_VISIBILITY_MSG.rosterNotConfigured,
+    });
+    if (refusal) return done(refusal);
+  }
+
+  if (cmd.kind === 'set-unknown') {
+    // ⚠️ IN VOICE, and it does not list the eleven — the roster of tropes is not
+    // a menu for end users, and an operator who needs it has the docs.
+    return done(PERSONA_ADMIN_MSG.unknownTrope(cmd.word));
+  }
+  if (!deps.persona) return done(PERSONA_VISIBILITY_MSG.rosterNotConfigured);
+
+  // ⚠️ `self` when somebody set their own, `devops:<id>` otherwise. The roster
+  // prints the difference, which is the whole reason it is stored.
+  const writer: PersonaWriter = onSelf ? 'self' : devopsWriter(askerId);
+  try {
+    if (cmd.kind === 'clear') {
+      await deps.persona.clear(cmd.target, writer);
+      // ⚠️ On themselves it stays SILENT about the mechanism — the hidden pin's
+      // own acknowledgement shape. Only an operator gets a confirmation, because
+      // an operator instruction that succeeds silently is indistinguishable from
+      // one that was ignored.
+      return done(onSelf ? 'Alright.' : PERSONA_ADMIN_MSG.cleared(cmd.target));
+    }
+    await deps.persona.pin(cmd.target, cmd.trope, writer);
+    if (onSelf) return done(PERSONA_ACK[cmd.trope]);
+    return done(PERSONA_ADMIN_MSG.set(cmd.target, TROPE_VOICES[cmd.trope]?.label ?? cmd.trope));
+  } catch (err) {
+    console.error('GABI persona admin: the write failed:', err instanceof Error ? err.message : err);
+    return done(PERSONA_ADMIN_MSG.trouble);
+  }
+}
+
+/**
+ * ⚠️ **FIVE OUTCOMES, FIVE SENTENCES** — the estate's no-bare-status rule
+ * applied to one boolean. `null` means "carry on"; anything else is the sentence
+ * to say, and the four causes stay apart because their fixes differ: not signed
+ * in / link predates the check / insufficient role / we could not tell.
+ */
+function devopsRefusal(
+  verdict: DevopsVerdict,
+  say: {
+    notDevops: string;
+    unlinked: string;
+    linkIncomplete: string;
+    unreachable: string;
+    notConfigured: string;
+  },
+): string | null {
+  switch (verdict.kind) {
+    case 'devops':
+      return null;
+    case 'not_devops':
+      return say.notDevops;
+    case 'unlinked':
+      return say.unlinked;
+    case 'link_incomplete':
+      return say.linkIncomplete;
+    case 'not_configured':
+      return say.notConfigured;
+    case 'unreachable':
+      return say.unreachable;
+  }
+}
+
+/**
  * Turn a question plus a remembered conversation into what she says next.
  *
  * Pure of the STORE — it reads history and returns what should be remembered,
@@ -1057,12 +1400,24 @@ async function answerQuestion(
   panel: PanelLink,
   docs?: DocsToolContext,
   books?: BooksToolContext,
-  /** ⚠️ Tier 2. The rendered block, and the deps needed to SHOW or CLEAR it. */
-  memory?: { block?: string; deps: Pick<MentionDeps, 'memory'>; discordUserId: string },
+  /** ⚠️ Tier 2. The rendered block, and the deps needed to SHOW or CLEAR it.
+   *  `notes` is the profile's own free text, read once by the caller and passed
+   *  down so the suggestion lane can learn a format preference without a second
+   *  Firestore GET. */
+  memory?: {
+    block?: string;
+    notes?: readonly string[];
+    deps: Pick<MentionDeps, 'memory'>;
+    discordUserId: string;
+  },
   /** ⚠️ `block` is the rendered voice for THIS turn; `deps` is the pin. */
   persona?: { block?: string; deps: Pick<MentionDeps, 'persona'>; discordUserId: string },
   /** ⚠️ Tier 0d. Present only when the posture is on AND a port was built. */
   shelfCtx?: { port: ShelfPort; discordUserId: string },
+  /** ⚠️ Tier 1's port, needed here by the SUGGESTION lane rather than by a write:
+   *  `whoami` is the only per-instance signal that can answer "can this person
+   *  open that shelf", which is the physical gate the owner asked for. */
+  delegatedCtx?: { port: DelegatePort; instances: readonly LibraryInstance[] },
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -1100,13 +1455,43 @@ async function answerQuestion(
       // the mechanism — a person who typed "be yourself" gets a normal reply.
       return { content: 'Alright.', pending: null, intent: 'smalltalk', components: null };
     }
-    await persona.deps.persona.pin(persona.discordUserId, personaAsk.trope);
+    await persona.deps.persona.pin(persona.discordUserId, personaAsk.trope, 'self');
     return {
       content: PERSONA_ACK[personaAsk.trope],
       pending: null,
       intent: 'smalltalk',
       components: null,
     };
+  }
+
+  // ── ⚠️ THE DEVOPS SET/CLEAR, and then the VISIBILITY QUESTION ────────────
+  //
+  // Both are deterministic and both go here, ahead of every lane that costs
+  // anything, for the reason the memory control and the pin do: a model deciding
+  // somebody *probably* meant to change how she talks to a THIRD PARTY is a model
+  // that changes it when they said something else.
+  //
+  // ⚠️ ORDER: the ADMIN command is checked before the QUESTION. "make <@1> cozy"
+  // contains a persona noun and could be read as an enquiry; an instruction
+  // misread as a question does nothing and looks broken, while a question
+  // misread as an instruction changes somebody's state — so the ambiguous
+  // reading loses to the explicit verb.
+  if (persona) {
+    const admin = personaAdminCommand(question);
+    if (admin) {
+      return await personaAdminAnswer(admin, cfg, persona.deps, persona.discordUserId, docs);
+    }
+    const query = personaQuery(question);
+    if (query) {
+      // ⚠️ Somebody mentioning THEMSELVES is asking about themselves, and only
+      // this layer knows who "themselves" is — which is why the detector reports
+      // the target rather than deciding.
+      const resolved =
+        query.kind === 'other' && query.target === persona.discordUserId
+          ? ({ kind: 'self' } as const)
+          : query;
+      return await personaVisibilityAnswer(resolved, cfg, persona.deps, persona.discordUserId, docs);
+    }
   }
 
   // ── ⚠️ THE DOCS PRE-ROUTER, AHEAD OF EVERY INTENT BRANCH ─────────────────
@@ -1131,6 +1516,42 @@ async function answerQuestion(
       // docs question must not fall through to a shelf search that finds
       // nothing and reads as broken.
       return { content: DOCS_MSG.switchedOff, pending: null, intent: 'question', components: null };
+    }
+  }
+
+  // ── ⚠️ THE SUGGESTION PRE-ROUTER — the FOURTH of this family ─────────────
+  //
+  // ⚠️ **AFTER the docs router and BEFORE the shelf one**, and both halves of
+  // that are decisions:
+  //
+  //  - AFTER docs, because `docsIntent` is the narrowest detector on this
+  //    surface and an operational question that happens to contain the word
+  //    "recommend" is still operational. The docs lane shipped first with its own
+  //    regression tests, and a new lane must not re-route traffic they pin.
+  //  - BEFORE the shelf, because *"what should I read next"* is first-person and
+  //    shelf-shaped and is nonetheless a request for a RECOMMENDATION. The shelf
+  //    lane would answer it by reading the reading list back — a good answer to a
+  //    different question.
+  if (suggestIntent(question)) {
+    if (cfg.suggestEnabled === true) {
+      return await suggestAnswer(
+        question,
+        history,
+        who,
+        cfg,
+        overrides,
+        {
+          ...(shelfCtx ? { shelf: shelfCtx } : {}),
+          ...(books ? { books } : {}),
+          ...(delegatedCtx ? { delegated: delegatedCtx } : {}),
+          ...(memory?.notes ? { profileNotes: memory.notes } : {}),
+        },
+        extraBlock,
+      );
+    }
+    if (cfg.suggestEnabled === false) {
+      // ⚠️ OFF IS NOT SILENT, for the reason every other lane's off is not.
+      return { content: SUGGEST_MSG.switchedOff, pending: null, intent: 'question', components: null };
     }
   }
 
@@ -1559,9 +1980,20 @@ export async function handleMention(
       panelFor(deps, cfg, trigger.authorId),
       docs,
       books,
-      { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: trigger.authorId },
+      {
+        ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}),
+        // ⚠️ The profile's own free text, passed down rather than re-read: the
+        // suggestion lane learns a format preference from it, and a second
+        // Firestore GET for a nicety would charge every turn for one.
+        ...(profile?.notes ? { notes: profile.notes } : {}),
+        deps,
+        discordUserId: trigger.authorId,
+      },
       { ...(cfg.personaBlock ? { block: cfg.personaBlock } : {}), deps, discordUserId: trigger.authorId },
       cfg.shelfEnabled && deps.shelf ? { port: deps.shelf, discordUserId: trigger.authorId } : undefined,
+      deps.delegated && (cfg.instances ?? []).length > 0
+        ? { port: deps.delegated.delegate, instances: cfg.instances ?? [] }
+        : undefined,
     );
     await say(answer.content, answer.components, answer.overflowNote);
 
@@ -1791,9 +2223,17 @@ export async function handleTypedQuestion(
       panelFor(deps, cfg, who.discordUserId),
       docs,
       books,
-      { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: who.discordUserId },
+      {
+        ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}),
+        ...(profile?.notes ? { notes: profile.notes } : {}),
+        deps,
+        discordUserId: who.discordUserId,
+      },
       { ...(cfg.personaBlock ? { block: cfg.personaBlock } : {}), deps, discordUserId: who.discordUserId },
       cfg.shelfEnabled && deps.shelf ? { port: deps.shelf, discordUserId: who.discordUserId } : undefined,
+      deps.delegated && (cfg.instances ?? []).length > 0
+        ? { port: deps.delegated.delegate, instances: cfg.instances ?? [] }
+        : undefined,
     );
     await deps.conversation.save({
       user: question,

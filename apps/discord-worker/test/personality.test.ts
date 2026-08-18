@@ -33,9 +33,20 @@ import {
   PERSON_SPACE,
   PERSON_SURFACE,
   pickTrope,
+  personaAdminCommand,
+  personaQuery,
+  personaSelfAnswer,
+  renderPersonaRoster,
+  devopsWriter,
+  isPersonaWriter,
+  PERSONA_ADMIN_MSG,
+  PERSONA_ROSTER_MAX,
+  PERSONA_VISIBILITY_MSG,
   TROPES,
   TROPE_NEIGHBOURS,
   TROPE_VOICES,
+  type PersonaRosterRow,
+  type PersonaState,
   type Trope,
 } from '../src/personality.js';
 import { BOOKS_MSG } from '../src/book-knowledge.js';
@@ -311,5 +322,292 @@ describe('GABI_PERSONALITY is affirmative-only and ships ON', () => {
 
   it('⚠️ it ships ON — the owner ordered the feature', () => {
     assert.match(repoFile('wrangler.toml'), /^GABI_PERSONALITY = "on"$/m);
+  });
+});
+
+// ── 7. ⚠️ VISIBILITY — she answers about HERSELF, refuses about others ────
+
+/**
+ * ⚠️ **THIS DOES NOT UNDO §5's SECRECY, and these tests are where that line is
+ * kept.** The owner's instruction was *"don't tell end users"* about the
+ * COMMAND. Answering *"what are you being with me"* with a dodge would read as a
+ * malfunction, which is worse than the fact — so the fact is given and the
+ * mechanism is still nowhere.
+ */
+describe('⚠️ asking what she is being — the visibility half', () => {
+  it('a question about YOURSELF is a self query', () => {
+    for (const line of [
+      'what personality are you using with me?',
+      'which personality is this?',
+      'what mood are you in?',
+      'are you pinned right now?',
+      'what persona do you have with me',
+    ]) {
+      assert.equal(personaQuery(line)?.kind, 'self', `not read as a self query: ${line}`);
+    }
+  });
+
+  it('⚠️ a question about SOMEBODY ELSE is refused, mention or name', () => {
+    assert.equal(personaQuery('what personality do you use with <@123456789>?')?.kind, 'other');
+    assert.equal(personaQuery("what's Sam's personality?")?.kind, 'other');
+    assert.match(PERSONA_VISIBILITY_MSG.notYours, /between me and them/i);
+    // ⚠️ It offers what they CAN have, so a refusal is not a dead end.
+    assert.match(PERSONA_VISIBILITY_MSG.notYours, /how I am with YOU/);
+  });
+
+  it('the roster question is its own kind', () => {
+    for (const line of [
+      'what personality does everyone have',
+      'list the personalities',
+      'show me the personality roster',
+    ]) {
+      assert.equal(personaQuery(line)?.kind, 'roster', `not read as a roster query: ${line}`);
+    }
+  });
+
+  it('⚠️ ORDINARY TALK IS NOT A PERSONA QUESTION', () => {
+    for (const line of ['do we have Mistborn', 'what should I read next', 'how are you?']) {
+      assert.equal(personaQuery(line), null, `false positive: ${line}`);
+    }
+  });
+
+  it('⚠️ SHE ANSWERS THE QUESTION ASKED AND NOTHING ADJACENT', () => {
+    // The trope and whether it is fixed — and NO string anywhere in this module
+    // says which words would fix it. That is the owner's line, held.
+    const drifting = personaSelfAnswer({ trope: 'cozy', exchanges: 3, since: Date.now() });
+    assert.match(drifting, /cosy|cozy/i);
+    assert.match(drifting, /shifts a little/i);
+
+    const pinned = personaSelfAnswer({ trope: 'noir', exchanges: 3, since: Date.now(), pinned: 'noir' });
+    assert.match(pinned, /noir/i);
+    assert.match(pinned, /staying that way/i);
+
+    for (const said of [drifting, pinned]) {
+      assert.doesNotMatch(said, /\bbe tsundere\b|to (?:pin|set) (?:me|it)/i);
+      assert.doesNotMatch(said, /\bcommand\b/i);
+    }
+  });
+
+  it('⚠️ THE WRITER IS NOT NAMED TO THE TARGET — no notification, ever', () => {
+    // An operator's pin is roster material. Telling somebody "an operator made
+    // me cosy at you" turns an invisible knob into a notification, which is
+    // exactly what the devops verb is specified NOT to send.
+    const said = personaSelfAnswer({
+      trope: 'cozy',
+      exchanges: 1,
+      since: Date.now(),
+      pinned: 'cozy',
+      writer: devopsWriter('999'),
+    });
+    assert.doesNotMatch(said, /999|operator|devops|somebody (?:set|asked)/i);
+  });
+
+  it('nothing stored is a real answer, not an error', () => {
+    const said = personaSelfAnswer(null);
+    assert.match(said, /haven't settled/i);
+    assert.doesNotMatch(said, /error|sorry|problem/i);
+  });
+});
+
+// ── 8. ⚠️ THE ROSTER — matches stored state, and shows the WRITER ─────────
+
+describe('⚠️ the roster is the state, rendered', () => {
+  const now = 1_700_000_000_000;
+  const rows: PersonaRosterRow[] = [
+    { discordUserId: '111', state: { trope: 'noir', exchanges: 2, since: now - 20 * 60_000 } },
+    {
+      discordUserId: '222',
+      state: {
+        trope: 'cozy',
+        exchanges: 5,
+        since: now - 2 * 3_600_000,
+        pinned: 'cozy',
+        writer: devopsWriter('999'),
+        pinnedAt: now - 2 * 3_600_000,
+      },
+    },
+    {
+      discordUserId: '333',
+      state: { trope: 'peppy', exchanges: 1, since: now - 60_000, pinned: 'peppy', writer: 'self' },
+    },
+  ];
+
+  it('every person on record appears, with their stored trope', () => {
+    const out = renderPersonaRoster(rows, now);
+    assert.match(out, /<@111>/);
+    assert.match(out, /<@222>/);
+    assert.match(out, /<@333>/);
+    assert.match(out, /noir/);
+    assert.match(out, /cosy|cozy/i);
+    assert.match(out, /peppy/);
+    assert.match(out, /3 on record/);
+  });
+
+  it('⚠️ PINNED-OR-DRIFTING and the WRITER are both shown', () => {
+    const out = renderPersonaRoster(rows, now);
+    assert.match(out, /drifting/);
+    assert.match(out, /pinned by <@999>/, 'the devops writer must be named on the roster');
+    assert.match(out, /pinned by themselves/, 'a self-pin must be distinguishable');
+  });
+
+  it('the LAST SHIFT is shown', () => {
+    const out = renderPersonaRoster(rows, now);
+    assert.match(out, /20m ago/);
+    assert.match(out, /2h ago/);
+  });
+
+  it('⚠️ an UNRECORDED writer says so rather than being guessed at', () => {
+    // Records written before the roster existed carry none, and printing
+    // "pinned by themselves" for them would invent a fact about somebody.
+    const out = renderPersonaRoster(
+      [{ discordUserId: '444', state: { trope: 'shy', exchanges: 0, since: now, pinned: 'shy' } }],
+      now,
+    );
+    assert.match(out, /writer not recorded/);
+  });
+
+  it('pinned rows sort above drifting ones', () => {
+    const out = renderPersonaRoster(rows, now).split('\n').slice(1);
+    assert.ok((out[0] ?? '').includes('pinned'), 'a drifting row was listed first');
+  });
+
+  it('an empty roster is a real answer', () => {
+    assert.equal(renderPersonaRoster([], now), PERSONA_VISIBILITY_MSG.rosterEmpty);
+  });
+
+  it('⚠️ the roster read is BOUNDED', () => {
+    assert.ok(PERSONA_ROSTER_MAX > 0 && PERSONA_ROSTER_MAX <= 500);
+    assert.match(repoFile('src/gateway.ts'), /limit: PERSONA_ROSTER_MAX/);
+  });
+});
+
+// ── 9. ⚠️ THE DEVOPS SET/CLEAR ────────────────────────────────────────────
+
+describe('⚠️ devops may set any trope on any person', () => {
+  it('the owner-shaped instruction, with a mention', () => {
+    const cmd = personaAdminCommand("make <@123456789>'s personality cozy");
+    assert.equal(cmd?.kind, 'set');
+    assert.equal(cmd?.kind === 'set' && cmd.target, '123456789');
+    assert.equal(cmd?.kind === 'set' && cmd.trope, 'cozy');
+  });
+
+  it('all ELEVEN are settable — the roster is the locked set, not a subset', () => {
+    for (const t of TROPES) {
+      const cmd = personaAdminCommand(`set <@123456789> personality to ${t}`);
+      assert.equal(cmd?.kind, 'set', `${t} is not settable`);
+      assert.equal(cmd?.kind === 'set' && cmd.trope, t);
+    }
+  });
+
+  it('clearing returns them to drift', () => {
+    const cmd = personaAdminCommand('unpin <@123456789> personality');
+    assert.equal(cmd?.kind, 'clear');
+    assert.equal(cmd?.kind === 'clear' && cmd.target, '123456789');
+  });
+
+  it('⚠️ CLEAR IS CHECKED FIRST — "stop making them tsundere" is not a SET', () => {
+    const cmd = personaAdminCommand('stop making <@123456789> tsundere, personality off');
+    assert.equal(cmd?.kind, 'clear');
+  });
+
+  it('⚠️ AN INVALID TROPE IS ITS OWN CASE, so she can say she cannot be it', () => {
+    const cmd = personaAdminCommand('make <@123456789> personality grumpycat');
+    assert.equal(cmd?.kind, 'set-unknown');
+    assert.match(PERSONA_ADMIN_MSG.unknownTrope('grumpycat'), /isn't one I know how to be/i);
+    // ⚠️ It does NOT list the eleven — the trope roster is not a menu for end
+    // users, and an operator who needs it has the docs.
+    assert.doesNotMatch(PERSONA_ADMIN_MSG.unknownTrope('grumpycat'), /tsundere|deadpan|peppy/i);
+  });
+
+  it('⚠️ A BARE NAME IS REFUSED, NEVER RESOLVED', () => {
+    // Two people can answer to "Sam", and the estate's rule is that an
+    // access-changing instruction read generously is how the wrong person gets
+    // acted on.
+    const cmd = personaAdminCommand("make Sam's personality cozy");
+    assert.equal(cmd?.kind, 'needs-mention');
+    assert.match(PERSONA_ADMIN_MSG.needsMention, /rather ask than guess/i);
+  });
+
+  it('⚠️ AN OPERATOR VERB WITH NO PERSONA SUBJECT IS NOT THIS COMMAND', () => {
+    // "make them an admin" and "set their reminder" must not be read as persona
+    // verbs — an over-broad detector here acts on the wrong system entirely.
+    assert.equal(personaAdminCommand('make <@123456789> an admin'), null);
+    assert.equal(personaAdminCommand("set <@123456789>'s reminder for 5pm"), null);
+    assert.equal(personaAdminCommand('do we have Mistborn'), null);
+  });
+
+  it('⚠️ THE ROLE REFUSAL NAMES THE ROLE AND THE FIX — never a bare no', () => {
+    assert.match(PERSONA_ADMIN_MSG.notDevops, /devops/i);
+    assert.match(PERSONA_ADMIN_MSG.notDevops, /\/admin/);
+    assert.match(PERSONA_ADMIN_MSG.notDevops, /deliberate line/i);
+    assert.match(PERSONA_VISIBILITY_MSG.notDevops, /devops/i);
+    assert.match(PERSONA_VISIBILITY_MSG.notDevops, /\/admin/);
+    // ⚠️ AND IT IS NOT A DEAD END: she offers what they CAN have.
+    assert.match(PERSONA_VISIBILITY_MSG.notDevops, /how I am with you/i);
+  });
+
+  it('⚠️ THE FIVE CAUSES STAY APART, because the fixes differ', () => {
+    const said = [
+      PERSONA_VISIBILITY_MSG.notDevops,
+      PERSONA_VISIBILITY_MSG.rosterNotLinked,
+      PERSONA_VISIBILITY_MSG.rosterLinkIncomplete,
+      PERSONA_VISIBILITY_MSG.rosterUnreachable,
+      PERSONA_VISIBILITY_MSG.rosterNotConfigured,
+    ];
+    assert.equal(new Set(said).size, said.length, 'two causes share a sentence');
+    // ⚠️ An OUTAGE is never worded as a permission problem.
+    assert.match(PERSONA_VISIBILITY_MSG.rosterUnreachable, /outage on our side/i);
+    assert.doesNotMatch(PERSONA_VISIBILITY_MSG.rosterUnreachable, /devops-class/);
+  });
+});
+
+// ── 10. ⚠️ THE WRITER IS RECORDED, AND SURVIVES A DRIFT ───────────────────
+
+describe('⚠️ who set a pin is recorded and does not evaporate', () => {
+  it('the writer token is the SNOWFLAKE, never a name', () => {
+    assert.equal(devopsWriter('123456789'), 'devops:123456789');
+    assert.equal(isPersonaWriter('devops:123456789'), true);
+    assert.equal(isPersonaWriter('self'), true);
+    assert.equal(isPersonaWriter('devops:Sam'), false);
+    assert.equal(isPersonaWriter('nonsense'), false);
+  });
+
+  it('⚠️ PROVENANCE SURVIVES A DRIFT STEP', () => {
+    // An earlier shape rebuilt the state object field by field; adding `writer`
+    // to it without spreading would have silently dropped who pinned somebody
+    // the first time she stepped — a roster telling a confident lie.
+    const state: PersonaState = {
+      trope: 'cozy',
+      exchanges: 3,
+      since: 1,
+      writer: devopsWriter('999'),
+      pinnedAt: 1,
+    };
+    const next = advancePersona(state, () => 0, 2);
+    assert.equal(next.writer, 'devops:999');
+  });
+
+  it('a fresh roll has NO writer — a coin toss is not credited to a person', () => {
+    assert.equal(freshPersona('warm', 1).writer, undefined);
+    assert.equal(freshPersona('warm', 1, 'warm', { writer: 'self', pinnedAt: 1 }).writer, 'self');
+  });
+
+  it('⚠️ the gateway records the writer on a pin and DROPS it on a clear', () => {
+    const gw = repoFile('src/gateway.ts');
+    assert.match(gw, /pinned: trope, writer, pinnedAt: now/);
+    // The clear branch builds a state with no `writer` key at all — a drifting
+    // persona has no author.
+    assert.match(gw, /trope: stored\?\.trope \?\? pickTrope\(\)/);
+  });
+
+  it('⚠️ the devops gate is ASKED, never copied — 403 no, 200 yes, else UNKNOWN', () => {
+    const gate = repoFile('src/devops-gate.ts');
+    assert.match(gate, /probe\.status === 403/);
+    assert.match(gate, /if \(probe\.ok\) return \{ kind: 'devops'/);
+    // ⚠️ No local list of who is devops. A second holder of that decision is a
+    // second thing to forget to revoke — so the CODE (comments stripped) must
+    // name no address list and no local predicate.
+    const code = gate.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.doesNotMatch(code, /OWNER_EMAILS|devopsAllows|@[a-z]+\.(?:com|ai)/i);
   });
 });

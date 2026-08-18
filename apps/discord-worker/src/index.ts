@@ -113,6 +113,7 @@ import { audiobookApiBase } from './book-knowledge-exec.js';
 import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
 import { personalityOn, TROPES } from './personality.js';
 import { shelfOn } from './shelf.js';
+import { PHYSICAL_SOURCE_INSTANCE, suggestOn } from './suggest.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -388,6 +389,27 @@ app.get('/api/health', (c) =>
     gabi_shelf_enabled: shelfOn(c.env),
     gabi_shelf_ready: shelfOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
     gabi_shelf_tools: GABI_SHELF_TOOL_NAMES,
+    // ⚠️ BOOK SUGGESTIONS. `enabled` is the lever; `ready` is deliberately
+    // per-FORMAT rather than one boolean, because the three formats have three
+    // different gates and "suggestions are on" tells a debugger nothing about
+    // which of them can actually answer.
+    gabi_suggest_enabled: suggestOn(c.env),
+    gabi_suggest_audio_ready: suggestOn(c.env),
+    // ⚠️ The ebook gate ASKS the audiobook Worker about `vis_ebooks`, so it needs
+    // the books port — with GABI_BOOKS off there is nothing to ask and an ebook
+    // suggestion answers with a SETUP sentence, never a permissions one.
+    gabi_suggest_ebook_ready: suggestOn(c.env) && booksOn(c.env) && Boolean(c.env.ESTATE_APP_TOKEN_BOOKS),
+    // ⚠️ The physical gate asks the delegated `whoami` whether the asker is known
+    // on the instance the print row came from.
+    gabi_suggest_physical_ready:
+      suggestOn(c.env) && Boolean(c.env.ESTATE_APP_TOKEN_DISCORD) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    gabi_suggest_physical_instance: PHYSICAL_SOURCE_INSTANCE,
+    // ⚠️ THE DEVOPS-GATED LANES (the personality roster and the set/clear verb)
+    // ride the DOCS port, because that is where an "is this person devops"
+    // question already gets answered by the auth Worker. With GABI_DOCS off there
+    // is nothing to ask, and both answer with a setup sentence.
+    gabi_persona_admin_ready: personalityOn(c.env) && docsOn(c.env) && Boolean(c.env.ESTATE_APP_TOKEN_DISCORD_DOCS),
+    gabi_persona_admin_gate: 'estate_devops_via_docs_port',
   }),
 );
 

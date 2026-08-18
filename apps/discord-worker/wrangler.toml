@@ -425,6 +425,43 @@ GABI_PERSONALITY = "on"
 # and dark was the builder's caution, not an owner gate. Off is one line back.
 GABI_SHELF = "on"
 
+# ⚠️ BOOK SUGGESTIONS, FORMAT-AWARE — owner ask 2026-08-18, verbatim: "I also
+# need Gabi to give book suggestions and clarify if I want audio physical or
+# ebook. For physical I only want her to suggest a physical book to a linked
+# person who can view a book from the table she's suggesting."
+#
+# ⚠️ IT SHIPS ON, on the GABI_PERSONALITY precedent rather than the GABI_BOOKS
+# one: the owner ordered the OUTCOME, and this lane opens NO NEW CORPUS. It
+# composes from catalog.csv (already public) and the asker's own shelf (already
+# behind GABI_SHELF), so flipping it grants nothing that was not already
+# granted. The lever exists so there IS a lever. Off is one line back, and OFF
+# IS NOT SILENT — she says suggestions are switched off rather than falling
+# through to a catalogue search that reads as a broken answer.
+#
+# ⚠️ ON IS NOT A GRANT, AND THE THREE FORMATS ARE THREE DIFFERENT GATES:
+#   audio    - the public slice audiobooks.heygabi.ai already publishes to the
+#              open internet. Ungated, for the same reason /have is.
+#   ebook    - refused unless the ESTATE says vis_ebooks. Asked of the audiobook
+#              Worker through the existing books port; never decided here, and
+#              the refusal relayed is the estate's own sentence.
+#   physical - refused unless the asker is KNOWN on the library instance the
+#              print row came from, asked with the delegated `whoami` verb.
+#
+# ⚠️ WHICH INSTANCE, MEASURED 2026-08-18 rather than assumed: catalog.csv's
+# library_work_id is a bare integer naming no instance, so the question was
+# answered at the WRITER. audiobook_catalog/app/library_link.py stamps the
+# column from GET <LIBRARY_MAPPING_URL>/api/machine/audiobook-mapping, and
+# audiobook_catalog/.env sets LIBRARY_MAPPING_URL=https://library.heygabi.ai —
+# the MAIN library's Worker. padhard is the friend instance with its own D1 and
+# the pipeline never reads it. So a print row IS the main library's copy, and
+# the gate asks about the main library. ⚠️ If that env var ever moves, the
+# constant in src/suggest.ts is wrong and the gate must widen to "known on
+# EVERY instance" — the default-deny form.
+#
+# ⚠️ NO NEW SECRET AND NO NEW TRUST EDGE. Every port this lane uses is one the
+# Worker already builds.
+GABI_SUGGEST = "on"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)

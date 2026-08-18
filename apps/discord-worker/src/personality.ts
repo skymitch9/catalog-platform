@@ -280,6 +280,17 @@ export const TROPE_NEIGHBOURS: Record<Trope, readonly Trope[]> = {
 export const DRIFT_EVERY_EXCHANGES = 4;
 export const DRIFT_CHANCE = 0.25;
 
+/**
+ * ⚠️ **WHO SET THE PIN.** Added 2026-08-18 with the devops set/clear verb.
+ *
+ * `'self'` is somebody pinning their own voice through the hidden detector;
+ * `devops:<discordUserId>` is somebody with the estate's devops standing setting
+ * it on another person. ⚠️ **It is recorded because the roster shows it**, and a
+ * roster that could not distinguish "she drifted here" from "an operator put her
+ * here" would be a list of trope names rather than an account of the state.
+ */
+export type PersonaWriter = 'self' | `devops:${string}`;
+
 /** The stored state. ⚠️ `pinned` outlives a conversation; `exchanges` does not. */
 export interface PersonaState {
   trope: Trope;
@@ -287,7 +298,28 @@ export interface PersonaState {
   since: number;
   /** ⚠️ Set by the hidden pin. While set there is NO drift and NO re-roll. */
   pinned?: Trope;
+  /** ⚠️ Who pinned it, and when. Absent on a drifting persona and on every
+   *  record written before the roster existed — an absent writer is read as
+   *  "unrecorded", never guessed at as `self`. */
+  writer?: PersonaWriter;
+  pinnedAt?: number;
 }
+
+/** ⚠️ Parse a stored writer defensively. Storage is a place other versions of
+ *  this code have written to, so a shape from the past must not throw. */
+export function isPersonaWriter(v: unknown): v is PersonaWriter {
+  // ⚠️ Any run of digits, not a snowflake-length check. Rejecting a short id
+  // would silently DROP a real row from the roster, and the roster's whole job
+  // is to be complete; the shape check exists to keep a NAME out ("devops:Sam"),
+  // which it still does.
+  return typeof v === 'string' && (v === 'self' || /^devops:\d{1,32}$/.test(v));
+}
+
+/** The devops writer token for one operator. ⚠️ The SNOWFLAKE, never a display
+ *  name — a name is renameable and the roster would then credit a pin to
+ *  somebody who no longer exists under that spelling. */
+export const devopsWriter = (discordUserId: string): PersonaWriter =>
+  `devops:${discordUserId}` as PersonaWriter;
 
 /** ⚠️ Injectable so tests are deterministic. A feature whose behaviour can only
  *  be observed by running it a thousand times is a feature nobody will test. */
@@ -340,11 +372,35 @@ export function advancePersona(state: PersonaState, rng: Rng = Math.random, now:
   const options = TROPE_NEIGHBOURS[state.trope] ?? [];
   if (options.length === 0) return { ...state, exchanges };
   const next = options[Math.min(options.length - 1, Math.floor(rng() * options.length))] as Trope;
-  return { trope: next, exchanges, since: now, ...(state.pinned ? { pinned: state.pinned } : {}) };
+  // ⚠️ `...state` FIRST so the provenance fields survive a drift. An earlier
+  // shape rebuilt this object field by field, and adding `writer` to it without
+  // this would have silently dropped who pinned somebody the first time she
+  // stepped — a roster telling a confident lie about its own history.
+  return {
+    ...state,
+    trope: next,
+    exchanges,
+    since: now,
+    ...(state.pinned ? { pinned: state.pinned } : {}),
+  };
 }
 
-export function freshPersona(trope: Trope, now: number = Date.now(), pinned?: Trope): PersonaState {
-  return { trope, exchanges: 0, since: now, ...(pinned ? { pinned } : {}) };
+export function freshPersona(
+  trope: Trope,
+  now: number = Date.now(),
+  pinned?: Trope,
+  provenance?: { writer?: PersonaWriter; pinnedAt?: number },
+): PersonaState {
+  return {
+    trope,
+    exchanges: 0,
+    since: now,
+    ...(pinned ? { pinned } : {}),
+    // ⚠️ Provenance travels with the PIN and only with it. A fresh roll has no
+    // writer, and stamping one would credit a coin toss to a person.
+    ...(pinned && provenance?.writer ? { writer: provenance.writer } : {}),
+    ...(pinned && provenance?.pinnedAt ? { pinnedAt: provenance.pinnedAt } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -476,3 +532,399 @@ export const PERSONA_ACK: Record<Trope, string> = {
  */
 export const PERSON_SURFACE = 'discord_person';
 export const PERSON_SPACE = 'all';
+
+// ---------------------------------------------------------------------------
+// ⚠️ ASKING WHAT SHE IS BEING — the visibility half (owner order 2026-08-18)
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THIS DOES NOT UNDO §5's SECRECY, AND THE DISTINCTION IS THE WHOLE
+ * DESIGN.** *"we can also have a command to pick a personality but don't tell
+ * end users that"* forbids ADVERTISING the mechanism. It does not require her to
+ * be evasive about herself when somebody asks a direct question — and being
+ * evasive would be worse than the disclosure, because a straight question met
+ * with a dodge reads as a malfunction.
+ *
+ * The line this holds, stated so it can be checked:
+ *
+ * | Question | Answer |
+ * |---|---|
+ * | *"what personality are you using with me?"* | ✅ the trope, and whether it is fixed or drifting |
+ * | *"what personality do you use with Sam?"* | ⚠️ a worded not-yours refusal |
+ * | *"how do I pin a personality?"* | ⚠️ **nothing here answers that.** No detector fires; she has no sentence about the mechanism, so she does not have one to give |
+ * | *"list everyone's personality"* | devops only — the roster |
+ *
+ * ⚠️ **She answers the question asked and nothing adjacent.** "It is fixed at the
+ * moment" is a fact about her; "say *be tsundere* to fix it" is the advertisement
+ * the owner forbade, and no string in this module contains it.
+ *
+ * ⚠️ **NO COMMAND REGISTRATION**, for the reason the pin has none: a Discord
+ * slash command appears in an autocomplete menu, which is advertising by another
+ * route. This is a detector, like the memory control and the pin.
+ */
+export type PersonaQuery =
+  | { kind: 'self' }
+  /** ⚠️ `target` is a snowflake when they used a mention and `null` when they
+   *  used a bare name. Both refuse identically — it is recorded only so a
+   *  refusal can be about somebody rather than about nobody. */
+  | { kind: 'other'; target: string | null }
+  | { kind: 'roster' }
+  | null;
+
+/**
+ * The words for "how you are being" without naming the mechanism.
+ *
+ * ⚠️ **THE PLURALS ARE SPELLED OUT.** `\bpersonality\b` does not match
+ * "personalities" — the word boundary fails against the trailing letters — and
+ * *"list the personalities"* is the commonest way anybody asks for the roster.
+ */
+const PERSONA_NOUN = /\b(?:personalit(?:y|ies)|personas?|moods?|characters?|voices?|vibes?|tone)\b/i;
+
+/**
+ * ⚠️ **THE SHAPES THAT NEED NO NOUN.** *"are you pinned right now?"* is
+ * unambiguously about her own state and contains no persona word at all;
+ * requiring one would have made the most direct phrasing the one she cannot
+ * hear.
+ */
+const SELF_SHAPES_NOUNLESS = [
+  /\bare you (?:pinned|stuck|fixed|locked)\b/i,
+  /\bwhat (?:mood|voice) are you in\b/i,
+];
+
+/** ⚠️ A Discord mention. The ONLY way another person is ever named as a target —
+ *  see `personaAdminCommand` for why a bare name is refused rather than resolved. */
+export const MENTION_RE = /<@!?(\d{5,32})>/;
+
+const ROSTER_SHAPES = [
+  /\b(?:roster|everyone|everybody|all(?: of)? (?:the )?(?:users|people|members)|the whole server)\b/i,
+  /\bwho(?:'|’)?s? (?:got|has|is getting) (?:what|which)\b/i,
+  /\blist (?:the |all )?(?:personalit|persona)/i,
+];
+
+const SELF_SHAPES = [
+  /\b(?:what|which)\b[^?]{0,40}\b(?:personality|persona|mood|character|voice|vibe)\b[^?]{0,40}\b(?:are you|do you (?:have|use)|is this|am i getting|have you got)\b/i,
+  /\b(?:are you|am i getting)\b[^?]{0,30}\bwith me\b/i,
+  /\bwhat (?:personality|persona|mood) (?:are you (?:in|on|using)|is this)\b/i,
+  /\bwhich (?:one|personality|persona) (?:are you|is this)\b/i,
+  /\bare you (?:pinned|stuck|fixed|locked)\b/i,
+  /\bwhat (?:mood|voice) are you in\b/i,
+];
+
+/**
+ * What is being asked ABOUT her personality, if anything.
+ *
+ * ⚠️ **CHECKED BEFORE THE PIN DETECTOR CANNOT WORK and after it MUST.** *"what
+ * personality are you"* contains no pin verb, and *"be tsundere"* contains no
+ * question — the two are disjoint by construction, and the router checks the pin
+ * first anyway so an ambiguous sentence sets rather than asks.
+ */
+export function personaQuery(text: string): PersonaQuery {
+  const q = (text ?? '').trim();
+  if (!q) return null;
+  if (SELF_SHAPES_NOUNLESS.some((re) => re.test(q))) return { kind: 'self' };
+  if (!PERSONA_NOUN.test(q)) return null;
+
+  // ⚠️ ROSTER FIRST. "what personality does everyone have" names a personality
+  // and a person-shaped word, and reading it as a question about one person
+  // would answer a plural question in the singular.
+  if (ROSTER_SHAPES.some((re) => re.test(q))) return { kind: 'roster' };
+
+  // ⚠️ A MENTION MEANS SOMEBODY ELSE, full stop — unless they are asking about
+  // the person doing the asking, which the caller resolves because only it knows
+  // who that is.
+  const mention = q.match(MENTION_RE);
+  if (mention) return { kind: 'other', target: mention[1] ?? null };
+
+  // ⚠️ A POSSESSIVE NAME is somebody else too: "what's Sam's personality". The
+  // name is NOT resolved — the refusal is the same for every third party, and
+  // resolving it would mean guessing which household member a word refers to.
+  if (/\b(?:what|which)\b[^?]{0,30}\b(?!my\b)[a-z][\w'’-]*(?:'|’)s\s+(?:personality|persona|mood|voice)\b/i.test(q)) {
+    return { kind: 'other', target: null };
+  }
+  if (/\b(?:with|for|to|toward|towards)\s+(?!me\b)(?:@?[a-z][\w'’-]{1,30})\b/i.test(q) && !/\bwith me\b/i.test(q)) {
+    return { kind: 'other', target: null };
+  }
+
+  if (SELF_SHAPES.some((re) => re.test(q))) return { kind: 'self' };
+  if (/\b(?:my|me|with me|i)\b/i.test(q) && /\b(?:what|which|are you|do you)\b/i.test(q)) {
+    return { kind: 'self' };
+  }
+  return null;
+}
+
+/**
+ * ⚠️ **THE FACTUAL ANSWER, IN VOICE — and it is a CONSTANT per trope rather than
+ * a model turn.**
+ *
+ * Design §1's rule cuts both ways: personality is tone and never truth, so a
+ * question about a FACT is answered from the record and not from a model that
+ * might improvise a nicer-sounding trope name than the one actually stored.
+ * Colouring it per trope keeps it in voice without letting the voice write it.
+ */
+const SELF_OPENER: Record<Trope, string> = {
+  peppy: 'Ooh, good question!',
+  dramatic: 'You ask, and I shall reveal.',
+  mischievous: 'Curious, are we.',
+  flirty: 'Noticed, did you.',
+  warm: 'Of course, love —',
+  cozy: 'Mm.',
+  shy: 'Oh — um.',
+  scholar: 'Precisely put.',
+  noir: 'Straight question. Straight answer.',
+  deadpan: 'Sure.',
+  tsundere: 'Fine, since you asked.',
+};
+
+/**
+ * What she says when somebody asks how she is being with THEM.
+ *
+ * ⚠️ **`pinned` versus drifting is stated, and NOTHING about how to change it.**
+ * The owner's instruction bars advertising the mechanism; it does not bar the
+ * fact. So "somebody has fixed this one for now" is said, and no sentence
+ * anywhere in this module says which words would fix it.
+ *
+ * ⚠️ **The WRITER is not named to the target.** Whether an operator set it is
+ * roster material, and telling somebody "an operator made me cosy at you" turns
+ * an invisible knob into a notification — which is exactly what the devops verb
+ * is specified NOT to send.
+ */
+export function personaSelfAnswer(state: PersonaState | null): string {
+  if (!state) {
+    // ⚠️ Nothing stored is a REAL answer and not an error: she has not settled
+    // into anything with this person yet. Never an apology, never a status.
+    return "I haven't settled into anything with you yet — ask me something and I will.";
+  }
+  const label = TROPE_VOICES[state.trope]?.label ?? state.trope;
+  const opener = SELF_OPENER[state.trope] ?? 'Right now —';
+  return state.pinned
+    ? `${opener} Right now I'm **${label}** with you, and it's staying that way rather than moving around.`
+    : `${opener} Right now I'm **${label}** with you. It shifts a little as we talk — nothing sudden.`;
+}
+
+export const PERSONA_VISIBILITY_MSG = {
+  /**
+   * ⚠️ **HOW SHE IS WITH SOMEBODY ELSE IS THEIRS.** It is a small thing and it
+   * is still theirs: the register she has learned for a person is a fact about
+   * that person's conversations, and handing it round the server is the same
+   * shape of wrong as reading out somebody's reading list.
+   */
+  notYours:
+    "How I am with somebody else is between me and them, so I'd rather not say — same as I wouldn't " +
+    "tell them about you. I'm happy to tell you how I am with YOU, though.",
+
+  /** ⚠️ Names the role and the fix, per the estate's no-bare-status rule. */
+  notDevops:
+    'The whole roster is a devops-class thing rather than something I hand out, and your account ' +
+    "isn't one — that's a deliberate line, not a glitch. An approver in /admin can change it. " +
+    'I can tell you how I am with you, any time.',
+
+  rosterNotConfigured:
+    "I can't check who's allowed to see that from here — that's a setup step on our side rather than " +
+    'a permissions problem, and I would rather say so than guess.',
+
+  rosterUnreachable:
+    "I couldn't reach the estate to check your standing, so I'm not going to guess — that's an " +
+    'outage on our side and NOT a verdict about your account. Try me again in a minute.',
+
+  rosterNotLinked:
+    "I can't tell who you are on the estate yet, and the roster is devops-only — so I need the link " +
+    'first. Run **/link** and ask me again.',
+
+  rosterLinkIncomplete:
+    'Your link was made before I could check your standing. Re-run **/link** once and ask me again.',
+
+  rosterEmpty:
+    "Nobody has a personality on record yet — I've either not talked to anyone since the last " +
+    'restart, or nothing has stuck.',
+
+  /** ⚠️ Said when the posture is off. Off is NOT silent, for the reason every
+   *  other lane's off is not: a straight question met with nothing reads as a
+   *  bug rather than as a switch. */
+  switchedOff:
+    "I'm not running personalities at the moment — I'm just myself. That's a lever on our side " +
+    'rather than anything to do with your account.',
+} as const;
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE DEVOPS SET/CLEAR — pin ANY trope on ANY person, or let them drift
+// ---------------------------------------------------------------------------
+
+/**
+ * Owner order 2026-08-18: devops may pin any of the eleven on anybody
+ * (*"make Sam's personality cozy"*), or return them to drift.
+ *
+ * ⚠️ **THE SEMANTICS ARE IDENTICAL TO A SELF-PIN**, deliberately: same key, same
+ * `pinned` field, same last-write-wins, same immediate effect. A second
+ * mechanism with its own precedence rules would be a second thing that decides
+ * what she sounds like, and the two would disagree the first time somebody used
+ * both.
+ *
+ * ⚠️ **THE TARGET MUST BE A MENTION, and a bare name is REFUSED rather than
+ * resolved.** *"make Sam cosy"* is ambiguous the moment two people answer to
+ * Sam, and the estate's rule is that an access-changing instruction read
+ * generously is how the wrong person gets acted on. A mention is a snowflake and
+ * cannot be misread.
+ *
+ * ⚠️ **NO NOTIFICATION TO THE TARGET.** The pin is invisible by the same order
+ * that made the self-pin invisible; telling somebody "an operator changed how
+ * I talk to you" would advertise the mechanism to the one person who did not ask.
+ */
+export type PersonaAdminCommand =
+  | { kind: 'set'; target: string; trope: Trope }
+  /** ⚠️ A named target and a word that is NOT one of the eleven. Kept as its own
+   *  case so she can say *"that's not one I know how to be"* rather than
+   *  silently doing nothing, which reads as the bot ignoring an operator. */
+  | { kind: 'set-unknown'; target: string; word: string }
+  | { kind: 'clear'; target: string }
+  /** ⚠️ The right verb aimed at a bare NAME. Refused with a request for a
+   *  mention — never resolved by guessing which member was meant. */
+  | { kind: 'needs-mention' }
+  | null;
+
+const ADMIN_CLEAR =
+  // ⚠️ `stop MAKING` is in here beside `stop being`, because an operator un-does
+  // what they did in the words they did it in — they typed "make", so they type
+  // "stop making". A clear-shaped sentence read as a SET is the exact opposite of
+  // what was asked, which is why this branch is checked first.
+  /\b(?:unpin|un-?pin|clear|reset|release|let\s+(?:them|him|her|it)\s+drift|stop\s+(?:being|pinning|making)|back\s+to\s+normal|drift\s+again)\b/i;
+
+/** ⚠️ A verb that means "make somebody be something". Narrow: an operator says
+ *  "make", "set", "pin" or "put", and nothing fuzzier. */
+const ADMIN_SET_VERB = /\b(?:make|set|pin|put|switch|turn)\b/i;
+
+/** The trope word, wherever in the sentence it sits. Reuses `TROPE_ALIASES` so
+ *  an operator's vocabulary is exactly the vocabulary a person's own pin
+ *  accepts — two lists would drift and one of them would be wrong. */
+function tropeWordIn(text: string): { word: string; trope: Trope | undefined } | null {
+  for (const raw of text.toLowerCase().split(/[^a-z]+/)) {
+    if (!raw) continue;
+    if (TROPE_ALIASES[raw]) return { word: raw, trope: TROPE_ALIASES[raw] };
+  }
+  // ⚠️ The word AFTER the verb, when it is not a trope at all — that is the
+  // "not one I know how to be" case and needs the word to say it back.
+  const m = text.match(
+    /\b(?:make|set|pin|put|switch|turn)\b[^.?!]*?\b(?:personality|persona|mood|voice)?\s*(?:to|be|as)?\s*([a-z][a-z-]{2,20})\b\s*$/i,
+  );
+  return m?.[1] ? { word: m[1].toLowerCase(), trope: undefined } : null;
+}
+
+export function personaAdminCommand(text: string): PersonaAdminCommand {
+  const q = (text ?? '').trim();
+  if (!q) return null;
+
+  const mention = q.match(MENTION_RE);
+  const target = mention?.[1] ?? null;
+
+  // ⚠️ CLEAR IS CHECKED FIRST, exactly as it is in `personaCommand` and for the
+  // same reason: "stop making Sam tsundere" contains a trope name and a set-shaped
+  // verb, and reading it as a SET would be the opposite of what was said.
+  if (ADMIN_CLEAR.test(q) && PERSONA_ADMIN_SUBJECT.test(q)) {
+    if (target) return { kind: 'clear', target };
+    // A bare name with a clearing verb is still an operator instruction, so it
+    // gets the "mention them" answer rather than silence.
+    return PERSONA_NAMED_TARGET.test(q) ? { kind: 'needs-mention' } : null;
+  }
+
+  if (!ADMIN_SET_VERB.test(q)) return null;
+  if (!PERSONA_ADMIN_SUBJECT.test(q)) return null;
+
+  const found = tropeWordIn(q);
+  if (!target) return PERSONA_NAMED_TARGET.test(q) ? { kind: 'needs-mention' } : null;
+  if (!found) return null;
+  return found.trope
+    ? { kind: 'set', target, trope: found.trope }
+    : { kind: 'set-unknown', target, word: found.word };
+}
+
+/** ⚠️ The instruction has to be ABOUT a personality. Without this, "make Sam an
+ *  admin" and "set Sam's reminder" would both be read as persona verbs — an
+ *  operator verb with no subject is the classic over-broad detector. */
+const PERSONA_ADMIN_SUBJECT = /\b(?:personality|persona|mood|voice|vibe|character)\b/i;
+
+/** A third party named by WORD rather than by mention. */
+const PERSONA_NAMED_TARGET = /\b(?!my\b|me\b|yourself\b)[a-z][\w'’-]*(?:'|’)s\b|\bfor\s+[a-z][\w'’-]{1,30}\b/i;
+
+export const PERSONA_ADMIN_MSG = {
+  /** ⚠️ In voice, and it does not list the eleven — the roster of tropes is not
+   *  a menu for end users, and an operator who needs it has the docs. */
+  unknownTrope: (word: string) =>
+    `**${word}** isn't one I know how to be. Try another one.`,
+
+  /** ⚠️ NAMES THE ROLE AND THE FIX. Never a bare "no". */
+  notDevops:
+    "Setting how I am with somebody else is a devops-class thing, and your account isn't one — " +
+    "that's a deliberate line rather than a glitch, and an approver in /admin can change it.",
+
+  needsMention:
+    "Mention them properly and I'll do it — I won't go on a name, because two people can answer to " +
+    'the same one and I would rather ask than guess wrong.',
+
+  /** ⚠️ Confirms WHAT changed and to WHOM, because an operator instruction that
+   *  succeeds silently is indistinguishable from one that was ignored. */
+  set: (target: string, label: string) => `Done — I'll be ${label} with <@${target}> from now on.`,
+
+  cleared: (target: string) => `Done — <@${target}> gets whatever I drift into from here.`,
+
+  trouble:
+    "I couldn't write that down just now — that's a wobble on my side, and nothing changed. Try " +
+    'me again.',
+} as const;
+
+// ---------------------------------------------------------------------------
+// The roster — read LIVE from state, rendered here
+// ---------------------------------------------------------------------------
+
+export interface PersonaRosterRow {
+  discordUserId: string;
+  state: PersonaState;
+}
+
+/**
+ * ⚠️ **A BOUND ON THE ROSTER READ.** An uncapped `list()` is an unbounded read
+ * on an object whose storage grows with the server's membership, and this
+ * particular one is a human artefact — a hundred rows is already more than
+ * anybody reads in a Discord message. ⚠️ The COUNT is printed beside the rows,
+ * so a roster at the bound is visibly at the bound rather than quietly short.
+ */
+export const PERSONA_ROSTER_MAX = 100;
+
+/** ⚠️ Rendered as `<@id>` rather than as a name: Discord resolves it to whatever
+ *  the person is called TODAY, so the roster cannot go stale the way a stored
+ *  display-name snapshot does (the exact wart the shelf lane documents). */
+export function renderPersonaRoster(rows: readonly PersonaRosterRow[], now: number = Date.now()): string {
+  if (rows.length === 0) return PERSONA_VISIBILITY_MSG.rosterEmpty;
+  // ⚠️ Pinned first, then most recently moved — an operator scanning this wants
+  // the deliberate ones at the top, not alphabetical order.
+  const sorted = [...rows].sort((a, b) => {
+    const pinned = Number(!!b.state.pinned) - Number(!!a.state.pinned);
+    return pinned !== 0 ? pinned : (b.state.since ?? 0) - (a.state.since ?? 0);
+  });
+  const lines = sorted.map((r) => {
+    const label = TROPE_VOICES[r.state.trope]?.label ?? r.state.trope;
+    const how = r.state.pinned
+      ? `pinned${writerPhrase(r.state.writer)}`
+      : 'drifting';
+    const when = r.state.since ? ` · last shift ${ago(now - r.state.since)}` : '';
+    return `• <@${r.discordUserId}> — **${label}** · ${how}${when}`;
+  });
+  return [`**Personality roster** — ${rows.length} on record, read just now.`, ...lines].join('\n');
+}
+
+/** ⚠️ An UNRECORDED writer says so. Records written before the roster existed
+ *  carry none, and printing "pinned by self" for them would be inventing a fact
+ *  about somebody's history. */
+function writerPhrase(writer: PersonaWriter | undefined): string {
+  if (!writer || !isPersonaWriter(writer)) return ' (writer not recorded)';
+  if (writer === 'self') return ' by themselves';
+  return ` by <@${writer.slice('devops:'.length)}>`;
+}
+
+function ago(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return 'just now';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}

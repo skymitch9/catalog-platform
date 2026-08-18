@@ -122,3 +122,65 @@ stops being family-only, that is the change to make.
 - **`pers:user:*` keys are not cleaned up** when somebody leaves the server. They
   are tiny (one trope name and two numbers) and nothing reads them for an absent
   person.
+
+
+---
+
+## 8. ⚠️ VISIBILITY AND THE DEVOPS SET/CLEAR (added 2026-08-18)
+
+Design: [`../info/gabi-personality-design.md`](../info/gabi-personality-design.md)
+§§5a, 5b, 5c.
+
+### 8.1 What anybody may ask
+
+| They say | She does |
+|---|---|
+| *"what personality are you using with me?"* · *"are you pinned?"* | ✅ answers plainly, **in voice**: the trope, and whether it is fixed or drifting |
+| *"what personality do you use with Sam?"* | ⚠️ worded not-yours refusal, and offers to say how she is with THEM |
+| *"how do I pin a personality?"* | ⚠️ **no detector fires.** There is no sentence anywhere that answers this, which is the point |
+
+⚠️ **This does NOT undo the pin's secrecy.** The owner forbade advertising the
+COMMAND. She states the FACT and never the mechanism, and a test asserts no
+reachable string names the pin words.
+
+### 8.2 The roster and the set/clear — devops only
+
+| They say | She does |
+|---|---|
+| *"show me the personality roster"* · *"what personality does everyone have"* | lists every person on record: trope, pinned-or-drifting, **who pinned it**, last shift |
+| *"make `<@id>`'s personality cozy"* | pins it. Same semantics as a self-pin; last-write-wins |
+| *"unpin `<@id>` personality"* | returns them to drift |
+| *"make `<@id>` personality grumpycat"* | in-voice *"that isn't one I know how to be"* |
+| *"make Sam's personality cozy"* (a NAME) | ⚠️ **refused** — asks for a mention. Two people can answer to one name |
+
+⚠️ **NO NOTIFICATION EVER REACHES THE TARGET.** They can ask what she is being
+with them and get the trope, but never *who set it*.
+
+### 8.3 ⚠️ The devops check rides the DOCS port
+
+There is no dedicated "am I devops" route. The gate makes a real docs-search call
+and reads its **status**: `200` = devops, `403` = not, **anything else =
+UNKNOWN and is worded as an outage**.
+
+⚠️ **So both features need `GABI_DOCS = "on"` and its app token.** With docs off
+they answer *"I can't check who's allowed"* — a SETUP sentence, never a
+permissions one. That coupling is deliberate: the alternative was minting a
+second credential for one boolean.
+
+```powershell
+(Invoke-RestMethod https://discord.heygabi.ai/api/health) |
+  Select-Object gabi_persona_admin_ready, gabi_persona_admin_gate
+```
+
+### 8.4 ⚠️ Things that will be reported as bugs
+
+**a) "The roster says *writer not recorded*."** Correct. Any persona pinned
+before 2026-08-18 carries no writer, and printing "pinned by themselves" would
+invent a fact. It fills in the next time somebody pins.
+
+**b) "I set Sam cosy and she un-pinned herself."** Correct, and deliberate: a
+devops pin is **not a stronger pin**. Semantics are identical to a self-pin and
+last-write-wins, so the person can undo it exactly as they could undo their own.
+
+**c) "It refused to act on a name."** Correct. Only a Discord mention targets
+another person — a name is ambiguous the moment two people share one.

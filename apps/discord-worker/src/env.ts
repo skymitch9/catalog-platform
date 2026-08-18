@@ -356,6 +356,30 @@ export interface Env {
    */
   GABI_SHELF?: string;
 
+  /**
+   * ⚠️ **BOOK SUGGESTIONS, format-aware** (owner ask 2026-08-18: *"I also need
+   * Gabi to give book suggestions and clarify if I want audio physical or
+   * ebook"*).
+   *
+   * Affirmative-only `"on"`, and **it ships ON** — `GABI_PERSONALITY`'s
+   * precedent rather than `GABI_BOOKS`'s. The owner ordered the OUTCOME, and
+   * this lane opens **no new corpus**: it composes from the public catalogue
+   * plus the asker's own shelf, each of which already has its own posture and
+   * its own gate. The switch exists so there is a lever, not because a new door
+   * was opened.
+   *
+   * ⚠️ **ON IS NOT A GRANT, AND THE THREE FORMATS ARE THREE DIFFERENT GATES.**
+   * Audio is the public slice and ungated. Ebook is refused unless the estate
+   * says `vis_ebooks` — asked of the audiobook Worker, never decided here.
+   * Physical is refused unless the asker is KNOWN on the library instance the
+   * print row came from, asked with the delegated `whoami` verb: the owner's own
+   * *"a linked person who can view a book from the table she's suggesting"*.
+   *
+   * ⚠️ It adds **no secret and no trust edge** — every port it uses is one this
+   * Worker already builds.
+   */
+  GABI_SUGGEST?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

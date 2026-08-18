@@ -310,9 +310,28 @@ it is the identity join and the privacy posture).
   have not read" — most people review a small fraction of what they read, so the
   proxy overcounts hugely and authoritatively.
 
-✅ **BUILT + DEPLOYED DARK 2026-08-18** — four tools, 25 tests, `GABI_SHELF`
-ships off. Operator doc: [`access/gabi-shelf.md`](access/gabi-shelf.md).
-⚠️ **OWNER STEP: flip `GABI_SHELF = "on"` and deploy.**
+✅ **BUILT 2026-08-18, and LIVE** — four tools, 25 tests. Operator doc:
+[`access/gabi-shelf.md`](access/gabi-shelf.md). The owner step (flip
+`GABI_SHELF = "on"`) is **DONE**.
+
+⚠️ **AND ITS FIRST LIVE QUESTION MISROUTED — fixed the same day (`83a649c`).**
+The owner typed one of `my_unread`'s OWN prescribed lines, *"what haven't I read
+by Sanderson?"*, and was told *"nothing on the estate's public shelf matches
+**not read by Sanderson**"*. ⚠️ **Not an identity failure** — an unlinked asker
+would have seen the `/link` sentence and it never appeared. The shelf lane was
+never entered: the intent classifier claimed the turn for `have_lookup`, which is
+a pure public-index lookup that never calls a model, so the four tools sat on a
+table the turn never walked into.
+
+⚠️ **THE THIRD OF THIS CLASS IN ONE DAY** (docs §12, books §10b/§10c), and all
+three teach the same sentence: **OFFERING A TOOL IS NOT ROUTING TO IT.** The fix
+EXTENDS that structure rather than rivalling it — `shelfIntent` + `shelfFollowUp`
+in the same shape as `docsIntent`/`booksIntent`, the same three posture states,
+the same pre-router position. The rule is that **FIRST PERSON is the whole
+signal**: "what haven't I read by Sanderson" and "what Sanderson do we have"
+differ by one pronoun, and that pronoun is the difference between a reading list
+and a catalogue row. ⚠️ The public-review shapes are a SECOND detector needing NO
+identity, because the sites show reviews to anonymous visitors.
 
 ⚠️ **As-built deviation, deliberate:** it reads Firestore DIRECTLY rather than
 through new gated routes, because both audiobook stores are collections this
@@ -322,10 +341,82 @@ every query is built from the asker's own uid/display name server-side.
 **Still open:**
 - ⚠️ **The LIBRARY's D1 TBR and read state are NOT readable** — another repo,
   needs a route. TBR rows carry `shelf` so the gap is visible, not silent.
-- **Not exercised against a live linked identity** (posture off). First thing to
-  do when it is switched on.
+- ⚠️ **Still not exercised against a live linked identity.** The lane is now
+  REACHABLE (proven by test); whether a real linked person gets a real TBR back
+  has still never happened.
 - **Still to measure:** the real review count, how many legacy uid-less TBR rows
   remain, and how many display names have drifted from their link snapshot.
+
+## 💡 GABI SUGGESTS A BOOK, FORMAT-AWARE — ✅ LIVE 2026-08-18
+
+Owner: *"I also need Gabi to give book suggestions and clarify if I want audio
+physical or ebook. For physical I only want her to suggest a physical book to a
+linked person who can view a book from the table she's suggesting."*
+Design: [`info/gabi-suggestions-design.md`](info/gabi-suggestions-design.md).
+Operator doc: [`access/gabi-suggestions.md`](access/gabi-suggestions.md).
+`GABI_SUGGEST` ships **on** — the owner ordered the outcome and the lane opens no
+new corpus.
+
+⚠️ **His one sentence contains a PERMISSION MODEL, and it differs per format:**
+audio ungated (the public slice), ebook behind the estate's existing `vis_ebooks`
+(**asked, never copied** — 403 relays the estate's own sentence, ⚠️ anything else
+is an OUTAGE), physical behind *"can this person open that shelf"*.
+
+⚠️ **THE MEASUREMENT THE PHYSICAL GATE RESTS ON.** `catalog.csv`'s
+`library_work_id` is a **bare integer naming no instance**, and the index cannot
+be widened per-asker from Discord — so the source shelf was resolved one level up
+at the WRITER: `audiobook_catalog/app/library_link.py` fetches the join from
+`<LIBRARY_MAPPING_URL>`, and `audiobook_catalog/.env` sets that to
+`https://library.heygabi.ai`. A print row IS the main library's copy, so the gate
+is the delegated `whoami`'s `known` on that instance. ⚠️ `known`, not
+`capabilities`: a reader with no edit rights can still walk to the bookcase.
+
+**Still open:**
+- ⚠️ **NOT EXERCISED AGAINST A LIVE LINKED IDENTITY.** The gates are proven by
+  injected-port tests only; no real `whoami` has produced the physical refusal.
+- ⚠️ **`PHYSICAL_SOURCE_INSTANCE` depends on an env var in ANOTHER REPO** and
+  nothing here can detect a change to it. If the join ever spans both instances,
+  the gate must widen to "known on EVERY instance".
+- ⚠️ **The print shelf is small — 64 of 1,079 rows carry a print format**
+  (measured 2026-08-18; the older docs' "86" was stale). Her "nothing left"
+  sentence calls that a gap in the JOIN, never a verdict on what the house owns.
+- **Whether her picks are any GOOD is unmeasured.** The ladder is reasoned and
+  unit-tested; nobody has judged a suggestion.
+
+## 🎭 GABI'S PERSONALITY — VISIBILITY + DEVOPS SET/CLEAR — ✅ LIVE 2026-08-18
+
+Two more owner orders on top of the personality build. Design:
+[`info/gabi-personality-design.md`](info/gabi-personality-design.md) §§5a/5b/5c.
+Operator doc: [`access/gabi-personality.md`](access/gabi-personality.md) §8.
+
+- **(a)** anybody may ask what she is being **with them** and gets a plain
+  factual in-voice answer (trope, pinned-or-drifting). Asking about somebody
+  else's gets a worded not-yours refusal.
+- **(b)** owner/devops get a **roster**: person → trope, pinned-or-auto **+ who
+  wrote it**, last shift. Read live from Durable Object state that turn.
+- **(c)** devops may **pin any of the eleven on anybody** or return them to
+  drift. Semantics identical to a self-pin, last-write-wins, writer recorded,
+  ⚠️ **no notification to the target**.
+
+⚠️ **THIS DOES NOT UNDO THE PIN'S SECRECY.** The owner forbade advertising the
+COMMAND; she states the FACT and never the mechanism, and a test asserts no
+reachable string names the pin words. Answering a straight question with a dodge
+would read as a malfunction — which is worse than the fact.
+
+⚠️ **THE DEVOPS CHECK IS ASKED, NEVER COPIED.** It rides the docs port and reads
+its status: 200 = devops, 403 = not, **anything else = UNKNOWN, worded as an
+outage**. A second local holder of "who is devops" would be a second thing to
+forget to revoke. ⚠️ **The cost, stated rather than discovered:** with
+`GABI_DOCS` off both features answer *"I can't check who's allowed"* — a SETUP
+sentence, never a permissions one.
+
+**Still open:**
+- ⚠️ **No real devops has run either verb.** Both gates are proven by
+  injected-port tests; the 403 branch has never been produced by the live auth
+  Worker on this path.
+- **A bare NAME is refused rather than resolved** (only a mention targets
+  somebody). If that proves annoying in practice, the fix is a resolver with an
+  explicit disambiguation question — never a guess.
 
 ## 🎭 GABI'S PERSONALITY + PERSON-KEYED MEMORY — ✅ LIVE 2026-08-18
 

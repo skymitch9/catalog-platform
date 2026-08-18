@@ -132,6 +132,9 @@ import { memoryOn } from './memory.js';
 import {
   advancePersona,
   freshPersona,
+  PERSONA_ROSTER_MAX,
+  type PersonaRosterRow,
+  type PersonaWriter,
   isTrope,
   personalityOn,
   personaBlock,
@@ -143,6 +146,7 @@ import {
 } from './personality.js';
 import { makeMemoryPort } from './memory-exec.js';
 import { shelfOn } from './shelf.js';
+import { suggestOn } from './suggest.js';
 import { makeShelfPort } from './shelf-exec.js';
 import {
   distillConversation,
@@ -612,16 +616,74 @@ export class GabiGateway {
   /** Set or clear the hidden pin. ⚠️ Applying a pin takes effect IMMEDIATELY —
    *  the trope becomes the pinned one on the same turn, because somebody who
    *  just asked her to be tsundere should get a tsundere reply, not a tsundere
-   *  reply next time. */
-  private async personaPin(userId: string, trope: Trope | null): Promise<PersonaState | null> {
+   *  reply next time.
+   *
+   *  ⚠️ **`writer` is recorded with the pin** (2026-08-18, the devops set/clear
+   *  order). `self` is somebody choosing their own voice; `devops:<id>` is an
+   *  operator setting somebody else's. The ROSTER prints the difference, which
+   *  is the only reason it is stored — and a CLEAR drops it, because a drifting
+   *  persona has no author.
+   *
+   *  ⚠️ **Last-write-wins, deliberately and identically to a self-pin.** A
+   *  devops pin is not a stronger kind of pin: the owner's semantics are "the
+   *  same as if they had done it themselves", so a person may un-pin what an
+   *  operator set, exactly as they could un-pin their own. */
+  private async personaPin(
+    userId: string,
+    trope: Trope | null,
+    writer: PersonaWriter = 'self',
+  ): Promise<PersonaState | null> {
     if (!personalityOn(this.env)) return null;
     const now = Date.now();
     const stored = (await this.state.storage.get<PersonaState>(kUserPersona(userId))) ?? null;
     const next: PersonaState = trope
-      ? { trope, exchanges: stored?.exchanges ?? 0, since: now, pinned: trope }
+      ? { trope, exchanges: stored?.exchanges ?? 0, since: now, pinned: trope, writer, pinnedAt: now }
       : { trope: stored?.trope ?? pickTrope(), exchanges: stored?.exchanges ?? 0, since: stored?.since ?? now };
     await this.state.storage.put(kUserPersona(userId), next);
     return next;
+  }
+
+  /**
+   * ⚠️ **THE PERSONA AS STORED, READ IN THE TURN THAT ANSWERS.**
+   *
+   * She must never say what she is being from what she said earlier in the
+   * conversation — the same availability-grounding rule the book listing carries
+   * in capitals, applied to herself. This is one storage read on a turn that
+   * has already made several.
+   */
+  private async personaRead(userId: string): Promise<PersonaState | null> {
+    if (!personalityOn(this.env)) return null;
+    return (await this.state.storage.get<PersonaState>(kUserPersona(userId))) ?? null;
+  }
+
+  /**
+   * ⚠️ **EVERY PERSONA ON RECORD** — the devops roster, read live from state.
+   *
+   * ⚠️ **NO AUTHORITY CHECK HAPPENS HERE.** The caller has already asked the
+   * estate whether this person is devops-class, and a check performed by the
+   * thing being protected is a check that can be skipped. This method's whole
+   * contract is "list what is stored".
+   *
+   * ⚠️ **BOUNDED.** A `list()` with no cap is an unbounded read on an object
+   * whose storage grows with the server's membership; the roster is a human
+   * artefact and a hundred rows is already more than anybody reads. A truncated
+   * list would lie by omission, so the CAP IS STATED where it bites — the caller
+   * shows the count it received beside the rows.
+   */
+  private async personaRoster(): Promise<PersonaRosterRow[]> {
+    if (!personalityOn(this.env)) return [];
+    const prefix = kUserPersona('');
+    const found = await this.state.storage.list<PersonaState>({ prefix, limit: PERSONA_ROSTER_MAX });
+    const rows: PersonaRosterRow[] = [];
+    for (const [key, state] of found) {
+      const discordUserId = key.slice(prefix.length);
+      // ⚠️ A stored shape from an older version must not throw. An unreadable
+      // row is SKIPPED rather than guessed at — a roster with an invented trope
+      // in it is worse than a roster one line short.
+      if (!discordUserId || !state || !isTrope(state.trope)) continue;
+      rows.push({ discordUserId, state });
+    }
+    return rows;
   }
 
   /** The store, as `mention-flow.ts` wants it — bound to one key. */
@@ -1047,12 +1109,14 @@ export class GabiGateway {
         ...(memoryPort ? { memory: memoryPort } : {}),
         ...(shelfPort ? { shelf: shelfPort } : {}),
         persona: {
-          pin: async (userId: string, trope: Trope) => {
-            await this.personaPin(userId, trope);
+          pin: async (userId: string, trope: Trope, writer?: PersonaWriter) => {
+            await this.personaPin(userId, trope, writer ?? 'self');
           },
-          clear: async (userId: string) => {
-            await this.personaPin(userId, null);
+          clear: async (userId: string, writer?: PersonaWriter) => {
+            await this.personaPin(userId, null, writer ?? 'self');
           },
+          read: (userId: string) => this.personaRead(userId),
+          roster: () => this.personaRoster(),
         },
         reply: async (content, extra) => {
           const res = await replyToMessage(
@@ -1098,6 +1162,12 @@ export class GabiGateway {
         booksEnabled: booksOn(this.env),
         memoryEnabled: memoryOn(this.env),
         shelfEnabled: shelfOn(this.env),
+        suggestEnabled: suggestOn(this.env),
+        // ⚠️ The POSTURE as well as the rendered block, because the visibility
+        // lane must be able to say "I'm not running personalities at the
+        // moment". `personaBlock`'s absence cannot carry that: it is ambiguous
+        // between "switched off" and "this surface never had one".
+        personalityEnabled: personalityOn(this.env),
         ...(persona ? { personaBlock: personaBlock(persona.trope) } : {}),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
