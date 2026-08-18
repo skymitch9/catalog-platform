@@ -1,5 +1,27 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+## 🖥️ /status: archive health row + click-into-logs (owner asks, 2026-08-18 ~14:15)
+
+Owner, verbatim: "add a health check for if the last upload to blob storage is
+good. also lets make it so i can see logs for some of this stuff if they arent
+working by clicking into the health checks."
+
+1. **Archive-upload health row** on /status Health: last archive upload's
+   verdict (time, size-verified?, failures, seed progress). The data lives on
+   the home machine (`audiobook_catalog/output_files/audio_archive.log` +
+   manifest + lock) — push it through the agent-board door like `processing`
+   (its own section), the 15-min task already fires. Render: green = last
+   upload verified, amber = failures being retried, red = task not firing /
+   last upload failed — worded, never a bare colour.
+2. **Click-to-expand log tails on health rows**: a failing row expands to its
+   recent log lines. Home-machine jobs need their tails PUSHED (size-capped
+   ring per source — archive, ingest, processing push); worker rows via
+   Workers Logs or a pushed ring. This activates the blueprint's deferred
+   "log ring buffer" item.
+
+⚠️ QUEUED behind the dashboard-quality agent (same surface, one writer) —
+dispatch to it (or a successor) when it lands. Conductor holds the queue.
+
 > **Split 2026-08-16** per the global "Access & information docs" rule:
 > `TODO.md` is **ACTIVE ONLY**, [`DONE.md`](DONE.md) is the dated archive
 > (newest first, **append-only**), and durable reference belongs in
