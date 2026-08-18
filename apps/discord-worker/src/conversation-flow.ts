@@ -62,6 +62,8 @@ import { makeBooksPort } from './book-knowledge-exec.js';
 import { memoryOn } from './memory.js';
 import { makeMemoryPort } from './memory-exec.js';
 import { PERSON_SPACE, PERSON_SURFACE } from './personality.js';
+import { shelfOn } from './shelf.js';
+import { makeShelfPort } from './shelf-exec.js';
 import {
   handlePick,
   handleTypedQuestion,
@@ -271,6 +273,9 @@ export async function resumeConversation(
     // — otherwise she remembers you in a channel and forgets you in her own
     // follow-up box.
     const memoryPort = makeMemoryPort(env);
+    // ⚠️ TIER 0d, same argument once more: a typed follow-up reaches the SAME
+    // ladder as a DM and must see the same shelf.
+    const shelfPort = makeShelfPort(env);
     const deps = {
       capCheck: () => memory.capCheck(),
       recordTurn: () => memory.recordTurn(),
@@ -303,6 +308,7 @@ export async function resumeConversation(
           }
         : {}),
       ...(memoryPort ? { memory: memoryPort } : {}),
+      ...(shelfPort ? { shelf: shelfPort } : {}),
     };
     const cfg = {
       indexBaseUrl: indexBase(env),
@@ -313,6 +319,7 @@ export async function resumeConversation(
       docsEnabled: docsOn(env),
       booksEnabled: booksOn(env),
       memoryEnabled: memoryOn(env),
+      shelfEnabled: shelfOn(env),
       ...(env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: env.ANTHROPIC_API_KEY_GABI } : {}),
     };
     const who = {

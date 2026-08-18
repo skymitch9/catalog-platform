@@ -142,6 +142,8 @@ import {
   type Trope,
 } from './personality.js';
 import { makeMemoryPort } from './memory-exec.js';
+import { shelfOn } from './shelf.js';
+import { makeShelfPort } from './shelf-exec.js';
 import {
   distillConversation,
   DISTILL_GIVE_UP_MS,
@@ -998,6 +1000,10 @@ export class GabiGateway {
     // cached OAuth token that outlived a secret rotation would fail every
     // profile read with no obvious cause.
     const memoryPort = makeMemoryPort(this.env);
+    // ⚠️ TIER 0d. `null` with no service account — the ships-dark state. Built
+    // per message because it memoises the asker's link lookup FOR ONE TURN, and
+    // a port that outlived its turn would read the wrong person's shelf.
+    const shelfPort = makeShelfPort(this.env);
 
     // ⚠️ **THE VOICE FOR THIS TURN**, resolved here because this is the only
     // place with storage. A conversation with no remembered turns is a FRESH one
@@ -1039,6 +1045,7 @@ export class GabiGateway {
             }
           : {}),
         ...(memoryPort ? { memory: memoryPort } : {}),
+        ...(shelfPort ? { shelf: shelfPort } : {}),
         persona: {
           pin: async (userId: string, trope: Trope) => {
             await this.personaPin(userId, trope);
@@ -1090,6 +1097,7 @@ export class GabiGateway {
         docsEnabled: docsOn(this.env),
         booksEnabled: booksOn(this.env),
         memoryEnabled: memoryOn(this.env),
+        shelfEnabled: shelfOn(this.env),
         ...(persona ? { personaBlock: personaBlock(persona.trope) } : {}),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },

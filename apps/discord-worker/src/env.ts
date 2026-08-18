@@ -339,6 +339,23 @@ export interface Env {
    */
   GABI_PERSONALITY?: string;
 
+  /**
+   * ⚠️ **TIER 0d — the asker's OWN shelf (TBR, reviews, "not reviewed").**
+   *
+   * Affirmative-only `"on"`, and it **ships off**: this reaches a named person's
+   * personal reading list, so it follows the `GABI_BOOKS` precedent rather than
+   * the personality one.
+   *
+   * ⚠️ ON IS NOT A GRANT. Every query is built from the asker's OWN uid and
+   * display name, read server-side from `discord_links`; no tool parameter could
+   * carry somebody else's identity. Another person's REVIEWS are public site
+   * content and answerable; another person's TBR is never offered.
+   *
+   * ⚠️ Reads the service account this Worker already holds — no new secret, no
+   * new trust edge (design §5's as-built note).
+   */
+  GABI_SHELF?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

@@ -131,6 +131,7 @@ import {
   type MemoryProfile,
 } from './memory.js';
 import { personaCommand, PERSONA_ACK, type Trope } from './personality.js';
+import { SHELF_MSG, type ShelfPort } from './shelf.js';
 import {
   runDelegated,
   resumeDelegated,
@@ -290,6 +291,12 @@ export interface MentionDeps {
    */
   memory?: MemoryPort;
   /**
+   * ⚠️ **TIER 0d — the asker's own shelf, OPTIONAL BY DESIGN.** An injected port
+   * for the fifth time, so THIS FILE holds no credential. Absent while
+   * `GABI_SHELF` is off or the service account is unset.
+   */
+  shelf?: ShelfPort;
+  /**
    * ⚠️ **PERSONALITY — the hidden pin's two levers, and nothing else.** The
    * per-turn trope is resolved by the composition root (only it has storage) and
    * arrives as `persona.block`; this pair exists solely so the DETECTOR can
@@ -370,6 +377,10 @@ export interface MentionConfig {
    * forgets the flag — cannot start writing notes about people.
    */
   memoryEnabled?: boolean;
+  /** ⚠️ TIER 0d. The `GABI_SHELF` posture, read at the composition root.
+   *  Defaults to FALSE so a caller that predates the feature cannot start
+   *  reading people's reading lists. */
+  shelfEnabled?: boolean;
   /**
    * ⚠️ **THE RENDERED VOICE FOR THIS TURN**, resolved by the composition root.
    *
@@ -418,12 +429,14 @@ function toolContext(
   cfg: MentionConfig,
   docs?: DocsToolContext,
   books?: BooksToolContext,
+  shelf?: { port: ShelfPort; discordUserId: string },
 ): ToolContext {
   return {
     catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
     ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
     ...(docs ? { docs } : {}),
     ...(books ? { books } : {}),
+    ...(shelf ? { shelf } : {}),
   };
 }
 
@@ -833,6 +846,9 @@ async function docsAnswer(
   /** ⚠️ Tier 2 rides EVERY lane. Who she is talking to is not a property of
    *  which router won. */
   memoryBlock?: string,
+  /** ⚠️ And so does the shelf: "what's on my TBR by Sanderson" is a book-shaped
+   *  question whose answer is a reading list. */
+  shelfCtx?: { port: ShelfPort; discordUserId: string },
 ): Promise<AnsweredQuestion> {
   const done = (content: string): AnsweredQuestion => ({
     content,
@@ -858,7 +874,7 @@ async function docsAnswer(
     // just useless but actively misleading.
     null,
     who,
-    toolContext(cfg, docs),
+    toolContext(cfg, docs, undefined, shelfCtx),
     overrides,
     history,
     memoryBlock,
@@ -893,6 +909,7 @@ async function booksAnswer(
   books: BooksToolContext,
   overrides: { fetch?: typeof fetch } | undefined,
   memoryBlock?: string,
+  shelfCtx?: { port: ShelfPort; discordUserId: string },
 ): Promise<AnsweredQuestion> {
   // ⚠️ Every book answer carries the overflow sentence, so a long one becomes
   // consecutive messages rather than a question about whether to continue. The
@@ -926,7 +943,7 @@ async function booksAnswer(
     // ⚠️ BOOKS ONLY, mirroring `docsAnswer` exactly. Describing the docs corpus
     // on a turn routed as a plot question is input tokens spent describing a
     // capability the router has already decided is not what was asked for.
-    toolContext(cfg, undefined, books),
+    toolContext(cfg, undefined, books, shelfCtx),
     overrides,
     history,
     memoryBlock,
@@ -960,6 +977,8 @@ async function answerQuestion(
   memory?: { block?: string; deps: Pick<MentionDeps, 'memory'>; discordUserId: string },
   /** ⚠️ `block` is the rendered voice for THIS turn; `deps` is the pin. */
   persona?: { block?: string; deps: Pick<MentionDeps, 'persona'>; discordUserId: string },
+  /** ⚠️ Tier 0d. Present only when the posture is on AND a port was built. */
+  shelfCtx?: { port: ShelfPort; discordUserId: string },
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -1017,7 +1036,7 @@ async function answerQuestion(
   // the docs feature (`docsEnabled` undefined) falls through UNCHANGED rather
   // than being handed a sentence about a capability it never had.
   if (docsIntent(question)) {
-    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides, extraBlock);
+    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides, extraBlock, shelfCtx);
     if (cfg.docsEnabled === true) {
       // The posture is on but no port was built — the app token or the service
       // account is missing. A setup gap, and never phrased as a permissions one.
@@ -1049,7 +1068,7 @@ async function answerQuestion(
   // what makes it a book question. `history` is the same remembered window in a
   // channel and in a DM.
   if (booksIntent(question) || booksFollowUp(question, history)) {
-    if (books) return await booksAnswer(question, history, who, cfg, books, overrides, extraBlock);
+    if (books) return await booksAnswer(question, history, who, cfg, books, overrides, extraBlock, shelfCtx);
     if (cfg.booksEnabled === true) {
       // The posture is on but no port was built — the book app token or the
       // service account is missing. A setup gap, never a permissions one.
@@ -1086,7 +1105,7 @@ async function answerQuestion(
         question,
         facts,
         who,
-        toolContext(cfg, docs, books),
+        toolContext(cfg, docs, books, shelfCtx),
         overrides,
         history,
         extraBlock,
@@ -1156,7 +1175,7 @@ async function answerQuestion(
             question,
             grounding,
             who,
-            toolContext(cfg, docs, books),
+            toolContext(cfg, docs, books, shelfCtx),
             overrides,
             history,
             extraBlock,
@@ -1406,6 +1425,7 @@ export async function handleMention(
       books,
       { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: trigger.authorId },
       { ...(cfg.personaBlock ? { block: cfg.personaBlock } : {}), deps, discordUserId: trigger.authorId },
+      cfg.shelfEnabled && deps.shelf ? { port: deps.shelf, discordUserId: trigger.authorId } : undefined,
     );
     await say(answer.content, answer.components, answer.overflowNote);
 
@@ -1637,6 +1657,7 @@ export async function handleTypedQuestion(
       books,
       { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: who.discordUserId },
       { ...(cfg.personaBlock ? { block: cfg.personaBlock } : {}), deps, discordUserId: who.discordUserId },
+      cfg.shelfEnabled && deps.shelf ? { port: deps.shelf, discordUserId: who.discordUserId } : undefined,
     );
     await deps.conversation.save({
       user: question,

@@ -86,6 +86,7 @@ import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
   GABI_DELEGATED_VERB_NAMES,
   GABI_BOOKS_TOOL_NAMES,
+  GABI_SHELF_TOOL_NAMES,
   GABI_DOCS_TOOL_NAMES,
   GABI_TOOL_NAMES,
   GABI_TOOLS,
@@ -111,6 +112,7 @@ import {
 import { audiobookApiBase } from './book-knowledge-exec.js';
 import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
 import { personalityOn, TROPES } from './personality.js';
+import { shelfOn } from './shelf.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -381,6 +383,11 @@ app.get('/api/health', (c) =>
     // ⚠️ Person-keyed conversations, stated so a debugger does not go hunting
     // for channel-scoped records that no longer exist.
     gabi_conversation_scope: 'person',
+    // ⚠️ TIER 0d — the asker's own shelf. `ready` needs no app token, because
+    // both stores are Firestore collections this Worker already reaches.
+    gabi_shelf_enabled: shelfOn(c.env),
+    gabi_shelf_ready: shelfOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    gabi_shelf_tools: GABI_SHELF_TOOL_NAMES,
   }),
 );
 

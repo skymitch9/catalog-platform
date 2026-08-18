@@ -406,6 +406,22 @@ GABI_MEMORY = "on"
 # ⚠️ OFF IS SILENT — nobody asks a question only a personality could answer.
 GABI_PERSONALITY = "on"
 
+# ⚠️ TIER 0d — the asker's OWN shelf: their reading list, their reviews, and the
+# books they have not reviewed. Affirmative-only "on".
+#
+# ⚠️ IT SHIPS OFF. This reaches a named person's personal reading list, so it
+# follows the GABI_BOOKS precedent rather than the personality one — flipping it
+# is the owner's own act.
+#
+# ⚠️ ON IS NOT A GRANT. Every query is built from the asker's OWN uid and display
+# name, read server-side from discord_links; no tool argument could carry
+# somebody else's identity. Another person's REVIEWS are public site content and
+# answerable, attributed; another person's TBR is never offered in any surface.
+#
+# ⚠️ NO NEW SECRET. Both stores are Firestore collections this Worker already
+# reaches with the service account it holds for discord_links.
+GABI_SHELF = "off"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)

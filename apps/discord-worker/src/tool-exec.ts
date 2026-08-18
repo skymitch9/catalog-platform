@@ -54,6 +54,9 @@ import {
   type LookupField,
 } from './catalog-data.js';
 import {
+  gabiShelfToolByName,
+  isGabiShelfToolName,
+  type GabiShelfToolName,
   gabiBooksToolByName,
   gabiDocsToolByName,
   gabiToolByName,
@@ -84,6 +87,24 @@ import {
   looksLikeStatQuery,
   type BooksToolContext,
 } from './book-knowledge.js';
+import {
+  bookIdFromTitle,
+  SHELF_MSG,
+  SHELF_SOFT_CLAIM_NOTE,
+  SHELF_UNREAD_ROWS,
+  shelfIdentityMessage,
+  UNREAD_NOTE,
+  type ShelfAsker,
+  type ShelfPort,
+} from './shelf.js';
+
+/** ⚠️ What the shelf tools are handed for one turn — the port plus the asker's
+ *  DISCORD id. The uid is resolved from that server-side and never arrives from
+ *  the model. */
+export interface ShelfToolContext {
+  port: ShelfPort;
+  discordUserId: string;
+}
 
 export interface ToolContext {
   catalogBaseUrl: string;
@@ -122,6 +143,13 @@ export interface ToolContext {
    * handed a spoiler scope from an earlier turn.
    */
   books?: BooksToolContext;
+  /**
+   * ⚠️ **TIER 0d — the asker's own shelf, OPTIONAL BY DESIGN.** Absent means this
+   * surface cannot read a shelf: the state of every caller not given one, and of
+   * production while `GABI_SHELF` is off. The port's only implementation
+   * (`shelf-exec.ts`) is the FIFTH module here that names a credential.
+   */
+  shelf?: ShelfToolContext;
 }
 
 /** What one executed call produced. `isError` becomes the `tool_result` block's
@@ -174,7 +202,8 @@ export async function runTool(
   const label = typeof name === 'string' ? name : String(name);
   const isDocs = isGabiDocsToolName(name) && Boolean(gabiDocsToolByName(name));
   const isBooks = isGabiBooksToolName(name) && Boolean(gabiBooksToolByName(name));
-  if (!isDocs && !isBooks && (!isGabiToolName(name) || !gabiToolByName(name))) {
+  const isShelf = isGabiShelfToolName(name) && Boolean(gabiShelfToolByName(name));
+  if (!isDocs && !isBooks && !isShelf && (!isGabiToolName(name) || !gabiToolByName(name))) {
     return {
       name: label,
       isError: true,
@@ -182,7 +211,8 @@ export async function runTool(
         error: 'unknown_tool',
         allowed:
           'catalog_lookup, series_volumes, search_estate_docs, read_estate_doc, ' +
-          'list_book_knowledge, search_book_text, read_book_passage, book_presence',
+          'list_book_knowledge, search_book_text, read_book_passage, book_presence, ' +
+          'my_tbr, my_reviews, book_reviews, my_unread',
         note: 'That tool does not exist on this surface. Nothing was run.',
       },
     };
@@ -191,6 +221,7 @@ export async function runTool(
   try {
     if (isDocs) return await runDocsTool(name as GabiDocsToolName, args, ctx);
     if (isBooks) return await runBooksTool(name as GabiBooksToolName, args, ctx);
+    if (isShelf) return await runShelfTool(name as GabiShelfToolName, args, ctx);
     switch (name as GabiToolName) {
       case 'catalog_lookup':
         return await catalogLookup(args, ctx);
@@ -1086,5 +1117,227 @@ async function presenceAcross(
     name,
     isError: false,
     result: { mode: 'presence', query, books: body.books, note: PRESENCE_NOTE },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// TIER 0d — the asker's OWN shelf
+//
+// ⚠️ Three rules run through every branch below:
+//   • the identity is resolved SERVER-SIDE and no argument can widen it;
+//   • "not reviewed" is never allowed to masquerade as "not read";
+//   • an empty reviews result is NOT proof somebody has written none — the join
+//     is by display name and the name on file is a snapshot.
+// ---------------------------------------------------------------------------
+
+function shelfRefusal(name: string, error: string, say: string, note?: string): ToolOutcome {
+  return { name, isError: true, result: { error, say, ...(note ? { note } : {}) } };
+}
+
+async function runShelfTool(
+  name: GabiShelfToolName,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolOutcome> {
+  const shelf = ctx.shelf;
+  if (!shelf) return shelfRefusal(name, 'shelf_not_available', SHELF_MSG.notConfigured);
+
+  // ⚠️ `book_reviews` reads PUBLIC site content, so it needs no identity at all.
+  // Requiring a link for it would refuse a question the websites answer to
+  // anonymous visitors — and that absence of a gate is deliberate, not an
+  // oversight.
+  if (name === 'book_reviews') return await publicBookReviews(shelf, args);
+
+  const who = await shelf.port.asker(shelf.discordUserId);
+  if (!who.ok) {
+    return shelfRefusal(
+      name,
+      `shelf_identity_${who.reason}`,
+      shelfIdentityMessage(who.reason),
+      who.reason === 'outage'
+        ? 'An outage on our side. It says NOTHING about whether they have a shelf — do not answer as though it were empty.'
+        : 'This is about the /link ceremony, not permissions. Relay the sentence as it is.',
+    );
+  }
+
+  if (name === 'my_tbr') return await myTbr(shelf, who.asker);
+  if (name === 'my_reviews') return await myReviews(shelf, who.asker);
+  return await myUnread(shelf, who.asker, args, ctx);
+}
+
+async function myTbr(shelf: ShelfToolContext, asker: ShelfAsker): Promise<ToolOutcome> {
+  const name = 'my_tbr';
+  const call = await shelf.port.myTbr(asker);
+  if (!call.ok) return shelfRefusal(name, 'shelf_unreachable', call.message ?? SHELF_MSG.estateUnreachable);
+  if (call.rows.length === 0) {
+    return {
+      name,
+      isError: false,
+      result: {
+        shelf: 'the asker’s own reading list',
+        count: 0,
+        say: SHELF_MSG.emptyTbr,
+        note:
+          '⚠️ This is the AUDIOBOOK reading list only — the print/ebook library keeps its own, and ' +
+          'GABI cannot read that one yet. Say which shelf you looked at, so an empty answer is not ' +
+          'heard as "you have nothing anywhere".',
+      },
+    };
+  }
+  return {
+    name,
+    isError: false,
+    result: {
+      shelf: 'the asker’s own reading list',
+      count: call.total,
+      shown: call.rows.length,
+      books: call.rows,
+      note:
+        'These are books they said they want to read. ⚠️ Every row carries the SHELF it came from — ' +
+        'say which. And this covers the AUDIOBOOK list only; the print/ebook library keeps a ' +
+        'separate one that is not readable here yet, so do not present this as their whole list. ' +
+        SHELF_SOFT_CLAIM_NOTE,
+    },
+  };
+}
+
+async function myReviews(shelf: ShelfToolContext, asker: ShelfAsker): Promise<ToolOutcome> {
+  const name = 'my_reviews';
+  const call = await shelf.port.myReviews(asker);
+  if (!call.ok) return shelfRefusal(name, 'shelf_unreachable', call.message ?? SHELF_MSG.estateUnreachable);
+
+  if (call.rows.length === 0) {
+    // ⚠️ THE SENTENCE THIS WHOLE FEATURE EXISTS TO GET RIGHT. An empty result has
+    // two causes and only one of them is "you have not written any": reviews are
+    // filed under a display NAME, and the name on file was copied at link time.
+    return {
+      name,
+      isError: false,
+      result: {
+        count: 0,
+        joined_on_name: asker.displayName,
+        say: SHELF_MSG.reviewsNotFound(asker.displayName),
+        note:
+          '⚠️ DO NOT tell them they have written no reviews. Nothing matched the name on file, which ' +
+          'is a different fact — say the name you looked under and offer /link to refresh it.',
+      },
+    };
+  }
+
+  return {
+    name,
+    isError: false,
+    result: {
+      count: call.total,
+      shown: call.rows.length,
+      // ⚠️ Stated on every answer so a wrong-name join is visible rather than
+      // silent, even when it DID find something (a renamed person may have
+      // reviews under both names).
+      joined_on_name: asker.displayName,
+      reviews: call.rows,
+      note:
+        'These are their own words — quote them back accurately and do not reword their opinion ' +
+        'into yours. ⚠️ Found by matching the display name on file; if they mention a review that is ' +
+        'not here, the name may have changed and /link refreshes it. ' +
+        SHELF_SOFT_CLAIM_NOTE,
+    },
+  };
+}
+
+async function publicBookReviews(
+  shelf: ShelfToolContext,
+  args: Record<string, unknown>,
+): Promise<ToolOutcome> {
+  const name = 'book_reviews';
+  const title = str(args.title);
+  if (!title) {
+    return shelfRefusal(name, 'nothing_to_look_up', 'Tell me which book and I will look.', 'Nothing was read.');
+  }
+  const call = await shelf.port.bookReviews(bookIdFromTitle(title));
+  if (!call.ok) return shelfRefusal(name, 'shelf_unreachable', call.message ?? SHELF_MSG.estateUnreachable);
+  return {
+    name,
+    isError: false,
+    result: {
+      asked_about: title,
+      count: call.total,
+      shown: call.rows.length,
+      reviews: call.rows,
+      note:
+        call.rows.length === 0
+          ? 'Nobody in the household has reviewed that one. ⚠️ That is a statement about the REVIEWS, ' +
+            'not about the book and not about whether the estate owns it.'
+          : '⚠️ ATTRIBUTE, NEVER ABSORB. Name whose review each one is — "Sam gave it 4 and said …" — ' +
+            'and never fold them into your own verdict or average them into a score nobody gave. ' +
+            'These are public on the estate sites, which is why you may repeat them at all.',
+    },
+  };
+}
+
+/**
+ * ⚠️ **"NOT REVIEWED", AND IT SAYS SO IN EVERY ROW.**
+ *
+ * The estate has no read-state store on the audiobook side, so this answers a
+ * DIFFERENT question from the one usually asked — and the difference is enormous
+ * in the direction that sounds authoritative, because most people review a small
+ * fraction of what they read.
+ */
+async function myUnread(
+  shelf: ShelfToolContext,
+  asker: ShelfAsker,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolOutcome> {
+  const name = 'my_unread';
+  const author = str(args.author);
+  const series = str(args.series);
+
+  const reviews = await shelf.port.myReviews(asker);
+  if (!reviews.ok) {
+    return shelfRefusal(name, 'shelf_unreachable', reviews.message ?? SHELF_MSG.estateUnreachable);
+  }
+  // ⚠️ The whole review set, not the capped display slice — a cap meant for a
+  // readable message must never decide which books count as reviewed.
+  const reviewed = new Set(reviews.rows.map((r) => r.bookId));
+
+  const load = await loadCatalog(
+    ctx.catalogBaseUrl,
+    ctx.fetchOverride ? { fetch: ctx.fetchOverride } : undefined,
+  );
+  if (!load.ok) return loadFailure(name, load);
+
+  const query = author || series;
+  const matches = query
+    ? filterCatalog(load.rows, { query, field: author ? 'author' : 'series' })
+    : load.rows;
+
+  const rows = matches
+    .filter((r) => !reviewed.has(bookIdFromTitle(r.title)))
+    .map((r) => ({
+      title: r.title,
+      author: r.author,
+      ...(r.series ? { series: r.series } : {}),
+      // ⚠️ THE LABEL THAT STOPS THE COUNT MASQUERADING.
+      basis: 'no_review' as const,
+    }));
+
+  return {
+    name,
+    isError: false,
+    result: {
+      filters: { author: author || undefined, series: series || undefined },
+      // ⚠️ Named `not_reviewed_count`, not `unread_count`. A field name is the
+      // first thing a model reproduces, and this one cannot be misread.
+      not_reviewed_count: rows.length,
+      searched: matches.length,
+      shown: Math.min(rows.length, SHELF_UNREAD_ROWS),
+      books: rows.slice(0, SHELF_UNREAD_ROWS),
+      basis_note: UNREAD_NOTE,
+      note:
+        '⚠️ Say "not reviewed", never "unread", and never call this a backlog. The estate keeps no ' +
+        'record of what anybody has FINISHED on the audiobook side, so this is what they have not ' +
+        'written about — a much larger set. ' +
+        SHELF_SOFT_CLAIM_NOTE,
+    },
   };
 }

@@ -654,6 +654,136 @@ export function gabiBooksToolByName(name: unknown): GabiBooksTool | null {
   return GABI_BOOKS_TOOLS.find((t) => t.name === name) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// TIER 0d — THE ASKER'S OWN SHELF. A FIFTH allowlist, deliberately.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **A FIFTH ARRAY**, for the reason each previous one was its own: **what it
+ * reads is different**. Tier 0 reads a public CSV, 0b the docs corpus, 0c the
+ * household's book text — and this reads **one named person's own shelf**.
+ *
+ * ⚠️ **THE UID NEVER COMES FROM THE MODEL.** Every tool here is scoped to the
+ * asker by an identity read server-side from `discord_links`. There is no
+ * parameter that could carry somebody else's uid, which is what makes "your own
+ * shelf" enforceable rather than merely instructed — the same property the book
+ * lane gets from resolving the email itself.
+ *
+ * ⚠️ **NOTHING HERE WRITES.** No adding to a TBR, no posting a review, no
+ * marking read. Those are Tier-1 delegated verbs with their own confirm lane.
+ */
+export const GABI_SHELF_TOOL_NAMES = [
+  'my_tbr',
+  'my_reviews',
+  'book_reviews',
+  'my_unread',
+] as const;
+
+export type GabiShelfToolName = (typeof GABI_SHELF_TOOL_NAMES)[number];
+
+export const GABI_SHELF_TOOL_TIER = '0d';
+
+export interface GabiShelfTool {
+  name: GabiShelfToolName;
+  description: string;
+  input_schema: GabiTool['input_schema'];
+  /** ⚠️ The category the guard checks. `book_reviews` reads PUBLIC site content
+   *  and is marked as such, so a reviewer can see at a glance that one of these
+   *  four is not personal data. */
+  reads: 'gated_personal_shelf' | 'public_reviews';
+  methods: readonly ('GET')[];
+  mutates: boolean;
+}
+
+export const GABI_SHELF_TOOLS: readonly GabiShelfTool[] = [
+  {
+    name: 'my_tbr',
+    description:
+      "The asker's own to-be-read list — books they have marked as wanting to read. " +
+      'Call it when somebody asks what is on their list, what they should read next, or what they ' +
+      'were planning to get to. ' +
+      "⚠️ It is THEIR list and only theirs: you cannot look up somebody else's, and there is no " +
+      'argument that would let you try. ' +
+      '⚠️ Every row says which SHELF it came from — the estate has two reading lists (audiobooks and ' +
+      'the print/ebook library) and they are different lists, not two copies of one. Say which.',
+    input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    reads: 'gated_personal_shelf',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'my_reviews',
+    description:
+      "The reviews the ASKER has written, newest first, with their ratings. " +
+      'Call it for "what did I think of X", "what have I reviewed", "what did I rate that". ' +
+      '⚠️ If nothing comes back, that does NOT reliably mean they have written none — reviews are ' +
+      'filed under a display NAME, and if they renamed themselves since linking, the name on file no ' +
+      'longer matches. Say so and offer /link, exactly as the result tells you to. Never tell ' +
+      'somebody they have not reviewed anything on the strength of an empty result.',
+    input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    reads: 'gated_personal_shelf',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'book_reviews',
+    description:
+      'What the HOUSEHOLD has said about one book — every review of it, with names and ' +
+      'ratings. These are PUBLIC on the estate sites, so it is fine to answer "what did Sam think of ' +
+      'X?" from them. ' +
+      '⚠️ ATTRIBUTE, NEVER ABSORB. Say "Sam gave it 4 and said …", never "it is a four-star book". A ' +
+      "review is somebody's opinion and it stays theirs; folding it into your own verdict turns one " +
+      "person's view into the estate's without them agreeing to that. " +
+      '⚠️ Quote or summarise what is there. Never invent a review and never average them into a ' +
+      'score nobody gave.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'The book title, as the person said it.',
+        },
+      },
+      required: ['title'],
+      additionalProperties: false,
+    },
+    reads: 'public_reviews',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'my_unread',
+    description:
+      'Books on the estate shelf that the asker has NOT REVIEWED — optionally narrowed to one author ' +
+      'or series. Use it for "what have I not got to yet", "what else is there by X". ' +
+      '⚠️ READ THE BASIS ON EVERY ROW AND SAY IT. The estate has no record of what anybody has ' +
+      'FINISHED on the audiobook side, so "not reviewed" is the honest answer and it is NOT the same ' +
+      'as "not read" — most people review a small fraction of what they read. Call it "not reviewed" ' +
+      'when you give a number, and never present the count as a reading backlog.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        author: { type: 'string', description: 'Narrow to one author.' },
+        series: { type: 'string', description: 'Narrow to one series.' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+    reads: 'gated_personal_shelf',
+    methods: ['GET'],
+    mutates: false,
+  },
+];
+
+export function isGabiShelfToolName(name: unknown): name is GabiShelfToolName {
+  return typeof name === 'string' && (GABI_SHELF_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+export function gabiShelfToolByName(name: unknown): GabiShelfTool | null {
+  if (!isGabiShelfToolName(name)) return null;
+  return GABI_SHELF_TOOLS.find((t) => t.name === name) ?? null;
+}
+
 /**
  * The `tools` array as the Messages API wants it — the executor's own fields
  * (`reads`, `methods`, `mutates`) are ours and are never sent.
@@ -669,7 +799,7 @@ export function gabiBooksToolByName(name: unknown): GabiBooksTool | null {
  * is a write that happens when a model misreads a sentence; that wall is
  * asserted in both modes by the build-failing guard.
  */
-export function toolsForApi(opts: { docs?: boolean; books?: boolean } = {}): {
+export function toolsForApi(opts: { docs?: boolean; books?: boolean; shelf?: boolean } = {}): {
   name: string;
   description: string;
   input_schema: GabiTool['input_schema'];
@@ -685,6 +815,7 @@ export function toolsForApi(opts: { docs?: boolean; books?: boolean } = {}): {
   // would make one owner decision silently grant the other.
   if (opts.docs) out.push(...GABI_DOCS_TOOLS.map(wire));
   if (opts.books) out.push(...GABI_BOOKS_TOOLS.map(wire));
+  if (opts.shelf) out.push(...GABI_SHELF_TOOLS.map(wire));
   return out;
 }
 
