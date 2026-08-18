@@ -932,8 +932,24 @@ this order, with an answer before the next is shown.
    requester list (so "it's ready" can tell all of them, and a book-club
    pile never uploads twice). Requesting an already-ready book is a no-op
    with a worded "already streamable" answer.
-4. **Does `chapters.json` stay public?** 46,659 chapter titles for 1,079 books
-   are on the public site today (§7.3). Fine, or move it behind the gate?
+   **Eviction clause (owner, same day):** *"if a book isnt downloaded for 7
+   days its removed … so we dont need to pay for it the enxt month … it can
+   always be rerequested."* Accepted, with two build-time tunings flagged for
+   the owner's confirm: **(i)** R2 bills storage as a prorated monthly
+   average, so waiting for the cycle boundary saves nothing — a stale book
+   should be deleted the day it goes stale, which saves MORE than the
+   owner's cycle-end version; **(ii)** audiobooks are paused for a week
+   routinely mid-listen (a 30 h book over a month of commutes), so the
+   recommended predicate is: evict when **no stream AND no in-progress
+   reading position touched for 30 days** (7-day idle would evict a
+   club-mate's half-finished book; the position store makes "somebody is
+   mid-book" a queryable fact). Re-request re-ingests from the local
+   library, which never deletes anything — R2 is a cache, not the archive.
+   At 630 GB × $0.015 the ceiling this protects against is ~$9/mo, so the
+   clause is about tidiness more than money — priced honestly.
+4. ✅ **DECIDED 2026-08-17 — `chapters.json` stays public** ("fine as is").
+   46,659 chapter titles remain on the public site as today; the player reads
+   the same file the clubs do. Only the AUDIO BYTES are gated.
 5. **Signed URLs — ever?** §3.4 recommends never, quoting `ebook-file.ts`'s own
    law. If the service-worker seam proves untenable on iOS, the fallback in this
    design is a **cookie**, not a signed URL — confirm that is the right ordering.
