@@ -233,6 +233,37 @@ been graded. ⚠️ The owner's FIRST live turn found a routing defect that no u
 test would have caught — design §10b — so the second live turn is worth
 watching just as closely.
 
+## 🧠 GABI'S MEMORY — three tiers — DESIGN LANDED 2026-08-18, BUILD NEXT
+
+Owner ask: *"so its not a fresh bot to talk to each time… but we also dont want
+to blow scope."* Design: [`info/gabi-memory-design.md`](info/gabi-memory-design.md).
+Shape approved; the doc argues the details.
+
+Tier 1 (30-min verbatim window) is **unchanged**. Tier 2 is a ~2 KB per-person
+profile distilled at expiry and injected every turn. Tier 3 is a 90-day archive
+plus a recall tool that costs nothing per turn.
+
+**Build order (each dark behind `GABI_MEMORY`, affirmative-only):**
+1. profile store + distillation on the existing `*/2` cron + prompt block +
+   `/gabi memory` show/clear ⚠️ the show/clear ships WITH the writing, not after
+   — a profile with no way to see it is a dossier
+2. archive writes ⚠️ before the tool, so recall has something to find on day one
+3. `recall_conversation` + its own (fifth) allowlist array and pinning test
+4. identity merge on first `/link` — riskiest, deliberately last
+
+**Two things in the design worth not losing:**
+- ⚠️ There is **no expiry event today** — pruning is lazy. The cron is the
+  trigger; distilling lazily at the next conversation's first turn is the
+  tempting option and it is wrong (stale exactly when the feature is for).
+- ⚠️ **The profile must never feed the spoiler bound.** It would be precisely the
+  stored ceiling that book design §4.3 forbids. Reading state in a profile is a
+  soft claim with provenance, superseded by a real position store, never fighting
+  it.
+
+**Owner steps:** flip `GABI_MEMORY=on` when phase 1 is verified; create the
+Firestore TTL policy on `gabi_conversations.expiresAt` (or choose the cron
+fallback); confirm 90 days after a week of measured size.
+
 ## 🔑 ESTATE SSO — BUILT + DEPLOYED, INERT PENDING ONE OWNER CONSOLE STEP (2026-08-18)
 
 Owner ask, verbatim, after hitting it himself: *"Ebooks makes me login every
