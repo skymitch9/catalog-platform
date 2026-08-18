@@ -1072,11 +1072,15 @@ designing a federation for a catalog that does not yet have any books in it.
   rows so tonight packs harvested transcripts free).
 
 ### In flight (each reports to the conductor)
-1. Personality + person-keyed memory (discord-worker): 11 owner-approved
-   tropes incl. flirty, PG-13 CEILING at discretion (mirror the person's
-   register, default mild), neighbor-graph drift, hidden pin command
-   (undocumented to users), memory+personality keyed to Discord USER ID
-   across channels/DMs. Design doc required first.
+1. ✅ LANDED ~16:30, DEPLOYED (version 7b7b2e73): Personality +
+   person-keyed memory. 11 tropes, PG-13-ceiling discretion on ALL voices,
+   chain-not-ring drift graph, hidden pin (acks in voice, never names the
+   feature), memory keyed to the Discord SNOWFLAKE (not the renameable
+   username) across channels/DMs; the sweep doubles as the key migration.
+   Design: docs/info/gabi-personality-design.md + gabi-memory-design.md
+   §11. 656 tests. Honest gap: invariance tests prove a trope cannot EDIT
+   a refusal, not that a model never paraphrases one — the owner eyeball
+   is "what happens in PH 14" while pinned tsundere: same fact, grumpier.
 2. Dashboard pass: blob rows into the BACKUPS grouping with seed %, last
    run, verified?, restore-proven line (first data point: conductor's
    sha256 round trip today); worker event RING BUFFER in D1 (owner:
