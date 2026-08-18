@@ -1004,6 +1004,18 @@ designing a federation for a catalog that does not yet have any books in it.
 > completeness, docs current at landing — the fallback executor may be the
 > Kiro-IDE Claude, which needs complete instructions. If you are that
 > successor: read this whole section, then `git status` all three repos.
+>
+> ⚠️ **THE GLOBAL RULES ARE ABSOLUTE LAW FOR EVERY SESSION AND EVERY
+> EXECUTOR** (owner order, verbatim intent, 2026-08-18: the global rules
+> "are not to be ignored and followed as absolute law unless explicit
+> permission is given per instance"). They live in `~/.claude/CLAUDE.md`
+> (usage monitoring and handoffs, verification culture, multi-agent
+> discipline, commit/deploy guards, never-stash, one-decision-at-a-time,
+> and the rest). A deviation is legitimate ONLY with the owner's explicit
+> permission for that specific instance — never inferred, never carried
+> over from a previous exception, never self-granted because a rule seems
+> inconvenient or inapplicable. When a rule seems wrong for the situation,
+> the move is to ASK, not to skip.
 
 ### Landed and verified today (deployed unless marked)
 - Primal Hunter 1–14 in GABI's knowledge base (index = 190 books; ingestion
