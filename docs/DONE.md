@@ -13,6 +13,103 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📚 GABI READS THE ESTATE DOCS — ALL SIX PHASES SHIPPED 2026-08-18 (moved from TODO.md 2026-08-18)
+
+Owner: *"let's make sure GABI can read all of our docs and stuff so she can
+even help me if needed for let's say I don't have a Claude code session
+open."* Design of record, fully decided (all four §9 questions answered):
+[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md).
+⚠️ That sentence is kept rather than deleted, because it is the reason this
+item sat in TODO.md for a day and the reason it is now here: *"This item stays
+here rather than moving to DONE.md because it is not finished — the Discord half
+is the reason the owner asked for it, and it is exactly the half that has not
+been built."* **Phases 3 and 4 landed 2026-08-18 and the Discord half exists.**
+
+**Landed 2026-08-18 — the corpus, the routes and the page.**
+
+| Phase | What | Where |
+|---|---|---|
+| 1 | The publisher + the private bucket | `audiobook_catalog/scripts/publish_docs_snapshot.py`, bucket `estate-docs-gated` |
+| 2 | Door A: search / section / receipt, `requireDevops()` | `apps/auth-worker/src/estate-docs.ts` |
+| 5 | Pipeline STEP 9, on the busy AND the idle path | `audiobook_catalog/scripts/sync_to_drive.py` |
+| 6 | The devops-gated docs page with a real search bar | `sites/heygabi-home/public/docs/` |
+
+🔗 **<https://heygabi.ai/docs/>** — signed in as owner. Type *revocation delay*:
+the top hit should name the **file and the section**, the strip under the title
+should carry the snapshot's publish date **before you type anything**, and
+opening a result should render one section properly with its source path named.
+
+Measured on the first real publish: **119 markdown files, 3,105,573 raw bytes,
+1,413 sections, 1,248,434 gzipped.** `CREDENTIALS.md` excluded by the denylist,
+7 non-`.md` files excluded by construction, scanner findings zero.
+
+### ⏳ Still to build — phases 3 and 4, the Discord door
+
+- **Phase 3** — `email` added to the link doc (`apps/discord-worker/src/link.ts`),
+  `devops` added to `/seen`'s envelope, `ESTATE_APP_TOKEN_DISCORD` minted on
+  BOTH Workers. ⚠️ Waits on the concurrent discord-worker agent landing. The
+  owner's decision is already taken: **relink, no backfill** (design §9.1).
+- **Phase 4** — GABI's two read-only tools (`search_estate_docs`,
+  `read_estate_doc`), the caps, the `GABI_DOCS` posture, the refusal and
+  staleness wording. ⚠️ All four refusal sentences already exist as
+  `DOCS_REFUSALS` in `estate-docs.ts` — **reuse them; do not author a fifth
+  wording of the same refusal.**
+
+### 🔴 Owner steps — both OPTIONAL, neither blocking anything
+
+1. **Widen the estate R2 API token to cover `estate-docs-gated`** (dash → R2 →
+   API tokens). ⚠️ **Measured 2026-08-18: it does not reach the new bucket** —
+   `PUT estate-ebooks` OK, `PUT estate-docs-gated` AccessDenied, because the
+   token is scoped to a named bucket list. Not blocking: the publisher's
+   default transport is `wrangler r2 object put`, which uses wrangler's own
+   OAuth and needs no new credential. Worth doing only if `--transport s3` is
+   ever wanted.
+2. **Flip the scanner from shadow to enforce** once a week of clean shadow
+   output has accumulated (`--scanner enforce`, or `DOCS_SCANNER_MODE=enforce`).
+   Today's evidence is ONE clean pass, not a week of them.
+
+### Not done deliberately — a decision, not an oversight
+
+**Nothing links to `/docs/` yet.** It is not on the front door (a devops-only
+page advertised to every visitor) and not in `/status`'s Operations section,
+where the runbook links live and where it probably belongs. Left unlinked
+rather than guessed at.
+
+### ✅ Phases 3 + 4 — the Discord door and her two docs tools (2026-08-18)
+
+The half the owner actually asked for. As-built:
+[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md) **§11**;
+runbook [`access/estate-docs.md`](access/estate-docs.md) **§§8-10**.
+
+| Phase | What | Where |
+|---|---|---|
+| 3 | `email` on the link doc; `devops` on `/seen`; door B on the corpus routes | `apps/discord-worker/src/link.ts`, `apps/auth-worker/src/{estate,estate-docs}.ts` |
+| 4 | `search_estate_docs` + `read_estate_doc`, caps, posture, wording | `apps/discord-worker/src/estate-docs{,-exec}.ts`, `gabi-tools.ts` |
+
+- **`ESTATE_APP_TOKEN_DISCORD_DOCS`** minted, 2 holders. ⚠️ A NEW pair, not the
+  T1 token — that one has three holders including both library Workers, and a
+  secret cannot be read back, so adding a fourth holder would have meant
+  re-minting and breaking T1. Fresh trust edge, fresh pair.
+- **Door B verified LIVE**: owner → 200 with real results and the snapshot date;
+  an email not in the directory → 403 with the design's exact sentence; no email
+  header → 400 with the relink sentence; casing/padding normalised. This closes
+  §10.8's *"the 403 path is asserted in code and in copy, not observed."*
+- Workspace **1,071/1,071** green; `probe:estate` **115/115** before and after
+  the deploy (⚠️ the design's "111 baseline" was stale — the suite grew with the
+  T1 build; no probe was changed here).
+- ⚠️ **Departure, recorded not silent**: §5.3's Sonnet-class model
+  recommendation was NOT adopted — the docs tools compose into the *existing*
+  conversation loop, so the model must be picked before anyone knows whether a
+  turn is a docs turn. Design §11.7 has the full reasoning and what adopting it
+  would take.
+- ⚠️ The credential guard was **widened** from "credentials live in ONE module"
+  to "in TWO named modules, each one trust edge", with a new assertion that
+  neither executor names the other's secret.
+
+**Ships dark behind `GABI_DOCS = "off"`.** The two owner steps that remain are
+carried forward to `TODO.md` rather than closed here — an archive entry must not
+be the only place a pending owner action lives.
+
 ## 📚 THE CONFIRM QUEUE IS ANNOUNCED — `/series` READS IT — ✅ DONE 2026-08-18
 
 The page half of the series registry's confirm-queue affordance, moved from

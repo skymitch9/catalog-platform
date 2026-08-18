@@ -2,12 +2,14 @@
 
 > **Audience:** Claude sessions + the owner. **Status:** TRACKED (this repo is
 > public on GitHub — resource and secret NAMES only, never values).
-> Last verified: **2026-08-18**. **PHASES 1, 2, 5 AND 6 ARE BUILT AND LIVE;
-> phases 3 and 4 (the Discord door and GABI's tools) are not.**
+> Last verified: **2026-08-18**. **ALL SIX PHASES ARE BUILT AND DEPLOYED.**
+> §10 is the as-built for phases 1/2/5/6; **§11 is the as-built for phases 3
+> and 4** — the Discord door and GABI's two docs tools. ⚠️ Phase 4 ships
+> **dark** behind `GABI_DOCS`, which is one owner flip (§7 owner step 4).
 > Figures marked *measured* were taken on this machine on 2026-08-17 unless a
-> later date is given. **§10 is the as-built account**, and where the build
-> departed from this design it says so there rather than by silently editing
-> the paragraph that turned out to be wrong.
+> later date is given. **§10 and §11 are the as-built account**, and where the
+> build departed from this design they say so there rather than by silently
+> editing the paragraph that turned out to be wrong.
 
 Owner brief, verbatim (2026-08-17): *"let's make sure GABI can read all of our
 docs and stuff so she can even help me if needed for let's say I don't have a
@@ -786,3 +788,222 @@ a 200 IS the capability probe.
   still unknown.
 - **Nothing links to `/docs/`.** Deliberate (see `TODO.md`), but it means the
   page is reachable only by typing the URL.
+
+---
+
+## 11. AS BUILT — phases 3 and 4, the Discord door (2026-08-18)
+
+> Everything here is **measured on this machine on 2026-08-18** unless it says
+> otherwise. Where the build departed from the design above, the departure is
+> named here rather than by quietly editing the paragraph that turned out to be
+> wrong. ⚠️ **The owner's original ask is now MET**: §10.8's first bullet said
+> *"today the docs are reachable from a browser and nowhere else"*, and that is
+> no longer true.
+
+### 11.1 What exists
+
+| Piece | Where | State |
+|---|---|---|
+| `email` on the link doc | `apps/discord-worker/src/link.ts` | deployed |
+| `devops` on `/seen`'s envelope | `apps/auth-worker/src/estate.ts` | deployed |
+| Door B (app token + proven email) | `apps/auth-worker/src/estate-docs.ts` — `docsGate()` | deployed, **verified live** (11.4) |
+| The contract, caps and words | `apps/discord-worker/src/estate-docs.ts` | deployed |
+| The credentialled executor | `apps/discord-worker/src/estate-docs-exec.ts` | deployed |
+| The two tools | `GABI_DOCS_TOOLS` in `apps/discord-worker/src/gabi-tools.ts` | deployed, **dark** |
+| Posture | `GABI_DOCS = "off"` in `apps/discord-worker/wrangler.toml` | ⚠️ **OFF — one owner flip** |
+| Secret | `ESTATE_APP_TOKEN_DISCORD_DOCS`, 2 holders | set on both |
+
+Suites: **1,071 workspace tests green** (auth-worker 264, discord-worker 419,
+plus the rest). `npm run probe:estate` **115/115** before and after the deploy —
+⚠️ the design's §7 note of a 111 baseline is stale; the suite grew with the T1
+build, and no probe was added or changed by this one.
+
+### 11.2 ⚠️ The token decision — a NEW pair, and why re-use was impossible
+
+`ESTATE_APP_TOKEN_DISCORD` already existed (minted 2026-08-18 by the Tier-1
+build) with **three holders**: the discord-worker and *both* library Workers.
+Adding the auth Worker as a fourth was considered and is **not possible**: a
+wrangler secret cannot be read back, so the only way to share the existing value
+would be to re-mint it and re-pipe all four — which breaks Tier 1 in the window
+between, for a feature that gains nothing from the sharing.
+
+It is also the wrong shape regardless. A leak from *either library instance*
+would then open the estate's whole docs corpus — break-glass SQL, deploy levers,
+secret names, household emails. **A fresh trust edge gets a fresh pair**, and
+this is the case that rule was written for. So:
+`ESTATE_APP_TOKEN_DISCORD_DOCS`, **two holders**, custody in
+[`../access/estate-docs.md`](../access/estate-docs.md) §8.
+
+⚠️ It is deliberately **not** a `CONSUMER_APPS` entry. `identifyApp()` resolves a
+bearer against that list, so adding it there would silently have made it a valid
+`POST /api/estate/seen` bearer — a wider capability than the one being granted.
+
+### 11.3 Door B's contract, as built
+
+```
+GET /api/estate/docs/{search,section,receipt}
+  Authorization: Bearer <ESTATE_APP_TOKEN_DISCORD_DOCS>
+  X-Estate-On-Behalf-Of: <the asker's PROVEN estate email>
+```
+
+`docsGate()` tries door B first and falls through to `requireDevops()` (door A)
+whenever the bearer is not the docs token — **including when the secret is
+unset**, which is the ships-dark state. Both doors end at the *same*
+`devopsAllows(row, isOwner)`; there is no second copy of the decision and no
+weaker variant, so revoking someone in `/admin` shuts both with no deploy.
+
+| Situation | Answer | Sentence |
+|---|---:|---|
+| No bearer / a bearer that is neither | 401 | `unauthenticated` (door A's) |
+| Docs token, no `X-Estate-On-Behalf-Of` | 400 | `link_has_no_email` — **the relink line** |
+| Docs token, email not devops-class | 403 | `not_devops` |
+| Docs token, directory read threw | 503 | `estate_unreachable` — ⚠️ an outage, never a refusal |
+| Docs token, devops-class email | 200 | the corpus |
+
+⚠️ **The trust boundary, stated plainly because it IS the design.** The holder of
+the token can name any email and the Worker answers for that person's standing.
+That is safe only because of the other end: the discord-worker can send exactly
+one email — the one `link.ts` proved server-side through the person's own Discord
+OAuth *and* their own Firebase sign-in. **A future caller must never pass a
+user-supplied string here**; a second consumer gets its own pair and its own
+review.
+
+⚠️ **No `actor` is set and no row is materialized on door B.** `requireDevops()`
+materializes a row for an OWNER_EMAILS caller who has none; a Discord docs
+question is not a reason to write to the directory. A read must not have a write
+as a side effect.
+
+### 11.4 ⚠️ The gate, OBSERVED rather than asserted
+
+§10.8 recorded that *"no account that is signed in but NOT devops has been tested
+against these routes — the 403 path is asserted in code and in copy, not
+observed."* Door B closed that, because unlike door A it needs no Firebase
+verifier context and so is exercisable both in-process and live.
+
+**Live, against `auth.heygabi.ai`:**
+
+| Sent | Got |
+|---|---|
+| docs token + owner email | **200**, 8 hits of 124, snapshot `2026-08-18T03:03:17Z`, `stale:false` |
+| docs token + an email not in the directory | **403** `not_devops`, the design's exact sentence |
+| docs token + no email header | **400** `no_proven_email`, the relink sentence |
+| docs token + `"  NBaslamKing@Gmail.com  "` | **200** — casing and padding cannot dodge the gate |
+| no bearer, all three routes | **401**, worded (unchanged from phase 2) |
+| a wrong bearer + a valid email | **401** — reveals nothing about which door it missed |
+
+**In-process** (`apps/auth-worker/test/estate-docs.test.ts`), the row states a
+live test cannot reach without editing the directory: approved-but-not-devops →
+403; **revoked with a leftover `is_devops` flag** → 403; pending with the flag →
+403; approver → through; owner with no row → through; D1 throwing → 503 worded as
+an outage.
+
+### 11.5 The two tools, and why they are a THIRD array
+
+`GABI_DOCS_TOOL_NAMES = ['search_estate_docs', 'read_estate_doc']`, beside
+`GABI_TOOL_NAMES` (Tier 0) and `GABI_DELEGATED_VERB_NAMES` (Tier 1) rather than
+inside either.
+
+Tier 0 and these are both read-only and both model-chosen, so `mutates` cannot
+separate them. **What separates them is what they read**, and that is the whole
+security story: Tier 0's guard asserts every entry reads
+`public_audiobook_catalogue` — the sentence that makes that surface safe by
+construction — and these read `gated_estate_docs`. Merging them would delete that
+claim and hand a model the gated surface on every turn of every conversation.
+
+⚠️ `toolsForApi()` **with no argument returns Tier 0 and nothing else**, pinned by
+test. Only a caller that has checked the posture *and* holds a configured port
+passes `{ docs: true }`, so the gated tools are never described to a model on a
+turn that could not use them.
+
+### 11.6 The caps, as built
+
+| Cap | Value | Where |
+|---|---|---|
+| Hits per search | 8 | the auth Worker's own default (the page may ask 25; a model may not) |
+| One section | 8 KB | guaranteed by the publisher's splitter |
+| **Retrieved bytes per turn** | **24 KB** | `DocsBudget`, in the tool context |
+| **Sections per turn** | **4** | same budget |
+| Docs turns per person per UTC day | 40 | ⚠️ a **third** DO counter, `dcap:` |
+
+⚠️ **The per-turn budget REFUSES rather than trims.** A silently truncated runbook
+is a runbook missing the step that mattered, and the refusal says *"the section
+was NOT read"* so the model cannot summarise it from the snippet as though it
+had.
+
+⚠️ **The daily fuse is charged only when a turn actually touched the corpus**
+(`budget.used()`). Charging every turn would burn a 40/day allowance on
+conversations about narrators and make the fuse describe something other than
+what it protects.
+
+⚠️ **A fuse that cannot be READ is treated as blown.** Guessing "not capped" costs
+an uncapped spend nobody sees; guessing "capped" costs one worded refusal.
+
+### 11.7 ⚠️ Two departures from the design above
+
+1. **The model recommendation (§5.3) was NOT adopted, and could not be as
+   written.** That section recommends running docs turns on a Sonnet-class model
+   rather than the mention loop's pinned Haiku. The docs tools compose into the
+   **existing** conversation loop — which is what makes a follow-up like *"and
+   the rollback?"* work at all — so the model must be chosen **before** anybody
+   knows whether the turn will touch the docs. A per-turn switch would need
+   either a pre-classification call (a subrequest and a latency cost on every
+   turn, to answer a question the tool loop answers for free) or a second loop
+   (two code paths where continuity has one). There is also a concrete trap:
+   `CHAT_MAX_TOKENS` is 400, and Sonnet 5 runs **adaptive thinking on by
+   default**, which shares that ceiling with the response — a docs answer would
+   be mostly thinking and then truncate. Left on the pinned Haiku, with the
+   estate's own rule intact (*a model that changes under a fixed cap changes what
+   the cap means*). Revisit with retrieval-quality evidence, not by flipping the
+   id.
+
+2. **The refusal sentences are a MIRRORED COPY, not an import.** §4.5 asks phases
+   3/4 to reuse `DOCS_REFUSALS` rather than author a fifth wording. A cross-app
+   import would couple two separately-deployable Workers at the module level for
+   five strings, so the discord-worker holds its own copy and
+   `test/estate-docs.test.ts` **reads `apps/auth-worker/src/estate-docs.ts` and
+   fails the build on any drift** — the same two-ends-one-allowlist idiom
+   `GABI_DELEGATED_VERB_NAMES` already uses.
+
+### 11.8 ⚠️ The credential guard was WIDENED, deliberately
+
+The Tier-1 build established *"credentials live in `delegated-exec.ts` and
+nowhere else"*, pinned by a source-reading test. Tier 0b adds a second trust edge
+with its own secret, so the property is now:
+
+> **Credentials appear ONLY in `delegated-exec.ts` and `estate-docs-exec.ts`** —
+> two named modules, one trust edge each.
+
+The test was repointed rather than deleted, and a **new** assertion pins the half
+that gives the split teeth: **neither executor names the other's secret.**
+`src/have.ts` remains the documented exception (it has held a service-account
+`isLinked` read since long before either path existed).
+
+### 11.9 ⚠️ What is STILL not verified
+
+- **`GABI_DOCS` is OFF.** Nothing has answered a docs question in Discord. The
+  whole Discord path is exercised by unit tests and by door B live; it has never
+  run end-to-end through a real model turn. **This is the owner's flip.**
+- **The `devops` field on `/seen` has not been observed live** — it needs a
+  consumer app token to call. Unit-pinned (the field is computed by
+  `devopsAllows` and not re-derived); the deploy shipped it.
+- **The relink has not happened.** The owner's `discord_links` document still
+  predates the `email` field, so his first docs question — before he re-runs
+  `/link` — will get the *"your link was made before I could check estate
+  roles"* sentence. That is the designed behaviour, not a fault, but it means
+  **the very first live test will be the relink prompt unless he re-links
+  first.**
+- **Retrieval quality on operational questions is partly observed and not
+  reassuring at the top.** Live, `promote prod` returns **124 matches** and the
+  top hit is a `DONE.md` handoff entry, not the promotion runbook. Search *ranks
+  headings over bodies*, and the archives are in by owner decision (§9.3), so
+  archive noise can outrank the runbook. The model is instructed to search then
+  read, which mitigates it — but ⚠️ **whether she reaches the right file on the
+  owner's real questions is the single biggest open question about this
+  feature**, and the first few real answers are the evidence.
+- **The per-turn budget has never been hit in production**, only in tests.
+- **The daily fuse has never fired.**
+- **No non-devops person has asked in Discord.** The refusal is observed at the
+  auth Worker (11.4) and unit-tested at the tool layer; nobody has seen it land
+  in a channel.
+- **The staleness path still has never fired** (unchanged from §10.8) — the live
+  snapshot was 0 days old at every check.

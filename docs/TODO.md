@@ -15,6 +15,70 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🔴 GABI READS THE ESTATE DOCS — BUILT + DEPLOYED, DARK PENDING TWO OWNER STEPS (2026-08-18)
+
+All six phases shipped and are archived in [`DONE.md`](DONE.md); the as-built is
+[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md) §§10-11
+and the runbook is [`access/estate-docs.md`](access/estate-docs.md) §§8-10. **Only
+the two owner steps remain**, which is why this stub is here rather than nothing.
+
+Owner ask, verbatim (2026-08-17): *"let's make sure GABI can read all of our docs
+and stuff so she can even help me if needed for let's say I don't have a Claude
+code session open."*
+
+### 🧑 Step 1 — re-link, ONCE (about ten seconds)
+
+In Discord: **`/link`**, then press the button on the page. ⚠️ Do this **first**.
+
+Links written before 2026-08-18 carry no email and cannot be upgraded from
+outside (owner decision: relink, no backfill). Until you re-link, a docs question
+answers *"Your link was made before I could check estate roles. Re-run /link once
+and I'll be able to answer this."* — which is the designed sentence, not a fault,
+but it will be the first thing you see otherwise. `/unlink` first is not needed;
+the ceremony overwrites.
+
+### 🧑 Step 2 — flip the posture
+
+`GABI_DOCS = "off"` → `"on"` in `apps/discord-worker/wrangler.toml`, then
+`npx wrangler deploy` from that directory. ⚠️ A deliberate act, never a side
+effect of a deploy (design §7 owner step 4): this corpus is PII plus an
+operations runbook — break-glass SQL, deploy levers, secret names, household
+emails and role assignments.
+
+Confirm afterwards: <https://discord.heygabi.ai/api/health> → `gabi_docs_ready: true`.
+
+### Then test it — DM her
+
+> **how do I promote the audiobook site?**
+
+Expect: she searches, reads a section, and answers **citing the file path and the
+snapshot's publish date**. Follow up with *"and how do I roll it back?"* — the
+memory should carry it without you repeating yourself.
+
+⚠️ **Watch the first few answers for the one thing that is genuinely unproven:**
+whether she reaches the *right file*. Measured live 2026-08-18, `promote prod`
+returns 124 matching sections and the **top hit is a `DONE.md` handoff entry, not
+the promotion runbook** — the archives are in by your own decision (§9.3) and
+search ranks headings over bodies, so archive noise can outrank the runbook. She
+is instructed to search-then-read, which should recover it. If she keeps citing
+archive entries instead of runbooks, that is the signal to revisit ranking (or to
+drop `DONE.md` from the publisher's allowlist), and it is design §11.9's
+first-listed open question.
+
+### Turning her back off
+
+The same one line to `"off"` and deploy. OFF is not silent — a docs question
+still gets *"reading the estate docs from Discord is switched off"* rather than
+falling through to a shelf search that finds nothing and reads as broken.
+
+### ⚠️ What is deliberately NOT done
+
+- **Nothing links to `/docs/`** (carried over from the phase-6 item). Not on the
+  front door, not in `/status`'s Operations section where the runbook links live
+  and where it probably belongs. Left unlinked rather than guessed at.
+- **The scanner is still in SHADOW.** Flipping it to enforce still wants a week
+  of clean output; today's evidence is a handful of clean passes, not a week.
+
 ## 🔑 ESTATE SSO — BUILT + DEPLOYED, INERT PENDING ONE OWNER CONSOLE STEP (2026-08-18)
 
 Owner ask, verbatim, after hitting it himself: *"Ebooks makes me login every
@@ -104,66 +168,6 @@ run, then `python -m app.tools.fulfill_audio_requests --status`.
 Also then: re-derive the listening budget from a REAL session (§10.1's numbers
 are arithmetic over measured inputs, not a measurement), and decide whether the
 audio routes re-word the shared gate's ebook-shaped 401.
-
-## 📚 GABI READS THE ESTATE DOCS — PHASES 1, 2, 5, 6 SHIPPED 2026-08-18; 3 + 4 QUEUED
-
-Owner: *"let's make sure GABI can read all of our docs and stuff so she can
-even help me if needed for let's say I don't have a Claude code session
-open."* Design of record, fully decided (all four §9 questions answered):
-[`info/gabi-docs-assistant-design.md`](info/gabi-docs-assistant-design.md).
-⚠️ **This item stays here rather than moving to `DONE.md` because it is not
-finished** — the Discord half is the reason the owner asked for it, and it is
-exactly the half that has not been built.
-
-**Landed 2026-08-18 — the corpus, the routes and the page.**
-
-| Phase | What | Where |
-|---|---|---|
-| 1 | The publisher + the private bucket | `audiobook_catalog/scripts/publish_docs_snapshot.py`, bucket `estate-docs-gated` |
-| 2 | Door A: search / section / receipt, `requireDevops()` | `apps/auth-worker/src/estate-docs.ts` |
-| 5 | Pipeline STEP 9, on the busy AND the idle path | `audiobook_catalog/scripts/sync_to_drive.py` |
-| 6 | The devops-gated docs page with a real search bar | `sites/heygabi-home/public/docs/` |
-
-🔗 **<https://heygabi.ai/docs/>** — signed in as owner. Type *revocation delay*:
-the top hit should name the **file and the section**, the strip under the title
-should carry the snapshot's publish date **before you type anything**, and
-opening a result should render one section properly with its source path named.
-
-Measured on the first real publish: **119 markdown files, 3,105,573 raw bytes,
-1,413 sections, 1,248,434 gzipped.** `CREDENTIALS.md` excluded by the denylist,
-7 non-`.md` files excluded by construction, scanner findings zero.
-
-### ⏳ Still to build — phases 3 and 4, the Discord door
-
-- **Phase 3** — `email` added to the link doc (`apps/discord-worker/src/link.ts`),
-  `devops` added to `/seen`'s envelope, `ESTATE_APP_TOKEN_DISCORD` minted on
-  BOTH Workers. ⚠️ Waits on the concurrent discord-worker agent landing. The
-  owner's decision is already taken: **relink, no backfill** (design §9.1).
-- **Phase 4** — GABI's two read-only tools (`search_estate_docs`,
-  `read_estate_doc`), the caps, the `GABI_DOCS` posture, the refusal and
-  staleness wording. ⚠️ All four refusal sentences already exist as
-  `DOCS_REFUSALS` in `estate-docs.ts` — **reuse them; do not author a fifth
-  wording of the same refusal.**
-
-### 🔴 Owner steps — both OPTIONAL, neither blocking anything
-
-1. **Widen the estate R2 API token to cover `estate-docs-gated`** (dash → R2 →
-   API tokens). ⚠️ **Measured 2026-08-18: it does not reach the new bucket** —
-   `PUT estate-ebooks` OK, `PUT estate-docs-gated` AccessDenied, because the
-   token is scoped to a named bucket list. Not blocking: the publisher's
-   default transport is `wrangler r2 object put`, which uses wrangler's own
-   OAuth and needs no new credential. Worth doing only if `--transport s3` is
-   ever wanted.
-2. **Flip the scanner from shadow to enforce** once a week of clean shadow
-   output has accumulated (`--scanner enforce`, or `DOCS_SCANNER_MODE=enforce`).
-   Today's evidence is ONE clean pass, not a week of them.
-
-### Not done deliberately — a decision, not an oversight
-
-**Nothing links to `/docs/` yet.** It is not on the front door (a devops-only
-page advertised to every visitor) and not in `/status`'s Operations section,
-where the runbook links live and where it probably belongs. Left unlinked
-rather than guessed at.
 
 ## 🗃️ GABI CATALOG Q&A — TIER 0 SHIPPED 2026-08-18; two pieces did NOT
 

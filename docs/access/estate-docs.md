@@ -2,7 +2,9 @@
 
 > **Audience:** Claude sessions. **Status:** TRACKED (this repo is PUBLIC on
 > GitHub — resource and secret NAMES only, never values).
-> Last verified: **2026-08-18**.
+> Last verified: **2026-08-18**. ⚠️ §§8-10 (the Discord door's credential
+> custody, its contract, and the posture switch) landed with phases 3-4 the
+> same day.
 
 *How to publish, verify, read and roll back the estate's searchable docs
 corpus.* For how and why it is shaped this way, see
@@ -16,8 +18,9 @@ corpus.* For how and why it is shaped this way, see
 Every `docs/**/*.md` file in `catalog-platform`, `library_catalog` and
 `audiobook_catalog`, published as **one gzipped object** in a private R2 bucket
 and served — search and read, section by section — by three devops-gated routes
-on the auth Worker. It backs <https://heygabi.ai/docs/> today and GABI's Discord
-tools when phases 3–4 land.
+on the auth Worker. It backs <https://heygabi.ai/docs/> and — since 2026-08-18 — **GABI's two
+Discord tools**, through a second door (§9). ⚠️ The Discord half ships **dark**
+behind `GABI_DOCS`; see §10.
 
 ⚠️ **The corpus is PII plus an operations runbook.** Secret NAMES and where they
 live, deploy and rollback levers, break-glass SQL, the `/admin` grant grammar,
@@ -175,3 +178,159 @@ the publisher with `--force`.
 A bad snapshot is low-stakes by construction: it is read-only reference material
 behind a devops gate, nothing consumes it as configuration, and the failure mode
 is a wrong answer to a question — not a broken system.
+
+---
+
+## 8. Credentials and custody
+
+⚠️ **NAMES ONLY. This repo is public on GitHub — never a value, never a prefix,
+never a length.**
+
+| Secret NAME | Holders | What it opens | Minted | Ships dark? |
+|---|---|---|---|---|
+| `ESTATE_APP_TOKEN_DISCORD_DOCS` | **2** — `apps/auth-worker`, `apps/discord-worker` | door B onto these three routes, and nothing else | 2026-08-18, conductor (`openssl rand -hex 32` / `crypto.randomBytes`) | yes — unset ⇒ every request falls through to door A |
+| `FIREBASE_SERVICE_ACCOUNT` | discord-worker (also auth-worker, poll path) | reading `discord_links/{id}` for the asker's `email` | pre-existing | yes |
+| `CLOUDFLARE_API_TOKEN` (R2) | local `.env` | ⚠️ does **NOT** reach `estate-docs-gated` — see §6 | pre-existing | n/a |
+
+### ⚠️ `ESTATE_APP_TOKEN_DISCORD_DOCS` is NOT `ESTATE_APP_TOKEN_DISCORD`
+
+The two names differ by one word and the distinction is load-bearing.
+
+| | `ESTATE_APP_TOKEN_DISCORD` | `ESTATE_APP_TOKEN_DISCORD_DOCS` |
+|---|---|---|
+| Holders | **3** — discord-worker + **both** library Workers | **2** — discord-worker + auth-worker |
+| Opens | the Tier-1 delegated *write* verbs on a catalog | door B onto the docs corpus |
+| Leak blast radius | additive catalog writes, stamped and revertible | ⚠️ **the estate's whole operations runbook + PII** |
+
+**Never share one for the other, and never re-mint one to add a holder to the
+other.** A secret cannot be read back, so "add the auth Worker to the existing
+token" is not an operation that exists — the only way is to re-mint and re-pipe
+every holder, which breaks Tier 1 in the window between. That is *why* this is a
+new pair, and it is also the general rule: **a fresh trust edge gets a fresh
+pair.**
+
+### Minting and rotating
+
+⚠️ **Both holders must receive the SAME value, and the value is never printed,
+never pasted into a terminal line, and never written to a file that outlives the
+command.**
+
+From `catalog-platform/`, in one shell invocation (Git Bash — no BOM, unlike a
+PowerShell pipe):
+
+```
+TOK="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+printf '%s' "$TOK" | (cd apps/auth-worker    && npx wrangler secret put ESTATE_APP_TOKEN_DISCORD_DOCS)
+printf '%s' "$TOK" | (cd apps/discord-worker && npx wrangler secret put ESTATE_APP_TOKEN_DISCORD_DOCS)
+unset TOK
+```
+
+⚠️ **On PowerShell, force UTF-8 *without* a BOM before piping.** A PowerShell-piped
+secret otherwise picks up an invisible BOM, and a BOM'd bearer fails *while
+looking valid* — the same trap `estate-auth.md` §6 records for `TOKEN_SIGNER_KEY`.
+`printf` from bash has no such problem, which is why the recipe above is bash.
+
+**Rotation is safe and needs no deploy.** Re-run both `secret put` commands with
+a new value; in the seconds between the two, door B simply refuses (the
+discord-worker's calls 401 and GABI says the estate could not be reached). Do
+**not** rotate while `GABI_DOCS = "on"` if you mind a few refused questions.
+
+### Verifying custody without learning the value
+
+```
+(cd apps/auth-worker    && npx wrangler secret list)   # expect ESTATE_APP_TOKEN_DISCORD_DOCS
+(cd apps/discord-worker && npx wrangler secret list)   # expect it here too
+curl https://discord.heygabi.ai/api/health             # configured.estate_app_token_discord_docs
+```
+
+⚠️ **A `true` on that health row is a boolean about a NAME.** It is not proof the
+two holders agree — only a real door-B call answering something other than 401
+is that. The check that actually proves it is §9's first row.
+
+---
+
+## 9. Door B — the Discord door (design §11.3)
+
+```
+GET /api/estate/docs/{search,section,receipt}
+  Authorization: Bearer <ESTATE_APP_TOKEN_DISCORD_DOCS>
+  X-Estate-On-Behalf-Of: <the asker's PROVEN estate email>
+```
+
+| Check | Expect |
+|---|---|
+| docs token + a devops-class email | `200` + results, `snapshot.generated_at` present |
+| docs token + an email not in the directory | `403` *"limited to devops-class members…"* |
+| docs token + no `X-Estate-On-Behalf-Of` | `400` *"your link was made before I could check estate roles…"* |
+| no bearer | `401` *"…I need to know who you are first."* |
+| a wrong bearer | `401` — ⚠️ must NOT say which door it missed |
+
+⚠️ **Both doors end at the same `devopsAllows()`.** Revoke someone's devops in
+`/admin` and their next Discord docs question is refused, with no deploy and no
+second place to remember.
+
+⚠️ **The holder of the token can name any email.** That is the design (§11.3) and
+it is safe only because the discord-worker can send exactly one email — the one
+`link.ts` proved server-side. **A future caller must never pass a user-supplied
+string in that header.**
+
+### The relink, and the sentence that means it
+
+Links written before 2026-08-18 carry no `email` and **cannot be upgraded from
+outside** — owner decision: relink, no backfill. Somebody in that state gets:
+
+> *"Your link was made before I could check estate roles. Re-run /link once and
+> I'll be able to answer this."*
+
+⚠️ **That is not a permissions failure and must never be read as one.** The fix is
+ten seconds: `/link` in Discord, press the button. `/unlink` first is not
+required — the ceremony overwrites.
+
+---
+
+## 10. Turning her on in Discord, and turning her off
+
+`GABI_DOCS` in `apps/discord-worker/wrangler.toml`. **Affirmative-only**: `"on"`
+and nothing else; `"true"`, `"1"`, `"yes"` and every typo mean OFF.
+
+⚠️ **It ships `"off"`**, unlike `GABI_DELEGATED_WRITES` which the owner approved
+switched on. This corpus is PII plus an operations runbook, so flipping it is
+design §7's owner step 4: *"a deliberate act, never a side effect of a deploy."*
+
+**To turn it on:** edit the line to `"on"`, `npx wrangler deploy` from
+`apps/discord-worker`, and confirm `gabi_docs_ready: true` on
+<https://discord.heygabi.ai/api/health>. **Re-link once first** (§9) or the first
+question answers with the relink sentence.
+
+**To turn it off:** the same line back to `"off"` and deploy. One line, no code
+change. OFF is not silent — a docs question still gets *"reading the estate docs
+from Discord is switched off"* rather than falling through to a shelf search that
+finds nothing and reads as broken.
+
+⚠️ **ON IS NOT A GRANT.** Every question is still checked per-asker against the
+estate directory. A non-devops household member gets the worded gate and GABI
+never sees a byte of the corpus on their behalf.
+
+### The caps, and what a person hears when one bites
+
+| Cap | Value | What she says |
+|---|---|---|
+| Retrieved bytes per turn | 24 KB | *"I have already pulled as much documentation as I can carry in one answer…"* |
+| Sections per turn | 4 | same |
+| Docs turns per person per UTC day | 40 | *"I've been through a lot of the docs for you today… it resets overnight"* |
+
+All three are in code (`apps/discord-worker/src/estate-docs.ts`), not config —
+changing one is a deploy, deliberately.
+
+### Reading the spend
+
+Every model turn logs one `gabi_turn` line carrying `docs_sections` and
+`docs_bytes` beside the raw token counts:
+
+```
+npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_turn" and .docs_sections>0)'
+```
+
+⚠️ **The retrieved TEXT is never logged — only how much of it there was.** A log
+stream has a wider audience than the gate does; logging runbook content there
+would put it in a second place with weaker protection than the first.
