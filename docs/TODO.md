@@ -264,6 +264,34 @@ been graded. ⚠️ The owner's FIRST live turn found a routing defect that no u
 test would have caught — design §10b — so the second live turn is worth
 watching just as closely.
 
+## 🎭 GABI'S PERSONALITY + PERSON-KEYED MEMORY — ✅ LIVE 2026-08-18
+
+Two owner orders, built and deployed together. Designs:
+[`info/gabi-personality-design.md`](info/gabi-personality-design.md),
+[`info/gabi-memory-design.md`](info/gabi-memory-design.md) §11. Operator doc:
+[`access/gabi-personality.md`](access/gabi-personality.md).
+
+Eleven owner-locked tropes, drift along an approved wing graph, a hidden pin, and
+one conversation thread per PERSON rather than per channel. `GABI_PERSONALITY`
+ships **on**.
+
+**Left open, and worth returning to:**
+- ⚠️ **How the tropes actually READ is unmeasured** — no conversation has been
+  held under any of them. Read `flirty` first (its failure mode is a safety
+  question, not a quality one), then `tsundere` and `shy`.
+- ⚠️ **The invariance tests prove a trope CANNOT edit a refusal and that the
+  instruction is present. They do not prove a model never paraphrases one.**
+  That gap is real; watch it in the first week.
+- **Drift numbers (4 exchanges, 25%) are reasoned, not tuned.** Nobody has
+  counted steps in a real conversation.
+- **Register affinity is not built.** "PG-13 at discretion" is decided per turn
+  from the conversation; recording the register she has learned for somebody as a
+  tier-2 profile note is the natural next step, and the selector's `weights` hook
+  is where it lands.
+- ⚠️ **The private-context-in-public-channel guard is PROMPT-LEVEL, not
+  enforced** (access doc §6). Enforcing it needs per-turn surface provenance — a
+  shared-package shape change. Revisit if the server stops being family-only.
+
 ## 🧠 GABI'S MEMORY — three tiers — DESIGN LANDED 2026-08-18, BUILD NEXT
 
 Owner ask: *"so its not a fresh bot to talk to each time… but we also dont want
