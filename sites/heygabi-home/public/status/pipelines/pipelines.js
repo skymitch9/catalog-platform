@@ -42,6 +42,7 @@ import {
   REFRESH_INTERVAL_MS,
   TICK_INTERVAL_MS,
   fetchJSON,
+  formatAge,
   fsMap,
   makeRow,
   tickAll,
@@ -167,20 +168,39 @@ async function loadPipelineNow() {
   const staleRunning =
     state === 'running' && Number.isFinite(sinceMs) && now - sinceMs > PIPELINE_STALE_RUNNING_MS;
 
-  let badge = busy ? 'warn' : 'ok';
+  // ⚠️ "BUSY" IS NOT A WARNING (fixed 2026-08-18, the owner's status-colour
+  // rule). This row used to paint amber for every busy state, so a pipeline
+  // doing exactly its job lit up the same colour as a pipeline in trouble —
+  // and the Health page's own row for the SAME document rendered RUNNING as
+  // green, so the two pages contradicted each other about one fact.
+  //
+  // The three "busy" states are not one thing:
+  //   running  — working. Green. Nothing is wrong and nothing needs a human.
+  //   deferred
+  //   blocked  — a run that WANTED to proceed and could not. That is the one
+  //              thing amber is for, so those two keep it.
+  let badge = state === 'running' ? 'ok' : busy ? 'warn' : 'ok';
   let note = null;
   if (staleRunning) {
     badge = 'danger';
     // The one reading that means something is WRONG rather than merely busy.
     note =
       'This run has been "running" with no heartbeat for over 15 minutes — on the home machine that usually means the process died rather than that a step is slow.';
+  } else if (state === 'running') {
+    note = 'Green because a run in progress is the pipeline working, not a fault. This row turns red only if its heartbeat stops.';
   }
 
+  // ⚠️ An ISO string is not an age. `since 2026-08-18T15:00:21.957279+00:00`
+  // makes a reader do timezone arithmetic to answer the only question the row
+  // is asked; both are printed now, and an unreadable stamp says so.
+  const sinceText = since
+    ? ` since ${Number.isFinite(sinceMs) ? `${formatAge(now - sinceMs)} (${since})` : `${since} — unreadable timestamp`}`
+    : '';
   updateRow(
     'pipe-now',
     badge,
-    `${String(state).toUpperCase()} (trigger ${doc.trigger || 'unknown'})` +
-      (since ? ` since ${since}` : '') +
+    `${String(state).toUpperCase()} (trigger ${doc.trigger || 'not recorded'})` +
+      sinceText +
       (doc.step ? ` · step "${doc.step}"` : ''),
     note,
     now,
@@ -430,7 +450,10 @@ async function loadShelfUploadStatus() {
   const now = Date.now();
   const result = await fetchJSON(SHELF_UPLOAD_STATUS_URL);
   if (result.status === 404) {
-    updateRow('shelf-upload', 'warn', 'Never run yet.', 'Use the button above once the shelf server exists (see /runbooks/shelf/).', now);
+    // Grey, not amber (2026-08-18): "nobody has ever pressed this button" is
+    // an absence, not a run that tried something and failed.
+    updateRow('shelf-upload', 'nodata', 'Never run yet — no force-upload has ever been recorded.',
+      'Grey rather than amber: nothing has failed here. Use the button above once the shelf server exists (see /runbooks/shelf/).', now);
     return;
   }
   if (!result.reached || !result.httpOk || !result.body || !result.body.fields) {
@@ -438,8 +461,25 @@ async function loadShelfUploadStatus() {
     return;
   }
   const doc = fsMap(result.body.fields);
-  const state = SHELF_STATE_LABELS[doc.state] || 'warn';
-  updateRow('shelf-upload', state, `${(doc.state || 'unknown').toUpperCase()} — ${doc.message || ''}`, doc.updatedAt ? `Last attempt: ${doc.updatedAt}` : null, now);
+  // ⚠️ AN UNRECOGNISED STATE IS NOT A WARNING. It used to default to amber,
+  // which is this page inventing a verdict for a word it has not been taught —
+  // the opposite of what renderDriveParityRow does on the Health page for the
+  // same situation, and the vocabulary belongs to the pipeline, not here.
+  const known = Object.prototype.hasOwnProperty.call(SHELF_STATE_LABELS, doc.state);
+  const state = known ? SHELF_STATE_LABELS[doc.state] : 'nodata';
+  // ⚠️ A raw ISO stamp with no age is a stale reading wearing a fresh face.
+  const updatedMs = Date.parse(doc.updatedAt || '');
+  const attemptNote = doc.updatedAt
+    ? `Last attempt ${Number.isFinite(updatedMs) ? `${formatAge(now - updatedMs)} (${doc.updatedAt})` : `${doc.updatedAt} — unreadable timestamp`}.`
+    : 'The status document carries no attempt time, so how old this result is cannot be said.';
+  updateRow(
+    'shelf-upload',
+    state,
+    `${(doc.state || 'no state recorded').toUpperCase()}${doc.message ? ` — ${doc.message}` : ''}`,
+    known ? attemptNote
+      : `${attemptNote} This page has not been taught the state “${doc.state}” — it renders what the pipeline sent rather than guessing a colour for it.`,
+    now,
+  );
   return doc.updatedAt;
 }
 

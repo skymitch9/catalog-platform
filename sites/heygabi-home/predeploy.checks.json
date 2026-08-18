@@ -222,6 +222,27 @@
     },
     {
       "_why": [
+        "ebook-lane.js (2026-08-18) — the ebook row's VERDICT, extracted from status.js with the FOURTH fix to a",
+        "row that had shipped wrong three times. The two markers that used to sit on /status/status.js moved",
+        "here WITH the logic, per pins-follow-their-subject: a pin left on the old file fails every deploy for",
+        "code that works perfectly one module over, and a pin deleted instead of moved silently stops watching.",
+        "ebookLaneVerdict is what the page calls; EBOOK_PRODUCING_TRIGGERS and ebookRunKind are the cross-repo",
+        "trigger contract with audiobook_catalog.",
+        "⚠ 'ebookCount' is pinned as THE SIGNAL ITSELF. The whole fix is that this row compares the published",
+        "shelf COUNT against the count the last run built, instead of comparing timestamps — a refactor that",
+        "quietly went back to timestamps would reproduce the exact false amber the owner reported three times.",
+        "Its behaviour is pinned by scripts/test/ebook-lane.test.mjs against the live payload that produced it."
+      ],
+      "path": "/status/lib/ebook-lane.js",
+      "mustContain": [
+        "ebookLaneVerdict",
+        "ebookRunKind",
+        "EBOOK_PRODUCING_TRIGGERS",
+        "ebookCount"
+      ]
+    },
+    {
+      "_why": [
         "ingestion-time.js (2026-08-18) is the PURE half of the pause card \u2014 the Phoenix conversion and every",
         "word the card says. Its correctness is pinned by scripts/test/ingestion-time.test.mjs, so these markers",
         "are about the file having actually SHIPPED: status.js imports it, and a missing module takes the whole",
@@ -248,12 +269,19 @@
         "⚠ THE INGESTION PAUSE CARD'S THREE MARKERS LEFT THIS ENTRY on 2026-08-18 with the /status split — the",
         "card now lives in /status/pipelines/pipelines.js and its pins moved to that file's entry above, intact.",
         "They were NOT deleted: a pin that follows its subject keeps failing for the right reason, while a pin",
-        "left on the old file fails every deploy for a control that is working perfectly one page over."
+        "left on the old file fails every deploy for a control that is working perfectly one page over.",
+        "⚠ THE EBOOK LANE'S TWO LOGIC MARKERS LEFT THIS ENTRY on 2026-08-18 for the same reason, one layer",
+        "down: ebookRunKind and EBOOK_PRODUCING_TRIGGERS now live in /status/lib/ebook-lane.js and are pinned",
+        "on that file's own entry above. renderPipelineEbookRow STAYS here, because the DOM adapter that puts",
+        "the verdict on the row is still this file's job — and it is the marker whose absence would mean the",
+        "row silently stopped rendering at all.",
+        "ebook-lane.js is also pinned as an IMPORT below, so a bundle that shipped this file without its new",
+        "dependency fails here rather than dying at parse time behind a cheerful 200."
       ],
       "path": "/status/status.js",
       "mustContain": [
-        "ebookRunKind",
-        "EBOOK_PRODUCING_TRIGGERS",
+        "ebookLaneVerdict",
+        "./lib/ebook-lane.js",
         "renderPipelineEbookRow",
         "renderDriveParityRow",
         "driveParityState",

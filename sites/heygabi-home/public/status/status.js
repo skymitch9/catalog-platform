@@ -64,6 +64,9 @@ import {
   tickAll,
   updateRow,
 } from './lib/core.js';
+// The ebook lane's verdict — pure, and pinned by scripts/test/ebook-lane.test.mjs.
+// EBOOK_PRODUCING_TRIGGERS and ebookRunKind moved there with it on 2026-08-18.
+import { ebookLaneVerdict } from './lib/ebook-lane.js';
 import { mountGate } from './lib/gate.js';
 import { idToken } from '../assets/estate-auth.js';
 
@@ -278,16 +281,70 @@ function renderIndexSection(fetchResult, now) {
   for (const key of INDEX_SOURCE_ORDER) {
     const cfg = INDEX_THRESHOLDS[key];
     const src = sources[key];
-    if (!src || !src.pushed_at || !src.rows) {
-      // "zero rows from a source means the push failed, never that the
-      // collection is empty" — index-worker-design.md §1. Never silent.
-      updateRow(`idx-${key}`, 'danger', `${cfg.label}: 0 rows / never pushed.`, cfg.note, now);
+
+    // ⚠️ THREE DIFFERENT FACTS USED TO SHARE ONE SENTENCE ("0 rows / never
+    // pushed"), and one of them was not even true. `!src.rows` is falsy for a
+    // GENUINE zero AND for a missing field, so a source the index worker simply
+    // did not report was announced as having zero rows — a measurement invented
+    // out of an absence. The estate's rule is that a measurement's absence is
+    // not a zero, and these are four states with four different fixes.
+    if (!src) {
+      updateRow(`idx-${key}`, 'danger', `The index worker did not list a “${key}” source at all.`,
+        'It reports one entry per catalog it indexes, so a missing entry means the worker no longer knows ' +
+        `about this source — not that the source is empty. ${cfg.note}`, now);
       continue;
     }
-    const pushedAt = Date.parse(src.pushed_at);
-    const ageMs = now - pushedAt;
-    const state = ageMs > cfg.redMs ? 'danger' : ageMs > cfg.amberMs ? 'warn' : 'ok';
+    if (typeof src.rows !== 'number') {
+      // Grey: we were told about the source and not told its size. Unknown.
+      updateRow(`idx-${key}`, 'nodata', `${cfg.label}: the index worker reported no row count — unknown, not zero.`, cfg.note, now);
+      continue;
+    }
+    if (!src.pushed_at) {
+      updateRow(`idx-${key}`, 'danger', `${cfg.label}: ${src.rows.toLocaleString()} rows, but no push has ever been recorded.`,
+        `A source with rows and no push timestamp means the index has content nobody can date. ${cfg.note}`, now);
+      continue;
+    }
+    if (src.rows === 0) {
+      // The one place a zero IS a verdict, and it is documented upstream:
+      // "zero rows from a source means the push failed, never that the
+      // collection is empty" — index-worker-design.md §1.
+      updateRow(`idx-${key}`, 'danger', `${cfg.label}: 0 rows.`,
+        `Zero rows from a source means the push failed, never that the catalog is empty ` +
+        `(index-worker-design.md §1). ${cfg.note}`, now);
+      continue;
+    }
+
+    const ageMs = now - Date.parse(src.pushed_at);
     const rowsText = src.rows.toLocaleString();
+
+    // ⚠️ A QUIET CATALOG IS NOT A BROKEN ONE, and until 2026-08-18 these rows
+    // said otherwise. `library` and `game` have NO cron behind them: they push
+    // on every catalog-mutating write plus a 24h backstop that rides ordinary
+    // request traffic. So an app nobody opened and nobody edited pushes
+    // nothing, correctly, and the row aged into amber and then red for a
+    // system doing exactly the right thing. The note said "quiet ≠ broken"
+    // while the dot said otherwise — a row whose colour contradicts its own
+    // note is worse than no row.
+    //
+    // Same rule as the ebook lane one section down (owner, 2026-08-18): no
+    // change is not a bug unless a change was trying to come through. The age
+    // is still printed, and past the backstop ceiling the row SAYS it has been
+    // quiet — it just does not raise an alarm it cannot justify.
+    if (cfg.guess) {
+      const quiet = ageMs > cfg.amberMs
+        ? ` Quiet for ${formatAge(ageMs)} — expected when nobody has opened or edited this catalog, since ` +
+          'there is no cron behind its index push. This row cannot tell quiet from broken, so it does not ' +
+          'pretend to: green here means "the last push succeeded", not "a push happened recently."'
+        : '';
+      updateRow(`idx-${key}`, 'ok', `${rowsText} rows · pushed ${formatAge(ageMs)}`, cfg.note + quiet, now);
+      continue;
+    }
+
+    // `audiobook` DOES have a cadence — the 8h pipeline pushes the index on
+    // every run, including runs that upload nothing (measured 2026-08-18: a
+    // 0-upload run still published "index 1246 rows"). A missed window here is
+    // therefore a real miss, and the owner specified these thresholds.
+    const state = ageMs > cfg.redMs ? 'danger' : ageMs > cfg.amberMs ? 'warn' : 'ok';
     updateRow(`idx-${key}`, state, `${rowsText} rows · pushed ${formatAge(ageMs)}`, cfg.note, now);
   }
 }
@@ -298,9 +355,28 @@ function renderIndexWorkerRow(fetchResult, now) {
     return;
   }
   const sources = detailOf(fetchResult.body).sources || {};
-  const total = Object.values(sources).reduce((sum, s) => sum + (s && s.rows ? s.rows : 0), 0);
+  // ⚠️ "3 sources" USED TO BE A CONSTANT IN THE SENTENCE while the total was
+  // summed over whatever happened to be there — so a source that vanished from
+  // the worker's answer silently contributed 0 rows to a total still described
+  // as covering three. The count now comes from the same object the total does,
+  // and a shortfall is NAMED rather than absorbed.
+  const present = INDEX_SOURCE_ORDER.filter((k) => sources[k] && typeof sources[k].rows === 'number');
+  const missing = INDEX_SOURCE_ORDER.filter((k) => !present.includes(k));
+  const total = present.reduce((sum, k) => sum + sources[k].rows, 0);
   const ok = fetchResult.body.ok !== false;
-  updateRow('wk-index', ok ? 'ok' : 'danger', `Reachable · ${total.toLocaleString()} rows across 3 sources.`, null, now);
+  const counted = `${total.toLocaleString()} rows across ${present.length} of ${INDEX_SOURCE_ORDER.length} sources`;
+  updateRow(
+    'wk-index',
+    !ok || missing.length ? 'danger' : 'ok',
+    missing.length
+      ? `Reachable · ${counted} — no row count for ${missing.join(', ')}.`
+      : `Reachable · ${counted}.`,
+    missing.length
+      ? 'The total below is only what was reported. A source the worker did not count is unknown, not zero — ' +
+        'see its own row above for what that means.'
+      : null,
+    now,
+  );
 }
 
 function renderWorkerHealthRow(id, name, fetchResult, now, detailFn) {
@@ -333,8 +409,12 @@ function renderPipelineAudioRow(fetchResult, now) {
     return;
   }
   if (fetchResult.status === 404) {
-    updateRow('pipe-audio', 'warn', 'No runs recorded yet.',
-      'pipeline_status/current has never been written — either a fresh clone or the home machine has no service-account credentials configured.', now);
+    // Grey, not amber (2026-08-18): "no run has ever been recorded" is an
+    // absence of information, not a run that tried something and failed. The
+    // owner's rule reserves amber for the latter.
+    updateRow('pipe-audio', 'nodata', 'No runs recorded yet.',
+      'pipeline_status/current has never been written — either a fresh clone or the home machine has no service-account credentials configured. ' +
+      'This says nothing about whether the pipeline is running; it says this page has never been told.', now);
     return;
   }
   if (!fetchResult.httpOk || !fetchResult.body || !fetchResult.body.fields) {
@@ -363,7 +443,14 @@ function renderPipelineAudioRow(fetchResult, now) {
   const outcome = stale ? 'NO HEARTBEAT' : (status.state || 'unknown').toUpperCase();
   let state = ageMs > PIPELINE_RED_MS ? 'danger' : ageMs > PIPELINE_AMBER_MS ? 'warn' : 'ok';
   if (stale || status.state === 'failed') state = 'danger';
+  // 'partial' IS the owner's amber: a run that tried and could not finish.
   else if (status.state === 'partial' && state === 'ok') state = 'warn';
+  // ⚠️ TWO WAYS THIS ROW COULD GO GREEN ON NOTHING (2026-08-18). A doc with no
+  // `state`, and a doc whose timestamps do not parse, both fell through every
+  // branch above and landed on the age comparison — which is false for NaN, so
+  // the row reported OK while knowing neither what the run did nor when. Green
+  // must be a finding, not a default.
+  else if (!status.state || !Number.isFinite(ageMs)) state = 'nodata';
 
   const summary = status.summary || {};
   const bits = [];
@@ -391,7 +478,10 @@ function renderPipelineAudioRow(fetchResult, now) {
 }
 
 /**
- * Ebook lane row.
+ * Ebook lane row — HISTORY, kept because it is the most expensive lesson on
+ * this page. The logic itself moved to `lib/ebook-lane.js` on 2026-08-18 with
+ * the FOURTH fix, so that it could finally be TESTED
+ * (`scripts/test/ebook-lane.test.mjs`) instead of argued about a fourth time.
  *
  * ⚠️ REWRITTEN 2026-08-16 (owner: "i want it to be green if things are good
  * or ill never trust the colors"). The old logic aged
@@ -458,167 +548,35 @@ function renderPipelineAudioRow(fetchResult, now) {
  * done here, since it changes pipeline code and the standing order is that
  * the pipeline is not touched without asking.
  */
-// 'reactive' added 2026-08-16: the fs-watcher's trigger (audiobook_catalog
-// app/tools/fs_watcher.py). A reactive run fires only when files actually
-// changed, runs the full sync, and publishes — so it is a producer. The
-// publish-state check still runs first and still wins for a run that found
-// nothing to publish.
-const EBOOK_PRODUCING_TRIGGERS = new Set(['scheduled', 'manual', 'cli', 'reactive']);
-
 /**
- * ⚠️ THIRD fix on this row, 2026-08-16. The previous two were each right about
- * their own case and both missed this one — the CHRONIC one.
+ * ⚠️ FOURTH FIX, 2026-08-18, AND THE FIRST ONE THAT IS TESTED. The verdict now
+ * lives in `lib/ebook-lane.js` as a PURE function pinned by
+ * `scripts/test/ebook-lane.test.mjs` against the exact live payload that
+ * produced the false amber. This function is the DOM adapter and nothing else —
+ * a row that has been wrong three times does not need a fourth argument, it
+ * needs a test, and a function that reaches into the DOM cannot have one.
  *
- * Fix 1 replaced wall-clock freshness with "did the manifest keep up with the
- * last run". Fix 2 stopped judging run shapes that skip the ebook step by
- * design. Both still assumed a FULL run which regenerates the manifest also
- * PUBLISHES it.
- *
- * It does not. A scheduled run whose `detect` step finds "0 to upload"
- * short-circuits, and `folders`, `upload`, `catalog` and **`publish` all go to
- * `skipped`**. The manifest is rewritten on the pipeline host at step 1b and
- * never leaves it — publishing is what copies it to the live site. So the LIVE
- * manifest legitimately keeps the timestamp of the last run that actually
- * published, which is older than every quiet run since.
- *
- * That is not an edge case. A scheduled run finds nothing new most of the
- * time, so the old logic painted amber after nearly every 8-hourly run — the
- * owner reported this same amber three separate times. A row that cries wolf
- * on a healthy pipeline is worse than no row.
- *
- * The signal needed no pipeline change: `steps[]` already carries a per-step
- * `state`, and only `publish: 'done'` means the manifest this page can SEE was
- * allowed to move.
- *
- * ⚠️ Do NOT simplify this back to trigger-only. The trigger says what KIND of
- * run it was; the steps say what it actually DID, and they differ every single
- * time the pipeline finds nothing new.
+ * ⚠️ THE OWNER’S RULE (docs/TODO.md, "Status-page expansion" item 0): a
+ * completed run with ZERO CHANGES NEEDED IS GREEN; amber is only for a change
+ * that tried to come through and could not. The three earlier fixes all
+ * compared TIMESTAMPS and all came back; this one compares the published shelf
+ * COUNT against the count the last run actually built. See ebook-lane.js for
+ * the measured mechanism (STEP 5.8 only runs when a run uploads something, so a
+ * quiet run leaves the heartbeat legitimately hours older than the build).
  */
-function ebookRunKind(trigger, steps) {
-  const t = (trigger || '').trim();
-
-  // What the run DID beats what it WAS.
-  const step = (key) => (Array.isArray(steps) ? steps.find((s) => s && s.key === key) : null);
-  const publish = step('publish');
-  if (publish && publish.state && publish.state !== 'done') {
-    const detect = step('detect');
-    const why = detect && detect.detail ? ` — ${detect.detail}` : '';
-    return { produces: false, label: `a run with nothing to publish${why}` };
-  }
-
-  if (!t) return { produces: null, label: 'an unrecorded run' };
-  if (EBOOK_PRODUCING_TRIGGERS.has(t)) return { produces: true, label: 'a full pipeline run' };
-  if (t === 'manual-rebuild') return { produces: false, label: 'a rebuild-only run' };
-  if (t.startsWith('manual-step:')) {
-    return { produces: false, label: `a single-step run (${t.slice('manual-step:'.length) || '?'})` };
-  }
-  return { produces: null, label: `an unrecognised run (${t})` };
-}
-
 function renderPipelineEbookRow(devResult, prodResult, pipelineResult, now) {
   if (!devResult.reached || !devResult.httpOk || !devResult.body) {
     updateRow('pipe-ebook', 'danger', `Did not answer (${devResult.error || `HTTP ${devResult.status}`}).`, null, now);
     return;
   }
-  const body = devResult.body;
-  const generatedAt = Date.parse(body.generated_at || '');
-  if (!Number.isFinite(generatedAt) || typeof body.count !== 'number') {
-    updateRow('pipe-ebook', 'danger', 'ebooks.json answered with no generated_at/count — manifest shape changed.', null, now);
-    return;
-  }
-
-  // The pipeline's own last run, from the same Firestore doc the row above
-  // reads. Without it we cannot judge "kept up", so fall back to reporting
-  // the facts uncoloured rather than inventing a verdict.
-  const pipeStatus = pipelineResult?.body?.fields ? fsMap(pipelineResult.body.fields) : null;
-  const startedAt = pipeStatus ? Date.parse(pipeStatus.startedAt || '') : NaN;
-  const kind = ebookRunKind(pipeStatus?.trigger, pipeStatus?.steps);
-
-  // ── The MEASURED answer, when the pipeline has given us one ──────────────
-  //
-  // `summary.ebookManifestAt` (audiobook_catalog, sync_to_drive.py step 1b,
-  // added 2026-08-16 with the owner's approval) is the manifest's OWN
-  // generated_at, read back from the file the step just wrote. When the live
-  // manifest carries that exact stamp, the published file IS the one that run
-  // produced — a fact, with no trigger string or step key involved.
-  //
-  // It exists because this row had guessed three times and been wrong three
-  // times, each guess correct about the case that prompted it. A cross-repo
-  // string contract (trigger names live in the audiobook repo, the reader
-  // lives here) degrades silently when either side is renamed; a recorded
-  // timestamp does not.
-  //
-  // ⚠️ It answers "was the manifest BUILT", never "was it PUBLISHED" — and
-  // that gap IS the bug of 2026-08-16: a run that finds nothing new builds the
-  // manifest and then skips `publish`, so the built stamp races ahead of the
-  // live file. `kind.produces` (the publish-state check) therefore still runs
-  // FIRST and still wins; this block only refines a run that did publish.
-  //
-  // Absent field = an older run, or a pipeline not yet carrying the change.
-  // Fall through to the step/trigger logic rather than breaking.
-  const builtAt = Date.parse(pipeStatus?.summary?.ebookManifestAt || '');
-  if (kind.produces === true && Number.isFinite(builtAt)) {
-    if (Math.abs(generatedAt - builtAt) < 1000) {
-      updateRow(
-        'pipe-ebook',
-        'ok',
-        `${body.count.toLocaleString()} ebooks · published manifest is the one the last run built`,
-        'Measured, not inferred — the pipeline records the manifest’s own generated_at ' +
-          '(summary.ebookManifestAt) and this row matches the live file against it.',
-        now,
-      );
-      return;
-    }
-    updateRow(
-      'pipe-ebook',
-      'warn',
-      `${body.count.toLocaleString()} ebooks · ⚠️ the last run built a NEWER manifest than the one published ` +
-        `(built ${formatAge(now - builtAt)}, published ${formatAge(now - generatedAt)})`,
-      'The pipeline recorded building a manifest the live site never received — a publish that ' +
-        'did not land, rather than a step that did not run.',
-      now,
-    );
-    return;
-  }
-
-  let state = 'ok';
-  let detail = `${body.count.toLocaleString()} ebooks · manifest from the last pipeline run`;
-
-  if (Number.isFinite(startedAt) && kind.produces === true) {
-    // Slack: the ebook step runs a little after the run starts, and clocks
-    // differ slightly between the pipeline host and this browser.
-    const keptUp = generatedAt >= startedAt - 15 * 60_000;
-    if (!keptUp) {
-      state = 'warn';
-      detail =
-        `${body.count.toLocaleString()} ebooks · ⚠️ manifest is OLDER than the last pipeline run ` +
-        `(manifest ${formatAge(now - generatedAt)}, run ${formatAge(now - startedAt)}) — the ebook step did not produce`;
-    }
-  } else if (kind.produces === false) {
-    // The last run was a shape that SKIPS step 1b by design. Comparing
-    // against it is a category error, not a measurement — the manifest is
-    // supposed to predate it.
-    detail =
-      `${body.count.toLocaleString()} ebooks · manifest ${formatAge(now - generatedAt)} old · ` +
-      `last run was ${kind.label}, which does not rebuild it`;
-  } else {
-    detail += ` (${formatAge(now - generatedAt)})`;
-  }
-
-  // Prod lag: information, never colour. Promoting is a deliberate human act.
-  let note =
-    kind.produces === false
-      ? `Green because the manifest is not expected to move: the last run was ${kind.label}, ` +
-        'which skips the ebook step by design. Judged against the next full run instead.'
-      : 'Green means the ebook step kept up with the pipeline’s own last run — not wall-clock ' +
-        'freshness, which only measured how long ago anyone promoted, and only runs that actually ' +
-        'rebuild the manifest are counted.';
-  const prodStamp = prodResult?.body ? Date.parse(prodResult.body.generated_at || '') : NaN;
-  if (Number.isFinite(prodStamp) && Number.isFinite(generatedAt) && prodStamp < generatedAt - 60_000) {
-    note += ` Prod is ${formatAge(generatedAt - prodStamp)} behind /dev/ — normal until the next promote.`;
-  }
-
-  updateRow('pipe-ebook', state, detail, note, now);
+  const verdict = ebookLaneVerdict({
+    heartbeat: devResult.body,
+    pipeStatus: pipelineResult?.body?.fields ? fsMap(pipelineResult.body.fields) : null,
+    prodStampMs: prodResult?.body ? Date.parse(prodResult.body.generated_at || '') : NaN,
+    now,
+    formatAge,
+  });
+  updateRow('pipe-ebook', verdict.state, verdict.detail, verdict.note, now);
 }
 
 /**
@@ -798,12 +756,25 @@ async function refreshAll() {
   renderSiteRow('site-games', 'Games', gamesUp, t);
   renderSiteRow('site-library2', "Sam's library", library2Up, t);
 
+  // ⚠️ THE SUMMARY LINE USED TO NOT ADD UP, on the most-read sentence of the
+  // page: it counted ok/warn/danger "out of N checks" while every row in a
+  // grey state (skipped, nodata) and every row still pending vanished from the
+  // arithmetic. A reader seeing "8 ok, 0 warnings, 0 down, out of 12 checks"
+  // has no way to know whether the missing four are fine or unknown — which is
+  // precisely the "a measurement's absence is not a zero" trap, in the one
+  // place it is read first and hardest.
   const rows = [...rowRegistry.values()];
-  const okCount = rows.filter((r) => r.el.dataset.state === 'ok').length;
-  const warnCount = rows.filter((r) => r.el.dataset.state === 'warn').length;
-  const dangerCount = rows.filter((r) => r.el.dataset.state === 'danger').length;
+  const tally = (...states) => rows.filter((r) => states.includes(r.el.dataset.state)).length;
+  const okCount = tally('ok');
+  const warnCount = tally('warn');
+  const dangerCount = tally('danger');
+  const unknownCount = tally('skipped', 'nodata');
+  const pendingCount = tally('pending');
+  const parts = [`${okCount} ok`, `${warnCount} warning${warnCount === 1 ? '' : 's'}`, `${dangerCount} down`];
+  if (unknownCount) parts.push(`${unknownCount} unknown`);
+  if (pendingCount) parts.push(`${pendingCount} still checking`);
   document.getElementById('summary').textContent =
-    `Estate status refreshed: ${okCount} ok, ${warnCount} warnings, ${dangerCount} down, out of ${rows.length} checks.`;
+    `Estate status refreshed: ${parts.join(', ')} — ${rows.length} checks in total.`;
 
   btn.disabled = false;
   btn.classList.remove('spinning');
@@ -879,11 +850,18 @@ function backupKindRowId(kind) {
  * age_ms, never, state}. Nothing is recomputed here — `state` arrives decided.
  */
 function renderBackupGroup(id, group, now) {
-  const stores = group.stores || 0;
+  // ⚠️ `group.stores || 0` used to render a missing store count as "(0 stores)"
+  // — a label asserting a number nobody sent. An absent count is unknown.
+  const stores = Number.isFinite(Number(group.stores)) ? Number(group.stores) : null;
   // The roll-up row keeps the name it was built with (it names the bucket);
   // per-kind rows get their label from the server, which owns the store list.
   if (id !== 'backup-age') {
-    setRowName(id, stores === 1 ? group.label : `${group.label} (${stores} stores)`);
+    setRowName(
+      id,
+      stores === null ? `${group.label} (store count not reported)`
+        : stores === 1 ? group.label
+        : `${group.label} (${stores} stores)`,
+    );
   }
 
   let detail;
@@ -897,14 +875,15 @@ function renderBackupGroup(id, group, now) {
   } else {
     const oldestAge = formatAge(now - Date.parse(group.oldest));
     const copies = `${group.count} ${group.count === 1 ? 'copy' : 'copies'} kept`;
+    const storeWord = stores === null ? 'the stores in this group' : `${stores} stores`;
     if (stores === 1) {
       detail = `Last backup ${oldestAge} · ${copies}.`;
     } else if (group.newest === group.oldest) {
       // Every store landed in the same run — no "oldest" worth singling out.
-      detail = `All ${stores} stores backed up ${oldestAge} · ${copies}.`;
+      detail = `All ${storeWord} backed up ${oldestAge} · ${copies}.`;
     } else {
       detail =
-        `Oldest of ${stores} stores ${oldestAge} (${group.oldest_store})` +
+        `Oldest of ${storeWord} ${oldestAge} (${group.oldest_store || 'store not named'})` +
         ` · newest ${formatAge(now - Date.parse(group.newest))} · ${copies}.`;
     }
   }

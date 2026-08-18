@@ -41,8 +41,24 @@ export const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
 // Small helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * An age in ms → words.
+ *
+ * ⚠️ A NON-FINITE AGE USED TO RENDER AS "just now" (fixed 2026-08-18). That is
+ * the worst possible answer: an unparseable or missing timestamp came out of
+ * here looking like the freshest reading on the page, and every caller that
+ * forgot to guard with Number.isFinite() published a fabricated freshness. An
+ * unknown age now SAYS it is unknown — the estate's rule that a measurement's
+ * absence is never a value. Callers that already guard are unaffected, because
+ * they never reach this branch with a bad number.
+ *
+ * A NEGATIVE age still clamps to "just now", deliberately and unlike the
+ * above: that is ordinary clock skew between this browser and whatever stamped
+ * the timestamp, not missing information.
+ */
 export function formatAge(ms) {
-  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  if (!Number.isFinite(ms)) return 'age unknown';
+  if (ms < 0) ms = 0;
   const s = Math.floor(ms / 1000);
   if (s < 10) return 'just now';
   if (s < 60) return `${s}s ago`;
