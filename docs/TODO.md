@@ -244,12 +244,24 @@ profile distilled at expiry and injected every turn. Tier 3 is a 90-day archive
 plus a recall tool that costs nothing per turn.
 
 **Build order (each dark behind `GABI_MEMORY`, affirmative-only):**
-1. profile store + distillation on the existing `*/2` cron + prompt block +
-   `/gabi memory` show/clear ⚠️ the show/clear ships WITH the writing, not after
-   — a profile with no way to see it is a dossier
+1. ✅ **DONE + DEPLOYED DARK 2026-08-18.** Profile store, distillation on the
+   existing two-minute cron, the prompt block, and `/gabi memory` show/clear.
+   Access reference: [`access/gabi-memory.md`](access/gabi-memory.md).
+   ⚠️ **OWNER STEP: flip `GABI_MEMORY = "on"` in
+   `apps/discord-worker/wrangler.toml` and deploy** — deliberately not done by
+   an agent (the `GABI_BOOKS` precedent).
 2. archive writes ⚠️ before the tool, so recall has something to find on day one
 3. `recall_conversation` + its own (fifth) allowlist array and pinning test
 4. identity merge on first `/link` — riskiest, deliberately last
+
+**Left open by phase 1, to settle after a week of real profiles:**
+- ⚠️ **Distillation quality is unmeasured** — no profile has been produced by a
+  real conversation. Grade it by reading actual profiles before trusting the
+  2 KB cap.
+- The per-turn profile READ is one Firestore GET; it is issued in parallel with
+  the docs and books contexts so it adds no latency, but if turn latency ever
+  regresses, caching the profile in the DO's conversation record is the known
+  next move (it is already loaded there every turn).
 
 **Two things in the design worth not losing:**
 - ⚠️ There is **no expiry event today** — pruning is lazy. The cron is the
