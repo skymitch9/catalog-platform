@@ -126,6 +126,37 @@ OWNER_EMAILS = "nbaslamking@gmail.com,mitchlandtv@gmail.com"
 # lane can point elsewhere; the default in code is this same host.
 INDEX_BASE_URL = "https://index.heygabi.ai"
 
+# ⚠️ THE AUDIOBOOK SITE, added 2026-08-18 with GABI's Tier-0 catalogue tools —
+# and it exists because THE ESTATE INDEX DOES NOT HOLD A NARRATOR. Measured that
+# day rather than assumed, by reading apps/index-worker/migrations/0001_entry.sql
+# and by querying the live host: `entry`'s columns are source, source_id, title,
+# creator, title_fold, work_fold, universe, series, series_slug, series_index,
+# year, publisher, format, kind, parent_source_id, cover_url, detail_url,
+# pushed_at. There is no narrator column, no duration column and no genre column
+# — the index is a cross-catalog POINTER table by its own schema's declaration
+# ("POINTERS, NEVER TRUTH"). So the owner's canonical question, "who's the
+# narrator of Way of Kings?", is structurally unanswerable from /api/search.
+#
+# It IS answerable from this host. Measured 2026-08-18 on the live site:
+#   GET https://audiobooks.heygabi.ai/catalog.csv
+#     -> 200, text/csv; charset=utf-8, access-control-allow-origin: *
+#     -> 1,410,970 bytes, 1,079 audiobook rows
+#     -> narrator filled 1079/1079, duration 1079/1079, genre 1078,
+#        year 1048, series 895, universe 237, library_formats 86
+#
+# ⚠️ A VAR, NOT A SECRET, and the call carries NO Authorization header at all —
+# that absence IS the scope decision, exactly as it is for INDEX_BASE_URL above.
+# This is the same CSV every anonymous visitor to audiobooks.heygabi.ai already
+# downloads to render the site's own table, so reading it reveals nothing the
+# web does not publish. ⚠️ It is NOT a licence to read a GATED surface: no ebook
+# manifest, no file bytes, no signed URL. Those need the asker's Firebase
+# identity, which this Worker structurally cannot mint (src/have.ts explains why
+# at length, and src/firebase-sa.ts is scoped to `datastore` only).
+#
+# Present so a test or a future lane can point elsewhere; the default in code
+# (src/catalog-data.ts) is this same host.
+CATALOG_BASE_URL = "https://audiobooks.heygabi.ai"
+
 # Where `/gabi` sends people (the fixer's Discord surface, shape (b)
 # propose-and-deep-link — library_catalog gabi-fixer-design.md §10.2). This is
 # Samantha's instance, the only one whose GABI_PANEL posture is on; the main

@@ -124,6 +124,7 @@ import type { Env } from './env.js';
 import { getGatewayBot, replyToMessage } from './discord-api.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
+import { catalogBase } from './catalog-data.js';
 import {
   capDecision,
   mentionsOn,
@@ -726,6 +727,7 @@ export class GabiGateway {
       {
         indexBaseUrl: indexBase(this.env),
         panelUrl: panelDeepLink(panelBase(this.env)),
+        catalogBaseUrl: catalogBase(this.env),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
     );

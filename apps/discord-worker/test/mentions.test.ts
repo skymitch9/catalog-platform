@@ -68,14 +68,32 @@ function msg(over: Partial<GatewayMessage> = {}): GatewayMessage {
 // ── 1. the posture ──────────────────────────────────────────────────────────
 
 describe('⚠️ the posture: affirmative-only, and OFF means no socket at all', () => {
-  it('ships OFF in wrangler.toml — flipping it is an owner decision', () => {
+  /**
+   * ⚠️ **THE RECORDED OWNER DECISION IS NOW *ON*, AND THIS TEST MOVED WITH IT.**
+   *
+   * It pinned OFF from the build until 2026-08-17, when the owner gave the
+   * wake-up order, his key was piped to `ANTHROPIC_API_KEY_GABI`, and the
+   * conductor flipped the var (commit `13d3d37`). ⚠️ The correct response to
+   * this test going red was never to flip `wrangler.toml` back — the file is
+   * the posture of record and the test is its witness, not the other way round.
+   *
+   * Pinned BOTH ways deliberately, mirroring the library's `GABI_PANEL`
+   * precedent: the assertion below fails if the var stops saying "on", so
+   * turning her back off is exactly as deliberate an act as turning her on was,
+   * and the next person to do it has to come here and say why.
+   */
+  it('⚠️ is ON in wrangler.toml — the owner\'s wake-up order, 2026-08-17', () => {
     const line = WRANGLER.match(/^\s*GABI_MENTIONS\s*=\s*"([^"]*)"/m);
     assert.ok(line, 'wrangler.toml does not declare GABI_MENTIONS at all');
     assert.equal(
       mentionsOn({ GABI_MENTIONS: line[1] }),
-      false,
+      true,
       `wrangler.toml has GABI_MENTIONS = "${line[1]}" — the conversational posture changed without ` +
-        'an owner decision recorded here. The last recorded decision (2026-08-17) is OFF.',
+        'an owner decision recorded here. The last recorded decision (2026-08-17, commit 13d3d37) ' +
+        'is ON: the owner asked for her to be woken up and his Anthropic key was set the same ' +
+        'minute. If she has been turned OFF on purpose, record the new decision here rather than ' +
+        '"fixing" wrangler.toml back — she is live in a real server and the switch is the only ' +
+        'thing that stops the gateway opening a socket.',
     );
   });
 
@@ -410,7 +428,7 @@ describe('spend caps — a fuse with words on it', () => {
 // ── 5. the allowlist ────────────────────────────────────────────────────────
 
 describe('⚠️ what a mention can cause, as an explicit array', () => {
-  it('is exactly these eight things', () => {
+  it('is exactly these ten things', () => {
     // Adding a row is a design decision somebody makes on purpose. This
     // assertion is the same guard the library puts on GABI_TOOL_NAMES, and it
     // is what makes "she writes nothing to the estate" a mechanism rather than
@@ -431,6 +449,17 @@ describe('⚠️ what a mention can cause, as an explicit array', () => {
       'remember_conversation',
       'offer_choice_components',
       'open_question_modal',
+      // ⚠️ TWO MORE ADDED 2026-08-18 with the Tier-0 catalogue tools, and both
+      // are READS of an already-public surface. She may now read the audiobook
+      // site's published `catalog.csv` — measured 2026-08-18 as the ONLY estate
+      // surface holding a narrator, a running time or a genre, because the
+      // index's `entry` table has none of the three — and may let the model
+      // call the read-only tools in `gabi-tools.ts` during a turn.
+      // Note what is STILL absent and cannot arrive without failing this line:
+      // no catalogue write, no Firestore write, no GATED ebook/audio read, no
+      // change_log row, no timeout, no message delete, no role change.
+      'lookup_catalog_metadata',
+      'call_catalog_tools',
     ]);
   });
 

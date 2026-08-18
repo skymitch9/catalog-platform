@@ -54,6 +54,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { classifyByKeyword, isMentionIntent, type MentionIntent } from './mentions.js';
 import { conversationChars, type ConversationTurn } from './conversation.js';
+import {
+  MAX_TOOL_CALLS_PER_TURN,
+  MAX_TOOL_ITERATIONS,
+  toolsForApi,
+} from './gabi-tools.js';
+import { runTool, type ToolContext } from './tool-exec.js';
 
 /**
  * ⚠️ Pinned, not aliased. `claude-haiku-4-5` is the moving alias for this
@@ -121,7 +127,7 @@ export function estimateCents(usage: TurnUsage): number {
  * section of `docs/TODO.md`.
  */
 export function accountTurn(entry: {
-  purpose: 'classify' | 'converse';
+  purpose: 'classify' | 'converse' | 'converse_tools';
   usage: TurnUsage;
   discordUserId: string;
   guildId: string | null;
@@ -140,6 +146,21 @@ export function accountTurn(entry: {
    */
   historyTurns?: number;
   historyChars?: number;
+  /**
+   * ⚠️ TOOL ACCOUNTING, added with the Tier-0 catalogue tools (2026-08-18).
+   * Two raw columns rather than one derived "used tools" boolean, for the same
+   * reason the token counts are raw: a tool loop's cost is *how many* calls it
+   * made and *which*, and a stored summary computed by a wrong function is
+   * wrong forever. `tools` is the ordered list of names actually executed, so
+   * `wrangler tail | jq` can answer "how often does she reach for
+   * series_volumes" without a second instrument.
+   */
+  toolCalls?: number;
+  tools?: readonly string[];
+  /** How many times the turn went round the tool loop, against
+   * `MAX_TOOL_ITERATIONS`. A turn that keeps hitting the ceiling is a prompt
+   * problem, and this is how it becomes visible rather than merely expensive. */
+  toolIterations?: number;
 }): void {
   console.log(
     JSON.stringify({
@@ -153,6 +174,9 @@ export function accountTurn(entry: {
       est_cents: estimateCents(entry.usage),
       history_turns: entry.historyTurns ?? 0,
       history_chars: entry.historyChars ?? 0,
+      tool_calls: entry.toolCalls ?? 0,
+      tools: entry.tools ?? [],
+      tool_iterations: entry.toolIterations ?? 0,
       // Discord snowflakes, not names or message text. The same no-PII line
       // /api/health draws. ⚠️ The remembered TEXT is never logged — only how
       // much of it there was.
@@ -405,5 +429,197 @@ export async function converse(
   } catch (err) {
     console.error('GABI mentions: conversational turn failed:', err instanceof Error ? err.message : err);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. Conversation WITH the Tier-0 catalogue tools
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ The tool-using persona. It is `CHAT_SYSTEM` plus the three sentences that
+ * make a tool loop honest, and every one of them was earned by a failure this
+ * estate has actually seen:
+ *
+ *  1. **Look it up, never remember it.** Haiku 4.5 knows perfectly well who
+ *     narrates The Way of Kings and will happily say so without calling
+ *     anything — and then it is answering about the *world*, not about the
+ *     *estate*, which is the entire point of the feature.
+ *  2. **Name the book you matched.** A fielded answer with no title is
+ *     unfalsifiable; naming it makes a wrong match visible in one line.
+ *  3. **Keep the coverage sentence.** Every tool result carries `coverage`
+ *     saying which shelf was searched and which two are unreachable. A count
+ *     that drops it is a wrong answer wearing a number.
+ */
+const CHAT_TOOLS_SYSTEM = `${CHAT_SYSTEM}
+
+You have two tools that read the estate's own audiobook catalogue. Use them:
+
+- Look things up rather than remembering them. You may know who narrates a famous book; you do not know what THIS house has catalogued, and that is the only question you are being asked. Anything factual about a book — narrator, running time, year, series position, how many of something there are — comes from a tool call or it does not get said.
+- Always name the book you matched, so somebody can tell you picked the wrong one.
+- If the catalogue does not record a field, say that. Never fill it in, never guess a narrator, never round a count.
+- When a tool result carries a "coverage" sentence, keep what it says: you are counting ONE shelf, and the library and board-game catalogues are not reachable from Discord. Give the breakdown, never a bare number.
+- A question that names several authors or universes is several lookups. Make them all in one go rather than asking the person to repeat themselves.`;
+
+export interface ToolTurnResult {
+  text: string | null;
+  toolCalls: number;
+  tools: string[];
+  iterations: number;
+}
+
+/** Text blocks plus a note when the loop ran out of iterations. */
+function content(res: { content: readonly unknown[] }): unknown[] {
+  return res.content as unknown[];
+}
+
+function toolUseBlocks(blocks: readonly unknown[]): { id: string; name: string; input: unknown }[] {
+  const out: { id: string; name: string; input: unknown }[] = [];
+  for (const b of blocks) {
+    const block = b as { type?: unknown; id?: unknown; name?: unknown; input?: unknown };
+    if (block?.type === 'tool_use' && typeof block.id === 'string') {
+      out.push({ id: block.id, name: String(block.name ?? ''), input: block.input });
+    }
+  }
+  return out;
+}
+
+/**
+ * One conversational turn that may call the Tier-0 tools.
+ *
+ * ⚠️ **A HAND-WRITTEN LOOP, DELIBERATELY, AND IT IS BOUNDED TWICE.** The SDK's
+ * `tool_runner` helper is beta and takes its own dependency; this loop is
+ * twenty lines and the two things that matter about it — that it terminates and
+ * that every executed name went through the allowlist — are visible in one
+ * screen. `MAX_TOOL_ITERATIONS` bounds the round trips and
+ * `MAX_TOOL_CALLS_PER_TURN` bounds the parallel calls inside them, because a
+ * cap on iterations alone is not a cap on work: one assistant turn may emit
+ * several `tool_use` blocks at once.
+ *
+ * ⚠️ **Every `tool_result` for one assistant turn goes back in ONE user
+ * message.** Splitting them across messages is a documented way to train the
+ * model out of making parallel calls, and parallel calls are exactly what the
+ * owner's four-part question needs.
+ *
+ * ⚠️ **A tool that failed comes back with `is_error: true`, never dropped.** A
+ * missing `tool_result` for an emitted `tool_use` is a 400 that would eat the
+ * person's answer; a silently-empty one teaches the model that an outage and an
+ * absence are the same thing.
+ *
+ * Every model call in the loop is accounted separately, so the log line count
+ * IS the round-trip count and a runaway is visible in `wrangler tail` rather
+ * than only on an invoice.
+ */
+export async function converseWithTools(
+  apiKey: string | undefined,
+  question: string,
+  grounding: string | null,
+  who: { discordUserId: string; guildId: string | null; authorName: string; via?: string },
+  toolCtx: ToolContext,
+  overrides?: { fetch?: typeof fetch },
+  history: readonly ConversationTurn[] = [],
+): Promise<ToolTurnResult> {
+  const empty: ToolTurnResult = { text: null, toolCalls: 0, tools: [], iterations: 0 };
+  if (!apiKey) {
+    logNoKey('the conversational reply');
+    return empty;
+  }
+
+  const user = grounding
+    ? `${question}\n\n(What a first look at the estate's public shelf turned up, for context — check it with a tool before stating anything as fact: ${grounding})`
+    : question;
+  const messages: { role: 'user' | 'assistant'; content: unknown }[] = modelMessages(history, user);
+
+  const client = chatClient(apiKey, overrides);
+  const tools = toolsForApi();
+  const executed: string[] = [];
+  let iterations = 0;
+
+  try {
+    for (let i = 0; i <= MAX_TOOL_ITERATIONS; i++) {
+      // ⚠️ The LAST permitted request drops `tools` entirely. Offering them on
+      // a turn whose results could never be executed is how a loop ends with an
+      // unanswered `tool_use` block and no text at all — the person gets
+      // silence because the bot ran out of budget mid-thought.
+      const last = i === MAX_TOOL_ITERATIONS;
+      const res = await client.messages.create({
+        model: GABI_CHAT_MODEL,
+        max_tokens: CHAT_MAX_TOKENS,
+        system: CHAT_TOOLS_SYSTEM,
+        messages: messages as never,
+        ...(last ? {} : { tools: tools as never }),
+      });
+      iterations += 1;
+      accountTurn({
+        purpose: 'converse_tools',
+        usage: usageOf(res.usage),
+        discordUserId: who.discordUserId,
+        guildId: who.guildId,
+        ...(who.via ? { via: who.via } : {}),
+        ...historyCost(history),
+        toolCalls: executed.length,
+        tools: [...executed],
+        toolIterations: iterations,
+      });
+
+      const blocks = content(res);
+      const calls = toolUseBlocks(blocks);
+      if (res.stop_reason !== 'tool_use' || calls.length === 0) {
+        const text = textOf(blocks);
+        return {
+          text: text.length > 0 ? text : null,
+          toolCalls: executed.length,
+          tools: executed,
+          iterations,
+        };
+      }
+
+      // ⚠️ Truncated rather than refused: the calls beyond the cap come back as
+      // worded errors so the model still gets a `tool_result` for every id it
+      // emitted, which is what keeps the next request valid.
+      const permitted = calls.slice(0, MAX_TOOL_CALLS_PER_TURN);
+      const refused = calls.slice(MAX_TOOL_CALLS_PER_TURN);
+
+      const outcomes = await Promise.all(
+        permitted.map(async (call) => {
+          const outcome = await runTool(call.name, call.input, toolCtx);
+          executed.push(outcome.name);
+          return { call, outcome };
+        }),
+      );
+
+      messages.push({ role: 'assistant', content: blocks });
+      messages.push({
+        role: 'user',
+        content: [
+          ...outcomes.map(({ call, outcome }) => ({
+            type: 'tool_result',
+            tool_use_id: call.id,
+            content: JSON.stringify(outcome.result),
+            ...(outcome.isError ? { is_error: true } : {}),
+          })),
+          ...refused.map((call) => ({
+            type: 'tool_result',
+            tool_use_id: call.id,
+            is_error: true,
+            content: JSON.stringify({
+              error: 'too_many_tool_calls',
+              note: `Only ${MAX_TOOL_CALLS_PER_TURN} lookups run per turn. Answer with what came back and say what you did not get to.`,
+            }),
+          })),
+        ],
+      });
+    }
+
+    // Unreachable: the `last` iteration above sends no tools, so it always
+    // returns. Kept as a named outcome rather than a fallthrough, because a
+    // loop that can end without a value is a loop that will one day go silent.
+    return { text: null, toolCalls: executed.length, tools: executed, iterations };
+  } catch (err) {
+    console.error(
+      'GABI mentions: the tool-using turn failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return { text: null, toolCalls: executed.length, tools: executed, iterations };
   }
 }

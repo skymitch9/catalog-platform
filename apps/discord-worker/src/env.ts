@@ -71,6 +71,19 @@ export interface Env {
    * Firebase sign-in and its own role check, which is exactly why shape (b)
    * needs no new custody. Exists so a test can point elsewhere. */
   GABI_PANEL_URL?: string;
+  /** ⚠️ THE AUDIOBOOK SITE, and it exists because the estate index does NOT
+   * hold a narrator. Measured 2026-08-18 against `apps/index-worker/migrations/
+   * 0001_entry.sql` and the live host: the `entry` table has no narrator, no
+   * duration and no genre column, so the owner's own canonical question ("who
+   * narrates The Way of Kings?") is unanswerable from `/api/search` alone. The
+   * audiobook site publishes `catalog.csv` — 200, `text/csv`, CORS `*`, 1,079
+   * rows, narrator and duration filled on every one — and that is what the
+   * Tier-0 tools read (src/catalog-data.ts).
+   * ⚠️ A var, not a secret, and the call carries NO credential: the surface is
+   * already published to the open internet, which IS the scope decision, the
+   * same one `/have` records. Default in code is the live host; this exists so
+   * a test or a future lane can point elsewhere. */
+  CATALOG_BASE_URL?: string;
   /** ⚠️ THE CONVERSATIONAL KILL SWITCH — phase A of "GABI answers when you
    * @mention her" (src/mentions.ts, src/gateway.ts). A plain var in
    * wrangler.toml, affirmative-only in the exact idiom of MODERATION_ENABLED

@@ -142,6 +142,20 @@ export const GABI_MENTION_ACTIONS = [
    * is not on the menu. The typed text arrives on the ALREADY-LIVE, Ed25519-
    * verified interactions endpoint and is treated as an ordinary question. */
   'open_question_modal',
+  /** ⚠️ ADDED WITH THE TIER-0 TOOLS (2026-08-18). Read the audiobook site's
+   * PUBLIC `catalog.csv` — the one estate surface that records a narrator, a
+   * running time or a genre (the index's `entry` table holds none of the three;
+   * `catalog-data.ts` carries the measurement). Credential-free, exactly as
+   * `lookup_public_shelf` is, and for the same recorded reason: the surface is
+   * already published to the open internet. ⚠️ NOT a licence to read a GATED
+   * surface — no ebook manifest, no file bytes, no signed URL. */
+  'lookup_catalog_metadata',
+  /** ⚠️ ADDED WITH THE TIER-0 TOOLS. Let the model call the read-only tools in
+   * `gabi-tools.ts` during a turn, bounded by `MAX_TOOL_ITERATIONS` and
+   * `MAX_TOOL_CALLS_PER_TURN`. Every name goes through that file's allowlist
+   * before dispatch, every tool declares `mutates: false`, and
+   * `test/gabi-tools.test.ts` fails the build if either stops being true. */
+  'call_catalog_tools',
 ] as const;
 
 export type GabiMentionAction = (typeof GABI_MENTION_ACTIONS)[number];

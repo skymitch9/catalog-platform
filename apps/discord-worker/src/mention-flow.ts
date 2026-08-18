@@ -65,7 +65,20 @@
 
 import { lookupHave, renderHit, truncate, type SearchBookHit } from './have.js';
 import { searchTermFor } from './gabi.js';
-import { classifyIntent, converse } from './gabi-chat.js';
+import { classifyIntent, converse, converseWithTools } from './gabi-chat.js';
+import {
+  CATALOG_MSG,
+  DEFAULT_CATALOG_BASE,
+  genreLeaf,
+  loadCatalog,
+  metadataAsk,
+  renderRow,
+  searchCatalog,
+  yearOf,
+  type CatalogRow,
+  type MetadataAsk,
+} from './catalog-data.js';
+import type { ToolContext } from './tool-exec.js';
 import {
   buildChoiceComponents,
   CONV_MSG,
@@ -128,9 +141,24 @@ export interface MentionDeps {
 export interface MentionConfig {
   indexBaseUrl: string;
   panelUrl: string;
+  /** ⚠️ ADDED 2026-08-18 with the Tier-0 catalogue tools. The audiobook site
+   * that publishes `catalog.csv` — the ONLY estate surface that records a
+   * narrator, a running time or a genre (`catalog-data.ts` has the measurement
+   * and the scope argument). Optional so an older caller cannot be broken by
+   * the addition; it defaults to the live public host. */
+  catalogBaseUrl?: string;
   anthropicKey?: string;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
+}
+
+/** The executor's world, built from the config in one place so the two callers
+ * (gateway message, component press) cannot drift. */
+function toolContext(cfg: MentionConfig): ToolContext {
+  return {
+    catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
+    ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +243,67 @@ export function choiceFor(question: string, books: SearchBookHit[], now: number)
 }
 
 // ---------------------------------------------------------------------------
+// The catalogue — narrator, duration, genre. The half the index does not hold.
+// ---------------------------------------------------------------------------
+
+/** The one field a metadata question actually asked about. Returns `''` when
+ * the catalogue has the book but not that fact — which is a different answer
+ * from "no such book" and is worded differently. */
+function fieldValue(row: CatalogRow, field: MetadataAsk['field']): string {
+  switch (field) {
+    case 'narrator':
+      return row.narrator;
+    case 'duration':
+      return row.duration;
+    case 'series':
+      return row.series;
+    case 'genre':
+      return genreLeaf(row.genre);
+    case 'year':
+      return yearOf(row.year);
+  }
+}
+
+/**
+ * ⚠️ **THE ZERO-TOKEN ANSWER TO THE OWNER'S CANONICAL QUESTION.**
+ *
+ * *"Who's the narrator of Way of Kings?"* is answered here, from the estate's
+ * own catalogue, **with no model call at all** — so it is correct while
+ * `ANTHROPIC_API_KEY_GABI` is set, and still correct the day somebody rotates
+ * it and forgets to paste the new one. That is the same ladder `mentions.ts`
+ * built for the keyword router, extended to the one question the feature exists
+ * for.
+ *
+ * Returns `null` when the catalogue could not answer *at all* — unreachable, or
+ * no matching title — because the caller has a second, wider place to look (the
+ * index carries 1,246 rows to this shelf's 1,079, ebooks included) and falling
+ * through to it beats reporting a miss this shelf alone cannot justify.
+ */
+async function catalogAnswer(cfg: MentionConfig, ask: MetadataAsk): Promise<string | null> {
+  const load = await loadCatalog(
+    cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
+    cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined,
+  );
+  if (!load.ok) return null;
+
+  const hits = searchCatalog(load.rows, ask.term, 'any', MAX_MENTION_HITS);
+  const top = hits[0];
+  if (!top) return null;
+
+  const value = fieldValue(top, ask.field);
+  // ⚠️ The book is here and the field is blank. SAID, not filled — this is the
+  // sentence that makes "never invents a narrator" a property of the code
+  // rather than a hope about the model.
+  if (!value) return CATALOG_MSG.missingField(ask.field, top.title);
+
+  const others =
+    hits.length > 1
+      ? `\n_${hits.length - 1} other ${hits.length === 2 ? 'title' : 'titles'} also matched **${truncate(ask.term, 60)}**._`
+      : '';
+  return `${renderRow(top)}${others}`;
+}
+
+// ---------------------------------------------------------------------------
 // The one answer engine, shared by every door
 // ---------------------------------------------------------------------------
 
@@ -244,6 +333,36 @@ async function answerQuestion(
   const intent =
     (await classifyIntent(cfg.anthropicKey, question, who, overrides, history)) ??
     classifyByKeyword(question);
+
+  // ── ⚠️ THE METADATA FAST PATH, BEFORE the intent branches ────────────────
+  // "Who narrates X?" is classified `have_lookup` by one router and `question`
+  // by the other — it is genuinely both — so it is answered here, once, rather
+  // than half-answered twice. `fix_request` and `smalltalk` are excluded on
+  // purpose: a fix must still be answered with "I can't change that from here",
+  // and nobody saying "morning!" wants a catalogue row.
+  const ask = intent === 'have_lookup' || intent === 'question' ? metadataAsk(question) : null;
+  if (ask) {
+    const facts = await catalogAnswer(cfg, ask);
+    if (facts) {
+      // With a key she says it in her own voice, WITH the tools in front of her
+      // (so a follow-up inside the same turn — "and the sequel?" — is one more
+      // lookup rather than an apology). Without one, the facts stand alone and
+      // are already a correct, complete answer.
+      const spoken = await converseWithTools(
+        cfg.anthropicKey,
+        question,
+        facts,
+        who,
+        toolContext(cfg),
+        overrides,
+        history,
+      );
+      return { content: spoken.text ?? facts, pending: null, intent, components: null };
+    }
+    // The catalogue could not answer — unreachable, or this shelf does not hold
+    // it. Fall through to the index, which is wider. Reporting a miss from the
+    // narrower source would be an answer the data does not support.
+  }
 
   if (intent === 'have_lookup') {
     const found = await shelf(cfg.indexBaseUrl, question);
@@ -290,7 +409,24 @@ async function answerQuestion(
     fallbackBody = `${grounding}\n\n${MENTION_MSG.panel(cfg.panelUrl)}`;
   }
 
-  const spoken = await converse(cfg.anthropicKey, question, grounding, who, overrides, history);
+  // ⚠️ SMALL TALK GETS NO TOOLS, and that is a spend decision rather than a
+  // stylistic one: offering a shelf lookup to "thanks!" invites a lookup nobody
+  // wanted, and the tool schemas are input tokens on every turn that carries
+  // them. A real question gets the tools; a greeting gets the cheap call.
+  const spoken =
+    intent === 'question'
+      ? (
+          await converseWithTools(
+            cfg.anthropicKey,
+            question,
+            grounding,
+            who,
+            toolContext(cfg),
+            overrides,
+            history,
+          )
+        ).text
+      : await converse(cfg.anthropicKey, question, grounding, who, overrides, history);
 
   // ⚠️ No key, or a turn that failed: she still says something useful. The
   // person asked a question; a silence would be the bot looking broken.

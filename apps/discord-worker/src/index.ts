@@ -81,6 +81,8 @@ import {
 import { indexBase, processHave } from './have.js';
 import { panelBase, panelDeepLink, processGabi } from './gabi.js';
 import { mentionsOn } from './mentions.js';
+import { catalogBase, CATALOG_PATH } from './catalog-data.js';
+import { GABI_TOOL_NAMES, GABI_TOOLS, MAX_TOOL_ITERATIONS } from './gabi-tools.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -122,6 +124,10 @@ app.get('/api/health', (c) =>
       // and the clarifying-question components. Named here so "does she
       // remember?" is answerable in one curl rather than by pressing something.
       'gabi_continuity',
+      // ⚠️ Added 2026-08-18: the read-only catalogue tools the model may call
+      // during a turn. Named here so "can she answer who narrates X?" is
+      // answerable in one curl rather than by asking her.
+      'gabi_catalog_tools',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -201,6 +207,23 @@ app.get('/api/health', (c) =>
     // Firestore, a second Durable Object) each carry a cost this account
     // cannot pay, and a future reader deserves to know which one was chosen.
     gabi_memory_store: 'gateway_durable_object_storage',
+    // ⚠️ THE TOOL ALLOWLIST, VISIBLE FROM OUTSIDE. The estate's default-deny
+    // rule is only as good as somebody's ability to check it, and "what can the
+    // bot in my server actually do?" should not require reading TypeScript.
+    // Every name here is READ-ONLY by construction (test/gabi-tools.test.ts
+    // fails the build otherwise); if this list ever grows a `set_`, `add_` or
+    // `delete_` verb, that is a decision worth finding in one curl.
+    gabi_tools: GABI_TOOL_NAMES,
+    gabi_tools_mutating: GABI_TOOLS.filter((t) => t.mutates).map((t) => t.name),
+    gabi_tool_max_iterations: MAX_TOOL_ITERATIONS,
+    // ⚠️ Which estate surface those tools read, stated rather than inferred.
+    // The index holds NO narrator, duration or genre column (measured
+    // 2026-08-18 against migrations/0001_entry.sql), so this host is where the
+    // metadata comes from — and it is a PUBLIC one, read with no credential,
+    // which is the whole scope argument. If this ever names a gated host,
+    // somebody answered the token-custody question and that should be findable.
+    gabi_catalog_url: `${catalogBase(c.env).replace(/\/+$/, '')}${CATALOG_PATH}`,
+    gabi_catalog_scope: 'public_audiobook_catalogue_no_credential',
   }),
 );
 

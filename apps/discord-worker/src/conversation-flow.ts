@@ -42,6 +42,7 @@
 import { editOriginalMessage } from './discord-api.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
+import { catalogBase } from './catalog-data.js';
 import type { Env } from './env.js';
 import { gatewayStub } from './gateway.js';
 import {
@@ -199,6 +200,7 @@ export async function resumeConversation(
     const cfg = {
       indexBaseUrl: indexBase(env),
       panelUrl: panelDeepLink(panelBase(env)),
+      catalogBaseUrl: catalogBase(env),
       ...(env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: env.ANTHROPIC_API_KEY_GABI } : {}),
     };
     const who = {
