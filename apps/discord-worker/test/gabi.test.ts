@@ -8,10 +8,13 @@
  *     makes is asserted, by method and host. Shape (b)'s entire justification
  *     is "zero new custody"; a POST to Anthropic or a Firestore write would
  *     erase it while every other test still passed.
- *   - **the deep link carries no query string.** The panel parses no URL
- *     parameter (measured 2026-08-17), so adding one would be a link that
- *     silently lies about carrying the question. Adding it should be a
- *     decision, not a drive-by.
+ *   - **the deep link's prefill argument is OPTIONAL.** ⚠️ Superseded
+ *     2026-08-18: this used to read "carries no query string", on a measurement
+ *     that the panel parsed no URL parameter. The panel half landed
+ *     (`library_catalog` 8745191) and the link now carries `?gabi=<question>`.
+ *     What still has to hold is that `GET /api/health`, which has no question,
+ *     keeps producing a working link. The prefill and the asker-aware
+ *     destination are pinned in `panel.test.ts`.
  *   - **the answer NEVER claims the panel will open.** The bot cannot resolve
  *     a library role from a Discord id (design §10.2 blocker 1), and the one
  *     failure mode of a propose-and-link surface is promising a door that is
@@ -81,16 +84,19 @@ const PANEL = panelDeepLink(DEFAULT_PANEL_BASE);
 // The deep link — the half of the answer that is always correct
 // ===========================================================================
 
-test('the deep link points at the panel instance, and carries NO query string', () => {
+test('the BARE deep link still works — /api/health has no question to give it', () => {
   assert.equal(panelDeepLink(DEFAULT_PANEL_BASE), 'https://padhard.heygabi.ai/');
   assert.equal(DEFAULT_PANEL_BASE, 'https://padhard.heygabi.ai');
-  // ⚠️ Measured 2026-08-17: apps/web's App.tsx holds the panel open in
-  // useState(false) and GabiPanel.tsx parses no location — there is no ?q=.
-  // A parameter here would be a promise the page cannot keep; a ?q= prefill is
-  // PANEL work, recorded in gabi-fixer-design.md §10.2.
+  // ⚠️ SUPERSEDED 2026-08-18 — this assertion used to be "no query string, and
+  // that is measured". The panel half landed; the property that survived is
+  // that the argument is OPTIONAL, because the health row calls this with no
+  // question and a crash or a `?gabi=` with nothing after it would both be
+  // worse than the constant it replaced.
   const url = new URL(panelDeepLink(DEFAULT_PANEL_BASE));
   assert.equal(url.search, '');
   assert.equal(url.hash, '');
+  // Whitespace-only is the same as absent — never a dangling `?gabi=`.
+  assert.equal(new URL(panelDeepLink(DEFAULT_PANEL_BASE, '  \n  ')).search, '');
   // Trailing slashes normalise rather than doubling.
   assert.equal(panelDeepLink('https://example.test///'), 'https://example.test/');
 });

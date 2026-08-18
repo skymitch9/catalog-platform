@@ -595,8 +595,19 @@ export const MENTION_MSG = {
 
   overflow: (shown: number, total: number) => `\n_Closest ${shown} of ${total} matches._`,
 
+  /**
+   * ⚠️ **"put a change in front of you" IS LOAD-BEARING TEXT.** The 2026-08-18
+   * docs regression suite asserts that a runbook question does NOT produce this
+   * phrase, by matching on it. Rewording it would leave that guard passing
+   * while guarding nothing.
+   *
+   * ⚠️ The URL is resolved per-asker and carries their question (`panel.ts`),
+   * so the sentence promises a panel that opens loaded — a promise the page has
+   * kept since `library_catalog` `8745191`.
+   */
   panel: (url: string) =>
-    `I can dig into the actual rows and put a change in front of you to approve here: ${url}`,
+    `I can dig into the actual rows and put a change in front of you to approve here: ${url}\n` +
+    'It opens with your question already typed in — nothing is sent until you press send.',
 
   /** The reply when she genuinely has nothing to say and no key to say it with. */
   noKeyFallback:

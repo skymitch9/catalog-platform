@@ -409,6 +409,12 @@ describe('⚠️ credentials live in exactly two modules', () => {
       'src/catalog-data.ts',
       'src/delegated.ts',
       'src/delegated-flow.ts',
+      // ⚠️ ADDED 2026-08-18 with the asker-aware deep link. `panel.ts` reads an
+      // identity to decide a hostname, which is exactly the shape of module
+      // that grows a service account if nobody is watching. It takes an
+      // injected `Pick<DelegatePort, 'linkedUid' | 'whoami'>` and must never
+      // construct one.
+      'src/panel.ts',
       'src/gabi-tools.ts',
       'src/estate-docs.ts',
       // ⚠️ `src/have.ts` is deliberately ABSENT from this list, and pretending

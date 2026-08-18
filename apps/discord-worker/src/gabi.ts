@@ -42,14 +42,22 @@
  * **(b) A deep link into the real GABI panel**, where the tool loop, her
  * Firebase session and her authority all actually live.
  *
- * ⚠️ **THE DEEP LINK CARRIES NO QUERY STRING, AND THAT IS MEASURED.** Read
- * 2026-08-17 in `library_catalog/apps/web`: `App.tsx` holds the panel open/shut
- * in `useState(false)` and `GabiPanel.tsx` parses no location at all — there is
- * no `?q=`, no `?gabi=1`, nothing. Appending a param the panel does not read
- * would be a link that silently lies about carrying the question. So the link
- * opens the site plainly, the question is **quoted back in the message for
- * copy-paste**, and a `?q=` prefill is recorded in the design doc as PANEL
- * work. If that lands, this is the one function to change.
+ * ⚠️ **THE DEEP LINK NOW CARRIES THE QUESTION, AND POINTS AT THE ASKER'S OWN
+ * SHELF.** Both halves were false until 2026-08-18 and both are fixed in
+ * `panel.ts`, which this file's link functions are re-exported from:
+ *
+ *   - the panel half landed in `library_catalog` (`8745191`, both instances):
+ *     `?gabi=<text>` prefills the box and opens the panel without sending, so
+ *     the question is no longer retyped in the browser. The question is still
+ *     **quoted back in the message** — a person reading Discord on a phone
+ *     should be able to see what was asked without opening anything;
+ *   - the destination is resolved from the asker's linked identity rather than
+ *     from the pilot-era `GABI_PANEL_URL` constant, which the owner hit live:
+ *     *"why is it showing padhard and not the generic site"*.
+ *
+ * ⚠️ Asker-awareness needs an identity port, so `/gabi` is asker-aware only on
+ * a Worker where Tier 1's wiring exists. Without it this command behaves
+ * exactly as it did — static link, same words. See `GabiContext.panel`.
  *
  * ## What the bot can and cannot determine about panel access
  *
@@ -70,7 +78,6 @@
  * useful half of this command is the link, and it is unconditional.
  */
 
-import type { Env } from './env.js';
 import { editOriginalMessage } from './discord-api.js';
 import {
   EMBED_COLOR,
@@ -81,11 +88,22 @@ import {
   type SearchBookHit,
 } from './have.js';
 import { firestoreRequest, mintAccessToken, parseServiceAccount } from './firebase-sa.js';
+import type { LibraryInstance } from './delegated.js';
+import {
+  DEFAULT_PANEL_BASE,
+  panelBase,
+  panelDeepLink,
+  resolveAskerPanelBase,
+  type PanelIdentityPort,
+} from './panel.js';
 
-/** Where the real GABI panel lives — Samantha's instance (design decision 8:
- * the panel posture is ON for `friend` and OFF for the main library, so this
- * host is the only one where a GABI conversation is possible at all). */
-export const DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai';
+/**
+ * ⚠️ Re-exported rather than re-implemented. They MOVED to `panel.ts` on
+ * 2026-08-18 when the destination stopped being a constant; every existing
+ * importer keeps working, and the one place that decides where a link points is
+ * still one place.
+ */
+export { DEFAULT_PANEL_BASE, panelBase, panelDeepLink };
 
 /** Shorter than `/have`'s: a one-word "gabi" is not a question. Still small,
  * because refusing a real question is worse than searching a vague one. */
@@ -176,25 +194,6 @@ export async function readLinkState(
 }
 
 // ---------------------------------------------------------------------------
-// The deep link
-// ---------------------------------------------------------------------------
-
-export function panelBase(env: Pick<Env, 'GABI_PANEL_URL'>): string {
-  const configured = (env.GABI_PANEL_URL ?? '').trim();
-  return configured.length > 0 ? configured : DEFAULT_PANEL_BASE;
-}
-
-/**
- * The link into the panel. ⚠️ Deliberately **bare** — see this file's header:
- * the panel reads no URL parameter, so a `?q=` would be a promise the page
- * cannot keep. Pinned by a test that asserts the URL has no query string, so
- * adding one is a decision somebody makes on purpose.
- */
-export function panelDeepLink(base: string): string {
-  return `${base.replace(/\/+$/, '')}/`;
-}
-
-// ---------------------------------------------------------------------------
 // The nibble
 // ---------------------------------------------------------------------------
 
@@ -251,10 +250,11 @@ export const GABI_MSG = {
   deepLink: (url: string) =>
     `**GABI can dig deeper and propose fixes on the site** — she can read the actual catalogue rows, ` +
     `look at what is missing, and put changes in front of you to approve there:\n${url}\n` +
-    '_Open the speech-bubble button in the top bar and paste your question in._',
+    '_The panel opens with your question already in the box — it does not send until you do._',
 
-  /** Your question, quoted so it can be copied into the panel — the deep link
-   * cannot carry it (this file's header explains why). */
+  /** Your question, quoted. ⚠️ Kept AFTER the link learned to carry it
+   * (2026-08-18): somebody reading Discord on a phone should be able to see
+   * what was asked without opening a browser tab to find out. */
   quoted: (question: string) => `> ${question}`,
 
   /**
@@ -335,9 +335,58 @@ export interface GabiContext {
   applicationId: string;
   interactionToken: string;
   indexBaseUrl: string;
+  /** ⚠️ The STATIC fallback link, and still the whole answer on a Worker with
+   * no identity port. It doubles as a base — `panelDeepLink` normalises a
+   * trailing slash — so the two shapes cannot drift apart. */
   panelUrl: string;
   serviceAccountJson?: string;
   discordUserId: string | null;
+  /**
+   * ⚠️ **OPTIONAL, and its absence is a real production state**, not just a
+   * test one: it is `null` on any Worker where Tier 1's app token or service
+   * account is unset. Present, it makes the link point at the ASKER'S shelf
+   * instead of the pilot default (`panel.ts` holds the whole decision table).
+   */
+  panel?: { port: PanelIdentityPort; instances: readonly LibraryInstance[] };
+}
+
+/**
+ * Who is asking, and therefore where their panel is — answered in ONE Firestore
+ * read either way.
+ *
+ * ⚠️ **The subrequest discipline, stated because the command is the zero-token
+ * path and must stay cheap.** Today `/gabi` spends a mint + a link GET + the
+ * index search. With an identity port it spends the SAME mint + link GET (the
+ * port reads the identical document `readLinkState` reads, so nothing is read
+ * twice) plus **two `whoami` calls** — two more subrequests, issued in
+ * parallel, on a path that is already deferred and has fifteen minutes to
+ * answer in. Without a port it spends exactly what it always did.
+ *
+ * ⚠️ **One behaviour moved, on purpose.** With a port, a link document that
+ * carries no `firebaseUid` — a pre-uid link — now reads as `not_linked` rather
+ * than `linked`, because that is what it is: it cannot prove an estate account,
+ * and re-running `/link` is the fix. It is what the delegated path already
+ * tells that same person, and one surface contradicting another about whether
+ * somebody is linked is worse than either answer.
+ */
+async function askerIdentity(ctx: GabiContext): Promise<{ link: LinkState; base: string }> {
+  const base = ctx.panelUrl;
+  if (!ctx.panel || !ctx.discordUserId || ctx.panel.instances.length === 0) {
+    return { link: await readLinkState(ctx.serviceAccountJson, ctx.discordUserId), base };
+  }
+  try {
+    const link = await ctx.panel.port.linkedUid(ctx.discordUserId);
+    if (!link.ok) return { link: link.reason === 'unlinked' ? 'not_linked' : 'unknown', base };
+    return {
+      link: 'linked',
+      base: await resolveAskerPanelBase(ctx.panel.port, ctx.panel.instances, link.uid, base),
+    };
+  } catch (err) {
+    // ⚠️ `unknown`, never `not_linked`: telling an already-linked person to
+    // link again because Firestore blinked is telling them something false.
+    console.error('/gabi: the asker could not be resolved:', err instanceof Error ? err.message : err);
+    return { link: 'unknown', base };
+  }
 }
 
 /**
@@ -358,23 +407,30 @@ export async function processGabi(ctx: GabiContext): Promise<void> {
 
     const term = searchTermFor(question);
 
-    // Independent reads, raced together: the link read decides one sentence and
-    // must never delay or break the answer.
-    const [lookup, link] = await Promise.all([
+    // Independent reads, raced together: the identity read decides one sentence
+    // and one hostname, and must never delay or break the answer.
+    const [lookup, identity] = await Promise.all([
       lookupHave(ctx.indexBaseUrl, term),
-      readLinkState(ctx.serviceAccountJson, ctx.discordUserId),
+      askerIdentity(ctx),
     ]);
 
     await say(
-      buildGabiAnswer(question, nibbleFrom(term, lookup), { link, panelUrl: ctx.panelUrl }),
+      buildGabiAnswer(question, nibbleFrom(term, lookup), {
+        link: identity.link,
+        // ⚠️ THE QUESTION, carried. The panel prefills and opens itself; it
+        // does not send. `panel.ts` caps and encodes it.
+        panelUrl: panelDeepLink(identity.base, question),
+      }),
     );
   } catch (err) {
     console.error('/gabi failed:', err instanceof Error ? err.message : err);
     try {
       // Even the catch-all keeps the useful half: the link is what this command
-      // is FOR, and an internal fault is not a reason to withhold it.
+      // is FOR, and an internal fault is not a reason to withhold it. ⚠️ The
+      // STATIC base — whatever failed may have been the identity read, and this
+      // path must not be able to fail twice.
       await editOriginalMessage(ctx.applicationId, ctx.interactionToken, {
-        content: `${GABI_MSG.unreachable}\n\n${GABI_MSG.deepLink(ctx.panelUrl)}`,
+        content: `${GABI_MSG.unreachable}\n\n${GABI_MSG.deepLink(panelDeepLink(ctx.panelUrl, ctx.question))}`,
       });
     } catch {
       // The interaction token expired or Discord is down. Nothing further is

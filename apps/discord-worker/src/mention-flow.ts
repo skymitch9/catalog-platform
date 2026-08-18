@@ -65,6 +65,7 @@
 
 import { lookupHave, renderHit, truncate, type SearchBookHit } from './have.js';
 import { searchTermFor } from './gabi.js';
+import { panelLinkFor, type PanelLink } from './panel.js';
 import { classifyIntent, converse, converseWithTools } from './gabi-chat.js';
 import {
   CATALOG_MSG,
@@ -200,6 +201,14 @@ export interface DocsDeps {
 
 export interface MentionConfig {
   indexBaseUrl: string;
+  /**
+   * ⚠️ **THE STATIC FALLBACK, no longer the destination.** Until 2026-08-18
+   * this was where every fixer link went, which is the bug the owner hit:
+   * *"why is it showing padhard and not the generic site"*. It is now used
+   * only when the asker cannot be placed — unlinked, or nothing resolved — and
+   * `panel.ts` decides the rest from their own `whoami`. It doubles as a base
+   * (`panelDeepLink` normalises the trailing slash) so the two cannot drift.
+   */
   panelUrl: string;
   /** ⚠️ ADDED 2026-08-18 with the Tier-0 catalogue tools. The audiobook site
    * that publishes `catalog.csv` — the ONLY estate surface that records a
@@ -227,6 +236,35 @@ export interface MentionConfig {
   docsEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
+}
+
+/**
+ * ⚠️ **THE ASKER'S OWN PANEL, built once per turn** (2026-08-18, the owner's
+ * *"why is it showing padhard and not the generic site"*).
+ *
+ * It reuses the Tier-1 identity port READ-ONLY — `whoami` mutates nothing and
+ * needs no capability — and is therefore **not gated on `delegatedWrites`**:
+ * switching writes off must not send everybody back to the pilot host. When
+ * this surface has no port at all (a test, or a Worker whose Tier-1 wiring is
+ * absent) the returned function is a pure string builder over `cfg.panelUrl`
+ * and costs nothing.
+ *
+ * ⚠️ It is a FUNCTION rather than a resolved string because the resolution
+ * costs three subrequests and most turns emit no link at all. Nothing is dialled
+ * until a message is actually built, and `panelLinkFor` memoises the base so a
+ * turn pays at most once.
+ */
+function panelFor(
+  deps: Pick<MentionDeps, 'delegated'>,
+  cfg: MentionConfig,
+  discordUserId: string,
+): PanelLink {
+  return panelLinkFor(
+    deps.delegated
+      ? { port: deps.delegated.delegate, instances: cfg.instances ?? [], discordUserId }
+      : null,
+    cfg.panelUrl,
+  );
 }
 
 /** The executor's world, built from the config in one place so the two callers
@@ -542,6 +580,10 @@ async function answerQuestion(
   who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
   cfg: MentionConfig,
   now: number,
+  /** ⚠️ Lazy and memoised — see `panelFor`. Every caller passes one; a surface
+   * with no identity port passes one that resolves statically, so this function
+   * has no branch for "asker-aware or not" and cannot grow one. */
+  panel: PanelLink,
   docs?: DocsToolContext,
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
@@ -627,12 +669,15 @@ async function answerQuestion(
     // ⚠️ Propose-and-deep-link, `/gabi`'s shape (b) verbatim: she reads, she
     // says what she found, and the change happens where her authority is.
     // Phase B is where a write path could exist; this build has none.
+    // ⚠️ THE SITE THE OWNER HIT. A fix-shaped ask is the one message whose
+    // whole point is the link, so it is the one that must point at HIS shelf
+    // and open loaded with what he typed.
     const found = await shelf(cfg.indexBaseUrl, question);
     return {
       content:
         `${MENTION_MSG.cannotChange}\n\n` +
         `${shelfAnswer(found.term, found.books, found.failure)}\n\n` +
-        MENTION_MSG.panel(cfg.panelUrl),
+        MENTION_MSG.panel(await panel(question)),
       pending: null,
       intent,
       components: null,
@@ -643,11 +688,9 @@ async function answerQuestion(
   // with a lookup; small talk is not — nobody saying "morning!" wants a
   // catalogue search, and skipping it saves a subrequest.
   let grounding: string | null = null;
-  let fallbackBody = MENTION_MSG.noKeyFallback;
   if (intent === 'question') {
     const found = await shelf(cfg.indexBaseUrl, question);
     grounding = shelfAnswer(found.term, found.books, found.failure);
-    fallbackBody = `${grounding}\n\n${MENTION_MSG.panel(cfg.panelUrl)}`;
   }
 
   // ⚠️ SMALL TALK GETS NO TOOLS, and that is a spend decision rather than a
@@ -671,7 +714,18 @@ async function answerQuestion(
 
   // ⚠️ No key, or a turn that failed: she still says something useful. The
   // person asked a question; a silence would be the bot looking broken.
-  return { content: spoken ?? fallbackBody, pending: null, intent, components: null };
+  //
+  // ⚠️ **The fallback is built HERE, not above, and that is a spend decision.**
+  // Resolving the asker's panel costs a link read and two `whoami` calls; a
+  // question the model answers needs none of them. Building it eagerly would
+  // have charged every conversational turn in the server for a string most of
+  // them throw away.
+  if (spoken) return { content: spoken, pending: null, intent, components: null };
+  const fallbackBody =
+    grounding === null
+      ? MENTION_MSG.noKeyFallback
+      : `${grounding}\n\n${MENTION_MSG.panel(await panel(question))}`;
+  return { content: fallbackBody, pending: null, intent, components: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -805,7 +859,15 @@ export async function handleMention(
     // storage read that the docs fuse costs.
     const docs = await docsContextFor(deps, cfg, trigger.authorId);
 
-    const answer = await answerQuestion(trigger.question, memory.turns, who, cfg, now, docs);
+    const answer = await answerQuestion(
+      trigger.question,
+      memory.turns,
+      who,
+      cfg,
+      now,
+      panelFor(deps, cfg, trigger.authorId),
+      docs,
+    );
     await say(answer.content, answer.components);
     await deps.conversation.save({
       user: trigger.question,
@@ -919,12 +981,7 @@ export async function handlePick(
       };
     }
 
-    // Deterministic first: the chosen row, rendered, plus the deep link. That
-    // is a complete, useful answer with NO model call, which is why this whole
-    // path is exercised by tests that supply no key.
-    const deterministic = `${CONV_MSG.picked(option.label)}\n${option.detail}\n\n${MENTION_MSG.panel(cfg.panelUrl)}`;
-
-    // With a key she also says something about it, in persona, WITH the
+    // With a key she says something about it, in persona, WITH the
     // conversation in front of her — the point of the whole layer.
     const spoken = await converse(
       cfg.anthropicKey,
@@ -935,7 +992,24 @@ export async function handlePick(
       memory.turns,
     );
 
-    const content = spoken ? `${CONV_MSG.picked(option.label)}\n${spoken}` : deterministic;
+    // Without one, the chosen row plus the deep link — a complete, useful
+    // answer with NO model call, which is why this whole path is exercised by
+    // tests that supply no key.
+    //
+    // ⚠️ Built only when it is USED. Resolving the asker's panel costs a link
+    // read and two `whoami` calls, and a press she answers in her own voice
+    // needs none of them.
+    //
+    // ⚠️ The prefill is the ORIGINAL QUESTION, not the label they pressed. The
+    // pending record kept it (`choiceFor` stores it), and it is what they
+    // actually want in the box — "Mistborn" alone would open the panel with a
+    // title and no ask.
+    const content = spoken
+      ? `${CONV_MSG.picked(option.label)}\n${spoken}`
+      : `${CONV_MSG.picked(option.label)}\n${option.detail}\n\n` +
+        MENTION_MSG.panel(
+          await panelFor(deps, cfg, who.discordUserId)(pending.question || option.label),
+        );
     await deps.conversation.save({
       user: `I meant ${option.label}`,
       assistant: content,
@@ -981,7 +1055,15 @@ export async function handleTypedQuestion(
     if (!verdict.ok) return { kind: 'capped', content: verdict.message };
 
     const docs = await docsContextFor(deps, cfg, who.discordUserId);
-    const answer = await answerQuestion(question, memory.turns, { ...who, via: 'component' }, cfg, now, docs);
+    const answer = await answerQuestion(
+      question,
+      memory.turns,
+      { ...who, via: 'component' },
+      cfg,
+      now,
+      panelFor(deps, cfg, who.discordUserId),
+      docs,
+    );
     await deps.conversation.save({
       user: question,
       assistant: answer.content,

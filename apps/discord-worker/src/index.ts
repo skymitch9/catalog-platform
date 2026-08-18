@@ -90,6 +90,7 @@ import {
   MAX_TOOL_ITERATIONS,
 } from './gabi-tools.js';
 import { delegatedWritesOn, libraryInstances } from './delegated.js';
+import { makeDelegate } from './delegated-exec.js';
 import {
   DOCS_BYTES_PER_TURN,
   DOCS_SECTIONS_PER_TURN,
@@ -653,6 +654,13 @@ app.post('/interactions', async (c) => {
           ),
         );
       }
+      // ⚠️ ASKER-AWARE DEEP LINK (2026-08-18). The same port Tier 1 built,
+      // used READ-ONLY: `whoami` mutates nothing and needs no capability, so
+      // this is deliberately NOT gated on `GABI_DELEGATED_WRITES` — switching
+      // writes off must not send everybody back to the pilot host. `null` when
+      // the app token or the service account is unset, and the command then
+      // behaves exactly as it did before this landed.
+      const gabiPanelPort = makeDelegate(c.env);
       defer(
         c,
         processGabi({
@@ -663,6 +671,9 @@ app.post('/interactions', async (c) => {
           panelUrl: panelDeepLink(panelBase(c.env)),
           serviceAccountJson: c.env.FIREBASE_SERVICE_ACCOUNT,
           discordUserId: decision.actor.user?.id ?? null,
+          ...(gabiPanelPort
+            ? { panel: { port: gabiPanelPort, instances: libraryInstances(c.env) } }
+            : {}),
         }),
       );
       return c.json(deferredEphemeral());
