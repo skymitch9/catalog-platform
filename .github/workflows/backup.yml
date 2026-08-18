@@ -130,10 +130,29 @@ name: Backup (daily + manual)
 #                                  exactly as long as the owner's disk. Add it
 #                                  here the day the local master stops being
 #                                  a safe assumption.
-#                  estate-audio    0 objects — empty by design (on-request
-#                                  fulfilment). Would be estate-ebooks's twin
-#                                  at 630 GB if it ever fills; that is a
-#                                  decision to make then, not now.
+#                  estate-audio    🔴 **NEVER ADD THIS ONE.** Rewritten
+#                                  2026-08-18: it is no longer "0 objects,
+#                                  empty by design". It now holds the DISASTER-
+#                                  RECOVERY ARCHIVE of the whole audiobook
+#                                  library — 1,260 objects / ~685 GB under the
+#                                  `archive/` prefix, written by
+#                                  audiobook_catalog/scripts/archive_audio_r2.py
+#                                  on the owner's order ("we lose this data we
+#                                  lose it all and the server isnt ready yet").
+#                                  ⚠️ THIS BUCKET IS ITSELF THE BACKUP — it is
+#                                  the off-site copy of files whose master is
+#                                  the owner's disk. Tarring 685 GB nightly and
+#                                  putting it back into estate-backups would be
+#                                  a backup of a backup, ~8 generations deep,
+#                                  and it would not be a backup at all: it is a
+#                                  runner with a 14 GB disk, a job that cannot
+#                                  finish, and a red X on every other store's
+#                                  backup every night. A 685 GB daily tar is not
+#                                  a backup, it is an outage.
+#                                  The `archive/` prefix is also the one thing
+#                                  in this estate that must NEVER be evicted or
+#                                  lifecycle-expired; see
+#                                  audiobook_catalog docs/access/AUDIO_ARCHIVE.md.
 #                  bgc-photos      0 objects (feature not live).
 #                  library-2nd-covers  0 objects.
 #                  estate-backups  the backup bucket itself — backing it up
@@ -141,8 +160,13 @@ name: Backup (daily + manual)
 #                                  OFF Cloudflare is an open owner step
 #                                  (RECOVERY.md §9 item 7).
 #
-#                The three zero-object buckets join the matrix the day any of
-#                them holds anything.
+#                ⚠️ The two remaining zero-object buckets (`bgc-photos`,
+#                `library-2nd-covers`) join the matrix the day either holds
+#                anything. **`estate-audio` is explicitly NOT covered by that
+#                rule any more** — it used to be, as one of "the three
+#                zero-object buckets", and that sentence would now auto-enroll
+#                685 GB into a nightly tar. It is excluded on its merits, not
+#                on its emptiness, and it stays excluded however full it gets.
 #
 #   retention → scripts/prune-r2-backups.mjs, keeps the newest 8 objects per
 #                <kind>/<store> prefix in estate-backups and deletes the
@@ -334,6 +358,13 @@ jobs:
         # trees that exist together nowhere else — so the copy is worth
         # essentially nothing to take and is the only estate-side copy there
         # is. The buckets NOT here are argued in the header above.
+        #
+        # 🔴 **DO NOT ADD `estate-audio`.** It holds the ~685 GB disaster-
+        # recovery archive of the audiobook library (`archive/` prefix). This
+        # job tars a WHOLE bucket onto a 14 GB runner disk and uploads the tar —
+        # a 685 GB daily tar is not a backup, it is an outage, and the bucket is
+        # itself the backup copy of local files. The header above carries the
+        # full argument. Adding it is not a matrix edit, it is an incident.
         bucket: [library-covers, audiobook-covers, game-covers, ebooks-gated, estate-docs-gated]
     steps:
       - name: Guard — CLOUDFLARE_API_TOKEN must exist

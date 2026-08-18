@@ -132,7 +132,7 @@ Ranked by blast radius. These are not "stale" — no copy exists anywhere.
 | 5 | **R2 `ebooks-gated`** | 2 objects, 107 kB — `ebooks.json` and `audio_manifest.json`, the two gated manifests | Republished by the pipeline (`publish_ebooks_manifest.py`, sync step 5.8), so recoverable — but until it runs, the gate has nothing to read |
 | 6 | **R2 `estate-docs-gated`** | 2 objects, 1.27 MB — the searchable docs corpus, bucket created 2026-08-18 | Rebuilt by the publisher from the three docs trees; ⚠️ that publisher runs on the owner's machine and is the only place all three trees exist together |
 | 7 | **KV `estate_docs`** (`3278d5e3…`) | **0 keys today** (`wrangler kv key list` → `[]`) | Nothing to lose right now; it is a declared store with no backup path, so it becomes a hole the day it is used |
-| 8 | **R2 `estate-audio`** | 0 objects — empty by design (on-request fulfilment) | Nothing to lose; would become hole #4's twin at 630 GB scale if it ever filled |
+| 8 | **R2 `estate-audio`** | ⚠️ **Rewritten 2026-08-18 — no longer empty.** It now holds the **disaster-recovery ARCHIVE of the whole audiobook library**: 1,260 objects / ~685 GB under the `archive/` prefix, seeded by `audiobook_catalog/scripts/archive_audio_r2.py` (hourly task `AudiobookArchiveR2`) on the owner's order — *"we lose this data we lose it all and the server isnt ready yet"* | 🔴 **NOT a hole, and NOT a candidate for `backup.yml`.** This bucket *is* the off-site copy; its master is the owner's local disk. Backing it up would be a backup of a backup at 685 GB × 8 generations onto a 14 GB runner — an outage, not a backup. `scripts/backup-r2.mjs` now REFUSES it mechanically (`REFUSED_BUCKETS`, env escape hatch only). ⚠️ The `archive/` prefix must never be evicted or lifecycle-expired; the audio player's eviction pass refuses it in code. See `audiobook_catalog/docs/access/AUDIO_ARCHIVE.md` |
 | 9 | **R2 `library-2nd-covers`**, **R2 `bgc-photos`** | 0 objects each | Nothing to lose today; both belong in the matrix the day they hold anything |
 | 10 | **R2 `estate-backups` itself** | 16 objects, 917 MB — 8 stores × **2** generations | Single-copy, single-region, single-account. Retention is configured for 8 but only two `target=all` runs have ever landed, so "8 deep" is a setting, not a fact. ✅ **The 8-vs-2 question is answered — young system, not a prune bug** (§9, and `backup-restore.md` §3's retention note). ✅ **The single-copy half is closed too, 2026-08-18** — the mirror (§2a) puts every generation on the owner's PC, in OneDrive and in Google Drive `/GABI_backup`. Single-*region* and single-*account* are no longer true of the bytes, only of the bucket |
 
@@ -847,9 +847,19 @@ implemented on 2026-08-18 in commit `8c7f780`. Status is marked per item.
 10. ✅ **RECORDED 2026-08-18** as a standing rule in `backup.yml`'s header and
     `backup-restore.md` §8, so the day one fills, the reason it was skipped is
     beside the matrix.
-    **Add `bgc-photos`, `library-2nd-covers`, `estate-audio` and the
-    `estate_docs` KV the day any of them holds data.** All four are empty
-    today; three of them are already named as future work elsewhere.
+    **Add `bgc-photos`, `library-2nd-covers` and the `estate_docs` KV the day
+    any of them holds data.** All three are empty today and are already named
+    as future work elsewhere.
+
+    🔴 **`estate-audio` was on that list and has been REMOVED from it,
+    2026-08-18 — it filled, and the rule was wrong for it.** It now holds the
+    ~685 GB disaster-recovery archive of the audiobook library (`archive/`
+    prefix, hourly task `AudiobookArchiveR2`). The "add it the day it holds
+    data" rule would have enrolled 685 GB into a nightly tar on a 14 GB
+    runner. It is excluded **on its merits, not on its emptiness**: the bucket
+    *is* the backup, whose master is the owner's local disk, so a copy of it
+    would be a backup of a backup. `scripts/backup-r2.mjs` now refuses it
+    mechanically rather than relying on anyone reading this paragraph.
 
 ---
 

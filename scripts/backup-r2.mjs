@@ -73,6 +73,10 @@
  * repeated here, so the two cannot drift. As of 2026-08-18 the matrix is
  * library-covers, audiobook-covers, game-covers, ebooks-gated,
  * estate-docs-gated.
+ *
+ * 🔴 ONE bucket is refused MECHANICALLY here, not merely left out of the
+ * matrix: `estate-audio`. See REFUSED_BUCKETS below — it holds ~685 GB of
+ * disaster-recovery archive and is itself the backup copy.
  */
 
 import { mkdirSync, writeFileSync, statSync } from 'node:fs';
@@ -94,6 +98,51 @@ if (!ACCOUNT_ID) {
 if (buckets.length === 0) {
   console.error('Usage: node scripts/backup-r2.mjs <bucket> [<bucket> ...] [--allow-empty]');
   process.exit(1);
+}
+
+// 🔴 MECHANICAL GUARD — REFUSED_BUCKETS, added 2026-08-18.
+//
+// `estate-audio` now holds the DISASTER-RECOVERY ARCHIVE of the audiobook
+// library: 1,260 objects / ~685 GB under the `archive/` prefix, written by
+// audiobook_catalog/scripts/archive_audio_r2.py on the owner's order ("we lose
+// this data we lose it all and the server isnt ready yet").
+//
+// This script downloads EVERY OBJECT'S BYTES to local disk, and backup.yml then
+// tars the result. On a GitHub runner (14 GB of free disk) that is not a slow
+// backup, it is a full disk, a failed job, and — because the retention job runs
+// on every dispatch regardless of outcome — a red X across the whole nightly
+// run. It also would not be a backup: this bucket IS the off-site copy, whose
+// master is the owner's local library. A backup of a backup, eight generations
+// deep, at 685 GB a generation.
+//
+// The written rule lived in backup.yml's header and in backup-restore.md and
+// said, for months, "add estate-audio the day it holds anything" — which is
+// exactly the sentence that would have caused this. Prose lost; this is the
+// guard that does not.
+//
+// The escape hatch is deliberately awkward (an env var, never a flag), because
+// anyone who genuinely means it should have to say so in a way nobody types by
+// accident: BACKUP_R2_ALLOW_REFUSED=estate-audio.
+const REFUSED_BUCKETS = {
+  'estate-audio':
+    'holds the ~685 GB disaster-recovery ARCHIVE of the audiobook library ' +
+    '(archive/ prefix). It is itself the off-site backup copy — tarring it ' +
+    'nightly onto a 14 GB runner is an outage, not a backup. See ' +
+    'backup.yml\'s header and audiobook_catalog docs/access/AUDIO_ARCHIVE.md.',
+};
+const allowedRefusals = (process.env.BACKUP_R2_ALLOW_REFUSED || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+for (const b of buckets) {
+  if (REFUSED_BUCKETS[b] && !allowedRefusals.includes(b)) {
+    console.error(
+      `REFUSING to back up "${b}": ${REFUSED_BUCKETS[b]}\n` +
+        `If you truly mean it, set BACKUP_R2_ALLOW_REFUSED=${b} and re-run — and ` +
+        `check the runner has the disk for it first.`
+    );
+    process.exit(1);
+  }
 }
 
 const API_BASE = 'https://api.cloudflare.com/client/v4';
