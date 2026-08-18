@@ -33,11 +33,12 @@
 
   ⚠️ THERE ARE NO PODS OR CONTAINERS, and the owner's word for them should not
   become a promise this estate cannot keep. It is Workers plus pipelines on a
-  home machine. Workers cannot be live-tailed from a static page; the planned
-  answer is a capped D1 ring buffer that workers write structured rows into,
-  and it is a FOLLOW-UP that has not been built. The "Recent worker events"
-  section below says exactly that rather than showing an empty box that looks
-  like silence.
+  home machine. Workers still cannot be live-tailed from a static page — but as
+  of 2026-08-18 ("fix this", on meeting the placeholder) the capped D1 ring
+  buffer IS built: Workers write structured rows through an ops door and the
+  "Recent worker events" section renders them newest-first. ⚠️ An EMPTY ring
+  still never renders as "no errors" — it says what it has been listening since,
+  because those are different facts and only one of them is reassuring.
 
   Styling: assets/status-shell.css — SHARED by all four pages (extracted from
   this file's inline <style> at the split) so an amber dot means the same
@@ -288,20 +289,16 @@
        Saying so in a box is the point: an empty list here would be read as
        "no errors", which is the single most dangerous thing this page could
        imply. The deep link goes where the logs actually are today. -->
-  <section aria-labelledby="log-h">
+  <section id="events-section" aria-labelledby="log-h" hidden>
     <h2 id="log-h">Recent worker events</h2>
     <p class="section-note">
-      <strong>Not wired up yet</strong> — and an empty box here would read as
-      "no errors", which is not something this page can currently know.
+      Errors, refusals worth seeing and deploy markers, written by the estate&rsquo;s
+      Workers into a capped ring and rendered newest first. This is a
+      <em>noticeboard, not a log</em> &mdash; the full stream is still Cloudflare&rsquo;s
+      (<code>wrangler tail &lt;worker&gt;</code>), and the pipeline&rsquo;s own logs live
+      on the home machine and appear on their rows above.
     </p>
-    <p class="empty-say">
-      Workers cannot be live-tailed from a static page. The plan on file is a
-      capped ring buffer in D1 that each Worker writes structured event rows
-      into, rendered here newest-first with its own timestamp. Until that
-      ships, the real tail is the Cloudflare dashboard
-      (<code>wrangler tail &lt;worker&gt;</code>), and the pipeline's own logs
-      live on the home machine.
-    </p>
+    <div id="events-rows"></div>
   </section>
 
   <footer>

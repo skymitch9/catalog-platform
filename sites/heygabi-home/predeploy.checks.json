@@ -42,6 +42,8 @@
         "id=\"storage-section\"",
         "id=\"storage-buckets\"",
         "id=\"storage-archive\"",
+        "id=\"events-rows\"",
+        "Recent worker events",
         "id=\"storage-fresh\"",
         "Estate status",
         "id=\"pipeline-rows\"",
@@ -330,6 +332,8 @@
       "mustContain": [
         "renderStorage",
         "renderRowLogs",
+        "renderEvents",
+        "no errors",
         "./lib/storage-view.js",
         "ebookLaneVerdict",
         "./lib/ebook-lane.js",

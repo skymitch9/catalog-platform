@@ -54,6 +54,7 @@ import {
   REFRESH_INTERVAL_MS,
   TICK_INTERVAL_MS,
   detailOf,
+  el,
   fetchJSON,
   formatAge,
   fsMap,
@@ -70,7 +71,7 @@ import {
 import { ebookLaneVerdict } from './lib/ebook-lane.js';
 // The blob-storage panel (owner ask 2026-08-18). PUSHED, not probed — see the
 // section comment in index.html for why a Worker route was rejected.
-import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness } from './lib/board.js';
+import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness, str } from './lib/board.js';
 import { describeArchive, describeBucket, describeTotals } from './lib/storage-view.js';
 import { mountGate } from './lib/gate.js';
 import { idToken } from '../assets/estate-auth.js';
@@ -1215,6 +1216,118 @@ async function loadStorage() {
 }
 
 // ---------------------------------------------------------------------------
+// Recent worker events — the capped D1 ring (owner, 2026-08-18: "fix this")
+//
+// ⚠️ THE ONE RULE THIS SECTION MUST NEVER BREAK: an empty list is not "no
+// errors". The placeholder this replaces refused to render an empty box for
+// exactly that reason, and the reason did not go away when the ring shipped —
+// it moved. So an empty ring says what it has been LISTENING SINCE, and a ring
+// that has never been written to says that instead. Those are three different
+// facts and only one of them is reassuring.
+// ---------------------------------------------------------------------------
+
+const eventsRowsEl = document.getElementById('events-rows');
+const EVENT_TONE = { error: 'danger', warn: 'warn', deploy: 'ok', info: 'nodata' };
+
+function renderEvents(payload, now) {
+  if (!eventsRowsEl) return;
+  eventsRowsEl.replaceChildren();
+
+  if (!payload) {
+    eventsRowsEl.append(el('p', 'empty-say', 'The event ring could not be read, so what the Workers have reported is unknown from here.'));
+    return;
+  }
+  if (payload.error) {
+    // A migration that has not run is a real, fixable state and says so.
+    eventsRowsEl.append(el('p', 'empty-say', `${payload.detail || payload.error}${payload.fix ? ` Fix: ${payload.fix}` : ''}`));
+    return;
+  }
+
+  const events = Array.isArray(payload.events) ? payload.events : [];
+  if (!events.length) {
+    const sinceMs = Date.parse(payload.since || '');
+    eventsRowsEl.append(
+      el(
+        'p',
+        'empty-say',
+        Number.isFinite(sinceMs)
+          ? `No events recorded since ${new Date(sinceMs).toLocaleString()} (${formatAge(now - sinceMs)}). ` +
+            'That is not the same as "no errors" — it means no Worker has reported one to this ring in that time.'
+          : 'The ring is live and no Worker has written to it yet. That is not "no errors": it means nothing has reported, ' +
+            'and a Worker that has not been wired up cannot report at all.',
+      ),
+    );
+    return;
+  }
+
+  const list = el('ul', 'rows');
+  for (const raw of events) {
+    const e = raw && typeof raw === 'object' ? raw : {};
+    const li = el('li', 'row');
+    li.dataset.state = EVENT_TONE[String(e.level)] || 'nodata';
+    const dot = el('span', 'dot');
+    dot.setAttribute('aria-hidden', 'true');
+    li.append(dot);
+
+    const body = el('div', 'row-body');
+    const head = el('div', 'row-head');
+    head.append(el('span', 'row-name', str(e.worker) || 'unnamed worker'));
+    head.append(el('span', 'badge', str(e.level) || 'event'));
+    body.append(head);
+    body.append(el('p', 'row-detail', str(e.message) || '(no message)'));
+
+    // ⚠️ TWO CLOCKS, KEPT APART. `at` is when the Worker says it happened;
+    // `received_at` is when this estate actually heard about it. They differ
+    // when a report is delayed, and collapsing them would hide exactly that.
+    const bits = [];
+    const atMs = Date.parse(str(e.at));
+    if (Number.isFinite(atMs)) bits.push(`happened ${formatAge(now - atMs)}`);
+    const gotMs = Date.parse(str(e.received_at));
+    if (Number.isFinite(gotMs) && Number.isFinite(atMs) && Math.abs(gotMs - atMs) > 60_000) {
+      bits.push(`reported ${formatAge(now - gotMs)}`);
+    }
+    if (str(e.route)) bits.push(str(e.route));
+    if (str(e.request_id)) bits.push(`request ${str(e.request_id)}`);
+    if (bits.length) body.append(el('p', 'row-note', bits.join(' \u00b7 ')));
+
+    if (str(e.detail)) {
+      const details = document.createElement('details');
+      details.className = 'row-log';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Detail';
+      details.append(summary);
+      const pre = el('pre', 'log-tail', str(e.detail));
+      details.append(pre);
+      body.append(details);
+    }
+
+    li.append(body);
+    list.append(li);
+  }
+  eventsRowsEl.append(list);
+  eventsRowsEl.append(
+    el('p', 'section-note',
+      `Newest first \u00b7 ${events.length} shown \u00b7 the ring keeps the last ${payload.per_worker_cap ?? '?'} per Worker.`),
+  );
+}
+
+async function loadEvents() {
+  if (!eventsRowsEl) return;
+  const now = Date.now();
+  try {
+    const res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/worker-events?limit=100`, {
+      headers: { Authorization: `Bearer ${await idToken()}` },
+      cache: 'no-store',
+    });
+    const body = await res.json().catch(() => null);
+    // A 503 carries the table-missing shape, which renderEvents words properly.
+    renderEvents(res.ok || body?.error ? body : null, now);
+  } catch {
+    renderEvents(null, now);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The devops gate + wiring
 //
 // ⚠️ THE GATE IS lib/gate.js AND IS SHARED BY ALL FOUR PAGES. What it reveals
@@ -1227,19 +1340,20 @@ const migrationSectionEl = document.getElementById('migration-section');
 const commandmentsSectionEl = document.getElementById('commandments-section');
 const backupsSectionEl = document.getElementById('backups-section');
 const storageSectionEl = document.getElementById('storage-section');
+const eventsSectionEl = document.getElementById('events-section');
 
 const gate = mountGate({
-  sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl],
+  sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl, eventsSectionEl],
   // Idempotent by design — the gate re-runs this on every auth event, and both
   // loaders simply re-render the same rows with a fresh reading.
-  onAllowed: () => { loadBackups(); loadStorage(); },
+  onAllowed: () => { loadBackups(); loadStorage(); loadEvents(); },
 });
 
 // The storage panel is PUSHED data, so it re-polls on the board's own cadence
 // rather than with this page's probe refresh — visible tabs only, same rule as
 // the other two pushed pages.
 setInterval(() => {
-  if (!document.hidden && gate.isAllowed()) loadStorage();
+  if (!document.hidden && gate.isAllowed()) { loadStorage(); loadEvents(); }
 }, BOARD_POLL_MS);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && gate.isAllowed()) loadStorage();

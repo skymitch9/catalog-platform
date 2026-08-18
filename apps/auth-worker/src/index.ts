@@ -22,6 +22,7 @@ import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { agentBoardRoutes } from './agent-board.js';
 import { notifyPrefsRoutes } from './notify-prefs.js';
+import { recordOwnEvent, workerEventsRoutes } from './worker-events.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
 import { estateDocsRoutes } from './estate-docs.js';
@@ -98,6 +99,11 @@ app.use('/api/estate/ops/agent-board', adminCors());
 // a working handler unreachable — a route does not imply a CORS mount, and
 // Hono's mounts are exact-or-wildcard, never prefix-implicit.
 app.use('/api/estate/ops/notify-prefs', adminCors());
+// The event ring's GET is read from the apex with an Authorization header, so
+// it is preflighted and needs its mount like every other ops route. (The POST
+// half is a machine door and needs no CORS; it is covered because Hono mounts
+// by path, not by method.)
+app.use('/api/estate/ops/worker-events', adminCors());
 // ⚠️ THE INGESTION PAUSE CARD SHIPPED WITHOUT THIS MOUNT (bc6fc2b, 2026-08-18)
 // and was therefore UNREACHABLE FROM A BROWSER — found 2026-08-18 while moving
 // the card to /status/pipelines. Both its routes carry an Authorization header,
@@ -166,6 +172,8 @@ app.route('/api', opsRoutes);
 app.route('/api', agentBoardRoutes);
 // Notification preferences — a person writes them, the conductor reads them.
 app.route('/api', notifyPrefsRoutes);
+// The worker event ring — Workers POST with a bearer, devops reads in a browser.
+app.route('/api', workerEventsRoutes);
 app.route('/api', todoRoutes);
 // ⚠️ ORDER IS LOAD-BEARING: estateDocsRoutes BEFORE docsRoutes.
 // docsRoutes owns GET /estate/docs/:slug, and its slug pattern
@@ -244,6 +252,18 @@ app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404));
 
 app.onError((err, c) => {
   console.error('unhandled', err);
+  // ⚠️ THE HIGHEST-VALUE WRITER IN THE ESTATE, and the cheapest: every
+  // unhandled error in the auth Worker now lands on /status's event ring
+  // instead of only in a log nobody is tailing at 3am. It writes straight to
+  // D1 — this Worker owns the table, so it needs no token and no subrequest —
+  // and it cannot throw, because an error handler that fails turns one 500
+  // into a loop.
+  recordOwnEvent(c, {
+    level: 'error',
+    message: err.message || 'unhandled error',
+    route: new URL(c.req.url).pathname,
+    detail: (err.stack || '').slice(0, 2000),
+  });
   return c.json({ error: 'internal', detail: err.message }, 500);
 });
 
