@@ -103,6 +103,30 @@ migrations_dir = "migrations"
 #   wrangler secret put ESTATE_APP_TOKEN_LIBRARY   (and _GAMES, _INDEX,
 #     _AUDIOBOOK; _LIBRARY2 joins when the second library instance's Worker
 #     env is provisioned — unset until then, deliberately)
+#   wrangler secret put ESTATE_APP_TOKEN_DISCORD_DOCS  (GABI docs assistant
+#     phase 3, added 2026-08-18. ⚠️ NOT A PORTAL VALUE — the conductor MINTS it
+#     (`openssl rand -hex 32`) and pipes the SAME value to exactly TWO holders:
+#     here, and apps/discord-worker. Two, not three: this is DOOR B onto the
+#     estate docs corpus and nothing else.
+#     ⚠️ **IT IS NOT `ESTATE_APP_TOKEN_DISCORD`.** That token exists already and
+#     is shared by the discord-worker and BOTH library Workers for the Tier-1
+#     delegated writes. Reusing it here would mean a leak from either library
+#     instance also opened break-glass SQL, deploy levers, secret names and
+#     household members' emails. A fresh trust edge gets a fresh pair — and
+#     re-minting the T1 token to add a holder would break T1, so a new name was
+#     the only correct move. Custody: docs/access/estate-docs.md §8.
+#     ⚠️ HOLDING IT AUTHORISES NO READ ON ITS OWN. It proves only "this request
+#     came from the estate's Discord Worker"; the request must ALSO carry the
+#     asker's proven email in `X-Estate-On-Behalf-Of`, and this Worker resolves
+#     THAT email against the directory and applies devopsAllows() — the same one
+#     implementation the browser door uses. Revoking someone's devops in /admin
+#     shuts this door on their next question, with no deploy.
+#     ⚠️ Deliberately NOT a CONSUMER_APPS entry — adding it there would silently
+#     make it a valid POST /api/estate/seen bearer, which is a wider capability
+#     than the one being granted. It is read by ONE module: src/estate-docs.ts.
+#     ⚠️ SHIPS DARK until set: no bearer comparison happens at all, every request
+#     falls through to door A, and the corpus behaves exactly as it did before
+#     phase 3.)
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
 #     never paste it into a terminal line, never echo it; see firebase-sa.ts)
 #   wrangler secret put PIPELINE_TRIGGER_TOKEN     (pipe the SAME value as

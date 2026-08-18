@@ -148,6 +148,42 @@ export interface Env {
   ESTATE_APP_TOKEN_LIBRARY2?: string;
 
   /**
+   * ⚠️ **THE DISCORD DOCS DOOR (door B) — a NEW, SEPARATE trust edge.**
+   *
+   * Held by exactly TWO holders: this Worker and `apps/discord-worker`. Minted
+   * once, piped to both under this same name, and read by ONE module here
+   * (`estate-docs.ts`) and ONE module there (`docs-exec.ts`).
+   *
+   * ⚠️ **IT IS NOT `ESTATE_APP_TOKEN_DISCORD`, AND THE TWO MUST NEVER BE
+   * MERGED.** That token already exists and already has three holders (the
+   * discord-worker plus BOTH library Workers, minted 2026-08-18 for the Tier-1
+   * delegated writes). Reusing it here would mean a leak from either library
+   * instance also opened the estate's whole docs corpus — break-glass SQL,
+   * deploy levers, secret names and household members' emails. A fresh trust
+   * edge gets a fresh pair; that is the estate's standing rule and this is the
+   * case it was written for.
+   *
+   * ⚠️ **DELIBERATELY NOT IN `CONSUMER_APPS`.** The /seen consumer list is what
+   * `identifyApp()` resolves a bearer against, and adding this token there would
+   * silently make it a valid /seen bearer — a wider capability than the one
+   * being granted. It is a standalone field, consulted only by the docs routes'
+   * own gate, so its blast radius is exactly the corpus.
+   *
+   * ⚠️ **WHAT HOLDING IT AUTHORISES: nothing on its own.** It proves only *"this
+   * request came from the estate's Discord Worker"*. The request must ALSO carry
+   * a proven email in `X-Estate-On-Behalf-Of`, and this Worker then resolves
+   * THAT email against the directory and applies `devopsAllows()` — the same one
+   * implementation door A uses. So the worst a leak buys is reading the corpus
+   * on behalf of people who could already read it, and revoking someone's devops
+   * in /admin still shuts the door on their next question with no deploy.
+   *
+   * ⚠️ SHIPS DARK while unset: `estate-docs.ts` never even compares the bearer,
+   * so every request falls through to door A (Firebase ID token) exactly as it
+   * did before phase 3. Nothing crashes and no door is left ajar.
+   */
+  ESTATE_APP_TOKEN_DISCORD_DOCS?: string;
+
+  /**
    * The audiobook catalog's Firebase service-account JSON, whole — the
    * credential behind /api/estate/site-roles (the three-tier grant path;
    * WebCrypto RS256 → OAuth2 → Firestore/identitytoolkit REST, see

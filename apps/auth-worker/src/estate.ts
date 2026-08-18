@@ -39,7 +39,7 @@ import {
   statusCounts,
 } from './estate-db.js';
 import { meAnswer } from './me.js';
-import { devAccessAllows, requireApprover } from './middleware/auth.js';
+import { devAccessAllows, devopsAllows, requireApprover } from './middleware/auth.js';
 import { clearSiteRoleOnRevocation, type RoleClearResult } from './site-roles.js';
 import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
 
@@ -48,7 +48,7 @@ import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } 
  * length itself is not a secret worth hiding, the token bytes are.
  * (Same shape as the index Worker's push tokens.)
  */
-async function tokenMatches(header: string | undefined, expected: string): Promise<boolean> {
+export async function tokenMatches(header: string | undefined, expected: string): Promise<boolean> {
   if (!header?.startsWith('Bearer ')) return false;
   const given = new TextEncoder().encode(header.slice('Bearer '.length));
   const want = new TextEncoder().encode(expected);
@@ -240,13 +240,36 @@ estateRoutes.post('/estate/seen', async (c) => {
   // audiobook Worker already enforces on both lanes.
   const devAccess = devAccessAllows(row, isOwner);
 
+  // ⚠️ 0003/devops, EFFECTIVE — added 2026-08-18 with the GABI docs assistant's
+  // phase 3 (design §4.4). The same stance `visibility` and `dev_access` take on
+  // this answer, for the same stated reason: **a consumer applies it as-is and
+  // never recomputes it.** One field, computed by the one implementation
+  // (`devopsAllows`, middleware/auth.ts), already combined with `status` and
+  // with the OWNER_EMAILS break-glass.
+  //
+  // ⚠️ **THIS IS THE OPERATOR LINE, NOT THE CURTAIN.** `dev_access` directly
+  // above it means *"may see the /dev/ lane's pages draw themselves"* and is
+  // deliberately wider — it includes anyone hand-granted a preview. `devops`
+  // means operator standing: devops, approvers, owners, and nobody else. A
+  // consumer that wants to know whether someone may read runbooks, break-glass
+  // SQL or the estate docs corpus reads THIS field. Reading `dev_access` for
+  // that decision would admit exactly the people the gate exists to fence out,
+  // which is why the two ride side by side rather than one being derived from
+  // the other at the far end.
+  //
+  // ⚠️ It is an ANSWER, not a gate. The estate docs corpus is gated on the
+  // ROUTE (`estate-docs.ts`, door A `requireDevops()` / door B's own check),
+  // never on a consumer having seen `true` here — a check the caller performs
+  // is a check the caller can skip.
+  const devops = devopsAllows(row, isOwner);
+
   // ⚠️ NO `download_ebooks` on this answer. It rode here for one day
   // (2026-08-17) and was removed the same day: downloading an ebook is a rung
   // on the consuming site's own ladder now, not an estate fact (owner: *"use
   // roles we have… match library"*). `visibility` still carries `ebooks`, which
   // is the whole of what the estate decides about the shelf — seeing it, and
   // reading in the browser viewer.
-  return c.json({ status, visibility, dev_access: devAccess });
+  return c.json({ status, visibility, dev_access: devAccess, devops });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,12 @@
 /**
- * The estate docs CORPUS — search and read, devops-gated (design phase 2,
- * DOOR A only). Design of record: docs/info/gabi-docs-assistant-design.md.
+ * The estate docs CORPUS — search and read, devops-gated, through BOTH doors
+ * (design phases 2 and 3). Design of record:
+ * docs/info/gabi-docs-assistant-design.md.
+ *
+ * ⚠️ Door A (a signed-in browser, Firebase ID token) landed 2026-08-18 with
+ * phase 2. **Door B (the Discord Worker, app token + a proven email) landed
+ * with phase 3** — see `docsGate()` below, which is the whole of it. Both end
+ * at the same `devopsAllows()`.
  *
  * Owner brief, verbatim (2026-08-17): *"let's make sure GABI can read all of
  * our docs and stuff so she can even help me if needed for let's say I don't
@@ -29,10 +35,11 @@
  *    r2.dev URL and no custom domain (verified 2026-08-18: "Public access via
  *    the r2.dev URL is disabled") and must never get one — same reasoning
  *    `ebooks-gate.md` §7 gives about `audiobook-covers`. This Worker binding
- *    is the only way in, and `requireDevops()` is the only way through it.
+ *    is the only way in, and `docsGate()` is the only way through it.
  *
- * 3. **`dev_access` IS NOT THE GATE.** `requireDevops()` (devops OR approver
- *    OR owner, and `status='approved'` when the answer comes from the row) is.
+ * 3. **`dev_access` IS NOT THE GATE.** `devopsAllows()` (devops OR approver
+ *    OR owner, and `status='approved'` when the answer comes from the row) is —
+ *    reached through `requireDevops()` on door A and directly on door B.
  *    `estate-auth.md` §10 calls `dev_access` *"a curtain, not a lock"*; a
  *    member handed dev access to preview an ebook page has no business
  *    reading break-glass SQL. Widening this to `devAccessAllows()` would admit
@@ -72,8 +79,11 @@
 
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import type { AppBindings } from './env.js';
-import { requireDevops } from './middleware/auth.js';
+import type { AppBindings, EstateUserRow } from './env.js';
+import { parseOwnerEmails } from './env.js';
+import { getUserByEmail } from './estate-db.js';
+import { tokenMatches } from './estate.js';
+import { devopsAllows, requireDevops } from './middleware/auth.js';
 
 export const SNAPSHOT_KEY = 'snapshot.json.gz';
 export const RECEIPT_KEY = 'receipt.json';
@@ -513,6 +523,99 @@ function wordTheRefusal(): MiddlewareHandler<AppBindings> {
   };
 }
 
+/**
+ * ⚠️ **DOOR B — the header that carries the asker's PROVEN email.**
+ *
+ * Lowercase by convention (HTTP headers are case-insensitive; Hono lowercases
+ * on lookup). Named as a header rather than a query parameter or a body field
+ * on purpose: it must not land in an access log's URL, and the docs routes are
+ * GETs whose query string is the QUESTION, which is a different kind of thing
+ * from an identity.
+ */
+export const ON_BEHALF_OF_HEADER = 'x-estate-on-behalf-of';
+
+/**
+ * ⚠️ **THE TWO DOORS ONTO THE SAME ROUTES (design §4.3), and the reason this is
+ * one middleware rather than two mounted routers.**
+ *
+ * | Door | Caller | Proof |
+ * |---|---|---|
+ * | **A — site** | a signed-in browser on `heygabi.ai/docs/` | Firebase ID token |
+ * | **B — Discord** | `apps/discord-worker`, on a linked asker's behalf | `ESTATE_APP_TOKEN_DISCORD_DOCS` **plus** `X-Estate-On-Behalf-Of` |
+ *
+ * ⚠️ **BOTH DOORS END AT THE SAME PREDICATE.** Door A runs `requireDevops()`;
+ * door B resolves the asserted email against the directory and calls
+ * `devopsAllows(row, isOwner)` — the *same* exported function that middleware
+ * uses. There is no second copy of the decision and no weaker variant, which is
+ * what keeps design §4.1's promise ("nothing new, nothing weaker") and what
+ * makes revoking someone's devops in `/admin` shut both doors at once.
+ *
+ * ⚠️ **DOOR B IS TRIED FIRST, AND ONLY EXISTS WHEN THE SECRET IS SET.** With
+ * `ESTATE_APP_TOKEN_DISCORD_DOCS` unset no comparison happens at all and every
+ * request falls through to door A — the ships-dark state, and the state this
+ * Worker was in before phase 3. A bearer that is neither the app token nor a
+ * valid Firebase token falls through to door A and is refused there with the
+ * worded 401, so a wrong guess learns nothing about which door it missed.
+ *
+ * ⚠️ **THE TRUST BOUNDARY, STATED PLAINLY BECAUSE IT IS THE WHOLE DESIGN.** The
+ * holder of the app token can name ANY email and this Worker will answer for
+ * that person's standing. That is deliberate (design §4.4) and it is safe only
+ * because of what sits on the other end: the discord-worker can send exactly one
+ * email — the one `link.ts` proved server-side, through the person's own Discord
+ * OAuth *and* their own Firebase sign-in, and persisted on the
+ * `discord_links/{id}` document. ⚠️ **A future caller must never pass a
+ * user-supplied string here.** If a second consumer ever needs door B, it gets
+ * its own token pair and its own review of how it proves an email — not a copy
+ * of this one.
+ *
+ * ⚠️ **NO `actor` IS SET AND NO ROW IS MATERIALIZED.** `requireDevops()`
+ * materializes a row for an OWNER_EMAILS caller who has none, so `decided_by`
+ * has an id to stamp. Nothing in these three read-only handlers reads
+ * `c.get('actor')`, and a Discord docs question is not a reason to write a row
+ * into the directory — a read must not have a write as a side effect.
+ */
+function docsGate(): MiddlewareHandler<AppBindings> {
+  return async (c, next) => {
+    const appToken = c.env.ESTATE_APP_TOKEN_DISCORD_DOCS;
+    if (!appToken || !(await tokenMatches(c.req.header('authorization'), appToken))) {
+      // Not door B. Door A owns this request, whole.
+      return requireDevops()(c, next);
+    }
+
+    const email = (c.req.header(ON_BEHALF_OF_HEADER) ?? '').trim().toLowerCase();
+    if (email.length < 3 || email.length > 320 || !email.includes('@')) {
+      // ⚠️ The bot proved it is the bot but named nobody. In practice that is a
+      // PRE-UPGRADE LINK — a `discord_links` document written before `link.ts`
+      // persisted the email — which is why this reuses the relink sentence
+      // rather than inventing a fifth wording. It is 400 rather than 401: the
+      // caller authenticated fine, the request is incomplete.
+      return c.json({ error: 'no_proven_email', detail: DOCS_REFUSALS.link_has_no_email }, 400);
+    }
+
+    let row: EstateUserRow | null;
+    try {
+      row = await getUserByEmail(c.env.DB, email);
+    } catch (err) {
+      // ⚠️ D1 did not answer. That is an OUTAGE and is worded as one — calling
+      // it a permission failure sends the owner hunting for a grant he already
+      // holds, which is the exact mislabelling design §4.5's last row names.
+      console.error('estate docs door B: directory read failed:', (err as Error).message);
+      return c.json({ error: 'directory_unreachable', detail: DOCS_REFUSALS.estate_unreachable }, 503);
+    }
+
+    const isOwner = parseOwnerEmails(c.env.OWNER_EMAILS).includes(email);
+    if (!devopsAllows(row, isOwner)) {
+      return c.json({ error: 'forbidden', detail: DOCS_REFUSALS.not_devops }, 403);
+    }
+
+    // ⚠️ One line, no email and no token. The corpus's audience is narrower than
+    // this log stream's, and an access log that names who asked what about the
+    // estate's runbooks is a second copy of the thing the gate protects.
+    console.log(JSON.stringify({ evt: 'estate_docs_door_b', route: c.req.path, at: new Date().toISOString() }));
+    await next();
+  };
+}
+
 /** Resolve the bucket, or the WORDED config failure. Never lets "our setup is
  *  wrong" and "you may not read this" wear the same clothes — the
  *  app_tokens_unset idiom every other route in this Worker uses. */
@@ -563,7 +666,7 @@ function storeErrorResponse(c: Parameters<MiddlewareHandler<AppBindings>>[0], er
 
 export const estateDocsRoutes = new Hono<AppBindings>();
 
-estateDocsRoutes.get('/estate/docs/search', wordTheRefusal(), requireDevops(), async (c) => {
+estateDocsRoutes.get('/estate/docs/search', wordTheRefusal(), docsGate(), async (c) => {
   const resolved = resolveBucket(c);
   if ('response' in resolved) return resolved.response;
   const bucket = resolved.bucket;
@@ -624,7 +727,7 @@ estateDocsRoutes.get('/estate/docs/search', wordTheRefusal(), requireDevops(), a
   });
 });
 
-estateDocsRoutes.get('/estate/docs/section', wordTheRefusal(), requireDevops(), async (c) => {
+estateDocsRoutes.get('/estate/docs/section', wordTheRefusal(), docsGate(), async (c) => {
   const resolved = resolveBucket(c);
   if ('response' in resolved) return resolved.response;
   const bucket = resolved.bucket;
@@ -699,7 +802,7 @@ estateDocsRoutes.get('/estate/docs/section', wordTheRefusal(), requireDevops(), 
   });
 });
 
-estateDocsRoutes.get('/estate/docs/receipt', wordTheRefusal(), requireDevops(), async (c) => {
+estateDocsRoutes.get('/estate/docs/receipt', wordTheRefusal(), docsGate(), async (c) => {
   const resolved = resolveBucket(c);
   if ('response' in resolved) return resolved.response;
   const bucket = resolved.bucket;

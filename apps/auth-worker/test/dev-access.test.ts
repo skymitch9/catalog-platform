@@ -20,7 +20,9 @@ import { test } from 'node:test';
 import { estateRoutes } from '../src/estate.js';
 import { decideStatus, setDevAccess } from '../src/estate-db.js';
 import type { Env, EstateUserRow } from '../src/env.js';
-import { devAccessAllows } from '../src/middleware/auth.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { devAccessAllows, devopsAllows } from '../src/middleware/auth.js';
 
 function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
   return {
@@ -369,4 +371,74 @@ test('⚠️ dev access NEVER touches `visibility` — the curtain is not the lo
   // And the reverse: holding the shelf grants no dev lane.
   const shelfOnly = row({ status: 'approved', vis_ebooks: 1 });
   assert.equal(devAccessAllows(shelfOnly, false), false);
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ `devops` ON THE /seen ENVELOPE (GABI docs assistant, phase 3, design §4.4)
+//
+// The sibling of `dev_access` above, and the pair is the point: `dev_access` is
+// the CURTAIN (may see the /dev/ lane draw itself — includes anyone hand-
+// granted a preview) and `devops` is the LOCK-CLASS answer (operator standing:
+// devops, approvers, owners). A consumer that reads the wrong one to decide
+// whether somebody may read runbooks admits exactly the people the gate exists
+// to fence out, so these tests pin that the two answers genuinely differ and
+// that the new one is computed by the ONE implementation.
+// ---------------------------------------------------------------------------
+
+const ESTATE_SRC = readFileSync(fileURLToPath(new URL('../src/estate.ts', import.meta.url)), 'utf8');
+
+test('⚠️ /seen answers `devops` from devopsAllows() — not a re-derivation', () => {
+  // A hand-rolled `row.is_devops === 1` here would drift from the gate the
+  // moment either changes, and the drift would be silent: the envelope would
+  // still look right. Reading the source is how "one implementation" is
+  // enforced rather than hoped for.
+  const src = ESTATE_SRC.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(src, /const devops = devopsAllows\(row, isOwner\)/, '/seen stopped using devopsAllows()');
+  assert.match(src, /devops,?\s*\}\s*\)/, '`devops` is computed but not returned on the envelope');
+  // ⚠️ `\b` before `devops` is load-bearing: `_` is a word character, so this
+  // does NOT match `userJson`'s legitimate `is_devops: row.is_devops === 1`
+  // (the ADMIN listing's raw-flag report, which is correct there). It matches
+  // only an envelope field literally named `devops` fed from the raw column.
+  assert.doesNotMatch(
+    src,
+    /\bdevops:\s*row\.is_devops/,
+    '/seen re-derived devops from the raw flag instead of calling the predicate',
+  );
+});
+
+test('⚠️ the docs token is NOT a /seen consumer — adding it there would widen it', () => {
+  // `identifyApp()` resolves a bearer against CONSUMER_APPS. If the door-B docs
+  // token ever appeared in that list it would silently become a valid /seen
+  // bearer — a capability nobody granted it.
+  const src = ESTATE_SRC.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(src, /ESTATE_APP_TOKEN_DISCORD_DOCS/, 'the docs token leaked into the /seen path');
+  assert.doesNotMatch(
+    readFileSync(fileURLToPath(new URL('../src/env.ts', import.meta.url)), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''),
+    /CONSUMER_APPS[\s\S]{0,200}discord/i,
+    'the docs token was added to CONSUMER_APPS',
+  );
+});
+
+test('⚠️ devops and dev_access are DIFFERENT answers — a curtain is not a lock', () => {
+  // The row that makes the distinction real: hand-granted dev access, no
+  // operator standing. It may preview the /dev/ lane; it may NOT read the
+  // estate's runbooks.
+  const previewer = row({ dev_access: 1, is_devops: 0, is_approver: 0 });
+  assert.equal(devAccessAllows(previewer, false), true, 'the curtain should be open for a hand-granted preview');
+  assert.equal(devopsAllows(previewer, false), false, '⚠️ a dev-access grant became operator standing');
+
+  // …and the converse: devops implies dev access, computed, never stored.
+  const operator = row({ dev_access: 0, is_devops: 1 });
+  assert.equal(devopsAllows(operator, false), true);
+  assert.equal(devAccessAllows(operator, false), true, 'devops must always imply the dev lane');
+});
+
+test('⚠️ the envelope answer is already combined with status and the owner break-glass', () => {
+  // "Consumers apply it as-is and never recompute" is only safe if the answer
+  // is complete. A revoked leftover flag and a pending row must both read false.
+  assert.equal(devopsAllows(row({ status: 'revoked', is_devops: 1 }), false), false);
+  assert.equal(devopsAllows(row({ status: 'pending', is_devops: 1 }), false), false);
+  // The owner is true regardless of what the table says about him.
+  assert.equal(devopsAllows(row({ status: 'revoked', is_devops: 0 }), true), true);
+  assert.equal(devopsAllows(null, true), true, 'the break-glass must survive an empty directory');
 });
