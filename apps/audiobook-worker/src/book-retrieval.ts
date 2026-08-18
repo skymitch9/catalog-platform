@@ -266,7 +266,10 @@ export function tokenise(text: string): string[] {
   let m: RegExpExecArray | null;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(lowered)) !== null) {
-    const t = m[0].replace(/['’-]+$/, '');
+    // ⚠️ The possessive is stripped, because "Jake's stat sheet" and "Jake" are
+    // the same term to a reader and two different rare terms to BM25 — and the
+    // possessive form is the one a question uses while the book uses the plain.
+    const t = m[0].replace(/['’]s$/, '').replace(/['’-]+$/, '');
     if (t.length >= 2) out.push(t);
   }
   return out;
@@ -690,7 +693,13 @@ export function searchPack(pack: BookPack, opts: SearchOptions): SearchAnswer {
 
   const passages: Passage[] = [];
   let bytes = 0;
+  const taken: number[] = [];
   for (const s of selected) {
+    // ⚠️ Adjacent hits produce OVERLAPPING stitched spans, and two passages that
+    // are 90% the same text spend the turn's byte budget saying one thing twice.
+    // Measured on the real book-1 pack: `latest` returned ord 1547 and 1546 as
+    // its top two, whose ±1 spans share two of three chunks.
+    if (taken.some((t) => Math.abs(t - s.chunk.ord) <= 2)) continue;
     const p = stitchPassage(pack, s.chunk.ord);
     if (!p) continue;
     // ⚠️ REFUSE rather than trim (design §4.6). Stopping short of the cap is an
@@ -698,6 +707,7 @@ export function searchPack(pack: BookPack, opts: SearchOptions): SearchAnswer {
     if (bytes + p.bytes > MAX_SEARCH_BYTES) break;
     p.score = Number(s.score.toFixed(4));
     passages.push(p);
+    taken.push(s.chunk.ord);
     bytes += p.bytes;
   }
 
