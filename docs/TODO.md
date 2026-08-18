@@ -1120,7 +1120,16 @@ owner:**
    §11. 656 tests. Honest gap: invariance tests prove a trope cannot EDIT
    a refusal, not that a model never paraphrases one — the owner eyeball
    is "what happens in PH 14" while pinned tsundere: same fact, grumpier.
-2. Dashboard pass: blob rows into the BACKUPS grouping with seed %, last
+2. ✅ LANDED ~17:00 (all deployed): Dashboard pass complete — storage card
+   in BACKUPS (real %, three-state liveness, restore-proven ✓ from the
+   conductor's sha256 round trip), worker event RING live (auth-worker
+   writing; dedicated ESTATE_EVENTS_TOKEN design, catalog-index/audiobook
+   -worker wiring ~5 lines each once minted — Codex/tell-owner label),
+   notification prefs live (machines cannot POST them), /todo refreshed
+   (auth was already correct — 2026-08-15 owner lock; generator declined
+   with reasons), backups.test CRLF root cause fixed, ebook-lane THIRD
+   VERDICT (library-shrank = grey; branch-order bug proven fixed in the
+   shipped bundle). Superseded text follows: blob rows into the BACKUPS grouping with seed %, last
    run, verified?, restore-proven line (first data point: conductor's
    sha256 round trip today); worker event RING BUFFER in D1 (owner:
    "fix this" on the placeholder) + click-to-expand log tails; pushed
