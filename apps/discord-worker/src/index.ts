@@ -110,6 +110,7 @@ import {
 } from './book-knowledge.js';
 import { audiobookApiBase } from './book-knowledge-exec.js';
 import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
+import { personalityOn, TROPES } from './personality.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -372,6 +373,14 @@ app.get('/api/health', (c) =>
     gabi_memory_enabled: memoryOn(c.env),
     gabi_memory_ready: memoryOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
     gabi_memory_profile_max_bytes: PROFILE_MAX_BYTES,
+    // ⚠️ PERSONALITY. The roster is listed because "what can the bot in my
+    // server actually do" should be answerable in one curl — but the hidden PIN
+    // is deliberately NOT named anywhere a person would look, per the owner.
+    gabi_personality_enabled: personalityOn(c.env),
+    gabi_personality_tropes: TROPES,
+    // ⚠️ Person-keyed conversations, stated so a debugger does not go hunting
+    // for channel-scoped records that no longer exist.
+    gabi_conversation_scope: 'person',
   }),
 );
 

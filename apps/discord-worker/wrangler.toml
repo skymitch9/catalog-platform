@@ -384,6 +384,28 @@ AUDIOBOOK_API_URL = "https://audiobook-api.heygabi.ai"
 # one line back, then redeploy.
 GABI_MEMORY = "on"
 
+# ⚠️ PERSONALITY — she picks a voice per person and drifts gradually between
+# NEIGHBOURING ones. Affirmative-only: "on" and nothing else.
+#
+# ⚠️ THIS ONE SHIPS ON, and that is a departure from GABI_BOOKS / GABI_MEMORY
+# rather than an oversight. Those two open a gated corpus and a durable note
+# about a person, and each needed the owner's consent before it could do
+# anything. This one changes WORDING: he ordered it explicitly ("we need to give
+# Gabi personality settings"), it reveals nothing, it stores nothing beyond a
+# trope name, and the failure mode of getting it wrong is "she sounds odd"
+# rather than "she leaked something". Off is this one line back.
+#
+# ⚠️ TONE, NEVER TRUTH. Every refusal, spoiler bound, cap sentence and
+# availability grounding is personality-INVARIANT — the voice block is APPENDED
+# to the system prompt and every refusal reaches a person as a CONSTANT the
+# model is told to relay, so a trope cannot rewrite a string it never sees.
+#
+# ⚠️ PG-13 is a CEILING, not a register (owner, 2026-08-18): default mild, lean
+# in only where somebody is clearly playing along, never past that line.
+#
+# ⚠️ OFF IS SILENT — nobody asks a question only a personality could answer.
+GABI_PERSONALITY = "on"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)

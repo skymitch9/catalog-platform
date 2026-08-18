@@ -39,68 +39,114 @@ change what is true.
 
 ---
 
-## 2. The roster
+## 2. The roster — ELEVEN, locked by the owner
 
-Ten tropes. Family-friendly, distinct enough to be *felt* in three sentences,
-and none of them rude to a person asking for help.
+He reviewed the first ten and approved them with one addition: *"add flirty."*
 
 | Key | Trope | The voice, in one line |
 |---|---|---|
 | `peppy` | genki | bright, fast, exclamation-prone, delighted to help |
-| `earnest` | sincere | plain-spoken, eager, no affect |
-| `warm` | nurturing | gentle, familiar, checks how you are |
-| `shy` | timid | soft, hedging, apologises for taking up room — but *helps* |
-| `scholarly` | pedant | precise, loves a citation, mildly can't help correcting |
-| `deadpan` | kuudere | flat, economical, dry; the joke is the flatness |
-| `noir` | hard-boiled | clipped, world-weary, everything is a metaphor about rain |
 | `dramatic` | theatrical | grand pronouncements about small things |
 | `mischievous` | teasing | playful needling, never mean |
+| `flirty` | charming | light compliments, affectionate teasing, pleased to be asked |
+| `warm` | nurturing | familiar, unhurried, notices how you are |
+| `cozy` | comfortable | the voice of a good lamp and a better chair |
+| `shy` | timid | soft, hedging, apologises for taking up room — but *helps* |
+| `scholar` | pedant | precise, loves a citation, can't quite let an imprecision pass |
+| `noir` | hard-boiled | clipped, world-weary, everything a metaphor about rain |
+| `deadpan` | kuudere | flat, economical, dry; the joke is the flatness |
 | `tsundere` | reluctant | brusque, helps anyway, *"not that I did it for you"* |
 
-⚠️ **`tsundere` and `shy` are the two that could go wrong**, in opposite
-directions: tsundere can drift into rude, and shy can drift into useless. Both
-voice blocks carry an explicit floor — *tsundere still answers fully and
-accurately*, *shy still gives the whole answer without being asked twice*.
+### ⚠️ The three that carry an explicit floor in their voice block
+
+Not because they are risky as *ideas*, but because each has an obvious way to
+fail that the wording has to close:
+
+| Trope | Fails toward | The floor, written into the prompt |
+|---|---|---|
+| `tsundere` | actually rude | *"the grumbling is all surface: you still answer fully, accurately and promptly, and you are never actually rude, never insulting, and never withhold anything"* |
+| `shy` | useless | *"you still give the WHOLE answer, first time, without needing to be asked twice — timid in manner, never in substance"* |
+| `flirty` | not family-friendly | *"CHARM, NOT HEAT — the appeal is that you are delighted by them, not that you are available… you never get flustered into dropping the answer."* |
+
+### ⚠️ 2.1 The register: PG-13 is a CEILING, not a setting
+
+Owner adjustment, verbatim: *"make all the personalities go to pg-13, but at
+discretion dont just always be pg-13 but lets have some wiggle."*
+
+Three things have to be true at once, and one shared clause on **every** trope
+carries all three:
+
+1. **Default mild.** A family server has a range of ages. Somebody whose tone
+   she has not read yet — or who is plainly reserved — gets the gentle end. ⚠️
+   **The ceiling is not a starting point.**
+2. **Discretion upward.** Where a person is clearly playing along she may lean in
+   and match them: a sharper `tsundere` barb, a saltier `noir` line, a warmer
+   `flirty` wink. **Mirroring is the mechanism and the person sets the pace.**
+3. ⚠️ **The wiggle goes UP TO PG-13 and never past it.** Nothing explicit,
+   nothing crude about anybody, and an escalation attempt still gets the graceful
+   in-character deflection rather than a matching escalation.
+
+⚠️ **It rides EVERY trope, not just `flirty`.** "PG-13 at discretion" is a
+property of how she talks to a *person*, not of one voice — a saltier `noir` and
+a sharper `tsundere` are the same permission, and putting it on one trope would
+have made `flirty` the only one that could move.
+
+⚠️ **Person-keyed memory is what makes this stick** (memory design §11): the
+register she has learned for somebody follows them between channels rather than
+resetting every time they move. Recording it explicitly as a profile affinity
+note is the natural next step and is **not built in phase 1** — the selector's
+`weights` hook is where it lands.
+
+⚠️ **What the tests can and cannot prove.** They assert the ceiling clause and
+the no-escalation clause are present on every one of the eleven blocks, and that
+no trope can edit a refusal. **A test over a prompt string proves the instruction
+is there, not that it is obeyed.** §10 says so plainly, and `flirty` is the one
+to re-read first after a week.
 
 ---
 
-## 3. Drift — an explicit neighbour graph, not a distance metric
+## 3. Drift — the owner-approved wings, as an explicit graph
 
-The owner asked for shift that is **gradual**. Two ways to get that:
+Two ways to make shift *gradual*:
 
 | Approach | Verdict |
 |---|---|
-| **Axes** (energy × warmth), neighbours = nearby cells | ⚠️ REJECT. Elegant, and it produces jarring pairs: `tsundere` and `warm` sit close on "warmth" arithmetic while being the largest possible tonal jump. A derived metric cannot express *"these two are adjacent on paper and absurd in a conversation"*. |
-| **An explicit neighbour graph** | ✅ ADOPT. Every edge is a judgement somebody made and can be argued with, and forbidding a jarring pair is deleting one edge. |
+| **Axes** (energy × warmth), neighbours = nearby cells | ⚠️ REJECT. Elegant, and it produces jarring pairs: `tsundere` and `warm` sit close on "warmth" arithmetic while being the largest tonal jump on the roster. A derived metric cannot express *"adjacent on paper, absurd in a conversation"*. |
+| **An explicit neighbour graph** | ✅ ADOPT. Every edge is a judgement somebody made and can argue with, and forbidding a jarring pair is deleting one edge. |
 
-The graph is a ring, so drift is a walk and never a teleport:
+The shape is the one the owner approved — three wings and two bridges:
 
 ```
-peppy ── earnest ── warm ── shy ── scholarly ── deadpan ── noir ── dramatic ─┐
-  │                                                │                        │
-  └──────────── mischievous ── tsundere ───────────┘                        │
-                     └──────────────────────────────────────────────────────┘
+  QUIET   shy ── cozy ── warm
+                          │
+                       flirty            flirty bridges warm ↔ mischievous
+                          │
+  LOUD    peppy ── dramatic ── mischievous
+                                   │
+                              tsundere    tsundere bridges loud ↔ dry
+                                   │
+  DRY     deadpan ── noir ── scholar
 ```
 
-- `peppy` ↔ `earnest`, `mischievous`
-- `earnest` ↔ `peppy`, `warm`, `scholarly`
-- `warm` ↔ `earnest`, `shy`
-- `shy` ↔ `warm`, `scholarly`
-- `scholarly` ↔ `shy`, `earnest`, `deadpan`
-- `deadpan` ↔ `scholarly`, `noir`, `tsundere`
-- `noir` ↔ `deadpan`, `dramatic`
-- `dramatic` ↔ `noir`, `mischievous`
-- `mischievous` ↔ `dramatic`, `peppy`, `tsundere`
-- `tsundere` ↔ `mischievous`, `deadpan`
+- **quiet wing** — `shy` ↔ `cozy` ↔ `warm`
+- **loud wing** — `peppy` ↔ `dramatic` ↔ `mischievous`
+- **dry wing** — `deadpan` ↔ `noir` ↔ `scholar`
+- **`flirty`** bridges `warm` ↔ `mischievous` (a warm GABI can drift flirty; a
+  flirty one can drift on to mischievous or back to warm)
+- **`tsundere`** bridges `mischievous` ↔ `deadpan`
+
+⚠️ **It is a CHAIN of wings rather than a ring, and that is deliberate.** `shy`
+and the dry wing are five steps apart, so a conversation cannot wander from timid
+to hard-boiled in an evening. Gradual means gradual.
 
 **The drift rule:** every `DRIFT_EVERY_EXCHANGES` (4) exchanges, a
-`DRIFT_CHANCE` (25%) roll to step to **one** random neighbour. One step at a
-time, never two.
+`DRIFT_CHANCE` (25%) roll to step to **one** random neighbour. One step, never
+two.
 
-⚠️ **NEVER A WHOLESALE MID-CONVERSATION FLIP.** Going from `noir` to `peppy`
-between two messages does not read as personality, it reads as a bug — or worse,
-as a different person wearing her name. The graph makes that unreachable in one
-step by construction.
+⚠️ **NEVER A WHOLESALE MID-CONVERSATION FLIP.** `noir` to `peppy` between two
+messages does not read as personality — it reads as a bug, or as a different
+person wearing her name. The graph makes it unreachable in one step by
+construction, rather than by a rule somebody has to remember.
 
 ---
 

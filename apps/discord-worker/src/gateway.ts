@@ -129,6 +129,18 @@ import { makeDocsPort } from './estate-docs-exec.js';
 import { booksCapDecision, booksOn } from './book-knowledge.js';
 import { makeBooksPort } from './book-knowledge-exec.js';
 import { memoryOn } from './memory.js';
+import {
+  advancePersona,
+  freshPersona,
+  isTrope,
+  personalityOn,
+  personaBlock,
+  PERSON_SPACE,
+  PERSON_SURFACE,
+  pickTrope,
+  type PersonaState,
+  type Trope,
+} from './personality.js';
 import { makeMemoryPort } from './memory-exec.js';
 import {
   distillConversation,
@@ -257,6 +269,12 @@ const kUserDocsCap = (id: string) => `dcap:user:${id}`;
  * runbook questions spend the book allowance, or forty book questions spend the
  * runbook one, and neither counter would describe what it protects. */
 const kUserBooksCap = (id: string) => `bcap:user:${id}`;
+/** ⚠️ ITS OWN KEY, not a field on the conversation record. That record's shape
+ *  lives in `packages/gabi-conversation`, which the SITE PANEL also imports —
+ *  growing it with a Discord-only concern would be a shared-package change for a
+ *  single-surface feature. And it must OUTLIVE the conversation: a pin that
+ *  evaporated after thirty minutes would not be a pin. */
+const kUserPersona = (id: string) => `pers:user:${id}`;
 
 interface IdentifyBudget {
   day: string;
@@ -490,9 +508,14 @@ export class GabiGateway {
    */
   private async distillSweep(): Promise<{ ok: boolean; considered: number; distilled: number; gaveUp: number }> {
     const out = { ok: true, considered: 0, distilled: 0, gaveUp: 0 };
-    if (!memoryOn(this.env)) return out;
-    const port = makeMemoryPort(this.env);
-    if (!port) return out;
+    // ⚠️ **THE SWEEP RUNS IN BOTH POSTURES, and only the DISTILLING is gated.**
+    //
+    // It became the migration for the person-keying change (memory design §11):
+    // the old channel-scoped records are never read again, and the lazy prune
+    // that used to delete expired conversations fired on the READ path — so
+    // nothing would ever have collected them. Deleting an expired conversation
+    // is honest housekeeping either way: it is data nobody can reach.
+    const port = memoryOn(this.env) ? makeMemoryPort(this.env) : null;
 
     const now = Date.now();
     const all = await this.state.storage.list<ConversationRecord>({ prefix: 'conv:', limit: 1000 });
@@ -522,6 +545,14 @@ export class GabiGateway {
         continue;
       }
 
+      // ⚠️ With memory off there is nothing to distil INTO, so the record is
+      // simply collected. That is the pre-memory behaviour restored, just moved
+      // from the read path to here.
+      if (!port) {
+        await this.state.storage.delete(sk);
+        continue;
+      }
+
       const result = await distillConversation(
         this.env.ANTHROPIC_API_KEY_GABI,
         port,
@@ -542,6 +573,53 @@ export class GabiGateway {
       }
     }
     return out;
+  }
+
+  /**
+   * ⚠️ **THE PERSONA FOR THIS TURN** — picked on a fresh conversation, advanced
+   * (and occasionally drifted one step) on every turn after.
+   *
+   * ⚠️ Resolved and PERSISTED here rather than in `mention-flow.ts` because this
+   * is the only place with storage. It rides the same round trip as everything
+   * else the turn needs, so personality costs one storage read and at most one
+   * write.
+   *
+   * ⚠️ A PIN short-circuits both the pick and the drift — `advancePersona` and
+   * `pickTrope` each check it — so "pinned means pinned" is enforced in the
+   * arithmetic rather than by a branch here that could be forgotten.
+   */
+  private async personaTurn(userId: string, freshConversation: boolean): Promise<PersonaState | null> {
+    if (!personalityOn(this.env)) return null;
+    const stored = (await this.state.storage.get<PersonaState>(kUserPersona(userId))) ?? null;
+    const pinned = stored?.pinned && isTrope(stored.pinned) ? stored.pinned : undefined;
+    const now = Date.now();
+
+    const next =
+      !stored || freshConversation
+        ? freshPersona(pickTrope({ pinned }), now, pinned)
+        : advancePersona(stored, Math.random, now);
+
+    // ⚠️ Written only when something actually changed. A turn that neither
+    // re-picked nor drifted still bumps `exchanges`, which is a change worth
+    // one small write — the drift counter is the whole gradualness mechanism
+    // and an uncounted exchange would stall it.
+    await this.state.storage.put(kUserPersona(userId), next);
+    return next;
+  }
+
+  /** Set or clear the hidden pin. ⚠️ Applying a pin takes effect IMMEDIATELY —
+   *  the trope becomes the pinned one on the same turn, because somebody who
+   *  just asked her to be tsundere should get a tsundere reply, not a tsundere
+   *  reply next time. */
+  private async personaPin(userId: string, trope: Trope | null): Promise<PersonaState | null> {
+    if (!personalityOn(this.env)) return null;
+    const now = Date.now();
+    const stored = (await this.state.storage.get<PersonaState>(kUserPersona(userId))) ?? null;
+    const next: PersonaState = trope
+      ? { trope, exchanges: stored?.exchanges ?? 0, since: now, pinned: trope }
+      : { trope: stored?.trope ?? pickTrope(), exchanges: stored?.exchanges ?? 0, since: stored?.since ?? now };
+    await this.state.storage.put(kUserPersona(userId), next);
+    return next;
   }
 
   /** The store, as `mention-flow.ts` wants it — bound to one key. */
@@ -881,7 +959,16 @@ export class GabiGateway {
     // conversations, and a DM is its own space by construction. The PERSON is
     // the Discord user id, so two people talking to her in the same channel
     // never see each other's memory.
-    const key = conversationKey(trigger.surface, trigger.channelId, trigger.authorId);
+    // ⚠️ **PERSON-KEYED, NOT CHANNEL-KEYED** (owner order 2026-08-18; memory
+    // design §11). One thread per person, wherever they talk to her — a DM and
+    // every channel are the same conversation, so her memory and her personality
+    // follow them instead of resetting at every door.
+    //
+    // ⚠️ The old channel-scoped records are simply never read again. With a
+    // 30-minute window they are dead data within half an hour of this deploy,
+    // and the distillation sweep deletes them — see `distillSweep`, which is the
+    // whole migration.
+    const key = conversationKey(PERSON_SURFACE, PERSON_SPACE, trigger.authorId);
 
     // ⚠️ TIER 1. `null` when the estate has not finished the wiring (no service
     // account, or no app token) — which is how "ships dark" is expressed here:
@@ -911,6 +998,13 @@ export class GabiGateway {
     // cached OAuth token that outlived a secret rotation would fail every
     // profile read with no obvious cause.
     const memoryPort = makeMemoryPort(this.env);
+
+    // ⚠️ **THE VOICE FOR THIS TURN**, resolved here because this is the only
+    // place with storage. A conversation with no remembered turns is a FRESH one
+    // and gets a new roll (or the pin); otherwise the existing trope is advanced
+    // and may drift one step.
+    const existing = await this.convLoad(key);
+    const persona = await this.personaTurn(trigger.authorId, existing.turns.length === 0);
 
     await handleMention(
       {
@@ -945,6 +1039,14 @@ export class GabiGateway {
             }
           : {}),
         ...(memoryPort ? { memory: memoryPort } : {}),
+        persona: {
+          pin: async (userId: string, trope: Trope) => {
+            await this.personaPin(userId, trope);
+          },
+          clear: async (userId: string) => {
+            await this.personaPin(userId, null);
+          },
+        },
         reply: async (content, extra) => {
           const res = await replyToMessage(
             botToken,
@@ -988,6 +1090,7 @@ export class GabiGateway {
         docsEnabled: docsOn(this.env),
         booksEnabled: booksOn(this.env),
         memoryEnabled: memoryOn(this.env),
+        ...(persona ? { personaBlock: personaBlock(persona.trope) } : {}),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
     );

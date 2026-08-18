@@ -318,6 +318,27 @@ export interface Env {
    */
   GABI_MEMORY?: string;
 
+  /**
+   * ⚠️ **PERSONALITY — she picks a voice per person and drifts gradually.**
+   *
+   * Affirmative-only `"on"`, the house idiom — but ⚠️ **this one SHIPS ON**, and
+   * that is a departure from `GABI_BOOKS` / `GABI_MEMORY` rather than an
+   * oversight. Those open a gated corpus and a durable note about a person, and
+   * each needed the owner's consent. This one changes WORDING: he ordered it
+   * explicitly, it reveals nothing, it stores nothing beyond a trope name, and
+   * the failure mode of getting it wrong is *she sounds odd* rather than *she
+   * leaked something*.
+   *
+   * ⚠️ OFF IS SILENT — she is exactly the bot she was yesterday. There is no
+   * "personality is switched off" sentence, because nobody asks a question only
+   * a personality could answer.
+   *
+   * ⚠️ TONE, NEVER TRUTH. With it on, every refusal, spoiler bound, cap sentence
+   * and availability grounding is unchanged — see `personality.ts`'s header for
+   * the three structural reasons that holds.
+   */
+  GABI_PERSONALITY?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

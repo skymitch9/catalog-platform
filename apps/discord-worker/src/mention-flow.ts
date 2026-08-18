@@ -130,6 +130,7 @@ import {
   type MemoryPort,
   type MemoryProfile,
 } from './memory.js';
+import { personaCommand, PERSONA_ACK, type Trope } from './personality.js';
 import {
   runDelegated,
   resumeDelegated,
@@ -288,6 +289,17 @@ export interface MentionDeps {
    * per-person daily counter to protect.
    */
   memory?: MemoryPort;
+  /**
+   * ⚠️ **PERSONALITY — the hidden pin's two levers, and nothing else.** The
+   * per-turn trope is resolved by the composition root (only it has storage) and
+   * arrives as `persona.block`; this pair exists solely so the DETECTOR can
+   * change it. Absent means the pin cannot be set, which is the state with the
+   * posture off.
+   */
+  persona?: {
+    pin(userId: string, trope: Trope): Promise<void>;
+    clear(userId: string): Promise<void>;
+  };
 }
 
 /** The docs port plus its own fuse. ⚠️ `record()` is called ONLY when a turn
@@ -358,6 +370,15 @@ export interface MentionConfig {
    * forgets the flag — cannot start writing notes about people.
    */
   memoryEnabled?: boolean;
+  /**
+   * ⚠️ **THE RENDERED VOICE FOR THIS TURN**, resolved by the composition root.
+   *
+   * A STRING rather than a trope name, deliberately and for the same reason the
+   * memory block is one: only the root has the storage that picks and drifts it,
+   * and handing this file a trope would put the selection logic in two places.
+   * Absent means the posture is off, and she is exactly the bot she was before.
+   */
+  personaBlock?: string;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
 }
@@ -937,6 +958,8 @@ async function answerQuestion(
   books?: BooksToolContext,
   /** ⚠️ Tier 2. The rendered block, and the deps needed to SHOW or CLEAR it. */
   memory?: { block?: string; deps: Pick<MentionDeps, 'memory'>; discordUserId: string },
+  /** ⚠️ `block` is the rendered voice for THIS turn; `deps` is the pin. */
+  persona?: { block?: string; deps: Pick<MentionDeps, 'persona'>; discordUserId: string },
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -950,6 +973,39 @@ async function answerQuestion(
     return await memoryAnswer(memoryAsk, memory.deps, cfg, memory.discordUserId);
   }
 
+  // ── ⚠️ THE HIDDEN PIN — deterministic, and it EXPLAINS NOTHING ────────────
+  //
+  // Owner: "we can also have a command to pick a personality but don't tell end
+  // users that." So there is no confirmation sentence, no "personality set to
+  // X", and nothing anywhere in user-facing text that mentions it exists. She
+  // simply answers in the new voice, starting with an in-character line.
+  //
+  // ⚠️ Deterministic for the same reason the memory control is: a model deciding
+  // somebody *probably* meant to change her personality is a model that changes
+  // it when they said something else.
+  // ⚠️ ONE BLOCK, in a fixed order: who she is talking TO, then how she sounds.
+  // Personality goes LAST so the voice is the freshest instruction — and it is
+  // APPENDED to the system prompt, never substituted for any of it, which is the
+  // structural half of "tone, never truth".
+  const extraBlock = [memory?.block, persona?.block].filter(Boolean).join('\n') || undefined;
+
+  const personaAsk = personaCommand(question);
+  if (personaAsk && persona?.deps.persona) {
+    if (personaAsk.kind === 'clear') {
+      await persona.deps.persona.clear(persona.discordUserId);
+      // ⚠️ Answered in whatever voice she currently has, saying nothing about
+      // the mechanism — a person who typed "be yourself" gets a normal reply.
+      return { content: 'Alright.', pending: null, intent: 'smalltalk', components: null };
+    }
+    await persona.deps.persona.pin(persona.discordUserId, personaAsk.trope);
+    return {
+      content: PERSONA_ACK[personaAsk.trope],
+      pending: null,
+      intent: 'smalltalk',
+      components: null,
+    };
+  }
+
   // ── ⚠️ THE DOCS PRE-ROUTER, AHEAD OF EVERY INTENT BRANCH ─────────────────
   //
   // Added 2026-08-18 after the live failure `estate-docs.ts`'s `docsIntent`
@@ -961,7 +1017,7 @@ async function answerQuestion(
   // the docs feature (`docsEnabled` undefined) falls through UNCHANGED rather
   // than being handed a sentence about a capability it never had.
   if (docsIntent(question)) {
-    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides, memory?.block);
+    if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides, extraBlock);
     if (cfg.docsEnabled === true) {
       // The posture is on but no port was built — the app token or the service
       // account is missing. A setup gap, and never phrased as a permissions one.
@@ -993,7 +1049,7 @@ async function answerQuestion(
   // what makes it a book question. `history` is the same remembered window in a
   // channel and in a DM.
   if (booksIntent(question) || booksFollowUp(question, history)) {
-    if (books) return await booksAnswer(question, history, who, cfg, books, overrides, memory?.block);
+    if (books) return await booksAnswer(question, history, who, cfg, books, overrides, extraBlock);
     if (cfg.booksEnabled === true) {
       // The posture is on but no port was built — the book app token or the
       // service account is missing. A setup gap, never a permissions one.
@@ -1033,7 +1089,7 @@ async function answerQuestion(
         toolContext(cfg, docs, books),
         overrides,
         history,
-        memory?.block,
+        extraBlock,
       );
       return { content: spoken.text ?? facts, pending: null, intent, components: null };
     }
@@ -1103,10 +1159,10 @@ async function answerQuestion(
             toolContext(cfg, docs, books),
             overrides,
             history,
-            memory?.block,
+            extraBlock,
           )
         ).text
-      : await converse(cfg.anthropicKey, question, grounding, who, overrides, history, memory?.block);
+      : await converse(cfg.anthropicKey, question, grounding, who, overrides, history, extraBlock);
 
   // ⚠️ No key, or a turn that failed: she still says something useful. The
   // person asked a question; a silence would be the bot looking broken.
@@ -1349,6 +1405,7 @@ export async function handleMention(
       docs,
       books,
       { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: trigger.authorId },
+      { ...(cfg.personaBlock ? { block: cfg.personaBlock } : {}), deps, discordUserId: trigger.authorId },
     );
     await say(answer.content, answer.components, answer.overflowNote);
 
@@ -1579,6 +1636,7 @@ export async function handleTypedQuestion(
       docs,
       books,
       { ...(memoryBlockFrom(profile) ? { block: memoryBlockFrom(profile) } : {}), deps, discordUserId: who.discordUserId },
+      { ...(cfg.personaBlock ? { block: cfg.personaBlock } : {}), deps, discordUserId: who.discordUserId },
     );
     await deps.conversation.save({
       user: question,

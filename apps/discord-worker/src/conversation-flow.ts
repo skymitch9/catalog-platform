@@ -61,6 +61,7 @@ import { booksOn, type BooksCapVerdict } from './book-knowledge.js';
 import { makeBooksPort } from './book-knowledge-exec.js';
 import { memoryOn } from './memory.js';
 import { makeMemoryPort } from './memory-exec.js';
+import { PERSON_SPACE, PERSON_SURFACE } from './personality.js';
 import {
   handlePick,
   handleTypedQuestion,
@@ -81,7 +82,11 @@ export function surfaceOf(guildId: string): 'discord_channel' | 'discord_dm' {
 export function keyForActor(actor: InteractionActor): ConversationKey | null {
   const person = actor.user?.id ?? '';
   if (!person || !actor.channelId) return null;
-  return conversationKey(surfaceOf(actor.guildId), actor.channelId, person);
+  // ⚠️ PERSON-KEYED — see `gateway.ts`'s note and memory design §11. A typed
+  // follow-up in the modal must land in the SAME thread as the message that
+  // opened it, so both ends key identically or a component press would answer
+  // out of an empty conversation.
+  return conversationKey(PERSON_SURFACE, PERSON_SPACE, person);
 }
 
 // ---------------------------------------------------------------------------
