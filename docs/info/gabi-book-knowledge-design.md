@@ -990,6 +990,37 @@ Three mitigations that shrink the bill by construction:
 1. ⚠️ **Skip any book whose ebook twin already gives text.** *Measured: 1,175
    of 14,804 hours are already covered by an EPUB.* Transcribing them would
    produce a worse copy of text the estate already has.
+
+   🔴 **REVISED BY THE BUILD, 2026-08-18 — the twin skip is much smaller than
+   this figure and must not be planned against it.** The 67-title / 1,175-hour
+   number comes from the deliberately loose join §1.4 describes, and §1.4 argues
+   a miss is safe *because it only overstates the bill*. That reasoning is
+   correct for a planning estimate and **wrong for the ingester**, because the
+   two errors are not symmetric once code acts on them:
+
+   | | Cost |
+   |---|---|
+   | a **missed** twin | the book is transcribed. ~15 GPU-minutes. |
+   | a **false** twin | the audiobook's pack is built from **another book's text**, and every answer about it is confidently wrong with a correct-looking citation. ⚠️ Nothing reports this. |
+
+   The ingester therefore joins conservatively — the manifest's curated
+   `audiobook_title`, then exact normalised titles, then a narrow series-tail
+   strip that **requires** a `, Book N` marker. **MEASURED as built: 14
+   audiobooks twin-satisfied with a distinct bookId, plus 17 whose bookId is
+   already an ingested EPUB — 31 titles / 461 hours covered without a GPU, not
+   1,175.**
+
+   🔴 **A false-twin bug was caught during the build and is worth recording,
+   because the widening that caused it is the obvious one to try again.**
+   Stripping a bare trailing `Book N` folded *Space Knight*, *Space Knight
+   Book 3*, *Book 4*, *Book 7* and *Book 10* onto a single join key — four
+   audiobooks would have been packed from one EPUB. ⚠️ **A bare volume number is
+   IDENTITY, not boilerplate.** A second guard now refuses every claim on an
+   EPUB that two audiobooks both claim.
+
+   **So the twin skip is NOT the big lever on the schedule** (it removes 3% of
+   the hours, not 8%). The levers that actually work are batch 16 inside the
+   window and the opportunistic idle-time path.
 2. **Transcribe on request.** A question about an untranscribed book returns the
    worded "haven't read it yet" refusal and **enqueues** the book. The existing
    `audio_requests` queue and its pipeline fulfiller (`audio-player-design.md`
@@ -1184,9 +1215,22 @@ thing to remember to revoke.
 Local is free-but-slow (7–14 GPU-hours per Primal Hunter, one night) and keeps
 the audio on this machine. Workers AI is $8.32 for the same series, needs no
 toolchain, and sends the audio to Cloudflare.
-→ **Recommend LOCAL as the primary, Workers AI as the burst/fallback.** The
-hardware is already here, the estate already runs bulk jobs here, and it keeps
-§8's third-party-processing disclosure smaller.
+→ **Recommend LOCAL as the primary, Workers AI as the burst/fallback.**
+
+🔴 **DECIDED — LOCAL ONLY. THE CLOUD HALF IS DEAD.** Owner, 2026-08-18, verbatim:
+*"No I don't want to spend that much money."*
+
+⚠️ **Workers AI transcription must not be re-proposed** — not as a burst path,
+not as a fallback, not "just for the first series". The $444 whole-corpus and
+$8.32 per-series figures stay in §7.4 as measurements, and they are now recorded
+as a **priced and rejected** option rather than an available one. Every hour of
+audio in this estate is transcribed on the RTX 4080 SUPER or not at all.
+
+Two consequences worth stating, because they were part of the reasoning:
+- §8's third-party-processing disclosure shrinks — **audio never leaves this
+  machine.** Only retrieved passages reach a model, at answer time.
+- The schedule becomes the constraint instead of the budget, which is what the
+  nightly window, batch 16 and the opportunistic idle path exist to attack.
 
 **5. Transcribe the whole corpus, or on demand?**
 Whole corpus is $444 or ~15–31 days of GPU. On demand is $8.32 / one night for
@@ -1207,3 +1251,24 @@ subsystem (layout, hyphenation, page furniture) for ~30 books.
 **deliberately absent** in the index so she says *"that one's a scan — I can't
 read it"* rather than returning nothing. Revisit if the owner names a specific
 book that matters.
+
+⚠️ **ANSWERED AND AMENDED BY THE OWNER, 2026-08-18**, verbatim: *"Do the EPUBs
+now, do the PDFs that have plain text also, if a pdf is going to be complicated
+delay it until after we finish all the audiobooks with a review."*
+
+**"Deliberately absent" is superseded by "last in line."** The 25 scans are
+**RE-QUEUED, not omitted**: they are written into the ingestion state file with
+`status: "needs-ocr"` and `blocker: "OCR processor not built"`, ordered behind
+every reviewed audiobook. The difference matters — an absent book invites a
+future session to conclude the shelf lacks it, whereas a queued item with a named
+blocker says exactly what is missing and what would clear it.
+
+⚠️ **OCR remains UNBUILT.** The owner's amendment sets the priority, not the
+capability; nothing in phase 5 does OCR. That processor is still owed.
+
+⚠️ **Classification is by MEASURED extraction yield, never by file type.** A PDF
+that looks text-bearing and extracts garbage counts as complicated. Bars as
+built: under 20,000 characters total, or under 200 characters per page, is a
+scan. *Re-measured 2026-08-18 by the ingester itself: **5 text-bearing, 25 scans**
+across the 30 files in 8 seconds — reproducing this document's original finding
+exactly, with The Way of Kings yielding **638 bytes**.*
