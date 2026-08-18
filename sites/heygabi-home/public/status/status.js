@@ -125,21 +125,21 @@ const EBOOKS_MANIFEST_PROD_URL = `${AUDIO_ORIGIN}/ebooks_status.json`;
  */
 const INDEX_THRESHOLDS = {
   audiobook: {
-    label: 'Audiobook',
+    label: 'Audiobook catalog → shared search index',
     amberMs: 9 * 3600_000,
     redMs: 17 * 3600_000,
     note: 'See the Book pipeline section below for the pipeline’s own run status — this row is only its index push, a downstream effect of a successful run, not the run itself.',
     guess: false,
   },
   library: {
-    label: 'Library',
+    label: 'Book library → shared search index',
     amberMs: 26 * 3600_000,
     redMs: 48 * 3600_000,
     note: 'GUESS — pushes on edit + a 24h backstop riding request traffic, no cron. A long age can mean "quiet," not "broken."',
     guess: true,
   },
   game: {
-    label: 'Games',
+    label: 'Board games → shared search index',
     amberMs: 26 * 3600_000,
     redMs: 48 * 3600_000,
     note: 'GUESS — same push design as library (on-edit + a 24h traffic-riding backstop). Same caveat: quiet ≠ broken.',
@@ -166,29 +166,38 @@ const PIPELINE_CADENCE_MS = 8 * 3600_000;
  *  15-minute step is in progress. */
 const PIPELINE_STALE_RUNNING_MS = 15 * 60_000;
 
+/**
+ * ⚠️ ROW NAMES SAY WHAT / ON WHAT / HOW OFTEN — owner instruction 2026-08-18:
+ * "lets also rename all the jobs/checks/workers/etc to be a bit more
+ * descriptive." "Ebook lane" and "Drive ⇄ role parity" are what the people who
+ * built them call them; neither tells a reader coming to this page cold what
+ * runs, on what, or how often. The cadence belongs in the NAME here because
+ * these three rows are the only ones on the page whose freshness is judged
+ * against a schedule — a reader needs to know the schedule to read the colour.
+ */
 function buildPipelineSection() {
   const ul = document.getElementById('pipeline-rows');
-  ul.appendChild(makeRow('pipe-audio', 'Automated Book Pipeline'));
-  ul.appendChild(makeRow('pipe-ebook', 'Ebook lane'));
-  ul.appendChild(makeRow('pipe-parity', 'Drive ⇄ role parity'));
+  ul.appendChild(makeRow('pipe-audio', 'Audiobook sync pipeline (home PC, every 8h)'));
+  ul.appendChild(makeRow('pipe-ebook', 'Ebook shelf manifest (published by that pipeline)'));
+  ul.appendChild(makeRow('pipe-parity', 'Google Drive sharing vs estate roles (checked every run)'));
 }
 
 function buildWorkerSection() {
   const ul = document.getElementById('worker-rows');
-  ul.appendChild(makeRow('wk-index', 'Shared index (index.heygabi.ai)'));
-  ul.appendChild(makeRow('wk-library', 'Library (library.heygabi.ai)'));
-  ul.appendChild(makeRow('wk-games', 'Games (boardgames.heygabi.ai)'));
-  ul.appendChild(makeRow('wk-library2', "Sam's library (padhard.heygabi.ai)"));
-  ul.appendChild(makeRow('wk-auth', 'Estate auth (auth.heygabi.ai)'));
+  ul.appendChild(makeRow('wk-index', 'Shared search index — index.heygabi.ai'));
+  ul.appendChild(makeRow('wk-library', 'Book library API — library.heygabi.ai'));
+  ul.appendChild(makeRow('wk-games', 'Board game catalog API — boardgames.heygabi.ai'));
+  ul.appendChild(makeRow('wk-library2', "Sam's book library API — padhard.heygabi.ai"));
+  ul.appendChild(makeRow('wk-auth', 'Sign-in & membership directory — auth.heygabi.ai'));
 }
 
 function buildSiteSection() {
   const ul = document.getElementById('site-rows');
-  ul.appendChild(makeRow('site-audio', 'Audio (audiobooks.heygabi.ai)'));
-  ul.appendChild(makeRow('site-audio-dev', 'Audio — /dev/ lane'));
-  ul.appendChild(makeRow('site-library', 'Books (library.heygabi.ai)'));
-  ul.appendChild(makeRow('site-games', 'Games (boardgames.heygabi.ai)'));
-  ul.appendChild(makeRow('site-library2', "Sam's library (padhard.heygabi.ai)"));
+  ul.appendChild(makeRow('site-audio', 'Audiobook site — audiobooks.heygabi.ai'));
+  ul.appendChild(makeRow('site-audio-dev', 'Audiobook site, /dev/ preview lane'));
+  ul.appendChild(makeRow('site-library', 'Book library site — library.heygabi.ai'));
+  ul.appendChild(makeRow('site-games', 'Board game site — boardgames.heygabi.ai'));
+  ul.appendChild(makeRow('site-library2', "Sam's book library site — padhard.heygabi.ai"));
 }
 
 
@@ -214,11 +223,11 @@ function buildSiteSection() {
 // ---------------------------------------------------------------------------
 
 const DEPLOY_ROWS = [
-  { id: 'dep-index', name: 'Shared index (index-worker)' },
-  { id: 'dep-library', name: 'Library (library_catalog worker)' },
-  { id: 'dep-games', name: 'Games (Board_Game_Catalog worker)' },
+  { id: 'dep-index', name: 'Shared search index (index-worker)' },
+  { id: 'dep-library', name: 'Book library (library_catalog worker)' },
+  { id: 'dep-games', name: 'Board games (Board_Game_Catalog worker)' },
   { id: 'dep-library2', name: "Sam's library (library-catalog-friend)" },
-  { id: 'dep-auth', name: 'Estate auth (auth-worker)' },
+  { id: 'dep-auth', name: 'Sign-in & membership (auth-worker)' },
 ];
 
 function buildDeploySection() {
@@ -827,9 +836,35 @@ const BACKUP_MANUAL_NOTE =
   'scheduled run is not landing, not merely that nobody pressed a button. Trigger one from ' +
   'the "Backup" row under Run levers on the Pipelines page (/status/pipelines/).';
 
+/**
+ * What each backup group actually IS — owner instruction 2026-08-18: "lets also
+ * rename all the jobs/checks/workers/etc to be a bit more descriptive. like d1
+ * db export 5 stores expand that to make a bit more sense."
+ *
+ * The server owns the LABEL (backups.ts's BACKUP_KIND_LABELS, which names the
+ * thing); these sentences add the other two questions a row has to answer cold:
+ * what is inside it, and where does it go. The cadence is in
+ * BACKUP_MANUAL_NOTE, which rides every non-green row, so it is not repeated
+ * here.
+ *
+ * ⚠️ NO COUNTS AND NO STORE LISTS IN THESE WORDS. The row already prints the
+ * measured "(N stores)", and the store list is being edited in this repo by
+ * other work right now — a sentence that enumerated them would be wrong by
+ * drift within the week, which is precisely how "Cover buckets" came to
+ * describe a group containing no covers.
+ */
+const BACKUP_KIND_NOTES = {
+  d1: 'The SQL databases behind the catalogs — the two libraries, board games, the shared search index ' +
+    'and the estate directory — dumped and stored in the estate-backups R2 bucket.',
+  firestore: 'Every document in the audiobook-catalog Firestore project (reviews, roles, pipeline status), ' +
+    'exported whole into the estate-backups R2 bucket.',
+  r2: 'Archives of the other R2 buckets: the cover images for each catalog, plus the gated ebook manifest ' +
+    'and estate-document buckets, which are otherwise republished only from the owner’s own machine.',
+};
+
 function buildBackupsSection() {
   const ul = document.getElementById('backups-rows');
-  ul.appendChild(makeRow('backup-age', 'Estate backups (estate-backups R2)'));
+  ul.appendChild(makeRow('backup-age', 'All estate backups — every store, daily 09:12 UTC'));
   // The per-kind rows below it are created on first response, since their
   // labels and their number come from the Worker (one list of stores, in
   // backups.ts) rather than a second copy kept here.
@@ -888,11 +923,14 @@ function renderBackupGroup(id, group, now) {
     }
   }
 
-  // The manual-dispatch caveat rides on the overall row always, and on every
-  // row that is not green — so no amber or red can ever be read as "broken"
-  // without the sentence that says it might just be nobody pressing a button.
-  const note = id === 'backup-age' || group.state !== 'ok' ? BACKUP_MANUAL_NOTE : null;
-  updateRow(id, group.state, detail, note, now);
+  // What this group IS rides on EVERY row including the green ones (owner,
+  // 2026-08-18: the labels must make sense cold), while the cadence caveat
+  // rides on the roll-up and on anything that is not green — so no amber or red
+  // can be read as "broken" without the sentence saying it might just be a run
+  // that has not landed.
+  const what = BACKUP_KIND_NOTES[group.kind] || null;
+  const cadence = id === 'backup-age' || group.state !== 'ok' ? BACKUP_MANUAL_NOTE : null;
+  updateRow(id, group.state, detail, [what, cadence].filter(Boolean).join(' ') || null, now);
 }
 
 /**

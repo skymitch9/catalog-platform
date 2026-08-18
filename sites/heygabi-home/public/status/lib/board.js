@@ -122,7 +122,54 @@ export async function fetchBoard(token) {
     board: body.board,
     pushedAt: body.pushed_at ?? null,
     pushedBy: body.pushed_by ?? null,
+    // ⚠️ Per-SECTION stamps (Worker migration 0013). An empty object means the
+    // stored row predates them, and renderFreshness() then falls back to the
+    // board-wide age AND SAYS SO — it must never read a missing stamp as new.
+    sectionPushedAt:
+      body.section_pushed_at && typeof body.section_pushed_at === 'object' && !Array.isArray(body.section_pushed_at)
+        ? body.section_pushed_at
+        : {},
     detail: '',
+  };
+}
+
+/**
+ * The stamp a PAGE should measure itself against, given the sections it owns.
+ *
+ * ⚠️ THE WRINKLE THIS EXISTS FOR (contract §9): one row, two pushers, each
+ * writing the board whole — so `pushed_at` only ever said when SOMEBODY last
+ * pushed. The processing pusher fires every 15 minutes, and /status/agents
+ * therefore read "as of 2 minutes ago" over agent rows the conductor had not
+ * touched since breakfast. A freshness strip that says fresh when it is stale
+ * is worse than no strip at all.
+ *
+ * ⚠️ THE OLDEST SECTION WINS, not the newest and not an average. The strip is
+ * one sentence about a page that may show three sections; the honest single
+ * number is the worst of them, and the sentence names which one it came from so
+ * the reader is not left guessing. Per-item clocks inside each block
+ * (`agents[].started_at`, `usage.read_at`, `packs.as_of`) carry the detail.
+ *
+ * Returns `{ iso, key, fellBack, missing }` — `fellBack` true means no
+ * per-section stamp was available and the board-wide one is standing in, which
+ * the caller must SAY rather than quietly present as the section's own age.
+ */
+export function sectionFreshness(result, sections) {
+  const stamps = (result && result.sectionPushedAt) || {};
+  const keys = Array.isArray(sections) ? sections : [];
+  const present = keys
+    .filter((k) => typeof stamps[k] === 'string' && Number.isFinite(Date.parse(stamps[k])))
+    .map((k) => ({ key: k, ms: Date.parse(stamps[k]) }));
+
+  if (!keys.length || !present.length) {
+    return { iso: result?.pushedAt ?? null, key: null, fellBack: true, missing: keys };
+  }
+  present.sort((a, b) => a.ms - b.ms);
+  const oldest = present[0];
+  return {
+    iso: stamps[oldest.key],
+    key: oldest.key,
+    fellBack: false,
+    missing: keys.filter((k) => !present.some((p) => p.key === k)),
   };
 }
 
@@ -134,22 +181,49 @@ export async function fetchBoard(token) {
  * failed poll the strip says how old the reading ON SCREEN is, instead of
  * pretending there is no reading or pretending it is current.
  */
-export function renderFreshness(strip, result, lastGoodPushedAt, nowMs = Date.now()) {
+export function renderFreshness(strip, result, lastGoodPushedAt, nowMs = Date.now(), sections = null) {
   if (!strip) return;
   const ageEl = strip.querySelector('.fresh-age');
   const noteEl = strip.querySelector('.fresh-note');
   if (!ageEl || !noteEl) return;
 
   if (result.status === 'ok') {
-    const ms = result.pushedAt ? nowMs - Date.parse(result.pushedAt) : NaN;
+    // ⚠️ THE AGE IS THIS PAGE'S SECTIONS, NOT THE BOARD'S. Two pushers share one
+    // row and each writes it whole, so the board-wide `pushed_at` says only that
+    // SOMEBODY pushed. See sectionFreshness() for the whole story.
+    const fresh = sections ? sectionFreshness(result, sections) : { iso: result.pushedAt, key: null, fellBack: true, missing: [] };
+    const ms = fresh.iso ? nowMs - Date.parse(fresh.iso) : NaN;
     const tone = !Number.isFinite(ms) ? 'warn' : ms > BOARD_RED_MS ? 'danger' : ms > BOARD_AMBER_MS ? 'warn' : 'ok';
     strip.dataset.tone = tone;
     ageEl.textContent = Number.isFinite(ms) ? `as of ${formatAge(ms)}` : 'as of an unknown time';
-    noteEl.textContent =
-      (result.pushedBy ? `pushed by ${result.pushedBy}. ` : '') +
-      (tone === 'ok'
-        ? 'Pushed from the conductor session — this page only ever shows what was last published.'
-        : 'The conductor has not pushed recently. This is the last board it published, not a live reading.');
+
+    const bits = [];
+    if (result.pushedBy) bits.push(`Last written to by ${result.pushedBy}.`);
+    if (sections && !fresh.fellBack) {
+      // Name the section the age belongs to, and say when it is NOT the whole
+      // board — otherwise "as of 4h ago" beside a board pushed 2 minutes ago
+      // looks like a bug rather than the point.
+      bits.push(
+        `This age is the “${fresh.key}” section's own — the oldest of ${sections.join(', ')} on this page — ` +
+        'not the age of the last push to the shared board.',
+      );
+      if (fresh.missing.length) {
+        bits.push(`No separate timestamp arrived for ${fresh.missing.join(', ')}; ${fresh.missing.length === 1 ? 'that section is' : 'those sections are'} not covered by the age above.`);
+      }
+    } else if (sections) {
+      // ⚠️ Pre-0013 rows, or a Worker that has not been deployed yet. Falling
+      // back is fine; letting the reader believe it is a per-section age is not.
+      bits.push(
+        'This board carries no per-section timestamps, so the age above is the age of the WHOLE board — ' +
+        'any one section on this page may be considerably older than it. Deploy auth-worker and push again to separate them.',
+      );
+    }
+    bits.push(
+      tone === 'ok'
+        ? 'This page only ever shows what was last published to it.'
+        : 'Nothing has refreshed this recently. What is below is the last thing published, not a live reading.',
+    );
+    noteEl.textContent = bits.join(' ');
     return;
   }
 

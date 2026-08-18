@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>heygabi.ai — processing</title>
+<title>heygabi.ai — GABI Knowledge</title>
 <meta name="description" content="Which books are being processed, and when each one joined GABI's knowledge base.">
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex">
@@ -77,11 +77,11 @@
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
     heygabi.ai
   </a>
-  <h1>Processing</h1>
+  <h1>GABI Knowledge</h1>
 
   <nav class="statusnav" aria-label="Status pages">
     <a href="/status/">Health</a>
-    <a href="/status/processing/" aria-current="page">Processing</a>
+    <a href="/status/processing/" aria-current="page">GABI Knowledge</a>
     <a href="/status/pipelines/">Pipelines</a>
     <a href="/status/agents/">Agents</a>
   </nav>
@@ -94,7 +94,7 @@
   </p>
 
   <div class="ops-bar">
-    <button id="ops-signin" class="linkbtn" type="button">Sign in to see processing</button>
+    <button id="ops-signin" class="linkbtn" type="button">Sign in to see GABI's knowledge base</button>
     <span id="ops-who" hidden></span>
   </div>
   <p id="ops-note" class="ops-note" hidden></p>
@@ -112,6 +112,19 @@
     <p class="section-note">
       Re-read every 30 seconds while this tab is open.
     </p>
+
+    <!-- ⚠️ THE HEADLINE COUNT — owner ask 2026-08-18: "also add a completed
+         list not just a queue so we know how many things have been finished."
+         The finished list already existed at the BOTTOM of this page, which is
+         the same as not existing: the ask is evidence it was not findable. So
+         the total moves to the top, above the queue, and the list below it is
+         reachable in one click instead of one long scroll.
+
+         ⚠️ It is filled by processing.js from the pushed history, and when the
+         push carries no history it says the count is UNKNOWN — never 0. "No
+         books finished" and "we were not told" are different sentences and the
+         estate's rule is that an absence is never rendered as a zero. -->
+    <div id="proc-complete" class="proc-complete"></div>
 
     <h3 class="step-list-h">Being processed now</h3>
     <p class="section-note step-section-note">
@@ -139,6 +152,7 @@
       requirement is that she says so honestly rather than guessing.
     </p>
     <ul id="proc-history" class="proc-list"></ul>
+    <div id="proc-history-more" class="proc-more"></div>
 
     <p class="section-note">
       Pushed with <code>scripts/push-agent-board.mjs</code> (the

@@ -39,6 +39,19 @@ import {
 } from '../lib/board.js';
 import { idToken } from '../../assets/estate-auth.js';
 
+/**
+ * The board sections THIS page renders — the freshness strip is measured
+ * against these and nothing else.
+ *
+ * ⚠️ WITHOUT THIS THE STRIP LIED, and the contract's §9 said so in writing
+ * before it was fixed: one D1 row, two pushers, each writing the board whole,
+ * so the board-wide `pushed_at` moved every 15 minutes when the processing
+ * pusher ran — and this page reported "as of 2 minutes ago" over agent rows the
+ * conductor had not touched for hours. The Worker now stamps each section from
+ * its own clock (migration 0013) and the strip reads the OLDEST of these.
+ */
+const PAGE_SECTIONS = ['agents', 'events', 'usage'];
+
 const freshEl = document.getElementById('board-fresh');
 const agentListEl = document.getElementById('agent-rows');
 const eventListEl = document.getElementById('event-rows');
@@ -264,7 +277,7 @@ async function refreshBoard() {
   try {
     const now = Date.now();
     const result = await fetchBoard(await idToken());
-    renderFreshness(freshEl, result, lastGood?.pushedAt ?? null, now);
+    renderFreshness(freshEl, result, lastGood?.pushedAt ?? null, now, PAGE_SECTIONS);
 
     if (result.status !== 'ok') {
       // ⚠️ THE LISTS ARE LEFT EXACTLY AS THEY WERE. Blanking them on a failed
@@ -311,5 +324,5 @@ document.addEventListener('visibilitychange', () => {
 // other age on this estate does: "as of 29 seconds ago" must not still say so
 // two minutes later because a fetch happened not to land.
 setInterval(() => {
-  if (lastGood && freshEl) renderFreshness(freshEl, lastGood, lastGood.pushedAt);
+  if (lastGood && freshEl) renderFreshness(freshEl, lastGood, lastGood.pushedAt, Date.now(), PAGE_SECTIONS);
 }, TICK_INTERVAL_MS);

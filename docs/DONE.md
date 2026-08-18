@@ -13,6 +13,100 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+
+## 2026-08-18 — Status-page information quality: the colour rule, per-section freshness, and the labels
+
+Owner that day: *"the dashboard needs to be good information."* Three asks
+landed together, plus two more he sent while the work was running.
+
+### Item 0 — ebook-lane status semantics (moved WHOLE from TODO.md)
+
+0. **Ebook-lane status semantics** (owner, 2026-08-18, verbatim intent): the
+   ebook lane shows YELLOW after a run that simply had nothing to change.
+   **A completed run with zero changes needed is GREEN.** Yellow/amber is
+   reserved for a run that TRIED to apply a change and could not (or partial
+   failure); red for a failed run. "No change is not a bug unless a change
+   was trying to come through." Find where the lane's status is computed,
+   fix the mapping, and audit the OTHER lanes for the same
+   no-op-rendered-as-warning mistake while in there.
+
+**How it actually resolved, which is not how it looked at the start.** The
+lane's amber on 2026-08-18 was **correct**: `sync_to_drive.py` gated its publish
+steps on `uploaded_count > 0`, so a run that uploaded nothing built a manifest
+and silently skipped publishing it. The row had found a real pipeline defect,
+since fixed at source by the conductor. A first pass of this work read the
+matching counts (168 built, 168 published) as "nothing changed, so green" and
+would have **hidden the defect the row had just found**; the conductor caught it
+the same day and it was reverted.
+
+So the owner's rule landed where it belonged:
+
+- the GREEN branch now SAYS *"this run had nothing new to add, and that is
+  green — a completed run with no change to make is not a warning"*, anchored to
+  the run's own `summary.uploaded`, which is the only field that actually
+  measures "did this run change anything";
+- the colours that changed are the ones that were never measurements: the old
+  "manifest is older than the run" amber (which fired whenever
+  `summary.ebookCount` was absent, comparing a heartbeat against a run START
+  time) is **grey**, and an unreadable pipeline document is **grey** rather than
+  green;
+- the stamp comparison — did the manifest this run built reach the site — is
+  untouched and still amber, with sharper words: whether the counts ALSO differ
+  is the difference between "readers are missing books right now" and "nothing
+  is missing yet, but the publish did not land".
+
+The verdict moved to a pure `status/lib/ebook-lane.js` and is pinned by
+`scripts/test/ebook-lane.test.mjs` (13 tests) against the live payload. **A row
+that has been wrong four times does not need a fifth argument in a comment; it
+needs a test, and a function that reaches into the DOM cannot have one.**
+
+### The audit the item asked for
+
+Every other row on Health and Pipelines, checked against the same rule. The
+findings and their verdicts are the table in
+[`info/status-pages.md`](info/status-pages.md#the-colour-rule-and-where-it-is-enforced).
+Headlines: quiet library/games index rows no longer age into amber (neither has
+a cron, so "quiet" is not "broken"); a RUNNING pipeline is green on Pipelines as
+it always was on Health, which had the two pages contradicting each other about
+one document; "never run yet" and unrecognised states are grey, not amber; two
+paths that could go green on nothing are grey; `formatAge()` no longer answers
+"just now" for an unparseable timestamp; and the summary line now adds up.
+
+### Per-section freshness — contract §9's known wrinkle, CLOSED
+
+Migration 0013 adds `agent_board.section_pushed_at` (additive: one nullable
+column). The **Worker** stamps each section from **its own clock** when that
+section's content changed — or when a pusher names it in `X-Estate-Sections` —
+and the pages measure themselves against the sections they own. **Neither pusher
+needed changing**, which is why the design won: the alternative put the estate's
+freshness display back on clocks nobody controls. 19 new tests across
+`agent-board.test.ts` and `scripts/test/board-freshness.test.mjs`.
+
+### The two WARN rows the owner pasted
+
+`auth-worker` and `index-worker` answered `/api/health` with no `version`, so
+both sat permanently amber saying "Healthy, but reports no version" — a row
+whose whole job is naming what is live, admitting it could not. Both now report
+it, matching the convention the two catalog Workers already used (measured live:
+`"version":"0.1.0"`).
+
+### Labels, and GABI Knowledge
+
+Owner: *"lets also rename all the jobs/checks/workers/etc to be a bit more
+descriptive. like d1 db export 5 stores expand that to make a bit more sense."*
+Eighteen row labels on Health now answer what / on what / how often, and the
+backup group labels were rewritten server-side — "Cover buckets" had also gone
+**wrong by drift**, naming a group that had gained two buckets holding no covers.
+Keys stayed identities; only display strings moved.
+
+Owner: *"Change Processing to Gabi Knowlegde, also add a completed list not just
+a queue so we know how many things have been finished."* The page is **GABI
+Knowledge** in nav, title and heading, with `/status/processing/` unchanged as
+the URL. The finished list already existed — at the BOTTOM of the page, which the
+ask proves is the same as not existing — so the count is now a headline above the
+queue, the list collapses to the 12 most recent behind a "show all" control, and
+an absent history says the count is **unknown**, never 0.
+
 ## 📊 Per-book % progress — the gap, filled — ✅ DONE 2026-08-18
 
 Owner, on reading the pusher report an hour after it landed: **"fill the gap"**.

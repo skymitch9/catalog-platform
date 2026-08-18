@@ -1,0 +1,30 @@
+-- 0013: per-SECTION push timestamps for the agent board.
+--
+-- ⚠️ THE WRINKLE THIS CLOSES, recorded in docs/info/agent-board-contract.md §9
+-- the day the second pusher shipped: the board is ONE row holding ONE JSON
+-- object, so every pusher writes it whole — and `pushed_at` was therefore
+-- restamped for the WHOLE board by whichever pusher happened to run last. The
+-- processing pusher fires every 15 minutes, so /status/agents' freshness strip
+-- read "as of 3 minutes ago" while its agent rows could be hours old. A
+-- freshness display that says fresh when it is stale is worse than no freshness
+-- display: it is the silent-staleness trap with a timestamp on it.
+--
+-- ⚠️ PURELY ADDITIVE, and that property was the condition for applying it
+-- remotely and unattended. One nullable column on an existing table: no
+-- DEFAULT, no NOT NULL, no ALTER of an existing column, no DROP, no rewrite of
+-- a single stored byte. SQLite's ADD COLUMN in this form is O(1) metadata. Every
+-- row that exists keeps working unchanged, and the Worker treats NULL here as
+-- "this row predates per-section stamps" and falls back to `pushed_at` — so the
+-- code is correct BEFORE the migration runs as well as after it, which is what
+-- makes migrate-then-deploy safe in either order for this one change.
+--
+-- ⚠️ WHY A JSON MAP AND NOT A SECOND TABLE. The stamps must be read and written
+-- ATOMICALLY WITH THE BOARD THEY DESCRIBE — a stamp map that could be a
+-- transaction behind its own board is the same lie in a new place. One column on
+-- the one row makes that structural rather than careful.
+--
+-- Shape: {"agents":"2026-08-18T21:04:00.000Z","processing":"2026-...Z", ...},
+-- one key per top-level section of the stored board. The Worker is the ONLY
+-- writer and stamps from ITS OWN clock — never from anything a pusher sent. See
+-- agent-board.ts's stampSections() for the rule about which sections move.
+ALTER TABLE agent_board ADD COLUMN section_pushed_at TEXT;

@@ -8,6 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { WORKER_VERSION } from '../src/health.js';
 import { test } from 'node:test';
 import { app } from '../src/index.js';
 
@@ -152,7 +153,13 @@ test('GET /api/health answers the estate envelope with `sources` kept at the top
   assert.equal(body.service, 'catalog-index');
   assert.equal(typeof body.time, 'string');
   assert.ok(!Number.isNaN(Date.parse(body.time)));
-  assert.deepEqual(body.detail, { ok: true, sources: body.sources });
+  // ⚠️ `version` added 2026-08-18: the Health page's Deployed-versions row for
+  // this Worker sat permanently AMBER ("Healthy, but reports no version"),
+  // which is the row asserting it cannot name what is live. It must appear in
+  // BOTH halves of the envelope, because the page reads detail-first and falls
+  // back to the flat body.
+  assert.equal(body.version, WORKER_VERSION);
+  assert.deepEqual(body.detail, { ok: true, version: WORKER_VERSION, sources: body.sources });
   assert.deepEqual(body.sources, { game: { rows: 0, pushed_at: null }, library: { rows: 0, pushed_at: null }, audiobook: { rows: 0, pushed_at: null } });
 });
 

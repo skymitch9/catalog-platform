@@ -68,7 +68,14 @@ export interface AgentBoardRow {
   board: string;
   pushed_at: string;
   pushed_by: string | null;
+  /** JSON map of section name → ISO instant. NULL on rows written before
+   *  migration 0013, which the reader treats as "fall back to pushed_at". */
+  section_pushed_at?: string | null;
 }
+
+/** Section name → the ISO instant that section last CHANGED, by this Worker's
+ *  clock. Never a pusher's clock — see stampSections(). */
+export type SectionStamps = Record<string, string>;
 
 export interface AgentBoardAnswer {
   /** ISO instant of the last successful push, or null when nothing ever has. */
@@ -77,6 +84,15 @@ export interface AgentBoardAnswer {
   pushed_by: string | null;
   /** The pushed blob, whole and untouched, or null when nothing ever has. */
   board: unknown;
+  /**
+   * Per-section stamps — {"agents": ISO, "processing": ISO, …}.
+   *
+   * ⚠️ THE POINT OF THE WHOLE THING: /status/agents must measure its freshness
+   * against `agents`, not against whenever the processing pusher last ran. An
+   * EMPTY object means the row predates migration 0013 and the page must fall
+   * back to `pushed_at` — it must never read a missing stamp as "just now".
+   */
+  section_pushed_at: SectionStamps;
   /** This Worker's clock at answer time — the reader compares the two. */
   now: string;
   /** True only when a push has landed; false is a real state, not an error. */
@@ -149,7 +165,7 @@ export function parseAgentBoard(text: string): { board: unknown } | { error: str
  */
 export function readAgentBoard(row: AgentBoardRow | null, nowIso: string): AgentBoardAnswer {
   if (!row) {
-    return { pushed_at: null, pushed_by: null, board: null, now: nowIso, exists: false };
+    return { pushed_at: null, pushed_by: null, board: null, section_pushed_at: {}, now: nowIso, exists: false };
   }
   let board: unknown = null;
   try {
@@ -161,9 +177,132 @@ export function readAgentBoard(row: AgentBoardRow | null, nowIso: string): Agent
     pushed_at: row.pushed_at,
     pushed_by: row.pushed_by ?? null,
     board,
+    section_pushed_at: parseSectionStamps(row.section_pushed_at),
     now: nowIso,
     exists: true,
   };
+}
+
+/**
+ * The stored stamp map → a usable one.
+ *
+ * ⚠️ AN UNREADABLE OR ABSENT MAP RETURNS {}, NEVER A GUESS. Empty means "this
+ * row has no per-section stamps" and the pages fall back to the board-wide
+ * `pushed_at` and SAY they are doing so. Inventing `now` here would be the
+ * original bug wearing the fix's clothes: a section that has not been written
+ * for hours would read as fresh, which is exactly what 0013 exists to stop.
+ */
+export function parseSectionStamps(raw: string | null | undefined): SectionStamps {
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: SectionStamps = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    // Only keep values that are actually readable instants. A stamp nobody can
+    // parse is not better than no stamp — it is a stamp that renders as an age.
+    if (typeof value === 'string' && Number.isFinite(Date.parse(value))) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Key-ordering-independent JSON, so "did this section change" is a question
+ * about CONTENT and not about how a pusher happened to serialise it. Without
+ * this, a pusher that re-emitted the same data with keys in a different order
+ * would restamp a section that did not move — which is the very false-freshness
+ * this file is closing.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`)
+    .join(',')}}`;
+}
+
+/**
+ * Which sections this push moves, and what their stamps become.
+ *
+ * ⚠️ THE PROBLEM, in one sentence: two pushers share one row, each writes the
+ * board WHOLE (contract §9 — a partial push would delete the other's section),
+ * and so the board-wide `pushed_at` only ever tells you when SOMEBODY last
+ * pushed. /status/agents read that and said "as of 2 minutes ago" about agent
+ * rows the conductor had not touched since breakfast.
+ *
+ * ⚠️ THE SERVER IS THE SINGLE CLOCK AND THAT IS NOT NEGOTIABLE. The contract's
+ * §2 already forbids trusting a pusher's timestamp for the age a page displays
+ * — a pusher's clock can be wrong, stale, or missing, and an age built on it is
+ * worth nothing. So the alternative design (each pusher stamping its own
+ * section inside the blob) was rejected: it would put the estate's freshness
+ * display back on clocks nobody controls, and it would need BOTH pushers
+ * changed in lockstep to be correct.
+ *
+ * ⚠️ WHAT DECIDES A RESTAMP, in order:
+ *
+ *   1. The pusher DECLARED the section (the optional `X-Estate-Sections`
+ *      header). "I am authoritative for this and I just wrote it" is the
+ *      strongest signal available, and it is the one case where re-pushing
+ *      identical content SHOULD move the clock — the conductor saying "still
+ *      true, as of now".
+ *   2. Otherwise, the section's CONTENT changed. This needs no pusher change at
+ *      all, which is why it is the default: both pushers already read-modify-
+ *      write the shared draft and push it whole, and neither had to be touched
+ *      for this to be correct today.
+ *
+ * ⚠️ THE HONEST COST OF THE DEFAULT, stated rather than hidden: a section
+ * re-pushed byte-identical by an UNDECLARING pusher keeps its earlier stamp, so
+ * the strip can read older than the last push. That is the safe direction and
+ * it is deliberate — "this information has not changed since 09:12" is true,
+ * whereas the bug being fixed said "fresh" about data nobody had refreshed. A
+ * freshness surface may err toward saying stale; it may never err toward saying
+ * fresh. The header above is the seam for a pusher that wants the sharper
+ * answer, and adopting it later needs no further migration.
+ *
+ * A section that DISAPPEARS from the board loses its stamp — there is nothing
+ * left for it to be the age of.
+ */
+export function stampSections(
+  previousBoard: unknown,
+  nextBoard: unknown,
+  previousStamps: SectionStamps,
+  nowIso: string,
+  declared: string[] = [],
+): SectionStamps {
+  const next = nextBoard && typeof nextBoard === 'object' && !Array.isArray(nextBoard)
+    ? (nextBoard as Record<string, unknown>)
+    : {};
+  const prev = previousBoard && typeof previousBoard === 'object' && !Array.isArray(previousBoard)
+    ? (previousBoard as Record<string, unknown>)
+    : {};
+  const declaredSet = new Set(declared);
+
+  const stamps: SectionStamps = {};
+  for (const key of Object.keys(next)) {
+    const changed = !(key in prev) || stableStringify(prev[key]) !== stableStringify(next[key]);
+    const carried = previousStamps[key];
+    stamps[key] = declaredSet.has(key) || changed || !carried ? nowIso : carried;
+  }
+  return stamps;
+}
+
+/**
+ * `X-Estate-Sections: agents, events,usage` → ['agents','events','usage'].
+ * Bounded and shape-checked because it arrives from outside; an unparseable
+ * header simply declares nothing and the content check still runs.
+ */
+export function parseDeclaredSections(header: string | null | undefined): string[] {
+  if (!header) return [];
+  return header
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.length <= 64)
+    .slice(0, 32);
 }
 
 /**
@@ -237,6 +376,76 @@ export function conductorRefusal(auth: Exclude<ConductorAuth, 'ok'>): {
 
 export const agentBoardRoutes = new Hono<AppBindings>();
 
+/** True for the D1/SQLite error that means "this column has not been added yet". */
+function isMissingColumn(err: unknown): boolean {
+  return /no such column/i.test((err as Error)?.message || '');
+}
+
+/**
+ * Read the one row, tolerating a database that has not had 0013 applied.
+ *
+ * ⚠️ THE ORDER IS STILL MIGRATE-THEN-DEPLOY. This fallback is not permission to
+ * skip it — it is what keeps the surface WORKING during the seconds between the
+ * two, and what makes a rollback to the previous Worker safe. Without it, a
+ * Worker deployed a minute ahead of its migration would answer 502 on the read
+ * door for every devops reader, turning a harmless ordering slip into an outage
+ * on the page people check when they suspect an outage.
+ */
+async function readRow(db: AppBindings['Bindings']['DB']): Promise<AgentBoardRow | null> {
+  try {
+    return await db
+      .prepare('SELECT board, pushed_at, pushed_by, section_pushed_at FROM agent_board WHERE id = ?1')
+      .bind(AGENT_BOARD_ROW_ID)
+      .first<AgentBoardRow>();
+  } catch (err) {
+    if (!isMissingColumn(err)) throw err;
+    // Pre-0013: no per-section stamps exist, so the answer carries none and the
+    // pages fall back to the board-wide push age, saying so in words.
+    return await db
+      .prepare('SELECT board, pushed_at, pushed_by FROM agent_board WHERE id = ?1')
+      .bind(AGENT_BOARD_ROW_ID)
+      .first<AgentBoardRow>();
+  }
+}
+
+/**
+ * Write the one row, with the same pre-0013 tolerance as readRow().
+ *
+ * ⚠️ THE FALLBACK STORES THE BOARD AND DROPS THE STAMPS — deliberately, and in
+ * that order of preference. Losing a push because a column is missing would be
+ * a worse failure than losing the per-section ages for one cycle: the board is
+ * the data, the stamps are metadata about it, and the pages already know how to
+ * say "this row carries no per-section stamps".
+ */
+async function writeRow(
+  db: AppBindings['Bindings']['DB'],
+  board: string,
+  pushedAt: string,
+  pushedBy: string | null,
+  sectionStamps: string,
+): Promise<void> {
+  try {
+    await db
+      .prepare(
+        'INSERT INTO agent_board (id, board, pushed_at, pushed_by, section_pushed_at) VALUES (?1, ?2, ?3, ?4, ?5) ' +
+          'ON CONFLICT(id) DO UPDATE SET board = excluded.board, pushed_at = excluded.pushed_at, ' +
+          'pushed_by = excluded.pushed_by, section_pushed_at = excluded.section_pushed_at',
+      )
+      .bind(AGENT_BOARD_ROW_ID, board, pushedAt, pushedBy, sectionStamps)
+      .run();
+  } catch (err) {
+    if (!isMissingColumn(err)) throw err;
+    await db
+      .prepare(
+        'INSERT INTO agent_board (id, board, pushed_at, pushed_by) VALUES (?1, ?2, ?3, ?4) ' +
+          'ON CONFLICT(id) DO UPDATE SET board = excluded.board, pushed_at = excluded.pushed_at, ' +
+          'pushed_by = excluded.pushed_by',
+      )
+      .bind(AGENT_BOARD_ROW_ID, board, pushedAt, pushedBy)
+      .run();
+  }
+}
+
 /**
  * GET — a devops reader, in a browser, on the apex.
  *
@@ -250,11 +459,7 @@ agentBoardRoutes.get('/estate/ops/agent-board', requireDevops(), async (c: Conte
   const nowIso = new Date().toISOString();
   let row: AgentBoardRow | null = null;
   try {
-    row = await c.env.DB.prepare(
-      'SELECT board, pushed_at, pushed_by FROM agent_board WHERE id = ?1',
-    )
-      .bind(AGENT_BOARD_ROW_ID)
-      .first<AgentBoardRow>();
+    row = await readRow(c.env.DB);
   } catch (err) {
     // ⚠️ A MISSING TABLE IS A DEPLOY-SKEW FACT, NOT AN OUTAGE, and it gets its
     // own words: the migration is applied by hand at deploy time, so "the code
@@ -306,14 +511,34 @@ agentBoardRoutes.post('/estate/ops/agent-board', async (c: Context<AppBindings>)
   const pushedBy = (c.req.header('X-Estate-Pushed-By') ?? '').slice(0, 120) || null;
   const pushedAt = new Date().toISOString();
 
+  // ⚠️ READ BEFORE WRITE, so the stamps can be per-SECTION. The previous board
+  // is what tells us which sections this push actually moved; without it every
+  // push would restamp everything, which is the bug (contract §9). A read that
+  // FAILS is not fatal — treat it as "no previous board", which stamps every
+  // section now. That errs toward saying fresh for one push only, and the
+  // alternative (refusing the write) would lose the push entirely.
+  let previous: AgentBoardRow | null = null;
   try {
-    await c.env.DB.prepare(
-      'INSERT INTO agent_board (id, board, pushed_at, pushed_by) VALUES (?1, ?2, ?3, ?4) ' +
-        'ON CONFLICT(id) DO UPDATE SET board = excluded.board, pushed_at = excluded.pushed_at, ' +
-        'pushed_by = excluded.pushed_by',
-    )
-      .bind(AGENT_BOARD_ROW_ID, JSON.stringify(parsed.board), pushedAt, pushedBy)
-      .run();
+    previous = await readRow(c.env.DB);
+  } catch {
+    previous = null;
+  }
+  let previousBoard: unknown = null;
+  try {
+    previousBoard = previous ? JSON.parse(previous.board) : null;
+  } catch {
+    previousBoard = null;
+  }
+  const sectionStamps = stampSections(
+    previousBoard,
+    parsed.board,
+    parseSectionStamps(previous?.section_pushed_at),
+    pushedAt,
+    parseDeclaredSections(c.req.header('X-Estate-Sections')),
+  );
+
+  try {
+    await writeRow(c.env.DB, JSON.stringify(parsed.board), pushedAt, pushedBy, JSON.stringify(sectionStamps));
   } catch (err) {
     const message = (err as Error).message || '';
     if (/no such table/i.test(message)) {
@@ -346,5 +571,15 @@ agentBoardRoutes.post('/estate/ops/agent-board', async (c: Context<AppBindings>)
     }),
   );
 
-  return c.json({ ok: true, pushed_at: pushedAt, pushed_by: pushedBy });
+  // ⚠️ `sections` names which sections THIS push moved the clock on, so a pusher
+  // can see at a glance that it preserved the other one's work rather than
+  // silently restamping it. It is the machine-readable half of contract §9's
+  // "you cannot recover a section you did not write".
+  return c.json({
+    ok: true,
+    pushed_at: pushedAt,
+    pushed_by: pushedBy,
+    section_pushed_at: sectionStamps,
+    sections_moved: Object.keys(sectionStamps).filter((k) => sectionStamps[k] === pushedAt),
+  });
 });

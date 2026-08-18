@@ -12,10 +12,17 @@
  *    failure); red for a failed run. No change is not a bug unless a change was
  *    trying to come through."
  *
- * The first test below is not a fixture anybody invented: it is the LIVE
- * payload measured on 2026-08-18 (run 20260818T150021 and the heartbeat that
- * audiobooks.heygabi.ai was actually serving), and against the code as it
- * shipped that morning it renders AMBER. That is the bug, captured.
+ * ⚠️ THE FIXTURES ARE NOT INVENTED. They are the LIVE payload measured on
+ * 2026-08-18: run 20260818T150021 out of pipeline_status/current, and the
+ * heartbeat audiobooks.heygabi.ai was actually serving that minute.
+ *
+ * ⚠️ AND THAT PAYLOAD IS AMBER, ON PURPOSE. The first pass of this fix read the
+ * identical counts (168 built, 168 published) as "nothing changed, so green".
+ * It was the wrong lesson: the pipeline had gated its publish steps on
+ * `uploaded_count > 0` and was silently skipping them, so the row had found a
+ * REAL defect (since fixed at source). The owner's "no change is not a bug"
+ * rule lives in the GREEN branch's WORDS — see the second test — and in the
+ * greys below, which replace colours that were never measurements at all.
  */
 
 import assert from 'node:assert/strict';
@@ -79,44 +86,55 @@ const verdict = (over = {}) =>
 // The owner's rule
 // ---------------------------------------------------------------------------
 
-test('⚠️ THE REGRESSION: a real quiet run — nothing to change — is GREEN', () => {
-  // The exact live payload of 2026-08-18. The shipped code compared
-  // summary.ebookManifestAt (15:00 today) against the heartbeat's generated_at
-  // (16:21 yesterday), found them 22h apart, and painted amber saying "a
-  // publish that did not land". Nothing had failed; STEP 5.8 simply never runs
-  // when a run uploads nothing, so the heartbeat is not rewritten.
+test('⚠️ THE READING THAT FOUND A REAL PIPELINE DEFECT stays AMBER', () => {
+  // The live payload of 2026-08-18. The counts are identical (168 published,
+  // 168 built) and it is STILL amber, deliberately: sync_to_drive.py gated its
+  // publish steps on `uploaded_count > 0`, so this run built a manifest and
+  // silently skipped publishing it. The row was right and the pipeline was
+  // wrong. An earlier pass of this fix turned this green on the "nothing
+  // changed" reasoning and would have hidden the defect the row had found.
   const v = verdict();
-  assert.equal(v.state, 'ok');
-  assert.match(v.detail, /168 ebooks published/);
-  assert.match(v.detail, /matches the 168 the last run built/);
-  // And it must SAY why an older stamp is fine, or the next reader re-opens
-  // this same bug from the timestamps printed on screen.
-  assert.match(v.note, /found nothing to change/);
-  assert.match(v.note, /expected quiet state/);
+  assert.equal(v.state, 'warn');
+  assert.match(v.detail, /built a NEWER manifest than the one published/);
+  // The words must separate "nothing is missing YET" from "readers are missing
+  // books", because the next action differs.
+  assert.match(v.note, /no reader is missing a book yet/);
+  assert.match(v.note, /the publish step did not land/);
+  assert.match(v.note, /Do NOT soften this to green/);
 });
 
-test('a run that DID publish a change is green the same way — the two are indistinguishable, and should be', () => {
+test('⚠️ THE OWNER’S RULE: a run that DID publish and changed nothing is GREEN, and says so', () => {
+  // The state the pipeline now reaches every run since the source fix: the
+  // manifest published, and the shelf happened not to change. Green — and the
+  // note has to SAY that, which is the sentence that was missing.
   const v = verdict({
-    heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T15:00:53.106407Z', count: 170 },
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
+  });
+  assert.equal(v.state, 'ok');
+  assert.match(v.detail, /published manifest is the one the last run built/);
+  assert.match(v.note, /This run had nothing new to add, and that is green/);
+  assert.match(v.note, /is not a warning/);
+});
+
+test('a run that published a real change is green without the no-change sentence', () => {
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt, count: 170 },
     pipeStatus: { ...LIVE_QUIET_RUN, summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 170, uploaded: 2 } },
   });
   assert.equal(v.state, 'ok');
-  assert.match(v.detail, /170 ebooks published/);
+  assert.doesNotMatch(v.note, /nothing new to add/);
 });
 
-test('⚠️ AMBER IS RESERVED: a change that exists but has not reached readers', () => {
-  // The run built a manifest of 170; the site still publishes 168. THIS is "a
-  // change was trying to come through and could not" — the only case amber is
-  // for on this lane.
+test('⚠️ when the stamps differ AND the counts differ, the words say readers are missing books', () => {
   const v = verdict({
     pipeStatus: { ...LIVE_QUIET_RUN, summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 170 } },
   });
   assert.equal(v.state, 'warn');
   assert.match(v.detail, /2 books apart/);
-  assert.match(v.note, /a run with nothing to change renders green/);
+  assert.match(v.note, /readers are missing books/);
 });
 
-test('the amber wording counts singular/plural and both directions', () => {
+test('the missing-books wording counts singular/plural and both directions', () => {
   const up = verdict({ pipeStatus: { ...LIVE_QUIET_RUN, summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 169 } } });
   assert.equal(up.state, 'warn');
   assert.match(up.detail, /1 book apart/);
@@ -130,21 +148,39 @@ test('the amber wording counts singular/plural and both directions', () => {
 // Unknowns stay unknown — no colour invented, and never a zero
 // ---------------------------------------------------------------------------
 
-test('⚠️ no recorded ebook count on a producing run is GREY, never amber', () => {
-  // The pre-2026-08-16 pipeline, or a run that did not reach STEP 1b. The old
-  // code aged the heartbeat against the run's start time here and painted
-  // amber — the same false alarm one branch over.
-  const { ebookCount, ...noCount } = LIVE_QUIET_RUN.summary;
-  const v = verdict({ pipeStatus: { ...LIVE_QUIET_RUN, summary: noCount } });
+test('⚠️ no recorded BUILD TIME on a producing run is GREY, never amber', () => {
+  // The pre-2026-08-16 pipeline, or a run that never reached STEP 1b. Without
+  // summary.ebookManifestAt there is nothing to compare the published heartbeat
+  // against. The OLD code aged the heartbeat against the run's START TIME here
+  // and painted amber — a guess dressed as a measurement, and the one false
+  // alarm on this lane that was genuinely the page's own fault.
+  const { ebookManifestAt, ...noStamp } = LIVE_QUIET_RUN.summary;
+  const v = verdict({ pipeStatus: { ...LIVE_QUIET_RUN, summary: noStamp } });
   assert.equal(v.state, 'nodata');
   assert.match(v.detail, /cannot check it/);
   assert.match(v.note, /would be a guess/);
 });
 
-test('a run shape that skips the ebook step by design is GREEN, and says so', () => {
+test('⚠️ a missing COUNT does not stop the stamp check — that check stands alone', () => {
+  // Losing `ebookCount` costs the sharper wording, not the verdict: whether the
+  // built manifest reached the site is answerable from the stamps by
+  // themselves, and this row must not go quiet just because one field is gone.
   const { ebookCount, ...noCount } = LIVE_QUIET_RUN.summary;
+  const stale = verdict({ pipeStatus: { ...LIVE_QUIET_RUN, summary: noCount } });
+  assert.equal(stale.state, 'warn');
+  const published = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
+    pipeStatus: { ...LIVE_QUIET_RUN, summary: noCount },
+  });
+  assert.equal(published.state, 'ok');
+  // ...and with no count it cannot claim "nothing changed", so it does not.
+  assert.match(published.note, /nothing new to add/, 'uploaded: 0 is what says this, not the count');
+});
+
+test('a run shape that skips the ebook step by design is GREEN, and says so', () => {
+  const { ebookCount, ebookManifestAt, ...bare } = LIVE_QUIET_RUN.summary;
   const v = verdict({
-    pipeStatus: { ...LIVE_QUIET_RUN, trigger: 'manual-rebuild', summary: noCount },
+    pipeStatus: { ...LIVE_QUIET_RUN, trigger: 'manual-rebuild', summary: bare },
   });
   assert.equal(v.state, 'ok');
   assert.match(v.detail, /rebuild-only run/);
@@ -162,16 +198,21 @@ test('an unreadable pipeline doc is GREY, not green and not a second red', () =>
 test('a heartbeat with a broken shape is RED — that is a fault in what this row reads', () => {
   assert.equal(verdict({ heartbeat: { count: 168 } }).state, 'danger');
   assert.equal(verdict({ heartbeat: { generated_at: LIVE_HEARTBEAT.generated_at } }).state, 'danger');
-  // ⚠️ A count of 0 is a NUMBER and must be judged, not treated as missing.
+  // ⚠️ A count of 0 is a NUMBER and must be JUDGED, not treated as a missing
+  // field. An empty shelf that published correctly is green.
   const zero = verdict({
-    heartbeat: { ...LIVE_HEARTBEAT, count: 0 },
+    heartbeat: { ...LIVE_HEARTBEAT, count: 0, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
     pipeStatus: { ...LIVE_QUIET_RUN, summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 0 } },
   });
   assert.equal(zero.state, 'ok');
+  assert.match(zero.detail, /0 ebooks published/);
 });
 
 test('prod lag is words, never a colour', () => {
-  const v = verdict({ prodStampMs: Date.parse('2026-08-10T00:00:00Z') });
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
+    prodStampMs: Date.parse('2026-08-10T00:00:00Z'),
+  });
   assert.equal(v.state, 'ok');
   assert.match(v.note, /Prod is .* behind \/dev\//);
   assert.match(v.note, /never a colour here/);

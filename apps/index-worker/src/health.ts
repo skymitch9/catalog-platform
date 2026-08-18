@@ -14,6 +14,25 @@ import { Hono } from 'hono';
 import type { Env } from './env.js';
 import { SOURCES } from './rows.js';
 
+/**
+ * The build this Worker is running, reported on /api/health.
+ *
+ * ⚠️ ADDED 2026-08-18 because the Health page said so. Its "Deployed versions"
+ * section renders each Worker's own `version` — the build actually executing,
+ * read from the thing executing it — and this Worker reported none, so its row
+ * sat permanently AMBER saying "Healthy, but reports no version." The owner
+ * pasted that row and asked for it fixed. A row that is amber forever is a row
+ * people learn to ignore, which costs more than the fact it was withholding.
+ *
+ * ⚠️ IT MUST TRACK package.json's `version` BY HAND. A Worker bundle cannot
+ * read package.json at runtime, and the two catalog Workers that already answer
+ * this field (library-catalog, board-game-catalog — both "0.1.0", measured live
+ * 2026-08-18) carry the same hand-kept constant. Bump them together or this
+ * reports a build that is not the one running, which is worse than reporting
+ * nothing at all.
+ */
+export const WORKER_VERSION = '0.1.0';
+
 export const healthRoutes = new Hono<{ Bindings: Env }>();
 
 /**
@@ -36,7 +55,7 @@ healthRoutes.get('/', async (c) => {
   // top level (additive transition, see file header). Spread FIRST so the
   // explicit envelope fields after it are an intentional override, not a
   // silently-shadowed duplicate (tsc flags the reverse order, TS2783).
-  const legacy = { ok: true, sources };
+  const legacy = { ok: true, version: WORKER_VERSION, sources };
 
   return c.json({
     ...legacy,

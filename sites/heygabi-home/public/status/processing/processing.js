@@ -47,11 +47,26 @@ import {
 } from '../lib/board.js';
 import { idToken } from '../../assets/estate-auth.js';
 
+/**
+ * The board sections THIS page renders — the freshness strip is measured
+ * against these and nothing else.
+ *
+ * ⚠️ WITHOUT THIS THE STRIP LIED, and the contract's §9 said so in writing
+ * before it was fixed: one D1 row, two pushers, each writing the board whole,
+ * so the board-wide `pushed_at` moved every 15 minutes when the processing
+ * pusher ran — and this page reported "as of 2 minutes ago" over agent rows the
+ * conductor had not touched for hours. The Worker now stamps each section from
+ * its own clock (migration 0013) and the strip reads the OLDEST of these.
+ */
+const PAGE_SECTIONS = ['processing'];
+
 const freshEl = document.getElementById('board-fresh');
 const inflightEl = document.getElementById('proc-inflight');
 const queueEl = document.getElementById('proc-queue');
 const packsEl = document.getElementById('proc-packs');
 const historyEl = document.getElementById('proc-history');
+const completeEl = document.getElementById('proc-complete');
+const historyMoreEl = document.getElementById('proc-history-more');
 
 /** The last SUCCESSFUL read, kept whole — a failed poll can then say how old
  *  the picture on screen is instead of pretending there is none, and the
@@ -262,6 +277,62 @@ function renderPacks(packs, nowMs) {
 }
 
 // ---------------------------------------------------------------------------
+// FINISHED WORK — the headline count
+//
+// ⚠️ OWNER ASK, 2026-08-18: "also add a completed list not just a queue so we
+// know how many things have been finished." The finished list already existed
+// — at the BOTTOM of this page, under the queue and the packs — and the ask is
+// the evidence that being present is not the same as being FINDABLE. So the
+// total moves above the queue, where the first glance lands.
+//
+// ⚠️ AND IT IS NEVER A ZERO IT WAS NOT TOLD. "No books have joined" and "the
+// push carried no history" are different sentences with different fixes; the
+// second one is a broken pusher, and rendering it as 0 would report an empty
+// knowledge base to a man whose knowledge base has 158 books in it.
+// ---------------------------------------------------------------------------
+
+function renderCompleted(section, historyRows, nowMs) {
+  if (!completeEl) return;
+  completeEl.replaceChildren();
+
+  const packs = objectSection(section, 'packs');
+  const packed = packs ? countOf(packs.packed) : null;
+  const known = historyRows.length || packed !== null;
+
+  if (!known) {
+    completeEl.append(
+      el('p', 'empty-say',
+        'How many books have finished is unknown from here — the last push carried no history and no pack ' +
+        'counts. That is a silent pusher, not an empty knowledge base.'),
+    );
+    return;
+  }
+
+  // The history IS the completed list, so its length is the count. `packs.packed`
+  // is the manifest's own tally of the same thing and is shown beside it when
+  // the two are both present — if they ever disagree, the page shows both rather
+  // than picking a winner, because the disagreement is the interesting fact.
+  const headline = el('div', 'complete-headline');
+  const n = historyRows.length || packed;
+  headline.append(el('span', 'complete-count', n.toLocaleString()));
+  headline.append(el('span', 'complete-label', `book${n === 1 ? '' : 's'} in GABI's knowledge base`));
+  completeEl.append(headline);
+
+  const bits = [];
+  if (historyRows.length && packed !== null && packed !== historyRows.length) {
+    bits.push(
+      `The pushed history lists ${historyRows.length.toLocaleString()} while the pack manifest counts ` +
+      `${packed.toLocaleString()} — both are shown because a disagreement between them is worth seeing, ` +
+      'not worth hiding behind whichever number is larger.',
+    );
+  }
+  const newest = historyRows.length ? ageOf(historyRows[0].joined_at || historyRows[0].at, nowMs) : '';
+  if (newest) bits.push(`Most recent joined ${newest}.`);
+  bits.push('Full list below, newest first.');
+  completeEl.append(el('p', 'section-note', bits.join(' ')));
+}
+
+// ---------------------------------------------------------------------------
 // The history — "joined GABI's knowledge base <date>"
 // ---------------------------------------------------------------------------
 
@@ -284,14 +355,41 @@ function sortNewestFirst(rows) {
   });
 }
 
+/** How many finished books to show before the "show all" control. A 158-row
+ *  dump buries the queue and the in-flight book above it; the owner asked for
+ *  the list to be VISIBLE, which is not the same as unavoidable. */
+const HISTORY_PREVIEW = 12;
+let historyExpanded = false;
+
 function renderHistory(list, nowMs) {
   if (!historyEl) return;
+  if (historyMoreEl) historyMoreEl.replaceChildren();
   if (!list.length) {
     sayEmpty(historyEl, 'The last push carried no processed-book history.');
     return;
   }
+  const ordered = sortNewestFirst(list);
+  const shown = historyExpanded ? ordered : ordered.slice(0, HISTORY_PREVIEW);
+  if (historyMoreEl && ordered.length > HISTORY_PREVIEW) {
+    const btn = el('button', 'linkbtn');
+    btn.type = 'button';
+    btn.textContent = historyExpanded
+      ? `Show only the ${HISTORY_PREVIEW} most recent`
+      : `Show all ${ordered.length.toLocaleString()} finished books`;
+    btn.addEventListener('click', () => {
+      historyExpanded = !historyExpanded;
+      renderHistory(list, Date.now());
+    });
+    historyMoreEl.append(btn);
+    if (!historyExpanded) {
+      historyMoreEl.append(
+        el('p', 'section-note',
+          `Showing the ${HISTORY_PREVIEW} most recent of ${ordered.length.toLocaleString()}.`),
+      );
+    }
+  }
   historyEl.replaceChildren();
-  for (const raw of sortNewestFirst(list)) {
+  for (const raw of shown) {
     const b = raw && typeof raw === 'object' ? raw : {};
     const li = el('li', 'proc-row');
 
@@ -340,6 +438,7 @@ function sayNeverPushed() {
   sayEmpty(historyEl, 'No history yet — the home machine has not pushed a processing section.');
   renderQueue([]);
   renderPacks(null, Date.now());
+  renderCompleted(null, [], Date.now());
 }
 
 async function refreshBoard() {
@@ -348,7 +447,7 @@ async function refreshBoard() {
   try {
     const now = Date.now();
     const result = await fetchBoard(await idToken());
-    renderFreshness(freshEl, result, lastGood?.pushedAt ?? null, now);
+    renderFreshness(freshEl, result, lastGood?.pushedAt ?? null, now, PAGE_SECTIONS);
 
     if (result.status !== 'ok') {
       // ⚠️ THE LISTS ARE LEFT EXACTLY AS THEY WERE on a failed poll. Blanking
@@ -372,13 +471,16 @@ async function refreshBoard() {
       sayEmpty(historyEl, 'No processing section in the last board, so no history to show.');
       renderQueue([]);
       renderPacks(null, now);
+      renderCompleted(null, [], now);
       return;
     }
 
+    const history = arraySection(section, 'history');
+    renderCompleted(section, sortNewestFirst(history), now);
     renderInFlight(arraySection(section, 'in_flight'), now);
     renderQueue(normaliseQueue(section));
     renderPacks(objectSection(section, 'packs'), now);
-    renderHistory(arraySection(section, 'history'), now);
+    renderHistory(history, now);
   } finally {
     polling = false;
   }
@@ -405,5 +507,5 @@ document.addEventListener('visibilitychange', () => {
 // The freshness strip re-words itself between polls: "as of 29 seconds ago"
 // must not still say so two minutes later because a fetch happened not to land.
 setInterval(() => {
-  if (lastGood && freshEl) renderFreshness(freshEl, lastGood, lastGood.pushedAt);
+  if (lastGood && freshEl) renderFreshness(freshEl, lastGood, lastGood.pushedAt, Date.now(), PAGE_SECTIONS);
 }, TICK_INTERVAL_MS);

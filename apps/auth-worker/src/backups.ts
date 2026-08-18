@@ -171,11 +171,35 @@ export async function summarizeBackups(bucket: ListableBucket): Promise<BackupsS
 export const BACKUP_STALE_AMBER_MS = 14 * 24 * 3600_000;
 export const BACKUP_STALE_RED_MS = 45 * 24 * 3600_000;
 
-/** Human labels for the `<kind>` half of each known prefix. */
+/**
+ * Human labels for the `<kind>` half of each known prefix.
+ *
+ * ⚠️ REWRITTEN 2026-08-18 on the owner's instruction — "lets also rename all the
+ * jobs/checks/workers/etc to be a bit more descriptive. like d1 db export 5
+ * stores expand that to make a bit more sense." A row label has to answer WHAT
+ * this is and ON WHAT without the reader knowing the codebase. "D1 database
+ * exports (5 stores)" told a reader who already knows what D1 is nothing new,
+ * and everyone else nothing at all.
+ *
+ * ⚠️ "Cover buckets" was also WRONG BY DRIFT, which is the sharper reason to
+ * rewrite these rather than merely lengthen them. The `r2` group gained
+ * `ebooks-gated` and `estate-docs-gated` on 2026-08-18 and neither is a cover
+ * bucket, so the label described three fifths of its group and quietly
+ * mis-described the rest. A stale label on a backup row is how a store nobody
+ * realises is in the group stops getting looked at.
+ *
+ * ⚠️ THE KEYS (`d1`, `firestore`, `r2`) ARE IDENTITIES AND DO NOT MOVE — they
+ * are the first path segment of every stored key and the `kind` the page groups
+ * on. Only the display strings changed.
+ *
+ * ⚠️ AND DELIBERATELY NO COUNTS IN THE WORDS: the row appends the MEASURED
+ * "(N stores)" itself, so a label that spelled a number would go stale the day a
+ * store is added — which is exactly how the last one went wrong.
+ */
 export const BACKUP_KIND_LABELS: Record<string, string> = {
-  d1: 'D1 database exports',
-  firestore: 'Firestore dump',
-  r2: 'Cover buckets',
+  d1: 'Catalog databases — SQL exports',
+  firestore: 'Audiobook catalog — Firestore document dump',
+  r2: 'Cover images & gated files — R2 bucket archives',
 };
 
 export type BackupState = 'ok' | 'warn' | 'danger';

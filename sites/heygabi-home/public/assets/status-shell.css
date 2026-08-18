@@ -557,6 +557,34 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 .queue-count { font-family: var(--et-font-display); font-size: var(--et-text-heading); font-weight: 700; line-height: 1; }
 .queue-lane { color: var(--et-muted); font-size: var(--et-text-micro); font-weight: 600; }
 
+/* --- GABI Knowledge: the FINISHED count ----------------------------------
+   Owner ask 2026-08-18: "add a completed list not just a queue so we know how
+   many things have been finished." The list already existed at the bottom of
+   the page; this is the half that makes it findable. Sized deliberately larger
+   than a queue tile — the queue is what is waiting, this is what is DONE, and
+   the page should not make the reader hunt for the good news. */
+.proc-complete { margin: 0 0 var(--et-space-3); }
+.complete-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .8rem 1rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+}
+.complete-count {
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-title);
+  font-weight: 700;
+  line-height: 1;
+}
+.complete-label { color: var(--et-muted); font-weight: 600; }
+/* The show-all control under the finished list. */
+.proc-more { margin-top: .6rem; }
+.proc-more .section-note { margin-top: .35rem; }
+
 /* --- Pipelines: the nightly window clock --------------------------------- */
 .window-card {
   display: grid;

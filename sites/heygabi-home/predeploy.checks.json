@@ -38,6 +38,7 @@
       ],
       "path": "/status/",
       "mustContain": [
+        "GABI Knowledge",
         "Estate status",
         "id=\"pipeline-rows\"",
         "id=\"index-rows\"",
@@ -70,6 +71,7 @@
       ],
       "path": "/status/pipelines/",
       "mustContain": [
+        "GABI Knowledge",
         "class=\"statusnav\"",
         "Run levers \u2014 GitHub Actions",
         "id=\"lever-rows\"",
@@ -111,6 +113,7 @@
       ],
       "path": "/status/agents/",
       "mustContain": [
+        "GABI Knowledge",
         "class=\"statusnav\"",
         "id=\"board-fresh\"",
         "id=\"agent-rows\"",
@@ -131,6 +134,7 @@
       "mustContain": [
         "fetchBoard",
         "renderFreshness",
+        "PAGE_SECTIONS",
         "session_pct",
         "weekly_pct",
         "fable_pct"
@@ -150,10 +154,12 @@
       "mustContain": [
         "class=\"statusnav\"",
         "id=\"board-fresh\"",
+        "id=\"proc-complete\"",
         "id=\"proc-inflight\"",
         "id=\"proc-queue\"",
         "id=\"proc-packs\"",
         "id=\"proc-history\"",
+        "GABI Knowledge",
         "Joined GABI's knowledge base"
       ]
     },
@@ -171,6 +177,8 @@
         "renderFreshness",
         "renderInFlight",
         "renderHistory",
+        "renderCompleted",
+        "PAGE_SECTIONS",
         "normaliseQueue"
       ]
     },
@@ -205,10 +213,20 @@
       ]
     },
     {
+      "_why": [
+        "board.js — the shared reader and the freshness sentence for both pushed-data pages.",
+        "⚠ sectionFreshness and section_pushed_at (2026-08-18) are the fix for the contract's §9 wrinkle: one",
+        "D1 row, two pushers, each writing the board whole, so the board-wide pushed_at only ever said when",
+        "SOMEBODY pushed — and /status/agents read 'as of 2 minutes ago' over agent rows hours old. A bundle",
+        "that lost these would go back to a strip that says fresh about stale data, which is the one failure a",
+        "freshness strip must not have and the one a cheerful 200 would never reveal."
+      ],
       "path": "/status/lib/board.js",
       "mustContain": [
         "fetchBoard",
         "renderFreshness",
+        "sectionFreshness",
+        "section_pushed_at",
         "/api/estate/ops/agent-board"
       ]
     },

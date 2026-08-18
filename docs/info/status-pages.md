@@ -16,7 +16,7 @@ devops check.
 | Page | Job | Owns |
 |---|---|---|
 | **`/status`** Health | *Is everything up?* | worker/site/index rows read from public `/api/health` endpoints, the Book & ebook pipeline rows, Drive⇄role parity, deploy versions, backup freshness, the migration runbooks and the commandments |
-| **`/status/processing`** Processing | *GABI's knowledge base as it grows* | in-flight books + %, queue depth per lane, pack counts + ingester version, and "joined GABI's knowledge base &lt;date&gt;" per book |
+| **`/status/processing`** GABI Knowledge | *GABI's knowledge base as it grows* | in-flight books + %, queue depth per lane, pack counts + ingester version, and "joined GABI's knowledge base &lt;date&gt;" per book |
 | **`/status/pipelines`** Pipelines | *Run it, and control it* | the ingestion **pause/timers card**, the pipeline steps + Run button, the Run levers (GitHub Actions), the shelf-server push, the nightly-window clock |
 | **`/status/agents`** Agents | *Claude capacity* | running agents + model, the dispatched/landed/failed feed, and the **usage figures** |
 
@@ -58,12 +58,19 @@ DOM lookups at import time — so importing it from a page with none of the
 matching elements is safe and silent. Its row registry is per-document on
 purpose: the pages never share a DOM.
 
-⚠️ **`lib/board.js` owns the freshness sentence for BOTH pushed-data pages**, so
-they can never disagree about what stale means. Its rules, each deliberate: the
-age is measured against the **Worker's** `pushed_at`; a failed poll **says so and
-blanks nothing**; "nothing pushed yet" is a **state**, not an error; and the
-15-minute amber / 1-hour red thresholds are labelled **judgement, not
-measurement**.
+⚠️ **`lib/board.js` owns the freshness sentence for BOTH pushed-data pages**,
+so they can never disagree about what stale means. Its rules, each deliberate: a
+failed poll **says so and blanks nothing**; "nothing pushed yet" is a **state**,
+not an error; and the 15-minute amber / 1-hour red thresholds are labelled
+**judgement, not measurement**.
+
+⚠️ **The age is PER SECTION, not per board (2026-08-18, migration 0013).**
+One D1 row is written whole by two pushers, so the board-wide `pushed_at` only
+ever meant "somebody pushed" — and the processing pusher fires every 15 minutes,
+so /status/agents read *fresh* over agent rows hours old. `sectionFreshness()`
+now takes the OLDEST of the sections a page owns and names it. The design, and
+the one cost it deliberately accepts, is
+[`agent-board-contract.md` §9](agent-board-contract.md).
 
 ## Probed vs pushed — the line that runs through the whole surface
 
@@ -115,3 +122,45 @@ silence.
 - **The gate can only be checked signed in.** `predeploy-check --live` fetches
   unauthenticated, so every marker it asserts is page **chrome**. Proof that the
   gated content works is a human in a browser, and nothing else.
+
+## The colour rule, and where it is enforced
+
+⚠️ **Owner, 2026-08-18: "A completed run with zero changes needed is GREEN.
+Yellow/amber is reserved for a run that TRIED to apply a change and could not
+(or partial failure); red for a failed run. No change is not a bug unless a
+change was trying to come through."**
+
+Every row on Health and Pipelines was audited against that. What changed:
+
+| Row | Was | Is | Why |
+|---|---|---|---|
+| Ebook shelf manifest | amber whenever `summary.ebookCount` was absent (heartbeat aged against the run's START time) | **grey** | That comparison was a guess, not a measurement. The STAMP comparison — did the manifest this run built reach the site? — **stays, and stays amber**: on 2026-08-18 it caught a real pipeline defect (publish gated on `uploaded_count`). The owner's rule shows up there as the green branch's words, not as a new amber-to-green rule. |
+| Library / Games index | amber → red as they aged | **green + words** | Neither has a cron. An app nobody opened pushes nothing, correctly. The note already said "quiet ≠ broken" while the dot said otherwise. |
+| Index rows, all three | `!src.rows` treated a genuine 0 and a missing field alike, announcing "0 rows" for a source never reported | **four states, four sentences** | A measurement's absence is not a zero. |
+| Pipeline (Pipelines page) | RUNNING was amber | **green** | A run in progress is the pipeline working — and Health rendered the same document's RUNNING as green, so the two pages contradicted each other about one fact. `deferred`/`blocked` keep amber. |
+| Pipeline (Health) | could go green with no `state` or an unparseable clock | **grey** | Green must be a finding, not a fall-through. |
+| Shelf upload | "never run yet" amber; unrecognised states amber | **grey** | Nobody pressing a button is not a failure, and an unknown word is not a verdict this page gets to invent. |
+| Drive ⇄ role parity | — | **unchanged** | Already correct: drift *corrected* is green, fuse-tripped and failed are amber, skipped/unknown are grey. It is the model the others were audited against. |
+
+⚠️ **`formatAge()` used to answer "just now" for a non-finite age**, so an
+unparseable timestamp came out looking like the freshest reading on the page. It
+says **"age unknown"** now. A negative age still clamps to "just now" — that is
+clock skew, not missing information.
+
+⚠️ **The summary line used to not add up.** It counted ok/warn/down "out of N
+checks" while every grey and pending row vanished from its own arithmetic.
+
+## Labels answer what / on what / how often
+
+⚠️ Owner, 2026-08-18: *"lets also rename all the jobs/checks/workers/etc to be
+a bit more descriptive. like d1 db export 5 stores expand that to make a bit more
+sense."* Row names on Health now name the thing, the host it runs on, and — for
+the three rows whose colour is judged against a schedule — the schedule, because
+a reader needs the cadence to read the colour.
+
+Backup group labels live server-side in `apps/auth-worker/src/backups.ts`. Their
+**keys** (`d1`, `firestore`, `r2`) are identities — the first path segment of
+every stored key — and never move; only the display strings changed. ⚠️ **And
+none of them spells a COUNT:** the row appends the measured `(N stores)` itself,
+because the old "Cover buckets" label went wrong exactly that way the day the
+group gained two buckets holding no covers.

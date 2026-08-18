@@ -151,7 +151,7 @@ where custody lives.
 ```powershell
 cd apps\auth-worker
 npx wrangler d1 migrations list estate_auth --remote   # see what is pending
-npm run db:migrate                                     # applies 0012 remotely
+npm run db:migrate                                     # applies 0012 + 0013 remotely
 npx wrangler deploy
 ```
 
@@ -159,6 +159,20 @@ npx wrangler deploy
 on a new object, no `ALTER`, no `DROP`, nothing existing touched. That is what
 made applying it `--remote` safe, and it is the property to re-check before
 applying any successor unattended.
+
+⚠️ **0013 (2026-08-18, per-section push stamps) is additive too, and was
+checked against that same bar before it was applied:** one nullable
+`ALTER TABLE agent_board ADD COLUMN section_pushed_at TEXT` — no DEFAULT, no NOT
+NULL, no existing column altered, no row rewritten. SQLite's ADD COLUMN in this
+form is O(1) metadata.
+
+⚠️ **AND THE WORKER IS CORRECT ON BOTH SIDES OF IT.** Read and write each
+catch "no such column" and fall back to the pre-0013 statement, so a deploy that
+lands a minute ahead of its migration degrades (no per-section ages, and the
+pages SAY so) instead of 502-ing the read door. That is a seatbelt, **not
+permission to skip migrate-then-deploy** — the order above still stands. What it
+buys is a safe rollback: the previous Worker build keeps working against the
+migrated schema.
 
 ⚠️ **wrangler on Windows sometimes prints success and exits 255** — read the
 output, not the exit code. (Not observed on 2026-08-18's runs, which exited 0;
@@ -224,6 +238,13 @@ Measured 2026-08-18: `pushed_by ingest-pipeline@home-pc`, 32,057 stored bytes,
 `packed 158`, `hist 158`, **`agents 2`** — that last column is the one that
 matters, because it is the proof the merge preserved the conductor's sections
 instead of overwriting them.
+
+⚠️ **Since 0013 there is a second column worth reading, and it answers a
+question the first one cannot:** whether a section is being KEPT UP TO DATE, as
+opposed to merely surviving the merge. Add `section_pushed_at` to that SELECT.
+A `processing` stamp minutes old beside an `agents` stamp hours old is not a
+bug — it is the display working, and it is exactly what /status/agents now
+reports instead of calling the whole board fresh.
 
 **Removing the task**, if it ever needs to stop:
 

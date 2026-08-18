@@ -16,33 +16,42 @@
  * red for a failed run. No change is not a bug unless a change was trying to
  * come through."
  *
- * ⚠️ WHY THE THREE EARLIER FIXES KEPT COMING BACK: all three compared
- * TIMESTAMPS. On this lane a timestamp answers "when was this file last
- * rewritten", which is not the question. The measured mechanism (read off the
- * live estate 2026-08-18, not reasoned about):
+ * ⚠️ THE MECHANISM, read out of audiobook_catalog rather than assumed:
  *
  *   · `sync_to_drive.py` STEP 1b rebuilds `site/ebooks.json` on EVERY full run
  *     and records `summary.ebookManifestAt` + `summary.ebookCount`.
  *   · `site/ebooks_status.json` — the public heartbeat this lane reads — is
- *     written by `publish_ebooks_manifest.py` at STEP 5.8, and **STEP 5.8 sits
- *     inside the `uploaded_count > 0` block**. A run that uploads nothing never
- *     rewrites the heartbeat, by design.
- *   · So on a quiet run the built stamp legitimately races hours ahead of the
- *     published one WHILE THE SHELF IS UNCHANGED.
+ *     written by `publish_ebooks_manifest.py` at STEP 5.8.
+ *   · So the honest question is: DID THE MANIFEST THIS RUN BUILT REACH THE
+ *     SITE? The two stamps answer it exactly, and that comparison is this
+ *     lane's primary signal.
  *
- * The false amber, reproduced from live data: run `20260818T150021`, trigger
- * `scheduled`, publish step `done`, `uploaded: 0`, `ebookCount: 168`; live
- * heartbeat `count: 168` stamped the previous day. The old code compared the
- * two stamps, found them 22 h apart, and said "a publish that did not land".
- * Nothing had failed and nothing was trying to land.
+ * ⚠️ AN EARLIER PASS OF THE 2026-08-18 FIX GOT THIS WRONG AND IS RECORDED HERE
+ * SO IT IS NOT REPEATED. Seeing the stamps 22 hours apart on a run whose
+ * `ebookCount` (168) matched the published `count` (168), it concluded that
+ * nothing had changed and the row should be green, and replaced the stamp
+ * comparison with a count comparison. That was the wrong lesson from the right
+ * observation: STEP 5.8 sat inside the pipeline's `uploaded_count > 0` block,
+ * so a run that uploaded nothing SILENTLY SKIPPED PUBLISHING — a real pipeline
+ * defect, since fixed at source. **The row was right and the pipeline was
+ * wrong.** Turning that amber green would have hidden the very thing the row
+ * had just found.
  *
- * ⚠️ SO THIS COMPARES SUBSTANCE, NOT CLOCKS. `summary.ebookCount` is what the
- * last run BUILT; the heartbeat's `count` is what the site PUBLISHES. Equal
- * means the public file tells the truth about the shelf — green, whether or not
- * anything moved. Different means a real change exists that readers cannot see:
- * something that tried to come through and did not, which is the one thing
- * amber is for. The stamps are still PRINTED, because they are useful; they
- * never pick a colour again.
+ * ⚠️ SO WHERE DOES "no change is not a bug" LIVE? In the GREEN branch's
+ * WORDS, not in a new amber-to-green rule. When the manifest did publish this
+ * run and the shelf simply did not change, the row now SAYS that a completed
+ * run with nothing to change is not a warning — which is what the owner was
+ * actually missing. The colours that changed on this lane are the ones that
+ * were never measurements at all: the old "manifest is older than the run"
+ * amber (which fired whenever `summary.ebookCount` was absent, comparing a
+ * heartbeat against a run start time) is now GREY, because it was a guess; and
+ * an unreadable pipeline document is GREY rather than green, because green
+ * asserts health this row cannot see.
+ *
+ * ⚠️ THE COUNTS ARE STILL READ, for WORDS rather than for colour: when the
+ * stamps disagree, whether the counts also disagree is the difference between
+ * "readers are missing books right now" and "nothing is missing yet, but the
+ * publish step did not land". Same amber, very different next action.
  */
 
 /**
@@ -137,35 +146,74 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
   const builtAt = Date.parse(summary.ebookManifestAt || '');
   const builtAge = Number.isFinite(builtAt) ? `last built ${formatAge(now - builtAt)}` : 'build time not recorded';
 
-  // ── The MEASURED answer: does the published shelf match what was built? ──
-  if (Number.isFinite(builtCount)) {
-    if (builtCount === publishedCount) {
-      // ⚠️ GREEN, AND THIS IS THE OWNER'S RULE IN ONE BRANCH. It covers both a
-      // run that published a change and a run that had no change to publish —
-      // the two are indistinguishable from outside AND SHOULD BE, because in
-      // both the public file is telling the truth.
+  // ── DID THE MANIFEST THIS RUN BUILT ACTUALLY REACH THE SITE? ────────────
+  //
+  // ⚠️ THE STAMP COMPARISON IS THE PRIMARY SIGNAL AND IT STAYS. An earlier
+  // pass of this fix replaced it with a count comparison, reasoning that
+  // identical counts meant nothing had changed and the row should be green.
+  // That was WRONG and the owner's conductor caught it the same day: on
+  // 2026-08-18 the divergence was a REAL pipeline defect — sync_to_drive.py
+  // gated its publish steps on `uploaded_count > 0`, so a run that uploaded
+  // nothing built a manifest and then silently skipped publishing it. The row
+  // went amber and WAS RIGHT TO. Softening it to green would have hidden the
+  // defect that produced it. (The pipeline has since been fixed at source, so
+  // a full run publishes every time and the stamps agree.)
+  //
+  // ⚠️ SO WHAT DOES "no change is not a bug" ACTUALLY BUY HERE? It is the
+  // GREEN branch's second sentence, not a new amber-to-green rule: when the
+  // manifest DID publish this run and the shelf simply did not change, the row
+  // says so in words instead of leaving a reader to wonder why a run that
+  // changed nothing is being reported at all. The colour was always green
+  // there; what was missing was the sentence.
+  if (Number.isFinite(builtAt) && kind.produces === true) {
+    if (Math.abs(generatedAt - builtAt) < 1000) {
+      // ⚠️ THE OWNER'S "no change is not a bug" SENTENCE, and it is anchored to
+      // what the RUN REPORTED, not to an inference. `builtCount ===
+      // publishedCount` was tried first and says only that the built and
+      // published shelves agree — which is true on every green run, including
+      // ones that added ten books. The run's own `summary.uploaded` is the
+      // measurement of whether this run changed anything at all.
+      const uploaded = Number(summary.uploaded);
+      const nothingChanged =
+        Number.isFinite(uploaded) && uploaded === 0
+          ? ' This run had nothing new to add, and that is green — a completed run with no change to make is not a warning.'
+          : '';
       return {
         state: 'ok',
-        detail: `${shelf} · matches the ${builtCount.toLocaleString()} the last run built`,
+        detail: `${shelf} · published manifest is the one the last run built`,
         note:
-          'Green because the published shelf and the manifest the pipeline last built agree — that is ' +
-          'true whether the run changed something or found nothing to change. The heartbeat is only ' +
-          'rewritten by a run that actually uploads (STEP 5.8), so an older stamp with a matching count ' +
-          `is the expected quiet state, not a stall (${publishedAge}, ${builtAge}).${prodNote}`,
+          'Measured, not inferred — the pipeline records the manifest’s own generated_at ' +
+          `(summary.ebookManifestAt) and this row matches the live file against it.${nothingChanged}${prodNote}`,
       };
     }
-    // ⚠️ AMBER, AND ONLY HERE: a real difference between what the pipeline
-    // built and what readers can see. Something WAS trying to come through.
-    const gap = Math.abs(builtCount - publishedCount);
+
+    // ⚠️ AMBER. The run built a manifest the live site never received. Two
+    // different situations, two different sentences, because a reader needs to
+    // know whether anyone is actually missing a book right now.
+    if (Number.isFinite(builtCount) && builtCount !== publishedCount) {
+      const gap = Math.abs(builtCount - publishedCount);
+      return {
+        state: 'warn',
+        detail:
+          `⚠️ ${shelf}, but the last run built a manifest of ${builtCount.toLocaleString()} — ` +
+          `${gap.toLocaleString()} book${gap === 1 ? '' : 's'} apart`,
+        note:
+          'Amber because readers are missing books the pipeline has already built: the shelf it produced ' +
+          'and the shelf the site serves disagree. A publish that did not land, rather than a step that ' +
+          `did not run. (${publishedAge}, ${builtAge}.)${prodNote}`,
+      };
+    }
     return {
       state: 'warn',
       detail:
-        `⚠️ ${shelf}, but the last run built a manifest of ${builtCount.toLocaleString()} — ` +
-        `${gap.toLocaleString()} book${gap === 1 ? '' : 's'} apart`,
+        `⚠️ ${shelf} · the last run built a NEWER manifest than the one published ` +
+        `(${builtAge}, ${publishedAge})`,
       note:
-        'Amber because a change exists that the public file does not carry — the shelf the pipeline ' +
-        'built and the shelf the site publishes disagree. This is the one case amber is for; a run with ' +
-        `nothing to change renders green. (${publishedAge}, ${builtAge}.)${prodNote}`,
+        'Amber because the manifest this run built never reached the live site. The shelf itself is ' +
+        'unchanged, so no reader is missing a book yet — but the publish step did not land, and the next ' +
+        'real change would not land either. Do NOT soften this to green because the counts happen to ' +
+        'match: on 2026-08-18 this exact reading was a pipeline defect (publish gated on uploaded_count) ' +
+        `and this row is what found it.${prodNote}`,
     };
   }
 

@@ -23,7 +23,7 @@ One JSON object, pushed by a machine, rendered by two pages.
 | **Pusher** | [`scripts/push-agent-board.mjs`](../../scripts/push-agent-board.mjs) — the one implementation of the POST |
 | **`processing` pusher** | [`scripts/push-processing-board.mjs`](../../scripts/push-processing-board.mjs) — projects this machine's ingestion artefacts, merges, and execs the above |
 | **Custody** | [`docs/access/agent-board.md`](../access/agent-board.md) |
-| **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) (`agents`, `events`, `usage`) · [/status/processing](https://heygabi.ai/status/processing/) (`processing`) |
+| **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) (`agents`, `events`, `usage`) · [/status/processing](https://heygabi.ai/status/processing/) — titled **GABI Knowledge** since 2026-08-18, URL unchanged — (`processing`) |
 
 ---
 
@@ -305,15 +305,48 @@ board FROM agent_board WHERE id = 1"` and seed the file from it — which is
 exactly how this pusher's first push preserved the two agents already on the
 board.)
 
-⚠️ **THE KNOWN WRINKLE, STATED RATHER THAN HIDDEN: a processing push restamps
-`pushed_at` for the WHOLE board.** The freshness strip on /status/agents then
-reads fresh while its agent rows may be hours stale. It is survivable only
-because every section carries its own clock — `agents[].started_at`,
-`events[].at`, `usage.read_at`, `packs.as_of` — and both pages render those. A
-conductor who stops updating the draft still gets ageing-looking *rows*, just
-not an ageing-looking *strip*. **Fixing it properly means per-section push
-timestamps, which is a Worker and renderer change**, and it was deliberately not
-made as a side effect of shipping the pusher.
+⚠️ **THE KNOWN WRINKLE — CLOSED 2026-08-18 by migration 0013.** It was real,
+and the shape is worth keeping because the fix is the interesting part: a
+processing push restamped `pushed_at` for the WHOLE board, so /status/agents'
+freshness strip read fresh while its agent rows could be hours stale. The board
+is one last-write-wins row and both pushers write it whole, so a board-wide
+stamp could only ever mean "somebody pushed".
+
+**What happens now, and why it needed no pusher change at all:**
+
+| | |
+|---|---|
+| **Stored** | `agent_board.section_pushed_at` — a JSON map `{section: ISO}`, migration 0013 (`ALTER TABLE … ADD COLUMN`, purely additive) |
+| **Stamped by** | the **Worker**, from **its own clock**, in the same write as the board |
+| **A section moves when** | its CONTENT changed since the stored board — *or* the pusher named it in `X-Estate-Sections` |
+| **Read by** | `GET` answers `section_pushed_at`; `status/lib/board.js`'s `sectionFreshness()` takes the OLDEST of the sections a page owns |
+| **Pages** | /status/agents measures `agents`+`events`+`usage`; /status/processing measures `processing` |
+
+⚠️ **THE SERVER STAYS THE SINGLE CLOCK, and that decided the design.** §2
+already forbids trusting a pusher's timestamp for a displayed age. The
+alternative — each pusher stamping its own section inside the blob — would have
+put the estate's freshness display back on clocks nobody controls AND required
+both pushers changed in lockstep. Content-diffing on the server needed neither,
+which is why `push-agent-board.mjs` and `push-processing-board.mjs` are
+untouched by this change.
+
+⚠️ **THE HONEST COST OF THE DEFAULT, stated rather than hidden (again).** A
+section re-pushed **byte-identical** by a pusher that does not declare it keeps
+its earlier stamp, so the strip can read older than the last push. That is the
+safe direction and it is deliberate: *"this has not changed since 09:12"* is
+true, whereas the bug being fixed said "fresh" about data nobody had refreshed.
+A freshness surface may err toward saying stale; it may never err toward saying
+fresh. `X-Estate-Sections: agents,events,usage` is the seam for a pusher that
+wants the sharper answer — adopting it later needs **no further migration**.
+Comparison is key-order-independent, so a pusher that reserialises the same data
+does not falsely restamp it.
+
+⚠️ **A board with no stamps is a STATE, not a zero.** Rows written before
+0013 answer `section_pushed_at: {}`, and the pages fall back to the board-wide
+age **and say so in words** rather than passing it off as a section's own. The
+Worker also tolerates the column being absent on both read and write, so a
+deploy landing a minute ahead of its migration degrades instead of 502-ing the
+read door — which is not permission to skip migrate-then-deploy.
 
 ⚠️ **Trimming stays the pusher's job and the cap is closer than it looks.**
 Measured 2026-08-18: 158 history rows pushed as **44,393 bytes** — ~280 bytes a

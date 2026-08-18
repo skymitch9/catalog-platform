@@ -5,6 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { WORKER_VERSION } from '../src/estate.js';
 import { test } from 'node:test';
 import { estateRoutes } from '../src/estate.js';
 
@@ -46,7 +47,13 @@ test('GET /health answers the estate envelope AND keeps `users` at the top level
 
   // Additive transition: the pre-envelope shape survives unchanged at the
   // top level, and again verbatim under `detail`.
-  const legacy = { ok: true, users: { pending: 0, approved: 10, revoked: 0, approvers: 1 } };
+  // ⚠️ `version` added 2026-08-18: the Health page's Deployed-versions row for
+  // this Worker sat permanently AMBER ("Healthy, but reports no version") —
+  // the row saying it cannot name what is live, which is the one thing that
+  // section exists to answer. It must appear in BOTH halves of the envelope,
+  // because the page reads detail-first and falls back to the flat body.
+  const legacy = { ok: true, version: WORKER_VERSION, users: { pending: 0, approved: 10, revoked: 0, approvers: 1 } };
+  assert.equal(body.version, WORKER_VERSION);
   assert.deepEqual(body.users, legacy.users);
   assert.deepEqual(body.detail, legacy);
 });
