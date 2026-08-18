@@ -661,30 +661,74 @@ An implementation passes only if **all five** hold:
 5. **Asked mid-book by someone with a position, it scopes and says so** —
    proving §4 works, not just §3.
 
-### 6.4 ⚠️ The transcription hazard this class exposes
+### 6.4 ✅ The transcription hazard — MEASURED, and milder than feared
 
-**A stat block is a visual artifact.** Narrated, it becomes prose: no brackets,
-no line breaks, and — depending on narrator — *"Level one seventy-five"* rather
-than *"Level: 175"*.
+> **Status: RETIRED as a blocker, 2026-08-18.** The pilot ran: *The Primal
+> Hunter* book 1 (20.17 h) transcribed end-to-end on the owner's RTX 4080 SUPER.
+> Artifacts are local-only (`.claude/jobs/3473b22a/tmp/transcripts/`), never
+> committed and never uploaded. **Verdict: RECOVERABLE.** Three of this
+> section's four hazards did not materialise; one did, in a milder form.
 
-Consequences, all of which must be designed for rather than discovered:
+**Measured throughput — the §7.4 estimate was 6–12× too pessimistic:**
 
-- The anchored `^Key:` family **will not match a transcript** as written.
-  Transcript chunks need a **second, speech-tolerant detector** (key word
-  followed by a number within a short window, several such pairs in proximity).
-- **Numbers may arrive as words.** A normalisation pass (`"one seventy-five"` →
-  `175`) is required, and it is genuinely error-prone.
-- ⚠️ **Store BOTH views**: the raw transcript text (what she quotes) and a
-  normalised view (what the detector scans). Quoting the normalised view would
-  put words in the author's mouth.
-- ⚠️ **Whisper mis-hears proper nouns**, and LitRPG is dense with invented ones.
-  A skill named *"Meditative Perception"* may transcribe five ways across
-  277 hours. **Mitigation: prompt the ASR with a per-series glossary** built
-  from the catalogue's own fields and, where a twin exists, from the ebook's
-  proper nouns.
+| Quantity | §7.4 reasoned guess | **Measured 2026-08-18** |
+|---|---|---|
+| Rate, `large-v3` fp16, batch 8 | 30–70× derated | **85.3× realtime** |
+| Book 1 (20.17 h) | 7–14 GPU-h *(for 277 h)* | **14.2 min wall clock** |
+| Whole series (277.2 h) | "one night" | **~3.3 GPU-hours** |
+| Whole corpus (14,804 h) | 15–31 days | **~7.2 GPU-days** |
+| VRAM peak (batch 8) | unstated | **10.3 GB of 16 GB** |
+| m4b → 16 kHz mono WAV | unstated | 46 s (1,590×) |
 
-⚠️ **None of §6.4 is measured.** No transcript of any owned audiobook exists.
-It is the largest untested assumption in this design and §10 lists it first.
+Batch 16 measured **102.6×** but peaked **12.8 GB** — rejected for concurrent
+use of the machine. Batch 8 is the recommended setting.
+
+**Hazard-by-hazard, against what this section predicted:**
+
+- ❌ **"Numbers may arrive as words" — DID NOT HAPPEN.** Of **186** key→number
+  pairs inside the 21 detected stat blocks, **186 were digits and 0 were number
+  words** (100%). Whisper's own text normalisation emits digits for spoken
+  numerals. **The error-prone `"one seventy-five"` → `175` normalisation pass is
+  not needed** for this narrator/model pair. (Book-wide the digit share is only
+  37%, but the number-words are ordinary prose — *"one of them"* — not stats.)
+- ❌ **"The `^Key:` family will not match" — TRUE, but trivially repaired.** The
+  block survives as a flat comma-separated run: keys in order, each followed by
+  its value, e.g. *"Stats. Strength, 7. Agility, 8. Endurance, 7."* A
+  speech-tolerant detector — `\b(key)\b[\s,.:;-]*(\d+)`, scored by **count of
+  distinct keys per segment** — found **22 candidate blocks across the book with
+  zero tuning**, the strongest carrying 11 distinct keys. §6.2's step ③ needs the
+  regex swapped, and nothing else.
+- ⚠️ **"Whisper mis-hears proper nouns" — TRUE, but STABLE, not scattered.**
+  The predicted "five ways across 277 hours" did not occur. Each invented noun
+  collapsed to **one dominant variant**: *Thayne* → `Thane` ×21 (`Thene` ×3),
+  *Villy* → `Vily` ×8. Correctly-heard nouns stayed correct at volume
+  (`Malefic Viper` ×251, `Casper` ×114, `Umbra` ×26, `Archer's Eye` ×27).
+  ⚠️ **The one genuine data defect is single letters**: the race grade rendered
+  as *"human, G"* where the text reads `Human (D)`. **Letter grades are not
+  reliably transcribed and must never be quoted as fact from audio.**
+  Glossary prompting remains worth doing but is now an accuracy nicety, not a
+  precondition — a per-series alias map (`Thane`→`Thayne`) fixes retrieval at a
+  fraction of the cost.
+- ✅ **"Store BOTH views" — STILL RIGHT, for a different reason.** Not because
+  numbers need normalising, but because proper nouns need aliasing. Raw text is
+  what GABI quotes; the alias-normalised view is what the detector scans.
+
+**Bonus finding — §7.4's timestamp warning is WRONG and should be relaxed.**
+That section says Whisper's segment times "drift" and must never be trusted over
+`chapters.json`. Measured against the container's exact table across **69 of 73
+chapters**: the narrator's spoken *"Chapter N"* lands at **mean +0.27 s**
+(stdev 0.10 s, range −0.04 s to +0.54 s) from `start_sec`, with **no
+accumulation** — first half +0.26 s, second half +0.29 s over 20 hours. Word
+timestamps are accurate enough to **cut chunks at chapter boundaries directly**.
+`chapters.json` stays the anchor of record, but the reconciliation §7.4 demands
+is a sub-second correction, not drift management.
+
+⚠️ **What this pilot did NOT establish:** one book, one narrator
+(Travis Baldree), one series, English, clean studio audio, no `initial_prompt`
+glossary (baseline deliberately unmitigated), and **no accuracy ground truth** —
+no ebook twin exists for Primal Hunter, so WER is unmeasured and the numerals
+were verified as *well-formed*, not as *correct*. Multi-narrator, accented, or
+older recordings remain unmeasured.
 
 ---
 
@@ -848,11 +892,14 @@ is reasoned or vendor-published.**
 
 - ⚠️ **NOTHING IS BUILT.** No script, no bucket, no prefix, no route, no tool,
   no chunk, no transcript, no vector.
-- ⚠️ **No transcript of any owned audiobook exists.** §6.4 — the speech-form
-  stat-block problem, spoken-number normalisation, proper-noun drift over 277
-  hours — is entirely **unverified**. It is the single largest risk and the
-  cheapest to retire: transcribe **one** Primal Hunter book and look at a stat
-  block before committing to phase 5.
+- ✅ **RETIRED 2026-08-18 — one transcript now exists.** Primal Hunter book 1
+  (20.17 h) was transcribed on this machine and the stat blocks inspected; see
+  §6.4 for the measured verdict (**recoverable**; 85.3× realtime; numbers arrive
+  as digits, not words; proper-noun variants are stable, not scattered).
+  ⚠️ **Still unverified within it:** accuracy has **no ground truth** — Primal
+  Hunter has no ebook twin, so WER is unmeasured; and one narrator, one series,
+  one language is not the shelf. Letter grades (`Human (D)` → *"human, G"*) are
+  measurably unreliable and must not be quoted from audio.
 - ⚠️ **Chunk size (1,500 chars / 200 overlap) is a guess.** Untuned against a
   single real book. Chunking is a **persisted-key decision** — every `ord` and
   every vector depends on it — so re-chunking is a migration, not an edit.
