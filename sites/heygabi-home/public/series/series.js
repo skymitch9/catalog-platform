@@ -107,6 +107,10 @@ const listEl = document.getElementById('ser-list');
 const filterWrap = document.getElementById('ser-filter');
 const filterInput = document.getElementById('ser-filter-input');
 const countEl = document.getElementById('ser-count');
+const pendingEl = document.getElementById('ser-pending');
+const pendingDetailEl = document.getElementById('ser-pending-detail');
+const pendingOpenBtn = document.getElementById('ser-pending-open');
+const pendingBodyEl = document.getElementById('ser-pending-body');
 
 let currentUser = null;
 let seriesList = []; // the last /api/series answer's `series` array
@@ -680,6 +684,155 @@ function applyFilter() {
 
 filterInput.addEventListener('input', applyFilter);
 
+// ---------------------------------------------------------------------------
+// The confirm queue — announced on the page the approver already loads
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ WHY THIS PAGE RUNS NO APPROVER CHECK OF ITS OWN.
+ *
+ * The obvious shape — ask who the viewer is, then decide whether to show a
+ * banner — is the wrong one here, and the API was built to make it
+ * unnecessary. `GET /api/series` carries `pending_open` / `pending_detail` /
+ * `pending_url` for APPROVERS ONLY and omits them entirely for everybody else
+ * (series-route.ts approverBadge(): "ABSENT rather than zeroed", because the
+ * near misses span every catalog, so even their COUNT is estate-wide
+ * information). So the page's rule is presence, not identity:
+ *
+ *   fields absent      → not an approver → no banner, no words, nothing
+ *   pending_open === 0 → approver, queue empty → no banner (nothing to say)
+ *   pending_open > 0   → the banner, in the Worker's own sentence
+ *
+ * This page has plenty of auth context — it holds a Firebase user and a
+ * bearer token — and deliberately does not use it for this. The index's
+ * approver set is OWNER_EMAILS, which the browser cannot see and must never
+ * be handed a copy of; a client-side list would be a second source of truth
+ * that drifts silently the day the Worker's changes.
+ *
+ * ⚠️ WHY THE QUEUE IS FETCHED RATHER THAN LINKED. `pending_url` is
+ * `/api/series/pending` on the index, and that endpoint sits below
+ * `requireOwnerStanding()` — it authenticates by `Authorization: Bearer`
+ * ONLY. An <a href> cannot carry a header, so a plain link would hand the
+ * owner a raw `{"error":"unauthenticated"}` 401 — a link that lies, and a
+ * bare HTTP status shown to a person. The button below therefore calls the
+ * SAME URL through callIndex(), which carries the token, and renders the
+ * answer in words.
+ *
+ * ⚠️ AND THE URL IS THE API'S, NOT A CONSTANT — with a guard. Taking the path
+ * from the response is the whole point of the field ("the page no longer has
+ * to know a second endpoint exists"), but a URL out of a response is also a
+ * place a bearer token could be sent somewhere it should not go, so only a
+ * same-origin absolute path under /api/ is accepted; anything else falls back
+ * to the known path rather than fetching what it was handed.
+ */
+const PENDING_PATH_FALLBACK = '/api/series/pending';
+
+function safePendingPath(url) {
+  return typeof url === 'string' && /^\/api\/[A-Za-z0-9/_-]*$/.test(url) ? url : PENDING_PATH_FALLBACK;
+}
+
+let pendingPath = PENDING_PATH_FALLBACK;
+let pendingLoaded = false;
+
+function hidePending() {
+  pendingEl.hidden = true;
+  pendingDetailEl.textContent = '';
+  pendingBodyEl.innerHTML = '';
+  pendingBodyEl.hidden = true;
+  pendingOpenBtn.hidden = false;
+  pendingOpenBtn.disabled = false;
+  pendingLoaded = false;
+}
+
+/** Renders (or clears) the banner from the list answer the page already has. */
+function renderPending(data) {
+  const detail = data && typeof data.pending_detail === 'string' ? data.pending_detail : '';
+  const open = data ? data.pending_open : undefined;
+  if (!detail || !open) {
+    hidePending();
+    return;
+  }
+  pendingPath = safePendingPath(data.pending_url);
+  pendingDetailEl.textContent = detail;
+  pendingEl.hidden = false;
+}
+
+/** One queue row, in words: the two spellings, why they are still two, and
+ *  what the estate actually holds under each. Never a bare fold. */
+function pendingRow(row) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ser-pending-row';
+
+  const pair = document.createElement('p');
+  pair.className = 'ser-pending-pair';
+  pair.textContent = `“${row.candidate_display}” and “${row.closest_display}”`;
+  wrap.appendChild(pair);
+
+  // ⚠️ sample_titles is `{ source, title }[]` on the wire (series.ts NewPending),
+  //    NOT an array of strings — a plain join would print "[object Object]".
+  const samples = (Array.isArray(row.sample_titles) ? row.sample_titles : [])
+    .map((s) => (s && typeof s === 'object' ? s.title : s))
+    .filter(Boolean)
+    .slice(0, 3);
+  const sources = (Array.isArray(row.sources) ? row.sources : []).filter(Boolean);
+  const bits = [];
+  if (sources.length) bits.push(`on ${joinWords(sources.map(sourceLabel))}`);
+  if (samples.length) bits.push(`for example ${joinWords(samples.map((t) => `“${t}”`))}`);
+  if (bits.length) wrap.appendChild(noteP(`${bits.join(', ')}.`, 'ser-pending-meta'));
+
+  return wrap;
+}
+
+pendingOpenBtn.addEventListener('click', async () => {
+  if (pendingLoaded) {
+    pendingBodyEl.hidden = !pendingBodyEl.hidden;
+    return;
+  }
+  pendingOpenBtn.disabled = true;
+  pendingBodyEl.innerHTML = '';
+  pendingBodyEl.hidden = false;
+  pendingBodyEl.appendChild(noteP('Reading the queue…', 'ser-pending-meta'));
+
+  const r = await callIndex(pendingPath);
+  pendingOpenBtn.disabled = false;
+  pendingBodyEl.innerHTML = '';
+  if (r.error) {
+    pendingBodyEl.appendChild(noteP(r.error, 'ser-pending-meta'));
+    return;
+  }
+  if (r.code !== undefined && r.data === undefined) {
+    pendingBodyEl.appendChild(noteP(errorNote(r.status, r.code, 'the confirm queue'), 'ser-pending-meta'));
+    return;
+  }
+
+  const rows = (r.data.pending || []).filter((p) => p.resolved_at === null);
+  if (!rows.length) {
+    // The list answer said there were some and the queue says otherwise —
+    // somebody resolved them since this page loaded. Said, not hidden.
+    pendingBodyEl.appendChild(
+      noteP('Nothing is open any more — the queue was resolved since this page loaded. Reload for the current list.', 'ser-pending-meta'),
+    );
+    pendingLoaded = true;
+    return;
+  }
+
+  for (const row of rows) pendingBodyEl.appendChild(pendingRow(row));
+  // ⚠️ THIS BANNER READS THE QUEUE; IT DOES NOT DECIDE. Resolving a row is a
+  // POST that either MERGES two series under one key or records that they are
+  // genuinely different — a write to a persisted key, taken once and kept so
+  // the decision is never re-asked. That deserves its own considered
+  // affordance rather than a button bolted to a notice, so this says where the
+  // decision lives instead of offering a one-click merge.
+  pendingBodyEl.appendChild(
+    noteP(
+      'Nothing here merges on its own. Deciding one either joins the two spellings under a single ' +
+        'series or records that they are genuinely different — and the decision is kept, so it is never asked twice.',
+      'ser-pending-meta',
+    ),
+  );
+  pendingLoaded = true;
+});
+
 /** Loads (or clears) the list for whichever side of the auth boundary we are
  *  on. Signed out: the invitation, and no fetch at all. */
 async function refreshList() {
@@ -692,6 +845,7 @@ async function refreshList() {
     seriesList = [];
     listEl.innerHTML = '';
     filterWrap.hidden = true;
+    hidePending();
     setStatus(
       'The series view spans every shelf the estate indexes, so it needs a sign-in. ' +
         'Sign in and this page lists every series you can see — and, inside each one, the volumes nobody has.',
@@ -703,15 +857,20 @@ async function refreshList() {
   const r = await callIndex('/api/series');
   if (listedFor !== want) return; // signed out while the request was in flight
   if (r.error) {
+    hidePending();
     setStatus(r.error, 'warn');
     return;
   }
   if (r.code !== undefined && r.data === undefined) {
+    hidePending();
     setStatus(errorNote(r.status, r.code, 'the series list'), 'warn');
     return;
   }
 
   const data = r.data;
+  // The queue's announcement rides the answer the page already fetched — the
+  // banner appears, stays silent or disappears on the fields' own terms.
+  renderPending(data);
   if (data.reason === 'no_catalogs_visible') {
     seriesList = [];
     listEl.innerHTML = '';

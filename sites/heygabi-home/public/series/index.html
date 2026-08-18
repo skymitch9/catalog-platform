@@ -171,6 +171,38 @@ h2::after {
 #ser-status[data-tone="warn"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); color: var(--et-fg); }
 #ser-status[data-tone="owner"] { border-color: color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline)); color: var(--et-fg); }
 
+/* ---- the confirm-queue banner (approver-only; see the markup's own note) ---
+   Toned with --et-accent-2, the SAME "this is yours to act on" colour
+   #ser-status uses for data-tone="owner", not --et-danger: nothing is broken
+   and nothing is waiting to merge — two series simply stay two until somebody
+   decides, which is what the Worker's own `pending_detail` sentence says. A
+   red banner would report a fault the estate does not have. */
+
+.ser-pending {
+  margin: 0 0 var(--et-space-3);
+  padding: .8rem 1rem;
+  border: var(--et-border-w) solid color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: color-mix(in srgb, var(--et-accent-2) 8%, var(--et-surface));
+}
+.ser-pending-h {
+  margin: 0 0 .25rem;
+  font-size: var(--et-text-small);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--et-fg);
+}
+.ser-pending-detail { margin: 0; color: var(--et-fg); font-size: var(--et-text-small); text-wrap: pretty; }
+.ser-pending-actions { margin: .5rem 0 0; }
+.ser-pending-row {
+  margin: .7rem 0 0;
+  padding-top: .7rem;
+  border-top: 1px solid var(--et-hairline);
+}
+.ser-pending-pair { font-weight: 700; text-wrap: pretty; }
+.ser-pending-meta { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+
 /* ---- the filter box ------------------------------------------------------
    PAGE-LOCAL, NO NETWORK: the registry answered 441 slugs on the live index
    (§8.5's own measurement, 2026-08-17), which is too many rows to scroll for
@@ -452,6 +484,24 @@ footer a { color: var(--et-accent); }
   <p id="ser-who" hidden></p>
   <button id="ser-signin" class="find-btn" type="button" hidden>Sign in to see the series</button>
   <p id="ser-status" hidden></p>
+
+  <!-- The confirm queue's announcement. EMPTY AND HIDDEN IN THE MARKUP, and
+       filled only when GET /api/series answers with `pending_detail` — a field
+       the Worker sends to APPROVERS ONLY and omits entirely for everybody else
+       (series-route.ts approverBadge(): "ABSENT rather than zeroed", because a
+       count of near misses spans every catalog and is estate-wide information).
+       ⚠️ THIS PAGE THEREFORE NEVER DECIDES WHO MAY SEE IT. The presence of the
+       field IS the gate; there is no client-side approver check to drift out of
+       step with the Worker's OWNER_EMAILS, and a member who cannot act on the
+       queue is never told a queue exists. -->
+  <section id="ser-pending" class="ser-pending" aria-labelledby="ser-pending-h" hidden>
+    <h2 id="ser-pending-h" class="ser-pending-h">A decision is waiting</h2>
+    <p id="ser-pending-detail" class="ser-pending-detail"></p>
+    <p class="ser-pending-actions">
+      <button id="ser-pending-open" class="find-linkbtn" type="button">Show me which series</button>
+    </p>
+    <div id="ser-pending-body" hidden></div>
+  </section>
 
   <div class="ser-filter" id="ser-filter" hidden>
     <label class="sr-only" for="ser-filter-input">Filter series by name</label>
