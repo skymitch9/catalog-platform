@@ -20,6 +20,7 @@ import { parseAdminOrigins, parseSessionOrigins } from './env.js';
 import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
+import { agentBoardRoutes } from './agent-board.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
 import { estateDocsRoutes } from './estate-docs.js';
@@ -78,6 +79,27 @@ app.use('/api/estate/site-roles/*', adminCors());
 // leave those two sub-routes with no CORS at all.
 app.use('/api/estate/ops/pipeline', adminCors());
 app.use('/api/estate/ops/pipeline/*', adminCors());
+// The agent board (2026-08-18, the /status split's Agents page) — apex-only
+// like every other status-page surface. ⚠️ Its OWN exact mount rather than a
+// wider /api/estate/ops/* wildcard: the ingestion route below deliberately has
+// no CORS mount of its own either, and widening this one to cover the whole
+// /ops tree would hand a browser origin CORS on routes nobody audited for it.
+// The POST half is a MACHINE door (bearer, no browser, no preflight) and needs
+// no CORS at all — it is covered here only because Hono mounts by path, not by
+// method, and a mount that answers OPTIONS costs nothing the GET did not
+// already allow.
+app.use('/api/estate/ops/agent-board', adminCors());
+// ⚠️ THE INGESTION PAUSE CARD SHIPPED WITHOUT THIS MOUNT (bc6fc2b, 2026-08-18)
+// and was therefore UNREACHABLE FROM A BROWSER — found 2026-08-18 while moving
+// the card to /status/pipelines. Both its routes carry an Authorization header,
+// which makes every call a preflighted cross-origin request from the apex to
+// auth.heygabi.ai; with no CORS mount the OPTIONS came back with no
+// Access-Control-Allow-Origin and the fetch never reached the handler. The
+// route itself was correct and answered curl perfectly, which is exactly why
+// nothing caught it: the card's own doc records that no human had ever
+// rendered it signed in. Hono CORS mounts are exact-or-wildcard and never
+// prefix-implicit, so `/ops/pipeline*` above never covered this path.
+app.use('/api/estate/ops/ingestion', adminCors());
 // The todo board (auth-locked 2026-08-15) — apex-only, same reasoning as
 // every other admin-page surface: the shim that calls this lives on the
 // apex and nowhere else.
@@ -132,6 +154,7 @@ app.use('/api/session/token', sessionCors());
 app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
+app.route('/api', agentBoardRoutes);
 app.route('/api', todoRoutes);
 // ⚠️ ORDER IS LOAD-BEARING: estateDocsRoutes BEFORE docsRoutes.
 // docsRoutes owns GET /estate/docs/:slug, and its slug pattern

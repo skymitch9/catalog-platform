@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — agents</title>
+<meta name="description" content="Which Claude agents are running, and where the usage figures stand.">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+
+<!--
+  /status/agents — CLAUDE CAPACITY (owner mock 2026-08-18; the split is
+  described in docs/info/status-pages.md). Three blocks, one source:
+  running agents, the dispatched/landed/failed feed, and the usage figures —
+  which live HERE rather than on Health because they are Claude capacity, the
+  same subject as the agents themselves.
+
+  ⚠️ EVERYTHING ON THIS PAGE IS PUSHED, NOT PROBED, and the page is built
+  around that fact rather than hiding it. A Worker cannot see a session on the
+  owner's machine; the conductor POSTs a JSON snapshot to
+  auth.heygabi.ai/api/estate/ops/agent-board (bearer-gated) and this page GETs
+  it every 30 seconds behind the same devops gate as every other status
+  surface. The contract the snapshot must satisfy is
+  docs/info/agent-board-contract.md; the push helper is
+  scripts/push-agent-board.mjs.
+
+  ⚠️ THE AGE IS THE HEADLINE. The strip at the top says "as of N minutes ago"
+  before any data is shown, because a board that shows an eight-hour-old
+  picture as confidently as a fresh one is worse than no board. A FAILED poll
+  says so and states how old what is on screen is — it never leaves a stale
+  reading looking current, and never blanks the page either, which would read
+  as "everything stopped" when the truth is "we could not ask".
+
+  ⚠️ NOTHING HERE CAN START, STOP OR KILL AN AGENT. This is a window, not a
+  console: the write door on the endpoint is a machine bearer the browser does
+  not hold and must never be given.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<link rel="stylesheet" href="/assets/status-shell.css">
+<script src="/assets/theme.js"></script>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select"></select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Remembered on this site only.</p>
+</div>
+
+<main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+  <h1>Agents</h1>
+
+  <nav class="statusnav" aria-label="Status pages">
+    <a href="/status/">Health</a>
+    <a href="/status/processing/">Processing</a>
+    <a href="/status/pipelines/">Pipelines</a>
+    <a href="/status/agents/" aria-current="page">Agents</a>
+  </nav>
+
+  <p class="sub">
+    Claude capacity — what is running, what has landed, and how much budget is
+    left. Pushed from the conductor session; this page only ever shows what was
+    last published, and says how old that is.
+  </p>
+
+  <div class="ops-bar">
+    <button id="ops-signin" class="linkbtn" type="button">Sign in to see agents</button>
+    <span id="ops-who" hidden></span>
+  </div>
+  <p id="ops-note" class="ops-note" hidden></p>
+
+  <section id="agents-section" aria-labelledby="ag-h" hidden>
+    <h2 id="ag-h">Agent board</h2>
+
+    <!-- ⚠️ THE FRESHNESS STRIP IS THE FIRST THING INSIDE THE GATE, ABOVE ALL
+         DATA, and it is not decoration. Everything below it is a snapshot
+         somebody else published; without this line a reader has no way to tell
+         a live board from one pushed before lunch. Its tone is set by the
+         renderer from the Worker's own pushed_at — never guessed here. -->
+    <div id="board-fresh" class="freshstrip" data-tone="none">
+      <span class="fresh-age">reading…</span>
+      <span class="fresh-note">Asking the estate Worker for the last pushed board.</span>
+    </div>
+    <p class="section-note">
+      Re-read every 30 seconds while this tab is open.
+    </p>
+
+    <h3 class="step-list-h">Running now</h3>
+    <ul id="agent-rows" class="agent-list"></ul>
+
+    <h3 class="step-list-h">Recent events</h3>
+    <p class="section-note step-section-note">
+      Newest first — dispatched, landed, failed. The conductor decides how far
+      back the feed goes; this page renders what it was given.
+    </p>
+    <ul id="event-rows" class="feed"></ul>
+
+    <h3 class="step-list-h">Usage</h3>
+    <!-- ⚠️ THE READ-AT TIMESTAMP IS PART OF THE FIGURE, NOT A FOOTNOTE. A
+         usage percentage with no age is exactly the silent-staleness trap the
+         estate's own rules were written against: the number was true when it
+         was taken and says nothing about now. The tile block therefore renders
+         its own "read at" line from the board, separately from the board's
+         push age — they are two different clocks and can disagree. -->
+    <div id="usage-block"></div>
+
+    <p class="section-note">
+      Pushed with <code>scripts/push-agent-board.mjs</code>. Nothing on this
+      page can start, stop or kill an agent — the write door is a machine
+      bearer this browser does not hold.
+    </p>
+  </section>
+
+  <footer>
+    <p>
+      This page reads one endpoint on <code>auth.heygabi.ai</code> behind the
+      estate's devops gate. It cannot see a Claude session directly — no Worker
+      can — so everything here is as fresh as the last push and no fresher.
+    </p>
+    <p><a href="/status/">← estate health</a> · <a href="/">front door</a></p>
+  </footer>
+</main>
+
+<script type="module" src="/status/agents/agents.js"></script>
+</body>
+</html>

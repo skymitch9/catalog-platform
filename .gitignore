@@ -50,3 +50,21 @@ sites/heygabi-home/public/r/
 .env
 .env.*
 .dev.vars.*
+
+# ⚠️ LOCAL KEY CUSTODY — docs/access/keys/ holds the raw VALUES a local script
+# needs to run (first tenant 2026-08-18: the conductor's ESTATE_CONDUCTOR_TOKEN,
+# read by scripts/push-agent-board.mjs). THIS REPO IS PUBLIC ON GITHUB, so a
+# single mis-staged file here is a published credential — hence the whole
+# directory, not a filename pattern that a differently-named key would slip
+# past. The .md docs beside it stay TRACKED and name the secrets only; the
+# values never leave this folder. See docs/access/agent-board.md.
+#
+# ⚠️ `keys/*` and NOT `keys/`, because the negation below depends on it: git
+# never descends into an EXCLUDED DIRECTORY, so `keys/` + `!keys/README.md`
+# silently ignores the README too (measured here, 2026-08-18, before this line
+# read the way it does). Excluding the CONTENTS leaves the directory itself
+# walkable, which is what lets one file be re-included.
+docs/access/keys/*
+# The folder's own README is TRACKED — a fresh checkout otherwise gets an
+# invisible directory nobody knows to populate. It names secrets only.
+!docs/access/keys/README.md

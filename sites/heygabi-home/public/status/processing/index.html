@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — processing</title>
+<meta name="description" content="Which books are being processed, and when each one joined GABI's knowledge base.">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+
+<!--
+  /status/processing — DATA PROCESSING (owner mock 2026-08-18; the four-page
+  split is described in docs/info/status-pages.md). The owner's ask, verbatim
+  in docs/TODO.md: "which books are being processed right now, per-book %
+  progress, a history of everything processed, and next to each processed book
+  a label saying when it became part of GABI's knowledge base".
+
+  ⚠️ EVERYTHING ON THIS PAGE IS PUSHED, NOT PROBED — the same fact the Agents
+  page is built around, for the same reason: the transcription and packing
+  pipelines run on the owner's home machine, and no Worker can see them. The
+  conductor (or the pipeline itself) POSTs a JSON snapshot to
+  auth.heygabi.ai/api/estate/ops/agent-board and this page GETs the
+  `processing` SECTION of that same blob behind the devops gate. One endpoint,
+  two pages: /status/agents renders `agents`/`events`/`usage`, this one renders
+  `processing`. The contract is docs/info/agent-board-contract.md.
+
+  ⚠️ THE HOME-MACHINE PUSHER DOES NOT EXIST YET, AND THIS PAGE SAYS SO RATHER
+  THAN LOOKING EMPTY. "Nothing has been pushed" is a STATE with its own
+  sentence — an empty box here would read as "nothing is being processed",
+  which is a claim this page has no way to make. Every list carries a worded
+  empty state naming which of the four causes applies (never pushed / pushed
+  but this section is empty / the poll failed / not wired up yet).
+
+  ⚠️ THE AGE IS THE HEADLINE. The freshness strip is the first thing inside the
+  gate, above all data, and its tone comes from the WORKER'S pushed_at — never
+  from a timestamp inside the blob, which is the pusher's own clock and can be
+  wrong. A failed poll says so and states how old what is on screen is.
+
+  ⚠️ NOTHING HERE TRIGGERS ANYTHING. This is a window, not a console: the
+  pipeline levers live on /status/pipelines behind their own confirmations.
+
+  Styling: assets/status-shell.css (shared by all four pages) — the .proc-*
+  and .queue-* rules at its foot belong to this page. CSP: the /status/
+  processing rules in public/_headers.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<link rel="stylesheet" href="/assets/status-shell.css">
+<script src="/assets/theme.js"></script>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select"></select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Remembered on this site only.</p>
+</div>
+
+<main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+  <h1>Processing</h1>
+
+  <nav class="statusnav" aria-label="Status pages">
+    <a href="/status/">Health</a>
+    <a href="/status/processing/" aria-current="page">Processing</a>
+    <a href="/status/pipelines/">Pipelines</a>
+    <a href="/status/agents/">Agents</a>
+  </nav>
+
+  <p class="sub">
+    GABI's knowledge base as it grows — what is being processed now, what has
+    already joined, and how deep each lane's queue is. Pushed from the home
+    machine; this page only ever shows what was last published, and says how
+    old that is.
+  </p>
+
+  <div class="ops-bar">
+    <button id="ops-signin" class="linkbtn" type="button">Sign in to see processing</button>
+    <span id="ops-who" hidden></span>
+  </div>
+  <p id="ops-note" class="ops-note" hidden></p>
+
+  <section id="processing-section" aria-labelledby="proc-h" hidden>
+    <h2 id="proc-h">Knowledge base</h2>
+
+    <!-- ⚠️ SAME STRIP, SAME RENDERER as /status/agents (status/lib/board.js).
+         One implementation of "how old is this board" across both pushed-data
+         pages, so the two can never disagree about what stale means. -->
+    <div id="board-fresh" class="freshstrip" data-tone="none">
+      <span class="fresh-age">reading…</span>
+      <span class="fresh-note">Asking the estate Worker for the last pushed board.</span>
+    </div>
+    <p class="section-note">
+      Re-read every 30 seconds while this tab is open.
+    </p>
+
+    <h3 class="step-list-h">Being processed now</h3>
+    <p class="section-note step-section-note">
+      Per-book progress as the pipeline last reported it. A percentage here is
+      the pipeline's own count of finished units, never an estimate made by
+      this page.
+    </p>
+    <ul id="proc-inflight" class="proc-list"></ul>
+
+    <h3 class="step-list-h">Queue depth by lane</h3>
+    <p class="section-note step-section-note">
+      Waiting, not running — audiobook-with-review, EPUB, text PDF and the
+      deferred PDFs that need OCR before they can be read at all.
+    </p>
+    <div id="proc-queue"></div>
+
+    <h3 class="step-list-h">Packs</h3>
+    <div id="proc-packs"></div>
+
+    <h3 class="step-list-h">Joined GABI's knowledge base</h3>
+    <p class="section-note step-section-note">
+      Newest first. ⚠️ The date is when the pack became <em>servable</em> — not
+      when the file was transcribed. A book that is transcribed but not yet
+      ingested is not in her knowledge base, and the owner's standing
+      requirement is that she says so honestly rather than guessing.
+    </p>
+    <ul id="proc-history" class="proc-list"></ul>
+
+    <p class="section-note">
+      Pushed with <code>scripts/push-agent-board.mjs</code> (the
+      <code>processing</code> section of the same board the Agents page reads).
+      Nothing on this page starts, stops or re-queues anything — the pipeline
+      levers live on <a href="/status/pipelines/">Pipelines</a>.
+    </p>
+  </section>
+
+  <footer>
+    <p>
+      This page reads one endpoint on <code>auth.heygabi.ai</code> behind the
+      estate's devops gate. It cannot watch the home machine directly — no
+      Worker can — so everything here is as fresh as the last push and no
+      fresher.
+    </p>
+    <p><a href="/status/">← estate health</a> · <a href="/">front door</a></p>
+  </footer>
+</main>
+
+<script type="module" src="/status/processing/processing.js"></script>
+</body>
+</html>

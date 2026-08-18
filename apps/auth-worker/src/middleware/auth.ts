@@ -103,7 +103,21 @@ export function requireDevops(): MiddlewareHandler<AppBindings> {
     } catch (err) {
       return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
     }
-    if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+    // ⚠️ The `error` CODE stays exactly `unauthenticated` — tools/estate-probes
+    // asserts it across this Worker's whole unauthenticated edge, and every
+    // page's failure wording branches on it. The `detail` is ADDITIVE
+    // (2026-08-18) and exists because the estate's standing rule is that a
+    // person never meets a bare status: the four causes (not signed in /
+    // awaiting approval / insufficient role / revoked) have four different
+    // fixes, and this line is the first of them said out loud.
+    if (!identity)
+      return c.json(
+        {
+          error: 'unauthenticated',
+          detail: 'You are not signed in. Sign in with your estate account and try again.',
+        },
+        401,
+      );
 
     const email = identity.email.trim().toLowerCase();
     const ownerEmails = parseOwnerEmails(c.env.OWNER_EMAILS);

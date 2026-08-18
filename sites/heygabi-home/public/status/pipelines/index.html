@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — pipelines</title>
+<meta name="description" content="Run and control the estate's pipelines.">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+
+<!--
+  /status/pipelines — RUN + CONTROL (owner mock 2026-08-18: "a page for
+  running the pipelines and their logs"). One of four; the split and what
+  each page owns are in docs/info/status-pages.md.
+
+  ⚠️ EVERY CONTROL ON THIS PAGE MOVED HERE FROM /status ON 2026-08-18, INTACT.
+  The ingestion pause card (markup, two-tap confirms, both Phoenix pickers),
+  the Run button, the seven pipeline steps with their interlock, the Run
+  levers and the shelf-server force-upload. Nothing was redesigned in the
+  move; the only behavioural change is that this page reads
+  pipeline_status/current for itself instead of borrowing the Health page's
+  fetch, because the two pages no longer share a document.
+
+  ⚠️ THE PAUSE CARD SITS FIRST, ABOVE THE RUN BUTTON, AND THAT ORDER IS THE
+  WHOLE REASON THE SECTION HANGS TOGETHER. "Is anything currently paused" has
+  to be answered BEFORE someone presses Run: a Run pressed against a paused
+  ingestion produces a silence identical to a broken pipeline, and there would
+  be no way to tell the two apart. Moving the card without the Run button
+  would have severed exactly that.
+
+  ⚠️ TWO-TAP GRAMMAR, NO THIRD GESTURE. Every mutating control here is
+  assets/estate-controls.js's confirmBtn — the idiom /admin's revoke and role
+  buttons already use. The datetime pickers are inputs, not commits: a typed
+  time does nothing at all until its own button is armed and tapped again.
+
+  ⚠️ TIMES ARE PHOENIX TIME, SAID OUT LOUD ON BOTH LABELS. A datetime-local
+  input hands back a bare wall clock with no zone; assets/ingestion-time.js
+  pins it to America/Phoenix rather than to whatever zone the phone is
+  carrying, so a pause set from a laptop on Eastern still means 7pm at home.
+
+  ⚠️ RUN HISTORY IS NOT WIRED UP and says so in words. The blueprint asks for
+  "run history with per-run logs"; the pipeline's per-run logs live on the home
+  machine and reach nothing published today. An empty list here would read as
+  "no runs", which is the opposite of what is true.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<link rel="stylesheet" href="/assets/status-shell.css">
+<script src="/assets/theme.js"></script>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select"></select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Remembered on this site only.</p>
+</div>
+
+<main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+  <h1>Pipelines</h1>
+
+  <nav class="statusnav" aria-label="Status pages">
+    <a href="/status/">Health</a>
+    <a href="/status/processing/">Processing</a>
+    <a href="/status/pipelines/" aria-current="page">Pipelines</a>
+    <a href="/status/agents/">Agents</a>
+  </nav>
+
+  <p class="sub">
+    Run controls for the estate's pipelines — devops and approvers only.
+    Everything here writes to the home machine; nothing here runs in the
+    browser. For "is it up", see <a href="/status/">Health</a>.
+  </p>
+
+  <div class="ops-bar">
+    <button id="ops-signin" class="linkbtn" type="button">Sign in for run controls</button>
+    <span id="ops-who" hidden></span>
+  </div>
+  <p id="ops-note" class="ops-note" hidden></p>
+
+  <section id="ops-section" aria-labelledby="ops-h" hidden>
+    <h2 id="ops-h">Operations</h2>
+    <p class="section-note">
+      Run controls — devops and approvers only.
+    </p>
+
+    <!-- The pipeline's own live state, read straight from the public
+         pipeline_status/current document. It is here as well as on Health
+         because the step buttons INTERLOCK against it: a control that
+         disables itself while a run is in flight has to show the reader the
+         run it is deferring to, or the disabled button is a mystery. -->
+    <ul id="pipeline-now-rows" class="rows"></ul>
+
+    <div id="ops-controls">
+      <h3 class="step-list-h">Ingestion — pause &amp; resume</h3>
+      <p class="section-note step-section-note">
+        Stops and starts the ingestion process flow on the home machine.
+        Everything here needs a second tap to confirm, and both times are read
+        as <strong>Phoenix time</strong>.
+      </p>
+      <div id="ingestion-card" class="ing-card">
+        <div id="ingestion-status" class="ing-status" data-state="pending">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="ing-status-body">
+            <p id="ingestion-headline" class="ing-headline">Reading the ingestion control…</p>
+            <div id="ingestion-lines" class="ing-lines"></div>
+          </div>
+        </div>
+
+        <div id="ingestion-buttons" class="ing-buttons"></div>
+
+        <div class="ing-timer">
+          <label class="ing-label" for="ingestion-pause-until">
+            Pause until… <span class="ing-tz">Phoenix time</span>
+          </label>
+          <input id="ingestion-pause-until" class="ing-input" type="datetime-local">
+          <span id="ingestion-pause-until-slot"></span>
+        </div>
+
+        <div class="ing-timer">
+          <!-- The owner's own phrase, kept as the label rather than
+               paraphrased into "defer next check": it is the sentence he
+               will look for. -->
+          <label class="ing-label" for="ingestion-dont-check">
+            Don’t even check to start until… <span class="ing-tz">Phoenix time</span>
+          </label>
+          <input id="ingestion-dont-check" class="ing-input" type="datetime-local">
+          <span id="ingestion-dont-check-slot"></span>
+        </div>
+
+        <p id="ingestion-msg" class="ops-run-msg"></p>
+      </div>
+
+      <!-- The nightly ingestion window (blueprint: "nightly-window state
+           (Phoenix clock, next window, GPU guard reading)").
+           ⚠️ THE CLOCK IS REAL AND THE GUARD IS NOT — and the card says which
+           is which. Phoenix wall-clock and whether the 12am–8am window is open
+           are computed here from a fixed UTC-7 (Arizona has not observed DST
+           since 1968) and are trustworthy. The GPU guard's reading lives on
+           the home machine and reaches nothing published, so it renders as an
+           explicit "not published" line rather than a hopeful blank. -->
+      <h3 class="step-list-h">Nightly window</h3>
+      <div id="window-card" class="window-card" data-state="closed">
+        <p id="window-headline" class="window-headline">Reading the clock…</p>
+        <p id="window-line" class="window-line"></p>
+        <p class="window-line">
+          GPU guard: <strong>not published</strong> — it is read on the home
+          machine before each run and has no public surface yet.
+        </p>
+      </div>
+
+      <div class="ops-run">
+        <button id="ops-run-pipeline" class="btn" type="button">▶ Run Automated Book Pipeline</button>
+        <span id="ops-run-msg" class="ops-run-msg"></span>
+      </div>
+
+      <!-- Fine-grained pipeline step controls (owner ask 2026-08-16). Each
+           button takes the EXACT SAME single-flight lock as the button above
+           and the scheduled 8h run (app/core/pipeline_lock.py on the home
+           machine) — while a run is in flight every control below renders
+           disabled with who holds it and since when. -->
+      <h3 class="step-list-h">Pipeline steps</h3>
+      <p class="section-note step-section-note">
+        One stage in isolation, for recovery work. Read-only steps run
+        immediately; everything else needs a second tap to confirm.
+      </p>
+      <ul id="pipeline-steps" class="step-list"></ul>
+      <p id="pipeline-steps-msg" class="ops-run-msg"></p>
+
+      <!-- ⚠️ The distinction the heading has to carry: the steps ABOVE run on
+           the home machine through this page and take the pipeline's
+           single-flight lock; the levers BELOW run on GitHub's infrastructure
+           and this page cannot trigger, read, or even see them — it holds no
+           GitHub token client-side and deliberately never will. They are links
+           out, not buttons. -->
+      <h3 class="step-list-h">Run levers — GitHub Actions</h3>
+      <p class="section-note step-section-note">
+        Each row opens its real workflow on GitHub, gated by GitHub's own
+        sign-in — this page cannot start, stop, or read these runs. The three
+        <code>Deploy</code> rows share one workflow; pick the target there.
+      </p>
+      <ul id="lever-rows" class="lever-list"></ul>
+
+      <h3 class="step-list-h">Shelf server</h3>
+      <div class="ops-run">
+        <button id="ops-force-upload" class="btn quiet" type="button">⇪ Force full upload to shelf server</button>
+        <span id="ops-force-upload-msg" class="ops-run-msg"></span>
+      </div>
+      <!-- HONESTY MARKER — kept whole: a button that answers "not configured"
+           must say so before it is pressed. -->
+      <p class="force-upload-note">
+        The shelf server does not exist yet — this reports "not configured"
+        until it does. See <a href="/runbooks/shelf/">the shelf runbook</a>.
+      </p>
+      <ul id="shelf-upload-rows" class="rows"></ul>
+
+      <!-- ⚠️ THE HONEST PLACEHOLDER. The blueprint asks for "run history with
+           per-run logs (ingestion, backups, Drive sync, detail sweeps)". Those
+           logs are files on the home machine; nothing publishes them, and the
+           pipeline's Firestore heartbeat carries the CURRENT run only, not a
+           history. An empty list would read as "no runs have happened", which
+           is false and is the exact misreading this box exists to prevent. -->
+      <h3 class="step-list-h">Run history</h3>
+      <p class="empty-say">
+        <strong>Not wired up yet.</strong> Per-run logs (ingestion, backups,
+        Drive sync, detail sweeps) are written on the home machine and are not
+        published anywhere this page can read. What IS live is the current run,
+        in the row at the top of this section, and each workflow's own history
+        behind the Run levers above.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Nothing here holds a GitHub token or a Firestore credential: every write
+      goes through <code>auth.heygabi.ai</code> with your own sign-in, and every
+      trigger is a request the home machine picks up on its own schedule.
+    </p>
+    <p><a href="/status/">← estate health</a> · <a href="/">front door</a></p>
+  </footer>
+</main>
+
+<script type="module" src="/status/pipelines/pipelines.js"></script>
+</body>
+</html>

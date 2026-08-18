@@ -221,6 +221,67 @@
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# =========================================================================
+# THE /status SPLIT (2026-08-18) — three sibling pages, each with its own rule.
+#
+# ⚠️ `/status` DOES NOT COVER `/status/agents/`. Pages' _headers matching is
+# exact-or-wildcard and never prefix-implicit: the two rules above match the
+# literal paths `/status` and `/status/` and nothing below them. Without the
+# six rules here the three new pages would have shipped with NO
+# Content-Security-Policy and NO X-Frame-Options at all — signed-in devops
+# surfaces, frameable, silently weaker than the page they were split out of.
+# That is the whole reason this block exists; it is not tidiness.
+#
+# ⚠️ BOTH FORMS OF EACH PATH, per the trailing-slash 308 trap this file's own
+# header warns about — the redirect is served before the destination's headers
+# are chosen, so only the form the browser lands on matters.
+#
+# Each page gets the connect-src it actually uses, not a shared superset:
+#   /status/pipelines  auth.heygabi.ai  (POST /api/estate/ops/pipeline,
+#                      /pipeline/step, /pipeline/force-upload, and the
+#                      pause card's GET+POST /api/estate/ops/ingestion)
+#                      + firestore.googleapis.com (the two public documents
+#                      pipeline_status/current and shelf_upload_status/current,
+#                      read over plain REST, signed out)
+#   /status/agents     auth.heygabi.ai ONLY — one endpoint, the agent board.
+#   /status/processing auth.heygabi.ai ONLY — the same endpoint's `processing`
+#                      section. It fetches nothing else, and naming hosts it
+#                      does not call would hand this page reach it has no use
+#                      for.
+# All three sign in, so all three carry the front door's script-src (Firebase
+# SDK + the popup helper), identitytoolkit/securetoken on connect-src, and
+# frame-src for the popup/redirect flow. frame-src names auth.heygabi.ai
+# ALONGSIDE the firebaseapp.com entry — estate-auth.js's authDomain is
+# auth.heygabi.ai since the SSO Phase 1 cutover, matching /series rather than
+# the older /status rule above (whose omission is a latent gap on THAT page,
+# recorded in docs/TODO.md rather than fixed blind from here).
+# img-src stays 'self' data: — none of the three renders a cover.
+# =========================================================================
+
+/status/pipelines
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/pipelines/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/agents
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/agents/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/processing
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/processing/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 /universes
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

@@ -241,6 +241,35 @@ export interface Env {
    * PIPELINE_TRIGGER_TOKEN`; locally in `.dev.vars` (gitignored).
    */
   PIPELINE_TRIGGER_TOKEN?: string;
+
+  /**
+   * ⚠️ **THE CONDUCTOR'S PUSH BEARER** — the write door on
+   * `POST /api/estate/ops/agent-board` (src/agent-board.ts), added 2026-08-18
+   * with the /status split's Agents page.
+   *
+   * ⚠️ **NOT A PORTAL VALUE — the conductor MINTS it** (`openssl rand -hex 32`)
+   * and keeps the local copy under `docs/access/keys/` (gitignored, the
+   * `firebase-sa-restore.json` custody precedent). ONE holder on the server
+   * side: this Worker. Custody, rotation and the BOM-free transport:
+   * `docs/access/agent-board.md`.
+   *
+   * ⚠️ **WHAT HOLDING IT AUTHORISES: overwriting one advisory JSON blob.** It
+   * reads no Firestore, mints no token, grants no role and triggers no
+   * pipeline. A leak buys the ability to lie to the owner about his own agent
+   * capacity — worth rotating for, and a deliberately smaller blast radius
+   * than every other secret in this file. Read by exactly ONE module
+   * (`agent-board.ts`), pinned by `test/agent-board.test.ts`.
+   *
+   * ⚠️ **DELIBERATELY NOT A `CONSUMER_APPS` ENTRY**, for the same reason
+   * `ESTATE_APP_TOKEN_DISCORD_DOCS` is not: adding it there would silently
+   * make it a valid `POST /api/estate/seen` bearer, which is a wider
+   * capability than the one being granted.
+   *
+   * ⚠️ **SHIPS DARK while unset** — POST answers a worded 503 naming this
+   * secret and never falls back to accepting an unauthenticated write. The
+   * GET side is unaffected: a devops reader sees an honest "nothing pushed yet".
+   */
+  ESTATE_CONDUCTOR_TOKEN?: string;
 }
 
 /** The row estate.ts reads and writes. */

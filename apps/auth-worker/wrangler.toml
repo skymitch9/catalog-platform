@@ -129,6 +129,19 @@ migrations_dir = "migrations"
 #     phase 3.)
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
 #     never paste it into a terminal line, never echo it; see firebase-sa.ts)
+#   wrangler secret put ESTATE_CONDUCTOR_TOKEN     (the /status/agents push
+#     door, added 2026-08-18. ⚠️ NOT A PORTAL VALUE — the conductor MINTS it
+#     (`openssl rand -hex 32`). ONE holder on the server side: this Worker; the
+#     other copy is a gitignored custody file under docs/access/keys/ that
+#     scripts/push-agent-board.mjs reads. Custody + rotation:
+#     docs/access/agent-board.md.
+#     ⚠️ USE THE FILE-REDIRECT TRANSPORT ON WINDOWS, never a PowerShell pipe —
+#     a piped secret picks up an invisible UTF-8 BOM and the bearer then fails
+#     while LOOKING correct (discord-bot.md §7, the incident that cost a night).
+#     ⚠️ HOLDING IT AUTHORISES ONE THING: overwriting one advisory JSON blob.
+#     No Firestore, no token minting, no role, no pipeline trigger.
+#     ⚠️ SHIPS DARK until set — POST answers a worded 503 and never falls back
+#     to accepting an unauthenticated write.)
 #   wrangler secret put PIPELINE_TRIGGER_TOKEN     (pipe the SAME value as
 #     audiobook_catalog's own PIPELINE_TRIGGER_TOKEN — .env there, never
 #     printed; see ops.ts for why it must match exactly)

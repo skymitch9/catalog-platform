@@ -24,9 +24,42 @@
     },
     {
       "_why": [
+        "/status is HEALTH now \u2014 the front door of the four-page split (2026-08-18, owner: 'maybe a health page",
+        "that also has logs for the pods/workers/containers, a page for data processing, a page for running the",
+        "pipelines and their logs'). It keeps the two probe lists and the migration runbooks; the run controls",
+        "and the ingestion pause card MOVED to /status/pipelines/ and their markers moved with them, to that",
+        "page's own entry below. A pin left behind on the old page is worse than no pin: it would fail every",
+        "deploy for a control that is working perfectly somewhere else.",
+        "The four nav hrefs are pinned as a SET because the shared shell is the thing the split actually added \u2014",
+        "a page that lost its nav still serves a cheerful 200 and simply strands the reader on one tab with no",
+        "way to reach the other three.",
+        "mustNotContain pins the REMOVAL half, per the rework precedent: id=ingestion-card is exactly what a",
+        "stale bundle of the pre-split page would still carry while satisfying every marker above."
+      ],
+      "path": "/status/",
+      "mustContain": [
+        "Estate status",
+        "id=\"pipeline-rows\"",
+        "id=\"index-rows\"",
+        "Server migration",
+        "class=\"statusnav\"",
+        "href=\"/status/processing/\"",
+        "href=\"/status/pipelines/\"",
+        "href=\"/status/agents/\""
+      ],
+      "mustNotContain": [
+        "id=\"ingestion-card\"",
+        "id=\"ingestion-pause-until\""
+      ]
+    },
+    {
+      "_why": [
+        "/status/pipelines \u2014 RUN + CONTROL, the page the levers moved to on 2026-08-18. Everything here was",
+        "pinned on /status before the split and is pinned here now, unchanged in meaning: the pipeline steps, the",
+        "Run levers, and the ingestion pause card.",
         "The ingestion pause card (2026-08-18, owner: 'give me a way to pause and start the process flow on the",
         "GABI dashboard... let me also set pause timers on the ui. I can say don't even check to start until x",
-        "time.'). The card's BUTTONS are built by status.js after sign-in and cannot be asserted from here, but",
+        "time.'). The card's BUTTONS are built by pipelines.js after sign-in and cannot be asserted from here, but",
         "its shell ships in this HTML and every marker below is a piece whose absence would leave a control that",
         "still returns a cheerful 200 while doing nothing: id=ingestion-card is the card, id=ingestion-status and",
         "id=ingestion-headline are where the running/paused sentence lands (a blank there is the exact failure",
@@ -35,20 +68,156 @@
         "control that silently means a different hour on a travelling phone, and that label is the only thing on",
         "the page saying which zone the picker is read in."
       ],
-      "path": "/status/",
+      "path": "/status/pipelines/",
       "mustContain": [
-        "Estate status",
-        "id=\"pipeline-rows\"",
-        "id=\"index-rows\"",
+        "class=\"statusnav\"",
         "Run levers \u2014 GitHub Actions",
         "id=\"lever-rows\"",
-        "Server migration",
         "id=\"ingestion-card\"",
         "id=\"ingestion-status\"",
         "id=\"ingestion-headline\"",
         "id=\"ingestion-pause-until\"",
         "id=\"ingestion-dont-check\"",
         "Phoenix time"
+      ]
+    },
+    {
+      "_why": [
+        "pipelines.js (2026-08-18) carries the pause card's LOGIC, moved out of status.js by the split. These",
+        "three markers moved with it from the /status/status.js entry below and mean exactly what they meant",
+        "there: the route the card reads and writes (a bundle pointing at a route the Worker does not serve would",
+        "leave the card permanently unreadable), buildIngestionCard (the four two-tap buttons \u2014 without it the",
+        "card renders a status line and no controls), and the ingestion-time.js import (the two files must ship",
+        "together or the page's script dies at parse time with the usual cheerful 200 on the route).",
+        "The pure half's own 23 tests still live in scripts/test/ingestion-time.test.mjs and still pass \u2014 the",
+        "module did not move, only its caller did."
+      ],
+      "path": "/status/pipelines/pipelines.js",
+      "mustContain": [
+        "/api/estate/ops/ingestion",
+        "buildIngestionCard",
+        "ingestion-time.js",
+        "/api/estate/ops/pipeline"
+      ]
+    },
+    {
+      "_why": [
+        "/status/agents \u2014 CLAUDE CAPACITY (2026-08-18). Everything on it is PUSHED, so the markers are the",
+        "chrome and the freshness apparatus, never the data.",
+        "id=board-fresh is the freshness strip and is the single most important marker on this page: without it a",
+        "reader cannot tell a live board from one pushed before lunch, which is the failure the whole page is",
+        "designed around. The three mount ids are where the running agents, the event feed and the usage figures",
+        "land; a missing one leaves a heading with silence under it."
+      ],
+      "path": "/status/agents/",
+      "mustContain": [
+        "class=\"statusnav\"",
+        "id=\"board-fresh\"",
+        "id=\"agent-rows\"",
+        "id=\"event-rows\"",
+        "id=\"usage-block\"",
+        "id=\"ops-signin\""
+      ]
+    },
+    {
+      "_why": [
+        "agents.js (2026-08-18). fetchBoard is the shared reader in status/lib/board.js \u2014 its name appearing here",
+        "proves the module graph actually shipped, since a missing lib/ file takes the page's script down at",
+        "parse time while the route still serves 200.",
+        "The three usage keys are the estate's own meters and are pinned because a usage block that silently lost",
+        "one would look complete: three tiles is not a shape a reader counts."
+      ],
+      "path": "/status/agents/agents.js",
+      "mustContain": [
+        "fetchBoard",
+        "renderFreshness",
+        "session_pct",
+        "weekly_pct",
+        "fable_pct"
+      ]
+    },
+    {
+      "_why": [
+        "/status/processing \u2014 DATA PROCESSING (2026-08-18, owner: 'which books are being processed right now,",
+        "per-book % progress, a history of everything processed, and next to each processed book a label saying",
+        "when it became part of GABI's knowledge base').",
+        "\u26a0 THE HOME-MACHINE PUSHER DOES NOT EXIST YET, so this page's four lists render worded empty states",
+        "rather than data. That is precisely why the markers are the mount ids and the owner's own sentence: they",
+        "prove the page landed, and they would disappear if a later edit 'tidied away' an empty-looking section.",
+        "'Joined GABI's knowledge base' is asserted as TEXT because it is the label he asked for by name."
+      ],
+      "path": "/status/processing/",
+      "mustContain": [
+        "class=\"statusnav\"",
+        "id=\"board-fresh\"",
+        "id=\"proc-inflight\"",
+        "id=\"proc-queue\"",
+        "id=\"proc-packs\"",
+        "id=\"proc-history\"",
+        "Joined GABI's knowledge base"
+      ]
+    },
+    {
+      "_why": [
+        "processing.js (2026-08-18). Same module-graph proof as agents.js (fetchBoard), plus the two renderers",
+        "whose absence would leave the page's most-asked-for sections silently blank.",
+        "normaliseQueue is pinned because it is the tolerance that lets the unbuilt pusher send either shape of",
+        "queue data \u2014 losing it in a refactor would make the queue section empty on the day the pipeline",
+        "finally ships, which is the worst possible day to discover it."
+      ],
+      "path": "/status/processing/processing.js",
+      "mustContain": [
+        "fetchBoard",
+        "renderFreshness",
+        "renderInFlight",
+        "renderHistory",
+        "normaliseQueue"
+      ]
+    },
+    {
+      "_why": [
+        "The shared shell the split created (2026-08-18). status-shell.css is loaded by ALL FOUR pages, so a",
+        "failed upload of this one file leaves four unstyled pages serving cheerful 200s. .statusnav is the nav",
+        "itself; .freshstrip is the staleness apparatus on the two pushed-data pages; .proc-row and .usage-tile",
+        "are the two blocks the split added."
+      ],
+      "path": "/assets/status-shell.css",
+      "mustContain": [
+        ".statusnav",
+        ".freshstrip",
+        ".proc-row",
+        ".usage-tile"
+      ]
+    },
+    {
+      "_why": [
+        "status/lib/ \u2014 the three modules every page imports (2026-08-18). Pinned SEPARATELY from the pages",
+        "because an ES-module import failure is invisible from the importing page's HTML: the route serves 200,",
+        "the script dies at the import, and nothing renders. gate.js is the one that matters most \u2014 it is the",
+        "single implementation of the devops gate for all four pages, and four copies of a gate is four chances",
+        "for one to fail open."
+      ],
+      "path": "/status/lib/gate.js",
+      "mustContain": [
+        "mountGate",
+        "is_devops",
+        "/api/estate/me"
+      ]
+    },
+    {
+      "path": "/status/lib/board.js",
+      "mustContain": [
+        "fetchBoard",
+        "renderFreshness",
+        "/api/estate/ops/agent-board"
+      ]
+    },
+    {
+      "path": "/status/lib/core.js",
+      "mustContain": [
+        "formatAge",
+        "updateRow",
+        "sayEmpty"
       ]
     },
     {
@@ -76,10 +245,10 @@
         "inference costs on this page — three wrong colours); and 'fuse-tripped' is the state that must never",
         "silently vanish, since it is the one saying a mass change was REFUSED and is waiting for a human. A bundle",
         "missing any of the three would still serve a cheerful 200 with the row simply absent.",
-        "The ingestion pause card (2026-08-18) adds three: the route it reads and writes (a bundle pointing at a",
-        "route the Worker does not serve would leave the card permanently unreadable), buildIngestionCard (the",
-        "four two-tap buttons — without it the card renders a status line and no controls), and ingestion-time.js",
-        "(the import itself, since the two files must ship together or the page's script dies at parse time)."
+        "⚠ THE INGESTION PAUSE CARD'S THREE MARKERS LEFT THIS ENTRY on 2026-08-18 with the /status split — the",
+        "card now lives in /status/pipelines/pipelines.js and its pins moved to that file's entry above, intact.",
+        "They were NOT deleted: a pin that follows its subject keeps failing for the right reason, while a pin",
+        "left on the old file fails every deploy for a control that is working perfectly one page over."
       ],
       "path": "/status/status.js",
       "mustContain": [
@@ -88,10 +257,7 @@
         "renderPipelineEbookRow",
         "renderDriveParityRow",
         "driveParityState",
-        "fuse-tripped",
-        "/api/estate/ops/ingestion",
-        "buildIngestionCard",
-        "ingestion-time.js"
+        "fuse-tripped"
       ]
     },
     {

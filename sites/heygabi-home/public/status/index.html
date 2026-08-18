@@ -3,415 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>heygabi.ai — estate status</title>
-<meta name="description" content="Every pipeline and service in the estate — red or green, at a glance.">
+<title>heygabi.ai — estate health</title>
+<meta name="description" content="Every service in the estate — red or green, at a glance.">
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex">
 
 <!--
-  The estate status page — "I want to see all the pipelines" (owner ask,
-  2026-08-14). Reads ONLY public health surfaces: the shared index's
-  /api/health (index-worker-design.md §5 — counts and MAX(pushed_at) per
-  source, open by design), the library/games Workers' /api/health (also open
-  — "the endpoint you curl to prove the deployment works"), the estate auth
-  Worker's /api/health (open; counts, no emails), a no-cors reachability
-  probe of the three catalog site roots + the audiobook site's /dev/ lane,
-  and — added 2026-08-15, "we need the book pipeline for ebooks and
-  audiobooks recorded" — the audiobook sync pipeline's own two public
-  records: `pipeline_status/current` (a Firestore document the pipeline
-  writes at every step; public-read by firestore.rules, fetched here over
-  the plain REST API) and `site/ebooks.json` (the ebook-lane manifest sync
-  step 1b already publishes, CORS-open). No sign-in, ever — nothing here
-  needs one, and nothing here may leak member data (every payload this page
-  reads is counts/timestamps only, verified against each route's own source
-  before this page shipped).
+  /status — HEALTH, the front door of the four-page status surface (owner mock
+  2026-08-18: "maybe a health page that also has logs for the pods/workers/
+  containers, a page for data processing, a page for running the pipelines and
+  their logs... take this and organize it into pages you think make sense").
+  The four pages and what each owns are in docs/info/status-pages.md.
 
-  ⚠️ CORS: none of the four health endpoints sent Access-Control-Allow-Origin
-  before this page existed (verified live with curl -H "Origin:
-  https://heygabi.ai" — no ACAO header on any of the four). Each Worker's
-  /api/health route gained a small, GET-only, apex-locked CORS mount
-  (catalog-platform apps/index-worker + apps/auth-worker; the sibling repos'
-  library_catalog + Board_Game_Catalog apps/worker) and was redeployed. The
-  route itself did not change — it was already open by design; the CORS
-  addition only lets a BROWSER read what curl already could.
+  THIS PAGE ANSWERS ONE QUESTION: is everything up? It reads ONLY public
+  health surfaces — the shared index's /api/health, the library/games/estate
+  Workers' /api/health, a no-cors reachability probe of the site roots, and
+  the audiobook pipeline's own two public records (pipeline_status/current and
+  the ebook-lane heartbeat). No sign-in is needed for any of it, and no
+  payload carries member data: counts and timestamps only.
 
-  Styling: the estate theme system (assets/estate-theme.css + theme.js) —
-  tokens only, same cog, same localStorage choice as every other page on
-  this origin. CSP: _headers /status rule, strict by default, connect-src
-  naming exactly the six hosts this page fetches and nothing else.
+  ⚠️ THE RUN CONTROLS LEFT THIS PAGE ON 2026-08-18 and now live on
+  /status/pipelines/ — the ingestion pause card, the Run button, the pipeline
+  steps, the Run levers and the shelf-server push, all moved intact. The
+  reason is the owner's own split: "is it up" and "make it do something" are
+  different questions asked in different moods, and mixing them meant the
+  answer to the first was three screens below a wall of buttons. What stays
+  here behind the same devops gate is reference and evidence, never a lever:
+  the migration runbooks, the commandments, deploy versions and backup age.
 
-  ⚠️ Operations (added 2026-08-15, owner ask: "make sure the status page has
-  all the pieces to RUN the pipelines" — the audiobook pipeline moves the
-  ebooks too, so this is estate operations, not one catalog's admin tool).
-  Adds a sign-in affordance (estate-auth.js, the same Firebase project every
-  other estate page uses) purely to gate a NEW section: the rest of the
-  page is UNCHANGED and stays anonymous — no controls appear for anyone who
-  is not signed in AND confirmed an approver via GET /api/estate/me
-  (auth.heygabi.ai). Signed-in-but-not-approver sees an honest note, never a
-  button. The one control (POST /api/estate/ops/pipeline, same auth Worker)
-  writes the identical Firestore request document the audiobook admin
-  panel's "Run pipeline now" already writes — audiobook_catalog is
-  UNTOUCHED, this is a second producer of the same trigger, not a new
-  mechanism. A "Run levers" list beside it deep-links every OTHER run
-  control to where it already lives (GitHub Actions, or the legacy admin
-  panel) — no embedding, those surfaces have their own auth. CSP gained
-  script-src (Firebase SDK + the sign-in popup helper) and frame-src (the
-  popup/redirect flow) — see _headers; connect-src already named
-  auth.heygabi.ai for the Workers row above, now also identitytoolkit +
-  securetoken for the sign-in itself.
+  ⚠️ THERE ARE NO PODS OR CONTAINERS, and the owner's word for them should not
+  become a promise this estate cannot keep. It is Workers plus pipelines on a
+  home machine. Workers cannot be live-tailed from a static page; the planned
+  answer is a capped D1 ring buffer that workers write structured rows into,
+  and it is a FOLLOW-UP that has not been built. The "Recent worker events"
+  section below says exactly that rather than showing an empty box that looks
+  like silence.
+
+  Styling: assets/status-shell.css — SHARED by all four pages (extracted from
+  this file's inline <style> at the split) so an amber dot means the same
+  thing on every tab. CSP: the _headers rules for /status and its three
+  siblings.
 -->
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
 
 <link rel="stylesheet" href="/assets/estate-theme.css">
+<link rel="stylesheet" href="/assets/status-shell.css">
 <!-- Classic script on purpose: stamps theme/mode before first paint. -->
 <script src="/assets/theme.js"></script>
-
-<style>
-/* Working page, same language as /admin: tokens only, hairlines, one accent. */
-
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100dvh;
-  background: var(--et-bg);
-  background-image: var(--et-bg-texture);
-  background-size: var(--et-bg-texture-size);
-  color: var(--et-fg);
-  font: var(--et-text-body)/1.55 var(--et-font);
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-           env(safe-area-inset-bottom) env(safe-area-inset-left);
-}
-main { max-width: 44rem; margin: 0 auto; padding: var(--et-space-4) 1.15rem var(--et-space-5); }
-
-/* ---- back to the front door — owner ask 2026-08-16: "put a more easy to
-   access back to front door button" on this family of pages. First thing in
-   <main>, above the fold on a phone, a real 44px tap target. Same pattern as
-   /todo's gate (.back: arrow SVG + text) so the whole estate shares one
-   "how do I get back" affordance instead of each page inventing its own. */
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  min-height: 44px;
-  margin: 0 0 var(--et-space-1);
-  color: var(--et-muted);
-  font-size: .8125rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  text-decoration: none;
-}
-.back:hover { color: var(--et-fg); }
-.back:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
-.back svg { flex: none; transition: transform var(--et-dur-fast) var(--et-ease); }
-.back:hover svg { transform: translateX(-3px); }
-
-h1 {
-  margin: 0 0 .3rem;
-  font-family: var(--et-font-display);
-  font-size: var(--et-text-title);
-  font-weight: 700;
-  letter-spacing: var(--et-title-spacing);
-  text-transform: var(--et-title-case);
-  color: var(--et-heading-color);
-  text-shadow: var(--et-glow-title);
-}
-.sub { margin: 0 0 var(--et-space-3); color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
-.sub a { color: var(--et-accent); }
-
-[hidden] { display: none !important; }
-
-.bar {
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  flex-wrap: wrap;
-  margin-bottom: var(--et-space-2);
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: .4rem;
-  min-height: 44px;
-  padding: .5em 1.2em;
-  border: var(--et-btn-border);
-  border-radius: var(--et-radius-pill);
-  background: var(--et-btn-bg);
-  color: var(--et-btn-fg);
-  box-shadow: var(--et-btn-shadow);
-  font: 600 var(--et-text-body)/1.2 var(--et-font);
-  cursor: pointer;
-  transition: transform var(--et-dur-fast) var(--et-ease),
-              filter var(--et-dur-fast) var(--et-ease);
-}
-.btn:hover { filter: brightness(1.06); }
-.btn:active { transform: scale(.965); }
-.btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; }
-.btn:disabled { opacity: .6; cursor: default; transform: none; }
-.btn.quiet { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-fg); }
-.btn.danger { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-danger); }
-/* Publishing-tier steps (catalog/publish) — a standing amber tint, not just
-   the danger-red confirm-armed state, so "this ships to the live site" is
-   visible before the first tap, not only after arming it. */
-.btn.warn { --et-btn-bg: var(--et-surface); --et-btn-fg: var(--et-warn); border-color: var(--et-warn); }
-.btn.small { min-height: 34px; padding: .25em .8em; font-size: var(--et-text-small); }
-.btn svg { flex: none; transition: transform var(--et-dur) var(--et-ease); }
-.btn.spinning svg { animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* Fine-grained pipeline step controls (owner ask 2026-08-16) */
-.step-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
-.step-row {
-  display: flex;
-  align-items: center;
-  gap: .7rem;
-  flex-wrap: wrap;
-  padding: .6rem .85rem;
-  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
-  border-radius: var(--et-radius);
-  background: var(--et-surface);
-}
-.step-row[data-disabled="true"] { opacity: .72; }
-.step-main { display: flex; align-items: center; gap: .55rem; flex: 1 1 14rem; min-width: 0; }
-.step-name { font-weight: 600; font-size: var(--et-text-small); }
-.step-kind {
-  padding: .05em .55em;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius-pill);
-  font-size: var(--et-text-micro);
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: var(--et-muted);
-  white-space: nowrap;
-}
-.step-kind[data-kind="mutating"] { border-color: var(--et-warn); color: var(--et-warn); }
-.step-kind[data-kind="publishing"] { border-color: var(--et-danger); color: var(--et-danger); }
-.step-reason { flex: 1 1 100%; margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
-.step-warn-note { color: var(--et-warn); font-size: var(--et-text-micro); font-weight: 600; white-space: nowrap; }
-.step-section-note { margin: .1rem 0 .6rem; }
-.force-upload-note { margin: .5rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
-.step-list-h {
-  margin: var(--et-space-2) 0 0;
-  font-family: var(--et-font-display);
-  font-size: var(--et-text-body);
-  font-weight: 700;
-  letter-spacing: var(--et-title-spacing);
-  color: var(--et-heading-color);
-}
-
-.auto-note { color: var(--et-muted); font-size: var(--et-text-small); }
-
-/* One accessible line, updated after every refresh, so a screen reader
-   hears a summary once instead of every row every 60 seconds. */
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
-}
-
-section { margin-bottom: var(--et-space-3); }
-h2 {
-  display: flex;
-  align-items: baseline;
-  gap: .6rem;
-  margin: 0 0 .5rem;
-  font-family: var(--et-font-display);
-  font-size: var(--et-text-heading);
-  font-weight: 700;
-  letter-spacing: var(--et-title-spacing);
-  color: var(--et-heading-color);
-}
-.section-note { margin: 0 0 .6rem; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
-
-ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
-.row {
-  display: flex;
-  align-items: flex-start;
-  gap: .75rem;
-  padding: .75rem .9rem;
-  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
-  border-radius: var(--et-radius-lg);
-  background: var(--et-surface);
-}
-
-.dot {
-  flex: none;
-  width: .7rem;
-  height: .7rem;
-  margin-top: .3rem;
-  border-radius: 50%;
-  background: var(--et-muted);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--et-muted) 18%, transparent);
-}
-.row[data-state="ok"]     .dot { background: var(--et-ok);     box-shadow: 0 0 0 3px var(--et-ok-bg); }
-.row[data-state="warn"]   .dot { background: var(--et-warn);   box-shadow: 0 0 0 3px var(--et-warn-bg); }
-.row[data-state="danger"] .dot { background: var(--et-danger); box-shadow: 0 0 0 3px var(--et-danger-bg); }
-.row[data-state="pending"] .dot { animation: pulse-dot 1.4s ease-in-out infinite; }
-@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-
-.row-body { flex: 1 1 auto; min-width: 0; }
-.row-head { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
-.row-name { font-weight: 700; }
-
-.badge {
-  padding: .1em .6em;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius-pill);
-  font-size: var(--et-text-micro);
-  font-weight: 700;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-  color: var(--et-muted);
-  white-space: nowrap;
-}
-.row[data-state="ok"]      .badge { border-color: var(--et-ok);     color: var(--et-ok); }
-.row[data-state="warn"]    .badge { border-color: var(--et-warn);   color: var(--et-warn); }
-.row[data-state="danger"]  .badge { border-color: var(--et-danger); color: var(--et-danger); }
-
-.row-detail { margin: .3rem 0 0; color: var(--et-fg); font-size: var(--et-text-small); text-wrap: pretty; }
-.row-note { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
-.row-checked { margin: .35rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); font-family: var(--et-font-mono); }
-
-footer {
-  margin-top: var(--et-space-4);
-  padding-top: var(--et-space-2);
-  border-top: 1px solid var(--et-hairline);
-  color: var(--et-muted);
-  font-size: var(--et-text-small);
-  text-wrap: pretty;
-}
-footer p { margin: 0 0 .5rem; max-width: 46rem; }
-footer a { color: var(--et-accent); }
-code { font-family: var(--et-font-mono); font-size: .9em; }
-
-@media (prefers-reduced-motion: reduce) {
-  .btn.spinning svg, .row[data-state="pending"] .dot { animation: none !important; }
-}
-
-/* --- Operations: sign-in bar + the approver-only section it gates --- */
-.ops-bar {
-  display: flex;
-  align-items: center;
-  gap: .7rem;
-  flex-wrap: wrap;
-  margin: -.2rem 0 var(--et-space-2);
-  font-size: var(--et-text-small);
-  color: var(--et-muted);
-}
-.ops-bar .linkbtn {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--et-accent);
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.ops-note { margin: 0 0 .6rem; font-size: var(--et-text-small); color: var(--et-muted); text-wrap: pretty; }
-.ops-note[data-tone="warn"] { color: var(--et-warn); }
-
-#ops-section { margin-bottom: var(--et-space-3); }
-#ops-controls { display: grid; gap: .7rem; }
-
-/* The 12-commandments collapsible — native <details>, styled like a row. */
-#commandments-section { margin-bottom: var(--et-space-3); }
-.cmd-details {
-  border: 1px solid var(--et-hairline); border-radius: var(--et-radius);
-  background: var(--et-surface); padding: .55rem .85rem;
-}
-.cmd-details summary {
-  cursor: pointer; font-weight: 600; font-size: var(--et-text-small);
-  color: var(--et-muted); user-select: none; min-height: 32px;
-  display: flex; align-items: center;
-}
-.cmd-details[open] summary { color: var(--et-fg); margin-bottom: .4rem; }
-.cmd-list { margin: 0; padding-left: 1.3rem; font-size: var(--et-text-small); display: grid; gap: .45rem; }
-.cmd-list li { text-wrap: pretty; }
-
-.ops-run {
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  flex-wrap: wrap;
-  padding: .85rem .95rem;
-  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
-  border-radius: var(--et-radius-lg);
-  background: var(--et-surface);
-}
-/* Ingestion pause card (owner order 2026-08-18). Same panel shell as
-   .ops-run / .step-row so it reads as one more control in the same family,
-   with the status dot vocabulary the read-only rows already use — an owner
-   who has learnt "amber means look at me" on this page does not have to
-   learn a second colour language for the one control that stops everything. */
-.ing-card {
-  display: grid;
-  gap: .7rem;
-  padding: .85rem .95rem;
-  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
-  border-radius: var(--et-radius-lg);
-  background: var(--et-surface);
-}
-.ing-status { display: flex; align-items: flex-start; gap: .75rem; }
-.ing-status-body { flex: 1 1 auto; min-width: 0; }
-.ing-status[data-state="ok"]      .dot { background: var(--et-ok);     box-shadow: 0 0 0 3px var(--et-ok-bg); }
-.ing-status[data-state="warn"]    .dot { background: var(--et-warn);   box-shadow: 0 0 0 3px var(--et-warn-bg); }
-.ing-status[data-state="danger"]  .dot { background: var(--et-danger); box-shadow: 0 0 0 3px var(--et-danger-bg); }
-.ing-status[data-state="pending"] .dot { animation: pulse-dot 1.4s ease-in-out infinite; }
-.ing-headline { margin: 0; font-weight: 700; text-wrap: pretty; }
-.ing-lines { display: grid; gap: .2rem; margin: .3rem 0 0; }
-.ing-lines p { margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
-.ing-buttons { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
-.ing-timer { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
-.ing-label { font-size: var(--et-text-small); font-weight: 600; flex: 0 0 auto; }
-.ing-tz {
-  margin-left: .3rem;
-  padding: .05em .55em;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius-pill);
-  font-size: var(--et-text-micro);
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: var(--et-muted);
-  white-space: nowrap;
-}
-.ing-input {
-  min-height: 34px;
-  padding: .25em .6em;
-  border: 1px solid var(--et-hairline);
-  border-radius: var(--et-radius);
-  background: var(--et-bg, var(--et-surface));
-  color: var(--et-fg);
-  font: inherit;
-  font-size: var(--et-text-small);
-}
-.ing-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  .ing-status[data-state="pending"] .dot { animation: none !important; }
-}
-
-.ops-run-msg { font-size: var(--et-text-small); color: var(--et-muted); flex: 1 1 16rem; text-wrap: pretty; }
-.ops-run-msg[data-tone="ok"] { color: var(--et-ok); }
-.ops-run-msg[data-tone="warn"] { color: var(--et-danger); }
-
-.lever-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
-.lever-item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: .8rem;
-  flex-wrap: wrap;
-  padding: .6rem .85rem;
-  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
-  border-radius: var(--et-radius);
-  background: var(--et-surface);
-  font-size: var(--et-text-small);
-}
-.lever-item a { color: var(--et-accent); font-weight: 600; }
-.lever-note { color: var(--et-muted); font-size: var(--et-text-micro); }
-</style>
 </head>
 
 <body>
@@ -445,19 +84,22 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     heygabi.ai
   </a>
   <h1>Estate status</h1>
-  <!-- ⚠️ TRIMMED 2026-08-17 on the owner's estate-wide order ("Let's trim text
-       like this all over each of the sites. Only keep what's mandatory and keep
-       all the text short and useful"), matching the /admin precedent (204fb9d).
-       KEPT deliberately: the dot legend (a colour with no key is a bare status,
-       which his no-bare-status rule forbids) and the Operations gate sentence.
-       DROPPED: that watching needs no sign-in, and that rows carry only counts
-       and timestamps — both are stated in full in this page's own footer and in
-       docs/info/health-envelope.md, which is their home of record. -->
+
+  <!-- ⚠️ PLAIN LINKS, IN THE HTML, ON EVERY PAGE. A nav built by a module
+       vanishes on exactly the page whose script died — which is the page you
+       most need to leave. It is also what lets predeploy.checks.json assert
+       that all four tabs shipped. -->
+  <nav class="statusnav" aria-label="Status pages">
+    <a href="/status/" aria-current="page">Health</a>
+    <a href="/status/processing/">Processing</a>
+    <a href="/status/pipelines/">Pipelines</a>
+    <a href="/status/agents/">Agents</a>
+  </nav>
+
   <p class="sub">
-    Every pipeline and service, read straight from its own public health
-    endpoint. Green means the last check was healthy, amber worth a glance, red
-    stopped answering. Approvers may sign in for Operations; nobody else sees
-    it.
+    Every service, read straight from its own public health endpoint. Green
+    means the last check was healthy, amber worth a glance, red stopped
+    answering. Run controls moved to <a href="/status/pipelines/">Pipelines</a>.
   </p>
 
   <div class="bar">
@@ -471,18 +113,15 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   <p id="summary" class="sr-only" role="status" aria-live="polite"></p>
 
   <div class="ops-bar">
-    <button id="ops-signin" class="linkbtn" type="button">Sign in for Operations</button>
+    <button id="ops-signin" class="linkbtn" type="button">Sign in for devops</button>
     <span id="ops-who" hidden></span>
   </div>
   <p id="ops-note" class="ops-note" hidden></p>
 
-  <!-- Server migration (owner order 2026-08-15: "make this more obvious at
-       the top of the page in its own section called server migration").
-       Sits ABOVE Operations, revealed by the same devops/approver gate
-       (status.js toggles both sections off the one /me probe). The links
-       are public knowledge — each page is a content-free shim whose
-       document only loads for devops/approver tokens, so listing them here
-       leaks nothing the gate does not already defend. -->
+  <!-- Server migration (owner order 2026-08-15). Same devops gate as the
+       sections around it (status/lib/gate.js toggles them all off one /me
+       probe). The links are public knowledge — each page is a content-free
+       shim whose document only loads for devops tokens. -->
   <section id="migration-section" aria-labelledby="mig-h" hidden>
     <h2 id="mig-h">Server migration</h2>
     <!-- The "not yet run" half is an HONESTY MARKER and stays through every
@@ -501,10 +140,9 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <!-- The 12 AI commandments (owner order 2026-08-16: "add the 12
        commandments of ai we set up in the devops page. Make a collapsible
-       tab"). Same devops/approver gate as the two sections around it;
-       native <details> so collapsing needs no JS. The rules are generic
-       operating practice — no household detail — so unlike the runbooks'
-       KV-held content they can live in this committed file. -->
+       tab"). Same devops gate; native <details> so collapsing needs no JS.
+       The rules are generic operating practice — no household detail — so
+       unlike the runbooks' KV-held content they can live in this file. -->
   <section id="commandments-section" aria-labelledby="cmd-h" hidden>
     <h2 id="cmd-h">The 12 AI commandments</h2>
     <details class="cmd-details">
@@ -526,199 +164,42 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     </details>
   </section>
 
-  <section id="ops-section" aria-labelledby="ops-h" hidden>
-    <h2 id="ops-h">Operations</h2>
-    <!-- Trimmed 2026-08-17 (owner's estate-wide trim). The removed sentence
-         named the gate's mechanism (GET /api/estate/me must confirm devops or
-         approver before this section un-hides); nobody signed out ever reads
-         it, and its home of record is docs/access/estate-auth.md. -->
-    <p class="section-note">
-      Run controls — devops and approvers only.
-    </p>
-    <div id="ops-controls">
-      <!-- Ingestion pause / resume (owner order 2026-08-18, verbatim: "give
-           me a way to pause and start the process flow on the GABI dashboard.
-           Tonight starting at 7pm I need all of this paused until midnight.
-           So let me also set pause timers on the ui. I can say don't even
-           check to start until x time.").
-
-           ⚠️ IT SITS FIRST, ABOVE THE RUN BUTTON, ON PURPOSE. "Is anything
-           currently paused" is the question that has to be answered BEFORE
-           someone presses Run — a Run button pressed against a paused
-           ingestion produces a silence that looks identical to a broken
-           pipeline, and the owner would have no way to tell the two apart.
-           Putting the state line at the top of Operations means the first
-           thing the section says is whether the machine is even listening.
-
-           ⚠️ SAME TWO-TAP GRAMMAR AS EVERY OTHER MUTATING CONTROL HERE
-           (assets/estate-controls.js confirmBtn — the idiom /admin's
-           revoke/role buttons and the pipeline steps above already use). The
-           two datetime pickers are NOT a third gesture: an input is not a
-           commit, and each picker's value only reaches the control document
-           through a confirmBtn that arms and confirms exactly like the
-           others. Nothing on this card writes on a single tap.
-
-           ⚠️ TIMES ARE PHOENIX TIME, SAID OUT LOUD ON BOTH LABELS. A
-           datetime-local input hands back a bare wall clock with no zone;
-           assets/ingestion-time.js pins it to America/Phoenix rather than to
-           whatever zone the phone is carrying, so a pause set from a laptop
-           on Eastern still means 7pm at home. -->
-      <h3 class="step-list-h">Ingestion — pause &amp; resume</h3>
-      <p class="section-note step-section-note">
-        Stops and starts the ingestion process flow on the home machine.
-        Everything here needs a second tap to confirm, and both times are read
-        as <strong>Phoenix time</strong>.
-      </p>
-      <div id="ingestion-card" class="ing-card">
-        <div id="ingestion-status" class="ing-status" data-state="pending">
-          <span class="dot" aria-hidden="true"></span>
-          <div class="ing-status-body">
-            <p id="ingestion-headline" class="ing-headline">Reading the ingestion control…</p>
-            <div id="ingestion-lines" class="ing-lines"></div>
-          </div>
-        </div>
-
-        <div id="ingestion-buttons" class="ing-buttons"></div>
-
-        <div class="ing-timer">
-          <label class="ing-label" for="ingestion-pause-until">
-            Pause until… <span class="ing-tz">Phoenix time</span>
-          </label>
-          <input id="ingestion-pause-until" class="ing-input" type="datetime-local">
-          <span id="ingestion-pause-until-slot"></span>
-        </div>
-
-        <div class="ing-timer">
-          <!-- The owner's own phrase, kept as the label rather than
-               paraphrased into "defer next check": it is the sentence he
-               will look for. -->
-          <label class="ing-label" for="ingestion-dont-check">
-            Don’t even check to start until… <span class="ing-tz">Phoenix time</span>
-          </label>
-          <input id="ingestion-dont-check" class="ing-input" type="datetime-local">
-          <span id="ingestion-dont-check-slot"></span>
-        </div>
-
-        <p id="ingestion-msg" class="ops-run-msg"></p>
-      </div>
-
-      <div class="ops-run">
-        <button id="ops-run-pipeline" class="btn" type="button">▶ Run Automated Book Pipeline</button>
-        <span id="ops-run-msg" class="ops-run-msg"></span>
-      </div>
-
-      <!-- Fine-grained pipeline step controls (owner ask 2026-08-16: "give
-           us fine control over each part of the pipeline in case we need to
-           do part way steps... make sure we cant break stuff"). Each button
-           takes the EXACT SAME single-flight lock as the button above and
-           the scheduled 8h run (app/core/pipeline_lock.py on the home
-           machine) — while a run is in flight every control below renders
-           disabled with who holds it and since when. Confirmation tier by
-           blast radius: read-only steps are plain buttons; mutating and
-           publishing steps use the SAME two-tap confirmBtn idiom as
-           /admin's revoke/role buttons (assets/estate-controls.js);
-           publishing steps additionally carry a standing "updates the live
-           site" warning. -->
-      <h3 class="step-list-h">Pipeline steps</h3>
-      <!-- The two-tap sentence is the interaction GRAMMAR and stays: a control
-           that writes on the second tap must say so before the first. -->
-      <p class="section-note step-section-note">
-        One stage in isolation, for recovery work. Read-only steps run
-        immediately; everything else needs a second tap to confirm.
-      </p>
-      <ul id="pipeline-steps" class="step-list"></ul>
-      <p id="pipeline-steps-msg" class="ops-run-msg"></p>
-
-      <!-- Run levers (owner ask 2026-08-16: "we have a section of what looks
-           like GitHub actions, can we label this and put it near pipeline
-           steps"). This list shipped 2026-08-15 with NO heading of its own,
-           at the very bottom of Operations — six bare links reading as an
-           unexplained block nobody could identify. Two things fixed here and
-           they are separate: it now has an h3 saying what it IS, and it now
-           sits DIRECTLY BELOW "Pipeline steps" so the two run-control lists
-           are adjacent (the Shelf server block moved below it — that block
-           is the least usable of the three today, since the physical server
-           does not exist yet).
-
-           ⚠️ The distinction the heading has to carry: the steps ABOVE run
-           on the home machine through this page and take the pipeline's
-           single-flight lock; the levers BELOW run on GitHub's infrastructure
-           and this page cannot trigger, read, or even see them — it holds no
-           GitHub token client-side and deliberately never will (footer note).
-           They are links out, not buttons. Naming them "Run levers" alone
-           did not convey that, hence "— GitHub Actions" in the heading, which
-           is the phrase an owner actually recognises from the tab they land
-           on. Copy elsewhere refers to this list by the name "Run levers"
-           (status.js's backups-row message) — keep that phrase in the
-           heading or that reference dangles. -->
-      <h3 class="step-list-h">Run levers — GitHub Actions</h3>
-      <!-- "cannot start, stop, or read these runs" is an HONESTY MARKER about
-           this page's limits and stays through every trim. -->
-      <p class="section-note step-section-note">
-        Each row opens its real workflow on GitHub, gated by GitHub's own
-        sign-in — this page cannot start, stop, or read these runs. The three
-        <code>Deploy</code> rows share one workflow; pick the target there.
-      </p>
-      <ul id="lever-rows" class="lever-list"></ul>
-
-      <!-- Force full upload to the shelf server (owner ask 2026-08-16: "add
-           a button to force a full upload to the server that we can run to
-           make sure we can move google drive to server without the full
-           pipeline"). Deliberately its OWN control, outside the step list
-           above — it is not a pipeline stage, it is a standalone
-           reconciliation push straight from the local library to the shelf
-           server. The shelf server does not exist yet (see
-           /runbooks/shelf/); this degrades honestly rather than appearing
-           to succeed — watch the "Shelf upload" row below for the real
-           outcome. Safe to run repeatedly by design. -->
-      <h3 class="step-list-h">Shelf server</h3>
-      <div class="ops-run">
-        <button id="ops-force-upload" class="btn quiet" type="button">⇪ Force full upload to shelf server</button>
-        <span id="ops-force-upload-msg" class="ops-run-msg"></span>
-      </div>
-      <!-- HONESTY MARKER — kept whole: a button that answers "not configured"
-           must say so before it is pressed. -->
-      <p class="force-upload-note">
-        The shelf server does not exist yet — this reports "not configured"
-        until it does. See <a href="/runbooks/shelf/">the shelf runbook</a>.
-      </p>
-      <ul id="shelf-upload-rows" class="rows"></ul>
-    </div>
-  </section>
-
   <!-- Backups (owner ask 2026-08-16: "nothing surfaces whether backups are
-       actually still running"). Same devops/approver gate as Operations
-       above — GET /api/estate/backups (requireDevops()) reads the PRIVATE
-       estate-backups R2 bucket and answers aggregate counts/timestamps
-       only, so these rows can only ever be fetched signed in, unlike every
-       anonymous row below. See status.js's renderBackupGroup() header for why
-       the thresholds are calendar-based (14d/45d) rather than cadence-based —
-       backup.yml is workflow_dispatch-only, no cron, so there is no
-       "expected next run" to measure against the way the 8h pipeline
-       cadence works; a long age here honestly can mean "nobody ran it,"
-       not "broken," and the rows' own note says so every time. The
-       thresholds themselves live in apps/auth-worker/src/backups.ts and are
-       pinned by its tests; this page renders the state, it does not decide
-       it. One row per backup KIND plus a roll-up, each graded on its
-       STALEST store — backup.yml's `target` input means a partial run
-       refreshes some stores and not others, so "newest object in the
-       bucket" would hide a database nobody has exported in months. -->
+       actually still running"). Same devops gate — GET /api/estate/backups
+       (requireDevops()) reads the PRIVATE estate-backups R2 bucket and
+       answers aggregate counts/timestamps only, so these rows can only ever
+       be fetched signed in, unlike every anonymous row below. Thresholds
+       live server-side in apps/auth-worker/src/backups.ts and are pinned by
+       its tests; this page renders the state, it does not decide it. -->
   <section id="backups-section" aria-labelledby="backups-h" hidden>
     <h2 id="backups-h">Backups</h2>
-    <!-- Trimmed 2026-08-17 (owner's estate-wide trim). KEPT: "no cron" and the
-         oldest-store grading, because both change how a reader reads the dot.
-         DROPPED: the bucket inventory and the read-path's privacy envelope
-         (counts and timestamps only, never a listing or an object URL) — that
-         envelope's home of record is docs/access/backup-restore.md, and
-         apps/auth-worker/test/backups.test.ts pins the JSON shape a 200
-         carries — which is the enforcement prose never was. -->
     <p class="section-note">
-      The private <code>estate-backups</code> R2 bucket, written only by a
-      manual run of <code>backup.yml</code> — no cron. Each row is graded on its
-      <em>oldest</em> store, so one stale database cannot hide behind a fresh
-      one.
+      The private <code>estate-backups</code> R2 bucket, written by
+      <code>backup.yml</code> — daily at 09:12 UTC, and on manual dispatch.
+      Each row is graded on its <em>oldest</em> store, so one stale database
+      cannot hide behind a fresh one.
     </p>
     <ul id="backups-rows" class="rows"></ul>
+  </section>
+
+  <!-- Deploys (2026-08-18, blueprint: "last deploy per worker from
+       deploys.log"). ⚠️ AND IT IS NOT deploys.log. That file lives in the
+       repo at docs/deploys.log and is NOT published to the web — publishing
+       it would put the estate's deploy history, holder names and rollback
+       trail on a public host to save one fetch. What IS both public and
+       authoritative is each Worker's own /api/health `version`: the build
+       actually running right now, read from the thing running it. The note
+       below says which of the two you are looking at, because a version and
+       a deploy record are not the same fact. -->
+  <section aria-labelledby="dep-h">
+    <h2 id="dep-h">Deployed versions</h2>
+    <p class="section-note">
+      What each Worker says it is running, from its own <code>/api/health</code>.
+      ⚠️ This is the <em>live build</em>, not the deploy log — <code>docs/deploys.log</code>
+      (who deployed what, when, and the rollback trail) stays in the repo and is
+      deliberately not published here.
+    </p>
+    <ul id="deploy-rows" class="rows"></ul>
   </section>
 
   <section aria-labelledby="idx-h">
@@ -734,15 +215,13 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 
   <section aria-labelledby="pipe-h">
     <h2 id="pipe-h">Book pipeline</h2>
-    <!-- "cannot see the next run" is an HONESTY MARKER and stays. The dropped
-         half named the threshold arithmetic (8h + slack) shared with the
-         Audiobook row; that was never doc'd and its home of record is the
-         constants in ./status.js, which is where a change to it must be made. -->
+    <!-- "cannot see the next run" is an HONESTY MARKER and stays. -->
     <p class="section-note">
       The audiobook pipeline's own records — its Firestore heartbeat and the
       ebook-lane manifest — read straight, never inferred. This page cannot see
       the pipeline's <em>next</em> run (that lives only on the home machine);
-      ages are measured from the last recorded one.
+      ages are measured from the last recorded one. Pause it, or run a step,
+      from <a href="/status/pipelines/">Pipelines</a>.
     </p>
     <ul id="pipeline-rows" class="rows"></ul>
   </section>
@@ -764,21 +243,41 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
     <ul id="site-rows" class="rows"></ul>
   </section>
 
+  <!-- ⚠️ THE HONEST PLACEHOLDER, AND IT IS DELIBERATELY A WHOLE SECTION.
+       The owner asked for "logs for the pods/workers/containers". There are
+       no pods and no containers, and a Worker cannot be tailed from a static
+       page at all. The plan on file is a capped D1 ring buffer that each
+       Worker writes structured error/event rows into, which this section then
+       renders newest-first with a timestamp on every block. It is a FOLLOW-UP
+       and has not been built.
+       Saying so in a box is the point: an empty list here would be read as
+       "no errors", which is the single most dangerous thing this page could
+       imply. The deep link goes where the logs actually are today. -->
+  <section aria-labelledby="log-h">
+    <h2 id="log-h">Recent worker events</h2>
+    <p class="section-note">
+      <strong>Not wired up yet</strong> — and an empty box here would read as
+      "no errors", which is not something this page can currently know.
+    </p>
+    <p class="empty-say">
+      Workers cannot be live-tailed from a static page. The plan on file is a
+      capped ring buffer in D1 that each Worker writes structured event rows
+      into, rendered here newest-first with its own timestamp. Until that
+      ships, the real tail is the Cloudflare dashboard
+      (<code>wrangler tail &lt;worker&gt;</code>), and the pipeline's own logs
+      live on the home machine.
+    </p>
+  </section>
+
   <footer>
-    <!-- ⚠️ TRIMMED 2026-08-17 (owner's estate-wide trim order). The exact
-         six-host read list and the Firebase auth hosts sign-in adds were
-         removed from the page; they are NOT lost — docs/info/health-envelope.md
-         is their home of record, and it is the doc to update when a host is
-         added. What stays here is the CLAIM a reader cannot verify for himself
-         (no credentials are sent) and the honesty marker naming what is absent
-         from the page. -->
     <p>
       These rows read six public hosts and send no credentials; every endpoint
       answers signed-out by design.
     </p>
     <p>
       Not shown: GitHub Actions run status — that needs a token this page cannot
-      hold, so the Run levers link straight to those pages instead.
+      hold, so the Run levers on <a href="/status/pipelines/">Pipelines</a> link
+      straight to those pages instead.
     </p>
     <p><a href="/">← back to the front door</a></p>
   </footer>
