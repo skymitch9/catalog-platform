@@ -1,5 +1,36 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+## 📋 The /todo board — refreshed 2026-08-18, and why it is NOT generated
+
+Owner: *"this todo board on heygabi seems way off, can we get an update on this
+to match whats actually in our todo list, keep how pretty it looks tho."*
+
+Refreshed **by hand** — 18 items, structure and voice untouched. Three items had
+shipped and were still listed (the ebooks view, reading schedules, club polls);
+the biggest live work was absent entirely (GABI reading books, the audiobook
+player, the OCR queue, backups); one count was stale (twelve books with no cover
+→ four).
+
+⚠️ **A GENERATOR READING THE TODO.md FILES WAS CONSIDERED AND REJECTED, and the
+reason is not effort.** It is a category error. `docs/TODO.md` in each repo is a
+900–1,100-line ENGINEER'S work log: incident write-ups, ⚠️ markers, owner-eyeball
+checklists, tables of measured facts. The board is a curated, plain-language
+*"what's next"* for one reader, in complete sentences, with no jargon and no file
+paths. Rendering the first into the second mechanically would produce a wall of
+warnings and half-finished thoughts — which is precisely the *"keep how pretty it
+looks"* the owner asked to preserve. **The translation IS the product.**
+
+**What was made sustainable instead:** `apps/auth-worker/test/todo-board.test.ts`
+now guards the board's STRUCTURE mechanically — every item carries exactly one
+scope and a known project class, every filter chip has at least one item, and
+the six radios stay direct siblings in order. No test can know whether "four
+books" is still four, but these stop the class of edit that leaves a chip
+rendering an empty board, which reads as *"nothing left to do on this project"*.
+
+**When it drifts again:** edit `apps/auth-worker/src/todo-board.ts`, run the
+auth-worker tests, `wrangler deploy` from `apps/auth-worker/`. No Pages deploy —
+the public page is a content-free shim and does not change.
+
 ## 🖥️ /status: archive health row + click-into-logs (owner asks, 2026-08-18 ~14:15)
 
 Owner, verbatim: "add a health check for if the last upload to blob storage is

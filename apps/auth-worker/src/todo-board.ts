@@ -85,7 +85,7 @@ export const TODO_BOARD_HTML = `<main>
 
         <li class="item p-audio p-books p-games p-landing s-all">
           <h3>One search across all three shelves</h3>
-          <p>&ldquo;Do we own this in any format?&rdquo; answered once, instead of three times. Needs a public, read-only projection out of each catalogue and a search box on the front door.</p>
+          <p>&ldquo;Do we own this in any format?&rdquo; answered once, instead of three times. All three catalogues now feed a shared index &mdash; audiobooks, books and board games are in it. What is missing is the search box on the front door.</p>
           <p class="meta">
             <span class="tag t-audio">Audiobooks</span>
             <span class="tag t-books">Books</span>
@@ -97,7 +97,7 @@ export const TODO_BOARD_HTML = `<main>
 
         <li class="item p-audio p-books p-games s-all">
           <h3>One sign-in and one set of roles everywhere</h3>
-          <p>Books and board games already share the same accounts and the same owner / manager / reader / waiting-list roles. The audiobook catalogue is the one left to bring across.</p>
+          <p>The same account and the same owner / manager / reader roles across every shelf. The audiobook side was the last to move and its sign-in is now wired up &mdash; what is left is signing in for real, on both shelves, to confirm it.</p>
           <p class="meta">
             <span class="tag t-audio">Audiobooks</span>
             <span class="tag t-books">Books</span>
@@ -107,6 +107,16 @@ export const TODO_BOARD_HTML = `<main>
         </li>
 
         <!-- ===== SOME PROJECTS =========================================== -->
+
+        <li class="item p-audio p-books s-some">
+          <h3>GABI answers questions about the books themselves</h3>
+          <p>She can already find a book on a shelf. The next step is answering from inside one &mdash; what happened, who someone is, where a series left off. The books are being transcribed and packed for her now; nothing reads those packs yet.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="tag t-books">Books</span>
+            <span class="scope">Some projects</span>
+          </p>
+        </li>
 
         <li class="item p-books p-games s-some">
           <h3>Keep the two scanning catalogues in step</h3>
@@ -128,6 +138,35 @@ export const TODO_BOARD_HTML = `<main>
           </p>
         </li>
 
+        <!-- ===== ONE PROJECT — AUDIOBOOKS ================================ -->
+
+        <li class="item p-audio s-one">
+          <h3>Listen to a book in the browser</h3>
+          <p>The shelf can hand over a file; there is no player yet. Somewhere to press play, keep your place, and pick up on another device is the next piece.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-audio s-one">
+          <h3>Twenty-five books that need reading by eye first</h3>
+          <p>Some books are scans with no text layer, so nothing can be searched or answered from them until the pages are read into words. They are queued and waiting on that step.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-audio s-one">
+          <h3>More of the club running itself in Discord</h3>
+          <p>Voting, meeting reminders and &ldquo;do we have this book?&rdquo; already work there. Still to come: a feed of new arrivals, RSVPs by button, and posting your reading progress without leaving the chat.</p>
+          <p class="meta">
+            <span class="tag t-audio">Audiobooks</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
         <!-- ===== ONE PROJECT — BOOKS ===================================== -->
 
         <li class="item p-books s-one">
@@ -140,8 +179,8 @@ export const TODO_BOARD_HTML = `<main>
         </li>
 
         <li class="item p-books s-one">
-          <h3>An ebooks view of the library</h3>
-          <p>Print and ebook live in one catalogue on purpose. What is missing is the filter that shows just one of them &mdash; a link you can bookmark or pin to a home screen.</p>
+          <h3>Four books still have no cover</h3>
+          <p>A Paw Patrol board book, <em>Home Sweet Home</em>, a Korean Tinyping book and <em>The Nightmare Before Christmas</em>. No automatic source has an image for any of them, so each needs a link pasted in by hand.</p>
           <p class="meta">
             <span class="tag t-books">Books</span>
             <span class="scope">One project</span>
@@ -149,17 +188,8 @@ export const TODO_BOARD_HTML = `<main>
         </li>
 
         <li class="item p-books s-one">
-          <h3>Twelve books still have no cover</h3>
-          <p>Every automatic source has been tried and come back empty for these. Filling them needs a genuinely different source, not another pass over the same ones.</p>
-          <p class="meta">
-            <span class="tag t-books">Books</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-books s-one">
-          <h3>Five pledged books need creating by hand</h3>
-          <p>A campaign&rsquo;s spelling of a title is exactly what mints a duplicate, so the importer deliberately never invents a book. These five have to exist first, then their pledges attach themselves.</p>
+          <h3>Retire the old ebook import</h3>
+          <p>Ebooks moved to their own shelf and live there now. The original copies are still sitting in the book library alongside the machinery that put them there, and both want clearing out carefully.</p>
           <p class="meta">
             <span class="tag t-books">Books</span>
             <span class="scope">One project</span>
@@ -168,7 +198,16 @@ export const TODO_BOARD_HTML = `<main>
 
         <li class="item p-books s-one">
           <h3>Check the series pages on a real phone</h3>
-          <p>The series list, the format chips and the newer panels have been built and read on a desktop. None of them has been looked at on a 390px screen, which is where they will actually be used.</p>
+          <p>They were built and adjusted on a desktop screen. The reading order, the covers and the jump links all need looking at on a phone before they count as finished.</p>
+          <p class="meta">
+            <span class="tag t-books">Books</span>
+            <span class="scope">One project</span>
+          </p>
+        </li>
+
+        <li class="item p-books s-one">
+          <h3>A second household&rsquo;s library, joined to ours</h3>
+          <p>A friend&rsquo;s shelf already runs on the same software at its own address. Linking the two &mdash; so each can see what the other owns without merging the collections &mdash; is agreed and not yet built.</p>
           <p class="meta">
             <span class="tag t-books">Books</span>
             <span class="scope">One project</span>
@@ -179,7 +218,7 @@ export const TODO_BOARD_HTML = `<main>
 
         <li class="item p-games s-one">
           <h3>Fill in what is missing from each box</h3>
-          <p>&ldquo;Which pieces am I short?&rdquo; has no data behind it yet. A weekly job will fill it unattended; doing it by hand is only worth it to get the shopping list sooner.</p>
+          <p>Player counts, playing time and weight are blank on a number of games. They are the fields the shelf is filtered by, so the gaps show up every time somebody looks for something to play.</p>
           <p class="meta">
             <span class="tag t-games">Board games</span>
             <span class="scope">One project</span>
@@ -187,50 +226,10 @@ export const TODO_BOARD_HTML = `<main>
         </li>
 
         <li class="item p-games s-one">
-          <h3>Count the Dice Throne playmats</h3>
-          <p>Eleven are confirmed bought, twenty-one provably were not, and twenty-two came through a channel no pledge record can speak to. A physical count is the only thing that settles it.</p>
+          <h3>Read a wide shelf photograph more accurately</h3>
+          <p>A photograph of a full shelf is read in one pass, and spines at the far edges are small and skewed. Splitting the picture up might read them better &mdash; worth measuring before it is worth building.</p>
           <p class="meta">
             <span class="tag t-games">Board games</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-games s-one">
-          <h3>Name the HELLDIVERS 2 mystery box</h3>
-          <p>A deliberate placeholder for content the campaign has not revealed. Rename it from whatever is actually in the box when it turns up.</p>
-          <p class="meta">
-            <span class="tag t-games">Board games</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <!-- ===== ONE PROJECT — AUDIOBOOKS ================================ -->
-
-        <li class="item p-audio s-one">
-          <h3>Reading schedules for book clubs</h3>
-          <p>Checkpoints with target dates, and an on-track or behind chip against them. The milestones already exist; what they lack is a calendar.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-audio s-one">
-          <h3>Announce club events to Discord</h3>
-          <p>Comments already post through. Starting a book, finishing one and a new leader on the to-be-read list do not.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
-            <span class="scope">One project</span>
-          </p>
-        </li>
-
-        <li class="item p-audio s-one">
-          <h3>Polls inside a club</h3>
-          <p>Free-form questions a club can vote on, taggable to a chapter so they sit behind the same spoiler shield as everything else.</p>
-          <p class="meta">
-            <span class="tag t-audio">Audiobooks</span>
             <span class="scope">One project</span>
           </p>
         </li>
@@ -239,21 +238,28 @@ export const TODO_BOARD_HTML = `<main>
 
         <li class="item p-landing s-landing">
           <h3>Pick one name for the front door</h3>
-          <p>Both <code>heygabi.ai</code> and <code>www.heygabi.ai</code> serve this page today. One of them should redirect to the other; the recommendation is the bare name, because every catalogue is a subdomain of it.</p>
+          <p>The site answers to more than one name today. Choosing the one that is meant to be typed, and pointing the rest at it, is a decision rather than a build.</p>
           <p class="meta">
             <span class="tag t-landing">Landing site</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">Landing site</span>
+            <span class="scope">This site</span>
           </p>
         </li>
 
         <li class="item p-landing s-landing">
           <h3>Decide whether <code>ebooks.heygabi.ai</code> should exist</h3>
-          <p>Only ever as a redirect into the library&rsquo;s ebook view &mdash; never as a second app. It is free and reversible, and it is also one more name to remember.</p>
+          <p>The ebook shelf is reachable through the audiobook site today. Whether it deserves its own address, or stays where it is, is still open.</p>
           <p class="meta">
             <span class="tag t-landing">Landing site</span>
-            <span class="owner">Needs you</span>
-            <span class="scope">Landing site</span>
+            <span class="scope">This site</span>
+          </p>
+        </li>
+
+        <li class="item p-landing s-landing">
+          <h3>Choose what is worth a notification</h3>
+          <p>The estate can tell you when something finishes or goes wrong. Which of those are worth a buzz on your phone &mdash; and which should wait until you look &mdash; has not been decided.</p>
+          <p class="meta">
+            <span class="tag t-landing">Landing site</span>
+            <span class="scope">This site</span>
           </p>
         </li>
 
