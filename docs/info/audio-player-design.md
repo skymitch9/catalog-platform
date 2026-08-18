@@ -2,8 +2,15 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (this repo is
 > public — no household names, no secret values).
-> Last verified: **2026-08-17**. **RESEARCH + DESIGN ONLY — nothing here is
-> built.** No code was written, no Worker touched, no deploy made.
+> Last verified: **2026-08-18**.
+>
+> ⚠️ **NO LONGER DESIGN-ONLY.** This began as a paper study — *"no code was
+> written, no Worker touched, no deploy made"* — and that sentence is now
+> history: **phases 0a, 0b and 1 are BUILT, and phase 1 is DEPLOYED**
+> (2026-08-18). The as-built record is **§10.1**; the phase table in §10 says
+> which rung each phase is on; §13 is the honest ledger of what remains untried,
+> chiefly that **no audiobook byte has ever reached a browser**. §1–§9 remain
+> the design of record — where the build deviated, §10.1 says so and says why.
 >
 > Owner's ask, verbatim: *"do research on any open source players we can
 > incorprate into our app to play audiobooks? build out the feature design doc
@@ -856,11 +863,87 @@ is the 279k–474k class and wants a clean tree before dispatch).
 |---|---|---|---|
 | **0a** | **Chapter precision.** Add `start_sec` (full float) to `extract_chapters.py`; re-run on the library machine (cached, incremental); publish. **Nothing downstream can be right without this** | **S** | none — do it first |
 | **0b** | **Ingest.** `estate-audio` R2 bucket (private, **no r2.dev URL, no custom domain — verify with `wrangler r2 bucket dev-url get`**); `build_audio_manifest.py`; `upload_audio_r2.py` reusing the boto3 multipart path as **primary** (§1.3). ⚠️ Owner step: R2 API token. ⚠️ 213–853 GB over a household uplink is measured in **days**, not minutes | **M** + owner time | §12 decisions on cost and grant |
-| **1** | **The gated stream.** `/api/audio/:anchor/file`, sibling of `ebook-file.ts`; reuse `range.ts`; `vis_audio` gate; nine worded refusals; re-sized budget. Prove it with `curl` on the unauthenticated half, exactly as phase 1a was | **M** | 0b |
+| **1** | ✅ **BUILT + DEPLOYED 2026-08-18 — see §10.1.** The gated stream `/api/audio/:anchor/file`, its `/api/audio/status` sibling, the re-sized budget, the manifest publish path, and the site's **request** button. ⚠️ No player | **M** | 0b |
 | **2** | **The player, online only, desktop first.** `/listen`, all seven must-haves, chapter-relative bar, Media Session. ⚠️ **Auth seam decided and exercised here** (§3) — a minimal service worker that does nothing but inject the bearer, no offline yet | **M** | 1 |
 | **3** | **Position + resume.** Rules change (both lanes) + live smoke test **first**; then `kind:'audio'`, the resume offer bar, per-book speed | **S–M** | 2 |
 | **4** | **PWA.** Manifest, app-shell cache, install flow, `storage.persist()`, offline downloads to OPFS for **audio** (and ebooks iff §5 says so). ⚠️ **Test on a real iPhone before announcing anything** | **L — split** | §5 decided |
 | **5** | **Futures.** Bookmarks; mark-finished (behind the `workKey` decision); continue-listening shelf; stats | **M** | 3, and the TBR key decision |
+
+### 10.1 Phase 1 as built — 2026-08-18
+
+Deployed live: `audiobook-worker` version `3ccc6e41`, custom domain
+`audiobook-api.heygabi.ai`. Site half on `main` (= the **`/dev/` lane only** —
+`audiobooks.heygabi.ai/dev/`; it rides the next promote to reach the site root
+and `ebooks.heygabi.ai`).
+
+**Where it deviates from §7, and why:**
+
+| §7 said | As built | Why |
+|---|---|---|
+| `resolveAudioAccess()`, gate on `vis_audio` | **`resolveEbookAccess()`, gate on `vis_ebooks`** — the existing function, unchanged | Owner decision 1 fused the grants. A second gate function asking the same question is the split-brain the estate forbids |
+| `audio_files_manifest.json` in "a private R2 bucket" | **`ebooks-gated/audio_manifest.json`** — the ebook shelf's bucket, second key | Decision 1 makes it the ONE gated-manifest bucket for the ONE book-files grant. A fourth bucket is a fourth privacy posture to keep verifying, for no separation this needs. ⚠️ The **bytes** keep `estate-audio`, which is the separation that carries a security property |
+| "nine distinct worded refusals" | **eight**, plus one the ebook route does not have | `not_streamable` — *"request it"* — is new and is the point of on-demand ingest. There is no audio equivalent of the ebook route's format-driven content-type fallback |
+| a manifest route mirroring `/api/ebooks/manifest` | **`GET /api/audio/status`**, a five-field **projection** | ⚠️ `path` must never leave. `site/audio_manifest.json` is gitignored because it maps 630 GB filename by filename; serving it would reopen that surface from the other end. Named `/status` so nobody "fixes" it into serving the whole document |
+
+**The budget, re-derived (§7.5 asked for exactly this).** `listen-budget.ts` is
+a **sibling of `read-budget.ts`, not a reuse** — sharing its module-level `Map`
+would let a 13-hour listen exhaust a reader's page turns. The arithmetic, from
+MEASURED inputs:
+
+| Step | | |
+|---|---|---|
+| Byte rate | 601 MB ÷ 13.72 h | **12,168 B/s** (~97 kbps — agrees with the bimodal ffprobe sample, so it is a cross-check, not a restatement) |
+| Worst 5-min window | 127 kbps half, at **3×** | **14.29 MB** |
+| Requests for it | ÷ 256 KiB (deliberately pessimistic) | **≈ 55** |
+| Hard scrubbing | one seek per 3 s, some browsers 2 requests each | **+200** |
+| Two devices | × 2 | **≈ 510** |
+| **`LISTEN_REQUESTS_PER_WINDOW`** | rounded up | **1,200** (4 rps) |
+| **`LISTEN_DISTINCT_BOOKS_PER_WINDOW`** | sized against the listener, not the scraper | **6** |
+
+⚠️ The request cap is a **runaway-loop guard, not a scraper deterrent** — a
+listener never comes within 2× of it, and `range.ts`'s malformed-Range→200
+branch means a client off-by-one is a 601 MB download, which 1,200 stops in ~3
+seconds. The **books** axis went DOWN from the reader's 12, because against
+630 GB a scraper's wall is bandwidth, not request count. ⏳ **Still REASONED,
+not measured:** no real listening session has gone through this route. Phase 2
+must count the requests one hour of playback actually makes, on Safari and
+Chrome, and re-derive both numbers.
+
+**🔴 The eviction access-timestamps half was NOT wired, and here is exactly
+what phase 2 must add.** `evict_candidates()` still refuses to delete anything
+because `last_stream_at` is null for every object, and phase 1 could not fix
+that trivially:
+
+- The evictor reads `site/audio_manifest.json` **on the library machine**. A
+  Worker cannot write to it.
+- Writing a marker object per range request into `estate-audio` would pollute a
+  bucket whose keys are library paths, and cost thousands of Class-A ops an hour.
+- The Worker holds `FIREBASE_SERVICE_ACCOUNT` and already does datastore
+  **reads** (`roles.ts`), so Firestore is the seam — but a write per range is
+  far too many.
+
+**The shape to build:** the byte route stamps `audio_streams/{anchor}` =
+`{ anchor, lastStreamAt }` through the service account, **throttled to at most
+one write per anchor per isolate per hour** (a module-level `Map<anchor,
+lastWrittenMs>`, the same per-isolate trade `read-budget.ts` documents — a
+missed stamp only delays an eviction, never causes one). Then
+`fulfill_audio_requests.py` reads that collection before `evict_candidates()`
+and merges `lastStreamAt` into the record. ⚠️ It needs a **new
+`firestore.rules` clause and its own live smoke** (a Worker-written collection
+that browsers must not write), which is why it is not a side effect of a byte
+route — and ⚠️ **`last_position_at` still waits for phase 3**, so until BOTH
+land, eviction correctly deletes nothing.
+
+**⚠️ One wording finding, deliberately left alone.** The shared gate's 401 says
+*"The ebook **shelf** is for the household. Sign in with Google to see it —
+signed-out visitors get no **list** at all."* On an audio route that reads
+oddly. It was NOT re-worded, because `ebook-gate.ts` is one decision with one
+answer and its sentences are pinned by `test/ebooks.test.ts`; forking the copy
+forks the gate. The 403 is fine as-is and is the one that matters — it names
+the **Ebooks** checkbox, which is literally the control an approver toggles.
+⏳ Phase 2 surfaces these words to a person for the first time (the §3.2 item-5
+HEAD probe), so it should decide then whether the audio routes dress the
+`detail` the way they already dress the headers.
 
 **Sequencing rule this plan is built on:** ⚠️ **every persisted-key decision
 lands before anything writes against it** — `start_sec` before positions,
@@ -991,9 +1074,20 @@ chapters, SW-bearer/cookie auth, and the Safari-first iOS posture.
   fallback ingest path, it is THE path, full stop. Under decision 3's
   on-demand queue the actual bill starts near zero and grows only with
   requested books (~$0.009/mo per typical book).
-- 🔴 **Nothing in this document has been exercised.** No audio file has been
-  streamed through any Worker, no service worker has injected any header, no
-  `<audio>` element has played anything from this estate. This is a paper study.
+- ⚠️ **PARTLY SUPERSEDED 2026-08-18 by phase 1 (§10.1) — read this as a
+  ledger, not as a description of the whole document.** What IS now exercised:
+  the gated route answers live at `audiobook-api.heygabi.ai`, its
+  unauthenticated half was curl'd and is covered by four estate probes
+  (AB13–AB16, 115/115 green), 22 Worker tests and 25 pytest tests pass, and an
+  empty manifest is published to `ebooks-gated/audio_manifest.json`.
+  🔴 **What is STILL a paper study, and it is the important half: not one
+  audiobook byte has ever been streamed to a browser.** The bucket is empty by
+  design, so nothing has exercised the 206 path against a real 601 MB m4b, no
+  `<audio>` element has played anything from this estate, no service worker has
+  injected any header, and the whole §3 auth seam remains untried. The FIRST
+  real proof will be the owner requesting a book, the 8-hourly pipeline
+  ingesting it, and someone pressing play — and the last of those three does
+  not exist until phase 2.
 - 🔴 **No iOS device was tested.** Every iOS claim in §4.1 is a citation of
   someone else's dated report, and the most recent is from **late January 2026**
   — nearly seven months old at time of writing. iOS 26 is actively churning in

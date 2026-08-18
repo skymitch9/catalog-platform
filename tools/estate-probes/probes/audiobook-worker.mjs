@@ -6,6 +6,12 @@
  *   GET  /api/health       open; liveness + the current estate-check mode.
  *   GET  /api/me           canonical verifier; tokenless → the worded 401.
  *   POST /api/gate/shadow  the would-deny telemetry receiver — 204 ALWAYS.
+ *   GET  /api/audio/status      audio player phase 1 (2026-08-18); gated.
+ *   GET|HEAD /api/audio/:anchor/file  the audiobook byte stream; gated.
+ *
+ * ⚠️ The two audio routes and the two ebook ones are gated on the SAME estate
+ * grant (`vis_ebooks`) by owner decision, so this suite can only ever see
+ * their refusals — which is the interesting half for a media route anyway.
  *
  * The health envelope here is deliberately NOT `docs/info/health-envelope.md`'s
  * `{ ok, service, time, detail }` — this Worker answers `{ ok, service,
@@ -178,6 +184,64 @@ export async function probeAudiobookWorker() {
       'answers 204 with empty body (fire-and-forget, always — iron rule 1)',
       shadow.status === 204 && shadow.text === '',
       `status=${shadow.status} body=${JSON.stringify(shadow.text.slice(0, 120))}`,
+    );
+  }
+
+  // --- The AUDIO player's phase-1 surface (2026-08-18) --------------------
+  //
+  // Both routes are gated on the estate's `vis_ebooks` grant — owner decision
+  // 1: "MIRROR EBOOK if they can read an ebook they can listen to an audio."
+  // Unauthenticated is the only half this suite can reach, and it is the half
+  // that matters most for a media route:
+  //
+  // ⚠️ `Accept-Ranges: bytes` MUST ride on the 401. Safari decides whether a
+  // media element can range-stream AT ALL from the headers of the FIRST
+  // response it sees, and for a signed-out listener that response is this
+  // refusal. A 401 that omitted it, retried after sign-in, teaches the client
+  // to pull the whole 601 MB file. The ebook route learned this LIVE, minutes
+  // after its own first deploy — the gate writes plain JSON refusals for a
+  // route that needs neither header, and the byte route has to re-dress them.
+  //
+  // ⚠️ And the refusal must never be cacheable. An authenticated body left
+  // cacheable at the edge is a public download endpoint with extra steps, and
+  // a refusal naming somebody's approval status must never sit in a shared
+  // cache either.
+  expectWordedUnauthenticated('AB13', 'GET', '/api/audio/status', await get(`${AUDIOBOOK_API_ORIGIN}/api/audio/status`));
+
+  const audioFileUrl = `${AUDIOBOOK_API_ORIGIN}/api/audio/b-probe000000/file`;
+  const audio = await get(audioFileUrl);
+  expectWordedUnauthenticated('AB14', 'GET', '/api/audio/:anchor/file', audio);
+  if (!audio.ok) {
+    check(AREA, 'AB15', 'GET', audioFileUrl, 'the 401 carries Accept-Ranges: bytes and no-store', false, `request failed: ${audio.error}`);
+  } else {
+    const ar = (header(audio, 'accept-ranges') ?? '').toLowerCase();
+    const cc = (header(audio, 'cache-control') ?? '').toLowerCase();
+    const vary = (header(audio, 'vary') ?? '').toLowerCase();
+    check(
+      AREA,
+      'AB15',
+      'GET',
+      audioFileUrl,
+      'the 401 carries Accept-Ranges: bytes + no-store + Vary: Authorization (Safari reads the FIRST response)',
+      ar === 'bytes' && cc.includes('no-store') && vary.includes('authorization'),
+      `accept-ranges=${ar} cache-control=${cc} vary=${vary}`,
+    );
+  }
+
+  // ⚠️ AND NOTHING ABOUT THE LIBRARY LEAKS THROUGH A REFUSAL. The gate runs
+  // before anything touches a bucket precisely so an anonymous caller cannot
+  // use this route to probe which books the household holds; this asserts the
+  // body says nothing about a file.
+  if (audio.ok) {
+    const body = JSON.stringify(audio.json ?? audio.text ?? '');
+    check(
+      AREA,
+      'AB16',
+      'GET',
+      audioFileUrl,
+      'the refusal names no file (.m4b) and no path — the gate runs before the bucket',
+      !body.includes('.m4b') && !body.includes('estate-audio'),
+      body.slice(0, 200),
     );
   }
 }

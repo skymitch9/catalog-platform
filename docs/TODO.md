@@ -59,22 +59,51 @@ Sign in on `heygabi.ai`, then open `library.heygabi.ai` in a new tab —
 expect to arrive **already signed in**, no tap. ⚠️ Not testable by any agent:
 it needs a real signed-in browser.
 
-## 🎧 AUDIOBOOK PLAYER — RESEARCH + DESIGN ONLY (owner, 2026-08-17) — IN FLIGHT, no build
+## 🎧 AUDIOBOOK PLAYER — PHASES 0a/0b/1 SHIPPED; **PHASE 2 (the player) IS NEXT**
 
-Owner: *"do research on any open source players we can incorprate into our
-app to play audiobooks? build out the feature design doc but don't execute
-yet. Im just curious about the feasibility."* Requirements verbatim: position
-remembering · speed to 3x · PWA (and *"ebooks need to be able to local for
-pwa also"*) · 15s back/forth default · next/prev chapter · chapter select +
-view · sleep timer · **scrub bar per chapter not per book** · future:
-bookmark a timestamp, mark-as-finished counts as read in TBR · "anything
-else you can think of". Deliverable: docs/info/audio-player-design.md +
-review artifact. ⚠️ NO CODE — feasibility only. Known seams to weigh: m4b
-chapter atoms vs the existing chapters.json pipeline; <audio> can't carry a
-bearer on its range requests (service-worker token injection vs signed URLs
-— same family as pdf.js bearer-per-range); iOS PWA background-audio limits;
-⚠️ offline ebook copies collide with the download-is-admin-floored policy —
-that's an OWNER DECISION to surface, not a default.
+Design of record, all six owner decisions settled:
+[`info/audio-player-design.md`](info/audio-player-design.md) — §12 for the
+decisions, **§10.1 for phase 1 as built**. Requirements verbatim: position
+remembering · speed to 3x · PWA · 15s back/forth · next/prev chapter · chapter
+select + view · sleep timer · **scrub bar per chapter not per book**.
+
+**Landed 2026-08-18 — the plumbing, and nothing that plays.**
+
+| Phase | What | Where |
+|---|---|---|
+| 0a | exact-seconds chapters (`start_sec`) | `audiobook_catalog/app/tools/extract_chapters.py` |
+| 0b | `estate-audio` bucket, boto3 multipart ingest, the `audio_requests` queue + rules, fulfiller as pipeline STEP 5.9 | `audiobook_catalog/scripts/upload_audio_r2.py`, `app/tools/fulfill_audio_requests.py` |
+| 1 | `GET\|HEAD /api/audio/:anchor/file` + `GET /api/audio/status`, the re-sized listening budget, the manifest publish path, and the site's **request** button | `catalog-platform/apps/audiobook-worker/src/audio-*.ts`, `listen-budget.ts`; `audiobook_catalog/scripts/publish_audio_manifest.py`, `site/audio-request.js` |
+
+🔗 **Try it:** <https://audiobooks.heygabi.ai/dev/> — open any book; under the
+metadata there is now *"🎧 Not streamable yet — request it"*.
+⚠️ **`/dev/` only.** The site half is on `main`, so it **rides the next
+promote** to reach the site root and `ebooks.heygabi.ai`.
+
+### 🧑 OWNER — the one thing nothing automated can stand in for
+
+**Request a real book, then let a pipeline run fulfil it.** Nothing has ever
+been streamed: the bucket is empty by design, so the 206 path has never met a
+real 601 MB m4b. Suggested first book: **Skyward (Brandon Sanderson)** —
+mid-sized, an unambiguous title, and the one every doc and test fixture already
+names, so a failure is easy to trace. Press request, wait for the next 8-hourly
+run, then `python -m app.tools.fulfill_audio_requests --status`.
+
+### ⏳ Phase 2 — the player, and the two things it MUST carry
+
+1. **The auth seam** (design §3): `<audio src>` cannot carry a bearer, so a
+   service worker injects it. ⚠️ Its failure mode is a **silently dead play
+   button**, and §3.2 item 5's page-level `HEAD` probe is the mandatory
+   mitigation — the byte route already answers HEAD for exactly this reason.
+2. **Eviction's access timestamps** (§10.1): `last_stream_at` is still null for
+   every object, so `evict_candidates()` correctly refuses to delete anything.
+   The shape to build is written out in §10.1 — a throttled
+   `audio_streams/{anchor}` stamp through the service account, ⚠️ **plus a new
+   `firestore.rules` clause and its own live smoke**.
+
+Also then: re-derive the listening budget from a REAL session (§10.1's numbers
+are arithmetic over measured inputs, not a measurement), and decide whether the
+audio routes re-word the shared gate's ebook-shaped 401.
 
 ## 📚 GABI READS THE ESTATE DOCS — PHASES 1, 2, 5, 6 SHIPPED 2026-08-18; 3 + 4 QUEUED
 
