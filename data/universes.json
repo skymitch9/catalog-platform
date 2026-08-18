@@ -395,7 +395,9 @@
       "series": [
         "Percy Jackson and the Olympians",
         "Heroes Of Olympus",
-        "From the World of Percy Jackson"
+        "From the World of Percy Jackson",
+        "The Heroes of Olympus",
+        "The Trials of Apollo"
       ],
       "notes": "Camp Half-Blood continuity. 'From the World of Percy Jackson' is Sun and the Star, the Nico di Angelo novel co-written with Mark Oshiro — same continuity, found during review rather than in the first proposal.",
       "confirmed": "Owner approved 2026-08-11, including the third series found during review.",
@@ -906,7 +908,8 @@
       "evidence": "Measured 2026-08-15. audiobook_catalog site/catalog.csv: 7 rows sharing the exact series value 'The Skyward Series' — Skyward, Starsight, Cytonic, Defiant, and the three Skyward Flight novellas Sunreach, ReDawn and Evershore (the last three co-written with Janci Patterson). library_catalog D1: 1 row, work #8 'Firstborn / Defending Elysium', series null — caught by the title override below. No board game exists for this franchise in board-game D1. Sources: https://coppermind.net/wiki/Cytoverse, https://www.amazon.com/Defending-Elysium-Cytoverse-Novella-Skyward-ebook/dp/B09M3ZV4Y1, https://www.audible.com/blog/article-brandon-sanderson-cytoverse.",
       "notes": "Sanderson's non-Cosmere science-fiction continuity. It earns a shelf on this file's own rule rather than as an exception: the universe name says something 'The Skyward Series' does not, because Defending Elysium is NOT a Skyward book and carries no series value at all — the same shape as Fires of December in The Cosmere. Skyward was built around the same premise as the 2008 novella (people who can teleport), and Sanderson tied Jason's story to Spensa's explicitly while writing Cytonic. ⚠️ The Cosmere's notSeries still lists 'The Skyward Series', and that stays true and is not contradicted: not-Cosmere and in-the-Cytoverse are different statements.",
       "series": [
-        "The Skyward Series"
+        "The Skyward Series",
+        "Skyward"
       ],
       "bookOverrides": [
         {
@@ -2313,6 +2316,30 @@
       "action": "refuse",
       "subject": "D&D / Dungeons & Dragons",
       "why": "Owner-recorded refusal from the estate-wide orphan sweep: 113 board-game rows, but the series value names a rules SYSTEM rather than a continuity, and already spans at least four unrelated settings including Middle-earth and Exandria."
+    },
+    {
+      "date": "2026-08-18",
+      "action": "add-series",
+      "universe": "Riordanverse",
+      "series": "The Heroes of Olympus",
+      "why": "Spelling variant of the already-listed 'Heroes Of Olympus'. library_catalog D1 spells the series with the leading article on all 5 rows (works 454, 466-469, created 2026-08-18 by the box-set split of work 454); normaliseUniverseText keeps leading articles by design, so the listed spelling does not match them and all five resolve to no universe. Add the spelling, never override — the all-sibling-spellings tolerance. Measured 2026-08-18.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-18",
+      "action": "add-series",
+      "universe": "Riordanverse",
+      "series": "The Trials of Apollo",
+      "why": "Camp Half-Blood continuity, same as the three series already listed: Apollo is cast down as the mortal Lester Papadopoulos and the books run through Camp Half-Blood and Camp Jupiter with Percy, Meg, Nico, Will and Reyna. NOTE this is a MEMBERSHIP addition, not a spelling fold — the series was not on the list in any spelling. Prompted by 5 library_catalog rows created 2026-08-18 by the box-set split of work 455 (works 455, 470-473), all resolving to no universe. Measured 2026-08-18.",
+      "decidedHow": "human"
+    },
+    {
+      "date": "2026-08-18",
+      "action": "add-series",
+      "universe": "Cytoverse",
+      "series": "Skyward",
+      "why": "Spelling variant of the already-listed 'The Skyward Series'. library_catalog D1 spells it 'Skyward' on all 5 rows (works 412-414, 462, 463, created/retitled 2026-08-18 by the box-set split of work 412), while audiobook_catalog's catalog.csv uses 'The Skyward Series' — the two catalogs spell the same series differently. normaliseUniverseText keeps leading articles by design, so the listed spelling misses all five. Add the spelling, never override. Measured 2026-08-18.",
+      "decidedHow": "human"
     }
   ]
 }
