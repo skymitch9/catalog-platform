@@ -309,12 +309,20 @@ estate makes.
   invisible UTF-8 byte-order-mark (`EF BB BF`) to the stored secret;
   Anthropic rejected every call while the key itself was perfectly valid,
   and the tail's non-ASCII-header warning printed the FULL key value (so an
-  affected key should be rotated, not just re-stored). The fix, now the
-  required ritual for EVERY PowerShell secret pipe: force
-  `$OutputEncoding = New-Object System.Text.UTF8Encoding($false)` first,
-  `.TrimStart([char]0xFEFF).Trim()` the value, and prove the value against
-  the live API (a 1-token call) BEFORE storing — an upload succeeding proves
-  transport, not the value.
+  affected key should be rotated, not just re-stored).
+  ⚠️ **The first "fix" was measured NOT to work and is REVOKED as ritual**
+  (same night, rotated key, same 401): setting
+  `$OutputEncoding = UTF8Encoding($false)` + trimming, then
+  `$val | npx wrangler secret put`, STILL stored a BOM'd secret on Windows
+  PowerShell 5.1. A string does not survive a PowerShell pipe to a native
+  process here, full stop. **The ONLY sanctioned method:**
+  `[IO.File]::WriteAllText($tmp, $val, (New-Object System.Text.UTF8Encoding($false)))`,
+  verify the file's first bytes are the value's own (115 107 for `sk`),
+  then `cmd /c "npx wrangler secret put NAME < $tmp"`, then delete the
+  file — cmd's `<` passes raw bytes untouched (this is how
+  TOKEN_SIGNER_KEY and the final ANTHROPIC_API_KEY_GABI were stored).
+  Still prove the value against the live API (a 1-token call) BEFORE
+  storing — an upload succeeding proves transport, not the value.
 - **The portal silently removes a saved Interactions URL** if invalid
   signatures ever stop being rejected. If interactions stop arriving, check
   the portal field *first* — it may simply be empty again.
