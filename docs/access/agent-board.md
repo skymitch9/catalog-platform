@@ -5,7 +5,11 @@
 > Last verified: **2026-08-18** — every command here was RUN on that date, not
 > transcribed: the secret was minted and stored, the migration applied, the
 > Worker deployed, all three refusal paths exercised against the live host, and
-> a real board pushed and read back out of D1.
+> a real board pushed and read back out of D1. **§7 added later the same day**
+> and verified the same way: the processing pusher run for real, the scheduled
+> task fired once, the batch tail exercised with a deliberate non-zero ingest
+> exit code, and the stored row read back out of D1 with the conductor's
+> `agents` section still beside the new `processing` one.
 
 The push door behind [/status/agents](https://heygabi.ai/status/agents/) and
 [/status/processing](https://heygabi.ai/status/processing/). What the blob must
@@ -19,7 +23,7 @@ this file is about the credential.
 | **Secret** | `ESTATE_CONDUCTOR_TOKEN` on the Worker `estate-auth` |
 | **Custody file** | `docs/access/keys/estate-conductor-token.txt` — **gitignored**, 64 hex chars, no BOM, no trailing newline |
 | **Minted by** | the conductor, `openssl rand -hex 32` (or Node's `crypto.randomBytes(32).toString('hex')` — same 256 bits from the same class of CSPRNG) |
-| **Read by** | `scripts/push-agent-board.mjs`, and nothing else |
+| **Read by** | `scripts/push-agent-board.mjs`, and nothing else — see §7 |
 | **Route** | `POST https://auth.heygabi.ai/api/estate/ops/agent-board` |
 | **Code** | `apps/auth-worker/src/agent-board.ts`, pinned by `test/agent-board.test.ts` |
 
@@ -159,3 +163,74 @@ applying any successor unattended.
 ⚠️ **wrangler on Windows sometimes prints success and exits 255** — read the
 output, not the exit code. (Not observed on 2026-08-18's runs, which exited 0;
 recorded because the next session will not know that.)
+
+## 7. The `processing` pusher and its cadence (added 2026-08-18)
+
+The owner looked at /status/processing the day it shipped and said *"processing
+doesn't seem wired up yet"*. It wasn't — the page, the renderer and the write
+door all landed; the pusher did not. It does now.
+
+| | |
+|---|---|
+| **Pusher** | `scripts/push-processing-board.mjs` (projection: `scripts/lib/processing-board.mjs`, pinned by `scripts/test/processing-board.test.mjs`) |
+| **Canonical board file** | `.local/agent-board.json` — gitignored; see the contract's §9 |
+| **Cadence A** | `EstateProcessingBoardPush` — Task Scheduler, **every 15 minutes**, hidden via `audiobook_catalog/scripts/push_processing_board_hidden.vbs` |
+| **Cadence B** | a soft-fail tail appended to `audiobook_catalog/scripts/ingest_nightly.bat` (fires every 30 min with the ingester) |
+| **Log** | `audiobook_catalog/output_files/processing_push.log` |
+
+⚠️ **IT NEVER READS THE TOKEN.** It builds the section, merges it into the
+draft, and then **execs `push-agent-board.mjs`**, which is the only code in the
+estate that opens the custody file. Two scripts that both knew the bearer ritual
+would be two places for §3's BOM incident to happen again. The token does not
+enter the pusher's process, its argv, or its environment.
+
+⚠️ **IT IS READ-ONLY ON A LIVE PIPELINE, INCLUDING THE LOCK.** It reads
+`output_files/ingest_books.lock` and never acquires it — opening that file for
+writing would race a running transcription for its own single-flight guard. It
+starts no python and waits on nothing.
+
+⚠️ **BOTH CADENCES SOFT-FAIL, AND THAT IS THE DESIGN.** The batch tail captures
+the ingester's exit code *before* pushing and hands it back at the end, so
+`AudiobookIngestNightly`'s LastTaskResult still means what it meant; the
+dedicated task always exits 0, because a failed status push is not a failed
+machine and a task history full of red trains the owner to ignore the row that
+matters. A failure is visible in the log above and, more usefully, on the page
+itself — which reports its own staleness.
+
+⚠️ **WHY BOTH.** The batch tail only fires when its own invocation *returns*.
+While a long transcription holds the lock, the 30-minute invocations exit on it
+within seconds and push from there — but the invocation actually doing the
+transcribing pushes nothing for hours, which is precisely when "which book is
+being processed right now" is worth having. The 15-minute task closes that.
+
+**Running it by hand:**
+
+```powershell
+node scripts/push-processing-board.mjs --by "conductor@home-pc"
+node scripts/push-processing-board.mjs --dry-run --print    # build it, push nothing
+Start-ScheduledTask -TaskName EstateProcessingBoardPush     # force a cadence run
+Get-ScheduledTaskInfo -TaskName EstateProcessingBoardPush   # LastTaskResult should be 0
+```
+
+**Proving a push landed** — the only check that distinguishes "sent" from
+"stored", and the one that caught nothing today because everything worked:
+
+```powershell
+cd apps\auth-worker
+npx wrangler d1 execute estate_auth --remote --json --command "SELECT pushed_at, pushed_by, length(board) AS bytes, json_extract(board,'$.processing.packs.packed') AS packed, json_array_length(json_extract(board,'$.processing.history')) AS hist, json_array_length(json_extract(board,'$.agents')) AS agents FROM agent_board WHERE id=1"
+```
+
+Measured 2026-08-18: `pushed_by ingest-pipeline@home-pc`, 32,057 stored bytes,
+`packed 158`, `hist 158`, **`agents 2`** — that last column is the one that
+matters, because it is the proof the merge preserved the conductor's sections
+instead of overwriting them.
+
+**Removing the task**, if it ever needs to stop:
+
+```powershell
+Unregister-ScheduledTask -TaskName EstateProcessingBoardPush -Confirm:$false
+```
+
+⚠️ **Do not "fix" the missing progress bars.** `percent` is absent from every
+in-flight row on purpose — nothing on disk counts finished units mid-book. The
+measurement and the two rejected alternatives are in the contract's §6.

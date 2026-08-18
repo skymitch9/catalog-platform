@@ -939,14 +939,22 @@ agent because they share the /status page surface.
 > ⚠️ **Items 1 and 3 SHIPPED 2026-08-18 and were moved whole to
 > [`DONE.md`](DONE.md)** with the /status split that carries them. The numbers
 > of the remaining items are left as they were — 0, 2, 4 — so the references
-> above and in DONE.md still point at the same things. Item **2 is HALF done**:
-> the page exists and is live, and what is missing is the pusher, restated
-> below as its own item.
-2. **Ingestion/processing tab** — which books are being processed right now,
-   per-book % progress, a history of everything processed, and next to each
-   processed book a label saying **when it became part of GABI's knowledge
-   base** (pack ingested + servable). Data source: the transcription batch's
-   progress/log + the pack manifests (ingester_version) in ebooks-gated.
+> above and in DONE.md still point at the same things.
+>
+> ⚠️ **Item 2 SHIPPED LATER THE SAME DAY** — the page *and* its pusher — and
+> was moved whole to [`DONE.md`](DONE.md), except for **one part of the ask
+> that could not be met and is restated as item 2b below**. It is left in the
+> numbering because 0 and 4 refer to it.
+2b. **Per-book % progress for a book being transcribed** — the one part of item
+   2 the pusher could not deliver. ⚠️ **Not a pusher bug and not fixable in the
+   pusher.** faster-whisper's worker prints a real progress line every 60 s, but
+   `app/tools/ingest_books.py` runs it with `subprocess.run(...,
+   capture_output=True)`, so nothing on disk counts finished units mid-book. The
+   page shows the book, its lane, when it started and a sentence saying why
+   there is no bar — never an estimate, because `percent` is what the renderer
+   draws a bar from. **The fix is in the INGESTER: tee the worker's stdout to a
+   file (or write a small progress JSON) and the pusher reads it.** Fences kept
+   that file out of scope while a live transcription chain was running. Size S.
 4. ⚠️ **Incremental knowledge is a REQUIREMENT, not a nice-to-have** (owner:
    "I don't want to wait until every book is processed to use Gabi's
    knowledge. I want to use her while the knowledge base grows"). The serving
@@ -968,20 +976,9 @@ the three traps) and [`info/agent-board-contract.md`](info/agent-board-contract.
 (the pushed blob). Custody of the push bearer:
 [`access/agent-board.md`](access/agent-board.md).
 
-**Two follow-ups the split deliberately did NOT block on:**
-
-### Processing tab: THE PUSHER (the half that is missing)
-The page is live and honest — every section says *"the home-machine pipeline is
-not pushing one yet"* rather than looking idle — but **nothing writes the
-`processing` section**. The remaining work is on the home machine: the
-transcription/packing pipeline gains a step that POSTs `in_flight`, `queue`,
-`packs` and `history` to `/api/estate/ops/agent-board` using
-`scripts/push-agent-board.mjs`. Field-by-field contract, already written and
-already tolerated by the renderer:
-[`info/agent-board-contract.md`](info/agent-board-contract.md) §6.
-⚠️ `joined_at` is the date the pack became **servable**, not the date it was
-transcribed — the page will not derive one from the other, because they are
-different facts and the owner's ask was the first one.
+**Two follow-ups the split deliberately did NOT block on.** The first — *the
+processing PUSHER* — shipped 2026-08-18 and was moved whole to
+[`DONE.md`](DONE.md). The second is below.
 
 ### The agent board needs an estate probe (repo rule, not yet honoured)
 `tools/estate-probes` carries a **new-endpoint-gets-a-probe** rule, and

@@ -13,6 +13,68 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 📡 Processing tab: THE PUSHER — ✅ DONE 2026-08-18
+
+Moved whole from [`TODO.md`](TODO.md)'s "Status-page expansion", where it read:
+
+> ### Processing tab: THE PUSHER (the half that is missing)
+> The page is live and honest — every section says *"the home-machine pipeline is
+> not pushing one yet"* rather than looking idle — but **nothing writes the
+> `processing` section**. The remaining work is on the home machine: the
+> transcription/packing pipeline gains a step that POSTs `in_flight`, `queue`,
+> `packs` and `history` to `/api/estate/ops/agent-board` using
+> `scripts/push-agent-board.mjs`. Field-by-field contract, already written and
+> already tolerated by the renderer:
+> [`info/agent-board-contract.md`](info/agent-board-contract.md) §6.
+> ⚠️ `joined_at` is the date the pack became **servable**, not the date it was
+> transcribed — the page will not derive one from the other, because they are
+> different facts and the owner's ask was the first one.
+
+Triggered by the owner looking at the new page and saying *"processing doesn't
+seem wired up yet"*. It wasn't. It is now.
+
+**What shipped** — `scripts/lib/processing-board.mjs` (the pure projection),
+`scripts/push-processing-board.mjs` (I/O, merge, push),
+`scripts/test/processing-board.test.mjs` (20 tests), a soft-fail tail on
+`audiobook_catalog/scripts/ingest_nightly.bat`, and the 15-minute scheduled task
+`EstateProcessingBoardPush`. Operations:
+[`access/agent-board.md`](access/agent-board.md) §7.
+
+**The four decisions worth keeping:**
+
+- ⚠️ **THE PUSHER DOES NOT PUSH.** It writes the merged board and then execs
+  `push-agent-board.mjs`, which stays the only code that opens the token custody
+  file. Two implementations of the bearer ritual would be two places for §3's
+  BOM incident to recur.
+- ⚠️ **ONE ROW, LAST WRITE WINS — so it MERGES.** A push carrying only
+  `processing` would blank /status/agents four times an hour. Both pushers now
+  read-modify-write one gitignored draft, `.local/agent-board.json`. The full
+  reasoning — including the wrinkle it does *not* fix, that a processing push
+  restamps `pushed_at` for the whole board — is the contract's new §9.
+- ⚠️ **NO `percent`, ON PURPOSE** — restated as item 2b in TODO.md. Nothing on
+  disk counts finished units mid-book, the renderer draws a bar from that field,
+  and an elapsed-time guess would render as a measurement.
+- ⚠️ **A QUEUE LANE READING 0 IS MEASURED.** The ingester counts two buckets
+  (CPU/GPU) and the owner asked for four lanes. The bridge is an equality check:
+  when the CPU bucket equals the needs-OCR count, nothing else CPU-side is
+  waiting and "0 EPUBs" is a fact rather than an assumption. When they differ,
+  the surplus gets its own row rather than being folded into a lane it might not
+  belong to. The reviewed-vs-rest split inside the GPU bucket is **not** knowable
+  from disk and is not invented.
+
+**Verified by execution, not by reading the code:** the pusher run for real
+(`pushed_by ingest-pipeline@home-pc`, 44,393 bytes sent), the row read back out
+of D1 (`packed 158`, `hist 158`, **`agents 2`** — proof the merge preserved the
+conductor's section), the scheduled task fired once (`LastTaskResult 0`), and
+the batch tail exercised with a deliberate exit-3 stand-in for the ingester,
+which came back as 3. **NOT verified:** the rendered page — /status/processing
+is behind `requireDevops()` and no agent can sign in.
+
+**One honest gap that self-heals:** 8 of 158 history rows show a book id instead
+of a title *and say so*, because the Primal Hunter packs were built by a hand-run
+whose OK lines are on no log on disk. Titles are read off log lines rather than
+re-derived by re-implementing the slugger, so future runs fill themselves in.
+
 ## 📚 GABI HAS READ THE LIBRARY — Tier 0c — ✅ DONE 2026-08-18
 
 Design phase 4 (`docs/info/gabi-book-knowledge-design.md`). Built across two

@@ -68,3 +68,13 @@ docs/access/keys/*
 # The folder's own README is TRACKED — a fresh checkout otherwise gets an
 # invisible directory nobody knows to populate. It names secrets only.
 !docs/access/keys/README.md
+
+# ⚠️ THE CANONICAL AGENT BOARD DRAFT lives at .local/agent-board.json — the ONE
+# file both pushers read-modify-write before POSTing it whole. The board is a
+# single last-write-wins D1 row, so a pusher that sends only its own section
+# deletes everyone else's; merging through a shared file on disk is how the
+# conductor's agents/events/usage and the home pipeline's processing section
+# coexist. It is a working draft, it changes every 15 minutes, and it can carry
+# an agent's task description — none of which belongs in a PUBLIC repo's history.
+# See docs/access/agent-board.md and scripts/push-processing-board.mjs.
+.local/

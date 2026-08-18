@@ -5,9 +5,13 @@
 > read off the code that consumes them (`status/lib/board.js`,
 > `status/agents/agents.js`, `status/processing/processing.js`) and the code
 > that stores them (`apps/auth-worker/src/agent-board.ts`), not off a design
-> note. What is NOT verified: no real pusher has ever sent a `processing`
-> section — that half of the contract is a handshake written ahead of its
-> other side.
+> note.
+>
+> **Amended later the same day:** the `processing` half is no longer a
+> handshake. `scripts/push-processing-board.mjs` sends it from the home
+> machine every 15 minutes; a real push was read back out of D1 with 158
+> history rows, 4 queue lanes and the conductor's `agents` section intact
+> beside it. §9 is new and is the part a second pusher must read first.
 
 One JSON object, pushed by a machine, rendered by two pages.
 
@@ -16,7 +20,8 @@ One JSON object, pushed by a machine, rendered by two pages.
 | **Write** | `POST https://auth.heygabi.ai/api/estate/ops/agent-board` — `Authorization: Bearer $ESTATE_CONDUCTOR_TOKEN`, optional `X-Estate-Pushed-By` |
 | **Read** | `GET` same path — `requireDevops()`, a signed-in person in a browser |
 | **Store** | ONE D1 row (`agent_board`, migration 0012), last-write-wins |
-| **Pusher** | [`scripts/push-agent-board.mjs`](../../scripts/push-agent-board.mjs) |
+| **Pusher** | [`scripts/push-agent-board.mjs`](../../scripts/push-agent-board.mjs) — the one implementation of the POST |
+| **`processing` pusher** | [`scripts/push-processing-board.mjs`](../../scripts/push-processing-board.mjs) — projects this machine's ingestion artefacts, merges, and execs the above |
 | **Custody** | [`docs/access/agent-board.md`](../access/agent-board.md) |
 | **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) (`agents`, `events`, `usage`) · [/status/processing](https://heygabi.ai/status/processing/) (`processing`) |
 
@@ -138,11 +143,12 @@ is not a reportable figure*.
 
 ## 6. `processing` — GABI's knowledge base
 
-Object. Rendered on /status/processing. ⚠️ **Nothing pushes this yet** — the
-transcription/packing pipeline on the home machine grows a push step later, and
-this section is the handshake it will be built against. Until then the page says
-"the home-machine pipeline is not pushing one yet", which is a statement about
-the **pusher**, never about whether books are being processed.
+Object. Rendered on /status/processing. **Pushed since 2026-08-18** by
+`scripts/push-processing-board.mjs` — every 15 minutes from the scheduled task
+`EstateProcessingBoardPush`, plus once off the back of every ingestion run. The
+page's "the home-machine pipeline is not pushing one yet" sentence is now a
+statement about a **broken pusher**, not an unbuilt one: if you see it, check
+`audiobook_catalog/output_files/processing_push.log`.
 
 ```json
 "processing": {
@@ -163,6 +169,20 @@ the **pusher**, never about whether books are being processed.
 **`in_flight`** — `percent` is the pipeline's own count of finished units. The
 page draws the bar and never estimates one; a missing percentage draws no bar at
 all rather than an empty one.
+
+⚠️ **AND TODAY THE PIPELINE HAS NO SUCH COUNT, so the push omits `percent`
+entirely.** Measured 2026-08-18: faster-whisper's worker
+(`estate-training-data/work/_whisper_worker.py`) prints a genuine progress line
+every 60 seconds — hours of audio, wall minutes, realtime factor — but
+`app/tools/ingest_books.py` runs it through `subprocess.run(...,
+capture_output=True)`, so those lines sit unread in a pipe until the book
+finishes. Nothing on disk counts finished units mid-book. An elapsed-versus-
+duration guess was considered and rejected twice over: the field is where the
+page gets the bar it promises never to estimate, and the two transcriptions
+timed that day ran at very different realtime factors, so the "~85×" figure is
+a range, not a rate. The reason lives in `step`, in words, where it renders as
+a sentence. **Closing this gap means the ingester tee-ing that worker's output
+to a file** — a pipeline change, not a pusher one.
 
 **`queue`** — accepted in **both** shapes: an array of `{lane, count}` rows or a
 plain `{lane: count}` map. Six lines of tolerance in `normaliseQueue()` beats
@@ -207,12 +227,63 @@ ordinary state, and a 404 here would be indistinguishable from a mis-routed URL.
 ## 8. Pushing one
 
 ```bash
-node scripts/push-agent-board.mjs board.json --by "conductor@home-pc"
+node scripts/push-agent-board.mjs .local/agent-board.json --by "conductor@home-pc"
 node scripts/push-agent-board.mjs --check      # 401 from a script is CORRECT — the read door is requireDevops()
+
+# the processing half — builds its own section, merges, and execs the above
+node scripts/push-processing-board.mjs --by "conductor@home-pc"
+node scripts/push-processing-board.mjs --dry-run --print   # build it, push nothing
 ```
+
+⚠️ **Push `.local/agent-board.json`, not an ad-hoc file** — see §9. A push from
+anywhere else deletes whatever section you did not write.
 
 ⚠️ **This pushes what is on disk**, exactly like a directory deploy — write the
 file, *then* push it. The script strips a leading BOM from the board file
 (PowerShell's `Out-File` writes one and `JSON.parse` rejects it with what looks
 like a syntax error in a perfect file). It never prints the token and has no
 `--token` flag on purpose.
+
+## 9. TWO PUSHERS, ONE ROW — read this before writing a third
+
+⚠️ **The board is ONE last-write-wins row holding ONE JSON object, so a push
+that carries only your section DELETES everyone else's.** There is no partial
+update and there must not be one: the POST stores the bytes whole. A
+`processing` pusher that sent `{"processing": {…}}` would blank /status/agents
+four times an hour, and the page would render that correctly and honestly as
+"nothing has been pushed" — a true sentence about a board somebody destroyed.
+
+**The fix is a shared draft on disk, not a smarter Worker:**
+
+| | |
+|---|---|
+| **Canonical board file** | `.local/agent-board.json` — **gitignored**, this repo is public |
+| **Rule** | every pusher READ-MODIFY-WRITES it and pushes it **whole** |
+| **Who owns what** | conductor → `agents`, `events`, `usage` · home pipeline → `processing` |
+
+⚠️ **You cannot recover a section you did not write.** The read door is
+`requireDevops()`, so no script can fetch the live board back to merge against —
+the only machine-readable copy is the draft file. If /status/agents goes blank
+after a processing push, the cause is a conductor push that bypassed the draft,
+and the fix is to write it there. (Bootstrapping is possible but manual: read
+the row with `npx wrangler d1 execute estate_auth --remote --command "SELECT
+board FROM agent_board WHERE id = 1"` and seed the file from it — which is
+exactly how this pusher's first push preserved the two agents already on the
+board.)
+
+⚠️ **THE KNOWN WRINKLE, STATED RATHER THAN HIDDEN: a processing push restamps
+`pushed_at` for the WHOLE board.** The freshness strip on /status/agents then
+reads fresh while its agent rows may be hours stale. It is survivable only
+because every section carries its own clock — `agents[].started_at`,
+`events[].at`, `usage.read_at`, `packs.as_of` — and both pages render those. A
+conductor who stops updating the draft still gets ageing-looking *rows*, just
+not an ageing-looking *strip*. **Fixing it properly means per-section push
+timestamps, which is a Worker and renderer change**, and it was deliberately not
+made as a side effect of shipping the pusher.
+
+⚠️ **Trimming stays the pusher's job and the cap is closer than it looks.**
+Measured 2026-08-18: 158 history rows pushed as **44,393 bytes** — ~280 bytes a
+row, indented — against a 256 KB limit, with a queue of 1,064 more books behind
+it. `MAX_HISTORY` is 500 (~140 KB). Raising it much past 800 needs the draft
+written compact first, or the push starts answering `board_too_large` on a night
+that ingested well.
