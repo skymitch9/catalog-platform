@@ -293,9 +293,22 @@ it is the identity join and the privacy posture).
   have not read" — most people review a small fraction of what they read, so the
   proxy overcounts hugely and authoritatively.
 
-**Still to measure before the build tunes any wording:** the real review count,
-how many legacy uid-less TBR rows remain, and how many display names have drifted
-from their link snapshot.
+✅ **BUILT + DEPLOYED DARK 2026-08-18** — four tools, 25 tests, `GABI_SHELF`
+ships off. Operator doc: [`access/gabi-shelf.md`](access/gabi-shelf.md).
+⚠️ **OWNER STEP: flip `GABI_SHELF = "on"` and deploy.**
+
+⚠️ **As-built deviation, deliberate:** it reads Firestore DIRECTLY rather than
+through new gated routes, because both audiobook stores are collections this
+Worker already reaches — no new app token, no new trust edge. The gate is that
+every query is built from the asker's own uid/display name server-side.
+
+**Still open:**
+- ⚠️ **The LIBRARY's D1 TBR and read state are NOT readable** — another repo,
+  needs a route. TBR rows carry `shelf` so the gap is visible, not silent.
+- **Not exercised against a live linked identity** (posture off). First thing to
+  do when it is switched on.
+- **Still to measure:** the real review count, how many legacy uid-less TBR rows
+  remain, and how many display names have drifted from their link snapshot.
 
 ## 🎭 GABI'S PERSONALITY + PERSON-KEYED MEMORY — ✅ LIVE 2026-08-18
 
