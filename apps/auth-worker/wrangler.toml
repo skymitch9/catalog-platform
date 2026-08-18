@@ -73,6 +73,22 @@ id = "3278d5e3b22c4275b83bcc0b1ed5ab9c"
 binding = "ESTATE_BACKUPS"
 bucket_name = "estate-backups"
 
+# The PRIVATE estate-docs-gated R2 bucket — the estate's whole docs/ corpus as
+# one gzipped snapshot plus its receipt (GABI docs assistant phase 2; design
+# docs/info/gabi-docs-assistant-design.md). Created 2026-08-18; public access
+# verified DISABLED the same day (`wrangler r2 bucket dev-url get
+# estate-docs-gated` -> "Public access via the r2.dev URL is disabled").
+# ⚠️ NEVER enable a dev URL or attach a custom domain: the corpus carries
+# break-glass SQL, deploy levers, secret NAMES and household members' emails.
+# Bound READ-ONLY IN INTENT — src/estate-docs.ts calls only .get()/.head();
+# the sole writer is audiobook_catalog/scripts/publish_docs_snapshot.py on the
+# owner's machine, which is the only place all three docs trees exist.
+# ⚠️ Distinct from the `estate_docs` KV namespace above despite the name —
+# that serves curated runbook PAGES by slug, this serves the searchable CORPUS.
+[[r2_buckets]]
+binding = "ESTATE_DOCS"
+bucket_name = "estate-docs-gated"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "estate_auth"

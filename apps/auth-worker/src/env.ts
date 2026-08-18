@@ -39,6 +39,33 @@ export interface Env {
    */
   ESTATE_BACKUPS?: R2Bucket;
 
+  /**
+   * The PRIVATE `estate-docs-gated` R2 bucket — the estate's whole `docs/`
+   * corpus as ONE gzipped snapshot, plus its receipt (GABI docs assistant,
+   * phase 2; design docs/info/gabi-docs-assistant-design.md).
+   *
+   * ⚠️ READ-ONLY IN INTENT, like ESTATE_BACKUPS above: `estate-docs.ts` only
+   * ever calls `.get()`/`.head()`. The single WRITER is a script on the
+   * owner's own machine (`audiobook_catalog/scripts/publish_docs_snapshot.py`),
+   * and it has to run there because `audiobook_catalog/docs/` is gitignored and
+   * exists nowhere else — a CI-published snapshot would carry two-thirds of the
+   * estate while looking complete.
+   *
+   * ⚠️ NOT the same thing as `estate_docs` (the KV namespace above), despite
+   * the near-identical name, and the two must not be merged. KV serves
+   * hand-curated runbook PAGES keyed by slug; this serves the searchable
+   * CORPUS, republished as a unit — 3 MB across ~119 files, where a KV rewrite
+   * would be ~119 keys with eventual consistency and no atomic swap.
+   *
+   * ⚠️ The bucket has NO public r2.dev URL and NO custom domain (verified
+   * 2026-08-18: "Public access via the r2.dev URL is disabled") and must never
+   * get one. The corpus carries secret NAMES and where they live, break-glass
+   * SQL, deploy levers, and household members' emails and role assignments —
+   * PII plus an operations runbook. This binding behind `requireDevops()` is
+   * the only way in.
+   */
+  ESTATE_DOCS?: R2Bucket;
+
   /** Set to "production" explicitly in wrangler.toml (conformance §8.2 #8). */
   ENVIRONMENT?: string;
   /** Dev bypass identity — only honoured when ENVIRONMENT === 'development'. */

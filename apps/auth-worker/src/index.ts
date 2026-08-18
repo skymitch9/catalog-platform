@@ -22,6 +22,7 @@ import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
+import { estateDocsRoutes } from './estate-docs.js';
 import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
 import { sessionRoutes } from './session.js';
@@ -83,6 +84,13 @@ app.use('/api/estate/ops/pipeline/*', adminCors());
 app.use('/api/estate/todo', adminCors());
 // Unlisted estate docs (0003 devops) — apex-only like /todo: the only shim
 // that calls this lives on the apex (an unlisted /r/<slug>/ page).
+// ⚠️ This ONE wildcard now covers TWO different route families, and that is
+// deliberate rather than accidental: docs.ts's /estate/docs/:slug (curated
+// runbook pages out of KV) AND estate-docs.ts's /estate/docs/search|section|
+// receipt (the searchable corpus out of R2, GABI docs assistant phase 2).
+// Both are requireDevops()-gated and both have exactly one browser caller on
+// the apex — /runbooks/* for the first, /docs/ for the second — so one mount
+// is correct and a second would only be a list that could drift.
 app.use('/api/estate/docs/*', adminCors());
 // Self-service build facts (0007, 2026-08-16) — apex-only, same reasoning:
 // the only callers are the migration-page form and the runbook page, both
@@ -125,6 +133,15 @@ app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);
 app.route('/api', opsRoutes);
 app.route('/api', todoRoutes);
+// ⚠️ ORDER IS LOAD-BEARING: estateDocsRoutes BEFORE docsRoutes.
+// docsRoutes owns GET /estate/docs/:slug, and its slug pattern
+// ([a-z0-9-]{1,64}) matches "search", "section" and "receipt" perfectly well.
+// If it were mounted first, the three corpus routes below would be swallowed
+// and answer 404 not_found — a KV miss, which reads as "that document has not
+// been written yet" and nothing at all like a routing bug. Pinned by
+// test/estate-docs.test.ts, which composes these two mounts in THIS order and
+// asserts a real request reaches the corpus handler.
+app.route('/api', estateDocsRoutes);
 app.route('/api', docsRoutes);
 app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);

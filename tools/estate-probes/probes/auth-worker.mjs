@@ -59,6 +59,40 @@ export async function probeAuthWorker() {
   expectUnauthenticated('A26', 'GET', '/api/estate/facts/shelf', await get(`${AUTH_ORIGIN}/api/estate/facts/shelf`));
   expectUnauthenticated('A27', 'POST', '/api/estate/facts/shelf', await post(`${AUTH_ORIGIN}/api/estate/facts/shelf`));
 
+  // The docs CORPUS (GABI docs assistant phase 2, src/estate-docs.ts) — the
+  // same requireDevops() tier as /docs/:slug, /facts and /backups above; the
+  // new-endpoint rule applies. All three are GET and strictly read-only.
+  expectUnauthenticated('A36', 'GET', '/api/estate/docs/search', await get(`${AUTH_ORIGIN}/api/estate/docs/search?q=revocation`));
+  expectUnauthenticated('A37', 'GET', '/api/estate/docs/section', await get(`${AUTH_ORIGIN}/api/estate/docs/section?id=x%230`));
+  expectUnauthenticated('A38', 'GET', '/api/estate/docs/receipt', await get(`${AUTH_ORIGIN}/api/estate/docs/receipt`));
+
+  // ⚠️ A39 IS THE ROUTING-ORDER PROBE, and it exists because the three rows
+  // above cannot detect the failure it watches for. docs.ts owns
+  // GET /estate/docs/:slug and its slug pattern ([a-z0-9-]{1,64}) matches
+  // "search", "section" and "receipt" perfectly. If the corpus mount ever
+  // moves after it in index.ts, a TOKENLESS call still answers 401
+  // `unauthenticated` — from the WRONG handler — and A36-A38 stay green while
+  // the feature is entirely dead. The one shape only the KV route can produce
+  // is `not_found` (a KV miss), and it is reachable only PAST the gate, so
+  // this row asserts the negative rather than a positive: whatever comes back,
+  // it must not be the slug route's miss.
+  const corpusShadow = await get(`${AUTH_ORIGIN}/api/estate/docs/receipt`, {
+    headers: { Authorization: GARBAGE_BEARER },
+  });
+  if (!corpusShadow.ok) {
+    check(AREA, 'A39', 'GET', `${AUTH_ORIGIN}/api/estate/docs/receipt`, 'corpus route is not shadowed by docs.ts /:slug', false, `request failed: ${corpusShadow.error}`);
+  } else {
+    check(
+      AREA,
+      'A39',
+      'GET',
+      `${AUTH_ORIGIN}/api/estate/docs/receipt`,
+      'corpus route is not shadowed by docs.ts /:slug (error !== "not_found")',
+      corpusShadow.json?.error !== 'not_found',
+      `status=${corpusShadow.status} error=${corpusShadow.json?.error}`,
+    );
+  }
+
   // --- Garbage bearer tokens: verification fails, same 401 as tokenless ---
   expectUnauthenticated(
     'A6',
