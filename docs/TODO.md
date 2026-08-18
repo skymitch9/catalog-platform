@@ -998,6 +998,67 @@ designing a federation for a catalog that does not yet have any books in it.
 
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
+## 🔄 HANDOFF — 2026-08-18 ~16:00 Phoenix (written for ANY successor, including a weaker one)
+
+> Owner order of record (2026-08-18): designs written to EXECUTION
+> completeness, docs current at landing — the fallback executor may be the
+> Kiro-IDE Claude, which needs complete instructions. If you are that
+> successor: read this whole section, then `git status` all three repos.
+
+### Landed and verified today (deployed unless marked)
+- Primal Hunter 1–14 in GABI's knowledge base (index = 190 books; ingestion
+  unpaused 14:01, daytime run harvesting reviewed audiobooks until 18:30).
+- GABI conversation stack, deployed: routing + follow-ups via context,
+  no "budget" wording, auto-continue in numbered parts (max 4) paging
+  FORWARD from cutoffs, caps 48KB/12 passages, availability grounded.
+- GABI memory phase 1 LIVE (GABI_MEMORY="on", version be3434cc): 30-min
+  window + per-person 2KB profile (2-min sweep) + "@GABI memory"/"forget".
+  Design: docs/info/gabi-memory-design.md. Tiers 3–4 not built.
+- /status: four pages incl. GABI Knowledge, per-section freshness (0013),
+  usage tiles (push via scripts/push-agent-board.mjs .local/agent-board.json),
+  processing board every 15 min with measured per-book percent.
+- Audiobook archive: estate-audio archive/ (author folders only), hourly
+  task AudiobookArchiveR2, ~685 GB seed near done; retrieval PROVEN
+  (sha256-identical round trip). Backup job refuses this bucket.
+- Ebook shelf publish unblocked; content notes live; index titles filled;
+  transcripts third-copied to ebooks-gated/transcripts/ per book.
+- Prod promote at 87cae40 (WebKit reader fix verified live).
+- Ingest fixes by commit: 6296a22 resolver tail-strip; 30fef25 per-book
+  control re-read + non-ASCII join; fba9355 publish steps every-cycle;
+  65c769e CI platform tests; 3d79f53 CPU guard + deadline gate (first
+  real exercise = tonight's window — check output_files/ingest_nightly.log
+  for "would finish ~HH:MM -> OK/holding" lines); 4f1b6b0 pack-side
+  tail-strip (ACOTAR pack-miss class; an 18:40 job clears false-failed
+  rows so tonight packs harvested transcripts free).
+
+### In flight (each reports to the conductor)
+1. Personality + person-keyed memory (discord-worker): 11 owner-approved
+   tropes incl. flirty, PG-13 CEILING at discretion (mirror the person's
+   register, default mild), neighbor-graph drift, hidden pin command
+   (undocumented to users), memory+personality keyed to Discord USER ID
+   across channels/DMs. Design doc required first.
+2. Dashboard pass: blob rows into the BACKUPS grouping with seed %, last
+   run, verified?, restore-proven line (first data point: conductor's
+   sha256 round trip today); worker event RING BUFFER in D1 (owner:
+   "fix this" on the placeholder) + click-to-expand log tails; pushed
+   home-job tail rings; notification prefs; /todo board content refresh
+   (KEEP the design; check public exposure — standing rule says gated).
+3. (queued) Ingestion dashboard controls: requeue-failed button,
+   start-now, priority bump, step-level retry — dispatch when surfaces free.
+
+### Open owner decisions (ONE at a time)
+1. GABI book text in shared channels vs DM-only (spoiler bystanders).
+2. ebooks-gated backup mechanics (~2.6 GB whole-bucket tar coming).
+3. Gates agent flagged: confirm the deadline gate's boundary mapping
+   (07:45/08:00 constants + pause windows) matches the owner's intent.
+
+### Verify (copy-paste)
+`python -m app.tools.ingest_books --status` · `python -m
+scripts.archive_audio_r2 --status` (both in audiobook_catalog) ·
+`curl -s https://discord.heygabi.ai/api/health` · https://heygabi.ai/status/
+· suites: audiobook pytest (1 known failure: test_universes drift),
+catalog-platform npm run test:scripts + per-app npm test.
+
 ## 🔄 HANDOFF — PC restart 2026-08-18 ~09:45 Phoenix (IDE update; owner-initiated)
 
 > Written during an Anthropic 529 outage that had already stopped all agents.
