@@ -379,7 +379,10 @@ AUDIOBOOK_API_URL = "https://audiobook-api.heygabi.ai"
 # this Worker ALREADY holds for discord_links. ⚠️ No new secret, no new holder,
 # no new trust edge — that was the deciding argument for Firestore over D1
 # (docs/info/gabi-memory-design.md §4.1).
-GABI_MEMORY = "off"
+# Flipped off -> ON 2026-08-18 by conductor hand at the owner's order
+# ("flip gabi memory on"), same precedent as the flips above. Off is this
+# one line back, then redeploy.
+GABI_MEMORY = "on"
 
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
