@@ -157,9 +157,20 @@ Measured 2026-08-18 rather than attempted:
   range plus a typed-value decoder; this Worker has only ever done single-doc
   GETs.
 - ⚠️ **It would also put `firestoreRequest` / `mintAccessToken` into the mention
-  path**, which today is 100% credential-free — a property `test/mentions.test.ts`
-  currently asserts against `mention-flow.ts`'s source. Shipping it means
-  deciding to give up that property on purpose.
+  path**, which was 100% credential-free — a property `test/mentions.test.ts`
+  asserted against `mention-flow.ts`'s source. Shipping it means deciding to
+  give up that property on purpose.
+  ⚠️ **UPDATE 2026-08-18: that decision has been made, for a different feature.**
+  The owner approved T1 (see the write-verb ladder section below) and the write
+  path shipped, so the property is gone — but note what replaced it, because it
+  is the shape `person_context` must now fit into rather than a licence to add
+  credentials anywhere: **credentials live in `delegated-exec.ts` and nowhere
+  else**, reached only through an injected port, pinned by a source-reading
+  test over eight files. A `person_context` tool would still be a MODEL-chosen
+  read, which is a different and stricter category — the Tier-0 tool surface is
+  still credential-free by construction and `toolsForApi()` is asserted to
+  contain nothing else. The TBR display-name identity question below is
+  untouched by any of this and remains the real blocker.
 
 **2. Cross-catalog counting. STRUCTURALLY UNREACHABLE from Discord.**
 The owner asked the live bot *"how many books do we have in all the libraries
@@ -200,6 +211,43 @@ destination site): T0 lookups (live) · T1 additive-with-undo auto-apply
 (add-by-ISBN/photo, blank fills) · T2 mutations propose→confirm-button ·
 T3 people/club changes restate→confirm, asker must hold the capability ·
 T4 never-from-Discord (estate grants, deploys, money, moderation-config).
+
+### ✅ T1 SHIPPED + DEPLOYED 2026-08-18 (owner: *"all of it"*)
+
+⚠️ The item stays HERE rather than moving to `DONE.md` because it is not
+finished: T1 is one rung of a five-rung ladder, and an item moves once, whole,
+at completion. What landed, and what did not:
+
+- **`add-isbn` and `run-details` are LIVE** on both library instances, driven by
+  a DM or an @mention. As-built account: [`info/gabi-application-map.md`
+  §2a–2d](info/gabi-application-map.md); owner's live test script (the exact
+  DMs to send): [`access/discord-bot.md` §13.4](access/discord-bot.md).
+  Commits `67ec937` (bot) and library `5b4b860`; Workers `e508302f` /
+  `7fdbe01b` / `5886875e`.
+- **The delegation seam as built**: `ESTATE_APP_TOKEN_DISCORD` (one value,
+  THREE holders, same name) proves only *"this is the estate's Discord
+  Worker"*; the **destination catalog** resolves the on-behalf-of Firebase uid
+  to its own `app_user` row and checks that person's `editCatalog` /
+  `runResearch`. Pairing **verified live** on both instances 2026-08-18.
+- ⚠️ **The credential-free mention path ended here, deliberately** — see the
+  Tier-0 section above, which recorded that shipping a write *"means deciding
+  to give up that property on purpose"*. The owner's approval is that decision;
+  `test/mentions.test.ts`'s assertion was **repointed**, not removed, at the
+  narrower property (credentials only in `delegated-exec.ts`) and given teeth
+  by a second source-reading test.
+- 📷 **Photo intake: MEASURED AND DEFERRED**, not half-built — application map
+  §2d has the numbers and the recommended proposal-only shape. Short version: a
+  cover photo yields a title+author string, and this estate has twice measured
+  a title+author match scoring **1.0 on the wrong book**. *"Additive with easy
+  undo"* does not cover a wrong book added under a name that already matched.
+- ⛔ **Still open: T2/T3 confirm verbs.** The instance-choice select menu built
+  for T1 is the first working example of the exact machinery they need — a
+  pending choice whose press performs an ACTION rather than producing a
+  sentence. A T2 confirm is that with one option and a restatement.
+- 🧑 **OWNER EYEBALL — nothing here is verified by a real Discord message yet.**
+  No `change_log` row wearing `gabi-discord` exists in production, and the
+  async sweep report has never been posted by a live gateway. `access/discord-bot.md`
+  §13.4 is the three-message test; §13.6 is the full not-verified list.
 
 ## 🚪 DEV ACCESS in the estate (owner, 2026-08-17) — IN FLIGHT
 
