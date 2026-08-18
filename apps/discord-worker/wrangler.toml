@@ -321,6 +321,38 @@ GABI_DOCS = "on"
 # elsewhere; the default in code (src/estate-docs-exec.ts) is this same host.
 AUTH_BASE_URL = "https://auth.heygabi.ai"
 
+# ⚠️ TIER 0c — GABI READS THE HOUSEHOLD'S OWN BOOKS. Affirmative-only: "on" and
+# nothing else. "true", "1", "yes" and every typo mean OFF.
+#
+# What it opens: the TEXT of the books the nightly ingester has packed into
+# ebooks-gated/text/ — 157 packs at the time this shipped, out of 1,079
+# catalogued audiobooks, and growing every night with NO deploy. Design §4.6
+# ships it dark, and design §9 owner step 2 is explicit that flipping it is a
+# deliberate act rather than a side effect of a deploy.
+#
+# ⚠️ ON IS NOT A GRANT. Every book call carries the asker's PROVEN email and the
+# audiobook Worker resolves it against the estate directory's vis_ebooks — the
+# same resolveEbookAccessForEmail() the ebook shelf and the byte streams use.
+# Revoke someone's vis_ebooks in /admin and their next question is refused, with
+# no deploy. A leak of the token below buys reading on behalf of people who
+# could already read.
+#
+# ⚠️ OFF IS NOT SILENT. With this off, a question about what HAPPENS in a book
+# gets "reading the actual text of our books is switched off" plus an offer of
+# what the catalogue knows — never a catalogue lookup that returns a narrator
+# and reads as an answer.
+#
+# Flipped off -> ON 2026-08-18 by the FINISHER as the delivery step of the
+# owner's promised live test, by the same conductor-hand precedent GABI_DOCS
+# records two blocks above. Off is this one line back, then redeploy.
+GABI_BOOKS = "on"
+
+# The estate's audiobook Worker, which serves the book-text routes behind the
+# vis_ebooks gate. ⚠️ A var, not a secret: a public hostname, and the credential
+# is the BEARER rather than the address. The default in code
+# (src/book-knowledge-exec.ts) is this same host.
+AUDIOBOOK_API_URL = "https://audiobook-api.heygabi.ai"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)
@@ -341,6 +373,25 @@ AUTH_BASE_URL = "https://auth.heygabi.ai"
 #     DISCORD_CLIENT_SECRET and POLL_SYNC_TOKEN below.
 #     ⚠️ Read by exactly ONE module — src/delegated-exec.ts — and
 #     test/mentions.test.ts fails the build if that stops being true.)
+#   wrangler secret put ESTATE_APP_TOKEN_BOOKS  (TIER 0c, added 2026-08-18.
+#     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)
+#     and pipes the SAME value to exactly TWO holders under the SAME NAME: here,
+#     and apps/audiobook-worker.
+#     ⚠️ IT IS ITS OWN PAIR — not ESTATE_APP_TOKEN_DISCORD (shared with both
+#     library Workers) and not ESTATE_APP_TOKEN_DISCORD_DOCS (the auth Worker's
+#     docs corpus). This one opens the household's DERIVED BOOK TEXT, which the
+#     owner's standing directive is explicit about: "I don't want people
+#     scraping my books." Derived full text is a MORE attractive scrape target
+#     than the files — smaller, cleaner, searchable — so a leak from a library
+#     instance or from the docs corpus must not open it.
+#     ⚠️ HOLDING IT AUTHORISES NO READ. It proves only "this request came from
+#     the estate's Discord Worker"; the audiobook Worker resolves the
+#     accompanying proven email against vis_ebooks and decides.
+#     ⚠️ SHIPS DARK until set: makeBooksPort() returns null, the book tools are
+#     never described to the model, /api/health reports gabi_books_ready = false,
+#     and every other answer is unchanged.
+#     ⚠️ Read by exactly ONE module — src/book-knowledge-exec.ts — and
+#     test/book-knowledge.test.ts fails the build if that stops being true.)
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD_DOCS  (TIER 0b, added
 #     2026-08-18. ⚠️ NOT A PORTAL VALUE — the conductor MINTS it
 #     (`openssl rand -hex 32`) and pipes the SAME value to exactly TWO holders

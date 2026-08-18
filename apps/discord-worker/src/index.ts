@@ -85,6 +85,7 @@ import { mentionsOn } from './mentions.js';
 import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
   GABI_DELEGATED_VERB_NAMES,
+  GABI_BOOKS_TOOL_NAMES,
   GABI_DOCS_TOOL_NAMES,
   GABI_TOOL_NAMES,
   GABI_TOOLS,
@@ -99,6 +100,13 @@ import {
   docsOn,
 } from './estate-docs.js';
 import { authBase } from './estate-docs-exec.js';
+import {
+  BOOKS_BYTES_PER_TURN,
+  BOOKS_PASSAGES_PER_TURN,
+  BOOKS_TURNS_PER_DAY,
+  booksOn,
+} from './book-knowledge.js';
+import { audiobookApiBase } from './book-knowledge-exec.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -328,6 +336,27 @@ app.get('/api/health', (c) =>
     gabi_docs_bytes_per_turn: DOCS_BYTES_PER_TURN,
     gabi_docs_sections_per_turn: DOCS_SECTIONS_PER_TURN,
     gabi_docs_turns_per_day: DOCS_TURNS_PER_DAY,
+    // ⚠️ THE BOOK KILL SWITCH and its readiness, VISIBLE from outside — the
+    // fourth switch, and the one that opens the household's own book TEXT.
+    // `gabi_books_ready` is the AND a reader would otherwise have to compute:
+    // the switch is on, the BOOK app token exists (its own pair — not the docs
+    // one and not the Tier-1 one), and the service account that reads the /link
+    // document exists. All three or she cannot read a book, and she says so in
+    // words rather than failing.
+    gabi_books_enabled: booksOn(c.env),
+    gabi_books_ready:
+      booksOn(c.env) &&
+      Boolean(c.env.ESTATE_APP_TOKEN_BOOKS) &&
+      Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    // ⚠️ Its own row again, for the same reason the docs row is its own: these
+    // reach GATED book text, scoped per person BY READING POSITION, which
+    // neither of the other two surfaces is.
+    gabi_books_tools: GABI_BOOKS_TOOL_NAMES,
+    gabi_books_scope: 'gated_book_text_per_asker_vis_ebooks_check',
+    gabi_books_authority: audiobookApiBase(c.env),
+    gabi_books_bytes_per_turn: BOOKS_BYTES_PER_TURN,
+    gabi_books_passages_per_turn: BOOKS_PASSAGES_PER_TURN,
+    gabi_books_turns_per_day: BOOKS_TURNS_PER_DAY,
   }),
 );
 

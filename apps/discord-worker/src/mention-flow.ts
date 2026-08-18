@@ -109,6 +109,16 @@ import {
   type DocsToolContext,
 } from './estate-docs.js';
 import {
+  BOOKS_MSG,
+  booksIdentityMessage,
+  booksIntent,
+  boundFromQuestion,
+  makeBooksBudget,
+  type BooksCapVerdict,
+  type BooksPort,
+  type BooksToolContext,
+} from './book-knowledge.js';
+import {
   runDelegated,
   resumeDelegated,
   type DelegatedDeps,
@@ -233,6 +243,23 @@ export interface MentionDeps {
    * budget or make forty docs questions cheap, and both are wrong.
    */
   docs?: DocsDeps;
+  /**
+   * ⚠️ **TIER 0c (2026-08-18): the household's own book TEXT, OPTIONAL BY
+   * DESIGN.**
+   *
+   * Absent means this surface cannot read a book's text — the state of every
+   * caller that has not been given one, and of production while `GABI_BOOKS` is
+   * off or the book app token is unset. Like `delegated` and `docs`, an injected
+   * port rather than an import so THIS FILE holds no credential.
+   *
+   * ⚠️ Its `capCheck`/`record` pair is the FOURTH fuse, kept apart from the other
+   * three on purpose. A turn is fractions of a cent; a write is a row in a
+   * catalog; a docs turn is ~6k tokens of runbook; a book turn is ~6k tokens of
+   * somebody's NOVEL. One shared counter would price all four wrongly, and the
+   * cost this one protects is the one the owner's *"I don't want people scraping
+   * my books"* is about.
+   */
+  books?: BooksDeps;
 }
 
 /** The docs port plus its own fuse. ⚠️ `record()` is called ONLY when a turn
@@ -241,6 +268,16 @@ export interface MentionDeps {
 export interface DocsDeps {
   port: DocsPort;
   capCheck(userId: string): Promise<DocsCapVerdict>;
+  record(userId: string): Promise<void>;
+}
+
+/** The book port plus its own fuse. ⚠️ `record()` is called ONLY when a turn
+ *  actually opened a book — most turns in a book channel are about narrators and
+ *  running times, and charging those would burn a forty-a-day allowance on
+ *  conversations that never touched the text. */
+export interface BooksDeps {
+  port: BooksPort;
+  capCheck(userId: string): Promise<BooksCapVerdict>;
   record(userId: string): Promise<void>;
 }
 
@@ -279,6 +316,14 @@ export interface MentionConfig {
    * single docs tool is described to the model.
    */
   docsEnabled?: boolean;
+  /**
+   * ⚠️ TIER 0c. The `GABI_BOOKS` posture, affirmative-only and read at the
+   * composition root. Defaults to FALSE here so a caller that predates the book
+   * feature — or forgets the flag — cannot accidentally offer a model the
+   * household's own book text. Both this AND `deps.books` must be present before
+   * a single book tool is described to the model.
+   */
+  booksEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
 }
@@ -314,11 +359,16 @@ function panelFor(
 
 /** The executor's world, built from the config in one place so the two callers
  * (gateway message, component press) cannot drift. */
-function toolContext(cfg: MentionConfig, docs?: DocsToolContext): ToolContext {
+function toolContext(
+  cfg: MentionConfig,
+  docs?: DocsToolContext,
+  books?: BooksToolContext,
+): ToolContext {
   return {
     catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
     ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
     ...(docs ? { docs } : {}),
+    ...(books ? { books } : {}),
   };
 }
 
@@ -389,6 +439,77 @@ async function chargeDocsTurn(
     await deps.docs.record(discordUserId);
   } catch (err) {
     console.error('GABI docs: the daily fuse could not be charged:', err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * ⚠️ **THE ONE PLACE THAT DECIDES WHETHER THIS TURN MAY READ A BOOK'S TEXT, and
+ * it needs THREE things to be true** — the same three `docsContextFor` needs,
+ * checked against a different posture and a different port because they are
+ * different owner decisions about different corpora.
+ *
+ * ⚠️ **It also derives THIS TURN'S SPOILER BOUND, from the question, here.** The
+ * bound is threaded through the context rather than left to the tool arguments
+ * for the reason design §4.3 measured: an `ord` is only meaningful relative to
+ * the chunking that produced it, and a bound carried across a re-chunk leaked
+ * twenty-eight chapters of book 2 past the reader's position **with no error
+ * anywhere and nothing in the answer looking wrong**. Deriving it per turn, from
+ * the question, is what makes that impossible rather than merely unlikely — and
+ * it is deterministic rather than the model's decision, because a model asked to
+ * choose its own spoiler scope chooses the generous one.
+ *
+ * ⚠️ **A CAPPED PERSON STILL GETS THE TOOLS OFFERED, with `capped: true`**, for
+ * the reason the docs half gives: withholding them would leave a question about
+ * a book's contents answered from the model's own memory of that book, which is
+ * the single worst thing this feature could produce.
+ */
+async function booksContextFor(
+  deps: Pick<MentionDeps, 'books'>,
+  cfg: MentionConfig,
+  discordUserId: string,
+  question: string,
+): Promise<BooksToolContext | undefined> {
+  if (!cfg.booksEnabled || !deps.books) return undefined;
+  let capped = false;
+  try {
+    capped = !(await deps.books.capCheck(discordUserId)).ok;
+  } catch (err) {
+    // ⚠️ A fuse that cannot be read is treated as BLOWN, not as open — the same
+    // direction the docs fuse fails in, and for the same reason.
+    console.error('GABI books: the daily fuse could not be read:', err instanceof Error ? err.message : err);
+    capped = true;
+  }
+  return {
+    port: deps.books.port,
+    discordUserId,
+    budget: makeBooksBudget(),
+    capped,
+    bound: boundFromQuestion(question),
+  };
+}
+
+/**
+ * Charge the fourth daily fuse — **only if this turn actually opened a book**.
+ *
+ * ⚠️ `budget.used()` is the discriminator. Most turns in a book channel never
+ * touch a book's text; charging them would burn a forty-a-day allowance on
+ * conversations about narrators and make the fuse describe something other than
+ * what it protects. Equally, a turn that DID pull prose must be charged even if
+ * the model's final answer went another way — the tokens were spent either way.
+ *
+ * ⚠️ Never throws. A fuse that could not be written must not cost somebody the
+ * answer they already received.
+ */
+async function chargeBooksTurn(
+  deps: Pick<MentionDeps, 'books'>,
+  discordUserId: string,
+  books: BooksToolContext | undefined,
+): Promise<void> {
+  if (!deps.books || !books?.budget.used()) return;
+  try {
+    await deps.books.record(discordUserId);
+  } catch (err) {
+    console.error('GABI books: the daily fuse could not be charged:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -613,6 +734,67 @@ async function docsAnswer(
 }
 
 /**
+ * ⚠️ **THE BOOK PRE-ROUTER — "what happens in it" is not "what do we have".**
+ *
+ * Runs alongside the docs pre-router and for exactly the reason that one exists:
+ * falling through would search the CATALOGUE for *"what's Jake's stat sheet at
+ * the end of book 1"*, come back with a narrator and a running time, and report
+ * that as an answer. The catalogue records nothing whatsoever about what happens
+ * in a book, so a contents question answered from it is a wrong answer wearing a
+ * correct-looking row.
+ *
+ * ⚠️ **It answers deterministically in the cases where a model must not be
+ * consulted**, each of them a promise the design made in words: the link
+ * predates the email field; not linked; the estate is unreachable; capped. Only
+ * past all of those does it spend a turn — and with **no shelf grounding**,
+ * which also saves the `/have` subrequest.
+ */
+async function booksAnswer(
+  question: string,
+  history: readonly ConversationTurn[],
+  who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
+  cfg: MentionConfig,
+  books: BooksToolContext,
+  overrides: { fetch?: typeof fetch } | undefined,
+): Promise<AnsweredQuestion> {
+  const done = (content: string): AnsweredQuestion => ({
+    content,
+    pending: null,
+    intent: 'question',
+    components: null,
+  });
+
+  // ⚠️ Cheapest first, and no I/O for a cap we already know about.
+  if (books.capped) return done(BOOKS_MSG.capped);
+
+  // ⚠️ Identity BEFORE the model, so the relink case is worded by us from the
+  // link document rather than left to a model that might answer the question
+  // from its own memory of the book instead.
+  const asker = await books.port.askerEmail(books.discordUserId);
+  if (!asker.ok) return done(booksIdentityMessage(asker.reason));
+
+  const spoken = await converseWithTools(
+    cfg.anthropicKey,
+    question,
+    // ⚠️ NO GROUNDING. Handing the model a public-shelf miss and asking it to
+    // answer a plot question around it is not merely useless but actively
+    // misleading — it is the shape of the failure this router prevents.
+    null,
+    who,
+    // ⚠️ BOOKS ONLY, mirroring `docsAnswer` exactly. Describing the docs corpus
+    // on a turn routed as a plot question is input tokens spent describing a
+    // capability the router has already decided is not what was asked for.
+    toolContext(cfg, undefined, books),
+    overrides,
+    history,
+  );
+
+  // ⚠️ A book question that goes wrong fails as a BOOK question, and the
+  // sentence says the wobble was ours rather than implying the book lacks it.
+  return done(spoken.text ?? BOOKS_MSG.noAnswer);
+}
+
+/**
  * Turn a question plus a remembered conversation into what she says next.
  *
  * Pure of the STORE — it reads history and returns what should be remembered,
@@ -630,6 +812,7 @@ async function answerQuestion(
    * has no branch for "asker-aware or not" and cannot grow one. */
   panel: PanelLink,
   docs?: DocsToolContext,
+  books?: BooksToolContext,
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -658,6 +841,32 @@ async function answerQuestion(
     }
   }
 
+  // ── ⚠️ THE BOOK PRE-ROUTER, ahead of every intent branch for the same reason ──
+  //
+  // A question about a book's CONTENTS must never fall through to a catalogue
+  // lookup that returns a narrator and reads as an answer. The three states are
+  // deliberately distinct, and a surface that predates the feature
+  // (`booksEnabled` undefined) falls through UNCHANGED rather than being handed
+  // a sentence about a capability it never had.
+  //
+  // ⚠️ It sits AFTER the docs router on purpose: `docsIntent` is the narrower
+  // detector of the two, and an operational question that happens to name a book
+  // is still an operational question.
+  if (booksIntent(question)) {
+    if (books) return await booksAnswer(question, history, who, cfg, books, overrides);
+    if (cfg.booksEnabled === true) {
+      // The posture is on but no port was built — the book app token or the
+      // service account is missing. A setup gap, never a permissions one.
+      return { content: BOOKS_MSG.notConfigured, pending: null, intent: 'question', components: null };
+    }
+    if (cfg.booksEnabled === false) {
+      // ⚠️ OFF IS NOT SILENT, and design §4.6 pins the sentence: she says her
+      // reading is switched off and offers what the catalogue knows, rather than
+      // answering a plot question with a narrator.
+      return { content: BOOKS_MSG.switchedOff, pending: null, intent: 'question', components: null };
+    }
+  }
+
   const intent =
     (await classifyIntent(cfg.anthropicKey, question, who, overrides, history)) ??
     classifyByKeyword(question);
@@ -681,7 +890,7 @@ async function answerQuestion(
         question,
         facts,
         who,
-        toolContext(cfg, docs),
+        toolContext(cfg, docs, books),
         overrides,
         history,
       );
@@ -750,7 +959,7 @@ async function answerQuestion(
             question,
             grounding,
             who,
-            toolContext(cfg, docs),
+            toolContext(cfg, docs, books),
             overrides,
             history,
           )
@@ -937,6 +1146,9 @@ export async function handleMention(
     // turn and a DM'd barcode both end before this line, so neither pays the
     // storage read that the docs fuse costs.
     const docs = await docsContextFor(deps, cfg, trigger.authorId);
+    // ⚠️ The BOUND is derived from THIS question, here, and travels with the
+    // context — never stored, never carried from an earlier turn (design §4.3).
+    const books = await booksContextFor(deps, cfg, trigger.authorId, trigger.question);
 
     const answer = await answerQuestion(
       trigger.question,
@@ -946,6 +1158,7 @@ export async function handleMention(
       now,
       panelFor(deps, cfg, trigger.authorId),
       docs,
+      books,
     );
     await say(answer.content, answer.components);
 
@@ -969,6 +1182,7 @@ export async function handleMention(
       });
       await deps.recordTurn(trigger.authorId);
       await chargeDocsTurn(deps, trigger.authorId, docs);
+      await chargeBooksTurn(deps, trigger.authorId, books);
     } catch (err) {
       console.error(
         'GABI mentions: the answer was delivered but the bookkeeping failed (memory, turn cap or ' +
@@ -1157,6 +1371,10 @@ export async function handleTypedQuestion(
     if (!verdict.ok) return { kind: 'capped', content: verdict.message };
 
     const docs = await docsContextFor(deps, cfg, who.discordUserId);
+    // ⚠️ A typed follow-up reaches the SAME ladder as a DM, so it derives its
+    // own bound from its own text. Reusing the bound of the question that opened
+    // the box would let a spoiler scope outlive the sentence that set it.
+    const books = await booksContextFor(deps, cfg, who.discordUserId, question);
     const answer = await answerQuestion(
       question,
       memory.turns,
@@ -1165,6 +1383,7 @@ export async function handleTypedQuestion(
       now,
       panelFor(deps, cfg, who.discordUserId),
       docs,
+      books,
     );
     await deps.conversation.save({
       user: question,
@@ -1173,6 +1392,7 @@ export async function handleTypedQuestion(
     });
     await deps.recordTurn(who.discordUserId);
     await chargeDocsTurn(deps, who.discordUserId, docs);
+    await chargeBooksTurn(deps, who.discordUserId, books);
     return {
       kind: 'answered',
       content: truncate(answer.content, DISCORD_CONTENT_MAX),

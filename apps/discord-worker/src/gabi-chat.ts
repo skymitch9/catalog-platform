@@ -206,6 +206,21 @@ export function accountTurn(entry: {
    */
   docsSections?: number;
   docsBytes?: number;
+  /**
+   * ⚠️ **BOOK ACCOUNTING (design §4.6), added 2026-08-18 with Tier 0c.** Two raw
+   * columns again, and the pair is deliberately NOT folded into the docs pair:
+   * a docs turn carries ~6k tokens of runbook and a book turn carries ~6k tokens
+   * of somebody's NOVEL. They cost the same and they mean nothing alike, and one
+   * shared column would make neither answerable.
+   *
+   * ⚠️ **THE RETRIEVED PASSAGES ARE NEVER LOGGED — only how much came back**
+   * (design §8). That protects the household's privacy and the copyright posture
+   * at once, and it is why this is a byte count rather than an excerpt. A log
+   * stream naming who asked what about which novel is a second copy of the thing
+   * the `vis_ebooks` gate protects.
+   */
+  booksPassages?: number;
+  booksBytes?: number;
 }): void {
   console.log(
     JSON.stringify({
@@ -224,6 +239,8 @@ export function accountTurn(entry: {
       tool_iterations: entry.toolIterations ?? 0,
       docs_sections: entry.docsSections ?? 0,
       docs_bytes: entry.docsBytes ?? 0,
+      books_passages: entry.booksPassages ?? 0,
+      books_bytes: entry.booksBytes ?? 0,
       // Discord snowflakes, not names or message text. The same no-PII line
       // /api/health draws. ⚠️ The remembered TEXT is never logged — only how
       // much of it there was.
@@ -495,6 +512,45 @@ You can also read the estate's own internal documentation — the runbooks, acce
 - If a tool refuses, relay its sentence as it is. Do not soften it, do not apologise for the estate, and do not offer to look it up another way.`;
 
 /**
+ * ⚠️ **THE BOOK ADDENDUM — appended ONLY on a turn where the book tools are
+ * actually offered** (design phase 4), and kept out of `CHAT_TOOLS_SYSTEM` for
+ * the same two reasons the docs addendum is: it is input tokens on every turn
+ * that carries it, and describing a capability the model does not have this turn
+ * is how a model ends up apologising for not doing something nobody offered it.
+ *
+ * Every line is a failure this design measured or argued against:
+ *
+ *  1. **The knowledge base is a SUBSET of the shelf, and it grows.** The owner's
+ *     requirement in his own words: *"I don't want to wait until every book is
+ *     processed to use Gabi's knowledge."* 157 packs against 1,079 catalogued
+ *     audiobooks means most questions land on a book she has not read, so the
+ *     honest sentence has to be the easy path.
+ *  2. **She has read these books in TRAINING too, and that is the trap.** A
+ *     model asked about a famous novel will answer fluently from memory and cite
+ *     nothing — an answer about the WORLD's copy, not the household's, and
+ *     indistinguishable from a real one until it is wrong.
+ *  3. **The four modes are four questions.** Measured: `relevant` and `latest`
+ *     alone answered 10/12 pilot questions; all four answered 12/12, and the
+ *     misses were not close — a true first-appearance passage ranked 34th–60th
+ *     of 200, because a first appearance is by construction the least dense
+ *     mention.
+ *  4. **Say the scope out loud.** The spoiler bound is derived per turn and the
+ *     only way anybody can check it is if the answer states it.
+ *  5. **A transcript is not the book.** Letter grades are measurably unreliable
+ *     from speech (design §6.4) — `Human (D)` transcribes as *"human, G"*.
+ */
+const CHAT_BOOKS_SYSTEM = `
+You can also read the actual TEXT of some of the household's books. Four tools: list_book_knowledge (always first — it is where book ids come from), then search_book_text, read_book_passage, and book_presence for one term across several books.
+
+- ⚠️ Your knowledge base is a SUBSET of the shelf and it is growing nightly. If a book is not in list_book_knowledge, you have not read it: say so, offer what the catalogue knows, and say it may be there soon. Never answer from your own memory of a book you have not opened here — you may well have read it in training, and that answer is about the world's copy rather than this household's.
+- ⚠️ "I haven't read that one yet" and "that doesn't happen in the book" are completely different answers. Never say the second when the first is true.
+- Pick the mode deliberately. "latest" for anything about the END or the current state of something — a stat sheet, a level, a total — because the best-scoring passage is almost never the last one. "earliest" for a first appearance. "book_presence" for "which book does X first show up in", across several books at once.
+- Quote and cite: name the book and the chapter, and give the timestamp when there is one. Never add a detail the passages do not contain.
+- ⚠️ Say the scope. If a result says you are reading only up to a chapter, tell them that. If nobody said where they are, ask before going deep rather than assuming they have finished — and never assume they have not.
+- ⚠️ If the text came from a TRANSCRIPT of the audiobook rather than the written book, say so when you quote it. Numbers are reliable; single letters and unusual names are not.
+- If a tool refuses, relay its sentence as it is, and do not answer the question from memory instead.`;
+
+/**
  * ⚠️ **THE KILLER OF 2026-08-18, AND THE ONE-LINE VERSION OF IT.**
  *
  * The owner asked *"how do I promote the audiobook site?"*, GABI posted
@@ -573,6 +629,12 @@ export interface ToolTurnResult {
   docsSections: number;
   docsBytes: number;
   docsUsed: boolean;
+  /** ⚠️ What the BOOK budget actually spent this turn. `booksUsed` is what makes
+   *  this a book turn for the fourth daily fuse — a turn where she never opened
+   *  a book must not be charged one, or the fuse lies about what it protects. */
+  booksPassages: number;
+  booksBytes: number;
+  booksUsed: boolean;
 }
 
 /** Text blocks plus a note when the loop ran out of iterations. */
@@ -633,8 +695,15 @@ export async function converseWithTools(
   // a turn that could not have used them.
   const docsOffered = Boolean(toolCtx.docs);
   const docsSpend = () => toolCtx.docs?.budget.spent() ?? { bytes: 0, sections: 0 };
+  // ⚠️ The book surface is decided the same way and SEPARATELY. Two postures,
+  // two ports, two owner decisions — a turn may legitimately have one and not
+  // the other, and folding them into one flag would make either decision grant
+  // the other silently.
+  const booksOffered = Boolean(toolCtx.books);
+  const booksSpend = () => toolCtx.books?.budget.spent() ?? { bytes: 0, passages: 0 };
   const finish = (text: string | null, toolCalls: number, tools: string[], iterationCount: number): ToolTurnResult => {
     const spent = docsSpend();
+    const booksSpent = booksSpend();
     // ⚠️ THE LAST-RESORT NET. The nudge above gets one shot per remaining
     // iteration, and the final pass sends no tools so it normally produces
     // prose — but if a turn STILL ends on a dangling colon, the person gets a
@@ -655,6 +724,9 @@ ${CHAT_CUT_SHORT}`
       docsSections: spent.sections,
       docsBytes: spent.bytes,
       docsUsed: toolCtx.docs?.budget.used() ?? false,
+      booksPassages: booksSpent.passages,
+      booksBytes: booksSpent.bytes,
+      booksUsed: toolCtx.books?.budget.used() ?? false,
     };
   };
 
@@ -669,7 +741,7 @@ ${CHAT_CUT_SHORT}`
   const messages: { role: 'user' | 'assistant'; content: unknown }[] = modelMessages(history, user);
 
   const client = chatClient(apiKey, overrides);
-  const tools = toolsForApi({ docs: docsOffered });
+  const tools = toolsForApi({ docs: docsOffered, books: booksOffered });
   const executed: string[] = [];
   let iterations = 0;
 
@@ -683,8 +755,10 @@ ${CHAT_CUT_SHORT}`
       const res = await client.messages.create({
         model: GABI_CHAT_MODEL,
         max_tokens: CHAT_TOOL_MAX_TOKENS,
-        system: docsOffered ? `${CHAT_TOOLS_SYSTEM}
-${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
+        // ⚠️ Each addendum rides ONLY the turn its tools are offered on, and the
+        // two are independent: a book turn on a surface with docs switched off
+        // describes books and not docs, and vice versa.
+        system: [CHAT_TOOLS_SYSTEM, ...(docsOffered ? [CHAT_DOCS_SYSTEM] : []), ...(booksOffered ? [CHAT_BOOKS_SYSTEM] : [])].join('\n'),
         messages: messages as never,
         ...(last ? {} : { tools: tools as never }),
       });
@@ -700,6 +774,9 @@ ${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
         tools: [...executed],
         toolIterations: iterations,
         ...(docsOffered ? { docsSections: docsSpend().sections, docsBytes: docsSpend().bytes } : {}),
+        ...(booksOffered
+          ? { booksPassages: booksSpend().passages, booksBytes: booksSpend().bytes }
+          : {}),
       });
 
       const blocks = content(res);
@@ -716,7 +793,7 @@ ${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
         if (!last && needsFinishing(text, res.stop_reason)) {
           console.error(
             `GABI mentions: the turn stopped mid-thought (stop_reason=${String(res.stop_reason)}, ` +
-              `iterations=${iterations}, docs=${docsOffered}); nudging it to finish rather than ` +
+              `iterations=${iterations}, docs=${docsOffered}, books=${booksOffered}); nudging it to finish rather than ` +
               'posting the narration.',
           );
           const echoed = textBlocksOnly(blocks);
@@ -740,7 +817,7 @@ ${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
           // evidence it had happened. Now it is one greppable line.
           console.error(
             `GABI mentions: the tool-using turn produced no text (stop_reason=${String(res.stop_reason)}, ` +
-              `iterations=${iterations}, tool_calls=${executed.length}, docs=${docsOffered}). ` +
+              `iterations=${iterations}, tool_calls=${executed.length}, docs=${docsOffered}, books=${booksOffered}). ` +
               'The caller will use its fallback.',
           );
         }

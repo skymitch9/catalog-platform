@@ -57,6 +57,8 @@ import { delegatedWritesOn, libraryInstances, type WriteCapVerdict } from './del
 import { makeDelegate } from './delegated-exec.js';
 import { docsOn, type DocsCapVerdict } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
+import { booksOn, type BooksCapVerdict } from './book-knowledge.js';
+import { makeBooksPort } from './book-knowledge-exec.js';
 import {
   handlePick,
   handleTypedQuestion,
@@ -95,6 +97,9 @@ interface LoadedMemory {
    *  three round trips would be three subrequests for facts that live one key
    *  apart in the same storage. */
   docsCap: DocsCapVerdict;
+  /** ⚠️ TIER 0c: the per-person daily BOOK fuse, answered in the same load —
+   *  four fuses one key apart in the same storage, one round trip. */
+  booksCap: BooksCapVerdict;
 }
 
 /**
@@ -129,6 +134,7 @@ class StubMemory {
       cap: body.cap ?? { ok: true },
       writeCap: body.writeCap ?? { ok: true },
       docsCap: body.docsCap ?? { ok: true },
+      booksCap: body.booksCap ?? { ok: true },
     };
     return this.loaded;
   }
@@ -173,6 +179,15 @@ class StubMemory {
 
   async recordDocsTurn(): Promise<void> {
     await this.post('/conv/dcount', {});
+  }
+
+  /** ⚠️ Read from the memoised load — the DO answered all four fuses at once. */
+  async booksCapCheck(): Promise<BooksCapVerdict> {
+    return (await this.ensure()).booksCap;
+  }
+
+  async recordBooksTurn(): Promise<void> {
+    await this.post('/conv/bcount', {});
   }
 }
 
@@ -237,6 +252,13 @@ export async function resumeConversation(
     // worst possible inconsistency for a feature whose whole promise is that it
     // does not guess. Same env, same ships-dark condition, same per-person fuse.
     const docsPort = makeDocsPort(env);
+    // ⚠️ TIER 0c, and the same argument once more: a typed follow-up in the
+    // modal reaches the SAME ladder as a DM, so it must reach the same book
+    // tools — otherwise "what happens at the end of book 1" answers from the
+    // text when typed in a channel and from the model's own memory of the book
+    // when typed into her follow-up box. Same env, same ships-dark condition,
+    // same per-person fuse.
+    const booksPort = makeBooksPort(env);
     const deps = {
       capCheck: () => memory.capCheck(),
       recordTurn: () => memory.recordTurn(),
@@ -259,6 +281,15 @@ export async function resumeConversation(
             },
           }
         : {}),
+      ...(booksPort
+        ? {
+            books: {
+              port: booksPort,
+              capCheck: () => memory.booksCapCheck(),
+              record: () => memory.recordBooksTurn(),
+            },
+          }
+        : {}),
     };
     const cfg = {
       indexBaseUrl: indexBase(env),
@@ -267,6 +298,7 @@ export async function resumeConversation(
       instances: libraryInstances(env),
       delegatedWrites: delegatedWritesOn(env),
       docsEnabled: docsOn(env),
+      booksEnabled: booksOn(env),
       ...(env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: env.ANTHROPIC_API_KEY_GABI } : {}),
     };
     const who = {

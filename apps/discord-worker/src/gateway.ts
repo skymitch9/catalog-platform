@@ -126,6 +126,8 @@ import { delegatedWritesOn, libraryInstances, writeCapDecision } from './delegat
 import { makeDelegate } from './delegated-exec.js';
 import { docsCapDecision, docsOn } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
+import { booksCapDecision, booksOn } from './book-knowledge.js';
+import { makeBooksPort } from './book-knowledge-exec.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -241,6 +243,13 @@ const kUserWriteCap = (id: string) => `wcap:user:${id}`;
  * tokens of retrieved runbook. A record one of them prunes on a schedule the
  * others do not want is a record that makes two of them lie. */
 const kUserDocsCap = (id: string) => `dcap:user:${id}`;
+/** ⚠️ Its OWN prefix for the FOURTH time, and the reason is the sharpest yet: a
+ * BOOK turn is ≈6k input tokens of somebody's NOVEL. It costs the same as a docs
+ * turn and means nothing like it, and it is the one the owner's *"I don't want
+ * people scraping my books"* is about. Folding it into `dcap:` would let forty
+ * runbook questions spend the book allowance, or forty book questions spend the
+ * runbook one, and neither counter would describe what it protects. */
+const kUserBooksCap = (id: string) => `bcap:user:${id}`;
 
 interface IdentifyBudget {
   day: string;
@@ -464,6 +473,9 @@ export class GabiGateway {
         // for the same reason — all three live a key apart in the same storage,
         // and a press that may read the corpus needs all three.
         docsCap: await this.docsCapCheck(key.person),
+        // ⚠️ TIER 0c: the BOOK fuse rides the same round trip as the other
+        // three, for the fourth time and the same reason — four keys, one read.
+        booksCap: await this.booksCapCheck(key.person),
       });
     }
 
@@ -488,6 +500,13 @@ export class GabiGateway {
     // and a turn that answered from the corpus is one of each of two of them.
     if (path === '/conv/dcount') {
       await this.recordDocsTurn(key.person);
+      return Response.json({ ok: true });
+    }
+
+    // ⚠️ And the book counter is its own route for the fourth time. A turn, a
+    // write, a docs read and a book read are four different events.
+    if (path === '/conv/bcount') {
+      await this.recordBooksTurn(key.person);
       return Response.json({ ok: true });
     }
 
@@ -766,6 +785,13 @@ export class GabiGateway {
     // port that outlived its turn would answer for the wrong person.
     const docsPort = makeDocsPort(this.env);
 
+    // ⚠️ TIER 0c. `null` when the estate has not finished the wiring — no
+    // service account, or no BOOK app token — which is how "ships dark" is
+    // expressed here. Built per message for the same reason the docs port is:
+    // it memoises the asker's link lookup FOR ONE TURN, and a port that outlived
+    // its turn would answer for the wrong person.
+    const booksPort = makeBooksPort(this.env);
+
     await handleMention(
       {
         capCheck: (userId) => this.capCheck(userId),
@@ -786,6 +812,15 @@ export class GabiGateway {
                 port: docsPort,
                 capCheck: (userId: string) => this.docsCapCheck(userId),
                 record: (userId: string) => this.recordDocsTurn(userId),
+              },
+            }
+          : {}),
+        ...(booksPort
+          ? {
+              books: {
+                port: booksPort,
+                capCheck: (userId: string) => this.booksCapCheck(userId),
+                record: (userId: string) => this.recordBooksTurn(userId),
               },
             }
           : {}),
@@ -830,6 +865,7 @@ export class GabiGateway {
         instances: libraryInstances(this.env),
         delegatedWrites: delegatedWritesOn(this.env),
         docsEnabled: docsOn(this.env),
+        booksEnabled: booksOn(this.env),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
       },
     );
@@ -965,6 +1001,33 @@ export class GabiGateway {
   private async recordDocsTurn(userId: string): Promise<void> {
     const day = utcDayKey(Date.now());
     const key = kUserDocsCap(userId);
+    const stored = (await this.state.storage.get<GlobalCap>(key)) ?? { day, count: 0 };
+    await this.state.storage.put(
+      key,
+      stored.day === day ? { day, count: stored.count + 1 } : { day, count: 1 },
+    );
+  }
+
+  /**
+   * ⚠️ **THE FOURTH FUSE — book turns, and it is not the docs fuse** (Tier 0c,
+   * 2026-08-18).
+   *
+   * Same `{day, count}` shape and same UTC day key as the three above. It is a
+   * separate counter because it protects a separate thing: ≈6k input tokens of
+   * somebody's NOVEL per turn, which is the surface the estate's *"I don't want
+   * people scraping my books"* directive is about. A turn that never opened a
+   * book performs no write at all — `mention-flow.ts` charges only when the
+   * per-turn budget was actually used.
+   */
+  private async booksCapCheck(userId: string): Promise<ReturnType<typeof booksCapDecision>> {
+    const day = utcDayKey(Date.now());
+    const stored = (await this.state.storage.get<GlobalCap>(kUserBooksCap(userId))) ?? { day, count: 0 };
+    return booksCapDecision(stored.day === day ? stored.count : 0);
+  }
+
+  private async recordBooksTurn(userId: string): Promise<void> {
+    const day = utcDayKey(Date.now());
+    const key = kUserBooksCap(userId);
     const stored = (await this.state.storage.get<GlobalCap>(key)) ?? { day, count: 0 };
     await this.state.storage.put(
       key,
