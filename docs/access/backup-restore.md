@@ -20,7 +20,30 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (no secret
 > values — env var / secret NAMES only, per the estate's access-doc rule).
-> Last verified: **2026-08-15** — `backup.yml` rewired to write into the
+>
+> **Last verified: 2026-08-18** — the restore drill's mechanical
+> recommendations were implemented (commit `8c7f780`, following the drill's own
+> `8522b7c`). What changed, and where each is described in full:
+>
+> | Change | Where |
+> |---|---|
+> | **`backup.yml` now runs DAILY at 09:12 UTC**, plus the manual button | §3 |
+> | **`library-catalog-2nd` joins the backup set** — it had none at all | §1, §3 |
+> | **`ebooks-gated` + `estate-docs-gated` join the `r2` matrix** | §1, §8 |
+> | **`restore-firestore.mjs` revives timestamps** — the §5 corruption is fixed | §5 |
+> | **`reorder-d1-dump.mjs` is a tested, mandatory step of the D1 restore** | §4b |
+> | **An `estate_auth` dump now PRINTS its membership counts and a warning** | §4c |
+> | **The three store lists are now guarded by a test**, not by a comment | §3 |
+> | **"8 generations" was 2 because the system is young**, not a prune bug | §3 |
+>
+> ⚠️ **NOT changed, and still open — these need the owner's hands**, not a
+> code change. All three are argued in [`RECOVERY.md`](RECOVERY.md) §9:
+> a `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can actually reach (§7 of that
+> file — a Firestore restore is blocked from this machine today), an
+> off-Cloudflare copy of `estate-backups`, and one throwaway remote-import
+> drill to close the largest unverified step.
+>
+> Previously verified **2026-08-15** — `backup.yml` rewired to write into the
 > private `estate-backups` R2 bucket instead of workflow artifacts (this
 > banner and §1/§3/§6/§8 below). Bucket created fresh this session, confirmed
 > private (no r2.dev public access, no custom domain — both checked via
@@ -70,6 +93,7 @@
 | What | Where | Backup mechanism | Priority |
 |---|---|---|---|
 | D1 `library-catalog` | `library_catalog` repo, id `6022ea5e-2510-450e-81ce-7d847fa31379` | Time Travel (always on) + `backup.yml` export | High — user-entered catalog data (locations, prices, `lent_to`), no other copy |
+| D1 `library-catalog-2nd` | `library_catalog` repo (`apps/worker`, env `friend`), id `9dcf4af9-d1a2-4de4-adcf-ac7eea77f1c8` — the `padhard.heygabi.ai` shelf | Time Travel + `backup.yml` export, **added 2026-08-18** | High — same "user-entered catalog data, no other copy" argument as `library-catalog`. ⚠️ It had **no backup of any kind** until 2026-08-18: the restore drill found it live (6 works / 6 editions / 6 copies / 34 `change_log` rows / 32 migrations) and absent from all three store lists at once ([`RECOVERY.md`](RECOVERY.md) §1b hole #1) |
 | D1 `board-game-catalog` | `Board_Game_Catalog` repo, id `7dd22702-f0e2-4fc7-b201-d16d60176efa` | Time Travel + `backup.yml` export | High — same shape, no other copy |
 | D1 `estate_auth` | `catalog-platform/apps/auth-worker`, id `d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb` | Time Travel + `backup.yml` export | **High despite being tiny** — it is the estate's membership directory (who is approved, who is revoked, who is an approver); losing it silently reopens the door to everyone it revoked, or locks out everyone it approved. §9 below covers the one mitigating fact: it is also reconstructible by re-running `scripts/seed-estate.mjs` |
 | D1 `index_catalog` | `catalog-platform/apps/index-worker`, id `3004d175-3c51-4ed4-ac3e-62859319f8ac` | Time Travel + `backup.yml` export, but **treat as low priority** | **Low, deliberately** — every row is a pointer copied FROM the three source catalogs (`docs/access/index-worker.md`'s "pointers, never truth"). A push replaces a source's rows wholesale; the index is fully rebuildable at any time by re-triggering the three pushes (§7). It is backed up here anyway because the export is nearly free, not because losing it would be a real loss |
@@ -77,7 +101,9 @@
 | R2 `library-covers` | `library_catalog` | `scripts/backup-r2.mjs` (full object dump via the Cloudflare REST API) → tar.gz → `wrangler r2 object put` into `estate-backups/r2/library-covers/<timestamp>.tar.gz`, dispatched via `backup.yml`'s `r2` job | Medium-high — user-uploaded photos of book covers are content-addressed and may have no copy outside the bucket |
 | R2 `audiobook-covers` | `audiobook_catalog` | Same mechanism → `estate-backups/r2/audiobook-covers/<timestamp>.tar.gz` — backed up anyway even though it's independently reproducible (§8), same "the export is nearly free" reasoning as `index_catalog` | Low — every object is also a JPEG under `output_files/covers` on the OpenAudible machine (243 MB, gitignored, the actual master); `covers_manifest.json` (tracked in git) is the enumeration. Restore = re-run the upload script (§6) |
 | R2 `game-covers` | `Board_Game_Catalog` (per `docs/info/covers-consolidation-plan.md`) | Same mechanism → `estate-backups/r2/game-covers/<timestamp>.tar.gz` — included from the start since the bucket was already live (1,123 objects/170.6 MiB in the 2026-08-15 proof run, still growing from the consolidation migration) | Medium — same content-addressed-upload shape as `library-covers`; whether a local/reproducible master exists depends on how the consolidation migration script ends up sourcing images (see that plan doc) — treated as precious until proven otherwise |
-| The four D1 exports, the Firestore dump, the three R2 dumps | **objects in the PRIVATE `estate-backups` R2 bucket**, one object per store per run at `<kind>/<store>/<UTC-timestamp>.<ext>`, retained 8 deep per store (`scripts/prune-r2-backups.mjs`, §3) | — | See §2 for why the D1 exports all land here regardless of which repo owns the source; see this file's top banner for why R2-not-artifacts as of 2026-08-15 |
+| R2 `ebooks-gated` | the ebooks gate (`apps/ebooks-door`) | Same mechanism → `estate-backups/r2/ebooks-gated/<timestamp>.tar.gz`, **added 2026-08-18** | Low-medium — 2 objects / 107 kB (`ebooks.json`, `audio_manifest.json`), republished by `publish_ebooks_manifest.py` (sync step 5.8). Recoverable, but until that runs the gate has nothing to read, and the copy costs nothing |
+| R2 `estate-docs-gated` | the estate docs corpus (`docs.ts` / `estate-docs.md`) | Same mechanism → `estate-backups/r2/estate-docs-gated/<timestamp>.tar.gz`, **added 2026-08-18** | **Medium** — 2 objects / 1.27 MB, and ⚠️ the publisher that rebuilds it runs on the OWNER'S MACHINE and is the only place all three docs trees exist together. That is the whole reason it is worth a copy that does not depend on that machine |
+| The five D1 exports, the Firestore dump, the five R2 dumps | **objects in the PRIVATE `estate-backups` R2 bucket**, one object per store per run at `<kind>/<store>/<UTC-timestamp>.<ext>`, retained 8 deep per store (`scripts/prune-r2-backups.mjs`, §3) | — | See §2 for why the D1 exports all land here regardless of which repo owns the source; see this file's top banner for why R2-not-artifacts as of 2026-08-15 |
 | The four git repos themselves | GitHub (`skymitch9/*`) + this machine's working copies | **Already distributed — deliberately not duplicated here.** Every repo already exists in at least two places (GitHub + local clone); a third copy of source code is not what this runbook is for | N/A |
 | OpenAudible library files (`.m4b`s, the owner's local media) | `C:\Users\nbasl\OpenAudible\books\<Author>\*.m4b` on this machine | **Google Drive sync**, per-author folders — `audiobook_catalog/scripts/sync_to_drive.py`, step of the 8h pipeline (`docs/access/README.md`'s 60-second orientation, `audiobook_catalog`) | N/A here — this is the one item in the inventory that already has a real, running backup story outside git/D1/Firestore entirely. Verified 2026-08-14: `docs/access/README.md` names it explicitly (*"Local audiobook library → ... → Google Drive"*) and `docs/DRIVE_AUDIT_REPORT.md` / `scripts/audit_drive_vs_local.py` exist to check the sync is honest. Nothing new needed here |
 
@@ -129,8 +155,55 @@ silently drifting ones.
 
 ## 3. Running a backup
 
-**GitHub UI:** `skymitch9/catalog-platform` → Actions → *Backup (manual)* →
-Run workflow → choose `d1`, `firestore`, `r2`, or `all`.
+### 3.0 ⚠️ It runs itself now — daily at 09:12 UTC (added 2026-08-18)
+
+`backup.yml` was `workflow_dispatch`-only from 2026-08-14 to 2026-08-18. It now
+also carries `schedule: - cron: '12 9 * * *'`. **A scheduled run always backs
+up EVERYTHING** — a cron tick has no `inputs`, so each job's condition is
+`github.event_name == 'schedule' || inputs.target == …`, and a partial
+unattended backup would leave stores silently stale while the summary read
+fresh.
+
+**Why the posture changed.** The old comment said "same posture as deploy.yml —
+a backup is a deliberate button-press, never a schedule". The owner decision
+that inherited from (2026-08-14, now in [`DONE.md`](../DONE.md)) is about the
+**deploy** workflows: *"these Workers have no dev lane, so the trigger stays a
+deliberate human button-press."* That argument is about live blast radius — a
+deploy changes what the estate serves. A backup writes new objects into one
+private bucket and changes nothing anyone can reach. The credential objection is
+answered rather than ignored: a scheduled run reaches the same two secrets by
+the same GitHub-hosted path a dispatched run does, and never prints them.
+
+**What the dispatch-only posture cost, measured** ([`RECOVERY.md`](RECOVERY.md)
+§1c) over **under two days** of nobody pressing the button: `estate_auth` 6
+migrations behind with every session and the whole 14-row grant audit trail
+missing; `library-catalog` 5 migrations behind, +469 `change_log`, +245
+`research_finding`, and the entire `ebook_holding` table (126 rows) absent;
+`audiobook-covers` +103 objects.
+
+**Why 09:12 UTC, and what it costs:**
+
+| Question | Answer, measured 2026-08-18 |
+|---|---|
+| Actions minutes | **Zero billable.** `catalog-platform` is PUBLIC (`gh api repos/skymitch9/catalog-platform --jq .visibility` → `public`) and GitHub does not meter public-repo minutes. The API's own timing endpoint reports `total_ms: 0` for all 9 jobs of run `31937416822` |
+| Wall clock | **144 s** for `target=all` (run `31937416822`); ~458 s of runner time across 9 jobs. Slowest jobs: `firestore` 124 s, `r2 game-covers` 128 s |
+| Storage | The only real cost, bounded by the `retention` job at 8 generations/store |
+| Why not on the hour | GitHub queues scheduled workflows in a burst at `:00`; the delay can run to tens of minutes. `:12` avoids it |
+| Why that hour | ≈04:12 America/Chicago — after the household's day, so the snapshot catches it whole |
+
+⚠️ **GitHub disables scheduled workflows on a repo after 60 days of no
+activity** (it emails the owner first). If backups quietly stop, check
+Actions → *Backup (daily + manual)* for the disabled banner **before**
+suspecting the credentials.
+
+⚠️ **Reverting is one block.** Delete the `schedule:` key from `backup.yml` and
+the workflow is dispatch-only again; the `github.event_name == 'schedule'`
+clauses become dead but harmless.
+
+### 3.1 Running one by hand
+
+**GitHub UI:** `skymitch9/catalog-platform` → Actions → *Backup (daily +
+manual)* → Run workflow → choose `d1`, `firestore`, `r2`, or `all`.
 
 **CLI:**
 
@@ -146,6 +219,7 @@ named `<kind>/<store>/<UTC-timestamp>.<ext>`:
 
 ```
 estate-backups/d1/library-catalog/20260815T191630Z.sql
+estate-backups/d1/library-catalog-2nd/<timestamp>.sql        # added 2026-08-18
 estate-backups/d1/board-game-catalog/20260815T191632Z.sql
 estate-backups/d1/index_catalog/20260815T191634Z.sql
 estate-backups/d1/estate_auth/20260815T191634Z.sql
@@ -153,7 +227,19 @@ estate-backups/firestore/audiobook-catalog/20260815T191635Z.tar.gz
 estate-backups/r2/library-covers/20260815T191634Z.tar.gz
 estate-backups/r2/audiobook-covers/20260815T191631Z.tar.gz
 estate-backups/r2/game-covers/20260815T191634Z.tar.gz
+estate-backups/r2/ebooks-gated/<timestamp>.tar.gz            # added 2026-08-18
+estate-backups/r2/estate-docs-gated/<timestamp>.tar.gz       # added 2026-08-18
 ```
+
+⚠️ **THE STORE LIST LIVES IN THREE PLACES AND THEY MUST AGREE** —
+`backup.yml`'s job matrices (which WRITE), its `retention` step's argument list
+(which PRUNES), and `KNOWN_BACKUP_PREFIXES` in
+`apps/auth-worker/src/backups.ts` (which REPORTS staleness on `/status`). That
+file's header had always *said* to update all three together, and the drill
+found `library-catalog-2nd` missing from all three anyway. As of 2026-08-18 the
+advice is a **mechanical guard**: `apps/auth-worker/test/backups.test.ts` parses
+`backup.yml` and fails if any of the three lists differs from the others. Add a
+store to one place, `npm test`, and the test tells you the other two.
 
 D1 exports are the raw `.sql` file as-is. Firestore and R2-bucket dumps are
 each a directory of many small files (a JSON per Firestore collection; a
@@ -176,9 +262,25 @@ dispatch, regardless of `target` — it lists each prefix via the Cloudflare
 REST API, keeps the 8 lexicographically-last keys (the UTC-timestamp keys
 sort chronologically), and deletes the rest, logging every `keep:`/`delete:`
 decision. This is deliberately much shorter-lived than the old 90-day
-artifact retention — R2 storage isn't free the way artifacts nominally were,
-and 8 generations at a manual-dispatch cadence is already weeks to months of
-history. **This is still not a long-term archive.** For anything that must
+artifact retention — R2 storage isn't free the way artifacts nominally were.
+At the new daily cadence 8 generations is **eight days** of history, not the
+weeks-to-months a manual cadence gave; that is the deliberate trade for
+bounding drift to a day rather than to whenever someone remembers.
+
+⚠️ **"8 deep" was a SETTING and not yet a FACT — resolved 2026-08-18.** The
+drill found the bucket holding **2** generations per store against a configured
+8 and flagged it as possibly a prune bug. **It is not a bug: the system is
+young.** This workflow only began writing into R2 (rather than uploading
+artifacts) on 2026-08-15 evening, and exactly two runs had used that path —
+`31903443263` (2026-08-15T19:16Z) and `31937416822` (2026-08-16T08:49Z). The
+retention job's own log on the second reads `2 object(s), keeping 2, deleting
+0` for all eight prefixes and `Deleted 0 object(s) total` — correct behaviour
+for a bucket that has never held more than 8. **The daily cron is what makes 8
+real:** it fills to depth in eight days, and the first genuine deletion is
+expected on day nine. If the count is still stuck at 2 a week from now, *then*
+suspect the prune.
+
+**This is still not a long-term archive.** For anything that must
 outlive the newest-8 window, download the object and keep it somewhere
 durable (the same Drive account already used for the audiobook library, or
 any offline copy).
@@ -240,9 +342,19 @@ and `board-game-catalog` at `no such table: main.app_user` (after 2 of 18) —
 `wrangler d1 export` interleaves `CREATE TABLE` with `INSERT` in an order that
 is not dependency order, so the import stops **half-populated while looking
 like it worked**. `estate_auth` and `index_catalog` replay fine, which is
-exactly why nobody noticed. Run `node scripts/reorder-d1-dump.mjs <in> <out>`
-first; **[RECOVERY.md](RECOVERY.md) §3b** has the evidence, the failed
-`PRAGMA foreign_keys=OFF` workaround, and the verified recipe.
+exactly why nobody noticed.
+
+⚠️ **`node scripts/reorder-d1-dump.mjs <in> <out>` IS A MANDATORY STEP OF THIS
+RECIPE, not an optional tidy-up** — and it is no longer only a drill artefact.
+It has a regression test (`scripts/test/reorder-d1-dump.test.mjs`, run by
+`npm run test:scripts` and by the root `npm test`) that feeds it the drill's
+exact CREATE/INSERT interleave and **replays both versions in `node:sqlite`**:
+the raw dump dies at `no such table: main.edition` having created exactly one
+of four tables, and the reordered dump loads clean with every row present,
+`PRAGMA foreign_key_check` empty and `integrity_check` = ok.
+**[RECOVERY.md](RECOVERY.md) §3b** has the original evidence, the failed
+`PRAGMA foreign_keys=OFF` workaround, and the FK-enforcement nuance (which that
+test also pins).
 
 For when Time Travel's window has passed, or you want the snapshot in a new
 database rather than overwritten in place:
@@ -265,6 +377,45 @@ at the new database id or copy specific rows back — not a blind replay
 against the live one. Time Travel (§4a) is almost always the right tool for
 "undo what just happened to the live database"; the export is for "get the
 data out and somewhere else."
+
+### 4c. ⚠️ Restoring `estate_auth` is a SECURITY event — the tool now says so
+
+`reorder-d1-dump.mjs` detects an `estate_user` table in the dump and, before
+anything is imported, prints **the backup's own membership counts** (rows,
+per-status totals, `is_approver = 1`, `is_devops = 1` — counts only, never a
+name), the measured incident below, and the command that captures current
+state. It then **exits 3** unless you pass `--yes-i-checked-membership`. The
+reordered file is still written, so nothing is blocked; the non-zero exit only
+stops an automated chain from walking straight into an import.
+
+**The incident it exists for**, measured on the drill:
+
+| | Backup 2026-08-16 | Live 2026-08-18 |
+|---|---|---|
+| approved | **12** | 11 |
+| revoked | **0** | **1** |
+
+Both `estate_user` row counts are 12 — so a count-based check passes, and a
+blind restore silently **re-approves a member who has since been revoked**.
+Revocation and post-seed authority live in this database and nowhere else, so
+nothing in the estate can tell you afterwards that they were lost.
+
+```bash
+node scripts/reorder-d1-dump.mjs ./estate_auth.sql ./estate_auth.ordered.sql
+# -> reads the warning block, exits 3
+
+# capture what the restore will OVERWRITE (RECOVERY.md §3d):
+npx wrangler d1 execute d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb --remote --command \
+  "SELECT id, status, is_approver, is_devops FROM estate_user ORDER BY id;"
+
+# then acknowledge and proceed
+node scripts/reorder-d1-dump.mjs ./estate_auth.sql ./estate_auth.ordered.sql \
+  --yes-i-checked-membership
+```
+
+Re-apply every `revoked` status and every approver/devops flag by hand after
+the import. `scripts/seed-estate.mjs` (§9) has the same blind spot for the same
+reason.
 
 ## 5. Restoring Firestore
 
@@ -298,13 +449,35 @@ outside that collection, and restoring `reviews` today does not remove a
 review written after the backup was taken unless that review's own document
 ID happens to collide with a restored one.
 
-⚠️ **AND IT CORRUPTS EVERY TIMESTAMP.** `backup-firestore.mjs` JSON-serialises
-a Firestore `Timestamp` to `{"_seconds":…,"_nanoseconds":…}`, and this script
-hands that plain object to `batch.set()`, which writes it back as a **map, not
-a timestamp**. Proven offline with the Firestore SDK's own serializer on the
-2026-08-17 restore drill; scope is **2,139 timestamp-valued fields across all
-56 collections** — every `createdAt`/`updatedAt`/`addedAt`. Revive them before
-`--commit`; **[RECOVERY.md](RECOVERY.md) §4.2** has the proof and the reviver.
+✅ **THE TIMESTAMP CORRUPTION IS FIXED (2026-08-18).** It was real: this script
+used to hand `backup-firestore.mjs`'s `{"_seconds":…,"_nanoseconds":…}` straight
+to `batch.set()`, which wrote it back as a **map, not a timestamp** —
+**2,139 timestamp-valued fields across all 56 collections**, every
+`createdAt`/`updatedAt`/`addedAt`, breaking every `orderBy('createdAt')` and
+every date rendering. Every document now passes through
+`scripts/lib/firestore-timestamps.mjs` first, and **both** the dry run and the
+commit PRINT how many values will be converted, per collection, so the scope is
+never silent:
+
+```
+Targets (2):
+  reviews  (878 docs, 1731 timestamps to revive)
+  clubs    (3 docs, 6 timestamps to revive)
+
+1737 serialized timestamp(s) will be written back as real Firestore
+Timestamps, not maps (scripts/lib/firestore-timestamps.mjs — RECOVERY.md §4.2).
+```
+
+**Proven offline, with no Firestore write and no credential**, by
+`scripts/test/firestore-timestamps.test.mjs`: dump → `JSON.stringify` →
+reviver → the Firestore SDK's **own wire serializer** yields an identical
+`{"timestampValue":{"seconds":"1782327950","nanos":558000000}}`, where the raw
+round-trip yields a `mapValue`. The old broken behaviour is pinned as a test
+too, so it cannot come back unnoticed. ⚠️ **The DUMP format did not change** —
+it is lossless, merely not self-describing, and changing it would invalidate
+every backup already in `estate-backups`. The one ambiguity accepted (a genuine
+map whose only two keys are `_seconds`/`_nanoseconds`) is argued in that
+module's header. **[RECOVERY.md](RECOVERY.md) §4.2** has the original evidence.
 
 **Not live-tested tonight, stated plainly:** the dry-run path (argument
 parsing, path decoding, listing what would be touched) was run against the
@@ -432,6 +605,11 @@ sources have had a chance to re-push, not because the data is precious.
 | The four git repos | Already exist in ≥2 places (GitHub + every local clone) the moment they're pushed; a third copy inside a "backup" system duplicates distribution git already provides | None |
 | OpenAudible `.m4b` library files | Already synced to Google Drive, per-author folders, as a running step of the existing 8h pipeline (`sync_to_drive.py`) — a genuinely separate, already-working backup story that predates this runbook | None — this is the one item that needed no new work tonight, only verifying its docs said so (they do) |
 | `audiobook-covers` (R2) — as a REASON not to back it up | Superseded 2026-08-15 — it's still reproducible from the local master, but it's backed up anyway now because the `r2` job makes doing all three buckets together cheaper than special-casing one out | Backed up in §1's table; restore still prefers the master copy (§6) |
+| **`estate-ebooks` (R2)** — the ebook FILES, 168 objects / **1.81 GB** | ⚠️ **A judgement call, made 2026-08-18 and worth re-making if the facts change.** A local master exists and is authoritative: `audiobook_catalog/scripts/upload_ebooks_r2.py` re-uploads the whole bucket from disk, so this is *recoverable*, not lost. Backing it up would cost ~1.8 GB **per generation × 8 generations** to protect something a script already rebuilds. ⚠️ The residual risk is named rather than hidden: **that protection lasts exactly as long as the owner's disk.** | Add it to `backup.yml`'s `r2` matrix the day the local master stops being a safe assumption — or the day an off-Cloudflare copy exists to put it in (RECOVERY.md §9 item 7) |
+| **`estate-audio` (R2)** | **0 objects — empty by design** (on-request fulfilment). Would be `estate-ebooks`'s twin at 630 GB scale if it ever filled, and that is a decision to make then | Add it the day it holds anything |
+| **`estate-backups` (R2) — itself** | Backing the backup bucket up *into itself* is not a copy. It is 16 objects / 917 MB in one bucket, one account, one region | ⚠️ **This is an OPEN HOLE, not a settled call** — RECOVERY.md §9 item 7. An off-Cloudflare copy needs an owner decision about where it goes |
+| **KV `estate_docs`** | **0 keys** (`wrangler kv key list` → `[]`, 2026-08-18). Nothing to lose today | Becomes a hole the day it is used; no backup path exists for it |
+| `library-2nd-covers` (R2) | 0 objects as of 2026-08-18 | Same rule as `bgc-photos` below |
 | `bgc-photos` (R2) | Exists in the account (`Board_Game_Catalog`) but is **unbound and holds 0 objects** as of 2026-08-15 (confirmed both via that repo's own `docs/HANDOFF.md` and a live listing) — feature not live yet, nothing to back up | Add a `bgc-photos` matrix entry to `backup.yml`'s `r2` job the day it goes live and starts holding real uploads |
 | ~~R2 object listing is impossible without S3 keys~~ | **This claim from 2026-08-14 was wrong — corrected 2026-08-15.** `wrangler r2 object list` genuinely still doesn't exist, but the plain Cloudflare REST API (`api.cloudflare.com`, Bearer-token auth, the same style of credential `CLOUDFLARE_API_TOKEN` already is) has list AND get for R2 objects, gated behind the "Workers R2 Storage Read" permission group — not an S3-compatible access key/secret pair. The existing token already carried it; no new credential was needed. See §6 | The gap that drove this whole section is closed — `library-covers`, `audiobook-covers`, and `game-covers` are all now covered by `scripts/backup-r2.mjs` via `backup.yml`'s `r2` job |
 | R2 bucket-level versioning / cross-bucket replication | **Does not exist as a native R2 feature** (checked 2026-08-14: R2's object-lifecycle docs cover retention/storage-class transitions only; the only replication-shaped feature, Super Slurper, is a one-way *inbound* migration tool from other clouds, not a backup mechanism; a community feature request for object versioning/replication is open and unimplemented). A DIY version could be built with R2 event notifications + Queues + a second bucket, but that's a project of its own | Time Travel-style "any point in the last N days" simply isn't available for R2 the way it is for D1 |
@@ -454,12 +632,15 @@ else. Note who currently holds either before relying on this path.
 
 | File | Role |
 |---|---|
-| `.github/workflows/backup.yml` | The manual-dispatch workflow — §2's reasoning, §3's usage. `r2` job added 2026-08-15 morning; rewritten 2026-08-15 (this rewrite) to write every job's output into R2 instead of artifacts, plus a new `retention` job |
-| `scripts/backup-firestore.mjs` | The Firestore dump tool §3/§5 use |
-| `scripts/restore-firestore.mjs` | The Firestore restore tool §5 uses |
+| `.github/workflows/backup.yml` | The workflow — §2's reasoning, §3's usage. `r2` job added 2026-08-15 morning; rewritten 2026-08-15 to write every job's output into R2 instead of artifacts, plus a `retention` job; **daily cron + `library-catalog-2nd` + `ebooks-gated` + `estate-docs-gated` added 2026-08-18** (§3.0). Its header carries the "which buckets are deliberately skipped, and why" list, beside the matrix it explains |
+| `scripts/backup-firestore.mjs` | The Firestore dump tool §3/§5 use. ⚠️ Its collection list is `listCollections()` **discovery**, not an explicit list — measured 2026-08-18, which is why `readingPositions`/`discord_links` need no code change to be captured. What it gained is `EXPECTED_COLLECTIONS`: an expected-but-absent root collection now emits a `::warning::` and lands in `_summary.json` as `missingExpected`, so the next silent gap is visible in the run log instead of needing a drill |
+| `scripts/restore-firestore.mjs` | The Firestore restore tool §5 uses — **revives timestamps as of 2026-08-18** |
+| `scripts/lib/firestore-timestamps.mjs` | The reviver itself: pure, dependency-free, with the one accepted ambiguity argued in its header |
+| `scripts/lib/d1-dump.mjs` | The dump splitter/reorderer + the `estate_auth` membership reader §4c prints from |
+| `scripts/test/*.test.mjs` | The offline proofs for both of the above — `npm run test:scripts`, also run by the root `npm test`. No network, no credential, no write |
 | `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before |
 | `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite) |
-| `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported |
+| `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported. **A mandatory step of the D1 restore path, with a regression test** (2026-08-18), and the place §4c's `estate_auth` warning is printed |
 | `scripts/seed-estate.mjs` | `estate_auth`'s independent rebuild path, §9 |
 | `docs/access/RECOVERY.md` | The drill-verified 3am runbook: per-store commands with measured times, the live stores with NO backup (`library-catalog-2nd`, `discord_links`, `readingPositions`, four R2 buckets, one KV), and an explicit NOT-verified list |
 | `docs/access/index-worker.md` (in `library_catalog`) | The push protocol §7 restores by re-triggering |

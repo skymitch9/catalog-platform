@@ -18,6 +18,34 @@
 > that date is more than a few weeks old, the commands are probably still
 > right and the COUNTS certainly are not. Re-run the drill rather than trusting
 > the numbers.
+>
+> ---
+>
+> ## ⚠️ SEVEN OF THE TEN RECOMMENDATIONS WERE IMPLEMENTED ON 2026-08-18
+>
+> This file is a record of the DRILL, and the drill changed nothing by
+> charter. A follow-up (commit `8c7f780`) implemented the mechanical half.
+> **Every measurement below still stands as taken** — what changed is the
+> system it was measuring. §9 carries the per-recommendation status; the
+> short version:
+>
+> | | Recommendation | Status |
+> |---|---|---|
+> | 1 | `library-catalog-2nd` into the backup set | ✅ **done** — plus a test so the three lists cannot drift again |
+> | 2 | `restore-firestore.mjs` timestamp reviver | ✅ **done** — proven offline, §4.2 |
+> | 3 | Ship `reorder-d1-dump.mjs` in the restore path | ✅ **done** — mandatory step, with a replay test |
+> | 4 | Give `backup.yml` a cadence | ✅ **done** — daily 09:12 UTC, cost measured at zero billable minutes |
+> | 5 | One throwaway remote-import drill | ⏳ **OWNER STEP** — still the largest unverified thing here (§3c) |
+> | 6 | A second Firebase project to rehearse restores | ⏳ **OWNER STEP** — the `--commit` path remains untested (§4.3) |
+> | 7 | A copy of `estate-backups` off Cloudflare | ⏳ **OWNER STEP** — single bucket, single account, still true |
+> | 8 | A `FIREBASE_SERVICE_ACCOUNT_JSON` an incident can reach | ⏳ **OWNER STEP** — ⚠️ a Firestore restore is still BLOCKED from this machine (§7) |
+> | 9 | `ebooks-gated` / `estate-docs-gated` / `estate-ebooks` into the `r2` matrix | ✅ **first two done**; `estate-ebooks` deliberately declined, reasoning recorded in `backup.yml` beside the matrix |
+> | 10 | The empty stores, the day they hold data | ✅ **recorded** as a standing rule in `backup.yml` and `backup-restore.md` §8 |
+>
+> ⚠️ **The four ⏳ rows are the whole of what is left, and all four need the
+> owner's hands** — a console visit, a second project, a decision about where
+> an off-Cloudflare copy lives, and permission to create-and-delete a throwaway
+> remote database. None can be closed by a code change.
 
 ---
 
@@ -30,12 +58,17 @@
    **reorder it** (§3b — ⚠️ the raw export does NOT replay), import into a
    FRESH database, then `wrangler d1 migrations apply` to catch the schema up.
 3. **Firestore →** fetch + unpack the tarball, dry-run
-   `restore-firestore.mjs`, ⚠️ **fix the timestamps first** (§4.2), then
+   `restore-firestore.mjs` (it revives timestamps itself as of 2026-08-18 —
+   §4.2; the dry run prints how many it will convert), then
    `--only <collection> --commit`.
 4. **A cover is gone →** unpack the bucket tarball, `wrangler r2 object put`
    the one key back (§5).
 5. **Before restoring `estate_auth`, read §3d.** A blind restore silently
-   re-approves revoked members.
+   re-approves revoked members. `reorder-d1-dump.mjs` now prints the backup's
+   membership counts and exits 3 until you acknowledge — do not paste past it.
+6. **Backups run themselves now** — daily 09:12 UTC. If the newest object is
+   more than ~a day old, something is wrong; check Actions for a
+   *disabled scheduled workflow* banner first (`backup-restore.md` §3.0).
 
 ---
 
@@ -45,7 +78,14 @@ Live account inventory taken with `wrangler d1 list` / `r2 bucket list` /
 `kv namespace list` on 2026-08-18 — this is the ground truth the backup
 matrices are compared against, not a copy of what `backup.yml` says it covers.
 
-### 1a. The eight stores that ARE backed up
+### 1a. The eight stores that ARE backed up **(eleven since 2026-08-18)**
+
+⚠️ This table is the drill's, so it lists the eight that existed then. Three
+more joined `backup.yml` on 2026-08-18 and are **NOT** in it, having never been
+through a drill: D1 `library-catalog-2nd`, R2 `ebooks-gated`, R2
+`estate-docs-gated`. Their restore paths are the same as their siblings' (a D1
+`.sql` and two bucket tarballs), which is an inference from an identical
+mechanism, **not a measurement** — the next drill should exercise them.
 
 | Store | Backed up? | Restored OK in drill? | Snapshot age at drill | Time to restore |
 |---|---|---|---|---|
@@ -62,9 +102,20 @@ Import times are `wrangler d1 execute --local`; `node:sqlite` replays the same
 files 5–8× faster (estate_auth 0.05 s, library 8.1 s, index 5.1 s, bgc 11.9 s)
 and is the better tool when you only need to *read* a backup.
 
-### 1b. ⚠️ Live stores with NO backup at all
+### 1b. ⚠️ Live stores with NO backup at all — **as measured on the drill**
 
 Ranked by blast radius. These are not "stale" — no copy exists anywhere.
+
+> ⚠️ **THIS TABLE IS THE DRILL'S READING, NOT TODAY'S STATE.** Since
+> 2026-08-18, rows **1**, **5** and **6** are backed up (`library-catalog-2nd`,
+> `ebooks-gated`, `estate-docs-gated` joined `backup.yml`), and rows **2**/**3**
+> are captured automatically the moment they hold a document — the Firestore
+> dump was measured to be `listCollections()` **discovery**, not a stale
+> explicit list, so nothing had to change for them. What DID change is that an
+> expected-but-absent collection now warns instead of vanishing silently.
+> Row **10** is answered in §9 below (young system, not a prune bug). Rows
+> **4**, **7**, **8**, **9** stand as written. The table is left intact because
+> it is the measurement; the status is here.
 
 | # | Store | What is in it (measured 2026-08-18) | Why it hurts |
 |---|---|---|---|
@@ -105,8 +156,12 @@ restore of the newest backup would COST you, today.
 | R2 `game-covers` | 1124 | 1125 | +1 |
 | R2 `audiobook-covers` | 1869 | **1972** | +103 |
 
-**`backup.yml` has no cron** — it is `workflow_dispatch` only. Every number in
-this table is the cost of "nobody pressed the button since 2026-08-16".
+**`backup.yml` had no cron** — it was `workflow_dispatch` only. Every number in
+this table is the cost of "nobody pressed the button since 2026-08-16", and it
+is exactly the evidence that bought the cadence: **as of 2026-08-18 the
+workflow runs daily at 09:12 UTC**, which bounds every figure above at one day.
+`backup-restore.md` §3.0 has the hour, the measured cost (zero billable
+minutes — public repo) and how to revert it.
 
 ---
 
@@ -198,8 +253,17 @@ exist yet.
 
 ```bash
 node scripts/reorder-d1-dump.mjs ./library-catalog.sql ./library-catalog.ordered.sql
-# -> {"statements":3755,"create_table":26,"inserts":3668,"other_ddl":60}
+# -> {"statements":3755,"create_table":26,"inserts":3668,"other_ddl":60,"estate_auth":null}
 ```
+
+✅ **Since 2026-08-18 this is a TESTED step, not a drill artefact.**
+`scripts/test/reorder-d1-dump.test.mjs` builds the exact interleave above and
+replays both versions in `node:sqlite`: the raw dump dies at `no such table:
+main.edition` having created one of four tables (the half-populated state, made
+visible), and the reordered dump loads clean with every row, an empty
+`foreign_key_check` and `integrity_check` = ok. The FK-enforcement nuance below
+is pinned by that test too, so it cannot be "simplified" out of the runbook.
+`backup-restore.md` §4b now names the step as mandatory rather than optional.
 
 Every `CREATE TABLE` first, then every `INSERT`, then indexes/triggers/views.
 After reordering, **both** dumps imported clean (`rc=0`) through
@@ -262,6 +326,16 @@ importing, checking counts, and deleting it.**
 
 ### 3d. ⚠️ Read before restoring `estate_auth`
 
+✅ **Since 2026-08-18 the TOOL says this too, so it cannot be walked past.**
+`reorder-d1-dump.mjs` detects an `estate_user` table in the dump, prints the
+BACKUP's own counts (rows, per-status, `is_approver = 1`, `is_devops = 1` —
+**counts only, never a name**), prints the incident below and the capture
+command, and **exits 3** unless `--yes-i-checked-membership` is passed. The
+reordered file is still written; the non-zero exit exists so an automated chain
+stops and a human looks. See `backup-restore.md` §4c for the worked sequence.
+It is still a human judgement — the script makes the trap visible, it does not
+make the decision.
+
 **Measured on the drill, and this is not hypothetical:**
 
 | | Backup 2026-08-16 | Live 2026-08-18 |
@@ -310,7 +384,50 @@ they held no documents at 2026-08-16T08:49Z — `discord_links` provably so, its
 writer landed 2026-08-17. **Whether they hold documents today was NOT verified:
 no Firebase service-account credential exists on this machine.**
 
-### 4.2 ⚠️ THE RESTORE CORRUPTS EVERY TIMESTAMP — fix before `--commit`
+✅ **Resolved 2026-08-18 — and the resolution is "nothing to fix, everything to
+say out loud".** The question the drill raised was whether the collection list
+was an explicit list that had gone stale. **Measured: it is not.** It is
+`listCollections()` discovery at the root and `doc.ref.listCollections()`
+recursion below it, so **both collections are captured automatically the moment
+they hold a document** — no code change was needed and none was made to the
+walk.
+
+What WAS wrong is that the absence was **silent**. Firestore's
+`listCollections()` returns only collections that currently hold at least one
+document, so "expected but empty", "never created" and "its writer broke" are
+indistinguishable in a dump. `backup-firestore.mjs` now carries
+`EXPECTED_COLLECTIONS` — a **warning** list, not a target list — and any
+expected root collection absent from a run emits a `::warning::` (visible on
+the Actions run summary) and lands in `_summary.json` as `missingExpected`.
+Never fatal: an empty collection is a legitimate state. The next gap of this
+shape shows up in a run log instead of needing another drill.
+
+⚠️ The `_dev` twins are deliberately **not** in that list: the drill counted 16
+root collections — nine named with counts plus seven `_dev` twins — but did not
+record *which* seven, and listing a twin that does not exist would print a
+warning that is simply wrong. Add each when a run confirms it.
+
+### 4.2 ✅ FIXED 2026-08-18 — the restore used to corrupt every timestamp
+
+> **The bug below was real and is now fixed.** `restore-firestore.mjs` runs
+> every document through `scripts/lib/firestore-timestamps.mjs` before
+> `batch.set()`, and BOTH the dry run and the commit print how many values will
+> be converted, per collection, so the scope is never silent.
+> `scripts/test/firestore-timestamps.test.mjs` proves the round trip **offline
+> — no network, no credential, no write**: dump → `JSON.stringify` → reviver →
+> the SDK's own wire serializer yields an identical
+> `{"timestampValue":{"seconds":"1782327950","nanos":558000000}}`, where the raw
+> round-trip yields a `mapValue`. The old broken encoding is pinned as a test of
+> its own so it cannot return unnoticed.
+>
+> ⚠️ **The DUMP format did NOT change and must not.** It is lossless, merely
+> not self-describing; changing it would invalidate every backup already sitting
+> in `estate-backups`. The type is re-attached on the way IN.
+>
+> ⚠️ **The manual reviver at the end of this section is now REDUNDANT** for a
+> restore. Keep it only for inspecting a dump by hand.
+>
+> The measurement below stands exactly as taken.
 
 `backup-firestore.mjs` writes `JSON.stringify(doc.data())`. A Firestore
 `Timestamp` serialises to a plain object:
@@ -495,40 +612,48 @@ Stated plainly so nobody reads a green table as more than it is.
 
 ---
 
-## 9. Recommendations (drill output — no live backup job was changed)
+## 9. Recommendations (drill output) — with what happened to each
 
-Ordered by blast radius. None of these were applied.
+Ordered by blast radius. **None were applied by the drill itself**; seven were
+implemented on 2026-08-18 in commit `8c7f780`. Status is marked per item.
 
-1. **Add `library-catalog-2nd` to the backup matrix** — `backup.yml`'s `d1`
+1. ✅ **DONE 2026-08-18.** **Add `library-catalog-2nd` to the backup matrix** — `backup.yml`'s `d1`
    matrix, `prune-r2-backups.mjs`'s prefix arguments, and `backups.ts`'s
    `KNOWN_BACKUP_PREFIXES` (all three, in one change, as that file's header
    already warns).
-2. **Fix `restore-firestore.mjs` to revive timestamps** (§4.2). The dump does
+2. ✅ **DONE 2026-08-18** (§4.2 above). **Fix `restore-firestore.mjs` to revive timestamps** (§4.2). The dump does
    not need to change — it is lossless, just not self-describing.
-3. **Ship `scripts/reorder-d1-dump.mjs` alongside the backup scripts** and
+3. ✅ **DONE 2026-08-18** (§3b above). **Ship `scripts/reorder-d1-dump.mjs` alongside the backup scripts** and
    reference it from `backup-restore.md` §4b, whose current "just run
    `wrangler d1 execute --file`" recipe does not work for two of four
    databases.
-4. **Give `backup.yml` a cadence.** It is dispatch-only by deliberate design,
+4. ✅ **DONE 2026-08-18 — daily 09:12 UTC.** **Give `backup.yml` a cadence.** It is dispatch-only by deliberate design,
    and the cost of that is measured in §1c: 6 unbacked-up `estate_auth`
    migrations, +469 `change_log` rows and a whole `ebook_holding` table in
    under two days. Even a weekly cron would bound it. (If the "no cron touches
    credentials" objection stands, a calendar reminder is still better than
    nothing — and `backups.ts` already grades staleness at 14/45 days.)
-5. **Do one throwaway remote-import drill** (§3c) to close the largest
+5. ⏳ **OWNER STEP — still open.** **Do one throwaway remote-import drill** (§3c) to close the largest
    unverified step.
-6. **Stand up a second Firebase project** as a Firestore rehearsal target, or
+6. ⏳ **OWNER STEP — still open.** **Stand up a second Firebase project** as a Firestore rehearsal target, or
    accept permanently that the Firestore restore path is untested.
-7. **Get a copy of `estate-backups` off Cloudflare.** Everything protected and
+7. ⏳ **OWNER STEP — still open.** **Get a copy of `estate-backups` off Cloudflare.** Everything protected and
    everything protecting it live in one account.
-8. **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it**
+8. ⏳ **OWNER STEP — still open, and this is the one that bites at 3am.** **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it**
    (§7) — today the restore credential exists only as a GitHub secret, which
    cannot be read back out.
-9. **Add `ebooks-gated`, `estate-docs-gated` and `estate-ebooks` to the `r2`
+9. ✅ **PARTLY DONE 2026-08-18** — the two tiny buckets joined the matrix;
+   `estate-ebooks` was DECLINED on the judgement below, with the reasoning
+   (and the named residual risk: it lasts as long as the owner's disk)
+   recorded in `backup.yml` beside the matrix it explains.
+   **Add `ebooks-gated`, `estate-docs-gated` and `estate-ebooks` to the `r2`
    matrix** — the first two are tiny (107 kB / 1.27 MB) and cost nothing;
    `estate-ebooks` is 1.81 GB and has a local master, so it is a judgement
    call.
-10. **Add `bgc-photos`, `library-2nd-covers`, `estate-audio` and the
+10. ✅ **RECORDED 2026-08-18** as a standing rule in `backup.yml`'s header and
+    `backup-restore.md` §8, so the day one fills, the reason it was skipped is
+    beside the matrix.
+    **Add `bgc-photos`, `library-2nd-covers`, `estate-audio` and the
     `estate_docs` KV the day any of them holds data.** All four are empty
     today; three of them are already named as future work elsewhere.
 

@@ -13,6 +13,76 @@
 > silently reconciled — which of the two a later reader trusts matters, and
 > deleting one would hide that the work log had disagreed with itself.
 
+## 🔒 THE RESTORE DRILL, AND THE HARDENING THAT FOLLOWED IT — ✅ DONE 2026-08-18
+
+Moved whole from [`TODO.md`](TODO.md) — the drill (commit `8522b7c`) and the
+follow-up that implemented its mechanical recommendations (commit `8c7f780`).
+**Four owner steps remain and stayed in TODO.md**; everything below is finished.
+
+**What the follow-up changed**, per finding in the table below:
+
+| Finding | What was done |
+|---|---|
+| 1 — exports do not replay | `reorder-d1-dump.mjs` is now a **mandatory, tested** step of the D1 restore path. `scripts/test/reorder-d1-dump.test.mjs` builds the exact CREATE/INSERT interleave and **replays both versions in `node:sqlite`**: raw dies at `no such table: main.edition` with one of four tables created; reordered loads clean, every row, empty `foreign_key_check`, `integrity_check` = ok. `backup-restore.md` §4b now says mandatory, not optional |
+| 2 — the restore writes timestamps as maps | Fixed. Every document passes through `scripts/lib/firestore-timestamps.mjs`; dry run AND commit print the conversion count per collection. Proven **offline** (dump → revive → the SDK's own wire serializer → an identical `timestampValue`), no Firestore write. The old broken encoding is pinned as its own test. ⚠️ The dump format was deliberately NOT changed — it is lossless, and changing it would invalidate every backup already in the bucket |
+| 3 — a blind `estate_auth` restore re-approves the revoked | The tool says so now. `reorder-d1-dump.mjs` detects `estate_user`, prints the BACKUP's counts (rows / per-status / approvers / devops — **counts only, never a name**), the measured incident and the capture command, then **exits 3** unless `--yes-i-checked-membership`. The reordered file is still written; the exit only stops an automated chain |
+| 4 — `library-catalog-2nd` has no backup | In the backup set (`9dcf4af9-…`). ⚠️ And the reason it was missed is fixed too: the three lists that must agree — `backup.yml`'s matrices, its retention arguments, `backups.ts`'s `KNOWN_BACKUP_PREFIXES` — are now compared by a **test that parses backup.yml**. Written advice promoted to a mechanical guard |
+| 5 — `discord_links` / `readingPositions` have no backup | **Measured: the dump's collection list is `listCollections()` DISCOVERY, not a stale explicit list**, so both are captured the moment they hold a document — no change needed to the walk. What was wrong was the SILENCE: `EXPECTED_COLLECTIONS` now emits a `::warning::` and a `_summary.json` `missingExpected` entry for an expected-but-absent collection. Never fatal — an empty collection is legitimate |
+| 6 — the dispatch-only cadence has a measured cost | `backup.yml` runs **daily at 09:12 UTC**. Cost measured, not assumed: public repo, the billing endpoint reports **0 billable ms** across all 9 jobs, 144 s wall clock for `target=all`. Off the hour to dodge GitHub's `:00` queue burst; ≈04:12 America/Chicago. A scheduled run always backs up everything (a cron tick has no `inputs`) |
+| 7 — the Firebase key is not on the owner's machine | ⏳ **NOT closed — owner step, stayed in TODO.md** |
+
+**Also settled:** the "8 generations configured, 2 in the bucket" question was
+**not a prune bug** — only two runs had ever used the R2-writing path, and the
+retention log reads `2 object(s), keeping 2, deleting 0`. The daily cron fills
+it to 8 in eight days; first real deletion expected on day nine.
+
+**Also declined, on purpose:** `estate-ebooks` (1.81 GB) stays out of the `r2`
+matrix — a local master re-uploads it from disk. ⚠️ The residual risk is named
+rather than hidden: *that protection lasts exactly as long as the owner's
+disk*, and the reasoning sits in `backup.yml` beside the matrix it explains.
+
+**Verification:** `npm run test:scripts` 18/18, `apps/auth-worker` 266/266
+(17 in `backups.test.ts`), `auth-worker` typecheck clean. The backup itself was
+proven by a real dispatch — see the drill-date runbook for the objects.
+
+---
+
+## 🔴 RESTORE DRILL RAN — THE BACKUPS ARE NOT AS RESTORABLE AS THEY LOOKED (2026-08-17/18)
+
+The estate's backups were restored into a **sandbox** for the first time
+(local `node:sqlite` + `wrangler --local`; production READ-only, zero writes).
+Runbook written: **[`access/RECOVERY.md`](access/RECOVERY.md)** — per-store
+commands, measured restore times, the drift table, and an explicit NOT-verified
+list. `scripts/reorder-d1-dump.mjs` shipped as part of it.
+
+**What the drill found. Ranked; none of it was fixed by the drill.**
+
+| # | Finding | Where |
+|---|---|---|
+| 1 | ⚠️ **`library-catalog` and `board-game-catalog` exports DO NOT REPLAY.** Both die mid-import (`no such table: main.edition` / `main.app_user`) leaving a half-populated database that looks imported. Reproduced in two SQLite engines. `PRAGMA foreign_keys=OFF` does not fix it. `reorder-d1-dump.mjs` does — verified, full row counts, zero FK violations | RECOVERY §3b |
+| 2 | ⚠️ **The Firestore restore writes every timestamp back as a MAP.** 2,139 fields across all 56 collections. Proven offline with the Firestore SDK's own serializer. Every `orderBy('createdAt')` would break | RECOVERY §4.2 |
+| 3 | ⚠️ **Restoring `estate_auth` blind silently re-approves a revoked member.** Backup: 12 approved / 0 revoked. Live: 11 approved / **1 revoked**. Both row counts are 12, so a count check passes | RECOVERY §3d |
+| 4 | **`library-catalog-2nd` (the `padhard` shelf) has NO backup** — live D1, 6 works / 34 change_log rows / 32 migrations, absent from `backup.yml`, `prune-r2-backups.mjs` and `backups.ts` alike | RECOVERY §1b |
+| 5 | **`discord_links` and `readingPositions` have no backup** — the newest dump predates the first (2026-08-16 vs a writer that landed 2026-08-17); the second is absent from the dump's 56 collections | RECOVERY §1b |
+| 6 | **The dispatch-only cadence has a measured cost:** in under two days the newest backup fell 6 `estate_auth` migrations / 5 `library-catalog` migrations behind, +469 `change_log` rows, and a whole `ebook_holding` table | RECOVERY §1c |
+| 7 | **`FIREBASE_SERVICE_ACCOUNT_JSON` is not on the owner's machine.** A Firestore incident cannot be fixed from here without a Firebase-console trip first | RECOVERY §7 |
+
+**What DID restore cleanly:** all four D1 exports (two after reordering) with
+row counts matching production; the Firestore dump verified 56/56 collections
+and 1,303/1,303 docs with zero mismatches; all three R2 cover dumps complete
+(3,201 objects / 453 MB, zero missing, zero size mismatches) and **byte-identical
+to live** on a SHA-256 spot check per bucket; and the
+restore-then-`migrations apply` catch-up recipe brought a 5-migration backup up
+to production's 11 with all 12 user rows intact.
+
+**Owner decisions pending — RECOVERY §9 has all ten recommendations, ordered.**
+The drill changed no live backup job by charter. The first three are cheap:
+add `library-catalog-2nd` to the three places that list stores; teach
+`restore-firestore.mjs` a timestamp reviver; decide whether `backup.yml` gets a
+cadence.
+
+---
+
 ## 💬 GABI POSTS BOOK-CLUB QUESTIONS INTO DISCORD — SHIPPED 2026-08-18
 
 Owner's ask, verbatim: ***"you know how for bookclub gabi can post questions in

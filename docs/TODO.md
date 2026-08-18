@@ -15,39 +15,40 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
-## 🔴 RESTORE DRILL RAN — THE BACKUPS ARE NOT AS RESTORABLE AS THEY LOOKED (2026-08-17/18)
+## 🟡 BACKUPS ARE HARDENED — FOUR OWNER STEPS LEFT (2026-08-18)
 
-The estate's backups were restored into a **sandbox** for the first time
-(local `node:sqlite` + `wrangler --local`; production READ-only, zero writes).
-Runbook written: **[`access/RECOVERY.md`](access/RECOVERY.md)** — per-store
-commands, measured restore times, the drift table, and an explicit NOT-verified
-list. `scripts/reorder-d1-dump.mjs` shipped as part of it.
+The restore drill (`8522b7c`) and the hardening that implemented seven of its
+ten recommendations (`8c7f780`) are **finished and archived whole in
+[`DONE.md`](DONE.md)**. Backups now run **daily at 09:12 UTC**, cover eleven
+stores instead of eight, revive Firestore timestamps on restore, refuse to let
+an `estate_auth` restore proceed blind, and are guarded by a test that fails if
+the three store lists ever drift apart again.
 
-**What the drill found. Ranked; none of it was fixed by the drill.**
+Runbooks: **[`access/RECOVERY.md`](access/RECOVERY.md)** (3am: what to type) and
+**[`access/backup-restore.md`](access/backup-restore.md)** (what is protected
+and why). RECOVERY.md's header carries the per-recommendation status table.
 
-| # | Finding | Where |
-|---|---|---|
-| 1 | ⚠️ **`library-catalog` and `board-game-catalog` exports DO NOT REPLAY.** Both die mid-import (`no such table: main.edition` / `main.app_user`) leaving a half-populated database that looks imported. Reproduced in two SQLite engines. `PRAGMA foreign_keys=OFF` does not fix it. `reorder-d1-dump.mjs` does — verified, full row counts, zero FK violations | RECOVERY §3b |
-| 2 | ⚠️ **The Firestore restore writes every timestamp back as a MAP.** 2,139 fields across all 56 collections. Proven offline with the Firestore SDK's own serializer. Every `orderBy('createdAt')` would break | RECOVERY §4.2 |
-| 3 | ⚠️ **Restoring `estate_auth` blind silently re-approves a revoked member.** Backup: 12 approved / 0 revoked. Live: 11 approved / **1 revoked**. Both row counts are 12, so a count check passes | RECOVERY §3d |
-| 4 | **`library-catalog-2nd` (the `padhard` shelf) has NO backup** — live D1, 6 works / 34 change_log rows / 32 migrations, absent from `backup.yml`, `prune-r2-backups.mjs` and `backups.ts` alike | RECOVERY §1b |
-| 5 | **`discord_links` and `readingPositions` have no backup** — the newest dump predates the first (2026-08-16 vs a writer that landed 2026-08-17); the second is absent from the dump's 56 collections | RECOVERY §1b |
-| 6 | **The dispatch-only cadence has a measured cost:** in under two days the newest backup fell 6 `estate_auth` migrations / 5 `library-catalog` migrations behind, +469 `change_log` rows, and a whole `ebook_holding` table | RECOVERY §1c |
-| 7 | **`FIREBASE_SERVICE_ACCOUNT_JSON` is not on the owner's machine.** A Firestore incident cannot be fixed from here without a Firebase-console trip first | RECOVERY §7 |
+**What is left needs the owner's hands — none can be closed by a code change.**
+⚠️ Answer these one at a time; each is a separate decision.
 
-**What DID restore cleanly:** all four D1 exports (two after reordering) with
-row counts matching production; the Firestore dump verified 56/56 collections
-and 1,303/1,303 docs with zero mismatches; all three R2 cover dumps complete
-(3,201 objects / 453 MB, zero missing, zero size mismatches) and **byte-identical
-to live** on a SHA-256 spot check per bucket; and the
-restore-then-`migrations apply` catch-up recipe brought a 5-migration backup up
-to production's 11 with all 12 user rows intact.
+| # | Owner step | Why it matters | Where |
+|---|---|---|---|
+| 1 | **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it** | ⚠️ **The one that bites at 3am.** The restore credential exists only as a GitHub secret, which cannot be read back out. **A Firestore incident cannot be fixed from this machine as it stands** — the first step would be a Firebase-console trip to mint a new private key. This is a custody decision (where does it live, how is it protected), not a task | RECOVERY §7, §9.8 |
+| 2 | **Get a copy of `estate-backups` off Cloudflare** | Everything protected and everything protecting it live in one bucket, one account, one region. Needs a decision about where the copy goes before anything can be built | RECOVERY §8.8, §9.7 |
+| 3 | **Do one throwaway remote-import drill** | The largest unverified step in the whole runbook: no D1 import has ever been proven against a real REMOTE database, only `--local`. Closing it means creating a `*-restore-drill` D1, importing, checking counts, deleting it — a production-side write the drill's charter forbade | RECOVERY §3c, §9.5 |
+| 4 | **Stand up a second Firebase project**, or accept the gap permanently | The Firestore `--commit` write path has never been exercised: the only target is production. This is the "accept it or pay for it" call | RECOVERY §4.3, §9.6 |
 
-**Owner decisions pending — RECOVERY §9 has all ten recommendations, ordered.**
-The drill changed no live backup job by charter. The first three are cheap:
-add `library-catalog-2nd` to the three places that list stores; teach
-`restore-firestore.mjs` a timestamp reviver; decide whether `backup.yml` gets a
-cadence.
+**Not owner steps, but the first things to check later:**
+
+- ⚠️ **The generation count should reach 8 by ~2026-08-26.** It sat at 2 because
+  only two runs had ever used the R2-writing path — *not* a prune bug. If it is
+  still stuck at 2 a week from now, then suspect the prune.
+- ⚠️ **GitHub disables scheduled workflows after 60 days of repo inactivity**
+  (it emails first). If backups quietly stop, check Actions for that banner
+  **before** suspecting credentials.
+- The three newly-covered stores (`library-catalog-2nd`, `ebooks-gated`,
+  `estate-docs-gated`) have **never been through a restore drill**. Their paths
+  are identical to their siblings' — an inference, not a measurement.
 
 ## 🟡 GABI READS THE ESTATE DOCS — LIVE; ONE OWNER STEP LEFT (the relink) (2026-08-18)
 
