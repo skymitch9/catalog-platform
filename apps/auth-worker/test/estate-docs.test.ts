@@ -35,6 +35,7 @@ import {
   makeSnippet,
   parseSectionId,
   searchBundle,
+  sectionBody,
   sectionId,
   snapshotMeta,
   tokenize,
@@ -306,6 +307,33 @@ test('snippets are clipped and are PLAIN TEXT — never assembled markup', () =>
   // have to be trusted by every consumer — including a Discord message, where
   // it renders as literal tags.
   assert.ok(!/<\/?[a-z]/i.test(snip), 'the snippet carried markup');
+});
+
+test('⚠️ a snippet does not repeat the heading rendered directly above it', () => {
+  // Seen live on /docs (2026-08-18): every snippet opened by echoing its own
+  // heading, raw `###` markers and all, so the first line of every result was
+  // noise and the 400-character budget bought ~340 of real document.
+  const s = section(0, 'Auto-promote', '## Auto-promote\n\nBook commits flow to prod with no human step.');
+  const body = sectionBody(s);
+  assert.ok(!body.startsWith('#'), 'the raw heading markers survived into the snippet');
+  assert.ok(body.startsWith('Book commits flow'));
+});
+
+test('sectionBody: a continuation or a DIFFERENT first heading keeps its text whole', () => {
+  // A hard-split continuation carries no heading line of its own, and a first
+  // line that happens to be another heading is real content — dropping either
+  // would delete document text, which is strictly worse than a tidy snippet.
+  const cont = section(3, 'Big section (cont. 4)', 'the middle of a long list\nand more');
+  assert.equal(sectionBody(cont), cont.text);
+  const other = section(1, 'Deploys', '### Something else entirely\n\nbody');
+  assert.equal(sectionBody(other), other.text);
+});
+
+test('sectionBody is a DISPLAY change only — a heading match still outranks a body match', () => {
+  // Scoring runs over the full text on purpose. If this ever regresses, a
+  // search for a word that appears ONLY in a heading would find nothing.
+  const r = searchBundle(bundleFixture(), 'rollback', 8);
+  assert.equal(r.hits[0]!.heading, 'Rollback');
 });
 
 test('tokenize: bounded, deduped, and drops one-character noise', () => {

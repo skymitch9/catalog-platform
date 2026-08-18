@@ -348,6 +348,29 @@ export function makeSnippet(text: string, tokens: string[]): string {
   return `${start > 0 ? '…' : ''}${body}${end < text.length ? '…' : ''}`;
 }
 
+/**
+ * A section's text WITHOUT its own heading line.
+ *
+ * ⚠️ Seen live on /docs (2026-08-18) and worth a route change: every snippet
+ * opened by repeating the heading that was already rendered in bold directly
+ * above it — with its raw `###` markers still attached — so the first line of
+ * every result was noise, and the 400 characters bought roughly 340 of actual
+ * document. Dropped only when the first line genuinely IS the heading the
+ * publisher named, so a hard-split continuation ("… (cont. 3)", which carries
+ * no heading line of its own) and a section whose first line happens to be a
+ * different heading both keep their text untouched.
+ *
+ * Scoring still runs over the FULL text — a heading match must still count as
+ * a heading match. This only changes what the reader is shown.
+ */
+export function sectionBody(section: DocSection): string {
+  const nl = section.text.indexOf('\n');
+  const first = (nl === -1 ? section.text : section.text.slice(0, nl)).trim();
+  const m = /^#{1,6}\s+(.*?)\s*#*$/.exec(first);
+  if (!m || (m[1] ?? '').trim() !== section.heading.trim()) return section.text;
+  return nl === -1 ? '' : section.text.slice(nl + 1).replace(/^\s+/, '');
+}
+
 export interface SearchResult {
   hits: SearchHit[];
   /** 'all' = every token matched (the primary pass). 'any' = the fallback, so
@@ -416,7 +439,9 @@ export function searchBundle(bundle: DocsBundle, query: string, limit: number): 
           heading: section.heading,
           level: section.level,
           bytes: section.bytes,
-          snippet: makeSnippet(section.text, tokens),
+          // The heading is already rendered above the snippet by every
+          // consumer — see sectionBody()'s header for why it is dropped here.
+          snippet: makeSnippet(sectionBody(section) || section.text, tokens),
           score: s,
         });
       }
