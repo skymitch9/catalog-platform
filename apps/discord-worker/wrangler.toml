@@ -192,7 +192,11 @@ MODERATION_ENABLED = "off"
 # ⚠️ It also gates the CLARIFYING-QUESTION COMPONENTS on the HTTP interactions
 # endpoint: while this is off, a press on a select menu or button from before
 # the flip is answered in words and NO Durable Object is woken.
-GABI_MENTIONS = "off"
+# Flipped off -> ON 2026-08-17 by the CONDUCTOR at the owner's wake-up order
+# (his key was pasted, piped to ANTHROPIC_API_KEY_GABI, and the drop-box
+# blanked the same minute). The 2-minute cron is the starter — no manual
+# POST /admin/gateway/start needed. Turning her back off is this one line.
+GABI_MENTIONS = "on"
 
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put DISCORD_PUBLIC_KEY        (Developer Portal → General
