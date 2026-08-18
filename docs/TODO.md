@@ -838,44 +838,6 @@ designing a federation for a catalog that does not yet have any books in it.
 
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
-## 🚀 POST-RESTART KICKOFF PROMPT — FIRE THIS, THEN DELETE THIS BLOCK
-
-> ⚠️ SELF-CONSUMING: the session that executes this block must DELETE this
-> entire block (header through the closing rule) from this file — commit
-> "docs: consume post-restart kickoff" — as its FIRST action after reading
-> it, so it can never fire twice. The HANDOFF section below it STAYS.
-
-The owner will say something like "read the todo doc". That means execute
-the following, in order:
-
-1. **Consume this block** (delete + commit + push, scoped pathspec, no stash).
-2. **Check Claude API health at https://status.claude.com.** The restart
-   happened during a 529-overload incident. If the API is still degraded:
-   poll the status page **every 5 minutes** (background timer, not a parked
-   agent) and tell the owner you're holding until it's green. Do NOT
-   dispatch agents into a degraded API.
-3. **Once recovered**, in this order:
-   a. Read the HANDOFF section below in full.
-   b. Check what Primal Hunter transcripts survived in
-      C:\Users\nbasl\estate-training-data\ (books 10–14 were in flight).
-      **Restart the book ingestion**: relaunch the PH transcription batch
-      for whichever of books 10–14 are missing (same pilot driver the
-      handoff references), OR — if the GPU is needed elsewhere or it's
-      near the nightly window — confirm tonight's 00:00 window will cover
-      them and say which choice was made and why.
-   c. Dispatch (model: opus) a finisher agent for **build A** (GABI
-      serving layer) and one for **build B** (/status split), per the
-      briefs in the handoff. Their uncommitted work is on disk — finish,
-      never revert.
-   d. Take a usage read (session/weekly/Fable + clock) per the global
-      rule, and give the owner a board of what's running.
-4. Standing rules that carry over: Fable conducts only, Opus builds;
-   owner decisions ONE at a time; usage figures in every substantive
-   reply; the owner's pending judgment list (32 seriesIndex etc.) waits
-   until he asks or the builds land.
-
----
-
 ## 🔄 HANDOFF — PC restart 2026-08-18 ~09:45 Phoenix (IDE update; owner-initiated)
 
 > Written during an Anthropic 529 outage that had already stopped all agents.
