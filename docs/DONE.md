@@ -14,6 +14,76 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+## 2026-08-18 — The last two backup OWNER STEPS, closed by measurement (drill, second pass)
+
+Two of the three rows that had sat as "needs the owner's hands" are closed.
+**Both items are moved WHOLE from [`TODO.md`](TODO.md), verbatim, below.** The
+third (a second Firebase project) is stood up and stays in TODO.md as one
+console click.
+
+### Item 1 — the Firebase credential (moved WHOLE from TODO.md)
+
+> | 1 | **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it** | ⚠️ **The one that bites at 3am.** The restore credential exists only as a GitHub secret, which cannot be read back out. **A Firestore incident cannot be fixed from this machine as it stands** — the first step would be a Firebase-console trip to mint a new private key. This is a custody decision (where does it live, how is it protected), not a task | RECOVERY §7, §9.8 |
+
+🔴 **CLOSED — AND THE ITEM'S PREMISE WAS FALSE.** There was never anything to
+put anywhere. **Two working copies were already on this machine**, both
+gitignored:
+
+| Copy | Path | `private_key_id` |
+|---|---|---|
+| 1 | `audiobook_catalog/scripts/firebase_service_account.json` | `98961ca3…` |
+| 2 | `audiobook_catalog/docs/access/keys/firebase-sa-restore.json` | `1d5a76d7…` |
+
+**Measured 2026-08-18** by a read-only probe through the repo's own code path
+(`app/core/ingest_control.py` → `read_control()`, a single `.get()`):
+`readable=True`, `error=None`, returning a control document written
+`2026-08-18T14:06:21` Phoenix. A live, authenticated Firestore round trip.
+
+⚠️ **They are two DIFFERENT keys on the SAME service account** — so revoking
+one does not revoke the other, and either alone is sufficient for a restore.
+
+⚠️ **Why this matters more than the fix:** the runbook asserted a credential
+was absent because **nobody had looked for it**, and that assertion then
+propagated into three documents and a status table as fact. It is the exact
+failure the estate's verification rule names — an assumption wearing a
+measurement's clothes. The correction is recorded loudly in
+`access/RECOVERY.md` §7a rather than quietly edited away.
+
+⏳ **Residual, his call, not a blocker:** one sealed offline copy in the
+password manager, for the case where this machine is itself the casualty.
+
+### Item 2 — the throwaway remote-import drill (moved WHOLE from TODO.md)
+
+> | 2 | **Do one throwaway remote-import drill** | The largest unverified step in the whole runbook: no D1 import has ever been proven against a real REMOTE database, only `--local`. Closing it means creating a `*-restore-drill` D1, importing, checking counts, deleting it — a production-side write the drill's charter forbade | RECOVERY §3c, §9.5 |
+
+✅ **DRILLED 2026-08-18, owner-approved, on `estate_auth` (the smallest store).**
+Every command and output is recorded in `access/RECOVERY.md` §3c-drill.
+
+| | Measured |
+|---|---|
+| Source file | the **MIRROR's** copy, sha256 `dd558909…a10f9b` — matching `mirror-manifest.json` **and** the live-bucket hash |
+| Membership gate (§3d) | fired correctly — printed the backup's counts (12 rows / 11 approved / 1 revoked / 2 approvers / 3 devops) and **exited 3** |
+| Database created | `estate-auth-restore-drill`, `62e5f0f7-cb61-4248-9743-7a7d1505c2fe`, region WNAM |
+| Import | **61 queries, 199 rows written, 4 tables, 3 s wall clock, 12.48 ms SQL, first attempt, no retry** |
+| Row counts (dump → remote) | `d1_migrations` 11→**11**, `estate_session` 12→**12**, `estate_user` 12→**12**, `site_role_grant_log` 14→**14** — **4 of 4 exact** |
+| `PRAGMA foreign_key_check` (remote) | **zero rows** |
+| Cleanup | deleted, and **verified by `wrangler d1 list`** — five real databases, no drill database |
+
+**Two findings worth more than the drill itself:**
+
+1. ⚠️ **It ran on the plain `wrangler login` OAuth session**, not on
+   `CLOUDFLARE_API_TOKEN`. So the remote-restore path does **not** depend on the
+   one credential that is not on this machine.
+2. ✅ **The file it replayed came off the mirror**, byte-verified — so *"restore
+   from the mirror"* stopped being an inference at the same time.
+
+⚠️ **Still not verified**, and said plainly rather than implied by a green row:
+`migrations apply --remote`; a remote import of a dump that needs **reordering**
+(only `estate_auth` went remote, and it replays as-is); and that a restored
+database actually serves traffic.
+
+---
+
 ## 2026-08-18 — Status-page information quality: the colour rule, per-section freshness, and the labels
 
 Owner that day: *"the dashboard needs to be good information."* Three asks

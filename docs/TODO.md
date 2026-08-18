@@ -74,13 +74,23 @@ preferences and the todo-board refresh. The paperwork moved whole to
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
-## 🟡 BACKUPS ARE HARDENED — THREE OWNER STEPS LEFT (2026-08-18)
+## 🟢 BACKUPS ARE HARDENED — ONE CONSOLE CLICK LEFT (2026-08-18)
 
 > ✅ **Owner step 2 — "get a copy of `estate-backups` off Cloudflare" — is
 > DONE (2026-08-18) and moved whole to [`DONE.md`](DONE.md).** The mirror is
 > built, wired into the pipeline as STEP 10, and populated: 11/11 stores,
 > 12 objects, 539,573,402 bytes, on this PC + OneDrive + Google Drive
 > `/GABI_backup`. Runbook: `access/RECOVERY.md` §2a.
+>
+> ✅ **AND THE THREE REMAINING OWNER STEPS WERE WORKED THE SAME DAY (second
+> pass).** Two are **closed by measurement** and moved whole to
+> [`DONE.md`](DONE.md); the third is stood up. **What is left is one console
+> click** — see the single row below.
+>
+> ⚠️ **One of the two closures is a CORRECTION, not an achievement.** The
+> Firebase-credential step was never a real gap: the key had been on this
+> machine the whole time, and the runbook said otherwise because nobody had
+> looked. `access/RECOVERY.md` §7a records that in full.
 
 The restore drill (`8522b7c`) and the hardening that implemented seven of its
 ten recommendations (`8c7f780`) are **finished and archived whole in
@@ -93,14 +103,21 @@ Runbooks: **[`access/RECOVERY.md`](access/RECOVERY.md)** (3am: what to type) and
 **[`access/backup-restore.md`](access/backup-restore.md)** (what is protected
 and why). RECOVERY.md's header carries the per-recommendation status table.
 
-**What is left needs the owner's hands — none can be closed by a code change.**
-⚠️ Answer these one at a time; each is a separate decision.
+**What is left is ONE owner step, and it is a console click.**
 
 | # | Owner step | Why it matters | Where |
 |---|---|---|---|
-| 1 | **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it** | ⚠️ **The one that bites at 3am.** The restore credential exists only as a GitHub secret, which cannot be read back out. **A Firestore incident cannot be fixed from this machine as it stands** — the first step would be a Firebase-console trip to mint a new private key. This is a custody decision (where does it live, how is it protected), not a task | RECOVERY §7, §9.8 |
-| 2 | **Do one throwaway remote-import drill** | The largest unverified step in the whole runbook: no D1 import has ever been proven against a real REMOTE database, only `--local`. Closing it means creating a `*-restore-drill` D1, importing, checking counts, deleting it — a production-side write the drill's charter forbade | RECOVERY §3c, §9.5 |
-| 3 | **Stand up a second Firebase project**, or accept the gap permanently | The Firestore `--commit` write path has never been exercised: the only target is production. This is the "accept it or pay for it" call | RECOVERY §4.3, §9.6 |
+| 1 | **Download a service-account key for the new `estate-restore-drill` Firebase project** | The Firestore `--commit` write path is the last unexercised restore step in the estate. The rehearsal *target* now exists (project + Firestore database, created 2026-08-18 from the CLI); what is missing is a credential to point at it. This session's sandbox correctly declined to mint one — granting roles and minting keys are access-INCREASING acts. **2 minutes:** Firebase console → `estate-restore-drill` → Project settings → Service accounts → Generate new private key → save it under `audiobook_catalog/docs/access/keys/` (gitignored). Then the rehearsal is 3 commands, written out ready to paste | RECOVERY §4.3b |
+
+⚠️ **Sign in as `mitchlandtv@gmail.com`** — the Firebase projects belong to that
+account, while Cloudflare is `nbaslamking@gmail.com`. As the wrong user the
+project simply looks missing.
+
+**A second, optional decision — his call, NOT a blocker:** keep one **sealed
+offline copy** of the `audiobook-catalog` Firebase key (password manager). Both
+readable copies live on this one PC today, so a dead machine forces a re-mint
+during an incident. Re-minting works and costs minutes; a sealed copy buys those
+minutes back at the worst possible time. `access/RECOVERY.md` §7a.
 
 **Not owner steps, but the first things to check later:**
 
