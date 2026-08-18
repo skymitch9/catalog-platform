@@ -420,7 +420,10 @@ GABI_PERSONALITY = "on"
 #
 # ⚠️ NO NEW SECRET. Both stores are Firestore collections this Worker already
 # reaches with the service account it holds for discord_links.
-GABI_SHELF = "off"
+# Flipped off -> ON 2026-08-18 ~15:30 by conductor hand: the owner's order
+# was the OUTCOME ("We need GABI to know the tbr, reviews, and unread"),
+# and dark was the builder's caution, not an owner gate. Off is one line back.
+GABI_SHELF = "on"
 
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
