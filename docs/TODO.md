@@ -15,6 +15,40 @@
 >
 > ⚠️ An archive is not a competing living doc. Do not re-merge it here.
 
+## 🔴 RESTORE DRILL RAN — THE BACKUPS ARE NOT AS RESTORABLE AS THEY LOOKED (2026-08-17/18)
+
+The estate's backups were restored into a **sandbox** for the first time
+(local `node:sqlite` + `wrangler --local`; production READ-only, zero writes).
+Runbook written: **[`access/RECOVERY.md`](access/RECOVERY.md)** — per-store
+commands, measured restore times, the drift table, and an explicit NOT-verified
+list. `scripts/reorder-d1-dump.mjs` shipped as part of it.
+
+**What the drill found. Ranked; none of it was fixed by the drill.**
+
+| # | Finding | Where |
+|---|---|---|
+| 1 | ⚠️ **`library-catalog` and `board-game-catalog` exports DO NOT REPLAY.** Both die mid-import (`no such table: main.edition` / `main.app_user`) leaving a half-populated database that looks imported. Reproduced in two SQLite engines. `PRAGMA foreign_keys=OFF` does not fix it. `reorder-d1-dump.mjs` does — verified, full row counts, zero FK violations | RECOVERY §3b |
+| 2 | ⚠️ **The Firestore restore writes every timestamp back as a MAP.** 2,139 fields across all 56 collections. Proven offline with the Firestore SDK's own serializer. Every `orderBy('createdAt')` would break | RECOVERY §4.2 |
+| 3 | ⚠️ **Restoring `estate_auth` blind silently re-approves a revoked member.** Backup: 12 approved / 0 revoked. Live: 11 approved / **1 revoked**. Both row counts are 12, so a count check passes | RECOVERY §3d |
+| 4 | **`library-catalog-2nd` (the `padhard` shelf) has NO backup** — live D1, 6 works / 34 change_log rows / 32 migrations, absent from `backup.yml`, `prune-r2-backups.mjs` and `backups.ts` alike | RECOVERY §1b |
+| 5 | **`discord_links` and `readingPositions` have no backup** — the newest dump predates the first (2026-08-16 vs a writer that landed 2026-08-17); the second is absent from the dump's 56 collections | RECOVERY §1b |
+| 6 | **The dispatch-only cadence has a measured cost:** in under two days the newest backup fell 6 `estate_auth` migrations / 5 `library-catalog` migrations behind, +469 `change_log` rows, and a whole `ebook_holding` table | RECOVERY §1c |
+| 7 | **`FIREBASE_SERVICE_ACCOUNT_JSON` is not on the owner's machine.** A Firestore incident cannot be fixed from here without a Firebase-console trip first | RECOVERY §7 |
+
+**What DID restore cleanly:** all four D1 exports (two after reordering) with
+row counts matching production; the Firestore dump verified 56/56 collections
+and 1,303/1,303 docs with zero mismatches; all three R2 cover dumps complete
+(3,201 objects / 453 MB, zero missing, zero size mismatches) and **byte-identical
+to live** on a SHA-256 spot check per bucket; and the
+restore-then-`migrations apply` catch-up recipe brought a 5-migration backup up
+to production's 11 with all 12 user rows intact.
+
+**Owner decisions pending — RECOVERY §9 has all ten recommendations, ordered.**
+The drill changed no live backup job by charter. The first three are cheap:
+add `library-catalog-2nd` to the three places that list stores; teach
+`restore-firestore.mjs` a timestamp reviver; decide whether `backup.yml` gets a
+cadence.
+
 ## 🟡 GABI READS THE ESTATE DOCS — LIVE; ONE OWNER STEP LEFT (the relink) (2026-08-18)
 
 ⚠️ **Step 2 (flip `GABI_DOCS`) is DONE — the owner flipped it on 2026-08-18.**

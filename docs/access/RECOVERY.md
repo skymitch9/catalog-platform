@@ -1,0 +1,552 @@
+# Estate Recovery — the 3am runbook
+
+> **Audience:** Claude sessions and the owner. **Status:** TRACKED (public repo
+> — env var / secret NAMES only, never values; no member emails).
+> **Every command below was executed in a SANDBOX on the drill date.**
+> Drill date: **2026-08-17/18** (restore drill, `target=all` snapshot of
+> `20260816T0849xxZ`). Nothing in the drill wrote to a production database,
+> bucket, Worker or Firestore collection — every restore landed in a local
+> throwaway (`node:sqlite` files and `wrangler --local` miniflare state).
+> Production was READ only (row counts, bucket info, one object per bucket).
+>
+> **This file is the "what do I actually type" companion to
+> [`backup-restore.md`](backup-restore.md)**, which explains what is protected
+> and why. Read this one first in an incident; read that one when deciding
+> what to change about the backup system.
+>
+> ⚠️ **STALENESS:** every "verified" claim here has the drill date above. If
+> that date is more than a few weeks old, the commands are probably still
+> right and the COUNTS certainly are not. Re-run the drill rather than trusting
+> the numbers.
+
+---
+
+## 0. The 60-second version
+
+1. **D1 lost/corrupted →** try **Time Travel** first (`wrangler d1 time-travel
+   restore`, §3a). It is in-place, needs no file, and is the right tool for
+   "undo what just happened". Write down the bookmark it prints.
+2. **Time Travel window passed →** fetch the `.sql` from `estate-backups`,
+   **reorder it** (§3b — ⚠️ the raw export does NOT replay), import into a
+   FRESH database, then `wrangler d1 migrations apply` to catch the schema up.
+3. **Firestore →** fetch + unpack the tarball, dry-run
+   `restore-firestore.mjs`, ⚠️ **fix the timestamps first** (§4.2), then
+   `--only <collection> --commit`.
+4. **A cover is gone →** unpack the bucket tarball, `wrangler r2 object put`
+   the one key back (§5).
+5. **Before restoring `estate_auth`, read §3d.** A blind restore silently
+   re-approves revoked members.
+
+---
+
+## 1. What exists, measured on the drill date
+
+Live account inventory taken with `wrangler d1 list` / `r2 bucket list` /
+`kv namespace list` on 2026-08-18 — this is the ground truth the backup
+matrices are compared against, not a copy of what `backup.yml` says it covers.
+
+### 1a. The eight stores that ARE backed up
+
+| Store | Backed up? | Restored OK in drill? | Snapshot age at drill | Time to restore |
+|---|---|---|---|---|
+| D1 `estate_auth` | yes | **yes** | ~1.9 d | fetch 2.7 s + import 3.7 s + migrate 4.9 s |
+| D1 `library-catalog` | yes | **only after reordering** (§3b) | ~1.9 d | fetch 2.7 s + reorder 2 s + import **60 s** |
+| D1 `board-game-catalog` | yes | **only after reordering** (§3b) | ~1.9 d | fetch 2.7 s + reorder 3 s + import **94 s** |
+| D1 `index_catalog` | yes | yes (replays as-is) | ~1.9 d | fetch 2.8 s + import 37 s |
+| Firestore `audiobook-catalog` | yes | **structurally yes, semantically NO** (§4.2 timestamps) | ~1.9 d | fetch 2.7 s + unpack 0.1 s |
+| R2 `library-covers` | yes | yes (bytes verified vs live) | ~1.9 d | fetch 3.0 s + unpack 0.3 s |
+| R2 `game-covers` | yes | yes (bytes verified vs live) | ~1.9 d | fetch 6.3 s + unpack 1.4 s |
+| R2 `audiobook-covers` | yes | yes (bytes verified vs live) | ~1.9 d | fetch 6.9 s + unpack 2.5 s |
+
+Import times are `wrangler d1 execute --local`; `node:sqlite` replays the same
+files 5–8× faster (estate_auth 0.05 s, library 8.1 s, index 5.1 s, bgc 11.9 s)
+and is the better tool when you only need to *read* a backup.
+
+### 1b. ⚠️ Live stores with NO backup at all
+
+Ranked by blast radius. These are not "stale" — no copy exists anywhere.
+
+| # | Store | What is in it (measured 2026-08-18) | Why it hurts |
+|---|---|---|---|
+| 1 | **D1 `library-catalog-2nd`** (`9dcf4af9-…`) | A live second library instance (the `padhard.heygabi.ai` shelf): 6 works, 6 editions, 6 copies, 6 `user_book` rows, 3 `app_user` rows, 34 `change_log` rows, 32 migrations | Same "user-entered catalog data with no other copy" argument that makes `library-catalog` High priority. It is simply absent from `backup.yml`'s matrix, `prune-r2-backups.mjs`'s prefix list and `backups.ts`'s `KNOWN_BACKUP_PREFIXES` |
+| 2 | **Firestore `discord_links`** | Created 2026-08-17 (first write lands in `apps/discord-worker/src/link.ts`, commit `7ae9137`) — **after** the newest backup (2026-08-16T08:49Z) | Each doc is a proven Discord↔Firebase identity binding. Losing it un-links every member; each has to redo the link ceremony |
+| 3 | **Firestore `readingPositions`** | **Absent from the 2026-08-16 dump's 56 collections.** Either it had no documents at snapshot time or it was created after | Everyone's place in every book. Not reconstructible from anything |
+| 4 | **R2 `estate-ebooks`** | 168 objects, 1.81 GB — the ebook files | A local master exists (`audiobook_catalog/scripts/upload_ebooks_r2.py` re-uploads from disk), so this is recoverable, not lost — but only while that machine's disk survives |
+| 5 | **R2 `ebooks-gated`** | 2 objects, 107 kB — `ebooks.json` and `audio_manifest.json`, the two gated manifests | Republished by the pipeline (`publish_ebooks_manifest.py`, sync step 5.8), so recoverable — but until it runs, the gate has nothing to read |
+| 6 | **R2 `estate-docs-gated`** | 2 objects, 1.27 MB — the searchable docs corpus, bucket created 2026-08-18 | Rebuilt by the publisher from the three docs trees; ⚠️ that publisher runs on the owner's machine and is the only place all three trees exist together |
+| 7 | **KV `estate_docs`** (`3278d5e3…`) | **0 keys today** (`wrangler kv key list` → `[]`) | Nothing to lose right now; it is a declared store with no backup path, so it becomes a hole the day it is used |
+| 8 | **R2 `estate-audio`** | 0 objects — empty by design (on-request fulfilment) | Nothing to lose; would become hole #4's twin at 630 GB scale if it ever filled |
+| 9 | **R2 `library-2nd-covers`**, **R2 `bgc-photos`** | 0 objects each | Nothing to lose today; both belong in the matrix the day they hold anything |
+| 10 | **R2 `estate-backups` itself** | 16 objects, 917 MB — 8 stores × **2** generations | Single-copy, single-region, single-account. Retention is configured for 8 but only two `target=all` runs have ever landed, so "8 deep" is a setting, not a fact |
+
+**Not a hole, confirmed:** the four git repos (distributed by git), and the
+OpenAudible `.m4b` library (Google Drive sync, `sync_to_drive.py`). Both are
+argued in `backup-restore.md` §8 and nothing in this drill contradicts them.
+
+### 1c. Drift measured between the newest backup and live
+
+Snapshot `20260816T0849xxZ` vs live reads on 2026-08-18. This is what a
+restore of the newest backup would COST you, today.
+
+| Store | Backup | Live | Delta |
+|---|---|---|---|
+| `estate_auth` migrations | 5 | **11** | 6 migrations, 4 columns on `estate_user` |
+| `estate_auth` `estate_user` | 12 | 12 | ⚠️ same count, **different truth** — see §3d |
+| `estate_auth` `estate_session` | 0 | 11 | all sessions |
+| `estate_auth` `site_role_grant_log` | 0 | 14 | the whole grant audit trail |
+| `library-catalog` migrations | 26 | **31** | 5 migrations (`ebook_holding`, `gabi_conversation`, `gabi_turn` did not exist yet) |
+| `library-catalog` `work` / `edition` / `copy` | 351 / 394 / 272 | 435 / 471 / 366 | +84 / +77 / +94 |
+| `library-catalog` `change_log` | 522 | 991 | +469 |
+| `library-catalog` `research_finding` | 814 | 1059 | +245 |
+| `library-catalog` `ebook_holding` | (table absent) | 126 | whole table |
+| `board-game-catalog` (item/edition/copy/component/cover_check/app_user) | 837/1067/838/1454/1012/4 | identical | **no drift** |
+| `index_catalog` `entry` | 2266 | 2518 | +252 (rebuildable, §6) |
+| R2 `library-covers` | 208 | 208 | none |
+| R2 `game-covers` | 1124 | 1125 | +1 |
+| R2 `audiobook-covers` | 1869 | **1972** | +103 |
+
+**`backup.yml` has no cron** — it is `workflow_dispatch` only. Every number in
+this table is the cost of "nobody pressed the button since 2026-08-16".
+
+---
+
+## 2. Getting a backup file out of `estate-backups`
+
+The bucket is private, and `wrangler r2 object` has **no `list`** (still true
+at wrangler 4.123.0). So you cannot browse it. Two ways to learn the exact key:
+
+**A. From the workflow log (works with just `gh`, no Cloudflare token) —
+the one the drill used:**
+
+```bash
+gh run list --repo skymitch9/catalog-platform --workflow=backup.yml --limit 5
+gh run view <run-id> --repo skymitch9/catalog-platform --log \
+  | grep "Wrote estate-backups"
+```
+
+Each `::notice::Wrote estate-backups/<kind>/<store>/<STAMP>.<ext>` line is a
+literal, copy-pasteable key.
+
+**B. From the live estate worker** — `GET https://auth.heygabi.ai/api/estate/backups`
+(needs a devops/approver/owner Firebase token). Returns newest timestamp +
+count per prefix, deliberately NOT the keys. Good for "is the backup fresh",
+useless for "give me the file".
+
+**Then fetch it.** `--remote` is required; without it wrangler silently reads
+an empty local simulator.
+
+```bash
+npx wrangler r2 object get "estate-backups/d1/library-catalog/<STAMP>.sql" \
+  --file ./library-catalog.sql --remote
+npx wrangler r2 object get "estate-backups/firestore/audiobook-catalog/<STAMP>.tar.gz" \
+  --file ./firestore.tar.gz --remote
+npx wrangler r2 object get "estate-backups/r2/library-covers/<STAMP>.tar.gz" \
+  --file ./library-covers.tar.gz --remote
+```
+
+**Credentials the fetch needs:** an interactive `wrangler login` OAuth session
+is enough (that is all the drill had). ⚠️ An OAuth session is **not** enough
+for `scripts/backup-r2.mjs` / `prune-r2-backups.mjs`, which use the plain
+Cloudflare REST list endpoint — that path needs the API token
+(`CLOUDFLARE_API_TOKEN`, held as a repo secret; see `backup-restore.md` §1 for
+the permission-group nuance). Restoring never needs the REST list; only
+backing up does.
+
+---
+
+## 3. D1
+
+### 3a. Time Travel — try this first
+
+```bash
+npx wrangler d1 time-travel info    <database-id>
+npx wrangler d1 time-travel info    <database-id> --timestamp="2026-08-17T12:00:00Z"
+npx wrangler d1 time-travel restore <database-id> --timestamp=<ISO-or-unix>
+```
+
+⚠️ Destructive and in-place. **The command prints the prior bookmark — write it
+down**; it is the only undo. Window is 30 days on Workers Paid / 7 on Free
+(the account's plan tier is **NOT verified** by this drill).
+
+### 3b. ⚠️ THE EXPORT DOES NOT REPLAY AS-IS — reorder it first
+
+**Measured 2026-08-17, in two independent SQLite engines, on the newest
+snapshot of every database:**
+
+| Dump | `wrangler d1 execute --local --file=` | `node:sqlite` `exec()` |
+|---|---|---|
+| `estate_auth` | ok | ok |
+| `index_catalog` | ok | ok |
+| `library-catalog` | **FAILS** — `no such table: main.edition` | **FAILS** — `no such table: main.edition` |
+| `board-game-catalog` | **FAILS** — `no such table: main.app_user` | **FAILS** — `FOREIGN KEY constraint failed` |
+
+**Why.** `wrangler d1 export` interleaves `CREATE TABLE` and `INSERT` in table
+order, and that order is not dependency order. When rows are inserted into a
+table whose `FOREIGN KEY` points at a table the dump has not created yet,
+SQLite raises `no such table` (or a plain FK violation) and the import dies
+**partway through, leaving a half-populated database that looks like it
+imported**. On the drill's library-catalog dump it stopped after 5 of 27
+tables; on board-game-catalog after 2 of 18.
+
+⚠️ **`PRAGMA foreign_keys=OFF` does NOT fix this through wrangler** — prepending
+it was tried and both dumps failed identically. D1's API does not honour it.
+The `PRAGMA defer_foreign_keys=TRUE` the dump emits itself does not help
+either: deferring a constraint check cannot conjure a table that does not
+exist yet.
+
+**The fix — reorder the statements. Verified end-to-end on the drill:**
+
+```bash
+node scripts/reorder-d1-dump.mjs ./library-catalog.sql ./library-catalog.ordered.sql
+# -> {"statements":3755,"create_table":26,"inserts":3668,"other_ddl":60}
+```
+
+Every `CREATE TABLE` first, then every `INSERT`, then indexes/triggers/views.
+After reordering, **both** dumps imported clean (`rc=0`) through
+`wrangler d1 execute --local` with **full row counts matching production**
+(library-catalog `work` 351 / `edition` 394 / `copy` 272 / `change_log` 522 /
+`research_finding` 814 / 26 migrations; board-game-catalog `item` 837 /
+`edition` 1067 / `copy` 838 / `game_component` 1454 / `cover_check` 1012 / 27
+migrations — identical to the live counts for that database) and
+`PRAGMA foreign_key_check` returning **zero rows** on both.
+
+⚠️ **One nuance that matters if you inspect a dump outside D1.** Reordering
+fixes the `no such table` error, but the dump still inserts child rows before
+parent rows. D1/miniflare does not enforce foreign keys at insert time, so the
+reordered dump loads clean there. A plain SQLite with FK enforcement ON —
+which includes **`node:sqlite`, whose `DatabaseSync` enables FK constraints by
+default** — will still stop at `FOREIGN KEY constraint failed` (measured on the
+drill: 433 of 3,649 rows loaded for library-catalog). To read a dump in
+`node:sqlite`, pass `{ enableForeignKeyConstraints: false }`; the loaded
+database then passes both `integrity_check` and `foreign_key_check` with zero
+violations, so the ordering is a load-time artefact, not corrupt data.
+
+### 3c. The full D1 restore recipe
+
+```bash
+# 1. fetch (§2) and reorder (§3b)
+node scripts/reorder-d1-dump.mjs ./library-catalog.sql ./library-catalog.ordered.sql
+
+# 2. rehearse locally FIRST — free, instant, and catches a bad dump before it
+#    touches anything real. Any wrangler.toml with a d1 binding of that name:
+npx wrangler d1 execute <local-binding-name> --local --file=./library-catalog.ordered.sql -y
+
+# 3. create a FRESH database — never replay into a populated one
+npx wrangler d1 create library-catalog-restored
+
+# 4. import
+npx wrangler d1 execute library-catalog-restored --remote --file=./library-catalog.ordered.sql -y
+
+# 5. ⚠️ CATCH THE SCHEMA UP — the backup is N migrations behind (§1c)
+npx wrangler d1 migrations apply library-catalog-restored --remote
+#    NOTE: `migrations apply` rejects -y. Do not pass it.
+
+# 6. verify before repointing anything
+npx wrangler d1 execute library-catalog-restored --remote --command \
+  "SELECT count(*) FROM d1_migrations;"
+
+# 7. only then repoint the Worker's database_id, or copy specific rows across
+```
+
+**Step 5 is verified**, on `estate_auth`: the restored 2026-08-16 backup came
+in at 5 migrations / 15 columns on `estate_user`; `migrations apply` ran the
+six outstanding files clean and left it at **11 migrations / 19 columns —
+exactly matching production — with all 12 user rows intact.**
+
+⚠️ **NOT verified by this drill:** step 4 against a real remote D1. Creating a
+remote database is a production-side write, which the drill's charter forbade.
+The statement stream is identical to the `--local` path that was proven, but
+"identical stream, therefore identical result" is an inference, not a
+measurement. **Close this by creating a throwaway `*-restore-drill` D1 once,
+importing, checking counts, and deleting it.**
+
+### 3d. ⚠️ Read before restoring `estate_auth`
+
+**Measured on the drill, and this is not hypothetical:**
+
+| | Backup 2026-08-16 | Live 2026-08-18 |
+|---|---|---|
+| approved | **12** | 11 |
+| revoked | **0** | **1** |
+| approvers | 2 | 2 |
+| devops | 3 | 3 |
+
+The two `estate_user` row counts are both 12, so a count-based check passes —
+and a blind restore of that backup **silently re-approves a member who has
+since been revoked**. `restore` here is a security event, not a data event.
+
+**Before restoring `estate_auth`, always:**
+
+```bash
+# capture the CURRENT revocation/authority state first — it is the thing the
+# restore will overwrite and the thing that exists nowhere else
+npx wrangler d1 execute d94ffe45-4dd0-4dc2-86de-b8c4d649c1cb --remote --command \
+  "SELECT id, status, is_approver, is_devops FROM estate_user ORDER BY id;"
+```
+
+Reapply every `revoked` status and every approver/devops flag by hand
+afterwards. `scripts/seed-estate.mjs` (the third life raft,
+`backup-restore.md` §9) has the same blind spot for the same reason: revocation
+and post-seed authority live in this database and nowhere else.
+
+---
+
+## 4. Firestore
+
+### 4.1 What the backup actually contains — verified
+
+The `20260816T084924Z` tarball unpacks to **57 files** (56 collection JSONs +
+`_summary.json`). Every file's document count matches `_summary.json` exactly,
+every document has the `{id, data}` shape, **1,303 documents across 56
+collection paths, zero mismatches.** 16 root collections (`reviews` 878,
+`readingLists` 234 — of which 66 `tbr` / 168 `read` —, `profiles` 11,
+`leaderboard` 9, `club_seen` 7, `clubs` 3, `users` 3, `site_roles` 2,
+`pipeline_runs` 40, plus the `_dev` twins) and 40 subcollection paths under
+`clubs`/`clubs_dev`.
+
+⚠️ **`readingPositions` and `discord_links` are NOT in it** (§1b). The dump
+walks every root collection via `listCollections()`, so their absence means
+they held no documents at 2026-08-16T08:49Z — `discord_links` provably so, its
+writer landed 2026-08-17. **Whether they hold documents today was NOT verified:
+no Firebase service-account credential exists on this machine.**
+
+### 4.2 ⚠️ THE RESTORE CORRUPTS EVERY TIMESTAMP — fix before `--commit`
+
+`backup-firestore.mjs` writes `JSON.stringify(doc.data())`. A Firestore
+`Timestamp` serialises to a plain object:
+
+```json
+"createdAt": {"_seconds":1782327950,"_nanoseconds":558000000}
+```
+
+`restore-firestore.mjs` hands that parsed object straight to `batch.set()`,
+which writes it back as a **map, not a timestamp**. Proven offline with the
+Firestore SDK's own serializer on the drill (no writes, no network):
+
+```
+encode(real Timestamp)     -> {"timestampValue":{"seconds":"1782327950","nanos":558000000}}
+encode(backup round-trip)  -> {"mapValue":{"fields":{"_seconds":{...},"_nanoseconds":{...}}}}
+```
+
+**Scope: 2,139 timestamp-valued fields across the 56 collections** — every
+`createdAt`, `updatedAt`, `addedAt`. A restore would leave every
+`orderBy('createdAt')`, every date rendering and every timestamp-based rule
+looking at a map. (No `GeoPoint`, `DocumentReference` or `Bytes` values exist
+in the dump — timestamps are the only affected type.)
+
+**Until `restore-firestore.mjs` grows a reviver, revive the values first:**
+
+```bash
+node -e '
+const fs=require("fs"), path=require("path");
+const dir=process.argv[1];
+for (const f of fs.readdirSync(dir)) {
+  if (!f.endsWith(".json") || f==="_summary.json") continue;
+  const p=path.join(dir,f);
+  const revive=v=>{
+    if (v===null||typeof v!=="object") return v;
+    if (Array.isArray(v)) return v.map(revive);
+    const k=Object.keys(v).sort().join(",");
+    if (k==="_nanoseconds,_seconds")
+      return {__ts:true, seconds:v._seconds, nanoseconds:v._nanoseconds};
+    return Object.fromEntries(Object.entries(v).map(([a,b])=>[a,revive(b)]));
+  };
+  console.log(f, "would revive", JSON.stringify(revive(JSON.parse(fs.readFileSync(p,"utf8")))).match(/__ts/g)?.length ?? 0, "timestamps");
+}' <unpacked-dir>
+```
+
+(That prints the count per file so the scope is visible. The real fix belongs
+in `restore-firestore.mjs`: map `{_seconds,_nanoseconds}` →
+`Timestamp.fromMillis(...)` on the way in — logged as a recommendation, not
+applied by the drill.)
+
+### 4.3 The Firestore restore recipe
+
+```bash
+npx wrangler r2 object get "estate-backups/firestore/audiobook-catalog/<STAMP>.tar.gz" \
+  --file ./firestore.tar.gz --remote
+mkdir -p ./restore-work/firestore && tar xzf ./firestore.tar.gz -C ./restore-work/firestore
+
+export FIREBASE_SERVICE_ACCOUNT_JSON="$(cat <path-to-key.json>)"   # NEVER commit this
+
+# dry run — safe, writes nothing, and does not even initialise the SDK
+node scripts/restore-firestore.mjs --dir ./restore-work/firestore
+node scripts/restore-firestore.mjs --dir ./restore-work/firestore --only reviews
+
+# after fixing timestamps (§4.2), narrow to ONE collection and commit
+node scripts/restore-firestore.mjs --dir ./restore-work/firestore --only reviews --commit
+```
+
+**Verified on the drill:** the dry-run path, against the real unpacked dump,
+with a placeholder credential. It listed all 56 targets, decoded every `__`
+back to `/` correctly (`clubs_dev/…/reads/…/progress`), and exited 0 having
+touched nothing — the SDK is only initialised *after* the dry-run exit, so a
+dry run genuinely needs no working credential.
+
+⚠️ **NOT verified, and cannot be:** the `--commit` write path. There is no
+staging Firestore project; the only target is production. `backup-restore.md`
+§5 already said this and it is still true. **A second Firebase project is the
+only way to close it.**
+
+⚠️ `restore-firestore.mjs` **overwrites** each restored document wholesale and
+**never deletes** documents absent from the backup. A targeted restore cannot
+damage collections you did not name.
+
+---
+
+## 5. R2 covers
+
+**Verified on the drill.** All three dumps unpacked and checked against their
+own `manifest.json`: **3,201 objects, 453 MB, zero missing files, zero size
+mismatches** (library-covers 208 / 21.6 MB, game-covers 1,124 / 179.6 MB,
+audiobook-covers 1,869 / 252.1 MB). Then one object per bucket was fetched
+from the **live** bucket and SHA-256'd against the backup's copy — **all three
+matched byte-for-byte.** The dumps are faithful to production, not merely
+internally consistent.
+
+```bash
+npx wrangler r2 object get "estate-backups/r2/library-covers/<STAMP>.tar.gz" \
+  --file ./r2-dump.tar.gz --remote
+mkdir -p ./restore-work/library-covers && tar xzf ./r2-dump.tar.gz -C ./restore-work/library-covers
+
+# one object back:
+npx wrangler r2 object put "library-covers/<key>" \
+  --file ./restore-work/library-covers/objects/<key> --remote -y
+
+# whole bucket back (loops the manifest):
+node -e '
+  const fs=require("fs"); const {execFileSync}=require("child_process");
+  const [dir,bucket]=process.argv.slice(1);
+  const {objects}=JSON.parse(fs.readFileSync(`${dir}/manifest.json`,"utf8"));
+  for (const o of objects)
+    execFileSync("npx",["wrangler","r2","object","put",`${bucket}/${o.key}`,
+      "--file",`${dir}/objects/${o.key}`,"--remote","-y"],{stdio:"inherit"});
+' ./restore-work/library-covers library-covers
+```
+
+⚠️ `--remote` on both `get` and `put`, always. Without it wrangler talks to an
+empty local simulator and reports success.
+
+⚠️ **NOT verified:** the `put` half (it is a production write). Only `get` and
+the byte-level comparison were exercised.
+
+**`audiobook-covers` prefers a different path:** re-run
+`python -m scripts.upload_covers_r2 --force` from `audiobook_catalog/`, which
+uploads from the 243 MB local master — more current than any snapshot. The R2
+dump is the fallback for when that machine is unavailable. `library-covers` and
+`game-covers` have **no local master**; the dump is the only way back.
+
+---
+
+## 6. `index_catalog` — don't restore, re-push
+
+Every row is a pointer copied from one of the three catalogs, and a push
+replaces that source's rows wholesale.
+
+```bash
+curl -s https://library.heygabi.ai/api/health >/dev/null   # nudges library+games backstop
+# audiobook has no backstop timer — push by hand from audiobook_catalog:
+INDEX_URL=https://index.heygabi.ai INDEX_PUSH_TOKEN=<audiobook push token> \
+  python -m app.index_push
+```
+
+The drill measured 2,266 rows in the backup against 2,518 live — a re-push
+closes that gap correctly and instantly, where a restore would install a stale
+index.
+
+---
+
+## 7. Credentials a restore needs
+
+Names and where they live. **No values, ever, in this file or in any log.**
+
+| Need | Name | Where it lives | Verified in the drill |
+|---|---|---|---|
+| Fetch backup objects from `estate-backups` | interactive `wrangler login` OAuth session | `~/.wrangler/config/default.toml` (Windows: `%APPDATA%\xdg.config\.wrangler\config\default.toml`) | **yes** — the whole fetch ran on it |
+| Read live D1 row counts | same OAuth session (`d1` scope) | as above | **yes** |
+| `r2 bucket info` / `kv key list` | same OAuth session | as above | **yes** |
+| Find the backup keys | `gh` login, `repo` scope | `gh auth status` | **yes** |
+| REST `objects` list (backup + retention only, NOT restore) | `CLOUDFLARE_API_TOKEN` | GitHub repo secret on `skymitch9/catalog-platform` | **no** — ⚠️ the OAuth session does NOT cover this endpoint |
+| Any Firestore restore | `FIREBASE_SERVICE_ACCOUNT_JSON` | GitHub repo secret; the same key as `audiobook_catalog/scripts/firebase_service_account.json` | **no — ⚠️ this credential is NOT present on the owner's machine.** Dry runs work without it; a real Firestore restore is blocked until it is re-downloaded from the Firebase console |
+
+⚠️ **That last row is the one that bites at 3am.** A Firestore incident cannot
+be fixed from this machine as it stands; the first step would be a Firebase
+console visit to generate a new private key.
+
+---
+
+## 8. What this drill did NOT verify
+
+Stated plainly so nobody reads a green table as more than it is.
+
+1. **Any remote D1 import.** `--local` only; a remote import is a write.
+2. **Any Firestore `--commit` write.** No non-production Firestore exists.
+3. **Any R2 `put`.** Only `get` and byte comparison.
+4. **Whether `readingPositions` / `discord_links` hold documents today** — no
+   Firebase credential on this machine.
+5. **Cloudflare plan tier**, so the Time Travel window is 7 or 30 days —
+   unknown.
+6. **Restore of the second library instance** (`library-catalog-2nd`) — there
+   is no backup to restore.
+7. **That a restored database actually serves traffic.** Row counts and schema
+   were compared; no Worker was pointed at a restored database.
+8. **`estate-backups` durability itself** — single bucket, single account, and
+   the drill made no off-Cloudflare copy.
+
+---
+
+## 9. Recommendations (drill output — no live backup job was changed)
+
+Ordered by blast radius. None of these were applied.
+
+1. **Add `library-catalog-2nd` to the backup matrix** — `backup.yml`'s `d1`
+   matrix, `prune-r2-backups.mjs`'s prefix arguments, and `backups.ts`'s
+   `KNOWN_BACKUP_PREFIXES` (all three, in one change, as that file's header
+   already warns).
+2. **Fix `restore-firestore.mjs` to revive timestamps** (§4.2). The dump does
+   not need to change — it is lossless, just not self-describing.
+3. **Ship `scripts/reorder-d1-dump.mjs` alongside the backup scripts** and
+   reference it from `backup-restore.md` §4b, whose current "just run
+   `wrangler d1 execute --file`" recipe does not work for two of four
+   databases.
+4. **Give `backup.yml` a cadence.** It is dispatch-only by deliberate design,
+   and the cost of that is measured in §1c: 6 unbacked-up `estate_auth`
+   migrations, +469 `change_log` rows and a whole `ebook_holding` table in
+   under two days. Even a weekly cron would bound it. (If the "no cron touches
+   credentials" objection stands, a calendar reminder is still better than
+   nothing — and `backups.ts` already grades staleness at 14/45 days.)
+5. **Do one throwaway remote-import drill** (§3c) to close the largest
+   unverified step.
+6. **Stand up a second Firebase project** as a Firestore rehearsal target, or
+   accept permanently that the Firestore restore path is untested.
+7. **Get a copy of `estate-backups` off Cloudflare.** Everything protected and
+   everything protecting it live in one account.
+8. **Put a `FIREBASE_SERVICE_ACCOUNT_JSON` key where an incident can reach it**
+   (§7) — today the restore credential exists only as a GitHub secret, which
+   cannot be read back out.
+9. **Add `ebooks-gated`, `estate-docs-gated` and `estate-ebooks` to the `r2`
+   matrix** — the first two are tiny (107 kB / 1.27 MB) and cost nothing;
+   `estate-ebooks` is 1.81 GB and has a local master, so it is a judgement
+   call.
+10. **Add `bgc-photos`, `library-2nd-covers`, `estate-audio` and the
+    `estate_docs` KV the day any of them holds data.** All four are empty
+    today; three of them are already named as future work elsewhere.
+
+---
+
+## 10. Re-running this drill
+
+Everything above is reproducible in a sandbox with no production writes:
+
+```bash
+gh run view <newest-backup-run> --repo skymitch9/catalog-platform --log | grep "Wrote estate-backups"
+npx wrangler r2 object get "estate-backups/<key>" --file ./x --remote      # fetch
+node scripts/reorder-d1-dump.mjs ./x.sql ./x.ordered.sql                   # §3b
+npx wrangler d1 execute <local-binding> --local --file=./x.ordered.sql -y  # sandbox import
+npx wrangler d1 migrations apply <local-binding> --local                   # schema catch-up
+npx wrangler d1 execute <db-id> --remote --command "SELECT count(*) FROM <t>;"  # live read
+npx wrangler r2 bucket info <bucket>                                       # live object count
+```
+
+Update the drill date in this file's header when you do, and re-measure §1c —
+those counts go stale within days.

@@ -233,13 +233,27 @@ bookmark is how you undo it (restore again, to that bookmark).
 
 ### 4b. From a `backup.yml` export (`.sql` file)
 
+⚠️ **THE EXPORT DOES NOT REPLAY AS-IS FOR TWO OF THE FOUR DATABASES.**
+Measured by the restore drill 2026-08-17 in two independent SQLite engines:
+`library-catalog` dies at `no such table: main.edition` (after 5 of 27 tables)
+and `board-game-catalog` at `no such table: main.app_user` (after 2 of 18) —
+`wrangler d1 export` interleaves `CREATE TABLE` with `INSERT` in an order that
+is not dependency order, so the import stops **half-populated while looking
+like it worked**. `estate_auth` and `index_catalog` replay fine, which is
+exactly why nobody noticed. Run `node scripts/reorder-d1-dump.mjs <in> <out>`
+first; **[RECOVERY.md](RECOVERY.md) §3b** has the evidence, the failed
+`PRAGMA foreign_keys=OFF` workaround, and the verified recipe.
+
 For when Time Travel's window has passed, or you want the snapshot in a new
 database rather than overwritten in place:
 
 ```bash
 # Fetch the object from estate-backups first (§3), then:
 npx wrangler r2 object get "estate-backups/d1/library-catalog/20260815T...Z.sql" --file ./library-catalog-restore.sql --remote
-npx wrangler d1 execute <database-id-or-name> --remote --file=./library-catalog-restore.sql
+node scripts/reorder-d1-dump.mjs ./library-catalog-restore.sql ./library-catalog-restore.ordered.sql
+npx wrangler d1 execute <database-id-or-name> --remote --file=./library-catalog-restore.ordered.sql
+# then catch the schema up — a backup is N migrations behind by definition:
+npx wrangler d1 migrations apply <database-name> --remote     # NB: rejects -y
 ```
 
 ⚠️ This runs the exported `CREATE TABLE` + `INSERT` statements against a live
@@ -283,6 +297,14 @@ in the backup. A targeted restore of one collection cannot destroy data
 outside that collection, and restoring `reviews` today does not remove a
 review written after the backup was taken unless that review's own document
 ID happens to collide with a restored one.
+
+⚠️ **AND IT CORRUPTS EVERY TIMESTAMP.** `backup-firestore.mjs` JSON-serialises
+a Firestore `Timestamp` to `{"_seconds":…,"_nanoseconds":…}`, and this script
+hands that plain object to `batch.set()`, which writes it back as a **map, not
+a timestamp**. Proven offline with the Firestore SDK's own serializer on the
+2026-08-17 restore drill; scope is **2,139 timestamp-valued fields across all
+56 collections** — every `createdAt`/`updatedAt`/`addedAt`. Revive them before
+`--commit`; **[RECOVERY.md](RECOVERY.md) §4.2** has the proof and the reviver.
 
 **Not live-tested tonight, stated plainly:** the dry-run path (argument
 parsing, path decoding, listing what would be touched) was run against the
@@ -437,5 +459,7 @@ else. Note who currently holds either before relying on this path.
 | `scripts/restore-firestore.mjs` | The Firestore restore tool §5 uses |
 | `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before |
 | `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite) |
+| `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported |
 | `scripts/seed-estate.mjs` | `estate_auth`'s independent rebuild path, §9 |
+| `docs/access/RECOVERY.md` | The drill-verified 3am runbook: per-store commands with measured times, the live stores with NO backup (`library-catalog-2nd`, `discord_links`, `readingPositions`, four R2 buckets, one KV), and an explicit NOT-verified list |
 | `docs/access/index-worker.md` (in `library_catalog`) | The push protocol §7 restores by re-triggering |
