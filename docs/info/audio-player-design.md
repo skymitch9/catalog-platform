@@ -950,9 +950,16 @@ this order, with an answer before the next is shown.
 4. ✅ **DECIDED 2026-08-17 — `chapters.json` stays public** ("fine as is").
    46,659 chapter titles remain on the public site as today; the player reads
    the same file the clubs do. Only the AUDIO BYTES are gated.
-5. **Signed URLs — ever?** §3.4 recommends never, quoting `ebook-file.ts`'s own
-   law. If the service-worker seam proves untenable on iOS, the fallback in this
-   design is a **cookie**, not a signed URL — confirm that is the right ordering.
+5. ✅ **DECIDED 2026-08-17 — signed URLs never; cookie is the only fallback**
+   ("5 yyes do it as you suggest"). §3.4's ordering is confirmed owner
+   policy: service-worker bearer injection first, session cookie if that
+   seam proves untenable on iOS, a signed URL under no circumstances — the
+   same law `ebook-file.ts` states. Same message also ratified the eviction
+   tunings above (30-day idle + mid-book shield, delete-on-stale) and added
+   a horizon note: *"in the future we can utilize device storage and make a
+   proper app store app but for now lets use bucket storage"* — a native
+   app with real device storage is a someday-item, not this design; R2
+   streaming + the opaque PWA cache is the current architecture.
 6. **How far to go for iOS?** Given §4.1, is a "works properly in Safari, not
    as an installed app on iPhone" answer acceptable, or does that change the
    priority of the whole feature?
