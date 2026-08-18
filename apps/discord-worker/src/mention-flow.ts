@@ -164,13 +164,20 @@ import {
 } from './suggest.js';
 import { gatherSuggestions, suggestGate } from './suggest-flow.js';
 import {
+  SHELF_DELIVER_NOTE,
   SHELF_MSG,
+  SHELF_NO_INTERVIEW_NOTE,
+  SHELF_SOFT_CLAIM_NOTE,
   shelfFollowUp,
   shelfIdentityMessage,
   shelfLaneIntent,
   shelfPublicIntent,
+  UNREAD_NOTE,
+  unreadAsk,
+  type ShelfAsker,
   type ShelfPort,
 } from './shelf.js';
+import { gatherNotReviewed, renderNotReviewed } from './shelf-flow.js';
 import {
   runDelegated,
   resumeDelegated,
@@ -1068,19 +1075,61 @@ async function personalShelfAnswer(
   // ⚠️ **BUT NOT FOR THE PUBLIC HALF.** A question about what somebody ELSE
   // said is answered from public site content, so it never reads the link
   // document at all — the same property `tool-exec.ts` gives `book_reviews`.
+  let asker: ShelfAsker | null = null;
   if (!shelfPublicIntent(question)) {
-    const asker = await shelfCtx.port.asker(shelfCtx.discordUserId);
-    if (!asker.ok) return done(shelfIdentityMessage(asker.reason));
+    const resolved = await shelfCtx.port.asker(shelfCtx.discordUserId);
+    if (!resolved.ok) return done(shelfIdentityMessage(resolved.reason));
+    asker = resolved.asker;
+  }
+
+  // ── ⚠️ THE NOT-REVIEWED ARITHMETIC, DONE BEFORE THE MODEL IS CONSULTED ────
+  //
+  // The 16:25 defect: the lane WAS entered, the tools WERE in front of her, and
+  // she asked the owner "have you worked through Stormlight and Mistborn?" — a
+  // question `my_reviews` answers exactly. ⚠️ **ENTERING THE LANE IS NOT CALLING
+  // THE TOOL**, which is the morning's lesson one layer deeper.
+  //
+  // ⚠️ The fix is NOT a sterner instruction. "You must call the tool" is the same
+  // category of hope as "be honest". So the arithmetic runs HERE — the move that
+  // makes the suggestion lane un-interviewable — and she is handed the finished
+  // result, leaving nothing to interview anybody about.
+  let unreadGrounding: string | null = null;
+  const ask = unreadAsk(question);
+  if (ask && asker) {
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
+      ask,
+      port: shelfCtx.port,
+      asker,
+      ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
+    });
+    // ⚠️ `null` means the CATALOGUE could not be read, and without it there is no
+    // answer. It falls through to the ordinary tool turn rather than inventing
+    // one — the tools may still succeed where this did not.
+    if (worked) {
+      unreadGrounding = [
+        renderNotReviewed(worked),
+        UNREAD_NOTE,
+        SHELF_DELIVER_NOTE,
+        SHELF_NO_INTERVIEW_NOTE,
+        SHELF_SOFT_CLAIM_NOTE,
+      ].join('\n');
+    }
   }
 
   const spoken = await converseWithTools(
     cfg.anthropicKey,
     question,
-    // ⚠️ NO PUBLIC-SHELF GROUNDING, and here that is not merely a saving — the
-    // grounding IS the bug this router fixes. Handing the model "nothing on the
-    // public shelf matches *not read by Sanderson*" and asking it to answer a
-    // question about somebody's own reading is how the miss got said out loud.
-    null,
+    // ⚠️ NO PUBLIC-SHELF GROUNDING — that grounding IS the 15:40 bug. Handing the
+    // model "nothing on the public shelf matches *not read by Sanderson*" and
+    // asking it to answer a question about somebody's own reading is how that
+    // miss got said out loud.
+    //
+    // ⚠️ What CAN be here is the finished not-reviewed arithmetic with its
+    // delivery shape. On every OTHER shelf question the anti-interview rule still
+    // rides alone, because the ask-instead-of-deliver move is available on all of
+    // them — it was merely most tempting on the biggest one.
+    unreadGrounding ?? SHELF_NO_INTERVIEW_NOTE,
     who,
     // ⚠️ SHELF + the Tier-0 catalogue (which `toolsForApi` always returns), and
     // deliberately neither docs nor book text: "what have I not got to by

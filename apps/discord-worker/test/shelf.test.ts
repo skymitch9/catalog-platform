@@ -23,6 +23,9 @@ import {
   shelfLaneIntent,
   shelfOn,
   shelfPublicIntent,
+  SHELF_DELIVER_NOTE,
+  SHELF_NO_INTERVIEW_NOTE,
+  unreadAsk,
   UNREAD_NOTE,
   type ShelfPort,
 } from '../src/shelf.js';
@@ -34,6 +37,13 @@ import {
   toolsForApi,
 } from '../src/gabi-tools.js';
 import { runTool } from '../src/tool-exec.js';
+import {
+  gatherNotReviewed,
+  renderNotReviewed,
+  NOT_REVIEWED_GROUPS,
+  STANDALONE_GROUP,
+} from '../src/shelf-flow.js';
+import { resetCatalogCache } from '../src/catalog-data.js';
 
 function repoFile(relative: string): string {
   return readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url).href), 'utf8');
@@ -41,6 +51,19 @@ function repoFile(relative: string): string {
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 const ASKER = { uid: 'u-1', displayName: 'Sky' };
+
+/** ⚠️ A catalogue row fixture for the 16:25 regression below. Kept local: the
+ *  suite's other sections test the TOOLS, which take rows from the executor. */
+function row(over: { title: string; series?: string; author?: string; narrator?: string }): {
+  title: string; series: string; author: string; narrator: string;
+} {
+  return {
+    series: '',
+    author: 'Brandon Sanderson',
+    narrator: 'Michael Kramer',
+    ...over,
+  };
+}
 
 function port(over: Partial<ShelfPort> = {}): ShelfPort {
   return {
@@ -477,5 +500,224 @@ describe('⚠️ the shelf lane is REACHABLE — the routing regression', () => 
     assert.match(flow, /if \(shelfLaneIntent\(question\)\)/, 'the shelf pre-router is not wired');
     assert.match(flow, /shelfFollowUp\(question, history\)/, 'the shelf follow-up is not wired');
     assert.match(flow, /personalShelfAnswer/, 'the shelf lane has no answer function');
+  });
+});
+
+// ── 8. ⚠️ THE 16:25 DEFECT — she INTERVIEWED instead of delivering ────────
+
+/**
+ * ⚠️ **THE SECOND LIVE FAILURE OF THE SAME QUESTION, and the transcript is
+ * again the test.** 2026-08-18 16:25, after the routing fix shipped and worked:
+ *
+ * > **User:** `What have I not read by Sanderson`
+ * > **GABI:** *"We've got 38 Sanderson audiobooks on the shelf. But I'm going to
+ * > need a bit more from you — have you worked through The Stormlight Archive
+ * > and Mistborn series? Because that's a lot of books and I'd rather not just
+ * > rattle off a wall of titles. What's the Cosmere stuff you have tackled?"*
+ *
+ * ⚠️ **The evidence no shelf tool ran is inside the sentence**: "38 Sanderson
+ * audiobooks" is a CATALOGUE count, there is no "you have reviewed N" fact, and
+ * every question she asked is one `my_reviews` answers exactly.
+ *
+ * | | The miss | The lesson |
+ * |---|---|---|
+ * | 15:40 | the lane was never entered | offering a tool is not routing to it |
+ * | 16:25 | the lane was entered, the tool was never called | ⚠️ **entering the lane is not calling the tool** |
+ *
+ * The fix is not a sterner prompt — it is doing the arithmetic BEFORE the model
+ * is consulted, so there is nothing left to interview anybody about.
+ */
+describe('⚠️ the ask-instead-of-deliver defect', () => {
+  const rows = [
+    row({ title: 'The Way of Kings', series: 'The Stormlight Archive' }),
+    row({ title: 'Words of Radiance', series: 'The Stormlight Archive' }),
+    row({ title: 'Oathbringer', series: 'The Stormlight Archive' }),
+    row({ title: 'Rhythm of War', series: 'The Stormlight Archive' }),
+    row({ title: 'Mistborn', series: 'Mistborn' }),
+    row({ title: 'The Well of Ascension', series: 'Mistborn' }),
+    row({ title: 'Elantris', series: '' }),
+  ];
+
+  function shelfPort(reviewed: string[], ok = true) {
+    return {
+      asker: async () => ({ ok: true as const, asker: ASKER }),
+      myTbr: async () => ({ ok: true, rows: [], total: 0 }),
+      myReviews: async () =>
+        ok
+          ? {
+              ok: true,
+              rows: reviewed.map((bookId) => ({ bookId, displayName: 'Sky', rating: 5 })),
+              total: reviewed.length,
+            }
+          : { ok: false, rows: [], total: 0, message: 'down' },
+      bookReviews: async () => ({ ok: true, rows: [], total: 0 }),
+    } as unknown as ShelfPort;
+  }
+
+  const catalogFetch = async (): Promise<Response> =>
+    new Response(
+      'title,series,series_index_display,series_index_sort,author,narrator,year,genre,duration_hhmm,cover_href,companion_files,desc,library_work_id,library_formats,universe,series_gap\n' +
+        rows
+          .map((r) => `"${r.title}","${r.series}",,,"${r.author}","${r.narrator}",,,,,,,,,,`)
+          .join('\n'),
+      { status: 200, headers: { 'content-type': 'text/csv' } },
+    );
+
+  it('⚠️ THE ASK IS DETECTED — the owner\'s exact live line', () => {
+    const ask = unreadAsk('What have I not read by Sanderson');
+    assert.ok(ask, 'the live line no longer produces a not-reviewed ask');
+    assert.equal(ask.author, 'Sanderson');
+  });
+
+  it('⚠️ A MISSING SUBJECT IS NOT A REASON TO ASK', () => {
+    // "what have I not read" with no author is the case most likely to produce
+    // an interview, because the honest full answer is enormous. It is answered
+    // anyway — led by the series they have actually started.
+    const ask = unreadAsk("what haven't I read");
+    assert.ok(ask, 'a subject-less ask must still be answered');
+    assert.equal(ask.author, undefined);
+    assert.equal(ask.series, undefined);
+  });
+
+  it('a series can be named instead of an author', () => {
+    assert.equal(unreadAsk('what have I not read in the Mistborn series')?.series, 'Mistborn');
+  });
+
+  it('⚠️ THE ARITHMETIC IS DONE, not asked about', async () => {
+    resetCatalogCache();
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: 'https://example.test',
+      ask: { author: 'Sanderson' },
+      port: shelfPort(['the-way-of-kings', 'mistborn']),
+      asker: ASKER,
+      fetchOverride: catalogFetch as unknown as typeof fetch,
+    });
+    assert.ok(worked);
+    assert.equal(worked.owned, 7);
+    assert.equal(worked.reviewedHere, 2);
+    assert.equal(worked.notReviewed, 5);
+  });
+
+  it('⚠️ THE ANSWER SHE COULD NOT GIVE IS NOW IN FRONT OF HER', async () => {
+    resetCatalogCache();
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: 'https://example.test',
+      ask: { author: 'Sanderson' },
+      port: shelfPort(['the-way-of-kings', 'mistborn']),
+      asker: ASKER,
+      fetchOverride: catalogFetch as unknown as typeof fetch,
+    });
+    const rendered = renderNotReviewed(worked!);
+    // The two questions she ASKED are the two facts the grounding now states.
+    assert.match(rendered, /Stormlight Archive.*3 of 4 not reviewed/);
+    assert.match(rendered, /Mistborn.*1 of 2 not reviewed/);
+    // ⚠️ AND WHAT THEY DID REVIEW — the proof she looked, and the fact they
+    // cannot get anywhere else.
+    assert.match(rendered, /they reviewed: The Way of Kings/);
+    // ⚠️ STARTED series lead, because that is what the asker most likely meant
+    // and exactly what she tried to extract by interviewing.
+    assert.match(rendered, /STARTED — lead with this one/);
+    const stormlight = rendered.indexOf('The Stormlight Archive');
+    const standalone = rendered.indexOf(STANDALONE_GROUP);
+    assert.ok(stormlight > 0 && standalone > 0 && stormlight < standalone,
+      'an unstarted group was listed above a started one');
+  });
+
+  it('⚠️ IT IS GROUPED, NOT A WALL — her instinct was HALF right', () => {
+    // She balked at "a wall of titles" and she was right to; the half she got
+    // wrong was concluding the alternative was a question.
+    assert.match(SHELF_DELIVER_NOTE, /group by SERIES with counts/i);
+    assert.match(SHELF_DELIVER_NOTE, /LEAD with the series they have actually started/i);
+    assert.match(SHELF_DELIVER_NOTE, /offer the full list/i);
+    // ⚠️ And a refining question is welcome only AFTER a real answer.
+    assert.match(SHELF_DELIVER_NOTE, /only THEN.*ask ONE refining question/i);
+  });
+
+  it('⚠️ THE ANTI-INTERVIEW RULE IS EXPLICIT, and rides EVERY shelf answer', () => {
+    assert.match(SHELF_NO_INTERVIEW_NOTE, /DELIVER FIRST, ASK SECOND/);
+    assert.match(SHELF_NO_INTERVIEW_NOTE, /NEVER open by asking them/i);
+    // ⚠️ The exact wrong move, named: too big is a reason to SUMMARISE.
+    assert.match(SHELF_NO_INTERVIEW_NOTE, /reason to SUMMARISE it, not a reason to interview/i);
+    // It is not only on the not-read lane — the flow passes it as the floor.
+    const flow = repoFile('src/mention-flow.ts');
+    assert.match(flow, /unreadGrounding \?\? SHELF_NO_INTERVIEW_NOTE/);
+  });
+
+  it('⚠️ THE HONESTY LABEL SURVIVES INTO THIS ANSWER SHAPE', async () => {
+    resetCatalogCache();
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: 'https://example.test',
+      ask: { author: 'Sanderson' },
+      port: shelfPort(['the-way-of-kings']),
+      asker: ASKER,
+      fetchOverride: catalogFetch as unknown as typeof fetch,
+    });
+    const rendered = renderNotReviewed(worked!);
+    // She used "read" and "tackled" in the defect. The grounding says NOT
+    // REVIEWED everywhere and never uses the word unread.
+    assert.match(rendered, /NOT REVIEWED \(this is the answer\)/);
+    assert.doesNotMatch(rendered, /\bunread\b/i);
+    assert.doesNotMatch(rendered, /\bbacklog\b/i);
+    // And the note that forbids the swap rides with it.
+    assert.match(UNREAD_NOTE, /NOT the same as books you have not read/i);
+  });
+
+  it('⚠️ A FAILED REVIEWS READ IS SAID, NOT PRESENTED AS PERSONAL', async () => {
+    resetCatalogCache();
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: 'https://example.test',
+      ask: { author: 'Sanderson' },
+      port: shelfPort([], false),
+      asker: ASKER,
+      fetchOverride: catalogFetch as unknown as typeof fetch,
+    });
+    assert.equal(worked?.reviewsUnavailable, true);
+    const rendered = renderNotReviewed(worked!);
+    assert.match(rendered, /COULD NOT BE READ THIS TURN/);
+    assert.match(rendered, /NOT personal to them/);
+  });
+
+  it('⚠️ NOTHING LEFT is "you have REVIEWED all of them", never "read"', async () => {
+    resetCatalogCache();
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: 'https://example.test',
+      ask: { author: 'Sanderson' },
+      port: shelfPort([
+        'the-way-of-kings', 'words-of-radiance', 'oathbringer', 'rhythm-of-war',
+        'mistborn', 'the-well-of-ascension', 'elantris',
+      ]),
+      asker: ASKER,
+      fetchOverride: catalogFetch as unknown as typeof fetch,
+    });
+    assert.equal(worked?.notReviewed, 0);
+    const rendered = renderNotReviewed(worked!);
+    assert.match(rendered, /reviewed all of them/i);
+    assert.match(rendered, /never as "you have read all of them"/i);
+  });
+
+  it('⚠️ A TRUNCATED GROUPING SAYS HOW MANY IT HID', () => {
+    const groups = Array.from({ length: NOT_REVIEWED_GROUPS + 3 }, (_, i) => ({
+      series: `Series ${i}`,
+      owned: 2,
+      notReviewed: 2,
+      reviewedTitles: [],
+      notReviewedTitles: ['a', 'b'],
+      started: false,
+    }));
+    const rendered = renderNotReviewed({
+      subject: 'X', field: 'author', owned: 22, reviewedHere: 0, notReviewed: 22,
+      groups, reviewsTotal: 0, reviewsUnavailable: false,
+    });
+    assert.match(rendered, /and 3 more series/);
+    assert.match(rendered, /rather than implying this is all of them/);
+  });
+
+  it('⚠️ the arithmetic is WIRED into the lane, ahead of the model call', () => {
+    const flow = repoFile('src/mention-flow.ts');
+    const lane = flow.slice(flow.indexOf('async function personalShelfAnswer'));
+    const gather = lane.indexOf('await gatherNotReviewed(');
+    const converse = lane.indexOf('await converseWithTools(');
+    assert.ok(gather > 0, 'the not-reviewed arithmetic is not wired');
+    assert.ok(gather < converse, 'the model is consulted before the arithmetic runs');
   });
 });

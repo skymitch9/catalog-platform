@@ -162,6 +162,103 @@ export function shelfLaneIntent(text: string): boolean {
   return shelfIntent(text) || shelfPublicIntent(text);
 }
 
+// ---------------------------------------------------------------------------
+// ⚠️ THE NOT-REVIEWED ASK — entering the lane is not the same as CALLING a tool
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE SECOND LIVE FAILURE OF THE SAME QUESTION — 2026-08-18, 16:25.**
+ *
+ * The pre-router fix landed and worked: she engaged the question instead of
+ * searching the public catalogue. And the answer was still wrong, in a new way:
+ *
+ * > **User:** `What have I not read by Sanderson`
+ * > **GABI:** *"We've got 38 Sanderson audiobooks on the shelf. But I'm going to
+ * > need a bit more from you — have you worked through The Stormlight Archive and
+ * > Mistborn series? Because that's a lot of books and I'd rather not just rattle
+ * > off a wall of titles. What's the Cosmere stuff you have tackled?"*
+ *
+ * ⚠️ **SHE INTERVIEWED THE ASKER FOR DATA HER OWN TOOLS ALREADY HELD**, and the
+ * evidence that no shelf tool ran is inside the sentence: "38 Sanderson
+ * audiobooks" is a CATALOGUE count, there is no *"you have reviewed N of them"*
+ * fact anywhere in it, and every question she asked — *"have you worked through
+ * Stormlight?"* — is one `my_reviews` answers exactly.
+ *
+ * ## ⚠️ THE LESSON, ONE LAYER DEEPER THAN THE MORNING'S
+ *
+ * | | The miss | The lesson |
+ * |---|---|---|
+ * | 15:40 | the lane was never entered | **offering a tool is not routing to it** |
+ * | 16:25 | the lane was entered, the tool was never called | ⚠️ **ENTERING THE LANE IS NOT CALLING THE TOOL** |
+ *
+ * A model handed tools and a large question will sometimes ask the person
+ * instead, because it is the cheapest move available to it. That is the
+ * **ask-instead-of-deliver** class, and it is a cousin of the permission turn the
+ * book lane retired in §10e: both replace an answer she could give with a
+ * question she does not need to ask.
+ *
+ * ## ⚠️ AND THE FIX IS NOT A STERNER PROMPT
+ *
+ * *"You must call the tool"* is the same category of hope as *"be honest"*, and
+ * this file's own header says why that is not enough. So the arithmetic is
+ * **done before the model is consulted**, exactly as the suggestion lane composes
+ * its candidates: she is handed the finished result — owned-by-subject, minus
+ * reviewed-by-asker, grouped by series — and there is then nothing left to
+ * interview anybody about.
+ *
+ * ⚠️ Her wall-of-titles instinct was **HALF RIGHT, and that half is kept**: the
+ * delivery shape is a grouped summary with counts, not thirty-eight titles. See
+ * `SHELF_DELIVER_NOTE`.
+ */
+export interface UnreadAsk {
+  /** The author named after "by", if any. */
+  author?: string;
+  /** The series named, if any. */
+  series?: string;
+}
+
+/** ⚠️ The shapes meaning *"what have I not got to"* — a superset of `my_unread`'s
+ *  own prescribed lines, because the tool is no longer what decides whether the
+ *  arithmetic happens. */
+const UNREAD_SHAPES = [
+  /\bwhat\s+(?:have|has)\s+i\s+not\s+(?:read|reviewed|got(?:ten)?\s+to|finished)\b/i,
+  /\bwhat\s+haven[’']?t\s+i\s+(?:read|reviewed|got(?:ten)?\s+(?:round\s+)?to|finished)\b/i,
+  /\bwhat\s+i\s+(?:have\s+)?not\s+(?:read|reviewed)\b/i,
+  /\bwhat[’']?s?\s+left\s+(?:for me\s+)?to\s+read\b/i,
+  /\bwhat\s+else\s+(?:is\s+there|have\s+we\s+got|do\s+we\s+have)\s+by\b/i,
+  /\bwhat\s+have\s+i\s+(?:still\s+)?got\s+(?:left\s+)?to\s+read\b/i,
+];
+
+/**
+ * ⚠️ **THE SUBJECT, EXTRACTED — and a MISSING one is NOT a reason to ask.**
+ *
+ * *"What have I not read"* with no author named is the case most likely to
+ * produce an interview, because the honest full answer is enormous. It is
+ * answered anyway: the grouping leads with the series they have actually
+ * STARTED, which is both the most useful slice and precisely the thing she was
+ * trying to extract by asking.
+ */
+export function unreadAsk(text: string): UnreadAsk | null {
+  const q = (text ?? '').trim();
+  if (!q) return null;
+  if (!UNREAD_SHAPES.some((re) => re.test(q))) return null;
+
+  const out: UnreadAsk = {};
+  // ⚠️ Everything after "by", to the end or the next clause boundary, TAKEN AS
+  // TYPED. `searchCatalog` folds and scores, so "sanderson", "Brandon Sanderson"
+  // and a near-miss spelling are its problem rather than this regex's — and a
+  // stricter pattern here would simply lose the askers who cannot spell it.
+  const author = q.match(/\bby\s+([^?,.;!]{2,60})/i);
+  if (author?.[1]) out.author = author[1].trim();
+
+  const series =
+    q.match(/\bin\s+(?:the\s+)?([^?,.;!]{2,60}?)\s+series\b/i) ??
+    q.match(/\bfrom\s+(?:the\s+)?([^?,.;!]{2,60})$/i);
+  if (!out.author && series?.[1]) out.series = series[1].trim();
+
+  return out;
+}
+
 /**
  * Is this short message a continuation of a shelf conversation?
  *
@@ -434,6 +531,42 @@ export const UNREAD_NOTE =
   'give the number: call it "not reviewed", never "unread", and never imply the count is a reading ' +
   'backlog. If a row says read_state it came from an explicit human-set read state on the library ' +
   'side and that one IS real.';
+
+/**
+ * ⚠️ **THE ANTI-INTERVIEW RULE — the 16:25 defect, written where the model will
+ * meet it.**
+ *
+ * She opened a not-read answer by asking the person *"have you worked through
+ * Stormlight?"* — a question `my_reviews` answers. Asking somebody for data you
+ * already hold is not thoroughness; it is the cheapest move available to a model
+ * facing a large question, and it costs the person the answer they asked for.
+ *
+ * ⚠️ It rides EVERY shelf answer, not just the not-read one, because the same
+ * move is available on every question this lane takes.
+ */
+export const SHELF_NO_INTERVIEW_NOTE =
+  '⚠️ DELIVER FIRST, ASK SECOND — NEVER THE OTHER WAY ROUND. Everything about this person\'s shelf ' +
+  'that you need is either in the result above or one tool call away, so NEVER open by asking them ' +
+  'what they have read, reviewed, started or finished. If a question feels too big to answer, that ' +
+  'is a reason to SUMMARISE it, not a reason to interview them. One refining question AFTER a real ' +
+  'answer is welcome; a question INSTEAD of one is the failure this note exists to stop.';
+
+/**
+ * ⚠️ **THE DELIVERY SHAPE FOR A BIG LIST**, and it exists because her instinct
+ * was **half right**: she balked at "a wall of titles", and thirty-eight titles
+ * in a Discord message genuinely is one. The half she got wrong was concluding
+ * that the alternative was to ask.
+ *
+ * The alternative is to **group and count**, which is shorter than the wall AND
+ * more useful than the interview.
+ */
+export const SHELF_DELIVER_NOTE =
+  '⚠️ HOW TO DELIVER THIS: group by SERIES with counts rather than listing every title — ' +
+  '"Stormlight: 4 of 5 not reviewed (you reviewed The Way of Kings)" beats thirty-eight titles and ' +
+  'beats a question. LEAD with the series they have actually started, because that is what they ' +
+  'most likely meant. Name what they HAVE reviewed as you go: it is the proof you looked, and it is ' +
+  'the fact they cannot get anywhere else. Then offer the full list — say you can reel off the rest ' +
+  'if they want it — and only THEN, if it is genuinely useful, ask ONE refining question.';
 
 /** ⚠️ Said whenever a suggestion or a count could be mistaken for a fact about
  *  what somebody has finished. */
