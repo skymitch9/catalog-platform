@@ -130,6 +130,11 @@ import { booksCapDecision, booksOn } from './book-knowledge.js';
 import { makeBooksPort } from './book-knowledge-exec.js';
 import { memoryOn } from './memory.js';
 import { makeMemoryPort } from './memory-exec.js';
+import {
+  distillConversation,
+  DISTILL_GIVE_UP_MS,
+  DISTILL_MAX_PER_SWEEP,
+} from './memory-distill.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -290,14 +295,33 @@ export class GabiGateway {
     // WEBSOCKET as a side effect of somebody pressing a button, which is both
     // surprising and, on a free plan at 83% of the duration cap, expensive.
     // They read and write storage and touch the socket not at all.
+    //
+    // ⚠️ **`/conv/dcount` AND `/conv/bcount` WERE MISSING FROM THIS LIST**, found
+    // 2026-08-18 while wiring tier 2. `conversationDoor` has handled both for a
+    // while, but `fetch` never routed them here — so they fell through to the
+    // `/start` poke below, which means: (a) on the component/modal lane the DOCS
+    // and BOOK daily fuses were never incremented and therefore never capped,
+    // and (b) charging a fuse could OPEN A GATEWAY WEBSOCKET, which is the exact
+    // side effect the paragraph above exists to prevent. The gateway's own lane
+    // was unaffected — it calls `this.recordDocsTurn(...)` directly rather than
+    // over HTTP — which is why nothing looked wrong.
     if (
       path === '/conv/load' ||
       path === '/conv/save' ||
       path === '/conv/count' ||
-      path === '/conv/wcount'
+      path === '/conv/wcount' ||
+      path === '/conv/dcount' ||
+      path === '/conv/bcount'
     ) {
       return this.conversationDoor(path, request);
     }
+
+    // ⚠️ TIER 2. The distillation sweep — its own path, and NOT part of the
+    // conversation door, because it carries no conversation key: it goes looking
+    // for whichever conversations have gone quiet. Like the door above it must
+    // sit ahead of the `/start` fallthrough, or the cron's sweep would open a
+    // socket every two minutes as a side effect.
+    if (path === '/conv/sweep') return Response.json(await this.distillSweep());
 
     if (path === '/status') return Response.json(await this.status());
 
@@ -401,7 +425,20 @@ export class GabiGateway {
     if (stored && !pruned) {
       // Aged out. DELETED, not archived — the estate keeps half an hour of what
       // somebody said to a librarian and then it is gone.
-      await this.state.storage.delete(sk);
+      //
+      // ⚠️ **UNLESS MEMORY IS ON, IN WHICH CASE THE SWEEP OWNS THE DELETION.**
+      // Found while building tier 2: this read path deletes an expired record,
+      // so somebody returning at 30m01s would destroy the conversation before
+      // the cron had distilled it — silently, and precisely for the person who
+      // came back, which is the one the profile is for. Distilling HERE instead
+      // was rejected in the design: it puts a model call on the critical path of
+      // a reply somebody is waiting for. So the record simply stays, the sweep
+      // collects it within two minutes, and `DISTILL_GIVE_UP_MS` stops it
+      // lingering for ever if it can never be distilled.
+      //
+      // ⚠️ Either way this returns NO TURNS, so what the person experiences is
+      // identical: the conversation is over.
+      if (!memoryOn(this.env)) await this.state.storage.delete(sk);
       return { turns: [], pending: null };
     }
     return { turns: pruned?.turns ?? [], pending: pruned?.pending ?? null };
@@ -430,6 +467,81 @@ export class GabiGateway {
       return;
     }
     await this.state.storage.put(sk, next);
+  }
+
+  /**
+   * ⚠️ **THE DISTILLATION SWEEP — tier 2's trigger** (design §2).
+   *
+   * The cron pokes this every two minutes. It finds conversations that have gone
+   * quiet, distils each into that person's standing profile, and only THEN
+   * deletes the record.
+   *
+   * ⚠️ **The order is the safety property**: read → distil → write → delete. A
+   * record deleted before the profile write lands is a conversation lost
+   * silently, so every failure leaves the record for the next sweep.
+   *
+   * ⚠️ **Bounded twice.** `DISTILL_MAX_PER_SWEEP` stops one pass holding this
+   * object — whose actual job is a WebSocket — busy draining a backlog.
+   * `DISTILL_GIVE_UP_MS` stops a record that can NEVER be distilled from
+   * consuming every sweep's allowance for ever and silently stalling the whole
+   * feature.
+   *
+   * ⚠️ With the posture off it does nothing at all and costs nothing.
+   */
+  private async distillSweep(): Promise<{ ok: boolean; considered: number; distilled: number; gaveUp: number }> {
+    const out = { ok: true, considered: 0, distilled: 0, gaveUp: 0 };
+    if (!memoryOn(this.env)) return out;
+    const port = makeMemoryPort(this.env);
+    if (!port) return out;
+
+    const now = Date.now();
+    const all = await this.state.storage.list<ConversationRecord>({ prefix: 'conv:', limit: 1000 });
+
+    for (const [sk, record] of all) {
+      if (out.distilled >= DISTILL_MAX_PER_SWEEP) break;
+      const updatedAt = typeof record?.updatedAt === 'number' ? record.updatedAt : 0;
+      const age = now - updatedAt;
+      // Still live — tier 1 owns it and it is none of this sweep's business.
+      if (age <= CONVERSATION_WINDOW_MS) continue;
+      out.considered += 1;
+
+      // ⚠️ Repeatedly undistillable. Deleted UNDISTILLED and said out loud: a
+      // silent stall is the failure mode this bound exists to make impossible.
+      if (age > CONVERSATION_WINDOW_MS + DISTILL_GIVE_UP_MS) {
+        await this.state.storage.delete(sk);
+        out.gaveUp += 1;
+        console.error(
+          `GABI memory: gave up distilling a conversation after ${Math.round(age / 3600000)}h and deleted it.`,
+        );
+        continue;
+      }
+
+      const person = record?.key?.person ?? '';
+      if (!person) {
+        await this.state.storage.delete(sk);
+        continue;
+      }
+
+      const result = await distillConversation(
+        this.env.ANTHROPIC_API_KEY_GABI,
+        port,
+        { discordUserId: person },
+        record.turns ?? [],
+      );
+      if (result.written) {
+        // ⚠️ ONLY NOW. The profile is durable, so the conversation may go.
+        await this.state.storage.delete(sk);
+        out.distilled += 1;
+      } else if (result.why === 'nothing_said') {
+        // Nothing was ever going to come of it — a greeting and no question.
+        // Deleting is correct and costs no model call next time.
+        await this.state.storage.delete(sk);
+      } else {
+        // ⚠️ KEPT. The next sweep tries again.
+        out.ok = false;
+      }
+    }
+    return out;
   }
 
   /** The store, as `mention-flow.ts` wants it — bound to one key. */

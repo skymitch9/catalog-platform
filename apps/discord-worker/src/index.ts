@@ -994,6 +994,29 @@ async function scheduled(_event: ScheduledController, env: Env, ctx: ExecutionCo
       .then(() => undefined)
       .catch((err) => console.error('GABI gateway poke failed:', err instanceof Error ? err.message : err)),
   );
+
+  // ⚠️ **TIER 2's TRIGGER, and the reason this cron gained a second job**
+  // (docs/info/gabi-memory-design.md §2). There is no expiry EVENT in the
+  // conversation store — the 30-minute window is applied lazily on the next
+  // read — so "distil it when the conversation goes quiet" had nothing to hang
+  // off. This is that hook: a sweep every two minutes, worst-case staleness two
+  // minutes, and no new scheduling infrastructure.
+  //
+  // ⚠️ SEPARATE from the poke rather than folded into it. They fail for
+  // different reasons and must be able to fail independently: a distillation
+  // that throws must never stop the gateway being kept alive, which is the job
+  // people actually notice.
+  //
+  // ⚠️ It is a no-op with GABI_MEMORY off, inside the Durable Object, so a dark
+  // posture costs exactly one cheap round trip.
+  ctx.waitUntil(
+    stub
+      .fetch('https://gateway.internal/conv/sweep', { method: 'POST' })
+      .then(() => undefined)
+      .catch((err) =>
+        console.error('GABI memory sweep failed:', err instanceof Error ? err.message : err),
+      ),
+  );
 }
 
 // ⚠️ The Durable Object class must be exported from the Worker's entrypoint or

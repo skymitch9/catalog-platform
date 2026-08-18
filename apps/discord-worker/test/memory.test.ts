@@ -41,6 +41,13 @@ import {
   type MemoryProfile,
 } from '../src/memory.js';
 import { PROFILE_COLLECTION } from '../src/memory-exec.js';
+import {
+  distillConversation,
+  DISTILL_GIVE_UP_MS,
+  DISTILL_MAX_PER_SWEEP,
+  distillTranscript,
+} from '../src/memory-distill.js';
+import type { MemoryPort } from '../src/memory.js';
 
 function repoFile(relative: string): string {
   return readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url).href), 'utf8');
@@ -323,5 +330,191 @@ describe('⚠️ credentials live in exactly FOUR modules', () => {
     // read on the hot path of every gated call, and a memory feature with write
     // access to it could break every book and docs answer.
     assert.doesNotMatch(source, /discord_links/, 'the memory executor reached the identity join');
+  });
+});
+
+// ── 9. ⚠️ THE DISTILLATION — and every failure is a NO-OP ──────────────────
+//
+// ⚠️ The order is the whole safety property: read → distil → write → delete.
+// A record deleted before the profile write lands is a conversation lost
+// silently, so every failure below must leave the old profile standing AND
+// report `written: false` so the sweep keeps the record for another go.
+// ---------------------------------------------------------------------------
+
+describe('⚠️ distillation fails safe, every time', () => {
+  const turns = [
+    { role: 'user' as const, text: 'call me Sky, and give me full sheets please', at: 1 },
+    { role: 'assistant' as const, text: 'noted', at: 2 },
+  ];
+
+  function portWith(over: Partial<MemoryPort> = {}): MemoryPort & { saved: MemoryProfile[] } {
+    const saved: MemoryProfile[] = [];
+    return {
+      saved,
+      load: async () => null,
+      save: async (p) => {
+        saved.push(p);
+        return true;
+      },
+      clear: async () => true,
+      ...over,
+    } as MemoryPort & { saved: MemoryProfile[] };
+  }
+
+  function modelSaying(text: string): typeof fetch {
+    return (async () =>
+      new Response(
+        JSON.stringify({
+          id: 'm',
+          type: 'message',
+          role: 'assistant',
+          model: 'test',
+          content: [{ type: 'text', text }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as unknown as typeof fetch;
+  }
+
+  it('a good distillation is capped, stamped and written once', async () => {
+    const port = portWith();
+    const out = await distillConversation(
+      'k',
+      port,
+      { discordUserId: '99' },
+      turns,
+      { fetch: modelSaying('{"callMe":"Sky","notes":["wants full sheets"]}') },
+      5000,
+    );
+    assert.equal(out.written, true);
+    assert.equal(port.saved.length, 1);
+    const p = port.saved[0]!;
+    assert.equal(p.person, 'discord:99');
+    assert.equal(p.callMe, 'Sky');
+    assert.deepEqual(p.notes, ['wants full sheets']);
+    assert.equal(p.updatedAt, 5000);
+    // ⚠️ Counted HERE, not by the model. A model asked to increment its own
+    // counter will eventually decide the number should be something else.
+    assert.equal(p.sources, 1);
+  });
+
+  it('a fenced JSON block is still read — models fence even when told not to', async () => {
+    const port = portWith();
+    const out = await distillConversation(
+      'k',
+      port,
+      { discordUserId: '99' },
+      turns,
+      { fetch: modelSaying('```json\n{"notes":["a"]}\n```') },
+    );
+    assert.equal(out.written, true);
+    assert.deepEqual(port.saved[0]!.notes, ['a']);
+  });
+
+  it('⚠️ unparseable output writes NOTHING — the old profile stands', async () => {
+    const port = portWith();
+    const out = await distillConversation('k', port, { discordUserId: '99' }, turns, {
+      fetch: modelSaying('I think Sky likes long stat sheets!'),
+    });
+    assert.equal(out.written, false);
+    assert.equal(out.why, 'unparseable');
+    assert.equal(port.saved.length, 0, 'a garbled distillation overwrote a real profile');
+  });
+
+  it('⚠️ a model failure writes NOTHING and asks to be retried', async () => {
+    const port = portWith();
+    const out = await distillConversation('k', port, { discordUserId: '99' }, turns, {
+      fetch: (async () => {
+        throw new Error('boom');
+      }) as unknown as typeof fetch,
+    });
+    assert.equal(out.written, false);
+    assert.equal(port.saved.length, 0);
+  });
+
+  it('⚠️ a failed WRITE is reported as unwritten, so the record is kept', async () => {
+    const port = portWith({ save: async () => false });
+    const out = await distillConversation('k', port, { discordUserId: '99' }, turns, {
+      fetch: modelSaying('{"notes":["a"]}'),
+    });
+    assert.equal(out.written, false);
+    assert.equal(out.why, 'write_failed');
+  });
+
+  it('a conversation where nobody said anything costs no model call', async () => {
+    let called = false;
+    const port = portWith();
+    const out = await distillConversation(
+      'k',
+      port,
+      { discordUserId: '99' },
+      [{ role: 'assistant', text: 'hello!', at: 1 }],
+      {
+        fetch: (async () => {
+          called = true;
+          return new Response('{}');
+        }) as unknown as typeof fetch,
+      },
+    );
+    assert.equal(called, false, 'a one-sided conversation spent a model call');
+    assert.equal(out.why, 'nothing_said');
+    // ⚠️ And it must not bump `sources` as though it had taught her something.
+    assert.equal(port.saved.length, 0);
+  });
+
+  it('no key, no distillation — never a shared bucket', async () => {
+    const port = portWith();
+    const out = await distillConversation('k', port, { discordUserId: '' }, turns);
+    assert.equal(out.written, false);
+    assert.equal(out.why, 'no_person_key');
+  });
+
+  it('the transcript labels the two sides so the distiller can tell them apart', () => {
+    const t = distillTranscript(turns);
+    assert.match(t, /^THEM: call me Sky/);
+    assert.match(t, /YOU: noted/);
+  });
+
+  it('⚠️ the sweep is bounded on both axes', () => {
+    // One pass must not hold the Durable Object busy draining a backlog, and one
+    // undistillable record must not consume every sweep's allowance for ever.
+    assert.ok(DISTILL_MAX_PER_SWEEP >= 1 && DISTILL_MAX_PER_SWEEP <= 10);
+    assert.ok(DISTILL_GIVE_UP_MS >= 60 * 60 * 1000);
+  });
+});
+
+// ── 10. ⚠️ THE ROUTING BUG FOUND WHILE WIRING THIS ─────────────────────────
+
+describe('⚠️ every conversation-door path is actually ROUTED to the door', () => {
+  it('dcount and bcount reach the door instead of poking the gateway', () => {
+    // Found 2026-08-18: `conversationDoor` handled '/conv/dcount' and
+    // '/conv/bcount', but `fetch` never routed them there — so they fell through
+    // to the '/start' poke. Two consequences, both silent: on the
+    // component/modal lane the DOCS and BOOK daily fuses were never incremented
+    // and therefore never capped, and charging a fuse could OPEN A GATEWAY
+    // WEBSOCKET — the exact side effect that routing block exists to prevent.
+    const src = repoFile('src/gateway.ts');
+    const router = src.slice(src.indexOf('async fetch(request'), src.indexOf("if (path === '/status')"));
+    for (const p of ['/conv/load', '/conv/save', '/conv/count', '/conv/wcount', '/conv/dcount', '/conv/bcount']) {
+      assert.ok(router.includes(`path === '${p}'`), `${p} is not routed to the conversation door`);
+    }
+  });
+
+  it('⚠️ the sweep is routed AHEAD of the /start fallthrough', () => {
+    // Otherwise the cron's own sweep would open a socket every two minutes as a
+    // side effect of asking whether anything needed distilling.
+    const src = repoFile('src/gateway.ts');
+    const sweepAt = src.indexOf("path === '/conv/sweep'");
+    const startAt = src.indexOf("if (!mentionsOn(this.env))");
+    assert.ok(sweepAt > 0 && sweepAt < startAt, 'the sweep falls through to the gateway poke');
+  });
+
+  it('⚠️ an aged-out record is NOT deleted on the read path while memory is on', () => {
+    // The race this closes: somebody returning at 30m01s would destroy the
+    // conversation before the cron distilled it — silently, and precisely for
+    // the person the profile is for.
+    const src = repoFile('src/gateway.ts');
+    assert.match(src, /if \(!memoryOn\(this\.env\)\) await this\.state\.storage\.delete\(sk\);/);
   });
 });
