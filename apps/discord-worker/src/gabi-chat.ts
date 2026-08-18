@@ -533,6 +533,74 @@ You can also read the estate's own internal documentation — the runbooks, acce
 - If nothing matches, say the docs do not cover it. That is a real answer and it is never the same as the thing not being true.
 - If a tool refuses, relay its sentence as it is. Do not soften it, do not apologise for the estate, and do not offer to look it up another way.`;
 
+/**
+ * ⚠️ **THE KILLER OF 2026-08-18, AND THE ONE-LINE VERSION OF IT.**
+ *
+ * The owner asked *"how do I promote the audiobook site?"*, GABI posted
+ *
+ * > Perfect — found it. Let me read the promoting section:
+ *
+ * and then **nothing, ever**. No follow-up, no error, no wobble sentence.
+ *
+ * `mention-flow.ts` posts exactly ONCE, at the end of the turn — it never
+ * streams intermediate blocks — so that announcement WAS the turn's final
+ * answer. It got there through this branch:
+ *
+ * ```
+ * if (res.stop_reason !== 'tool_use' || calls.length === 0) return finish(textOf(blocks), …)
+ * ```
+ *
+ * Two ways in, and both were live:
+ *
+ *  1. **`stop_reason: 'end_turn'` with no `tool_use`** — the model narrated the
+ *     step it was about to take and simply ended its turn. Haiku does this.
+ *  2. **`stop_reason: 'max_tokens'` reached MID-`tool_use`** — the text block
+ *     was emitted, the tool call was cut off, and because the stop reason is
+ *     then not `'tool_use'` the guard short-circuits and returns the narration
+ *     as though it were the answer.
+ *
+ * ⚠️ **Neither throws**, which is why the wobble fallback never fired: that
+ * fallback only covers a `null` text, and this path returns a perfectly
+ * well-formed string that happens not to be an answer. The earlier failure
+ * (empty text → `null` → wobble) was the SAME bug with the truncation landing a
+ * few tokens earlier.
+ *
+ * So: an answer that trails off mid-thought is not an answer, and must never be
+ * delivered as one.
+ */
+export function needsFinishing(text: string, stopReason: string | null | undefined): boolean {
+  // ⚠️ A truncated turn is unfinished BY DEFINITION, whatever it managed to say.
+  if (stopReason === 'max_tokens') return true;
+  const t = (text ?? '').trimEnd();
+  if (t.length === 0) return false; // empty is a different failure, handled by the caller
+  // ⚠️ Deliberately narrow: a trailing colon or semicolon is a promise of more.
+  // Broader heuristics ("starts with Let me…") would eat legitimate answers that
+  // merely open with a narration, which is a normal and fine way to answer.
+  return /[:;]$/.test(t);
+}
+
+/**
+ * What we say to a model that announced a step instead of taking it. ⚠️ It does
+ * NOT name a tool: on the last permitted pass no tools are sent, and telling it
+ * to call something it cannot see is how a loop ends narrating a second time.
+ */
+const FINISH_NUDGE =
+  'You stopped mid-thought. If you still need to look something up, do it now; otherwise answer the ' +
+  'question in full from what you already have. Do not describe what you are about to do — just give ' +
+  'the answer, and say plainly if the documentation does not cover it.';
+
+/** ⚠️ The last-resort sentence. If a turn is STILL unfinished after its final
+ *  tools-free pass, the person gets a complete thought rather than a dangling
+ *  colon — the failure is admitted rather than posted as an answer. */
+export const CHAT_CUT_SHORT =
+  '…sorry — I ran out of room mid-thought there. Ask me again and I will go straight to the answer.';
+
+/** Text blocks only. ⚠️ Pushing a `tool_use` block back without its matching
+ *  `tool_result` is a 400, so a dangling call is dropped rather than echoed. */
+function textBlocksOnly(blocks: readonly unknown[]): unknown[] {
+  return blocks.filter((b) => (b as { type?: unknown })?.type === 'text');
+}
+
 export interface ToolTurnResult {
   text: string | null;
   toolCalls: number;
@@ -606,8 +674,20 @@ export async function converseWithTools(
   const docsSpend = () => toolCtx.docs?.budget.spent() ?? { bytes: 0, sections: 0 };
   const finish = (text: string | null, toolCalls: number, tools: string[], iterationCount: number): ToolTurnResult => {
     const spent = docsSpend();
+    // ⚠️ THE LAST-RESORT NET. The nudge above gets one shot per remaining
+    // iteration, and the final pass sends no tools so it normally produces
+    // prose — but if a turn STILL ends on a dangling colon, the person gets a
+    // complete thought rather than a promise nobody kept. This is the invariant
+    // the 2026-08-18 silent partial violated: nothing that trails off
+    // mid-sentence may ever be posted as an answer.
+    const safe =
+      text !== null && needsFinishing(text, null)
+        ? `${text.trimEnd()}
+
+${CHAT_CUT_SHORT}`
+        : text;
     return {
-      text,
+      text: safe,
       toolCalls,
       tools,
       iterations: iterationCount,
@@ -665,6 +745,31 @@ ${CHAT_DOCS_SYSTEM}` : CHAT_TOOLS_SYSTEM,
       const calls = toolUseBlocks(blocks);
       if (res.stop_reason !== 'tool_use' || calls.length === 0) {
         const text = textOf(blocks);
+
+        // ⚠️ THE FIX FOR THE SILENT PARTIAL. A turn that trails off mid-thought
+        // is not an answer. Give it one more pass rather than posting the
+        // narration — WITH tools still available while iterations remain, so it
+        // can actually take the step it announced. The loop's own bound stops
+        // this running away, and the final pass sends no tools at all, so the
+        // model must produce prose there.
+        if (!last && needsFinishing(text, res.stop_reason)) {
+          console.error(
+            `GABI mentions: the turn stopped mid-thought (stop_reason=${String(res.stop_reason)}, ` +
+              `iterations=${iterations}, docs=${docsOffered}); nudging it to finish rather than ` +
+              'posting the narration.',
+          );
+          const echoed = textBlocksOnly(blocks);
+          messages.push({
+            role: 'assistant',
+            // ⚠️ A dangling tool_use is dropped (see textBlocksOnly), and an
+            // assistant turn with no content at all is itself a 400 — so an
+            // empty echo becomes a placeholder rather than nothing.
+            content: echoed.length > 0 ? echoed : [{ type: 'text', text: '(cut off)' }],
+          });
+          messages.push({ role: 'user', content: FINISH_NUDGE });
+          continue;
+        }
+
         if (text.length === 0) {
           // ⚠️ THE SILENT PATH THAT LET THE 2026-08-18 FAILURE SHIP. A turn can
           // end with no text and no exception — most often `stop_reason:

@@ -582,6 +582,17 @@ export const MENTION_MSG = {
     "I couldn't reach the estate's catalogue just then — that's a problem on our side, not an answer " +
     'about the book. Nothing was searched.',
 
+  /**
+   * ⚠️ Said when a turn fails AFTER it has already posted something — the
+   * 2026-08-18 silent partial, where GABI announced a step and then went quiet
+   * for ever. `unreachable` would be wrong here: the reader has a message on
+   * screen already, and telling them "nothing was searched" contradicts what
+   * they can see. No turn may go quiet after speaking.
+   */
+  cutOff:
+    "…and then I fell over partway through that — sorry. That's a wobble on my side, not a verdict " +
+    'on the question. Ask me again and I will start it fresh.',
+
   refused: (status: number) =>
     `The catalogue turned my search down just then (HTTP ${status}) — a problem on our side, not an ` +
     'answer about the book. Nothing was searched.',

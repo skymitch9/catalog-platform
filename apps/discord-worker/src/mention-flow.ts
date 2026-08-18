@@ -119,6 +119,51 @@ import {
  * discovering it as a 400 that loses the whole answer. */
 export const DISCORD_CONTENT_MAX = 2000;
 
+/**
+ * ⚠️ **DISCORD'S 2,000-CHARACTER CEILING, AND WHAT USED TO HAPPEN AT IT.**
+ *
+ * Every reply was `truncate(content, 2000)` — a hard cut at 1,999 characters
+ * plus an ellipsis. For a book answer that is fine; for a RUNBOOK answer it is
+ * not, because the half that gets cut is the half with the last three steps in
+ * it, and nothing tells the reader that anything is missing beyond a single `…`.
+ *
+ * A docs answer legitimately runs long: it quotes commands, paths and tables.
+ * So it is SPLIT rather than cut — on paragraph boundaries where possible, then
+ * lines, and only as a last resort mid-text.
+ *
+ * ⚠️ Splitting needs a second channel to post into. Where the surface has none
+ * (`followUp` absent — a test, or a lane whose only channel is one interaction
+ * response) the first chunk is returned alone and the caller says so IN WORDS,
+ * rather than silently dropping the rest.
+ */
+export function splitForDiscord(content: string, max = DISCORD_CONTENT_MAX): string[] {
+  const text = content.trim();
+  if (text.length <= max) return [text];
+
+  const chunks: string[] = [];
+  let rest = text;
+  while (rest.length > max) {
+    // Prefer a paragraph break, then a line break, then a space — anything
+    // rather than guillotining a command in half.
+    const window = rest.slice(0, max);
+    let cut = window.lastIndexOf('\n\n');
+    if (cut < max * 0.5) cut = window.lastIndexOf('\n');
+    if (cut < max * 0.5) cut = window.lastIndexOf(' ');
+    if (cut < max * 0.5) cut = max;
+    chunks.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks;
+}
+
+/** ⚠️ Said when a long answer cannot be split because the surface has nowhere
+ *  to put the rest. Never a bare `…`: the reader is told the answer was cut and
+ *  where the whole thing lives. */
+export const CUT_FOR_LENGTH =
+  '\n\n…that is as much as fits in one Discord message. The whole thing is at ' +
+  'https://heygabi.ai/docs/ , or ask me for the part you need.';
+
 /** Fewer than `/have`'s five: a chat reply that is mostly list is a reply
  * nobody reads. Overflow is COUNTED and stated, never dropped silently. */
 export const MAX_MENTION_HITS = 3;
@@ -792,6 +837,10 @@ export async function handleMention(
     via: trigger.via,
   };
 
+  // ⚠️ Whether anything has already reached the channel. It changes what a
+  // failure is allowed to say — see the catch at the bottom of this function.
+  let said = false;
+
   try {
     // 1. The memory, before the fuse — so that even a CAPPED reply knows
     //    whether it is interrupting a conversation or starting one, and so the
@@ -806,11 +855,41 @@ export async function handleMention(
       memory.turns.length === 0 && trigger.surface !== 'discord_dm'
         ? MENTION_MSG.greet(trigger.authorId)
         : '';
+    // ⚠️ POSTS THE WHOLE ANSWER, however long. A runbook answer that is cut at
+    // 2,000 characters loses its last steps, and the old `truncate` said so with
+    // a single `…`. Chunks after the first ride `followUp`; a surface without
+    // one is told in words that the answer was cut rather than left to guess.
     const say = async (body: string, components?: unknown[] | null) => {
-      await deps.reply(
-        truncate(`${greeting} ${body}`.trim(), DISCORD_CONTENT_MAX),
-        components ? { components } : undefined,
-      );
+      const whole = `${greeting} ${body}`.trim();
+      said = true;
+      const parts = splitForDiscord(whole);
+      if (parts.length > 1 && !deps.followUp) {
+        // ⚠️ ROOM IS RESERVED FOR THE NOTICE FIRST. Appending it and then
+        // truncating to the ceiling cuts off the very sentence that explains
+        // the cut — which is how a "worded" truncation silently becomes a bare
+        // ellipsis again.
+        const room = DISCORD_CONTENT_MAX - CUT_FOR_LENGTH.length;
+        await deps.reply(
+          `${truncate(parts[0] as string, room)}${CUT_FOR_LENGTH}`,
+          components ? { components } : undefined,
+        );
+        return;
+      }
+      await deps.reply(parts[0] as string, components ? { components } : undefined);
+      // ⚠️ Each continuation is its own try: a failed second message must never
+      // discard the first, and must never look like the whole turn failed.
+      for (const part of parts.slice(1)) {
+        try {
+          await deps.followUp?.(part);
+        } catch (err) {
+          console.error(
+            'GABI mentions: a continuation message failed to post; the answer is incomplete in the ' +
+              'channel:',
+            err instanceof Error ? err.message : err,
+          );
+          break;
+        }
+      }
     };
 
     // 2. The fuse, before anything that costs. ⚠️ A capped person is TOLD, in
@@ -869,22 +948,45 @@ export async function handleMention(
       docs,
     );
     await say(answer.content, answer.components);
-    await deps.conversation.save({
-      user: trigger.question,
-      assistant: answer.content,
-      pending: answer.pending,
-      // ⚠️ SURFACE-SPECIFIC, and the store treats it as an opaque bag it never
-      // reads (`conversation.ts`). It is here so a turn can be traced back to
-      // the Discord message that produced it when somebody is debugging.
-      ref: { message_id: trigger.messageId, ...(trigger.guildId ? { guild_id: trigger.guildId } : {}) },
-    });
-    await deps.recordTurn(trigger.authorId);
-    await chargeDocsTurn(deps, trigger.authorId, docs);
+
+    // ⚠️ EVERYTHING PAST THE POST IS BOOKKEEPING, AND BOOKKEEPING MUST NOT
+    // SPEAK. Before this, a throw from `save`, `recordTurn` or the docs fuse
+    // fell into the outer catch and posted "I couldn't reach the estate's
+    // catalogue just then" — AFTER the answer had already been delivered. That
+    // is a lie about a turn that worked, and it is the mirror image of the
+    // 2026-08-18 silent partial: one says nothing when it should speak, this
+    // one speaks when it should stay quiet. Both break the same rule — the
+    // channel must reflect what actually happened.
+    try {
+      await deps.conversation.save({
+        user: trigger.question,
+        assistant: answer.content,
+        pending: answer.pending,
+        // ⚠️ SURFACE-SPECIFIC, and the store treats it as an opaque bag it never
+        // reads (`conversation.ts`). It is here so a turn can be traced back to
+        // the Discord message that produced it when somebody is debugging.
+        ref: { message_id: trigger.messageId, ...(trigger.guildId ? { guild_id: trigger.guildId } : {}) },
+      });
+      await deps.recordTurn(trigger.authorId);
+      await chargeDocsTurn(deps, trigger.authorId, docs);
+    } catch (err) {
+      console.error(
+        'GABI mentions: the answer was delivered but the bookkeeping failed (memory, turn cap or ' +
+          'docs fuse). The person has their answer; a counter may be short:',
+        err instanceof Error ? err.message : err,
+      );
+    }
     return { answered: true, intent: answer.intent };
   } catch (err) {
     console.error('GABI mentions: handling failed:', err instanceof Error ? err.message : err);
     try {
-      await deps.reply(MENTION_MSG.unreachable);
+      // ⚠️ ALWAYS SOMETHING, AND NEVER NOTHING. If the failure happened AFTER a
+      // message was posted, this lands as a SECOND message — which is the whole
+      // point: the 2026-08-18 incident ended with a posted announcement and
+      // eternal silence, and the rule that came out of it is that no turn may go
+      // quiet after speaking. The wording differs so a reader can tell "I never
+      // got started" from "I got cut off partway".
+      await deps.reply(said ? MENTION_MSG.cutOff : MENTION_MSG.unreachable);
     } catch {
       // Discord is unreachable too. Nothing further is possible and no estate
       // state changed — there is nothing to roll back.

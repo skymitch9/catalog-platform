@@ -64,6 +64,8 @@ import { runTool } from '../src/tool-exec.js';
 import { docsIntent, type DocsPort } from '../src/estate-docs.js';
 import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
 import { classifyByKeyword, MENTION_MSG, type CapVerdict } from '../src/mentions.js';
+import { needsFinishing } from '../src/gabi-chat.js';
+import { DISCORD_CONTENT_MAX, splitForDiscord } from '../src/mention-flow.js';
 import { metadataAsk } from '../src/catalog-data.js';
 import { delegatedIntent } from '../src/delegated.js';
 
@@ -776,6 +778,60 @@ interface OwnerRun {
   wantsTool?: string;
   /** What the model finally says. */
   modelText?: string;
+  /** ⚠️ Full control of what each model turn returns — the instrument the
+   *  2026-08-18 silent partial needed, because that failure was entirely about
+   *  the SHAPE of one response (text + a stop_reason that is not 'tool_use'). */
+  modelScript?: (body: unknown) => { content: unknown[]; stop_reason: string };
+  /** A surface with no second channel to post continuations into. */
+  noFollowUp?: boolean;
+  /** Make the post-answer bookkeeping throw. */
+  breakBookkeeping?: boolean;
+  /** Throw after the first message has already reached the channel. */
+  throwAfterFirstPost?: boolean;
+}
+
+/** A docs port that lets everything through — the state the owner is in once he
+ *  has re-run `/link`. */
+function passingDocsPort(): DocsPort {
+  return {
+    async askerEmail() {
+      return { ok: true, email: 'owner@example.test' } as const;
+    },
+    async search() {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          snapshot: { generated_at: '2026-08-18T04:00:00Z', stale: false },
+          results: [
+            {
+              id: 'audiobook_catalog/docs/access/PROMOTE.md#1',
+              repo: 'audiobook_catalog',
+              path: 'audiobook_catalog/docs/access/PROMOTE.md',
+              heading: 'Promoting to prod',
+              snippet: 'Run the promote workflow…',
+            },
+          ],
+          total: 1,
+        },
+      };
+    },
+    async section() {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          snapshot: { generated_at: '2026-08-18T04:00:00Z', stale: false },
+          section: {
+            id: 'audiobook_catalog/docs/access/PROMOTE.md#1',
+            path: 'audiobook_catalog/docs/access/PROMOTE.md',
+            heading: 'Promoting to prod',
+            text: 'Run the promote workflow from the Actions tab.',
+          },
+        },
+      };
+    },
+  };
 }
 
 /**
@@ -804,9 +860,13 @@ async function runOwnerQuestion(opts: OwnerRun): Promise<{ answered: boolean }> 
   }) as typeof fetch;
 
   let modelTurn = 0;
-  const fetchOverride = (async () => {
+  const fetchOverride = (async (_input: unknown, init?: { body?: unknown }) => {
     opts.onModelCall?.();
     modelTurn += 1;
+    if (opts.modelScript) {
+      const scripted = opts.modelScript(init?.body);
+      return modelResponse(scripted.content, scripted.stop_reason);
+    }
     if (modelTurn === 1 && opts.wantsTool) {
       return modelResponse(
         [{ type: 'tool_use', id: 'toolu_1', name: opts.wantsTool, input: { query: 'promote prod', id: 'x#1' } }],
@@ -824,11 +884,23 @@ async function runOwnerQuestion(opts: OwnerRun): Promise<{ answered: boolean }> 
     return await handleMention(
       {
         capCheck: async () => ({ ok: true }) as CapVerdict,
-        recordTurn: async () => {},
+        recordTurn: async () => {
+          if (opts.breakBookkeeping) throw new Error('simulated turn-cap write failure');
+        },
         conversation: NO_MEMORY,
         reply: async (content: string) => {
           opts.said.push(content);
+          if (opts.throwAfterFirstPost && opts.said.length === 1) {
+            throw new Error('simulated failure immediately after the first post');
+          }
         },
+        ...(opts.noFollowUp
+          ? {}
+          : {
+              followUp: async (content: string) => {
+                opts.said.push(content);
+              },
+            }),
         ...(port
           ? {
               docs: {
@@ -1141,5 +1213,229 @@ describe('⚠️ every pre-existing intent still routes as it did', () => {
     assert.equal(classifyByKeyword('good morning'), 'smalltalk');
     assert.equal(classifyByKeyword('morning!'), 'question');
     assert.equal(classifyByKeyword('what can you do?'), 'question');
+  });
+});
+
+// ── 11. ⚠️ THE SILENT PARTIAL OF 2026-08-18 ────────────────────────────────
+//
+// The owner asked "how do I promote the audiobook site?" for the third time
+// that night. Router, docs door, search and the model turn all worked. GABI
+// posted EXACTLY this and then nothing, ever:
+//
+//     Perfect — found it. Let me read the promoting section:
+//
+// `mention-flow.ts` posts ONCE, at the end of the turn — it never streams
+// intermediate blocks — so that announcement WAS the turn's final answer. It
+// reached the channel through `converseWithTools`'s exit guard, which treats
+// any stop_reason other than 'tool_use' as "this is the answer".
+//
+// ⚠️ Nothing threw, which is why the wobble fallback never fired: it only
+// covers a null text, and this path returned a well-formed string that simply
+// was not an answer.
+// ---------------------------------------------------------------------------
+
+/** ⚠️ Verbatim from the owner's paste. Do not tidy — it is the artefact. */
+const THE_SILENT_PARTIAL = 'Perfect — found it. Let me read the promoting section:';
+
+describe('⚠️ REGRESSION: a turn that trails off mid-thought is never the answer', () => {
+  it('the two shapes that produced it are both recognised as unfinished', () => {
+    // Shape 1: the model narrated the step and ended its turn.
+    assert.equal(needsFinishing(THE_SILENT_PARTIAL, 'end_turn'), true);
+    // Shape 2: truncated mid-tool_use, so the stop reason is max_tokens and the
+    // text is whatever it managed to emit first.
+    assert.equal(needsFinishing(THE_SILENT_PARTIAL, 'max_tokens'), true);
+    assert.equal(needsFinishing('anything at all', 'max_tokens'), true);
+  });
+
+  it('⚠️ a real answer is NOT mistaken for an unfinished one', () => {
+    // The detector is deliberately narrow. Eating a genuine answer would be a
+    // worse failure than the one it fixes.
+    for (const good of [
+      'Promoting runs the promote workflow — see audiobook_catalog/docs/access/PROMOTE.md.',
+      'The docs do not cover that.',
+      'Kate Reading and Michael Kramer narrate The Way of Kings.',
+      'Here are the three steps.',
+      'Run `npm run promote`!',
+    ]) {
+      assert.equal(needsFinishing(good, 'end_turn'), false, `flagged a real answer: ${good}`);
+    }
+    assert.equal(needsFinishing('', 'end_turn'), false, 'empty text is a different failure');
+  });
+
+  it('⚠️ the narration is nudged to finish instead of being posted', async () => {
+    // Turn 1 emits the exact failing shape. The fix must NOT deliver it — it
+    // must come back for more and deliver what turn 2 says.
+    const said: string[] = [];
+    let modelTurns = 0;
+    const bodies: unknown[] = [];
+
+    await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: (body) => {
+        modelTurns += 1;
+        bodies.push(body);
+        if (modelTurns === 1) {
+          return { content: [{ type: 'text', text: THE_SILENT_PARTIAL }], stop_reason: 'end_turn' };
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Promoting runs the promote workflow — see audiobook_catalog/docs/access/PROMOTE.md, from the docs snapshot published 2026-08-18.',
+            },
+          ],
+          stop_reason: 'end_turn',
+        };
+      },
+    });
+
+    const reply = said.join('\n');
+    assert.ok(modelTurns >= 2, 'the turn gave up instead of nudging the model to finish');
+    assert.match(reply, /PROMOTE\.md/, 'the finished answer did not reach the channel');
+    assert.doesNotMatch(
+      reply,
+      /Let me read the promoting section:$/m,
+      '⚠️ the bare narration was posted as the answer again',
+    );
+  });
+
+  it('⚠️ a max_tokens truncation mid-tool_use is nudged too, not shipped', async () => {
+    const said: string[] = [];
+    let modelTurns = 0;
+    await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: () => {
+        modelTurns += 1;
+        if (modelTurns === 1) {
+          // Text emitted, tool call cut off. stop_reason is NOT 'tool_use',
+          // which is exactly why the old guard short-circuited.
+          return {
+            content: [
+              { type: 'text', text: THE_SILENT_PARTIAL },
+              { type: 'tool_use', id: 'toolu_cut', name: 'read_estate_doc', input: {} },
+            ],
+            stop_reason: 'max_tokens',
+          };
+        }
+        return { content: [{ type: 'text', text: 'The promote step is documented in PROMOTE.md.' }], stop_reason: 'end_turn' };
+      },
+    });
+    assert.ok(modelTurns >= 2, 'a truncated turn was delivered as final');
+    assert.match(said.join('\n'), /PROMOTE\.md/);
+  });
+
+  it('⚠️ if it narrates to the very end, the person still gets a COMPLETE thought', async () => {
+    // The last-resort net. Every pass narrates; the loop runs out. The reader
+    // must never be left staring at a dangling colon.
+    const said: string[] = [];
+    await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: () => ({ content: [{ type: 'text', text: THE_SILENT_PARTIAL }], stop_reason: 'end_turn' }),
+    });
+    const reply = said.join('\n');
+    assert.ok(reply.length > 0, '⚠️ THE TURN WENT SILENT — the exact 2026-08-18 failure');
+    assert.doesNotMatch(reply.trimEnd(), /:$/, 'the reply still ends on a dangling colon');
+    assert.match(reply, /ran out of room mid-thought/, 'the cut-short sentence is missing');
+  });
+
+  it('⚠️ his exact posted message can no longer be the whole reply', async () => {
+    const said: string[] = [];
+    await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: () => ({ content: [{ type: 'text', text: THE_SILENT_PARTIAL }], stop_reason: 'end_turn' }),
+    });
+    assert.notEqual(said.join('\n').trim(), THE_SILENT_PARTIAL, 'the silent partial shipped again');
+  });
+});
+
+describe('⚠️ Discord’s 2,000-character ceiling: split, never guillotine', () => {
+  it('a short answer is one message and is untouched', () => {
+    assert.deepEqual(splitForDiscord('hello'), ['hello']);
+  });
+
+  it('⚠️ a long answer is split on paragraph boundaries, losing nothing', () => {
+    const para = 'x'.repeat(700);
+    const whole = [para, para, para, para].join('\n\n');
+    const parts = splitForDiscord(whole);
+    assert.ok(parts.length > 1, 'a 2,800-character answer was not split');
+    for (const p of parts) assert.ok(p.length <= DISCORD_CONTENT_MAX, 'a chunk exceeds the ceiling');
+    // ⚠️ Nothing is dropped. The old behaviour cut at 1,999 and lost the rest.
+    const rejoined = parts.join('\n\n').replace(/\s+/g, '');
+    assert.equal(rejoined, whole.replace(/\s+/g, ''), 'splitting lost content');
+  });
+
+  it('a run with no break at all is still chunked rather than dropped', () => {
+    const parts = splitForDiscord('y'.repeat(5000));
+    assert.ok(parts.length >= 3);
+    for (const p of parts) assert.ok(p.length <= DISCORD_CONTENT_MAX);
+    assert.equal(parts.join('').length, 5000, 'a break-less answer lost characters');
+  });
+
+  it('⚠️ a long docs answer reaches the channel WHOLE, across messages', async () => {
+    const said: string[] = [];
+    const longAnswer = ['Step one.', 'x'.repeat(1200), 'y'.repeat(1200), 'Step last.'].join('\n\n');
+    await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: () => ({ content: [{ type: 'text', text: longAnswer }], stop_reason: 'end_turn' }),
+    });
+    assert.ok(said.length > 1, 'a >2,000-character answer was not split across messages');
+    const joined = said.join('\n');
+    assert.match(joined, /Step one\./);
+    assert.match(joined, /Step last\./, '⚠️ the END of a long runbook answer was cut off');
+  });
+
+  it('⚠️ with nowhere to put the rest, the cut is stated in WORDS', async () => {
+    // A surface with no follow-up channel. The reader must be told, and told
+    // where the whole thing lives — never left with a bare ellipsis.
+    const said: string[] = [];
+    await runOwnerQuestion({
+      said,
+      noFollowUp: true,
+      docsPort: passingDocsPort(),
+      modelScript: () => ({ content: [{ type: 'text', text: 'z'.repeat(4000) }], stop_reason: 'end_turn' }),
+    });
+    assert.equal(said.length, 1);
+    assert.ok((said[0] as string).length <= DISCORD_CONTENT_MAX);
+    assert.match(said[0] as string, /as much as fits in one Discord message/);
+    assert.match(said[0] as string, /heygabi\.ai\/docs/);
+  });
+});
+
+describe('⚠️ nothing may die between a post and the turn’s end', () => {
+  it('bookkeeping that throws AFTER the answer does not contradict it', async () => {
+    // Before the fix this fell into the outer catch and posted "I couldn't
+    // reach the estate's catalogue just then" — after the answer had already
+    // landed. A lie about a turn that worked.
+    const said: string[] = [];
+    const outcome = await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: () => ({ content: [{ type: 'text', text: 'The answer, from PROMOTE.md.' }], stop_reason: 'end_turn' }),
+      breakBookkeeping: true,
+    });
+    assert.equal(outcome.answered, true, 'a bookkeeping failure lost a delivered answer');
+    const reply = said.join('\n');
+    assert.match(reply, /PROMOTE\.md/);
+    assert.doesNotMatch(reply, /couldn't reach the estate's catalogue/, 'it contradicted its own answer');
+  });
+
+  it('⚠️ a throw AFTER a post still produces a worded follow-up, and says it was CUT OFF', async () => {
+    const said: string[] = [];
+    await runOwnerQuestion({
+      said,
+      docsPort: passingDocsPort(),
+      modelScript: () => ({ content: [{ type: 'text', text: 'Partial answer.' }], stop_reason: 'end_turn' }),
+      throwAfterFirstPost: true,
+    });
+    assert.ok(said.length >= 2, '⚠️ the turn went silent after speaking — the 2026-08-18 failure');
+    const last = said[said.length - 1] as string;
+    assert.match(last, /fell over partway/, 'the follow-up does not say it was cut off');
+    // ⚠️ And it must NOT claim nothing was searched — the reader can see otherwise.
+    assert.doesNotMatch(last, /Nothing was searched/);
   });
 });
