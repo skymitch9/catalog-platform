@@ -572,10 +572,11 @@ Discord: DM GABI *"how do I promote to prod?"* and check the answer cites
    just me"). After phase 3 lands, the linked people (likely just the owner)
    re-run `/link` once — self-verifying, since a post-phase-3 link carries
    the email by construction. Phase 3 is unblocked.
-2. **STEP 9 or a fourth scheduled task?** Hang the publisher off the 8-hourly
-   audiobook pipeline (free cadence, but it stops if that pipeline stops), or
-   give it its own daily `EstateDocsPublish` task (one more moving part, no
-   coupling)? *(Blocks phase 5 only.)*
+2. ✅ **DECIDED 2026-08-18 — STEP 9, ride the pipeline** (owner: "a"). The
+   publisher hangs off the 8-hourly audiobook pipeline as a soft step; no
+   fourth scheduled task. Staleness stays visible regardless (every answer
+   carries its snapshot date), and a manual publish remains available before
+   fresh questions. Phase 5 is unblocked.
 3. **Does the corpus include the `DONE.md` archives?** They are 778 KB of the
    3 MB and are history rather than current state. Including them means GABI can
    answer *"when did we do X and why"*; excluding them cuts the corpus by a
