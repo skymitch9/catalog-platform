@@ -1045,6 +1045,35 @@ designing a federation for a catalog that does not yet have any books in it.
 > inconvenient or inapplicable. When a rule seems wrong for the situation,
 > the move is to ASK, not to skip.
 
+### Model selection — for agents now, and for whoever executes later
+
+**While Claude Code runs this estate:**
+- Conductor: **Fable 5** until Fable weekly hits 92% (warn the owner at that
+  reading), then **Opus 5** as the main loop until 89% weekly.
+- Build/execution agents: **Opus 5** by default; **Sonnet 5** only for
+  genuinely simple sweeps/lookups. Never dispatch on Fable without a
+  written reason (estate tiering rule).
+
+**Fallback executors, labeled so anyone reading knows what to tell the
+owner:**
+- **Kiro (AUTO)** — the default fallback. ⚠️ A note to Kiro directly: stay
+  on AUTO (it costs the owner fewer credits); when a design doc or task
+  below names a model, honor that naming — it exists precisely so AUTO
+  stays safe and cheap. The naming convention:
+  - **"Kiro Claude Sonnet 5"** — standard builds, mechanical execution,
+    doc updates, test-backed changes. Most tasks.
+  - **"Kiro Claude Opus 4.8"** — design judgment, trust-critical changes
+    (auth, rules deploys, migrations, anything touching money or grants),
+    debugging that resists two attempts on Sonnet.
+  - **"Codex (GPT-5.3-Codex)"** — isolated, spec-complete greenfield
+    builds in their own sandbox (the docker-PoC shape). ⚠️ This label
+    means TELL THE OWNER — he runs Codex himself; no other executor
+    should attempt to invoke it.
+- **Standing convention from 2026-08-18: every new design/spec doc carries
+  a "Model guidance" line per phase/task using exactly these labels**, so
+  a Kiro-on-AUTO session inherits the escalation decision from the doc
+  instead of guessing (or burning credits running everything high).
+
 ### Landed and verified today (deployed unless marked)
 - Primal Hunter 1–14 in GABI's knowledge base (index = 190 books; ingestion
   unpaused 14:01, daytime run harvesting reviewed audiobooks until 18:30).
