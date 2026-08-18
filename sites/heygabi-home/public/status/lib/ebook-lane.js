@@ -187,47 +187,91 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
       };
     }
 
-    // ⚠️ AMBER. The run built a manifest the live site never received. Two
-    // different situations, two different sentences, because a reader needs to
-    // know whether anyone is actually missing a book right now.
-    if (Number.isFinite(builtCount) && builtCount !== publishedCount) {
-      const gap = Math.abs(builtCount - publishedCount);
+    // ⚠️ THE STAMPS DISAGREE. WHICH ONE IS THE TRUTH DEPENDS ON WHICH IS NEWER,
+    // and getting that backwards is how this row told the owner readers were
+    // missing books that had been DELETED. Direction is therefore decided
+    // FIRST, before the counts are even looked at — the previous shape checked
+    // counts first and reached the "readers are missing books" sentence from
+    // both directions.
+    const publishedIsNewer = generatedAt > builtAt;
+    const gap = Number.isFinite(builtCount) ? Math.abs(builtCount - publishedCount) : null;
+    const books = (n) => `${n.toLocaleString()} book${n === 1 ? '' : 's'}`;
+
+    if (publishedIsNewer) {
+      // ── The PUBLISHED file is newer than the last RECORDED build ──────────
+      //
+      // ⚠️ THE SERVE SIDE IS THE CURRENT TRUTH HERE AND THE RECORD IS THE STALE
+      // ONE, which is the exact inverse of the case below. A publish ran that
+      // this status document does not describe, so `summary.ebookCount` is a
+      // measurement from BEFORE it. Judging the live shelf against an older
+      // record and calling the difference "missing books" accuses the site of a
+      // fault the record is responsible for.
+      //
+      // ⚠️ MEASURED, 2026-08-18, and it is why this branch exists: the row read
+      // "156 published vs 168 built — 12 books apart — readers are missing
+      // books". Nobody was missing anything. Twelve stray epubs were deleted
+      // from disk at 13:06, the publish at 20:23 correctly re-measured the shelf
+      // at 156, and the 168 was a build record from 15:00 that predated the
+      // deletion. The library SHRANK; the published shelf was right.
+      if (gap !== null && gap > 0) {
+        const shrank = publishedCount < builtCount;
+        return {
+          // Grey, not amber and not green. The shelf being served is the newer
+          // measurement and there is nothing to fix — but this page cannot
+          // VERIFY that it matches the disk, only that it is the later of two
+          // readings. Green would assert more than is known; amber would blame
+          // the working half.
+          state: 'nodata',
+          detail:
+            `${shelf} · the library ${shrank ? 'shrank' : 'grew'} by ${books(gap)} after the last recorded build ` +
+            // publishedAge/builtAge already carry their own nouns — prefixing
+            // them again produced "built last built 6h ago".
+            `(${publishedAge}, ${builtAge})`,
+          note:
+            `Grey, not amber: the published shelf is the NEWER of the two readings, so it — not the ` +
+            `${builtCount.toLocaleString()}-book build record — is the current truth, and no reader is ` +
+            'missing anything that exists. Files were added to or removed from the library after that ' +
+            'build was recorded; the next full pipeline run re-measures and the two agree again. ' +
+            `Nothing to do.${prodNote}`,
+        };
+      }
+      // Counts agree, only the clocks differ: a publish this document does not
+      // account for, carrying the same shelf.
+      return {
+        state: 'nodata',
+        detail: `${shelf} · the published manifest is NEWER than the one the last recorded run built (${publishedAge}, ${builtAge})`,
+        note:
+          'Grey because the two sources disagree about what ran, not about what is on the shelf: the live ' +
+          'manifest is newer than anything the last recorded run built, and the counts match, so no reader ' +
+          `is missing a book. What is unreliable here is the RECORD, not the shelf.${prodNote}`,
+      };
+    }
+
+    // ── The BUILT manifest is newer than the PUBLISHED one ─────────────────
+    //
+    // ⚠️ THIS is the direction that means something is wrong, and it stays
+    // AMBER. The pipeline produced a shelf and the site never received it.
+    if (gap !== null && gap > 0) {
       return {
         state: 'warn',
         detail:
           `⚠️ ${shelf}, but the last run built a manifest of ${builtCount.toLocaleString()} — ` +
-          `${gap.toLocaleString()} book${gap === 1 ? '' : 's'} apart`,
+          `${books(gap)} apart`,
         note:
           'Amber because readers are missing books the pipeline has already built: the shelf it produced ' +
-          'and the shelf the site serves disagree. A publish that did not land, rather than a step that ' +
-          `did not run. (${publishedAge}, ${builtAge}.)${prodNote}`,
+          'and the shelf the site serves disagree, and the BUILT one is the newer. A publish that did not ' +
+          `land, rather than a step that did not run. (${publishedAge}, ${builtAge}.)${prodNote}`,
       };
     }
-    // ⚠️ DIRECTION MATTERS IN THE WORDS. Measured live 2026-08-18: the
-    // published heartbeat can be NEWER than the recorded build, when a publish
-    // ran outside the run this status doc describes. Saying "the last run built
-    // a newer manifest" there would be flatly false — the same class of error
-    // as the colours this pass went looking for, just in a sentence.
-    const publishedIsNewer = generatedAt > builtAt;
     return {
       state: 'warn',
-      detail:
-        `⚠️ ${shelf} · ` +
-        (publishedIsNewer
-          ? `the published manifest is NEWER than the one the last recorded run built (${publishedAge}, ${builtAge})`
-          : `the last run built a NEWER manifest than the one published (${builtAge}, ${publishedAge})`),
+      detail: `⚠️ ${shelf} · the last run built a NEWER manifest than the one published (${builtAge}, ${publishedAge})`,
       note:
-        (publishedIsNewer
-          ? 'Amber because a publish landed that this status document does not account for — the live ' +
-            'manifest is newer than anything the last recorded run built, so the two sources disagree ' +
-            'about what ran. The counts match, so no reader is missing a book; what is unreliable is the ' +
-            'record, not the shelf.'
-          : 'Amber because the manifest this run built never reached the live site. The shelf itself is ' +
-            'unchanged, so no reader is missing a book yet — but the publish step did not land, and the ' +
-            'next real change would not land either.') +
-        ' Do NOT soften this to green because the counts happen to match: on 2026-08-18 this reading was a ' +
-        'real pipeline defect (publish gated on uploaded_count) and this row is what found it.' +
-        `${prodNote}`,
+        'Amber because the manifest this run built never reached the live site. The shelf itself is ' +
+        'unchanged, so no reader is missing a book yet — but the publish step did not land, and the next ' +
+        'real change would not land either. Do NOT soften this to green because the counts happen to ' +
+        'match: on 2026-08-18 this reading was a real pipeline defect (publish gated on uploaded_count) ' +
+        `and this row is what found it.${prodNote}`,
     };
   }
 

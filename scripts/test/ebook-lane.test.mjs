@@ -248,9 +248,12 @@ test('⚠️ DIRECTION: a published manifest NEWER than the recorded build says 
   const v = verdict({
     heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T18:00:00.000Z' },
   });
-  assert.equal(v.state, 'warn');
+  // ⚠️ GREY, not amber (corrected 2026-08-18). The old shape painted this amber
+  // while its own note said "what is unreliable is the record, not the shelf" —
+  // a colour contradicting its own words. If the shelf is fine, amber is wrong.
+  assert.equal(v.state, 'nodata');
   assert.match(v.detail, /published manifest is NEWER than the one the last recorded run built/);
-  assert.match(v.note, /the record, not the shelf/);
+  assert.match(v.note, /the RECORD, not the shelf/);
 });
 
 test('the other direction still reads the other way round', () => {
@@ -260,4 +263,75 @@ test('the other direction still reads the other way round', () => {
   assert.equal(v.state, 'warn');
   assert.match(v.detail, /the last run built a NEWER manifest than the one published/);
   assert.match(v.note, /the publish step did not land/);
+});
+
+// ---------------------------------------------------------------------------
+// THE THIRD VERDICT — the library shrank between builds
+// ---------------------------------------------------------------------------
+
+test('⚠️ THE LIVE CASE: 156 published vs 168 built, publish NEWER — nobody is missing anything', () => {
+  // Measured 2026-08-18 and pasted by the owner. The row said "readers are
+  // missing books... a publish that did not land". Nobody was missing anything:
+  // twelve stray epubs were deleted from disk at 13:06, the 20:23 publish
+  // correctly re-measured the shelf at 156, and the 168 was a build record from
+  // 15:00 that PREDATED the deletion. The library shrank; the published shelf
+  // was right and the record was stale.
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T20:23:52.230Z', count: 156 },
+    pipeStatus: {
+      ...LIVE_QUIET_RUN,
+      summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 168, ebookManifestAt: '2026-08-18T15:00:53.106Z' },
+    },
+  });
+  // ⚠️ NOT AMBER. The serve side is correct; the stale side is a record, and a
+  // record is not a reader-facing artifact.
+  assert.equal(v.state, 'nodata');
+  assert.match(v.detail, /shrank by 12 books after the last recorded build/);
+  assert.match(v.note, /the published shelf is the NEWER of the two readings/);
+  assert.match(v.note, /no reader is\s+missing anything that exists/);
+  assert.match(v.note, /the next full pipeline run re-measures/);
+  assert.match(v.note, /Nothing to do/);
+  // And it must NOT accuse the site of losing books.
+  assert.doesNotMatch(v.note, /readers are missing books/);
+  assert.doesNotMatch(v.detail, /⚠️/);
+});
+
+test('the same shape upward: files ADDED after the last recorded build', () => {
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T20:23:52.230Z', count: 175 },
+    pipeStatus: {
+      ...LIVE_QUIET_RUN,
+      summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 168, ebookManifestAt: '2026-08-18T15:00:53.106Z' },
+    },
+  });
+  assert.equal(v.state, 'nodata');
+  assert.match(v.detail, /grew by 7 books after the last recorded build/);
+});
+
+test('⚠️ THE OTHER DIRECTION IS UNCHANGED AND STILL AMBER — that one is a real fault', () => {
+  // Built NEWER than published, counts apart: the pipeline produced a shelf the
+  // site never received. Readers ARE missing books here, and this must not be
+  // softened by the fix above.
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T09:00:00.000Z', count: 156 },
+    pipeStatus: {
+      ...LIVE_QUIET_RUN,
+      summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 168, ebookManifestAt: '2026-08-18T15:00:53.106Z' },
+    },
+  });
+  assert.equal(v.state, 'warn');
+  assert.match(v.note, /readers are missing books/);
+  assert.match(v.note, /the BUILT one is the newer/);
+});
+
+test('⚠️ direction is decided BEFORE the counts — the bug was the branch order', () => {
+  // The previous shape checked "counts differ" first and reached the
+  // missing-books sentence from BOTH directions. These two differ only in which
+  // stamp is newer, and they must land on different verdicts.
+  const base = { ...LIVE_QUIET_RUN, summary: { ...LIVE_QUIET_RUN.summary, ebookCount: 168, ebookManifestAt: '2026-08-18T15:00:00.000Z' } };
+  const publishedNewer = verdict({ heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T20:00:00.000Z', count: 156 }, pipeStatus: base });
+  const builtNewer = verdict({ heartbeat: { ...LIVE_HEARTBEAT, generated_at: '2026-08-18T10:00:00.000Z', count: 156 }, pipeStatus: base });
+  assert.notEqual(publishedNewer.state, builtNewer.state);
+  assert.equal(publishedNewer.state, 'nodata');
+  assert.equal(builtNewer.state, 'warn');
 });
