@@ -270,6 +270,33 @@ been graded. ⚠️ The owner's FIRST live turn found a routing defect that no u
 test would have caught — design §10b — so the second live turn is worth
 watching just as closely.
 
+## 📕 GABI KNOWS YOUR SHELF — TBR / reviews / unread — DESIGN LANDED 2026-08-18
+
+Owner: *"We need GABI to know the tbr, reviews, and unread about a user if
+they're /linked."* Design:
+[`info/gabi-personal-shelf-design.md`](info/gabi-personal-shelf-design.md).
+**Nothing built yet** — four phases, models named in §7 (phase 3 is Opus-pinned:
+it is the identity join and the privacy posture).
+
+**Three measured findings the build must not lose:**
+- ⚠️ **Reviews carry NO uid and NO email** — measured from `submitReview`, which
+  writes `{bookId, displayName, rating, text, createdAt, updatedAt}`. The shared
+  `isMyReview` predicate *prefers email*, so reading it alone would suggest a
+  strong join exists; on this store that branch is permanently dead and every
+  match falls to the display name.
+- ⚠️ **`discord_links.displayName` is a SNAPSHOT taken at link time**, so the
+  name GABI joins on can be stale even when the site looks fine. A person whose
+  reviews "vanish" is told to re-run `/link`, which refreshes it — a real fix
+  they can perform.
+- ⚠️ **"Unread" does not exist as data on the audiobook side.** The honest proxy
+  is *owned and not reviewed*, and the count must never masquerade as "books you
+  have not read" — most people review a small fraction of what they read, so the
+  proxy overcounts hugely and authoritatively.
+
+**Still to measure before the build tunes any wording:** the real review count,
+how many legacy uid-less TBR rows remain, and how many display names have drifted
+from their link snapshot.
+
 ## 🎭 GABI'S PERSONALITY + PERSON-KEYED MEMORY — ✅ LIVE 2026-08-18
 
 Two owner orders, built and deployed together. Designs:
