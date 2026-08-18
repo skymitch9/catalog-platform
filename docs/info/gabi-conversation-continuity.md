@@ -1,11 +1,19 @@
 # GABI Conversation Continuity — Information Reference
 
 > **Audience:** Claude sessions. **Status:** TRACKED (public repo — no secrets, no household names).
-> Last verified: **2026-08-17**.
+> Last verified: **2026-08-18** (the second surface landed; §1.3 and §3 rewritten
+> from prediction to record).
 >
 > Companion to [`discord-bot-design.md`](discord-bot-design.md) §6 (conversational
 > GABI phase A) and §7 (this layer). That doc owns the *Discord* story; **this
 > one owns the STORE SHAPE**, because the shape is deliberately not Discord's.
+>
+> ⚠️ **THE SECOND SURFACE EXISTS NOW.** The library site's chat panel shipped on
+> this shape 2026-08-18 ([`gabi-application-map.md`](gabi-application-map.md) §2e,
+> `library_catalog/docs/info/gabi-panel-v2.md`). The code moved to
+> `packages/gabi-conversation/` and is consumed by **both** repos, so this
+> document has stopped describing a contract with a hypothetical reader — every
+> claim in it is now load-bearing in two places at once.
 
 ---
 
@@ -59,9 +67,25 @@ interface PendingChoice {      // a clarifying question awaiting an answer
 }
 ```
 
-Canonical source: **`apps/discord-worker/src/conversation.ts`**. It is **pure** —
-no Discord types, no Durable Object, no `fetch`. That purity is the portability:
-the file could be moved to a shared package verbatim.
+Canonical source: **`packages/gabi-conversation/src/index.ts`**
+(`@platform/gabi-conversation`). It is **pure** — no Discord types, no Durable
+Object, no `fetch`.
+
+> ⚠️ **UPDATED 2026-08-18. This line used to read "canonical source:
+> `apps/discord-worker/src/conversation.ts` … the file could be moved to a
+> shared package verbatim." It was, and it was verbatim.** The second surface
+> arrived, the surface-neutral half moved out, and `conversation.ts` now
+> re-exports the package while keeping what was never portable — the `custom_id`
+> vocabulary, the select menu, the modal, and `CONV_MSG`'s sentences. Not one of
+> its eight importers changed. `library_catalog` materialises the package into a
+> gitignored `generated/` via `scripts/sync-gabi-conversation.mjs`, the
+> `@platform/estate-auth` pattern. See
+> [`gabi-application-map.md`](gabi-application-map.md) §2e and
+> `library_catalog/docs/info/gabi-panel-v2.md`.
+>
+> ⚠️ **Do not add fields, limits or window logic to `conversation.ts`.** They
+> belong in the package, where both surfaces get them; a constant added there is
+> a constant the site panel silently does not have.
 
 ### 1.1 The split, stated as a table
 
@@ -88,21 +112,46 @@ the file could be moved to a shared package verbatim.
    **absent** — start fresh — never guessed at. One bad write must not become a
    permanent wrong answer.
 
-### 1.3 What the site panel would have to supply
+### 1.3 ✅ What the site panel supplies — AS BUILT 2026-08-18
 
-Everything except a store. Concretely:
+This section was a prediction. It is now a record, and **two of its five rows
+were wrong** — which is exactly why it is worth keeping both columns.
 
-| Panel supplies | Value |
-|---|---|
-| `key.surface` | a new constant, e.g. `'web_panel'` |
-| `key.space` | its session/thread id |
-| `key.person` | the Firebase **uid** — already available, already the panel's identity |
-| storage | anything with get/put/delete by string key (the panel already has Firestore) |
-| `turns[].ref` | its own ids, or nothing |
+| Panel supplies | Predicted | **As built** |
+|---|---|---|
+| `key.surface` | `'web_panel'` | ✅ `'web_panel'`, exported as `SURFACE_WEB_PANEL` — a typo in a storage key does not fail, it silently gives somebody a second empty memory |
+| `key.space` | "its session/thread id" | ⚠️ **`ESTATE_APP`** — `library` / `library2`. A session id would have made every browser tab a separate memory, which is the opposite of the feature. The *instance* is the room |
+| `key.person` | the Firebase uid | ⚠️ **the `app_user` id.** `app_user.firebase_uid` is **nullable** in that schema, so keying on it would give one person two memories depending on when their row was written. It is also already what `gabi_turn.user_id` accounts against |
+| storage | "the panel already has Firestore" | ⚠️ **D1** — `gabi_conversation`, migration 0350. Firestore was never reached for: the library Worker's D1 is already bound and already written by that exact route |
+| `turns[].ref` | "its own ids, or nothing" | ✅ `{ cid }` — the browser's per-tab conversation id, and it turned out to be load-bearing (§1.4) |
 
 ⚠️ **It must NOT reuse the Discord Worker's Durable Object.** The object is
 per-Worker and holds a bot token's session; the shape travels, the storage does
-not.
+not. **Re-tested against the real second surface and upheld**, with a sharper
+reason than the original: that object holds an always-on gateway socket, so
+sharing it would take the *website's* chat down whenever GABI went quiet in
+Discord — for a person who has never opened Discord.
+
+### 1.4 ⚠️ `turns[].ref` earned its keep — the resume rule
+
+The bag was justified in the abstract ("Discord puts `{message_id, guild_id}`
+there; the panel would put something else"). What the panel actually put there
+is the thing that makes its memory correct at all.
+
+Discord holds **nothing** between messages, so the store *is* the conversation
+and every remembered turn goes into the prompt. The site panel holds its live
+tab's transcript in React state — `tool_use` and `tool_result` blocks included,
+which this store deliberately never keeps — and re-sends it whole every turn.
+Prepending the stored window there would send every turn **twice**.
+
+So the panel stamps its per-tab conversation id into `ref.cid` and prepends only
+the turns whose `cid` is something else: a closed tab, a reload, a phone picked
+up again. ⚠️ **An id, never a text match** — two identical questions ten minutes
+apart are a normal thing to ask, and a text match would swallow the second.
+
+⚠️ The core still never reads `ref`. `withRemembered()` takes the already-filtered
+turns; *which* turns those are is the surface's business and stays out of the
+package.
 
 ---
 
@@ -146,8 +195,17 @@ logged — only how much of it there was.
 
 ## 3. ⚠️ Where it lives, and the write-budget arithmetic
 
-**The gateway Durable Object's own storage** (`apps/discord-worker/src/gateway.ts`),
-under `conv:` keys — alongside `gw:` (the session) and `cap:` (the fuses).
+⚠️ **PER SURFACE, and that is the design.** The shape is shared; the storage is
+not. This section is about **Discord's** store. The site panel's is
+`gabi_conversation` in `library_catalog`'s D1 — see that repo's
+`docs/info/gabi-panel-v2.md` §6, whose reasoning is the *mirror image* of the
+table below: D1 was rejected here as "a new binding on the credential-lightest
+Worker in the estate, for one table", and chosen there because it is already
+bound and already written by that exact route.
+
+**Discord: the gateway Durable Object's own storage**
+(`apps/discord-worker/src/gateway.ts`), under `conv:` keys — alongside `gw:`
+(the session) and `cap:` (the fuses).
 
 Why not somewhere else:
 

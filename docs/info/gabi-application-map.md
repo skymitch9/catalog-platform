@@ -23,7 +23,7 @@ the same tool-allowlist philosophy — surfaced through:
 | Site panel (library / padhard) | LIVE | the chat button |
 | Discord channel | LIVE | `@GABI …` mention, or reply-with-ping |
 | Discord DM | LIVE | just message her — no @ needed |
-| Site panel v2 | FUTURE | same chat button, adopts the shared conversation store |
+| Site panel **v2** | **LIVE 2026-08-18** — §2e | same chat button, now on the shared conversation substrate |
 
 **The one security principle everything hangs on: GABI owns no permissions.**
 She borrows the asker's identity — site session on the web, the `/link`
@@ -200,6 +200,104 @@ Content, and DMs/@mentions are exceptions to both — but no live attachment has
 been tested), and whether a signed `cdn.discordapp.com` URL is fetchable from a
 Worker within its ~24 h signature window.
 
+## 2e. ⚠️ PANEL v2 AS BUILT — shipped and deployed 2026-08-18
+
+Owner brief, verbatim: *"Yes this is priority. I want to make upgrades it apply
+to both."* The library site's chat panel now runs on **the same conversation
+substrate as Discord**, so §1's claim — *"the same conversation-store shape"* —
+stopped being an aspiration about a future surface and became a shared module.
+
+### The decision of record: SHARED SHAPE, SEPARATE STORAGE
+
+| | Shared SHAPE (chosen) | Shared STORAGE (rejected) |
+|---|---|---|
+| What travels | the record, the window, the limits, the alternation rule | all of that, plus the bytes |
+| Panel's bytes live in | `library_catalog`'s own D1 (`gabi_conversation`, migration 0350) | the discord-worker's gateway Durable Object |
+| A site chat turn depends on | that Worker and its D1 | **the Discord Worker being up** |
+
+⚠️ **Reason #1 is the one that decided it.** The gateway object holds an
+always-on socket; when it drops, GABI goes quiet in Discord — and shared storage
+would take the *website's* chat down with it, for a person who has never opened
+Discord and could not be told why. `gabi-conversation-continuity.md` §1.3 had
+already refused it in writing (*"the shape travels, the storage does not"*); the
+refusal was re-tested against the real second surface rather than inherited.
+Two supporting reasons: a cross-Worker call is a subrequest, and the panel's
+whole architecture is an argument about the 50-subrequest ceiling; and it would
+need a new trust edge into an object holding a bot session, to buy a property
+nobody asked for.
+
+⚠️ **The honest cost, stated in the panel's own words to the reader:** the same
+person talking to GABI on the site and in Discord has **two** conversations.
+She will not carry a site question into a DM. If that ever becomes wrong, the
+fix is a *third* store both surfaces read — never one surface reaching into the
+other's.
+
+### What actually moved
+
+`apps/discord-worker/src/conversation.ts` was **split**, and it now re-exports
+the shared half so not one of its eight importers changed:
+
+| Moved to `@platform/gabi-conversation` | Stayed in the discord-worker |
+|---|---|
+| `ConversationRecord` / `Key` / `Turn` / `PendingChoice` | — |
+| the 30-min window, the 20-turn cap, the 600-char clip | — |
+| `pruneConversation` / `appendTurns` / `conversationChars` / `conversationStorageKey` | — |
+| `modelMessages` / `normaliseHistory` / `historyCost` (moved out of `gabi-chat.ts`) | — |
+| **new:** `withRemembered()` — the panel's merge | — |
+| — | the `gc\|…` / `gcm\|…` `custom_id` vocabulary |
+| — | `buildChoiceComponents`, `buildQuestionModal`, `modalInputValue` |
+| — | `CONV_MSG` — the sentences she says on Discord |
+
+The library repo consumes it through `scripts/sync-gabi-conversation.mjs` into a
+**gitignored `generated/`** — the `@platform/estate-auth` materialise pattern,
+third cross-repo package in that repo, same recorded reason (two copies of
+`auth.ts`, one hardening).
+
+### ⚠️ The resume rule — the asymmetry between the two surfaces
+
+Discord holds **nothing** between messages, so the store *is* the conversation.
+The panel holds its live tab's transcript in React state — `tool_use` and
+`tool_result` blocks included, which the store deliberately never keeps — and
+re-sends it whole every turn. Prepending the stored window there would send
+every turn **twice** and pay for it twice.
+
+So the panel prepends only turns from **other** conversation ids, matched on the
+tab id it stamps into `turns[].ref.cid` — the surface-private bag the core never
+reads, used exactly as designed. ⚠️ **Never matched on text**: two identical
+questions ten minutes apart are a normal thing to ask.
+
+### The panel's key
+
+`conv:web_panel:<ESTATE_APP>:<app_user.id>` — one row **per person per
+instance**, so `library` and `library2` are two memories (two shelves, two
+conversations). `surface` is the `web_panel` label §1.3 wrote down before the
+panel existed. `person` is the `app_user` id rather than the Firebase uid,
+because that column is **nullable** in the library schema and keying on it would
+give one person two memories.
+
+### What the panel gained, and what it deliberately did not
+
+| Gained | Deliberately not |
+|---|---|
+| the rolling window, the same limits, the same shape | the **docs tools** — the devops gating they need is its own decision (`gabi-docs-assistant-design.md`), explicitly out of scope here |
+| `history_turns` / `history_chars` on its accounting row, **the same field names** | **per-user / per-day turn caps** — the grammar is shared and the constants are one import away, but adding refusals nobody asked for could lock the owner out of his own catalog mid-conversation. An owner decision, not a build one |
+| the alternation rule, so a window cut cannot 400 its prompt | **`pending` components** — the panel writes `null`; its clarifying question is prose in a chat box. A T2 confirm lane would be the same shape |
+| a `Picking up where you left off` line, shown only when something was remembered | a **second route** — the posture test pinning `POST /turn` as the only declaration is untouched |
+
+### ⚠️ NOT VERIFIED
+
+- **No person has held a real conversation against the deployed memory** on
+  either instance. Everything below the model call is proven by tests and by
+  direct SQL; the end-to-end "ask, close the tab, come back, she remembers" is
+  the acceptance test and it is unrun (`library_catalog/docs/TODO.md`).
+- **No model call was made by this build** — `history_turns` / `history_chars`
+  have never been compared against a real invoice on the panel.
+- **The 30-minute expiry has never been observed in production** on the panel,
+  only in tests with a synthetic clock.
+- **Discord's behaviour is unchanged but that is a test result, not an
+  observation**: 514/514 still pass and `tsc` over `src` is clean; no live
+  Discord conversation was held after the split.
+
 ## 3. Feature suggestions, by effort
 
 **Near (machinery exists, wiring needed)**
@@ -233,9 +331,11 @@ Worker within its ~24 h signature window.
 **Later**
 - **Moderation revival** — timeouts + cleanup are built and dark; owner
   flips MODERATION_ENABLED and re-registers when ready.
-- **Panel chat-button v2** — the site panel adopts the shared conversation
-  store, so a chat begun on the site is the same GABI, with the same memory
-  shape, as Discord.
+- ~~**Panel chat-button v2**~~ — **SHIPPED 2026-08-18, §2e.** The site panel
+  runs on the shared substrate, so an upgrade to how she remembers lands once.
+  ⚠️ Shared SHAPE, **separate storage** — a site chat turn must not depend on
+  the Discord Worker being up. The acceptance test (a person, a closed tab, a
+  return inside half an hour) is **unrun**.
 - **Recommendations / reading stats** — she can already see the data; purely
   a prompt-and-tools feature once Q&A lands.
 
@@ -275,4 +375,6 @@ Worker within its ~24 h signature window.
    menu built for T1 is the first working instance of exactly this shape: a
    `PendingChoice` whose press performs an ACTION rather than producing a
    sentence. A T2 confirm is that with one option and a restatement.
-7. Panel chat-button unification; moderation revival when the owner says so
+7. ~~Panel chat-button unification~~ **SHIPPED 2026-08-18** (§2e) — jumped the
+   queue on the owner's call: *"Yes this is priority. I want to make upgrades it
+   apply to both."* Moderation revival still waits on him.
