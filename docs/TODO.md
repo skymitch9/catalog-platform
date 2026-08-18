@@ -838,6 +838,32 @@ designing a federation for a catalog that does not yet have any books in it.
 
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
+## 🖥️ Status-page expansion — owner asks, 2026-08-18 (execute as agent bandwidth frees)
+
+All from the owner's messages of 2026-08-18 morning; queued behind the pause-UI
+agent because they share the /status page surface.
+
+1. **Agents tab** — live list of running Claude agents + which model each runs
+   on. Design agreed with owner: a small state endpoint the conductor PUSHES to
+   on every agent event (dispatch/landing/failure) + heartbeats; the page polls
+   it every 30 s. (Owner asked for "a poll by you every 30 s" — the page polls
+   30 s; the conductor pushes event-driven, which was explained and accepted.)
+2. **Ingestion/processing tab** — which books are being processed right now,
+   per-book % progress, a history of everything processed, and next to each
+   processed book a label saying **when it became part of GABI's knowledge
+   base** (pack ingested + servable). Data source: the transcription batch's
+   progress/log + the pack manifests (ingester_version) in ebooks-gated.
+3. **Usage figures on the status page** — session % / weekly % / Fable %
+   pushed by the conductor to the same state endpoint on its usage pulses.
+4. ⚠️ **Incremental knowledge is a REQUIREMENT, not a nice-to-have** (owner:
+   "I don't want to wait until every book is processed to use Gabi's
+   knowledge. I want to use her while the knowledge base grows"). The serving
+   build must serve whatever packs exist at query time, say cleanly when a
+   book isn't ingested yet ("book 9 isn't in my knowledge base yet"), and
+   pick up new packs without a redeploy. Per-book alias maps + derived ord
+   ceilings already support this; the available-books check is the piece to
+   make explicit.
+
 Raised mid-conversation and **not yet decided** — recorded because it reframes
 the federation question above rather than adding to it.
 
