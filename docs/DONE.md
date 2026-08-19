@@ -14,6 +14,142 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+## 2026-08-18 — The event ring's own credential, and the four ingestion fine controls
+
+Owner, approving the batch verbatim: **"do them all and unblock them all."** The
+"unblock" was the mint — `ESTATE_EVENTS_TOKEN` had been designed and argued for
+and never created, which is what left two Workers unable to report at all.
+
+Commits: `0b977e9` + `e39a873` (the ring), `17dec7e` + `b836945` (the controls,
+platform side), `cae9fe4` + `1eab89b` (the processor side, in
+`audiobook_catalog`).
+
+Review: **<https://heygabi.ai/status/pipelines/>** — the *"▶ Start now"* lever on
+the ingestion card, and the *"last run: …"* line under each of the seven steps.
+**<https://heygabi.ai/status/processing/>** — *"Not in GABI's knowledge base"*,
+sitting above the finished list.
+
+### The ring — minted, wired, and proven per worker
+
+`openssl rand -hex 32`, custody `docs/access/keys/estate-events-token.txt`
+(gitignored — proved by `git check-ignore` **and** by its absence from
+`git status --untracked-files=all`, not read off `.gitignore`). 64 bytes, no
+BOM, no trailing newline, stored by the `cmd` file-redirect that
+`discord-bot.md` §7 makes the only sanctioned transport. Set on `estate-auth`,
+`catalog-index` and `audiobook-worker`.
+
+⚠️ **The door now takes TWO bearers and the conductor's still works.** §4's *"not
+the conductor token"* was always about **what the writers are given**, never
+about revoking a bearer — and `worker-events.ts` said so in writing: *"the
+moment a dedicated secret is minted, `checkConductorAuth` here should accept
+either."* Minting took no capability away; it stopped the larger credential (the
+one that can rewrite the agent board) reaching three more Workers.
+
+Proven by execution, not asserted:
+
+| Check | Result |
+|---|---|
+| POST with the minted token | `200 {"ok":true,"stored":1}`, once per writer name |
+| POST with a wrong 64-hex bearer | `401` |
+| Rows read back out of D1, grouped by worker | `audiobook-worker` 1 · `catalog-index` 1 · `estate-auth` 3 |
+| The `audiobook-worker` row's payload | the exact `buildEventBody()` shape, `request_id: null` included |
+
+🔴 **Still unproven, and stated rather than glossed:** neither writer's
+`onError` has fired on a REAL crash. Forcing one would be the logger making
+things worse, which §1 forbids. The first genuine unhandled error is the test.
+
+⚠️ **`audiobook-worker` had NO `onError` at all** — every unhandled error there
+existed only in Workers Logs. The handler is new, keeping the `{error, detail}`
+envelope the rest of that Worker uses.
+
+### The four controls
+
+**Start-now is not a second Resume**, and that one field is the whole design.
+Both clear `paused` / `paused_until` / `dont_check_until`; **Resume also drops a
+`pause_window` in force** (it must, or the window re-pauses seconds later and
+Resume reads as broken) while **Start-now leaves `pause_windows` untouched** —
+quiet hours are a schedule the owner set on purpose, and deleting tonight's 7pm
+window to satisfy a one-off *"go now"* takes away a recurring instruction he
+never withdrew. The consequence is admitted on the button: inside a live window
+it clears the ad-hoc pauses and the window still blocks the start.
+
+**Re-queue and priority behave differently on purpose.** A requeue is an EVENT
+the processor consumes and clears; a priority is a STATE that stands until
+cleared. Swap either and you get books resurrected every 30 minutes forever, or
+a priority that silently stops mattering the first time a run sees it.
+
+⚠️ **The safety property: a `done` book is NEVER re-queued.**
+`REQUEUABLE_STATUSES` is failed + needs-ocr, and `done`'s absence is what stops
+a stray id on a dashboard somebody left open spending twenty GPU-minutes
+re-transcribing a book already in the knowledge base.
+
+⚠️ **Priority is an ABSOLUTE head, not a within-tier bump.** The readings differ
+exactly when a GPU audiobook is named while 138 EPUBs sit in tier 1 — a
+within-tier bump leaves it behind the entire night. It matches the owner's own
+precedent (*"for now finish the primal hunter"*) and waives no gate.
+
+⚠️ **The `updateMask` is the load-bearing part.** Each list enters it only when
+that write changes it, compared against what Firestore held moments ago —
+because **the processor writes `requeue` too**. A pause carrying the whole
+document would re-add ids the home machine had just consumed, and books would be
+re-queued forever by a button nobody pressed.
+
+**Step-level retry was already built** (the seven buttons, 2026-08-16, on the
+right trigger machinery). The gap was the OUTCOME, and it is now read off the
+`steps[]` array `pipeline_status/current` already carries. ⚠️ It is ONE run, not
+a history: a step absent from that array gets no line, because *"not reported
+on"*, *"never run"* and *"failed"* are three different facts.
+
+### 🔴 The bug the live exercise found — and only the live exercise could
+
+`clear_requeue` uses `ArrayRemove`, which deletes only the values it names, and
+it named the CLEANED ids. **An entry the reader had refused as unusable was
+therefore never removed — so the next `read_control` refused it again and warned
+again, before every book, a thousand times a night**, and nothing on the
+dashboard could clear it. Fixed at both ends (raw values carried through
+`requeue_rejected`; the consumer sweeps them with the rest) and verified live:
+the document held `["  ", 7]` and warned on every read; after the sweep the raw
+array is `[]` and the reader is silent.
+
+### The rest of the round trip, exercised against the live system
+
+Worker-shaped write → `read_control()` cleaning junk and dupes → `apply_requeue`
+dropping an unknown id **without mutating `ingest_state.json`** → `ArrayRemove`
+clearing → read-back empty. ⚠️ Every step ran against a **deepcopy** of the state
+and used ids no book has, because **a real ingestion run was in flight
+throughout** (started 22:09, transcribing *"When the Moon Hatched"*) — nothing
+touched its lock, its state file or its process. That run was also the first
+live exercise of the new processor code, which had been committed at 21:45
+precisely so the window would meet tested code rather than a half-edit.
+
+The control document was left exactly as found: `paused: false`, both lists
+empty, the owner's 22:09 start-now still standing.
+
+🔴 **What is still unexercised: the BROWSER path.** Every write above used the
+Firestore service account, not `POST /api/estate/ops/ingestion` with a signed-in
+devops token. The route's 200 path and the new buttons have still never been
+clicked by a human — which is why the review links above matter.
+
+### The items, moved WHOLE from [`TODO.md`](TODO.md)
+
+> 2. **Wire the remaining Workers to the event ring** — `catalog-index` and
+>    `audiobook-worker` are ~5 lines each once a secret exists;
+>    `discord-worker` was left deliberately untouched (another agent's tree).
+>    ⚠️ **Mint `ESTATE_EVENTS_TOKEN` rather than spreading the conductor token** —
+>    the reasoning is [`info/worker-event-ring.md`](info/worker-event-ring.md) §4,
+>    and the per-worker status table is §6.
+
+> 3. (queued) Ingestion dashboard controls: requeue-failed button,
+>    start-now, priority bump, step-level retry — dispatch when surfaces free.
+
+⚠️ **One residual stays ACTIVE in `TODO.md` and it is genuinely a different,
+smaller item:** `discord-worker` was checked a SECOND time and left alone again
+— its tree held another agent's live uncommitted work on exactly the GABI flows
+(`mention-flow.ts`, `mentions.ts`, `suggest.ts`, `tool-exec.ts`, plus untracked
+`archive.ts` / `turnlog.ts`). The secret exists now, so it is a one-commit
+follow-up for whoever owns that tree next.
+
+
 ## 2026-08-18 — OWNER DECISION: GABI's book text MAY be answered in shared channels
 
 Owner, verbatim, closing the last open question on the book-knowledge lane:

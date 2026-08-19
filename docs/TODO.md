@@ -190,12 +190,15 @@ preferences and the todo-board refresh. The paperwork moved whole to
    The field is plumbed end to end: write
    `audiobook_catalog/output_files/audio_archive_restore_test.json` as
    `{at, verdict, detail, file}` and the next storage push renders it.
-2. **Wire the remaining Workers to the event ring** — `catalog-index` and
-   `audiobook-worker` are ~5 lines each once a secret exists;
-   `discord-worker` was left deliberately untouched (another agent's tree).
-   ⚠️ **Mint `ESTATE_EVENTS_TOKEN` rather than spreading the conductor token** —
-   the reasoning is [`info/worker-event-ring.md`](info/worker-event-ring.md) §4,
-   and the per-worker status table is §6.
+2. **`discord-worker` is the last Worker not on the event ring** — and the
+   blocker is no longer the secret. `ESTATE_EVENTS_TOKEN` is minted and set
+   (2026-08-18, moved whole to [`DONE.md`](DONE.md) with `catalog-index` and
+   `audiobook-worker`, both proven with real rows in the ring). ⚠️ That tree
+   was checked TWICE and left alone both times — on 2026-08-18 it held another
+   agent's live uncommitted work on exactly the GABI flows. It is a one-commit
+   follow-up for whoever owns it next: the recipe is
+   [`info/worker-event-ring.md`](info/worker-event-ring.md) §5 and the value is
+   in `access/keys/estate-events-token.txt`.
 3. **Nothing SENDS a notification yet.** The preferences and the contract for
    reading them are live; the conductor honouring them is the other half.
 4. **The three cover buckets** are measured from the home machine like
@@ -1438,8 +1441,19 @@ owner:**
    "fix this" on the placeholder) + click-to-expand log tails; pushed
    home-job tail rings; notification prefs; /todo board content refresh
    (KEEP the design; check public exposure — standing rule says gated).
-3. (queued) Ingestion dashboard controls: requeue-failed button,
-   start-now, priority bump, step-level retry — dispatch when surfaces free.
+3. **The ingestion controls need ONE thing a session cannot do: the owner's
+   browser.** The four controls themselves shipped 2026-08-18 and are archived
+   whole in [`DONE.md`](DONE.md); what is left is the half no service account
+   can stand in for. Every write so far was made with the Firestore credential,
+   so `POST /api/estate/ops/ingestion`'s **200 path has never been exercised by
+   a signed-in devops token and the new buttons have never been clicked.** Two
+   minutes, and it is the difference between "deployed" and "verified":
+   - <https://heygabi.ai/status/processing/> → *Not in GABI's knowledge base* →
+     press **↻ Re-queue** on any row; it should answer with a sentence saying the
+     book is queued and that nothing has been retried yet.
+   - <https://heygabi.ai/status/pipelines/> → the ingestion card → **▶ Start
+     now**; it should say the pauses are cleared and that a scheduled quiet-hours
+     window, if one is live, still blocks the start.
 
 ### Open owner decisions (ONE at a time)
 1. ebooks-gated backup mechanics (~2.6 GB whole-bucket tar coming).
