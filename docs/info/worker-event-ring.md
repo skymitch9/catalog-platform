@@ -3,7 +3,9 @@
 > **Audience:** Claude sessions and whoever wires the next Worker.
 > **Status:** TRACKED. Last verified: **2026-08-18** — the doors below were
 > exercised against the live host and the rows read back out of D1, not
-> transcribed from a design note.
+> transcribed from a design note. ⚠️ **Re-verified later the same day**, when
+> `ESTATE_EVENTS_TOKEN` was minted and `catalog-index` + `audiobook-worker`
+> were wired: see §6 for the measured results and the one thing still unproven.
 
 Owner, 2026-08-18, on clicking into a health check and meeting the *"Not wired
 up yet"* placeholder: **"fix this."**
@@ -118,10 +120,51 @@ standing "ships dark until configured" idiom.
 | Worker | State | Note |
 |---|---|---|
 | `estate-auth` | ✅ **wired** | every unhandled error, direct to D1, no token needed |
-| `catalog-index` | ⏳ not wired | needs `ESTATE_EVENTS_TOKEN`; helper import is a ~5-line change |
-| `audiobook-worker` | ⏳ not wired | same |
-| `discord-worker` | ⏳ **not wired, deliberately untouched** | ⚠️ another agent's working tree on 2026-08-18. The contract above is the whole brief; it is a one-commit follow-up for whoever owns that tree next, and reaching into it mid-flight is how two agents end up editing one file. |
-| `library-catalog`, `board-game-catalog` | ⏳ other repos | code-only change once the secret is set — that is the point of §4 |
+| `catalog-index` | ✅ **wired** 2026-08-18 | `onError` → `reportEvent`. Secret set, deploy `f36efb57`. Proof row in the ring. |
+| `audiobook-worker` | ✅ **wired** 2026-08-18 | ⚠️ it had **no `onError` at all** — its unhandled errors existed only in Workers Logs. The handler is new, and keeps the `{error, detail}` envelope the rest of that Worker uses. Deploy `2dee60ea`. |
+| `discord-worker` | ⏳ **not wired, deliberately untouched — SECOND TIME** | ⚠️ Checked again 2026-08-18 ~21:55 while wiring the other two: its tree held **another agent's live uncommitted work** (`mention-flow.ts`, `mentions.ts`, `suggest.ts`, `tool-exec.ts`, plus untracked `archive.ts` / `turnlog.ts`) — i.e. exactly the GABI flows. Left alone under the estate's never-touch-another-agent's-uncommitted-files rule. §5 is the whole brief; it stays a one-commit follow-up for whoever owns that tree next. |
+| `library-catalog`, `board-game-catalog` | ⏳ other repos | code-only change once the secret is handed over — that is the point of §4 |
+
+### ✅ The secret exists — minted 2026-08-18
+
+`ESTATE_EVENTS_TOKEN`, `openssl rand -hex 32`, custody
+`docs/access/keys/estate-events-token.txt` (gitignored — proved by
+`git check-ignore` **and** by its absence from `git status --untracked-files=all`,
+not read off `.gitignore`). 64 bytes, no BOM, no trailing newline, stored by the
+`cmd` file-redirect transport that `discord-bot.md` §7 makes the only sanctioned
+one.
+
+⚠️ **THE DOOR NOW TAKES TWO BEARERS, AND THE CONDUCTOR'S STILL WORKS.** §4's
+"not the conductor token" was about **what the writers are given**, never about
+revoking a bearer: `checkEventsAuth()` tries the events token first, then the
+conductor's. Minting took no capability away — it stopped the larger credential
+being handed to three more Workers. Consequences worth knowing:
+
+- `secret_unset` (503) means **both** are unset, and only then. A door with one
+  of two keys configured is a working door.
+- A real bearer matching neither answers `bad_token`, never `no_header` —
+  telling a caller who sent a bearer that they sent none is the misdirection the
+  estate's never-a-bare-status rule exists to stop.
+- The 503's `fix` names `ESTATE_EVENTS_TOKEN` and its custody path, not the
+  conductor secret, so a deployer is sent to the right `wrangler secret put`.
+
+### Verified by execution, 2026-08-18 (not transcribed from a design note)
+
+| Check | Result |
+|---|---|
+| POST with the minted token | `200 {"ok":true,"stored":1}` — twice, once per writer name |
+| POST with a wrong 64-hex bearer | `401` (refused) |
+| Rows read back out of D1 (`SELECT … GROUP BY worker`) | `audiobook-worker` 1 · `catalog-index` 1 · `estate-auth` 3 |
+| The `audiobook-worker` row's payload | the **exact `buildEventBody()` shape**, `request_id: null` included — so what the helper sends is what the door accepts |
+
+🔴 **NOT verified, and it is the half a test cannot cover: neither writer's
+`onError` has fired on a REAL crash.** The proof rows above were posted over the
+same HTTP door with the same credential and the same body shape, which exercises
+credential → transport → validation → storage → the per-worker cap. What it does
+not exercise is `c.executionCtx` being present and `waitUntil` surviving the
+response inside those two Workers. Deliberately not forced: inducing a 500 on a
+live route to test a logger is the logger making things worse, which is the one
+thing §1 says it must never do. The first real unhandled error is the test.
 
 ⚠️ **The estate-auth writer is the highest-value one and it is already live**,
 which is why the section is not empty on day one: every unhandled error in the

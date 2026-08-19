@@ -25,6 +25,27 @@ to run. Nothing else — no notes, no exports, no backups.
 | File | Holds | Read by | Doc |
 |---|---|---|---|
 | `estate-conductor-token.txt` | `ESTATE_CONDUCTOR_TOKEN` — the bearer for `POST /api/estate/ops/agent-board` | `scripts/push-agent-board.mjs` | [`../agent-board.md`](../agent-board.md) |
+| `estate-events-token.txt` | `ESTATE_EVENTS_TOKEN` — the bearer for `POST /api/estate/ops/worker-events` (the /status event ring) | the **Workers themselves**, via `@platform/estate-events` | [`../../info/worker-event-ring.md`](../../info/worker-event-ring.md) |
+
+⚠️ **`estate-events-token.txt` is the one row here whose reader is not a local
+script.** Minted 2026-08-18 and set as a Worker secret on **`estate-auth`,
+`catalog-index` and `audiobook-worker`**. The file is the *custody copy*: what a
+fourth Worker is handed when it adopts the ring, and what a rotation
+re-distributes. Nothing on this machine reads it at runtime.
+
+⚠️ **It exists precisely so `ESTATE_CONDUCTOR_TOKEN` does not spread.** The
+conductor token can rewrite the agent board — the estate's whole picture of what
+is running. This one's entire power is appending a line to a capped, self-
+trimming noticeboard. Never substitute one for the other to save a `wrangler
+secret put`; the reasoning is
+[`worker-event-ring.md`](../../info/worker-event-ring.md) §4.
+
+**Rotating it** (store-then-overwrite, rule 4 below): mint, then `wrangler
+secret put ESTATE_EVENTS_TOKEN` by the file-redirect transport from **each** of
+`apps/auth-worker`, `apps/index-worker` and `apps/audiobook-worker`, and only
+then overwrite this file. ⚠️ The auth Worker also still accepts
+`ESTATE_CONDUCTOR_TOKEN` on that route, so a half-finished rotation degrades to
+"the writers cannot report" — never to a door nobody can open.
 
 ## The rules
 
