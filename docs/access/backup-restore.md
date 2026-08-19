@@ -798,11 +798,33 @@ every dump written from that date holds:
 | `manifest.json`, whose `objects` array lists **exactly** what `objects/` holds | |
 
 **It is not silent, in either place.** The run log prints one line per rule per
-run — matched or not —
+run — matched or not — and this is the REAL line from the first run that carried
+the change (`target=r2`, run
+[`32262173445`](https://github.com/skymitch9/catalog-platform/actions/runs/32262173445),
+2026-08-19T14:08Z, commit `dd1f960`):
 
 ```
-ebooks-gated: SKIPPING prefix "transcripts/" — 16 object(s), 40603136 bytes NOT backed up. transcripts/ excluded by owner decision 2026-08-19 — triple-copied elsewhere; see backup-restore.md (…)
+Listed 295 object(s) in ebooks-gated.
+ebooks-gated: SKIPPING prefix "transcripts/" — 72 object(s), 151282288 bytes NOT backed up. transcripts/ excluded by owner decision 2026-08-19 — triple-copied elsewhere; see backup-restore.md (…)
+ebooks-gated: downloaded 223 object(s), 60329917 bytes total, …
+::notice::r2-ebooks-gated-20260819T140806Z.tar.gz is 60295853 bytes.
+::notice::Wrote estate-backups/r2/ebooks-gated/20260819T140806Z.tar.gz
 ```
+
+⚠️ **MEASURED BEFORE AND AFTER, FOUR HOURS APART THE SAME DAY — and the growth
+number is the part to read twice.** That morning's scheduled run
+([`32239505996`](https://github.com/skymitch9/catalog-platform/actions/runs/32239505996),
+09:48Z, the last one before the change) dumped the bucket whole: **249 objects,
+155,253,227 bytes, a 155,031,041-byte (147.9 MiB) tarball.** The 14:08Z run,
+with the exclusion, wrote **57.5 MiB — 61% smaller.**
+
+🔴 **The transcript corpus went from 16 objects / 38.7 MB (2026-08-18) to 72
+objects / 151.3 MB (2026-08-19). Roughly 4× in ONE DAY.** The §1 row's estimate
+of "~2.6 GB eventually" was not pessimistic enough about the *rate*: at 147.9
+MiB the whole-bucket tarball was already 59% of the way to the 250 MiB split
+threshold (§3.3) and would have crossed it within days, then kept going toward
+`wrangler`'s 300 MiB hard cap. This decision was made about a month away and
+arrived with about a week to spare.
 
 and the same statement is written into the dump's own `manifest.json` as an
 `excluded` array, so a tarball opened at 3am declares its own cap without

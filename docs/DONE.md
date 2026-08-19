@@ -75,10 +75,28 @@ entries, 0 mentioning `transcripts`, `manifest.json` present,
 auth-worker 357, index-worker 245, plus 869 and 129 — all green, `npm run
 typecheck` clean.
 
-⚠️ **NOT verified locally: a run against the live bucket.** The REST `objects`
+⚠️ **NOT verifiable locally: a run against the live bucket.** The REST `objects`
 endpoint needs `CLOUDFLARE_API_TOKEN`, which is a GitHub repo secret and is not
 on this machine — the `wrangler login` OAuth session does not cover it
-(`RECOVERY.md` §7). The live proof is the workflow's own run.
+(`RECOVERY.md` §7). So the live proof was taken in CI instead.
+
+**LIVE, against the real bucket** — `target=r2`, run
+[`32262173445`](https://github.com/skymitch9/catalog-platform/actions/runs/32262173445),
+2026-08-19T14:08Z, commit `dd1f960`, **all five buckets green**:
+`Listed 295 object(s)` → `SKIPPING prefix "transcripts/" — 72 object(s),
+151282288 bytes NOT backed up` → `downloaded 223 object(s), 60329917 bytes` →
+tarball **60,295,853 bytes**, one object, retention `7 generation(s) / 7
+object(s), keeping 7, deleting 0`.
+
+🔴 **The before/after, four hours apart the same day, and the growth rate is the
+headline.** That morning's scheduled run
+([`32239505996`](https://github.com/skymitch9/catalog-platform/actions/runs/32239505996),
+09:48Z) dumped the bucket whole at **249 objects / 155,031,041 bytes (147.9
+MiB)**; the 14:08Z run wrote **57.5 MiB, 61% smaller**. And the transcripts went
+from **16 objects / 38.7 MB (2026-08-18) to 72 / 151.3 MB (2026-08-19)** — ~4× in
+one day. At 147.9 MiB the whole-bucket tarball was already 59% of the way to the
+250 MiB split threshold and would have crossed it within days. The decision was
+timed as "about a month away"; it landed with about a week to spare.
 
 ### Docs
 
