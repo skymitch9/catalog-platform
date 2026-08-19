@@ -58,11 +58,23 @@ export const KNOWN_BACKUP_PREFIXES = [
   'r2/audiobook-covers',
   'r2/game-covers',
   // The two gated manifest/doc buckets, added 2026-08-18 (RECOVERY.md §1b
-  // holes #5/#6). Tiny — 107 kB and 1.27 MB — and both are republished by a
-  // publisher that runs on the OWNER'S MACHINE, which is the whole reason
-  // they are worth a copy that does not depend on that machine.
+  // holes #5/#6). Both are republished by a publisher that runs on the
+  // OWNER'S MACHINE, which is the whole reason they are worth a copy that does
+  // not depend on that machine.
   // ⚠️ `estate-ebooks` (1.81 GB) and `estate-audio` are deliberately NOT here
   // — see .github/workflows/backup.yml's `r2` job for that reasoning.
+  //
+  // ⚠️ SIZE NOTE, CORRECTED 2026-08-19 — this comment used to read "Tiny —
+  // 107 kB and 1.27 MB" and that stopped being true of `ebooks-gated` the day
+  // the GABI packs and the transcripts landed in it. What this prefix's grade
+  // now covers, measured 2026-08-18: the 2 gate manifests (107 kB) + the chunk
+  // packs under `text/` (36.08 MB and growing with the library).
+  // 🔴 It does NOT cover `transcripts/` (38.7 MB stored then, heading for
+  // ~2.6 GB): that prefix is EXCLUDED from the dump by owner decision
+  // 2026-08-19 because it is already the third copy of the owner's disk —
+  // scripts/lib/backup-exclusions.mjs carries the argument, and a green grade
+  // on this row therefore means "the packs and manifests are fresh", never
+  // "every byte in the bucket is backed up".
   'r2/ebooks-gated',
   'r2/estate-docs-gated',
 ] as const;

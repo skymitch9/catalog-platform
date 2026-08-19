@@ -109,6 +109,15 @@ through a drill: D1 `library-catalog-2nd`, R2 `ebooks-gated`, R2
 `.sql` and two bucket tarballs), which is an inference from an identical
 mechanism, **not a measurement** — the next drill should exercise them.
 
+🔴 **AND ONE OF THEM IS A PARTIAL BACKUP AS OF 2026-08-19 — `ebooks-gated`.**
+Its `transcripts/` prefix is **excluded** from the dump by owner decision
+(those objects are already the third copy of the owner's disk); its `text/`
+packs and its two gate manifests keep full nightly cover. ⚠️ **Restoring
+`ebooks-gated` from a dump will not bring the transcripts back** — §5 below
+says where they come from instead, and `backup-restore.md` §6 carries the long
+form. Every run logs the skip and every dump's `manifest.json` records it, so a
+tarball declares its own cap.
+
 | Store | Backed up? | Restored OK in drill? | Snapshot age at drill | Time to restore |
 |---|---|---|---|---|
 | D1 `estate_auth` | yes | **yes** | ~1.9 d | fetch 2.7 s + import 3.7 s + migrate 4.9 s |
@@ -145,7 +154,7 @@ Ranked by blast radius. These are not "stale" — no copy exists anywhere.
 | 2 | **Firestore `discord_links`** | Created 2026-08-17 (first write lands in `apps/discord-worker/src/link.ts`, commit `7ae9137`) — **after** the newest backup (2026-08-16T08:49Z) | Each doc is a proven Discord↔Firebase identity binding. Losing it un-links every member; each has to redo the link ceremony |
 | 3 | **Firestore `readingPositions`** | **Absent from the 2026-08-16 dump's 56 collections.** Either it had no documents at snapshot time or it was created after | Everyone's place in every book. Not reconstructible from anything |
 | 4 | **R2 `estate-ebooks`** | 168 objects, 1.81 GB — the ebook files | A local master exists (`audiobook_catalog/scripts/upload_ebooks_r2.py` re-uploads from disk), so this is recoverable, not lost — but only while that machine's disk survives |
-| 5 | **R2 `ebooks-gated`** | 2 objects, 107 kB — `ebooks.json` and `audio_manifest.json`, the two gated manifests | Republished by the pipeline (`publish_ebooks_manifest.py`, sync step 5.8), so recoverable — but until it runs, the gate has nothing to read |
+| 5 | **R2 `ebooks-gated`** | 2 objects, 107 kB — `ebooks.json` and `audio_manifest.json`, the two gated manifests | Republished by the pipeline (`publish_ebooks_manifest.py`, sync step 5.8), so recoverable — but until it runs, the gate has nothing to read. ⚠️ **The bucket has grown since this reading** and its backup is now deliberately PARTIAL: the GABI `text/` packs joined it (36.08 MB, no other copy — backed up), and so did `transcripts/` (**excluded** 2026-08-19, already the owner's third copy). §1a's note and `backup-restore.md` §6 |
 | 6 | **R2 `estate-docs-gated`** | 2 objects, 1.27 MB — the searchable docs corpus, bucket created 2026-08-18 | Rebuilt by the publisher from the three docs trees; ⚠️ that publisher runs on the owner's machine and is the only place all three trees exist together |
 | 7 | **KV `estate_docs`** (`3278d5e3…`) | **0 keys today** (`wrangler kv key list` → `[]`) | Nothing to lose right now; it is a declared store with no backup path, so it becomes a hole the day it is used |
 | 8 | **R2 `estate-audio`** | ⚠️ **Rewritten 2026-08-18 — no longer empty.** It now holds the **disaster-recovery ARCHIVE of the whole audiobook library**: 1,260 objects / ~685 GB under the `archive/` prefix, seeded by `audiobook_catalog/scripts/archive_audio_r2.py` (hourly task `AudiobookArchiveR2`) on the owner's order — *"we lose this data we lose it all and the server isnt ready yet"* | 🔴 **NOT a hole, and NOT a candidate for `backup.yml`.** This bucket *is* the off-site copy; its master is the owner's local disk. Backing it up would be a backup of a backup at 685 GB × 8 generations onto a 14 GB runner — an outage, not a backup. `scripts/backup-r2.mjs` now REFUSES it mechanically (`REFUSED_BUCKETS`, env escape hatch only). ⚠️ The `archive/` prefix must never be evicted or lifecycle-expired; the audio player's eviction pass refuses it in code. See `audiobook_catalog/docs/access/AUDIO_ARCHIVE.md` |
@@ -1009,6 +1018,30 @@ the byte-level comparison were exercised.
 uploads from the 243 MB local master — more current than any snapshot. The R2
 dump is the fallback for when that machine is unavailable. `library-covers` and
 `game-covers` have **no local master**; the dump is the only way back.
+
+### 🔴 `ebooks-gated` — the dump is PARTIAL. Do not look for `transcripts/`.
+
+Since **2026-08-19** (owner decision) the nightly `ebooks-gated` dump contains
+its `text/` packs and its two gate manifests and **nothing under
+`transcripts/`**. The tarball says so itself — `manifest.json` carries an
+`excluded` array, and `manifest.objects` lists exactly what `objects/` holds, so
+the bulk-restore loop above still works unchanged.
+
+**At 3am, in this order:**
+
+| Lost | Do this |
+|---|---|
+| `ebooks.json` / `audio_manifest.json` (the gate reads nothing) | Restore from the dump — or just let `publish_ebooks_manifest.py` (sync step 5.8, `audiobook_catalog`) republish them |
+| The `text/` packs (GABI cannot answer about books) | **Restore from the dump** — the packs' only other home is the owner's machine |
+| `transcripts/` | **Not in the dump.** Re-publish from the owner's machine: `app/core/ingest_transcripts.py` in `audiobook_catalog`. If the machine itself is gone, its Google Drive mirror (`sync_to_drive.py`) holds the source files |
+
+⚠️ **Why this is safe and not a hole:** a transcript exists three times before
+the backup job ever runs — the owner's disk (Whisper's output), the Drive mirror
+of that disk, and this prefix, which was created *as* copy three. Any incident
+short of losing all three at once leaves it standing. ⚠️ **Why it is not a
+refusal:** the rest of the bucket has no other estate-side copy, so
+`ebooks-gated` stays in the matrix. Do not "simplify" this by dropping the
+bucket. Full argument: `backup-restore.md` §6 and §8.
 
 ---
 

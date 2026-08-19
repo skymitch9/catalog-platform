@@ -129,6 +129,80 @@ test('⚠️ backup.yml\'s job matrices write exactly KNOWN_BACKUP_PREFIXES — 
   assert.deepEqual([...d1, ...firestore, ...r2].sort(), [...KNOWN_BACKUP_PREFIXES].sort());
 });
 
+/**
+ * ⚠️ THE PREFIX EXCLUSION IS PINNED HERE, NEXT TO THE MATRIX IT QUALIFIES —
+ * added 2026-08-19 with the exclusion itself.
+ *
+ * `r2/ebooks-gated` is in every list above, and the two tests before this one
+ * assert it stays there. What none of them can see is that the bucket is no
+ * longer dumped WHOLE: `transcripts/` is excluded by owner decision 2026-08-19
+ * (it is already the third copy of the owner's disk; the packs and manifests,
+ * which have no other copy, keep full nightly cover).
+ *
+ * That gap is exactly where this could go wrong, in either direction:
+ *
+ *   - **Defeated.** A later session meets the same size problem, does not find
+ *     the exclusion, and "fixes" it by dropping `ebooks-gated` from the matrix
+ *     — which the drift tests above would then happily ratify, because they
+ *     only check that the three lists AGREE. The estate would silently lose the
+ *     packs and the gate manifests, which is the half that has no other copy.
+ *   - **Widened.** A rule is added for another prefix, or another bucket, and
+ *     nothing forces the "where does this come back from?" answer into the
+ *     docs. Every entry here removes real data from every future backup.
+ *
+ * So this asserts the SHAPE of the exclusion set, not merely that it is
+ * non-empty: exactly one bucket, exactly one prefix, and a reason string that
+ * names the decision date and points at the runbook. Adding a second rule fails
+ * here on purpose — the failure is the prompt to write the docs row.
+ */
+test('⚠️ ebooks-gated/transcripts/ is EXCLUDED, and the exclusion names its reason — no silent cap', async () => {
+  const mjs = await readFile(new URL('../../../scripts/lib/backup-exclusions.mjs', import.meta.url), 'utf8');
+
+  // Parsed as text for the same reason the backup.yml assertions are: a Worker
+  // test cannot import a Node script, and a hand-copied second list is the
+  // drift this file exists to kill.
+  const table = mjs.match(/export const EXCLUDED_PREFIXES = \{([\s\S]*?)\n\};/);
+  assert.ok(table, 'EXCLUDED_PREFIXES vanished from scripts/lib/backup-exclusions.mjs');
+
+  const buckets = [...table[1].matchAll(/^\s{2}'([^']+)':\s*\[/gm)].map((m) => m[1]);
+  assert.deepEqual(buckets, ['ebooks-gated'], 'the set of buckets with prefix exclusions changed');
+
+  const prefixes = [...table[1].matchAll(/^\s+prefix: '([^']+)',/gm)].map((m) => m[1]);
+  assert.deepEqual(prefixes, ['transcripts/'], 'the set of excluded prefixes changed');
+
+  // The reason travels into the run log AND into every dump's manifest.json.
+  assert.ok(
+    table[1].includes('owner decision 2026-08-19'),
+    'the exclusion no longer names the decision that authorised it',
+  );
+  assert.ok(table[1].includes('backup-restore.md'), 'the exclusion no longer points at the restore runbook');
+
+  // And `ebooks-gated` must still be BACKED UP — an exclusion is surgical. If a
+  // future session's answer to the size problem is to drop the bucket, this is
+  // the assertion that says no.
+  assert.ok(
+    KNOWN_BACKUP_PREFIXES.includes('r2/ebooks-gated'),
+    'ebooks-gated left the backup set entirely — the packs and gate manifests have NO other copy; ' +
+      'the transcripts prefix is excluded precisely so the rest of the bucket can stay covered.',
+  );
+});
+
+/**
+ * ⚠️ The MIRRORED FACT, in the doc a 3am reader opens. A restore of
+ * `ebooks-gated` from these dumps does not contain transcripts, and a runbook
+ * that does not say so sends someone hunting for files that were never in the
+ * tarball. Guarded rather than trusted, because the exclusion and the runbook
+ * live in different trees and only one of them is under test.
+ */
+test('⚠️ backup-restore.md tells a restorer the dumps hold NO transcripts', async () => {
+  const md = await readFile(new URL('../../../docs/access/backup-restore.md', import.meta.url), 'utf8');
+  assert.ok(md.includes('transcripts/'), 'backup-restore.md no longer mentions the excluded prefix');
+  assert.ok(
+    /does NOT contain (the )?transcripts/i.test(md),
+    'backup-restore.md must state plainly that an ebooks-gated restore does NOT contain transcripts',
+  );
+});
+
 test('summarizeBackups: empty bucket -> every prefix null/0, newestOverall null', async () => {
   const bucket = new FakeBucket({});
   const summary = await summarizeBackups(bucket);

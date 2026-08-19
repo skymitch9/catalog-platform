@@ -113,6 +113,23 @@ name: Backup (daily + manual)
 #                thousands of files (audiobook-covers alone is ~1,868
 #                objects).
 #
+#                🔴 ONE PREFIX IS EXCLUDED INSIDE A BUCKET THAT IS OTHERWISE
+#                FULLY BACKED UP — owner decision 2026-08-19, and it is a
+#                DIFFERENT mechanism from the refusal below. `ebooks-gated`
+#                stays in the matrix and keeps full nightly cover for its gate
+#                manifests and its `text/` packs (no other copy exists of
+#                either — both publishers run on the owner's machine). Its
+#                `transcripts/` prefix does NOT: those objects were CREATED as
+#                the third copy of data already on the owner's disk and in the
+#                Google Drive mirror, and the corpus is heading for ~2.6 GB
+#                stored × 8 generations on a 14 GB runner — the `estate-audio`
+#                argument arriving by a slower road. The rule, its reason and
+#                its per-run log line live in
+#                `scripts/lib/backup-exclusions.mjs`; ⚠️ a restore of
+#                `ebooks-gated` from these dumps therefore does NOT contain
+#                transcripts (backup-restore.md §6 / RECOVERY.md §5 say where
+#                they come from instead).
+#
 #                ⚠️ WHICH R2 BUCKETS ARE **DELIBERATELY** LEFT OUT, AND WHY —
 #                this is the list the restore drill asked for (RECOVERY.md
 #                §1b), kept here beside the matrix it explains rather than in
@@ -358,6 +375,16 @@ jobs:
         # trees that exist together nowhere else — so the copy is worth
         # essentially nothing to take and is the only estate-side copy there
         # is. The buckets NOT here are argued in the header above.
+        #
+        # ⚠️ `ebooks-gated` IS NOT DUMPED WHOLE any more (2026-08-19): its
+        # `transcripts/` prefix is excluded at listing time by
+        # scripts/lib/backup-exclusions.mjs, on the owner's decision, because
+        # those objects are themselves the third copy of local + Drive data.
+        # The `text/` packs and the gate manifests still get full nightly
+        # cover. ⚠️ DO NOT "fix" a future size problem here by deleting this
+        # bucket from the matrix — that would drop the half that has NO other
+        # copy while keeping the half that has three. The exclusion is pinned
+        # by apps/auth-worker/test/backups.test.ts.
         #
         # 🔴 **DO NOT ADD `estate-audio`.** It holds the ~685 GB disaster-
         # recovery archive of the audiobook library (`archive/` prefix). This

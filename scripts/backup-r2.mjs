@@ -77,14 +77,33 @@
  * 🔴 ONE bucket is refused MECHANICALLY here, not merely left out of the
  * matrix: `estate-audio`. See REFUSED_BUCKETS below — it holds ~685 GB of
  * disaster-recovery archive and is itself the backup copy.
+ *
+ * 🔴 ONE PREFIX is excluded inside a bucket that is otherwise fully backed up:
+ * `ebooks-gated/transcripts/` (owner decision 2026-08-19). That is a DIFFERENT
+ * mechanism from the refusal above — see `scripts/lib/backup-exclusions.mjs`,
+ * which explains why, logs every rule on every run, and writes the same
+ * statement into each dump's own manifest. ⚠️ A restore of `ebooks-gated` from
+ * these dumps therefore does NOT contain transcripts; where they DO come from
+ * in a disaster is in docs/access/backup-restore.md §6 and RECOVERY.md §5.
  */
 
 import { mkdirSync, writeFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { applyExclusions, exclusionLogLines } from './lib/backup-exclusions.mjs';
 
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const ALLOW_EMPTY = process.argv.includes('--allow-empty');
+/**
+ * List, apply the exclusions, print the accounting — and download nothing.
+ *
+ * Added 2026-08-19 alongside the prefix exclusions, because "verify the dump
+ * has the right shape" previously meant downloading the whole bucket. It needs
+ * the same `CLOUDFLARE_API_TOKEN` a real run does (the `wrangler login` OAuth
+ * session does NOT cover the REST `objects` endpoint — RECOVERY.md §7), but it
+ * costs one listing call instead of a full byte-for-byte dump.
+ */
+const DRY_RUN = process.argv.includes('--dry-run');
 const buckets = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 
 if (!API_TOKEN) {
@@ -96,7 +115,7 @@ if (!ACCOUNT_ID) {
   process.exit(1);
 }
 if (buckets.length === 0) {
-  console.error('Usage: node scripts/backup-r2.mjs <bucket> [<bucket> ...] [--allow-empty]');
+  console.error('Usage: node scripts/backup-r2.mjs <bucket> [<bucket> ...] [--allow-empty] [--dry-run]');
   process.exit(1);
 }
 
@@ -145,7 +164,12 @@ for (const b of buckets) {
   }
 }
 
-const API_BASE = 'https://api.cloudflare.com/client/v4';
+// ⚠️ `CLOUDFLARE_API_BASE` exists ONLY so the offline test can point this
+// script at a local stand-in for the Cloudflare API and exercise the real code
+// path end-to-end (scripts/test/backup-r2-exclusions.test.mjs). Nothing sets it
+// in CI or in any runbook; it defaults to the real API and a run that overrides
+// it says so in its own environment.
+const API_BASE = process.env.CLOUDFLARE_API_BASE || 'https://api.cloudflare.com/client/v4';
 
 async function cfFetch(path, opts = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -248,12 +272,12 @@ async function getObjectBytes(bucket, key) {
 async function backupBucket(bucket) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outDir = process.env.BACKUP_OUT_DIR || `backups/r2-${bucket}-${stamp}`;
-  console.log(`\n=== ${bucket} → ${outDir} ===`);
+  console.log(`\n=== ${bucket} → ${outDir}${DRY_RUN ? ' (DRY RUN — nothing will be downloaded)' : ''} ===`);
 
-  const objects = await listAllObjects(bucket);
-  console.log(`Listed ${objects.length} object(s) in ${bucket}.`);
+  const listed = await listAllObjects(bucket);
+  console.log(`Listed ${listed.length} object(s) in ${bucket}.`);
 
-  if (objects.length === 0 && !ALLOW_EMPTY) {
+  if (listed.length === 0 && !ALLOW_EMPTY) {
     throw new Error(
       `${bucket} listed 0 objects. Treating a zero-object listing as a failed backup, ` +
         `not an empty bucket (same rule as seed-estate.mjs/backup-firestore.mjs) — ` +
@@ -261,8 +285,54 @@ async function backupBucket(bucket) {
     );
   }
 
+  // 🔴 PREFIX EXCLUSIONS — applied at LISTING time, before a single byte is
+  // downloaded, and announced on every run whether they matched or not.
+  // scripts/lib/backup-exclusions.mjs carries the whole argument; the
+  // no-silent-caps rule is why this logs unconditionally.
+  const { kept: objects, skipped } = applyExclusions(bucket, listed);
+  for (const line of exclusionLogLines(bucket, skipped)) console.log(line);
+
+  // ⚠️ An exclusion may never swallow a whole bucket. Without this, a rule that
+  // matched everything would produce a cheerful "0 objects backed up" and sail
+  // straight past the zero-object rule above — the same lie one layer down.
+  if (listed.length > 0 && objects.length === 0) {
+    throw new Error(
+      `${bucket}: every one of its ${listed.length} listed object(s) was removed by a prefix ` +
+        `exclusion, so this backup would contain nothing. Refusing. Fix or remove the rule in ` +
+        `scripts/lib/backup-exclusions.mjs — an exclusion is meant to be surgical, and a bucket ` +
+        `whose whole contents are excluded belongs in REFUSED_BUCKETS with an argument written ` +
+        `beside it, not here.`
+    );
+  }
+
+  if (DRY_RUN) {
+    const keptBytes = objects.reduce((n, o) => n + (o.size ?? 0), 0);
+    console.log(
+      `${bucket}: DRY RUN — would back up ${objects.length} object(s), ${keptBytes} bytes; ` +
+        `${listed.length - objects.length} object(s) excluded. Nothing written.`
+    );
+    return { bucket, outDir: null, count: objects.length, totalBytes: keptBytes, skipped, dryRun: true };
+  }
+
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ bucket, backed_up_at: new Date().toISOString(), objects }, null, 2));
+  writeFileSync(
+    join(outDir, 'manifest.json'),
+    JSON.stringify(
+      {
+        bucket,
+        backed_up_at: new Date().toISOString(),
+        // ⚠️ THE MANIFEST CARRIES THE CAP TOO, not just the run log. The bulk
+        // restore in backup-restore.md §6 loops `objects` and puts each file
+        // back, so `objects` must list exactly what `objects/` holds — and
+        // anyone opening this dump in a disaster must be able to see, from the
+        // dump itself, what it deliberately does not contain.
+        excluded: skipped,
+        objects,
+      },
+      null,
+      2
+    )
+  );
 
   let totalBytes = 0;
   for (const obj of objects) {
@@ -277,7 +347,7 @@ async function backupBucket(bucket) {
   }
 
   console.log(`${bucket}: downloaded ${objects.length} object(s), ${totalBytes} bytes total, into ${outDir}/objects/`);
-  return { bucket, outDir, count: objects.length, totalBytes };
+  return { bucket, outDir, count: objects.length, totalBytes, skipped, dryRun: false };
 }
 
 const results = [];
@@ -287,5 +357,11 @@ for (const bucket of buckets) {
 
 console.log('\n=== Summary ===');
 for (const r of results) {
-  console.log(`${r.bucket}: ${r.count} objects, ${r.totalBytes} bytes → ${r.outDir}`);
+  console.log(
+    `${r.bucket}: ${r.count} objects, ${r.totalBytes} bytes${r.dryRun ? ' (dry run, nothing written)' : ` → ${r.outDir}`}`
+  );
+  // ⚠️ Repeated in the summary on purpose. The per-bucket line above scrolls
+  // past thousands of retry/download lines in a real run; a cap nobody can see
+  // at the bottom of the log is a silent cap.
+  for (const line of exclusionLogLines(r.bucket, r.skipped)) console.log(`  ${line}`);
 }

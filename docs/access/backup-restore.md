@@ -21,6 +21,19 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (no secret
 > values — env var / secret NAMES only, per the estate's access-doc rule).
 >
+> ### 🔴 2026-08-19 — the `ebooks-gated` dump is now PARTIAL, on purpose
+>
+> `transcripts/` is **excluded** from the nightly `ebooks-gated` backup (owner
+> decision, option "a": exclude the prefix, keep the bucket). Those objects are
+> themselves the third copy of data on the owner's disk and in his Drive
+> mirror; the `text/` packs and the two gate manifests, which have no other
+> copy, keep **full** nightly cover.
+>
+> ⚠️ **A restore of `ebooks-gated` from these dumps does not contain
+> transcripts.** Where they come from instead, in order: [§6](#6-restoring-r2).
+> The rule and its reasoning: `scripts/lib/backup-exclusions.mjs`. Why it is not
+> the same thing as the `estate-audio` refusal: [§8](#8-whats-deliberately-not-backed-up-here-and-why).
+>
 > **Last verified: 2026-08-18** — the restore drill's mechanical
 > recommendations were implemented (commit `8c7f780`, following the drill's own
 > `8522b7c`). What changed, and where each is described in full:
@@ -183,7 +196,7 @@
 | R2 `library-covers` | `library_catalog` | `scripts/backup-r2.mjs` (full object dump via the Cloudflare REST API) → tar.gz → `wrangler r2 object put` into `estate-backups/r2/library-covers/<timestamp>.tar.gz`, dispatched via `backup.yml`'s `r2` job | Medium-high — user-uploaded photos of book covers are content-addressed and may have no copy outside the bucket |
 | R2 `audiobook-covers` | `audiobook_catalog` | Same mechanism → `estate-backups/r2/audiobook-covers/<timestamp>.tar.gz` — backed up anyway even though it's independently reproducible (§8), same "the export is nearly free" reasoning as `index_catalog` | Low — every object is also a JPEG under `output_files/covers` on the OpenAudible machine (243 MB, gitignored, the actual master); `covers_manifest.json` (tracked in git) is the enumeration. Restore = re-run the upload script (§6) |
 | R2 `game-covers` | `Board_Game_Catalog` (per `docs/info/covers-consolidation-plan.md`) | Same mechanism → `estate-backups/r2/game-covers/<timestamp>.tar.gz` — included from the start since the bucket was already live (1,123 objects/170.6 MiB in the 2026-08-15 proof run, still growing from the consolidation migration) | Medium — same content-addressed-upload shape as `library-covers`; whether a local/reproducible master exists depends on how the consolidation migration script ends up sourcing images (see that plan doc) — treated as precious until proven otherwise |
-| R2 `ebooks-gated` | the ebooks gate (`apps/ebooks-door`), the GABI packs, and the transcripts | Same mechanism → `estate-backups/r2/ebooks-gated/<timestamp>.tar.gz`, **added 2026-08-18** | **⚠️ RE-SIZED 2026-08-18 — this row read "2 objects / 107 kB" and that is no longer what the bucket holds.** MEASURED the same day: 2 gate objects (107 kB) **+ 183 GABI packs under `text/` (36.08 MB) + 16 transcripts under `transcripts/` (38.7 MB gz, from 195.30 MB raw)**. The gate objects are cheap and republished by `publish_ebooks_manifest.py` (sync step 5.8); **the transcripts are not reproducible at all** — each is GPU-hours of Whisper, the owner's *"we lose this data we lose it all"* — which is why they were put here (`app/core/ingest_transcripts.py` in `audiobook_catalog`). 🔴 **AND THAT IS WHY THIS ROW NEEDS WATCHING: the transcript corpus is heading for ~13 GB raw / ~2.6 GB stored** at the measured 5× ratio, and this job **tars a WHOLE bucket onto a 14 GB runner disk** — the same mechanic the `estate-audio` refusal is written about. ~2.6 GB is survivable; it is not survivable forever, and nobody watches a number that only moves at 3am. **Decide before it gets there:** either give the transcripts their own bucket (same privacy class, excluded from this matrix the way `estate-audio` is) or teach `scripts/backup-r2.mjs` a prefix exclusion. Do not let this row quietly become the incident the header warns about |
+| R2 `ebooks-gated` — **`text/` packs + the two gate manifests only** | the ebooks gate (`apps/ebooks-door`) and the GABI packs | Same mechanism → `estate-backups/r2/ebooks-gated/<timestamp>.tar.gz`, **added 2026-08-18**; ⚠️ **`transcripts/` EXCLUDED at listing time since 2026-08-19** (`scripts/lib/backup-exclusions.mjs`) | **⚠️ THIS IS A PARTIAL-BUCKET BACKUP AND THE ROW SAYS SO ON PURPOSE.** MEASURED 2026-08-18: 2 gate objects (107 kB) **+ 183 GABI packs under `text/` (36.08 MB) + 16 transcripts under `transcripts/` (38.7 MB gz, from 195.30 MB raw)**. ✅ **DECIDED 2026-08-19 (owner, option "a" of the two this row used to list): exclude the prefix, keep the bucket.** What is COVERED: the gate manifests — cheap, republished by `publish_ebooks_manifest.py` (sync step 5.8) — and the `text/` packs, whose only publisher runs on the owner's machine. 🔴 What is NOT covered: `transcripts/`, because those objects **are themselves the third copy** — Whisper wrote them to the owner's disk, `sync_to_drive.py` mirrors that disk to Google Drive, and `app/core/ingest_transcripts.py` (in `audiobook_catalog`) uploaded them here as copy three. Re-tarring copy three nightly, 8 generations deep, on a corpus heading for ~13 GB raw / **~2.6 GB stored** at the measured 5× ratio, onto a **14 GB runner disk**, is the `estate-audio` argument arriving by a slower road. ⚠️ **A restore from these dumps does NOT contain transcripts — §6 says where they come from instead.** The rule is pinned by `apps/auth-worker/test/backups.test.ts`, so it can be neither deleted nor widened silently, and the bucket must NOT be dropped from the matrix to solve a future size problem: that would lose the half with no other copy and keep the half with three |
 | R2 `estate-docs-gated` | the estate docs corpus (`docs.ts` / `estate-docs.md`) | Same mechanism → `estate-backups/r2/estate-docs-gated/<timestamp>.tar.gz`, **added 2026-08-18** | **Medium** — 2 objects / 1.27 MB, and ⚠️ the publisher that rebuilds it runs on the OWNER'S MACHINE and is the only place all three docs trees exist together. That is the whole reason it is worth a copy that does not depend on that machine |
 | The five D1 exports, the Firestore dump, the five R2 dumps | **objects in the PRIVATE `estate-backups` R2 bucket**, one object per store per run at `<kind>/<store>/<UTC-timestamp>.<ext>`, retained 8 deep per store (`scripts/prune-r2-backups.mjs`, §3) | — | See §2 for why the D1 exports all land here regardless of which repo owns the source; see this file's top banner for why R2-not-artifacts as of 2026-08-15 |
 | The four git repos themselves | GitHub (`skymitch9/*`) + this machine's working copies | **Already distributed — deliberately not duplicated here.** Every repo already exists in at least two places (GitHub + local clone); a third copy of source code is not what this runbook is for | N/A |
@@ -770,6 +783,55 @@ needed.)
   only path back for an object with no other copy. Restore via the bulk loop
   above, or a single `wrangler r2 object put --remote` for one file.
 
+### 🔴 `ebooks-gated`: the dump **does NOT contain the transcripts** (2026-08-19)
+
+⚠️ **Read this before you go looking for `objects/transcripts/` in an
+`ebooks-gated` tarball and conclude the backup is broken.** It is not there,
+deliberately, by owner decision 2026-08-19. `scripts/backup-r2.mjs` drops the
+`transcripts/` prefix at listing time (`scripts/lib/backup-exclusions.mjs`), so
+every dump written from that date holds:
+
+| In the dump | Not in the dump |
+|---|---|
+| `objects/ebooks.json`, `objects/audio_manifest.json` — the two gate manifests | `objects/transcripts/…` — every Whisper transcript |
+| `objects/text/…` — the GABI chunk packs and `text/_index.json.gz` | |
+| `manifest.json`, whose `objects` array lists **exactly** what `objects/` holds | |
+
+**It is not silent, in either place.** The run log prints one line per rule per
+run — matched or not —
+
+```
+ebooks-gated: SKIPPING prefix "transcripts/" — 16 object(s), 40603136 bytes NOT backed up. transcripts/ excluded by owner decision 2026-08-19 — triple-copied elsewhere; see backup-restore.md (…)
+```
+
+and the same statement is written into the dump's own `manifest.json` as an
+`excluded` array, so a tarball opened at 3am declares its own cap without
+needing this file. ⚠️ The bulk-restore loop above is therefore still correct:
+`manifest.objects` never promises a file the dump lacks.
+
+#### Where the transcripts DO come from in a disaster — in this order
+
+1. **The owner's machine, first.** This is the master: Whisper wrote each
+   transcript there, and `audiobook_catalog`'s ingest is what uploaded copies
+   elsewhere. Re-running `app/core/ingest_transcripts.py` (in
+   `audiobook_catalog`) re-publishes the prefix from disk — the same shape as
+   `upload_ebooks_r2.py`'s relationship to `estate-ebooks` (§8).
+2. **The Google Drive mirror of that machine**, if the disk is what was lost —
+   the per-author sync (`sync_to_drive.py`) that already protects the `.m4b`
+   library (§1's last row), which is why "the disk dies" is not the same event
+   as "the transcripts are gone".
+3. **`ebooks-gated/transcripts/` itself**, if the incident was anywhere else.
+   This is the ordinary case and the reason the exclusion is safe: an incident
+   that loses a D1 database, a Firestore collection or another bucket does not
+   touch this prefix, and it is still sitting there.
+
+🔴 **The residual risk, named rather than hidden** — exactly as `estate-ebooks`
+names its own (§8): all three copies fail together only if the owner's disk,
+his Drive **and** this R2 bucket are lost in one event. If that ceases to be an
+acceptable bet — or if the transcripts stop being reproducible from the
+machine — the fix is to give them their own bucket with its own backup, **not**
+to re-enable a nightly whole-bucket tar that the 14 GB runner cannot carry.
+
 ## 7. "Restoring" `index_catalog` — usually don't; re-push instead
 
 Per `docs/access/index-worker.md`, every row in `index_catalog` is a pointer
@@ -803,6 +865,7 @@ sources have had a chance to re-push, not because the data is precious.
 | `audiobook-covers` (R2) — as a REASON not to back it up | Superseded 2026-08-15 — it's still reproducible from the local master, but it's backed up anyway now because the `r2` job makes doing all three buckets together cheaper than special-casing one out | Backed up in §1's table; restore still prefers the master copy (§6) |
 | **`estate-ebooks` (R2)** — the ebook FILES, 168 objects / **1.81 GB** | ⚠️ **A judgement call, made 2026-08-18 and worth re-making if the facts change.** A local master exists and is authoritative: `audiobook_catalog/scripts/upload_ebooks_r2.py` re-uploads the whole bucket from disk, so this is *recoverable*, not lost. Backing it up would cost ~1.8 GB **per generation × 8 generations** to protect something a script already rebuilds. ⚠️ The residual risk is named rather than hidden: **that protection lasts exactly as long as the owner's disk.** | Add it to `backup.yml`'s `r2` matrix the day the local master stops being a safe assumption — or the day an off-Cloudflare copy exists to put it in (RECOVERY.md §9 item 7) |
 | **`estate-audio` (R2)** | 🔴 **DECIDED 2026-08-18 — NEVER back this one up, and the old "add it the day it holds anything" line has been retired.** It filled: it now holds the **disaster-recovery ARCHIVE of the whole audiobook library**, 1,260 objects / **~685 GB** under the `archive/` prefix, seeded by `audiobook_catalog/scripts/archive_audio_r2.py` (hourly task `AudiobookArchiveR2`) on the owner's order — *"we lose this data we lose it all and the server isnt ready yet"*. ⚠️ **This bucket IS the backup.** Its master is the owner's local library disk; the whole point of the archive is to be the second copy. Tarring it into `estate-backups` would be a backup of a backup, 685 GB × 8 generations, on a runner with 14 GB of disk — **a 685 GB daily tar is not a backup, it is an outage**, and it would redden every other store's nightly run alongside it | **Nothing to add — ever.** `scripts/backup-r2.mjs` refuses it mechanically (`REFUSED_BUCKETS`; escape hatch is `BACKUP_R2_ALLOW_REFUSED=estate-audio`, deliberately awkward), because this exact table said "add it the day it holds anything" for months and prose does not stop a matrix edit. ⚠️ Separately: the `archive/` prefix must **never** be evicted or lifecycle-expired — `fulfill_audio_requests.evict_candidates()` refuses it in code. Restore procedure (rclone / boto3, free egress) is in `audiobook_catalog/docs/access/AUDIO_ARCHIVE.md` |
+| **`ebooks-gated/transcripts/` (an R2 PREFIX, not a bucket)** | ✅ **OWNER DECISION 2026-08-19**, option "a" of the two `§1`'s row had been carrying: exclude the prefix, keep the bucket. ⚠️ **The deciding fact is the copy count, not the size.** Each transcript already exists three times before this job runs — the owner's disk (where Whisper wrote it), the Google Drive mirror of that disk, and this prefix, which `app/core/ingest_transcripts.py` created *as* the third copy. A nightly tar would make it the fourth through eleventh, on a corpus heading for ~13 GB raw / **~2.6 GB stored**, on a **14 GB runner** — the `estate-audio` argument at a prefix's scale. The rest of the bucket (`text/` packs, the two gate manifests) has **no other estate-side copy** and keeps full nightly cover, which is why this is an exclusion and not a refusal | **Give the transcripts their own bucket with its own backup** the day three copies stops being an acceptable bet, or the day they stop being reproducible from the owner's machine. ⚠️ **Never** by re-enabling a whole-bucket tar. Mechanically: `scripts/lib/backup-exclusions.mjs`, logged every run and written into every dump's `manifest.json`; pinned by `apps/auth-worker/test/backups.test.ts`. Restore-side consequences: §6 |
 | **`estate-backups` (R2) — itself** | Backing the backup bucket up *into itself* is not a copy. It is 16 objects / 917 MB in one bucket, one account, one region | ⚠️ **This is an OPEN HOLE, not a settled call** — RECOVERY.md §9 item 7. An off-Cloudflare copy needs an owner decision about where it goes |
 | **KV `estate_docs`** | **0 keys** (`wrangler kv key list` → `[]`, 2026-08-18). Nothing to lose today | Becomes a hole the day it is used; no backup path exists for it |
 | `library-2nd-covers` (R2) | 0 objects as of 2026-08-18 | Same rule as `bgc-photos` below |
@@ -834,7 +897,8 @@ else. Note who currently holds either before relying on this path.
 | `scripts/lib/firestore-timestamps.mjs` | The reviver itself: pure, dependency-free, with the one accepted ambiguity argued in its header |
 | `scripts/lib/d1-dump.mjs` | The dump splitter/reorderer + the `estate_auth` membership reader §4c prints from |
 | `scripts/test/*.test.mjs` | The offline proofs for both of the above — `npm run test:scripts`, also run by the root `npm test`. No network, no credential, no write |
-| `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before. ⚠️ **Retries 5xx/429 with backoff as of 2026-08-18** — see §3.2 |
+| `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before. ⚠️ **Retries 5xx/429 with backoff as of 2026-08-18** — see §3.2. ⚠️ **Applies per-bucket prefix exclusions as of 2026-08-19** (§6's `ebooks-gated` block), and gained a `--dry-run` flag that lists + reports the exclusion accounting without downloading anything |
+| `scripts/lib/backup-exclusions.mjs` | **The prefix exclusions themselves** — which prefixes inside an otherwise-backed-up bucket are skipped, and why. One entry today: `ebooks-gated/transcripts/`. Logged on every run whether it matched or not, and written into every dump's `manifest.json`; an exclusion that swallowed a whole bucket FAILS the backup rather than reporting an empty success. ⚠️ Not the same mechanism as `backup-r2.mjs`'s `REFUSED_BUCKETS` (whole-bucket refusal, `estate-audio`) — its header argues the difference |
 | `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite) |
 | `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported. **A mandatory step of the D1 restore path, with a regression test** (2026-08-18), and the place §4c's `estate_auth` warning is printed |
 | `scripts/seed-estate.mjs` | `estate_auth`'s independent rebuild path, §9 |
