@@ -432,6 +432,217 @@ function renderHistory(list, nowMs) {
 }
 
 // ---------------------------------------------------------------------------
+// THE TWO PER-BOOK CONTROLS (owner-approved 2026-08-18): re-queue a failed
+// book, and move one to the front of the queue.
+//
+// ⚠️ NEITHER BUTTON DOES THE THING ITS NAME SUGGESTS, AND EVERY SENTENCE HERE
+// HAS TO SAY SO. They write a book id into `ingestion_control/state`, via the
+// same devops-gated ops door the pause card on /status/pipelines uses. The home
+// machine reads that document at the top of its next run — it checks every 30
+// minutes — applies the list, and clears the ids it acted on. So the honest
+// report after a successful write is "queued for retry", never "retried".
+// Claiming an outcome this page cannot observe is precisely the failure the
+// /status split exists to end, and the easiest one to reintroduce.
+//
+// ⚠️ THE PAGE CANNOT TELL "already done" FROM "nobody asked". An empty
+// `requeue` list means either the processor consumed it or it was never
+// written, and nothing in the document distinguishes the two. So the wording
+// below never says "your retry completed" — it says what the list holds.
+//
+// ⚠️ THE OUTCOME IS NOT VISIBLE HERE UNTIL THE NEXT PUSH. This page renders a
+// board pushed from the home machine every 15 minutes, so a book re-queued now
+// keeps showing as failed for up to a quarter of an hour. Saying that out loud
+// is what stops somebody pressing the button four more times.
+// ---------------------------------------------------------------------------
+
+const AUTH_ORIGIN = 'https://auth.heygabi.ai';
+const failedEl = document.getElementById('proc-failed');
+const failedMsgEl = document.getElementById('proc-failed-msg');
+
+function setFailedMsg(text, tone) {
+  if (!failedMsgEl) return;
+  failedMsgEl.textContent = text || '';
+  failedMsgEl.dataset.tone = tone || '';
+}
+
+/**
+ * Write one book id into the control document. `action` is 'requeue' or
+ * 'priority_front'.
+ *
+ * ⚠️ EVERY REFUSAL IS WORDED AND THE FOUR CAUSES ARE KEPT APART — not signed
+ * in / not devops / not configured / the server broke each have a different
+ * fix, and a person must never meet a bare status. Same shape as the pipelines
+ * page's sendIngestionControl(), deliberately: two pages writing one document
+ * should refuse in the same voice.
+ */
+async function sendBookControl(action, bookId, title, verb) {
+  const token = await idToken();
+  if (!token) {
+    setFailedMsg('Sign-in lapsed — sign in again, then try that button.', 'warn');
+    return;
+  }
+  setFailedMsg(`${verb} “${title}”…`);
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/ingestion`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, book_ids: [bookId] }),
+    });
+  } catch {
+    setFailedMsg('The auth Worker did not answer (network). Nothing was written — try again shortly.', 'warn');
+    return;
+  }
+  let body = null;
+  try { body = await res.json(); } catch { /* the status still speaks */ }
+
+  if (res.ok) {
+    // The route's own sentence, because only the server knows what the document
+    // now holds. The tail is this page's own honest caveat about ITS freshness.
+    setFailedMsg(
+      `${body?.detail || 'Written to the ingestion control.'} This list is pushed from the home ` +
+        'machine every 15 minutes, so the book below stays listed until the next push — that is this ' +
+        'page being out of date, not the request being ignored.',
+      'ok',
+    );
+    return;
+  }
+  if (res.status === 400) {
+    setFailedMsg(body?.detail || 'That book could not be read — reload the page and try again.', 'warn');
+  } else if (res.status === 401) {
+    setFailedMsg('Sign-in lapsed — sign in again, then try that button.', 'warn');
+  } else if (res.status === 403) {
+    setFailedMsg(
+      'This account does not hold devops, so it cannot change the ingestion queue. ' +
+        'An admin can grant devops from /admin (“Make devops”).',
+      'warn',
+    );
+  } else if (res.status === 503) {
+    setFailedMsg(`Not configured yet (${body?.error || 'unset secret'}): ${body?.fix || ''}`, 'warn');
+  } else {
+    setFailedMsg(
+      `Something went wrong on the server${body?.error ? ` (${body.error})` : ''} — nothing is ` +
+        'guaranteed to have been written. Re-read this list after the next push before pressing it again.',
+      'warn',
+    );
+  }
+}
+
+/**
+ * A small button. Deliberately NOT the two-tap confirm the pipelines page uses
+ * for pause/deploy: the blast radius of a mistaken re-queue is one book moving
+ * from `failed` to `pending`, and the processor itself refuses to do even that
+ * to a book that already succeeded. A confirmation tax on a reversible,
+ * bounded action only teaches people to click twice without reading.
+ */
+function bookBtn(label, ariaLabel, onClick) {
+  const b = el('button', 'btn quiet proc-btn', label);
+  b.type = 'button';
+  b.setAttribute('aria-label', ariaLabel);
+  b.addEventListener('click', () => { onClick(); });
+  return b;
+}
+
+/**
+ * "Not in GABI's knowledge base" — the failed books and the deferred PDFs.
+ *
+ * ⚠️ THREE SILENCES, THREE SENTENCES, the same rule as every other list here.
+ * `hasSection` lets this tell "the push carried no `failed` key" (an older
+ * pusher — go look at it) from "the key was there and empty" (genuinely
+ * nothing is broken, which is good news worth stating rather than rendering as
+ * a blank box).
+ */
+function renderFailed(rows, hasSection, nowMs) {
+  if (!failedEl) return;
+  if (!hasSection) {
+    sayEmpty(
+      failedEl,
+      'The last push carried no failed-book list. That is an older pusher, not a clean shelf — it ' +
+        'says nothing about whether anything failed. Check scripts/push-processing-board.mjs on the home machine.',
+    );
+    return;
+  }
+  if (!rows.length) {
+    sayEmpty(
+      failedEl,
+      'Nothing failed and nothing is deferred — every book the ingester tracks is either done or ' +
+        'still queued. This is a measurement, not an absence of information.',
+    );
+    return;
+  }
+  failedEl.replaceChildren();
+  for (const raw of rows) {
+    const b = raw && typeof raw === 'object' ? raw : {};
+    const id = str(b.id);
+    const title = str(b.title) || id || 'untitled book';
+    const deferred = str(b.status) === 'needs-ocr';
+    const li = el('li', 'proc-row');
+    li.dataset.status = str(b.status) || 'failed';
+
+    const head = el('div', 'proc-head');
+    head.append(el('span', 'proc-title', title));
+    if (str(b.lane)) head.append(el('span', 'proc-lane', laneLabel(b.lane)));
+    head.append(el('span', 'proc-lane', deferred ? 'waiting on OCR' : 'failed'));
+    li.append(head);
+
+    // ⚠️ THE PROCESSOR'S OWN SENTENCE, VERBATIM. It is what tells the owner
+    // whether a retry is worth twenty GPU-minutes or will fail identically.
+    const why = str(b.reason) || str(b.blocker);
+    if (why) li.append(el('p', 'proc-meta', why));
+
+    const bits = [];
+    const whenIso = str(b.at);
+    if (Number.isFinite(Date.parse(whenIso))) bits.push(ageOf(whenIso, nowMs));
+    if (str(b.note)) bits.push(str(b.note));
+    if (bits.length) li.append(el('p', 'proc-meta', bits.join(' · ')));
+
+    // ⚠️ A BOOK ALREADY RETRIED ONCE SAYS SO, and it is the highest-value line
+    // in the row. A second failure with the same reason means retrying is not
+    // the fix; without this the owner presses the button all night.
+    if (str(b.requeued_at)) {
+      const again =
+        str(b.previous_reason) && str(b.previous_reason) === why
+          ? ' It failed the same way both times, so a third retry is unlikely to help.'
+          : '';
+      li.append(
+        el('p', 'proc-meta proc-warn', `Already re-queued once (${ageOf(b.requeued_at, nowMs)}).${again}`),
+      );
+    }
+
+    const actions = el('div', 'proc-actions');
+    if (id) {
+      const retry = bookBtn('↻ Re-queue', `Re-queue ${title} for ingestion`, () =>
+        sendBookControl('requeue', id, title, 'Queueing a retry for'));
+      if (deferred) {
+        // ⚠️ OFFERED, NOT HIDDEN, AND HONEST ABOUT BEING A NO-OP TODAY. The
+        // processor accepts a retry on a deferred PDF; what it cannot do is
+        // READ one, because the OCR step was never built. Hiding the button
+        // would imply the book is unreachable forever; enabling it silently
+        // would waste the owner's evening. So it stays clickable and says what
+        // will happen, which is nothing until OCR exists.
+        retry.title =
+          'This PDF is a scan and the OCR step has not been built, so re-queuing it will not get it ' +
+          'read today. The row exists so the book is not mistaken for one the shelf simply lacks.';
+      }
+      actions.append(retry);
+      actions.append(
+        bookBtn('⇧ Front of queue', `Move ${title} to the front of the ingestion queue`, () =>
+          sendBookControl('priority_front', id, title, 'Moving to the front of the queue')),
+      );
+    } else {
+      // No id means no button — and the row says why, rather than showing a
+      // control that cannot work.
+      actions.append(
+        el('p', 'proc-meta', 'No book id in the push, so this one cannot be re-queued from here.'),
+      );
+    }
+    li.append(actions);
+
+    failedEl.append(li);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The poll
 // ---------------------------------------------------------------------------
 
@@ -442,6 +653,10 @@ let polling = false;
 function sayNeverPushed() {
   sayEmpty(inflightEl, 'Nothing has been pushed to the board yet, so there is nothing to show — not "nothing is processing".');
   sayEmpty(historyEl, 'No history yet — the home machine has not pushed a processing section.');
+  // ⚠️ `false`, not `[]`-as-empty: nothing has ever been pushed, so "nothing
+  // failed" is not something this page has been told. Rendering it as a clean
+  // shelf would be the page inventing the one reassurance it cannot support.
+  renderFailed([], false, Date.now());
   renderQueue([]);
   renderPacks(null, Date.now());
   renderCompleted(null, [], Date.now());
@@ -475,6 +690,7 @@ async function refreshBoard() {
       // pipeline is idle.
       sayEmpty(inflightEl, 'The last board carried no processing section. The home-machine pusher exists and runs every 15 minutes, so this means it is FAILING, not that it was never built — check output_files/processing_push.log on the home machine. It says nothing about whether books are actually being processed.');
       sayEmpty(historyEl, 'No processing section in the last board, so no history to show.');
+      renderFailed([], false, now);
       renderQueue([]);
       renderPacks(null, now);
       renderCompleted(null, [], now);
@@ -486,6 +702,11 @@ async function refreshBoard() {
     renderInFlight(arraySection(section, 'in_flight'), now);
     renderQueue(normaliseQueue(section));
     renderPacks(objectSection(section, 'packs'), now);
+    // ⚠️ `hasSection` is asked of the RAW section, not of the array: a `failed`
+    // key that is present and empty means "nothing is broken", while a key that
+    // is absent means an older pusher that cannot tell us either way. Collapsing
+    // them would render a clean shelf over a pusher nobody had noticed was stale.
+    renderFailed(arraySection(section, 'failed'), 'failed' in section, now);
     renderHistory(history, now);
   } finally {
     polling = false;

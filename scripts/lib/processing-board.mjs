@@ -449,6 +449,51 @@ function historyRow(bookId, entry, titles) {
 }
 
 /**
+ * A failed (or OCR-deferred) book → one row the page can put a Re-queue button
+ * on. Added 2026-08-18 with the owner-approved retry control.
+ *
+ * ⚠️ `id` IS THE `book_id` THE PROCESSOR KEYS ON, and it is the whole reason
+ * this exists as a row rather than a count. Until now `failed` appeared only as
+ * a number inside `packs.note` — enough to know something broke, useless for
+ * doing anything about it. The retry control writes ids into the ingestion
+ * control document, so a row with no id is a button that cannot be built.
+ *
+ * ⚠️ THE REASON IS CARRIED VERBATIM AND NEVER SUMMARISED. It is the processor's
+ * own sentence ("CUDA out of memory", "transcription failed"), and it is what
+ * tells somebody whether retrying is worth anything or whether the same thing
+ * happens again in twenty GPU-minutes.
+ */
+function failedRow(bookId, entry, titles) {
+  const title = titles.get(bookId);
+  const row = {
+    id: bookId,
+    title: title || entry.title || bookId,
+    status: entry.status,
+    at: typeof entry.updated_at === 'string' ? entry.updated_at : undefined,
+  };
+  const lane = laneForSource(entry.source);
+  if (lane) row.lane = lane;
+  // `reason` is set by a real failure; `blocker` by the needs-OCR path, which
+  // is a NAMED missing capability rather than something that went wrong. Kept
+  // in separate fields so the page can word the two differently — "it broke"
+  // and "nothing can read this yet" have different fixes.
+  if (typeof entry.reason === 'string' && entry.reason) row.reason = entry.reason.slice(0, 400);
+  if (typeof entry.blocker === 'string' && entry.blocker) row.blocker = entry.blocker.slice(0, 400);
+  // ⚠️ Present only on a book ALREADY retried once — the processor stamps it
+  // when it moves a book back to pending. A second failure with the same reason
+  // is the signal that retrying is not the fix, and that is invisible without
+  // this field.
+  if (typeof entry.requeued_at === 'string') row.requeued_at = entry.requeued_at;
+  if (typeof entry.previous_reason === 'string' && entry.previous_reason) {
+    row.previous_reason = entry.previous_reason.slice(0, 400);
+  }
+  if (!title && !entry.title) {
+    row.note = 'no title recorded in any ingest log — showing the book id';
+  }
+  return row;
+}
+
+/**
  * The whole `processing` section.
  *
  * @param {object} input
@@ -585,10 +630,30 @@ export function buildProcessingSection(input) {
   );
   packs.note = `${notes.join('. ')}.`;
 
+  // --- the failed list -----------------------------------------------------
+  // ⚠️ NEWEST FIRST and bounded by the SAME cap as the history, because it
+  // shares the board's size budget. A book with no readable `updated_at` sorts
+  // last rather than first — an unknown time must not masquerade as the most
+  // recent failure and take the top of a list somebody acts on.
+  //
+  // ⚠️ IT INCLUDES `needs-ocr`, and that is deliberate. Those 25 PDFs are not
+  // failures — they are a named, un-built capability — but they are the other
+  // half of "books that are NOT in the knowledge base and are not going to get
+  // there on their own", and hiding them here would leave the page implying the
+  // shelf simply lacks them. The rows carry `status` so the page can say which
+  // is which, and the processor accepts a retry on both (its
+  // REQUEUABLE_STATUSES) while still refusing to touch a book that succeeded.
+  const failedRows = Object.entries(books)
+    .filter(([, e]) => e && (e.status === 'failed' || e.status === 'needs-ocr'))
+    .map(([id, e]) => failedRow(id, e, titles))
+    .sort((a, b) => (Date.parse(b.at || '') || 0) - (Date.parse(a.at || '') || 0))
+    .slice(0, maxHistory);
+
   return {
     in_flight,
     queue: queueRows(latestQueueLine(nightly), needsOcr, queueSummary),
     packs,
     history,
+    failed: failedRows,
   };
 }

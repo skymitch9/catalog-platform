@@ -249,7 +249,11 @@ function section(over = {}) {
 
 test('the whole section matches the contract, and carries no percent it cannot measure', () => {
   const s = section();
-  assert.deepEqual(Object.keys(s).sort(), ['history', 'in_flight', 'packs', 'queue']);
+  // `failed` joined the contract 2026-08-18 with the owner-approved retry
+  // control. Asserted WHOLE rather than by membership, so adding a section is a
+  // deliberate edit here — the page renders exactly these, and a key added
+  // silently is a section nothing draws.
+  assert.deepEqual(Object.keys(s).sort(), ['failed', 'history', 'in_flight', 'packs', 'queue']);
 
   assert.equal(s.in_flight.length, 1);
   const live = s.in_flight[0];
@@ -460,4 +464,93 @@ test('an unreadable state file yields an empty section, never a fabricated one',
   assert.deepEqual(s.queue, [], 'no queue line means no rows, so the page says "unknown, not zero"');
   assert.deepEqual(s.history, []);
   assert.equal(s.packs.packed, 0);
+});
+
+// ---------------------------------------------------------------------------
+// THE `failed` LIST (2026-08-18) — the rows the Re-queue button is built from.
+//
+// ⚠️ Before this existed, a failure was a NUMBER inside packs.note. That is
+// enough to know something broke and useless for doing anything about it: the
+// retry control writes book ids into the ingestion control document, so a row
+// without an id is a button that cannot exist. These tests guard the id, the
+// verbatim reason, and the deliberate inclusion of the OCR-deferred books.
+// ---------------------------------------------------------------------------
+
+test('every failed row carries the book_id the processor keys on', () => {
+  const s = section();
+  assert.ok(s.failed.length > 0, 'the fixture has a failed book and a deferred PDF');
+  for (const row of s.failed) {
+    assert.equal(typeof row.id, 'string');
+    assert.ok(row.id.length > 0, 'a row with no id is a button that cannot be built');
+  }
+});
+
+test('⚠️ the failure reason is carried VERBATIM, never summarised', () => {
+  // It is what tells somebody whether retrying is worth anything or whether the
+  // same thing happens again in twenty GPU-minutes.
+  const s = section();
+  const hp = s.failed.find((r) => r.id.startsWith('harry-potter'));
+  assert.ok(hp);
+  assert.equal(hp.status, 'failed');
+  assert.equal(hp.reason, 'FileNotFoundError: no transcript on disk');
+});
+
+test('⚠️ needs-ocr books are INCLUDED, and keep their own status and blocker', () => {
+  // They are not failures — they are a named, un-built capability — but they
+  // are the other half of "not in the knowledge base and not getting there on
+  // their own". Hiding them leaves the page implying the shelf lacks the book.
+  const s = section();
+  const ocr = s.failed.find((r) => r.status === 'needs-ocr');
+  assert.ok(ocr, 'the deferred PDF is listed');
+  assert.equal(ocr.blocker, 'OCR processor not built');
+  assert.equal(ocr.reason, undefined, 'a blocker is not a failure reason');
+});
+
+test('a done book never appears in the failed list', () => {
+  const s = section();
+  const doneIds = new Set(s.history.map((r) => r.id));
+  for (const row of s.failed) {
+    assert.equal(doneIds.has(row.id), false, `${row.id} is both done and failed`);
+  }
+});
+
+test('⚠️ an unknown failure time sorts LAST, never as the newest', () => {
+  const s = section({
+    state: {
+      books: {
+        'no-clock': { status: 'failed', reason: 'x' },
+        'has-clock': { status: 'failed', reason: 'y', updated_at: '2026-08-18T19:00:00Z' },
+      },
+    },
+  });
+  assert.deepEqual(s.failed.map((r) => r.id), ['has-clock', 'no-clock']);
+});
+
+test('a previously-retried book carries requeued_at and its earlier reason', () => {
+  // ⚠️ A second failure with the same reason is the signal that retrying is not
+  // the fix. Without these two fields that is invisible and somebody retries
+  // the same book all night.
+  const s = section({
+    state: {
+      books: {
+        b1: {
+          status: 'failed',
+          updated_at: '2026-08-18T19:00:00Z',
+          reason: 'CUDA out of memory',
+          requeued_at: '2026-08-18T18:00:00Z',
+          previous_reason: 'CUDA out of memory',
+        },
+      },
+    },
+  });
+  assert.equal(s.failed[0].requeued_at, '2026-08-18T18:00:00Z');
+  assert.equal(s.failed[0].previous_reason, 'CUDA out of memory');
+});
+
+test('no failures is an empty array, not a missing key', () => {
+  // The page needs to tell "nothing failed" from "the push carried no failed
+  // section" — two different sentences with two different fixes.
+  const s = section({ state: { books: { b1: { status: 'done', updated_at: '2026-08-18T19:00:00Z' } } } });
+  assert.ok(Array.isArray(s.failed));
+  assert.equal(s.failed.length, 0);
 });

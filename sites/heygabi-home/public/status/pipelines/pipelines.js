@@ -710,7 +710,13 @@ async function sendIngestionControl(action, until, verb) {
     ingestionKnown = true;
     lastIngestionControl = body?.control ?? null;
     renderIngestion(lastIngestionControl);
-    setIngestionMsg('Saved. The home machine reads this before every run.', 'ok');
+    // ⚠️ THE ROUTE'S OWN SENTENCE WINS when it sends one. Each action has a
+    // different consequence and only the server knows the resulting document —
+    // "Start now" in particular has to admit that a live quiet-hours window
+    // still blocks the start. A single generic "Saved." would flatten that into
+    // a claim the page cannot support. The old wording stays as the fallback so
+    // an older Worker deploy still says something true.
+    setIngestionMsg(body?.detail || 'Saved. The home machine reads this before every run.', 'ok');
     return;
   }
   if (res.status === 400) {
@@ -757,6 +763,30 @@ function buildIngestionCard() {
   );
   holder.appendChild(
     confirmBtn('Resume', 'quiet', () => sendIngestionControl('resume', undefined, 'Resuming')),
+  );
+
+  // ⚠️ "START NOW" IS NOT A SECOND RESUME BUTTON (owner-approved fine control
+  // #2, 2026-08-18). Both clear the pause flag, the pause timer and the
+  // don't-check timer. RESUME additionally drops a scheduled window that is in
+  // force right now — it has to, or the window re-pauses ingestion seconds
+  // later and Resume reads as broken. START NOW leaves `pause_windows`
+  // completely untouched: quiet hours are a schedule the owner set on purpose,
+  // and silently deleting tonight's 7pm window to satisfy a one-off request
+  // would take away a recurring instruction he never withdrew.
+  //
+  // ⚠️ THE CONSEQUENCE IS ADMITTED RATHER THAN HIDDEN: inside a live window
+  // this clears the ad-hoc pauses and the window STILL blocks the start. The
+  // route's own wording says so and lands in the message line below, so the
+  // owner reads it at the moment it matters instead of wondering why nothing
+  // started. A control that hid that would be promising a run it cannot
+  // deliver, which is the failure this page exists to end.
+  holder.appendChild(
+    confirmBtn(
+      '▶ Start now',
+      'quiet',
+      () => sendIngestionControl('start_now', undefined, 'Clearing the pauses'),
+      'warn',
+    ),
   );
 
   const pauseSlot = document.getElementById('ingestion-pause-until-slot');

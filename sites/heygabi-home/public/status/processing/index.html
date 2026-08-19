@@ -135,6 +135,30 @@
     <h3 class="step-list-h">Packs</h3>
     <div id="proc-packs"></div>
 
+    <!-- ⚠️ NOT IN THE KNOWLEDGE BASE — the owner-approved retry control
+         (2026-08-18). Until now a failure was a NUMBER inside the packs note:
+         enough to know something broke, useless for doing anything about it.
+
+         ⚠️ THE SECTION SITS ABOVE THE FINISHED LIST ON PURPOSE, for the same
+         reason the completed count was moved to the top: a list at the bottom
+         of a long page is the same as a list that does not exist, and this one
+         is the only part of the page that asks the owner to DO something.
+
+         ⚠️ Both buttons write a line into the ingestion control document. They
+         do not retry anything and cannot: the home machine acts on the list at
+         the start of its next run. Every word in this section has to keep that
+         distinction, because a control that claims an outcome it cannot observe
+         is exactly what these status pages exist to end. -->
+    <h3 class="step-list-h">Not in GABI's knowledge base</h3>
+    <p class="section-note step-section-note">
+      Books that failed, and the scanned PDFs nothing can read yet. ⚠️ These two
+      are different: a failure is something that went wrong and may well work on
+      a retry; a deferred PDF is waiting on an OCR step that <em>has not been
+      built</em>, so re-queuing one changes nothing today and the row says so.
+    </p>
+    <ul id="proc-failed" class="proc-list"></ul>
+    <p id="proc-failed-msg" class="ops-run-msg"></p>
+
     <h3 class="step-list-h">Joined GABI's knowledge base</h3>
     <p class="section-note step-section-note">
       Newest first. ⚠️ The date is when the pack became <em>servable</em> — not
@@ -148,8 +172,11 @@
     <p class="section-note">
       Pushed with <code>scripts/push-agent-board.mjs</code> (the
       <code>processing</code> section of the same board the Agents page reads).
-      Nothing on this page starts, stops or re-queues anything — the pipeline
-      levers live on <a href="/status/pipelines/">Pipelines</a>.
+      ⚠️ The two per-book buttons above are the only things on this page that
+      write anything, and what they write is a <em>request</em> the home machine
+      reads at the start of its next run — they do not start, stop or retry
+      anything themselves. The levers that pause and start the whole flow live
+      on <a href="/status/pipelines/">Pipelines</a>.
     </p>
   </section>
 

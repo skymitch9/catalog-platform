@@ -162,6 +162,11 @@ statement about a **broken pusher**, not an unbuilt one: if you see it, check
   "history": [
     { "title": "…", "author": "…", "lane": "epub", "joined_at": "…",
       "ingester_version": "…", "chunks": 0, "note": "…" }
+  ],
+  "failed": [
+    { "id": "book-id", "title": "…", "status": "failed" | "needs-ocr",
+      "lane": "audiobook", "at": "…", "reason": "…", "blocker": "…",
+      "requeued_at": "…", "previous_reason": "…", "note": "…" }
   ]
 }
 ```
@@ -230,6 +235,47 @@ route and must not vanish.
 **`packs.as_of`** — the manifest's own clock, a third one. It may have been read
 hours before the board was pushed; showing the counts under the push age alone
 would silently promote a stale count to a fresh one.
+
+**`failed`** — added 2026-08-18 with the owner-approved retry control, and it
+is the only section on that page carrying an **`id`**. That is the whole reason
+it exists as a list of rows rather than the number it used to be inside
+`packs.note`: the Re-queue and Front-of-queue buttons write `book_id`s into
+`ingestion_control/state`, so a row without an id is a button that cannot be
+built. The id is the processor's own key (`audiobook_catalog`'s
+`ingest_state.json`), not a slug this projection invented.
+
+⚠️ **IT INCLUDES `status: "needs-ocr"`, AND THE PAGE MUST KEEP THE TWO APART.**
+Those 25 scanned PDFs are not failures — they are a **named, un-built
+capability** — but they are the other half of *"not in the knowledge base and
+not getting there on their own"*, and omitting them leaves the page implying the
+shelf simply lacks the book. So they are listed, tinted differently, and their
+Re-queue button stays clickable while saying plainly that nothing will read them
+until OCR exists. A control that was hidden would imply the book is unreachable
+forever; one that was silently a no-op would waste an evening.
+
+⚠️ **`reason` and `blocker` are separate fields on purpose.** `reason` is what
+went wrong (the processor's verbatim sentence — never summarised, because it is
+what tells somebody whether a retry is worth twenty GPU-minutes); `blocker` is a
+capability that does not exist yet. Same shape on screen, different fixes.
+
+⚠️ **`requeued_at` + `previous_reason` are the anti-loop pair.** They appear
+only on a book the processor has already moved back to `pending` once. A second
+failure with the *same* reason means retrying is not the fix, and without these
+two fields that is invisible — the owner presses the button all night. The page
+says so in the row.
+
+⚠️ **An ABSENT `failed` key and an EMPTY one are different sentences**, and the
+reader is required to keep them apart: absent means an older pusher that cannot
+tell us either way, empty means genuinely nothing is broken. Rendering a clean
+shelf over a stale pusher is the same false all-clear the event ring's §2
+forbids.
+
+⚠️ **NOTHING ON THAT PAGE OBSERVES THE OUTCOME.** The buttons write a request;
+the home machine applies it at the top of its next run (every 30 minutes) and
+clears the ids it acted on. The board itself is pushed every 15 minutes, so a
+re-queued book keeps appearing here for up to a quarter of an hour. Both delays
+are stated on screen — a control that claimed "retried" would be asserting
+something no part of this system can see.
 
 **`history.joined_at`** — ⚠️ **the date the pack became SERVABLE, not the date
 the book was transcribed**, and the page never derives one from the other. This

@@ -449,10 +449,82 @@ opsRoutes.post('/estate/ops/pipeline/force-upload', requireDevops(), async (c) =
  */
 export const INGESTION_CONTROL_DOC = 'ingestion_control/state';
 
-/** The four writable actions the status card offers. `resume` is the one
- *  that must always work: it clears every pause the others can set. */
-export const INGESTION_ACTIONS = ['pause', 'resume', 'pause_until', 'dont_check_until'] as const;
+/**
+ * The writable actions the status surfaces offer. `resume` is the one that must
+ * always work: it clears every pause the others can set.
+ *
+ * ⚠️ `start_now` IS NOT A SYNONYM FOR `resume`, and the difference is one line
+ * of the document (owner-approved fine control #2, 2026-08-18). Both clear
+ * `paused` / `paused_until` / `dont_check_until`. **`resume` additionally drops
+ * any `pause_window` currently in force**, because otherwise it re-pauses
+ * seconds later and reads as "Resume did nothing". `start_now` leaves
+ * `pause_windows` **completely untouched** — it is the inverse of the pause
+ * card's levers, not a history eraser: the owner's standing quiet hours are a
+ * schedule he set on purpose, and a "start now" that silently deleted tonight's
+ * 7pm-to-midnight window would take a recurring instruction away to satisfy a
+ * one-off one. Consequence, and it is stated on the button: inside a live
+ * window `start_now` clears the ad-hoc pauses and the window still blocks the
+ * start. That is the honest behaviour, not a bug.
+ *
+ * ⚠️ `requeue` and `priority_front` APPEND to a list the PROCESSOR consumes or
+ * reads; they are not pauses and carry `book_ids`, never `until`. See
+ * `nextIngestionControl` for the append rules and `audiobook_catalog`'s
+ * `app/core/ingest_queue.py` for what each one does when it lands.
+ */
+export const INGESTION_ACTIONS = [
+  'pause',
+  'resume',
+  'pause_until',
+  'dont_check_until',
+  'start_now',
+  'requeue',
+  'priority_front',
+  'priority_front_clear',
+] as const;
 export type IngestionAction = (typeof INGESTION_ACTIONS)[number];
+
+/**
+ * ⚠️ MIRRORS `audiobook_catalog/app/core/ingest_control.py`'s `MAX_REQUEUE` /
+ * `MAX_PRIORITY_FRONT` / `MAX_CONTROL_ENTRY_CHARS`. No shared module across the
+ * two repos — the same duplication story as `PIPELINE_STEPS` above. The
+ * processor caps defensively on read regardless of what this writes, so a drift
+ * here costs entries silently dropped on the far side, not a crash; keeping the
+ * numbers equal is what makes the dashboard's count and the processor's agree.
+ */
+export const MAX_CONTROL_LIST = 200;
+export const MAX_CONTROL_ENTRY_CHARS = 200;
+
+/**
+ * Clean a `book_ids` array from a browser into the list the processor will
+ * accept. Pure. Order preserved, duplicates dropped keeping the first — for
+ * `priority_front` the order IS the instruction.
+ */
+export function cleanBookIds(raw: unknown): { ids: string[]; dropped: number } {
+  if (!Array.isArray(raw)) return { ids: [], dropped: 0 };
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  let dropped = 0;
+  for (const entry of raw) {
+    if (typeof entry !== 'string') {
+      dropped++;
+      continue;
+    }
+    const text = entry.trim();
+    if (!text || text.length > MAX_CONTROL_ENTRY_CHARS) {
+      dropped++;
+      continue;
+    }
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (ids.length >= MAX_CONTROL_LIST) {
+      dropped++;
+      continue;
+    }
+    ids.push(text);
+  }
+  return { ids, dropped };
+}
 
 export function isIngestionAction(value: unknown): value is IngestionAction {
   return typeof value === 'string' && (INGESTION_ACTIONS as readonly string[]).includes(value);
@@ -468,6 +540,13 @@ export interface IngestionControl {
   paused_until: string | null;
   dont_check_until: string | null;
   pause_windows: IngestionWindow[];
+  /** ⚠️ CONSUMED by the processor at its next run start, then removed by it.
+   *  A non-empty list here means "not acted on yet"; empty means either nobody
+   *  asked or the processor already did. The page must word it that way — it
+   *  cannot tell the two apart from this field alone. */
+  requeue: string[];
+  /** ⚠️ NOT consumed. A standing preference until the dashboard clears it. */
+  priority_front: string[];
   updated_by: string | null;
   updated_at: string | null;
 }
@@ -524,6 +603,12 @@ export function decodeIngestionControl(doc: unknown): IngestionControl | null {
     pause_windows: rawWindows
       .filter((w): w is Record<string, unknown> => !!w && typeof w === 'object')
       .map((w) => ({ from: asIsoOrNull(w.from), until: asIsoOrNull(w.until) })),
+    // Same narrow posture as every field above: an unexpected type reads as
+    // "unset", never as something plausible. The processor writes these too
+    // (it removes consumed requeue entries), so this decoder meets values this
+    // Worker did not produce.
+    requeue: cleanBookIds(m.requeue).ids,
+    priority_front: cleanBookIds(m.priority_front).ids,
     updated_by: typeof m.updated_by === 'string' ? m.updated_by : null,
     updated_at: asIsoOrNull(m.updated_at),
   };
@@ -553,6 +638,12 @@ export function ingestionControlFields(control: IngestionControl) {
         })),
       },
     },
+    requeue: {
+      arrayValue: { values: control.requeue.map((id) => ({ stringValue: id })) },
+    },
+    priority_front: {
+      arrayValue: { values: control.priority_front.map((id) => ({ stringValue: id })) },
+    },
     updated_by: control.updated_by
       ? { stringValue: control.updated_by.slice(0, 120) }
       : { nullValue: null as null },
@@ -562,6 +653,12 @@ export function ingestionControlFields(control: IngestionControl) {
   };
 }
 
+/** Order-sensitive list equality — for `priority_front` the order IS the
+ *  instruction, so a reordering is a real change and must enter the mask. */
+export function sameIdList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 /** An empty control — what a missing document means. */
 export function emptyIngestionControl(): IngestionControl {
   return {
@@ -569,6 +666,8 @@ export function emptyIngestionControl(): IngestionControl {
     paused_until: null,
     dont_check_until: null,
     pause_windows: [],
+    requeue: [],
+    priority_front: [],
     updated_by: null,
     updated_at: null,
   };
@@ -594,6 +693,7 @@ export function nextIngestionControl(input: {
   current: IngestionControl | null;
   action: IngestionAction;
   until?: unknown;
+  bookIds?: unknown;
   actor: string;
   nowMs: number;
 }): { control: IngestionControl } | { error: string; detail: string } {
@@ -615,9 +715,59 @@ export function nextIngestionControl(input: {
     paused_until: keptPausedUntil,
     dont_check_until: keptDontCheck,
     pause_windows: keptWindows,
+    // ⚠️ Carried through UNCHANGED by every pause/resume action. These lists
+    // belong to a different conversation than the pause does, and a Resume that
+    // quietly emptied the owner's priority list would be a control with a side
+    // effect nobody could see.
+    requeue: [...base.requeue],
+    priority_front: [...base.priority_front],
     updated_by: input.actor,
     updated_at: nowIso,
   };
+
+  // ── The two list actions ────────────────────────────────────────────────
+  // They APPEND rather than replace, because two rows clicked a second apart
+  // are two requests: a replace would make the second click silently cancel
+  // the first, which is the opposite of what pressing two buttons means.
+  if (input.action === 'requeue' || input.action === 'priority_front') {
+    const { ids, dropped } = cleanBookIds(input.bookIds);
+    if (!ids.length) {
+      return {
+        error: 'no_book_ids',
+        detail:
+          dropped > 0
+            ? 'None of those book ids could be read. Pick the books again and retry.'
+            : 'No books were named, so there is nothing to do.',
+      };
+    }
+    const field = input.action === 'requeue' ? 'requeue' : 'priority_front';
+    // ⚠️ Re-cleaned after the merge, not just concatenated: that is what dedupes
+    // against what is ALREADY on the list and re-applies the cap, so clicking
+    // the same row twice cannot grow the document without bound. An id already
+    // present is a no-op that still reports success — the state the caller
+    // asked for IS the state — and the route's response says how many landed so
+    // a button that appears to do nothing has a sentence explaining why.
+    const merged = cleanBookIds([...next[field], ...ids]);
+    return { control: { ...next, [field]: merged.ids } };
+  }
+
+  if (input.action === 'priority_front_clear') {
+    // ⚠️ Clears the PRIORITY list only, never `requeue`. A requeue is somebody's
+    // outstanding retry request; sweeping it away while clearing an unrelated
+    // preference would lose work with no trace.
+    return { control: { ...next, priority_front: [] } };
+  }
+
+  if (input.action === 'start_now') {
+    // The inverse of every pause lever — and NOT `resume`. See the comment on
+    // INGESTION_ACTIONS: `pause_windows` is deliberately left exactly as it is,
+    // expired entries aside (those were already dropped by the self-clear
+    // above, which is bookkeeping, not a schedule change).
+    next.paused = false;
+    next.paused_until = null;
+    next.dont_check_until = null;
+    return { control: next };
+  }
 
   if (input.action === 'pause') {
     next.paused = true;
@@ -731,7 +881,11 @@ opsRoutes.get('/estate/ops/ingestion', requireDevops(), async (c) => {
  * never clobber a window list written by the other side.
  */
 opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { action?: unknown; until?: unknown } | null;
+  const body = (await c.req.json().catch(() => null)) as {
+    action?: unknown;
+    until?: unknown;
+    book_ids?: unknown;
+  } | null;
   const action = body?.action;
   if (!isIngestionAction(action)) {
     return c.json(
@@ -760,6 +914,7 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
     current,
     action,
     until: body?.until,
+    bookIds: body?.book_ids,
     actor: `estate-ops:${actor.email}`,
     nowMs: Date.now(),
   });
@@ -770,6 +925,18 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
     (current?.pause_windows.length ?? 0) !== control.pause_windows.length;
   const mask = ['paused', 'paused_until', 'dont_check_until', 'updated_by', 'updated_at'];
   if (windowsChanged) mask.push('pause_windows');
+  // ⚠️ EACH LIST ENTERS THE MASK ONLY WHEN THIS WRITE CHANGES IT, exactly as
+  // `pause_windows` does, and for a sharper version of the same reason. The
+  // PROCESSOR writes `requeue` too — it removes the entries it has consumed —
+  // so a pause that carried the whole document would re-add ids the home
+  // machine had just finished acting on, and books would be re-queued forever
+  // by a button nobody pressed. Comparing against `current` (what Firestore
+  // actually held moments ago) rather than against a default is what makes
+  // that check meaningful.
+  if (!sameIdList(current?.requeue ?? [], control.requeue)) mask.push('requeue');
+  if (!sameIdList(current?.priority_front ?? [], control.priority_front)) {
+    mask.push('priority_front');
+  }
   const query = mask.map((f) => `updateMask.fieldPaths=${f}`).join('&');
 
   const allFields = ingestionControlFields(control) as Record<string, unknown>;
@@ -796,9 +963,57 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
       paused: control.paused,
       paused_until: control.paused_until,
       dont_check_until: control.dont_check_until,
+      // The ids, not just the counts: this line is the only record of WHICH
+      // book somebody asked to retry, and a count cannot be traced back.
+      requeue: control.requeue,
+      priority_front: control.priority_front,
       at: control.updated_at,
     }),
   );
 
-  return c.json({ ok: true, action, control, doc: INGESTION_CONTROL_DOC });
+  return c.json({
+    ok: true,
+    action,
+    control,
+    doc: INGESTION_CONTROL_DOC,
+    detail: ingestionActionDetail(action, control),
+  });
 });
+
+/**
+ * The one sentence the page shows after a write. ⚠️ EVERY LIST ACTION SAYS
+ * "NOT YET DONE", because that is the truth: this Worker wrote a line in a
+ * document, and the home machine acts on it at the top of its next run. A
+ * control that reported "re-queued" the instant the write returned would be
+ * claiming an outcome it has no way to observe — the same silent-optimism
+ * failure the /status pages exist to end.
+ */
+export function ingestionActionDetail(action: IngestionAction, control: IngestionControl): string {
+  switch (action) {
+    case 'requeue':
+      return (
+        `${control.requeue.length} book${control.requeue.length === 1 ? '' : 's'} now queued for retry. ` +
+        'Nothing has been retried yet — the home machine applies the list at the start of its next ' +
+        'run (it checks every 30 minutes) and clears each id as it acts on it. A book that already ' +
+        'succeeded is left alone, and an id it does not recognise is dropped and logged.'
+      );
+    case 'priority_front':
+      return (
+        `${control.priority_front.length} entr${control.priority_front.length === 1 ? 'y' : 'ies'} at the front of the queue. ` +
+        'This is a standing preference, not a one-off: it stays until you clear it. It changes what ' +
+        'gets asked FIRST and waives no guard — the window, the pause, the GPU and CPU guards and the ' +
+        'deadline all still apply.'
+      );
+    case 'priority_front_clear':
+      return 'The priority list is empty. The queue goes back to its ordinary tier order. Any pending retry requests were left alone.';
+    case 'start_now':
+      return (
+        'Cleared the pause, the pause timer and the don’t-check timer. Scheduled quiet hours were ' +
+        'deliberately NOT touched — if one is in force right now it still blocks the start, and the ' +
+        'card above says so. Ingestion is allowed to start, which is not the same as starting: the ' +
+        'home machine checks every 30 minutes and the machine guards still apply.'
+      );
+    default:
+      return 'Saved. The home machine reads this document before every book.';
+  }
+}
