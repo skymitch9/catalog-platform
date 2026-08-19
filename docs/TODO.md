@@ -1426,9 +1426,46 @@ designing a federation for a catalog that does not yet have any books in it.
 - ✅ **Everything unattended keeps running and costs no Claude budget:** the
   nightly book ingestion, the hourly details sweeps on both library instances,
   the R2 archive task, the backups.
-- 🔔 A **session-only** wake-up is scheduled for Sun 15:54 (five minutes before
-  the reset, per the owner's launch-early rule). ⚠️ **It dies with this
-  session**, so THIS DOCUMENT is the durable record, not the timer.
+### ▶️ THE STARTUP RULE — Sunday 2026-08-23, **15:49 Phoenix**. Ten minutes BEFORE the reset.
+
+> **Owner order, 2026-08-19: *"We'll likely lose this session so set the start
+> up rule for 10 minutes before weekly reset into the todo doc."*** He is
+> right that the session will not survive — a wake-up timer was scheduled but
+> it lives in session memory and dies with the process. **This block is the
+> resume mechanism. Nothing else is.**
+
+⚠️ **TEN minutes, not five.** The global rule in `~/.claude/CLAUDE.md` says
+*~5 minutes before*; the owner set **10** for this resume. Honour the 10 — do
+not "correct" it back to the global figure, and do not wait until after the
+reset. The old window's remnant is wasted at the stroke either way, and the
+worst case of starting early is a pause into a reset that is minutes away,
+which costs nothing.
+
+**Whoever opens the next session at or after Sun 15:49 Phoenix, do exactly
+this, in order:**
+
+1. **Read the clock first** (`Get-Date`). ⚠️ Never infer the hour from message
+   timestamps or from this document — a session that does not know what time
+   it is cannot honour a window.
+2. **Read usage** at <https://claude.ai/settings/usage>: navigate away and
+   back (it is a single-page app and will otherwise serve the first render
+   for ever), wait 2–3 seconds, then `find` the figures. **Confirm the reset
+   actually happened** rather than assuming it from the clock — if the weekly
+   figure still reads 89%, the reset has not landed yet; wait and re-read.
+   Report the numbers with the time.
+3. **Read this whole parked section**, then the handoff below it.
+4. **Ask the owner before starting any build.** His standing decision was
+   *"Let's save for emergencies"*, and that decision expires WITH THE RESET —
+   it does not lapse on its own, and it does not authorise a fresh start
+   either. Present the parked queue **one item at a time**.
+5. **Model:** Fable was at 91% (past its own 92-warn in practice) and weekly
+   at 89% when this was written. Unless the reset cleared both, the main loop
+   is **Opus**, and build agents are Opus/Sonnet — never Fable. The paste-ready
+   Opus kickoff prompt is in the handoff section directly below.
+
+**If the pool did NOT reset when expected**, treat it as a failed read rather
+than good news: say so plainly, fall back to the last known figure WITH its
+timestamp, and do not start work on the assumption that budget exists.
 
 **The parked queue, in the order I would pick it up** (nothing here is
 broken; each is a want):
