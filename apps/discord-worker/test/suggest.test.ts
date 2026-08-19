@@ -29,11 +29,13 @@ import {
   physicalFormatsOf,
   renderSuggestions,
   rowHasFormat,
+  suggestFollowUp,
   suggestIntent,
   suggestMoodHints,
   suggestOfferAccepted,
   suggestOn,
   SUGGEST_MSG,
+  SUGGEST_NO_FABRICATION_NOTE,
   SUGGEST_NOTE,
 } from '../src/suggest.js';
 import { suggestGate } from '../src/suggest-flow.js';
@@ -417,13 +419,16 @@ describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () =
   );
 
   it('the pre-router is called and the lane has an answer function', () => {
-    // ⚠️ BOTH HALVES of the router. `suggestOfferAccepted` was added after she
-    // offered to pick a book, he accepted, and the acceptance went to a grep.
-    assert.match(
-      flow,
-      /if \(suggestIntent\(question\) \|\| suggestOfferAccepted\(question, history\)\)/,
-      'the suggestion pre-router is not wired',
-    );
+    // ⚠️ ALL THREE HALVES of the router, and the guard is written so a FOURTH
+    // does not break it. `suggestOfferAccepted` was added after she offered to
+    // pick a book and the acceptance went to a grep; `suggestFollowUp` after she
+    // asked "audiobook, ebook, or physical?" and could not hear "physical
+    // please". Each is an elliptical message that carries none of the words that
+    // made it a suggestion — so the list grows, and matching the WHOLE
+    // expression made this guard fail twice for being right.
+    assert.match(flow, /if \(suggestIntent\(question\)\s*\|\|/, 'the suggestion pre-router is not wired');
+    assert.match(flow, /suggestOfferAccepted\(question, history\)/, 'the accepted-offer half is gone');
+    assert.match(flow, /const answeredFormat = suggestFollowUp\(question, history\)/, 'the answered-format half is gone');
     assert.match(flow, /await suggestAnswer\(/, 'the suggestion lane has no answer function');
   });
 
@@ -433,7 +438,7 @@ describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () =
     // rather than a reading list. Both halves are decisions, so both are pinned.
     const at = (needle: string) => flow.indexOf(needle);
     const docs = at('if (docsIntent(question))');
-    const suggest = at('if (suggestIntent(question) || suggestOfferAccepted(question, history))');
+    const suggest = at('if (suggestIntent(question) ||');
     const shelf = at('if (shelfLaneIntent(question))');
     const books = at('if (booksIntent(question) || booksFollowUp(question, history))');
     for (const [name, i] of Object.entries({ docs, suggest, shelf, books })) {
@@ -751,5 +756,136 @@ describe('⚠️ she answers when she does not know — the soup-search default 
     );
     assert.match(flow, /const shouldLookUp = intent === 'question' && titleShaped\(question\)/);
     assert.match(flow, /grounding = DONT_KNOW_NOTE/);
+  });
+});
+
+// ── 8. ⚠️ THE 2026-08-19 PHYSICAL DEFECT — both halves ────────────────────
+
+/**
+ * ⚠️ **THE ARCHIVE TRANSCRIPT IS THE TEST.**
+ *
+ * > **GABI:** *"audiobook, ebook, or a physical copy?"*
+ * > **User:** `physical please`
+ * > **GABI:** *"Fair point — I suppose I can actually look at what's physically
+ * > here… Nothing's come through the scanner yet in that direction, so the
+ * > catalogue won't show me what you've got on the shelves. You'd have to browse
+ * > them yourself…"*
+ *
+ * ⚠️ **TWO failures with ONE cause.** `suggestIntent('physical please')` is
+ * false and `suggestOfferAccepted` does not catch it either — that one looks for
+ * HER OFFER being accepted, this is her QUESTION being answered. So the lane was
+ * never re-entered, no source was ever consulted, and the "empty data" was a
+ * turn that never ran. The fabrication was a model filling the gap that left.
+ */
+describe('⚠️ she asked the format question and could not hear the answer', () => {
+  const asked = [
+    { role: 'user', text: 'recommend me something' },
+    { role: 'assistant', text: SUGGEST_MSG.clarify },
+  ];
+
+  it("⚠️ THE LIVE LINE: 'physical please' re-enters the lane", () => {
+    assert.equal(suggestIntent('physical please'), false, 'precondition: it is not a strong ask');
+    assert.equal(suggestFollowUp('physical please', asked), 'physical');
+  });
+
+  it('every plain answer to her own question is heard', () => {
+    for (const [line, want] of [
+      ['physical', 'physical'],
+      ['physical please', 'physical'],
+      ['ebook please', 'ebook'],
+      ['audiobook', 'audio'],
+      ['just the audiobook', 'audio'],
+      ['paperback', 'physical'],
+    ] as const) {
+      assert.equal(suggestFollowUp(line, asked), want, `unheard: ${line}`);
+    }
+  });
+
+  it('⚠️ it needs a PRIOR suggestion turn — it cannot capture a stray word', () => {
+    assert.equal(suggestFollowUp('physical please', []), null);
+    assert.equal(
+      suggestFollowUp('physical please', [{ role: 'user', text: 'do we have Mistborn' }]),
+      null,
+    );
+  });
+
+  it('⚠️ TWO formats is the question asked BACK, and re-enters on neither', () => {
+    assert.equal(suggestFollowUp('audiobook or paperback?', asked), null);
+  });
+
+  it('a long message carries its own subject and is judged on that', () => {
+    assert.equal(
+      suggestFollowUp('actually never mind the physical, what time does the library shut', asked),
+      null,
+    );
+  });
+
+  it('⚠️ the router is WIRED to it, and the format is PASSED DOWN', () => {
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(flow, /const answeredFormat = suggestFollowUp\(question, history\)/);
+    assert.match(flow, /\|\| answeredFormat\) \{/, 'the router does not admit the answered format');
+    // ⚠️ And it must not ask the same question twice.
+    assert.match(flow, /ctx\.answeredFormat/);
+  });
+});
+
+/**
+ * ⚠️ **THE FABRICATION — availability-grounding on a new lane.**
+ *
+ * She said *"nothing's come through the scanner yet"* having read nothing about
+ * a scanner, an ingestion queue, or the state of the physical catalogue — which
+ * in fact holds 448 works. An empty lookup is a fact about the LOOKUP.
+ */
+describe('⚠️ an empty lookup may not become a claim about the world', () => {
+  it('⚠️ NO EMPTY PATH CLAIMS SCANNING OR CATALOGUING STATE', () => {
+    const forbidden =
+      /scann?(?:er|ed|ing)|come through|ingest|catalogued yet|not been (?:added|processed|entered)|nothing.*(?:owned|on your shelves)/i;
+    for (const format of ['audio', 'ebook', 'physical'] as const) {
+      const said = SUGGEST_MSG.nothingLeft(format);
+      assert.doesNotMatch(said, forbidden, `${format} empty path invents a state-of-the-world claim`);
+    }
+  });
+
+  it('⚠️ it says MY LOOKUP, not YOUR SHELVES', () => {
+    const said = SUGGEST_MSG.nothingLeft('physical');
+    assert.match(said, /my (?:physical )?lookup came back empty/i);
+    assert.match(said, /my limit rather than your shelves/i);
+  });
+
+  it('and it says what she CAN do', () => {
+    assert.match(SUGGEST_MSG.nothingLeft('physical'), /library\.heygabi\.ai/);
+    assert.match(SUGGEST_MSG.nothingLeft('physical'), /audiobook/i);
+    assert.match(SUGGEST_MSG.nothingLeft('ebook'), /audiobook/i);
+    assert.match(SUGGEST_MSG.nothingLeft('audio'), /look again/i);
+  });
+
+  it('⚠️ the empty path is a CONSTANT — a sentence the model never writes', () => {
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(flow, /candidates\.length === 0\) return done\(SUGGEST_MSG\.nothingLeft\(format\)/);
+  });
+
+  it('⚠️ and the grounded turn carries the no-fabrication rule too', () => {
+    assert.match(SUGGEST_NO_FABRICATION_NOTE, /SAY WHAT YOU LOOKED AT AND WHAT CAME BACK/);
+    assert.match(SUGGEST_NO_FABRICATION_NOTE, /You may NOT explain WHY it is empty/i);
+    assert.match(SUGGEST_NO_FABRICATION_NOTE, /Nothing has been scanned yet/i);
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(flow, /SUGGEST_NO_FABRICATION_NOTE/);
+  });
+
+  it('⚠️ THE PHYSICAL LIMIT IS NAMED HONESTLY, not explained away', () => {
+    // What she can actually see from Discord is the audiobook catalogue's
+    // cross-linked print rows — a small slice. Saying so is honest; inventing a
+    // scanner backlog is not.
+    assert.match(SUGGEST_MSG.nothingLeft('physical'), /cross-linked/i);
+    assert.match(SUGGEST_MSG.nothingLeft('physical'), /small slice/i);
   });
 });

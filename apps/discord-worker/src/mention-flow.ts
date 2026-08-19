@@ -165,11 +165,13 @@ import {
   formatAsked,
   formatFromProfileNotes,
   renderSuggestions,
+  suggestFollowUp,
   suggestIntent,
   suggestMoodHints,
   suggestOfferAccepted,
   SUGGEST_ASSUMED_NOTE,
   SUGGEST_MSG,
+  SUGGEST_NO_FABRICATION_NOTE,
   SUGGEST_NOTE,
   type SuggestFormat,
 } from './suggest.js';
@@ -1440,6 +1442,10 @@ async function suggestAnswer(
     books?: BooksToolContext;
     delegated?: { port: DelegatePort; instances: readonly LibraryInstance[] };
     profileNotes?: readonly string[];
+    /** ⚠️ The format they gave when answering her clarifying question. It
+     *  outranks the profile's learned preference: a stated answer beats a
+     *  remembered habit, always. */
+    answeredFormat?: SuggestFormat;
   },
   memoryBlock?: string,
 ): Promise<AnsweredQuestion> {
@@ -1470,7 +1476,9 @@ async function suggestAnswer(
   // is bypassed and no shelf is opened** — the ebook and physical gates are
   // reached only by a format somebody actually NAMED, exactly as before, and
   // `formatAsked`'s explicit-word rule is untouched.
-  const stated = formatAsked(question);
+  // ⚠️ PRECEDENCE, and it is a decision: what they said THIS turn, then what
+  // they said when she asked, then what her profile learned.
+  const stated = formatAsked(question) ?? ctx.answeredFormat ?? null;
   const learned = stated ? null : formatFromProfileNotes(ctx.profileNotes);
   const chosen: SuggestFormat | null = stated ?? learned;
   const format: SuggestFormat = chosen ?? 'audio';
@@ -1503,6 +1511,7 @@ async function suggestAnswer(
     renderSuggestions(gathered.candidates, format),
     SUGGEST_NOTE,
     learned ? SUGGEST_ASSUMED_NOTE(learned) : '',
+    SUGGEST_NO_FABRICATION_NOTE,
     // ⚠️ The picks come FIRST and the format question comes after them, in one
     // short clause. Reversing that is what produced a question and no books.
     assumedPublic ? SUGGEST_AUDIO_FIRST_NOTE : '',
@@ -1978,7 +1987,20 @@ async function answerQuestion(
   // public-index grep. An acceptance carries none of the words that made the
   // offer — it cannot — so the lane has to come from what SHE said. Same
   // mechanism as `booksFollowUp`, deliberately not a rival one.
-  if (suggestIntent(question) || suggestOfferAccepted(question, history)) {
+  // ⚠️ **AND THE THIRD HALF: THE ANSWER TO HER OWN FORMAT QUESTION.** Live
+  // 2026-08-19 — she asked "audiobook, ebook, or a physical copy?", the owner
+  // said "physical please", and that message fell out of this lane entirely.
+  // `suggestOfferAccepted` did not catch it and could not: it looks for HER
+  // OFFER being accepted, and this is her QUESTION being answered. The turn
+  // landed in the generic path, was grounded on an unrelated public-shelf miss,
+  // and she invented "nothing's come through the scanner yet".
+  //
+  // ⚠️ A CLARIFYING QUESTION IS A PROMISE that the next message will be
+  // understood — and this elliptical message exists ONLY because she asked for
+  // it, which makes failing to hear it worse than the §10c case where the
+  // follow-up was volunteered.
+  const answeredFormat = suggestFollowUp(question, history);
+  if (suggestIntent(question) || suggestOfferAccepted(question, history) || answeredFormat) {
     cfg.trace?.lane('suggest');
     if (cfg.suggestEnabled === true) {
       return await suggestAnswer(
@@ -1992,6 +2014,10 @@ async function answerQuestion(
           ...(books ? { books } : {}),
           ...(delegatedCtx ? { delegated: delegatedCtx } : {}),
           ...(memory?.notes ? { profileNotes: memory.notes } : {}),
+          // ⚠️ The format they ALREADY gave when she asked. Passing it means the
+          // lane cannot ask the same question twice — an assistant that repeats
+          // its own clarifying question is one that cannot remember it spoke.
+          ...(answeredFormat ? { answeredFormat } : {}),
         },
         extraBlock,
       );

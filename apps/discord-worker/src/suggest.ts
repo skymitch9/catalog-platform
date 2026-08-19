@@ -225,6 +225,76 @@ export function suggestIntent(text: string): boolean {
   return SUGGEST_STRONG.some((re) => re.test(q));
 }
 
+/**
+ * ⚠️ **SHE ASKED THE CLARIFYING QUESTION AND THEN COULD NOT HEAR THE ANSWER.**
+ *
+ * Live, 2026-08-19. She asked *"audiobook, ebook, or a physical copy?"*, the
+ * owner answered **"physical please"** — and that message fell straight out of
+ * this lane, because `suggestIntent('physical please')` is `false`. The words
+ * that make a message a suggestion request are all in the message BEFORE it.
+ *
+ * The turn landed in the generic question path instead, was grounded on a
+ * public-shelf miss that had nothing to do with physical books, and she
+ * improvised: *"Nothing's come through the scanner yet in that direction."*
+ *
+ * ⚠️ **BOTH REPORTED FAILURES HAVE THIS ONE CAUSE.** The "empty data" was not a
+ * source returning nothing — the source was never consulted, because the lane
+ * was never re-entered. The fabrication was a model filling the gap that left.
+ *
+ * ## ⚠️ IT IS THE BOOK LANE'S §10c INCIDENT, VERBATIM, IN A NEW LANE
+ *
+ * > *"She invited a follow-up and then routed it to the shelf."*
+ *
+ * Same defect, same shape, same fix: **a lane belongs to the CONVERSATION, not
+ * to one sentence.**
+ *
+ * ⚠️ **AND THIS ONE IS SHARPER THAN §10c's, because SHE asked the question.**
+ * The book lane's follow-up was volunteered by the person; here the elliptical
+ * message exists *only because she requested it*. Failing to hear it is failing
+ * to hear a reply she solicited — which is why a clarifying question is a
+ * promise, and why `SUGGEST_MSG.clarify` may not exist without this function.
+ */
+const SUGGEST_FOLLOW_UP_MAX_WORDS = 8;
+
+/** ⚠️ Openers people use when ANSWERING the format question, none of which
+ *  contain a suggestion word. Stripped before the format is read. */
+const FORMAT_ANSWER_OPENER =
+  /^(?:@?[\w-]+[,:]?\s+)?(?:just|maybe|probably|let'?s (?:go|do|say)|i'?(?:ll|d) (?:take|like|go with)|make it|go with|go for)\s+/i;
+
+/**
+ * Is this short message the ANSWER to the format question she just asked?
+ * Returns the format to re-enter the lane with, or `null`.
+ *
+ * ⚠️ **Narrow three ways, exactly as `booksFollowUp` is** — a prior suggest-lane
+ * USER turn inside the remembered window, a SHORT message, and a format word it
+ * can actually resolve. Without the third it would capture every "yes" in every
+ * conversation that had once mentioned a recommendation.
+ *
+ * ⚠️ **Only USER messages are consulted**, for the reason the book lane gives:
+ * her own replies are model prose with no reliable marker, and matching on her
+ * wording would make the router depend on what a model happened to say.
+ */
+export function suggestFollowUp(
+  text: string,
+  history: readonly { role: string; text: string }[],
+): SuggestFormat | null {
+  const q = (text ?? '').trim();
+  if (!q) return null;
+  // ⚠️ Already unambiguous alone — the strong half decides, not this.
+  if (suggestIntent(q)) return null;
+  if (q.split(/\s+/).filter(Boolean).length > SUGGEST_FOLLOW_UP_MAX_WORDS) return null;
+
+  // ⚠️ It must name exactly ONE format. "audiobook or paperback?" is the person
+  // asking the question BACK, and re-entering on it would pick a shelf nobody
+  // chose — the rule `formatAsked` already enforces, inherited rather than
+  // re-implemented.
+  const format = formatAsked(q.replace(FORMAT_ANSWER_OPENER, ''));
+  if (!format) return null;
+
+  const priorAsk = (history ?? []).some((t) => t.role === 'user' && suggestIntent(t.text));
+  return priorAsk ? format : null;
+}
+
 // ---------------------------------------------------------------------------
 // ⚠️ SHE OFFERED IT. HE ACCEPTED. SHE SEARCHED THE SHELF FOR HIS ACCEPTANCE.
 // ---------------------------------------------------------------------------
@@ -463,15 +533,41 @@ export const SUGGEST_MSG = {
   notConfigured:
     "I'm not wired up to pick books yet — that's a setup step on our side, not a permissions problem.",
 
-  /** ⚠️ Never "you have read everything". An empty candidate list means the
-   *  FILTER found nothing, and the filter is narrow by construction. */
+  /**
+   * ⚠️ **AN EMPTY LOOKUP IS A FACT ABOUT MY LOOKUP, NEVER ABOUT YOUR SHELVES.**
+   *
+   * Live defect 2026-08-19: an empty physical result reached the owner as
+   * *"Nothing's come through the scanner yet in that direction, so the catalogue
+   * won't show me what you've got on the shelves."* ⚠️ **She had read nothing
+   * about the scanner, the ingestion queue, or the state of the physical
+   * catalogue** — every one of those is an invented claim about the world, and
+   * the estate's physical catalogue in fact holds **448 works**.
+   *
+   * This is the availability-grounding rule on a new lane: **a claim about data
+   * comes from a tool call made THAT TURN, or it is not made.** "I looked and
+   * got nothing back" is checkable and true; "nothing has been scanned" is a
+   * statement about a pipeline she cannot see.
+   *
+   * ⚠️ So each of these says **what was looked at, what came back, and what she
+   * can do instead** — and none of them says anything about scanning,
+   * cataloguing, ingestion, or what the house does or does not own.
+   */
   nothingLeft: (format: SuggestFormat) =>
     format === 'audio'
-      ? "I couldn't find anything on the audiobook shelf I'd put in front of you that you haven't " +
-        'already written about. Ask me for a different shelf, or name an author and I will look again.'
-      : `I couldn't find anything on the ${format === 'ebook' ? 'ebook' : 'print'} side that fits — ` +
-        'the cross-catalog join only covers part of the shelf, so this is a gap in what I can see ' +
-        'rather than a verdict on what the house owns.',
+      ? "I looked at the audiobook shelf and couldn't find one to put in front of you that you " +
+        "haven't already written about — that's my lookup coming back empty, not a verdict on the " +
+        'shelf. Name an author and I will look again, or ask me for a different format.'
+      : format === 'ebook'
+        ? "My ebook lookup came back empty — that's what I can see from here rather than what the " +
+          'house holds. The library site itself is the honest place to browse; ask me for an ' +
+          'audiobook meanwhile and I can suggest properly.'
+        : // ⚠️ THE ONE THAT WAS FABRICATED. It now names the LIMIT precisely
+          // rather than inventing a reason for it.
+          "My physical lookup came back empty — and I want to be straight about why that's my " +
+          'limit rather than your shelves: from here I can only see print copies that the audiobook ' +
+          "catalogue has cross-linked, which is a small slice of what's actually on them. Browse " +
+          '<https://library.heygabi.ai> for the real shelf, or ask me for an audiobook and I can ' +
+          'suggest properly.',
 
   estateUnreachable:
     "I couldn't reach the estate to see what you've already got to — that's a problem on our side, " +
@@ -566,6 +662,27 @@ export const SUGGEST_NOTE =
   'read this" is not. Never call it a backlog and never call it unread. ' +
   '⚠️ Name the SHELF each one is on (audiobook, ebook, or which print formats), because the estate ' +
   'has three and they are not the same shelf.';
+
+/**
+ * ⚠️ **THE NO-FABRICATION RULE, on the path where it was broken.**
+ *
+ * Live 2026-08-19: an empty physical lookup became *"Nothing's come through the
+ * scanner yet in that direction."* She had read nothing about a scanner. That is
+ * the availability-grounding rule violated on a new lane — and the physical
+ * catalogue really holds 448 works, so the invented explanation was also false.
+ *
+ * ⚠️ It rides the EMPTY path specifically, because that is the path with nothing
+ * in front of the model and therefore the one where a plausible story is the
+ * cheapest thing to produce.
+ */
+export const SUGGEST_NO_FABRICATION_NOTE =
+  '⚠️ SAY WHAT YOU LOOKED AT AND WHAT CAME BACK — NOTHING ELSE. You may say your lookup returned ' +
+  'nothing and that it is a limit of what you can see from here. You may NOT explain WHY it is ' +
+  'empty: you have not read anything about scanning, cataloguing, ingestion queues, what has been ' +
+  'processed, or what the house does or does not own, and any sentence about those is invented. ' +
+  '⚠️ "Nothing has been scanned yet" is the exact sentence that broke this rule — an empty result ' +
+  'is a fact about YOUR LOOKUP and never about their shelves. Point them at the site and offer a ' +
+  'format you can actually answer.';
 
 /** ⚠️ Said when the format was chosen FOR them rather than by them, so the
  *  person can correct a preference she learned rather than one they stated. */
