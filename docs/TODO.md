@@ -1502,9 +1502,14 @@ owner:**
      window, if one is live, still blocks the start.
 
 ### Open owner decisions (ONE at a time)
-1. ebooks-gated backup mechanics (~2.6 GB whole-bucket tar coming).
-2. Gates agent flagged: confirm the deadline gate's boundary mapping
+1. Gates agent flagged: confirm the deadline gate's boundary mapping
    (07:45/08:00 constants + pause windows) matches the owner's intent.
+
+> ✅ **The `ebooks-gated` backup-mechanics decision is CLOSED** (owner,
+> 2026-08-19, option "a": exclude the `transcripts/` prefix, keep the bucket)
+> and moved whole to [`DONE.md`](DONE.md). It was item 1 here; the remaining
+> numbers are re-flowed rather than left with a hole, because this list is read
+> aloud one item at a time.
 
 > ✅ **The book-text-in-channels decision is CLOSED** (owner, 2026-08-18:
 > *"gabi can book test in channels that fine"*) and moved whole to

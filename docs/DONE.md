@@ -14,6 +14,82 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+## 2026-08-19 — `ebooks-gated` backup mechanics: a prefix exclusion, not a fourth copy
+
+Carried in `TODO.md` as open owner decision #1, verbatim: **"ebooks-gated backup
+mechanics (~2.6 GB whole-bucket tar coming)."** `backup-restore.md` §1's row had
+put two options on the table — give the transcripts their own bucket, or teach
+`scripts/backup-r2.mjs` a prefix exclusion. **Owner chose "a": exclude the
+prefix, keep the bucket** (2026-08-19).
+
+### What the decision rests on — the copy count, not the size
+
+A transcript exists **three times** before the nightly backup runs: the owner's
+disk (where Whisper wrote it), the Google Drive mirror of that disk
+(`sync_to_drive.py`), and `ebooks-gated/transcripts/` itself — which
+`audiobook_catalog/app/core/ingest_transcripts.py` uploaded **as** copy three.
+A nightly whole-bucket tar makes it copies four through eleven, on a corpus
+measured at 38.7 MB stored (195.30 MB raw) on 2026-08-18 and heading for ~13 GB
+raw / **~2.6 GB stored** at the measured 5× ratio, on a runner with **14 GB** of
+disk. That is the `estate-audio` argument arriving at a prefix's scale.
+
+⚠️ **And it is an EXCLUSION, not a refusal, for a reason.** The rest of the
+bucket — the two gate manifests and the 183 GABI chunk packs under `text/` — has
+**no other estate-side copy**; both publishers run on the owner's machine. So
+`ebooks-gated` stays in the matrix with full nightly cover for everything except
+that one prefix. ⚠️ Dropping the bucket to solve a future size problem would
+lose the half with no other copy and keep the half with three; the workflow, the
+script header and a test all now say so.
+
+### Built
+
+- **`scripts/lib/backup-exclusions.mjs`** — `EXCLUDED_PREFIXES`,
+  `applyExclusions()`, `exclusionLogLines()`. Deliberately a *different*
+  mechanism from `backup-r2.mjs`'s `REFUSED_BUCKETS` (whole-bucket refusal,
+  `estate-audio`); its header argues the difference so the two are never merged.
+- **`scripts/backup-r2.mjs`** — applies the exclusions at **listing** time,
+  before a byte is downloaded. Two guards travel with it: the **no-silent-caps**
+  rule (every rule logs on every run, matched or not, inline *and* in the
+  summary, and the same statement is written into each dump's own
+  `manifest.json` as an `excluded` array), and a refusal to write a dump whose
+  entire listing was excluded — otherwise "0 objects backed up" would sail past
+  the existing zero-object rule one layer down. Also gained **`--dry-run`**
+  (list + report the accounting, download nothing) and a test-only
+  `CLOUDFLARE_API_BASE` override.
+- **Pinned, not merely written down.** `apps/auth-worker/test/backups.test.ts`
+  asserts the exclusion set's exact shape (one bucket, one prefix), that its
+  reason string names the decision date and points at the runbook, that
+  `r2/ebooks-gated` is still in `KNOWN_BACKUP_PREFIXES`, and that
+  `backup-restore.md` states plainly that a restore does not contain
+  transcripts. Adding a second rule fails the test on purpose — the failure is
+  the prompt to write the docs row.
+
+### Verified
+
+Offline, against the real script at the measured scale (201 objects: 2 gate
+manifests + 183 `text/` packs + 16 `transcripts/`), tarred exactly as
+`backup.yml` does: **185 objects downloaded, 16 excluded; tar listing = 189
+entries, 0 mentioning `transcripts`, `manifest.json` present,
+`manifest.objects` = 185 with 0 transcript keys, `manifest.excluded` recording
+`{prefix: 'transcripts/', count: 16, bytes: 38688000}`.** Suites: scripts 191,
+auth-worker 357, index-worker 245, plus 869 and 129 — all green, `npm run
+typecheck` clean.
+
+⚠️ **NOT verified locally: a run against the live bucket.** The REST `objects`
+endpoint needs `CLOUDFLARE_API_TOKEN`, which is a GitHub repo secret and is not
+on this machine — the `wrangler login` OAuth session does not cover it
+(`RECOVERY.md` §7). The live proof is the workflow's own run.
+
+### Docs
+
+`backup-restore.md` (a 2026-08-19 banner, §1's row rewritten from "decide before
+it gets there" to the decision, a new §6 block on what the dump does and does
+not hold plus the three-step "where the transcripts come from in a disaster", a
+§8 row, and §10's file table), `RECOVERY.md` (§1a's partial-backup note, §1b row
+5, and a §5 3am table), `backup.yml`'s header and matrix comments, and
+`backups.ts`'s stale `KNOWN_BACKUP_PREFIXES` size comment ("Tiny — 107 kB and
+1.27 MB" had stopped being true of this bucket).
+
 ## 2026-08-18 — The event ring's own credential, and the four ingestion fine controls
 
 Owner, approving the batch verbatim: **"do them all and unblock them all."** The
