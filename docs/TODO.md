@@ -1465,12 +1465,11 @@ writes it); missing printed-volume display is not a details gap.
 - Usage at write: 25% session / 88% weekly / 91% Fable (11:07 read).
   Weekly agent-dispatch stop line is 93%.
 
-### 🧑 Owner-pending commands (classifier-blocked for sessions)
-1. **Deploy the MAIN library instance** — in `library_catalog`:
-   `npm run deploy`. Migration 0360 is already applied to main's D1 while
-   main's build predates the column (additive with default — harmless, but
-   close the gap). Both the landing agent and the conductor were blocked
-   by the permission classifier on this exact command.
+### ✅ Owner-pending commands — CLEARED 2026-08-19 ~11:22
+1. ✅ **Main library instance deployed** on the owner's word ("Run the npm
+   command for me") — version `2fe70887` at commit `110f0436`, health
+   green, deploys.log committed (`8208284`). The 0360 column gap is
+   closed. Nothing remains in this category.
 
 ### 🧑 Owner-pending decisions/eyeballs (ONE at a time)
 1. **Words of Radiance (main #220)** is the only multi-volume candidate the
