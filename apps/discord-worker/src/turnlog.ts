@@ -217,6 +217,8 @@ export const HID_REASONS = [
   'not_devops',
   'turn_capped',
   'estate_unreachable',
+  'turn_timed_out',
+  'nothing_to_look_up',
 ] as const;
 
 export type HidReason = (typeof HID_REASONS)[number];

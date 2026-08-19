@@ -887,6 +887,59 @@ const bareOf = (x: string): string =>
   x.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
+ * ⚠️ **DOES THIS QUESTION NAME A THING WORTH LOOKING UP?**
+ *
+ * Owner, 2026-08-18: *"she needs to answer when she doesnt know how to
+ * respond."* The shelf search had become the DEFAULT grounding for every
+ * unclaimed turn — so a sentence with no book in it at all was stopword-stripped,
+ * sent to the public index, and answered with *"nothing on the estate's public
+ * shelf matches that"*. That is the same wrong answer three separate people met
+ * in one evening, and it comes from grounding a conversation in a search nobody
+ * asked for.
+ *
+ * ⚠️ **A SEARCH IS NOT A FALLBACK.** It is the right move when somebody named
+ * something findable and the wrong move otherwise — and "otherwise" is most of
+ * ordinary talk. So the lookup now needs a positive signal:
+ *
+ *  - a **capitalised** word that is not merely the first — how titles and names
+ *    actually arrive, even in lowercase-heavy chat;
+ *  - or a **short** message, where the whole sentence plausibly IS the thing
+ *    (*"mistborn?"*, *"the way of kings"*);
+ *  - or **quotes**, which are somebody naming a title deliberately.
+ *
+ * Everything else gets no grounding and an honest in-voice answer instead.
+ */
+export function titleShaped(question: string): boolean {
+  const q = (question ?? '').trim();
+  if (!q) return false;
+  if (/["“”][^"“”]{2,}["“”]/.test(q)) return true;
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length <= 5) return true;
+  // ⚠️ Skip the first word: every sentence starts capitalised, and counting it
+  // would make "Where is my order" look like a title.
+  return words.slice(1).some((w) => /^[A-Z][a-z']{2,}/.test(w));
+}
+
+/**
+ * ⚠️ **WHAT SHE DOES WHEN SHE GENUINELY DOES NOT KNOW.**
+ *
+ * The owner's own ask, and the shape it demands: acknowledge what they actually
+ * said, admit she is not sure what they are after, and name a few things she CAN
+ * do. ⚠️ Never a shelf search dressed as an answer, and never silence — those
+ * are the two behaviours this replaces.
+ */
+export const DONT_KNOW_NOTE =
+  '⚠️ THERE IS NOTHING TO LOOK UP HERE — this message does not name a book, an author or anything ' +
+  'else searchable, so no search was run and you have no results to work from. That is FINE and it ' +
+  'is not a failure.\n' +
+  'Answer in your own voice, briefly: acknowledge what they actually said, say plainly if you are ' +
+  'not sure what they are after, and name two or three things you CAN do — find them something to ' +
+  'read, look a book up on the shelf, answer what happens in one you have read, or tell them what ' +
+  'is on their own list.\n' +
+  '⚠️ Do NOT say that nothing on the shelf matches, do NOT invent a search you did not run, and do ' +
+  'NOT ask a question instead of giving them something. If they were just chatting, chat back.';
+
+/**
  * What she may quote as *"I looked for X"*, or `null` when she may quote nothing.
  *
  * ⚠️ Exported so the rule is testable directly against real transcripts rather
@@ -2119,11 +2172,27 @@ async function answerQuestion(
   // question / smalltalk. A question may be about a book, so it is grounded
   // with a lookup; small talk is not — nobody saying "morning!" wants a
   // catalogue search, and skipping it saves a subrequest.
-  cfg.trace?.lane(intent === 'question' ? 'chat_grounded' : 'smalltalk');
+  //
+  // ⚠️ **AND A QUESTION THAT NAMES NOTHING FINDABLE IS NOT GROUNDED EITHER**
+  // (owner, 2026-08-18: *"she needs to answer when she doesnt know how to
+  // respond"*). The shelf search had become the DEFAULT for every unclaimed
+  // turn, which is how three separate people in one evening were told that
+  // nothing on the shelf matched a sentence that was never about a book. A
+  // search is not a fallback: it is right when somebody named something and
+  // wrong otherwise, and `titleShaped` is that test.
+  const shouldLookUp = intent === 'question' && titleShaped(question);
+  cfg.trace?.lane(
+    intent !== 'question' ? 'smalltalk' : shouldLookUp ? 'chat_grounded' : 'chat_unknown',
+  );
   let grounding: string | null = null;
-  if (intent === 'question') {
+  if (shouldLookUp) {
     const found = await shelf(cfg.indexBaseUrl, question);
     grounding = shelfAnswer(question, found.term, found.books, found.failure);
+  } else if (intent === 'question') {
+    // ⚠️ NOT SILENCE, AND NOT A SEARCH SHE DID NOT RUN. She is told she has
+    // nothing to work from and what to do about it, in her own voice.
+    cfg.trace?.hid('nothing_to_look_up');
+    grounding = DONT_KNOW_NOTE;
   }
 
   // ⚠️ SMALL TALK GETS NO TOOLS, and that is a spend decision rather than a

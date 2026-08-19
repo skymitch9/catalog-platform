@@ -1133,10 +1133,17 @@ describe('⚠️ REGRESSION: "how do I promote the audiobook site?"', () => {
     assert.doesNotMatch(reply, /public shelf/i);
   });
 
-  it('⚠️ a surface that predates the docs feature falls through UNCHANGED', async () => {
-    // `docsEnabled` undefined = a caller that never knew about docs. It must
-    // keep its old behaviour rather than be handed a sentence about a
-    // capability it never had.
+  it('⚠️ a surface that predates the docs feature is NOT handed a docs sentence', async () => {
+    // `docsEnabled` undefined = a caller that never knew about docs, and it must
+    // not be given a sentence about a capability it never had.
+    //
+    // ⚠️ **WHAT IT NO LONGER DOES IS GREP THE PUBLIC SHELF** (owner, 2026-08-18:
+    // *"she needs to answer when she doesnt know how to respond"*). This
+    // assertion used to require exactly ONE shelf lookup — pinning the ladder
+    // that stopword-stripped *"how do I promote the audiobook site?"* into an
+    // index query and answered *"nothing on the estate's public shelf matches
+    // that"*. A search is not a fallback: `titleShaped` decides, and an
+    // operational sentence names nothing findable.
     const said: string[] = [];
     let shelfCalls = 0;
     await runOwnerQuestion({
@@ -1147,7 +1154,10 @@ describe('⚠️ REGRESSION: "how do I promote the audiobook site?"', () => {
         shelfCalls += 1;
       },
     });
-    assert.equal(shelfCalls, 1, 'the pre-docs ladder changed for a caller that never opted in');
+    assert.equal(shelfCalls, 0, 'a question that names nothing findable must not be searched');
+    // ⚠️ AND SHE STILL SAYS SOMETHING. The point of killing the soup search is
+    // an honest answer, never silence.
+    assert.ok(said.length > 0, 'no lane claimed it and she said nothing at all');
   });
 });
 

@@ -38,7 +38,7 @@ import {
 } from '../src/suggest.js';
 import { suggestGate } from '../src/suggest-flow.js';
 import { MENTION_MSG } from '../src/mentions.js';
-import { quotableTerm } from '../src/mention-flow.js';
+import { DONT_KNOW_NOTE, quotableTerm, titleShaped } from '../src/mention-flow.js';
 import type { BooksPort } from '../src/book-knowledge.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from '../src/delegated.js';
 import type { ReviewRow, TbrRow } from '../src/shelf.js';
@@ -705,5 +705,51 @@ describe('⚠️ REGRESSION — she offered, he accepted, she searched the shelf
       'utf8',
     );
     assert.match(flow, /suggestIntent\(question\) \|\| suggestOfferAccepted\(question, history\)/);
+  });
+});
+
+describe('⚠️ she answers when she does not know — the soup-search default dies', () => {
+  it('a question that NAMES something findable is still looked up', () => {
+    for (const q of [
+      'do we have The Way of Kings?',
+      'mistborn?',
+      'who narrates Skyward',
+      'anything by Brandon Sanderson on the shelf',
+      'is "The Final Empire" here',
+    ]) {
+      assert.equal(titleShaped(q), true, `stopped searching for: ${q}`);
+    }
+  });
+
+  it('⚠️ and a sentence that names nothing findable is NOT', () => {
+    // Every one of these was answered with "nothing on the estate's public
+    // shelf matches that" by the ladder this replaces.
+    for (const q of [
+      'how do i promote the audiobook site to production again',
+      'i had a really rough day at work today and i am tired',
+      'what can you actually do for me around here',
+      'i cannot sit and read a book it makes me fall asleep',
+    ]) {
+      assert.equal(titleShaped(q), false, `still soup-searching: ${q}`);
+    }
+  });
+
+  it('⚠️ the fallback tells her to answer, not to apologise or interrogate', () => {
+    assert.match(DONT_KNOW_NOTE, /NOTHING TO LOOK UP HERE/);
+    assert.match(DONT_KNOW_NOTE, /acknowledge what they actually said/i);
+    assert.match(DONT_KNOW_NOTE, /two or three things you CAN do/i);
+    // The three behaviours it exists to prevent, each named.
+    assert.match(DONT_KNOW_NOTE, /Do NOT say that nothing on the shelf matches/);
+    assert.match(DONT_KNOW_NOTE, /invent a search you did not run/i);
+    assert.match(DONT_KNOW_NOTE, /NOT ask a question instead of giving them something/i);
+  });
+
+  it('the lookup is gated on it in the flow, and the fallback is wired', () => {
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(flow, /const shouldLookUp = intent === 'question' && titleShaped\(question\)/);
+    assert.match(flow, /grounding = DONT_KNOW_NOTE/);
   });
 });
