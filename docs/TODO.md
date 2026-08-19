@@ -1409,6 +1409,64 @@ designing a federation for a catalog that does not yet have any books in it.
 
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
+## ⏸️ PARKED FOR EMERGENCIES — 2026-08-19 12:30 Phoenix. READ THIS FIRST.
+
+> **Owner order, verbatim: *"Let's save for emergencies."*** Weekly usage was
+> **89%** and does not reset until **Sunday 2026-08-23, 3:59 PM Phoenix**, so
+> overspending now costs DAYS, not an evening.
+
+**The posture, until the owner says otherwise or the pool resets:**
+
+- ⛔ **Start no builds and dispatch no agents.** Not "small" ones either — ⚠️ a
+  subagent's cost is invisible until it lands, and one landed at 431k today.
+- ✅ **Conversation, reads, doc edits and single commands are fine** — they are
+  individually tiny. The reserve exists to be spendable in an emergency, and
+  an emergency is something that would break or corrupt if left, not something
+  that is merely waiting.
+- ✅ **Everything unattended keeps running and costs no Claude budget:** the
+  nightly book ingestion, the hourly details sweeps on both library instances,
+  the R2 archive task, the backups.
+- 🔔 A **session-only** wake-up is scheduled for Sun 15:54 (five minutes before
+  the reset, per the owner's launch-early rule). ⚠️ **It dies with this
+  session**, so THIS DOCUMENT is the durable record, not the timer.
+
+**The parked queue, in the order I would pick it up** (nothing here is
+broken; each is a want):
+
+1. **TBR reassignment — 53 documents** from a retired passphrase account.
+   ⚠️ Not a build: the tool is dry-run verified (53 to carry, **0
+   duplicates**) and the run is blocked by the permission classifier, so it
+   needs the OWNER's hand, not an agent.
+   `audiobook_catalog/scripts/reassign_tbr_owner.py`.
+2. **OCR processor** — 23 image-scan PDFs are permanently outside GABI's
+   knowledge until it exists. The largest single gap in the knowledge base.
+3. **Audiobook player phase 2.**
+4. **Revoke the stale broad Cloudflare token** ("Edit Cloudflare Workers",
+   Aug 14, admin read+write on ALL R2 buckets, nothing known uses it). Small,
+   security-shaped, and access-REDUCING — so it needs no confirmation beyond
+   the owner's hands on the dashboard.
+5. **GABI features remain FROZEN** by separate owner order ("on hold until we
+   get room") — switchboard, human-speak eval corpus + model router, wider
+   stay-in-character pass.
+
+**Waiting on the owner and costing nothing:**
+
+- ⚠️ **GABI has never been used on Samantha's site, on her key, about her
+  books.** Every measured conversation ran against the main catalog on the
+  owner's key. Same for the memory test (talk, close the tab, return inside
+  30 min — then wait past 30 min and confirm she FORGETS; step two is the one
+  that proves the privacy posture).
+- **Words of Radiance (main #220)** — the standing `multi_volume_printing`
+  checkbox decision; two hardcover editions, and only someone holding them
+  can say.
+- **Three unsplit containers on main**, surveyed but untouched: **413**
+  *Skyward Flight: The Collection*, **416** *Arcanum Unbounded*, **90**
+  *White Sand*. Pattern to follow is R11 in
+  `library_catalog/docs/info/volume-numbers.md`. One at a time.
+- Firestore TTL console click; estate SSO console step (the feature is inert
+  without it); the Diva's-house Discord channel permission; deadline-gate
+  boundary confirm.
+
 ## 🔄 HANDOFF — 2026-08-19 ~11:15 Phoenix (MODEL SWAP: Fable → Opus main loop)
 
 > **Why this handoff:** Fable weekly read **91%** at 11:07 (resets Sun
