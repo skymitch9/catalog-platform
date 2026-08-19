@@ -1456,8 +1456,21 @@ writes it); missing printed-volume display is not a details gap.
   panel; shut to research on four surfaces, one guard test). Failure
   classifier now re-queues allowance/key failures instead of demoting.
   Canonical doc: `library_catalog/docs/info/volume-numbers.md`.
-  **Queue 55→51 at landing; projection: single digits within ~26h,
-  ≈$1.00 on her key, untouched.** Review: <https://padhard.heygabi.ai/queue>.
+- ✅ **Sam's volume queue then emptied BY HAND, 51 → 0 waiting, for nothing**
+  (owner: *"Fix them by hand"*). 49 numbered, *Tusk Love* recorded standalone
+  as a verdict rather than a fake `1`, and the **Caraval boxed set split**
+  into three works with every ISBN verified against Open Library first (the
+  container's own record named its contents). Batches
+  `hand-volumes-20260819` / `caraval-split-20260819`, all reversible,
+  `changed_how='human'`. Rules R9–R12 in `volume-numbers.md`.
+  Live now: **3 waiting** — the three new Caraval works needing descriptions,
+  which the sweep fills two an hour. Review:
+  <https://padhard.heygabi.ai/queue>.
+- 🔴 **Live defect found on the way, NOT fixed** (in `library_catalog`
+  TODO.md): *"Look up all"* tracks asked-ness **per book, not per question**,
+  so it disables itself with "Every one already asked" while N questions are
+  open. This is what the owner meant by *"the button didnt fix"*. The hourly
+  sweep is unaffected. Fix = make outstanding-ness per (work, field).
 - **Volume/lookup spend note:** her key spent ~8¢ under the agent (4 books,
   cron ticks); the ~90¢ of 45 runs earlier was the owner's own button press.
 - **GABI: FROZEN** (owner 2026-08-19: "on hold until we get room"). Open
