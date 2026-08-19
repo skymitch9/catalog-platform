@@ -342,9 +342,16 @@ function buildPipelineStepsSection() {
     reason.className = 'step-reason';
     reason.hidden = true;
 
-    li.append(main, btn, reason);
+    // The last outcome this step is KNOWN to have had. Its own element rather
+    // than more text in `reason`, because the two answer different questions —
+    // "why can I not press this now" and "what happened last time I did".
+    const outcome = document.createElement('p');
+    outcome.className = 'step-outcome';
+    outcome.hidden = true;
+
+    li.append(main, btn, reason, outcome);
     ul.appendChild(li);
-    stepRowRegistry.set(step.key, { li, btn, reasonEl: reason });
+    stepRowRegistry.set(step.key, { li, btn, reasonEl: reason, outcomeEl: outcome });
   }
 }
 
@@ -374,12 +381,71 @@ function stepDisabledReason(statusDoc, stepKey) {
   return null;
 }
 
+/**
+ * The last outcome of ONE step, off `pipeline_status/current`'s `steps[]`
+ * (audiobook_catalog's app/pipeline_status.py writes it: {key, label, state,
+ * detail}). Returns `null` when this step was not part of the run that document
+ * describes.
+ *
+ * ⚠️ IT IS "THE LAST RUN", NOT "EVER", AND THE WORDING MUST SAY SO. That
+ * document holds ONE run and is overwritten by the next; a single-step run
+ * scaffolds only the one step it executes (start_step_run's whole reason for
+ * existing — running `upload` alone must never make this page claim `sort` also
+ * just ran). So a step missing from `steps[]` has NO outcome to show, which is a
+ * completely different fact from "it did not run" or "it failed", and this
+ * returns null rather than inventing either.
+ *
+ * ⚠️ A `pending` or `skipped` step is reported as such and NEVER as a success.
+ * The vocabulary belongs to the pipeline; an unrecognised state is shown
+ * verbatim, the same stance renderDriveParityRow takes on the Health page.
+ */
+function stepLastOutcome(statusDoc, stepKey) {
+  const steps = statusDoc && Array.isArray(statusDoc.steps) ? statusDoc.steps : null;
+  if (!steps) return null;
+  const entry = steps.find((s) => s && s.key === stepKey);
+  if (!entry) return null;
+  const when = statusDoc.updatedAt || statusDoc.startedAt;
+  const clock =
+    when && Number.isFinite(Date.parse(when))
+      ? new Date(Date.parse(when)).toLocaleString([], {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        })
+      : null;
+  const state = typeof entry.state === 'string' && entry.state ? entry.state : 'unknown state';
+  // The pipeline's own detail line, verbatim — it is the closest thing this
+  // page has to the step's OUTPUT, and summarising it would throw away the one
+  // sentence that says what actually happened.
+  const detail = typeof entry.detail === 'string' ? entry.detail.trim() : '';
+  const err = state === 'failed' && typeof statusDoc.error === 'string' ? statusDoc.error.trim() : '';
+  const bits = [`last run: ${state}`];
+  if (clock) bits.push(clock);
+  if (statusDoc.trigger) bits.push(`trigger ${statusDoc.trigger}`);
+  let text = bits.join(' · ');
+  if (detail) text += ` — ${detail}`;
+  if (err) text += ` — ${err.slice(0, 300)}`;
+  return { text, state };
+}
+
 /** Called every refresh — updates disabled state + reason text without
  * recreating the buttons (which would lose confirmBtn's armed-state timer). */
 function renderPipelineStepsAvailability(statusDoc) {
   for (const step of PIPELINE_STEPS) {
     const row = stepRowRegistry.get(step.key);
     if (!row) continue;
+    if (row.outcomeEl) {
+      const outcome = stepLastOutcome(statusDoc, step.key);
+      if (outcome) {
+        row.outcomeEl.textContent = outcome.text;
+        row.outcomeEl.dataset.state = outcome.state;
+        row.outcomeEl.hidden = false;
+      } else {
+        // ⚠️ HIDDEN, NOT "never run". This page reads one document describing
+        // one run; a step absent from it has simply not been reported on, and
+        // saying "never run" would be asserting a history nothing here holds.
+        row.outcomeEl.hidden = true;
+        row.outcomeEl.textContent = '';
+      }
+    }
     const reason = stepDisabledReason(statusDoc, step.key);
     row.btn.disabled = reason !== null;
     row.li.dataset.disabled = reason !== null ? 'true' : 'false';

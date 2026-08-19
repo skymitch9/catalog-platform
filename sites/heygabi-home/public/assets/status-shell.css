@@ -182,6 +182,21 @@ h1 {
 .step-kind[data-kind="mutating"] { border-color: var(--et-warn); color: var(--et-warn); }
 .step-kind[data-kind="publishing"] { border-color: var(--et-danger); color: var(--et-danger); }
 .step-reason { flex: 1 1 100%; margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+/* What this step did LAST TIME (the `steps[]` entry off pipeline_status/current).
+   ⚠️ Distinct from .step-reason, which says why the button is disabled RIGHT
+   NOW — two different questions, and merging them would make a stale outcome
+   read as a live blocker. Only `failed` is tinted: every other state, including
+   ones this page has not been taught, stays muted, because inventing a verdict
+   for a word the pipeline owns is how a page starts lying about a run. */
+.step-outcome {
+  flex: 1 1 100%;
+  margin: .15rem 0 0;
+  color: var(--et-muted);
+  font-size: var(--et-text-micro);
+  text-wrap: pretty;
+}
+.step-outcome[data-state="failed"] { color: var(--et-danger); font-weight: 600; }
+.step-outcome[data-state="done"] { color: var(--et-ok); }
 .step-warn-note { color: var(--et-warn); font-size: var(--et-text-micro); font-weight: 600; white-space: nowrap; }
 .step-section-note { margin: .1rem 0 .6rem; }
 .force-upload-note { margin: .5rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }

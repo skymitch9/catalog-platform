@@ -179,10 +179,20 @@
            and the scheduled 8h run (app/core/pipeline_lock.py on the home
            machine) — while a run is in flight every control below renders
            disabled with who holds it and since when. -->
+      <!-- ⚠️ THE "last run:" LINE UNDER A STEP DESCRIBES ONE RUN, NOT A
+           HISTORY. It is read off pipeline_status/current, which holds the most
+           recent run and is overwritten by the next; a single-step run records
+           only the step it executed (start_step_run's whole reason for
+           existing). So a step with NO line has simply not been reported on —
+           a different fact from "never run" and from "failed" — and the page
+           shows nothing rather than guessing between them. Real per-run history
+           is the "Run history" row below, still honestly marked unbuilt. -->
       <h3 class="step-list-h">Pipeline steps</h3>
       <p class="section-note step-section-note">
         One stage in isolation, for recovery work. Read-only steps run
-        immediately; everything else needs a second tap to confirm.
+        immediately; everything else needs a second tap to confirm. Where the
+        last run reported on a step, its outcome is shown underneath — that is
+        the most recent run only, not a history.
       </p>
       <ul id="pipeline-steps" class="step-list"></ul>
       <p id="pipeline-steps-msg" class="ops-run-msg"></p>
