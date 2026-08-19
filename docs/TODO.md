@@ -1,5 +1,57 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+## ⏸️▶️ PAUSED 2026-08-19 · RESTART **Sunday 2026-08-23, 15:49 Phoenix** — READ BEFORE ANYTHING ELSE
+
+> **This is the first thing in this file on purpose.** Everything below it is
+> ordinary work log. If you are a new session, you are almost certainly the
+> successor to the one that wrote this, and it did not survive.
+
+**Why the estate is paused.** Weekly usage reached **89%** on 2026-08-19 and
+does not reset until **Sunday 2026-08-23 at 15:59 Phoenix**. Owner order,
+verbatim: ***"Let's save for emergencies."*** Overspending before then costs
+DAYS, not an evening.
+
+**When to restart: 15:49 Phoenix — TEN minutes before the reset.** Owner
+order: *"set the start up rule for 10 minutes before weekly reset into the
+todo doc."* ⚠️ The global rule in `~/.claude/CLAUDE.md` says *~5 minutes*; he
+set **10**. Honour the 10, do not "correct" it back, and do not wait until
+after the reset — the old window's remnant is wasted at the stroke either way,
+and starting early at worst pauses into a reset that is minutes away.
+
+⚠️ **A wake-up timer is NOT the mechanism.** One was scheduled, but
+`CronCreate` jobs live in session memory and die with the process. **This
+block is the resume mechanism.**
+
+**Do exactly this, in order:**
+
+1. **Read the clock** (`Get-Date`). Never infer the hour from message
+   timestamps or from this document.
+2. **Read usage** at <https://claude.ai/settings/usage>: navigate away and
+   back (single-page app — it will otherwise serve the first render for
+   ever), wait 2–3 seconds, then `find` the figures. ⚠️ **Confirm the reset
+   actually happened** instead of assuming it from the clock: if weekly still
+   reads 89%, it has not landed — wait and re-read. State the numbers with the
+   time. If the read FAILS, say so plainly and fall back to the last known
+   figure with its age; never treat an unreadable meter as a healthy one.
+3. **Read the `⏸️ PARKED FOR EMERGENCIES` section further down this file** —
+   it carries the parked queue in pick-up order, what is waiting on the owner
+   and costs nothing, and what is frozen by separate order (all GABI
+   features).
+4. ⚠️ **Ask the owner before starting any build.** *"Save for emergencies"*
+   expires **with the reset** — it does not lapse on its own, and the reset is
+   not itself permission to begin. Present the parked queue **one item at a
+   time**, per his standing rule.
+5. **Model:** Fable stood at 91% and weekly at 89%. Unless the reset cleared
+   both, the main loop is **Opus** and build agents are Opus/Sonnet — never
+   Fable. A paste-ready Opus kickoff prompt is in the `MODEL SWAP` handoff
+   section below.
+
+**Nothing is broken and nothing needs rescuing.** All unattended work keeps
+running with no Claude budget: the nightly book ingestion (240 books done, 0
+failed, mid-book when this was written), the hourly details sweep on both
+library instances, the R2 archive task, and the backups. Working trees are
+clean and everything is pushed.
+
 ## 🔴 THE FIRST REAL USERS HIT GABI — two P1s (2026-08-18, 19:26–19:28 Phoenix)
 
 **Not the owner. Not tests. Two members of the household, in a channel, hours
