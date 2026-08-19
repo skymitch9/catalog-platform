@@ -1409,6 +1409,78 @@ designing a federation for a catalog that does not yet have any books in it.
 
 ## 📚 Ebooks may want to be their OWN site — the ownership boundary is per-FORMAT (owner insight 2026-08-16)
 
+## 🔄 HANDOFF — 2026-08-19 ~11:15 Phoenix (MODEL SWAP: Fable → Opus main loop)
+
+> **Why this handoff:** Fable weekly read **91%** at 11:07 (resets Sun
+> 3:59 PM) — the owner's warn line, and his order: *"we will be swapping to
+> Opus once everything is done."* The 2026-08-18 handoff below still holds
+> for everything not restated here; its **global-rules-are-law block and
+> Model-selection ladder apply verbatim to the Opus session too.**
+
+### ⚡ OPUS KICKOFF PROMPT — for a CLAUDE-CODE-ON-OPUS main loop ONLY
+> ⚠️ **Kiro executors: SKIP this block.** Your instructions are unchanged —
+> the "Fallback executors" part of the Model-selection section in the next
+> handoff down (stay on AUTO, honor the per-task model labels). This block
+> assumes Claude Code tools (agent dispatch, browser usage reads, Firestore
+> service account) that a Kiro session must not assume.
+
+Paste-ready first message for the Opus session:
+
+```text
+You are the estate conductor, now on Opus 5 (Fable hit its weekly warn line;
+conduct exactly as Fable did — plan, brief, review; Opus/Sonnet agents
+build). First: read the top handoff of catalog-platform/docs/TODO.md and
+treat ~/.claude/CLAUDE.md as absolute law (usage lines with clock in every
+substantive reply; before-dispatch and after-landing usage reads; one owner
+decision at a time; commit -F never -m; never stash; push main only,
+promote only on the owner's word). Standing priorities, owner-ordered:
+(1) Samantha's library (padhard) — the details queue must converge on its
+own; verify tomorrow it reads single digits with worded residue, touch
+nothing unless it drifted. (2) GABI features are FROZEN by owner order
+until usage room returns — do not start switchboard/eval-corpus/router
+work. (3) Keep all docs current at landing; designs execution-complete
+(a weaker Kiro session may succeed you at 89% weekly — that is the next
+rung of the ladder). Settled law you may not relitigate: series ==
+volume; the multi-volume-printing checkbox is HUMAN-ONLY (research never
+writes it); missing printed-volume display is not a details gap.
+```
+
+### State at swap (all verified 2026-08-19 morning)
+- **Padhard details agent LANDED** (Opus, 431k, 13 commits `05247ce`→`110f043`,
+  friend deployed 4× → `2a135abb`, tests 1273→1301). Root causes: filling
+  57 series *created* the 55 volume questions, and `seriesIndexIncomplete`
+  demanded a display form nothing ever wrote — successful runs stranded
+  their own books. Fixed + owner's semantics built: series+sort=complete,
+  display optional (only written when a finding quoted it verbatim),
+  `multiVolumePrinting` checkbox (migration 0360, both remotes; About
+  panel; shut to research on four surfaces, one guard test). Failure
+  classifier now re-queues allowance/key failures instead of demoting.
+  Canonical doc: `library_catalog/docs/info/volume-numbers.md`.
+  **Queue 55→51 at landing; projection: single digits within ~26h,
+  ≈$1.00 on her key, untouched.** Review: <https://padhard.heygabi.ai/queue>.
+- **Volume/lookup spend note:** her key spent ~8¢ under the agent (4 books,
+  cron ticks); the ~90¢ of 45 runs earlier was the owner's own button press.
+- **GABI: FROZEN** (owner 2026-08-19: "on hold until we get room"). Open
+  GABI items in older sections are parked, not lost.
+- Usage at write: 25% session / 88% weekly / 91% Fable (11:07 read).
+  Weekly agent-dispatch stop line is 93%.
+
+### 🧑 Owner-pending commands (classifier-blocked for sessions)
+1. **Deploy the MAIN library instance** — in `library_catalog`:
+   `npm run deploy`. Migration 0360 is already applied to main's D1 while
+   main's build predates the column (additive with default — harmless, but
+   close the gap). Both the landing agent and the conductor were blocked
+   by the permission classifier on this exact command.
+
+### 🧑 Owner-pending decisions/eyeballs (ONE at a time)
+1. **Words of Radiance (main #220)** is the only multi-volume candidate the
+   data supports — two `hardcover` editions, equally consistent with a
+   leatherbound+trade pair. Only someone holding the books can tick the
+   new checkbox. (Agent deliberately did not tick it.)
+2. Deadline-gate boundary mapping confirm (carried from 08-18 handoff).
+3. Padhard queue eyeball tomorrow: expect single digits, every remaining
+   row saying in words why it is there.
+
 ## 🔄 HANDOFF — 2026-08-18 ~16:00 Phoenix (written for ANY successor, including a weaker one)
 
 > Owner order of record (2026-08-18): designs written to EXECUTION
