@@ -31,13 +31,14 @@ import {
   rowHasFormat,
   suggestIntent,
   suggestMoodHints,
+  suggestOfferAccepted,
   suggestOn,
   SUGGEST_MSG,
   SUGGEST_NOTE,
 } from '../src/suggest.js';
 import { suggestGate } from '../src/suggest-flow.js';
 import { MENTION_MSG } from '../src/mentions.js';
-import { termIsQuotable } from '../src/mention-flow.js';
+import { quotableTerm } from '../src/mention-flow.js';
 import type { BooksPort } from '../src/book-knowledge.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from '../src/delegated.js';
 import type { ReviewRow, TbrRow } from '../src/shelf.js';
@@ -416,7 +417,13 @@ describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () =
   );
 
   it('the pre-router is called and the lane has an answer function', () => {
-    assert.match(flow, /if \(suggestIntent\(question\)\)/, 'the suggestion pre-router is not wired');
+    // ⚠️ BOTH HALVES of the router. `suggestOfferAccepted` was added after she
+    // offered to pick a book, he accepted, and the acceptance went to a grep.
+    assert.match(
+      flow,
+      /if \(suggestIntent\(question\) \|\| suggestOfferAccepted\(question, history\)\)/,
+      'the suggestion pre-router is not wired',
+    );
     assert.match(flow, /await suggestAnswer\(/, 'the suggestion lane has no answer function');
   });
 
@@ -426,7 +433,7 @@ describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () =
     // rather than a reading list. Both halves are decisions, so both are pinned.
     const at = (needle: string) => flow.indexOf(needle);
     const docs = at('if (docsIntent(question))');
-    const suggest = at('if (suggestIntent(question))');
+    const suggest = at('if (suggestIntent(question) || suggestOfferAccepted(question, history))');
     const shelf = at('if (shelfLaneIntent(question))');
     const books = at('if (booksIntent(question) || booksFollowUp(question, history))');
     for (const [name, i] of Object.entries({ docs, suggest, shelf, books })) {
@@ -579,15 +586,55 @@ describe('⚠️ REGRESSION — the first stranger: "Find me something entertain
 });
 
 describe('⚠️ REGRESSION — she must not quote a mangled version of your sentence back', () => {
-  it('a sentence-shaped reduction is NOT quotable; a title-shaped one is', () => {
-    // The exact soup she printed in bold, from searchTermFor(CHEETAH).
-    assert.equal(termIsQuotable("can't sit read makes fall asleep something entertaining"), false);
-    // …and the shapes that must keep their current behaviour.
-    assert.equal(termIsQuotable('way kings'), true);
-    assert.equal(termIsQuotable('Dungeon Crawler Carl'), true);
-    assert.equal(termIsQuotable('fourth Dungeon Crawler Carl series'), true);
-    assert.equal(termIsQuotable('Mistborn'), true);
-    assert.equal(termIsQuotable(''), false);
+  it('⚠️ a REDUCTION is never quotable, at any length', () => {
+    // Cheetah11's soup — seven words.
+    assert.equal(
+      quotableTerm(
+        "I can't sit and read a book it makes me fall asleep. Find me something entertaining",
+        "can't sit read makes fall asleep something entertaining",
+      ),
+      null,
+    );
+    // ⚠️ AND Sky's, which is FOUR words and passed the first version of this
+    // rule. Length was never the property that mattered.
+    // ⚠️ Four words — it PASSED the first version of this rule and shipped as
+    // soup the same night. What she may quote now is his own sentence, never
+    // the reduction of it.
+    assert.notEqual(
+      quotableTerm('soemthing good to read i suppose', 'soemthing good read suppose'),
+      'soemthing good read suppose',
+      'the reduction must never be what she quotes',
+    );
+    assert.equal(
+      quotableTerm('soemthing good to read i suppose', 'soemthing good read suppose'),
+      'soemthing good to read i suppose',
+      'his own words, verbatim, are the honest thing to show',
+    );
+  });
+
+  it('an UNREDUCED term is quotable — it is literally what they typed', () => {
+    assert.equal(quotableTerm('The Way of Kings', 'The Way of Kings'), 'The Way of Kings');
+    // Punctuation and case are not a reduction.
+    assert.equal(quotableTerm('Mistborn?', 'Mistborn'), 'Mistborn');
+  });
+
+  it('a SHORT question that was reduced is quoted VERBATIM instead', () => {
+    assert.equal(
+      quotableTerm('do we have The Way of Kings?', 'way Kings'),
+      'do we have The Way of Kings?',
+      'their own words beat a machine paraphrase of them',
+    );
+  });
+
+  it('a LONG reduced question is described, never quoted', () => {
+    assert.equal(
+      quotableTerm(
+        'what is the fourth book in the Dungeon Crawler Carl series that we own on audio',
+        'fourth Dungeon Crawler Carl series own audio',
+      ),
+      null,
+    );
+    assert.equal(quotableTerm('', ''), null);
   });
 
   it('⚠️ the unsure sentence says what she CAN do, and claims nothing about the catalogue', () => {
@@ -596,5 +643,67 @@ describe('⚠️ REGRESSION — she must not quote a mangled version of your sen
     assert.match(m, /title, an author or a series/i, 'it has to say what would work');
     assert.match(m, /mood for/i, 'and it has to offer the lane that actually fits');
     assert.doesNotMatch(m, /Nothing on the estate/i, 'an unbuilt search is not evidence of absence');
+  });
+});
+
+describe('⚠️ REGRESSION — she offered, he accepted, she searched the shelf for it', () => {
+  const OFFER = 'That sounds rough. Would you rather I dig up something good to read?';
+  const hist = (assistantText: string) => [
+    { role: 'user', text: 'rough day today' },
+    { role: 'assistant', text: assistantText },
+  ];
+
+  it('the exact acceptance that broke — typo and all — now routes to suggestions', () => {
+    assert.equal(
+      suggestOfferAccepted('soemthing good to read i suppose', hist(OFFER)),
+      true,
+      'THE regression: an acceptance carries none of the words that made the offer',
+    );
+  });
+
+  it('⚠️ and the typo needed no fuzzy matcher — the OFFER carried the lane', () => {
+    // The same sentence with no offer in front of it stays unclaimed, which is
+    // what proves the fix is contextual rather than a spelling hack.
+    assert.equal(suggestOfferAccepted('soemthing good to read i suppose', []), false);
+    assert.equal(suggestIntent('soemthing good to read i suppose'), false);
+  });
+
+  it('bare content-free acceptances work, which is the whole point', () => {
+    for (const q of ['yes please', 'sure', 'go on', 'ok', 'why not', 'i suppose', 'go for it']) {
+      assert.equal(suggestOfferAccepted(q, hist(OFFER)), true, `missed: ${q}`);
+    }
+  });
+
+  it('⚠️ no offer means no claim — a stale invitation cannot hijack a new question', () => {
+    for (const q of ['yes please', 'sure', 'go on']) {
+      assert.equal(suggestOfferAccepted(q, hist('Here is what the catalogue says.')), false, q);
+    }
+    // …and only her MOST RECENT turn counts.
+    const stale = [
+      { role: 'assistant', text: OFFER },
+      { role: 'user', text: 'actually who narrates Mistborn' },
+      { role: 'assistant', text: 'Michael Kramer narrates it.' },
+    ];
+    assert.equal(suggestOfferAccepted('sure', stale), false, 'an overtaken offer is not live');
+  });
+
+  it('a new QUESTION after an offer is not an acceptance of it', () => {
+    assert.equal(suggestOfferAccepted('actually who narrates The Way of Kings?', hist(OFFER)), false);
+    assert.equal(
+      suggestOfferAccepted(
+        'no thanks, what is the fourth Dungeon Crawler Carl book we own',
+        hist(OFFER),
+      ),
+      false,
+      'too long to be an acceptance, and it names a different lane',
+    );
+  });
+
+  it('the acceptance router is WIRED into the suggestion lane', () => {
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(flow, /suggestIntent\(question\) \|\| suggestOfferAccepted\(question, history\)/);
   });
 });

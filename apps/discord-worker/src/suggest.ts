@@ -225,6 +225,107 @@ export function suggestIntent(text: string): boolean {
   return SUGGEST_STRONG.some((re) => re.test(q));
 }
 
+// ---------------------------------------------------------------------------
+// ⚠️ SHE OFFERED IT. HE ACCEPTED. SHE SEARCHED THE SHELF FOR HIS ACCEPTANCE.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE 22:24 TRANSCRIPT — the "say the word" lesson aimed at her OWN
+ * invitations.**
+ *
+ * > **GABI:** *"…would you rather I dig up something good to read?"*
+ * > **Sky:** *"soemthing good to read i suppose"*
+ * > **GABI:** *"I looked on the estate's public shelf for **soemthing good read
+ * > suppose**. Nothing on the estate's public shelf matches that…"*
+ *
+ * She proposed a specific action, he accepted it in the plainest English
+ * available, and the acceptance was routed to a public-index grep.
+ * `booksFollowUp` learned this exact shape once already (design §10c: *she
+ * invited a retry, he said the word, and the stateless detector sent it to the
+ * catalogue*). This is the same defect one lane over, and the generalisation is
+ * worth stating plainly:
+ *
+ * > ⚠️ **AN ACCEPTANCE CARRIES NONE OF THE WORDS THAT MADE THE OFFER.** It
+ * > cannot — "yes", "sure", "go on", "i suppose" are content-free by design. The
+ * > lane has to come from what SHE said, not from what THEY said.
+ *
+ * ⚠️ **THIS IS ALSO THE REAL CURE FOR THE TYPO, which is why it is built first.**
+ * *"soemthing"* defeated every pattern above. A fuzzy matcher for one transposed
+ * word would be a fuzzy matcher on the whole router — a permanent cost on every
+ * message and a fresh class of false positives — to solve a case that this fixes
+ * for free: with her offer in context, his reply did not have to match anything
+ * at all. Spelling stops mattering the moment the lane is carried by the
+ * conversation instead of by the sentence.
+ */
+const SUGGEST_OFFER = [
+  /\b(?:dig up|find|pick|grab|pull|line up)\b[^.?!]{0,40}\b(?:something|a few|some)\b/i,
+  /\b(?:would you (?:rather|like)|want me to|shall i|should i|do you want me to)\b[^.?!]{0,60}\b(?:recommend|suggest|pick|find|dig)\b/i,
+  /\bsomething (?:good |new |else )?to (?:read|listen to)\b/i,
+  /\b(?:recommend|suggest)\s+(?:you\s+)?(?:something|a book|a few)\b/i,
+  /\bwant (?:a|some) (?:recommendation|suggestions?|ideas?)\b/i,
+];
+
+/** ⚠️ Content-free acceptances — every one means nothing on its own, which is
+ *  exactly why the OFFER has to supply the lane. */
+const ACCEPTANCE = [
+  /^\s*(?:yes|yeah|yep|yup|sure|ok|okay|please|go on|go ahead|do it|why not|sounds good|alright)\b/i,
+  /\b(?:i suppose|i guess|if you (?:like|want)|go for it|hit me|let'?s do it|sure thing)\b/i,
+  /^\s*(?:that one|the first|the second|either|both)\b/i,
+];
+
+/** Beyond this it is a new question rather than an acceptance of an old offer.
+ *  Mirrors `booksFollowUp`'s own word bound, for the same reason. */
+export const SUGGEST_OFFER_MAX_WORDS = 12;
+
+/** ⚠️ The ECHO path is tighter than the bare-acceptance one. "yes" can stand
+ *  alone at any length because it means nothing else; an echo is recognised by
+ *  repeating the offer's words, and the longer it gets the more likely it is a
+ *  new sentence that merely happens to contain "book". */
+export const SUGGEST_ECHO_MAX_WORDS = 8;
+
+/** ⚠️ They asked something else, or said no. Either way the offer is over, and
+ *  claiming the turn would be a stale invitation hijacking a real question. */
+const ECHO_DISQUALIFIER =
+  /\b(?:what|which|who|when|where|why|how|whose)\b|\?|\bno(?:pe)?\b|\bnot?\s+(?:thanks|now)\b|\bactually\b|\binstead\b/i;
+
+/**
+ * True when HER last turn offered to pick something and THIS turn accepts it.
+ *
+ * ⚠️ **Only her MOST RECENT turn counts.** An offer made six exchanges ago has
+ * been overtaken by everything discussed since, and treating it as live would let
+ * a stale invitation hijack an unrelated question — the mirror image of the bug
+ * being fixed here.
+ */
+export function suggestOfferAccepted(
+  text: string,
+  history: readonly { role: string; text: string }[],
+): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  // ⚠️ Already unambiguous alone. Returning true here would hide which half of
+  // the router decided, and the two are debugged separately.
+  if (suggestIntent(q)) return false;
+  if (q.split(/\s+/).filter(Boolean).length > SUGGEST_OFFER_MAX_WORDS) return false;
+
+  const hers = [...(history ?? [])].reverse().find((t) => t.role === 'assistant');
+  if (!hers || !SUGGEST_OFFER.some((re) => re.test(hers.text))) return false;
+
+  // ⚠️ A bare acceptance is enough — and so is an ECHO of her own offer's words,
+  // because "soemthing good to read i suppose" is not a bare "yes": it repeats
+  // the offer back. Both are acceptances, and neither is a new question.
+  if (ACCEPTANCE.some((re) => re.test(q))) return true;
+
+  // ⚠️ **AN ECHO IS SHORT AND IS NOT A QUESTION**, and both halves are
+  // load-bearing. *"no thanks, what is the fourth Dungeon Crawler Carl book we
+  // own"* contains the word "book" and would otherwise be swallowed by an offer
+  // made one turn earlier — a stale invitation hijacking a real question, which
+  // is the exact mirror of the bug this function exists to fix. An interrogative
+  // or a refusal means they moved on.
+  if (ECHO_DISQUALIFIER.test(q)) return false;
+  if (q.split(/\s+/).filter(Boolean).length > SUGGEST_ECHO_MAX_WORDS) return false;
+  return /\b(?:something|book|read|listen|audiobook)\b/i.test(q);
+}
+
 /**
  * Which format the question already names, if any.
  *

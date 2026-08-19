@@ -211,6 +211,7 @@ export const HID_REASONS = [
   'memory_switched_off',
   'recall_switched_off',
   'recall_not_configured',
+  'recall_unavailable',
   'delegated_switched_off',
   'delegated_not_configured',
   'not_devops',

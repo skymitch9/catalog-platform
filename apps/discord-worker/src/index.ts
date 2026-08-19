@@ -86,6 +86,7 @@ import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
   GABI_DELEGATED_VERB_NAMES,
   GABI_BOOKS_TOOL_NAMES,
+  GABI_RECALL_TOOL_NAMES,
   GABI_SHELF_TOOL_NAMES,
   GABI_DOCS_TOOL_NAMES,
   GABI_TOOL_NAMES,
@@ -111,6 +112,7 @@ import {
 } from './book-knowledge.js';
 import { audiobookApiBase } from './book-knowledge-exec.js';
 import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
+import { ARCHIVE_RETENTION_DAYS, RECALL_SCAN_ROWS } from './archive.js';
 import { personalityOn, TROPES } from './personality.js';
 import { shelfOn } from './shelf.js';
 import { PHYSICAL_SOURCE_INSTANCE, suggestOn } from './suggest.js';
@@ -376,6 +378,26 @@ app.get('/api/health', (c) =>
     gabi_memory_enabled: memoryOn(c.env),
     gabi_memory_ready: memoryOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
     gabi_memory_profile_max_bytes: PROFILE_MAX_BYTES,
+    // ⚠️ **TIER 3 + 4 — THE 90-DAY ARCHIVE AND THE RECALL TOOL, REPORTED AS
+    // THEIR OWN ROWS.** The design shares ONE posture across tiers 2-4, so
+    // flipping `GABI_MEMORY` on turned these on too the moment they deployed —
+    // the owner approved the whole build, and these rows exist so that
+    // consequence is VISIBLE in one curl rather than inferred from a design doc.
+    gabi_archive_enabled: memoryOn(c.env),
+    gabi_archive_ready: memoryOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    gabi_archive_retention_days: ARCHIVE_RETENTION_DAYS,
+    gabi_archive_collection: 'gabi_conversations',
+    // ⚠️ WHAT A RECALL CAN ACTUALLY SEE, stated rather than assumed. The search
+    // is LEXICAL over the newest N turns of the ASKER'S OWN archive; a match
+    // older than that is not found, and every answer says how far back it looked.
+    gabi_recall_tools: GABI_RECALL_TOOL_NAMES,
+    gabi_recall_scope: 'own_past_conversations_person_keyed_server_side',
+    gabi_recall_scan_rows: RECALL_SCAN_ROWS,
+    // ⚠️ FALSE until somebody creates the Firestore TTL policy on
+    // `gabi_conversations.expiresAt` (design §9 owner step 2). Nothing here can
+    // check it — a Worker cannot read a TTL policy — so this row reports the
+    // ESTATE'S OWN CLAIM, not a measurement, and says so by its name.
+    gabi_archive_ttl_policy_claimed: false,
     // ⚠️ PERSONALITY. The roster is listed because "what can the bot in my
     // server actually do" should be answerable in one curl — but the hidden PIN
     // is deliberately NOT named anywhere a person would look, per the owner.

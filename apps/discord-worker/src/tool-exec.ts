@@ -41,6 +41,12 @@
  */
 
 import {
+  recallTerms,
+  renderRecall,
+  RECALL_MSG,
+  type ArchivePort,
+} from './archive.js';
+import {
   CATALOG_MSG,
   COVERAGE_NOTE,
   filterCatalog,
@@ -67,6 +73,8 @@ import {
   type GabiBooksToolName,
   type GabiDocsToolName,
   type GabiToolName,
+  isGabiRecallToolName,
+  gabiRecallToolByName,
 } from './gabi-tools.js';
 import {
   DOCS_MSG,
@@ -151,6 +159,16 @@ export interface ToolContext {
    */
   shelf?: ShelfToolContext;
   /**
+   * ⚠️ **TIER 4 — the asker's OWN past conversations, OPTIONAL BY DESIGN.**
+   *
+   * ⚠️ **`person` IS BUILT BY THE COMPOSITION ROOT FROM THE ASKER'S OWN
+   * IDENTITY, AND THAT IS THE WHOLE PRIVACY MODEL.** It arrives here already
+   * decided; no tool argument can influence it, so a model cannot ask for
+   * somebody else's history because there is no parameter that would carry the
+   * request. Design §4.4: privacy is a `where` clause, not a prompt instruction.
+   */
+  recall?: { port: ArchivePort; person: string };
+  /**
    * ⚠️ **THE TURN TRACE — optional, inert, and it holds nothing.** Added
    * 2026-08-18 with the recent-turn log, after a real person's *"she didn't
    * answer me"* could not be investigated at all (`turnlog.ts`'s header carries
@@ -215,7 +233,14 @@ export async function runTool(
   const isDocs = isGabiDocsToolName(name) && Boolean(gabiDocsToolByName(name));
   const isBooks = isGabiBooksToolName(name) && Boolean(gabiBooksToolByName(name));
   const isShelf = isGabiShelfToolName(name) && Boolean(gabiShelfToolByName(name));
-  if (!isDocs && !isBooks && !isShelf && (!isGabiToolName(name) || !gabiToolByName(name))) {
+  const isRecall = isGabiRecallToolName(name) && Boolean(gabiRecallToolByName(name));
+  if (
+    !isDocs &&
+    !isBooks &&
+    !isShelf &&
+    !isRecall &&
+    (!isGabiToolName(name) || !gabiToolByName(name))
+  ) {
     return {
       name: label,
       isError: true,
@@ -224,7 +249,7 @@ export async function runTool(
         allowed:
           'catalog_lookup, series_volumes, search_estate_docs, read_estate_doc, ' +
           'list_book_knowledge, search_book_text, read_book_passage, book_presence, ' +
-          'my_tbr, my_reviews, book_reviews, my_unread',
+          'my_tbr, my_reviews, book_reviews, my_unread, recall_conversation',
         note: 'That tool does not exist on this surface. Nothing was run.',
       },
     };
@@ -240,6 +265,7 @@ export async function runTool(
     if (isDocs) return await runDocsTool(name as GabiDocsToolName, args, ctx);
     if (isBooks) return await runBooksTool(name as GabiBooksToolName, args, ctx);
     if (isShelf) return await runShelfTool(name as GabiShelfToolName, args, ctx);
+    if (isRecall) return await runRecallTool(args, ctx);
     switch (name as GabiToolName) {
       case 'catalog_lookup':
         return await catalogLookup(args, ctx);
@@ -1357,5 +1383,57 @@ async function myUnread(
         'written about — a much larger set. ' +
         SHELF_SOFT_CLAIM_NOTE,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// TIER 4 — recall_conversation
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE PERSON KEY IS TAKEN FROM THE CONTEXT AND NEVER FROM `args`.**
+ *
+ * That single line is the whole of design §4.4's privacy guarantee. `args`
+ * carries a query and a day count; there is no field on it that names a person,
+ * so a prompt injection has nothing to inject INTO. `test/archive.test.ts`
+ * asserts that this function never reads a person from `args`.
+ */
+async function runRecallTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolOutcome> {
+  const name = 'recall_conversation';
+  if (!ctx.recall) {
+    return {
+      name,
+      isError: true,
+      result: { error: 'not_available', say: RECALL_MSG.notConfigured },
+    };
+  }
+  const query = str(args.query);
+  const terms = recallTerms(query);
+  if (terms.length === 0) {
+    // ⚠️ NO SUBJECT MEANS NO SEARCH. Searching for nothing would return the most
+    // recent turns and present them as MATCHES — a confabulation with dates on
+    // it, which is worse than any of the things this lane exists to prevent.
+    return { name, isError: false, result: { matched: 0, say: RECALL_MSG.noSubject } };
+  }
+
+  const days = typeof args.since_days === 'number' && args.since_days > 0 ? args.since_days : null;
+  const outcome = await ctx.recall.port.recall({
+    person: ctx.recall.person,
+    terms,
+    ...(days ? { since: Date.now() - days * 24 * 60 * 60 * 1000 } : {}),
+  });
+  if (!outcome.ok) return { name, isError: true, result: { error: 'unreachable', say: outcome.message } };
+
+  return {
+    name,
+    isError: false,
+    // ⚠️ The RENDERED block, not the raw rows: `renderRecall` is what puts the
+    // date on every line and the never-absorb rule in the text beside them. A
+    // caller handed raw rows would have to remember to do that, and the whole
+    // failure mode here is a model quietly dropping the date.
+    result: { matched: outcome.hits.length, transcript: renderRecall(outcome, terms) },
   };
 }

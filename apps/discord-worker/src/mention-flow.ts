@@ -134,6 +134,7 @@ import {
   profilePromptBlock,
   type MemoryPort,
   type MemoryProfile,
+  type MemoryCommand,
 } from './memory.js';
 import {
   devopsWriter,
@@ -154,12 +155,15 @@ import {
 import { checkDevops, type DevopsVerdict } from './devops-gate.js';
 import type { TurnTrace } from './turnlog.js';
 import { PROFILE_READ_MS, withDeadline } from './deadline.js';
+import { ARCHIVE_TURN_CHARS, RECALL_MSG, recallIntent, type ArchivePort, type ArchiveTurn } from './archive.js';
+import { gatherRecall } from './recall-flow.js';
 import {
   formatAsked,
   formatFromProfileNotes,
   renderSuggestions,
   suggestIntent,
   suggestMoodHints,
+  suggestOfferAccepted,
   SUGGEST_ASSUMED_NOTE,
   SUGGEST_MSG,
   SUGGEST_NOTE,
@@ -340,6 +344,20 @@ export interface MentionDeps {
    */
   memory?: MemoryPort;
   /**
+   * ⚠️ **TIER 3 + 4 — the 90-day conversation archive, OPTIONAL BY DESIGN.**
+   *
+   * Absent means nothing is written and nothing can be recalled — the state of
+   * every caller not given one, and of production with no service account. An
+   * injected port for the sixth time, so THIS FILE holds no credential.
+   *
+   * ⚠️ **It has no fuse of its own, and that is deliberate.** A recall costs
+   * something only on a turn that asked about the past, and the WRITE is bounded
+   * by the same `GLOBAL_TURNS_PER_DAY` fuse that bounds answers — there is
+   * nothing here for a per-person daily counter to protect that is not already
+   * protected upstream.
+   */
+  archive?: ArchivePort;
+  /**
    * ⚠️ **TIER 0d — the asker's own shelf, OPTIONAL BY DESIGN.** An injected port
    * for the fifth time, so THIS FILE holds no credential. Absent while
    * `GABI_SHELF` is off or the service account is unset.
@@ -441,6 +459,17 @@ export interface MentionConfig {
    * forgets the flag — cannot start writing notes about people.
    */
   memoryEnabled?: boolean;
+  /**
+   * ⚠️ **TIER 3 + 4. The archive and recall posture.**
+   *
+   * The memory design shares ONE posture across tiers 2–4 (§9: each phase "dark
+   * behind `GABI_MEMORY`"), so this is `memoryEnabled` in practice — but it is
+   * its OWN field because the two can differ for a reason that is not a
+   * configuration mistake: a surface may hold a profile port and no archive port,
+   * or the switchboard may want them separable later. Defaults FALSE so a caller
+   * that predates the archive writes nothing.
+   */
+  archiveEnabled?: boolean;
   /** ⚠️ TIER 0d. The `GABI_SHELF` posture, read at the composition root.
    *  Defaults to FALSE so a caller that predates the feature cannot start
    *  reading people's reading lists. */
@@ -518,6 +547,7 @@ function toolContext(
   docs?: DocsToolContext,
   books?: BooksToolContext,
   shelf?: { port: ShelfPort; discordUserId: string },
+  recall?: { port: ArchivePort; person: string },
 ): ToolContext {
   return {
     catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
@@ -525,6 +555,7 @@ function toolContext(
     ...(docs ? { docs } : {}),
     ...(books ? { books } : {}),
     ...(shelf ? { shelf } : {}),
+    ...(recall ? { recall } : {}),
     // ⚠️ Handed to EVERY tool context from this one place, so no lane can build
     // a context that quietly records nothing.
     ...(cfg.trace ? { trace: cfg.trace } : {}),
@@ -733,8 +764,8 @@ function memoryBlockFrom(profile: MemoryProfile | null): string | undefined {
  * cheerful "done!" over a failed delete is the worst possible lie here.
  */
 async function memoryAnswer(
-  action: 'show' | 'forget',
-  deps: Pick<MentionDeps, 'memory'>,
+  action: Exclude<MemoryCommand, null>,
+  deps: Pick<MentionDeps, 'memory' | 'archive'>,
   cfg: MentionConfig,
   discordUserId: string,
 ): Promise<AnsweredQuestion> {
@@ -748,11 +779,59 @@ async function memoryAnswer(
   const key = personKey({ discordUserId });
   if (!key) return done(MEMORY_MSG.none);
 
+  // ⚠️ Whether the 90-day archive is actually live for this surface. Both must be
+  // true — the posture AND a built port — for her to tell somebody it exists.
+  // Claiming a store she cannot reach would be a disclosure that is also a lie.
+  const archiveLive = Boolean(cfg.memoryEnabled && deps.archive);
+
+  /** ⚠️ Shared by `forget_history` and `forget_all` so the two can never word the
+   *  same outcome differently. A partial delete is SAID; a failure never comes
+   *  back as a cheerful confirmation. */
+  const clearHistory = async (): Promise<
+    { ok: true; deleted: number; more: boolean } | { ok: false }
+  > => {
+    if (!deps.archive) return { ok: false };
+    const out = await deps.archive.forget(key);
+    return out.ok ? { ok: true, deleted: out.deleted, more: out.more } : { ok: false };
+  };
+
   if (action === 'forget') {
+    // ⚠️ THE NOTE ONLY — and `MEMORY_MSG.cleared` names the archive and how to
+    // clear it, so the narrow reading never leaves somebody believing more was
+    // deleted than was. See `memory.ts`'s `MemoryCommand` header.
     const ok = await deps.memory.clear(key);
-    return done(ok ? MEMORY_MSG.cleared : MEMORY_MSG.trouble);
+    if (!ok) return done(MEMORY_MSG.trouble);
+    return done(archiveLive ? MEMORY_MSG.cleared : MEMORY_MSG.clearedNoArchive);
   }
-  return done(profileForDisplay(await profileFor(deps, cfg, discordUserId)));
+
+  if (action === 'forget_history') {
+    if (!archiveLive) return done(MEMORY_MSG.historyNotKept);
+    const out = await clearHistory();
+    if (!out.ok) return done(MEMORY_MSG.historyTrouble);
+    return done(
+      out.more
+        ? MEMORY_MSG.historyPartlyCleared(out.deleted)
+        : MEMORY_MSG.historyCleared(out.deleted),
+    );
+  }
+
+  if (action === 'forget_all') {
+    // ⚠️ THE NOTE FIRST, then the archive. If the second half fails the person is
+    // told exactly which half went — never "done" over a delete that half
+    // happened, and never a silent partial.
+    const noteOk = await deps.memory.clear(key);
+    if (!noteOk) return done(MEMORY_MSG.trouble);
+    if (!archiveLive) return done(MEMORY_MSG.clearedNoArchive);
+    const out = await clearHistory();
+    if (!out.ok) return done(MEMORY_MSG.bothPartial);
+    return done(
+      out.more
+        ? MEMORY_MSG.historyPartlyCleared(out.deleted)
+        : MEMORY_MSG.bothCleared(out.deleted),
+    );
+  }
+
+  return done(profileForDisplay(await profileFor(deps, cfg, discordUserId), archiveLive));
 }
 
 // ---------------------------------------------------------------------------
@@ -762,31 +841,67 @@ async function memoryAnswer(
 /** The nibble, worded. Shared by the lookup and fix paths so one wrong-term
  * rendering cannot drift between them. */
 /**
- * ⚠️ **IS THIS REDUCTION QUOTABLE, OR IS IT SOUP?**
+ * ⚠️ **NEVER QUOTE A STOPWORD-STRIPPED REDUCTION. AT ANY LENGTH.**
  *
- * `searchTermFor` strips stopwords from a spoken sentence. On a title question
- * ("do we have the way of kings?" → "way kings") the result is a fine thing to
- * show somebody. On a REQUEST ("I can't sit and read a book it makes me fall
- * asleep. Find me something entertaining" → "can't sit read makes fall asleep
- * something entertaining") it is a mangled echo of their own words, and quoting
- * it back with "nothing matches" is how the first stranger to use GABI concluded
- * she was broken.
+ * ## The first bar was the wrong SHAPE, and it failed the same night
  *
- * ⚠️ **Word count is the whole test, and that is deliberate rather than lazy.**
- * A title, an author or a series survives the reduction as a handful of words;
- * a sentence survives as a sentence. Five is the bar because the longest real
- * title question measured on this surface — *"what is the fourth book in the
- * Dungeon Crawler Carl series"* → "fourth Dungeon Crawler Carl series" — is
- * five, and it must keep its current behaviour.
+ * Its first version counted words: a reduction of five or fewer was quotable.
+ * Hours later she printed **`soemthing good read suppose`** — four words, under
+ * the bar, and still a garbled echo of a person's own sentence:
+ *
+ * > **GABI:** *"…would you rather I dig up something good to read?"*
+ * > **Sky:** *"soemthing good to read i suppose"*
+ * > **GABI:** *"I looked on the estate's public shelf for **soemthing good read
+ * > suppose**…"*
+ *
+ * ⚠️ **LENGTH WAS NEVER THE PROPERTY THAT MATTERED.** What makes a term safe to
+ * show somebody is not that it is short — it is that **it is what they actually
+ * typed**. `searchTermFor` is a best-effort stopword-stripper whose own header
+ * calls it *"never load-bearing"*; the moment it removes a word its output is a
+ * machine's paraphrase of a person's sentence, and quoting a paraphrase back as
+ * though it were their request reads as not having been listened to.
+ *
+ * So the test is **provenance, not size**:
+ *
+ * | the reduction… | she quotes |
+ * |---|---|
+ * | came through UNCHANGED — nothing stripped | ⚠️ the term. It IS their words |
+ * | dropped words, but the message was SHORT | their own sentence, verbatim |
+ * | dropped words from a long message | ⚠️ nothing — she describes instead |
+ *
+ * A title question survives comfortably: *"The Way of Kings"* typed alone is
+ * unreduced, and *"do we have The Way of Kings?"* is short enough to quote whole.
+ * What can no longer happen is somebody meeting a mangled version of themselves.
  */
-export const MAX_QUOTABLE_TERM_WORDS = 5;
+export const MAX_QUOTED_QUESTION_WORDS = 8;
 
-export function termIsQuotable(term: string): boolean {
-  const words = term.trim().split(/\s+/).filter(Boolean);
-  return words.length > 0 && words.length <= MAX_QUOTABLE_TERM_WORDS;
+const wordsOf = (x: string): string[] => x.trim().split(/\s+/).filter(Boolean);
+
+/** Punctuation and case removed, so "The Way of Kings?" and "the way of kings"
+ *  compare equal — a stripped question mark is not a reduction. */
+const bareOf = (x: string): string =>
+  x.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * What she may quote as *"I looked for X"*, or `null` when she may quote nothing.
+ *
+ * ⚠️ Exported so the rule is testable directly against real transcripts rather
+ * than only through a rendered message.
+ */
+export function quotableTerm(question: string, term: string): string | null {
+  const q = (question ?? '').trim();
+  const t = (term ?? '').trim();
+  if (!t) return null;
+  // Nothing was stripped: the term IS their words.
+  if (bareOf(t) === bareOf(q)) return t;
+  // Something was stripped. Their own sentence is still quotable while it is
+  // short enough to read as a quotation rather than a recital.
+  if (wordsOf(q).length > 0 && wordsOf(q).length <= MAX_QUOTED_QUESTION_WORDS) return q;
+  return null;
 }
 
 function shelfAnswer(
+  question: string,
   term: string,
   books: SearchBookHit[] | null,
   failure: string | null,
@@ -794,14 +909,20 @@ function shelfAnswer(
 ): string {
   if (failure) return failure;
   const hits = books ?? [];
-  // ⚠️ NOTHING MATCHED AND THE TERM WAS SENTENCE-SHAPED. Say we are not sure
-  // what to look for; never parrot the reduction, and never report the absence
-  // as a fact about the catalogue — see `MENTION_MSG.unsureWhatToSearch`.
-  if (hits.length === 0 && !termIsQuotable(term)) return MENTION_MSG.unsureWhatToSearch;
-  if (hits.length === 0) return `${MENTION_MSG.searched(truncate(term, 80))}\n${MENTION_MSG.none}`;
+  const quotable = quotableTerm(question, term);
+  // ⚠️ NOTHING MATCHED AND THERE IS NOTHING HONEST TO QUOTE. She says she is not
+  // sure what to look up; she never parrots a reduction, and she never reports
+  // the absence as a fact about the catalogue — a search she is not confident she
+  // built is not evidence of anything.
+  if (hits.length === 0 && !quotable) return MENTION_MSG.unsureWhatToSearch;
+  if (hits.length === 0) {
+    return `${MENTION_MSG.searched(truncate(quotable as string, 80))}\n${MENTION_MSG.none}`;
+  }
   const shown = hits.slice(0, limit);
+  // ⚠️ Even with hits she quotes their words or the unreduced term, never the
+  // reduction. A result list does not license a mangled heading above it.
   return (
-    `${MENTION_MSG.searched(truncate(term, 80))}\n` +
+    `${MENTION_MSG.searched(truncate(quotable ?? term, 80))}\n` +
     shown.map(renderHit).join('\n') +
     (hits.length > shown.length ? MENTION_MSG.overflow(shown.length, hits.length) : '')
   );
@@ -1577,6 +1698,10 @@ async function answerQuestion(
    *  `whoami` is the only per-instance signal that can answer "can this person
    *  open that shelf", which is the physical gate the owner asked for. */
   delegatedCtx?: { port: DelegatePort; instances: readonly LibraryInstance[] },
+  /** ⚠️ Tier 4. Present only when the posture is on AND a port was built. The
+   *  `person` is resolved by the caller from the asker's own identity — see
+   *  `gabi-tools.ts`'s recall array for why no tool parameter could carry it. */
+  recallCtx?: { port: ArchivePort; person: string },
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -1656,6 +1781,79 @@ async function answerQuestion(
     }
   }
 
+  // ── ⚠️ THE RECALL PRE-ROUTER — the FIFTH of this family ──────────────────
+  //
+  // ⚠️ **IT SITS AFTER THE MEMORY CONTROLS AND BEFORE EVERY LANE THAT COSTS
+  // ANYTHING**, and both halves of that are decisions:
+  //
+  //  - AFTER the show/forget controls and the persona controls, because those
+  //    are deterministic and free — and because "forget what we talked about" is
+  //    a DELETION request containing every word a recall question contains.
+  //    Reading a privacy control as a search would be the worst misreading
+  //    available in this lane.
+  //  - BEFORE docs/suggest/shelf/books, because `recallIntent` is the NARROWEST
+  //    detector on this surface by construction (`archive.ts` explains: every
+  //    pattern names the conversation itself — we talked, I told you, you said,
+  //    do you remember — so a sentence that merely looks backwards does not
+  //    match). A narrower detector can safely run first; that is the same
+  //    argument that puts `docsIntent` ahead of the rest.
+  //
+  // ⚠️ **THE SEARCH RUNS AHEAD OF THE MODEL** (`recall-flow.ts`). That is not a
+  // latency choice — it is the safety property. A model asked "what did I tell
+  // you about X?" with no result in front of it will produce something fluent,
+  // specific, and about a conversation that never happened.
+  if (recallIntent(question)) {
+    cfg.trace?.lane('recall');
+    if (recallCtx) {
+      const found = await gatherRecall({
+        question,
+        port: recallCtx.port,
+        person: recallCtx.person,
+      });
+      // ⚠️ An outage or a subjectless ask is said VERBATIM with no model call:
+      // a model handed "the store did not answer" paraphrases it into something
+      // that sounds like a finding about the person's own history.
+      if (found.say) {
+        cfg.trace?.hid('recall_unavailable');
+        return { content: found.say, pending: null, intent: 'question', components: null };
+      }
+      const spoken = await converseWithTools(
+        cfg.anthropicKey,
+        question,
+        found.grounding,
+        who,
+        // ⚠️ The recall tool stays in front of her so a follow-up inside the
+        // same turn — "and what did I say after that?" — is one more search
+        // rather than an apology. Docs and book text are not offered: neither
+        // can answer a question about a conversation.
+        toolContext(cfg, undefined, undefined, shelfCtx, recallCtx),
+        overrides,
+        history,
+        extraBlock,
+      );
+      // ⚠️ With no key the GROUNDING ITSELF is already a correct, complete and
+      // honest answer — real dated lines, or an explicit "nothing matched" that
+      // says how far back it looked.
+      return {
+        content: spoken.text ?? (found.grounding as string),
+        pending: null,
+        intent: 'question',
+        components: null,
+      };
+    }
+    if (cfg.archiveEnabled === true) {
+      cfg.trace?.hid('recall_not_configured');
+      return { content: RECALL_MSG.notConfigured, pending: null, intent: 'question', components: null };
+    }
+    if (cfg.archiveEnabled === false) {
+      // ⚠️ OFF IS NOT SILENT — the `GABI_BOOKS` rule once more. Somebody asking
+      // "what did we talk about last week" asked a question only this lane could
+      // answer, and a fall-through to a catalogue search reads as broken.
+      cfg.trace?.hid('recall_switched_off');
+      return { content: RECALL_MSG.switchedOff, pending: null, intent: 'question', components: null };
+    }
+  }
+
   // ── ⚠️ THE DOCS PRE-ROUTER, AHEAD OF EVERY INTENT BRANCH ─────────────────
   //
   // Added 2026-08-18 after the live failure `estate-docs.ts`'s `docsIntent`
@@ -1697,7 +1895,13 @@ async function answerQuestion(
   //    shelf-shaped and is nonetheless a request for a RECOMMENDATION. The shelf
   //    lane would answer it by reading the reading list back — a good answer to a
   //    different question.
-  if (suggestIntent(question)) {
+  // ⚠️ **`suggestOfferAccepted` IS THE SECOND HALF OF THIS ROUTER**, added
+  // 2026-08-18 after she offered to "dig up something good to read", he said
+  // "soemthing good to read i suppose", and the acceptance was sent to a
+  // public-index grep. An acceptance carries none of the words that made the
+  // offer — it cannot — so the lane has to come from what SHE said. Same
+  // mechanism as `booksFollowUp`, deliberately not a rival one.
+  if (suggestIntent(question) || suggestOfferAccepted(question, history)) {
     cfg.trace?.lane('suggest');
     if (cfg.suggestEnabled === true) {
       return await suggestAnswer(
@@ -1856,12 +2060,12 @@ async function answerQuestion(
     const pending = found.failure ? null : choiceFor(question, books, now);
     if (pending) {
       const body =
-        shelfAnswer(found.term, books, found.failure, MAX_CHOICE_OPTIONS) +
+        shelfAnswer(question, found.term, books, found.failure, MAX_CHOICE_OPTIONS) +
         CONV_MSG.chooseOne(pending.options.length, books.length);
       return { content: body, pending, intent, components: buildChoiceComponents(pending) };
     }
     return {
-      content: shelfAnswer(found.term, books, found.failure),
+      content: shelfAnswer(question, found.term, books, found.failure),
       pending: null,
       intent,
       components: null,
@@ -1880,7 +2084,7 @@ async function answerQuestion(
     return {
       content:
         `${MENTION_MSG.cannotChange}\n\n` +
-        `${shelfAnswer(found.term, found.books, found.failure)}\n\n` +
+        `${shelfAnswer(question, found.term, found.books, found.failure)}\n\n` +
         MENTION_MSG.panel(await panel(question)),
       pending: null,
       intent,
@@ -1895,7 +2099,7 @@ async function answerQuestion(
   let grounding: string | null = null;
   if (intent === 'question') {
     const found = await shelf(cfg.indexBaseUrl, question);
-    grounding = shelfAnswer(found.term, found.books, found.failure);
+    grounding = shelfAnswer(question, found.term, found.books, found.failure);
   }
 
   // ⚠️ SMALL TALK GETS NO TOOLS, and that is a spend decision rather than a
@@ -2149,6 +2353,11 @@ export async function handleMention(
     // Firestore GET) to the front of every turn, on a surface where the owner
     // has already reported slowness. Nothing here depends on anything else here,
     // so the turn pays the slowest of the three rather than their sum.
+    // ⚠️ Tier 4's context. `personKey` is the SAME key the profile uses, so a
+    // person's note and their history are keyed identically and the phase-4
+    // identity merge (design §3.3) will move both or neither.
+    const archiveCtx = archiveContextFor(deps, cfg, trigger.authorId);
+
     const [docs, books, profile] = await Promise.all([
       docsContextFor(deps, cfg, trigger.authorId),
       // ⚠️ The BOUND is derived from THIS question, here, and travels with the
@@ -2180,6 +2389,10 @@ export async function handleMention(
       deps.delegated && (cfg.instances ?? []).length > 0
         ? { port: deps.delegated.delegate, instances: cfg.instances ?? [] }
         : undefined,
+      // ⚠️ THE PERSON KEY IS BUILT SERVER-SIDE FROM THE ASKER'S OWN DISCORD ID,
+      // never from anything a model emitted. That is the whole of design §4.4's
+      // privacy guarantee, and it is one line.
+      archiveCtx,
     );
     await say(answer.content, answer.components, answer.overflowNote);
 
@@ -2204,6 +2417,23 @@ export async function handleMention(
       await deps.recordTurn(trigger.authorId);
       await chargeDocsTurn(deps, trigger.authorId, docs);
       await chargeBooksTurn(deps, trigger.authorId, books);
+      // ⚠️ **TIER 3 — WRITTEN HERE, INSIDE THE BOOKKEEPING BLOCK, ON PURPOSE.**
+      //
+      // It happens AFTER the answer has already reached the channel, so its
+      // latency costs the person nothing and its failure costs them nothing
+      // either: this whole block is wrapped by the rule that bookkeeping must
+      // not speak. Losing one turn from a 90-day record is a bad day; turning a
+      // delivered answer into an error message is the 2026-08-18 defect itself.
+      //
+      // ⚠️ Both halves of the exchange go in ONE atomic commit — a question
+      // archived without its answer is half a conversation for recall to find.
+      await archiveTurn(archiveCtx, {
+        surface: trigger.surface,
+        space: trigger.channelId,
+        question: trigger.question,
+        answer: answer.content,
+        ref: { message_id: trigger.messageId },
+      });
     } catch (err) {
       console.error(
         'GABI mentions: the answer was delivered but the bookkeeping failed (memory, turn cap or ' +
@@ -2391,6 +2621,12 @@ export async function handleTypedQuestion(
     const verdict = await deps.capCheck(who.discordUserId);
     if (!verdict.ok) return { kind: 'capped', content: verdict.message };
 
+    // ⚠️ The typed-follow-up lane gets the archive too. A person who answered a
+    // clarifying question in a modal had a conversation; leaving it out of the
+    // record would make recall's coverage depend on WHICH door the sentence came
+    // through, which nobody could predict or explain.
+    const archiveCtx = archiveContextFor(deps, cfg, who.discordUserId);
+
     // ⚠️ Parallel here too, for the same reason — and a typed follow-up reaches
     // the SAME ladder as a DM, so it derives its own bound from its own text.
     // Reusing the bound of the question that opened the box would let a spoiler
@@ -2420,6 +2656,10 @@ export async function handleTypedQuestion(
       deps.delegated && (cfg.instances ?? []).length > 0
         ? { port: deps.delegated.delegate, instances: cfg.instances ?? [] }
         : undefined,
+      // ⚠️ THE PERSON KEY IS BUILT SERVER-SIDE FROM THE ASKER'S OWN DISCORD ID,
+      // never from anything a model emitted. That is the whole of design §4.4's
+      // privacy guarantee, and it is one line.
+      archiveCtx,
     );
     await deps.conversation.save({
       user: question,
@@ -2428,6 +2668,15 @@ export async function handleTypedQuestion(
     });
     await deps.recordTurn(who.discordUserId);
     await chargeDocsTurn(deps, who.discordUserId, docs);
+    // ⚠️ The typed lane archives too — see `archiveContextFor`.
+    await archiveTurn(archiveCtx, {
+      surface: 'discord_channel',
+      // ⚠️ No channel id on a modal submit, and it is left EMPTY rather than
+      // guessed. `space` is provenance; a wrong one is worse than none.
+      space: '',
+      question,
+      answer: answer.content,
+    });
     await chargeBooksTurn(deps, who.discordUserId, books);
     return {
       kind: 'answered',
@@ -2451,3 +2700,70 @@ export const NO_MEMORY: ConversationDeps = {
 };
 
 export { capDecision };
+
+/**
+ * ⚠️ **THE ONE PLACE THAT DECIDES WHETHER A TURN IS ARCHIVED**, and it needs
+ * three things to be true — the same shape `docsContextFor` uses, for the same
+ * reason: a posture, a port, and an identity.
+ *
+ *  1. the `GABI_MEMORY` posture is on (design §9 shares one posture across tiers
+ *     2–4, so archiving is not a second thing to switch on — the owner approved
+ *     the whole build, and `/api/health` reports `gabi_archive_enabled` so the
+ *     consequence is VISIBLE rather than inferred);
+ *  2. this surface was given a port (so it ships dark with no service account);
+ *  3. the person resolves to a key.
+ */
+function archiveContextFor(
+  deps: Pick<MentionDeps, 'archive'>,
+  cfg: MentionConfig,
+  discordUserId: string,
+): { port: ArchivePort; person: string } | undefined {
+  if (!cfg.archiveEnabled || !deps.archive) return undefined;
+  const person = personKey({ discordUserId });
+  return person ? { port: deps.archive, person } : undefined;
+}
+
+/**
+ * ⚠️ **THE ARCHIVE WRITE — two documents, one commit, never a throw.**
+ *
+ * An absent context is a no-op that costs nothing: the ships-dark state,
+ * expressed the way every other tier expresses it.
+ *
+ * ⚠️ **The text is clipped to the SAME 600 characters tier 1 clips to.** The
+ * archive must never hold more of a turn than the live window did — a store that
+ * kept more than the thing it was archiving would be a quiet widening of what
+ * the estate retains, arriving with no decision behind it.
+ */
+async function archiveTurn(
+  ctx: { port: ArchivePort; person: string } | undefined,
+  entry: { surface: string; space: string; question: string; answer: string; ref?: Record<string, string> },
+): Promise<void> {
+  if (!ctx) return;
+  const at = Date.now();
+  const turns: ArchiveTurn[] = [
+    {
+      person: ctx.person,
+      surface: entry.surface,
+      space: entry.space,
+      role: 'user',
+      text: entry.question.slice(0, ARCHIVE_TURN_CHARS),
+      at,
+      ...(entry.ref ? { ref: entry.ref } : {}),
+    },
+    {
+      person: ctx.person,
+      surface: entry.surface,
+      space: entry.space,
+      role: 'assistant',
+      text: entry.answer.slice(0, ARCHIVE_TURN_CHARS),
+      at,
+    },
+  ];
+  const ok = await ctx.port.write(turns);
+  if (!ok) {
+    console.error(
+      'GABI archive: this turn was NOT archived. The person has their answer and nothing else is ' +
+        'affected; a later recall simply will not find this exchange.',
+    );
+  }
+}

@@ -144,7 +144,7 @@ import {
   type PersonaState,
   type Trope,
 } from './personality.js';
-import { makeMemoryPort } from './memory-exec.js';
+import { makeArchivePort, makeMemoryPort } from './memory-exec.js';
 import { shelfOn } from './shelf.js';
 import { suggestOn } from './suggest.js';
 import { makeShelfPort } from './shelf-exec.js';
@@ -247,6 +247,16 @@ const SESSION_DEAD_CODES = new Set([4007, 4009, 1000, 1001]);
 export const ALARM_MS = 30_000;
 
 /**
+ * ⚠️ **HOW LONG A FATAL CLOSE HOLDS BEFORE ONE MORE TRY.**
+ *
+ * One hour: long enough that a genuinely bad token costs 24 attempts a day
+ * rather than a hot loop, short enough that a transient — a deploy-race
+ * handshake, a Discord hiccup — heals itself before anybody has to be woken.
+ * See `fatalHold()` for why "for ever" was the wrong number.
+ */
+export const FATAL_RETRY_MS = 60 * 60 * 1000;
+
+/**
  * ⚠️ A daily ceiling on IDENTIFYs, because a flapping connection is the one way
  * this design could hurt: Discord grants a bounded number of session starts per
  * day, and an alarm that reconnects every 30 s could spend 2,880 of them. At
@@ -262,6 +272,8 @@ const K_SESSION = 'gw:session_id';
 const K_SEQ = 'gw:seq';
 const K_RESUME_URL = 'gw:resume_url';
 const K_FATAL = 'gw:fatal';
+/** When the last post-fatal reconnect was ATTEMPTED — the backoff's clock. */
+const K_FATAL_AT = 'gw:fatal_at';
 const K_IDENTIFIES = 'gw:identifies';
 const K_LAST_READY = 'gw:last_ready_at';
 const K_GLOBAL_CAP = 'cap:global';
@@ -380,6 +392,28 @@ export class GabiGateway {
         ok: true,
         rows: turnLogForDisplay(ring),
         kept: TURN_LOG_ROWS,
+        // ⚠️ **"CHANNELS I HAVE ACTUALLY HEARD FROM" — the 2026-08-18 lesson.**
+        //
+        // An entire evening went into hunting a bug that did not exist: the
+        // silent questions were asked in a channel **the bot is not a member
+        // of**, so Discord never delivered them and every instrument in the
+        // estate correctly saw nothing. From inside that channel it is
+        // indistinguishable from a dead bot, unless somebody thinks to ask *"is
+        // she even in that room?"*.
+        //
+        // This is the cheapest honest answer to that question. ⚠️ It is NOT a
+        // membership list — it cannot be, without asking Discord — and
+        // `channels_note` says so, because a list that looked authoritative
+        // would only replace one wrong conclusion with another.
+        channels_heard: [
+          ...new Set(ring.map((r) => r.channel).filter((c): c is string => Boolean(c))),
+        ],
+        channels_note:
+          'These are channels this ring has HEARD a turn from — not a membership list. ⚠️ If a ' +
+          'channel is missing, the likeliest explanation is that the bot is not in it: without the ' +
+          'Message Content intent Discord delivers only messages that mention her, and it delivers ' +
+          'nothing at all from a channel she has not been added to. That looks exactly like a ' +
+          'broken bot from inside the channel, and the fix is a server setting rather than code.',
         // ⚠️ Said out loud, because an empty list must never be read as "she has
         // answered nobody". A fresh deploy looks exactly the same — the ring
         // lives in this object and starts empty.
@@ -830,16 +864,66 @@ export class GabiGateway {
       await this.disconnect('posture is off');
       return;
     }
-    const fatal = await this.state.storage.get<string>(K_FATAL);
-    if (fatal) {
+    // ⚠️ **THE FATAL FLAG BACKS OFF; IT NO LONGER GIVES UP FOR EVER.**
+    // `fatalHold()` decides, and its header carries the reasoning.
+    const hold = await this.fatalHold();
+    if (hold.holding) {
       console.error(
-        `GABI gateway: standing down and NOT reconnecting — ${fatal}. This needs a person: check ` +
-          'DISCORD_BOT_TOKEN and the requested intents, then POST /admin/gateway/start to clear it.',
+        `GABI gateway: holding after a fatal close — ${hold.why}. Next attempt in about ` +
+          `${Math.max(1, Math.round(hold.retryInMs / 60_000))} minute(s). If this repeats hourly it ` +
+          'is a real configuration break: check DISCORD_BOT_TOKEN and that the portal still grants ' +
+          `intents ${GATEWAY_INTENTS}.`,
       );
-      return; // ⚠️ deliberately no reschedule: a hot loop on a bad token helps nobody.
+      // ⚠️ RESCHEDULED, unlike before. The alarm chain is what carries the retry,
+      // so standing down WITHOUT one is precisely what made "wait for a human"
+      // permanent — the object had nothing left to wake it.
+      await this.state.storage.setAlarm(Date.now() + Math.min(hold.retryInMs, FATAL_RETRY_MS));
+      return;
     }
     await this.ensureConnected();
     await this.ensureAlarm();
+  }
+
+  /**
+   * ⚠️ **WHY THE FATAL FLAG STOPPED BEING PERMANENT (2026-08-18).**
+   *
+   * The old contract: a 4004/4014-class close set a flag, the object stopped
+   * reconnecting **for ever**, and only `POST /admin/gateway/start` — which needs
+   * an estate admin's Firebase ID token — could clear it. That is a reasonable
+   * design for a service with an on-call rota. It is the wrong design for a
+   * **household bot**, and tonight demonstrated why: the household watched her be
+   * unreachable while every restart path required a credential nobody awake could
+   * mint.
+   *
+   * ⚠️ **THE HAMMERING PROTECTION IS KEPT; THE PERMANENCE IS NOT.** A genuinely
+   * broken token now costs **24 gentle attempts a day** against this object's own
+   * ceiling of 400 identifies — noise — while a transient self-heals within the
+   * hour with nobody involved. A bot that retries once an hour is strictly better
+   * than a bot that stays dead until somebody with credentials wakes up.
+   *
+   * ⚠️ The cause is KEPT and re-reported on every attempt, so a real break still
+   * reaches a person — in words, on a schedule, instead of as silence.
+   */
+  private async fatalHold(): Promise<
+    { holding: false } | { holding: true; why: string; retryInMs: number }
+  > {
+    const why = await this.state.storage.get<string>(K_FATAL);
+    if (!why) return { holding: false };
+    const lastAt = (await this.state.storage.get<number>(K_FATAL_AT)) ?? 0;
+    const due = lastAt + FATAL_RETRY_MS;
+    const now = Date.now();
+    if (now >= due) {
+      // ⚠️ The attempt is STAMPED BEFORE it is made, never after. Stamping after
+      // would let a connect that hangs leave the object retrying in a tight loop
+      // — trading a bot that never retries for one that never stops.
+      await this.state.storage.put(K_FATAL_AT, now);
+      console.error(
+        `GABI gateway: retrying after a fatal close — ${why}. This is the hourly backoff, not a ` +
+          'clean state; the flag clears only when a connection actually succeeds.',
+      );
+      return { holding: false };
+    }
+    return { holding: true, why, retryInMs: due - now };
   }
 
   private async ensureAlarm(): Promise<void> {
@@ -1090,6 +1174,15 @@ export class GabiGateway {
       this.sessionId = typeof d.session_id === 'string' ? d.session_id : null;
       this.resumeUrl = typeof d.resume_gateway_url === 'string' ? d.resume_gateway_url : null;
       await this.state.storage.put(K_LAST_READY, new Date().toISOString());
+      // ⚠️ **A SUCCESSFUL HANDSHAKE IS THE ONLY THING THAT CLEARS THE FLAG.**
+      // Not a deploy, not the passage of time, not somebody pressing a button —
+      // the one event that actually proves the cause is gone. This is what makes
+      // the hourly backoff self-healing rather than merely quieter.
+      if (await this.state.storage.get<string>(K_FATAL)) {
+        console.log('GABI gateway: connected after a fatal close — clearing the flag.');
+        await this.state.storage.delete(K_FATAL);
+        await this.state.storage.delete(K_FATAL_AT);
+      }
       if (this.sessionId) await this.state.storage.put(K_SESSION, this.sessionId);
       if (this.resumeUrl) await this.state.storage.put(K_RESUME_URL, this.resumeUrl);
       console.log(
@@ -1118,9 +1211,53 @@ export class GabiGateway {
       // this estate's posture and would evict the forty rows that matter within
       // seconds. Every OTHER reason means *she was addressed and declined*,
       // which is exactly the thing somebody will one day need to see.
-      if (trigger.why !== 'not_mentioned') {
+      // ⚠️ **AND `not_mentioned` IS LOGGED TOO WHEN THE MESSAGE LOOKS ADDRESSED
+      // TO HER** — added 2026-08-19, because the blanket exemption above was
+      // hiding the exact turns under investigation.
+      //
+      // Four asks of one question died with NO trace at all, including two AFTER
+      // the watchdog deploy — so the death is UPSTREAM of `gabi_dispatch_taken`,
+      // and this branch is the only silent thing upstream of it.
+      //
+      // ⚠️ **THE FILTER IS FREE, BECAUSE THIS BOT HAS NO MESSAGE CONTENT
+      // INTENT.** Discord sends `content` ONLY for messages that mention her,
+      // replies with the ping on, and DMs — so a non-empty `content` already
+      // means *she was addressed*. Every ordinary channel message arrives with
+      // an empty string and stays unlogged, which is what keeps this a
+      // diagnostic rather than a transcript of the server's traffic.
+      //
+      // ⚠️ **SHAPE ONLY — NEVER THE TEXT.** Lengths, counts and booleans. The
+      // content promise in `gabi-bare-text-triggers-memo.md` §6.2 is not spent
+      // on debugging, however badly we want the answer.
+      const raw = (data ?? {}) as {
+        content?: unknown;
+        mentions?: unknown;
+        type?: unknown;
+        message_reference?: unknown;
+        referenced_message?: { author?: { id?: unknown } };
+      };
+      const contentLen = typeof raw.content === 'string' ? raw.content.length : 0;
+      const looksAddressed =
+        contentLen > 0 || Boolean(raw.message_reference) || trigger.why !== 'not_mentioned';
+      if (looksAddressed) {
         console.log(
-          JSON.stringify({ evt: 'gabi_ignored', why: trigger.why, at: new Date().toISOString() }),
+          JSON.stringify({
+            evt: 'gabi_ignored',
+            why: trigger.why,
+            // ⚠️ These five fields are the whole hypothesis space for a silent
+            // ignore: she was not in `mentions`, the token was missing from the
+            // text, the message type was unanswerable, or it was a reply whose
+            // ping had been removed (in which case Discord delivers NO content
+            // and she is structurally blind to it — wrangler.toml documents that
+            // as a known limit, and this is how it stops being invisible).
+            content_len: contentLen,
+            mentions_count: Array.isArray(raw.mentions) ? raw.mentions.length : 0,
+            msg_type: typeof raw.type === 'number' ? raw.type : null,
+            is_reply: Boolean(raw.message_reference),
+            replied_to_me:
+              String((raw.referenced_message?.author?.id as string | undefined) ?? '') === appId,
+            at: new Date().toISOString(),
+          }),
         );
         await this.recordTurnLog({
           at: Date.now(),
@@ -1177,6 +1314,10 @@ export class GabiGateway {
     // cached OAuth token that outlived a secret rotation would fail every
     // profile read with no obvious cause.
     const memoryPort = makeMemoryPort(this.env);
+    // ⚠️ TIER 3 + 4. Built per message like the others, and `null` with no
+    // service account — the ships-dark state. It shares `GABI_MEMORY`'s posture
+    // by the design's own choice (§9), so nothing new has to be switched on.
+    const archivePort = makeArchivePort(this.env);
     // ⚠️ TIER 0d. `null` with no service account — the ships-dark state. Built
     // per message because it memoises the asker's link lookup FOR ONE TURN, and
     // a port that outlived its turn would read the wrong person's shelf.
@@ -1303,6 +1444,7 @@ export class GabiGateway {
             }
           : {}),
         ...(memoryPort ? { memory: memoryPort } : {}),
+        ...(archivePort ? { archive: archivePort } : {}),
         ...(shelfPort ? { shelf: shelfPort } : {}),
         persona: {
           pin: async (userId: string, trope: Trope, writer?: PersonaWriter) => {
@@ -1391,6 +1533,11 @@ export class GabiGateway {
         docsEnabled: docsOn(this.env),
         booksEnabled: booksOn(this.env),
         memoryEnabled: memoryOn(this.env),
+        // ⚠️ ONE POSTURE ACROSS TIERS 2-4, by design §9. Passed as its own field
+        // rather than reusing `memoryEnabled` so the two are separable the day
+        // somebody wants them to be — and so `/api/health` can report the
+        // archive's state as its own row rather than leaving it inferred.
+        archiveEnabled: memoryOn(this.env),
         shelfEnabled: shelfOn(this.env),
         suggestEnabled: suggestOn(this.env),
         // ⚠️ The POSTURE as well as the rendered block, because the visibility

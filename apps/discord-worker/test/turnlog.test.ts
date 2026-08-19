@@ -211,11 +211,16 @@ describe('⚠️ REGRESSION — no taken turn may end in silence', () => {
     const inner = gw.slice(gw.indexOf('private async dispatchInner('));
     const block = inner.slice(inner.indexOf("if (trigger.kind === 'ignore')"));
     assert.match(block, /trigger\.why/, 'the reason was computed and thrown away before this');
-    assert.match(
-      block,
-      /!==\s*'not_mentioned'/,
-      "every ordinary channel message is 'not_mentioned' and must stay unrecorded",
-    );
+    // ⚠️ WIDENED 2026-08-19. The blanket `not_mentioned` exemption was hiding
+    // the very turns under investigation, so an ignore is now logged whenever
+    // the message LOOKS addressed to her. The filter stays free because this
+    // bot has no Message Content intent: an ordinary channel message arrives
+    // with an empty `content` and is still not recorded.
+    assert.match(block, /looksAddressed/, 'an addressed-but-ignored message must leave a trace');
+    assert.match(block, /content_len/, 'shape, so a silent ignore can be diagnosed');
+    assert.match(block, /replied_to_me/, 'the ping-off reply blind spot must be visible');
+    // ⚠️ …and still no message text, ever.
+    assert.doesNotMatch(block, /content:\s*raw\.content/, 'the text must never be logged');
   });
 
   it('6. the ring write can never fail a turn', () => {

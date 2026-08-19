@@ -312,7 +312,75 @@ export const MEMORY_MSG = {
     "I haven't written anything down about you yet. I keep a short note between conversations so I'm " +
     'not starting from scratch every time; it fills in as we talk.',
 
-  cleared: "Done — I've forgotten all of that. The note is empty again.",
+  /** ⚠️ It names the OTHER thing that still exists, and how to clear it. A
+   *  narrow delete that lets somebody believe it was a wide one is the trap the
+   *  four-verb split exists to avoid — the caution only works if it is said. */
+  cleared:
+    "Done — I've forgotten all of that. The note is empty again.\n\n" +
+    "One thing worth knowing: I also keep the conversations themselves for 90 days, and that's " +
+    "separate from the note. Say **forget my history** and I'll delete those too.",
+
+  /** ⚠️ The same clear where the archive is NOT live. It must not mention a
+   *  90-day store she cannot reach — a disclosure that is also a lie is worse
+   *  than no disclosure. */
+  clearedNoArchive: "Done — I've forgotten all of that. The note is empty again.",
+
+  /** Somebody asked to clear a history that is not being kept. Reassuring and
+   *  TRUE: there is nothing to delete because nothing is stored. */
+  historyNotKept:
+    "There's nothing to delete — I'm not keeping our past conversations at the moment, only the " +
+    'last half hour while we are talking, and that goes on its own.',
+
+  /** ⚠️ The note went and the archive delete FAILED. Says exactly which half
+   *  happened; "done" here would be a lie about the more sensitive half. */
+  bothPartial:
+    "The note about you is cleared. ⚠️ I could NOT delete our saved conversations just then — the " +
+    "store didn't answer, so those are still there. Say **forget my history** again in a minute " +
+    'and I will finish the job.',
+
+  /** Cleared the archive, kept the note. Says the count, because "done" over an
+   *  unknown quantity is not something anybody can check. */
+  historyCleared: (deleted: number) =>
+    deleted === 0
+      ? "There was nothing stored — I have no saved conversations for you to delete. Nothing has " +
+        'been kept.'
+      : `Done — I've deleted ${deleted} saved message${deleted === 1 ? '' : 's'} of ours. They're ` +
+        "gone, not hidden.\n\nThe short note I keep about you is separate and is still there; say " +
+        '**forget what you know about me** if you want that gone as well.',
+
+  /** ⚠️ THE BOUND WAS HIT. Said plainly rather than rounded up to "done" —
+   *  somebody who asked to be forgotten is owed the truth about how much of them
+   *  is actually gone, and telling them it finished when it did not is the worst
+   *  lie this feature could tell. */
+  historyPartlyCleared: (deleted: number) =>
+    `I've deleted ${deleted} of our saved messages, but there were more than I can remove in one ` +
+    "go and I'd rather say so than let you think it's all gone. Ask me again and I'll carry on " +
+    'from where I stopped.',
+
+  /** ⚠️ Said when a DELETE FAILED on the archive. Same rule as `trouble`: never
+   *  a cheerful confirmation over a delete that did not happen. */
+  historyTrouble:
+    "I couldn't delete those just now — the store didn't answer, so nothing has been removed. " +
+    "Please try again in a minute rather than assuming it's gone.",
+
+  bothCleared: (deleted: number) =>
+    `Done — the note about you is empty and ${deleted} saved message${deleted === 1 ? '' : 's'} ` +
+    "of ours have been deleted. That's everything I keep.",
+
+  /** ⚠️ Shown at the end of a profile so nobody learns about a 90-day archive
+   *  from somewhere other than her. A store somebody cannot see is a dossier,
+   *  and that rule does not stop applying at tier 2. */
+  archiveNote:
+    "_I also keep our conversations themselves for 90 days, so I can look back if you ask me what " +
+    'we talked about. Say **forget my history** to delete those, or **forget what you know about ' +
+    'me** for the note above._',
+
+  /** The same fact for somebody whose note is empty — they still have an archive
+   *  and are still owed the disclosure. */
+  archiveNoteOnly:
+    "I haven't written anything down about you yet. I do keep our conversations themselves for 90 " +
+    'days, so I can look back if you ask what we talked about — say **forget my history** to ' +
+    'delete those.',
 
   /** ⚠️ Said when a DELETE FAILED. A cheerful "done!" over a failed delete is
    *  the worst possible lie this feature could tell: somebody asked to be
@@ -335,8 +403,16 @@ export const MEMORY_MSG = {
 /** How a profile is shown to the person who owns it. ⚠️ Plain sentences, not the
  *  stored JSON: somebody checking what she knows about them should not have to
  *  read a document shape to do it. */
-export function profileForDisplay(profile: MemoryProfile | null): string {
-  if (profileIsEmpty(profile) || !profile) return MEMORY_MSG.none;
+export function profileForDisplay(
+  profile: MemoryProfile | null,
+  /** ⚠️ Whether the 90-day archive is live for this surface. When it is, the
+   *  display SAYS SO — a person asking what she keeps about them must be told
+   *  about both stores, not just the one that happens to be rendered. */
+  archiveOn = false,
+): string {
+  if (profileIsEmpty(profile) || !profile) {
+    return archiveOn ? MEMORY_MSG.archiveNoteOnly : MEMORY_MSG.none;
+  }
   const lines: string[] = [MEMORY_MSG.heading, ''];
   if (profile.callMe) lines.push(`**You go by:** ${profile.callMe}`);
   if (profile.notes.length) {
@@ -352,6 +428,7 @@ export function profileForDisplay(profile: MemoryProfile | null): string {
     for (const t of profile.threads) lines.push(`• ${t.what}`);
   }
   lines.push('', `_From ${profile.sources} conversation${profile.sources === 1 ? '' : 's'}._`);
+  if (archiveOn) lines.push('', MEMORY_MSG.archiveNote);
   return lines.join('\n');
 }
 
@@ -380,7 +457,51 @@ export function profileForDisplay(profile: MemoryProfile | null): string {
  * me"* contains both; reading it as a request to display would be the worst
  * possible misreading of a privacy control.
  */
-export type MemoryCommand = 'show' | 'forget' | null;
+/**
+ * ⚠️ **FOUR VERBS, BECAUSE THERE ARE NOW TWO DIFFERENT THINGS TO FORGET.**
+ *
+ * Tier 2 is a ≤2 KB NOTE distilled from what somebody said. Tier 3 is a 90-day
+ * ARCHIVE of the turns themselves. They differ in kind, and a single "forget"
+ * that cleared one while silently leaving the other is the failure this split
+ * exists to prevent — in either direction:
+ *
+ * | verb | clears | typical phrasing |
+ * |---|---|---|
+ * | `forget` | ⚠️ the NOTE only | *"forget what you know about me"* |
+ * | `forget_history` | ⚠️ the ARCHIVE only | *"forget my history"*, *"delete our conversations"* |
+ * | `forget_all` | both | *"forget everything about me and our conversations"* |
+ * | `show` | — | *"what do you know about me"* |
+ *
+ * ⚠️ **`forget` STAYS NOTE-ONLY, AND ITS CONFIRMATION NAMES THE OTHER LEVER.**
+ * Widening the existing words to also wipe 90 days of conversation would delete
+ * far more than the person asked for, using phrasings they had already learned
+ * meant something smaller. Under-deleting is recoverable by saying one more
+ * sentence; over-deleting is not recoverable at all. So the narrow reading wins
+ * **and the answer tells them the wider one exists** — which is what stops the
+ * caution becoming a trap.
+ */
+export type MemoryCommand = 'show' | 'forget' | 'forget_history' | 'forget_all' | null;
+
+/** The words that mean the ARCHIVE rather than the note: a conversation, a
+ *  history, a transcript — the record of what was SAID rather than what was
+ *  concluded from it. */
+const HISTORY_NOUN = /\b(history|conversations?|chats?|transcripts?|messages?|what we (talked|said|discussed))\b/i;
+
+const MEMORY_FORGET_HISTORY = [
+  /\b(forget|clear|delete|wipe|erase|drop)\b[^?]*\b(my|our|the)\b[^?]*\b(history|conversations?|chats?|transcripts?|messages?)\b/i,
+  /\b(forget|clear|delete|wipe|erase)\b[^?]*\bwhat we (talked about|said|discussed)\b/i,
+  /^\s*(?:\/gabi\s+)?memory\s+(forget|clear|delete|wipe)\s+(history|conversations?|chats?)\s*$/i,
+];
+
+/** ⚠️ Requires BOTH an everything-word AND a history-word. *"forget everything
+ *  you know about me"* has been the NOTE verb since tier 2 shipped and stays it;
+ *  promoting it to a 90-day wipe would silently widen a control people already
+ *  use. Clearing both is available — it just has to be asked for. */
+const MEMORY_FORGET_ALL = [
+  /\b(forget|clear|delete|wipe|erase)\b[^?]*\b(everything|all of it|it all|the lot)\b[^?]*\b(history|conversations?|chats?|transcripts?|messages?)\b/i,
+  /\b(forget|clear|delete|wipe|erase)\b[^?]*\b(everything|all)\b[^?]*\b(you (have|hold|keep|know))\b[^?]*\b(on|about) me\b[^?]*\b(history|conversations?|chats?)\b/i,
+  /^\s*(?:\/gabi\s+)?memory\s+(forget|clear|delete|wipe)\s+(all|everything)\s*$/i,
+];
 
 const MEMORY_FORGET = [
   /\bforget (what|everything|all|it|me|that)\b/i,
@@ -401,8 +522,25 @@ const MEMORY_SHOW = [
 export function memoryCommand(text: string): MemoryCommand {
   const q = (text ?? '').trim();
   if (!q) return null;
-  // ⚠️ FORGET FIRST. See the header.
-  if (MEMORY_FORGET.some((re) => re.test(q))) return 'forget';
+  // ⚠️ WIDEST FIRST, THEN NARROWER, THEN SHOW.
+  //
+  // `forget_all` before `forget_history` before `forget`, because each later
+  // pattern is a subset of the sentence the earlier one matches: "delete
+  // everything you know about me and our conversations" satisfies all three, and
+  // running them the other way round would clear the note and quietly leave the
+  // 90 days somebody just asked to have deleted.
+  //
+  // ⚠️ And every forget is checked before SHOW, unchanged: "forget what you
+  // remember about me" contains both, and reading a deletion request as a
+  // request to display is the worst possible misreading of a privacy control.
+  if (MEMORY_FORGET_ALL.some((re) => re.test(q))) return 'forget_all';
+  if (MEMORY_FORGET_HISTORY.some((re) => re.test(q))) return 'forget_history';
+  // ⚠️ A history NOUN with a forget verb goes to the archive even if the
+  // note-shaped pattern also matches — "delete my memory of our chats" is about
+  // the chats. The note-only reading is the DEFAULT, not the greedy one.
+  if (MEMORY_FORGET.some((re) => re.test(q))) {
+    return HISTORY_NOUN.test(q) ? 'forget_history' : 'forget';
+  }
   if (MEMORY_SHOW.some((re) => re.test(q))) return 'show';
   return null;
 }

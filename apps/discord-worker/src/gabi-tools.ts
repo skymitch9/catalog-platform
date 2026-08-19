@@ -784,6 +784,100 @@ export function gabiShelfToolByName(name: unknown): GabiShelfTool | null {
   return GABI_SHELF_TOOLS.find((t) => t.name === name) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// TIER 4 — THE ASKER'S OWN PAST CONVERSATIONS. A SIXTH allowlist, deliberately.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **A SIXTH ARRAY**, for the reason each previous one was its own: **what it
+ * reads is different**. Tier 0 reads a public CSV, 0b the docs corpus, 0c the
+ * household's book text, 0d one person's shelf — and this reads **a person's own
+ * past WORDS**.
+ *
+ * ⚠️ Design §4.4 called this the *fifth* array. It is the sixth, because Tier 0d
+ * (the personal shelf) landed between the design being written and this being
+ * built. Same reasoning, one number further along — said out loud rather than
+ * silently renumbered, so the design and the code can still be read together.
+ *
+ * ⚠️ **PRIVACY IS A `where` CLAUSE, NOT A PROMPT INSTRUCTION.** Note what the
+ * schema below does NOT have: any parameter naming a person. The person key is
+ * built server-side from the asker's own identity, so *"search Sam's
+ * conversations"* is not refused — **it is unrepresentable**. "Scoped to the
+ * asker" enforced by wording would be one prompt injection away from a household
+ * member reading another's history.
+ *
+ * ⚠️ **NOTHING HERE WRITES, and nothing here ever will.** She reads back what
+ * was said; she does not edit the record of it.
+ */
+export const GABI_RECALL_TOOL_NAMES = ['recall_conversation'] as const;
+
+export type GabiRecallToolName = (typeof GABI_RECALL_TOOL_NAMES)[number];
+
+/** Tier 4 = read the ASKER'S OWN archived conversations, and nobody else's. */
+export const GABI_RECALL_TOOL_TIER = 4;
+
+export interface GabiRecallTool {
+  name: GabiRecallToolName;
+  description: string;
+  input_schema: GabiTool['input_schema'];
+  /** ⚠️ Its own category, so the build-failing guard can assert that no other
+   *  family drifted into it and that this one reaches nothing else. */
+  reads: 'own_past_conversations';
+  methods: readonly ('GET')[];
+  mutates: boolean;
+}
+
+export const GABI_RECALL_TOOLS: readonly GabiRecallTool[] = [
+  {
+    name: 'recall_conversation',
+    description:
+      "Search THIS PERSON'S OWN earlier conversations with you — the ones from before the last half " +
+      'hour, which you no longer have in front of you — and get back what was actually said, each ' +
+      'line with the date it was said on. ' +
+      'Call this when somebody asks about the past between the two of you: "did we talk about X", ' +
+      '"what did I tell you about Y", "what did you say about that last week", "do you remember when". ' +
+      '⚠️ QUOTE WHAT COMES BACK, WITH ITS DATE, AND NEVER FOLD IT INTO THE PRESENT TENSE. Say "back ' +
+      'on the 12th you said you were partway through book 9" — never "you are reading book 9". A ' +
+      'line here is a record of something SAID on a day, not a fact about how things are now, and ' +
+      'stating it as current turns one old sentence into a standing claim that is wrong every time ' +
+      'you repeat it. ' +
+      '⚠️ Nothing it returns tells you what YOU have read or what is in your knowledge base — look ' +
+      'that up fresh, in this turn, every time. ' +
+      '⚠️ An empty result is a REAL answer: say you have no record of it, and say how far back you ' +
+      'looked. Never reconstruct what they might have said.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'The words to look for, as the person said them — a name, a book, a subject. Two or ' +
+            'three specific terms beat a whole sentence.',
+        },
+        since_days: {
+          type: 'number',
+          description:
+            'Only look at the last N days. Leave it out to search everything kept (90 days).',
+        },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    reads: 'own_past_conversations',
+    methods: ['GET'],
+    mutates: false,
+  },
+];
+
+export function isGabiRecallToolName(name: unknown): name is GabiRecallToolName {
+  return typeof name === 'string' && (GABI_RECALL_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+export function gabiRecallToolByName(name: unknown): GabiRecallTool | null {
+  if (!isGabiRecallToolName(name)) return null;
+  return GABI_RECALL_TOOLS.find((t) => t.name === name) ?? null;
+}
+
 /**
  * The `tools` array as the Messages API wants it — the executor's own fields
  * (`reads`, `methods`, `mutates`) are ours and are never sent.
@@ -799,7 +893,9 @@ export function gabiShelfToolByName(name: unknown): GabiShelfTool | null {
  * is a write that happens when a model misreads a sentence; that wall is
  * asserted in both modes by the build-failing guard.
  */
-export function toolsForApi(opts: { docs?: boolean; books?: boolean; shelf?: boolean } = {}): {
+export function toolsForApi(
+  opts: { docs?: boolean; books?: boolean; shelf?: boolean; recall?: boolean } = {},
+): {
   name: string;
   description: string;
   input_schema: GabiTool['input_schema'];
@@ -816,6 +912,7 @@ export function toolsForApi(opts: { docs?: boolean; books?: boolean; shelf?: boo
   if (opts.docs) out.push(...GABI_DOCS_TOOLS.map(wire));
   if (opts.books) out.push(...GABI_BOOKS_TOOLS.map(wire));
   if (opts.shelf) out.push(...GABI_SHELF_TOOLS.map(wire));
+  if (opts.recall) out.push(...GABI_RECALL_TOOLS.map(wire));
   return out;
 }
 

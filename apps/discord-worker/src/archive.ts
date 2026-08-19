@@ -142,6 +142,30 @@ export const RECALL_SCAN_ROWS = 200;
  *  would make tier 4 an expensive tier 1. */
 export const RECALL_HITS = 8;
 
+/**
+ * ⚠️ **DEADLINES, because a hang is the failure that says nothing** —
+ * `deadline.ts` carries the incident that taught it. The WRITE is the tighter of
+ * the two on purpose: it happens in the bookkeeping block AFTER the person
+ * already has their answer, so waiting longer on it buys them nothing at all.
+ */
+export const ARCHIVE_WRITE_MS = 5_000;
+export const ARCHIVE_READ_MS = 8_000;
+
+/**
+ * ⚠️ **THE DELETE IS PAGED, BOUNDED, AND SAYS WHEN IT DID NOT FINISH.**
+ *
+ * Firestore has no delete-by-query, so a clear is scan-then-commit, repeated.
+ * 300 × 6 = 1,800 turns in one request — far more than the 90-day archive of any
+ * real person here, and still a BOUND rather than a loop that runs until the
+ * invocation is killed.
+ *
+ * ⚠️ Hitting the bound is REPORTED, never rounded up to "done". Somebody who
+ * asked to be forgotten is owed the truth about how much of them is actually
+ * gone; `MEMORY_MSG.historyPartlyCleared` is the sentence for it.
+ */
+export const ARCHIVE_DELETE_BATCH = 300;
+export const ARCHIVE_DELETE_PAGES = 6;
+
 /** Per-hit characters in the rendered block. The stored clip is 600; this is
  *  what a QUOTE needs, and eight of them at 300 is ≈600 input tokens on the one
  *  turn that asked. */
@@ -422,4 +446,12 @@ export interface ArchivePort {
     scan?: number;
     limit?: number;
   }): Promise<RecallOutcome>;
+  /**
+   * ⚠️ **DELETES THIS PERSON'S OWN ARCHIVED TURNS. A REAL DELETE, not a flag.**
+   *
+   * `more: true` means the bound was hit and rows remain — reported rather than
+   * hidden, because a clear that silently stops halfway while saying "done" is
+   * the worst lie either memory tier could tell.
+   */
+  forget(person: string): Promise<{ ok: boolean; deleted: number; more: boolean }>;
 }
