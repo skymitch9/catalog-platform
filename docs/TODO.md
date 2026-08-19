@@ -97,7 +97,32 @@ in between.** Runbook: [`access/gabi-turn-log.md`](access/gabi-turn-log.md).
 sign-in; no `silent` row has ever been produced by a real hang; and the root
 cause remains unproven.
 
-### 🔴 THE SILENT KILL — LOCALIZED, STILL UNDIAGNOSED (instrumentation live)
+### ✅ THE SILENT KILL — THE INSTRUMENTATION PAID FOR ITSELF (2026-08-19)
+
+**A live two-message test caught two things on tape, hours after the ignore
+logging shipped.**
+
+⚠️ **THE "hi" KILLER — FIXED.** `{"evt":"gabi_ignored","why":"empty_question",
+"content_len":25,"mentions_count":1,...}` — *"@GABI hi"* was **dropped in
+silence**. `questionFrom` strips the mention leaving `"hi"`, `GREETING` then
+strips `"hi"` as a courtesy prefix leaving `""`, which fails the floor.
+**Every link was working as designed** and together they deleted the message
+whose entire content is the greeting. The floor now asks whether anything was
+said *at all* rather than what survived stripping; the mention IS the address.
+
+✅ **THE DCC QUESTION IS INNOCENT.** A successful try is on tape end to end
+(`dispatch_taken` → classify → lane `have_lookup` → `delivered:true`, 3954 ms),
+so **content-triggered death is disproven for this build**. The remaining
+intermittent first-try silences are **non-delivery** — the gateway gap after a
+deploy evicts the object, plus the ping-off reply blindness. Both now have
+surfaces: `socket{connected, connected_since, last_ready_at, fatal_reason}` on
+the turn log, and a once-per-person notice when somebody replies with the ping
+off.
+
+**🧑 OWNER — the one-message test that closes it:** send **"@GABI hi"** in the
+channel. It should now answer in her voice.
+
+### (superseded) THE SILENT KILL — localized, instrumentation live
 
 **Same channel, same minutes: short pings answered, one question died four
 times** (19:28, 21:54, 21:56, 22:19) — ⚠️ **and two of those were AFTER the
