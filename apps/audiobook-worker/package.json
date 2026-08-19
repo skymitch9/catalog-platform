@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@platform/estate-auth": "*",
+    "@platform/estate-events": "*",
     "@platform/firebase-sa": "*",
     "hono": "^4.6.14"
   },

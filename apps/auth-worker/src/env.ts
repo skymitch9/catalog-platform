@@ -270,6 +270,38 @@ export interface Env {
    * GET side is unaffected: a devops reader sees an honest "nothing pushed yet".
    */
   ESTATE_CONDUCTOR_TOKEN?: string;
+
+  /**
+   * The bearer a WRITER Worker sends to `POST /api/estate/ops/worker-events`.
+   * Minted 2026-08-18; custody `docs/access/keys/estate-events-token.txt`
+   * (gitignored, one value per file, no BOM, no trailing newline).
+   *
+   * ⚠️ **DELIBERATELY NOT `ESTATE_CONDUCTOR_TOKEN`, and that is the whole
+   * point** (`docs/info/worker-event-ring.md` §4). The conductor token can
+   * rewrite the agent board — the estate's entire picture of what is running.
+   * This one's complete power is *appending a line to a noticeboard the owner
+   * reads*, on a table that is capped and self-trimming. Spreading the larger
+   * credential across three more Workers to save minting one is the wrong
+   * trade, and this secret is what stops it.
+   *
+   * ⚠️ **WHAT HOLDING IT AUTHORISES: writing rows to `worker_events`, and
+   * nothing else.** It reads nothing (the GET side is `requireDevops()`, a
+   * signed-in person), grants no role, triggers no pipeline. A leak buys the
+   * ability to fill the ring with noise — which, because the ring evicts
+   * oldest-first per worker, means the ability to push real events out of it.
+   * That is worth rotating for and is still far smaller than the conductor's.
+   *
+   * ⚠️ **DELIBERATELY NOT A `CONSUMER_APPS` ENTRY**, same reasoning as the
+   * conductor token above: it would silently become a valid
+   * `POST /api/estate/seen` bearer, a wider capability than the one granted.
+   *
+   * ⚠️ **BOTH BEARERS OPEN THIS ONE DOOR.** The conductor token still works on
+   * `/worker-events` — see `worker-events.ts`'s `checkEventsAuth`. Refusing it
+   * would break any writer already using it (the route accepted it alone until
+   * this secret existed) to gain nothing: the point of minting was never to
+   * take a capability away, it was to stop handing the bigger one out.
+   */
+  ESTATE_EVENTS_TOKEN?: string;
 }
 
 /** The row estate.ts reads and writes. */

@@ -38,16 +38,19 @@
  * Spreading the larger credential across three more Workers to save minting one
  * is the wrong trade. Full reasoning: docs/info/worker-event-ring.md §4.
  *
- * This route accepts the conductor token TODAY because it is the only bearer
- * that exists and the auth Worker already validates it; the moment a dedicated
- * secret is minted, `checkConductorAuth` here should accept either.
+ * ⚠️ **MINTED 2026-08-18 — the paragraph that stood here described a PLAN.** It
+ * said this route accepted the conductor token *today* because it was the only
+ * bearer that existed, and that "the moment a dedicated secret is minted,
+ * `checkConductorAuth` here should accept either". That moment arrived:
+ * `ESTATE_EVENTS_TOKEN` is minted, `checkEventsAuth` below accepts either, and
+ * the writers are given the SMALLER one.
  */
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppBindings } from './env.js';
 import { requireDevops } from './middleware/auth.js';
-import { checkConductorAuth, conductorRefusal } from './agent-board.js';
+import { checkConductorAuth, conductorRefusal, type ConductorAuth } from './agent-board.js';
 
 /**
  * Rows kept PER WORKER.
@@ -145,6 +148,60 @@ const TABLE_MISSING = {
 } as const;
 
 /**
+ * TWO BEARERS, ONE DOOR — the dedicated events token, or the conductor's.
+ *
+ * ⚠️ THE ORDER IS THE POINT, NOT AN OPTIMISATION. The events token is tried
+ * first so the SMALLER credential is the one that normally opens this door;
+ * the conductor's is a fallback that exists only because this route accepted it
+ * alone before the dedicated secret existed, and revoking a bearer nobody has
+ * audited the writers for would break a Worker to gain nothing. Minting was
+ * never about taking a capability away — it was about not handing the bigger
+ * one to three more Workers (docs/info/worker-event-ring.md §4).
+ *
+ * ⚠️ `secret_unset` MEANS *BOTH* ARE UNSET, and only then. A door with one of
+ * two keys configured is a working door, and reporting it as unconfigured
+ * would send a deployer hunting a secret that is deliberately absent.
+ *
+ * ⚠️ `bad_token` WINS OVER `no_header` when a header WAS sent. Both checks
+ * return `no_header` for a missing/malformed Authorization line, but once a
+ * real bearer is present and matches neither secret, the honest answer is "that
+ * is not one of the tokens this Worker holds" — telling a caller who sent a
+ * bearer that they sent none is the kind of misdirection the estate's
+ * never-a-bare-status rule exists to prevent.
+ *
+ * Pure, and exported, so `test/worker-events.test.ts` can pin every
+ * combination without a live Worker or a network.
+ */
+export function checkEventsAuth(
+  eventsToken: string | undefined,
+  conductorToken: string | undefined,
+  header: string | null,
+): ConductorAuth {
+  if (!eventsToken && !conductorToken) return 'secret_unset';
+  const results: ConductorAuth[] = [];
+  if (eventsToken) results.push(checkConductorAuth(eventsToken, header));
+  if (conductorToken) results.push(checkConductorAuth(conductorToken, header));
+  if (results.includes('ok')) return 'ok';
+  return results.includes('bad_token') ? 'bad_token' : 'no_header';
+}
+
+/**
+ * The 503 for "no bearer is configured at all". Distinct wording from
+ * `conductorRefusal('secret_unset')`, which names only the conductor token and
+ * would send a deployer to the wrong `wrangler secret put`.
+ */
+export const EVENTS_TOKEN_UNSET = {
+  status: 503 as const,
+  body: {
+    error: 'events_token_unset',
+    detail:
+      'The event ring cannot accept reports yet — this Worker holds neither an events token nor a ' +
+      'conductor token, so it has no way to tell a real report from anyone else’s.',
+    fix: 'wrangler secret put ESTATE_EVENTS_TOKEN (from apps/auth-worker); custody is docs/access/keys/estate-events-token.txt',
+  },
+};
+
+/**
  * POST — a Worker reporting something worth seeing. Bearer only.
  *
  * ⚠️ THE TRIM RUNS ON WRITE, in the same request, and that is deliberate: a
@@ -154,9 +211,13 @@ const TABLE_MISSING = {
  * indexed column and cannot be forgotten.
  */
 workerEventsRoutes.post('/estate/ops/worker-events', async (c: Context<AppBindings>) => {
-  const auth = checkConductorAuth(c.env.ESTATE_CONDUCTOR_TOKEN, c.req.header('Authorization') ?? null);
+  const auth = checkEventsAuth(
+    c.env.ESTATE_EVENTS_TOKEN,
+    c.env.ESTATE_CONDUCTOR_TOKEN,
+    c.req.header('Authorization') ?? null,
+  );
   if (auth !== 'ok') {
-    const refusal = conductorRefusal(auth);
+    const refusal = auth === 'secret_unset' ? EVENTS_TOKEN_UNSET : conductorRefusal(auth);
     return c.json(refusal.body, refusal.status);
   }
 

@@ -24,6 +24,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { reportEvent } from '@platform/estate-events';
 import type { Env } from './env.js';
 import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
@@ -119,6 +120,29 @@ app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404));
 
 app.onError((err, c) => {
   console.error('unhandled', err);
+  // ⚠️ LOG *AND* REPORT — never report instead of logging. Workers Logs still
+  // has everything; the ring carries the handful of lines that should be in
+  // front of someone looking at a red row on /status after the fact, with no
+  // Cloudflare token in a browser (docs/info/worker-event-ring.md §1).
+  //
+  // ⚠️ ONLY unhandled errors are reported from here. Not 4xx refusals, not
+  // cache misses, not "ok": the ring is capped PER WORKER and evicts
+  // oldest-first, so a chatty writer deletes its own history and the row that
+  // mattered is the one that goes. Widening this is an Opus-tier judgement
+  // call (§"Model guidance"), not a convenience edit.
+  //
+  // ⚠️ It cannot throw and cannot delay the response — reportEvent swallows
+  // every failure and rides waitUntil. An error handler that can fail turns
+  // one 500 into a loop.
+  reportEvent(c.executionCtx, {
+    endpoint: c.env.ESTATE_AUTH_URL ?? 'https://auth.heygabi.ai',
+    token: c.env.ESTATE_EVENTS_TOKEN,
+    worker: 'catalog-index',
+    level: 'error',
+    message: err.message || 'unhandled error',
+    route: new URL(c.req.url).pathname,
+    detail: (err.stack || '').slice(0, 2000),
+  });
   return c.json({ error: 'internal', detail: err.message }, 500);
 });
 

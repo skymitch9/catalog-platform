@@ -18,6 +18,8 @@ import {
   EVENT_LEVELS,
   MAX_BATCH,
   MAX_MESSAGE,
+  EVENTS_TOKEN_UNSET,
+  checkEventsAuth,
   parseEvents,
 } from '../src/worker-events.js';
 
@@ -111,4 +113,53 @@ test('⚠️ the cap is PER WORKER — one noisy Worker must not evict the other
   assert.equal(EVENTS_PER_WORKER, 200);
   assert.ok(EVENTS_PER_WORKER >= 50, 'too small to hold a bad night');
   assert.ok(EVENTS_PER_WORKER <= 1000, 'large enough to be a log rather than a noticeboard');
+});
+
+// ---------------------------------------------------------------------------
+// TWO BEARERS, ONE DOOR (2026-08-18, when ESTATE_EVENTS_TOKEN was minted).
+//
+// ⚠️ The property worth having a test for is NOT "the right token works" — it
+// is that the four causes stay apart. `secret_unset` and `bad_token` have
+// different fixes (put a secret / send the right one) and different statuses
+// (503 / 401), and a door that answers "unauthorized" to both sends a deployer
+// hunting the wrong one. That is the estate's never-a-bare-status rule applied
+// to a machine caller.
+// ---------------------------------------------------------------------------
+
+const EVENTS = 'e'.repeat(64);
+const CONDUCTOR = 'c'.repeat(64);
+const bearer = (t: string) => `Bearer ${t}`;
+
+test('the EVENTS token opens the door', () => {
+  assert.equal(checkEventsAuth(EVENTS, CONDUCTOR, bearer(EVENTS)), 'ok');
+});
+
+test('⚠️ the CONDUCTOR token still opens it — minting took nothing away', () => {
+  assert.equal(checkEventsAuth(EVENTS, CONDUCTOR, bearer(CONDUCTOR)), 'ok');
+});
+
+test('either secret alone is enough; the other being unset is not a fault', () => {
+  assert.equal(checkEventsAuth(EVENTS, undefined, bearer(EVENTS)), 'ok');
+  assert.equal(checkEventsAuth(undefined, CONDUCTOR, bearer(CONDUCTOR)), 'ok');
+});
+
+test('⚠️ secret_unset means BOTH are unset, and only then', () => {
+  assert.equal(checkEventsAuth(undefined, undefined, bearer(EVENTS)), 'secret_unset');
+  assert.notEqual(checkEventsAuth(EVENTS, undefined, bearer('nope')), 'secret_unset');
+});
+
+test('⚠️ a real bearer matching neither is bad_token, never no_header', () => {
+  assert.equal(checkEventsAuth(EVENTS, CONDUCTOR, bearer('x'.repeat(64))), 'bad_token');
+});
+
+test('a missing or malformed Authorization line is no_header', () => {
+  assert.equal(checkEventsAuth(EVENTS, CONDUCTOR, null), 'no_header');
+  assert.equal(checkEventsAuth(EVENTS, CONDUCTOR, ''), 'no_header');
+  assert.equal(checkEventsAuth(EVENTS, CONDUCTOR, EVENTS), 'no_header');
+});
+
+test('the unset 503 names the EVENTS secret, not only the conductor one', () => {
+  assert.equal(EVENTS_TOKEN_UNSET.status, 503);
+  assert.match(EVENTS_TOKEN_UNSET.body.fix, /ESTATE_EVENTS_TOKEN/);
+  assert.match(EVENTS_TOKEN_UNSET.body.fix, /docs\/access\/keys/);
 });

@@ -41,6 +41,21 @@ export interface Env {
   ESTATE_APP_TOKEN_AUDIOBOOK?: string;
 
   /**
+   * The bearer for `POST /api/estate/ops/worker-events` — the /status event
+   * ring (`docs/info/worker-event-ring.md`). Set 2026-08-18.
+   *
+   * ⚠️ **UNSET IS A NO-OP, NOT A FAILURE.** `reportEvent()` returns without
+   * sending when this is absent, so this Worker behaves exactly as it did
+   * before the ring existed — the estate's standing "ships dark until
+   * configured" idiom. Nothing here should branch on it.
+   *
+   * ⚠️ Deliberately the SMALL credential: its entire power is appending a line
+   * to a capped noticeboard. It is NOT `ESTATE_CONDUCTOR_TOKEN`, which could
+   * rewrite the estate's whole picture of what is running (§4).
+   */
+  ESTATE_EVENTS_TOKEN?: string;
+
+  /**
    * ⚠️ **DOOR B'S BEARER for the book-knowledge routes** (`book-routes.ts`) —
    * a secret (`wrangler secret put ESTATE_APP_TOKEN_BOOKS`), whose matching
    * value lives on the callers: `apps/discord-worker` and `library_catalog`'s

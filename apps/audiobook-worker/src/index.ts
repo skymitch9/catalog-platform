@@ -67,6 +67,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
+import { reportEvent } from '@platform/estate-events';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { audioFileRoutes } from './audio-file.js';
 import { audioStatusRoutes } from './audio-status.js';
@@ -96,6 +97,39 @@ export const AUTH_POSTURE = declareAuthPosture({
 });
 
 const app = new Hono<{ Bindings: Env }>();
+
+/**
+ * The /status event ring (docs/info/worker-event-ring.md), wired 2026-08-18.
+ *
+ * ⚠️ THIS WORKER HAD NO `onError` AT ALL, so unhandled errors fell through to
+ * Hono's default 500 and existed only in Workers Logs. The handler is added
+ * WITH the report rather than the report being bolted onto an existing one —
+ * which means the shape of the 500 body is new here, deliberately kept to the
+ * same `{error, detail}` the rest of this Worker's failures use so nothing
+ * downstream meets an unfamiliar envelope.
+ *
+ * ⚠️ ONLY unhandled errors. Not the 401s, not the gate refusals, not a listen
+ * budget running out — those are this Worker working correctly, and the ring
+ * is capped per Worker and evicts oldest-first, so writing them would delete
+ * the crash that mattered.
+ *
+ * ⚠️ It cannot throw and cannot delay the response: reportEvent swallows every
+ * failure and rides waitUntil. An error handler that can fail turns one 500
+ * into a loop.
+ */
+app.onError((err, c) => {
+  console.error('unhandled', err);
+  reportEvent(c.executionCtx, {
+    endpoint: c.env.ESTATE_AUTH_URL ?? 'https://auth.heygabi.ai',
+    token: c.env.ESTATE_EVENTS_TOKEN,
+    worker: 'audiobook-worker',
+    level: 'error',
+    message: err.message || 'unhandled error',
+    route: new URL(c.req.url).pathname,
+    detail: (err.stack || '').slice(0, 2000),
+  });
+  return c.json({ error: 'internal', detail: err.message }, 500);
+});
 
 /**
  * Exact-origin CORS on the whole /api surface — the meCors() pattern
