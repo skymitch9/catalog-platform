@@ -120,6 +120,10 @@ import {
   booksFollowUp,
   booksIntent,
   boundFromQuestion,
+  continuationShape,
+  thematicAsk,
+  BOOKS_FRESH_ASK_NOTE,
+  BOOKS_THEMATIC_NOTE,
   makeBooksBudget,
   type BooksCapVerdict,
   type BooksPort,
@@ -1193,10 +1197,30 @@ async function booksAnswer(
   const spoken = await converseWithTools(
     cfg.anthropicKey,
     question,
-    // ⚠️ NO GROUNDING. Handing the model a public-shelf miss and asking it to
-    // answer a plot question around it is not merely useless but actively
-    // misleading — it is the shape of the failure this router prevents.
-    null,
+    // ⚠️ NO GROUNDING for an ordinary plot question. Handing the model a
+    // public-shelf miss and asking it to answer around it is not merely useless
+    // but actively misleading — the shape of the failure this router prevents.
+    //
+    // ⚠️ **EXCEPT FOR A THEMATIC ONE**, where the grounding is not data but an
+    // OBLIGATION: report per book what the searches actually returned, and never
+    // join scattered snippets into an arc. `BOOKS_THEMATIC_NOTE` carries the
+    // 14:15 transcript that earned it — a romance arc across books 11-14 that
+    // never happened, told fluently and confidently.
+    //
+    // ⚠️ **AND FOR A FRESH ASK WITH AN OLD EXCHANGE STILL IN THE WINDOW** — the
+    // 14:06 stale anchor, where "show me Jake's most recent character sheet" was
+    // answered "[Continuing Jake's sheet — Profession Skills onwards]" from a
+    // listing that had stopped thirty-four minutes earlier. No detector did
+    // that; the model did, because the window still held the old partial and a
+    // model that can see where a list stopped will resume it.
+    [
+      thematicAsk(question) ? BOOKS_THEMATIC_NOTE : '',
+      !continuationShape(question) && history.some((t) => t.role === 'assistant')
+        ? BOOKS_FRESH_ASK_NOTE
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n') || null,
     who,
     // ⚠️ BOOKS ONLY, mirroring `docsAnswer` exactly. Describing the docs corpus
     // on a turn routed as a plot question is input tokens spent describing a

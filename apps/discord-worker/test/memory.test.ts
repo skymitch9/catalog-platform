@@ -202,7 +202,14 @@ describe('an empty profile is never injected and never sounds broken', () => {
   it('⚠️ a shown profile says how to clear it — a profile you cannot clear is a dossier', () => {
     const shown = profileForDisplay(profile({ notes: ['wants full sheets'], sources: 3 }));
     assert.match(shown, /wants full sheets/);
-    assert.match(shown, /\/gabi memory forget/);
+    // ⚠️ CHANGED 2026-08-18. It used to advertise `/gabi memory forget`, and
+    // somebody typed exactly that and got a keyword-soup shelf search — `/gabi`
+    // is the propose-and-deep-link command and has never seen the memory
+    // detector. She now advertises the phrasing that routes on every surface,
+    // and `test/archive.test.ts` asserts every phrase she prints in bold is
+    // actually routable.
+    assert.match(shown, /forget what you know about me/);
+    assert.doesNotMatch(shown, /\/gabi memory/, 'that command cannot route');
     assert.match(shown, /From 3 conversations/);
   });
 

@@ -513,6 +513,138 @@ export function makeBooksBudget(): BooksBudget {
  * - **past your position** ≠ **not in the book**. One is a spoiler boundary and
  *   the other is a gap on the shelf (design §6.3 criterion 6).
  */
+// ---------------------------------------------------------------------------
+// ⚠️ A FRESH ASK IS NOT A CONTINUATION — the 14:06 stale anchor
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE 14:06 TRANSCRIPT.** *"Show me Jake's most recent character sheet"* was
+ * answered with **"[Continuing Jake's sheet — Profession Skills onwards]"** — a
+ * continuation of a listing that had stopped **thirty-four minutes earlier**.
+ *
+ * ⚠️ **NO DETECTOR DID THIS.** `booksIntent` claims that sentence outright, so
+ * `booksFollowUp` never even ran. The continuation came from the MODEL: the
+ * conversation window still held the 13:32 partial sheet (the window measures
+ * thirty minutes from the LAST word, so an active chat keeps everything in it),
+ * and a model that can see where a listing stopped will helpfully resume it.
+ *
+ * The result is worse than a wrong answer: the person asked for the *most
+ * recent* sheet and got the *tail of an old one*, labelled as though they had
+ * asked to continue. Nothing in the reply says which sheet it is.
+ *
+ * ⚠️ **THE FIX IS A DETERMINISTIC SIGNAL, NOT A STERNER PROMPT.** This function
+ * decides — in code, from the sentence — whether the turn is elliptical enough
+ * to BE a continuation. A self-contained question never is, and the grounding
+ * then says so in a line the model cannot miss.
+ */
+export function continuationShape(text: string): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  // A long sentence carries its own subject and is a fresh ask by construction.
+  if (q.split(/\s+/).filter(Boolean).length > FOLLOW_UP_MAX_WORDS) return false;
+  // ⚠️ An imperative with a real subject — "show me Jake's sheet" — is a fresh
+  // ask however short it is. Only an OPENER with nothing much after it, or a
+  // bare fragment, is genuinely elliptical.
+  if (BOOKS_FRESH_IMPERATIVE.test(q)) return false;
+  return CONTINUATION_OPENER.test(q) || q.split(/\s+/).filter(Boolean).length <= 3;
+}
+
+/** ⚠️ "show me X", "what is X", "give me X" — a request that NAMES its object is
+ *  a new question, even when it is short and even when the object was discussed
+ *  before. This is the pattern the 14:06 ask matched and the continuation
+ *  reading ignored. */
+const BOOKS_FRESH_IMPERATIVE =
+  /\b(?:show|give|tell|get|find|pull|fetch|list)\s+(?:me\s+)?(?:the\s+|a\s+|an\s+|his\s+|her\s+|their\s+|my\s+|\w+['’]s\s+)?\w+/i;
+
+/**
+ * ⚠️ Appended when the turn is a FRESH ask and the window still holds an earlier
+ * book exchange — the exact condition that produced the 14:06 answer.
+ */
+export const BOOKS_FRESH_ASK_NOTE =
+  '⚠️ THIS IS A FRESH QUESTION, NOT A CONTINUATION. There is an earlier book exchange in the ' +
+  'conversation above, and it is NOT what was just asked for. Do NOT label your answer as ' +
+  '"continuing" anything, do NOT resume a listing that stopped earlier, and do NOT pick up from ' +
+  'where a previous sheet left off. Answer THIS question from a search you run NOW, and say which ' +
+  'book and chapter the answer came from. ⚠️ If they wanted the rest of an earlier list they will ' +
+  'say so in words that only make sense as a continuation — this was not one of those.';
+
+// ---------------------------------------------------------------------------
+// ⚠️ THEMATIC QUESTIONS — where passage search stops being enough
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE 14:15 CONFABULATION, AND WHY IT IS A DIFFERENT FAILURE FROM THE
+ * OTHERS.**
+ *
+ * Asked how Carmen and Jake's relationship develops across the series, she said
+ * she had *"read through book 14"* and narrated a romance arc spanning books
+ * 11–14. The owner corrected her immediately: it did not happen.
+ *
+ * ⚠️ **NOTHING WAS BROKEN.** The tools ran, the gate held, passages came back.
+ * The defect is the shape of the QUESTION against the shape of the INSTRUMENT:
+ *
+ * | question | why it works, or does not |
+ * |---|---|
+ * | *"what is Jake's level at the end of book 9"* | one passage contains the answer |
+ * | *"how does their relationship develop"* | ⚠️ **no passage contains the answer.** It is distributed across thousands of pages, and top-K search returns a handful of the densest mentions |
+ *
+ * A model handed six scattered snippets and asked about an ARC does the thing it
+ * is best at: **it joins them into a narrative**. The joins are invention, they
+ * are fluent, and they are indistinguishable from the retrieved parts — which is
+ * worse than saying nothing, because the reader cannot see the seam.
+ *
+ * ⚠️ **THE FIX IS NOT A STERNER PROMPT ABOUT HONESTY** — that is the category of
+ * hope this estate has rejected three times already. It is a **reporting
+ * obligation**: on a thematic question she must say, per book, what her searches
+ * actually returned, so sparseness becomes part of the answer instead of
+ * something the prose papers over. *"Their interactions surface in books 2 and 5
+ * and I can't reliably reconstruct the later arc from passage search"* is a good
+ * answer. A romance arc that never happened is not.
+ */
+const THEMATIC_SUBJECT =
+  /\b(?:relationship|romance|romantic|arc|dynamic|chemistry|feelings?|develops?|development|evolves?|evolution|character\s+growth|themes?|thematic|parallels?|foreshadow\w*|symbolism|motifs?)\b/i;
+
+/** ⚠️ "how does X change over the books" names no theme word and is still a
+ *  distributed question — a CHANGE verb plus a cross-book scope is the same
+ *  shape as an arc, and it is the phrasing people reach for most naturally. */
+const THEMATIC_CHANGE =
+  /\b(?:change[sd]?|grow[sn]?|progress(?:es|ion)?|become[s]?|turn[s]? into|end[s]? up)\b[^.?!]{0,40}\b(?:over|across|through(?:out)?|by the end of|during)\b|\b(?:over|across|through(?:out)?)\s+(?:the\s+)?(?:series|books?|arc)\b/i;
+
+/**
+ * True when the question asks about something DISTRIBUTED — an arc, a
+ * relationship, a theme — rather than a fact one passage can hold.
+ *
+ * ⚠️ Deliberately generous, because the two errors are not symmetrical: a false
+ * positive costs one honest paragraph about what the searches returned, and a
+ * false negative costs a fabricated romance arc that a reader believes.
+ */
+export function thematicAsk(text: string): boolean {
+  const q = (text ?? '').trim();
+  if (!q) return false;
+  return THEMATIC_SUBJECT.test(q) || THEMATIC_CHANGE.test(q);
+}
+
+/**
+ * ⚠️ **THE REPORTING OBLIGATION**, appended to the grounding of a thematic turn.
+ * Every line of it is the 14:15 transcript turned into an instruction.
+ */
+export const BOOKS_THEMATIC_NOTE =
+  '⚠️ THIS IS A QUESTION ABOUT SOMETHING SPREAD ACROSS A LOT OF PAGES — an arc, a relationship, a ' +
+  'theme. No single passage contains the answer, and passage search returns only the densest few ' +
+  'mentions. So this turn carries an extra obligation, and it is not optional:\n' +
+  '1. SEARCH PER BOOK AND SAY WHAT CAME BACK, book by book, with chapter anchors — "book 2, ' +
+  'chapters 14 and 31; book 5, chapter 8; nothing in books 6-9". The coverage IS part of the answer.\n' +
+  '2. ⚠️ NEVER NARRATE BEYOND THE PASSAGES YOU ACTUALLY RETRIEVED. Do not join scattered snippets ' +
+  'into a story arc: the joins would be invention, they would read exactly like the retrieved parts, ' +
+  'and the person cannot see the seam. If you did not read it in a passage this turn, you do not ' +
+  'know it.\n' +
+  '3. ⚠️ WHERE THE HITS ARE THIN, SAY SO PLAINLY — "my searches surface their interactions in books ' +
+  "2 and 5; I can't reliably reconstruct the later arc from passage search alone.\" That is a REAL " +
+  'answer and it is the honest one.\n' +
+  '4. ⚠️ NEVER SAY HOW FAR THROUGH A SERIES YOU HAVE READ. Report what the listing returned THIS ' +
+  'TURN and nothing beyond it — the claim "I\'ve read through book 14" has already been made once ' +
+  'and it was false.';
+
 export const BOOKS_MSG = {
   notLinked:
     "I can't tell who you are on the estate yet, and the books are behind the household's own " +

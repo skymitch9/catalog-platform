@@ -54,6 +54,10 @@ import {
   type BooksCallResult,
   type BooksPort,
   type BooksToolContext,
+  continuationShape,
+  thematicAsk,
+  BOOKS_FRESH_ASK_NOTE,
+  BOOKS_THEMATIC_NOTE,
 } from '../src/book-knowledge.js';
 import { audiobookApiBase, DEFAULT_AUDIOBOOK_API } from '../src/book-knowledge-exec.js';
 import { runTool } from '../src/tool-exec.js';
@@ -1005,5 +1009,97 @@ describe('⚠️ a long answer becomes consecutive messages, never a permission 
     const said = await ask(LONG, { noFollowUp: true });
     assert.equal(said.length, 1);
     assert.match(said[0] as string, /as much as I'll put in one go/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ TWO TRANSCRIPTS FROM 2026-08-18, both answered confidently and wrongly
+// ---------------------------------------------------------------------------
+
+describe('⚠️ REGRESSION — the confabulated relationship arc (14:15)', () => {
+  it('a thematic question is recognised as one', () => {
+    for (const q of [
+      'how does the relationship between Carmen and Jake develop across the series?',
+      'what is their dynamic like',
+      'how does Jake change over the books',
+      'what are the themes in this series',
+      'is there any foreshadowing of that',
+      'how does the romance develop',
+    ]) {
+      assert.equal(thematicAsk(q), true, `missed: ${q}`);
+    }
+  });
+
+  it('and an ordinary FACT question is not — those are answerable from one passage', () => {
+    for (const q of [
+      "what is Jake's level at the end of book 9",
+      'show me his stat sheet',
+      'who is Carmen',
+      'what happens in chapter 12',
+      'does Jake get a new title',
+    ]) {
+      assert.equal(thematicAsk(q), false, `wrongly claimed: ${q}`);
+    }
+  });
+
+  it('⚠️ the obligation forbids the exact failure — narrating past the passages', () => {
+    const n = BOOKS_THEMATIC_NOTE;
+    assert.match(n, /SEARCH PER BOOK AND SAY WHAT CAME BACK/);
+    assert.match(n, /chapter anchors/i);
+    assert.match(n, /NEVER NARRATE BEYOND THE PASSAGES YOU ACTUALLY RETRIEVED/);
+    assert.match(n, /joins would be invention/i);
+    // ⚠️ The sentence she should have said instead, given to her verbatim.
+    assert.match(n, /can't reliably reconstruct the later arc/i);
+    // ⚠️ And the specific false claim from the transcript, named and banned.
+    assert.match(n, /NEVER SAY HOW FAR THROUGH A SERIES YOU HAVE READ/);
+    assert.match(n, /read through book 14/i);
+  });
+
+  it('the obligation is WIRED into the book lane, not merely written', () => {
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(flow, /thematicAsk\(question\) \? BOOKS_THEMATIC_NOTE/);
+  });
+});
+
+describe('⚠️ REGRESSION — the stale continuation anchor (14:06)', () => {
+  it('the exact ask that was wrongly continued is a FRESH question', () => {
+    assert.equal(
+      continuationShape("show me Jake's most recent character sheet"),
+      false,
+      'THE regression: this was answered "[Continuing Jake\'s sheet…]" 34 minutes later',
+    );
+  });
+
+  it('a request that NAMES its object is fresh, however short', () => {
+    for (const q of ['show me his stat sheet', 'give me the titles', "find Jake's skills"]) {
+      assert.equal(continuationShape(q), false, `treated as a continuation: ${q}`);
+    }
+  });
+
+  it('…and a genuinely elliptical follow-up still is one', () => {
+    for (const q of ['go on', 'keep going', 'yes please', 'more', 'and then?']) {
+      assert.equal(continuationShape(q), true, `lost the real continuation: ${q}`);
+    }
+  });
+
+  it('⚠️ the fresh-ask note forbids resuming an earlier listing', () => {
+    const n = BOOKS_FRESH_ASK_NOTE;
+    assert.match(n, /FRESH QUESTION, NOT A CONTINUATION/);
+    assert.match(n, /do NOT resume a listing/i);
+    assert.match(n, /from a search you run NOW/i);
+  });
+
+  it('it fires only when there IS an earlier exchange to be confused with', () => {
+    const flow = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    assert.match(
+      flow,
+      /!continuationShape\(question\) && history\.some\(\(t\) => t\.role === 'assistant'\)/,
+    );
   });
 });

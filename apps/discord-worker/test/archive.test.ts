@@ -406,3 +406,71 @@ describe('the archive write', () => {
     assert.match(fn.slice(0, 400), /!cfg\.archiveEnabled \|\| !deps\.archive/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ⚠️ EVERY PHRASE SHE ADVERTISES MUST ACTUALLY ROUTE
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE SAY-THE-WORD LESSON, SELF-INFLICTED (2026-08-18, 14:21).**
+ *
+ * She told somebody *"you can clear it any time with `/gabi memory forget`"*.
+ * They typed it. They got a keyword-soup shelf search and a wall of panel text —
+ * because `/gabi` is the original propose-and-deep-link command and has never
+ * seen the memory detector, or any lane built since it.
+ *
+ * Three earlier incidents taught that OFFERING a capability is not ROUTING to
+ * it. This is the same defect with her as the author of the offer, so the guard
+ * is mechanical: **the phrases she prints in bold are extracted from her own
+ * strings and run through the routers.**
+ */
+describe('⚠️ REGRESSION — she must not advertise a phrase that does not route', () => {
+  const memorySrc = readFileSync(
+    fileURLToPath(new URL('../src/memory.ts', import.meta.url).href),
+    'utf8',
+  );
+
+  /** Bolded imperatives inside real string literals — never comments, because a
+   *  phrase she cannot say is not a promise she has made. */
+  function advertisedPhrases(source: string): string[] {
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const found = new Set<string>();
+    for (const m of code.matchAll(/\*\*([^*]{3,60})\*\*/g)) {
+      const phrase = (m[1] ?? '').replace(/'\s*\+\s*\n?\s*'/g, '').replace(/\s+/g, ' ').trim();
+      if (/forget|remember|history/i.test(phrase)) found.add(phrase);
+    }
+    return [...found];
+  }
+
+  it('every memory phrase she prints in bold is a routable command', () => {
+    const phrases = advertisedPhrases(memorySrc);
+    assert.ok(phrases.length >= 2, 'expected her to advertise the clear verbs');
+    for (const phrase of phrases) {
+      assert.notEqual(
+        memoryCommand(phrase),
+        null,
+        `she advertises "${phrase}" and nothing routes it`,
+      );
+    }
+  });
+
+  it('⚠️ and she no longer advertises the /gabi subcommand that never routed', () => {
+    // `/gabi <anything>` is answered by `processGabi`, which does a shelf lookup
+    // and returns a panel link. It has no memory detector and no lane routing at
+    // all, so any subcommand she names there is a promise the command cannot
+    // keep.
+    assert.doesNotMatch(
+      memorySrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''),
+      /\/gabi memory/,
+      'a /gabi subcommand is advertised again, and /gabi cannot route it',
+    );
+  });
+
+  it('the phrasings she advertises route on their own, with no context needed', () => {
+    // ⚠️ These have to work as a bare DM, a bare mention and a bare reply — a
+    // command that needs a preceding turn is not a command somebody can be told
+    // to type.
+    assert.equal(memoryCommand('forget what you know about me'), 'forget');
+    assert.equal(memoryCommand('forget my history'), 'forget_history');
+  });
+});

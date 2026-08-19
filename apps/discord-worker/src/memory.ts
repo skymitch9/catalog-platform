@@ -393,7 +393,20 @@ export const MEMORY_MSG = {
    *  is editable, because a profile somebody cannot see is a dossier. */
   heading:
     "Here's the short note I keep about you between conversations. It comes from what you've told " +
-    'me — you can clear it any time with `/gabi memory forget`.',
+    // ⚠️ **SHE ADVERTISED A COMMAND THAT DID NOT ROUTE** (2026-08-18, 14:21).
+    // This sentence used to say *"clear it any time with `/gabi memory
+    // forget`"*. Somebody did exactly that and got a keyword-soup shelf search
+    // and a wall of panel text — because `/gabi` is the original
+    // propose-and-deep-link command and has never seen the memory detector, or
+    // any lane built since.
+    //
+    // ⚠️ **THE SAY-THE-WORD LESSON, SELF-INFLICTED.** Three incidents taught
+    // that offering a capability is not routing to it; this is the same defect
+    // where SHE wrote the offer. So she now advertises the phrasing that
+    // genuinely works on every surface she has — a DM, a mention, a reply — and
+    // `test/memory.test.ts` asserts that every phrase any user-facing string
+    // tells somebody to type actually routes.
+    'me — just say **forget what you know about me** and it is gone.',
 
   off:
     "I don't keep notes between conversations at the moment — that's a switch on our side. Within a " +
