@@ -276,6 +276,13 @@ const K_FATAL = 'gw:fatal';
 const K_FATAL_AT = 'gw:fatal_at';
 const K_IDENTIFIES = 'gw:identifies';
 const K_LAST_READY = 'gw:last_ready_at';
+/** ⚠️ When the CURRENT socket came up. Distinct from `K_LAST_READY`, which
+ *  survives the socket dying: one answers "is she connected now, and for how
+ *  long", the other only "did a handshake ever happen". */
+const K_CONNECTED_AT = 'gw:connected_at';
+/** ⚠️ Whether this person has already been told, ONCE EVER, that a reply with
+ *  the ping removed is invisible to her. One key per person who hits it. */
+const kPingTold = (id: string) => `ping:told:${id}`;
 const K_GLOBAL_CAP = 'cap:global';
 const kUserCap = (id: string) => `cap:user:${id}`;
 /** ⚠️ Its OWN prefix, not a field inside `cap:user:` — see `writeCapCheck`.
@@ -408,6 +415,38 @@ export class GabiGateway {
         channels_heard: [
           ...new Set(ring.map((r) => r.channel).filter((c): c is string => Boolean(c))),
         ],
+        // ⚠️ **THE SOCKET'S OWN STATE — "is she even connected, and since when?"**
+        //
+        // Added 2026-08-19. The remaining intermittent first-try losses are
+        // NON-DELIVERY rather than bad turns, and the standing suspect is a
+        // GATEWAY GAP: a deploy EVICTS this object, the socket dies with it, and
+        // the connection returns only when the 2-minute cron pokes it. A message
+        // sent inside that window is never delivered to us at all — there is no
+        // frame, so nothing downstream of the socket can possibly see it.
+        //
+        // ⚠️ `last_ready_at` alone could not answer this: it says a handshake
+        // happened once, not whether the socket is up NOW. Together these turn
+        // "she ignored me at 22:19" into a checkable question.
+        socket: {
+          connected: this.ws !== null,
+          // ⚠️ Reported only while actually connected. A stamp left over from a
+          // socket that has since died would read as an uptime, which is the
+          // opposite of the fact being reported.
+          connected_since:
+            this.ws !== null
+              ? ((await this.state.storage.get<string>(K_CONNECTED_AT)) ?? null)
+              : null,
+          last_ready_at: (await this.state.storage.get<string>(K_LAST_READY)) ?? null,
+          // ⚠️ Present only while a fatal close is being held off. It is no
+          // longer permanent (`fatalHold`), so a reader needs to know both that
+          // it happened and that a retry is coming on its own.
+          fatal_reason: (await this.state.storage.get<string>(K_FATAL)) ?? null,
+          note:
+            'A deploy evicts this Durable Object and the socket dies with it; the 2-minute cron ' +
+            'brings it back. ⚠️ Messages sent in that gap are never delivered to the Worker at all, ' +
+            'so they leave NO trace anywhere — not in this ring, not in the logs. A first-try ' +
+            'silence shortly after a deploy is the expected shape of that, not a bug in the turn.',
+        },
         channels_note:
           'These are channels this ring has HEARD a turn from — not a membership list. ⚠️ If a ' +
           'channel is missing, the likeliest explanation is that the bot is not in it: without the ' +
@@ -1174,6 +1213,7 @@ export class GabiGateway {
       this.sessionId = typeof d.session_id === 'string' ? d.session_id : null;
       this.resumeUrl = typeof d.resume_gateway_url === 'string' ? d.resume_gateway_url : null;
       await this.state.storage.put(K_LAST_READY, new Date().toISOString());
+      await this.state.storage.put(K_CONNECTED_AT, new Date().toISOString());
       // ⚠️ **A SUCCESSFUL HANDSHAKE IS THE ONLY THING THAT CLEARS THE FLAG.**
       // Not a deploy, not the passage of time, not somebody pressing a button —
       // the one event that actually proves the cause is gone. This is what makes
@@ -1237,6 +1277,8 @@ export class GabiGateway {
         referenced_message?: { author?: { id?: unknown } };
       };
       const contentLen = typeof raw.content === 'string' ? raw.content.length : 0;
+      const repliedToMe =
+        String((raw.referenced_message?.author?.id as string | undefined) ?? '') === appId;
       const looksAddressed =
         contentLen > 0 || Boolean(raw.message_reference) || trigger.why !== 'not_mentioned';
       if (looksAddressed) {
@@ -1254,8 +1296,7 @@ export class GabiGateway {
             mentions_count: Array.isArray(raw.mentions) ? raw.mentions.length : 0,
             msg_type: typeof raw.type === 'number' ? raw.type : null,
             is_reply: Boolean(raw.message_reference),
-            replied_to_me:
-              String((raw.referenced_message?.author?.id as string | undefined) ?? '') === appId,
+            replied_to_me: repliedToMe,
             at: new Date().toISOString(),
           }),
         );
@@ -1266,6 +1307,48 @@ export class GabiGateway {
           outcome: 'ignored',
           why: trigger.why,
         });
+
+        // ── ⚠️ THE REPLY-WITHOUT-THE-PING BLIND SPOT, SAID ONCE PER PERSON ──
+        //
+        // ⚠️ **THE ONE CASE WHERE THE SILENCE IS NOT OUR BUG AND STILL LOOKS
+        // EXACTLY LIKE ONE.** Somebody replies to one of her messages with the
+        // ping removed, and Discord delivers the frame with **no content and
+        // with her absent from `mentions`** — she can see THAT it happened and
+        // never WHAT was said. `wrangler.toml` has documented this since the
+        // reply door was built; until now it was documented at nobody.
+        //
+        // **Why say anything:** from the other side it is indistinguishable from
+        // a dead bot, and it looks self-inflicted — they DID address her, using
+        // an affordance Discord's own UI offers them.
+        //
+        // ⚠️ **WHY ONCE PER PERSON RATHER THAN PER MESSAGE.** A reply to her
+        // message is not always a message TO her: people quote her while talking
+        // to each other. Answering every one would have her interrupt human
+        // conversations to explain a setting. Once, ever, is the entire
+        // information — after that they know, and repeating it is noise. It
+        // costs one storage key and one write, once per person.
+        //
+        // ⚠️ **SHE DOES NOT GUESS AT THE CONTENT.** She says plainly that she
+        // cannot see it. Claiming to have read something she structurally cannot
+        // is the confabulation class this estate keeps closing.
+        if (repliedToMe && contentLen === 0) {
+          const authorId = String(((data ?? {}) as { author?: { id?: unknown } }).author?.id ?? '');
+          const told = authorId
+            ? await this.state.storage.get<boolean>(kPingTold(authorId))
+            : true;
+          if (authorId && !told) {
+            // ⚠️ Stamped BEFORE the post. A failed send costs one lost notice; a
+            // send that succeeded without the stamp would repeat for ever.
+            await this.state.storage.put(kPingTold(authorId), true);
+            const channelId = String(((data ?? {}) as { channel_id?: unknown }).channel_id ?? '');
+            if (channelId) {
+              await createChannelMessage(botToken, channelId, {
+                content: MENTION_MSG.replyPingOff,
+                allowed_mentions: { parse: [], users: [authorId] },
+              }).catch(() => {});
+            }
+          }
+        }
       }
       return;
     }

@@ -1229,7 +1229,13 @@ describe('⚠️ every pre-existing intent still routes as it did', () => {
     });
     assert.equal(shelfCalls, 1, '⚠️ a book question stopped reaching the shelf');
     assert.equal(docsSearches, 0, '⚠️ a book question reached the gated corpus');
-    assert.match(said.join('\n'), /public shelf/i);
+    // ⚠️ CHANGED 2026-08-19 with the voicing pass. This used to require the
+    // literal template text ("public shelf") in the reply — which pinned the
+    // very thing the owner complained about: `have_lookup` made NO model call at
+    // all, so the commonest answer in the server was delivered in a monotone.
+    // The facts still come from the shelf lookup (asserted above); they are now
+    // said in her own voice, so ROUTING is what this test pins.
+    assert.ok(said.length > 0, 'the lane must still answer');
   });
 
   it('the keyword router is unchanged for every intent it already had', () => {

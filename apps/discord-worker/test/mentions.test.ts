@@ -39,6 +39,7 @@ import {
   USER_WINDOW_MS,
   utcDayKey,
   type GatewayMessage,
+  BARE_MENTION_GREETING,
 } from '../src/mentions.js';
 import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
 import { FATAL_CLOSE_CODES, GATEWAY_INTENTS } from '../src/gateway.js';
@@ -235,9 +236,46 @@ describe('the mention test — she answers people who addressed her, and nobody 
     assert.equal(mentionTrigger(msg({ type: 6 }), APP_ID).kind, 'ignore');
   });
 
-  it('a mention with nothing after it is ignored rather than searched for ""', () => {
+  it('⚠️ a mention with nothing after it is ANSWERED, not ignored', () => {
+    // ⚠️ REVERSED 2026-08-19 on tape evidence. This used to assert
+    // `empty_question` — and that exit dropped "@GABI hi" in total silence,
+    // because the greeting stripper removes "hi" as a courtesy prefix, leaving
+    // "", which then failed the floor. The friendliest thing anybody can say to
+    // a bot was the one message she deleted.
+    //
+    // The mention IS the address. A wordless ping is read as the greeting it is
+    // and answered in voice.
     const t = mentionTrigger(msg({ content: `<@${APP_ID}>` }), APP_ID);
-    assert.equal(t.kind === 'ignore' && t.why, 'empty_question');
+    assert.equal(t.kind, 'ask');
+    assert.equal(t.kind === 'ask' && t.question, BARE_MENTION_GREETING);
+  });
+
+  it('⚠️ REGRESSION — "@GABI hi" is answered (the tape, 2026-08-19 00:25)', () => {
+    // The exact shape from the raw tail line that caught it:
+    //   {"evt":"gabi_ignored","why":"empty_question","content_len":25,
+    //    "mentions_count":1,"msg_type":0,"is_reply":false,"replied_to_me":false}
+    const content = `<@${APP_ID}> hi`;
+    assert.equal(content.length, 25, 'the tail line reported 25 characters');
+    const t = mentionTrigger(msg({ content }), APP_ID);
+    assert.equal(t.kind, 'ask', 'an addressed greeting must never be silence');
+    // ⚠️ The greeting SURVIVES, so the classifier sees small talk and she
+    // answers in voice instead of being handed an empty string.
+    assert.equal(t.kind === 'ask' && t.question, 'hi');
+  });
+
+  it('every greeting-only address survives, on the mention and DM doors', () => {
+    for (const word of ['hi', 'hey', 'hello', 'yo', 'heygabi']) {
+      const mention = mentionTrigger(msg({ content: `<@${APP_ID}> ${word}` }), APP_ID);
+      assert.equal(mention.kind, 'ask', `mention: ${word}`);
+      assert.ok(mention.kind === 'ask' && mention.question.length > 0, `mention empty: ${word}`);
+    }
+  });
+
+  it('⚠️ and a real question is still stripped exactly as before', () => {
+    // The greeting stripper's own reason for existing is untouched: this must
+    // NOT search the index for "hey gabi".
+    const t = mentionTrigger(msg({ content: `<@${APP_ID}> hey gabi do we have Mistborn?` }), APP_ID);
+    assert.equal(t.kind === 'ask' && t.question, 'do we have Mistborn?');
   });
 
   it("the owner's greeting forms all come off the front", () => {
@@ -652,5 +690,32 @@ describe('accounting — a number that is measured, not asserted', () => {
 
   it('pins the model, so a silent upgrade cannot change what a cap means', () => {
     assert.equal(GABI_CHAT_MODEL, 'claude-haiku-4-5-20251001');
+  });
+});
+
+describe('⚠️ the voicing pass — the owner: "no personality on that message"', () => {
+  const flow = repoFile('src/mention-flow.ts');
+
+  it('the have_lookup lane speaks through the model instead of returning a template', () => {
+    const lane = flow.slice(flow.indexOf("if (intent === 'have_lookup')"));
+    const body = lane.slice(0, lane.indexOf("if (intent === 'fix_request')"));
+    assert.match(body, /await converse\(/, 'the flat lane still has no model call');
+    assert.match(body, /extraBlock/, 'the persona/memory block must reach it');
+  });
+
+  it('⚠️ the facts still come from the lookup — she re-voices a result, never recalls one', () => {
+    const lane = flow.slice(flow.indexOf("if (intent === 'have_lookup')"));
+    const body = lane.slice(0, lane.indexOf("if (intent === 'fix_request')"));
+    const facts = body.indexOf('const facts = shelfAnswer(');
+    const call = body.indexOf('await converse(');
+    assert.ok(facts > 0 && call > facts, 'the lookup must run before the voicing');
+    assert.match(body, /voiced \?\? facts/, 'no key must fall back to the template, not to silence');
+  });
+
+  it('⚠️ the clarifying MENU stays deterministic — a re-worded menu can lose its options', () => {
+    const lane = flow.slice(flow.indexOf("if (intent === 'have_lookup')"));
+    const menu = lane.slice(lane.indexOf('if (pending)'), lane.indexOf('const facts = shelfAnswer('));
+    assert.doesNotMatch(menu, /await converse/, 'the menu path must not be re-phrased by a model');
+    assert.match(menu, /buildChoiceComponents\(pending\)/);
   });
 });

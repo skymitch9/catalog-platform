@@ -2141,8 +2141,44 @@ async function answerQuestion(
         CONV_MSG.chooseOne(pending.options.length, books.length);
       return { content: body, pending, intent, components: buildChoiceComponents(pending) };
     }
+    // ── ⚠️ THE VOICING PASS — owner, 2026-08-19: "no personality on that
+    //    message" ─────────────────────────────────────────────────────────────
+    //
+    // ⚠️ **THIS LANE HAD NO MODEL CALL AT ALL**, and that is why the answer read
+    // flat: `shelfAnswer` is a template, and a template cannot have a voice. The
+    // whole personality layer — trope, drift, the pinned voice — reaches only
+    // the paths that actually speak to a model, so the commonest question in the
+    // server was the one answer she delivered in a monotone.
+    //
+    // The fix reuses the shape the CATALOGUE fast path already uses: hand the
+    // rendered facts over as GROUNDING and let her say them. ⚠️ The facts still
+    // come from the lookup and nothing else — she is re-voicing a result, not
+    // being asked to recall one — which is what keeps this a wording change
+    // rather than a new place for a claim to be invented.
+    //
+    // ⚠️ **THE COST IS REAL AND IS ACCEPTED:** one cheap Haiku call on a path
+    // that used to be free. It is bounded by the same 20/hour and 200/day fuses
+    // as every other turn, and it was asked for.
+    //
+    // ⚠️ **THE MENU PATH ABOVE IS DELIBERATELY LEFT DETERMINISTIC.** A
+    // clarifying question carries components whose wording has to match the
+    // options exactly; a model re-phrasing "which one did you mean?" can drop
+    // the correspondence between the sentence and the dropdown. Voice is worth
+    // less than a menu that makes sense.
+    const facts = shelfAnswer(question, found.term, books, found.failure);
+    const voiced = await converse(
+      cfg.anthropicKey,
+      question,
+      facts,
+      who,
+      overrides,
+      history,
+      extraBlock,
+    );
     return {
-      content: shelfAnswer(question, found.term, books, found.failure),
+      // ⚠️ With no key the template stands, unchanged — the ladder this surface
+      // has always had. A missing key makes her plainer, never silent.
+      content: voiced ?? facts,
       pending: null,
       intent,
       components: null,

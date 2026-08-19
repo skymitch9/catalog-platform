@@ -323,6 +323,55 @@ export function questionFrom(content: string, appId: string): string {
 export const MIN_MENTION_QUESTION = 3;
 
 /**
+ * ⚠️ **"@GABI hi" WAS DROPPED IN SILENCE, AND THE GREETING STRIPPER DID IT.**
+ *
+ * Caught on tape, 2026-08-19 ~00:25 Phoenix, by the ignore instrumentation
+ * built the same night:
+ *
+ * ```json
+ * {"evt":"gabi_ignored","why":"empty_question","content_len":25,
+ *  "mentions_count":1,"msg_type":0,"is_reply":false,"replied_to_me":false}
+ * ```
+ *
+ * Twenty-five characters, one mention, a fresh message — and nothing came back.
+ * The chain: `questionFrom` strips the mention (leaving `"hi"`), then `GREETING`
+ * strips `"hi"` as a courtesy prefix, leaving `""`, which fails
+ * `MIN_MENTION_QUESTION` and is discarded as `empty_question`.
+ *
+ * ⚠️ **EVERY LINK WAS WORKING AS DESIGNED.** The greeting stripper exists so
+ * *"hey gabi do we have Mistborn?"* does not search the index for "hey gabi",
+ * and the floor exists so a stray ping is not a question. Together they delete
+ * the message whose ENTIRE content is the greeting — the friendliest thing
+ * anybody can say to a bot.
+ *
+ * > ⚠️ **AN ADDRESSED MESSAGE IS NEVER SILENCE. The mention IS the address**,
+ * > and a person who says hello and gets nothing concludes she is broken —
+ * > which is exactly what happened, twice, before this was found.
+ *
+ * So the floor no longer applies to *what survives stripping*; it applies to
+ * *whether anything was said at all*, and the answer is yes whenever somebody
+ * typed her name. This returns the greeting-BEARING text so `"hi"` reaches the
+ * classifier as small talk and is answered in voice, with her personality on.
+ */
+export function addressedQuestion(content: string, appId: string): string {
+  const trimmed = questionFrom(content, appId);
+  if (trimmed.length >= MIN_MENTION_QUESTION) return trimmed;
+  // ⚠️ The greeting stripper ate it (or it was always short). Hand back the text
+  // WITH the greeting: "hi" is a real message and is answerable as one.
+  const spoken = stripMention(content, appId).replace(/\s+/g, ' ').trim();
+  if (spoken.length > 0) return spoken;
+  // ⚠️ A BARE MENTION — her name and nothing else. Read as the greeting it is,
+  // because the alternative is the silence this whole block exists to end. It is
+  // a canonicalisation of a wordless address, not an invented message: nothing
+  // is attributed to the person beyond having said hello.
+  return BARE_MENTION_GREETING;
+}
+
+/** What a wordless `@GABI` is treated as. ⚠️ Exported so a test can assert the
+ *  bare-ping case answers rather than vanishing. */
+export const BARE_MENTION_GREETING = 'hi';
+
+/**
  * ⚠️ The floor for a reply or a DM is ONE character, and that is deliberate
  * rather than sloppy. A bare `@GABI` with nothing after it is somebody's stray
  * ping; a DM that says only `hi` is a person starting a one-to-one conversation,
@@ -381,9 +430,17 @@ export function mentionTrigger(msg: GatewayMessage, appId: string): MentionTrigg
   // every message is addressed to her by construction. `guild_id` absent is the
   // test; Discord sends it on every guild message, threads included.
   if (!guildId) {
-    const question = continuationQuestion(content, appId);
-    if (question.length < MIN_CONTINUATION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
-    return { kind: 'ask', via: 'dm', surface: 'discord_dm', question, ...who };
+    // ⚠️ A DM IS AN ADDRESS TOO, and an empty one is somebody sending a sticker
+    // or an image with no words. `addressedQuestion` never returns empty, so a
+    // DM always gets an answer — which is the right reading of a one-to-one
+    // channel, where silence is unmistakably a fault.
+    return {
+      kind: 'ask',
+      via: 'dm',
+      surface: 'discord_dm',
+      question: addressedQuestion(content, appId),
+      ...who,
+    };
   }
 
   // ⚠️ In a guild, the `mentions` array is the gate for BOTH remaining doors —
@@ -400,16 +457,32 @@ export function mentionTrigger(msg: GatewayMessage, appId: string): MentionTrigg
   // ── Door 1: a literal `<@id>` typed in the text. The token alone could be
   // somebody quoting an id, which is why the array above is checked too.
   if (mentionTokens(appId).test(content)) {
-    const question = questionFrom(content, appId);
-    if (question.length < MIN_MENTION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
-    return { kind: 'ask', via: 'mention', surface: 'discord_channel', question, ...who };
+    // ⚠️ **NO `empty_question` EXIT HERE ANY MORE.** It dropped "@GABI hi" in
+    // silence — caught on tape 2026-08-19 — because the greeting stripper had
+    // already eaten the whole message. `addressedQuestion` carries the full
+    // account; the short version is that somebody typing her name has said
+    // something, and she answers.
+    return {
+      kind: 'ask',
+      via: 'mention',
+      surface: 'discord_channel',
+      question: addressedQuestion(content, appId),
+      ...who,
+    };
   }
 
   // ── Door 2: a reply to one of her own messages, ping left on.
   if (isReplyToApp(msg, appId)) {
-    const question = continuationQuestion(content, appId);
-    if (question.length < MIN_CONTINUATION_QUESTION) return { kind: 'ignore', why: 'empty_question' };
-    return { kind: 'ask', via: 'reply', surface: 'discord_channel', question, ...who };
+    // ⚠️ Same rule as the other two doors: a reply to HER is an address, so it
+    // is answered rather than measured. It also no longer leaks the raw mention
+    // token into the question, which `continuationQuestion` did on this path.
+    return {
+      kind: 'ask',
+      via: 'reply',
+      surface: 'discord_channel',
+      question: addressedQuestion(content, appId),
+      ...who,
+    };
   }
 
   return { kind: 'ignore', why: 'no_mention_token' };
@@ -648,6 +721,22 @@ export const MENTION_MSG = {
     "Sorry — I'm taking much longer than I should on that one. Something on my side is being slow " +
     "rather than anything to do with you. I'm still working on it, so if an answer turns up in a " +
     'moment that is me catching up; if it does not, ask me again and I will start fresh.',
+
+  /**
+   * ⚠️ **SAID ONCE PER PERSON, when they reply to her with the ping removed.**
+   *
+   * Discord then delivers the frame with no content at all, so she knows she was
+   * replied to and cannot know what was said. From their side that is
+   * indistinguishable from a dead bot.
+   *
+   * ⚠️ It never guesses at the content, never blames them for a Discord default,
+   * and gives the two ways out in one line. It is deliberately short: it
+   * interrupts a conversation that may not have been aimed at her.
+   */
+  replyPingOff:
+    "Quick heads-up — when you reply to me with the **@ turned off**, Discord doesn't pass me any of " +
+    "the text, so I genuinely can't see what you wrote. Leave the ping on when you reply, or just " +
+    "@ me in a new message, and I'll be right there. (I'll only mention this once.)",
 
   unsureWhatToSearch:
     "I'm not sure what to look up there — that read more like a request than a title, and I'd rather " +

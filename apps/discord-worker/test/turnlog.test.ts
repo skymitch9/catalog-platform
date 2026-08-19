@@ -309,3 +309,69 @@ describe('⚠️ deadlines: a hang must end in words, not in nothing', () => {
     assert.doesNotMatch(m, /\b(timeout|timed out|error|permission|\d{3})\b/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE TAPE, 2026-08-19 ~00:25 Phoenix — what the instrumentation caught
+// ---------------------------------------------------------------------------
+
+describe('⚠️ the socket state is visible, because non-delivery leaves no trace', () => {
+  const gw = strip(repoFile('src/gateway.ts'));
+
+  it('the turn log reports whether she is connected, and since when', () => {
+    const block = gw.slice(gw.indexOf("path === '/turnlog'"));
+    assert.match(block, /socket:/);
+    assert.match(block, /connected_since/);
+    assert.match(block, /last_ready_at/);
+    assert.match(block, /fatal_reason/);
+  });
+
+  it('⚠️ connected_since is null when the socket is DOWN — never a stale uptime', () => {
+    const block = gw.slice(gw.indexOf('socket: {'));
+    assert.match(block.slice(0, 900), /this\.ws !== null\s*\?/, 'it must be gated on live state');
+  });
+
+  it('the deploy-eviction gap is named where somebody debugging will read it', () => {
+    const block = gw.slice(gw.indexOf('socket: {'));
+    assert.match(block.slice(0, 2000), /deploy evicts this Durable Object/i);
+    assert.match(block.slice(0, 2000), /never delivered to the Worker at all/i);
+  });
+
+  it('⚠️ the fatal flag backs off hourly and clears only on a real handshake', () => {
+    assert.match(gw, /FATAL_RETRY_MS/, 'the backoff constant is gone');
+    assert.match(gw, /private async fatalHold\(/);
+    // It must RESCHEDULE — standing down without an alarm is what made the old
+    // behaviour permanent.
+    const hold = gw.slice(gw.indexOf('const hold = await this.fatalHold();'));
+    assert.match(hold.slice(0, 700), /setAlarm\(/, 'a hold with no alarm never retries');
+    // …and only a successful READY clears it.
+    const ready = gw.slice(gw.indexOf('K_LAST_READY, new Date().toISOString()'));
+    assert.match(ready.slice(0, 600), /storage\.delete\(K_FATAL\)/);
+  });
+});
+
+describe('⚠️ REGRESSION — the reply-with-the-ping-off blind spot', () => {
+  const gw = strip(repoFile('src/gateway.ts'));
+
+  it('she says it ONCE per person, not once per message', () => {
+    const block = gw.slice(gw.indexOf('if (repliedToMe && contentLen === 0)'));
+    assert.match(block.slice(0, 1200), /kPingTold\(authorId\)/, 'no per-person memory of having said it');
+    // ⚠️ Stamped BEFORE the post: a send that succeeded without the stamp would
+    // repeat for ever.
+    const stamp = block.indexOf('storage.put(kPingTold');
+    const post = block.indexOf('createChannelMessage(');
+    assert.ok(stamp > 0 && post > 0 && stamp < post, 'stamp must precede the post');
+  });
+
+  it('⚠️ it only fires on a CONTENTLESS reply to HER — never on ordinary traffic', () => {
+    const block = gw.slice(gw.indexOf('if (repliedToMe && contentLen === 0)'));
+    assert.match(block.slice(0, 200), /repliedToMe && contentLen === 0/);
+  });
+
+  it('the sentence never guesses what they said, and never blames them', () => {
+    const m = MENTION_MSG.replyPingOff;
+    assert.match(m, /can't see what you wrote/i, 'she must say plainly that she cannot see it');
+    assert.match(m, /Leave the ping on/i, 'and give the way out');
+    assert.match(m, /only mention this once/i);
+    assert.doesNotMatch(m, /\byou (?:should|need to|must|failed)\b/i, 'a Discord default is not their fault');
+  });
+});
