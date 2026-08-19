@@ -97,6 +97,52 @@ in between.** Runbook: [`access/gabi-turn-log.md`](access/gabi-turn-log.md).
 sign-in; no `silent` row has ever been produced by a real hang; and the root
 cause remains unproven.
 
+### ⚠️ What the P1s DISPLACED, and exactly where each stands
+
+The batch these interrupted was memory tiers 3–4 and the GABI switchboard. The
+P1s took the whole session; what follows is the honest state so the next hand
+starts from evidence rather than from a guess.
+
+**🟡 Memory tier 3 (archive) + tier 4 (recall) — CONTRACT WRITTEN, NOT WIRED.**
+[`apps/discord-worker/src/archive.ts`](../apps/discord-worker/src/archive.ts) is
+committed and **inert**: nothing imports it, so it changes no behaviour. It
+holds the retention constant, the shape, the recall detector, the lexical
+ranker and the render block whose every line carries its date. Three decisions
+in it are worth keeping and are argued in the file:
+
+- ⚠️ **The document id sorts newest-first**, so `where(person)` + `orderBy
+  __name__` needs **no composite index** — design §4.1 assumed one, and a
+  composite index is an owner console step whose absence would 400 every recall
+  while the feature looked built.
+- **The implementation belongs in `memory-exec.ts`**, not a sixth exec module:
+  same service account, same collection family, and the five-module credential
+  guard stays exactly as wide as it is.
+- ⚠️ **`GABI_MEMORY` is already ON**, and the design shares one posture across
+  tiers 2–4. So the day tier 3 is wired, archive writes begin **on deploy** with
+  no separate owner flip. That is the design's own choice and it needs saying
+  out loud before it ships, not after.
+
+Still to build: the exec half, the tool + its own allowlist array, the
+pre-router lane, the health rows, the tests.
+
+**🟡 The GABI switchboard — ITS DIAGNOSTIC HALF SHIPPED, the controls did not.**
+The turn log the owner asked for as part of the switchboard is **live**: the
+ring, the `/turnlog` route, and the devops HTTP gate
+(`devopsHttpGate` — asked of `auth.heygabi.ai/api/estate/me` with the caller's
+own bearer, so no second copy of "who is devops" exists). It shipped early
+because it was the instrument the silence needed.
+
+Not built: the dynamic config itself (per-surface postures, per-turn caps, daily
+budgets), its GET/POST, the `/status` page, and the toml-as-boot-default
+precedence. ⚠️ **The storage decision was argued and should not be re-opened
+lightly:** the gateway Durable Object, not KV — it is strongly consistent (a
+posture that takes 60s to propagate is a control that lies to whoever just
+pressed it), it adds no binding and no infrastructure, and the read is free on
+the path that matters because every turn already runs inside that object.
+⚠️ **The one genuinely hard part is `mentions`:** the cron's poke is gated on the
+toml value, so a dashboard flip cannot start a bot the boot default has switched
+off without also changing that gate. Decide that deliberately.
+
 ## 📋 The /todo board — refreshed 2026-08-18, and why it is NOT generated
 
 Owner: *"this todo board on heygabi seems way off, can we get an update on this
