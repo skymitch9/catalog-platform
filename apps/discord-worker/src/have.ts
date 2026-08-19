@@ -58,6 +58,7 @@
  */
 
 import type { Env } from './env.js';
+import { INDEX_LOOKUP_MS } from './deadline.js';
 import { editOriginalMessage } from './discord-api.js';
 import {
   firestoreRequest,
@@ -147,6 +148,14 @@ export async function lookupHave(base: string, query: string): Promise<HaveLooku
     res = await fetch(searchUrl(base, query), {
       method: 'GET',
       headers: { accept: 'application/json' },
+      // ⚠️ ADDED 2026-08-18. This was the ONE outbound call on the ordinary
+      // question path with no deadline of its own — the books port, the
+      // catalogue CSV, the docs port and the delegated verbs all had one, and
+      // nothing at a call site marked the difference. A hung index means a hung
+      // TURN, and a hung turn is the silence a real person met in a channel:
+      // no answer, no error, no log, nothing. `unreachable` is already worded
+      // and already handled; an abort simply reaches it.
+      signal: AbortSignal.timeout(INDEX_LOOKUP_MS),
     });
   } catch {
     return { ok: false, reason: 'unreachable', status: 0 };

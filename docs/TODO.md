@@ -1,5 +1,102 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+## 🔴 THE FIRST REAL USERS HIT GABI — two P1s (2026-08-18, 19:26–19:28 Phoenix)
+
+**Not the owner. Not tests. Two members of the household, in a channel, hours
+after the suggestion lane went live on version `12c519db`.** Both transcripts are
+now regression tests.
+
+| # | What they typed | What she did |
+|---|---|---|
+| 1 | *"I can't sit and read a book it makes me fall asleep. Find me something entertaining"* | grepped the public index for **`can't sit read makes fall asleep something entertaining`**, found nothing, said so. He replied **"Gabi sucks what the heck."** |
+| 2 | *"what is the fourth book in the Dungeon Crawler Carl series?"* | ⚠️ **NOTHING AT ALL** — twice (Diva 19:28, owner's re-ask ~22:00). Her follow-up: *"Did you turn her off?"* She had not been |
+
+### ✅ P1-1 — FIXED. Three defects in one turn
+
+Full write-up: [`info/gabi-suggestions-design.md`](info/gabi-suggestions-design.md) §10f.
+
+1. ⚠️ **The routing miss — FOURTH of its family in one day.** Every
+   `suggestIntent` pattern required a library word (*recommend, suggest, read,
+   listen, book*). **Nobody asks for a "recommendation"; they ask for something
+   good.** Widened with the conversational shapes, bounded so it stays a router.
+   ⚠️ **The new lesson:** the other three were found by the OWNER using each
+   lane's own prescribed phrasings. **This one was found by a stranger using
+   ordinary English.** A detector tested only against the sentences its author
+   imagined is a detector tested against one person's idiolect.
+2. **She quoted a mangled version of his own sentence back at him**, in bold.
+   `searchTermFor` is best-effort and its own header says it is *never
+   load-bearing* — and then it was printed to a person. Now a reduction over five
+   words is not quotable and she says she is not sure what to look up, ⚠️ and
+   stops claiming the catalogue lacks it (an unbuilt search is not evidence).
+3. **An unstated format asked a question and delivered no books** — the
+   ask-instead-of-deliver defect, third time in one day. Now: audio picks first
+   (the public slice, **no gate bypassed**), format question after, one clause.
+   Plus `suggestMoodHints()` — *"it makes me fall asleep"* is a REQUIREMENT, and
+   ⚠️ it can never open a shelf, because it is not a format.
+
+### ⚠️ P1-2 — the silence: HARDENED, root cause NOT PROVEN
+
+⚠️ **Say this plainly and do not let anyone "conclude" otherwise: the cause of the
+7:28 PM turn is UNKNOWN and its evidence is gone for ever.** The estate could not
+investigate its own bot — five instruments, each correctly knowing nothing:
+`wrangler tail` is live-only, **`[observability]` was not enabled on this Worker
+at all**, the event ring was never wired here, an unanswered turn writes no
+conversation record *by design*, and the four daily fuses keep counts with no
+history.
+
+**What WAS established, by execution rather than by reasoning:**
+
+- ⚠️ **A fuse is ruled out.** A capped turn says the cap sentence in the channel
+  before returning. Fuses do not fail silently.
+- ⚠️ **The deterministic path on that exact string is clean and fast** — driven
+  through every detector, then through `handleMention` twice (keyless, and with
+  a stubbed model + tool loop). No detector claims it; it reaches the generic
+  model path and answers. **So it is not a routing or regex defect.**
+- ⚠️ **The turn died before the FIRST model call.** A healthy turn emits three
+  `gabi_turn` log lines, the earliest at classification. The tail showed none.
+  That narrows it to the work ahead of classification: two DO storage reads, the
+  three-way `Promise.all` (docs fuse, books fuse, **the Firestore profile read**),
+  and the detectors.
+- ⚠️ **A HANG is the only failure shape that produces the observed signature** —
+  no answer, no error, no log, no exception. Every other outcome on this surface
+  has a sentence written for it; a hang is the case where the code that writes
+  the sentence never runs. And **three outbound calls had no deadline at all**
+  (the index lookup, the Firestore profile read, Discord itself) while four
+  others did — nothing at a call site marked the difference.
+
+**So the fix is a CLASS fix, not a bug fix** — it makes the whole family
+un-reproducible whichever member fired:
+
+| Silence path | Now |
+|---|---|
+| any hang, anywhere in the turn | ⚠️ a **25s whole-turn watchdog** posts a worded follow-through and records `silent` |
+| the index lookup | `AbortSignal.timeout(8s)` — it was the only call on the ordinary question path without one |
+| the per-turn profile read | raced at 4s; tier 2 is colour, and a turn without it beats no turn |
+| a throw in the setup, OUTSIDE the mention handler (`onFrame` only logged) | `onDispatch` wraps an inner handler and **posts** |
+| a conversation or persona read that throws | both degrade — no history, or the default voice |
+| `replyToMessage` refused (deleted message, permissions) | retried once as a plain message, then logged loudly and recorded `silent` |
+| an ignored trigger | `mentionTrigger`'s `why` was **computed and thrown away**; now logged and ringed (except `not_mentioned`) |
+
+**And the two missing instruments now exist:** `[observability] enabled = true`,
+and a **40-turn ring** in the gateway object — lane, tools that actually fired,
+what scope hid, whether words reached the channel — ⚠️ **and never a word of what
+anybody said**. Plus `gabi_dispatch_taken` / `gabi_dispatch_done`, so the happy
+path is finally visible in a tail: **a `taken` with no `done` is a turn that died
+in between.** Runbook: [`access/gabi-turn-log.md`](access/gabi-turn-log.md).
+
+**🧑 OWNER — the two tests that matter**
+
+1. In a channel: *"@GABI find me something entertaining"* → expect **audiobook
+   picks plus one closing question about format**, not a shelf search.
+2. Re-ask the exact Dungeon Crawler Carl question. ⚠️ **If it is silent again it
+   will now leave a trail**: `GET https://discord.heygabi.ai/admin/gabi/turnlog`
+   (signed in, devops) shows the turn, and the Worker's logs now retain. Say if
+   it reproduces — that is the evidence this fix could not get.
+
+**Still open:** the turn-log read has never been performed by a real devops
+sign-in; no `silent` row has ever been produced by a real hang; and the root
+cause remains unproven.
+
 ## 📋 The /todo board — refreshed 2026-08-18, and why it is NOT generated
 
 Owner: *"this todo board on heygabi seems way off, can we get an update on this

@@ -158,12 +158,21 @@ import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
 import {
   capDecision,
+  MENTION_MSG,
   mentionsOn,
   mentionTrigger,
   pruneWindow,
   utcDayKey,
   type CapVerdict,
 } from './mentions.js';
+import { TURN_WATCHDOG_MS, withDeadline } from './deadline.js';
+import {
+  newTurnTrace,
+  pushTurnLog,
+  turnLogForDisplay,
+  TURN_LOG_ROWS,
+  type TurnLogEntry,
+} from './turnlog.js';
 import { handleMention, type ConversationDeps } from './mention-flow.js';
 import {
   appendTurns,
@@ -282,6 +291,14 @@ const kUserBooksCap = (id: string) => `bcap:user:${id}`;
  *  evaporated after thirty minutes would not be a pin. */
 const kUserPersona = (id: string) => `pers:user:${id}`;
 
+/**
+ * ⚠️ **THE RECENT TURN RING — ONE key, one row, rewritten per taken turn.**
+ * `turnlog.ts` carries the incident it was built for and the write-budget
+ * arithmetic. A prefix of many keys was rejected: forty small rows would be
+ * forty deletes to prune, where one bounded array is one write.
+ */
+const K_TURN_LOG = 'gw:turnlog';
+
 interface IdentifyBudget {
   day: string;
   count: number;
@@ -346,6 +363,34 @@ export class GabiGateway {
     // sit ahead of the `/start` fallthrough, or the cron's sweep would open a
     // socket every two minutes as a side effect.
     if (path === '/conv/sweep') return Response.json(await this.distillSweep());
+
+    // ⚠️ THE RECENT TURN RING — read-only, and it sits with the routes above
+    // rather than below the `/start` fallthrough for exactly their reason: a
+    // devops reader opening a diagnostic page must not OPEN A GATEWAY WEBSOCKET
+    // as a side effect of looking. (`/conv/dcount` and `/conv/bcount` were
+    // missing from that list once already; this is the same trap.)
+    //
+    // ⚠️ **THE AUTHORITY CHECK IS NOT HERE.** A Durable Object stub is reachable
+    // only from this Worker's own code, and the gate belongs on the HTTP route
+    // in `index.ts` — a check performed by the thing being protected is a check
+    // that can be skipped.
+    if (path === '/turnlog') {
+      const ring = (await this.state.storage.get<TurnLogEntry[]>(K_TURN_LOG)) ?? [];
+      return Response.json({
+        ok: true,
+        rows: turnLogForDisplay(ring),
+        kept: TURN_LOG_ROWS,
+        // ⚠️ Said out loud, because an empty list must never be read as "she has
+        // answered nobody". A fresh deploy looks exactly the same — the ring
+        // lives in this object and starts empty.
+        note:
+          ring.length === 0
+            ? 'The ring is live and holds nothing yet. That is not the same as "no turns have ' +
+              'happened": it is also what the first minutes after a deploy look like, because the ' +
+              'ring lives in the gateway object and starts empty.'
+            : null,
+      });
+    }
 
     if (path === '/status') return Response.json(await this.status());
 
@@ -994,7 +1039,52 @@ export class GabiGateway {
     if (this.seq !== null) void this.state.storage.put(K_SEQ, this.seq).catch(() => {});
   }
 
+  /**
+   * ⚠️ **NO TAKEN TURN MAY END IN SILENCE — the 2026-08-18 rule.**
+   *
+   * `onFrame` catches whatever escapes this method and LOGS it, and a log is
+   * not a channel. So everything from the moment a message is recognised as a
+   * question is wrapped: a throw anywhere in the setup (a malformed service
+   * account, a storage blip, a port constructor) now produces a worded line in
+   * the channel and a `silent`/`error` row in the ring, instead of a person
+   * staring at nothing and asking *"did you turn her off?"*.
+   */
   private async onDispatch(type: string, data: unknown, botToken: string): Promise<void> {
+    try {
+      await this.dispatchInner(type, data, botToken);
+    } catch (err) {
+      console.error(
+        'GABI gateway: a dispatch threw OUTSIDE the mention handler — this is the silent-turn class:',
+        err instanceof Error ? err.message : err,
+      );
+      const channelId = (((data ?? {}) as { channel_id?: unknown }).channel_id ?? '') as string;
+      const authorId = ((((data ?? {}) as { author?: { id?: unknown } }).author ?? {}).id ?? '') as string;
+      await this.recordTurnLog({
+        at: Date.now(),
+        person: typeof authorId === 'string' ? authorId : '',
+        via: 'mention',
+        outcome: 'error',
+        ...(typeof channelId === 'string' && channelId ? { channel: channelId } : {}),
+        why: 'dispatch_threw',
+      }).catch(() => {});
+      // ⚠️ Only for a message that was actually addressed to her. Speaking into
+      // a channel because an unrelated frame threw would be worse than silence.
+      if (type === 'MESSAGE_CREATE' && typeof channelId === 'string' && channelId) {
+        const trigger = mentionTrigger(
+          (data ?? {}) as Record<string, unknown>,
+          this.env.DISCORD_APPLICATION_ID ?? '',
+        );
+        if (trigger.kind === 'ask') {
+          await createChannelMessage(botToken, channelId, {
+            content: MENTION_MSG.unreachable,
+            allowed_mentions: { parse: [], users: [trigger.authorId] },
+          }).catch(() => {});
+        }
+      }
+    }
+  }
+
+  private async dispatchInner(type: string, data: unknown, botToken: string): Promise<void> {
     if (type === 'READY') {
       const d = (data ?? {}) as { session_id?: unknown; resume_gateway_url?: unknown };
       this.sessionId = typeof d.session_id === 'string' ? d.session_id : null;
@@ -1016,7 +1106,32 @@ export class GabiGateway {
 
     const appId = this.env.DISCORD_APPLICATION_ID ?? '';
     const trigger = mentionTrigger((data ?? {}) as Record<string, unknown>, appId);
-    if (trigger.kind === 'ignore') return;
+    if (trigger.kind === 'ignore') {
+      // ⚠️ **THE `why` USED TO BE COMPUTED AND THROWN AWAY**, and that is half of
+      // why the 7:28 PM silence could not be investigated. `mentionTrigger`
+      // names its reason precisely — `empty_question`, `message_type_21`,
+      // `author_is_bot` — and this line dropped it on the floor.
+      //
+      // ⚠️ **`not_mentioned` IS THE ONE THAT MUST STAY SILENT.** It is every
+      // ordinary message in every channel she sits in; recording it would put
+      // the whole server's traffic pattern into a ring, which is the opposite of
+      // this estate's posture and would evict the forty rows that matter within
+      // seconds. Every OTHER reason means *she was addressed and declined*,
+      // which is exactly the thing somebody will one day need to see.
+      if (trigger.why !== 'not_mentioned') {
+        console.log(
+          JSON.stringify({ evt: 'gabi_ignored', why: trigger.why, at: new Date().toISOString() }),
+        );
+        await this.recordTurnLog({
+          at: Date.now(),
+          person: '',
+          via: 'ignored',
+          outcome: 'ignored',
+          why: trigger.why,
+        });
+      }
+      return;
+    }
 
     // ⚠️ The conversation key: (surface, space, person). The SPACE is the
     // channel, not the guild — two channels in one server are two
@@ -1071,10 +1186,91 @@ export class GabiGateway {
     // place with storage. A conversation with no remembered turns is a FRESH one
     // and gets a new roll (or the pin); otherwise the existing trope is advanced
     // and may drift one step.
-    const existing = await this.convLoad(key);
-    const persona = await this.personaTurn(trigger.authorId, existing.turns.length === 0);
+    //
+    // ⚠️ **BOTH READS DEGRADE RATHER THAN THROW, AND THAT IS A SILENCE FIX.**
+    // These two awaits sit OUTSIDE `handleMention`'s own try/catch, and
+    // `onFrame` only logs what escapes — so before 2026-08-18 a transient
+    // storage error in either one produced **no reply at all**, which is exactly
+    // the shape of the 7:28 PM complaint. Neither is load-bearing: without the
+    // history she starts the conversation fresh, and without the persona she
+    // talks in her default voice. An answer in the wrong voice beats no answer.
+    const existing = await this.convLoad(key).catch((err) => {
+      console.error(
+        'GABI gateway: the conversation could not be read; answering WITHOUT history rather than ' +
+          'not answering:',
+        err instanceof Error ? err.message : err,
+      );
+      return { turns: [], pending: null } as Awaited<ReturnType<GabiGateway['convLoad']>>;
+    });
+    const persona = await this.personaTurn(trigger.authorId, existing.turns.length === 0).catch(
+      (err) => {
+        console.error(
+          'GABI gateway: the persona could not be resolved; answering in the default voice:',
+          err instanceof Error ? err.message : err,
+        );
+        return null;
+      },
+    );
 
-    await handleMention(
+    // ⚠️ ONE BAG PER TURN. Everything the ring records comes from here, and
+    // nothing in it can fail a turn — see `turnlog.ts`.
+    const trace = newTurnTrace();
+    const startedAt = Date.now();
+
+    // ── ⚠️ THE WIRE-TAP LINE — one log, at the moment the turn is TAKEN ──────
+    //
+    // ⚠️ **TONIGHT'S TAIL FAILED BECAUSE THE HAPPY PATH LOGS NOTHING UNTIL THE
+    // FIRST MODEL CALL.** A `wrangler tail` across the window of a reproducible
+    // silent turn showed only alarm cycles — and that could not distinguish
+    // between "the frame never arrived", "the handler ran and died early" and
+    // "the tail cannot see this handler at all". Those are three different bugs
+    // with three different fixes, and no instrument separated them.
+    //
+    // This line is emitted BEFORE anything that can throw, spend or block, so
+    // its ABSENCE in a tail is now itself a finding: it means the frame did not
+    // reach here. The `gabi_dispatch_done` line at the bottom of this method is
+    // its pair — a `taken` with no `done` is a turn that died in between, and
+    // the elapsed time says where to look.
+    //
+    // ⚠️ Log lines are free; Durable Object row writes are not. This is a
+    // `console.log`, not a storage write — the ring is written ONCE at the end.
+    // ⚠️ And it carries NO message text: an id, a door, a channel. The content
+    // promise in `gabi-bare-text-triggers-memo.md` §6.2 is not spent on
+    // debugging.
+    console.log(
+      JSON.stringify({
+        evt: 'gabi_dispatch_taken',
+        message_id: trigger.messageId,
+        channel_id: trigger.channelId,
+        via: trigger.via,
+        chars: trigger.question.length,
+        at: new Date(startedAt).toISOString(),
+      }),
+    );
+    /** Set by `reply` when Discord actually accepted something. ⚠️ This, not
+     *  "we produced an answer", is what makes the outcome `answered` — the two
+     *  came apart on the night this was built. */
+    let delivered = false;
+
+    // ── ⚠️ THE WATCHDOG — the backstop for a cause nobody proved ────────────
+    //
+    // ⚠️ **THIS EXISTS BECAUSE THE ROOT CAUSE OF THE 2026-08-18 SILENCE WAS
+    // NEVER FOUND.** Its evidence is gone for ever: the ring did not exist and
+    // this Worker had no retained logs. Every hypothesis about it is reasoning,
+    // and reasoning does not stop a person being ignored a second time.
+    //
+    // So instead of fixing the call that hung, this makes a hang — in ANY call,
+    // known or not — end in words. `deadline.ts` explains why a hang is the one
+    // failure mode that says nothing: every other outcome on this surface has a
+    // sentence written for it, and a hang is the case where the code that writes
+    // the sentence never runs.
+    //
+    // ⚠️ **IT DOES NOT CANCEL THE TURN.** If the real answer lands afterwards it
+    // is posted too, which is why `stillThinking` is worded as a follow-through
+    // rather than as a failure. Two messages beats nothing; and the fired
+    // watchdog is recorded, so a pattern of them is visible instead of being
+    // rediscovered by another user's complaint.
+    const watched = handleMention(
       {
         capCheck: (userId) => this.capCheck(userId),
         recordTurn: (userId) => this.recordTurn(userId),
@@ -1118,6 +1314,22 @@ export class GabiGateway {
           read: (userId: string) => this.personaRead(userId),
           roster: () => this.personaRoster(),
         },
+        /**
+         * ⚠️ **A REFUSED REPLY IS RETRIED AS A PLAIN MESSAGE — 2026-08-18.**
+         *
+         * This used to log the status and return, which meant `say()` believed
+         * it had spoken while the channel stayed empty. That is one of the four
+         * paths that can produce the prohibited outcome, and it is the only one
+         * with a cheap remedy: **the commonest reason a REPLY fails is the
+         * referenced message being gone** (deleted, or edited into a form
+         * Discord will not thread onto), and a plain channel message lands fine
+         * in that case.
+         *
+         * ⚠️ It does NOT paper over a 403. If the bot cannot post in that
+         * channel the retry fails too, and then the failure is logged as the
+         * genuinely undeliverable answer it is and the ring records `silent` —
+         * which is how somebody finds out, instead of nobody finding out.
+         */
         reply: async (content, extra) => {
           const res = await replyToMessage(
             botToken,
@@ -1127,11 +1339,29 @@ export class GabiGateway {
             trigger.authorId,
             extra?.components ? { components: extra.components } : {},
           );
-          if (!res.ok) {
-            // 403 = not allowed to post there. A fact about that channel's
-            // permissions, not a failure of the answer; named, never retried.
-            console.error(`GABI gateway: Discord refused the reply (HTTP ${res.status}).`);
+          if (res.ok) {
+            delivered = true;
+            return;
           }
+          console.error(
+            `GABI gateway: Discord refused the reply (HTTP ${res.status}); trying a plain message.`,
+          );
+          const retry = await createChannelMessage(botToken, trigger.channelId, {
+            content,
+            ...(extra?.components ? { components: extra.components } : {}),
+            allowed_mentions: { parse: [], users: [trigger.authorId] },
+          });
+          if (retry.ok) {
+            delivered = true;
+            return;
+          }
+          // ⚠️ LOUD, and named as the thing it is. An answer was composed, money
+          // was spent, and a person is looking at nothing.
+          console.error(
+            `GABI gateway: THE ANSWER WAS NEVER DELIVERED — reply ${res.status}, plain message ` +
+              `${retry.status}, channel ${trigger.channelId}. Check the bot's Send Messages ` +
+              'permission in that channel; this is what "she ignored me" looks like from inside.',
+          );
         },
         // ⚠️ A NEW message rather than a reply to the original: the sweep's
         // report can land minutes later, and threading it onto a message that
@@ -1170,8 +1400,105 @@ export class GabiGateway {
         personalityEnabled: personalityOn(this.env),
         ...(persona ? { personaBlock: personaBlock(persona.trope) } : {}),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
+        trace,
       },
     );
+
+    const raced = await withDeadline(watched, TURN_WATCHDOG_MS, null);
+    if (raced.timedOut) {
+      console.error(
+        `GABI gateway: A TURN PASSED ${TURN_WATCHDOG_MS}ms WITH NOTHING POSTED — message ` +
+          `${trigger.messageId}, channel ${trigger.channelId}. This is the silent-turn class; the ` +
+          'watchdog spoke in its place. Check what the tools/model were doing at this timestamp.',
+      );
+      trace.hid('turn_timed_out');
+      await createChannelMessage(botToken, trigger.channelId, {
+        content: MENTION_MSG.stillThinking,
+        allowed_mentions: { parse: [], users: [trigger.authorId] },
+      }).catch(() => {});
+      await this.recordTurnLog({
+        at: startedAt,
+        person: trigger.authorId,
+        via: trigger.via,
+        outcome: 'silent',
+        channel: trigger.channelId,
+        why: 'watchdog',
+        ...(trace.read().lane ? { lane: trace.read().lane as string } : {}),
+        ...(trace.read().tools.length ? { tools: trace.read().tools } : {}),
+        ms: Date.now() - startedAt,
+      });
+      // ⚠️ The turn is still running and may yet deliver. Nothing here waits for
+      // it: the frame handler returning is what frees the socket to take the
+      // next message, and holding it open behind a stuck turn would turn one
+      // silence into a queue of them.
+      return;
+    }
+    const outcome = raced.value ?? { answered: false, intent: 'error' as const };
+
+    // ── ⚠️ THE RING, WRITTEN ONCE PER TAKEN TURN ────────────────────────────
+    //
+    // ⚠️ **`delivered` DECIDES, NOT `answered`.** `handleMention` reports whether
+    // it produced an answer; this reports whether Discord took one. On the night
+    // this was built those two were assumed to be the same thing, and the whole
+    // reason the ring exists is that they can come apart without anybody
+    // noticing.
+    const seen = trace.read();
+
+    // ⚠️ THE PAIR OF `gabi_dispatch_taken`. A `taken` with no `done` is a turn
+    // that died in between, and `ms` on the ones that DO finish is the baseline
+    // that says whether "died" means "threw" or "ran out of time".
+    console.log(
+      JSON.stringify({
+        evt: 'gabi_dispatch_done',
+        message_id: trigger.messageId,
+        lane: seen.lane ?? null,
+        tools: seen.tools,
+        hid: seen.hid,
+        intent: outcome.intent,
+        delivered,
+        ms: Date.now() - startedAt,
+      }),
+    );
+
+    await this.recordTurnLog({
+      at: startedAt,
+      person: trigger.authorId,
+      via: trigger.via,
+      outcome: !delivered
+        ? 'silent'
+        : outcome.intent === 'capped'
+          ? 'capped'
+          : outcome.intent === 'error'
+            ? 'error'
+            : 'answered',
+      channel: trigger.channelId,
+      ...(outcome.intent ? { intent: String(outcome.intent) } : {}),
+      ...(seen.lane ? { lane: seen.lane } : {}),
+      ...(seen.tools.length ? { tools: seen.tools } : {}),
+      ...(seen.hid.length ? { hid: seen.hid } : {}),
+      ms: Date.now() - startedAt,
+    });
+  }
+
+  /**
+   * ⚠️ **ONE ROW WRITE, AND IT CAN NEVER FAIL A TURN.**
+   *
+   * Every failure is swallowed with a log line, for the reason
+   * `@platform/estate-events` gives about itself: *a Worker reporting a problem
+   * must not be able to turn that problem into a second, worse one.* A ring that
+   * threw would convert "she gave a slightly odd answer" into "she said
+   * nothing", which is the exact defect it was built to catch.
+   */
+  private async recordTurnLog(entry: TurnLogEntry): Promise<void> {
+    try {
+      const ring = (await this.state.storage.get<TurnLogEntry[]>(K_TURN_LOG)) ?? [];
+      await this.state.storage.put(K_TURN_LOG, pushTurnLog(ring, entry));
+    } catch (err) {
+      console.error(
+        'GABI gateway: the turn ring could not be written (the turn itself is unaffected):',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   private async onClose(code: number, reason: string): Promise<void> {

@@ -150,6 +150,18 @@ export interface ToolContext {
    * (`shelf-exec.ts`) is the FIFTH module here that names a credential.
    */
   shelf?: ShelfToolContext;
+  /**
+   * ⚠️ **THE TURN TRACE — optional, inert, and it holds nothing.** Added
+   * 2026-08-18 with the recent-turn log, after a real person's *"she didn't
+   * answer me"* could not be investigated at all (`turnlog.ts`'s header carries
+   * the incident). `runTool` is the ONE dispatch point every tool family passes
+   * through, so recording here covers the catalogue, docs, book, shelf and
+   * recall families at once rather than in five places that could drift.
+   *
+   * ⚠️ It records the tool NAME and nothing else — never the arguments, never
+   * the result. A query string is content.
+   */
+  trace?: { tool(name: string): void };
 }
 
 /** What one executed call produced. `isError` becomes the `tool_result` block's
@@ -217,6 +229,12 @@ export async function runTool(
       },
     };
   }
+  // ⚠️ RECORDED AFTER THE ALLOWLIST, BEFORE THE DISPATCH. After, so an unknown
+  // name is not written down as a tool that fired; before, so a tool that THREW
+  // still shows in the ring — a turn that died inside `search_book_text` and one
+  // that never reached it are the two answers "why was she quiet?" can have, and
+  // recording on success alone would erase the first.
+  ctx.trace?.tool(label);
   const args = (input ?? {}) as Record<string, unknown>;
   try {
     if (isDocs) return await runDocsTool(name as GabiDocsToolName, args, ctx);

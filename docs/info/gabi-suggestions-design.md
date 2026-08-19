@@ -237,6 +237,112 @@ memory control → persona pin → persona admin/query → docs → SUGGEST → 
 
 ---
 
+## 10f. 🔴 INCIDENT — THE FIRST REAL NON-OWNER USER, AND THE LANE MISSED HIM (2026-08-18)
+
+**7:26 PM Phoenix. Not a test. Not the owner. A member of the household, in a
+channel, three hours after this lane went live.** Verbatim:
+
+> **Cheetah11:** *"@GABI I can't sit and read a book it makes me fall asleep.
+> Find me something entertaining"*
+>
+> **GABI:** *"I looked on the estate's public shelf for **can't sit read makes
+> fall asleep something entertaining**. Nothing on the estate's public shelf
+> matches that…"*
+>
+> **Cheetah11:** *"Gabi sucks what the heck."*
+
+⚠️ **He is right, and his sentence is now the specification.** Two separate
+defects fired in one turn, and they are worth keeping apart because they have
+different fixes and different lessons.
+
+### Defect 1 — the routing miss, and it is the FOURTH of its family in one day
+
+`suggestIntent` never claimed the turn. Every pattern it had required one of a
+small set of **library words** — *recommend*, *suggest*, *read*, *listen*,
+*book*. His sentence contained none of them, because:
+
+> ⚠️ **NOBODY ASKS FOR A "RECOMMENDATION". THEY ASK FOR SOMETHING GOOD.**
+
+`find me (?:a|something) (?:book|read)` needed a noun after "something". He said
+*"find me something entertaining"*. One word of grammar between a working feature
+and *"Gabi sucks"*.
+
+**This is the same class as the day's other three** — docs answered from the book
+shelf, the shelf lane never entered, the shelf lane entered and the tool never
+called — but with a twist that makes it worse: those three were found by the
+OWNER, testing, using the lanes' own prescribed phrasings. **This one was found by
+a stranger using ordinary English.** The lesson generalises:
+
+> **A detector tested only against the sentences its author imagined is a
+> detector tested against one person's idiolect.**
+
+Fixed by widening `SUGGEST_STRONG` with the conversational shapes: *find/give/pick
+me something*, *I'm bored*, *entertain me*, *surprise me*, *anything good*, *what
+should I listen to*, *in the mood for*, *something entertaining/funny/short/that
+won't put me to sleep*. ⚠️ The widening is bounded — every added pattern still
+carries an imperative or a *what/anything* question, so this stays a router and
+does not become "any sentence mentioning books". `test/suggest.test.ts` asserts
+both halves: the sixteen shapes it must now catch, and the nine it must still
+leave to the docs, catalogue, shelf, book and small-talk lanes.
+
+### Defect 2 — she quoted a mangled version of his own sentence back at him
+
+`searchTermFor` is a best-effort stopword-stripper whose own header says it is
+*"never load-bearing"*. Its output was then **printed to a person in bold** as
+what she had looked for.
+
+⚠️ **A machine reciting a garbled version of your own words and telling you it
+found nothing is worse than a plain "I don't know."** It reads as not having been
+listened to — which is exactly what he said next.
+
+Fixed with `termIsQuotable()`: a reduction of more than five words is a sentence,
+not a title, and when nothing matched she says *"I'm not sure what to look up
+there…"* and names what would work instead. ⚠️ **She also stops claiming the
+catalogue lacks it** — a search she is not confident she built correctly is not
+evidence of an absence. Five words is the bar because the longest real title
+question measured on this surface — *"what is the fourth book in the Dungeon
+Crawler Carl series"* → `fourth Dungeon Crawler Carl series` — is five, and it
+keeps its old behaviour.
+
+### And the third thing, which was not a defect but was a design mistake
+
+He never named a format, so the lane would have asked *"audiobook, ebook, or a
+physical copy?"* — **a question, and no books.** That is the
+ask-instead-of-deliver defect the estate had already written up **twice the same
+day**, arriving a third time in the newest lane.
+
+> **One refining question is welcome AFTER a real answer, never instead of one.**
+
+An unstated format now falls back to the **audiobook** shelf and answers, then
+asks in one closing clause. ⚠️ **No gate is bypassed:** audio is the public slice
+`audiobooks.heygabi.ai` already publishes to the open internet, ungated for the
+same reason `/have` is. The ebook and physical gates are still reached only by a
+format somebody actually NAMED, and `formatAsked`'s explicit-word rule is
+untouched.
+
+### ⚠️ The mood is a REQUIREMENT, not small talk
+
+*"I can't sit and read a book it makes me fall asleep"* is the more useful half of
+his message: it names the shelf (audio), the pace (fast) and the failure mode
+(anything worthy). `suggestMoodHints()` now reads those and hands them to the
+composer as prose.
+
+⚠️ **AND IT CAN NEVER OPEN A SHELF.** The hints are deliberately separate from
+`formatAsked`, which drives the ebook and physical **permission gates** and still
+demands an explicit word — its own rule, unchanged: *"Inferring 'physical' from
+'something to take on the plane' would be a guess dressed as an understanding."*
+A mood improves the PICKS; it is not a format and never becomes one.
+
+### What is still not fixed
+
+- ⚠️ **Nobody has judged whether the picks are good** — unchanged from §10, and
+  now with a real audience. The next thing to watch is whether Cheetah11's second
+  attempt gets something he actually starts.
+- **The widened detector is unit-tested, not user-tested.** It catches sixteen
+  shapes somebody wrote down. The next stranger will say a seventeenth.
+
+---
+
 ## Model guidance (read me if you are Kiro)
 
 > Kiro: stay on AUTO - it saves the owner credits. When a task names a

@@ -604,6 +604,57 @@ export const MENTION_MSG = {
     'not about the house — books get catalogued as they are scanned, and a real book nobody has scanned ' +
     'yet looks exactly like this.',
 
+  /**
+   * ⚠️ **THE ANSWER WHEN THE "SEARCH TERM" IS A MANGLED SENTENCE.**
+   *
+   * Added 2026-08-18 after the first real non-owner user. He wrote *"I can't sit
+   * and read a book it makes me fall asleep. Find me something entertaining"*
+   * and got back:
+   *
+   * > *"I looked on the estate's public shelf for **can't sit read makes fall
+   * > asleep something entertaining**. Nothing on the estate's public shelf
+   * > matches that…"*
+   *
+   * ⚠️ **Two separate failures, and this message fixes the second one.** The
+   * first was routing (`suggestIntent` never claimed the turn — fixed in
+   * `suggest.ts`). The second is this: `searchTermFor` is a best-effort
+   * stopword-stripper whose own header says it is *"never load-bearing"*, and
+   * then its output was **quoted back to a person in bold as though it were what
+   * they had asked for**. A machine reciting a mangled version of your own
+   * sentence and telling you it found nothing is worse than a plain "I don't
+   * know" — it reads as not having been listened to, which is precisely what he
+   * said next.
+   *
+   * So: when the reduction is sentence-shaped rather than title-shaped AND
+   * nothing matched, she says she is not sure what to look for, and says what
+   * she CAN do. ⚠️ She never quotes the soup, and she never states the absence
+   * as a fact about the catalogue — because a search she is not confident she
+   * built correctly is not evidence of anything.
+   */
+  /**
+   * ⚠️ **THE WATCHDOG'S SENTENCE — said when a turn has run too long and
+   * NOTHING has reached the channel.**
+   *
+   * Added 2026-08-18 after a real person asked a question, got total silence,
+   * and asked *"Did you turn her off?"* — she had not been.
+   *
+   * ⚠️ It is worded as a FOLLOW-THROUGH rather than a failure, because the turn
+   * is not cancelled: if the real answer lands a few seconds later the person
+   * gets it too, and a sentence that had said "I couldn't answer" would then be
+   * contradicted by the answer arriving. It also never blames them, never names
+   * a timeout, and never implies a permission problem.
+   */
+  stillThinking:
+    "Sorry — I'm taking much longer than I should on that one. Something on my side is being slow " +
+    "rather than anything to do with you. I'm still working on it, so if an answer turns up in a " +
+    'moment that is me catching up; if it does not, ask me again and I will start fresh.',
+
+  unsureWhatToSearch:
+    "I'm not sure what to look up there — that read more like a request than a title, and I'd rather " +
+    'say so than go hunting for words I picked out of your sentence. Give me a title, an author or a ' +
+    "series and I'll check the catalogue — or tell me the sort of thing you're in the mood for and " +
+    "I'll pick something for you.",
+
   overflow: (shown: number, total: number) => `\n_Closest ${shown} of ${total} matches._`,
 
   /**

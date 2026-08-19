@@ -176,6 +176,47 @@ const SUGGEST_STRONG = [
   /\bpick (?:me )?(?:a|something)\b/i,
   /\bfind me (?:a|something) (?:book|read)\b/i,
   /\bwhat (?:book )?should i (?:get|grab|try)\b/i,
+
+  // ── ⚠️ THE CONVERSATIONAL SHAPES — added 2026-08-18 after the FIRST REAL
+  //    NON-OWNER USER hit this lane and missed it entirely. See §10f of
+  //    `docs/info/gabi-suggestions-design.md` for the transcript.
+  //
+  //    ⚠️ **NOBODY ASKS FOR A "RECOMMENDATION". THEY ASK FOR SOMETHING GOOD.**
+  //    Every pattern above needs one of a small set of LIBRARY words —
+  //    recommend, suggest, read, listen. A stranger's first sentence carried
+  //    none of them: *"Find me something entertaining"*. It fell past this
+  //    router, past the shelf router, into a public-index grep, and came back
+  //    "nothing on the estate's public shelf matches that" — to which his reply
+  //    was *"Gabi sucks what the heck."* He was right.
+  //
+  //    The shapes below are the ordinary human ones. They are still deliberate
+  //    ASKS — every one has an imperative or a "what/anything" question in it —
+  //    so this stays a router and does not become "any sentence about books".
+
+  // "find me something…", "give me something…", "pick me something…" — the
+  // owner-facing lesson: the OBJECT is "something", not "a book". Requiring
+  // "book" or "read" after it is what lost the real user.
+  /\b(?:find|get|give|pick|throw|send|hit|show)\s+me\s+(?:some|something|anything)\b/i,
+  // "I need / I'm looking for / I'm after / in the mood for something"
+  /\b(?:i\s+(?:need|want)|i(?:'|’)?m\s+(?:looking\s+for|after|in\s+the\s+mood\s+for)|looking\s+for)\s+(?:a|an|some|something|anything)\b/i,
+  /\bin\s+the\s+mood\s+for\b/i,
+  // "I'm bored", "entertain me", "keep me entertained"
+  /\b(?:i(?:'|’)?m|i\s+am)\s+bored\b/i,
+  /\bentertain\s+me\b/i,
+  // "something entertaining / funny / light / gripping / that won't put me to
+  // sleep". ⚠️ THE NEGATIVE FORM IS DELIBERATE: "something that won't put me to
+  // sleep" is a PREFERENCE, not noise — it says audio, and it says fast-moving.
+  /\bsomething\s+(?:really\s+|actually\s+|pretty\s+)?(?:entertaining|fun|funny|interesting|exciting|gripping|engaging|light|easy|short|quick|good|new|different|wild|dark|cosy|cozy)\b/i,
+  /\bsomething\s+that\s+(?:won(?:'|’)?t|wont|does\s?n(?:'|’)?t|doesnt|will|would|keeps?|holds?|grabs?)\b/i,
+  // "what should I listen to / pick up / check out / try / go with"
+  /\bwhat\s+(?:should|can|could|would)\s+i\s+(?:read|listen\s+to|start|pick\s+up|check\s+out|try|go\s+with|put\s+on)\b/i,
+  // "anything good", "got anything good", "any good ones"
+  /\b(?:any(?:thing)?|got\s+any(?:thing)?)\s+(?:good|fun|decent|worth\s+it|worth\s+a\s+listen)\b/i,
+  /\bany\s+good\s+ones\b/i,
+  // "what would I like / enjoy", "what do you think I'd like"
+  /\bwhat\s+(?:would|do\s+you\s+think)\s+i(?:'|’)?d?\s+(?:like|enjoy|be\s+into)\b/i,
+  // "surprise me"
+  /\bsurprise\s+me\b/i,
 ];
 
 export function suggestIntent(text: string): boolean {
@@ -229,6 +270,75 @@ export function formatFromProfileNotes(notes: readonly string[] | undefined): Su
     if (found) return found;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ MOOD — a PREFERENCE SIGNAL, and deliberately NOT an input to the gate
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **"IT MAKES ME FALL ASLEEP" IS A REQUIREMENT, NOT SMALL TALK** — the whole
+ * of the 2026-08-18 first-stranger transcript, in one line. He said *"I can't sit
+ * and read a book it makes me fall asleep"* before he said *"find me something
+ * entertaining"*, and the first half is the more useful half: it names the shelf
+ * (audio), the pace (fast) and the failure mode (anything worthy).
+ *
+ * ⚠️ **THESE HINTS NEVER TOUCH `formatAsked`, AND THAT SEPARATION IS LOAD-BEARING.**
+ * `formatAsked` decides which PERMISSION GATE is applied — the ebook grant, the
+ * physical shelf's `known` check — and its own header pins the rule: *"Only an
+ * EXPLICIT word counts. Inferring 'physical' from 'something to take on the
+ * plane' would be a guess dressed as an understanding."* That still holds. A mood
+ * hint is prose handed to the composer so the PICKS are better; it can never
+ * open a shelf, because it is not a format and it never becomes one.
+ */
+const MOOD_HINTS: [RegExp, string][] = [
+  [
+    /\b(?:falls?|falling|fell)\s+asleep\b|\bputs?\s+me\s+to\s+sleep\b|\bsend\s+me\s+to\s+sleep\b|\bcan(?:'|’)?t\s+(?:sit|stay\s+awake)\b|\bnod\s+off\b/i,
+    'reading on the page sends them to sleep — they are almost certainly after AUDIO, and after ' +
+      'something fast-moving rather than something worthy',
+  ],
+  [
+    /\b(?:entertaining|entertain|fun|funny|hilarious|laugh|comedy|light[-\s]?hearted)\b/i,
+    'they want it ENTERTAINING — lead with pace and humour, not with prestige',
+  ],
+  [
+    /\b(?:gripping|page[-\s]?turner|exciting|thrill(?:er|ing)|action|fast[-\s]?paced|can(?:'|’)?t\s+put\s+it\s+down)\b/i,
+    'they want it GRIPPING — pick for pace and a strong hook',
+  ],
+  [
+    /\b(?:short|quick|not\s+too\s+long|under\s+\d+\s+hours?|bite[-\s]?size)\b/i,
+    'they want something SHORT — prefer the lower running times and say the length',
+  ],
+  [
+    /\b(?:cosy|cozy|comforting|gentle|relaxing|wind\s+down|before\s+bed)\b/i,
+    'they want something GENTLE — pick for comfort rather than tension',
+  ],
+  [
+    /\b(?:dark|grim(?:dark)?|serious|heavy|bleak)\b/i,
+    'they want something DARKER — do not soften the picks',
+  ],
+  [
+    /\b(?:i\s+don(?:'|’)?t\s+(?:really\s+)?read|not\s+much\s+of\s+a\s+reader|hate\s+reading|no\s+time\s+to\s+read|too\s+busy\s+to\s+read)\b/i,
+    'they have said they do not really READ — AUDIO is the shelf that fits, and this is not the ' +
+      'moment to suggest a doorstopper',
+  ],
+];
+
+/**
+ * The readable hints this message carries, at most three. ⚠️ **Returns `[]` far
+ * more often than not, and that is correct** — an empty list means the composer
+ * behaves exactly as it did before this existed. A hint invented from a sentence
+ * that carried none would be a preference nobody stated, applied to real picks.
+ */
+export function suggestMoodHints(text: string): string[] {
+  const q = (text ?? '').trim();
+  if (!q) return [];
+  const out: string[] = [];
+  for (const [re, hint] of MOOD_HINTS) {
+    if (re.test(q)) out.push(hint);
+    if (out.length >= 3) break;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

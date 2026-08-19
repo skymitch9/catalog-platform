@@ -42,6 +42,37 @@ routes = [{ pattern = "discord.heygabi.ai", custom_domain = true }]
 [triggers]
 crons = ["*/2 * * * *"]
 
+# ⚠️ WORKERS LOGS — ENABLED 2026-08-18, AND THE REASON IS AN INCIDENT.
+#
+# At 7:28 PM Phoenix the second real non-owner user ever to talk to GABI asked a
+# question in a channel and got NOTHING. Her next message was "Did you turn her
+# off?" — she had not been turned off. When the estate went looking for why,
+# there was nowhere to look: `wrangler tail` is a LIVE stream and nobody was
+# watching, the event ring was never wired to this Worker, an unanswered turn
+# writes no conversation record by design, and the daily fuses keep counts with
+# no history. Every one of those absences is correct on its own terms, and
+# together they made a real person's complaint un-investigable.
+#
+# ⚠️ THIS IS THE INSTRUMENT THAT RETAINS. `apps/audiobook-worker` already runs
+# the same block, and `docs/info/audiobook-auth-soak-rerun-2026-08-17.md` §2
+# records it read back live from the settings API — so this is a proven pattern
+# on this account rather than a hopeful one.
+#
+# ⚠️ WHAT MUST NEVER BE LOGGED, and it is a standing promise rather than a
+# preference: `docs/info/gabi-bare-text-triggers-memo.md` §6.2 names "nothing
+# logs the message content" as the estate's most fragile privacy claim — "one
+# careless line away from being false". Turning retention ON raises the price of
+# that line, it does not lower it. `gabi_turn` accounting logs token COUNTS and
+# snowflakes and no text, the turn ring stores no text at all, and it stays that
+# way.
+#
+# head_sampling_rate = 1 : keep everything. This Worker handles a household's
+# traffic, not a website's; sampling a low-volume Worker means the one request
+# somebody asks about is the one that was dropped.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # ⚠️ The one persistent WebSocket to Discord's gateway, so GABI HEARS ordinary
 # messages that @mention her (src/gateway.ts). A single named instance,
 # deliberately: Discord's gateway is one connection per bot, and a per-request

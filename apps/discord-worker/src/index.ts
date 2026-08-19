@@ -523,6 +523,118 @@ async function adminGate(c: {
   return null;
 }
 
+/**
+ * ⚠️ **THE DEVOPS GATE FOR THE OPERATIONS ROUTES — ASKED, NEVER HELD.**
+ *
+ * `adminGate` above is the ESTATE-ADMIN gate: it reads `site_roles/{uid}` and
+ * demands `admin` or `owner`. That is right for publishing a command registry to
+ * Discord, and it is wrong for an operations dashboard: `/status` is gated on
+ * **devops**, which the estate directory computes as *devops OR approver OR
+ * owner*, and the two ladders are genuinely different lists.
+ *
+ * So this asks the auth Worker the same question the browser door asks, with
+ * **the caller's own bearer** — the `devops-gate.ts` idiom moved to HTTP:
+ *
+ * | outcome | means |
+ * |---|---|
+ * | `200` + `is_devops`/`is_approver` | allowed |
+ * | `200` without either | ⚠️ a real refusal, worded, naming what it needs |
+ * | `401` | not signed in — a different sentence, and a different fix |
+ * | anything else | ⚠️ **UNKNOWN, worded as an OUTAGE.** Never a refusal |
+ *
+ * ⚠️ **NO SECOND COPY OF "WHO IS DEVOPS" IS CREATED, and that is the point.**
+ * A local copy would be a second thing to forget to revoke, and revoking
+ * somebody in `/admin` has to shut every door at once. ⚠️ **And no credential is
+ * forwarded** — the token in the header is the caller's own Firebase ID token,
+ * asserting the identity they already proved to their own browser.
+ */
+async function devopsHttpGate(c: {
+  req: { raw: Request };
+  env: Env;
+  json: (body: unknown, status?: number) => Response;
+}): Promise<Response | null> {
+  const auth = c.req.raw.headers.get('authorization') ?? '';
+  if (!auth.toLowerCase().startsWith('bearer ')) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'You are not signed in to the estate, so nothing was read. Sign in on heygabi.ai and ' +
+          'open this from the /status pages, which send your token for you.',
+      },
+      401,
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${authBase(c.env)}/api/estate/me`, { headers: { authorization: auth } });
+  } catch (err) {
+    console.error('devops gate: /api/estate/me was unreachable:', err instanceof Error ? err.message : err);
+    return c.json(
+      {
+        ok: false,
+        message:
+          'Your access could not be checked because the estate directory did not answer — that is a ' +
+          'service problem on our side, NOT a permissions one. Nothing was read; try again shortly.',
+      },
+      502,
+    );
+  }
+  if (res.status === 401) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'The estate did not recognise that sign-in — it may simply have expired. Sign in again on ' +
+          'heygabi.ai and reload this page.',
+      },
+      401,
+    );
+  }
+  if (!res.ok) {
+    // ⚠️ A NETWORK OR SERVER FAILURE IS NOT A PERMISSION FAILURE. Mislabelling
+    // an outage sends people asking for access they already hold.
+    console.error(`devops gate: /api/estate/me answered HTTP ${res.status}.`);
+    return c.json(
+      {
+        ok: false,
+        message:
+          'Your access could not be checked because the estate directory answered with an error — a ' +
+          'service problem, NOT a permissions one. Nothing was read; try again shortly.',
+      },
+      502,
+    );
+  }
+
+  let body: { is_devops?: unknown; is_approver?: unknown; email?: unknown };
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'Your access could not be checked — the estate directory answered in a shape this Worker ' +
+          'did not understand. A service problem, not a permissions one. Nothing was read.',
+      },
+      502,
+    );
+  }
+  if (body.is_devops === true || body.is_approver === true) return null;
+
+  return c.json(
+    {
+      ok: false,
+      message:
+        'This is a devops view of how GABI is behaving, and this account is not devops-class. Ask an ' +
+        'estate admin to grant devops on the audiobook site’s /admin page, and it will work on your ' +
+        'next reload — no deploy needed.',
+    },
+    403,
+  );
+}
+
 app.post('/admin/commands/register', async (c) => {
   const refusal = await adminGate(c);
   if (refusal) return refusal;
@@ -599,6 +711,53 @@ app.use(
     maxAge: 600,
   }),
 );
+// ---------------------------------------------------------------------------
+// GET /admin/gabi/turnlog — ⚠️ THE DIAGNOSTIC THE 2026-08-18 SILENCE NEEDED.
+//
+// A real person asked GABI a question in a channel, got nothing at all, and
+// asked "Did you turn her off?" — and there was **nowhere to look**: no
+// observability, no event-ring wiring, no record of an unanswered turn, and
+// per-day fuse counters with no history. `src/turnlog.ts` lists all five
+// instruments and why each correctly knew nothing.
+//
+// This is the read side of the ring: the last forty turns, what lane claimed
+// each one, which tools actually fired, what scope hid it, and — the field the
+// whole thing exists for — whether words reached the channel.
+//
+// ⚠️ **DEVOPS-GATED, and the check is ASKED rather than held** (`devopsHttpGate`
+// below). ⚠️ **It carries no message text and no answer text**, by construction
+// rather than by filtering; the ring never stored any.
+// ---------------------------------------------------------------------------
+app.use(
+  '/admin/gabi/turnlog',
+  cors({
+    origin: 'https://heygabi.ai',
+    allowMethods: ['GET', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  }),
+);
+app.get('/admin/gabi/turnlog', async (c) => {
+  const refusal = await devopsHttpGate(c);
+  if (refusal) return refusal;
+
+  const stub = gatewayStub(c.env);
+  if (!stub) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'The gateway Durable Object is not bound on this Worker, so there is no turn ring to ' +
+          'read (a configuration gap, NOT a permissions problem). Check the ' +
+          '[[durable_objects.bindings]] entry for GABI_GATEWAY in wrangler.toml.',
+      },
+      503,
+    );
+  }
+  const res = await stub.fetch('https://gateway.internal/turnlog');
+  return c.json((await res.json()) as Record<string, unknown>);
+});
+
 app.post('/admin/gateway/start', async (c) => {
   const refusal = await adminGate(c);
   if (refusal) return refusal;

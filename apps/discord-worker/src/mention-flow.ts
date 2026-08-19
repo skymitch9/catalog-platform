@@ -152,11 +152,14 @@ import {
   type Trope,
 } from './personality.js';
 import { checkDevops, type DevopsVerdict } from './devops-gate.js';
+import type { TurnTrace } from './turnlog.js';
+import { PROFILE_READ_MS, withDeadline } from './deadline.js';
 import {
   formatAsked,
   formatFromProfileNotes,
   renderSuggestions,
   suggestIntent,
+  suggestMoodHints,
   SUGGEST_ASSUMED_NOTE,
   SUGGEST_MSG,
   SUGGEST_NOTE,
@@ -465,6 +468,18 @@ export interface MentionConfig {
   suggestEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
+  /**
+   * ⚠️ **THE TURN TRACE, and it is OPTIONAL ON PURPOSE.** Added 2026-08-18 after
+   * a real person got no answer at all and nothing in the estate could say why
+   * (`turnlog.ts`'s header carries the incident and the five instruments that
+   * each correctly knew nothing).
+   *
+   * It rides the config because the config already reaches every lane; a return
+   * value would have been a signature change in a dozen places with no way for a
+   * reviewer to see which one forgot. ⚠️ Absent means every behaviour is
+   * byte-identical to before it existed — every call site is `cfg.trace?.…`.
+   */
+  trace?: TurnTrace;
 }
 
 /**
@@ -510,6 +525,9 @@ function toolContext(
     ...(docs ? { docs } : {}),
     ...(books ? { books } : {}),
     ...(shelf ? { shelf } : {}),
+    // ⚠️ Handed to EVERY tool context from this one place, so no lane can build
+    // a context that quietly records nothing.
+    ...(cfg.trace ? { trace: cfg.trace } : {}),
   };
 }
 
@@ -674,7 +692,24 @@ async function profileFor(
   const key = personKey({ discordUserId });
   if (!key) return null;
   try {
-    return await deps.memory.load(key);
+    // ⚠️ **DEADLINED, 2026-08-18.** This is a Firestore GET behind a Google
+    // OAuth mint — two network calls with no timeout of their own — and it sits
+    // inside the `Promise.all` at the front of EVERY turn. One hung member hangs
+    // the whole turn, and a hung turn is the silence a real person met in a
+    // channel: no answer, no error, not even a log line.
+    //
+    // ⚠️ Tier 2 is colour, never evidence (see this file's header and design
+    // §6), so losing it costs a nicety. Losing the TURN costs the feature. The
+    // trade is not close, and the fallback is the same `null` the catch below
+    // already returns.
+    const { value, timedOut } = await withDeadline(deps.memory.load(key), PROFILE_READ_MS, null);
+    if (timedOut) {
+      console.error(
+        `GABI memory: the profile read passed ${PROFILE_READ_MS}ms and was raced past; answering ` +
+          'without it. She is briefly a fresh bot, which is the designed trade.',
+      );
+    }
+    return value;
   } catch (err) {
     // ⚠️ A profile that cannot be read costs the turn NOTHING. Failing open here
     // means she is briefly a fresh bot; failing closed would mean no answer at
@@ -726,6 +761,31 @@ async function memoryAnswer(
 
 /** The nibble, worded. Shared by the lookup and fix paths so one wrong-term
  * rendering cannot drift between them. */
+/**
+ * ⚠️ **IS THIS REDUCTION QUOTABLE, OR IS IT SOUP?**
+ *
+ * `searchTermFor` strips stopwords from a spoken sentence. On a title question
+ * ("do we have the way of kings?" → "way kings") the result is a fine thing to
+ * show somebody. On a REQUEST ("I can't sit and read a book it makes me fall
+ * asleep. Find me something entertaining" → "can't sit read makes fall asleep
+ * something entertaining") it is a mangled echo of their own words, and quoting
+ * it back with "nothing matches" is how the first stranger to use GABI concluded
+ * she was broken.
+ *
+ * ⚠️ **Word count is the whole test, and that is deliberate rather than lazy.**
+ * A title, an author or a series survives the reduction as a handful of words;
+ * a sentence survives as a sentence. Five is the bar because the longest real
+ * title question measured on this surface — *"what is the fourth book in the
+ * Dungeon Crawler Carl series"* → "fourth Dungeon Crawler Carl series" — is
+ * five, and it must keep its current behaviour.
+ */
+export const MAX_QUOTABLE_TERM_WORDS = 5;
+
+export function termIsQuotable(term: string): boolean {
+  const words = term.trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= MAX_QUOTABLE_TERM_WORDS;
+}
+
 function shelfAnswer(
   term: string,
   books: SearchBookHit[] | null,
@@ -734,6 +794,10 @@ function shelfAnswer(
 ): string {
   if (failure) return failure;
   const hits = books ?? [];
+  // ⚠️ NOTHING MATCHED AND THE TERM WAS SENTENCE-SHAPED. Say we are not sure
+  // what to look for; never parrot the reduction, and never report the absence
+  // as a fact about the catalogue — see `MENTION_MSG.unsureWhatToSearch`.
+  if (hits.length === 0 && !termIsQuotable(term)) return MENTION_MSG.unsureWhatToSearch;
   if (hits.length === 0) return `${MENTION_MSG.searched(truncate(term, 80))}\n${MENTION_MSG.none}`;
   const shown = hits.slice(0, limit);
   return (
@@ -1189,15 +1253,30 @@ async function suggestAnswer(
     ...(overflow ? { overflowNote: SUGGEST_MSG_MORE } : {}),
   });
 
-  // ── 1. ⚠️ ONE clarifying question, and only when it is genuinely needed ──
+  // ── 1. ⚠️ THE FORMAT — AND THE CLARIFY NO LONGER REPLACES THE ANSWER ─────
+  //
+  // ⚠️ **CHANGED 2026-08-18 AFTER THE FIRST REAL NON-OWNER USER.** This branch
+  // used to `return SUGGEST_MSG.clarify` and nothing else: a stranger who asked
+  // for something to listen to got a question back and no books. That is the
+  // ask-instead-of-deliver defect this estate had already written up TWICE the
+  // same day — `shelf-flow.ts`'s header records the second — arriving a third
+  // time in the newest lane.
+  //
+  // > **One refining question is welcome AFTER a real answer, never instead of
+  // > one.**
+  //
+  // So an unstated format now falls back to **AUDIO**, which is not a guess with
+  // consequences: it is the PUBLIC slice `audiobooks.heygabi.ai` already
+  // publishes to the open internet, ungated for the same reason `/have` is
+  // (`gabi_suggest_audio_ready` is `suggestOn()` and nothing else). ⚠️ **No gate
+  // is bypassed and no shelf is opened** — the ebook and physical gates are
+  // reached only by a format somebody actually NAMED, exactly as before, and
+  // `formatAsked`'s explicit-word rule is untouched.
   const stated = formatAsked(question);
   const learned = stated ? null : formatFromProfileNotes(ctx.profileNotes);
-  const format: SuggestFormat | null = stated ?? learned;
-  if (!format) {
-    // ⚠️ NOTHING IS READ AND NOTHING IS GATED. She asked a question; the next
-    // message answers it and comes back through this same lane with a format.
-    return { content: SUGGEST_MSG.clarify, pending: null, intent: 'question', components: null };
-  }
+  const chosen: SuggestFormat | null = stated ?? learned;
+  const format: SuggestFormat = chosen ?? 'audio';
+  const assumedPublic = chosen === null;
 
   // ── 2. ⚠️ THE GATE, BEFORE THE GATHERING ────────────────────────────────
   const gate = await suggestGate(format, {
@@ -1221,10 +1300,19 @@ async function suggestAnswer(
   if (gathered.candidates.length === 0) return done(SUGGEST_MSG.nothingLeft(format), false);
 
   // ── 4. ⚠️ GROUNDED ON A CLOSED LIST OF ROWS READ THIS TURN ───────────────
+  const moodHints = suggestMoodHints(question);
   const grounding = [
     renderSuggestions(gathered.candidates, format),
     SUGGEST_NOTE,
     learned ? SUGGEST_ASSUMED_NOTE(learned) : '',
+    // ⚠️ The picks come FIRST and the format question comes after them, in one
+    // short clause. Reversing that is what produced a question and no books.
+    assumedPublic ? SUGGEST_AUDIO_FIRST_NOTE : '',
+    // ⚠️ A MOOD IS A REQUIREMENT. "It makes me fall asleep" told us the shelf and
+    // the pace before he ever said what he wanted; ignoring it and returning the
+    // house's most acclaimed doorstopper would be a correct answer to a question
+    // nobody asked.
+    moodHints.length > 0 ? `⚠️ WHAT THEY ACTUALLY ASKED FOR: ${moodHints.join('; ')}.` : '',
     gathered.shelfUnavailable ? SUGGEST_SHELF_DOWN_NOTE : '',
   ]
     .filter(Boolean)
@@ -1248,8 +1336,30 @@ async function suggestAnswer(
   // ⚠️ With no key the CANDIDATES THEMSELVES are already a correct, complete and
   // honest answer — real rows with real reasons. Falling back to them beats
   // falling back to an apology.
-  return done(spoken.text ?? `${renderSuggestions(gathered.candidates, format)}`);
+  // ⚠️ And the keyless fallback carries the clarify SENTENCE too, appended after
+  // the picks. Otherwise the one path with no model is the one path that goes
+  // back to answering a request with a question.
+  const fallback =
+    renderSuggestions(gathered.candidates, format) +
+    (assumedPublic ? `\n\n${SUGGEST_MSG.clarify}` : '');
+  return done(spoken.text ?? fallback);
 }
+
+/**
+ * ⚠️ **THE FORMAT QUESTION, DEMOTED FROM "INSTEAD OF" TO "AFTER".**
+ *
+ * The owner's ask was *"clarify if I want audio physical or ebook"* and that is
+ * still honoured — it is asked, once, in her own words. What changed on
+ * 2026-08-18 is WHEN: a person who asks for something to read and receives only
+ * a question has been given nothing, and the first stranger to use GABI was
+ * given exactly that.
+ */
+const SUGGEST_AUDIO_FIRST_NOTE =
+  '⚠️ THEY DID NOT SAY WHICH FORMAT, so these picks are from the AUDIOBOOK shelf — the public one. ' +
+  'Give the picks FIRST and properly. Then, in ONE short closing clause, say you can look on the ' +
+  'ebook or physical shelves instead if they would rather. ⚠️ Do not lead with the question, do not ' +
+  'apologise for choosing, and do not imply the other shelves are unavailable — they are simply not ' +
+  'what you looked at this time.';
 
 /** ⚠️ Kept beside the lane rather than in `suggest.ts` because it is a property
  *  of THIS surface's auto-continue, not of the suggestion contract. */
@@ -1477,6 +1587,8 @@ async function answerQuestion(
   // This is a privacy control, so it is deterministic and it goes first.
   const memoryAsk = memoryCommand(question);
   if (memoryAsk && memory) {
+    cfg.trace?.lane('memory');
+    if (!cfg.memoryEnabled) cfg.trace?.hid('memory_switched_off');
     return await memoryAnswer(memoryAsk, memory.deps, cfg, memory.discordUserId);
   }
 
@@ -1498,6 +1610,7 @@ async function answerQuestion(
 
   const personaAsk = personaCommand(question);
   if (personaAsk && persona?.deps.persona) {
+    cfg.trace?.lane('persona');
     if (personaAsk.kind === 'clear') {
       await persona.deps.persona.clear(persona.discordUserId);
       // ⚠️ Answered in whatever voice she currently has, saying nothing about
@@ -1554,13 +1667,16 @@ async function answerQuestion(
   // the docs feature (`docsEnabled` undefined) falls through UNCHANGED rather
   // than being handed a sentence about a capability it never had.
   if (docsIntent(question)) {
+    cfg.trace?.lane('docs');
     if (docs) return await docsAnswer(question, history, who, cfg, docs, overrides, extraBlock, shelfCtx);
     if (cfg.docsEnabled === true) {
+      cfg.trace?.hid('docs_not_configured');
       // The posture is on but no port was built — the app token or the service
       // account is missing. A setup gap, and never phrased as a permissions one.
       return { content: DOCS_MSG.notConfigured, pending: null, intent: 'question', components: null };
     }
     if (cfg.docsEnabled === false) {
+      cfg.trace?.hid('docs_switched_off');
       // ⚠️ OFF IS NOT SILENT. The docs half of the design says so explicitly: a
       // docs question must not fall through to a shelf search that finds
       // nothing and reads as broken.
@@ -1582,6 +1698,7 @@ async function answerQuestion(
   //    lane would answer it by reading the reading list back — a good answer to a
   //    different question.
   if (suggestIntent(question)) {
+    cfg.trace?.lane('suggest');
     if (cfg.suggestEnabled === true) {
       return await suggestAnswer(
         question,
@@ -1599,6 +1716,7 @@ async function answerQuestion(
       );
     }
     if (cfg.suggestEnabled === false) {
+      cfg.trace?.hid('suggest_switched_off');
       // ⚠️ OFF IS NOT SILENT, for the reason every other lane's off is not.
       return { content: SUGGEST_MSG.switchedOff, pending: null, intent: 'question', components: null };
     }
@@ -1624,15 +1742,18 @@ async function answerQuestion(
   // feature (`shelfEnabled` undefined) falls through UNCHANGED rather than being
   // handed a sentence about a capability it never had.
   if (shelfLaneIntent(question)) {
+    cfg.trace?.lane('shelf');
     if (shelfCtx) {
       return await personalShelfAnswer(question, history, who, cfg, shelfCtx, overrides, extraBlock);
     }
     if (cfg.shelfEnabled === true) {
+      cfg.trace?.hid('shelf_not_configured');
       // The posture is on but no port was built — no service account. A setup
       // gap, and never phrased as a permissions one.
       return { content: SHELF_MSG.notConfigured, pending: null, intent: 'question', components: null };
     }
     if (cfg.shelfEnabled === false) {
+      cfg.trace?.hid('shelf_switched_off');
       // ⚠️ OFF IS NOT SILENT, for the reason the docs and books lanes are not: a
       // question about somebody's own list must not fall through to a catalogue
       // search that finds nothing and reads as an answer about them.
@@ -1658,13 +1779,16 @@ async function answerQuestion(
   // what makes it a book question. `history` is the same remembered window in a
   // channel and in a DM.
   if (booksIntent(question) || booksFollowUp(question, history)) {
+    cfg.trace?.lane('books');
     if (books) return await booksAnswer(question, history, who, cfg, books, overrides, extraBlock, shelfCtx);
     if (cfg.booksEnabled === true) {
+      cfg.trace?.hid('books_not_configured');
       // The posture is on but no port was built — the book app token or the
       // service account is missing. A setup gap, never a permissions one.
       return { content: BOOKS_MSG.notConfigured, pending: null, intent: 'question', components: null };
     }
     if (cfg.booksEnabled === false) {
+      cfg.trace?.hid('books_switched_off');
       // ⚠️ OFF IS NOT SILENT, and design §4.6 pins the sentence: she says her
       // reading is switched off and offers what the catalogue knows, rather than
       // answering a plot question with a narrator.
@@ -1685,6 +1809,7 @@ async function answerQuestion(
   // claims, and a new lane must not quietly re-route traffic those tests already
   // cover. This one takes only what the book lane declined.
   if (shelfCtx && shelfFollowUp(question, history)) {
+    cfg.trace?.lane('shelf');
     return await personalShelfAnswer(question, history, who, cfg, shelfCtx, overrides, extraBlock);
   }
 
@@ -1702,6 +1827,7 @@ async function answerQuestion(
   if (ask) {
     const facts = await catalogAnswer(cfg, ask);
     if (facts) {
+      cfg.trace?.lane('catalogue');
       // With a key she says it in her own voice, WITH the tools in front of her
       // (so a follow-up inside the same turn — "and the sequel?" — is one more
       // lookup rather than an apology). Without one, the facts stand alone and
@@ -1724,6 +1850,7 @@ async function answerQuestion(
   }
 
   if (intent === 'have_lookup') {
+    cfg.trace?.lane('have_lookup');
     const found = await shelf(cfg.indexBaseUrl, question);
     const books = found.books ?? [];
     const pending = found.failure ? null : choiceFor(question, books, now);
@@ -1742,6 +1869,7 @@ async function answerQuestion(
   }
 
   if (intent === 'fix_request') {
+    cfg.trace?.lane('fix_link');
     // ⚠️ Propose-and-deep-link, `/gabi`'s shape (b) verbatim: she reads, she
     // says what she found, and the change happens where her authority is.
     // Phase B is where a write path could exist; this build has none.
@@ -1763,6 +1891,7 @@ async function answerQuestion(
   // question / smalltalk. A question may be about a book, so it is grounded
   // with a lookup; small talk is not — nobody saying "morning!" wants a
   // catalogue search, and skipping it saves a subrequest.
+  cfg.trace?.lane(intent === 'question' ? 'chat_grounded' : 'smalltalk');
   let grounding: string | null = null;
   if (intent === 'question') {
     const found = await shelf(cfg.indexBaseUrl, question);
@@ -1967,6 +2096,12 @@ export async function handleMention(
     //    words, that it is a cap on GABI's side and not something they did.
     const verdict = await deps.capCheck(trigger.authorId);
     if (!verdict.ok) {
+      // ⚠️ A CAPPED TURN SPEAKS, and the ring records that it did. The 7:28 PM
+      // silence made "was it a fuse?" the first hypothesis; it could not have
+      // been, because this branch says so in words — and now the ring can prove
+      // that rather than leaving it to be re-reasoned from the source.
+      cfg.trace?.lane('capped');
+      cfg.trace?.hid('turn_capped');
       await say(verdict.message);
       return { answered: true, intent: 'capped' };
     }
@@ -1983,6 +2118,8 @@ export async function handleMention(
     // and report, correctly and uselessly, that nothing matches it.
     const doing = delegatedIntent(trigger.question);
     if (doing) {
+      cfg.trace?.lane('delegated');
+      if (!cfg.delegatedWrites) cfg.trace?.hid('delegated_switched_off');
       const outcome = await delegatedAnswer(doing, trigger.authorId, deps, cfg, now);
       await say(outcome.content, outcome.components);
       await deps.conversation.save({

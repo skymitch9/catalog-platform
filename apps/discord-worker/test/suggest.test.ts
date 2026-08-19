@@ -30,11 +30,14 @@ import {
   renderSuggestions,
   rowHasFormat,
   suggestIntent,
+  suggestMoodHints,
   suggestOn,
   SUGGEST_MSG,
   SUGGEST_NOTE,
 } from '../src/suggest.js';
 import { suggestGate } from '../src/suggest-flow.js';
+import { MENTION_MSG } from '../src/mentions.js';
+import { termIsQuotable } from '../src/mention-flow.js';
 import type { BooksPort } from '../src/book-knowledge.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from '../src/delegated.js';
 import type { ReviewRow, TbrRow } from '../src/shelf.js';
@@ -454,5 +457,144 @@ describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () =
         assert.doesNotMatch(source, forbidden, `${f} now names ${forbidden}`);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE FIRST REAL NON-OWNER USER — 2026-08-18, 7:26 PM Phoenix
+//
+// Every assertion below is one sentence a real person typed into a real
+// channel, and the answer he actually got. He is not a tester and he did not
+// file a bug; he said "Gabi sucks what the heck" and stopped. That transcript
+// is the specification now.
+// ---------------------------------------------------------------------------
+
+describe('⚠️ REGRESSION — the first stranger: "Find me something entertaining"', () => {
+  /** Verbatim, both sentences, exactly as Discord delivered them. */
+  const CHEETAH =
+    "I can't sit and read a book it makes me fall asleep. Find me something entertaining";
+
+  it('⚠️ the transcript that produced "Gabi sucks" now REACHES the suggestion lane', () => {
+    assert.equal(
+      suggestIntent(CHEETAH),
+      true,
+      'the sentence that broke the lane must route to it — this is THE regression test',
+    );
+  });
+
+  it('⚠️ the second half alone is enough — "find me something" needs no library word', () => {
+    // The defect in one line: every pre-existing pattern needed "book", "read",
+    // "listen", "recommend" or "suggest". Nobody says those.
+    for (const q of [
+      'Find me something entertaining',
+      'find me something good',
+      'give me something fun',
+      'pick me something short',
+      'show me something new',
+      'surprise me',
+      'entertain me',
+      "I'm bored",
+      'got anything good?',
+      'any good ones?',
+      "what should I listen to",
+      "what should I put on",
+      "I'm looking for something gripping",
+      "I'm in the mood for something dark",
+      'something that won’t put me to sleep',
+      'what would I enjoy?',
+    ]) {
+      assert.equal(suggestIntent(q), true, `still misses: ${q}`);
+    }
+  });
+
+  it('⚠️ and it still does NOT claim turns that belong to other lanes', () => {
+    // A router that catches everything is not a router. These four are the
+    // lanes it sits between, and each has its own regression suite.
+    for (const q of [
+      'do we have The Way of Kings?',
+      'who narrates Mistborn?',
+      'what is the fourth book in the Dungeon Crawler Carl series?',
+      "what haven't I read by Sanderson?",
+      'how do I promote the audiobook site?',
+      'what happens at the end of book 9?',
+      'what did I think of Skyward?',
+      'thanks!',
+      'morning',
+    ]) {
+      assert.equal(suggestIntent(q), false, `wrongly claimed: ${q}`);
+    }
+  });
+
+  it('⚠️ the MOOD is read as a requirement, not discarded as small talk', () => {
+    const hints = suggestMoodHints(CHEETAH);
+    assert.ok(hints.length > 0, 'the sentence carries preferences and they were dropped');
+    const joined = hints.join(' ');
+    assert.match(joined, /AUDIO/, 'falling asleep over a page names the shelf');
+    assert.match(joined, /ENTERTAINING/, '"entertaining" is what he asked for');
+  });
+
+  it('⚠️ a mood hint can NEVER open a gated shelf — it is not a format', () => {
+    // The separation that makes the hints safe: `formatAsked` drives the ebook
+    // and physical PERMISSION gates and still requires an explicit word.
+    assert.equal(formatAsked(CHEETAH), null);
+    assert.equal(formatAsked('find me something entertaining'), null);
+    // And an explicit word still works, unchanged.
+    assert.equal(formatAsked('any audiobooks worth a listen?'), 'audio');
+    assert.equal(formatAsked('something in paperback'), 'physical');
+  });
+
+  it('⚠️ an ordinary sentence yields NO hints — nothing is invented', () => {
+    assert.deepEqual(suggestMoodHints('what should I read next?'), []);
+    assert.deepEqual(suggestMoodHints(''), []);
+  });
+
+  it('⚠️ an unstated format DELIVERS AUDIO PICKS and asks AFTER — never instead', () => {
+    const lane = readFileSync(
+      fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
+      'utf8',
+    );
+    const body = lane.slice(lane.indexOf('async function suggestAnswer'));
+    const end = body.indexOf('\nconst SUGGEST_MSG_MORE');
+    const fn = body.slice(0, end > 0 ? end : body.length);
+    // The old shape — a bare `return` of the clarify sentence before anything
+    // was read — is what handed a stranger a question and no books.
+    assert.doesNotMatch(
+      fn,
+      /return\s*\{\s*content:\s*SUGGEST_MSG\.clarify/,
+      'the clarify question is back to REPLACING the answer',
+    );
+    assert.match(fn, /chosen\s*\?\?\s*'audio'/, 'an unstated format must fall back to the public tier');
+    assert.match(fn, /assumedPublic/, 'the answer has to know it assumed, so it can say so');
+  });
+
+  it('⚠️ the audio fallback opens NO gate the person did not name', () => {
+    // `suggestGate('audio', …)` needs no port and no identity: it is the public
+    // slice, the same scope `/have` answers at. Proven by calling it with an
+    // empty world — an ebook or physical default would need a port and would
+    // refuse here.
+    return suggestGate('audio', { discordUserId: 'u1' }).then((v) => {
+      assert.equal(v.ok, true, 'audio must stay ungated — it is the published catalogue');
+    });
+  });
+});
+
+describe('⚠️ REGRESSION — she must not quote a mangled version of your sentence back', () => {
+  it('a sentence-shaped reduction is NOT quotable; a title-shaped one is', () => {
+    // The exact soup she printed in bold, from searchTermFor(CHEETAH).
+    assert.equal(termIsQuotable("can't sit read makes fall asleep something entertaining"), false);
+    // …and the shapes that must keep their current behaviour.
+    assert.equal(termIsQuotable('way kings'), true);
+    assert.equal(termIsQuotable('Dungeon Crawler Carl'), true);
+    assert.equal(termIsQuotable('fourth Dungeon Crawler Carl series'), true);
+    assert.equal(termIsQuotable('Mistborn'), true);
+    assert.equal(termIsQuotable(''), false);
+  });
+
+  it('⚠️ the unsure sentence says what she CAN do, and claims nothing about the catalogue', () => {
+    const m = MENTION_MSG.unsureWhatToSearch;
+    assert.match(m, /not sure what to look up/i);
+    assert.match(m, /title, an author or a series/i, 'it has to say what would work');
+    assert.match(m, /mood for/i, 'and it has to offer the lane that actually fits');
+    assert.doesNotMatch(m, /Nothing on the estate/i, 'an unbuilt search is not evidence of absence');
   });
 });
