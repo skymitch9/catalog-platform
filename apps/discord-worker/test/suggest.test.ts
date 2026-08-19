@@ -20,12 +20,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import type { CatalogRow } from '../src/catalog-data.js';
+import { resetCatalogCache, type CatalogRow } from '../src/catalog-data.js';
 import {
   buildSuggestions,
   formatAsked,
   formatFromProfileNotes,
   PHYSICAL_SOURCE_INSTANCE,
+  PHYSICAL_FORMAT_TOKENS,
   physicalFormatsOf,
   renderSuggestions,
   rowHasFormat,
@@ -38,7 +39,7 @@ import {
   SUGGEST_NO_FABRICATION_NOTE,
   SUGGEST_NOTE,
 } from '../src/suggest.js';
-import { suggestGate } from '../src/suggest-flow.js';
+import { gatherSuggestions, suggestGate } from '../src/suggest-flow.js';
 import { MENTION_MSG } from '../src/mentions.js';
 import { DONT_KNOW_NOTE, quotableTerm, titleShaped } from '../src/mention-flow.js';
 import type { BooksPort } from '../src/book-knowledge.js';
@@ -72,6 +73,9 @@ const INSTANCES: LibraryInstance[] = [
 function delegatePort(over: Partial<DelegatePort> = {}): DelegatePort {
   return {
     linkedUid: async () => ({ ok: true, uid: 'u-1' }),
+    // ⚠️ Defaults to the EMPTY shelf so a gate test proves the GATE and nothing
+    // else; the physical-source tests override it explicitly.
+    browseWorks: async () => ({ app: 'library', site: 'x', total: 0, rows: [] }),
     whoami: async (): Promise<WhoAmI | null> => ({ app: 'library', site: 'x', known: true }),
     call: async () => ({ ok: true, status: 200, message: 'done', instance: INSTANCES[0] as LibraryInstance }),
     ...over,
@@ -887,5 +891,107 @@ describe('⚠️ an empty lookup may not become a claim about the world', () => 
     // scanner backlog is not.
     assert.match(SUGGEST_MSG.nothingLeft('physical'), /cross-linked/i);
     assert.match(SUGGEST_MSG.nothingLeft('physical'), /small slice/i);
+  });
+});
+
+/** ⚠️ A catalogue with a header and NO rows: these tests exercise the LIBRARY
+ *  source, so the audiobook CSV must contribute nothing. */
+const CSV_HEADER_ONLY =
+  'title,series,series_index_display,series_index_sort,author,narrator,year,genre,' +
+  'duration_hhmm,cover_href,companion_files,desc,library_work_id,library_formats,universe,series_gap' +
+  String.fromCharCode(10);
+
+// ── 9. ⚠️ THE PHYSICAL SOURCE — the library's own shelf ───────────────────
+
+/**
+ * ⚠️ **THE SOURCE THAT TOLD THE OWNER HIS SHELVES WERE EMPTY IS GONE.** Until
+ * 2026-08-19 physical drew from `catalog.csv`'s cross-linked print rows — 64 of
+ * 1,079, a slice of the AUDIOBOOK catalogue's join. The print catalogue holds
+ * **448 works, 341 with a held physical copy**, and none were reachable.
+ *
+ * ⚠️ The vis/known gate is UNCHANGED and still sits in front. This is only what
+ * the ALLOWED path reads.
+ */
+describe("⚠️ physical is sourced from the library's own shelf", () => {
+  const shelfRows = [
+    { id: '1', title: 'Project Hail Mary', authors: 'Andy Weir', formats: ['Hardcover'], url: 'https://library.heygabi.ai/work/1' },
+    { id: '2', title: 'Piranesi', authors: null, formats: [], url: 'https://library.heygabi.ai/work/2' },
+    { id: '3', title: 'Dune', authors: 'Frank Herbert', formats: ['Mass market'], url: 'https://library.heygabi.ai/work/3' },
+  ];
+
+  it('⚠️ MASS MARKET IS MATCHED — it silently dropped before today', () => {
+    assert.ok(
+      (PHYSICAL_FORMAT_TOKENS as readonly string[]).includes('mass market'),
+      'a mass-market paperback would be dropped from every physical suggestion',
+    );
+    const r = row({ title: 'Dune', libraryFormats: ['Mass market'] });
+    assert.equal(rowHasFormat(r, 'physical'), true);
+    // ⚠️ And it is NOT renamed to "paperback" in her own sentence.
+    assert.deepEqual(physicalFormatsOf(r), ['mass market']);
+  });
+
+  it("the library rows become suggestions, with the site's own URL", async () => {
+    resetCatalogCache();
+    const got = await gatherSuggestions({
+      catalogBaseUrl: 'https://example.test',
+      format: 'physical',
+      browsed: { rows: shelfRows, total: 341 },
+      fetchOverride: (async () =>
+        new Response(CSV_HEADER_ONLY, {
+          status: 200, headers: { 'content-type': 'text/csv' },
+        })) as unknown as typeof fetch,
+    });
+    assert.ok(got);
+    assert.equal(got.candidates.length, 3);
+    // ⚠️ VERBATIM. Assembling a URL here would be a second implementation of
+    // that site's routing, in a repo that does not deploy it.
+    assert.equal(got.candidates[0]?.url, 'https://library.heygabi.ai/work/1');
+  });
+
+  it('⚠️ formats:[] IS SUGGESTIBLE — "held, printing not typed in yet"', async () => {
+    resetCatalogCache();
+    const got = await gatherSuggestions({
+      catalogBaseUrl: 'https://example.test',
+      format: 'physical',
+      browsed: { rows: [shelfRows[1]!], total: 341 },
+      fetchOverride: (async () =>
+        new Response(CSV_HEADER_ONLY, {
+          status: 200, headers: { 'content-type': 'text/csv' },
+        })) as unknown as typeof fetch,
+    });
+    const c = got!.candidates[0]!;
+    // Never dropped, and never called "not physical".
+    assert.match(c.shelf, /copy is held/i);
+    assert.match(c.why, /edition is not recorded yet, but the book is there/i);
+    // ⚠️ A null author is OMITTED, never printed as a sentinel.
+    assert.equal(c.author, '');
+    assert.doesNotMatch(renderSuggestions([c], 'physical'), /—\s*$|Unknown/m);
+  });
+
+  it('⚠️ A REFUSED OR UNREACHABLE VERB IS AN EMPTY LIST, never a claim', async () => {
+    resetCatalogCache();
+    const got = await gatherSuggestions({
+      catalogBaseUrl: 'https://example.test',
+      format: 'physical',
+      browsed: null,
+      fetchOverride: (async () =>
+        new Response(CSV_HEADER_ONLY, {
+          status: 200, headers: { 'content-type': 'text/csv' },
+        })) as unknown as typeof fetch,
+    });
+    assert.deepEqual(got?.candidates, []);
+    // …which the lane renders as the honest-limit constant, still free of any
+    // scanning/cataloguing claim.
+    assert.doesNotMatch(SUGGEST_MSG.nothingLeft('physical'), /scann?(er|ed|ing)|come through/i);
+  });
+
+  it('⚠️ the verb is a READ, declared as one, and wired to the lane', () => {
+    const flow = readFileSync(fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href), 'utf8');
+    assert.match(flow, /port\.browseWorks\(instance, link\.uid\)/, 'the library shelf is not read');
+    // ⚠️ The GATE still runs first — this changed what the allowed path reads,
+    // never who is allowed.
+    const lane = flow.slice(flow.indexOf('async function suggestAnswer'));
+    assert.ok(lane.indexOf('await suggestGate(') < lane.indexOf('browseWorks'),
+      'the library shelf is read before the gate decides');
   });
 });

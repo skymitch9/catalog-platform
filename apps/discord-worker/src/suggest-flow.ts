@@ -28,9 +28,10 @@
 
 import { loadCatalog, type CatalogRow } from './catalog-data.js';
 import type { BooksPort } from './book-knowledge.js';
-import type { DelegatePort, LibraryInstance } from './delegated.js';
+import type { BrowseWork, DelegatePort, LibraryInstance } from './delegated.js';
 import type { ShelfPort, ReviewRow, TbrRow } from './shelf.js';
 import {
+  bookIdFromTitle,
   buildSuggestions,
   PHYSICAL_SOURCE_INSTANCE,
   SUGGEST_MSG,
@@ -156,6 +157,29 @@ async function physicalGate(ctx: SuggestGateContext): Promise<SuggestGate> {
 // The gathering
 // ---------------------------------------------------------------------------
 
+/**
+ * ⚠️ **THE PHYSICAL SOURCE, AS OF 2026-08-19 — the library's OWN shelf.**
+ *
+ * Until today a physical suggestion was drawn from `catalog.csv`'s cross-linked
+ * print rows: 64 of 1,079, a slice of the audiobook catalogue's own join. The
+ * owner asked for a physical book and was told his shelves looked empty. ⚠️ The
+ * estate's print catalogue holds **448 works**, of which **341** carry a held
+ * physical copy — and none of them were reachable from here.
+ *
+ * `browse-works` is that shelf, read on the asker's behalf. ⚠️ **The gate is
+ * unchanged and still sits in front**: `physicalGate` decides whether this
+ * person may be pointed at that instance at all, and this only changes what the
+ * ALLOWED path reads.
+ *
+ * ⚠️ **A row with `formats: []` IS SUGGESTIBLE.** The contract defines it as
+ * *"held, printing not typed in yet"* — six rows today — and dropping them would
+ * hide books the house really owns behind a data-entry gap.
+ */
+export interface BrowsedPhysical {
+  rows: readonly BrowseWork[];
+  total: number;
+}
+
 export interface GatheredSuggestions {
   candidates: SuggestCandidate[];
   /** ⚠️ True when the asker's own shelf could NOT be read. The suggestions are
@@ -184,6 +208,9 @@ export async function gatherSuggestions(opts: {
   shelf?: { port: ShelfPort; discordUserId: string };
   fetchOverride?: typeof fetch;
   limit?: number;
+  /** ⚠️ The library's OWN print shelf, already fetched by the caller (which is
+   *  the half that holds the delegated port). Present only for `physical`. */
+  browsed?: BrowsedPhysical | null;
 }): Promise<GatheredSuggestions | null> {
   const overrides = opts.fetchOverride ? { fetch: opts.fetchOverride } : undefined;
 
@@ -207,6 +234,35 @@ export async function gatherSuggestions(opts: {
       })()
     : Promise.resolve(null);
 
+  // ── ⚠️ PHYSICAL COMES FROM THE LIBRARY'S OWN SHELF ──────────────────────
+  //
+  // Not from `catalog.csv`'s cross-linked print rows, which are a slice of the
+  // AUDIOBOOK catalogue's join (64 of 1,079) and which told the owner his
+  // shelves were empty when the print catalogue holds 448 works.
+  //
+  // ⚠️ **IT RETURNS BEFORE THE AUDIOBOOK CATALOGUE IS EVEN CONSULTED**, and that
+  // is deliberate rather than an optimisation: the audiobook CSV contributes
+  // NOTHING to a physical answer, so letting its outage return `null` here would
+  // kill a suggestion the library could have answered perfectly.
+  //
+  // ⚠️ `browsed === null` means the verb errored or refused. That becomes an
+  // EMPTY candidate list, whose constant sentence says the lookup came back
+  // empty and names it as OUR limit — never as a fact about his shelves.
+  if (opts.format === 'physical') {
+    const shelfNow = await shelfReads;
+    if (!opts.browsed) {
+      return { candidates: [], shelfUnavailable: shelfNow !== null && !shelfNow.ok };
+    }
+    const reviewed = new Set((shelfNow?.reviews ?? []).map((r) => r.bookId).filter(Boolean));
+    const candidates = opts.browsed.rows
+      // ⚠️ Excluded the same way every other rung excludes: by REVIEW, the only
+      // record the estate keeps. Never "already read".
+      .filter((r) => !reviewed.has(bookIdFromTitle(r.title)))
+      .slice(0, opts.limit ?? SUGGEST_ROWS)
+      .map((r) => physicalCandidate(r));
+    return { candidates, shelfUnavailable: shelfNow !== null && !shelfNow.ok };
+  }
+
   const [load, shelf] = await Promise.all([
     loadCatalog(opts.catalogBaseUrl, overrides),
     shelfReads,
@@ -224,5 +280,37 @@ export async function gatherSuggestions(opts: {
       limit: opts.limit ?? SUGGEST_ROWS,
     }),
     shelfUnavailable: shelf !== null && !shelf.ok,
+  };
+}
+
+/**
+ * One library row as a suggestion.
+ *
+ * ⚠️ **`url` IS USED VERBATIM** — assembling one here would be a second
+ * implementation of that site's routing, in a repo that does not deploy it.
+ *
+ * ⚠️ **`formats: []` IS NOT "not physical"** — it is *held, printing not typed
+ * in yet*. The WHY says so in plain words rather than dropping the book or
+ * inventing an edition for it.
+ */
+function physicalCandidate(r: BrowseWork): SuggestCandidate {
+  const formats = r.formats.filter(Boolean);
+  const shelf = formats.length > 0
+    ? `the library, in ${formats.join(' and ').toLowerCase()}`
+    : 'the library — a copy is held, though the edition has not been typed in yet';
+  const why = formats.length > 0
+    ? `it is on the library shelf in ${formats.join(' and ').toLowerCase()} and you have not written about it`
+    : 'the library has a copy on the shelf — the edition is not recorded yet, but the book is there';
+  return {
+    title: r.title,
+    // ⚠️ null authors stay unattributed. A sentinel would print as an author.
+    author: r.authors ?? '',
+    bookId: bookIdFromTitle(r.title),
+    ...(r.series ? { series: r.series } : {}),
+    ...(r.seriesIndex != null ? { seriesIndex: String(r.seriesIndex) } : {}),
+    shelf,
+    why,
+    basis: 'shelf',
+    url: r.url,
   };
 }

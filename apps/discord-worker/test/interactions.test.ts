@@ -340,7 +340,13 @@ test('health: gabi_delegated_ready needs the switch AND the app token AND the SA
   // ⚠️ The write surface, stated from outside. A verb that mutates existing
   // data, deletes anything or touches a role appearing here would mean the
   // T0–T4 ladder moved, and this is where that becomes visible in one curl.
-  assert.deepEqual(live.gabi_delegated_verbs, ['whoami', 'add-isbn', 'run-details']);
+  // ⚠️ `browse-works` joined 2026-08-19 and is a READ — it lists the library's
+  // print shelf on the asker's behalf. The property this pins is unchanged: a
+  // verb that MUTATES existing data, deletes anything or touches a role
+  // appearing here still means the ladder moved.
+  assert.deepEqual(live.gabi_delegated_verbs, [
+    'whoami', 'add-isbn', 'run-details', 'browse-works',
+  ]);
 });
 
 test('health: link_ready is false unless BOTH halves of the ceremony are configured', async () => {

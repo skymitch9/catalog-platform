@@ -278,6 +278,39 @@ export interface WhoAmI {
 }
 
 /**
+ * One work the library holds in print.
+ *
+ * ⚠️ **`url` COMES FROM THE WORKER AND IS USED VERBATIM.** Assembling one here
+ * would be a second implementation of that site's routing, in a repo that does
+ * not deploy it — the classic way a link rots without anybody editing it.
+ *
+ * ⚠️ **`formats: []` MEANS "HELD, PRINTING NOT TYPED IN YET" — NEVER "not
+ * physical".** Six of the 341 rows are in that state today. Dropping them would
+ * hide real books the house really owns; the honest move is to surface them and
+ * say the edition is not recorded.
+ *
+ * ⚠️ `authors` is `null` when unknown — never a sentinel string, so nothing here
+ * may print "Unknown" as though it were an author.
+ */
+export interface BrowseWork {
+  id: string;
+  title: string;
+  authors: string | null;
+  series?: string | null;
+  seriesIndex?: string | number | null;
+  year?: string | number | null;
+  formats: string[];
+  url: string;
+}
+
+export interface BrowseWorksAnswer {
+  app: string;
+  site: string;
+  total: number;
+  rows: BrowseWork[];
+}
+
+/**
  * One delegated call's outcome. ⚠️ `message` is ALWAYS present and is always
  * the thing she says: on success it is the destination's own report, on refusal
  * it is the destination's own worded refusal, and on an outage it is this
@@ -309,6 +342,17 @@ export interface DelegatePort {
   ): Promise<{ ok: true; uid: string } | { ok: false; reason: 'unlinked' | 'outage' }>;
   /** Ask ONE instance about this person. `null` = that site was unreachable. */
   whoami(instance: LibraryInstance, uid: string): Promise<WhoAmI | null>;
+  /**
+   * ⚠️ **THE PRINT SHELF, READ ON THE ASKER'S BEHALF** (2026-08-19). `null` =
+   * that site was unreachable OR refused — the caller words both as its own
+   * limit, never as a fact about what the house owns, which is the exact
+   * failure this verb exists to end.
+   */
+  browseWorks(
+    instance: LibraryInstance,
+    uid: string,
+    opts?: { limit?: number },
+  ): Promise<BrowseWorksAnswer | null>;
   /** Do the thing. Never throws — an outage comes back as `status: 0`. */
   call(
     instance: LibraryInstance,

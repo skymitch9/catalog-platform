@@ -260,6 +260,9 @@ function fakePort(opts: {
   return {
     calls,
     port: {
+      // ⚠️ Present so the port stays COMPLETE. This test never browses, and a
+      // stub that lies about the shape is how a port grows a hole.
+      browseWorks: async () => null,
       async linkedUid() {
         if (opts.outage) return { ok: false, reason: 'outage' };
         return opts.uid ? { ok: true, uid: opts.uid } : { ok: false, reason: 'unlinked' };
@@ -447,6 +450,7 @@ describe('the delegated flow', () => {
 
   it('a port that throws is caught — a Durable Object must never see a rejection', async () => {
     const d = deps({
+      browseWorks: async () => null,
       linkedUid: async () => {
         throw new Error('boom');
       },

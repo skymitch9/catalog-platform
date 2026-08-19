@@ -958,7 +958,23 @@ export interface ToolBook {
  * Tier 2+ — a mutation of existing data needs a confirm button that this build
  * does not have.
  */
-export const GABI_DELEGATED_VERB_NAMES = ['whoami', 'add-isbn', 'run-details'] as const;
+export const GABI_DELEGATED_VERB_NAMES = [
+  'whoami',
+  'add-isbn',
+  'run-details',
+  // ⚠️ **A READ, added 2026-08-19**, and the second entry here that changes
+  // nothing (`whoami` is the first). It exists because the physical-suggestion
+  // lane could see only the audiobook catalogue's cross-linked print rows — a
+  // small slice — and told the owner his shelves looked empty. The library's own
+  // Worker is the only thing that can answer "what print does this person's
+  // catalog hold", and this is that question.
+  //
+  // ⚠️ It is in the DELEGATED array rather than a tool array for the reason the
+  // whole array exists: it is chosen by a ROUTER, never offered to a model, and
+  // it is authorised by the ASKER'S OWN standing on that instance — the
+  // library's own read floor (guest and up), checked there and never here.
+  'browse-works',
+] as const;
 
 export type GabiDelegatedVerbName = (typeof GABI_DELEGATED_VERB_NAMES)[number];
 
@@ -993,6 +1009,19 @@ export interface GabiDelegatedVerb {
 }
 
 export const GABI_DELEGATED_VERBS: readonly GabiDelegatedVerb[] = [
+  {
+    name: 'browse-works',
+    description:
+      "List the works ONE library instance holds in PRINT, on the asker's behalf — the source for a " +
+      'physical book suggestion. Writes nothing and spends nothing. ⚠️ The instance applies its own ' +
+      "read floor (guest and up) against the asker's standing there, so an unrecognised uid is " +
+      'refused by the SITE rather than by us. ⚠️ `formats: []` on a row means the copy is HELD but ' +
+      'its printing has not been typed in — never that it is not physical.',
+    requiredCapability: 'none',
+    methods: ['POST'],
+    mutates: false,
+    spends: false,
+  },
   {
     name: 'whoami',
     description:

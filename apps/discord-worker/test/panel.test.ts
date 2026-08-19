@@ -426,6 +426,10 @@ describe('⚠️ REGRESSION: a fix-shaped ask points at the asker\'s shelf', () 
                 delegated: {
                   delegate: {
                     ...delegate,
+                    // ⚠️ Present so the port stays COMPLETE. A panel link never
+                    // browses the print shelf; a stub that lies about the shape
+                    // is how a port grows a hole.
+                    browseWorks: async () => null,
                     // ⚠️ Never reached by a link resolution. If it ever is, the
                     // read path grew a write and this test says so.
                     call: async () => {

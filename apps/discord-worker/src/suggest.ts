@@ -67,6 +67,10 @@ import type { CatalogRow } from './catalog-data.js';
 import type { Env } from './env.js';
 import { bookIdFromTitle, type ReviewRow, type TbrRow } from './shelf.js';
 
+/** ⚠️ Re-exported so the flow half uses the SAME persisted-key function rather
+ *  than importing a second copy's worth of assumptions. */
+export { bookIdFromTitle };
+
 // ---------------------------------------------------------------------------
 // The posture
 // ---------------------------------------------------------------------------
@@ -92,9 +96,24 @@ export function suggestOn(env: Pick<Env, 'GABI_SUGGEST'>): boolean {
 
 export type SuggestFormat = 'audio' | 'ebook' | 'physical';
 
-/** ⚠️ The tokens `library_formats` actually contains — measured, not guessed.
- *  Matching is case-insensitive on the pipe-split parts. */
-export const PHYSICAL_FORMAT_TOKENS = ['hardcover', 'paperback'] as const;
+/**
+ * ⚠️ The tokens the estate's format labels actually contain — measured, not
+ * guessed. Matching is case-insensitive on the pipe-split parts.
+ *
+ * ⚠️ **`mass market` WAS MISSING UNTIL 2026-08-19, and a mass-market paperback
+ * SILENTLY DROPPED.** Found by the library agent reading this file rather than
+ * by anything here noticing: all four labels — `Hardcover`, `Paperback`,
+ * `Mass market`, `Ebook` — come from ONE function on the other side
+ * (`library_catalog/apps/worker/src/lib/format-labels.ts`), are stored verbatim
+ * in `catalog.csv`'s `library_formats`, and are matched lower-cased HERE.
+ *
+ * ⚠️ **THREE REPOS SHARE THESE WORDS AND NOTHING ENFORCES THAT.** Renaming a
+ * label there un-matches rows in code nobody was editing, and the failure is a
+ * book quietly missing from a suggestion — never an error. A drop is invisible
+ * by construction, which is why the list is written out in full rather than
+ * derived.
+ */
+export const PHYSICAL_FORMAT_TOKENS = ['hardcover', 'paperback', 'mass market'] as const;
 export const EBOOK_FORMAT_TOKENS = ['ebook'] as const;
 
 /**
@@ -141,9 +160,13 @@ export function rowHasFormat(row: CatalogRow, format: SuggestFormat): boolean {
 /** The print formats a row actually carries, for the WHY clause — never
  *  generalised to "print", because "we have it in paperback" is the useful half. */
 export function physicalFormatsOf(row: CatalogRow): string[] {
-  return parseFormats(row.libraryFormats)
-    .filter((t) => (PHYSICAL_FORMAT_TOKENS as readonly string[]).includes(t))
-    .map((t) => (t === 'hardcover' ? 'hardcover' : 'paperback'));
+  // ⚠️ The token is returned AS MATCHED rather than mapped onto one of two
+  // words. The old form collapsed everything that was not `hardcover` into
+  // "paperback", which would have renamed a mass-market copy in her own
+  // sentence the moment the token was added.
+  return parseFormats(row.libraryFormats).filter((t) =>
+    (PHYSICAL_FORMAT_TOKENS as readonly string[]).includes(t),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -711,6 +734,10 @@ export interface SuggestCandidate {
   /** Which rule produced it. Kept so a reviewer can see the ladder ran in order
    *  and so a test can assert the star move fires first. */
   basis: 'tbr' | 'series_next' | 'same_author' | 'same_universe' | 'shelf';
+  /** ⚠️ Present only for a library row, and used VERBATIM as the site gave it.
+   *  Assembling a URL here would be a second implementation of that site's
+   *  routing, in a repo that does not deploy it. */
+  url?: string;
 }
 
 /** How many go in one answer. Design: lists of 3–5; auto-continue carries more. */
@@ -899,12 +926,16 @@ export function renderSuggestions(
   const head =
     `Candidates for a ${format} suggestion, looked up this turn (${candidates.length}):`;
   const lines = candidates.map((c) => {
-    const bits = [`**${c.title}** — ${c.author}`];
+    // ⚠️ An absent author is OMITTED, never printed as an empty dash or as
+    // "Unknown" — the verb returns null when it does not know, and a sentinel
+    // here would become an author in her sentence.
+    const bits = [c.author ? `**${c.title}** — ${c.author}` : `**${c.title}**`];
     if (c.series) bits.push(`series: ${c.series}${c.seriesIndex ? ` #${c.seriesIndex}` : ''}`);
     if (c.narrator) bits.push(`narrator: ${c.narrator}`);
     if (c.duration) bits.push(`length: ${c.duration}`);
     if (c.universe) bits.push(`universe: ${c.universe}`);
     bits.push(`on: ${c.shelf}`);
+    if (c.url) bits.push(`link: ${c.url}`);
     bits.push(`why: ${c.why}`);
     return `- ${bits.join(' · ')}`;
   });

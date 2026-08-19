@@ -224,14 +224,21 @@ describe('⚠️ TIER 0 IS READ-ONLY — a write tool must fail this file', () =
 // ── 2b. ⚠️ TIER 1 — the WRITE allowlist, and the wall between it and the model
 
 describe('⚠️ TIER 1 — the delegated verbs are their own allowlist', () => {
-  it('declares itself tier 1, and is exactly these three verbs', () => {
+  it('declares itself tier 1, and is exactly these FOUR verbs', () => {
     assert.equal(GABI_DELEGATED_TIER, 1);
     // ⚠️ Adding a row here is a design decision somebody makes on purpose, and
     // these names are the LIBRARY WORKER'S OWN ROUTE NAMES — the other end pins
     // the identical array (`DELEGATED_VERBS` in
     // library_catalog/apps/worker/src/routes/gabi-delegated.ts). Two
     // allowlists, two ends, neither a denylist.
-    assert.deepEqual([...GABI_DELEGATED_VERB_NAMES], ['whoami', 'add-isbn', 'run-details']);
+    // ⚠️ `browse-works` joined 2026-08-19 — a READ, and the second entry that
+    // changes nothing. It exists because the physical-suggestion lane could see
+    // only the audiobook catalogue's cross-linked print rows and told the owner
+    // his shelves looked empty when the print catalogue holds 448 works.
+    assert.deepEqual(
+      [...GABI_DELEGATED_VERB_NAMES],
+      ['whoami', 'add-isbn', 'run-details', 'browse-works'],
+    );
   });
 
   it('every name has a definition and every definition has a name', () => {
@@ -269,10 +276,15 @@ describe('⚠️ TIER 1 — the delegated verbs are their own allowlist', () => 
     assert.equal(gabiDelegatedVerbByName('whoami')?.requiredCapability, 'none');
   });
 
-  it('the one non-mutating verb is the one that reads, and only POST is issued', () => {
+  it('the NON-MUTATING verbs are the ones that read, and only POST is issued', () => {
     for (const verb of GABI_DELEGATED_VERBS) {
       assert.deepEqual([...verb.methods], ['POST']);
-      assert.equal(verb.mutates, verb.name !== 'whoami', `'${verb.name}' mis-declares mutates`);
+      // ⚠️ TWO readers now. `browse-works` lists the library's print shelf on
+      // the asker's behalf and writes nothing — the assertion moves with the
+      // decision rather than being deleted, so a WRITE that sneaks in
+      // mis-declared still fails the build.
+      const reads = verb.name === 'whoami' || verb.name === 'browse-works';
+      assert.equal(verb.mutates, !reads, `'${verb.name}' mis-declares mutates`);
     }
     // Only the sweep spends money, and that is why it needs the higher rung.
     assert.deepEqual(GABI_DELEGATED_VERBS.filter((v) => v.spends).map((v) => v.name), ['run-details']);

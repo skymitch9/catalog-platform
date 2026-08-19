@@ -60,6 +60,11 @@ import type { GabiDelegatedVerbName } from './gabi-tools.js';
  */
 const CALL_TIMEOUT_MS = 180_000;
 
+/** ⚠️ A catalogue LISTING is a D1 query, not a research sweep — so it gets its
+ *  own short ceiling rather than `run-details`' three minutes. A physical
+ *  suggestion that takes 180 s is a suggestion nobody waited for. */
+const BROWSE_TIMEOUT_MS = 15_000;
+
 /** Reading one link document is a Firestore GET and nothing more. */
 const LINK_TIMEOUT_MS = 10_000;
 
@@ -147,6 +152,75 @@ export function makeDelegate(env: Env): DelegatePort | null {
       }
       const body = (await result.res.json().catch(() => null)) as WhoAmI | null;
       return body && typeof body.known === 'boolean' ? body : null;
+    },
+
+    /**
+     * ⚠️ **THE PRINT SHELF, on the asker's behalf.** A READ through the write
+     * door, which is safe for the reason the door is: the bearer proves only
+     * that the caller is this Worker, and the INSTANCE checks the asker's own
+     * standing (its read floor, guest and up) before it returns a row.
+     *
+     * ⚠️ **A refusal and an outage collapse to `null` DELIBERATELY**, and the
+     * caller words both as its own limit. The distinction the delegated write
+     * path draws — "no account there" versus "we could not reach it" — matters
+     * when something was going to CHANGE; here nothing changes either way, and
+     * the only honest sentence for both is *"I could not see that shelf"*. The
+     * one thing neither may become is a claim about what the house owns.
+     */
+    async browseWorks(instance, uid, opts) {
+      const { res, error } = await post(
+        instance,
+        'browse-works',
+        { onBehalfOf: uid, ...(opts?.limit ? { limit: opts.limit } : {}) },
+        token,
+        BROWSE_TIMEOUT_MS,
+      );
+      if (!res) {
+        console.error(`GABI delegated: ${instance.app} browse-works unreachable — ${error}`);
+        return null;
+      }
+      if (!res.ok) {
+        // ⚠️ 403 `unknown_here` is the ordinary answer for somebody that
+        // instance does not know. Logged as a fact, never escalated.
+        console.error(`GABI delegated: ${instance.app} browse-works refused (HTTP ${res.status}).`);
+        return null;
+      }
+      try {
+        const body = (await res.json()) as {
+          app?: unknown; site?: unknown; total?: unknown; rows?: unknown;
+        };
+        const rows = Array.isArray(body.rows) ? body.rows : [];
+        return {
+          app: typeof body.app === 'string' ? body.app : instance.app,
+          site: typeof body.site === 'string' ? body.site : instance.baseUrl,
+          total: typeof body.total === 'number' ? body.total : rows.length,
+          // ⚠️ Shaped defensively: a row missing a title or a url is DROPPED
+          // rather than rendered half-blank, and `formats` defaults to [] —
+          // which the contract defines as "held, printing not typed in yet".
+          rows: rows.flatMap((r) => {
+            const row = r as Record<string, unknown>;
+            const title = typeof row.title === 'string' ? row.title.trim() : '';
+            const url = typeof row.url === 'string' ? row.url.trim() : '';
+            if (!title || !url) return [];
+            return [{
+              id: String(row.id ?? ''),
+              title,
+              // ⚠️ null stays null. A sentinel here would print as an author.
+              authors: typeof row.authors === 'string' ? row.authors : null,
+              ...(typeof row.series === 'string' ? { series: row.series } : {}),
+              ...(row.seriesIndex != null ? { seriesIndex: row.seriesIndex as string | number } : {}),
+              ...(row.year != null ? { year: row.year as string | number } : {}),
+              formats: Array.isArray(row.formats)
+                ? row.formats.filter((f): f is string => typeof f === 'string')
+                : [],
+              url,
+            }];
+          }),
+        };
+      } catch (err) {
+        console.error('GABI delegated: browse-works body unreadable —', err instanceof Error ? err.message : err);
+        return null;
+      }
     },
 
     async call(instance, verb, uid, body) {

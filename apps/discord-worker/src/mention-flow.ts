@@ -164,6 +164,7 @@ import { gatherRecall } from './recall-flow.js';
 import {
   formatAsked,
   formatFromProfileNotes,
+  PHYSICAL_SOURCE_INSTANCE,
   renderSuggestions,
   suggestFollowUp,
   suggestIntent,
@@ -1493,9 +1494,26 @@ async function suggestAnswer(
   if (!gate.ok) return done(gate.message, false);
 
   // ── 3. the gathering, both halves in this turn ───────────────────────────
+  // ── ⚠️ THE PHYSICAL SOURCE: the library's OWN shelf, not a CSV join ──────
+  //
+  // The gate above has already decided this person may be pointed at that
+  // instance. This reads it. ⚠️ `null` on any failure — unreachable, refused,
+  // unreadable — and the lane's empty constant then says the lookup came back
+  // empty and names it as OUR limit. It may never become a claim about what the
+  // house owns, which is the exact defect this source replaces.
+  let browsed: Awaited<ReturnType<DelegatePort['browseWorks']>> | null = null;
+  if (format === 'physical' && ctx.delegated) {
+    const instance = ctx.delegated.instances.find((i) => i.app === PHYSICAL_SOURCE_INSTANCE);
+    const link = instance ? await ctx.delegated.port.linkedUid(who.discordUserId) : null;
+    if (instance && link?.ok) {
+      browsed = await ctx.delegated.port.browseWorks(instance, link.uid);
+    }
+  }
+
   const gathered = await gatherSuggestions({
     catalogBaseUrl: cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
     format,
+    ...(format === 'physical' ? { browsed: browsed ? { rows: browsed.rows, total: browsed.total } : null } : {}),
     ...(ctx.shelf ? { shelf: ctx.shelf } : {}),
     ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
   });
