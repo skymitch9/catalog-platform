@@ -97,13 +97,59 @@ in between.** Runbook: [`access/gabi-turn-log.md`](access/gabi-turn-log.md).
 sign-in; no `silent` row has ever been produced by a real hang; and the root
 cause remains unproven.
 
+### 🔴 THE SILENT KILL — LOCALIZED, STILL UNDIAGNOSED (instrumentation live)
+
+**Same channel, same minutes: short pings answered, one question died four
+times** (19:28, 21:54, 21:56, 22:19) — ⚠️ **and two of those were AFTER the
+watchdog deploy, which did not speak.** So the death is **upstream of
+`gabi_dispatch_taken`**, not inside the turn.
+
+⚠️ **There is exactly ONE silent path upstream of it, and it was mine:** the
+`mentionTrigger` ignore branch exempted `not_mentioned` from logging — the very
+case that produces this signature. **That exemption is now lifted** for any
+message that *looks addressed to her*, and the filter costs nothing because this
+bot has **no Message Content intent**: Discord sends `content` only for mentions,
+ping-on replies and DMs, so an ordinary channel message still arrives empty and
+stays unlogged. The line carries **shape only** — `content_len`,
+`mentions_count`, `msg_type`, `is_reply`, `replied_to_me` — never a character of
+text.
+
+**🧑 OWNER — the one thing that finishes this:** re-send *"@GABI what is the
+fourth book in the Dungeon Crawler Carl series?"* in the main channel. The next
+tail, or `GET https://discord.heygabi.ai/admin/gabi/turnlog`, will name the cause
+in one line.
+
+⚠️ **Leading hypothesis, to confirm or kill — a REPLY WITH THE PING REMOVED.**
+Discord delivers those with **no content and with her absent from the `mentions`
+array**, and `wrangler.toml` already documents that as a state she is
+structurally blind to. It fits every observation, including the apparent content
+correlation: a long question typed as a reply, a short ping typed fresh.
+
+**Ruled out by execution rather than reasoning:** a fuse (a capped turn speaks),
+a routing or regex defect (that exact string was driven through every detector
+and twice through `handleMention`, answering both times), and the wrong-channel
+theory (it explains Diva's other channel and **not** the main one).
+
 ### ⚠️ What the P1s DISPLACED, and exactly where each stands
 
-The batch these interrupted was memory tiers 3–4 and the GABI switchboard. The
-P1s took the whole session; what follows is the honest state so the next hand
+The batch these interrupted was memory tiers 3–4 and the GABI switchboard.
+⚠️ **Tiers 3–4 are now BUILT AND LIVE** (see the deploy line for
+`f69025df`); the switchboard's controls are still owed. What follows is the
+honest state so the next hand
 starts from evidence rather than from a guess.
 
-**🟡 Memory tier 3 (archive) + tier 4 (recall) — CONTRACT WRITTEN, NOT WIRED.**
+**✅ Memory tier 3 (archive) + tier 4 (recall) — BUILT, DEPLOYED, LIVE.**
+Archive writes and `recall_conversation` are running behind the shared
+`GABI_MEMORY` posture (owner-approved). ⚠️ **One owner step remains and nothing
+in code can do it:** create the Firestore **TTL policy** on
+`gabi_conversations.expiresAt`, or say the cron fallback is preferred. Until it
+exists documents accumulate — safe, visible and reversible, and
+`gabi_archive_ttl_policy_claimed` reports `false` rather than pretending.
+⚠️ **Nothing has been exercised by a real turn yet:** no archive row has ever
+been written by a real person, and no recall has ever run against real data.
+The superseded note follows.
+
+**🟡 (superseded) Memory tier 3 (archive) + tier 4 (recall) — CONTRACT WRITTEN, NOT WIRED.**
 [`apps/discord-worker/src/archive.ts`](../apps/discord-worker/src/archive.ts) is
 committed and **inert**: nothing imports it, so it changes no behaviour. It
 holds the retention constant, the shape, the recall detector, the lexical
