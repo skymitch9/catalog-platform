@@ -253,23 +253,11 @@ carry `source`, `chunks`, `chapters` and `ingester_version` — but no `title`.
 that renders `title` will render blanks. The fix is in the INGESTER's index
 writer, not in the serving layer.
 
-**3. ⚠️ OWNER DECISION — should book TEXT be answerable in a shared CHANNEL at
-all, or DM-only?**
-Raised 2026-08-18 while investigating the channel lane; **not decided, and not
-restricted by the agent.** Two things are true in a channel that are not true in
-a DM:
-- **The gate is per-ASKER, the audience is not.** `vis_ebooks` decides whether
-  the person asking may read the household's book text — and then the passage is
-  posted where everyone in the channel can read it, grant or no grant. That is
-  inherent to answering in public, not a bug.
-- **The spoiler bound protects the ASKER, not the bystanders.** It is derived
-  from the asker's own sentence; another reader in the channel who is six
-  chapters behind gets spoiled by an answer that was correctly scoped for
-  somebody else.
-→ Ask him: *"book answers in a shared channel, or DM-only?"* If he wants a
-restriction it is a small change (the trigger already knows `surface`); if he is
-happy as-is, record it as decided and this item closes. ⚠️ Do NOT restrict it
-unilaterally — he has been testing in a channel all day and it works.
+**3. ✅ CLOSED 2026-08-18 — channels are allowed, as-built stands.** Owner,
+verbatim: *"gabi can book test in channels that fine"*. Moved whole to
+[`DONE.md`](DONE.md); the posture is recorded as an OWNER DECISION in
+[`info/gabi-book-knowledge-design.md`](info/gabi-book-knowledge-design.md) §11 decision 8
+so nobody re-litigates it from the two hazards alone.
 
 **4. ⚠️ One word in `apps/audiobook-worker/src/book-retrieval.ts` — NOT fixed.**
 `looksLikeStatQuestion()` fires on "stat sheet" and not on "status sheet", the
@@ -1311,10 +1299,15 @@ owner:**
    start-now, priority bump, step-level retry — dispatch when surfaces free.
 
 ### Open owner decisions (ONE at a time)
-1. GABI book text in shared channels vs DM-only (spoiler bystanders).
-2. ebooks-gated backup mechanics (~2.6 GB whole-bucket tar coming).
-3. Gates agent flagged: confirm the deadline gate's boundary mapping
+1. ebooks-gated backup mechanics (~2.6 GB whole-bucket tar coming).
+2. Gates agent flagged: confirm the deadline gate's boundary mapping
    (07:45/08:00 constants + pause windows) matches the owner's intent.
+
+> ✅ **The book-text-in-channels decision is CLOSED** (owner, 2026-08-18:
+> *"gabi can book test in channels that fine"*) and moved whole to
+> [`DONE.md`](DONE.md). It was item 1 here and item 3 in the GABI-books
+> section; the remaining numbers are re-flowed rather than left with a hole,
+> because this list is read aloud one item at a time.
 
 ### Verify (copy-paste)
 `python -m app.tools.ingest_books --status` · `python -m

@@ -14,6 +14,54 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+## 2026-08-18 — OWNER DECISION: GABI's book text MAY be answered in shared channels
+
+Owner, verbatim, closing the last open question on the book-knowledge lane:
+
+> **"gabi can book test in channels that fine"**
+
+**Decided: channels are allowed. The as-built behaviour STANDS — nothing was
+changed, and that is the whole outcome.** He had been testing in a channel all
+day; the agent that raised the question deliberately did not restrict it
+unilaterally, and this is the answer to that restraint.
+
+⚠️ **The two hazards the question was raised over are REAL and are not
+retracted** — they are accepted, in writing, as the price of answering in
+public. They are now recorded as an owner decision in
+[`info/gabi-book-knowledge-design.md`](info/gabi-book-knowledge-design.md) §11 decision 8
+so that a later reader meeting them cold cannot mistake an accepted trade for an
+unnoticed bug and "fix" it.
+
+### The item, moved WHOLE from [`TODO.md`](TODO.md)
+
+> **3. ⚠️ OWNER DECISION — should book TEXT be answerable in a shared CHANNEL at
+> all, or DM-only?**
+> Raised 2026-08-18 while investigating the channel lane; **not decided, and not
+> restricted by the agent.** Two things are true in a channel that are not true in
+> a DM:
+> - **The gate is per-ASKER, the audience is not.** `vis_ebooks` decides whether
+>   the person asking may read the household's book text — and then the passage is
+>   posted where everyone in the channel can read it, grant or no grant. That is
+>   inherent to answering in public, not a bug.
+> - **The spoiler bound protects the ASKER, not the bystanders.** It is derived
+>   from the asker's own sentence; another reader in the channel who is six
+>   chapters behind gets spoiled by an answer that was correctly scoped for
+>   somebody else.
+> → Ask him: *"book answers in a shared channel, or DM-only?"* If he wants a
+> restriction it is a small change (the trigger already knows `surface`); if he is
+> happy as-is, record it as decided and this item closes. ⚠️ Do NOT restrict it
+> unilaterally — he has been testing in a channel all day and it works.
+
+### And the same decision as it stood on the conductor's decision list
+
+> ### Open owner decisions (ONE at a time)
+> 1. GABI book text in shared channels vs DM-only (spoiler bystanders).
+
+**What would reopen it:** the server ceasing to be family-only. Both hazards are
+about a bystander in the room, and the owner's answer is about the room he has.
+That condition is written into the design section rather than left implied.
+
+
 ## 2026-08-18 — The last two backup OWNER STEPS, closed by measurement (drill, second pass)
 
 Two of the three rows that had sat as "needs the owner's hands" are closed.

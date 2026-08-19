@@ -1400,6 +1400,13 @@ That is correct and it is worth telling him.
 **There is NO channel restriction on book text, and none was added here** — see
 decision 8 in §11, which is the owner's to make rather than an agent's.
 
+🔴 **AND HE MADE IT, 2026-08-18: *"gabi can book test in channels that fine"*.**
+Channels are allowed, as-built stands, and the two hazards above are **accepted
+in writing** rather than outstanding. §11 decision 8 carries the full record and
+the one condition that would reopen it. ⚠️ Do not read the two bullets that
+follow this section's table as an open defect: they are a priced trade with an
+owner's signature on it.
+
 ---
 
 ## 10e. ⚠️ INCIDENT — the permission question was a LOOP, not a pause (2026-08-18)
@@ -1545,3 +1552,35 @@ built: under 20,000 characters total, or under 200 characters per page, is a
 scan. *Re-measured 2026-08-18 by the ingester itself: **5 text-bearing, 25 scans**
 across the 30 files in 8 seconds — reproducing this document's original finding
 exactly, with The Way of Kings yielding **638 bytes**.*
+
+**8. May book TEXT be answered in a shared CHANNEL, or is it DM-only?**
+
+🔴 **DECIDED — CHANNELS ARE ALLOWED. OWNER DECISION, 2026-08-18**, verbatim:
+
+> *"gabi can book test in channels that fine"*
+
+**As-built stands; nothing was changed, and no `surface` branch was added.** The
+question was raised by the agent that investigated the channel lane (§10d) and
+deliberately left unrestricted, because he had been testing in a channel all day
+and it worked. This is the answer to that restraint, and it is recorded here so
+the decision outlives the conversation that made it.
+
+⚠️ **THE TWO HAZARDS ARE ACCEPTED, NOT RETRACTED — do not "fix" them.** A later
+reader meeting them cold will read them as bugs. They are the priced cost of
+answering in public:
+
+| The hazard | Why it is inherent |
+|---|---|
+| **The gate is per-ASKER, the audience is not.** `vis_ebooks` decides whether the person asking may read the household's book text; the passage is then posted where everyone in the channel can read it, grant or no grant | Inherent to answering in public. Restricting it would mean answering book questions nowhere but a DM |
+| **The spoiler bound protects the ASKER, not the bystanders.** It is derived from the asker's own sentence, so a reader six chapters behind is spoiled by an answer correctly scoped for somebody else | The bound is per-turn and per-question by §4.3's own rule; a channel-wide bound would be the stored ceiling that rule forbids |
+
+⚠️ **What would REOPEN this:** the server ceasing to be family-only. Both hazards
+are about a bystander in the room, and the owner's answer is about the room he
+has. That is the same condition `gabi-memory-design.md` §11.3 attaches to the
+private-context-in-public-channel guard, and for the same reason.
+
+**If it is ever reversed, the change is small:** the trigger already knows
+`surface` (`discord_dm` vs the channel surfaces), so a restriction is a branch in
+the book pre-router plus a worded refusal — not a re-architecture. ⚠️ It must be
+a worded refusal that names the reason, never a fall-through to a catalogue
+lookup that reads as an answer.
