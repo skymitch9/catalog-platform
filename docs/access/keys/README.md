@@ -17,6 +17,28 @@ Git never descends into an excluded *directory*, so `keys/` plus
 leaves the directory walkable, which is the only reason one file can be
 re-included. Measured here on 2026-08-18, the wrong way round first.
 
+⚠️ **SUPERSEDED IN PART, 2026-08-20 — READ THIS BEFORE ROTATING ANYTHING
+HERE.** Both tokens in the table below can now be **minted from
+<https://heygabi.ai/status/api>** (as *Agent board publisher* and *Service
+event log*), where they are stored as a SHA-256 hash and shown once. The
+`wrangler secret put` route and these custody files still work and are still
+correct — the auth Worker accepts the minted key **or** the legacy env secret
+— but they are no longer the preferred path, and a session that follows only
+this file will not know a minted key may already be in force.
+
+**What actually changes for you:**
+- **Rotating:** prefer the page. It needs no file, no BOM-safe transport and no
+  re-distribution, and it keeps the old value alive 24 h so a half-finished
+  rotation cannot strand a writer.
+- **These files become vestigial** once each Worker reports on a minted key
+  (observable: the key's `Last used` on that page). **Delete the file and the
+  env secret together at that point**, not before — until then they are the
+  custody copies of live credentials.
+- Everything below about **one value per file, no trailing newline, and never a
+  PowerShell pipe** still applies verbatim to any value you do handle by hand.
+
+Full registry and reasoning: [`../machine-keys.md`](../machine-keys.md).
+
 ## What lives here
 
 Raw secret **VALUES** that a script on the owner's own machine needs in order

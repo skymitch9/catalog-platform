@@ -110,6 +110,14 @@ and the row read back out of D1 as `id 1 · pushed_by status-split-finisher@home
 
 ## 4. Rotating it
 
+⚠️ **EASIEST PATH FIRST (2026-08-20): mint it at
+<https://heygabi.ai/status/api>** under *Agent board publisher*. The POST route
+now accepts the minted key **or** this env secret, so the steps below remain
+valid and remain the fallback — but the page needs no custody file, no BOM-safe
+transport, and keeps the old value working for 24 h so a half-finished rotation
+cannot leave the board unwritable. Registry: [`machine-keys.md`](machine-keys.md).
+
+
 **Store first, overwrite second** — never edit the file in place. A
 half-finished rotation must leave the OLD WORKING value behind, not a value that
 matches nothing.
