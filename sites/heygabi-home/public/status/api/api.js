@@ -138,39 +138,40 @@ function showOnce(host, data) {
 }
 
 function renderSelfService(card, key) {
+  // ⚠️ NO DESCRIPTIVE TEXT HERE. What the key is, what it can do and where it
+  // lives are all in Info above; repeating them beside the button turned the
+  // control into a paragraph somebody had to read past to find the control.
+  // Only the facts you need to ACT survive: is there a key, and is it working.
   const facts = el('ul', 'key-facts');
   const t = key.token;
+  const rotating = Boolean(t && t.exists);
 
-  if (!t || !t.exists) {
+  if (!rotating) {
     facts.append(factRow('Status', key.legacy_present
-      ? 'No minted key yet — still running on the original hand-installed one.'
-      : 'No key yet. Generate one to start.'));
+      ? 'running on the original hand-installed key'
+      : 'no key yet'));
   } else {
     facts.append(factRow('Key', `${t.fingerprint}…`, true));
-    facts.append(factRow('Created', `${when(t.created_at)} by ${t.created_by}`));
+    // The one diagnostic worth the space: it is how you tell an install that
+    // took from one that silently did not.
     facts.append(factRow('Last used', t.last_used_at
       ? `${when(t.last_used_at)} (${ago(t.last_used_at)})`
-      : 'never — nothing has authenticated with this key yet'));
+      : 'never'));
     if (t.previous_valid_until) {
       facts.append(factRow('Previous key',
-        `${t.previous_fingerprint}… still valid until ${when(t.previous_valid_until)}`, true));
-    }
-    if (key.legacy_present) {
-      facts.append(factRow('Original key',
-        'the hand-installed one still works — remove it once this key shows a Last used'));
+        `${t.previous_fingerprint}… valid until ${when(t.previous_valid_until)}`, true));
     }
   }
   card.append(facts);
 
   const actions = el('div', 'key-actions');
-  const rotating = Boolean(t && t.exists);
   const gen = el('button', 'btn', rotating ? 'Regenerate' : 'Generate');
   gen.type = 'button';
 
   const revokeWrap = el('label', 'key-revoke');
   const revoke = document.createElement('input');
   revoke.type = 'checkbox';
-  revokeWrap.append(revoke, document.createTextNode(' Kill the old key immediately (use if you think it leaked)'));
+  revokeWrap.append(revoke, document.createTextNode(' Kill the old key immediately'));
   revokeWrap.hidden = !rotating;
 
   const status = el('span', 'key-status');
@@ -183,7 +184,9 @@ function renderSelfService(card, key) {
   gen.addEventListener('click', async () => {
     if (rotating && revoke.checked) {
       const ok = window.confirm(
-        `Kill the old ${key.label} key immediately?\n\n` +
+        `Kill the old ${key.label} key immediately?
+
+` +
         'Whatever is using it stops working the moment you continue, until the ' +
         'new key is installed there. Use this only if you think the old key leaked.',
       );
@@ -232,24 +235,29 @@ function renderSelfService(card, key) {
 }
 
 /**
- * An Info card: what a credential IS, where it comes from, and how it rotates.
+ * An Info entry: what a credential IS, where it comes from, and how it rotates.
  *
- * ⚠️ EVERY key gets one, including the three with buttons. The owner asked for
- * "where we get all our tokens from and how to rotate them" — and a reference
- * that covers only the awkward ones is the same silence problem in miniature:
- * somebody reading it would not learn that the self-service three are minted
- * from CSPRNG in the Worker, which is the fact that explains why they cannot
- * be looked up.
+ * ⚠️ <details> WITHOUT `open`, deliberately. Everything starts collapsed so
+ * the section reads as an index of what exists; seven expanded reference cards
+ * is a wall, and a wall gets skimmed rather than read. Native <details> means
+ * collapsing needs no JS and keeps working if this script fails.
+ *
+ * ⚠️ EVERY key gets one, including the three with buttons. The owner asked
+ * for "where we get all our tokens from and how to rotate them" — a reference
+ * covering only the awkward ones would not tell anybody that the self-service
+ * three are minted from CSPRNG in the Worker, which is the fact that explains
+ * why they cannot be looked up afterwards.
  */
 function renderInfo(key) {
-  const card = el('div', 'key-card');
+  const card = document.createElement('details');
+  card.className = 'key-card';
 
-  const head = el('div', 'key-head');
-  head.append(el('h3', null, key.label));
-  head.append(el('span', 'key-tag', key.mode === 'self-service'
-    ? 'rotate above'
+  const sum = document.createElement('summary');
+  sum.append(el('strong', null, key.label));
+  sum.append(el('span', 'key-tag', key.mode === 'self-service'
+    ? 'rotate below'
     : key.mode === 'paired' ? 'rotate by hand — two sides' : 'rotate by hand — console'));
-  card.append(head);
+  card.append(sum);
 
   const facts = el('ul', 'key-facts');
   facts.append(factRow('What it is', key.body));
@@ -272,10 +280,6 @@ function renderKey(key) {
   head.append(el('h3', null, key.label));
   head.append(el('span', 'key-tag', key.tag));
   card.append(head);
-
-  card.append(el('p', 'key-body', key.body));
-  card.append(el('p', 'key-body', key.blast));
-  card.append(el('p', 'key-body', `Lives at: ${key.livesAt}`));
 
   if (key.corrupt) {
     // Must never read as "no key yet" — that would look like a fresh install.
@@ -318,20 +322,19 @@ async function loadKeys() {
 
   infoMount.textContent = '';
   for (const key of data.keys) infoMount.append(renderInfo(key));
-  infoSection.hidden = false;
-
   setPageStatus('', '');
 }
 
 mountGate({
-  sections: [section],
+  // Both sections gate together — Info describes credentials and names where
+  // they live, which is not public information either.
+  sections: [infoSection, section],
   onAllowed: loadKeys,
   onDenied: () => {
     // The gate closing must take any minted credential off the screen with it.
     clearAllOnce();
     mount.textContent = '';
     infoMount.textContent = '';
-    infoSection.hidden = true;
     setPageStatus('', '');
   },
 });

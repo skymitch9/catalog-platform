@@ -72,7 +72,8 @@ export const machineKeyRoutes = new Hono<AppBindings>();
 export type KeyMode = 'self-service' | 'paired' | 'manual';
 
 export type KeyDef = {
-  /** URL-safe id; also the POST path segment. */
+  /** ⚠️ URL-safe id; also the POST path segment. NOT the display name —
+   *  renaming `label` is cosmetic, renaming this changes a route. */
   id: string;
   label: string;
   /** The one-line scope shown beside the title. */
@@ -109,7 +110,7 @@ export type KeyDef = {
 export const KEY_REGISTRY: KeyDef[] = [
   {
     id: 'shelf-parity',
-    label: 'Shelf parity reporter',
+    label: 'Shelf server reporter',
     tag: 'writes one number, one route',
     body: 'Used by 03-shelf-parity.sh on the shelf server to post how many books match Drive.',
     blast: 'A leaked one can report a false number and nothing else. It cannot read the library, cannot pass the Google gate, and is accepted on no other route.',
@@ -123,7 +124,7 @@ export const KEY_REGISTRY: KeyDef[] = [
   },
   {
     id: 'worker-events',
-    label: 'Worker event ring',
+    label: 'Service event log',
     tag: 'appends to a log',
     body: 'Lets the estate’s Workers append their own errors and notable events to the shared ring the status pages read.',
     blast: 'A leaked one can write noise into the event ring — a trust problem for the log, not a disclosure. It reads nothing.',
@@ -137,7 +138,7 @@ export const KEY_REGISTRY: KeyDef[] = [
   },
   {
     id: 'pipeline-trigger',
-    label: 'Pipeline trigger',
+    label: 'Book pipeline trigger',
     tag: 'starts a run on the home machine',
     body: 'The bearer the home watcher checks before acting on a run request from /status/pipelines.',
     blast: '⚠️ A leaked one can START PIPELINE RUNS on the home machine — GPU time and real writes to the catalogue. It still cannot read anything back through this Worker.',
@@ -152,7 +153,7 @@ export const KEY_REGISTRY: KeyDef[] = [
   },
   {
     id: 'conductor',
-    label: 'Conductor push bearer',
+    label: 'Agent board publisher',
     tag: 'rewrites the agent board',
     body: 'Used by the conductor session to push the agent-board snapshot that /status/agents renders.',
     blast: '⚠️ A leaked one can REWRITE THE AGENT BOARD — i.e. make the estate’s picture of what Claude is doing say anything at all. The board is a trust surface; treat this as the largest of the three the estate can mint here.',
@@ -166,7 +167,7 @@ export const KEY_REGISTRY: KeyDef[] = [
   },
   {
     id: 'app-tokens',
-    label: 'App-to-app tokens (×5)',
+    label: 'Sister service keys (×5)',
     tag: 'library · games · index · audiobook · discord-docs',
     body: 'One shared bearer per sibling service, so each can call the estate’s APIs as itself.',
     blast: 'Scoped to one calling service each. A leak lets someone impersonate that service to this Worker.',
@@ -179,7 +180,7 @@ export const KEY_REGISTRY: KeyDef[] = [
   },
   {
     id: 'token-signer',
-    label: 'Token signing key',
+    label: 'Sign-in token signer',
     tag: 'Google-issued · impersonation-capable',
     body: 'A service-account KEY for the estate-token-minter account, used to sign the short-lived Firebase custom tokens the SSO convenience layer issues.',
     blast: '⚠️ Possessing this value IS the capability: it can sign a token for ANY uid and produce a normal Firebase session as any estate member, including the owner. It grants no Google Cloud IAM permission and is not a Firestore-admin credential — a custom-token session is an ordinary user session, still subject to Firestore rules.',
@@ -192,7 +193,7 @@ export const KEY_REGISTRY: KeyDef[] = [
   },
   {
     id: 'firebase-sa',
-    label: 'Firebase service account',
+    label: 'Firebase admin credential',
     tag: 'Google-issued · not ours to mint',
     body: 'The service-account credential this Worker uses to reach Firebase.',
     blast: '⚠️ Full programmatic access to the Firebase project under that account’s roles. The widest credential in the estate.',
