@@ -49,35 +49,84 @@
 <link rel="stylesheet" href="/assets/status-shell.css">
 <script src="/assets/theme.js"></script>
 <style>
-  /* Page-local only — the shell owns everything shared. */
-  .key-card { border: 1px solid var(--hairline, #e3ddd1); border-radius: 14px; padding: 1.1rem 1.25rem 1.3rem; margin: 1rem 0 1.6rem; }
-  .key-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .2rem; }
-  .key-head h3 { margin: 0; font-size: 1.0625rem; }
-  .key-scope { font-size: .8125rem; color: var(--muted, #6d675d); }
-  .key-facts { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; gap: .35rem; font-size: .9375rem; }
-  .key-facts li { display: flex; gap: .6rem; flex-wrap: wrap; }
-  .key-facts .k { color: var(--muted, #6d675d); min-width: 9.5rem; }
-  .key-facts .v { font-weight: 600; }
-  .key-facts .v.mono { font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; font-weight: 500; }
-  .key-actions { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; margin-top: 1.1rem; }
-  .key-revoke { display: flex; align-items: center; gap: .45rem; font-size: .875rem; color: var(--muted, #6d675d); }
-  .key-status { font-size: .875rem; color: var(--muted, #6d675d); }
-  .key-status[data-tone="err"] { color: #b3453a; }
-  .key-status[data-tone="ok"] { color: #3a6b45; }
-  @media (prefers-color-scheme: dark) {
-    .key-status[data-tone="err"] { color: #e6897d; }
-    .key-status[data-tone="ok"] { color: #8fbc8f; }
+  /* ⚠️ NOTHING HERE HARDCODES A COLOUR — status-shell.css's own rule, and this
+     block broke it on first ship. The original used invented names
+     (--muted, --hairline, --code-bg, --warn-bg) with LIGHT fallbacks; the
+     estate's tokens are all --et-* prefixed, so every fallback fired and the
+     page rendered light-theme greys on a dark background. Unreadable, and it
+     passed every structural check because a marker test cannot see contrast.
+     Everything below is --et-* or nothing. */
+
+  .key-card {
+    display: grid;
+    gap: var(--et-space-2);
+    padding: var(--et-space-3);
+    border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+    border-radius: var(--et-radius-lg);
+    background: var(--et-surface);
+    margin: 0 0 var(--et-space-3);
   }
-  /* The show-once box. Deliberately loud: this is the only moment the value
-     exists anywhere a person can see it. */
-  .once-box { margin-top: 1.1rem; border: 2px solid var(--warn-edge, #d9a03f); border-radius: 12px; background: var(--warn-bg, #fdf3e2); padding: 1rem 1.1rem; }
-  .once-h { margin: 0 0 .5rem; font-size: .9375rem; font-weight: 700; }
-  .once-val { display: block; width: 100%; font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; font-size: .875rem; word-break: break-all; background: var(--code-bg, #f2efe8); border: 1px solid var(--hairline, #e3ddd1); border-radius: 8px; padding: .6em .7em; }
-  .once-actions { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; }
-  .steps { margin: .9rem 0 0; padding-left: 1.2rem; font-size: .9375rem; }
-  .steps li { margin: .45rem 0; }
-  .steps code, .inline-code { font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; font-size: .875em; background: var(--code-bg, #f2efe8); padding: .1em .35em; border-radius: 4px; }
-  pre.cmd { background: var(--code-bg, #f2efe8); border: 1px solid var(--hairline, #e3ddd1); border-radius: 8px; padding: .7em .8em; overflow-x: auto; font-size: .8125rem; margin: .5rem 0; }
+  .key-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--et-space-2); flex-wrap: wrap; }
+  .key-head h3 { margin: 0; font-size: var(--et-text-title); color: var(--et-heading-color, var(--et-fg)); }
+  /* The tiny right-hand label only. Body copy uses .key-body — conflating the
+     two is what made the explanatory paragraph render as unreadable micro. */
+  .key-tag { font-size: var(--et-text-micro); color: var(--et-muted); font-family: var(--et-font-label, inherit); }
+  .key-body { margin: 0; font-size: var(--et-text-small); color: var(--et-fg); text-wrap: pretty; }
+  .key-body + .key-body { margin-top: var(--et-space-2); }
+
+  /* Facts read as label/value pairs. The old 9.5rem min-width pushed values
+     to the far side of a wide card with nothing bridging the gap. */
+  .key-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--et-space-1); }
+  .key-facts li {
+    display: grid; grid-template-columns: minmax(6rem, 10rem) 1fr;
+    gap: var(--et-space-2); align-items: baseline;
+    padding: .35rem 0;
+    border-top: var(--et-border-w) solid var(--et-hairline);
+    font-size: var(--et-text-small);
+  }
+  .key-facts li:first-child { border-top: 0; }
+  .key-facts .k { color: var(--et-muted); font-size: var(--et-text-micro); font-family: var(--et-font-label, inherit); }
+  .key-facts .v { color: var(--et-fg); text-wrap: pretty; }
+  .key-facts .v.mono { font-family: var(--et-font-mono); }
+  @media (max-width: 34rem) { .key-facts li { grid-template-columns: 1fr; gap: .1rem; } }
+
+  .key-actions { display: flex; align-items: center; gap: var(--et-space-2); flex-wrap: wrap; }
+  .key-revoke { display: flex; align-items: center; gap: .45rem; font-size: var(--et-text-small); color: var(--et-fg); }
+  .key-status { font-size: var(--et-text-small); color: var(--et-muted); text-wrap: pretty; }
+  .key-status[data-tone="err"] { color: var(--et-danger); }
+  .key-status[data-tone="ok"]  { color: var(--et-ok); }
+
+  /* The show-once box. Loud on purpose: the only moment the value is visible. */
+  .once-box {
+    border: 2px solid var(--et-warn);
+    border-radius: var(--et-radius-lg);
+    background: var(--et-warn-bg);
+    padding: var(--et-space-3);
+    display: grid; gap: var(--et-space-2);
+  }
+  .once-h { margin: 0; font-size: var(--et-text-small); font-weight: 700; color: var(--et-fg); }
+  .once-val {
+    display: block; width: 100%;
+    font-family: var(--et-font-mono); font-size: var(--et-text-small);
+    word-break: break-all; line-height: 1.5;
+    background: var(--et-field-bg, var(--et-bg-2)); color: var(--et-fg);
+    border: var(--et-border-w) solid var(--et-field-border, var(--et-hairline));
+    border-radius: var(--et-radius); padding: .6em .7em;
+  }
+  .once-val:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+  .once-actions { display: flex; gap: var(--et-space-2); align-items: center; flex-wrap: wrap; }
+
+  .steps { margin: var(--et-space-2) 0 0; padding-left: 1.3rem; font-size: var(--et-text-small); color: var(--et-fg); }
+  .steps li { margin: .5rem 0; text-wrap: pretty; }
+  pre.cmd {
+    background: var(--et-bg-2); color: var(--et-fg);
+    border: var(--et-border-w) solid var(--et-hairline);
+    border-radius: var(--et-radius); padding: .7em .8em;
+    overflow-x: auto; font-size: var(--et-text-micro);
+    font-family: var(--et-font-mono); margin: .5rem 0;
+  }
+  details.key-card > summary { cursor: pointer; font-size: var(--et-text-small); color: var(--et-fg); }
+  details.key-card > summary::marker { color: var(--et-accent); }
 </style>
 </head>
 
@@ -138,9 +187,9 @@
     <div class="key-card" id="parity-card">
       <div class="key-head">
         <h3>Shelf parity reporter</h3>
-        <span class="key-scope">writes one number, one route</span>
+        <span class="key-tag">writes one number, one route</span>
       </div>
-      <p class="key-scope">
+      <p class="key-body">
         Used by <code class="inline-code">03-shelf-parity.sh</code> on the shelf
         server to post how many books match Drive. It cannot read the library,
         cannot pass the Google gate, and is accepted on no other route &mdash;
@@ -186,18 +235,18 @@ sudo chmod 600 /srv/shelf/.parity.env</pre>
 
     <details class="key-card">
       <summary><strong>Rotating a key</strong></summary>
-      <p class="key-scope" style="margin-top:.7rem">
+      <p class="key-body">
         Generating again replaces the key. By default the old one keeps working
         for <strong>24 hours</strong>, so if the paste goes wrong the next
         scheduled run still reports and nothing goes dark while you fix it.
       </p>
-      <p class="key-scope">
+      <p class="key-body">
         <strong>Rotating because you think it leaked?</strong> Tick
         <em>Kill the old key immediately</em>. A grace window is the wrong
         behaviour when the whole point is that the old value must stop working
         now.
       </p>
-      <p class="key-scope">
+      <p class="key-body">
         Nobody can look a key up after the fact &mdash; only a hash is stored.
         Lost it? Generate a new one; that is the supported path, not a
         recovery.
