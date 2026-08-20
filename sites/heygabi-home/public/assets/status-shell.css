@@ -230,6 +230,23 @@ h2 {
   letter-spacing: var(--et-title-spacing);
   color: var(--et-heading-color);
 }
+/* ⚠️ THE SHELL DEFINED h1 AND h2 AND STOPPED. Every h3 on the four older
+   status pages fell back to the BROWSER DEFAULT — wrong family, wrong colour,
+   ~1.17em — and /status/api, having no rule to inherit, invented one and
+   picked --et-text-title, the h1 scale, so its card headings rendered LARGER
+   than the section heading above them. One rule fixes both: a missing level in
+   a shared scale does not stay missing, it gets guessed at, differently, per
+   page. Scale is now h1 title (1.75–2.5rem) > h2 heading (1.25–1.5rem) >
+   h3 body (1.0625rem). */
+h3 {
+  margin: 0 0 .4rem;
+  font-family: var(--et-font-display);
+  font-size: var(--et-text-body);
+  font-weight: 700;
+  letter-spacing: var(--et-title-spacing);
+  color: var(--et-heading-color);
+}
+
 .section-note { margin: 0 0 .6rem; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
 
 ul.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }

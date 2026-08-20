@@ -67,7 +67,6 @@
     margin: 0 0 var(--et-space-3);
   }
   .key-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--et-space-2); flex-wrap: wrap; }
-  .key-head h3 { margin: 0; font-size: var(--et-text-title); color: var(--et-heading-color, var(--et-fg)); }
   /* The tiny right-hand label only. Body copy uses .key-body — conflating the
      two is what made the explanatory paragraph render as unreadable micro. */
   .key-tag { font-size: var(--et-text-micro); color: var(--et-muted); font-family: var(--et-font-label, inherit); }
@@ -158,11 +157,12 @@
   details.key-card > summary > :first-child { flex: 1 1 auto; }
   details.key-card > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
   details.key-card > summary .key-tag { flex: none; text-align: right; }
-  /* The heading lives IN the summary now, so the whole header is the hit area. */
-  details.key-card > summary h3 {
-    margin: 0; flex: 1 1 auto; font-size: var(--et-text-title);
-    color: var(--et-heading-color, var(--et-fg));
-  }
+  /* The heading lives IN the summary now, so the whole header is the hit area.
+     ⚠️ Deliberately sets NO font-size — it takes the shared h3 from
+     status-shell.css. The override that used to live here picked
+     --et-text-title (the h1 scale) and rendered these bigger than the section
+     heading above them. */
+  details.key-card > summary h3 { margin: 0; flex: 1 1 auto; }
   /* The live-state rows sit below the always-visible description, separated so
      "what this is" and "what it is doing right now" do not read as one list. */
   .key-facts.key-state { margin-top: var(--et-space-2); }
