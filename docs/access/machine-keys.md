@@ -1,0 +1,88 @@
+# Machine keys — Access Reference
+
+> **Audience:** Claude sessions. **Status:** TRACKED (this repo is private).
+> Last verified: **2026-08-20**.
+
+Every credential the estate holds for a machine, and how each one rotates.
+The live version of this table is **<https://heygabi.ai/status/api>** (devops
+sign-in) — it is generated from `apps/auth-worker/src/machine-keys.ts`, which
+is the source of truth. This file is the offline copy plus the reasoning.
+
+## The three modes
+
+| Mode | Meaning | Rotate how |
+|---|---|---|
+| `self-service` | This Worker **verifies** it, so a 24 h grace window covers the gap between minting and installing | Button on `/status/api` |
+| `paired` | Rotating from one side alone breaks something | Two-phase cutover, by hand |
+| `manual` | This Worker cannot mint it at all | Console / `wrangler secret put` |
+
+⚠️ **Mode is decided by DIRECTION, not by how the key looks.** A key this
+Worker *checks* can be rotated safely because the Worker can accept the old and
+new value at once. A key this Worker *sends* cannot — the verifier is somewhere
+else, so there is no overlap to hide behind.
+
+## The registry
+
+| Key | Mode | Blast radius if leaked |
+|---|---|---|
+| `shelf-parity` | self-service | Reports a false parity number. Reads nothing. |
+| `worker-events` | self-service | Writes noise into the event ring. |
+| `pipeline-trigger` | **paired** | ⚠️ Starts pipeline runs on the home machine. |
+| `conductor` | self-service | ⚠️ Rewrites the agent board — the estate's picture of what Claude is doing. |
+| `app-tokens` ×5 | **paired** | Impersonate one sibling service to this Worker. |
+| `token-signer` | **manual** | ⚠️ Mint tokens this estate will trust. |
+| `firebase-sa` | **manual** | ⚠️ Full programmatic access to the Firebase project. |
+
+## Storage
+
+Self-service keys are **SHA-256 hashes in KV**, never values:
+
+```
+{ current:  { hash, fp, created_at, created_by, last_used_at },
+  previous: { hash, fp, grace_until } | null }
+```
+
+⚠️ **There is no route that returns a key.** Not to the owner, not to a later
+session, not to a KV dump. A lost key is **replaced, never recovered** — that is
+the supported path, not a limitation.
+
+`fp` is the value's first 6 characters after its prefix (the GitHub/Stripe
+idiom): safe to display, and it answers "is the machine on the current key?"
+without either side saying the secret aloud.
+
+## Gotchas that cost real time
+
+⚠️ **A CORS mount is not implied by a route.** `/api/estate/keys` shipped
+without one and the page said *"Could not reach the key service (network)"* —
+which is what a rejected preflight looks like from JavaScript, and is
+indistinguishable from a dead Worker. CSP was fine, the routes were fine, the
+files were served. Every browser-called route needs its own `app.use()` line in
+`index.ts`.
+
+⚠️ **A marker test cannot see contrast.** The page shipped unreadable on a dark
+theme (invented `--muted`/`--hairline` names with light fallbacks; the estate's
+tokens are all `--et-*`) and predeploy STATIC *and* LIVE were both green. Only a
+screenshot catches this class of defect.
+
+⚠️ **`secret_unset` must downgrade to `bad_token` once a minted key exists.**
+Otherwise removing a legacy env secret makes every wrong bearer get told to run
+`wrangler secret put` — confidently wrong directions at a credential that is
+deliberately gone. `checkRegistryAuth` is the single place this is handled.
+
+## Retiring a legacy secret
+
+Each self-service key still accepts its old `env` secret as a fallback
+(shadow-first). Drop it **only** when `last_used_at` on `/status/api` shows the
+machine reporting on a minted key — that is observable, so do not guess:
+
+1. Confirm `Last used` is recent and the fingerprint matches the machine.
+2. Remove the `legacyEnv` line from that entry in `machine-keys.ts`.
+3. `npx wrangler secret delete <NAME>` in `apps/auth-worker`.
+
+## Not verified as of 2026-08-20
+
+- **No key has ever been minted.** Generate has not been clicked, so
+  `showOnce()`, the copy button, the revoke-now confirm and the grace window
+  have run in **tests only**, never against the live Worker.
+- The legacy **accept** paths were not exercised — those values are Worker
+  secrets that cannot be read back. Only the refusal paths were probed live.

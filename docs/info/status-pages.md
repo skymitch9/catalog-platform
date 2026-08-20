@@ -19,7 +19,7 @@ devops check.
 | **`/status/processing`** GABI Knowledge | *GABI's knowledge base as it grows* | in-flight books + %, queue depth per lane, pack counts + ingester version, and "joined GABI's knowledge base &lt;date&gt;" per book |
 | **`/status/pipelines`** Pipelines | *Run it, and control it* | the ingestion **pause/timers card**, the pipeline steps + Run button, the Run levers (GitHub Actions), the shelf-server push, the nightly-window clock |
 | **`/status/agents`** Agents | *Claude capacity* | running agents + model, the dispatched/landed/failed feed, and the **usage figures** |
-| **`/status/api`** API | *Keys for machines outside the estate* | mint/rotate the shelf parity key, its fingerprint + last-used, and the install instructions |
+| **`/status/api`** API | *Every machine credential the estate holds* | all nine keys with scope + blast radius; mint/rotate the three that are self-service; the exact command for the rest |
 
 ⚠️ **API IS THE ONLY PAGE THAT ISSUES A CREDENTIAL** (added 2026-08-20).
 Health, GABI Knowledge and Agents are windows; Pipelines pulls levers on systems
@@ -30,6 +30,21 @@ there is deliberately **no route that returns it again**, and everything the
 page displays about an existing key (fingerprint, creator, last-used) is the
 half that reveals nothing. A key that is lost is **replaced, never recovered**;
 that is the supported path, not a limitation to work around.
+
+⚠️ **THE REGISTRY LISTS THE KEYS IT CANNOT ROTATE, on purpose.** The token
+signer and the Firebase service account are the two most powerful credentials
+in the estate and the two the page cannot mint; omitting them would make the
+inventory a liar by silence. They carry the exact command or console step where
+a button would be, and `machine-keys.test.ts` asserts that every non-self-service
+entry still explains *why* — a row with no button and no reason reads as an
+oversight and invites somebody to "fix" it.
+
+⚠️ **`mode` IS DECIDED BY DIRECTION, NOT BY HOW THE KEY LOOKS.** The pipeline
+trigger is an ordinary-looking bearer and is the one that must never have a
+button: this Worker *sends* it (into the Firestore request document, where the
+home watcher compares it against its own `.env`), so the 24 h grace window —
+which is what makes rotation safe everywhere else — cannot protect a cutover it
+does not sit on. Self-service is only for keys this Worker **verifies**.
 
 ⚠️ **Why the usage figures live on Agents and not on Health.** They are Claude
 capacity — the same subject as the agents themselves — not a fact about whether
