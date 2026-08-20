@@ -71,6 +71,30 @@ test('every entry says what a leak costs and where the value lives', () => {
   }
 });
 
+test('⚠️ every entry says where it COMES FROM and how it rotates — including the self-service ones', () => {
+  // The Info section answers "where do we get all our tokens from and how do
+  // we rotate them" for EVERY key, not only the awkward ones. A key whose
+  // origin nobody can state is a key nobody can correctly replace.
+  for (const k of KEY_REGISTRY) {
+    assert.ok(k.origin && k.origin.length > 20, `${k.id} has no origin`);
+    assert.ok(k.rotateHow && k.rotateHow.length > 20, `${k.id} has no rotation procedure`);
+  }
+});
+
+test('⚠️ the token signer is documented as ROUTINE to rotate, not as dangerous', () => {
+  // This entry shipped WRONG on 2026-08-20: it claimed rotating the signing
+  // key "invalidates every token already issued — everyone signed in is signed
+  // out" and that a safe overlap "does not exist yet". Both false. Google lets
+  // a service account hold two keys at once, the tokens it signs are
+  // 5-minute-lived, and docs/access/estate-auth.md §3.4 documents the whole
+  // procedure. Deterring a routine yearly rotation with an invented outage is
+  // exactly the confidently-wrong-directions failure this estate keeps hitting.
+  const k = keyById('token-signer')!;
+  assert.match(k.rotateHow, /§3\.4|3\.4/);
+  assert.match(k.rotateHow, /SECOND key/i);
+  assert.doesNotMatch(k.manualWhy ?? '', /signed out|invalidates every token/i);
+});
+
 test('⚠️ every non-self-service entry explains WHY it has no button, and what to run instead', () => {
   // A row with no button and no reason reads as an oversight and invites
   // somebody to "fix" it by adding one.

@@ -32,7 +32,9 @@ import { mountGate } from '../lib/gate.js';
 const KEYS_URL = `${AUTH_ORIGIN}/api/estate/keys`;
 
 const section = document.getElementById('api-section');
+const infoSection = document.getElementById('info-section');
 const mount = document.getElementById('keys-mount');
+const infoMount = document.getElementById('info-mount');
 const pageStatus = document.getElementById('keys-status');
 
 function setPageStatus(text, tone) {
@@ -229,23 +231,40 @@ function renderSelfService(card, key) {
   });
 }
 
-function renderManual(card, key) {
+/**
+ * An Info card: what a credential IS, where it comes from, and how it rotates.
+ *
+ * ⚠️ EVERY key gets one, including the three with buttons. The owner asked for
+ * "where we get all our tokens from and how to rotate them" — and a reference
+ * that covers only the awkward ones is the same silence problem in miniature:
+ * somebody reading it would not learn that the self-service three are minted
+ * from CSPRNG in the Worker, which is the fact that explains why they cannot
+ * be looked up.
+ */
+function renderInfo(key) {
+  const card = el('div', 'key-card');
+
+  const head = el('div', 'key-head');
+  head.append(el('h3', null, key.label));
+  head.append(el('span', 'key-tag', key.mode === 'self-service'
+    ? 'rotate above'
+    : key.mode === 'paired' ? 'rotate by hand — two sides' : 'rotate by hand — console'));
+  card.append(head);
+
   const facts = el('ul', 'key-facts');
-  facts.append(factRow('Rotation', key.mode === 'paired'
-    ? 'not from here — see below'
-    : 'not minted by this Worker'));
-  if (key.legacy_present) facts.append(factRow('Configured', 'yes'));
+  facts.append(factRow('What it is', key.body));
+  facts.append(factRow('Comes from', key.origin || 'not recorded'));
+  facts.append(factRow('Lives at', key.livesAt));
+  facts.append(factRow('If it leaks', key.blast));
+  facts.append(factRow('Rotate', key.rotateHow || 'not recorded'));
+  if (key.manualWhy) facts.append(factRow('No button because', key.manualWhy));
   card.append(facts);
 
-  // ⚠️ The reason is the content. A row with no button and no explanation
-  // reads as an oversight and invites somebody to "fix" it by adding one.
-  card.append(el('p', 'key-body', key.manualWhy || ''));
-  if (key.manualFix) {
-    const pre = el('pre', 'cmd', key.manualFix);
-    card.append(pre);
-  }
+  if (key.manualFix) card.append(el('pre', 'cmd', key.manualFix));
+  return card;
 }
 
+/** A control card. Only ever built for self-service keys — see loadKeys(). */
 function renderKey(key) {
   const card = el('div', 'key-card');
 
@@ -266,9 +285,7 @@ function renderKey(key) {
     return card;
   }
 
-  if (key.mode === 'self-service') renderSelfService(card, key);
-  else renderManual(card, key);
-
+  renderSelfService(card, key);
   return card;
 }
 
@@ -287,8 +304,22 @@ async function loadKeys() {
   try { data = await r.res.json(); } catch { setPageStatus('The answer was unreadable.', 'err'); return; }
   if (!data || !Array.isArray(data.keys)) { setPageStatus('The answer carried no keys.', 'err'); return; }
 
+  // ⚠️ THE TOP LIST IS ONLY WHAT SOMEBODY CAN ACT ON HERE. Mixing in the four
+  // that have no button made the page read as a wall of caveats and buried the
+  // three controls that actually do something. The other four are not dropped
+  // — dropping them would make the inventory a liar by silence — they move to
+  // Info, in full, alongside every key's provenance and rotation procedure.
   mount.textContent = '';
-  for (const key of data.keys) mount.append(renderKey(key));
+  const actionable = data.keys.filter((k) => k.mode === 'self-service');
+  for (const key of actionable) mount.append(renderKey(key));
+  if (!actionable.length) {
+    mount.append(el('p', 'key-body', 'No key on this page can be minted here. See Info below.'));
+  }
+
+  infoMount.textContent = '';
+  for (const key of data.keys) infoMount.append(renderInfo(key));
+  infoSection.hidden = false;
+
   setPageStatus('', '');
 }
 
@@ -299,6 +330,8 @@ mountGate({
     // The gate closing must take any minted credential off the screen with it.
     clearAllOnce();
     mount.textContent = '';
+    infoMount.textContent = '';
+    infoSection.hidden = true;
     setPageStatus('', '');
   },
 });

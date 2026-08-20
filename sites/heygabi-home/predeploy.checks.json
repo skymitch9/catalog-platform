@@ -166,17 +166,19 @@
         "id=\"ops-signin\"",
         "id=\"api-section\"",
         "id=\"keys-mount\"",
-        "id=\"keys-status\""
+        "id=\"keys-status\"",
+        "id=\"info-section\"",
+        "id=\"info-mount\""
       ]
     },
     {
       "_why": [
-        "api.js (2026-08-20). mountGate proves the page uses the SHARED gate rather than a local re-derivation —",
-        "gate.js's own header warns that another copy is another chance to fail open, invisibly.",
+        "api.js (2026-08-20). mountGate proves the page uses the SHARED gate rather than a local re-derivation.",
         "⚠️ clearAllOnce is pinned deliberately: it is what takes a freshly-minted credential OFF THE SCREEN when",
         "the gate closes. Losing it would leave a key visible after sign-out and nothing would look wrong.",
-        "renderManual is pinned because the paired/manual cards are how the page stays honest about the two",
-        "credentials it CANNOT rotate. Losing it would silently drop them and make the inventory look complete."
+        "⚠️ renderInfo + rotateHow are pinned because the Info section is where the four keys with no button",
+        "live, together with EVERY key's provenance and rotation steps. Losing it would silently drop four",
+        "credentials from the inventory and make it look complete — a liar by silence."
       ],
       "path": "/status/api/api.js",
       "mustContain": [
@@ -186,7 +188,8 @@
         "showOnce",
         "revoke_now",
         "last_used_at",
-        "renderManual"
+        "renderInfo",
+        "rotateHow"
       ]
     },
     {
