@@ -32,9 +32,7 @@ import { mountGate } from '../lib/gate.js';
 const KEYS_URL = `${AUTH_ORIGIN}/api/estate/keys`;
 
 const section = document.getElementById('api-section');
-const infoSection = document.getElementById('info-section');
 const mount = document.getElementById('keys-mount');
-const infoMount = document.getElementById('info-mount');
 const pageStatus = document.getElementById('keys-status');
 
 function setPageStatus(text, tone) {
@@ -182,16 +180,36 @@ function renderSelfService(card, key) {
   card.append(onceHost);
 
   gen.addEventListener('click', async () => {
-    if (rotating && revoke.checked) {
-      const ok = window.confirm(
-        `Kill the old ${key.label} key immediately?
+    // ⚠️ NOTHING HERE IS ONE CLICK. Owner's rule, and the reason is the row of
+    // near-identical buttons: a mis-click must cost a dialog, not a rotation.
+    // The dialog NAMES THE KEY, because "are you sure?" on the wrong card is
+    // confirmation of the wrong thing — the name is the whole safeguard.
+    const killNow = rotating && revoke.checked;
+    const prompt = killNow
+      ? `Kill the old ${key.label} key immediately?
 
 ` +
-        'Whatever is using it stops working the moment you continue, until the ' +
-        'new key is installed there. Use this only if you think the old key leaked.',
-      );
-      if (!ok) return;
-    }
+        `Whatever is using it stops working the moment you continue, until the new key ` +
+        `is installed at:
+  ${key.livesAt}
+
+Use this only if you think the old key leaked.`
+      : rotating
+        ? `Rotate the ${key.label} key?
+
+` +
+          `A new value is generated and shown ONCE. The current key keeps working for ` +
+          `24 hours, so install the new one at:
+  ${key.livesAt}
+
+before then.`
+        : `Generate a key for ${key.label}?
+
+` +
+          `The value is shown ONCE and cannot be looked up afterwards by anyone. ` +
+          `You will need to install it at:
+  ${key.livesAt}`;
+    if (!window.confirm(prompt)) return;
     gen.disabled = true;
     status.textContent = rotating ? 'Rotating…' : 'Generating…';
     status.dataset.tone = '';
@@ -235,29 +253,24 @@ function renderSelfService(card, key) {
 }
 
 /**
- * An Info entry: what a credential IS, where it comes from, and how it rotates.
+ * The collapsed info block that sits INSIDE a key's own card.
  *
- * ⚠️ <details> WITHOUT `open`, deliberately. Everything starts collapsed so
- * the section reads as an index of what exists; seven expanded reference cards
- * is a wall, and a wall gets skimmed rather than read. Native <details> means
- * collapsing needs no JS and keeps working if this script fails.
+ * ⚠️ PAIRED WITH ITS BUTTON, DELIBERATELY. This was briefly a separate
+ * reference section above a bank of buttons, which is worse in two ways the
+ * owner named: you had to scroll between a key's description and its control,
+ * and near-identical buttons whose descriptions live elsewhere is exactly how
+ * somebody rotates the wrong credential. The button you press is now inside
+ * the card that explains it.
  *
- * ⚠️ EVERY key gets one, including the three with buttons. The owner asked
- * for "where we get all our tokens from and how to rotate them" — a reference
- * covering only the awkward ones would not tell anybody that the self-service
- * three are minted from CSPRNG in the Worker, which is the fact that explains
- * why they cannot be looked up afterwards.
+ * <details> without `open` — the page still opens as an index, and collapsing
+ * needs no JS, so it survives this script failing.
  */
-function renderInfo(key) {
-  const card = document.createElement('details');
-  card.className = 'key-card';
-
+function infoBlock(key) {
+  const d = document.createElement('details');
+  d.className = 'key-info';
   const sum = document.createElement('summary');
-  sum.append(el('strong', null, key.label));
-  sum.append(el('span', 'key-tag', key.mode === 'self-service'
-    ? 'rotate below'
-    : key.mode === 'paired' ? 'rotate by hand — two sides' : 'rotate by hand — console'));
-  card.append(sum);
+  sum.textContent = 'What this is, where it comes from, how it rotates';
+  d.append(sum);
 
   const facts = el('ul', 'key-facts');
   facts.append(factRow('What it is', key.body));
@@ -266,20 +279,24 @@ function renderInfo(key) {
   facts.append(factRow('If it leaks', key.blast));
   facts.append(factRow('Rotate', key.rotateHow || 'not recorded'));
   if (key.manualWhy) facts.append(factRow('No button because', key.manualWhy));
-  card.append(facts);
+  d.append(facts);
 
-  if (key.manualFix) card.append(el('pre', 'cmd', key.manualFix));
-  return card;
+  if (key.manualFix) d.append(el('pre', 'cmd', key.manualFix));
+  return d;
 }
 
-/** A control card. Only ever built for self-service keys — see loadKeys(). */
+/** One card per credential: name, its own info, and its own control. */
 function renderKey(key) {
   const card = el('div', 'key-card');
 
   const head = el('div', 'key-head');
   head.append(el('h3', null, key.label));
-  head.append(el('span', 'key-tag', key.tag));
+  head.append(el('span', 'key-tag', key.mode === 'self-service'
+    ? 'rotate here'
+    : key.mode === 'paired' ? 'rotate by hand — two sides' : 'rotate by hand — console'));
   card.append(head);
+
+  card.append(infoBlock(key));
 
   if (key.corrupt) {
     // Must never read as "no key yet" — that would look like a fresh install.
@@ -289,7 +306,7 @@ function renderKey(key) {
     return card;
   }
 
-  renderSelfService(card, key);
+  if (key.mode === 'self-service') renderSelfService(card, key);
   return card;
 }
 
@@ -308,33 +325,20 @@ async function loadKeys() {
   try { data = await r.res.json(); } catch { setPageStatus('The answer was unreadable.', 'err'); return; }
   if (!data || !Array.isArray(data.keys)) { setPageStatus('The answer carried no keys.', 'err'); return; }
 
-  // ⚠️ THE TOP LIST IS ONLY WHAT SOMEBODY CAN ACT ON HERE. Mixing in the four
-  // that have no button made the page read as a wall of caveats and buried the
-  // three controls that actually do something. The other four are not dropped
-  // — dropping them would make the inventory a liar by silence — they move to
-  // Info, in full, alongside every key's provenance and rotation procedure.
+  // Every key, in registry order (blast radius smallest first), each carrying
+  // its own collapsed info and — where there is one — its own button.
   mount.textContent = '';
-  const actionable = data.keys.filter((k) => k.mode === 'self-service');
-  for (const key of actionable) mount.append(renderKey(key));
-  if (!actionable.length) {
-    mount.append(el('p', 'key-body', 'No key on this page can be minted here. See Info below.'));
-  }
-
-  infoMount.textContent = '';
-  for (const key of data.keys) infoMount.append(renderInfo(key));
+  for (const key of data.keys) mount.append(renderKey(key));
   setPageStatus('', '');
 }
 
 mountGate({
-  // Both sections gate together — Info describes credentials and names where
-  // they live, which is not public information either.
-  sections: [infoSection, section],
+  sections: [section],
   onAllowed: loadKeys,
   onDenied: () => {
     // The gate closing must take any minted credential off the screen with it.
     clearAllOnce();
     mount.textContent = '';
-    infoMount.textContent = '';
     setPageStatus('', '');
   },
 });

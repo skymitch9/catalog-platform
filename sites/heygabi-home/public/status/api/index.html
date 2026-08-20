@@ -128,6 +128,20 @@
   /* ⚠️ THE SUMMARY IS A FLEX ROW, not two adjacent inlines. Shipped once as
      bare siblings and the label ran straight into the tag — "Shelf server
      reporterrotate below" — which no structural check can see. */
+  /* The info block nested INSIDE a key's card. Visually subordinate to the
+     card's own heading so the card still reads as one thing. */
+  details.key-info { margin: 0; }
+  details.key-info > summary {
+    cursor: pointer; color: var(--et-muted); font-size: var(--et-text-micro);
+    font-family: var(--et-font-label, inherit); letter-spacing: .04em;
+    padding: .2rem 0;
+  }
+  details.key-info > summary:hover { color: var(--et-fg); }
+  details.key-info > summary::marker { color: var(--et-accent); }
+  details.key-info > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+  details.key-info[open] > summary { margin-bottom: var(--et-space-2); }
+  details.key-info[open] { padding-bottom: var(--et-space-2); border-bottom: var(--et-border-w) solid var(--et-hairline); }
+
   details.key-card > summary {
     cursor: pointer; color: var(--et-fg); font-size: var(--et-text-small);
     display: flex; align-items: baseline; justify-content: space-between;
@@ -195,27 +209,32 @@
   </div>
   <p id="ops-note" class="ops-note" hidden></p>
 
-  <!-- ⚠️ INFO COMES FIRST, AND EVERYTHING IN IT STARTS COLLAPSED. The reading
-       order matters more than it looks: this page can hand somebody a
-       credential, and the question that should be answered before the button
-       is pressed is "what am I about to rotate, and what breaks". Collapsed by
-       default so the page opens as a short index rather than a wall — seven
-       expanded reference cards buried the three controls underneath them. -->
-  <section id="info-section" aria-labelledby="info-h" hidden>
-    <h2 id="info-h">Info</h2>
+  <!-- ⚠️ ONE CARD PER KEY: ITS INFO AND ITS BUTTON TOGETHER. This shipped once
+       as two separate sections — a reference list up top and a bank of
+       buttons below — and that is a worse shape for the two reasons the owner
+       named: you had to scroll between a key's description and its control,
+       and a row of near-identical buttons with their descriptions somewhere
+       else is exactly how somebody rotates the wrong credential. Pairing them
+       makes the mistake structurally harder: the button you press is inside
+       the card that says what it does.
+       Every info block starts collapsed, so the page still opens as an index. -->
+  <section id="api-section" aria-labelledby="api-h" hidden>
+    <h2 id="api-h">Machine keys</h2>
     <p class="key-body" style="margin-bottom:var(--et-space-3)">
-      Every token the estate holds: where it comes from, what it can do, and how
-      it is rotated. ⚠️ &ldquo;No button&rdquo; does not mean &ldquo;do not
-      rotate&rdquo; &mdash; two of these are Google-issued and rotate with a
-      native two-key overlap, no outage window.
+      Every token the estate holds, smallest blast radius first. Open a key to
+      see what it is, where it comes from and how it rotates. ⚠️ &ldquo;No
+      button&rdquo; does not mean &ldquo;do not rotate&rdquo; &mdash; two of
+      these are Google-issued and rotate with a native two-key overlap, no
+      outage window.
     </p>
-    <div id="info-mount"></div>
+    <div id="keys-mount"></div>
+    <p id="keys-status" class="key-status" role="status" aria-live="polite"></p>
 
     <details class="key-card">
       <summary><strong>Installing a key on the machine that uses it</strong></summary>
       <ol class="steps">
-        <li>Generate the key below. The value appears once &mdash; copy it before leaving the page.</li>
-        <li>On that machine, save it into the file or secret named in its <em>Lives at</em>. For the shelf server:
+        <li>Generate the key on its card above. The value appears once &mdash; copy it before leaving the page.</li>
+        <li>On that machine, save it into the file or secret named in that key&rsquo;s <em>Lives at</em>. For the shelf server:
           <pre class="cmd">echo 'SHELF_PARITY_TOKEN=&lt;the value&gt;' | sudo tee /srv/shelf/.parity.env
 sudo chmod 600 /srv/shelf/.parity.env</pre>
         </li>
@@ -243,22 +262,15 @@ sudo chmod 600 /srv/shelf/.parity.env</pre>
         behaviour when the point is that the old value must stop working now.
       </p>
       <p class="key-body">
-        ⚠️ If a machine authenticates on the <em>previous</em> key, this page
-        says so. That is the signal a rotation was started and never finished.
+        ⚠️ Every generate and rotate asks you to confirm first, and the dialog
+        names the key. These buttons look alike on purpose &mdash; the
+        confirmation is what stops a mis-click becoming a rotation.
       </p>
       <p class="key-body">
         Nobody can look a key up afterwards; only a hash is stored. Lost it?
         Generate a new one &mdash; that is the supported path, not a recovery.
       </p>
     </details>
-  </section>
-
-  <!-- The controls. Deliberately wordless: what each key IS lives in Info
-       above, and repeating it here made the buttons hard to find. -->
-  <section id="api-section" aria-labelledby="api-h" hidden>
-    <h2 id="api-h">Generate a key</h2>
-    <div id="keys-mount"></div>
-    <p id="keys-status" class="key-status" role="status" aria-live="polite"></p>
   </section>
 
   <footer>

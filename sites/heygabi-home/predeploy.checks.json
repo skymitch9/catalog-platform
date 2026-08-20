@@ -153,11 +153,11 @@
       "_why": [
         "/status/api — MACHINE KEYS (2026-08-20). The ONLY status page that issues a credential, so the markers",
         "are the gate and the mount point, never a value.",
-        "id=ops-signin proves the SHARED gate shipped: every control lives inside a section the gate reveals, and a",
-        "page that lost the sign-in bar would render its controls to nobody or to everybody depending which half failed.",
-        "⚠️ id=keys-mount is EMPTY in the served HTML and that is the point — every card is built by api.js from the",
-        "Worker's registry. A hardcoded card here would be a second list of which credentials exist, and the failure",
-        "shapes are omitting one (a liar by silence) or offering a button the route refuses."
+        "id=ops-signin proves the SHARED gate shipped: every control lives inside a section the gate reveals.",
+        "⚠️ id=keys-mount is EMPTY in the served HTML and that is the point — every card is built by api.js from",
+        "the Worker's registry, each key carrying its own info AND its own button. A hardcoded card here would be",
+        "a second list of which credentials exist; omitting one is a liar by silence, and offering a button the",
+        "route refuses teaches people the page is wrong."
       ],
       "path": "/status/api/",
       "mustContain": [
@@ -166,19 +166,18 @@
         "id=\"ops-signin\"",
         "id=\"api-section\"",
         "id=\"keys-mount\"",
-        "id=\"keys-status\"",
-        "id=\"info-section\"",
-        "id=\"info-mount\""
+        "id=\"keys-status\""
       ]
     },
     {
       "_why": [
         "api.js (2026-08-20). mountGate proves the page uses the SHARED gate rather than a local re-derivation.",
-        "⚠️ clearAllOnce is pinned deliberately: it is what takes a freshly-minted credential OFF THE SCREEN when",
-        "the gate closes. Losing it would leave a key visible after sign-out and nothing would look wrong.",
-        "⚠️ renderInfo + rotateHow are pinned because the Info section is where the four keys with no button",
-        "live, together with EVERY key's provenance and rotation steps. Losing it would silently drop four",
-        "credentials from the inventory and make it look complete — a liar by silence."
+        "⚠️ clearAllOnce takes a freshly-minted credential OFF THE SCREEN when the gate closes; losing it would",
+        "leave a key visible after sign-out with nothing looking wrong.",
+        "⚠️ infoBlock is what PAIRS each key's description with its own button. Losing it would either drop the",
+        "four unrotatable credentials from the inventory or strand every button away from what it does.",
+        "⚠️ window.confirm is pinned because NO ROTATION MAY BE ONE CLICK (owner rule). These buttons look alike",
+        "on purpose; the named confirmation is what stops a mis-click becoming a rotation."
       ],
       "path": "/status/api/api.js",
       "mustContain": [
@@ -188,8 +187,9 @@
         "showOnce",
         "revoke_now",
         "last_used_at",
-        "renderInfo",
-        "rotateHow"
+        "infoBlock",
+        "rotateHow",
+        "window.confirm"
       ]
     },
     {
