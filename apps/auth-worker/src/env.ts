@@ -243,6 +243,20 @@ export interface Env {
   PIPELINE_TRIGGER_TOKEN?: string;
 
   /**
+   * The shelf server's parity reporter — `wrangler secret put
+   * SHELF_PARITY_TOKEN` (from apps/auth-worker); the same value lives in
+   * /srv/shelf/.parity.env on Justin's box.
+   *
+   * ⚠️ DELIBERATELY THE SMALLEST CREDENTIAL IN THIS FILE. It sits on hardware
+   * outside the estate's control, so its entire power is writing one report to
+   * one KV key on one route. It cannot read the library, cannot pass Cloudflare
+   * Access, and is accepted nowhere else. A leak costs a falsified parity
+   * number — a trust problem, not a disclosure one. Rotate with the same
+   * `secret put` plus a DM of the new value; see shelf-parity.ts.
+   */
+  SHELF_PARITY_TOKEN?: string;
+
+  /**
    * ⚠️ **THE CONDUCTOR'S PUSH BEARER** — the write door on
    * `POST /api/estate/ops/agent-board` (src/agent-board.ts), added 2026-08-18
    * with the /status split's Agents page.

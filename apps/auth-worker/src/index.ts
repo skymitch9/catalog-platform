@@ -25,6 +25,7 @@ import { notifyPrefsRoutes } from './notify-prefs.js';
 import { recordOwnEvent, workerEventsRoutes } from './worker-events.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
+import { shelfParityRoutes } from './shelf-parity.js';
 import { estateDocsRoutes } from './estate-docs.js';
 import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
@@ -133,6 +134,12 @@ app.use('/api/estate/docs/*', adminCors());
 // the only callers are the migration-page form and the runbook page, both
 // on the apex. requireDevops()-gated (facts.ts), same tier as /docs and /ops.
 app.use('/api/estate/facts/*', adminCors());
+
+// The shelf parity number: GET is read by /status on the apex and so needs the
+// admin CORS mount like its neighbours. ⚠️ The POST on the same path is machine
+// auth from OUTSIDE the estate (Justin's box, via curl) — curl sends no Origin
+// and needs no preflight, so this mount neither helps nor widens it.
+app.use('/api/estate/shelf/*', adminCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
@@ -185,6 +192,7 @@ app.route('/api', todoRoutes);
 // asserts a real request reaches the corpus handler.
 app.route('/api', estateDocsRoutes);
 app.route('/api', docsRoutes);
+app.route('/api', shelfParityRoutes);
 app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);
 app.route('/api', sessionRoutes);
