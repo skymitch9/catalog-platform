@@ -51,6 +51,7 @@ import type { Context } from 'hono';
 import type { AppBindings } from './env.js';
 import { requireDevops } from './middleware/auth.js';
 import { checkConductorAuth, type ConductorAuth } from './agent-board.js';
+import { readRecord, stampUsed, verifyToken, type TokenRecord } from './shelf-token.js';
 
 export const shelfParityRoutes = new Hono<AppBindings>();
 
@@ -101,7 +102,7 @@ export function parityRefusal(auth: Exclude<ConductorAuth, 'ok'>): {
           error: 'shelf_parity_token_unset',
           detail:
             'The shelf cannot report parity yet — this Worker holds no shelf parity token, so it has no way to tell a real report from anyone else’s.',
-          fix: 'wrangler secret put SHELF_PARITY_TOKEN (from apps/auth-worker), then send the same value to the server’s owner privately.',
+          fix: 'Generate one at https://heygabi.ai/status/api (devops sign-in) and paste it into /srv/shelf/.parity.env on the shelf server.',
         },
       };
     case 'no_header':
@@ -121,7 +122,7 @@ export function parityRefusal(auth: Exclude<ConductorAuth, 'ok'>): {
           error: 'bad_token',
           detail:
             'That bearer is not the shelf parity token. This route accepts only that one token — not the conductor token, and not a signed-in session.',
-          fix: 'Check /srv/shelf/.parity.env on the shelf server. If the token was rotated, ask Skylar to re-send it.',
+          fix: 'Check /srv/shelf/.parity.env on the shelf server. If it was rotated, generate a fresh one at https://heygabi.ai/status/api — nobody can look the old one up.',
         },
       };
   }
@@ -279,15 +280,44 @@ export function deriveState(
  * household whether their library is safe.
  */
 shelfParityRoutes.post('/estate/shelf/parity', async (c: Context<AppBindings>) => {
-  const auth = checkConductorAuth(c.env.SHELF_PARITY_TOKEN, c.req.header('authorization') ?? null);
-  if (auth !== 'ok') {
-    const r = parityRefusal(auth);
-    return c.json(r.body, r.status);
-  }
-
   const kv = c.env.estate_docs;
   if (!kv) {
     return c.json({ error: 'docs_kv_unbound', fix: 'add the estate_docs kv_namespaces binding' }, 503);
+  }
+
+  // ⚠️ TWO ACCEPTED CREDENTIALS, ON PURPOSE AND TEMPORARILY. The self-service
+  // key (hashed in KV, minted from /status/api) is the real one. The legacy
+  // `SHELF_PARITY_TOKEN` env secret is the hand-delivered original, still
+  // installed on the box; dropping it the moment this deployed would have
+  // stopped parity reporting from a machine nobody can reach to fix.
+  //
+  // ⚠️ DELETE THE LEGACY LEG once the box reports on a minted key — that is
+  // observable, not guessed: GET .../parity/token shows `last_used_at`, and
+  // the page says so in words. Shadow-first, then remove; leaving it forever
+  // would keep a credential alive that no longer has a rotation story.
+  const header = c.req.header('authorization') ?? null;
+  const presented = /^Bearer\s+(.+)$/i.exec((header ?? '').trim())?.[1]?.trim() ?? '';
+
+  let rec: TokenRecord | null = null;
+  try {
+    rec = await readRecord(kv);
+  } catch {
+    return c.json({ error: 'shelf_token_corrupt' }, 500);
+  }
+
+  const verdict = presented ? await verifyToken(rec, presented, Date.now()) : 'no_match';
+  if (verdict === 'no_match') {
+    // Fall back to the legacy env secret, and only then refuse.
+    const legacy = checkConductorAuth(c.env.SHELF_PARITY_TOKEN, header);
+    if (legacy !== 'ok') {
+      // ⚠️ `secret_unset` must not be reported when a minted key EXISTS — that
+      // would tell the caller to go run `wrangler secret put` when the real
+      // problem is that their bearer is simply wrong.
+      const cause: Exclude<ConductorAuth, 'ok'> =
+        legacy === 'secret_unset' && rec !== null ? 'bad_token' : legacy;
+      const r = parityRefusal(cause);
+      return c.json(r.body, r.status);
+    }
   }
 
   let body: unknown;
@@ -305,7 +335,17 @@ shelfParityRoutes.post('/estate/shelf/parity', async (c: Context<AppBindings>) =
   const stored = { ...v.report, received_at: new Date().toISOString() };
   await kv.put(PARITY_KEY, JSON.stringify(stored));
 
-  return c.json({ ok: true, received_at: stored.received_at });
+  // Best-effort telemetry on the key that just worked. This is what turns
+  // "did my paste take?" into a fact on /status/api instead of a guess.
+  if (rec !== null && verdict !== 'no_match') await stampUsed(kv, rec, stored.received_at);
+
+  return c.json({
+    ok: true,
+    received_at: stored.received_at,
+    // ⚠️ Told plainly so a rotation that never got installed is VISIBLE in the
+    // script's own output, not just on a page nobody has open.
+    key: verdict === 'previous' ? 'previous (grace window — install the new key)' : verdict,
+  });
 });
 
 /** GET — the status page reading. Devops-gated like the rest of the shelf. */

@@ -247,12 +247,21 @@ export interface Env {
    * SHELF_PARITY_TOKEN` (from apps/auth-worker); the same value lives in
    * /srv/shelf/.parity.env on Justin's box.
    *
+   * ⚠️ **LEGACY AS OF 2026-08-20 — DO NOT MINT NEW ONES HERE.** Parity keys
+   * are now self-served from /status/api and stored as a SHA-256 hash in KV
+   * (`shelf:parity:token`, src/shelf-token.ts), because a Worker cannot write
+   * its own secrets at runtime and a hand-delivered value cannot be rotated
+   * without a DM. This binding survives ONLY so the token already installed on
+   * Justin's box keeps reporting; POST /estate/shelf/parity accepts it as a
+   * fallback after the hashed key fails to match. **Delete the secret and that
+   * fallback once `last_used_at` shows the box reporting on a minted key.**
+   *
    * ⚠️ DELIBERATELY THE SMALLEST CREDENTIAL IN THIS FILE. It sits on hardware
    * outside the estate's control, so its entire power is writing one report to
    * one KV key on one route. It cannot read the library, cannot pass Cloudflare
    * Access, and is accepted nowhere else. A leak costs a falsified parity
    * number — a trust problem, not a disclosure one. Rotate with the same
-   * `secret put` plus a DM of the new value; see shelf-parity.ts.
+   * Rotation is no longer done here at all — see shelf-token.ts.
    */
   SHELF_PARITY_TOKEN?: string;
 

@@ -222,12 +222,13 @@
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # =========================================================================
-# THE /status SPLIT (2026-08-18) — three sibling pages, each with its own rule.
+# THE /status SPLIT (2026-08-18) — four sibling pages, each with its own rule.
+# (/status/api added 2026-08-20 — the machine-key tab.)
 #
 # ⚠️ `/status` DOES NOT COVER `/status/agents/`. Pages' _headers matching is
 # exact-or-wildcard and never prefix-implicit: the two rules above match the
 # literal paths `/status` and `/status/` and nothing below them. Without the
-# six rules here the three new pages would have shipped with NO
+# eight rules here the four sibling pages would have shipped with NO
 # Content-Security-Policy and NO X-Frame-Options at all — signed-in devops
 # surfaces, frameable, silently weaker than the page they were split out of.
 # That is the whole reason this block exists; it is not tidiness.
@@ -271,6 +272,22 @@
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /status/agents/
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+# /status/api  auth.heygabi.ai ONLY -- one endpoint, the machine-key routes
+#              (GET/POST /api/estate/shelf/parity/token). Identical to
+#              /status/agents above: it fetches nothing else.
+#
+# ⚠️ THIS PAGE HANDS A CREDENTIAL TO THE DOM, so its connect-src matters more
+# than a read-only tab's. Naming any extra host here would give a page that
+# holds a freshly-minted bearer somewhere else to send it.
+
+/status/api
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/status/api/
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 

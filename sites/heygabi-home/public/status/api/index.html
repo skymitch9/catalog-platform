@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en" data-default-theme="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>heygabi.ai — API</title>
+<meta name="description" content="Machine credentials for the estate: mint, rotate and check the keys that let outside hardware report in.">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+
+<!--
+  /status/api — MACHINE CREDENTIALS (owner ask 2026-08-20: "this also should be
+  housed in a new tab under status called API and we can put all the controls
+  there. we can include instructions and everything too."). The fifth status
+  page; the split's reasoning is docs/info/status-pages.md.
+
+  ⚠️ THIS PAGE ISSUES A CREDENTIAL, WHICH NO OTHER STATUS PAGE DOES. Health,
+  GABI Knowledge and Agents are windows; Pipelines pulls levers on systems the
+  estate already controls. This one MINTS A BEARER for hardware outside the
+  estate. Three consequences are designed in rather than assumed:
+
+    1. THE VALUE IS SHOWN EXACTLY ONCE, in the response that creates it. The
+       Worker stores only a SHA-256 hash (apps/auth-worker/src/shelf-token.ts),
+       so there is no route that can return it again and no dump that reveals
+       it. If the reader loses it before pasting it, the answer is "generate
+       another one", never "ask someone to look it up" — nobody can.
+    2. THE ONE-TIME BOX IS NEVER PRE-RENDERED AND NEVER RE-SHOWN. It is built
+       by api.js at mint time and cleared on sign-out. A credential that sits
+       on screen through a screen-share is a credential in a recording.
+    3. THE FINGERPRINT IS THE SAFE HALF. Everything this page displays about an
+       EXISTING token — first 6 characters, who made it, when, when it was last
+       used — reveals nothing usable, and is exactly what answers "is the box
+       running the current key?" without either side saying the secret out loud.
+
+  ⚠️ THE GATE IS lib/gate.js, NOT A LOCAL COPY. gate.js's own header says a
+  fifth page means calling it, never re-deriving it — four copies of a gate is
+  four chances for one to fail OPEN, invisibly. Every control here lives inside
+  #api-section, which the gate reveals and nothing else does.
+
+  CSP: _headers carries BOTH `/status/api` and `/status/api/` — Pages matches
+  exact paths, so the bare form 308s to the slash form and the browser applies
+  whatever the FINAL 200 carried. connect-src is auth.heygabi.ai only; this
+  page calls one Worker and naming any other host would hand it reach it has
+  no use for.
+-->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%235a4a7a'/%3E%3Cpath%20d='M11%2020.5l-3.5-4.5L11%2011.5'%20stroke='%23fbfaf7'%20stroke-width='2.4'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21%2011.5l3.5%204.5L21%2020.5'%20stroke='%23c3aee0'%20stroke-width='2.4'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/estate-theme.css">
+<link rel="stylesheet" href="/assets/status-shell.css">
+<script src="/assets/theme.js"></script>
+<style>
+  /* Page-local only — the shell owns everything shared. */
+  .key-card { border: 1px solid var(--hairline, #e3ddd1); border-radius: 14px; padding: 1.1rem 1.25rem 1.3rem; margin: 1rem 0 1.6rem; }
+  .key-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .2rem; }
+  .key-head h3 { margin: 0; font-size: 1.0625rem; }
+  .key-scope { font-size: .8125rem; color: var(--muted, #6d675d); }
+  .key-facts { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; gap: .35rem; font-size: .9375rem; }
+  .key-facts li { display: flex; gap: .6rem; flex-wrap: wrap; }
+  .key-facts .k { color: var(--muted, #6d675d); min-width: 9.5rem; }
+  .key-facts .v { font-weight: 600; }
+  .key-facts .v.mono { font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; font-weight: 500; }
+  .key-actions { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; margin-top: 1.1rem; }
+  .key-revoke { display: flex; align-items: center; gap: .45rem; font-size: .875rem; color: var(--muted, #6d675d); }
+  .key-status { font-size: .875rem; color: var(--muted, #6d675d); }
+  .key-status[data-tone="err"] { color: #b3453a; }
+  .key-status[data-tone="ok"] { color: #3a6b45; }
+  @media (prefers-color-scheme: dark) {
+    .key-status[data-tone="err"] { color: #e6897d; }
+    .key-status[data-tone="ok"] { color: #8fbc8f; }
+  }
+  /* The show-once box. Deliberately loud: this is the only moment the value
+     exists anywhere a person can see it. */
+  .once-box { margin-top: 1.1rem; border: 2px solid var(--warn-edge, #d9a03f); border-radius: 12px; background: var(--warn-bg, #fdf3e2); padding: 1rem 1.1rem; }
+  .once-h { margin: 0 0 .5rem; font-size: .9375rem; font-weight: 700; }
+  .once-val { display: block; width: 100%; font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; font-size: .875rem; word-break: break-all; background: var(--code-bg, #f2efe8); border: 1px solid var(--hairline, #e3ddd1); border-radius: 8px; padding: .6em .7em; }
+  .once-actions { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; }
+  .steps { margin: .9rem 0 0; padding-left: 1.2rem; font-size: .9375rem; }
+  .steps li { margin: .45rem 0; }
+  .steps code, .inline-code { font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; font-size: .875em; background: var(--code-bg, #f2efe8); padding: .1em .35em; border-radius: 4px; }
+  pre.cmd { background: var(--code-bg, #f2efe8); border: 1px solid var(--hairline, #e3ddd1); border-radius: 8px; padding: .7em .8em; overflow-x: auto; font-size: .8125rem; margin: .5rem 0; }
+</style>
+</head>
+
+<body>
+
+<button id="hg-cog" class="hg-cog" type="button" aria-expanded="false" aria-controls="hg-cog-panel" aria-label="Display settings">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+</button>
+<div id="hg-cog-panel" class="hg-cog-panel" hidden>
+  <div class="hg-row">
+    <label class="hg-label" for="hg-theme-select">Theme</label>
+    <select id="hg-theme-select"></select>
+  </div>
+  <div class="hg-row">
+    <span class="hg-label" id="hg-mode-label">Appearance</span>
+    <div class="hg-mode-group" role="group" aria-labelledby="hg-mode-label">
+      <button type="button" data-hg-mode="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-hg-mode="light" aria-pressed="false">Light</button>
+      <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="hg-cog-note">Remembered on this site only.</p>
+</div>
+
+<main>
+  <a class="back" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"/><path d="m12 19-7-7 7-7"/></svg>
+    heygabi.ai
+  </a>
+  <h1>API</h1>
+
+  <!-- ⚠️ PLAIN LINKS, IN THE HTML, ON EVERY PAGE. A nav built by a module
+       would vanish on any page whose script failed, which is exactly when
+       someone needs to leave. Kept identical across all five tabs. -->
+  <nav class="statusnav" aria-label="Status pages">
+    <a href="/status/">Health</a>
+    <a href="/status/processing/">GABI Knowledge</a>
+    <a href="/status/pipelines/">Pipelines</a>
+    <a href="/status/agents/">Agents</a>
+    <a href="/status/api/" aria-current="page">API</a>
+  </nav>
+
+  <p class="sub">
+    The keys that let machines outside the estate report in. Generate one here,
+    paste it into the machine, and it starts reporting — nobody has to send a
+    secret to anybody.
+  </p>
+
+  <div class="ops-bar">
+    <button id="ops-signin" class="linkbtn" type="button">Sign in to manage keys</button>
+    <span id="ops-who" hidden></span>
+  </div>
+  <p id="ops-note" class="ops-note" hidden></p>
+
+  <section id="api-section" aria-labelledby="api-h" hidden>
+    <h2 id="api-h">Machine keys</h2>
+
+    <div class="key-card" id="parity-card">
+      <div class="key-head">
+        <h3>Shelf parity reporter</h3>
+        <span class="key-scope">writes one number, one route</span>
+      </div>
+      <p class="key-scope">
+        Used by <code class="inline-code">03-shelf-parity.sh</code> on the shelf
+        server to post how many books match Drive. It cannot read the library,
+        cannot pass the Google gate, and is accepted on no other route &mdash;
+        the worst a leaked one can do is report a false number.
+      </p>
+
+      <ul class="key-facts" id="parity-facts">
+        <li><span class="k">Status</span><span class="v" id="pf-status">Loading&hellip;</span></li>
+      </ul>
+
+      <div class="key-actions">
+        <button id="parity-gen" class="btn" type="button">Generate key</button>
+        <label class="key-revoke" id="parity-revoke-wrap" hidden>
+          <input type="checkbox" id="parity-revoke">
+          Kill the old key immediately (use if you think it leaked)
+        </label>
+        <span class="key-status" id="parity-status" role="status" aria-live="polite"></span>
+      </div>
+
+      <!-- Built by api.js at mint time; never pre-rendered, never re-shown. -->
+      <div id="parity-once"></div>
+    </div>
+
+    <details class="key-card">
+      <summary><strong>How to install it on the shelf server</strong></summary>
+      <ol class="steps">
+        <li>Click <strong>Generate key</strong> above. The value appears once &mdash; copy it before leaving the page.</li>
+        <li>On the server, save it (the button copies this whole line for you):
+          <pre class="cmd">echo 'SHELF_PARITY_TOKEN=&lt;the value&gt;' | sudo tee /srv/shelf/.parity.env
+sudo chmod 600 /srv/shelf/.parity.env</pre>
+        </li>
+        <li>Check it landed <em>without printing it</em>:
+          <pre class="cmd">sudo test -s /srv/shelf/.parity.env &amp;&amp; echo 'token file present'</pre>
+        </li>
+        <li>Run the reporter once: <code>./03-shelf-parity.sh</code></li>
+        <li>Come back here &mdash; <strong>Last used</strong> should show a moment ago, and the parity bar on <a href="/status/">Health</a> stops saying &ldquo;never reported&rdquo;.</li>
+      </ol>
+      <p class="section-note">
+        Full step-by-step, including the cron line:
+        <a href="/runbooks/shelf-justin/">Justin&rsquo;s steps</a>.
+      </p>
+    </details>
+
+    <details class="key-card">
+      <summary><strong>Rotating a key</strong></summary>
+      <p class="key-scope" style="margin-top:.7rem">
+        Generating again replaces the key. By default the old one keeps working
+        for <strong>24 hours</strong>, so if the paste goes wrong the next
+        scheduled run still reports and nothing goes dark while you fix it.
+      </p>
+      <p class="key-scope">
+        <strong>Rotating because you think it leaked?</strong> Tick
+        <em>Kill the old key immediately</em>. A grace window is the wrong
+        behaviour when the whole point is that the old value must stop working
+        now.
+      </p>
+      <p class="key-scope">
+        Nobody can look a key up after the fact &mdash; only a hash is stored.
+        Lost it? Generate a new one; that is the supported path, not a
+        recovery.
+      </p>
+    </details>
+  </section>
+
+  <footer>
+    <p>
+      Keys are generated in the auth Worker and stored as a SHA-256 hash. The
+      value itself is transmitted once, to this page, at the moment you create
+      it &mdash; there is no route that returns it again, so a key that is lost
+      is replaced rather than recovered.
+    </p>
+    <p><a href="/status/">&larr; estate health</a> · <a href="/">front door</a></p>
+  </footer>
+</main>
+
+<script type="module" src="/status/api/api.js"></script>
+</body>
+</html>

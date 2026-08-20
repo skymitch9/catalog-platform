@@ -1,4 +1,4 @@
-# The four status pages   (Information Reference)
+# The five status pages   (Information Reference)
 
 > **Audience:** Claude sessions. **Status:** TRACKED.
 > Last verified: **2026-08-18** — the file map and the module graph were read
@@ -19,6 +19,17 @@ devops check.
 | **`/status/processing`** GABI Knowledge | *GABI's knowledge base as it grows* | in-flight books + %, queue depth per lane, pack counts + ingester version, and "joined GABI's knowledge base &lt;date&gt;" per book |
 | **`/status/pipelines`** Pipelines | *Run it, and control it* | the ingestion **pause/timers card**, the pipeline steps + Run button, the Run levers (GitHub Actions), the shelf-server push, the nightly-window clock |
 | **`/status/agents`** Agents | *Claude capacity* | running agents + model, the dispatched/landed/failed feed, and the **usage figures** |
+| **`/status/api`** API | *Keys for machines outside the estate* | mint/rotate the shelf parity key, its fingerprint + last-used, and the install instructions |
+
+⚠️ **API IS THE ONLY PAGE THAT ISSUES A CREDENTIAL** (added 2026-08-20).
+Health, GABI Knowledge and Agents are windows; Pipelines pulls levers on systems
+the estate already owns. API mints a bearer for hardware it does *not* own, so
+three properties are structural rather than incidental: the value is shown
+**once** (only a SHA-256 hash is stored — `apps/auth-worker/src/shelf-token.ts`),
+there is deliberately **no route that returns it again**, and everything the
+page displays about an existing key (fingerprint, creator, last-used) is the
+half that reveals nothing. A key that is lost is **replaced, never recovered**;
+that is the supported path, not a limitation to work around.
 
 ⚠️ **Why the usage figures live on Agents and not on Health.** They are Claude
 capacity — the same subject as the agents themselves — not a fact about whether
@@ -39,13 +50,14 @@ public/status/
   processing/ index.html processing.js
   pipelines/  index.html pipelines.js
   agents/     index.html agents.js
+  api/        index.html api.js
   lib/
     core.js                        ages, row rendering, origins, fetchJSON, sayEmpty, el
-    gate.js                        ⚠️ THE devops gate — one implementation, four pages
+    gate.js                        ⚠️ THE devops gate — one implementation, five pages
     board.js                       the pushed-blob reader + the freshness sentence
 ```
 
-⚠️ **`lib/gate.js` is one file for a reason.** Four copies of a gate is four
+⚠️ **`lib/gate.js` is one file for a reason.** Five copies of a gate is five
 chances for one to fail **open**, and that failure is invisible — a page that
 reveals controls to the wrong person looks exactly like a page that works. It
 **fails closed** (a probe that throws, times out, or answers an unrecognised
@@ -97,7 +109,7 @@ silence.
 ## Things that will bite the next editor
 
 - ⚠️ **`_headers` does not match by prefix.** `/status` covers the literal path
-  `/status` and nothing under it. Each of the three sibling pages needs its own
+  `/status` and nothing under it. Each of the four sibling pages needs its own
   rule **in both slash forms** (the 308 trap that file's header warns about).
   They were nearly shipped with no CSP and no `X-Frame-Options` at all for
   exactly this reason.
