@@ -713,3 +713,44 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 @media (prefers-reduced-motion: reduce) {
   .agent-row[data-state="running"] .dot { animation: none !important; }
 }
+
+/* ═══ SHELF ↔ DRIVE PARITY ══════════════════════════════════════════════════
+   The bar's colour comes from its STATE, never from its percentage. A bar that
+   is green at 38% because 38% is "quite a lot" is decoration; the question is
+   binary — is the server a complete copy of Drive or not — and only in_parity
+   earns green. The two ⚫ states (unknown / never_reported) are deliberately
+   as visible as the red ones: a meter that goes quiet when it stops being fed
+   is the exact failure this surface exists to prevent. */
+.parity-row { margin: .9rem 0 1.1rem; }
+.parity-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .8rem; flex-wrap: wrap; margin-bottom: .35rem;
+}
+.parity-label { font-weight: 600; font-size: var(--et-text-small); }
+.parity-state { font-family: var(--et-font-mono); font-size: var(--et-text-small); }
+.parity-track {
+  height: 9px; border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--et-fg) 12%, transparent);
+}
+.parity-fill {
+  height: 100%; border-radius: 999px;
+  background: var(--et-muted);
+  transition: width .5s ease;
+}
+.parity-detail {
+  margin: .4rem 0 0; color: var(--et-muted);
+  font-size: var(--et-text-small); text-wrap: pretty;
+}
+/* ⚠️ Only this one is green. */
+.parity-row[data-state="in_parity"]   .parity-fill  { background: var(--et-ok, #3a8d5c); }
+.parity-row[data-state="in_parity"]   .parity-state { color: var(--et-ok, #3a8d5c); }
+.parity-row[data-state="behind"]      .parity-fill  { background: var(--et-warn, #d9a03f); }
+.parity-row[data-state="behind"]      .parity-state { color: var(--et-warn, #d9a03f); }
+.parity-row[data-state="cannot_fit"]  .parity-fill  { background: var(--et-danger, #b3453a); }
+.parity-row[data-state="cannot_fit"]  .parity-state { color: var(--et-danger, #b3453a); }
+/* Never green, never silent: a stale or failed measurement is not a result. */
+.parity-row[data-state="unknown"]        .parity-fill  { background: var(--et-danger, #b3453a); }
+.parity-row[data-state="unknown"]        .parity-state { color: var(--et-danger, #b3453a); }
+.parity-row[data-state="never_reported"] .parity-fill  { background: var(--et-muted); }
+.parity-row[data-state="never_reported"] .parity-state { color: var(--et-muted); }
+@media (prefers-reduced-motion: reduce) { .parity-fill { transition: none; } }

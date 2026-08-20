@@ -963,6 +963,85 @@ function failBackupRows(detail, note, now, state = 'danger') {
   }
 }
 
+const parityRowEl = document.getElementById('parity-row');
+const parityStateEl = document.getElementById('parity-state');
+const parityFillEl = document.getElementById('parity-fill');
+const parityDetailEl = document.getElementById('parity-detail');
+
+/** State -> the short words in the corner. Only in_parity is a good answer. */
+const PARITY_WORDS = {
+  in_parity: '100% — complete copy',
+  behind: 'behind',
+  cannot_fit: 'will not fit',
+  unknown: 'unknown',
+  never_reported: 'never reported',
+};
+
+function setParity(state, detail, report) {
+  if (!parityRowEl) return;
+  parityRowEl.dataset.state = state;
+  parityStateEl.textContent = PARITY_WORDS[state] || state;
+
+  // ⚠️ The bar is EMPTIED for unknown/never_reported rather than left at
+  // its last width. A bar frozen at 100% beside the word "unknown" is read as
+  // 100% — people read the picture, not the caption.
+  let pct = 0;
+  if (report && report.total > 0 && (state === 'in_parity' || state === 'behind' || state === 'cannot_fit')) {
+    pct = Math.round((report.matched / report.total) * 100);
+  }
+  parityFillEl.style.width = pct + '%';
+
+  let line = detail || '';
+  if (report && report.total > 0 && state !== 'never_reported') {
+    const when = new Date(report.received_at);
+    const stamp = Number.isNaN(when.getTime()) ? report.received_at : when.toLocaleString();
+    line = `${report.matched.toLocaleString()} of ${report.total.toLocaleString()} files` +
+           (report.missing ? ` · ${report.missing.toLocaleString()} missing` : '') +
+           (report.differing ? ` · ${report.differing.toLocaleString()} wrong size` : '') +
+           ` · checked ${stamp}. ${line}`;
+  }
+  parityDetailEl.textContent = line;
+}
+
+/**
+ * The shelf's parity number. Every failure path says something specific:
+ * a row that cannot be read must never leave the previous number standing,
+ * because the previous number is exactly what a stale meter shows.
+ */
+async function loadParity() {
+  if (!parityRowEl) return;
+  const token = await idToken();
+  if (!token) return; // the gate retries on the next auth event
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/shelf/parity`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    setParity('unknown', 'The auth Worker did not answer (network), so parity could not be read.', null);
+    return;
+  }
+  if (res.status === 401 || res.status === 403) {
+    setParity('unknown', 'Not authorized to read the parity report.', null);
+    return;
+  }
+  if (res.status === 404) {
+    // Deploy skew: this page is newer than the Worker serving it.
+    setParity('unknown', 'This estate’s auth Worker does not serve a parity report yet.', null);
+    return;
+  }
+  if (!res.ok) {
+    setParity('unknown', 'The parity endpoint did not answer, so this number is not current.', null);
+    return;
+  }
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    setParity('unknown', 'The parity answer was unreadable.', null);
+    return;
+  }
+  setParity(body.state || 'unknown', body.detail || '', body.report || null);
+}
+
 async function loadBackups() {
   const token = await idToken();
   if (!token) return; // no live session yet — probeOpsApprover() retries on the next auth event
@@ -1346,7 +1425,7 @@ const gate = mountGate({
   sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl, eventsSectionEl],
   // Idempotent by design — the gate re-runs this on every auth event, and both
   // loaders simply re-render the same rows with a fresh reading.
-  onAllowed: () => { loadBackups(); loadStorage(); loadEvents(); },
+  onAllowed: () => { loadBackups(); loadStorage(); loadEvents(); loadParity(); },
 });
 
 // The storage panel is PUSHED data, so it re-polls on the board's own cadence

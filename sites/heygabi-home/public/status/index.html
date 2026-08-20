@@ -153,6 +153,26 @@
       a single entry. Nothing is missing; the shelf just cannot be browsed yet.
       See the runbook §4.
     </p>
+    <!-- PARITY — "is the server still a complete copy of Drive?" (owner ask
+         2026-08-20). Filled by status.js from GET /api/estate/shelf/parity.
+
+         ⚠️ IT SHIPS SAYING "never reported", AND THAT IS THE HONEST INITIAL
+         STATE, not a placeholder to be tidied away. The number is computed on
+         the shelf server itself — the only machine that can see Drive and the
+         local disk at once — so until that script is installed there is
+         genuinely nothing to show. An empty bar rendered as 0% would read as
+         "nothing has copied", and a hidden row would read as "fine". -->
+    <div id="parity-row" class="parity-row">
+      <div class="parity-head">
+        <span class="parity-label">Shelf ↔ Drive parity</span>
+        <span id="parity-state" class="parity-state">checking…</span>
+      </div>
+      <div class="parity-track" role="img" aria-labelledby="parity-state">
+        <div id="parity-fill" class="parity-fill" style="width:0%"></div>
+      </div>
+      <p id="parity-detail" class="parity-detail">Reading the last report…</p>
+    </div>
+
     <ul class="lever-list">
       <li><a href="https://shelf.heygabi.ai/">Open the shelf →</a> — the live Audiobookshelf, behind the family Google gate.</li>
       <li><a href="/runbooks/shelf-justin/">Justin's steps →</a> — what is left to do on the box, in order, plus the Docker-access options. (The old instructions manual is archived — that build is done.)</li>
