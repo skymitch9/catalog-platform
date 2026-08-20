@@ -125,8 +125,22 @@
     overflow-x: auto; font-size: var(--et-text-micro);
     font-family: var(--et-font-mono); margin: .5rem 0;
   }
-  details.key-card > summary { cursor: pointer; font-size: var(--et-text-small); color: var(--et-fg); }
+  /* ⚠️ THE SUMMARY IS A FLEX ROW, not two adjacent inlines. Shipped once as
+     bare siblings and the label ran straight into the tag — "Shelf server
+     reporterrotate below" — which no structural check can see. */
+  details.key-card > summary {
+    cursor: pointer; color: var(--et-fg); font-size: var(--et-text-small);
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--et-space-2); list-style-position: outside;
+  }
   details.key-card > summary::marker { color: var(--et-accent); }
+  details.key-card > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
+  details.key-card > summary .key-tag { flex: none; text-align: right; }
+  /* Collapsed rows are an index: tighter than an open card, and the gap
+     collapses so seven of them do not become a scroll. */
+  details.key-card { gap: 0; padding: .7rem var(--et-space-3); margin-bottom: var(--et-space-2); }
+  details.key-card[open] { gap: var(--et-space-2); padding-bottom: var(--et-space-3); }
+  details.key-card[open] > summary { margin-bottom: var(--et-space-2); }
 </style>
 </head>
 
