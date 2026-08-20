@@ -94,8 +94,8 @@ test('⚠️ publicView lists ONLY keys that work right now, each with its own s
   };
   const expired = publicView(rec, NOW);
   assert.equal(expired.active.length, 1, 'an expired previous must not be listed as active');
-  assert.equal(expired.active[0].slot, 'current');
-  assert.equal(expired.active[0].use_count, 3);
+  assert.equal(expired.active[0]?.slot, 'current');
+  assert.equal(expired.active[0]?.use_count, 3);
 
   rec.previous.grace_until = new Date(NOW + 3600_000).toISOString();
   const live = publicView(rec, NOW);
@@ -257,6 +257,10 @@ test('a key rotated with a grace window still authenticates on the previous valu
   rec.previous = {
     hash: await sha256Hex(oldT),
     fp: fingerprint(oldT, def.prefix!),
+    created_at: new Date(NOW).toISOString(),
+    created_by: 'someone@example.com',
+    last_used_at: null,
+    use_count: 0,
     grace_until: new Date(NOW + 3600_000).toISOString(),
   };
   const kv = fakeKV({ [def.kvKey!]: JSON.stringify(rec) });

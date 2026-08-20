@@ -49,7 +49,16 @@ async function recordFor(token: string, previous?: { token: string; graceUntil: 
       last_used_at: null,
     },
     previous: previous
-      ? { hash: await sha256Hex(previous.token), fp: fingerprint(previous.token), grace_until: previous.graceUntil }
+      ? {
+          hash: await sha256Hex(previous.token),
+          fp: fingerprint(previous.token),
+          // A retired key keeps its own stats now — see TokenSide.
+          created_at: new Date(NOW).toISOString(),
+          created_by: 'someone@example.com',
+          last_used_at: null,
+          use_count: 0,
+          grace_until: previous.graceUntil,
+        }
       : null,
   };
 }

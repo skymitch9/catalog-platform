@@ -163,19 +163,25 @@ test('⚠️ ebooks-gated/transcripts/ is EXCLUDED, and the exclusion names its 
   // drift this file exists to kill.
   const table = mjs.match(/export const EXCLUDED_PREFIXES = \{([\s\S]*?)\n\};/);
   assert.ok(table, 'EXCLUDED_PREFIXES vanished from scripts/lib/backup-exclusions.mjs');
+  // ⚠️ Narrow once, here. `assert.ok` is not a type guard, so every later
+  // `body` was `string | undefined` and this file was the ONLY thing
+  // keeping `npm run typecheck` red — a permanently-red gate is one people
+  // learn to read past, which is how a real failure gets waved through.
+  const body = table[1];
+  assert.ok(body, 'EXCLUDED_PREFIXES matched but captured nothing');
 
-  const buckets = [...table[1].matchAll(/^\s{2}'([^']+)':\s*\[/gm)].map((m) => m[1]);
+  const buckets = [...body.matchAll(/^\s{2}'([^']+)':\s*\[/gm)].map((m) => m[1]);
   assert.deepEqual(buckets, ['ebooks-gated'], 'the set of buckets with prefix exclusions changed');
 
-  const prefixes = [...table[1].matchAll(/^\s+prefix: '([^']+)',/gm)].map((m) => m[1]);
+  const prefixes = [...body.matchAll(/^\s+prefix: '([^']+)',/gm)].map((m) => m[1]);
   assert.deepEqual(prefixes, ['transcripts/'], 'the set of excluded prefixes changed');
 
   // The reason travels into the run log AND into every dump's manifest.json.
   assert.ok(
-    table[1].includes('owner decision 2026-08-19'),
+    body.includes('owner decision 2026-08-19'),
     'the exclusion no longer names the decision that authorised it',
   );
-  assert.ok(table[1].includes('backup-restore.md'), 'the exclusion no longer points at the restore runbook');
+  assert.ok(body.includes('backup-restore.md'), 'the exclusion no longer points at the restore runbook');
 
   // And `ebooks-gated` must still be BACKED UP — an exclusion is surgical. If a
   // future session's answer to the size problem is to drop the bucket, this is

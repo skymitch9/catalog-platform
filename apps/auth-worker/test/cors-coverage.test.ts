@@ -61,7 +61,9 @@ function mounts(): { pattern: string; helper: string }[] {
   const src = readFileSync(INDEX_TS, 'utf8');
   const found: { pattern: string; helper: string }[] = [];
   for (const m of src.matchAll(/app\.use\('([^']+)',\s*(\w+)\(\)\)/g)) {
-    if (m[2].toLowerCase().includes('cors')) found.push({ pattern: m[1], helper: m[2] });
+    const [, pattern, helper] = m;
+    if (!pattern || !helper) continue;
+    if (helper.toLowerCase().includes('cors')) found.push({ pattern, helper });
   }
   return found;
 }
@@ -71,7 +73,9 @@ function allowedMethods(): Record<string, string[]> {
   const src = readFileSync(INDEX_TS, 'utf8');
   const out: Record<string, string[]> = {};
   for (const m of src.matchAll(/function (\w*[Cc]ors)\(\)[\s\S]*?allowMethods: \[([^\]]+)\]/g)) {
-    out[m[1]] = m[2].split(',').map((s) => s.trim().replace(/['"]/g, '')).filter(Boolean);
+    const [, name, list] = m;
+    if (!name || !list) continue;
+    out[name] = list.split(',').map((x) => x.trim().replace(/['"]/g, '')).filter(Boolean);
   }
   return out;
 }
@@ -101,8 +105,8 @@ function perFile(): { file: string; paths: string[]; verbs: string[] }[] {
 
     const paths = [
       ...new Set(
-        [...src.matchAll(AUTH_PATH)].map((m) =>
-          m[1].replace(/\$\{[^}]+\}/g, ':x').replace(/\/+$/, ''),
+        [...src.matchAll(AUTH_PATH)].flatMap((m) =>
+          m[1] ? [m[1].replace(/\$\{[^}]+\}/g, ':x').replace(/\/+$/, '')] : [],
         ),
       ),
     ];
@@ -113,7 +117,7 @@ function perFile(): { file: string; paths: string[]; verbs: string[] }[] {
     for (const m of src.matchAll(
       /(?:const|let|var)\s+(\w+)\s*=\s*[^;\n]*(?:AUTH_ORIGIN|auth\.heygabi\.ai)/g,
     )) {
-      authNames.add(m[1]);
+      if (m[1]) authNames.add(m[1]);
     }
 
     // ⚠️ EVERY VERB IN THE FILE, minus ones that provably belong to a DIFFERENT
@@ -134,7 +138,7 @@ function perFile(): { file: string; paths: string[]; verbs: string[] }[] {
     const verbs = new Set<string>();
     for (const m of src.matchAll(/method:\s*['\"]([A-Z]+)['\"]/g)) {
       const verb = m[1];
-      if (IGNORED_VERBS.has(verb)) continue;
+      if (!verb || IGNORED_VERBS.has(verb)) continue;
       const near = src.slice(Math.max(0, (m.index ?? 0) - 300), (m.index ?? 0) + 100);
       if (/\/api\/admin\//.test(near)) continue; // the other service's route
       verbs.add(verb);
@@ -188,7 +192,8 @@ test('⚠️ every verb a file uses is allowed by a mount that file can reach', 
     const allowed = new Set<string>();
     for (const p of f.paths) {
       const mount = MOUNTS.find((m) => covers(m.pattern, p));
-      if (mount && METHODS[mount.helper]) for (const v of METHODS[mount.helper]) allowed.add(v);
+      const verbs = mount ? METHODS[mount.helper] : undefined;
+      if (verbs) for (const v of verbs) allowed.add(v);
     }
     if (!allowed.size) continue; // no covered path; the test above reports it
     for (const v of f.verbs) {
