@@ -181,7 +181,10 @@ test('publicView hides a previous key whose window has closed', async () => {
 });
 
 test('publicView on no record says so rather than inventing a key', () => {
-  assert.deepEqual(publicView(null, NOW), { exists: false });
+  // ⚠️ `active` is [] rather than absent, so the UI can iterate it
+  // unconditionally. A caller that has to branch on "is there a list at all"
+  // before "is the list empty" is a caller that will one day forget to.
+  assert.deepEqual(publicView(null, NOW), { exists: false, active: [] });
 });
 
 test('publicView surfaces last_used_at — the field that proves an install took', async () => {
