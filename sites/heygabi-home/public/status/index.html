@@ -126,19 +126,32 @@
   <section id="migration-section" aria-labelledby="mig-h" hidden>
     <h2 id="mig-h">Server migration</h2>
     <!-- ⚠️ THE HONESTY MARKER STAYS — it has only CHANGED STATE (2026-08-20).
-         It read "not yet run" from 2026-08-15 until the tunnel was fixed; it
-         must never become a bare "done", because the path being open is not
-         the same as the shelf being usable. Two things are still true and
-         both belong here: nobody has verified the LIBRARY (no shell on the
-         box), and the disk is too small for it. Trim the prose if it grows,
-         never the state. -->
+         It read "not yet run" from 2026-08-15 until the tunnel was fixed, and
+         it must never become a bare "done": the path being open is not the
+         shelf being usable. Trim the prose if it grows, never the state.
+
+         ⚠️ RETRACTION, same day, ~40 minutes later. This block briefly claimed
+         "the disk is too small for it (269 GB free vs a 686 GB library)".
+         THAT WAS WRONG and it was published. The error was arithmetic, not
+         data: both figures were right, but 269 GB free is what remained
+         AFTER the seed completed, not headroom waiting to receive it —
+         subtracting them assumed the transfer had not happened. Measured
+         from ABS's own Stats through the gate: 1,081 audio tracks / 684.4 GB
+         present against 1,080 books in catalog.csv. The seed is DONE.
+
+         Kept as a comment rather than quietly deleted because the same wrong
+         subtraction is easy to redo from the same two numbers, and the
+         runbook's §4 now leads with the corrected version. -->
     <p class="section-note">
       A physical server mirroring the library from Drive, every book at its own
-      URL on <code>shelf.heygabi.ai</code>. Status: <strong>serving, not yet
-      finished</strong> — the tunnel was fixed 2026-08-20 and Audiobookshelf
-      answers behind the family gate, but the library itself is unverified and
-      <strong>the disk is too small for it</strong> (269 GB free vs a 686 GB
-      library). See the runbook §4.
+      URL on <code>shelf.heygabi.ai</code>. Status: <strong>serving, library
+      fully copied, not yet usable as a book list</strong> — the tunnel was
+      fixed 2026-08-20 and all <strong>1,080 books (684 GB)</strong> are on the
+      server. But the library is laid out one folder per <em>author</em>, and
+      Audiobookshelf expects one folder per <em>book</em>, so it shows
+      <strong>409 items</strong> instead of 1,080 — whole authors collapsed into
+      a single entry. Nothing is missing; the shelf just cannot be browsed yet.
+      See the runbook §4.
     </p>
     <ul class="lever-list">
       <li><a href="https://shelf.heygabi.ai/">Open the shelf →</a> — the live Audiobookshelf, behind the family Google gate.</li>
