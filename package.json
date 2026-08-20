@@ -19,7 +19,7 @@
     "probe:estate": "node tools/estate-probes/run.mjs",
     "check:home": "node scripts/predeploy-check.mjs",
     "verify:home": "node scripts/predeploy-check.mjs --live",
-    "deploy:home": "npm run check:home && npx wrangler pages deploy sites/heygabi-home/public --project-name=heygabi-home --branch=main --commit-dirty=false && npm run verify:home"
+    "deploy:home": "npm test && npm run check:home && npx wrangler pages deploy sites/heygabi-home/public --project-name=heygabi-home --branch=main --commit-dirty=false && npm run verify:home"
   },
   "engines": {
     "node": ">=20"
