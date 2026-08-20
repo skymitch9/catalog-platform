@@ -808,6 +808,28 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       itself can be edited from the Cloudflare D1 console. If this page
       breaks, nothing is locked.
     </p>
+    <!-- Shelf pointers (owner ask 2026-08-20: "add a link to shelf in the
+         admin portal"). ⚠️ Deliberately in the FOOTER, not the header: the
+         header is under a standing trim order ("less text at the top of
+         admin", 2026-08-17) and these are reference links, not controls.
+
+         The live link goes to the BARE ORIGIN on purpose. Audiobookshelf is
+         currently running with ROUTER_BASE_PATH=/audiobookshelf, so the app
+         actually sits at /audiobookshelf/ — but the origin redirects there,
+         and if that base path is later removed the bare link still works.
+         Hard-coding today's path would break it the day that is decided.
+
+         Not gated here: all three targets gate themselves (Cloudflare Access
+         on shelf.heygabi.ai, requireDevops() on both runbook shims), and a
+         link is not a capability. Anyone who cannot pass those meets their
+         own worded refusal — which is the rule about never showing a bare
+         status code, honoured at the door rather than by hiding the door. -->
+    <p class="shelf-links">
+      Shelf server:
+      <a href="https://shelf.heygabi.ai/">open the shelf →</a> ·
+      <a href="/runbooks/shelf/">runbook</a> ·
+      <a href="/runbooks/shelf-migration/">instructions manual</a>
+    </p>
     <p><a href="/">← back to the front door</a></p>
   </footer>
 </main>
