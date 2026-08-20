@@ -275,8 +275,10 @@ function activeKeyRow(key, k, activeCount) {
     kill.disabled = true;
     kstatus.textContent = 'Revoking...';
     kstatus.dataset.tone = '';
-    const r = await authedFetch(KEYS_URL + '/' + encodeURIComponent(key.id), {
-      method: 'DELETE',
+    // POST, not DELETE: adminCors() allows GET/POST/OPTIONS, and a DELETE is
+    // refused at the preflight before the Worker sees it.
+    const r = await authedFetch(KEYS_URL + '/' + encodeURIComponent(key.id) + '/revoke', {
+      method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ slot: k.slot }),
     });

@@ -438,7 +438,13 @@ machineKeyRoutes.post('/estate/keys/:id', requireDevops(), async (c) => {
  * until somebody mints again. That is a real outage for whatever machine uses
  * it, so the response says so plainly rather than reporting a bare success.
  */
-machineKeyRoutes.delete('/estate/keys/:id', requireDevops(), async (c) => {
+// ⚠️ A POST SUB-ROUTE, NOT `DELETE`. This shipped as DELETE and was blocked at
+// the CORS PREFLIGHT — adminCors() allows GET, POST and OPTIONS, so the browser
+// refused before the Worker ever saw it, and the UI reported it as a network
+// failure. Widening the shared CORS methods for every admin route in the estate
+// to serve one button is the wrong trade; a POST verb the allow-list already
+// permits costs nothing and keeps the blast radius of the config unchanged.
+machineKeyRoutes.post('/estate/keys/:id/revoke', requireDevops(), async (c) => {
   const def = keyById(c.req.param('id'));
   if (!def) return c.json({ error: 'unknown_key', detail: 'No machine key by that name.' }, 404);
   if (def.mode !== 'self-service' || !def.kvKey) {
