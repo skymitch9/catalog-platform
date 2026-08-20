@@ -67,10 +67,11 @@ function el(tag, className, text) {
   return n;
 }
 
-function factRow(k, v, mono) {
+function factRow(k, v, mono, pre) {
   const li = document.createElement('li');
   li.append(el('span', 'k', k));
-  li.append(el('span', mono ? 'v mono' : 'v', v));
+  // `pre` keeps multi-line install blocks readable without touching innerHTML.
+  li.append(el('span', pre ? 'v pre' : mono ? 'v mono' : 'v', v));
   return li;
 }
 
@@ -136,31 +137,25 @@ function showOnce(host, data) {
 }
 
 function renderSelfService(card, key) {
-  // ⚠️ NO DESCRIPTIVE TEXT HERE. What the key is, what it can do and where it
-  // lives are all in Info above; repeating them beside the button turned the
-  // control into a paragraph somebody had to read past to find the control.
-  // Only the facts you need to ACT survive: is there a key, and is it working.
-  const facts = el('ul', 'key-facts key-state');
   const t = key.token;
-  const rotating = Boolean(t && t.exists);
+  const active = (t && t.active) || [];
+  const rotating = active.length > 0;
 
   if (!rotating) {
+    const facts = el('ul', 'key-facts key-state');
     facts.append(factRow('Status', key.legacy_present
       ? 'running on the original hand-installed key'
       : 'no key yet'));
+    card.append(facts);
   } else {
-    facts.append(factRow('Key', `${t.fingerprint}…`, true));
-    // The one diagnostic worth the space: it is how you tell an install that
-    // took from one that silently did not.
-    facts.append(factRow('Last used', t.last_used_at
-      ? `${when(t.last_used_at)} (${ago(t.last_used_at)})`
-      : 'never'));
-    if (t.previous_valid_until) {
-      facts.append(factRow('Previous key',
-        `${t.previous_fingerprint}… valid until ${when(t.previous_valid_until)}`, true));
+    // ONE ROW PER KEY THAT WORKS RIGHT NOW, each with its own revoke.
+    // Rotation used to be the only way to kill anything, and it cannot kill the
+    // CURRENT key -- every rotate mints a new one -- so a key created by mistake
+    // could only ever be replaced, never removed. That is the gap this closes.
+    for (const k of active) {
+      card.append(activeKeyRow(key, k, active.length));
     }
   }
-  card.append(facts);
 
   const actions = el('div', 'key-actions');
   const gen = el('button', 'btn', rotating ? 'Regenerate' : 'Generate');
@@ -180,52 +175,38 @@ function renderSelfService(card, key) {
   card.append(onceHost);
 
   gen.addEventListener('click', async () => {
-    // ⚠️ NOTHING HERE IS ONE CLICK. Owner's rule, and the reason is the row of
-    // near-identical buttons: a mis-click must cost a dialog, not a rotation.
-    // The dialog NAMES THE KEY, because "are you sure?" on the wrong card is
-    // confirmation of the wrong thing — the name is the whole safeguard.
+    // NOTHING HERE IS ONE CLICK (owner rule). A mis-click on a row of lookalike
+    // buttons must cost a dialog, not a rotation -- and the dialog NAMES THE KEY,
+    // because an unnamed "are you sure?" on the wrong card confirms the wrong thing.
     const killNow = rotating && revoke.checked;
     const prompt = killNow
-      ? `Kill the old ${key.label} key immediately?
-
-` +
-        `Whatever is using it stops working the moment you continue, until the new key ` +
-        `is installed at:
-  ${key.livesAt}
-
-Use this only if you think the old key leaked.`
+      ? 'Kill the old ' + key.label + ' key immediately?\n\n'
+        + 'Whatever is using it stops working the moment you continue, until the new '
+        + 'key is installed at:\n  ' + key.livesAt + '\n\nUse this only if you think it leaked.'
       : rotating
-        ? `Rotate the ${key.label} key?
-
-` +
-          `A new value is generated and shown ONCE. The current key keeps working for ` +
-          `24 hours, so install the new one at:
-  ${key.livesAt}
-
-before then.`
-        : `Generate a key for ${key.label}?
-
-` +
-          `The value is shown ONCE and cannot be looked up afterwards by anyone. ` +
-          `You will need to install it at:
-  ${key.livesAt}`;
+        ? 'Rotate the ' + key.label + ' key?\n\n'
+          + 'A new value is generated and shown ONCE. The current key keeps working for '
+          + '24 hours, so install the new one at:\n  ' + key.livesAt + '\n\nbefore then.'
+        : 'Generate a key for ' + key.label + '?\n\n'
+          + 'The value is shown ONCE and cannot be looked up afterwards by anyone. '
+          + 'You will need to install it at:\n  ' + key.livesAt;
     if (!window.confirm(prompt)) return;
+
     gen.disabled = true;
-    status.textContent = rotating ? 'Rotating…' : 'Generating…';
+    status.textContent = rotating ? 'Rotating...' : 'Generating...';
     status.dataset.tone = '';
     onceHost.textContent = '';
 
-    const r = await authedFetch(`${KEYS_URL}/${encodeURIComponent(key.id)}`, {
+    const r = await authedFetch(KEYS_URL + '/' + encodeURIComponent(key.id), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ revoke_now: revoke.checked }),
     });
     gen.disabled = false;
 
-    if (r.authLapsed) { status.textContent = 'Sign-in lapsed — sign in again, then retry.'; status.dataset.tone = 'err'; return; }
+    if (r.authLapsed) { status.textContent = 'Sign-in lapsed \u2014 sign in again, then retry.'; status.dataset.tone = 'err'; return; }
     if (r.networkError) {
-      // ⚠️ Genuinely ambiguous: the key may or may not exist now. Say so.
-      status.textContent = 'Could not reach the key service. Reload before trying again — the key may have been created.';
+      status.textContent = 'Could not reach the key service. Reload before trying again \u2014 the key may have been created.';
       status.dataset.tone = 'err';
       return;
     }
@@ -235,21 +216,92 @@ before then.`
       return;
     }
     let data = null;
-    try { data = await r.res.json(); } catch { /* handled below */ }
+    try { data = await r.res.json(); } catch (e) { /* handled below */ }
     if (!r.res.ok) {
       status.textContent = (data && data.detail) || 'The key was not created. Try again shortly.';
       status.dataset.tone = 'err';
       return;
     }
     if (!data || typeof data.token !== 'string' || !data.token) {
-      status.textContent = 'The key was created but the answer was unreadable — reload and check the fingerprint before generating another.';
+      status.textContent = 'The key was created but the answer was unreadable \u2014 reload and check the fingerprint before generating another.';
       status.dataset.tone = 'err';
       return;
     }
     status.textContent = rotating ? 'Rotated.' : 'Created.';
     status.dataset.tone = 'ok';
+    revoke.checked = false;
     showOnce(onceHost, data);
   });
+}
+
+/** One live key: what it is, how it has been used, and a way to kill just it. */
+function activeKeyRow(key, k, activeCount) {
+  const box = el('div', 'active-key');
+
+  const line = el('div', 'active-line');
+  line.append(el('code', 'akey-fp', k.fingerprint + '\u2026'));
+  line.append(el('span', 'akey-slot', k.slot === 'current'
+    ? 'current'
+    : 'previous \u2014 valid until ' + when(k.valid_until)));
+  box.append(line);
+
+  const meta = el('ul', 'key-facts akey-meta');
+  meta.append(factRow('Created', when(k.created_at) + ' by ' + k.created_by));
+  meta.append(factRow('Last used', k.last_used_at
+    ? when(k.last_used_at) + ' (' + ago(k.last_used_at) + ')'
+    : 'never'));
+  // Uses is the cheapest possible answer to "is anything still on this key?" --
+  // the question that decides whether a rotation is safe to finish.
+  meta.append(factRow('Uses', String(k.use_count)));
+  box.append(meta);
+
+  const kill = el('button', 'linkbtn danger', 'Revoke this key');
+  kill.type = 'button';
+  const kstatus = el('span', 'key-status');
+
+  kill.addEventListener('click', async () => {
+    const others = activeCount - 1;
+    const tail = others > 0
+      ? others + ' other key on this credential stays valid.'
+      : key.legacy_present
+        ? 'No minted key will remain \u2014 only the original hand-installed secret still works.'
+        : 'NOTHING will be able to authenticate until you generate and install a new one.';
+    const ok = window.confirm(
+      'Revoke the ' + k.slot + ' ' + key.label + ' key (' + k.fingerprint + '\u2026)?\n\n'
+      + 'It stops working immediately. ' + tail,
+    );
+    if (!ok) return;
+
+    kill.disabled = true;
+    kstatus.textContent = 'Revoking...';
+    kstatus.dataset.tone = '';
+    const r = await authedFetch(KEYS_URL + '/' + encodeURIComponent(key.id), {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slot: k.slot }),
+    });
+    kill.disabled = false;
+
+    if (r.authLapsed) { kstatus.textContent = 'Sign-in lapsed \u2014 sign in again.'; kstatus.dataset.tone = 'err'; return; }
+    if (r.networkError) {
+      kstatus.textContent = 'Could not reach the key service. Reload before retrying \u2014 it may already be revoked.';
+      kstatus.dataset.tone = 'err';
+      return;
+    }
+    let d = null;
+    try { d = await r.res.json(); } catch (e) { /* below */ }
+    if (!r.res.ok) {
+      kstatus.textContent = (d && d.detail) || 'That did not revoke. Try again shortly.';
+      kstatus.dataset.tone = 'err';
+      return;
+    }
+    loadKeys();
+  });
+
+  const acts = el('div', 'key-actions');
+  acts.append(kill, kstatus);
+  box.append(acts);
+  return box;
 }
 
 /**
@@ -288,6 +340,10 @@ function renderKey(key) {
   facts.append(factRow('Lives at', key.livesAt));
   facts.append(factRow('If it leaks', key.blast));
   facts.append(factRow('Rotate', key.rotateHow || 'not recorded'));
+  // PER-KEY, not one shared accordion. The shared one could only describe the
+  // shelf server concretely and left the other two as an exercise, and generic
+  // instructions for a specific credential are how a key lands in the wrong file.
+  if (key.installHow) facts.append(factRow('Install it', key.installHow, false, true));
   if (key.manualWhy) facts.append(factRow('No button because', key.manualWhy));
   card.append(facts);
 

@@ -89,6 +89,31 @@
   .key-facts .v.mono { font-family: var(--et-font-mono); }
   @media (max-width: 34rem) { .key-facts li { grid-template-columns: 1fr; gap: .1rem; } }
 
+  /* One live key, with its own stats and its own revoke. */
+  .active-key {
+    border: var(--et-border-w) solid var(--et-hairline);
+    border-radius: var(--et-radius); padding: .7rem .85rem;
+    margin: var(--et-space-2) 0 0; display: grid; gap: .45rem;
+    background: var(--et-bg-2);
+  }
+  .active-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--et-space-2); flex-wrap: wrap; }
+  .akey-fp { font-family: var(--et-font-mono); font-size: var(--et-text-small); color: var(--et-fg); }
+  .akey-slot { font-size: var(--et-text-micro); color: var(--et-muted); font-family: var(--et-font-label, inherit); }
+  .akey-meta li { border-top: 0; padding: .15rem 0; }
+  .linkbtn.danger { color: var(--et-danger); }
+  /* Multi-line install steps: preserve the newlines the registry wrote. */
+  .key-facts .v.pre {
+    white-space: pre-wrap; font-family: var(--et-font-mono);
+    font-size: var(--et-text-micro); line-height: 1.6;
+  }
+
+  .rules {
+    margin: 0 0 var(--et-space-3); padding-left: 1.15rem;
+    display: grid; gap: .3rem;
+    font-size: var(--et-text-small); color: var(--et-fg); text-wrap: pretty;
+  }
+  .rules li::marker { color: var(--et-accent); }
+
   .key-actions { display: flex; align-items: center; gap: var(--et-space-2); flex-wrap: wrap; }
   .key-revoke { display: flex; align-items: center; gap: .45rem; font-size: var(--et-text-small); color: var(--et-fg); }
   .key-status { font-size: var(--et-text-small); color: var(--et-muted); text-wrap: pretty; }
@@ -237,57 +262,33 @@
        Every info block starts collapsed, so the page still opens as an index. -->
   <section id="api-section" aria-labelledby="api-h" hidden>
     <h2 id="api-h">Machine keys</h2>
-    <p class="key-body" style="margin-bottom:var(--et-space-3)">
+    <p class="key-body">
       Every token the estate holds, smallest blast radius first. Open a key to
-      see what it is, where it comes from and how it rotates. ⚠️ &ldquo;No
-      button&rdquo; does not mean &ldquo;do not rotate&rdquo; &mdash; two of
-      these are Google-issued and rotate with a native two-key overlap, no
-      outage window.
+      see what it is, where it comes from, how it rotates and how to install it.
     </p>
+
+    <!-- ⚠️ THESE RULES GOVERN EVERY KEY BELOW, so they sit in the header rather
+         than in a card of their own at the bottom. As one more collapsible at
+         the end they read as a seventh key, and the one thing a reader most
+         needs BEFORE pressing a rotate button was the last thing on the page. -->
+    <ul class="rules">
+      <li><strong>Rotating is safe by default.</strong> The old key keeps working for
+        <strong>24 hours</strong>, so a mistyped paste cannot take a machine down while you fix it.</li>
+      <li><strong>Think it leaked?</strong> Tick <em>kill the old key immediately</em>, or use
+        <em>Revoke this key</em> on the exact key you want gone. Grace is the wrong
+        behaviour when the point is that the old value must stop working now.</li>
+      <li>⚠️ <strong>A key still being used after you rotated means the rotation never finished.</strong>
+        Each live key shows its own <em>Uses</em> and <em>Last used</em> &mdash; that is how you tell.</li>
+      <li><strong>Nothing here can be looked up afterwards.</strong> Only a hash is stored, so a lost
+        key is <em>replaced</em>, never recovered.</li>
+      <li>Every generate, rotate and revoke asks first, and the dialog names the key.
+        These buttons look alike on purpose &mdash; the confirmation is the safeguard.</li>
+      <li>⚠️ &ldquo;No button&rdquo; does not mean &ldquo;do not rotate&rdquo; &mdash; two of these
+        are Google-issued and rotate with a native two-key overlap, no outage window.</li>
+    </ul>
     <div id="keys-mount"></div>
     <p id="keys-status" class="key-status" role="status" aria-live="polite"></p>
 
-    <details class="key-card">
-      <summary><strong>Installing a key on the machine that uses it</strong></summary>
-      <ol class="steps">
-        <li>Generate the key on its card above. The value appears once &mdash; copy it before leaving the page.</li>
-        <li>On that machine, save it into the file or secret named in that key&rsquo;s <em>Lives at</em>. For the shelf server:
-          <pre class="cmd">echo 'SHELF_PARITY_TOKEN=&lt;the value&gt;' | sudo tee /srv/shelf/.parity.env
-sudo chmod 600 /srv/shelf/.parity.env</pre>
-        </li>
-        <li>Check it landed <em>without printing it</em>:
-          <pre class="cmd">sudo test -s /srv/shelf/.parity.env &amp;&amp; echo 'token file present'</pre>
-        </li>
-        <li>Make the machine do its thing once, then reload &mdash; <strong>Last used</strong> should show a moment ago.</li>
-      </ol>
-      <p class="key-body">
-        Shelf server step-by-step, including the cron line:
-        <a href="/runbooks/shelf-justin/">Justin&rsquo;s steps</a>.
-      </p>
-    </details>
-
-    <details class="key-card">
-      <summary><strong>Rotating, and what the grace window is for</strong></summary>
-      <p class="key-body">
-        Generating again replaces the key. The old one keeps working for
-        <strong>24 hours</strong>, so if the paste goes wrong the machine keeps
-        working while you fix it.
-      </p>
-      <p class="key-body">
-        <strong>Rotating because you think it leaked?</strong> Tick
-        <em>kill the old key immediately</em>. A grace window is the wrong
-        behaviour when the point is that the old value must stop working now.
-      </p>
-      <p class="key-body">
-        ⚠️ Every generate and rotate asks you to confirm first, and the dialog
-        names the key. These buttons look alike on purpose &mdash; the
-        confirmation is what stops a mis-click becoming a rotation.
-      </p>
-      <p class="key-body">
-        Nobody can look a key up afterwards; only a hash is stored. Lost it?
-        Generate a new one &mdash; that is the supported path, not a recovery.
-      </p>
-    </details>
   </section>
 
   <footer>

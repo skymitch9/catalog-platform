@@ -30,7 +30,7 @@ import {
   keyById,
   type KeyDef,
 } from '../src/machine-keys.js';
-import { fingerprint, mintToken, sha256Hex, type TokenRecord } from '../src/shelf-token.js';
+import { fingerprint, mintToken, publicView, sha256Hex, type TokenRecord } from '../src/shelf-token.js';
 
 const NOW = Date.parse('2026-08-20T12:00:00.000Z');
 
@@ -69,6 +69,53 @@ test('every entry says what a leak costs and where the value lives', () => {
     assert.ok(k.blast && k.blast.length > 20, `${k.id} has no usable blast radius`);
     assert.ok(k.livesAt && k.livesAt.length > 5, `${k.id} does not say where it lives`);
   }
+});
+
+test('⚠️ every self-service entry says how to INSTALL the value it hands out', () => {
+  // The shared "installing a key" accordion could only describe the shelf
+  // server concretely and left the other two as an exercise. A page that mints
+  // a credential and does not say where it goes is how one lands in the wrong
+  // file — so the steps are per-key and their presence is asserted.
+  for (const k of KEY_REGISTRY.filter((x) => x.mode === 'self-service')) {
+    assert.ok(k.installHow && k.installHow.length > 40, `${k.id} has no installHow`);
+  }
+});
+
+test('⚠️ publicView lists ONLY keys that work right now, each with its own stats', async () => {
+  // The revoke buttons hang off this list. An expired key listed here would
+  // put a revoke beside something already powerless, which teaches that the
+  // list cannot be trusted at a glance.
+  const cur = mintToken(def.prefix);
+  const rec = await recordFor(cur, def.prefix!);
+  rec.current.use_count = 3;
+  rec.previous = {
+    ...(await recordFor(mintToken(def.prefix), def.prefix!)).current,
+    grace_until: new Date(NOW - 1).toISOString(), // already expired
+  };
+  const expired = publicView(rec, NOW);
+  assert.equal(expired.active.length, 1, 'an expired previous must not be listed as active');
+  assert.equal(expired.active[0].slot, 'current');
+  assert.equal(expired.active[0].use_count, 3);
+
+  rec.previous.grace_until = new Date(NOW + 3600_000).toISOString();
+  const live = publicView(rec, NOW);
+  assert.equal(live.active.length, 2);
+  assert.deepEqual(live.active.map((a) => a.slot), ['current', 'previous']);
+  // ⚠️ Still no hash or value anywhere in what the UI receives.
+  assert.ok(!JSON.stringify(live).includes(rec.current.hash));
+});
+
+test('⚠️ a rotation carries the outgoing key’s stats into `previous`', async () => {
+  // Rebuilding `previous` field-by-field dropped created_at and the usage
+  // history on every rotation — and the usage history of the key being retired
+  // is exactly what says whether anything is still using it.
+  const outgoing = (await recordFor(mintToken(def.prefix), def.prefix!)).current;
+  outgoing.use_count = 7;
+  outgoing.last_used_at = new Date(NOW).toISOString();
+  const previous = { ...outgoing, grace_until: new Date(NOW + 3600_000).toISOString() };
+  assert.equal(previous.use_count, 7);
+  assert.equal(previous.created_at, outgoing.created_at);
+  assert.equal(previous.last_used_at, outgoing.last_used_at);
 });
 
 test('⚠️ every entry says where it COMES FROM and how it rotates — including the self-service ones', () => {

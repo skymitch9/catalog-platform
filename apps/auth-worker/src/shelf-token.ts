@@ -96,12 +96,23 @@ export const FP_LEN = 6;
  */
 export const TOKEN_PREFIX = 'shelfpar_';
 
-export type TokenSide = { hash: string; fp: string };
-export type TokenCurrent = TokenSide & {
+/**
+ * ⚠️ BOTH SIDES CARRY THEIR OWN STATS. `previous` used to hold only a hash, a
+ * fingerprint and an expiry — so the moment a key was rotated away from, its
+ * creation date and usage history vanished, and the UI could not answer "is
+ * the old one still being used?" for the one key where that question decides
+ * whether a rotation finished. The stats travel WITH the side.
+ */
+export type TokenSide = {
+  hash: string;
+  fp: string;
   created_at: string;
   created_by: string;
   last_used_at: string | null;
+  /** Successful authenticated reports. Older records predate it — read `?? 0`. */
+  use_count?: number;
 };
+export type TokenCurrent = TokenSide;
 export type TokenPrevious = TokenSide & { grace_until: string };
 export type TokenRecord = { current: TokenCurrent; previous: TokenPrevious | null };
 
@@ -139,11 +150,41 @@ export function fingerprint(token: string, prefix: string = TOKEN_PREFIX): strin
  *  a value. The fingerprint is the only part of the token that is safe to
  *  render, and it is what makes "does the box match?" answerable at a glance. */
 export function publicView(rec: TokenRecord | null, now: number) {
-  if (!rec) return { exists: false as const };
+  if (!rec) return { exists: false as const, active: [] as ActiveKeyView[] };
   const prevLive =
     rec.previous !== null && Date.parse(rec.previous.grace_until) > now ? rec.previous : null;
+
+  // ⚠️ `active` IS THE LIST A PERSON ACTS ON, and it contains only keys that
+  // WORK RIGHT NOW. An expired `previous` is deliberately absent rather than
+  // listed-as-dead: a revoke button beside something already powerless is a
+  // button that teaches the list cannot be trusted at a glance.
+  const active: ActiveKeyView[] = [
+    {
+      slot: 'current' as const,
+      fingerprint: rec.current.fp,
+      created_at: rec.current.created_at,
+      created_by: rec.current.created_by,
+      last_used_at: rec.current.last_used_at,
+      use_count: rec.current.use_count ?? 0,
+      valid_until: null,
+    },
+  ];
+  if (prevLive) {
+    active.push({
+      slot: 'previous' as const,
+      fingerprint: prevLive.fp,
+      created_at: prevLive.created_at,
+      created_by: prevLive.created_by,
+      last_used_at: prevLive.last_used_at,
+      use_count: prevLive.use_count ?? 0,
+      valid_until: prevLive.grace_until,
+    });
+  }
+
   return {
     exists: true as const,
+    active,
+    // Kept for callers that predate `active`.
     fingerprint: rec.current.fp,
     created_at: rec.current.created_at,
     created_by: rec.current.created_by,
@@ -152,6 +193,16 @@ export function publicView(rec: TokenRecord | null, now: number) {
     previous_fingerprint: prevLive ? prevLive.fp : null,
   };
 }
+
+export type ActiveKeyView = {
+  slot: 'current' | 'previous';
+  fingerprint: string;
+  created_at: string;
+  created_by: string;
+  last_used_at: string | null;
+  use_count: number;
+  valid_until: string | null;
+};
 
 export type TokenVerdict = 'current' | 'previous' | 'no_match';
 
@@ -197,9 +248,16 @@ export async function stampUsed(
   rec: TokenRecord,
   when: string,
   key: string = TOKEN_KEY,
+  slot: 'current' | 'previous' = 'current',
 ): Promise<void> {
   try {
-    rec.current.last_used_at = when;
+    // ⚠️ STAMP THE SIDE THAT ACTUALLY AUTHENTICATED. Crediting the current key
+    // for a report made with the PREVIOUS one would hide the exact situation
+    // the grace window exists to make visible: a rotation nobody finished.
+    const side = slot === 'previous' ? rec.previous : rec.current;
+    if (!side) return;
+    side.last_used_at = when;
+    side.use_count = (side.use_count ?? 0) + 1;
     await kv.put(key, JSON.stringify(rec));
   } catch {
     /* the parity number is the payload; its telemetry is not worth a 500 */
@@ -268,8 +326,11 @@ shelfTokenRoutes.post('/estate/shelf/parity/token', requireDevops(), async (c) =
   const previous: TokenPrevious | null =
     existing && !revokeNow
       ? {
-          hash: existing.current.hash,
-          fp: existing.current.fp,
+          // ⚠️ SPREAD THE WHOLE OUTGOING SIDE, not just its hash. Rebuilding it
+          // field-by-field is how its created_at and usage history got dropped
+          // on every rotation — and the usage history of the key being retired
+          // is precisely what says whether anything is still using it.
+          ...existing.current,
           grace_until: new Date(now + GRACE_MS).toISOString(),
         }
       : null;
@@ -281,6 +342,7 @@ shelfTokenRoutes.post('/estate/shelf/parity/token', requireDevops(), async (c) =
       created_at: new Date(now).toISOString(),
       created_by: actor.email,
       last_used_at: null,
+      use_count: 0,
     },
     previous,
   };

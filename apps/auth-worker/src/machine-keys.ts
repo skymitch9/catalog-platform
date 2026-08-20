@@ -98,6 +98,12 @@ export type KeyDef = {
   origin: string;
   /** The rotation procedure, in the order the steps must happen. */
   rotateHow: string;
+  /** ⚠️ Where a freshly minted value actually GOES, per key. This used to be
+   *  one shared "installing a key" accordion at the bottom of the page, which
+   *  could only describe the shelf server concretely and left the other two as
+   *  an exercise — generic instructions for a specific credential are how
+   *  somebody pastes a key into the wrong place. */
+  installHow?: string;
   /** The exact command, when there is one. */
   manualFix?: string;
 };
@@ -119,6 +125,12 @@ export const KEY_REGISTRY: KeyDef[] = [
     prefix: 'shelfpar_',
     kvKey: 'shelf:parity:token',
     legacyEnv: 'SHELF_PARITY_TOKEN',
+    installHow: `On the shelf server:
+  echo 'SHELF_PARITY_TOKEN=<the value>' | sudo tee /srv/shelf/.parity.env
+  sudo chmod 600 /srv/shelf/.parity.env
+Then check it landed without printing it:
+  sudo test -s /srv/shelf/.parity.env && echo 'token file present'
+Run ./03-shelf-parity.sh once, then reload this page — Last used should show a moment ago.`,
     origin: 'Minted on this page — 32 bytes of CSPRNG as base64url, stored only as a SHA-256 hash. The original was hand-minted and DM’d; that one is the legacy fallback and should be deleted once a minted key shows a Last used.',
     rotateHow: 'Generate above → paste into /srv/shelf/.parity.env on the shelf server → chmod 600. The old key keeps working 24 h, so nothing goes dark if the paste goes wrong.',
   },
@@ -133,6 +145,9 @@ export const KEY_REGISTRY: KeyDef[] = [
     prefix: 'evt_',
     kvKey: 'estate:events:token',
     legacyEnv: 'ESTATE_EVENTS_TOKEN',
+    installHow: `Set it on every Worker that pushes events — auth-worker, index-worker and audiobook-worker — from each app directory:
+  npx wrangler secret put ESTATE_EVENTS_TOKEN
+⚠️ Use the file-redirect transport, never a PowerShell pipe: a piped secret picks up an invisible BOM and the stored value is wrong while looking perfect. Finish all three inside the 24 h grace window.`,
     origin: 'Minted on this page. The legacy value predates it and was conductor-minted with `openssl rand -hex 32`; a custody copy is docs/access/keys/estate-events-token.txt.',
     rotateHow: 'Generate above → update the sibling Workers that push events (wrangler secret put in each) within the 24 h grace window.',
   },
@@ -162,6 +177,7 @@ export const KEY_REGISTRY: KeyDef[] = [
     prefix: 'cond_',
     kvKey: 'estate:conductor:token',
     legacyEnv: 'ESTATE_CONDUCTOR_TOKEN',
+    installHow: `Put it in the conductor's environment on the owner's machine (the value scripts/push-agent-board.mjs reads), then push the board once and reload this page — Last used should show a moment ago. Finish inside the 24 h grace window.`,
     origin: 'Minted on this page. The legacy value was conductor-minted with `openssl rand -hex 32`; custody copy at docs/access/keys/estate-conductor-token.txt.',
     rotateHow: 'Generate above → update the conductor’s environment on the owner’s machine within the 24 h grace window.',
   },
@@ -298,7 +314,7 @@ machineKeyRoutes.get('/estate/keys', requireDevops(), async (c) => {
   const now = Date.now();
   const keys = [];
   for (const def of KEY_REGISTRY) {
-    const { kvKey, legacyEnv, prefix, ...pub } = def;
+    const { kvKey, legacyEnv, prefix, ...pub } = def; // installHow rides along in pub
     let view: ReturnType<typeof publicView> | null = null;
     let corrupt = false;
     if (def.mode === 'self-service' && kvKey) {
@@ -368,8 +384,11 @@ machineKeyRoutes.post('/estate/keys/:id', requireDevops(), async (c) => {
   const previous: TokenPrevious | null =
     existing && !revokeNow
       ? {
-          hash: existing.current.hash,
-          fp: existing.current.fp,
+          // ⚠️ SPREAD THE WHOLE OUTGOING SIDE, not just its hash. Rebuilding it
+          // field-by-field is how its created_at and usage history got dropped
+          // on every rotation — and the usage history of the key being retired
+          // is precisely what says whether anything is still using it.
+          ...existing.current,
           grace_until: new Date(now + GRACE_MS).toISOString(),
         }
       : null;
@@ -381,6 +400,7 @@ machineKeyRoutes.post('/estate/keys/:id', requireDevops(), async (c) => {
       created_at: new Date(now).toISOString(),
       created_by: actor.email,
       last_used_at: null,
+      use_count: 0,
     },
     previous,
   };
@@ -394,5 +414,111 @@ machineKeyRoutes.post('/estate/keys/:id', requireDevops(), async (c) => {
     previous_valid_until: previous ? previous.grace_until : null,
     env_line: `${def.legacyEnv ?? 'TOKEN'}=${token}`,
     token_view: publicView(rec, now),
+  });
+});
+
+/**
+ * Revoke a live key WITHOUT minting a replacement.
+ *
+ * ⚠️ THIS EXISTS BECAUSE ROTATION WAS THE ONLY WAY TO KILL ANYTHING, and it
+ * cannot kill the CURRENT key: every rotate mints a new current, so a key
+ * created by mistake could only ever be replaced by another one. Testing the
+ * revocation path left four live test keys behind and no way to remove the
+ * last one — the gap the owner hit directly.
+ *
+ * `slot` is explicit rather than inferred:
+ *   previous — end a grace window early; the current key is untouched.
+ *   current  — kill the newest key. ⚠️ If a previous is still in its window it
+ *              STAYS VALID and is promoted, because silently killing a key the
+ *              caller did not name would be a bigger surprise than leaving it.
+ *   all      — remove the record entirely. The route then accepts only the
+ *              legacy env secret, if one is still installed.
+ *
+ * ⚠️ `all` ON A KEY WITH NO LEGACY SECRET LEAVES NOTHING THAT CAN AUTHENTICATE
+ * until somebody mints again. That is a real outage for whatever machine uses
+ * it, so the response says so plainly rather than reporting a bare success.
+ */
+machineKeyRoutes.delete('/estate/keys/:id', requireDevops(), async (c) => {
+  const def = keyById(c.req.param('id'));
+  if (!def) return c.json({ error: 'unknown_key', detail: 'No machine key by that name.' }, 404);
+  if (def.mode !== 'self-service' || !def.kvKey) {
+    return c.json(
+      { error: 'not_self_service', detail: def.manualWhy ?? 'This credential is not managed by this Worker.', fix: def.manualFix },
+      400,
+    );
+  }
+
+  const kv = c.env.estate_docs;
+  if (!kv) {
+    return c.json({ error: 'docs_kv_unbound', fix: 'add the estate_docs kv_namespaces binding' }, 503);
+  }
+
+  let slot: 'current' | 'previous' | 'all' = 'current';
+  try {
+    const body = (await c.req.json()) as { slot?: unknown };
+    if (body && (body.slot === 'previous' || body.slot === 'all' || body.slot === 'current')) {
+      slot = body.slot;
+    }
+  } catch {
+    /* default */
+  }
+
+  let rec: TokenRecord | null;
+  try {
+    rec = await readRecord(kv, def.kvKey);
+  } catch {
+    return c.json({ error: 'machine_key_corrupt' }, 500);
+  }
+  if (!rec) return c.json({ error: 'no_key', detail: 'There is no minted key to revoke.' }, 404);
+
+  const now = Date.now();
+  const prevLive = rec.previous && Date.parse(rec.previous.grace_until) > now ? rec.previous : null;
+  const legacy = def.legacyEnv ? Boolean(c.env[def.legacyEnv]) : false;
+
+  if (slot === 'all') {
+    await kv.delete(def.kvKey);
+    return c.json({
+      revoked: 'all',
+      remaining: 0,
+      legacy_still_accepted: legacy,
+      warning: legacy
+        ? 'Every minted key is gone. Only the original hand-installed secret still works.'
+        : '⚠️ Nothing can authenticate on this route now. Generate a key and install it.',
+      token_view: publicView(null, now),
+    });
+  }
+
+  if (slot === 'previous') {
+    if (!prevLive) return c.json({ error: 'no_previous', detail: 'No previous key is in its grace window.' }, 404);
+    rec.previous = null;
+    await kv.put(def.kvKey, JSON.stringify(rec));
+    return c.json({ revoked: 'previous', remaining: 1, legacy_still_accepted: legacy, token_view: publicView(rec, now) });
+  }
+
+  // slot === 'current'
+  if (prevLive) {
+    // Promote the still-valid previous rather than killing it unasked.
+    const promoted: TokenRecord = { current: { ...prevLive }, previous: null };
+    delete (promoted.current as Partial<TokenPrevious>).grace_until;
+    await kv.put(def.kvKey, JSON.stringify(promoted));
+    return c.json({
+      revoked: 'current',
+      remaining: 1,
+      promoted_previous: true,
+      note: 'The previous key was still in its grace window, so it is now the only key. It was not revoked, because you did not ask for that.',
+      legacy_still_accepted: legacy,
+      token_view: publicView(promoted, now),
+    });
+  }
+
+  await kv.delete(def.kvKey);
+  return c.json({
+    revoked: 'current',
+    remaining: 0,
+    legacy_still_accepted: legacy,
+    warning: legacy
+      ? 'No minted key remains. Only the original hand-installed secret still works.'
+      : '⚠️ Nothing can authenticate on this route now. Generate a key and install it.',
+    token_view: publicView(null, now),
   });
 });

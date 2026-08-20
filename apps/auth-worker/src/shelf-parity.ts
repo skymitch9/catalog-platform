@@ -337,7 +337,9 @@ shelfParityRoutes.post('/estate/shelf/parity', async (c: Context<AppBindings>) =
 
   // Best-effort telemetry on the key that just worked. This is what turns
   // "did my paste take?" into a fact on /status/api instead of a guess.
-  if (rec !== null && verdict !== 'no_match') await stampUsed(kv, rec, stored.received_at);
+  if (rec !== null && (verdict === 'current' || verdict === 'previous')) {
+    await stampUsed(kv, rec, stored.received_at, undefined, verdict);
+  }
 
   return c.json({
     ok: true,
