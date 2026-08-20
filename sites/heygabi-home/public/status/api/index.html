@@ -151,6 +151,11 @@
   }
   details.key-card[open] > summary::before { transform: rotate(45deg); }
   details.key-card > summary { padding-left: 0; }
+  /* ⚠️ space-between with ONE child pushes it to the far right — which is
+     what happened to the two how-to accordions, whose summaries carry no tag.
+     The first child always takes the free space so text stays left-aligned
+     whether or not a tag follows it. */
+  details.key-card > summary > :first-child { flex: 1 1 auto; }
   details.key-card > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
   details.key-card > summary .key-tag { flex: none; text-align: right; }
   /* The heading lives IN the summary now, so the whole header is the hit area. */
