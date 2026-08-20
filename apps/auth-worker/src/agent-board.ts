@@ -47,6 +47,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppBindings } from './env.js';
 import { requireDevops } from './middleware/auth.js';
+import { checkRegistryAuth, keyById } from './machine-keys.js';
 
 /** The single row. See 0012's header for why the schema enforces it. */
 export const AGENT_BOARD_ROW_ID = 1;
@@ -498,9 +499,22 @@ agentBoardRoutes.get('/estate/ops/agent-board', requireDevops(), async (c: Conte
  * the page displays.
  */
 agentBoardRoutes.post('/estate/ops/agent-board', async (c: Context<AppBindings>) => {
-  const auth = checkConductorAuth(c.env.ESTATE_CONDUCTOR_TOKEN, c.req.header('Authorization') ?? null);
-  if (auth !== 'ok') {
-    const refusal = conductorRefusal(auth);
+  // ⚠️ Accepts the MINTED key (hashed in KV, rotated from /status/api) or the
+  // legacy ESTATE_CONDUCTOR_TOKEN secret. Shadow-first: drop the env secret
+  // once a minted key shows a last_used_at, not before.
+  let auth;
+  try {
+    auth = await checkRegistryAuth(
+      c.env.estate_docs,
+      keyById('conductor')!,
+      c.req.header('Authorization') ?? null,
+      c.env.ESTATE_CONDUCTOR_TOKEN,
+    );
+  } catch {
+    return c.json({ error: 'machine_key_corrupt' }, 500);
+  }
+  if (!auth.ok) {
+    const refusal = conductorRefusal(auth.cause);
     return c.json(refusal.body, refusal.status);
   }
 

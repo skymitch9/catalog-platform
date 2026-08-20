@@ -1,45 +1,43 @@
 /**
- * status/api/api.js — the API tab's one job: mint and rotate machine keys.
+ * status/api/api.js — renders the estate's machine-key registry and mints the
+ * keys that can be minted.
  *
- * Owner ask 2026-08-20: "a way for justin to gen a key or regen a key... all
- * from the ui page for max safety", housed in "a new tab under status called
- * API". Endpoints are GET/POST /api/estate/shelf/parity/token
- * (apps/auth-worker/src/shelf-token.ts), both requireDevops().
+ * Owner asks 2026-08-20: "a way for justin to gen a key or regen a key... all
+ * from the ui page for max safety", then "we should put all api key rotation
+ * stuff here for our portfolio". Endpoints: GET /api/estate/keys and
+ * POST /api/estate/keys/:id (apps/auth-worker/src/machine-keys.ts), both
+ * requireDevops().
  *
- * ⚠️ THE MINTED VALUE IS NEVER STORED IN THIS MODULE'S STATE. It is written
- * straight into the DOM node that displays it and read back from that node
- * when the copy button is pressed. There is deliberately no `let lastToken`:
- * a module-scoped copy would survive sign-out, survive the gate closing, and
- * be sitting in memory for anything that later gets injected onto this page.
- * The DOM node is cleared by clearOnce(), which the gate's onDenied calls.
+ * ⚠️ THE REGISTRY IS THE WORKER'S, NOT THIS FILE'S. Every card is built from
+ * what GET /estate/keys returns, including which credentials exist and which
+ * may be minted. A hardcoded card here would be a second list to forget, and
+ * both failure shapes are bad: omitting a credential makes the page a liar by
+ * silence, and offering a button the route refuses teaches people the page is
+ * wrong. `mode` decides whether a card gets a button — and the ROUTE refuses
+ * non-self-service ids regardless, because the UI is not the security boundary.
  *
- * ⚠️ EVERY VALUE FROM THE API IS WRITTEN WITH textContent, NEVER innerHTML —
- * the same escaping boundary the runbook shim's facts form documents. The
- * fingerprint and the actor email are server-side strings, but the rule is
- * the rule precisely so nobody has to re-derive whether this one is safe.
+ * ⚠️ NO MINTED VALUE IS EVER HELD IN MODULE STATE. It goes straight into the
+ * DOM node that displays it and is read back from that node to copy. There is
+ * deliberately no `let lastToken`: a module-scoped copy would survive sign-out
+ * and the gate closing. clearAllOnce() empties those nodes, and the gate's
+ * onDenied calls it.
+ *
+ * ⚠️ EVERY VALUE FROM THE API IS WRITTEN WITH textContent, NEVER innerHTML.
  */
 
 import { idToken } from '../../assets/estate-auth.js';
 import { AUTH_ORIGIN } from '../lib/core.js';
 import { mountGate } from '../lib/gate.js';
 
-const TOKEN_URL = `${AUTH_ORIGIN}/api/estate/shelf/parity/token`;
+const KEYS_URL = `${AUTH_ORIGIN}/api/estate/keys`;
 
 const section = document.getElementById('api-section');
-const factsEl = document.getElementById('parity-facts');
-const genBtn = document.getElementById('parity-gen');
-const revokeWrap = document.getElementById('parity-revoke-wrap');
-const revokeBox = document.getElementById('parity-revoke');
-const statusEl = document.getElementById('parity-status');
-const onceMount = document.getElementById('parity-once');
+const mount = document.getElementById('keys-mount');
+const pageStatus = document.getElementById('keys-status');
 
-function setStatus(text, tone) {
-  statusEl.textContent = text || '';
-  statusEl.dataset.tone = tone || '';
-}
-
-function clearOnce() {
-  onceMount.textContent = '';
+function setPageStatus(text, tone) {
+  pageStatus.textContent = text || '';
+  pageStatus.dataset.tone = tone || '';
 }
 
 function when(iso) {
@@ -52,7 +50,6 @@ function when(iso) {
 }
 
 function ago(iso) {
-  if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   const mins = Math.round((Date.now() - d.getTime()) / 60000);
@@ -63,53 +60,22 @@ function ago(iso) {
   return `${Math.round(hrs / 24)} d ago`;
 }
 
-/** One <li> per fact. Built rather than templated so nothing goes through
- *  innerHTML on a page that handles a credential. */
-function fact(key, value, mono) {
+function el(tag, className, text) {
+  const n = document.createElement(tag);
+  if (className) n.className = className;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+function factRow(k, v, mono) {
   const li = document.createElement('li');
-  const k = document.createElement('span');
-  k.className = 'k';
-  k.textContent = key;
-  const v = document.createElement('span');
-  v.className = mono ? 'v mono' : 'v';
-  v.textContent = value;
-  li.append(k, v);
+  li.append(el('span', 'k', k));
+  li.append(el('span', mono ? 'v mono' : 'v', v));
   return li;
 }
 
-function renderFacts(view, legacyPresent) {
-  factsEl.textContent = '';
-
-  if (!view || !view.exists) {
-    factsEl.append(fact('Status', legacyPresent
-      ? 'No self-service key yet — the box is still on the original hand-delivered one.'
-      : 'No key yet. Generate one to start reporting.'));
-    genBtn.textContent = 'Generate key';
-    revokeWrap.hidden = true;
-    return;
-  }
-
-  factsEl.append(fact('Key', `${view.fingerprint}…`, true));
-  factsEl.append(fact('Created', `${when(view.created_at)} by ${view.created_by}`));
-
-  // ⚠️ "Last used" is the diagnostic that makes this page worth visiting: it
-  // is how someone tells "my paste worked" from "my paste silently didn't".
-  const used = view.last_used_at;
-  factsEl.append(fact('Last used', used
-    ? `${when(used)} (${ago(used)})`
-    : 'never — the server has not reported with this key yet'));
-
-  if (view.previous_valid_until) {
-    factsEl.append(fact('Previous key',
-      `${view.previous_fingerprint}… still valid until ${when(view.previous_valid_until)}`, true));
-  }
-  if (legacyPresent) {
-    factsEl.append(fact('Original key',
-      'the hand-delivered one still works — remove it once this key is reporting'));
-  }
-
-  genBtn.textContent = 'Regenerate key';
-  revokeWrap.hidden = false;
+function clearAllOnce() {
+  for (const n of mount.querySelectorAll('.once-mount')) n.textContent = '';
 }
 
 async function authedFetch(url, init) {
@@ -117,171 +83,222 @@ async function authedFetch(url, init) {
   if (!token) return { authLapsed: true };
   const headers = { authorization: `Bearer ${token}`, ...(init && init.headers) };
   try {
-    const res = await fetch(url, { ...init, headers });
-    return { res };
+    return { res: await fetch(url, { ...init, headers }) };
   } catch {
     return { networkError: true };
   }
 }
 
-async function loadKey() {
-  setStatus('', '');
-  const r = await authedFetch(TOKEN_URL);
-  if (r.authLapsed) { setStatus('Sign-in lapsed — sign in again.', 'err'); return; }
-  if (r.networkError) { setStatus('Could not reach the key service (network). Try again shortly.', 'err'); return; }
+/** The show-once panel. Built at mint time; the value lives only in this node. */
+function showOnce(host, data) {
+  host.textContent = '';
+  const box = el('div', 'once-box');
+  box.append(el('p', 'once-h', 'Copy this now — it is never shown again.'));
 
-  const { res } = r;
-  if (res.status === 401 || res.status === 403) {
-    // §1e: never a bare HTTP status — say what it needs and how to get it.
-    setStatus('Only devops accounts can manage keys. Ask Skylar for the devops role.', 'err');
-    return;
-  }
-  if (!res.ok) { setStatus('Could not read the current key. Try again shortly.', 'err'); return; }
-
-  let data;
-  try { data = await res.json(); } catch { setStatus('The answer was unreadable.', 'err'); return; }
-  renderFacts(data.token, Boolean(data.legacy_secret_present));
-}
-
-/** Build the show-once panel. Called exactly once per mint; the value lives
- *  only in the node this creates. */
-function showOnce(token, envLine, previousUntil) {
-  clearOnce();
-
-  const box = document.createElement('div');
-  box.className = 'once-box';
-
-  const h = document.createElement('p');
-  h.className = 'once-h';
-  h.textContent = 'Copy this now — it is never shown again.';
-  box.append(h);
-
-  const val = document.createElement('code');
-  val.className = 'once-val';
-  val.id = 'once-val';
-  val.textContent = envLine;
+  const val = el('code', 'once-val', data.env_line || data.token);
+  val.setAttribute('tabindex', '-1');
   box.append(val);
 
-  const actions = document.createElement('div');
-  actions.className = 'once-actions';
-
-  const copyBtn = document.createElement('button');
+  const actions = el('div', 'once-actions');
+  const copyBtn = el('button', 'btn', 'Copy the line');
   copyBtn.type = 'button';
-  copyBtn.className = 'btn';
-  copyBtn.textContent = 'Copy the line';
-  const copyNote = document.createElement('span');
-  copyNote.className = 'key-status';
+  const note = el('span', 'key-status');
   copyBtn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(val.textContent);
-      copyNote.textContent = 'Copied.';
-      copyNote.dataset.tone = 'ok';
+      note.textContent = 'Copied.';
+      note.dataset.tone = 'ok';
     } catch {
-      // Clipboard can be refused (permissions, insecure context). Selecting it
-      // for the reader beats telling them it failed and stopping there.
-      const range = document.createRange();
-      range.selectNodeContents(val);
+      // Clipboard can be refused. Selecting it beats saying "failed" and stopping.
+      const r = document.createRange();
+      r.selectNodeContents(val);
       const sel = window.getSelection();
       sel.removeAllRanges();
-      sel.addRange(range);
-      copyNote.textContent = 'Could not copy automatically — it is selected, press Ctrl/Cmd+C.';
-      copyNote.dataset.tone = 'err';
+      sel.addRange(r);
+      note.textContent = 'Could not copy automatically — it is selected, press Ctrl/Cmd+C.';
+      note.dataset.tone = 'err';
     }
   });
 
-  const doneBtn = document.createElement('button');
-  doneBtn.type = 'button';
-  doneBtn.className = 'linkbtn';
-  doneBtn.textContent = 'I have saved it — hide';
-  doneBtn.addEventListener('click', () => { clearOnce(); loadKey(); });
+  const done = el('button', 'linkbtn', 'I have saved it — hide');
+  done.type = 'button';
+  done.addEventListener('click', () => { host.textContent = ''; loadKeys(); });
 
-  actions.append(copyBtn, doneBtn, copyNote);
+  actions.append(copyBtn, done, note);
   box.append(actions);
 
-  const tail = document.createElement('p');
-  tail.className = 'key-scope';
-  tail.style.margin = '.8rem 0 0';
-  tail.textContent = previousUntil
-    ? `The previous key keeps working until ${when(previousUntil)}, so nothing goes dark if this paste goes wrong.`
-    : 'The previous key (if there was one) has been revoked immediately.';
-  box.append(tail);
+  box.append(el('p', 'key-body', data.previous_valid_until
+    ? `The previous key keeps working until ${when(data.previous_valid_until)}, so nothing breaks if this paste goes wrong.`
+    : 'Any previous key has been revoked immediately.'));
 
-  onceMount.append(box);
-  // Move focus so a keyboard/screen-reader user lands on the thing that just
-  // appeared rather than being left on the button they pressed.
-  val.setAttribute('tabindex', '-1');
+  host.append(box);
   val.focus();
 }
 
-async function generate() {
-  const rotating = genBtn.textContent.startsWith('Regenerate');
-  const revokeNow = !revokeWrap.hidden && revokeBox.checked;
+function renderSelfService(card, key) {
+  const facts = el('ul', 'key-facts');
+  const t = key.token;
 
-  if (rotating && revokeNow) {
-    // The one destructive variant on this page: it takes a working key away
-    // from a machine that is using it, with no grace. Confirm in words.
-    const ok = window.confirm(
-      'Kill the old key immediately?\n\n' +
-      'The shelf server stops being able to report the moment you continue, ' +
-      'until the new key is installed on it. Use this only if you think the ' +
-      'old key leaked.',
-    );
-    if (!ok) return;
+  if (!t || !t.exists) {
+    facts.append(factRow('Status', key.legacy_present
+      ? 'No minted key yet — still running on the original hand-installed one.'
+      : 'No key yet. Generate one to start.'));
+  } else {
+    facts.append(factRow('Key', `${t.fingerprint}…`, true));
+    facts.append(factRow('Created', `${when(t.created_at)} by ${t.created_by}`));
+    facts.append(factRow('Last used', t.last_used_at
+      ? `${when(t.last_used_at)} (${ago(t.last_used_at)})`
+      : 'never — nothing has authenticated with this key yet'));
+    if (t.previous_valid_until) {
+      facts.append(factRow('Previous key',
+        `${t.previous_fingerprint}… still valid until ${when(t.previous_valid_until)}`, true));
+    }
+    if (key.legacy_present) {
+      facts.append(factRow('Original key',
+        'the hand-installed one still works — remove it once this key shows a Last used'));
+    }
   }
+  card.append(facts);
 
-  genBtn.disabled = true;
-  setStatus(rotating ? 'Rotating…' : 'Generating…', '');
-  clearOnce();
+  const actions = el('div', 'key-actions');
+  const rotating = Boolean(t && t.exists);
+  const gen = el('button', 'btn', rotating ? 'Regenerate' : 'Generate');
+  gen.type = 'button';
 
-  const r = await authedFetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ revoke_now: revokeNow }),
+  const revokeWrap = el('label', 'key-revoke');
+  const revoke = document.createElement('input');
+  revoke.type = 'checkbox';
+  revokeWrap.append(revoke, document.createTextNode(' Kill the old key immediately (use if you think it leaked)'));
+  revokeWrap.hidden = !rotating;
+
+  const status = el('span', 'key-status');
+  actions.append(gen, revokeWrap, status);
+  card.append(actions);
+
+  const onceHost = el('div', 'once-mount');
+  card.append(onceHost);
+
+  gen.addEventListener('click', async () => {
+    if (rotating && revoke.checked) {
+      const ok = window.confirm(
+        `Kill the old ${key.label} key immediately?\n\n` +
+        'Whatever is using it stops working the moment you continue, until the ' +
+        'new key is installed there. Use this only if you think the old key leaked.',
+      );
+      if (!ok) return;
+    }
+    gen.disabled = true;
+    status.textContent = rotating ? 'Rotating…' : 'Generating…';
+    status.dataset.tone = '';
+    onceHost.textContent = '';
+
+    const r = await authedFetch(`${KEYS_URL}/${encodeURIComponent(key.id)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ revoke_now: revoke.checked }),
+    });
+    gen.disabled = false;
+
+    if (r.authLapsed) { status.textContent = 'Sign-in lapsed — sign in again, then retry.'; status.dataset.tone = 'err'; return; }
+    if (r.networkError) {
+      // ⚠️ Genuinely ambiguous: the key may or may not exist now. Say so.
+      status.textContent = 'Could not reach the key service. Reload before trying again — the key may have been created.';
+      status.dataset.tone = 'err';
+      return;
+    }
+    if (r.res.status === 401 || r.res.status === 403) {
+      status.textContent = 'Only devops accounts can generate keys. Ask Skylar for the devops role.';
+      status.dataset.tone = 'err';
+      return;
+    }
+    let data = null;
+    try { data = await r.res.json(); } catch { /* handled below */ }
+    if (!r.res.ok) {
+      status.textContent = (data && data.detail) || 'The key was not created. Try again shortly.';
+      status.dataset.tone = 'err';
+      return;
+    }
+    if (!data || typeof data.token !== 'string' || !data.token) {
+      status.textContent = 'The key was created but the answer was unreadable — reload and check the fingerprint before generating another.';
+      status.dataset.tone = 'err';
+      return;
+    }
+    status.textContent = rotating ? 'Rotated.' : 'Created.';
+    status.dataset.tone = 'ok';
+    showOnce(onceHost, data);
   });
-
-  genBtn.disabled = false;
-
-  if (r.authLapsed) { setStatus('Sign-in lapsed — sign in again, then retry.', 'err'); return; }
-  if (r.networkError) {
-    // ⚠️ A network failure here is genuinely ambiguous — the key may or may not
-    // have been created. Say so rather than implying nothing happened.
-    setStatus('Could not reach the key service. Reload this page before generating again — the key may have been created.', 'err');
-    return;
-  }
-
-  const { res } = r;
-  if (res.status === 401 || res.status === 403) {
-    setStatus('Only devops accounts can generate keys. Ask Skylar for the devops role.', 'err');
-    return;
-  }
-  if (!res.ok) { setStatus('The key was not created. Try again shortly.', 'err'); return; }
-
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    setStatus('The key was created but the answer was unreadable — reload and check the fingerprint before generating another.', 'err');
-    return;
-  }
-  if (typeof data.token !== 'string' || !data.token) {
-    setStatus('The answer carried no key. Reload and check before generating another.', 'err');
-    return;
-  }
-
-  setStatus(rotating ? 'Rotated.' : 'Created.', 'ok');
-  revokeBox.checked = false;
-  showOnce(data.token, data.env_line, data.previous_valid_until);
-  renderFacts(data.token_view, false);
 }
 
-genBtn.addEventListener('click', generate);
+function renderManual(card, key) {
+  const facts = el('ul', 'key-facts');
+  facts.append(factRow('Rotation', key.mode === 'paired'
+    ? 'not from here — see below'
+    : 'not minted by this Worker'));
+  if (key.legacy_present) facts.append(factRow('Configured', 'yes'));
+  card.append(facts);
+
+  // ⚠️ The reason is the content. A row with no button and no explanation
+  // reads as an oversight and invites somebody to "fix" it by adding one.
+  card.append(el('p', 'key-body', key.manualWhy || ''));
+  if (key.manualFix) {
+    const pre = el('pre', 'cmd', key.manualFix);
+    card.append(pre);
+  }
+}
+
+function renderKey(key) {
+  const card = el('div', 'key-card');
+
+  const head = el('div', 'key-head');
+  head.append(el('h3', null, key.label));
+  head.append(el('span', 'key-tag', key.tag));
+  card.append(head);
+
+  card.append(el('p', 'key-body', key.body));
+  card.append(el('p', 'key-body', key.blast));
+  card.append(el('p', 'key-body', `Lives at: ${key.livesAt}`));
+
+  if (key.corrupt) {
+    // Must never read as "no key yet" — that would look like a fresh install.
+    const bad = el('p', 'key-status', 'The stored record for this key is unreadable. Do not generate over it before someone looks — tell Skylar.');
+    bad.dataset.tone = 'err';
+    card.append(bad);
+    return card;
+  }
+
+  if (key.mode === 'self-service') renderSelfService(card, key);
+  else renderManual(card, key);
+
+  return card;
+}
+
+async function loadKeys() {
+  setPageStatus('Loading…', '');
+  const r = await authedFetch(KEYS_URL);
+  if (r.authLapsed) { setPageStatus('Sign-in lapsed — sign in again.', 'err'); return; }
+  if (r.networkError) { setPageStatus('Could not reach the key service (network). Try again shortly.', 'err'); return; }
+  if (r.res.status === 401 || r.res.status === 403) {
+    setPageStatus('Only devops accounts can manage keys. Ask Skylar for the devops role.', 'err');
+    return;
+  }
+  if (!r.res.ok) { setPageStatus('Could not read the key registry. Try again shortly.', 'err'); return; }
+
+  let data;
+  try { data = await r.res.json(); } catch { setPageStatus('The answer was unreadable.', 'err'); return; }
+  if (!data || !Array.isArray(data.keys)) { setPageStatus('The answer carried no keys.', 'err'); return; }
+
+  mount.textContent = '';
+  for (const key of data.keys) mount.append(renderKey(key));
+  setPageStatus('', '');
+}
 
 mountGate({
   sections: [section],
-  onAllowed: loadKey,
+  onAllowed: loadKeys,
   onDenied: () => {
-    // The gate closing must take the credential off the screen with it.
-    clearOnce();
-    setStatus('', '');
+    // The gate closing must take any minted credential off the screen with it.
+    clearAllOnce();
+    mount.textContent = '';
+    setPageStatus('', '');
   },
 });

@@ -56,6 +56,13 @@
  *   { current:  { hash, fp, created_at, created_by, last_used_at },
  *     previous: { hash, fp, grace_until } | null }
  *
+ * ⚠️ GENERALISED 2026-08-20 by src/machine-keys.ts, which owns the estate-wide
+ * registry. The primitives below take an optional prefix and KV key so every
+ * machine credential shares ONE implementation of mint/verify/revoke; the
+ * defaults keep this file's own shelf routes behaving exactly as before, and
+ * `shelf:parity:token` deliberately keeps its original name so the record
+ * written before that refactor is the record read after it.
+ *
  * `fp` is the token's first {@link FP_LEN} characters, the GitHub/Stripe
  * idiom. It is shown in the UI so Justin can match the box against the live
  * one (`head -c 30 /srv/shelf/.parity.env`) WITHOUT either side revealing the
@@ -115,17 +122,17 @@ export async function sha256Hex(input: string): Promise<string> {
 
 /** 32 bytes of CSPRNG as base64url — no padding, no `+/` to mangle in a shell
  *  single-quoted string, which is exactly where this value gets pasted. */
-export function mintToken(): string {
+export function mintToken(prefix: string = TOKEN_PREFIX): string {
   const raw = crypto.getRandomValues(new Uint8Array(32));
   const b64 = btoa(String.fromCharCode(...raw))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
-  return TOKEN_PREFIX + b64;
+  return prefix + b64;
 }
 
-export function fingerprint(token: string): string {
-  return token.slice(0, TOKEN_PREFIX.length + FP_LEN);
+export function fingerprint(token: string, prefix: string = TOKEN_PREFIX): string {
+  return token.slice(0, prefix.length + FP_LEN);
 }
 
 /** What the metadata route and the UI are allowed to see: never a hash, never
@@ -171,8 +178,8 @@ export async function verifyToken(
   return 'no_match';
 }
 
-export async function readRecord(kv: KVNamespace): Promise<TokenRecord | null> {
-  const raw = await kv.get(TOKEN_KEY, 'text');
+export async function readRecord(kv: KVNamespace, key: string = TOKEN_KEY): Promise<TokenRecord | null> {
+  const raw = await kv.get(key, 'text');
   if (raw === null) return null;
   try {
     return JSON.parse(raw) as TokenRecord;
@@ -185,10 +192,15 @@ export async function readRecord(kv: KVNamespace): Promise<TokenRecord | null> {
 
 /** Stamp last-used after a report lands. Best-effort: a failed stamp must
  *  never fail the report it is describing. */
-export async function stampUsed(kv: KVNamespace, rec: TokenRecord, when: string): Promise<void> {
+export async function stampUsed(
+  kv: KVNamespace,
+  rec: TokenRecord,
+  when: string,
+  key: string = TOKEN_KEY,
+): Promise<void> {
   try {
     rec.current.last_used_at = when;
-    await kv.put(TOKEN_KEY, JSON.stringify(rec));
+    await kv.put(key, JSON.stringify(rec));
   } catch {
     /* the parity number is the payload; its telemetry is not worth a 500 */
   }

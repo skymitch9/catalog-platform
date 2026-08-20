@@ -152,14 +152,12 @@
     {
       "_why": [
         "/status/api — MACHINE KEYS (2026-08-20). The ONLY status page that issues a credential, so the markers",
-        "are the gate and the mount points, never a value.",
-        "id=ops-signin proves the SHARED gate shipped: this page's whole safety story is that its controls live",
-        "inside a section the gate reveals, and a page that lost the sign-in bar would render its controls to",
-        "nobody or to everybody depending on which half failed.",
-        "id=parity-once is the show-once mount. It must be EMPTY in the served HTML — api.js builds it at mint",
-        "time — and its presence here is what proves the panel is script-built rather than pre-rendered.",
-        "id=parity-facts and id=parity-gen are the read and write halves; a missing one leaves a card that",
-        "either cannot say what the current key is, or cannot make a new one."
+        "are the gate and the mount point, never a value.",
+        "id=ops-signin proves the SHARED gate shipped: every control lives inside a section the gate reveals, and a",
+        "page that lost the sign-in bar would render its controls to nobody or to everybody depending which half failed.",
+        "⚠️ id=keys-mount is EMPTY in the served HTML and that is the point — every card is built by api.js from the",
+        "Worker's registry. A hardcoded card here would be a second list of which credentials exist, and the failure",
+        "shapes are omitting one (a liar by silence) or offering a button the route refuses."
       ],
       "path": "/status/api/",
       "mustContain": [
@@ -167,29 +165,28 @@
         "href=\"/status/agents/\"",
         "id=\"ops-signin\"",
         "id=\"api-section\"",
-        "id=\"parity-facts\"",
-        "id=\"parity-gen\"",
-        "id=\"parity-revoke\"",
-        "id=\"parity-once\""
+        "id=\"keys-mount\"",
+        "id=\"keys-status\""
       ]
     },
     {
       "_why": [
-        "api.js (2026-08-20). mountGate's name appearing here proves the page uses the SHARED gate rather than a",
-        "local re-derivation — gate.js's own header warns that a fifth copy is a fifth chance to fail open, and",
-        "that failure is invisible from outside.",
-        "The token route is pinned because a page that lost it would render a Generate button that does nothing.",
-        "⚠️ clearOnce is pinned deliberately: it is what takes a freshly-minted credential OFF THE SCREEN when",
-        "the gate closes. Losing it would leave a key visible after sign-out and nothing would look wrong."
+        "api.js (2026-08-20). mountGate proves the page uses the SHARED gate rather than a local re-derivation —",
+        "gate.js's own header warns that another copy is another chance to fail open, invisibly.",
+        "⚠️ clearAllOnce is pinned deliberately: it is what takes a freshly-minted credential OFF THE SCREEN when",
+        "the gate closes. Losing it would leave a key visible after sign-out and nothing would look wrong.",
+        "renderManual is pinned because the paired/manual cards are how the page stays honest about the two",
+        "credentials it CANNOT rotate. Losing it would silently drop them and make the inventory look complete."
       ],
       "path": "/status/api/api.js",
       "mustContain": [
         "mountGate",
-        "/api/estate/shelf/parity/token",
-        "clearOnce",
+        "/api/estate/keys",
+        "clearAllOnce",
         "showOnce",
         "revoke_now",
-        "last_used_at"
+        "last_used_at",
+        "renderManual"
       ]
     },
     {

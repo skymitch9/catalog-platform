@@ -183,73 +183,60 @@
 
   <section id="api-section" aria-labelledby="api-h" hidden>
     <h2 id="api-h">Machine keys</h2>
+    <p class="key-body" style="margin-bottom:var(--et-space-3)">
+      Every credential the estate holds for a machine, smallest blast radius
+      first. Three can be minted here; the rest say plainly why they cannot be,
+      and what to run instead.
+    </p>
 
-    <div class="key-card" id="parity-card">
-      <div class="key-head">
-        <h3>Shelf parity reporter</h3>
-        <span class="key-tag">writes one number, one route</span>
-      </div>
-      <p class="key-body">
-        Used by <code class="inline-code">03-shelf-parity.sh</code> on the shelf
-        server to post how many books match Drive. It cannot read the library,
-        cannot pass the Google gate, and is accepted on no other route &mdash;
-        the worst a leaked one can do is report a false number.
-      </p>
-
-      <ul class="key-facts" id="parity-facts">
-        <li><span class="k">Status</span><span class="v" id="pf-status">Loading&hellip;</span></li>
-      </ul>
-
-      <div class="key-actions">
-        <button id="parity-gen" class="btn" type="button">Generate key</button>
-        <label class="key-revoke" id="parity-revoke-wrap" hidden>
-          <input type="checkbox" id="parity-revoke">
-          Kill the old key immediately (use if you think it leaked)
-        </label>
-        <span class="key-status" id="parity-status" role="status" aria-live="polite"></span>
-      </div>
-
-      <!-- Built by api.js at mint time; never pre-rendered, never re-shown. -->
-      <div id="parity-once"></div>
-    </div>
+    <!-- ⚠️ EVERY CARD IS BUILT BY api.js FROM THE WORKER'S REGISTRY, not
+         templated here. The registry is the single source of truth for which
+         credentials exist and which may be minted; a hand-written card would
+         be a second list to forget to update, and the failure mode is a page
+         that omits a credential or offers a button the route refuses. -->
+    <div id="keys-mount"></div>
+    <p id="keys-status" class="key-status" role="status" aria-live="polite"></p>
 
     <details class="key-card">
-      <summary><strong>How to install it on the shelf server</strong></summary>
+      <summary><strong>Installing a key on the machine that uses it</strong></summary>
       <ol class="steps">
-        <li>Click <strong>Generate key</strong> above. The value appears once &mdash; copy it before leaving the page.</li>
-        <li>On the server, save it (the button copies this whole line for you):
+        <li>Click <strong>Generate</strong> on the key you want. The value appears once &mdash; copy it before leaving the page.</li>
+        <li>On that machine, save it into the file or secret named in <em>Lives at</em>. For the shelf server that is:
           <pre class="cmd">echo 'SHELF_PARITY_TOKEN=&lt;the value&gt;' | sudo tee /srv/shelf/.parity.env
 sudo chmod 600 /srv/shelf/.parity.env</pre>
         </li>
         <li>Check it landed <em>without printing it</em>:
           <pre class="cmd">sudo test -s /srv/shelf/.parity.env &amp;&amp; echo 'token file present'</pre>
         </li>
-        <li>Run the reporter once: <code>./03-shelf-parity.sh</code></li>
-        <li>Come back here &mdash; <strong>Last used</strong> should show a moment ago, and the parity bar on <a href="/status/">Health</a> stops saying &ldquo;never reported&rdquo;.</li>
+        <li>Make the machine do its thing once, then come back here &mdash; <strong>Last used</strong> should show a moment ago.</li>
       </ol>
-      <p class="section-note">
-        Full step-by-step, including the cron line:
+      <p class="key-body">
+        Shelf server step-by-step, including the cron line:
         <a href="/runbooks/shelf-justin/">Justin&rsquo;s steps</a>.
       </p>
     </details>
 
     <details class="key-card">
-      <summary><strong>Rotating a key</strong></summary>
+      <summary><strong>Rotating, and what the grace window is for</strong></summary>
       <p class="key-body">
         Generating again replaces the key. By default the old one keeps working
-        for <strong>24 hours</strong>, so if the paste goes wrong the next
-        scheduled run still reports and nothing goes dark while you fix it.
+        for <strong>24 hours</strong>, so if the paste goes wrong the machine
+        keeps working while you fix it.
       </p>
       <p class="key-body">
         <strong>Rotating because you think it leaked?</strong> Tick
-        <em>Kill the old key immediately</em>. A grace window is the wrong
+        <em>kill the old key immediately</em>. A grace window is the wrong
         behaviour when the whole point is that the old value must stop working
         now.
       </p>
       <p class="key-body">
-        Nobody can look a key up after the fact &mdash; only a hash is stored.
-        Lost it? Generate a new one; that is the supported path, not a
-        recovery.
+        ⚠️ If a machine authenticates on the <em>previous</em> key, this page
+        says so. That is the signal a rotation was started and never finished
+        &mdash; the new key was generated but never installed.
+      </p>
+      <p class="key-body">
+        Nobody can look a key up after the fact; only a hash is stored. Lost it?
+        Generate a new one &mdash; that is the supported path, not a recovery.
       </p>
     </details>
   </section>

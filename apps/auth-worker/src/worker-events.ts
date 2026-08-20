@@ -49,6 +49,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppBindings } from './env.js';
+import { checkRegistryAuth, keyById } from './machine-keys.js';
 import { requireDevops } from './middleware/auth.js';
 import { checkConductorAuth, conductorRefusal, type ConductorAuth } from './agent-board.js';
 
@@ -211,14 +212,35 @@ export const EVENTS_TOKEN_UNSET = {
  * indexed column and cannot be forgotten.
  */
 workerEventsRoutes.post('/estate/ops/worker-events', async (c: Context<AppBindings>) => {
-  const auth = checkEventsAuth(
-    c.env.ESTATE_EVENTS_TOKEN,
-    c.env.ESTATE_CONDUCTOR_TOKEN,
-    c.req.header('Authorization') ?? null,
-  );
-  if (auth !== 'ok') {
-    const refusal = auth === 'secret_unset' ? EVENTS_TOKEN_UNSET : conductorRefusal(auth);
-    return c.json(refusal.body, refusal.status);
+  // ⚠️ THE CONDUCTOR FALLBACK IS PRESERVED DELIBERATELY — this route has
+  // always taken either bearer (see this file's header: writers that predate
+  // the dedicated secret). The minted events key is simply a third accepted
+  // credential, checked first; nothing that worked yesterday stops working.
+  let auth;
+  try {
+    auth = await checkRegistryAuth(
+      c.env.estate_docs,
+      keyById('worker-events')!,
+      c.req.header('Authorization') ?? null,
+      c.env.ESTATE_EVENTS_TOKEN,
+    );
+  } catch {
+    return c.json({ error: 'machine_key_corrupt' }, 500);
+  }
+  if (!auth.ok) {
+    const legacy = checkEventsAuth(
+      c.env.ESTATE_EVENTS_TOKEN,
+      c.env.ESTATE_CONDUCTOR_TOKEN,
+      c.req.header('Authorization') ?? null,
+    );
+    if (legacy !== 'ok') {
+      const refusal = legacy === 'secret_unset' && auth.cause !== 'secret_unset'
+        ? conductorRefusal('bad_token')
+        : legacy === 'secret_unset'
+          ? EVENTS_TOKEN_UNSET
+          : conductorRefusal(legacy);
+      return c.json(refusal.body, refusal.status);
+    }
   }
 
   let body: unknown;

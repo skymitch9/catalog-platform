@@ -27,6 +27,7 @@ import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
 import { shelfParityRoutes } from './shelf-parity.js';
 import { shelfTokenRoutes } from './shelf-token.js';
+import { machineKeyRoutes } from './machine-keys.js';
 import { estateDocsRoutes } from './estate-docs.js';
 import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
@@ -193,6 +194,7 @@ app.route('/api', todoRoutes);
 // asserts a real request reaches the corpus handler.
 app.route('/api', estateDocsRoutes);
 app.route('/api', docsRoutes);
+app.route('/api', machineKeyRoutes);
 app.route('/api', shelfTokenRoutes);
 app.route('/api', shelfParityRoutes);
 app.route('/api', factsRoutes);
