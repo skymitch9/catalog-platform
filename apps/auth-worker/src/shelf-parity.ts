@@ -50,7 +50,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppBindings } from './env.js';
 import { requireDevops } from './middleware/auth.js';
-import { checkConductorAuth, conductorRefusal } from './agent-board.js';
+import { checkConductorAuth, type ConductorAuth } from './agent-board.js';
 
 export const shelfParityRoutes = new Hono<AppBindings>();
 
@@ -73,6 +73,59 @@ export const STALE_AFTER_MS = 26 * 60 * 60 * 1000;
 const MAX_COUNT = 10_000_000;
 /** ~9 PB in KB — a bound, not an expectation. */
 const MAX_KB = 10_000_000_000;
+
+/**
+ * This route's OWN refusals. Pure and exported so the tests can pin the words.
+ *
+ * ⚠️ IT DELIBERATELY DOES NOT REUSE `conductorRefusal`, and that is not
+ * duplication for its own sake — it was a live bug. Borrowing it made a bad
+ * bearer here answer *"That bearer is not the conductor token this Worker
+ * holds… re-read it from the custody file named in docs/access/agent-board.md"*,
+ * which names a credential this route does not accept and sends whoever is
+ * debugging to the wrong secret and the wrong document. The caller here is
+ * Justin's box, whose owner has never heard of the conductor token.
+ *
+ * worker-events.ts already learned exactly this for `secret_unset`; the lesson
+ * applies to every branch, not just that one. A refusal that misidentifies the
+ * credential is worse than a bare status: it is confidently wrong directions.
+ */
+export function parityRefusal(auth: Exclude<ConductorAuth, 'ok'>): {
+  status: 401 | 503;
+  body: { error: string; detail: string; fix?: string };
+} {
+  switch (auth) {
+    case 'secret_unset':
+      return {
+        status: 503,
+        body: {
+          error: 'shelf_parity_token_unset',
+          detail:
+            'The shelf cannot report parity yet — this Worker holds no shelf parity token, so it has no way to tell a real report from anyone else’s.',
+          fix: 'wrangler secret put SHELF_PARITY_TOKEN (from apps/auth-worker), then send the same value to the server’s owner privately.',
+        },
+      };
+    case 'no_header':
+      return {
+        status: 401,
+        body: {
+          error: 'unauthenticated',
+          detail:
+            'This endpoint takes the shelf parity token as a bearer. No Authorization header was sent.',
+          fix: 'Send: Authorization: Bearer <SHELF_PARITY_TOKEN>. On the shelf server it lives in /srv/shelf/.parity.env.',
+        },
+      };
+    case 'bad_token':
+      return {
+        status: 401,
+        body: {
+          error: 'bad_token',
+          detail:
+            'That bearer is not the shelf parity token. This route accepts only that one token — not the conductor token, and not a signed-in session.',
+          fix: 'Check /srv/shelf/.parity.env on the shelf server. If the token was rotated, ask Skylar to re-send it.',
+        },
+      };
+  }
+}
 
 export type ParityReport = {
   rc: number;
@@ -228,18 +281,7 @@ export function deriveState(
 shelfParityRoutes.post('/estate/shelf/parity', async (c: Context<AppBindings>) => {
   const auth = checkConductorAuth(c.env.SHELF_PARITY_TOKEN, c.req.header('authorization') ?? null);
   if (auth !== 'ok') {
-    if (auth === 'secret_unset') {
-      return c.json(
-        {
-          error: 'shelf_parity_token_unset',
-          detail:
-            'The shelf cannot report parity yet — this Worker holds no shelf parity token, so it has no way to tell a real report from anyone else’s.',
-          fix: 'wrangler secret put SHELF_PARITY_TOKEN (from apps/auth-worker)',
-        },
-        503,
-      );
-    }
-    const r = conductorRefusal(auth);
+    const r = parityRefusal(auth);
     return c.json(r.body, r.status);
   }
 

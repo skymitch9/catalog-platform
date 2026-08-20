@@ -18,7 +18,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { STALE_AFTER_MS, deriveState, validateReport, type ParityReport } from '../src/shelf-parity.js';
+import { STALE_AFTER_MS, deriveState, parityRefusal, validateReport, type ParityReport } from '../src/shelf-parity.js';
 
 const good: ParityReport = {
   rc: 0,
@@ -144,4 +144,29 @@ test('cannot_fit never fires when nothing is missing', () => {
   // disk with a complete library is FINE, and was briefly misread as a blocker.
   const s = deriveState(stamp({ missing: 0, differing: 0, free_kb: 0 }), NOW);
   assert.equal(s.state, 'in_parity');
+});
+
+// ── refusals ───────────────────────────────────────────────────────────────
+
+test('⚠️ refusals name THIS route\'s token, never the conductor token', () => {
+  // Regression: borrowing conductorRefusal made a bad bearer here answer "that
+  // is not the conductor token… see docs/access/agent-board.md" — a credential
+  // this route does not accept, and a document the shelf's owner has never
+  // read. Caught by probing the live endpoint, not by the type checker.
+  for (const kind of ['secret_unset', 'no_header', 'bad_token'] as const) {
+    const r = parityRefusal(kind);
+    const text = JSON.stringify(r.body);
+    assert.doesNotMatch(text, /conductor token this Worker holds/i, kind);
+    assert.doesNotMatch(text, /agent-board/i, kind);
+    assert.match(text, /parity/i, kind);
+  }
+});
+
+test('each refusal cause gets its own status and its own fix', () => {
+  assert.equal(parityRefusal('secret_unset').status, 503);
+  assert.equal(parityRefusal('no_header').status, 401);
+  assert.equal(parityRefusal('bad_token').status, 401);
+  for (const kind of ['secret_unset', 'no_header', 'bad_token'] as const) {
+    assert.ok(parityRefusal(kind).body.fix, `${kind} must say how to fix it`);
+  }
 });
