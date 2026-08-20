@@ -140,7 +140,7 @@ function renderSelfService(card, key) {
   // lives are all in Info above; repeating them beside the button turned the
   // control into a paragraph somebody had to read past to find the control.
   // Only the facts you need to ACT survive: is there a key, and is it working.
-  const facts = el('ul', 'key-facts');
+  const facts = el('ul', 'key-facts key-state');
   const t = key.token;
   const rotating = Boolean(t && t.exists);
 
@@ -253,25 +253,35 @@ before then.`
 }
 
 /**
- * The collapsed info block that sits INSIDE a key's own card.
+ * One card per credential, collapsed at its own header.
  *
- * ⚠️ PAIRED WITH ITS BUTTON, DELIBERATELY. This was briefly a separate
- * reference section above a bank of buttons, which is worse in two ways the
- * owner named: you had to scroll between a key's description and its control,
- * and near-identical buttons whose descriptions live elsewhere is exactly how
- * somebody rotates the wrong credential. The button you press is now inside
- * the card that explains it.
+ * ⚠️ THE CARD IS THE <details>, NOT SOMETHING INSIDE IT. This went through
+ * two wrong shapes first: a separate reference section (you had to scroll
+ * between a key and its own explanation, and a bank of lookalike buttons is
+ * how the wrong credential gets rotated), then a collapsible info block nested
+ * inside an always-open card (two levels of disclosure to reach one fact).
+ * Now the header IS the control: closed, the page is a seven-line index of
+ * what exists; open, you get everything about that one key — what it is, where
+ * it comes from, how it rotates, its current state, and its button — with no
+ * second thing to expand.
  *
- * <details> without `open` — the page still opens as an index, and collapsing
- * needs no JS, so it survives this script failing.
+ * Native <details> means collapsing needs no JS and survives this script
+ * failing, and the button stays inside the card that explains it.
  */
-function infoBlock(key) {
-  const d = document.createElement('details');
-  d.className = 'key-info';
-  const sum = document.createElement('summary');
-  sum.textContent = 'What this is, where it comes from, how it rotates';
-  d.append(sum);
+function renderKey(key) {
+  const card = document.createElement('details');
+  card.className = 'key-card';
 
+  const sum = document.createElement('summary');
+  const h = document.createElement('h3');
+  h.textContent = key.label;
+  sum.append(h);
+  sum.append(el('span', 'key-tag', key.mode === 'self-service'
+    ? 'rotate here'
+    : key.mode === 'paired' ? 'rotate by hand — two sides' : 'rotate by hand — console'));
+  card.append(sum);
+
+  // Always visible once the card is open — no second disclosure to click.
   const facts = el('ul', 'key-facts');
   facts.append(factRow('What it is', key.body));
   facts.append(factRow('Comes from', key.origin || 'not recorded'));
@@ -279,24 +289,9 @@ function infoBlock(key) {
   facts.append(factRow('If it leaks', key.blast));
   facts.append(factRow('Rotate', key.rotateHow || 'not recorded'));
   if (key.manualWhy) facts.append(factRow('No button because', key.manualWhy));
-  d.append(facts);
+  card.append(facts);
 
-  if (key.manualFix) d.append(el('pre', 'cmd', key.manualFix));
-  return d;
-}
-
-/** One card per credential: name, its own info, and its own control. */
-function renderKey(key) {
-  const card = el('div', 'key-card');
-
-  const head = el('div', 'key-head');
-  head.append(el('h3', null, key.label));
-  head.append(el('span', 'key-tag', key.mode === 'self-service'
-    ? 'rotate here'
-    : key.mode === 'paired' ? 'rotate by hand — two sides' : 'rotate by hand — console'));
-  card.append(head);
-
-  card.append(infoBlock(key));
+  if (key.manualFix) card.append(el('pre', 'cmd', key.manualFix));
 
   if (key.corrupt) {
     // Must never read as "no key yet" — that would look like a fresh install.

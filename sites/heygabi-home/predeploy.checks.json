@@ -174,8 +174,9 @@
         "api.js (2026-08-20). mountGate proves the page uses the SHARED gate rather than a local re-derivation.",
         "⚠️ clearAllOnce takes a freshly-minted credential OFF THE SCREEN when the gate closes; losing it would",
         "leave a key visible after sign-out with nothing looking wrong.",
-        "⚠️ infoBlock is what PAIRS each key's description with its own button. Losing it would either drop the",
-        "four unrotatable credentials from the inventory or strand every button away from what it does.",
+        "⚠️ createElement('details') + rotateHow together pin the card shape: each key is ONE collapsible whose",
+        "header is the collapse point, carrying its description AND its button. Losing it would either drop the",
+        "four unrotatable credentials from the inventory or strand a button away from what it does.",
         "⚠️ window.confirm is pinned because NO ROTATION MAY BE ONE CLICK (owner rule). These buttons look alike",
         "on purpose; the named confirmation is what stops a mis-click becoming a rotation."
       ],
@@ -187,9 +188,9 @@
         "showOnce",
         "revoke_now",
         "last_used_at",
-        "infoBlock",
         "rotateHow",
-        "window.confirm"
+        "window.confirm",
+        "createElement('details')"
       ]
     },
     {
