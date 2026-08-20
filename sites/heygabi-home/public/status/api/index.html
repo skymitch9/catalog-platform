@@ -133,12 +133,29 @@
     display: flex; align-items: baseline; justify-content: space-between;
     gap: var(--et-space-2); list-style-position: outside;
   }
-  details.key-card > summary::marker { color: var(--et-accent); }
+  /* ⚠️ `display:flex` ON A <summary> SUPPRESSES THE DISCLOSURE TRIANGLE in
+     Chrome, and it shipped that way: seven clickable headers with no affordance
+     at all, so nothing said the cards opened. ::marker and the WebKit
+     pseudo-element are both killed explicitly and replaced with a chevron that
+     rotates on open — an arrow that only appears once you already know to
+     click is not an affordance. */
+  details.key-card > summary::marker,
+  details.key-card > summary::-webkit-details-marker { content: ''; display: none; }
+  details.key-card > summary::before {
+    content: ''; flex: none; align-self: center;
+    width: .5rem; height: .5rem; margin-right: .1rem;
+    border-right: 2px solid var(--et-accent);
+    border-bottom: 2px solid var(--et-accent);
+    transform: rotate(-45deg);
+    transition: transform var(--et-dur-fast, .15s) var(--et-ease, ease);
+  }
+  details.key-card[open] > summary::before { transform: rotate(45deg); }
+  details.key-card > summary { padding-left: 0; }
   details.key-card > summary:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; border-radius: 6px; }
   details.key-card > summary .key-tag { flex: none; text-align: right; }
   /* The heading lives IN the summary now, so the whole header is the hit area. */
   details.key-card > summary h3 {
-    margin: 0; font-size: var(--et-text-title);
+    margin: 0; flex: 1 1 auto; font-size: var(--et-text-title);
     color: var(--et-heading-color, var(--et-fg));
   }
   /* The live-state rows sit below the always-visible description, separated so
