@@ -142,6 +142,16 @@ app.use('/api/estate/facts/*', adminCors());
 // auth from OUTSIDE the estate (Justin's box, via curl) — curl sends no Origin
 // and needs no preflight, so this mount neither helps nor widens it.
 app.use('/api/estate/shelf/*', adminCors());
+// The machine-key registry (2026-08-20). Browser-only: /status/api is the sole
+// caller and it is on the apex, so the same admin mount as its neighbours.
+// ⚠️ THIS LINE WAS THE BUG. The routes shipped and the page rendered "Could
+// not reach the key service (network)" — a fetch rejected at the CORS
+// preflight, which surfaces to JS as a network failure and looks exactly like
+// a Worker that is down. status-pages.md's own "things that will bite the next
+// editor" says it outright: A CORS MOUNT IS NOT IMPLIED BY A ROUTE. Every
+// browser-called route added here needs its own line.
+app.use('/api/estate/keys', adminCors());
+app.use('/api/estate/keys/*', adminCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
