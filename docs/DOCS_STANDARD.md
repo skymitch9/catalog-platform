@@ -1,15 +1,68 @@
-# The Estate Docs Standard — one shape, four repos
+# The Docs Standard — one shape for every project
 
-> **Audience:** every future Claude/Kiro session, and the owner.
-> **Status:** TRACKED, and deliberately in `catalog-platform` — it is the only
-> one of the four `docs/` trees carried in git, so this file survives a clone
-> when the others do not.
-> Last verified: **2026-08-21** (written that day; the inventory below was
-> measured, not assumed).
+> **Audience:** every future AI session (Claude, Kiro, anything else) and the
+> owner. **Status:** TRACKED.
+> Last verified: **2026-08-21**.
+>
+> ⚠️ **§1–§8 ARE GENERIC AND PORTABLE. Copy this file into any project
+> unchanged.** Nothing in them names a company, a stack, a service or a repo.
+> **§9 is the only project-specific section** — replace it wholesale when you
+> copy this file, and never let project detail leak upward into §1–§8.
+>
+> The same rules are stated in short normative form in the user's global
+> `~/.claude/CLAUDE.md`. That is deliberate and is **not** the "two living
+> copies" problem: the global rule is the SHORT form that travels with the
+> operator, this file is the LONG form that travels with the project — and a
+> cloned repo has this file when it does not have the operator's home
+> directory. ⚠️ **If they ever disagree, the global rule wins on the RULES and
+> this file wins on the DETAIL. Do not "helpfully" merge them.**
 
 This is the **one** place the rules live. Every repo's `docs/README.md` points
 here instead of restating them, because a rule written down twice is a rule that
 will disagree with itself.
+
+---
+
+## 0. ⚠️ IF A PROJECT DOES NOT HAVE THIS STRUCTURE, BUILD IT — before other work
+
+**Owner rule, 2026-08-21:** every project, new **and existing**, adopts this
+shape. Meeting a repo that does not have it is not a reason to skip the rule; it
+is the trigger for it.
+
+**On opening any project, check for the seven things in §1. For each one that is
+missing, create it before starting the task you came to do.** A stub with the
+standard header counts — better a scaffold a later session fills than a
+structure nobody starts.
+
+⚠️ **Adopting the shape in an EXISTING project is a migration, not a `mkdir`.**
+Almost every repo already has the content; it is in the wrong shape. In order:
+
+1. **Create the missing files** — `README.md` (the map), `KNOWN_ISSUES.md`,
+   `archive/`. Most projects already have `TODO.md`, `DONE.md`, `access/`,
+   `info/`.
+2. **Clear the top level.** Anything loose at the root of `docs/` that is not
+   one of the four logs moves into `access/`, `info/` or `archive/`. ⚠️ **Repair
+   the inbound links in the same commit** — `grep -rn "docs/<OLDNAME>"` across
+   the repo, including code and root `README.md`, not just `docs/`.
+3. **Retire the competing living docs.** A `HANDOFF.md`, a `NOTES.md`, a
+   model-specific queue — anything that is a *second* place "current state"
+   lives. Its finished sections go to `DONE.md`, its live ones to `TODO.md`,
+   its durable facts to `access/`/`info/`, and the husk to `archive/` with a
+   dated banner (§6). ⚠️ **Move sections WHOLE. Never summarise.**
+4. **Seed `KNOWN_ISSUES.md` with real entries, not placeholders.** Every project
+   has three or four things that are broken on purpose; if you cannot name one,
+   you have not looked. An empty known-issues file teaches the next session that
+   there are no known issues, which is a lie by omission.
+5. **Only then start the work you came for**, and say in your first substantive
+   reply what you created and what was already there.
+
+⚠️ **Do NOT do a bulk `TODO.md` → `DONE.md` sweep by heading.** Measured
+2026-08-21 on this very repo: 11 sections carried `LIVE` / `SHIPPED` / `✅` in
+the heading and **every one of them had open work in the body**. Read the body.
+The heading is usually the stale half.
+
+**The one exception:** a scratch directory with no `docs/` at all and a
+one-off question. If the project HAS docs, there is no exception.
 
 ---
 
@@ -31,6 +84,49 @@ it belongs in `access/`, `info/`, `archive/`, or one of the three logs.
 
 ⚠️ **Two files are exempt** because tooling writes them: `deploys.log`
 (append-only deploy record) and any `*.log` a script produces.
+
+### The same thing as a graph — how the pieces feed each other
+
+The tree above says where files sit. This says **how work moves between them**,
+which is the part that actually gets done wrong.
+
+```mermaid
+graph TD
+    RM["README.md<br/><b>THE MAP</b> — one screen"]:::map
+    T["TODO.md<br/><b>ACTIVE only</b>"]:::todo
+    D["DONE.md<br/>dated archive · append-only"]:::done
+    K["KNOWN_ISSUES.md<br/>broken on purpose"]:::known
+    A["access/<br/>how to OPERATE it"]:::ref
+    I["info/<br/>how &amp; why it WORKS"]:::ref
+    AR["archive/<br/>superseded + data dumps"]:::arch
+
+    RM --> T & K & A & I & D & AR
+
+    T -->|"finished — moved WHOLE,<br/>never summarised"| D
+    T -->|"durable fact, filed BY TOPIC"| A
+    T -->|" "| I
+    T -->|"deliberately left broken"| K
+    K -->|"removal condition met"| D
+    A -->|"superseded"| AR
+    I -->|"superseded"| AR
+
+    classDef map fill:#2f4858,color:#fff,stroke-width:0
+    classDef todo fill:#d9a441,color:#000,stroke-width:0
+    classDef done fill:#3a5a40,color:#fff,stroke-width:0
+    classDef known fill:#b3453a,color:#fff,stroke-width:0
+    classDef ref fill:#4a6fa5,color:#fff,stroke-width:0
+    classDef arch fill:#6b6b6b,color:#fff,stroke-width:0
+```
+
+⚠️ **Read the arrows out of `TODO.md` carefully — there are four of them, and
+using the wrong one is the most common failure in this whole standard.** A
+finished item goes to `DONE.md`; a fact you learned goes to `access/` or `info/`
+by topic; something you knowingly left broken goes to `KNOWN_ISSUES.md`. Only
+the first is "done". Leaving all four in the work log is how a work log becomes
+1,700 lines nobody reads.
+
+⚠️ **Nothing ever flows back OUT of `DONE.md`.** If an archived entry turns out
+to be wrong, you append a new one that supersedes it — you do not edit history.
 
 ---
 
@@ -115,7 +211,7 @@ trust it.
   trust; ✅ marks a measured pass.** Use them sparingly enough that they still
   mean something.
 - **State the measurement, its date, and its instrument.** "1,206 items,
-  measured 2026-08-21 off the ABS API" beats "about 1,200 items".
+  measured 2026-08-21 off the source API" beats "about 1,200 items".
 - ⚠️ **Say what was NOT verified.** Every report, every doc. An unavailable fact
   is reported unavailable, never filled in with something plausible.
 - **Keep the gotcha that cost real time.** It is the single highest-value
@@ -160,7 +256,7 @@ not documentation, and they make a `docs/` listing unreadable.
 ```
 
 ⚠️ **Archiving is not deleting, and the difference is load-bearing.** The
-estate's own history includes an archived shim that kept telling readers a
+history behind this rule includes an archived shim that kept telling readers a
 problem was "still on hold" months after it was fixed — a retired doc that does
 not say it is retired is worse than one that was deleted.
 
@@ -203,7 +299,11 @@ In a multi-repo checkout this means **every** repo's `docs/`.
 
 ---
 
-## 9. Where each repo's tree lives, and which are in git
+## 9. ⚠️ PROJECT-SPECIFIC — replace this whole section when you copy this file
+
+*Everything above is portable. Everything below describes THIS estate only.*
+
+### Where each repo's tree lives, and which are in git
 
 | Repo | `docs/` in git? | Consequence |
 |---|---|---|
