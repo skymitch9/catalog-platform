@@ -76,6 +76,38 @@ the bug present. Two things to close it:
 ---
 
 
+## ☐ Schedule the docs backup — it is BUILT and RUN ONCE, by hand (2026-08-21)
+
+Owner ask: *"for our docs folders we don't want those on git but they're so
+important to our work. Can we get those into blob and or Google Drive?"*
+
+✅ **Done and drilled**: `scripts/backup-docs.mjs` →
+`estate-backups/docs/<repo>/<UTC>.json.gz`, all four repos, unfiltered.
+Restore is `scripts/restore-docs.mjs`, and the full round trip was measured the
+same day — `diff -r` against the live tree, zero differences. Retention now
+prunes the `docs/` prefixes to 8 alongside everything else. Written up in
+[`access/backup-restore.md`](access/backup-restore.md) §6b.
+
+☐ **Schedule it.** Nothing does, and one manual run is the silent-staleness
+  trap with a longer fuse. ⚠️ It CANNOT go in GitHub Actions — three of the
+  four docs trees exist only on the owner's machine, so CI would produce a
+  cheerful archive of the one tree that is committed. Two candidate homes:
+  a Windows scheduled task beside the hourly jobs, or a step of the audiobook
+  pipeline next to STEP 9, which already runs there for this exact reason.
+  **Owner's call which.**
+☐ **Google Drive was the other half of the ask and is NOT built.** R2 went
+  first because `estate-backups` already exists, is private, is pruned and is
+  in the recovery runbook. Drive is a second custody store with its own sharing
+  model — worth doing only if the answer to "what if Cloudflare is the outage"
+  is yes. Ask before building.
+🔴 **Handling rule, from a MEASURED finding:** these archives include
+  `access/keys/` — **raw** service-account JSON and bearer tokens, not names.
+  `estate-backups` must stay bound to no Worker, and a restore lands in a
+  scratch directory that then gets deleted.
+
+---
+
+
 ## ☐ One sign-on everywhere: finish the estate SSO port (owner ask, 2026-08-21)
 
 Owner, verbatim: *"port over google sso memory from the other heygabi sites so

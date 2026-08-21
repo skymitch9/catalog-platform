@@ -477,6 +477,12 @@ jobs:
             echo "::notice::$BASE was written as $n part(s)."
           fi
 
+  # ⚠️ RETENTION COVERS `docs/` EVEN THOUGH NOTHING IN THIS WORKFLOW WRITES IT.
+  # `scripts/backup-docs.mjs` runs on the owner's machine — it must, because
+  # three of the four docs trees exist only there and CI cannot see them — so
+  # its objects arrive in estate-backups without any job here producing them.
+  # Retention is BUCKET HYGIENE, not a tally of what this workflow wrote; a
+  # prefix nobody prunes grows for ever. backup-restore.md §6b.
   retention:
     # Runs on every dispatch regardless of `target` — pruning is bucket
     # hygiene across ALL known prefixes, not scoped to what this run backed
@@ -502,4 +508,5 @@ jobs:
             d1/library-catalog d1/library-catalog-2nd d1/board-game-catalog d1/index_catalog d1/estate_auth \
             firestore/audiobook-catalog \
             r2/library-covers r2/audiobook-covers r2/game-covers r2/ebooks-gated r2/estate-docs-gated \
+            docs/catalog-platform docs/audiobook_catalog docs/library_catalog docs/board_game_catalog \
             --keep 8

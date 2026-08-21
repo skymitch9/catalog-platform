@@ -907,6 +907,104 @@ acceptable bet — or if the transcripts stop being reproducible from the
 machine — the fix is to give them their own bucket with its own backup, **not**
 to re-enable a nightly whole-bucket tar that the 14 GB runner cannot carry.
 
+## 6b. Restoring a `docs/` tree — the folders git does not carry
+
+**Owner ask 2026-08-21:** *"for our docs folders we don't want those on git but
+they're so important to our work. Can we get those into blob and or Google
+Drive?"*
+
+### ⚠️ First: the R2 docs snapshot is NOT this, and must not be mistaken for it
+
+`audiobook_catalog/scripts/publish_docs_snapshot.py` has published docs to R2
+since 2026-08-18 — and it is a **reading corpus for GABI**, not a backup. It
+removes, by design, exactly the files a restore would most need:
+
+| The snapshot | The backup (`scripts/backup-docs.mjs`) |
+|---|---|
+| `.md` only | every file, no extension filter |
+| ⚠️ permanently denylists `access/CREDENTIALS.md` | includes it |
+| three repos | **four** (adds `Board_Game_Catalog`) |
+| a scanner may REFUSE a file | nothing is dropped |
+| bucket `estate-docs-gated`, **bound to a Worker and served** | bucket `estate-backups`, **bound to nothing** |
+
+Both are right for their own job. The failure to avoid is assuming one is the
+other: a "restore" from the snapshot looks complete and is missing the
+credential catalogue.
+
+### 🔴 These archives are KEY MATERIAL, not documents
+
+Measured on the first real run, 2026-08-21: `audiobook_catalog/docs/access/keys/`
+holds **raw secret values** — service-account JSON for Firebase and for the
+restore-drill project, and the shelf parity token — alongside
+`access/CREDENTIALS.md`, the estate-wide credential catalogue. So:
+
+- ⚠️ `estate-backups` stays **bound to no Worker**. Nothing serves it.
+- ⚠️ Restore into a **scratch directory you then delete**, never straight into
+  a shared tree.
+- Keeping them IS the intent — RECOVERY.md's rule is that a secret with no
+  reachable copy is a named gap — but the handling rule above is the price.
+
+### Take a backup
+
+```bash
+cd catalog-platform
+node scripts/backup-docs.mjs --dry-run    # inventory, uploads nothing
+node scripts/backup-docs.mjs              # four objects, one per repo
+```
+
+⚠️ **It must run on the owner's machine.** Same reason as the snapshot
+publisher: these trees exist there and nowhere else, so a CI run would produce
+a cheerful archive of the one docs tree that IS committed and silently omit the
+rest. It refuses a repo that yields zero files rather than writing an empty
+archive over a good one.
+
+Objects land as `estate-backups/docs/<repo>/<UTC>.json.gz` — the same
+`<kind>/<store>/<timestamp>` shape as the D1, Firestore and R2 dumps, so
+`prune-r2-backups.mjs` keeps the newest 8 per repo alongside everything else.
+
+### Restore
+
+```bash
+npx wrangler r2 object get estate-backups/docs/audiobook_catalog/<UTC>.json.gz \
+  --file ./docs.json.gz --remote
+
+node scripts/restore-docs.mjs ./docs.json.gz --list          # verify + inventory, writes nothing
+node scripts/restore-docs.mjs ./docs.json.gz --into ./restored-docs
+```
+
+`--list` re-checks every file against its recorded sha256 and length before
+offering anything — an archive that exists is not the same fact as an archive
+that is intact. `--into` **refuses a non-empty directory** without `--force`,
+because a restore run over a live tree that is newer than the archive silently
+reverts work. Then delete the restored copy when you are done with it.
+
+### ✅ DRILLED 2026-08-21 — measured, not asserted
+
+Full round trip on `audiobook_catalog` (64 files, 1,358 KB → 725 KB gzipped):
+uploaded, fetched back out of R2 with wrangler, restored to a scratch
+directory, and compared with `diff -r` against the live tree — **zero
+differences**, and every file passed its sha256. `access/CREDENTIALS.md` (64,476
+bytes) and all ten non-markdown files came back, which is the specific thing the
+snapshot would have lost.
+
+Sizes as of that run: catalog-platform 63 files / 1,046 KB · audiobook_catalog
+64 / 725 KB · library_catalog 47 / 729 KB · board_game_catalog 44 / 633 KB.
+
+### ⚠️ Not done yet: it is MANUAL
+
+Nothing schedules this. One run exists, taken by hand on 2026-08-21, and a
+backup that only happens when somebody remembers is the silent-staleness trap
+with a longer fuse. Carried in `docs/TODO.md`; the two candidate homes are a
+Windows scheduled task beside the other hourly jobs, or a step of the audiobook
+pipeline next to STEP 9 (which already runs on that machine for this exact
+reason). ⚠️ It must NOT move to GitHub Actions — CI cannot see three of the four
+trees.
+
+Google Drive was the ask's other half and is **not built**. R2 was done first
+because `estate-backups` already exists, is private, is pruned, and is covered
+by the recovery runbook; Drive would be a second custody store with its own
+sharing model, and one working copy beats two half-built ones.
+
 ## 7. "Restoring" `index_catalog` — usually don't; re-push instead
 
 Per `docs/access/index-worker.md`, every row in `index_catalog` is a pointer
