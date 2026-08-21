@@ -390,6 +390,69 @@ async function checkLive() {
 /* ── run ───────────────────────────────────────────────────────────────── */
 
 const files = walk(PUBLIC_DIR);
+/**
+ * 🔴 SURFACE OWNERSHIP — the guard for a failure mode that written-down
+ * ownership did not prevent.
+ *
+ * `docs/info/status-pages.md` carries a table saying which of the five status
+ * pages owns which question. On 2026-08-21 it said `/status/agents` owns the
+ * usage figures, and a session built a SECOND usage surface on `/status` Health
+ * without reading it — the second documented-but-unread fact that day.
+ *
+ * ⚠️ The lesson is not "read more carefully". That is the advice that had
+ * already failed. Every duplicate caught that day was caught by a MECHANICAL
+ * guard (a drift test, a CORS-coverage test, this script's clean-tree check);
+ * every one that reached the owner had no guard. The asymmetry was not luck.
+ *
+ * So: markers that only appear where a surface is really built, and a hard
+ * failure if one shows up on a page that does not own it — naming the doc, so
+ * the fix is "go and read the table", not "delete the string".
+ *
+ * ⚠️ CSS IS NOT SCANNED. `assets/status-shell.css` is shared by every page by
+ * design; a class name living there is the point, not a second surface.
+ */
+function checkSurfaceOwnership(files) {
+  // ⚠️ The config is read HERE rather than passed in: checkLive() owns the only
+  // other read and the static path must not depend on the live path having run.
+  let config;
+  try {
+    config = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  } catch (err) {
+    fail(rel(CONFIG), `unreadable, so surface ownership could not be checked: ${err.message}`);
+    return 0;
+  }
+  const surfaces = config.surfaces ?? [];
+  if (!surfaces.length) return 0;
+
+  const scannable = files.filter((f) => /\.(html|js)$/i.test(f));
+  for (const surface of surfaces) {
+    const owned = new Set(surface.ownedBy ?? []);
+    for (const file of scannable) {
+      const r = rel(file).replace(/^sites\/heygabi-home\/public\//, '');
+      if (owned.has(r)) continue;
+      let text;
+      try {
+        text = readFileSync(file, 'utf8');
+      } catch {
+        continue;
+      }
+      for (const marker of surface.markers ?? []) {
+        if (!text.includes(marker)) continue;
+        fail(
+          r,
+          `"${marker}" appears here, but ${surface.what} is owned by ` +
+            `${[...owned].join(' + ')}. ${surface.why}. ` +
+            `Improve the owning page instead of adding a second surface — a number worth ` +
+            `showing twice is a number that will disagree with itself. ` +
+            `(If ownership genuinely moved, move it in predeploy.checks.json AND in the doc, ` +
+            `in the same commit.)`,
+        );
+      }
+    }
+  }
+  return surfaces.length;
+}
+
 console.log(`predeploy-check — ${LIVE ? 'LIVE' : 'STATIC'} — ${rel(PUBLIC_DIR)}`);
 
 if (LIVE) {
@@ -399,8 +462,12 @@ if (LIVE) {
   const jsCount = checkJavaScript(files);
   const htmlCount = checkAllHtml(files);
   const themeCount = checkThemeRegistry(files);
+  const surfaceCount = checkSurfaceOwnership(files);
   checkCleanTree();
-  console.log(`  ${jsCount} JS file(s) parsed · ${htmlCount} HTML file(s) structurally checked · ${themeCount} theme(s) registered · tree checked`);
+  console.log(
+    `  ${jsCount} JS file(s) parsed · ${htmlCount} HTML file(s) structurally checked · ` +
+      `${themeCount} theme(s) registered · ${surfaceCount} surface owner(s) enforced · tree checked`,
+  );
 }
 
 if (problems.length) {

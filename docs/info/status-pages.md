@@ -157,12 +157,41 @@ age label is a floor, not a fix.
 | **One display** | `/status/agents` → `Usage`, four meters incl. credits |
 | **Deprecated** | `board.usage`. The page no longer reads it. ⚠️ **Do not add a fallback to it** — a fallback is how two sources survive |
 
-### The rule this leaves behind
+### ✅ The rule is now MECHANICAL — `predeploy.checks.json` → `surfaces`
 
-⚠️ **Before building any new status surface, read the ownership table above and
-ask which page already owns this question.** If the answer is "another page",
-the work is to improve that page, not to add a second one. A number worth
-showing twice is a number that will disagree with itself.
+⚠️ **"Read the table first" is NOT the fix, and saying so would be dishonest:
+that advice already existed and had already failed twice in one day.** What
+caught every other duplicate that day was a mechanical guard — a drift test, a
+CORS-coverage test, this repo's clean-tree check. What reached the owner had no
+guard. The asymmetry was not luck.
+
+So the ownership table now has a machine-readable half. `predeploy.checks.json`
+carries a `surfaces` array — a distinctive **marker** per surface plus the files
+that legitimately own it — and `scripts/predeploy-check.mjs` fails the deploy if
+a marker appears anywhere else, quoting this document in the failure.
+
+**Drilled 2026-08-21, both directions:** re-introducing `<div id="usage-block">`
+on `/status` produced
+
+```
+"usage-block" appears here, but Claude usage / budget meters is owned by
+status/agents/index.html + status/agents/agents.js. docs/info/status-pages.md —
+/status/agents owns the usage figures. Improve the owning page instead of adding
+a second surface…
+```
+
+and removing it went green again.
+
+⚠️ **CSS is deliberately not scanned.** `assets/status-shell.css` is shared by
+every page on purpose; a class name there is the design, not a second surface.
+
+⚠️ **A guard only covers what somebody thought to guard.** Two surfaces are
+enforced today (usage meters; the key-minting UI). **When you add a surface that
+should exist in exactly one place, add its marker here in the same commit** —
+that is the only part of this that still relies on a person.
+
+**If ownership genuinely moves,** move it in `predeploy.checks.json` *and* in the
+table above, in one commit. The guard failing is not a reason to delete a marker.
 
 ## Things that will bite the next editor
 
