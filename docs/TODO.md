@@ -2575,18 +2575,6 @@ hygiene sweep, which found this list still reading as though nothing existed.
 
 ---
 
-## ✅ Fable-preferred queue — RELEASED 2026-08-16 (kept for the reasoning)
-
-⚠️ **This queue is no longer in force.** It existed only while the Fable weekly
-meter was near its cap; the memory that carried it said in its own words that it
-was "TEMPORARY — a usage-cap workaround, not a standing rule" that lapses at the
-weekly reset. Measured 2026-08-16 16:06 local: Fable **0%**, all-models **0%**.
-The memory file has been deleted per those terms, and work no longer needs to
-wait for a Fable window.
-
-The original entry follows, because the reasoning about which work suits which
-model is still useful even though the rationing is over.
-
 ## Fable-preferred queue (started 2026-08-14, owner directive)
 
 Agents now run non-Fable by default. Work banked here genuinely benefits from
