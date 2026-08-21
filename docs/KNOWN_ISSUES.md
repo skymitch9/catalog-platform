@@ -186,14 +186,23 @@ shrugged at.
 
 **Why tolerated.** Half of it no longer is: a `notify-failure` job now reports
 any non-clean result to the estate event ring, so it surfaces on `/status`.
-⚠️ **But it has never been tested against a real failure**, and it depends on a
-repo secret (`ESTATE_EVENTS_TOKEN`) that **may not be set** — the job says so
-loudly rather than exiting quietly, which is the best it can do from inside CI.
+🔴 **MEASURED 2026-08-21 — `ESTATE_EVENTS_TOKEN` IS NOT A REPO SECRET.**
+`gh secret list` on `catalog-platform` returns exactly two: `CLOUDFLARE_API_TOKEN`
+and `FIREBASE_SERVICE_ACCOUNT_JSON`. **So the notification is currently a no-op**
+— it will emit a loud `::error::` annotation naming the missing secret rather
+than exiting quietly, which is the best it can do from inside CI, but nothing
+reaches `/status`. It has also never been tested against a real failure.
 
-**What would change it.** Two things, both measurable: (1) confirm
-`ESTATE_EVENTS_TOKEN` exists as a repo secret — until then every failure
-notification is a no-op with a warning; (2) see one real failure arrive on
-`/status`. Until both, treat backup health as *checked*, not *alerted*.
+**What would change it.** Two things, both measurable and in order:
+
+1. **Owner: add the secret.** Mint a *Service event log* key at
+   <https://heygabi.ai/status/api>, then
+   `gh secret set ESTATE_EVENTS_TOKEN --repo skymitch9/catalog-platform`.
+   ⚠️ Until this exists every failure notification is a no-op with a warning.
+2. **See one real failure arrive on `/status`.** Shipped is not verified.
+
+Until both, treat backup health as **checked, not alerted** — i.e. it still
+depends on somebody looking.
 
 ⚠️ **The age grading is the other half, and it catches a different failure.**
 This job answers "it ran and broke"; the freshness grade answers "it never ran
