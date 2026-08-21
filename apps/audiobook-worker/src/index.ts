@@ -71,6 +71,7 @@ import { reportEvent } from '@platform/estate-events';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { audioFileRoutes } from './audio-file.js';
 import { audioStatusRoutes } from './audio-status.js';
+import { streamPingRoutes } from './stream-ping.js';
 import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
 import { ebookFileRoutes } from './ebook-file.js';
@@ -277,6 +278,12 @@ app.route('/', ebookFileRoutes);
 // 13-hour listen exhaust a reader's page turns and vice versa.
 app.route('/', audioStatusRoutes);
 app.route('/', audioFileRoutes);
+
+// The audio eviction timestamp endpoint (audio phase 2, 2026-08-19). Same gate.
+// When a person streams a book, the player pings this endpoint periodically so
+// the evictor knows which files are actually being listened to. Throttled
+// server-side to one Firestore write per anchor per 10 minutes.
+app.route('/', streamPingRoutes);
 
 // The book-knowledge retrieval routes (design phase 3, 2026-08-18). Same gate as
 // every route above — literally the same function (ebook-gate.ts) — because the

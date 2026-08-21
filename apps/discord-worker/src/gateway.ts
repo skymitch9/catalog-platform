@@ -124,6 +124,7 @@ import type { Env } from './env.js';
 import { createChannelMessage, getGatewayBot, replyToMessage } from './discord-api.js';
 import { delegatedWritesOn, libraryInstances, writeCapDecision } from './delegated.js';
 import { makeDelegate } from './delegated-exec.js';
+import { loadSharedMemory, saveSharedMemory } from './memory-client.js';
 import { docsCapDecision, docsOn } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
 import { booksCapDecision, booksOn } from './book-knowledge.js';
@@ -813,6 +814,65 @@ export class GabiGateway {
   }
 
   /**
+   * ⚠️ **PHASE 2 — shared memory sync.**
+   *
+   * Wraps `conversationFor` to also read/write the library_catalog Worker's
+   * shared memory endpoint, keyed by the asker's Firebase UID. The DO remains
+   * the primary (fast, local); the shared endpoint provides cross-surface
+   * continuity with the web panel.
+   *
+   * ⚠️ **DEGRADE GRACEFULLY.** If the shared endpoint is down, the conversation
+   * works exactly as it did before Phase 2 — just without cross-surface memory.
+   * If the person is not linked (no Firebase UID), shared memory is skipped
+   * entirely.
+   *
+   * @param key         The conversation key (surface/space/person)
+   * @param firebaseUid The person's Firebase UID, or `null` if unlinked/unknown
+   * @param instanceUrl The library instance base URL
+   * @param token       The ESTATE_APP_TOKEN_DISCORD bearer
+   */
+  private conversationForShared(
+    key: ConversationKey,
+    firebaseUid: string | null,
+    instanceUrl: string,
+    token: string,
+  ): ConversationDeps {
+    const base = this.conversationFor(key);
+    // No linked identity → no shared memory, fall back to DO-only.
+    if (!firebaseUid || !token) return base;
+
+    return {
+      load: async () => {
+        const local = await base.load();
+        // If the DO already has turns, use them — they are the freshest on this
+        // surface. The shared endpoint is for when the DO has nothing (a fresh
+        // Discord conversation that was started on the web panel).
+        if (local.turns.length > 0) return local;
+        // Try the shared endpoint as a fallback.
+        const shared = await loadSharedMemory(instanceUrl, token, firebaseUid);
+        if (shared && Array.isArray(shared.turns) && shared.turns.length > 0) {
+          return { turns: shared.turns, pending: local.pending };
+        }
+        return local;
+      },
+      save: async (entry) => {
+        // Write to DO first (primary, fast).
+        await base.save(entry);
+        // Fire-and-forget sync to shared endpoint. Never block the reply.
+        const turns: import('./conversation.js').ConversationTurn[] = [
+          { role: 'user', text: entry.user, at: Date.now() },
+          { role: 'assistant', text: entry.assistant, at: Date.now() },
+        ];
+        // Re-read the full record from DO to send the complete window to shared.
+        const full = await this.convLoad(key).catch(() => ({ turns: [], pending: null }));
+        if (full.turns.length > 0) {
+          void saveSharedMemory(instanceUrl, token, firebaseUid, full.turns);
+        }
+      },
+    };
+  }
+
+  /**
    * `POST /conv/load` and `POST /conv/save`, for the HTTP interactions endpoint
    * — the ONE path that needs this memory from outside the object.
    *
@@ -1406,6 +1466,19 @@ export class GabiGateway {
     // a port that outlived its turn would read the wrong person's shelf.
     const shelfPort = makeShelfPort(this.env);
 
+    // ⚠️ PHASE 2 — resolve the asker's Firebase UID for shared memory sync.
+    // Uses the same delegate port built above. Degrades gracefully: if the
+    // person is not linked or the lookup fails, shared memory is simply skipped.
+    const sharedMemoryUid = delegate
+      ? await delegate.linkedUid(trigger.authorId).then(
+          (r) => (r.ok ? r.uid : null),
+          () => null,
+        )
+      : null;
+    const sharedInstanceUrl =
+      (this.env.LIBRARY_MAIN_URL ?? '').trim().replace(/\/+$/, '') || 'https://library.heygabi.ai';
+    const sharedToken = this.env.ESTATE_APP_TOKEN_DISCORD ?? '';
+
     // ⚠️ **THE VOICE FOR THIS TURN**, resolved here because this is the only
     // place with storage. A conversation with no remembered turns is a FRESH one
     // and gets a new roll (or the pin); otherwise the existing trope is advanced
@@ -1498,7 +1571,7 @@ export class GabiGateway {
       {
         capCheck: (userId) => this.capCheck(userId),
         recordTurn: (userId) => this.recordTurn(userId),
-        conversation: this.conversationFor(key),
+        conversation: this.conversationForShared(key, sharedMemoryUid, sharedInstanceUrl, sharedToken),
         ...(delegate
           ? {
               delegated: {

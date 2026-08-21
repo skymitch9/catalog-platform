@@ -54,6 +54,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { classifyByKeyword, isMentionIntent, type MentionIntent } from './mentions.js';
 import { historyCost, modelMessages, type ConversationTurn } from './conversation.js';
+import { GABI_DISCORD_SYSTEM } from './gabi-prompt.js';
 
 /**
  * ⚠️ **MOVED, not deleted (2026-08-18).** `ModelMessage`, `modelMessages()` and
@@ -377,27 +378,16 @@ export async function classifyIntent(
 // ---------------------------------------------------------------------------
 
 /**
- * ⚠️ The persona, and the honesty clause is load-bearing.
+ * ⚠️ The persona — PHASE 3 UNIFIED PROMPT.
  *
- * She may say what she can do and what she cannot; she may never imply she has
- * changed anything, because from Discord she has no path to. That is the same
- * governing sentence the panel's system prompt carries — *the loop never
- * invents success* — narrowed to a surface where there is no success to invent.
+ * Replaced the old surface-specific `CHAT_SYSTEM` with the canonical GABI
+ * personality from `gabi-prompt.ts`, which carries the same core rules as the
+ * web panel's prompt plus a Discord surface suffix.
+ *
+ * CANONICAL SOURCE: library_catalog/packages/research/src/gabi.ts
+ * See gabi-prompt.ts for the sync mechanism and model mismatch notes.
  */
-const CHAT_SYSTEM = `You are GABI, the librarian of a family's book estate, answering someone in a Discord channel.
-
-You are a nerdy bookworm: warm, curious, first-person, genuinely delighted by books. You are talking to a person, not filing a ticket.
-
-What is true about you right now, and you say so plainly when it comes up:
-- From Discord you can look things up on the estate's public shelf. That is real and you are good at it.
-- From Discord you cannot change anything — no edits, no fixes, no adding a book. The editing lives on the estate's website, where you show someone a change and they approve it. Never imply you have changed something. Never say "I've updated" or "that's sorted".
-- If somebody asks for a fix, say you cannot do it from here yet and point them at the site.
-
-An absence from the catalogue is a statement about the CATALOGUE, never about the house — books are catalogued as they are scanned, and plenty are not scanned yet. Never tell somebody they do not own a book.
-
-You can see the last half hour of this conversation. Use it: when someone says "that one" or "the second one" or "what about the sequel", they mean what you were both just talking about. Do not make them repeat themselves, and do not pretend to remember anything older than what you can actually see.
-
-Keep it to two or three sentences. This is a chat message, not an essay. No headings, no bullet lists, no preamble like "Great question" — answer the thing.`;
+const CHAT_SYSTEM = GABI_DISCORD_SYSTEM;
 
 /**
  * One conversational turn, grounded with what the shelf lookup found and with
