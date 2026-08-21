@@ -52,6 +52,356 @@ failed, mid-book when this was written), the hourly details sweep on both
 library instances, the R2 archive task, and the backups. Working trees are
 clean and everything is pushed.
 
+# KIRO — COMPLETE THIS WORK, by ease and quickness
+
+> **Audience: Kiro (and any executor who is not the session that wrote this).**
+> Ranked easiest-and-quickest first. Each item names the exact files, the exact
+> commands, and how to know it worked. Written 2026-08-21.
+>
+> ⚠️ **This section lives in `catalog-platform/docs/TODO.md` ON PURPOSE** — it is
+> the only one of the four docs trees that is **tracked in git**, so it survives
+> a clone. `audiobook_catalog/docs/` and the items that live there are LOCAL to
+> the owner's machine.
+
+## Read this before you touch anything
+
+These are the estate rules that actually bite. They are not style preferences;
+each one is here because it cost real time.
+
+1. ⚠️ **NEVER run `git stash` in a shared tree.** Two incidents in one night: a
+   chained `stash pop` popped a pre-existing unrelated stash into conflicts, and
+   a `stash -u` swept a concurrent agent's 527 uncommitted insertions. To ask
+   "is this failure pre-existing?", use a throwaway `git worktree add <tmp> HEAD`
+   instead. `git pull --rebase --autostash` is fine (it pops its own stash
+   atomically).
+2. ⚠️ **Stage an explicit file allowlist, never `git add -A`.** Other sessions
+   and a scheduled pipeline write into these trees.
+3. ⚠️ **Migrate before deploy, always.** New code must never meet an old schema.
+4. ⚠️ **A deploy ships the WORKING TREE, not a commit** (`wrangler pages deploy
+   <dir>`). Commit first. `npm run check:home` enforces this and will refuse a
+   dirty tree — that is the guard working, not an obstacle.
+5. ⚠️ **Doc updates are part of LANDING the work, not a later pass.** A finished
+   item moves WHOLE from `TODO.md` to `DONE.md` in the same session — cut and
+   paste, never summarise. Done items do not get a ✅ badge and stay put.
+6. ⚠️ **Say what you did NOT verify** in every report. An unavailable fact is
+   reported unavailable, never filled in with something plausible.
+7. ⚠️ **`npm test | tail` makes the exit status that of `tail`.** A red suite
+   passes silently that way. It has already put one commit on a broken suite.
+8. **Commit at clean boundaries and often.** Finish fewer things completely
+   rather than leaving one half-built.
+
+---
+
+# TIER 1 — quick and self-contained. Start here.
+
+## K1. Pagination does not scroll to top (library_catalog) — ~20 min
+
+**Owner, 2026-08-20:** *"when we paginate to a new page on the physical book
+libraries it doesnt scroll to the top, i know its an easy fix but we need to
+save credits so file it."*
+
+**Located for you.** `apps/web/src/components/Pager.tsx` is the control;
+`apps/web/src/pages/CollectionPage.tsx` is the ONLY consumer, and it renders the
+pager **twice** — above and below the results — at lines ~854 and ~864, both
+with `onPage={setPage}`.
+
+**Do this:**
+
+1. In `CollectionPage.tsx`, define one handler beside the existing `page` state:
+   ```tsx
+   const goToPage = useCallback((next: number) => {
+     setPage(next);
+     // ⚠️ Move FOCUS as well as pixels. Scrolling alone leaves a keyboard or
+     // screen-reader user parked at the old position while the page changes
+     // underneath them.
+     listHeadingRef.current?.focus();
+     window.scrollTo({ top: 0, behavior: 'smooth' });
+   }, []);
+   ```
+2. Give the list heading `ref={listHeadingRef}` and `tabIndex={-1}` (so it can
+   take programmatic focus without entering the tab order).
+3. Pass `onPage={goToPage}` to **both** `<Pager>` instances. ⚠️ Both — the
+   bottom one is the one people actually use, and fixing only the top is the
+   easiest way to "fix" this and have it still be broken.
+4. ⚠️ **Cover the other way the page changes:** `CollectionPage.tsx:232` calls
+   `setPage(0)` when a filter or sort resets. Route it through `goToPage` too,
+   or changing a filter still strands the reader mid-list.
+
+**Verify:** `npm run dev` in `apps/web`, load the physical book collection,
+page forward from the BOTTOM pager, confirm the viewport is at the top and that
+`document.activeElement` is the heading. Then change a filter and confirm the
+same. ⚠️ Check on a narrow viewport — the owner's symptom is worst on mobile.
+
+**Not verified by me:** whether the ebook/audiobook lists share this component.
+`grep -rn "Pager" apps/web/src` says CollectionPage is the only consumer today,
+so a fix here should cover every list that uses it — confirm rather than assume.
+
+---
+
+## K2. Make `library_catalog`'s typecheck green — ~45 min, and it UNBLOCKS other work
+
+⚠️ **This is the highest-leverage small item on the list.** `npm run typecheck`
+is currently RED in this repo, which means any other change lands in a tree
+where new breakage cannot be told from old. **Three other items on this page are
+gated on it.**
+
+**The complete list, measured 2026-08-21. All are in files nobody has modified
+— they are pre-existing, not caused by in-flight work.**
+
+| File | Error | Shape of the fix |
+|---|---|---|
+| `apps/web/src/pages/WorkPage.tsx:448` | `TS2339: Property 'peerHoldings' does not exist on type 'WorkDetail'` | The API returns it and the type does not admit it. Add `peerHoldings?: …` to `WorkDetail` — ⚠️ find where the server actually builds it and copy THAT shape, do not invent one |
+| `apps/worker/src/lib/peer-push.ts:37,147,148,149` | `TS2352: Conversion of type 'Env' to 'Record<string, unknown>'` ×4 | Cloudflare's `Env` has no index signature. Either add one to `Env`, or go through `unknown` at each site: `(env as unknown as Record<string, unknown>)` |
+| `apps/worker/src/routes/catalog.ts:348,352` | `TS2551: Property 'work_key' does not exist on type 'Work'. Did you mean 'workKey'?` | Snake/camel slip. ⚠️ **Read both lines before renaming** — if the value genuinely arrives from a raw SQL row, the fix is a typed row interface, not a rename that silently reads `undefined` |
+
+**Do this, in this order:**
+1. `cd bookbuddy/library_catalog && npm run typecheck` — capture the FULL output
+   first, so you can prove the count went to zero rather than moved.
+2. Fix the two mechanical groups (`peer-push.ts`, `catalog.ts`).
+3. Fix `WorkPage.tsx` last — it is the one that needs a real answer about the
+   API shape.
+4. `npm run typecheck` again, then `npm test`.
+   ⚠️ **Do not pipe the test run into `tail`** (rule 7 above).
+
+**Verify:** `npm run typecheck` exits 0. Report the before/after error counts.
+
+---
+
+## K3. Retire an item whose HEADING contradicts its BODY — ~10 min
+
+In `bookbuddy/audiobook_catalog/docs/TODO.md`, the section
+**"Add the shelf link to the admin portal (owner ask 2026-08-20) — BUILT, NOT
+DEPLOYED"** has a body that says the opposite: *"✅ COMMITTED AND DEPLOYED
+2026-08-20 (`cf3aa87`)"*, verified live across 26 pages.
+
+This is the exact anti-pattern the docs rule names: a finished item left in the
+ACTIVE list keeps asserting whatever its heading says.
+
+**Do this:** confirm the footer line is still live at <https://heygabi.ai/admin>
+(one look), then **cut the whole section and paste it into
+`audiobook_catalog/docs/DONE.md`** under a `## 2026-08-20 — …` heading, newest
+first. ⚠️ **Move it WHOLE — cut and paste, never summarise.** The summary always
+drops the why.
+
+---
+
+## K4. Schedule the docs backup — ~30 min
+
+`catalog-platform/scripts/backup-docs.mjs` backs up all four gitignored `docs/`
+trees to `estate-backups/docs/<repo>/<UTC>.json.gz`. It works, and its restore
+is drilled (`backup-restore.md` §6b). **Nothing schedules it** — it has run by
+hand twice, which is the silent-staleness trap with a long fuse.
+
+⚠️ **It CANNOT go in GitHub Actions.** Three of the four docs trees exist only
+on the owner's machine; CI would produce a cheerful archive of the one tree that
+IS committed and silently omit the rest.
+
+**Do this — a Windows Scheduled Task, beside the estate's other local jobs:**
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute 'node.exe' `
+  -Argument 'scripts\backup-docs.mjs' `
+  -WorkingDirectory 'C:\Users\nbasl\OneDrive\Documents\vs-code-repos\catalog-platform'
+$trigger = New-ScheduledTaskTrigger -Daily -At 3am
+Register-ScheduledTask -TaskName 'EstateDocsBackupR2' -Action $action -Trigger $trigger `
+  -Description 'Backs up the four gitignored docs/ trees to estate-backups. docs/access/backup-restore.md 6b'
+```
+
+⚠️ **It needs an authenticated `wrangler`**, which means the task must run as the
+owner's own user (not SYSTEM) or `wrangler r2 object put` fails with no usable
+message. Run it once by hand from the task (`Start-ScheduledTask -TaskName
+EstateDocsBackupR2`) and read the result before trusting the schedule.
+
+**Verify:** `npx wrangler r2 object get estate-backups/docs/catalog-platform/<the
+new UTC>.json.gz --file ./t.json.gz --remote`, then `node
+scripts/restore-docs.mjs ./t.json.gz --list` — it re-checks every sha256 and
+writes nothing. Delete `t.json.gz` afterwards.
+
+⚠️ **The archives contain `docs/access/keys/` — RAW service-account JSON and
+bearer tokens.** Never copy one anywhere that serves bytes to a person, and
+delete any local copy when you are done with it.
+
+---
+
+## K5. Lint the audiobook `scripts/` directory in CI — ~30 min
+
+From the tech-debt list: the lint workflow covers `app tests` only.
+`scripts/build_ebook_manifest.py` carries a pre-existing **C901** (too complex)
+on `extract_epub_cover`.
+
+**Do this:** add `scripts/` to the lint matrix in the audiobook repo's lint
+workflow, then either refactor `extract_epub_cover` or waive C901 for that one
+function with a `# noqa: C901` **and a comment saying why**. ⚠️ A blanket
+per-file or global waiver is the wrong fix — it silently exempts every future
+function in the file.
+
+**Verify:** the lint job runs over `scripts/` and is green. Say which of the two
+routes you took.
+
+---
+
+## K6. Kill the cp1252 emoji-in-`print()` crash class — ~30 min
+
+Three incidents in two days (smoke script, club smoke, uploader): an emoji in a
+`print()` crashes any run whose console is cp1252 — and **always between setup
+and cleanup**, which is the worst place for a crash.
+
+**Preferred fix, because it is mechanical and global:** set
+`PYTHONIOENCODING=utf-8` in the pipeline's `.bat` / Scheduled Task environment,
+so no individual script has to remember.
+
+**Second half, optional but better:** a repo lint rule banning non-ASCII in
+`print()` strings, so the next one is caught at review rather than at 3am.
+
+⚠️ **Do not "fix" this by removing the emoji from the three known scripts.**
+That is the same class of fix as prose advice: it does not stop the fourth one.
+
+**Verify:** force a cp1252 console (`chcp 1252`) and run one of the affected
+scripts end to end.
+
+---
+
+# TIER 2 — a session each, well-specified
+
+## K7. Let the donor hand out the PRINTED volume number — ~1 h
+
+`library_catalog/apps/worker/src/routes/donor.ts` gives out `seriesIndex` (sort
+position) but refuses `series_index_display`, on the reasoning that "the
+caller's copy of the book has its own cover". **That refusal is now the odd one
+out:** since 2026-08-19 both machines that WRITE the column derive it
+(`seriesIndexDisplayFrom`), and the main catalogue holds **81 hand-quoted forms**
+(`Volume 07`, `Book 1`) that are strictly better than a derivation and are
+currently not offered.
+
+**Do this:** one field in `donorDetailsFor`, one in `detailFindings`. ⚠️ It needs
+a key wider than `DetailField` — that is the actual work, and it is why this was
+left. Quality, not convergence: nothing is broken today.
+
+**Verify:** a donor response for a work with a hand-quoted display form carries
+it; one without still falls back to the derivation.
+
+---
+
+## K8. Shelf link on every book — ~2–3 h — see `audiobook_catalog/docs/TODO.md`
+
+Full plan is in that file under **"Shelf link on every book"**. The short version:
+a fourth button in `app/web/templates/index.html` (~line 707, beside *Open author
+folder*), backed by a new `shelf_book_map.json` built from ABS's own listing
+(`GET /audiobookshelf/api/libraries/<id>/items?limit=0` returns `id` and a
+`relPath` of `<Author>/<Title>`, joinable to `site/catalog.csv`).
+
+🔴 **Read the three warnings in that item before writing code.** The one that
+changes the design: **ABS item ids are not stable** — every id from the
+2026-08-20 layout 404s today. Prefer an ABS *search* link over a deep item link,
+which is exactly why two of the three existing buttons are already "Search … in
+Drive".
+
+---
+
+## K9. Newest-author art: a real cover, series-first — ~2 h — `audiobook_catalog/docs/TODO.md`
+
+Pick a random book from the author's collection, prefer #1 in its series, else
+the lowest series number held. ⚠️ Two things must be decided before coding, both
+written up in that item: what happens for an author with **no series at all**,
+and whether "random" is re-rolled nightly or **seeded and stable** (stable is
+almost certainly right — art that changes every night reads as a bug).
+
+⚠️ Confirm the surface with the owner first. It is near-certainly ABS's home-page
+"Newest Authors" shelf, which means the mechanism is **setting author images
+through the ABS API**, not a UI change.
+
+---
+
+## K10. One sign-on everywhere: measure it — ~1 h, mostly clicking
+
+The mechanism exists; this is a **coverage** task, not a build.
+`DEFAULT_SESSION_ORIGINS` in `apps/auth-worker/src/env.ts` already admits seven
+origins.
+
+⚠️ **The allow-list is NOT the thing to check.** An origin can be on it and still
+make a person sign in again, because adoption is a *client* behaviour — that is
+the exact shape of the complaint that started the whole build.
+
+**Do this:** sign in on ONE estate site, then open each of the others in turn and
+**record whether it signs itself in with no tap**. That table is the deliverable;
+the gaps fall out of it. Walk: `heygabi.ai` (home, `/status`, `/docs`,
+`/runbooks`, `/admin`), `audiobooks`, `ebooks`, `library`, `padhard`,
+`boardgames`. Do it in a real browser — an attribute or a 200 proves nothing here.
+
+⚠️ **`shelf.heygabi.ai` is NOT part of this** and must not be folded in. It is
+behind Cloudflare Access, a different gate at the network edge that knows nothing
+about `SESSION_ORIGINS`. Confirmed by a real person on 2026-08-21.
+
+---
+
+# TIER 3 — real projects. Do not start these casually.
+
+## K11. The three unmerged branches (library_catalog) — GATED ON K2
+
+`feature/completeness-wishlist-relations` (3 commits), `feature/series-overrides`
+(2), `feature/openlibrary-ids` (1). All last touched 2026-08-10; **all three
+conflict with `main`**, measured with `git merge-tree --write-tree`.
+
+⚠️ **Do K2 first.** Merging into a red typecheck means new breakage cannot be
+told from old, so the merge cannot be verified.
+
+Suggested order, smallest blast radius first: `series-overrides` (data + one
+script) → `openlibrary-ids` (mostly additive new modules) →
+`completeness-wishlist-relations` (8+ conflicting files across `apps/web`).
+⚠️ One branch per session, verified before the next.
+
+## K12. Port the EPUB + PDF readers to the shelf — `audiobook_catalog/docs/TODO.md`
+
+⚠️ **Blocked on an owner decision, not on code:** it moves ebook access from the
+estate's own `vis_ebooks` / `download_ebooks` grants to Cloudflare Access, a
+different gate with different membership. Owner directive 2026-08-17: *"I don't
+want people scraping my books."* Settle that first.
+
+## K13. Shelf UX / no ebooks dropdown — `audiobook_catalog/docs/TODO.md`
+
+Three options written up; **A (a second ABS library on an ebooks-only hardlink
+tree) matches the ask.** ⚠️ Same gate decision as K12 — **decide them together,
+once.**
+
+## K14. GABI unification phases 2–3 — `library_catalog/docs/TODO.md`
+
+🔴 **`migrations/0380_gabi_person_profile.sql` is UNAPPLIED and Phase 1's code is
+already on `main`.** Migrate before deploy. Phase 2 changes the conversation
+**surface key**, which is a persisted key's input — that is a migration, not an
+edit; existing `web_panel` rows do not move themselves.
+
+## K15. The Wandering Inn — split print run — `library_catalog/docs/TODO.md`
+
+⚠️ **Data drift, NOT a design question.** Volume semantics were settled
+2026-08-19 in `info/volume-numbers.md`. **Do not reopen that design.** Establish
+the publisher's real mapping first, in writing, before touching a record.
+
+---
+
+# NOT for Kiro — these need the owner
+
+Listed so nobody burns a session discovering they are blocked.
+
+| Item | Why it is the owner's |
+|---|---|
+| **Rotate the Anthropic key in `library_catalog/scripts/find-covers-tmp.mts`** | 🔴 A live key in plaintext. GitHub push protection caught it 2026-08-21; never pushed, never public. Only the owner should mint the replacement |
+| **Revoke the stale broad Cloudflare token** ("Edit Cloudflare Workers", Aug 14, Admin R/W on ALL R2 buckets) | Dashboard action, and access-REDUCING actions are the owner's to take |
+| **Retire the legacy shelf / worker-events / conductor env secrets** | ⚠️ Gate each on `Last used` showing a report from the minted key — observable, not guessed |
+| **Which of K11's three branches, in what order** | A priority call |
+| **The K12/K13 ebook-gate decision** | A security posture decision |
+| **"Clean this site up a bit UX"** | Not a spec. Three measured starting points are in the shelf-UX item; ask before building |
+
+---
+
+# The order, in one line
+
+**K1 → K2 → K3 → K4 → K5 → K6** are all short, independent, and safe to do in
+any order — except that **K2 unblocks K11**, so do it early. Then K7–K10 as
+sessions allow. Tier 3 only with the owner's go-ahead.
+
+
+---
+
 ## ☐ Backup: the mid-body-drop fix is SHIPPED but not yet proven on a real bucket (2026-08-21)
 
 Run `32469907247` (the 09:12 UTC schedule) lost `library-covers` and
