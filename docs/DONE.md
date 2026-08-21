@@ -14,6 +14,83 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+
+## 2026-08-21 — The docs standard: one shape, four repos, and it is now global
+
+Owner asks, across the day: *"lets set up some sort of easy to follow doc trees
+that link to each other… keep being easy for ai to read and follow a specific
+format… also keep a doc of known issues, exceptions"*, then *"make sure all
+future and past projects restructure docs to use this new format… if you dont
+have this structure make it"*, then *"make sure its generic enough to be applied
+to other projects, i want global rules to be global and fit not this project
+specific"*.
+
+### The shape
+
+`docs/README.md · TODO.md · DONE.md · KNOWN_ISSUES.md · access/ · info/ ·
+archive/` — identical in all four repos. Nothing else at the top level; files
+written by tooling (`deploys.log`) are the exemption.
+
+Three of the seven are new everywhere: **README.md** (a one-screen map with a
+mermaid tree and a start-here table), **KNOWN_ISSUES.md**, and **archive/**.
+
+### Where the rules live, and why in two places on purpose
+
+- `docs/DOCS_STANDARD.md` — the LONG form, §1–§8 portable and naming no
+  company/stack/service/repo, §9 the only project-specific section. It travels
+  with the repo, because **a clone has this file and does not have a home
+  directory**.
+- `~/.claude/CLAUDE.md` — the SHORT normative form. It travels with the
+  operator and applies to every project, including ones with no docs yet.
+
+⚠️ Written into both headers: they are two copies at different altitudes and
+must NOT be merged. Global wins on the rules, the project file wins on detail.
+
+### Mechanically enforced, not just written
+
+`~/.claude/hooks/session-start-rules.sh` was upgraded from "list the docs
+folders that exist" to **"list which of the seven pieces each one is missing,
+plus any loose `.md` at its top level"** — because the rule is now *create what
+is missing before the task you came to do*, and a checklist that cannot say what
+is absent cannot enforce that. Backups: `CLAUDE.md.bak-2026-08-21`,
+`settings.json.bak-2026-08-21`, `hooks/session-start-rules.sh.bak-2026-08-21`.
+
+### What the restructure actually moved
+
+Five top-level reference docs into `info/` with every inbound link repaired
+across nine files; `diagrams/` under `info/`; ~1.1 MB of board-game migration
+dumps and 13 retired documents into `archive/`, each given a dated banner;
+`FABLE5.md` (156 KB, stale since 2026-08-13) retired.
+
+### ⚠️ Two findings worth more than the tidying
+
+1. **Never bulk-sweep `TODO.md` → `DONE.md` by heading.** The heuristic found 11
+   sections here whose headings said `LIVE`/`SHIPPED`/`✅` and **every one had
+   open work in its body**. Sweeping on the heading would have archived live
+   work. Now written into both the standard and the global rule, with the
+   number attached. One unambiguous case was moved by hand as the worked
+   example — a section titled *"BUILT, NOT DEPLOYED"* whose body said it had
+   been deployed and verified live a day earlier.
+2. 🔴 **The docs backup was silently dropping files**, found only because a count
+   looked wrong (27 archived against 46 on disk). OneDrive dehydrates files into
+   placeholders that Node reports as symlinks, and the walker skipped them by
+   design. Fixed, skip-reporting added, re-drilled to a byte-exact restore.
+   Recorded as KI-9 — see the separate entry.
+
+### Not verified
+
+The `SessionStart` hook was exercised by hand against four directories
+(complete, incomplete, empty, and a false-positive web-asset folder, which is
+now excluded) — but **a hook only fires on a NEW session, so this one could not
+prove itself.** The next session's opening reply is the real test.
+
+⚠️ Also caught during that testing, and worth keeping: **`bash -n` reported the
+hook syntactically fine while its `find` was silently matching nothing**, because
+a heredoc had turned line-continuations into literal `
+` text. A syntax check
+verified the wrong thing; only running it against a known-good directory found
+it.
+
 ## 2026-08-21 — the nightly backup lost two buckets to a socket that died MID-BODY
 
 **Run `32469907247`** (the 09:12 UTC schedule) went red on **two** jobs —
