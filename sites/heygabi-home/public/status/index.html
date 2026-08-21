@@ -242,16 +242,24 @@
          Kept as a comment rather than quietly deleted because the same wrong
          subtraction is easy to redo from the same two numbers, and the
          runbook's §4 now leads with the corrected version. -->
+    <!-- ⚠️ STATE CHANGED AGAIN 2026-08-21 — the "409 items / cannot be browsed"
+         paragraph this replaces was TRUE when written and FALSE by the next
+         morning, and it was still on the live page hours after the fix landed.
+         That is the same failure the retraction comment above records, in its
+         mildest form: a published present-tense claim keeps asserting whatever
+         was true the hour somebody typed it. Re-measure before editing this
+         paragraph, and change the STATE rather than deleting the history. -->
     <p class="section-note">
       A physical server mirroring the library from Drive, every book at its own
-      URL on <code>shelf.heygabi.ai</code>. Status: <strong>serving, library
-      fully copied, not yet usable as a book list</strong> — the tunnel was
-      fixed 2026-08-20 and all <strong>1,080 books (684 GB)</strong> are on the
-      server. But the library is laid out one folder per <em>author</em>, and
-      Audiobookshelf expects one folder per <em>book</em>, so it shows
-      <strong>409 items</strong> instead of 1,080 — whole authors collapsed into
-      a single entry. Nothing is missing; the shelf just cannot be browsed yet.
-      See the runbook §4.
+      URL on <code>shelf.heygabi.ai</code>. Status: <strong>serving, complete,
+      and browsable</strong> — the tunnel was fixed 2026-08-20, and the folder
+      shape was fixed on the box on 2026-08-20/21 with a hardlink shadow tree
+      (one folder per <em>book</em>, which is what Audiobookshelf expects).
+      Measured 2026-08-21: <strong>1,206 items</strong> — every one of them at
+      <code>&lt;Author&gt;/&lt;Title&gt;</code> depth, <strong>zero missing,
+      zero with issues</strong> — holding 1,081 audio tracks across 684 GB, plus
+      <strong>125 items that are ebooks with no audio at all</strong>. The old
+      “409 items” reading is gone. See the runbook §4.
     </p>
     <!-- PARITY — "is the server still a complete copy of Drive?" (owner ask
          2026-08-20). Filled by status.js from GET /api/estate/shelf/parity.
