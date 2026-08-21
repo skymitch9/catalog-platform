@@ -76,6 +76,66 @@ the bug present. Two things to close it:
 ---
 
 
+## ☐ One sign-on everywhere: finish the estate SSO port (owner ask, 2026-08-21)
+
+Owner, verbatim: *"port over google sso memory from the other heygabi sites so
+one sign on anywhere extends to every site a person has access too."*
+
+**The mechanism already exists** and does not need designing — see
+[`info/sso-design.md`](info/sso-design.md) (design of record) and
+`audiobook_catalog/docs/access/ESTATE_SSO.md` (how to operate, test and roll it
+back). One Google tap anywhere on `*.heygabi.ai` mints a session at
+`auth.heygabi.ai`, and a participating origin adopts it silently on the next
+page load. This item is about **coverage**, not about building the layer again.
+
+**Measured 2026-08-21** — `DEFAULT_SESSION_ORIGINS` in
+`apps/auth-worker/src/env.ts` already admits seven origins:
+
+```
+heygabi.ai · www · audiobooks · ebooks · library · padhard · boardgames
+```
+
+So the server half is largely done. ⚠️ **The allow-list is NOT the thing to
+check.** An origin can sit in that list and still make a person sign in again,
+because adoption is a *client* behaviour — that is exactly the shape of the
+complaint that started the whole build (*"Ebooks makes me login every time"*),
+and it was fixed on the client, not by adding a row.
+
+☐ **Measure per-surface, not per-list: sign in on ONE site, then open each of the
+  others in turn and record whether it signs itself in with no tap.** That table
+  is the deliverable — the gaps fall out of it. Do it in a real browser; an
+  attribute or a 200 proves nothing here.
+  Surfaces to walk: `heygabi.ai` (home, `/status`, `/docs`, `/runbooks`,
+  `/admin`), `audiobooks`, `ebooks`, `library`, `padhard`, `boardgames`.
+☐ **Close whichever surfaces fail**, by shipping the adoption client there —
+  the same file, not a re-implementation. ⚠️ One canonical implementation:
+  `audiobook_catalog/site/identity.js` and
+  `catalog-platform/sites/heygabi-home/public/assets/estate-auth.js` are already
+  two copies of this idea. Do not make a third; if they have diverged, say so
+  and pick one.
+☐ **Add any missing origin to `SESSION_ORIGINS`** — `books.heygabi.ai` and
+  `index.heygabi.ai` appear in `HEYGABI_LAYOUT.md` and are **not** in the list.
+  Decide whether they are people-facing surfaces at all before adding them;
+  ⚠️ granting an origin is access-INCREASING, so it gets confirmed, never
+  assumed.
+☐ ⚠️ **`shelf.heygabi.ai` is NOT part of this and must not be quietly folded in.**
+  The shelf is gated by **Cloudflare Access** (Google sign-in, family allowlist)
+  — a different gate, a different membership list, and not something
+  `SESSION_ORIGINS` reaches. "One sign-on anywhere" will still meet an Access
+  prompt at the shelf for anyone who has not passed it. That interacts directly
+  with the reader-port item in `audiobook_catalog/docs/TODO.md`; the two should
+  be decided together.
+☐ **"…every site a person has access to" is the load-bearing clause.** SSO
+  carries *identity*, not *authorisation*: a signed-in person still meets each
+  site's own grants (`vis_ebooks`, `download_ebooks`, roles). ⚠️ Verify that a
+  person with no grant on a site sees the site's own written refusal — what
+  happened, what it needs, how to get it — and never a bare status or a dead
+  button. Silently signing someone in and then 403-ing them is a worse
+  experience than the sign-in prompt it replaced.
+
+---
+
+
 ## 🔴 THE FIRST REAL USERS HIT GABI — two P1s (2026-08-18, 19:26–19:28 Phoenix)
 
 **Not the owner. Not tests. Two members of the household, in a channel, hours
