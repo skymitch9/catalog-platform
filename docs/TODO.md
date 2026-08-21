@@ -392,6 +392,42 @@ Not a one-off. After any substantial piece of work, in the same session:
   `access/`, `info/`, `archive/`, or one of the three logs?
 ☐ Said what was **not** verified?
 
+## K19. Re-tune the backup-age thresholds to the cadence that actually exists — ~1 h
+
+🔴 **The one surface built to answer "are backups still running" cannot see a
+two-week outage.** `/status` grades a backup row green to **14 days**, red at
+**45** — while the job runs **daily**. Full write-up: `KNOWN_ISSUES.md` KI-10.
+
+**Do this — three things together, or the fix is worse than the bug:**
+
+1. `apps/auth-worker/src/backups.ts`: change `BACKUP_STALE_AMBER_MS` /
+   `BACKUP_STALE_RED_MS`. Suggested **36 h amber** (one missed run tolerated),
+   **60 h red** (two missed runs is not a blip). ⚠️ `test/backups.test.ts`
+   asserts both **to the millisecond** and will fail — that is the guard
+   working, so update the test deliberately rather than loosening it.
+2. **Fix the RENDERED STRINGS.** They currently tell the reader a long age may
+   just mean nobody pressed the button. For a cron-driven store that is untrue
+   and actively misleading — it invites exactly the shrug this item exists to
+   stop.
+3. ⚠️ **Correct the doc comment's PREMISE, not only its numbers.** It says
+   *"backup.yml is workflow_dispatch-only — there is NO cron"*. That was true
+   when written and the daily cron landed 2026-08-18. Leave it and the next
+   session re-derives the same wrong thresholds from the same wrong sentence.
+
+⚠️ **Not every store is cron-driven.** The docs prefixes are written by a
+manual script (until K4 schedules it), so a single global threshold would flip
+them amber immediately. Either grade per-kind, or do K4 first so everything
+really is daily. **Decide which before touching the constants.**
+
+**Also, and separately: a failed backup notifies nobody.** No `if: failure()`,
+no webhook, no email. This morning's scheduled run failed on two buckets and
+was recovered only because a human happened to look. Worth a one-step
+notification on failure — the estate already has an event ring and a Discord
+bot to send it to.
+
+---
+
+
 # TIER 3 — real projects. Do not start these casually.
 
 ## K11. The three unmerged branches (library_catalog) — GATED ON K2

@@ -171,3 +171,40 @@ refuse it if it resolves outside — the original reason not to follow links.
 Fixed 2026-08-21; the walker now also PRINTS every skip and carries the skip list
 inside each archive's own manifest. Re-drilled the same day: 46/46 restored,
 `diff -r` against the live tree — zero differences.
+
+---
+
+## KI-10 · The backup-age thresholds are calibrated for a cadence that no longer exists — `ACCEPTED`, and it hides a two-week outage
+
+**Symptom.** `/status` grades every backup row green until it is **14 days**
+old, and does not go red until **45**. The backup now runs **daily**. So a
+nightly backup that stopped tonight would look **perfectly healthy on the one
+surface built to answer "are backups still running" until 2026-09-04**, and
+would not read as a problem until October.
+
+**Why tolerated.** ⚠️ **Only because the premise moved and nobody re-tuned it.**
+`apps/auth-worker/src/backups.ts` states the reasoning honestly and it was
+correct when written: *"`backup.yml` is `workflow_dispatch`-only — there is NO
+cron and therefore NO expected cadence to measure against."* Under that
+assumption a long age genuinely meant "nobody pressed the button", and calendar
+thresholds measuring EXPOSURE were the right call. **The daily cron landed
+2026-08-18** (`cron: '12 9 * * *'`), which makes the premise false and the
+numbers far too generous.
+
+**What would change it.** Kiro item **K19**. With a known daily cadence the
+grade can measure the thing that is now knowable: *did last night's run land?*
+Suggested — amber at ~36 h (one missed run tolerated), red at ~60 h (two missed
+runs is not a blip). ⚠️ Three things must move together or the fix is worse
+than the bug:
+1. the two constants, which `test/backups.test.ts` asserts **to the
+   millisecond** and will fail loudly on — that is the guard working;
+2. the rendered strings, which currently say a long age may mean nobody pressed
+   the button — untrue for cron-driven stores and actively misleading;
+3. ⚠️ the doc comment's PREMISE, not just its numbers. Leaving "there is no
+   cron" in place is how the next session re-derives the same wrong thresholds.
+
+⚠️ **Related and separate: a failed run notifies nobody.** Measured 2026-08-21 —
+`backup.yml` has no `if: failure()` step, no webhook, no email. This morning's
+scheduled run failed on two buckets and was recovered only because a human
+happened to look. `fail-fast: false` means the other stores still land, so the
+failure is partial and quiet by design.
