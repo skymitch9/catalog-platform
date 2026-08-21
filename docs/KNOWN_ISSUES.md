@@ -174,37 +174,28 @@ inside each archive's own manifest. Re-drilled the same day: 46/46 restored,
 
 ---
 
-## KI-10 · The backup-age thresholds are calibrated for a cadence that no longer exists — `ACCEPTED`, and it hides a two-week outage
+---
 
-**Symptom.** `/status` grades every backup row green until it is **14 days**
-old, and does not go red until **45**. The backup now runs **daily**. So a
-nightly backup that stopped tonight would look **perfectly healthy on the one
-surface built to answer "are backups still running" until 2026-09-04**, and
-would not read as a problem until October.
+## KI-10 · A failed backup still notifies nobody — `WATCHING` (half-fixed 2026-08-21)
 
-**Why tolerated.** ⚠️ **Only because the premise moved and nobody re-tuned it.**
-`apps/auth-worker/src/backups.ts` states the reasoning honestly and it was
-correct when written: *"`backup.yml` is `workflow_dispatch`-only — there is NO
-cron and therefore NO expected cadence to measure against."* Under that
-assumption a long age genuinely meant "nobody pressed the button", and calendar
-thresholds measuring EXPOSURE were the right call. **The daily cron landed
-2026-08-18** (`cron: '12 9 * * *'`), which makes the premise false and the
-numbers far too generous.
+**Symptom.** `backup.yml` fails on a store and nothing tells anyone. The
+2026-08-21 scheduled run failed on two buckets and was noticed only because a
+human opened Actions. ⚠️ `fail-fast: false` means the other nine stores still
+land, so the run is **partially** green — the shape of failure that gets
+shrugged at.
 
-**What would change it.** Kiro item **K19**. With a known daily cadence the
-grade can measure the thing that is now knowable: *did last night's run land?*
-Suggested — amber at ~36 h (one missed run tolerated), red at ~60 h (two missed
-runs is not a blip). ⚠️ Three things must move together or the fix is worse
-than the bug:
-1. the two constants, which `test/backups.test.ts` asserts **to the
-   millisecond** and will fail loudly on — that is the guard working;
-2. the rendered strings, which currently say a long age may mean nobody pressed
-   the button — untrue for cron-driven stores and actively misleading;
-3. ⚠️ the doc comment's PREMISE, not just its numbers. Leaving "there is no
-   cron" in place is how the next session re-derives the same wrong thresholds.
+**Why tolerated.** Half of it no longer is: a `notify-failure` job now reports
+any non-clean result to the estate event ring, so it surfaces on `/status`.
+⚠️ **But it has never been tested against a real failure**, and it depends on a
+repo secret (`ESTATE_EVENTS_TOKEN`) that **may not be set** — the job says so
+loudly rather than exiting quietly, which is the best it can do from inside CI.
 
-⚠️ **Related and separate: a failed run notifies nobody.** Measured 2026-08-21 —
-`backup.yml` has no `if: failure()` step, no webhook, no email. This morning's
-scheduled run failed on two buckets and was recovered only because a human
-happened to look. `fail-fast: false` means the other stores still land, so the
-failure is partial and quiet by design.
+**What would change it.** Two things, both measurable: (1) confirm
+`ESTATE_EVENTS_TOKEN` exists as a repo secret — until then every failure
+notification is a no-op with a warning; (2) see one real failure arrive on
+`/status`. Until both, treat backup health as *checked*, not *alerted*.
+
+⚠️ **The age grading is the other half, and it catches a different failure.**
+This job answers "it ran and broke"; the freshness grade answers "it never ran
+at all" — and a job that never starts cannot report its own failure. Neither
+substitutes for the other.

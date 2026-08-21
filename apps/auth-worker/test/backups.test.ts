@@ -19,12 +19,16 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import {
   KNOWN_BACKUP_PREFIXES,
+  LOCALLY_WRITTEN_PREFIXES,
   generationOf,
   summarizeBackups,
   gradeBackups,
   gradeBackupAge,
   BACKUP_STALE_AMBER_MS,
   BACKUP_STALE_RED_MS,
+  BACKUP_AMBER_CADENCE_MULTIPLE,
+  BACKUP_RED_CADENCE_MULTIPLE,
+  BACKUP_KIND_CADENCE_MS,
   backupsRoutes,
   type ListableBucket,
 } from '../src/backups.js';
@@ -58,8 +62,29 @@ test('KNOWN_BACKUP_PREFIXES matches the exact set backup.yml writes and prune-r2
       'r2/estate-docs-gated',
       'r2/game-covers',
       'r2/library-covers',
+      // Added 2026-08-21. ⚠️ These four are NOT written by backup.yml — they
+      // come from scripts/backup-docs.mjs on the owner's machine, because three
+      // of the four docs/ trees exist only there. They ARE pruned by the
+      // retention job and they ARE graded, which is why they belong in this
+      // list. See LOCALLY_WRITTEN_PREFIXES and the matrix test below.
+      'docs/audiobook_catalog',
+      'docs/board_game_catalog',
+      'docs/catalog-platform',
+      'docs/library_catalog',
     ].sort(),
   );
+});
+
+test('⚠️ every locally-written prefix is also a known prefix — the subset must be real', () => {
+  // Cheap, and it stops the matrix test below being silently weakened by a
+  // typo: an entry here that is not in KNOWN_BACKUP_PREFIXES would subtract
+  // nothing and quietly re-widen what the matrix has to match.
+  for (const p of LOCALLY_WRITTEN_PREFIXES) {
+    assert.ok(
+      (KNOWN_BACKUP_PREFIXES as readonly string[]).includes(p),
+      `${p} is in LOCALLY_WRITTEN_PREFIXES but not KNOWN_BACKUP_PREFIXES`,
+    );
+  }
 });
 
 /**
@@ -126,7 +151,16 @@ test('⚠️ backup.yml\'s job matrices write exactly KNOWN_BACKUP_PREFIXES — 
   assert.ok(firestore.length > 0, 'parsed ZERO firestore keys out of backup.yml — broken matcher, not an empty job.');
   assert.ok(r2.length > 0, 'parsed ZERO r2 buckets out of backup.yml — broken matcher, not an empty matrix.');
 
-  assert.deepEqual([...d1, ...firestore, ...r2].sort(), [...KNOWN_BACKUP_PREFIXES].sort());
+  // ⚠️ MINUS the locally-written ones. backup.yml's matrices write the CI half
+  // of the bucket; scripts/backup-docs.mjs writes the rest from the owner's
+  // machine, because three of the four docs/ trees exist only there. Comparing
+  // the matrices to the FULL list would fail forever — and "fixing" that by
+  // dropping docs/* out of the grade would hide the staleness of the estate's
+  // only copy of three documentation trees, which is the worse of the two.
+  const ciWritten = (KNOWN_BACKUP_PREFIXES as readonly string[]).filter(
+    (p) => !(LOCALLY_WRITTEN_PREFIXES as readonly string[]).includes(p),
+  );
+  assert.deepEqual([...d1, ...firestore, ...r2].sort(), [...ciWritten].sort());
 });
 
 /**
@@ -294,20 +328,24 @@ test('gradeBackupAge: boundaries are inclusive-ok — exactly 14d/45d do NOT tri
 
 test('gradeBackups: one row per kind, covering exactly the known prefixes', () => {
   const { kinds } = gradeBackups(summaryAged(1), NOW);
-  assert.deepEqual(kinds.map((k) => k.kind), ['d1', 'firestore', 'r2']);
+  assert.deepEqual(kinds.map((k) => k.kind), ['d1', 'firestore', 'r2', 'docs']);
   // 5 D1 databases (library-catalog-2nd joined 2026-08-18), 1 Firestore
   // project, 5 R2 buckets (ebooks-gated + estate-docs-gated joined the same
-  // day) — RECOVERY.md §1b.
-  assert.deepEqual(kinds.map((k) => k.stores), [5, 1, 5]);
+  // day) — RECOVERY.md §1b — and 4 docs trees (2026-08-21).
+  assert.deepEqual(kinds.map((k) => k.stores), [5, 1, 5, 4]);
   // Every known prefix belongs to exactly one kind — no store can go ungraded.
   assert.equal(kinds.reduce((n, k) => n + k.stores, 0), KNOWN_BACKUP_PREFIXES.length);
 });
 
 test('gradeBackups: everything fresh -> ok everywhere, with the real age carried', () => {
-  const { kinds, overall } = gradeBackups(summaryAged(2), NOW);
+  // ⚠️ 2 days was "fresh" under the old calendar thresholds and is now TWO
+  // MISSED RUNS for a daily store. Use an age that is fresh under the cadence
+  // this backup actually has — the point of the test is the age plumbing, not
+  // the threshold.
+  const { kinds, overall } = gradeBackups(summaryAged(0.5), NOW);
   for (const k of kinds) assert.equal(k.state, 'ok');
   assert.equal(overall.state, 'ok');
-  assert.equal(overall.age_ms, 2 * DAY);
+  assert.equal(overall.age_ms, 0.5 * DAY);
   assert.deepEqual(overall.never, []);
   assert.equal(overall.count, 3 * KNOWN_BACKUP_PREFIXES.length);
 });
@@ -316,18 +354,25 @@ test('⚠️ a single stale store is NOT masked by fresh ones — the whole reas
   // The real-world shape this catches: backup.yml takes a `target` input, so
   // an `r2`-only dispatch refreshes three stores and leaves the databases
   // untouched. Judging on the newest object anywhere would read green.
-  const summary = summaryAged(1, { 'd1/estate_auth': 20 });
+  // ⚠️ 1.75 days, not 20. Under the cadence grading a 20-day-old daily backup
+  // is DANGER, which would prove nothing about masking; this age sits in the
+  // amber band (>1.5x, <2.5x of 24 h) so the assertion still tests what it says
+  // it tests — that one stale store surfaces instead of being averaged away.
+  const summary = summaryAged(0.5, { 'd1/estate_auth': 1.75 });
   const { kinds, overall } = gradeBackups(summary, NOW);
 
   // newestOverall is an hour-fresh timestamp — the old, masking signal.
-  assert.equal(Date.parse(summary.newestOverall!), NOW - 1 * DAY);
+  assert.equal(Date.parse(summary.newestOverall!), NOW - 0.5 * DAY);
 
-  assert.equal(overall.state, 'warn', 'a 20-day-old database read as ok');
+  // ⚠️ The roll-up spans on-demand kinds too, so it grades on the SLOWEST
+  // cadence and stays green here. That is correct and is why the per-kind row
+  // below is the one a reader is sent to.
   assert.equal(overall.oldest_store, 'd1/estate_auth');
-  assert.equal(overall.age_ms, 20 * DAY);
+  assert.equal(overall.age_ms, 1.75 * DAY);
 
   const d1 = kinds.find((k) => k.kind === 'd1')!;
-  assert.equal(d1.state, 'warn');
+  assert.equal(d1.state, 'warn', 'a daily database 1.75 days stale read as ok');
+  assert.equal(d1.cadence_ms, 24 * 3600_000);
   assert.equal(d1.oldest_store, 'd1/estate_auth');
   // The kinds that ARE fresh stay green — the warning is localised, not smeared.
   assert.equal(kinds.find((k) => k.kind === 'r2')!.state, 'ok');
@@ -436,4 +481,63 @@ test('⚠️ a split night counts as ONE backup, not as its part count', async (
   const summary = await summarizeBackups(bucket);
   assert.equal(summary.prefixes['r2/audiobook-covers']!.count, 2, 'two nights, three objects');
   assert.equal(summary.prefixes['r2/audiobook-covers']!.newest, uploaded.toISOString());
+});
+
+// ── cadence grading (2026-08-21) ───────────────────────────────────────────
+//
+// 🔴 THE REGRESSION THIS PREVENTS: for three days the estate graded a DAILY
+// backup green until it was 14 days old. The thresholds were derived, honestly
+// and correctly, from a comment saying "backup.yml has no cron" — and the cron
+// landed on 2026-08-18 without the comment or the numbers moving. A backup that
+// stopped would have looked healthy on the one surface built to notice.
+
+test('⚠️ a daily store is graded on its CADENCE, not the calendar exposure window', () => {
+  const DAILY = 24 * 3600_000;
+  assert.equal(gradeBackupAge(30 * 3600_000, DAILY), 'ok', 'a 30h-old daily backup is normal');
+  assert.equal(gradeBackupAge(36 * 3600_000, DAILY), 'ok', 'exactly 1.5x is still ok');
+  assert.equal(gradeBackupAge(37 * 3600_000, DAILY), 'warn', 'one missed run should be amber');
+  assert.equal(gradeBackupAge(60 * 3600_000, DAILY), 'warn', 'exactly 2.5x is still amber');
+  assert.equal(gradeBackupAge(61 * 3600_000, DAILY), 'danger', 'two missed runs must be red');
+  // The whole point, stated as the thing that was broken:
+  assert.equal(
+    gradeBackupAge(13 * 24 * 3600_000, DAILY),
+    'danger',
+    'a 13-day-old DAILY backup graded ok before 2026-08-21 — that is the bug',
+  );
+});
+
+test('⚠️ a threshold below one cadence would go amber every single day — the multiples must exceed 1', () => {
+  // Age peaks just before each scheduled run. If amber sat at or under 1x, the
+  // row would flip amber at 09:11 UTC daily and be ignored within a week.
+  assert.ok(BACKUP_AMBER_CADENCE_MULTIPLE > 1, 'amber must be above one full cadence');
+  assert.ok(BACKUP_RED_CADENCE_MULTIPLE > BACKUP_AMBER_CADENCE_MULTIPLE, 'red must be above amber');
+  const DAILY = 24 * 3600_000;
+  assert.equal(gradeBackupAge(DAILY - 1, DAILY), 'ok', 'a backup taken 23h59m ago is not late');
+  assert.equal(gradeBackupAge(DAILY, DAILY), 'ok', 'a backup exactly one cadence old is not late');
+});
+
+test('an on-demand store keeps the EXPOSURE thresholds — no cadence, no cadence grading', () => {
+  // ⚠️ This is why cadence is per-kind and not global. docs/* is run by hand;
+  // a 36-hour threshold would paint it amber permanently and train everyone to
+  // ignore the row, which is worse than the original bug.
+  assert.equal(BACKUP_KIND_CADENCE_MS.docs, null);
+  for (const cadence of [null, undefined]) {
+    assert.equal(gradeBackupAge(BACKUP_STALE_AMBER_MS, cadence), 'ok');
+    assert.equal(gradeBackupAge(BACKUP_STALE_AMBER_MS + 1, cadence), 'warn');
+    assert.equal(gradeBackupAge(BACKUP_STALE_RED_MS + 1, cadence), 'danger');
+  }
+});
+
+test('⚠️ the cadence map claims a SCHEDULE — every cron-driven kind must declare one', () => {
+  // If a kind backup.yml's cron writes ever loses its cadence here, it silently
+  // reverts to 14-day grading. Pinned so that has to be deliberate.
+  for (const kind of ['d1', 'firestore', 'r2']) {
+    assert.equal(BACKUP_KIND_CADENCE_MS[kind], 24 * 3600_000, `${kind} is cron-driven and must declare a daily cadence`);
+  }
+});
+
+test('the grade carries cadence_ms so the page can word "late" vs "nobody ran it"', () => {
+  const { kinds } = gradeBackups(summaryAged(0.5), NOW);
+  assert.equal(kinds.find((k) => k.kind === 'd1')!.cadence_ms, 24 * 3600_000);
+  assert.equal(kinds.find((k) => k.kind === 'docs')!.cadence_ms, null);
 });

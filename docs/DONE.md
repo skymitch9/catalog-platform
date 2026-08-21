@@ -15,6 +15,67 @@
 
 
 
+
+## 2026-08-21 — Backup grading measured the wrong thing for three days
+
+Owner: *"Are all backups good?"* then *"Okay so what's the solution"*.
+
+**The data was fine. The instrument was not.** `/status` graded every backup row
+green until it was **14 days** old and red at **45**, while the job has run
+**daily since 2026-08-18**. A nightly backup that stopped would have looked
+healthy on the one surface built to notice, for a fortnight.
+
+⚠️ **The reasoning in `backups.ts` was honest and correct when written:** *"there
+is NO cron and therefore NO expected cadence to measure against"*, so calendar
+thresholds measuring EXPOSURE were right. The cron landed and the comment did
+not. **Found by reading the premise, not the numbers.**
+
+### The fix — cadence per KIND, not one global threshold
+
+A single 36-hour threshold would have been wrong too: `docs/*` is written by a
+script somebody runs by hand, and it would have gone amber permanently and
+trained everyone to ignore the row.
+
+- `BACKUP_KIND_CADENCE_MS` — `d1`/`firestore`/`r2` daily, `docs` null.
+- With a cadence the grade asks *did the run that should have happened land?* —
+  amber >1.5x (36 h, one missed run), red >2.5x (60 h, two).
+- Without one it keeps the exposure grading, unchanged.
+- ⚠️ Both multiples must exceed 1x, pinned by a test: age peaks just before each
+  run, so a 24 h threshold would flip amber every day at 09:11 UTC.
+- The grade carries `cadence_ms` so the page can word *"last night's run did not
+  land"* differently from *"nobody has run this"*.
+
+### A gap opened the same morning, caught by the file's own guard
+
+`docs/*` went into the retention job and the backup script but **not** into
+`KNOWN_BACKUP_PREFIXES` — so those four prefixes were written and pruned
+correctly and were **invisible to `/status`**. The header comment warns about
+exactly this ("add it in all three places") and the drift test caught it.
+
+Fixing it showed the old invariant was too blunt: `KNOWN_BACKUP_PREFIXES` is no
+longer "what `backup.yml` writes", because `docs/*` **cannot** be written by CI.
+Now two classes — `LOCALLY_WRITTEN_PREFIXES` is an explicit subset, retention
+still matches the full list exactly, and the matrix test matches the full list
+*minus* that subset. ⚠️ Dropping `docs/*` from the grade would have made the test
+pass and hidden the staleness of the estate's only copy of three docs trees.
+
+### The other half: a failed run notified nobody
+
+New `notify-failure` job posts any non-clean result to the estate event ring.
+⚠️ `if: always()` plus an explicit result test, **not** `if: failure()` — a
+job-level `failure()` does not fire when a needed job is *cancelled*, and a
+cancelled backup is a backup that did not happen. `skipped` is deliberately not
+news (a targeted dispatch skips the other kinds on purpose).
+
+⚠️ **The two halves catch different failures and neither substitutes for the
+other:** the job answers *"it ran and broke"*; the age grade answers *"it never
+ran at all"* — and a job that never starts cannot report its own failure.
+
+**Verified:** 448/448 auth-worker tests, repo typecheck clean, the workflow
+parses with 5 jobs. **NOT verified:** the notify job has never seen a real
+failure, and `ESTATE_EVENTS_TOKEN` may not exist as a repo secret. Carried in
+`KNOWN_ISSUES.md` KI-10 until both are measured.
+
 ## ✅ Fable-preferred queue — RELEASED 2026-08-16 (kept for the reasoning)
 
 ⚠️ **This queue is no longer in force.** It existed only while the Fable weekly

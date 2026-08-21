@@ -17,9 +17,12 @@
  *
  * The route also GRADES what it found (`gradeBackups()` below) rather than
  * shipping raw numbers for the page to judge: the thresholds then have exactly
- * one home and are unit-tested here. ⚠️ Read that function's header before
- * touching a threshold — they are deliberately calendar/exposure-based, never
- * cadence-based, because backup.yml has no cron.
+ * one home and are unit-tested here. ⚠️ Read those headers before touching a
+ * threshold. Grading is CADENCE-BASED for the kinds backup.yml's daily cron
+ * writes and EXPOSURE-BASED for the ones somebody runs by hand — corrected
+ * 2026-08-21, when the old "backup.yml has no cron" premise was found to have
+ * expired on 2026-08-18 and to have been quietly grading a daily backup green
+ * for a fortnight after it would have stopped.
  *
  * Gating: requireDevops() (devops OR approver OR owner) — the same tier
  * `/api/estate/docs/:slug` and `POST /api/estate/ops/pipeline` use. Backup
@@ -77,6 +80,47 @@ export const KNOWN_BACKUP_PREFIXES = [
   // "every byte in the bucket is backed up".
   'r2/ebooks-gated',
   'r2/estate-docs-gated',
+  // ⚠️ THE DOCS TREES, ADDED 2026-08-21 — and this list is exactly the trap
+  // its own header comment warns about. `scripts/backup-docs.mjs` started
+  // writing these prefixes and the retention job started pruning them on the
+  // same day, and for a few hours they were absent HERE, which would have made
+  // them invisible to /status while being backed up and pruned perfectly well.
+  // A store has to be added in all three places or one of them lies.
+  //
+  // 🔴 These carry the estate's ONLY copy of three of the four `docs/` trees —
+  // they are gitignored, so a clone does not have them. They also contain
+  // `access/keys/`, i.e. raw key material.
+  'docs/catalog-platform',
+  'docs/audiobook_catalog',
+  'docs/library_catalog',
+  'docs/board_game_catalog',
+] as const;
+
+/**
+ * The prefixes in `estate-backups` that `backup.yml` does NOT write.
+ *
+ * ⚠️ THERE ARE TWO CLASSES OF STORE NOW, AND CONFLATING THEM BREAKS A GUARD.
+ * Everything in `KNOWN_BACKUP_PREFIXES` is graded here and pruned by the
+ * retention job, but the `docs/*` objects are written by
+ * `catalog-platform/scripts/backup-docs.mjs` on the OWNER'S MACHINE — they
+ * cannot be written by CI, because three of the four `docs/` trees exist only
+ * there and a CI run would archive the one that is committed and silently omit
+ * the rest.
+ *
+ * So the invariants the tests enforce are deliberately different shapes:
+ *   retention args      == KNOWN_BACKUP_PREFIXES                    (exact)
+ *   backup.yml matrices == KNOWN_BACKUP_PREFIXES minus THIS list    (exact)
+ *
+ * A new CI-written store still cannot drift. Removing this distinction would
+ * either make the matrix test fail forever or force `docs/*` out of the grade,
+ * and the second is worse: it would hide the staleness of the estate's only
+ * copy of three documentation trees.
+ */
+export const LOCALLY_WRITTEN_PREFIXES = [
+  'docs/catalog-platform',
+  'docs/audiobook_catalog',
+  'docs/library_catalog',
+  'docs/board_game_catalog',
 ] as const;
 
 export interface BackupPrefixSummary {
@@ -184,6 +228,53 @@ export const BACKUP_STALE_AMBER_MS = 14 * 24 * 3600_000;
 export const BACKUP_STALE_RED_MS = 45 * 24 * 3600_000;
 
 /**
+ * ⚠️ THE PREMISE ABOVE EXPIRED ON 2026-08-18, AND THAT IS WHY THIS EXISTS.
+ *
+ * The comment above says "there is NO cron and therefore NO expected cadence to
+ * measure against". That was true when it was written and stopped being true
+ * the day `.github/workflows/backup.yml` gained `cron: '12 9 * * *'`. The
+ * numbers were never re-derived, so **a daily backup that stopped would have
+ * graded GREEN for 14 days and not gone red for 45** — on the one surface built
+ * to answer "are backups still running". Found 2026-08-21 by reading the
+ * premise rather than the numbers.
+ *
+ * ⚠️ The fix is NOT to shrink the calendar thresholds globally. Not every store
+ * is cron-driven: the `docs/*` prefixes are written by a script somebody runs
+ * by hand, and a single 36-hour threshold would flip them amber permanently and
+ * teach everyone to ignore the row. So cadence is declared PER KIND, and a kind
+ * with no cadence keeps the exposure grading — which was always right for it.
+ *
+ * Once a kind HAS a known cadence, the grade answers a sharper question:
+ * *did the run that was supposed to happen actually land?*
+ *
+ *   amber  > 1.5x cadence  — one run missed. Worth a glance, not an emergency.
+ *   red    > 2.5x cadence  — two runs missed. That is not a blip.
+ *
+ * At the daily cadence that is 36 h / 60 h. ⚠️ Both must stay comfortably ABOVE
+ * one cadence: age peaks just before each run, so a threshold at 24 h would go
+ * amber every single day at 09:11 UTC.
+ */
+export const BACKUP_AMBER_CADENCE_MULTIPLE = 1.5;
+export const BACKUP_RED_CADENCE_MULTIPLE = 2.5;
+
+/**
+ * How often each kind is EXPECTED to be written, or `null` for "on demand".
+ *
+ * ⚠️ This is a claim about the schedule, so it must be changed in the same
+ * commit as the schedule. `d1`, `firestore` and `r2` are the daily 09:12 UTC
+ * cron in `backup.yml`. `docs` is `scripts/backup-docs.mjs`, run by hand on the
+ * owner's machine — it CANNOT run in CI, because three of the four trees exist
+ * only there. The day a scheduled task runs it (docs/TODO.md K4), give `docs`
+ * a cadence here **in that same change**.
+ */
+export const BACKUP_KIND_CADENCE_MS: Record<string, number | null> = {
+  d1: 24 * 3600_000,
+  firestore: 24 * 3600_000,
+  r2: 24 * 3600_000,
+  docs: null, // manual until K4 schedules it
+};
+
+/**
  * Human labels for the `<kind>` half of each known prefix.
  *
  * ⚠️ REWRITTEN 2026-08-18 on the owner's instruction — "lets also rename all the
@@ -212,6 +303,7 @@ export const BACKUP_KIND_LABELS: Record<string, string> = {
   d1: 'Catalog databases — SQL exports',
   firestore: 'Audiobook catalog — Firestore document dump',
   r2: 'Cover images & gated files — R2 bucket archives',
+  docs: 'Documentation trees — the only copy of three of them',
 };
 
 export type BackupState = 'ok' | 'warn' | 'danger';
@@ -240,6 +332,13 @@ export interface BackupGroupGrade {
   age_ms: number | null;
   /** Prefixes with zero objects: no backup of that store exists AT ALL. */
   never: string[];
+  /**
+   * Expected interval for this kind in ms, or null for on-demand. ⚠️ The PAGE
+   * needs this, not just the state: "no run since last night" and "nobody has
+   * pressed the button" are different sentences, and telling a reader the wrong
+   * one is how a real outage gets shrugged at.
+   */
+  cadence_ms: number | null;
   state: BackupState;
 }
 
@@ -248,8 +347,25 @@ export interface BackupsGrade {
   overall: BackupGroupGrade;
 }
 
-/** Age -> state. The only place the thresholds are compared against anything. */
-export function gradeBackupAge(ageMs: number): BackupState {
+/**
+ * Age -> state. The only place the thresholds are compared against anything.
+ *
+ * `cadenceMs` is the kind's expected interval, or null/undefined for a store
+ * nobody schedules. ⚠️ The two branches measure DIFFERENT THINGS and that is
+ * deliberate:
+ *
+ *   with a cadence   — "did the run that should have happened land?"
+ *   without          — "how much would we lose if disaster struck now?" (exposure)
+ *
+ * The second is the original behaviour and is still correct for an on-demand
+ * store; the first is only meaningful once something guarantees a rhythm.
+ */
+export function gradeBackupAge(ageMs: number, cadenceMs?: number | null): BackupState {
+  if (cadenceMs != null && cadenceMs > 0) {
+    if (ageMs > cadenceMs * BACKUP_RED_CADENCE_MULTIPLE) return 'danger';
+    if (ageMs > cadenceMs * BACKUP_AMBER_CADENCE_MULTIPLE) return 'warn';
+    return 'ok';
+  }
   if (ageMs > BACKUP_STALE_RED_MS) return 'danger';
   if (ageMs > BACKUP_STALE_AMBER_MS) return 'warn';
   return 'ok';
@@ -261,6 +377,7 @@ function gradeGroup(
   prefixNames: readonly string[],
   summary: BackupsSummary,
   nowMs: number,
+  cadenceMs: number | null,
 ): BackupGroupGrade {
   const never: string[] = [];
   let count = 0;
@@ -292,11 +409,12 @@ function gradeGroup(
     ? 'danger'
     : oldestMs === null
       ? 'danger'
-      : gradeBackupAge(nowMs - oldestMs);
+      : gradeBackupAge(nowMs - oldestMs, cadenceMs);
 
   return {
     kind,
     label,
+    cadence_ms: cadenceMs,
     stores: prefixNames.length,
     count,
     newest: newestMs === null ? null : new Date(newestMs).toISOString(),
@@ -325,10 +443,20 @@ export function gradeBackups(summary: BackupsSummary, nowMs: number): BackupsGra
   }
 
   const kinds = [...byKind.entries()].map(([kind, prefixNames]) =>
-    gradeGroup(kind, BACKUP_KIND_LABELS[kind] ?? kind, prefixNames, summary, nowMs),
+    gradeGroup(kind, BACKUP_KIND_LABELS[kind] ?? kind, prefixNames, summary, nowMs, BACKUP_KIND_CADENCE_MS[kind] ?? null),
   );
 
-  const overall = gradeGroup('all', 'Estate backups', KNOWN_BACKUP_PREFIXES, summary, nowMs);
+  // ⚠️ THE ROLL-UP GRADES ON THE SLOWEST CADENCE PRESENT, not the fastest.
+  // It spans every kind, including on-demand ones, so judging it at 36 h would
+  // paint the whole estate amber because somebody has not hand-run the docs
+  // backup today. `null` (no cadence) is the slowest of all and wins outright:
+  // the per-kind rows are where a missed nightly run is caught, and that is the
+  // row a reader is sent to.
+  const cadences = [...byKind.keys()].map((k) => BACKUP_KIND_CADENCE_MS[k] ?? null);
+  const overallCadence = cadences.includes(null)
+    ? null
+    : Math.max(...(cadences as number[]));
+  const overall = gradeGroup('all', 'Estate backups', KNOWN_BACKUP_PREFIXES, summary, nowMs, overallCadence);
 
   return { kinds, overall };
 }
