@@ -221,6 +221,11 @@ async function listAllObjects(bucket) {
  *   - only 5xx and 429 (server-side and rate-limit). A 401/403/404 is a real
  *     answer about permissions or a vanished key and retrying it just turns a
  *     clear failure into a slow one;
+ *   - plus transport failures, which carry no status at all: a refused/dropped
+ *     connection, and — added 2026-08-21 after run 32469907247 killed two
+ *     buckets with `TypeError: terminated` — a socket that dies PART WAY
+ *     THROUGH THE BODY, after `fetch()` has already resolved OK. See the
+ *     comment inside the loop; that one used to bypass this whole mechanism;
  *   - 4 attempts, exponential backoff with jitter (~0.5s, 1s, 2s);
  *   - every retry is LOGGED, so a bucket that only succeeds by retrying looks
  *     different in the log from one that succeeded first time. A silent retry
@@ -244,8 +249,33 @@ async function getObjectBytes(bucket, key) {
   let lastError = null;
   for (let attempt = 1; attempt <= GET_ATTEMPTS; attempt++) {
     let res;
+    let bytes = null;
+    let text = null;
     try {
       res = await cfFetch(path);
+      // ⚠️ THE BODY IS READ INSIDE THIS `try` ON PURPOSE — MEASURED.
+      //
+      // Run 32469907247 (2026-08-21, the daily schedule): `library-covers` and
+      // `game-covers` BOTH died, not on a status code but on
+      //
+      //     TypeError: terminated
+      //       [cause]: SocketError: other side closed (UND_ERR_SOCKET)
+      //
+      // thrown from inside undici with no frame of this script in the stack.
+      // That is what a mid-body connection drop looks like: `fetch()` resolves
+      // (headers arrived, `res.ok` is true), and the failure lands later, when
+      // the body is drained. The read used to sit BELOW this block, so it was
+      // outside the only `catch` in the retry loop — it bypassed all four
+      // attempts, escaped `getObjectBytes`, escaped the top-level `await`, and
+      // took the whole process down with an unhandled rejection. The retry
+      // logic was correct and simply never ran.
+      //
+      // The lesson worth keeping: for `fetch`, "the request succeeded" and
+      // "the bytes arrived" are two different events, and only the first one
+      // is what `await fetch(...)` tells you. A blip between them is the same
+      // class of problem as a 500 and is retried as one.
+      if (res.ok) bytes = Buffer.from(await res.arrayBuffer());
+      else text = await res.text();
     } catch (err) {
       // A dropped socket / DNS blip is the same class of problem as a 500.
       lastError = new Error(`GET ${bucket}/${key} failed (network): ${err.message}`);
@@ -256,9 +286,10 @@ async function getObjectBytes(bucket, key) {
       continue;
     }
 
-    if (res.ok) return Buffer.from(await res.arrayBuffer());
+    // ⚠️ `!== null`, not a truthiness check: a legitimately EMPTY object
+    // yields a zero-length Buffer, and `if (bytes)` would loop on it forever.
+    if (bytes !== null) return bytes;
 
-    const text = await res.text();
     lastError = new Error(`GET ${bucket}/${key} failed (HTTP ${res.status}): ${text.slice(0, 500)}`);
     if (!isRetryable(res.status) || attempt === GET_ATTEMPTS) break;
 

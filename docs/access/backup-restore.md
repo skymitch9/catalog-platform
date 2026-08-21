@@ -443,6 +443,59 @@ Firestore) landing normally — which is exactly what happened on that run: ten
 of eleven stores were written and only `audiobook-covers` was missed. Check the
 run's job list, not just its overall red/green.
 
+### 3.2b 🔴 …and then a socket that died MID-BODY bypassed that retry entirely
+
+**Measured 2026-08-21, the daily schedule** (run `32469907247`): **two** buckets
+died in the same run — `library-covers` and `game-covers` — and neither death
+was a status code. Both ended:
+
+```
+node:internal/deps/undici/undici:11473
+            fetchParams.controller.controller.error(new TypeError("terminated", {
+TypeError: terminated
+  [cause]: SocketError: other side closed { code: 'UND_ERR_SOCKET' }
+```
+
+⚠️ **Note what is NOT in that stack: any frame of our own code.** That is the
+tell. The retry loop in §3.2 wrapped `await fetch(...)` in a `try`, and read the
+body *below* it:
+
+```js
+res = await cfFetch(path);          // inside the try
+…
+if (res.ok) return Buffer.from(await res.arrayBuffer());   // OUTSIDE it
+```
+
+For `fetch`, **"the request succeeded" and "the bytes arrived" are two different
+events**, and only the first one is what `await fetch(...)` reports. Cloudflare
+answered `200`, the promise resolved, `res.ok` was true — and the connection
+then dropped while the body was being drained. The rejection came from a line
+that no `catch` covered, so it skipped all four attempts, escaped the top-level
+`await`, and took the **process** down. The retry logic was correct and simply
+never ran.
+
+**Fixed** the same day: the body read moved inside the `try`, so a mid-body drop
+is retried as the transport failure it is. Everything in §3.2 is otherwise
+unchanged — still four attempts, still logged, still fails for real afterwards.
+
+⚠️ **Both buckets' jobs need re-running by hand after a failure like this** —
+`backup.yml` has no job-level retry, and the day's dump for those buckets simply
+does not exist until someone re-runs it:
+
+```bash
+gh run rerun <run-id> --failed        # re-runs only the jobs that failed
+gh run watch <run-id>
+```
+
+**Regression:** `scripts/test/backup-r2-exclusions.test.mjs` — two tests spawn
+the real script against a stand-in API that promises a `Content-Length`, sends
+one byte and destroys the socket. ⚠️ **The delay before the destroy is
+load-bearing** and is commented as such: killing the socket in the same tick
+makes `fetch()` itself reject, which the *old* code already handled — the first
+cut of the fixture did exactly that and passed against the very bug it exists to
+catch. Verified both ways on 2026-08-21: 2 failures against `HEAD` (with the
+identical `TypeError: terminated` signature), 6/6 green with the fix.
+
 ### 3.3 ⚠️ `audiobook-covers` outgrew the uploader — dumps over 250 MiB are SPLIT
 
 **Measured 2026-08-18** (run `32112007920`, immediately after §3.2's retry made

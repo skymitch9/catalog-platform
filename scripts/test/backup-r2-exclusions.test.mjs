@@ -78,6 +78,34 @@ async function startFakeApi(objectsByBucket) {
       res.writeHead(404).end('missing');
       return;
     }
+
+    // A fixture may ask to fail its first N GETs. `failMode: 'terminate'` is
+    // the one that matters: promise a full Content-Length, send part of it,
+    // then kill the socket — which is exactly what the live API did to the
+    // nightly backup on 2026-08-21 (see the test at the bottom of this file).
+    if (hit.failTimes > 0) {
+      hit.failTimes -= 1;
+      hit.attempts = (hit.attempts ?? 0) + 1;
+      if (hit.failMode === 'terminate') {
+        // ⚠️ THE DELAY IS THE WHOLE POINT. Headers + a byte, flushed, and only
+        // THEN the socket dies — so the client's `fetch()` has already resolved
+        // with `res.ok === true` and the failure lands during the body read.
+        // Destroying in the same tick instead makes `fetch()` itself reject,
+        // which the old code already handled: the test would pass against the
+        // very bug it exists to catch (measured 2026-08-21, the first cut of
+        // this fixture did exactly that).
+        res.writeHead(200, { 'content-length': String(Buffer.byteLength(hit.body) + 100) });
+        res.flushHeaders();
+        res.write(hit.body.slice(0, 1));
+        setTimeout(() => res.socket?.destroy(), 60);
+      } else {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 10001, message: 'We encountered an internal error. Please try again.' }));
+      }
+      return;
+    }
+
+    hit.attempts = (hit.attempts ?? 0) + 1;
     res.writeHead(200).end(hit.body);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -208,4 +236,80 @@ test('--dry-run lists, reports the exclusion, and writes nothing at all', async 
   assert.match(stdout, /would back up 5 object\(s\)/);
   assert.match(stdout, /2 object\(s\) excluded/);
   assert.match(stdout, /SKIPPING prefix "transcripts\/"/);
+});
+
+
+/**
+ * 🔴 THE REGRESSION FOR RUN 32469907247 (2026-08-21).
+ *
+ * The daily backup lost BOTH cover buckets to the same crash: not a status
+ * code, but `TypeError: terminated` / `SocketError: other side closed`, raised
+ * while the response BODY was being drained — after `fetch()` had already
+ * resolved with `res.ok === true`. The body read sat outside the retry loop's
+ * `catch`, so all four attempts were bypassed and the rejection took the whole
+ * process down.
+ *
+ * The fixture reproduces that shape exactly: a response that promises a
+ * Content-Length, sends one byte, and destroys the socket. Before the fix this
+ * test exits non-zero with an undici stack and no frame of our own code in it;
+ * after it, the object is retried and the dump is complete.
+ */
+test('⚠️ a socket that dies MID-BODY is retried, not crashed on', async (t) => {
+  const objects = [
+    { key: 'covers/a.png', body: 'AAAA' },
+    { key: 'covers/dies-mid-body.png', body: 'BBBBBBBB', failTimes: 2, failMode: 'terminate' },
+    { key: 'covers/c.png', body: 'CCCC' },
+  ];
+  const { server, base } = await startFakeApi({ 'game-covers': objects });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-terminate-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const { code, stdout, stderr } = await run(['game-covers'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+  });
+
+  assert.equal(code, 0, `a mid-body socket death still kills the backup\n${stdout}\n${stderr}`);
+  assert.deepEqual(await walk(outDir), [
+    'manifest.json',
+    'objects/covers/a.png',
+    'objects/covers/c.png',
+    'objects/covers/dies-mid-body.png',
+  ]);
+  // The bytes must be the WHOLE object, not the single byte the first attempt
+  // managed to send. A retry that returned a truncated body would be worse
+  // than the crash: a backup that looks complete and is not.
+  assert.equal(await readFile(join(outDir, 'objects/covers/dies-mid-body.png'), 'utf8'), 'BBBBBBBB');
+  // ⚠️ And it must be VISIBLE that this only succeeded by retrying — a silent
+  // retry hides a degrading bucket, which is its own kind of dishonesty.
+  const retries = stdout.split('\n').filter((l) => l.includes('retry') && l.includes('dies-mid-body.png'));
+  assert.equal(retries.length, 2, `expected two logged retries:\n${stdout}`);
+});
+
+test('an object that NEVER finishes its body still FAILS the backup, after 4 attempts', async (t) => {
+  const objects = [{ key: 'covers/never.png', body: 'BBBBBBBB', failTimes: 99, failMode: 'terminate' }];
+  const { server, base } = await startFakeApi({ 'game-covers': objects });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-terminate-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const { code, stdout, stderr } = await run(['game-covers'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+  });
+
+  // Retrying makes a blip survivable; it must NOT make a broken bucket
+  // tolerable. The failure is still this script's own, named error.
+  assert.notEqual(code, 0, 'a bucket that could not be read reported success');
+  assert.match(stdout + stderr, /GET game-covers\/covers\/never\.png failed \(network\)/);
+  assert.equal(objects[0].attempts, 4, 'wrong number of attempts');
 });

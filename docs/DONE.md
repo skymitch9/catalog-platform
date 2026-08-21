@@ -14,6 +14,66 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+## 2026-08-21 — the nightly backup lost two buckets to a socket that died MID-BODY
+
+**Run `32469907247`** (the 09:12 UTC schedule) went red on **two** jobs —
+`r2 (library-covers)` and `r2 (game-covers)` — and neither was a status code:
+
+```
+TypeError: terminated
+  [cause]: SocketError: other side closed { code: 'UND_ERR_SOCKET' }
+```
+
+with **no frame of our own code in the stack**. The other eleven stores landed
+normally (`fail-fast: false` doing its job).
+
+### The defect: a `try` that stopped one line too early
+
+`scripts/backup-r2.mjs` grew a narrow retry on 2026-08-18 (backup-restore.md
+§3.2) after a transient 500 lost a bucket. It wrapped `await cfFetch(path)` —
+and read the body *after* the `try`:
+
+```js
+res = await cfFetch(path);                                  // inside the try
+if (res.ok) return Buffer.from(await res.arrayBuffer());    // OUTSIDE it
+```
+
+⚠️ **For `fetch`, "the request succeeded" and "the bytes arrived" are two
+different events, and only the first is what `await fetch(...)` reports.**
+Cloudflare answered `200`, the promise resolved, `res.ok` was true, and the
+connection dropped mid-drain. The rejection came from a line no `catch` covered,
+so it bypassed all four attempts, escaped the top-level `await`, and killed the
+process. **The retry logic was correct and simply never ran** — which is why the
+log shows a healthy `retry 1/3 … HTTP 523` a minute earlier and then a crash.
+
+### The fix, and the proof
+
+Body read moved inside the `try`; a mid-body drop is now retried as the
+transport failure it is. `bytes !== null` rather than a truthiness check,
+because a legitimately empty object is a zero-length Buffer. Everything else in
+§3.2 is untouched — four attempts, every retry logged, still a real failure
+afterwards (the "survive a blip, don't tolerate a broken bucket" line).
+
+Two regression tests in `scripts/test/backup-r2-exclusions.test.mjs` spawn the
+real script against a stand-in API that promises a `Content-Length`, sends one
+byte, and destroys the socket. ⚠️ **The 60 ms delay before the destroy is
+load-bearing**: killing it in the same tick makes `fetch()` itself reject, which
+the *old* code already handled — the first cut of the fixture did exactly that
+and **passed against the very bug it exists to catch**. Caught only by running
+it against `HEAD`.
+
+Measured 2026-08-21, both directions:
+
+| Against | Result |
+|---|---|
+| unfixed `HEAD` in a throwaway `git worktree` | **2 failures**, with the identical `TypeError: terminated` / `UND_ERR_SOCKET` signature |
+| the fix | 6/6 in the file, **193/193** across `npm run test:scripts` |
+
+⚠️ **`backup.yml` has no job-level retry**, so a failure like this means the
+day's dump for those buckets does not exist until a human re-runs it. The
+recovery command is now written down beside the failure mode in
+`backup-restore.md` §3.2b.
+
 ## 2026-08-19 — `ebooks-gated` backup mechanics: a prefix exclusion, not a fourth copy
 
 Carried in `TODO.md` as open owner decision #1, verbatim: **"ebooks-gated backup

@@ -52,6 +52,30 @@ failed, mid-book when this was written), the hourly details sweep on both
 library instances, the R2 archive task, and the backups. Working trees are
 clean and everything is pushed.
 
+## ☐ Backup: the mid-body-drop fix is SHIPPED but not yet proven on a real bucket (2026-08-21)
+
+Run `32469907247` (the 09:12 UTC schedule) lost `library-covers` and
+`game-covers` to `TypeError: terminated` — a socket dying *after* `fetch()`
+resolved, on a line the retry loop's `try` did not cover. Fixed, tested both
+ways, written up in [`access/backup-restore.md`](access/backup-restore.md)
+§3.2b and [`DONE.md`](DONE.md).
+
+⚠️ **What is NOT verified: the fix against the real Cloudflare API.** The
+regression is a stand-in server; the live proof is a run that survives an actual
+mid-body drop, and those are intermittent — the 2026-08-20 run was green with
+the bug present. Two things to close it:
+
+☐ **Confirm the re-run landed both dumps.** `gh run list --workflow backup.yml`,
+  then check `estate-backups` holds `r2/library-covers/<today>.tar.gz` and
+  `r2/game-covers/<today>.tar.gz`. ⚠️ A red job means that day's dump for
+  that bucket **does not exist** — backup.yml has no job-level retry.
+☐ **Watch the next few 09:12 UTC schedules.** A retry line naming a bucket
+  (rather than a crash) is the fix working; the log distinguishes them on
+  purpose.
+
+---
+
+
 ## 🔴 THE FIRST REAL USERS HIT GABI — two P1s (2026-08-18, 19:26–19:28 Phoenix)
 
 **Not the owner. Not tests. Two members of the household, in a channel, hours
