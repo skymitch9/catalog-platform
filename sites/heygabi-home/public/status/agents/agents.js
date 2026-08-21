@@ -33,7 +33,6 @@ import {
   ageOf,
   arraySection,
   fetchBoard,
-  objectSection,
   renderFreshness,
   str,
 } from '../lib/board.js';
@@ -189,9 +188,16 @@ function renderEvents(list, nowMs) {
  * written to correct.
  */
 const USAGE_METERS = [
-  { key: 'session_pct', label: 'Session', amber: 80, red: 89 },
-  { key: 'weekly_pct', label: 'Weekly (all models)', amber: 88, red: 93 },
-  { key: 'fable_pct', label: 'Fable', amber: 88, red: 93 },
+  { key: 'session_pct', label: 'Session', amber: 80, red: 89, resets: 'session_resets' },
+  { key: 'weekly_pct', label: 'Weekly (all models)', amber: 88, red: 93, resets: 'weekly_resets' },
+  // ⚠️ Fable is a WEEKLY pool and shares the weekly reset. It gets its own tile
+  // because it can be exhausted while all-models is fine, which changes which
+  // MODEL is safe to run rather than whether to run at all.
+  { key: 'fable_pct', label: 'Fable', amber: 88, red: 93, resets: 'weekly_resets' },
+  // Credits are MONEY, not a rate limit: nothing stops when they run out, the
+  // overage simply costs. So they warn late and never claim to be a blocker.
+  // Added 2026-08-21 on the owner's ask ("Add credit usage to the website too").
+  { key: 'credits_pct', label: 'Credits', amber: 90, red: 99, resets: 'credits_resets' },
 ];
 
 function usageTone(pct, meter) {
@@ -230,10 +236,10 @@ function renderUsage(usage, nowMs) {
     bar.append(fill);
     tile.append(bar);
 
-    const resets = str(usage[meter.key.replace('_pct', '_resets_at')]);
-    const resetAge = resets && Number.isFinite(Date.parse(resets))
-      ? `resets ${new Date(Date.parse(resets)).toLocaleString()}`
-      : '';
+    // ⚠️ VERBATIM, never reformatted. The reporter copies the reset label
+    // straight off claude.ai ("Resets Sun 4:00 PM", "Resets in 33 min"), and a
+    // reworded copy is one somebody has to reconcile against the source.
+    const resetAge = str(usage[meter.resets]);
     tile.append(
       el(
         'p',
@@ -247,13 +253,18 @@ function renderUsage(usage, nowMs) {
   }
   usageEl.append(grid);
 
+  const cents = Number(usage.credits_spent_cents);
+  if (Number.isFinite(cents)) {
+    usageEl.append(el('p', 'usage-sub', `$${(cents / 100).toFixed(2)} spent against the credit pool.`));
+  }
+
   // ⚠️ THE READ-AT LINE IS MANDATORY AND IS ITS OWN CLOCK. The board's push
   // age says when the snapshot was published; THIS says when the numbers
   // inside it were actually read off the usage page, and the two can differ by
   // hours if a push carried a figure taken earlier. A percentage whose age is
   // unknown is not a reportable figure — the estate's own rule, on the surface
   // that rule was written for.
-  const readAt = str(usage.read_at);
+  const readAt = str(usage.received_at) || str(usage.read_at);
   const age = ageOf(readAt, nowMs);
   usageEl.append(
     el(
@@ -261,9 +272,66 @@ function renderUsage(usage, nowMs) {
       'section-note',
       age
         ? `Figures read ${age}${str(usage.note) ? ` · ${str(usage.note)}` : ''}`
-        : '⚠️ These figures carry no read-at timestamp, so their age is unknown — treat them as stale until the next push stamps one.',
+        : '⚠️ These figures carry no read-at timestamp, so their age is unknown — treat them as stale until the next reading stamps one.',
     ),
   );
+}
+
+/**
+ * THE BUDGET READING — fetched from its own endpoint, not from the agent board.
+ *
+ * ⚠️ WHY THIS IS A SEPARATE FETCH, AND WHY IT MUST STAY ONE. Until
+ * 2026-08-21 these tiles rendered `board.usage`, a section of the conductor's
+ * agent-board push — which meant the figures only refreshed when somebody
+ * pushed a BOARD. Measured that day: this page, the one whose whole job is
+ * Claude capacity, was showing figures **2 days 2 hours old** while the numbers
+ * themselves were minutes old. The page was honest about the age (that is why
+ * it was caught) and still useless.
+ *
+ * `GET /api/estate/claude/usage` is now the single source: written by
+ * `scripts/report-claude-usage.mjs` the moment a session reads the meters,
+ * validated (whole percent only), and stale-after-3h in the Worker rather than
+ * here.
+ *
+ * ⚠️ `board.usage` is DEPRECATED and deliberately no longer read. Do not add
+ * a fallback to it — a fallback is how two sources survive, and two sources of
+ * one number is what produced the stale reading in the first place.
+ */
+async function loadUsage(nowMs) {
+  const token = await idToken();
+  if (!token) return; // the gate retries on the next auth event
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/claude/usage`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    renderUsage(null, nowMs);
+    return;
+  }
+  if (!res.ok) {
+    // ⚠️ Every failure path lands on renderUsage(null), which says the budget
+    // is UNKNOWN rather than drawing empty meters. Empty meters read as
+    // "plenty left", which is the most expensive wrong answer this page can
+    // give.
+    renderUsage(null, nowMs);
+    return;
+  }
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    renderUsage(null, nowMs);
+    return;
+  }
+  // The Worker owns staleness: `unknown`/`never_reported` carry no usable
+  // report, and rendering one would be rendering a number the server has
+  // already judged untrustworthy.
+  const usable = body && body.report && body.state !== 'never_reported' && body.state !== 'unknown';
+  renderUsage(usable ? body.report : null, nowMs);
+  if (!usable && usageEl && body && body.detail) {
+    usageEl.append(el('p', 'section-note', String(body.detail)));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -445,7 +513,7 @@ async function refreshBoard() {
       if (result.status === 'never') {
         sayEmpty(agentListEl, 'Nothing has been pushed to the agent board yet, so there is nothing to show — not "no agents".');
         sayEmpty(eventListEl, 'No events yet — the conductor has not pushed a board.');
-        renderUsage(null, now);
+        loadUsage(now);
       }
       return;
     }
@@ -453,7 +521,7 @@ async function refreshBoard() {
     lastGood = result;
     renderAgents(arraySection(result.board, 'agents'), now);
     renderEvents(arraySection(result.board, 'events'), now);
-    renderUsage(objectSection(result.board, 'usage'), now);
+    loadUsage(now);
   } finally {
     polling = false;
   }

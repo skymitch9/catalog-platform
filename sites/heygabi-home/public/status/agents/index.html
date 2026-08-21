@@ -117,6 +117,19 @@
     </p>
     <ul id="event-rows" class="feed"></ul>
 
+    <!-- ⚠️ THIS PAGE OWNS THE USAGE FIGURES — docs/info/status-pages.md's
+         ownership table says so, and on 2026-08-21 a second copy was built on
+         /status anyway, by a session that did not read that table first. The
+         duplicate is gone; if you are about to add usage meters somewhere,
+         you are about to repeat it.
+
+         🔴 AND THE DUPLICATE WAS THE FRESHER ONE. These tiles used to render
+         `board.usage` — a section of the conductor's agent-board push — so the
+         figures only refreshed when somebody pushed a BOARD. Measured that day:
+         2 days 2 hours stale on the page whose entire job is Claude capacity,
+         while the numbers themselves were minutes old. They now come from
+         GET /api/estate/claude/usage, written the moment a session reads the
+         meters. `board.usage` is deprecated and deliberately not read. -->
     <h3 class="step-list-h">Usage</h3>
     <!-- ⚠️ THE READ-AT TIMESTAMP IS PART OF THE FIGURE, NOT A FOOTNOTE. A
          usage percentage with no age is exactly the silent-staleness trap the

@@ -1042,159 +1042,10 @@ async function loadParity() {
   setParity(body.state || 'unknown', body.detail || '', body.report || null);
 }
 
-// ---------------------------------------------------------------------------
-// CLAUDE BUDGET — the session/weekly/Fable/credits meters (owner ask
-// 2026-08-21). Pushed data: a Claude session reads claude.ai/settings/usage in
-// a browser and POSTs what it saw. There is no API to fetch, so every failure
-// path below must degrade to "unknown", never to a number.
-// ---------------------------------------------------------------------------
-
-const usageRowEl = document.getElementById('usage-row');
-const usageStateEl = document.getElementById('usage-state');
-const usageDetailEl = document.getElementById('usage-detail');
-
-/** State -> the short words in the corner. Only `ok` is a good answer. */
-const USAGE_WORDS = {
-  ok: 'inside every threshold',
-  weekly_no_agents: 'no new agents',
-  session_pause: 'pause the session',
-  weekly_stop: 'stop',
-  unknown: 'unknown — stale',
-  never_reported: 'never reported',
-};
-
-/**
- * ⚠️ EACH METER IS TONED AGAINST ITS OWN THRESHOLD, not against the card's
- * overall state. A weekly bar at 95% must look wrong even while the session
- * bar beside it sits at 2% and the card as a whole says "no new agents" — the
- * whole reason there are four bars is that one number cannot answer for the
- * others.
- *
- * `warn` and `danger` are the two thresholds from the global rules; the
- * approach band exists so a meter starts changing colour BEFORE the rule
- * fires, because a threshold you meet by surprise is one you have already
- * blown past.
- */
-const USAGE_BANDS = {
-  session:  { warn: 75, danger: 89 },
-  weekly:   { warn: 93, danger: 97 },
-  // Fable is a weekly pool and gets the weekly numbers. It is shown separately
-  // because it can be exhausted while all-models is fine, which changes which
-  // MODEL is safe to run, not whether to run at all.
-  fable:    { warn: 93, danger: 97 },
-  // Credits are money, not a rate limit — nothing stops when they run out, the
-  // overage simply costs. So it warns late and never claims to be a blocker.
-  credits:  { warn: 90, danger: 99 },
-};
-
-function toneFor(kind, pct) {
-  const b = USAGE_BANDS[kind];
-  if (!b) return 'ok';
-  if (pct >= b.danger) return 'danger';
-  if (pct >= b.warn) return 'warn';
-  return 'ok';
-}
-
-/** "4 minutes ago" / "2 hours ago" — the age is the point, not the timestamp. */
-function agoWords(ms) {
-  const mins = Math.round(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins === 1) return '1 minute ago';
-  if (mins < 60) return `${mins} minutes ago`;
-  const hrs = Math.round(mins / 60);
-  return hrs === 1 ? '1 hour ago' : `${hrs} hours ago`;
-}
-
-function setUsageMeter(kind, pct, resetLabel, live) {
-  const meter = document.getElementById(`usage-m-${kind}`);
-  const val = document.getElementById(`usage-v-${kind}`);
-  const fill = document.getElementById(`usage-f-${kind}`);
-  const reset = document.getElementById(`usage-r-${kind}`);
-  if (!meter || !val || !fill || !reset) return;
-
-  // ⚠️ NOT LIVE == EMPTY, exactly as the parity bar does it. A bar frozen at
-  // its last width beside the word "unknown" is read as that width; people
-  // read the picture and not the caption.
-  if (!live || typeof pct !== 'number') {
-    meter.dataset.tone = 'muted';
-    val.textContent = '—';
-    fill.style.width = '0%';
-    reset.textContent = '';
-    return;
-  }
-  meter.dataset.tone = toneFor(kind, pct);
-  val.textContent = `${pct}%`;
-  fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-  // textContent, never innerHTML: these strings arrive from outside the estate.
-  reset.textContent = resetLabel || '';
-}
-
-function setUsage(state, detail, report) {
-  if (!usageRowEl) return;
-  usageRowEl.dataset.state = state;
-  usageStateEl.textContent = USAGE_WORDS[state] || state;
-
-  const live = !!report && state !== 'never_reported' && state !== 'unknown';
-  setUsageMeter('session', report && report.session_pct, report && report.session_resets, live);
-  setUsageMeter('weekly', report && report.weekly_pct, report && report.weekly_resets, live);
-  setUsageMeter('fable', report && report.fable_pct, report && report.weekly_resets, live);
-  setUsageMeter('credits', report && report.credits_pct, report && report.credits_resets, live);
-
-  let line = detail || '';
-  if (report && report.received_at) {
-    const when = new Date(report.received_at);
-    const age = Number.isNaN(when.getTime()) ? null : Date.now() - when.getTime();
-    const money =
-      typeof report.credits_spent_cents === 'number'
-        ? ` · $${(report.credits_spent_cents / 100).toFixed(2)} spent`
-        : '';
-    // ⚠️ THE AGE LEADS, even on a healthy reading. The figure's freshness is
-    // the thing a reader has to judge first; putting it after the numbers
-    // invites them to act on the numbers and never reach it.
-    const stamp = age === null ? report.received_at : `${agoWords(age)} (${when.toLocaleString()})`;
-    line = `Read ${stamp}${money}. ${line}`;
-  }
-  usageDetailEl.textContent = line;
-}
-
-/**
- * The budget reading. Every failure path says something specific, and none of
- * them leaves the previous numbers standing — the previous numbers are exactly
- * what a stale meter shows.
- */
-async function loadUsage() {
-  if (!usageRowEl) return;
-  const token = await idToken();
-  if (!token) return; // the gate retries on the next auth event
-  let res;
-  try {
-    res = await fetch(`${AUTH_ORIGIN}/api/estate/claude/usage`, { headers: { Authorization: `Bearer ${token}` } });
-  } catch {
-    setUsage('unknown', 'The auth Worker did not answer (network), so the budget could not be read.', null);
-    return;
-  }
-  if (res.status === 401 || res.status === 403) {
-    setUsage('unknown', 'Not authorized to read the budget reading.', null);
-    return;
-  }
-  if (res.status === 404) {
-    // Deploy skew: this page is newer than the Worker serving it.
-    setUsage('unknown', 'This estate’s auth Worker does not serve a budget reading yet.', null);
-    return;
-  }
-  if (!res.ok) {
-    setUsage('unknown', 'The budget endpoint did not answer, so these numbers are not current.', null);
-    return;
-  }
-  let body;
-  try {
-    body = await res.json();
-  } catch {
-    setUsage('unknown', 'The budget answer was unreadable.', null);
-    return;
-  }
-  setUsage(body.state || 'unknown', body.detail || '', body.report || null);
-}
+// ⚠️ The Claude budget block was removed on 2026-08-21, the day it shipped:
+// /status/agents owns the usage figures (docs/info/status-pages.md). Its
+// loader, renderer and thresholds now live in status/agents/agents.js, reading
+// GET /api/estate/claude/usage. Do not re-add meters here.
 
 async function loadBackups() {
   const token = await idToken();
@@ -1574,20 +1425,19 @@ const commandmentsSectionEl = document.getElementById('commandments-section');
 const backupsSectionEl = document.getElementById('backups-section');
 const storageSectionEl = document.getElementById('storage-section');
 const eventsSectionEl = document.getElementById('events-section');
-const usageSectionEl = document.getElementById('usage-section');
 
 const gate = mountGate({
-  sections: [usageSectionEl, migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl, eventsSectionEl],
+  sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl, eventsSectionEl],
   // Idempotent by design — the gate re-runs this on every auth event, and both
   // loaders simply re-render the same rows with a fresh reading.
-  onAllowed: () => { loadBackups(); loadStorage(); loadEvents(); loadParity(); loadUsage(); },
+  onAllowed: () => { loadBackups(); loadStorage(); loadEvents(); loadParity(); },
 });
 
 // The storage panel is PUSHED data, so it re-polls on the board's own cadence
 // rather than with this page's probe refresh — visible tabs only, same rule as
 // the other two pushed pages.
 setInterval(() => {
-  if (!document.hidden && gate.isAllowed()) { loadStorage(); loadEvents(); loadUsage(); }
+  if (!document.hidden && gate.isAllowed()) { loadStorage(); loadEvents(); }
 }, BOARD_POLL_MS);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && gate.isAllowed()) loadStorage();

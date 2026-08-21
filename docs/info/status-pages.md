@@ -121,6 +121,49 @@ with a deep link out to the Cloudflare dashboard; it is a follow-up that is **no
 built**, and Health says so rather than showing an empty box that looks like
 silence.
 
+## 🔴 The ownership table above is LOAD-BEARING — read it before adding a surface
+
+**Incident, 2026-08-21.** A session was asked to *"add credit usage to the
+website"* and built a Claude-budget card on **`/status` Health** — with its own
+KV store, its own machine key, its own route and its own thresholds. The
+ownership table three screens up already said, and had said since the
+2026-08-18 split, that **`/status/agents` owns "the usage figures"** — and that
+page already had a `Usage` block with meters, tones and a read-at line.
+
+The table was written down. It was not read. Nothing else went wrong.
+
+⚠️ **This is the "one fact, one home" rule failing on a SURFACE rather than a
+document**, and it is harder to spot: two docs stating one fact look obviously
+wrong, while two pages showing one number each look fine in isolation.
+
+### 🔴 The instructive part: the DUPLICATE was the fresher one
+
+Consolidating was not tidying. The dedicated tracker rendered `board.usage` — a
+section of the conductor's agent-board push — so the figures only refreshed when
+somebody pushed a **board**. Measured that afternoon: the page whose entire job
+is Claude capacity was showing figures **2 days 2 hours old**, while the numbers
+themselves were minutes old and sitting on the wrong page.
+
+The page was honest about the age, which is the only reason it was caught. **A
+surface that reports its own staleness correctly can still be useless** — the
+age label is a floor, not a fix.
+
+### What the shape now is
+
+| | |
+|---|---|
+| **One store** | `GET/POST /api/estate/claude/usage` — validated, whole-percent only, stale-after-3h decided in the Worker |
+| **One writer** | `scripts/report-claude-usage.mjs`, run the moment a session reads the meters |
+| **One display** | `/status/agents` → `Usage`, four meters incl. credits |
+| **Deprecated** | `board.usage`. The page no longer reads it. ⚠️ **Do not add a fallback to it** — a fallback is how two sources survive |
+
+### The rule this leaves behind
+
+⚠️ **Before building any new status surface, read the ownership table above and
+ask which page already owns this question.** If the answer is "another page",
+the work is to improve that page, not to add a second one. A number worth
+showing twice is a number that will disagree with itself.
+
 ## Things that will bite the next editor
 
 - ⚠️ **`_headers` does not match by prefix.** `/status` covers the literal path

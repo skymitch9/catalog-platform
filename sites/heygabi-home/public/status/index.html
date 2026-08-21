@@ -120,104 +120,23 @@
   </div>
   <p id="ops-note" class="ops-note" hidden></p>
 
-  <!-- CLAUDE BUDGET (owner ask 2026-08-21: "Add credit usage to the website
-       too… the whole usage message you sent now in bold put that in the status
-       page"). The message he means is the session/weekly/Fable/credits line
-       every substantive reply carries under the global rules; the ask is to
-       stop making him read it in a chat log.
+  <!-- ⚠️ THE CLAUDE BUDGET CARD LIVED HERE FOR ONE AFTERNOON AND WAS WRONG TO.
+       Removed 2026-08-21, same day it shipped.
 
-       ⚠️ THE NUMBERS ARE PUSHED, NOT FETCHED, AND THAT IS NOT A SHORTCUT.
-       There is no API for them — they live on claude.ai/settings/usage behind
-       the owner's own login, in a modal that page-text extraction cannot even
-       see, and they are read by a Claude session driving a browser. Nothing
-       server-side may ever "work them out"; a plausible invented figure is the
-       precise failure this card exists to prevent.
+       /status/agents owns the usage figures — docs/info/status-pages.md's
+       ownership table has said so since the four-page split on 2026-08-18, and
+       that page already had a Usage block with meters and a read-at line. This
+       card was built without reading that table, so the estate briefly had TWO
+       usage surfaces backed by TWO stores.
 
-       ⚠️ IT SHIPS SAYING "never reported", AND THAT IS THE HONEST INITIAL
-       STATE. Empty meters rendered at 0% would read as "loads of budget left",
-       which is the single most dangerous thing this card could say. Same rule
-       as the parity bar below: absence of a reading is never a good reading.
+       🔴 The instructive part: the DUPLICATE was the fresher one. The dedicated
+       tracker rendered `board.usage` off the conductor's push and was measured
+       at 2 days 2 hours stale while this card was 60 seconds old. Consolidating
+       fixed a real staleness bug rather than just deleting a copy.
 
-       Filled by status.js from GET /api/estate/claude/usage. -->
-  <section id="usage-section" aria-labelledby="usage-h" hidden>
-    <h2 id="usage-h">Claude budget</h2>
-    <p class="section-note">
-      What a Claude session last read off <code>claude.ai/settings/usage</code>.
-      ⚠️ It is only as current as the last reading — usage only ever rises
-      inside a window, so an old figure is always an <em>under</em>-estimate.
-      Anything over three hours old is shown as unknown rather than as a number.
-    </p>
-
-    <div id="usage-row" class="parity-row usage-row" data-state="never_reported">
-      <div class="parity-head">
-        <span class="parity-label">Where the budget stands</span>
-        <span id="usage-state" class="parity-state">checking…</span>
-      </div>
-
-      <!-- ⚠️ FOUR SEPARATE METERS, NOT ONE. The session and weekly limits do
-           not share a threshold and never should: 89% is calibrated for the
-           five-hour session window, while on the weekly limit it is far too
-           conservative — a whole session costs only ~9 weekly points. Merging
-           them into a single "usage" bar is the exact mistake the global rules
-           record as having wasted a session's budget every time it fired. -->
-      <div class="usage-grid">
-        <div class="usage-meter" id="usage-m-session" data-tone="muted">
-          <div class="usage-meter-head">
-            <span class="usage-meter-label">Session</span>
-            <span class="usage-meter-val" id="usage-v-session">—</span>
-          </div>
-          <div class="parity-track" role="img" aria-labelledby="usage-v-session">
-            <div class="parity-fill" id="usage-f-session" style="width:0%"></div>
-          </div>
-          <span class="usage-meter-reset" id="usage-r-session"></span>
-        </div>
-
-        <div class="usage-meter" id="usage-m-weekly" data-tone="muted">
-          <div class="usage-meter-head">
-            <span class="usage-meter-label">Weekly · all models</span>
-            <span class="usage-meter-val" id="usage-v-weekly">—</span>
-          </div>
-          <div class="parity-track" role="img" aria-labelledby="usage-v-weekly">
-            <div class="parity-fill" id="usage-f-weekly" style="width:0%"></div>
-          </div>
-          <span class="usage-meter-reset" id="usage-r-weekly"></span>
-        </div>
-
-        <div class="usage-meter" id="usage-m-fable" data-tone="muted">
-          <div class="usage-meter-head">
-            <span class="usage-meter-label">Weekly · Fable</span>
-            <span class="usage-meter-val" id="usage-v-fable">—</span>
-          </div>
-          <div class="parity-track" role="img" aria-labelledby="usage-v-fable">
-            <div class="parity-fill" id="usage-f-fable" style="width:0%"></div>
-          </div>
-          <span class="usage-meter-reset" id="usage-r-fable"></span>
-        </div>
-
-        <div class="usage-meter" id="usage-m-credits" data-tone="muted">
-          <div class="usage-meter-head">
-            <span class="usage-meter-label">Credits</span>
-            <span class="usage-meter-val" id="usage-v-credits">—</span>
-          </div>
-          <div class="parity-track" role="img" aria-labelledby="usage-v-credits">
-            <div class="parity-fill" id="usage-f-credits" style="width:0%"></div>
-          </div>
-          <span class="usage-meter-reset" id="usage-r-credits"></span>
-        </div>
-      </div>
-
-      <p id="usage-detail" class="parity-detail">Reading the last report…</p>
-    </div>
-
-    <!-- The thresholds, written out, because a colour is not an instruction.
-         These are the numbers the API enforces too (src/claude-usage.ts) — if
-         the two ever disagree, the API is right and this list is stale. -->
-    <ul class="usage-legend">
-      <li><strong>Session 89%</strong> — pause. The last ~10% is the budget for an orderly shutdown, not runway for more work.</li>
-      <li><strong>Weekly 93%</strong> — stop starting new agents. A subagent's cost is invisible until it lands; one has arrived at 372k tokens in a single lump.</li>
-      <li><strong>Weekly 97%</strong> — stop, including conversation. Missing a session reset costs hours; missing the weekly one costs days.</li>
-    </ul>
-  </section>
+       One store (GET /api/estate/claude/usage), one display (/status/agents).
+       ⚠️ If you are about to add usage meters to this page, read
+       docs/info/status-pages.md first — that is the whole lesson. -->
 
   <!-- Server migration (owner order 2026-08-15). Same devops gate as the
        sections around it (status/lib/gate.js toggles them all off one /me

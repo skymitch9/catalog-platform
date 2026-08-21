@@ -16,6 +16,59 @@
 
 
 
+
+## 2026-08-21 — Two usage surfaces became one, and the duplicate was the fresh one
+
+Owner: *"you put claude budget in the health page, there is an agents page
+dedicated to that tracking and a usage tracker there, look at whats there and
+update"*, then *"make sure there is documentation talking about this somewhere
+so its not done again"*.
+
+**He was right, and the cause is embarrassing in a useful way.**
+`docs/info/status-pages.md`'s ownership table has said since the 2026-08-18
+split that **`/status/agents` owns "the usage figures"**, and that page already
+had a `Usage` block with meters, tones and a read-at line. The budget card was
+built on `/status` Health without reading that table. Two surfaces, two stores,
+one number.
+
+⚠️ **"One fact, one home" failing on a SURFACE is harder to catch than on a
+document.** Two docs stating one fact look obviously wrong side by side; two
+pages each showing one number look fine in isolation.
+
+### 🔴 The instructive half: consolidating fixed a real bug
+
+The dedicated tracker rendered `board.usage` — a section of the conductor's
+agent-board push — so the figures refreshed only when somebody pushed a
+**board**. Measured live: the page whose entire job is Claude capacity was
+showing figures **2 days 2 hours old** (weekly 89%, Fable 91% — the 2026-08-19
+pause), while the real numbers were minutes old on the wrong page.
+
+**The stale page labelled its own age honestly, which is the only reason it was
+caught.** A surface that reports its staleness correctly can still be useless:
+an age label is a floor, not a fix.
+
+### The shape now
+
+| | |
+|---|---|
+| One store | `GET/POST /api/estate/claude/usage` |
+| One writer | `scripts/report-claude-usage.mjs` |
+| One display | `/status/agents` → `Usage` — now **four** meters, credits added |
+| Deprecated | `board.usage` — no longer read, and ⚠️ **no fallback to it**, because a fallback is how two sources survive |
+
+Health keeps a comment where the card was, saying what happened and pointing at
+the ownership table — deleting it silently is how the next session repeats it.
+
+### Documented in three places, at three altitudes
+
+- `docs/info/status-pages.md` — the incident and the rule, directly under the
+  ownership table it should have been read from.
+- `~/.claude/CLAUDE.md` — the **generic** rule, no project names: *before
+  building a surface, ask which one already owns the question; the duplicate is
+  often the fresher one; pick one store and one display and leave no fallback.*
+- The page comments themselves, on both sides.
+
+**Not verified at the time of writing:** the rendered agents page after deploy.
 ## 2026-08-21 — Backup grading measured the wrong thing for three days
 
 Owner: *"Are all backups good?"* then *"Okay so what's the solution"*.
