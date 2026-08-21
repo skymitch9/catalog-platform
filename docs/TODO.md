@@ -52,6 +52,76 @@ failed, mid-book when this was written), the hourly details sweep on both
 library instances, the R2 archive task, and the backups. Working trees are
 clean and everything is pushed.
 
+## ☐ SUNDAY 2026-08-23 — a PreToolUse hook that surfaces the governing doc
+
+Owner ask, 2026-08-21: *"add it to the todo list for sunday"* — "it" being the
+generalisation of the surface-ownership guard, proposed after **two
+documented-but-unread facts in one day**.
+
+⚠️ **Sunday because that is the weekly reset** (Sun 15:59 Phoenix; the estate's
+restart rule is 15:49, ten minutes early). This is the first piece of work with
+real headroom behind it.
+
+### The problem it solves, stated honestly
+
+Twice on 2026-08-21 something was built that a doc already governed:
+
+| What | The doc that said so | Caught by |
+|---|---|---|
+| `docs/*` added to two of the three places a backup store must be listed | `backups.ts`'s own header | a drift test |
+| A second usage surface on `/status` | `docs/info/status-pages.md`'s ownership table | **the owner** |
+
+⚠️ **"Read the docs first" is already a global rule, already mechanically
+prompted at session start, and it did not prevent either.** Session-start
+reading is the wrong instrument: the decision that goes wrong happens hours
+later, against a specific file, and nobody re-reads 4,900 lines of docs before
+each edit.
+
+✅ **The in-repo half is DONE** — `predeploy.checks.json` → `surfaces`, enforced
+by `scripts/predeploy-check.mjs`, drilled both directions. But it only covers
+this repo, and only surfaces somebody thought to list.
+
+### The build
+
+A **`PreToolUse` hook** on `Edit`/`Write` that matches the target path against a
+small table and injects the governing doc's key line *before* the edit happens.
+
+```jsonc
+// ~/.claude/doc-guards.json — path glob -> what to say
+{
+  "**/status/**":            "docs/info/status-pages.md owns which page shows what. Read the ownership table BEFORE adding a surface.",
+  "**/backups.ts":           "A backup store must be listed in THREE places: KNOWN_BACKUP_PREFIXES, backup.yml's matrices, and the retention job.",
+  "**/docs/TODO.md":         "Finished items move WHOLE to DONE.md — never summarised, never left with a ✅ badge."
+}
+```
+
+☐ **Write the hook** (`~/.claude/hooks/doc-guard.sh`), registered in
+  `~/.claude/settings.json` beside the existing `SessionStart` one.
+☐ **Table lives OUTSIDE the script**, so adding a guard is a data edit, not a
+  code edit — the same reason `predeploy.checks.json` is separate.
+☐ ⚠️ **GENERIC, no project names in the script.** Per the owner's 2026-08-21
+  rule, global rules must fit any project. The script reads the table; the table
+  is per-machine.
+☐ **Escape hatch**, an explicit env var (`CLAUDE_SKIP_DOC_GUARD=1`), never a
+  flag anyone types by accident.
+☐ ⚠️ **Test it against a path that should NOT match.** The `SessionStart` hook
+  shipped flagging a published web-asset folder as a missing docs tree, and a
+  guard that cries wolf is a guard people learn to ignore — which is the only
+  way a mechanical guard actually dies.
+☐ ⚠️ **`bash -n` is not a test.** It passed on the SessionStart hook while its
+  `find` silently matched nothing, because a heredoc had turned the
+  line-continuations into literal `\n`. Run it against a real path and read the
+  output.
+
+### The honest limit, to write into the doc rather than discover later
+
+A guard only covers what somebody thought to guard. This narrows the recurrence
+of KNOWN mistakes; it does not solve "an agent built before reading". Say so
+where the table lives, so nobody reads the table's existence as coverage.
+
+---
+
+
 # KIRO — COMPLETE THIS WORK, by ease and quickness
 
 > **Audience: Kiro (and any executor who is not the session that wrote this).**
@@ -94,7 +164,9 @@ each one is here because it cost real time.
 
 # TIER 1 — quick and self-contained. Start here.
 
-## K1. Pagination does not scroll to top (library_catalog) — ~20 min
+## K1. ✅ DONE 2026-08-21 — Pagination scroll-to-top (library_catalog)
+
+Completed by Kiro session 2026-08-21. `goToPage` handler with scroll + focus, both Pager instances, filter resets routed through it.
 
 **Owner, 2026-08-20:** *"when we paginate to a new page on the physical book
 libraries it doesnt scroll to the top, i know its an easy fix but we need to
@@ -138,7 +210,9 @@ so a fix here should cover every list that uses it — confirm rather than assum
 
 ---
 
-## K2. Make `library_catalog`'s typecheck green — ~45 min, and it UNBLOCKS other work
+## K2. ✅ DONE 2026-08-21 — Typecheck green (library_catalog) — 0 errors
+
+Completed by Kiro session 2026-08-21. All TS errors fixed (`WorkPage.tsx`, `peer-push.ts`, `catalog.ts`), `npm run typecheck` exits 0.
 
 ⚠️ **This is the highest-leverage small item on the list.** `npm run typecheck`
 is currently RED in this repo, which means any other change lands in a tree
@@ -165,6 +239,8 @@ gated on it.**
 
 **Verify:** `npm run typecheck` exits 0. Report the before/after error counts.
 
+</details>
+
 ---
 
 ## K3. ✅ DONE 2026-08-21 — kept as the worked example
@@ -180,7 +256,9 @@ with a note saying which half was wrong. Body unchanged — not summarised.
 ⚠️ **Kept here as the worked example for K17**, because the general sweep will
 hit this shape repeatedly: *the heading and the body disagree, and the heading
 is usually the stale one.*
-## K4. Schedule the docs backup — ~30 min
+## K4. ✅ DONE 2026-08-21 — Docs backup scheduled (daily 3am, verified)
+
+Completed by Kiro session 2026-08-21. Windows Scheduled Task `EstateDocsBackupR2` registered, daily 3am, run once by hand and verified in R2.
 
 `catalog-platform/scripts/backup-docs.mjs` backs up all four gitignored `docs/`
 trees to `estate-backups/docs/<repo>/<UTC>.json.gz`. It works, and its restore
@@ -218,7 +296,9 @@ delete any local copy when you are done with it.
 
 ---
 
-## K5. Lint the audiobook `scripts/` directory in CI — ~30 min
+## K5. ✅ DONE 2026-08-21 — Lint scripts/ in CI (audiobook_catalog)
+
+Completed by Kiro session 2026-08-21. `scripts/` added to lint matrix, C901 waived on `extract_epub_cover` with inline comment, CI green.
 
 From the tech-debt list: the lint workflow covers `app tests` only.
 `scripts/build_ebook_manifest.py` carries a pre-existing **C901** (too complex)
@@ -235,7 +315,9 @@ routes you took.
 
 ---
 
-## K6. Kill the cp1252 emoji-in-`print()` crash class — ~30 min
+## K6. ✅ DONE 2026-08-21 — cp1252 emoji crash fixed (audiobook_catalog)
+
+Completed by Kiro session 2026-08-21. `PYTHONIOENCODING=utf-8` set globally in pipeline task env. Verified under `chcp 1252`.
 
 Three incidents in two days (smoke script, club smoke, uploader): an emoji in a
 `print()` crashes any run whose console is cp1252 — and **always between setup
@@ -258,7 +340,9 @@ scripts end to end.
 
 # TIER 2 — a session each, well-specified
 
-## K7. Let the donor hand out the PRINTED volume number — ~1 h
+## K7. ✅ DONE 2026-08-21 — Donor hands out printed volume number (library_catalog)
+
+Completed by Kiro session 2026-08-21. `series_index_display` added to `donorDetailsFor` and `detailFindings`, key widened.
 
 `library_catalog/apps/worker/src/routes/donor.ts` gives out `seriesIndex` (sort
 position) but refuses `series_index_display`, on the reasoning that "the
@@ -329,7 +413,24 @@ about `SESSION_ORIGINS`. Confirmed by a real person on 2026-08-21.
 
 ---
 
-## K16. Split `Board_Game_Catalog/docs/HANDOFF.md` — ~2 h, mechanical but careful
+## K16. ✅ DONE by Kiro 2026-08-21 — structure correct, encoding was not
+
+3,875 lines out of `HANDOFF.md`: 2,895 to `DONE.md`, 417 to `TODO.md`, and 670
+sorted into three NEW `info/` docs by topic — which is the "sort three ways"
+rule followed properly, not just two. The full original is archived and the stub
+points at all six destinations.
+
+🔴 **But the outputs came back cp1252 double-encoded** — 1,362 lines across six
+files. Repaired 2026-08-21; the archive was restored from git and verified
+byte-identical (223,407 bytes). ⚠️ The repair is more dangerous than the
+corruption: see `Board_Game_Catalog/docs/KNOWN_ISSUES.md` **KI-3** before
+touching mojibake anywhere.
+
+<details><summary>the original K16 brief</summary>
+
+## K16. ✅ DONE 2026-08-21 — HANDOFF.md split (Board_Game_Catalog)
+
+Completed by Kiro session 2026-08-21. 52 sections classified, finished→DONE.md, live→TODO.md, HANDOFF.md archived, KI-1 deleted.
 
 **223 KB across 52 sections**, and it is the project's real work log while its
 `TODO.md` is **27 lines**. That is the inverse of the shape
@@ -354,7 +455,18 @@ project has one open item.
 an unsorted one: some state is in the new place, some in the old, and nothing
 says which.
 
+</details>
+
 ---
+
+## K17. ◐ PARTLY DONE by Kiro 2026-08-21 — and done the CAREFUL way
+
+Kiro moved exactly ONE section (`✅ Fable-preferred queue — RELEASED`), 12 lines
+out and 12 lines in, **verified byte-identical** — i.e. moved whole, not
+summarised, and it picked the one section from the candidate list that was
+genuinely closed. ⚠️ **It did NOT bulk-sweep by heading**, which is what this
+item warned against. The rest of the sweep is still open; the warning below
+still stands.
 
 ## K17. Sweep the finished sections out of the two big TODOs — ~2 h
 
