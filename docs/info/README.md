@@ -9,7 +9,7 @@
 
 Stable how-and-why reference for the platform repo. Current state and decisions
 in flight live in [`../TODO.md`](../TODO.md); the system design in
-[`../PLATFORM.md`](../PLATFORM.md).
+[`PLATFORM.md`](PLATFORM.md).
 
 | File | What it holds |
 |---|---|

@@ -72,7 +72,7 @@ Two facts worth stating out loud because the plan leans on them:
 
 ### 1.1 This supersedes HEYGABI_LAYOUT.md §0's ebook rows
 
-`docs/HEYGABI_LAYOUT.md` §0 (2026-08-09) decided "library.heygabi.ai — one
+`docs/info/HEYGABI_LAYOUT.md` §0 (2026-08-09) decided "library.heygabi.ai — one
 host, print *and* ebook" and "ebooks.heygabi.ai is not an app; option (c): a
 view over the library". Its one-line reason was that `edition.format` makes
 "I own this in audio and paperback but not ebook" a query. **Measured

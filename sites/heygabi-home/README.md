@@ -307,8 +307,8 @@ Lives in **`catalog-platform`**, under `sites/heygabi-home/`, pushed to
 The standalone `heygabi-home` repo that used to hold this — locally at
 `vs-code-repos/heygabi-home`, remote `github.com/skymitch9/heygabi-home` — was
 retired on 2026-08-10 and its three commits were merged here with their history
-intact. ⚠️ **Do not re-create it.** The page is governed by `docs/HEYGABI_LAYOUT.md`
-and `docs/PLATFORM.md`, which live in this repo; the split meant every change to
+intact. ⚠️ **Do not re-create it.** The page is governed by `docs/info/HEYGABI_LAYOUT.md`
+and `docs/info/PLATFORM.md`, which live in this repo; the split meant every change to
 the front door had to be reasoned about in one repo and made in another.
 
 Deployment is still the owner's, per [`deploy.md`](deploy.md). The Pages project

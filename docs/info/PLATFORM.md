@@ -22,7 +22,7 @@ Measured 2026-08-07, not estimated.
 > built and deployed 2026-08-09, 341 works; games are at **836 items**
 > (read live 2026-08-13). Stage 2 steps 1–3 in §7 have therefore all landed;
 > step 4 (the index Worker) is designed at
-> [`info/index-worker-design.md`](info/index-worker-design.md).
+> [`info/index-worker-design.md`](index-worker-design.md).
 
 | | Audiobooks | Board games | Books & ebooks |
 |---|---|---|---|

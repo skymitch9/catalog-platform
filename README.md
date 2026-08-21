@@ -24,7 +24,7 @@ fictional-universe list. **`bookbuddy/library_catalog` and
 
 `library_catalog` **fails its build loudly** if it cannot find this repo;
 `audiobook_catalog` warns and carries on. Design and reasoning:
-[`docs/UNIVERSES.md`](docs/UNIVERSES.md).
+[`docs/info/UNIVERSES.md`](docs/info/UNIVERSES.md).
 
 ## Layout
 
@@ -46,8 +46,8 @@ is data for neither.
 
 It was its own repo, `heygabi-home`, from 2026-08-09 to 2026-08-10 — and it was
 the only repo whose every design decision was written down somewhere else.
-`docs/HEYGABI_LAYOUT.md` decides which hostname it advertises and in what order
-they come online; `docs/PLATFORM.md` §5 decides what the page eventually grows
+`docs/info/HEYGABI_LAYOUT.md` decides which hostname it advertises and in what order
+they come online; `docs/info/PLATFORM.md` §5 decides what the page eventually grows
 into. Reasoning in one repo and editing in another is how the two drift. The
 move brought all three of its commits across with their history intact.
 
@@ -70,13 +70,13 @@ features exist for.
 
 | Doc | Covers |
 |---|---|
-| [`docs/PLATFORM.md`](docs/PLATFORM.md) | The combined site: hosting move, shared index, auth, sequencing |
-| [`docs/DOMAIN_AND_HOSTING.md`](docs/DOMAIN_AND_HOSTING.md) | Which domain shape, whether GitHub Pages retires, migration steps, costs. Answers `PLATFORM.md` §8 q1 and q2 |
-| [`docs/LIBRARY_CATALOG.md`](docs/LIBRARY_CATALOG.md) | The new books + ebooks catalog |
-| [`docs/HEYGABI_LAYOUT.md`](docs/HEYGABI_LAYOUT.md) | The hostname map for `heygabi.ai`, and why there is no separate ebooks app. Revises `DOMAIN_AND_HOSTING.md` |
-| [`docs/UNIVERSES.md`](docs/UNIVERSES.md) | ⚠️ The shared universe list: why a file and not a table, the resolution order both catalogs implement, the editor CLI, and what each consumer does when it cannot find this repo |
+| [`docs/info/PLATFORM.md`](docs/info/PLATFORM.md) | The combined site: hosting move, shared index, auth, sequencing |
+| [`docs/info/DOMAIN_AND_HOSTING.md`](docs/info/DOMAIN_AND_HOSTING.md) | Which domain shape, whether GitHub Pages retires, migration steps, costs. Answers `PLATFORM.md` §8 q1 and q2 |
+| [`docs/info/LIBRARY_CATALOG.md`](docs/info/LIBRARY_CATALOG.md) | The new books + ebooks catalog |
+| [`docs/info/HEYGABI_LAYOUT.md`](docs/info/HEYGABI_LAYOUT.md) | The hostname map for `heygabi.ai`, and why there is no separate ebooks app. Revises `DOMAIN_AND_HOSTING.md` |
+| [`docs/info/UNIVERSES.md`](docs/info/UNIVERSES.md) | ⚠️ The shared universe list: why a file and not a table, the resolution order both catalogs implement, the editor CLI, and what each consumer does when it cannot find this repo |
 | [`data/README.md`](data/README.md) | What is in `data/` and who reads it |
-| [`docs/diagrams/architecture.md`](docs/diagrams/architecture.md) | All diagrams in one place |
+| [`docs/info/diagrams/architecture.md`](docs/info/diagrams/architecture.md) | All diagrams in one place |
 | [`sites/heygabi-home/README.md`](sites/heygabi-home/README.md) | The landing page: its two hard rules (no auth, no external requests) and how it grows into the index |
 | [`sites/heygabi-home/deploy.md`](sites/heygabi-home/deploy.md) | How the apex is deployed. **Read §4 for a routine deploy** |
 
@@ -93,7 +93,7 @@ Recorded here so they are not re-litigated. Full reasoning in `PLATFORM.md` §2.
 | Google SSO | **Stays.** Not up for discussion |
 | Editor auth | **Firebase ID tokens** — one sign-in across the whole site |
 | Joining the catalogs | A **shared D1 index**, not static JSON exports |
-| Where the universe list lives | **`data/universes.json` in this repo — a versioned file, no database table.** ~33 series changing monthly is reference data; the value is version control over the *decisions*, refusals included, and the audiobook side is a Python build that cannot reach D1 at all. `docs/UNIVERSES.md` §1 |
+| Where the universe list lives | **`data/universes.json` in this repo — a versioned file, no database table.** ~33 series changing monthly is reference data; the value is version control over the *decisions*, refusals included, and the audiobook side is a Python build that cannot reach D1 at all. `docs/info/UNIVERSES.md` §1 |
 | Order of work | **Finish the Board Game Catalog first** |
 
 ## Status

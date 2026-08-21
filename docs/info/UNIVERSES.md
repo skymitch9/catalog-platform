@@ -347,7 +347,7 @@ apply to the two book catalogs:
   nothing under its own spelling is asked again with every other spelling of
   its series in the same snapshot (`apps/index-worker/src/push.ts`
   `applySeriesPlan`; the rule and its refusals are
-  [`info/index-worker-design.md` §8.5.1](info/index-worker-design.md)). It is
+  [`info/index-worker-design.md` §8.5.1](index-worker-design.md)). It is
   still an EXACT `universeFor` lookup each time — no folding, no guessing.
   ⚠️ **Do NOT take this as licence to reduce a series to one spelling here.**
   The two book catalogs have no registry and match this list with their own

@@ -167,24 +167,19 @@ gated on it.**
 
 ---
 
-## K3. Retire an item whose HEADING contradicts its BODY — ~10 min
+## K3. ✅ DONE 2026-08-21 — kept as the worked example
 
-In `bookbuddy/audiobook_catalog/docs/TODO.md`, the section
-**"Add the shelf link to the admin portal (owner ask 2026-08-20) — BUILT, NOT
-DEPLOYED"** has a body that says the opposite: *"✅ COMMITTED AND DEPLOYED
-2026-08-20 (`cf3aa87`)"*, verified live across 26 pages.
+The item was **"Add the shelf link to the admin portal — BUILT, NOT DEPLOYED"**
+in `audiobook_catalog/docs/TODO.md`, whose own body read *"✅ COMMITTED AND
+DEPLOYED 2026-08-20 (`cf3aa87`) … confirmed rendering at heygabi.ai/admin"*.
+The heading was the stale half and had been asserting the opposite for a day.
 
-This is the exact anti-pattern the docs rule names: a finished item left in the
-ACTIVE list keeps asserting whatever its heading says.
+Moved **whole** into that repo's `DONE.md`, heading corrected to a dated one,
+with a note saying which half was wrong. Body unchanged — not summarised.
 
-**Do this:** confirm the footer line is still live at <https://heygabi.ai/admin>
-(one look), then **cut the whole section and paste it into
-`audiobook_catalog/docs/DONE.md`** under a `## 2026-08-20 — …` heading, newest
-first. ⚠️ **Move it WHOLE — cut and paste, never summarise.** The summary always
-drops the why.
-
----
-
+⚠️ **Kept here as the worked example for K17**, because the general sweep will
+hit this shape repeatedly: *the heading and the body disagree, and the heading
+is usually the stale one.*
 ## K4. Schedule the docs backup — ~30 min
 
 `catalog-platform/scripts/backup-docs.mjs` backs up all four gitignored `docs/`
@@ -333,6 +328,69 @@ behind Cloudflare Access, a different gate at the network edge that knows nothin
 about `SESSION_ORIGINS`. Confirmed by a real person on 2026-08-21.
 
 ---
+
+## K16. Split `Board_Game_Catalog/docs/HANDOFF.md` — ~2 h, mechanical but careful
+
+**223 KB across 52 sections**, and it is the project's real work log while its
+`TODO.md` is **27 lines**. That is the inverse of the shape
+`DOCS_STANDARD.md` describes, and a session reading only `TODO.md` concludes the
+project has one open item.
+
+**Do this:**
+1. Read each `##` section and classify it: **finished** or **still live**.
+   The headings already carry the signal — most begin `## ✅ SHIPPED …`.
+2. ⚠️ **Move each one WHOLE — cut and paste, never summarise.** The summary
+   always drops the *why*, which is the only reason to keep history.
+   - finished → `DONE.md`, newest first
+   - live → `TODO.md`
+   - durable reference (a measured number, a design rationale, a gotcha) →
+     `info/` or `access/` by topic, **not** into either log
+3. When `HANDOFF.md` is empty, move it to `archive/HANDOFF.superseded-<date>.md`
+   with the standard archived banner (`DOCS_STANDARD.md` §6).
+4. Delete `KNOWN_ISSUES.md`'s **KI-1** in that repo — it exists only to warn
+   people about this exact situation.
+
+⚠️ **Do it in one sitting or not at all.** A half-sorted handoff is worse than
+an unsorted one: some state is in the new place, some in the old, and nothing
+says which.
+
+---
+
+## K17. Sweep the finished sections out of the two big TODOs — ~2 h
+
+`catalog-platform/docs/TODO.md` (~2,400 lines) and
+`audiobook_catalog/docs/TODO.md` (~1,650 lines) both carry sections whose
+headings say **✅ LIVE / SHIPPED / DONE**. Per `DOCS_STANDARD.md` §3.1 those do
+not belong in an ACTIVE work log.
+
+**Do this:** for every section whose work is complete, cut it whole into that
+repo's `DONE.md` under its own dated heading, newest first.
+
+⚠️ **Read the BODY, not just the heading, before moving anything.** Measured
+2026-08-21: a section titled *"BUILT, NOT DEPLOYED"* had a body saying
+*"✅ COMMITTED AND DEPLOYED 2026-08-20, verified live across 26 pages"* — the
+heading and the body disagreed, and the heading was the stale one. ⚠️ The
+reverse also happens: a section marked ✅ can carry a still-open follow-up
+bullet. **If any part of a section is still open, the section stays** — split it
+only if the open part can stand alone with its own context.
+
+**Verify:** every `##` heading left in `TODO.md` describes something not
+finished. Report the before/after line counts of all four files.
+
+---
+
+## K18. Keep the doc tree honest — a recurring 15-minute pass
+
+Not a one-off. After any substantial piece of work, in the same session:
+
+☐ Finished item moved **whole** into `DONE.md`?
+☐ The `access/`/`info/` doc whose facts changed updated, **with its
+  *Last verified* date**?
+☐ Anything deliberately left broken written into `KNOWN_ISSUES.md`, with a
+  removal condition that is a **number** where it can be?
+☐ Nothing loose at the top of `docs/` — a stray `.md` there belongs in
+  `access/`, `info/`, `archive/`, or one of the three logs?
+☐ Said what was **not** verified?
 
 # TIER 3 — real projects. Do not start these casually.
 

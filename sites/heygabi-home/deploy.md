@@ -15,7 +15,7 @@
 > the root will fail on a missing directory — which is the safe failure; the
 > dangerous typo is deploying a directory that *does* exist and contains docs.
 >
-> Steps written from [`../../docs/HEYGABI_LAYOUT.md`](../../docs/HEYGABI_LAYOUT.md)
+> Steps written from [`../../docs/info/HEYGABI_LAYOUT.md`](../../docs/info/HEYGABI_LAYOUT.md)
 > §1 and §4 (which records the apex as **Pages, direct upload**, and confirms the
 > zone is already in the Cloudflare account because `heygabi.ai` is registered at
 > **Cloudflare Registrar**). ⚠️ Menu labels below were **not** re-checked against

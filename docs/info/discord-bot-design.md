@@ -7,7 +7,7 @@
 > nothing is live until the owner runs the portal steps.
 > Last verified: **2026-08-14**, against `audiobook_catalog/docs/info/
 > discord-poll-sync-research.md` (2026-08-14 research), `catalog-platform/
-> docs/PLATFORM.md`, `docs/info/index-worker-design.md`, `docs/info/
+> docs/info/PLATFORM.md`, `docs/info/index-worker-design.md`, `docs/info/
 > estate-auth-design.md` (all read the same day), and
 > `audiobook_catalog/app/club_announcements.py` + `app/additions_log.py` +
 > `app/tools/send_discord_notification.py` (read directly, not from memory).

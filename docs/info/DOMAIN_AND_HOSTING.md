@@ -509,7 +509,7 @@ web pages were fetched the same day.
 - `boardbuddy/Board_Game_Catalog/apps/worker/wrangler.toml` — D1 id, crons, `CF_ACCESS_*`, the no-R2 comment
 - `boardbuddy/Board_Game_Catalog/docs/access/login.md` — Zero Trust free-tier costs
 - `boardbuddy/Board_Game_Catalog/docs/SETUP.md` — the live Worker URL
-- `catalog-platform/docs/PLATFORM.md`, `LIBRARY_CATALOG.md`, `README.md`
+- `catalog-platform/docs/info/PLATFORM.md`, `LIBRARY_CATALOG.md`, `README.md`
 - Project memory: `pages-dies-when-repo-goes-private.md`, `hosting-stays-github-pages.md`, `combined-site-architecture.md`
 
 **Fetched 2026-08-09**
