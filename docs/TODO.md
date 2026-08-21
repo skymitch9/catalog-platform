@@ -150,7 +150,24 @@ and it was fixed on the client, not by adding a row.
   Decide whether they are people-facing surfaces at all before adding them;
   ⚠️ granting an origin is access-INCREASING, so it gets confirmed, never
   assumed.
-☐ ⚠️ **`shelf.heygabi.ai` is NOT part of this and must not be quietly folded in.**
+🔴 **CONFIRMED BY A REAL PERSON, 2026-08-21 — the owner: *"For the SSO task
+  shelf cloudflare needs the sign in too, it made Justin sign in."*** So this
+  is no longer a footnote about scope; it is a reported defect with a name
+  attached. ⚠️ **And it cannot be fixed by adding an origin**: the shelf is
+  behind **Cloudflare Access**, which is a network-edge gate that runs BEFORE
+  any of our code and knows nothing about `SESSION_ORIGINS` or the estate
+  directory. Its own session cookie (`CF_Authorization`) is what Justin was
+  being asked for. Three honest options, none of them free:
+  **(a)** accept it — Access prompts once per device and then rides its own
+  cookie for the policy's session lifetime, so the fix may be lengthening that
+  lifetime rather than removing the gate;
+  **(b)** make Access and the estate directory agree on membership so the
+  prompt is at least a one-tap Google flow he never has to think about again;
+  **(c)** replace Access with an estate-auth-gated proxy in front of ABS —
+  real work, and ⚠️ it moves the library's protection from Cloudflare's edge to
+  our own code, which is the one gate SHELF_SERVER.md §2 calls load-bearing.
+  ⚠️ Do not pick (c) casually to make one sign-in prompt go away.
+☐ ⚠️ **Everything below still holds: `shelf.heygabi.ai` is a DIFFERENT gate.**
   The shelf is gated by **Cloudflare Access** (Google sign-in, family allowlist)
   — a different gate, a different membership list, and not something
   `SESSION_ORIGINS` reaches. "One sign-on anywhere" will still meet an Access
