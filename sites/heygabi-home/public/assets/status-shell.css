@@ -771,3 +771,50 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 .parity-row[data-state="never_reported"] .parity-fill  { background: var(--et-muted); }
 .parity-row[data-state="never_reported"] .parity-state { color: var(--et-muted); }
 @media (prefers-reduced-motion: reduce) { .parity-fill { transition: none; } }
+
+/* ── Claude budget meters (owner ask 2026-08-21) ────────────────────────────
+   Deliberately REUSES .parity-track / .parity-fill rather than cloning them:
+   one bar implementation means a bar means the same thing everywhere on this
+   surface. Only the layout and the per-meter tone are new. */
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: .85rem 1.3rem;
+  margin: .6rem 0 .2rem;
+}
+.usage-meter-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .6rem; margin-bottom: .3rem;
+}
+.usage-meter-label { font-size: var(--et-text-small); }
+.usage-meter-val { font-family: var(--et-font-mono); font-weight: 600; }
+.usage-meter-reset {
+  display: block; margin-top: .25rem;
+  color: var(--et-muted); font-size: .82em;
+}
+/* Per-meter tone — each meter answers for its OWN limit, never for the card. */
+.usage-meter[data-tone="ok"]     .parity-fill { background: var(--et-ok, #3a8d5c); }
+.usage-meter[data-tone="ok"]     .usage-meter-val { color: var(--et-ok, #3a8d5c); }
+.usage-meter[data-tone="warn"]   .parity-fill { background: var(--et-warn, #d9a03f); }
+.usage-meter[data-tone="warn"]   .usage-meter-val { color: var(--et-warn, #d9a03f); }
+.usage-meter[data-tone="danger"] .parity-fill { background: var(--et-danger, #b3453a); }
+.usage-meter[data-tone="danger"] .usage-meter-val { color: var(--et-danger, #b3453a); }
+/* A meter with no live reading shows an EMPTY track, never its last width. */
+.usage-meter[data-tone="muted"]  .parity-fill { background: var(--et-muted); }
+.usage-meter[data-tone="muted"]  .usage-meter-val { color: var(--et-muted); }
+
+/* The card's own corner word. Never green unless every threshold is clear, and
+   never anything but red when the reading is stale — an unknown budget is not
+   a healthy one. */
+.usage-row[data-state="ok"]               .parity-state { color: var(--et-ok, #3a8d5c); }
+.usage-row[data-state="weekly_no_agents"] .parity-state { color: var(--et-warn, #d9a03f); }
+.usage-row[data-state="session_pause"]    .parity-state { color: var(--et-danger, #b3453a); }
+.usage-row[data-state="weekly_stop"]      .parity-state { color: var(--et-danger, #b3453a); }
+.usage-row[data-state="unknown"]          .parity-state { color: var(--et-danger, #b3453a); }
+.usage-row[data-state="never_reported"]   .parity-state { color: var(--et-muted); }
+
+.usage-legend {
+  margin: .7rem 0 0; padding-left: 1.1rem;
+  color: var(--et-muted); font-size: var(--et-text-small);
+}
+.usage-legend li { margin: .25rem 0; }

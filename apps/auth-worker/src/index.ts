@@ -26,6 +26,7 @@ import { recordOwnEvent, workerEventsRoutes } from './worker-events.js';
 import { todoRoutes } from './todo.js';
 import { docsRoutes } from './docs.js';
 import { shelfParityRoutes } from './shelf-parity.js';
+import { claudeUsageRoutes } from './claude-usage.js';
 import { shelfTokenRoutes } from './shelf-token.js';
 import { machineKeyRoutes } from './machine-keys.js';
 import { estateDocsRoutes } from './estate-docs.js';
@@ -152,6 +153,15 @@ app.use('/api/estate/shelf/*', adminCors());
 // browser-called route added here needs its own line.
 app.use('/api/estate/keys', adminCors());
 app.use('/api/estate/keys/*', adminCors());
+// The Claude budget reading (owner ask 2026-08-21). Same shape as the shelf
+// parity mount two lines up: the GET is read by /status on the apex, and the
+// POST on the same path is machine auth from a script that sends no Origin and
+// needs no preflight — so this mount neither helps nor widens the write side.
+// ⚠️ It exists because A CORS MOUNT IS NOT IMPLIED BY A ROUTE; without it the
+// card renders "did not answer (network)", which looks exactly like a Worker
+// that is down. test/cors-coverage.test.ts caught precisely that on the first
+// run of this feature.
+app.use('/api/estate/claude/*', adminCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
@@ -207,6 +217,8 @@ app.route('/api', docsRoutes);
 app.route('/api', machineKeyRoutes);
 app.route('/api', shelfTokenRoutes);
 app.route('/api', shelfParityRoutes);
+// Claude budget meter — a session POSTs with a bearer, devops reads in a browser.
+app.route('/api', claudeUsageRoutes);
 app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);
 app.route('/api', sessionRoutes);

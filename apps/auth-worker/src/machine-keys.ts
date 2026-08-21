@@ -135,6 +135,24 @@ Run ./03-shelf-parity.sh once, then reload this page — Last used should show a
     rotateHow: 'Generate above → paste into /srv/shelf/.parity.env on the shelf server → chmod 600. The old key keeps working 24 h, so nothing goes dark if the paste goes wrong.',
   },
   {
+    id: 'claude-usage',
+    label: 'Claude usage reporter',
+    tag: 'writes four percentages, one route',
+    body: 'Used by a Claude session to post what it just read off claude.ai/settings/usage, so /status can show where the budget stands without anyone asking.',
+    blast: 'A leaked one can post a FALSE budget reading and nothing else. It reads nothing, grants nothing, and is accepted on no other route. ⚠️ It is still a TRUST surface: a wrong number here gets believed and a run gets started that should not have been.',
+    livesAt: 'the reporting session’s environment on the owner’s machine (CLAUDE_USAGE_TOKEN)',
+    mode: 'self-service',
+    prefix: 'clu_',
+    kvKey: 'claude:usage:token',
+    installHow: `Put it in the environment the reporter reads, on the owner's machine:
+  setx CLAUDE_USAGE_TOKEN "<the value>"      # new shells only
+Then post one reading and reload this page — Last used should show a moment ago:
+  node scripts/report-claude-usage.mjs --session 2 --weekly 93 --fable 94 --credits 63
+⚠️ There is no legacy fallback for this key: until it is installed, nothing can report.`,
+    origin: 'Minted on this page — 32 bytes of CSPRNG as base64url, stored only as a SHA-256 hash. It has no hand-minted predecessor; this key was self-service from the day it shipped.',
+    rotateHow: 'Generate above → set CLAUDE_USAGE_TOKEN in the reporting session’s environment within the 24 h grace window. Nothing else holds it, so a rotation here cannot strand another service.',
+  },
+  {
     id: 'worker-events',
     label: 'Service event log',
     tag: 'appends to a log',

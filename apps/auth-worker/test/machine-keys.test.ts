@@ -190,9 +190,26 @@ test('⚠️ the token signer and the Firebase service account are MANUAL and ar
   }
 });
 
-test('the three self-service keys are exactly the ones this Worker verifies', () => {
+test('the self-service keys are exactly the ones this Worker verifies', () => {
+  // ⚠️ A PIN, NOT A TALLY. Adding a row here is meant to be deliberate: the
+  // list is what a reader of /status/api takes to be the complete set of keys
+  // the estate can mint, so an entry that appears without anyone noticing is an
+  // entry whose rotation story nobody has thought about. `claude-usage` joined
+  // 2026-08-21 with the budget meter.
   const ss = KEY_REGISTRY.filter((k) => k.mode === 'self-service').map((k) => k.id).sort();
-  assert.deepEqual(ss, ['conductor', 'shelf-parity', 'worker-events']);
+  assert.deepEqual(ss, ['claude-usage', 'conductor', 'shelf-parity', 'worker-events']);
+});
+
+test('⚠️ the Claude usage key has NO legacy env leg', () => {
+  // Every other self-service key carries one because it had a hand-delivered
+  // predecessor installed somewhere unreachable. This one was self-service from
+  // the day it shipped, and adding a fallback "for symmetry" would invent a
+  // second credential with no rotation story — exactly what the shelf key is
+  // currently trying to get rid of.
+  const k = keyById('claude-usage')!;
+  assert.equal(k.mode, 'self-service');
+  assert.equal(k.kvKey, 'claude:usage:token');
+  assert.equal(k.legacyEnv, undefined);
 });
 
 test('the shelf key keeps its original KV name, or the live record is orphaned', () => {
