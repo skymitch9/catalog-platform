@@ -161,6 +161,98 @@ async function saveFacts(ev) {
 
 factsForm.addEventListener('submit', saveFacts);
 
+/**
+ * Copy / Download buttons on every embedded script (2026-08-20).
+ *
+ * Owner ask: "can we host this script on our site so he can download/copy
+ * paste from it? We have the runbook put it there." The script TEXT arrives in
+ * the KV fragment — generated straight from the .sh file by
+ * audiobook_catalog/scripts/build_runbook_fragment.py's `<!--include:-->`, so
+ * the published copy cannot drift from the repo's. This function is the other
+ * half: the buttons that make it a delivery mechanism rather than a wall of
+ * text to select by hand on a phone.
+ *
+ * ⚠️ IT LIVES HERE, NOT IN THE FRAGMENT, AND THAT IS THE CSP.
+ * `_headers`' /runbooks/* rule sets `script-src 'self' …` with NO
+ * 'unsafe-inline'. A <script> inside the KV blob is therefore silently
+ * refused by the browser — the buttons would render and do nothing, which is
+ * the worst of both. doc.js is 'self', so the behaviour goes here and the
+ * fragment stays pure content. (Same reason the back link and the facts form
+ * are page chrome: see index.html's header comment.)
+ *
+ * The .sh text is our own repo content, never user input, and it is only ever
+ * read out with textContent / put into a Blob — it is never re-parsed as
+ * markup.
+ */
+function enhanceScripts(root) {
+  for (const box of root.querySelectorAll('.script[data-filename]')) {
+    const pre = box.querySelector('pre');
+    if (!pre || box.querySelector('.script-bar')) continue;
+
+    const name = box.getAttribute('data-filename') || 'script.sh';
+    const text = pre.textContent;
+
+    const bar = document.createElement('div');
+    bar.className = 'script-bar';
+
+    const label = document.createElement('span');
+    label.className = 'script-name';
+    label.textContent = name;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'script-btn';
+    copyBtn.textContent = 'Copy';
+
+    const dlBtn = document.createElement('button');
+    dlBtn.type = 'button';
+    dlBtn.className = 'script-btn';
+    dlBtn.textContent = 'Download';
+
+    const say = document.createElement('span');
+    say.className = 'script-say';
+    say.setAttribute('role', 'status');
+    say.setAttribute('aria-live', 'polite');
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        say.textContent = 'Copied.';
+      } catch (e) {
+        // §1e: never a bare failure. Clipboard access can be refused by the
+        // browser (focus, permissions, an older WebKit) and the honest move is
+        // to say what to do instead, not to look broken.
+        say.textContent = 'Your browser blocked the copy — use Download, or select the text.';
+      }
+      setTimeout(() => { say.textContent = ''; }, 4000);
+    });
+
+    dlBtn.addEventListener('click', () => {
+      // Blob + object URL rather than `href="data:…"`: a data: URI of a few KB
+      // works, but the object URL is revocable and does not depend on how the
+      // CSP treats data: in a navigation.
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/x-shellscript' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      say.textContent = `Saved ${name} — then: chmod +x ${name}`;
+      setTimeout(() => { say.textContent = ''; }, 8000);
+    });
+
+    bar.append(label, copyBtn, dlBtn, say);
+    box.insertBefore(bar, pre);
+
+    // A <details> that is shut hides its own script. Anything carrying a
+    // download button is a thing somebody came here to GET, so open it.
+    const details = box.closest('details');
+    if (details) details.open = true;
+  }
+}
+
 function resetDoc() {
   docLoaded = false;
   gateMain.hidden = false;
@@ -221,6 +313,7 @@ async function loadDoc() {
   // inject as markup. It carries its own <style> + <main>; the gate's <main>
   // hides so the page keeps one landmark.
   docMount.innerHTML = data.html;
+  enhanceScripts(docMount);
   docLoaded = true;
   gateMain.hidden = true;
 
