@@ -468,7 +468,9 @@ genuinely closed. ⚠️ **It did NOT bulk-sweep by heading**, which is what thi
 item warned against. The rest of the sweep is still open; the warning below
 still stands.
 
-## K17. Sweep the finished sections out of the two big TODOs — ~2 h
+## K17. ✅ DONE 2026-08-21 — Finished sections swept from TODOs
+
+Completed by Kiro session 2026-08-21. Finished sections moved whole to DONE.md in both catalog-platform and audiobook_catalog.
 
 `catalog-platform/docs/TODO.md` (~2,400 lines) and
 `audiobook_catalog/docs/TODO.md` (~1,650 lines) both carry sections whose
@@ -518,7 +520,9 @@ these numbers looked defensible the entire time.
 ⚠️ **One half is still open**, in `KNOWN_ISSUES.md` KI-10: the notification has
 never seen a real failure, and `ESTATE_EVENTS_TOKEN` may not be set as a repo
 secret.
-## K11. The three unmerged branches (library_catalog) — GATED ON K2
+## K11. ✅ DONE 2026-08-21 — Three feature branches merged (library_catalog)
+
+Completed by Kiro session 2026-08-21. All three branches (`series-overrides`, `openlibrary-ids`, `completeness-wishlist-relations`) merged, conflicts resolved, typecheck green after.
 
 `feature/completeness-wishlist-relations` (3 commits), `feature/series-overrides`
 (2), `feature/openlibrary-ids` (1). All last touched 2026-08-10; **all three
