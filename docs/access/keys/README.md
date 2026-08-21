@@ -47,6 +47,7 @@ to run. Nothing else — no notes, no exports, no backups.
 | File | Holds | Read by | Doc |
 |---|---|---|---|
 | `estate-conductor-token.txt` | `ESTATE_CONDUCTOR_TOKEN` — the bearer for `POST /api/estate/ops/agent-board` | `scripts/push-agent-board.mjs` | [`../agent-board.md`](../agent-board.md) |
+| `claude-usage-token.txt` | `CLAUDE_USAGE_TOKEN` — the bearer for `POST /api/estate/claude/usage` (the Claude budget card on /status) | `scripts/report-claude-usage.mjs` | [`../machine-keys.md`](../machine-keys.md) |
 | `estate-events-token.txt` | `ESTATE_EVENTS_TOKEN` — the bearer for `POST /api/estate/ops/worker-events` (the /status event ring) | the **Workers themselves**, via `@platform/estate-events` | [`../../info/worker-event-ring.md`](../../info/worker-event-ring.md) |
 
 ⚠️ **`estate-events-token.txt` is the one row here whose reader is not a local
