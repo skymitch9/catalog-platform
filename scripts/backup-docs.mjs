@@ -71,7 +71,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative, resolve, sep } from 'node:path';
 
@@ -116,7 +116,30 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__']);
 /** A single file this large is not a doc; flag it rather than silently ship it. */
 const WARN_FILE_BYTES = 5 * 1024 * 1024;
 
-function walk(dir, base, out = []) {
+/**
+ * 🔴 ONEDRIVE MAKES REAL FILES LOOK LIKE SYMLINKS, AND AN EARLIER VERSION OF
+ * THIS WALKER SILENTLY DROPPED THEM — MEASURED 2026-08-21.
+ *
+ * These trees live under OneDrive. A file OneDrive has dehydrated into a
+ * placeholder (a "cloud file", i.e. a reparse point) is reported by Node as
+ * `isSymbolicLink() === true` and `isFile() === false`. The old loop skipped
+ * anything that was not `isFile()`, on the reasonable-sounding grounds that
+ * symlinks must not be followed out of the tree.
+ *
+ * The result: `Board_Game_Catalog/docs` held **46 files and the backup archived
+ * 27**, reporting complete success. ⚠️ And it was never limited to files
+ * somebody had just moved — ANY file OneDrive chooses to free space on becomes
+ * invisible to the backup, at a moment nothing here controls.
+ *
+ * The fix keeps the original protection and drops the false negative: a
+ * symlink-ish entry is RESOLVED (`statSync` follows it), and included only if
+ * it resolves to something INSIDE this docs tree. A genuine link pointing
+ * outside is still refused — that was the real concern and it survives.
+ *
+ * ⚠️ Nothing is skipped silently. Every skip is collected and printed, because
+ * a backup that quietly omits files is worse than one that fails.
+ */
+function walk(dir, base, out = [], skipped = []) {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -124,23 +147,47 @@ function walk(dir, base, out = []) {
     if (err.code === 'ENOENT') return out;
     throw err;
   }
+  const baseReal = realpathSync(base);
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const full = join(dir, e.name);
     if (e.isDirectory()) {
       if (SKIP_DIRS.has(e.name)) continue;
-      walk(full, base, out);
-    } else if (e.isFile()) {
-      out.push(full);
+      walk(full, base, out, skipped);
+      continue;
     }
-    // Symlinks are deliberately NOT followed: a link out of the docs tree
-    // would pull in whatever it points at, which is precisely the "walk the
-    // parent" failure wearing a different hat.
+    if (e.isFile()) {
+      out.push(full);
+      continue;
+    }
+    // Neither a plain file nor a directory: a symlink, a junction, or a
+    // OneDrive placeholder. Resolve it and decide on where it actually points.
+    let real;
+    let st;
+    try {
+      real = realpathSync(full);
+      st = statSync(full); // follows
+    } catch (err) {
+      skipped.push({ path: full, why: `unresolvable (${err.code ?? err.message})` });
+      continue;
+    }
+    if (!real.startsWith(baseReal)) {
+      skipped.push({ path: full, why: `resolves OUTSIDE the docs tree -> ${real}` });
+      continue;
+    }
+    if (st.isDirectory()) walk(full, base, out, skipped);
+    else if (st.isFile()) out.push(full);
+    else skipped.push({ path: full, why: 'not a regular file or directory' });
   }
   return out;
 }
 
 function bundleRepo(repo) {
-  const files = walk(repo.docs, repo.docs);
+  const skipped = [];
+  const files = walk(repo.docs, repo.docs, [], skipped);
+  // ⚠️ NO SILENT CAPS. A skip is announced whether or not anyone asked, because
+  // the failure this whole function exists to avoid is a cheerful archive that
+  // is quietly missing files.
+  for (const s of skipped) console.log(`  ⚠️ SKIPPED ${s.path} — ${s.why}`);
   const entries = [];
   let bytes = 0;
   for (const full of files) {
@@ -161,7 +208,7 @@ function bundleRepo(repo) {
     });
     bytes += buf.length;
   }
-  return { entries, bytes };
+  return { entries, bytes, skipped };
 }
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/-(\d{3})Z$/, 'Z');
@@ -169,7 +216,7 @@ const results = [];
 
 for (const repo of REPOS) {
   console.log(`\n=== ${repo.name} — ${repo.docs} ===`);
-  const { entries, bytes } = bundleRepo(repo);
+  const { entries, bytes, skipped } = bundleRepo(repo);
 
   // ⚠️ A REPO THAT YIELDS ZERO FILES IS A FAILURE, NOT AN EMPTY BACKUP. Same
   // rule as backup-r2.mjs's zero-object listing and backup-firestore.mjs's:
@@ -195,6 +242,9 @@ for (const repo of REPOS) {
       'which holds RAW SECRET VALUES (service-account JSON, bearer tokens). Treat this archive as key material.',
     file_count: entries.length,
     total_bytes: bytes,
+    // Carried IN the archive: a disaster-day reader must be able to see from
+    // the dump itself what it does not contain.
+    skipped,
     files: entries,
   };
   const gz = gzipSync(Buffer.from(JSON.stringify(payload)), { level: 9 });

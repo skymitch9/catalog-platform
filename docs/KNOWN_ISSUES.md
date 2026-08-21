@@ -148,3 +148,26 @@ access-reducing changes are his to make.
 **What would change it.** Revoke it from the dashboard. ⚠️ Its sibling **"Edit
 Cloudflare Workers 2" (Aug 17) IS the live CI-deploy token — keep that one.**
 Confusing the two takes CI down.
+
+---
+
+## KI-9 · OneDrive dehydrates files into placeholders that Node reports as symlinks — `ACCEPTED` (upstream), guarded here
+
+**Symptom.** A file is plainly on disk, `ls` shows it, and a Node script that
+walks the tree does not see it. `readdirSync(..., {withFileTypes:true})` reports
+`isFile() === false` and `isSymbolicLink() === true`.
+
+**Why tolerated.** It is how OneDrive "free up space" works — the file becomes a
+reparse point until something opens it. Nothing here controls when OneDrive
+decides to do it, and every estate repo lives under OneDrive.
+
+**What would change it.** Nothing upstream. 🔴 **The guard is in the code, and
+any new tree-walker needs the same one:** resolve the entry with `realpathSync`
++ `statSync` (which follow), include it if it resolves INSIDE the tree, and
+refuse it if it resolves outside — the original reason not to follow links.
+
+⚠️ **This already cost a real silent failure.** `scripts/backup-docs.mjs` walked
+`Board_Game_Catalog/docs`, found **27 of its 46 files, and reported success.**
+Fixed 2026-08-21; the walker now also PRINTS every skip and carries the skip list
+inside each archive's own manifest. Re-drilled the same day: 46/46 restored,
+`diff -r` against the live tree — zero differences.
