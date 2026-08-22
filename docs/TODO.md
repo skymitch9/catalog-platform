@@ -1,5 +1,54 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+## 🔴 SUNDAY 2026-08-23, 16:00 Phoenix — ROTATE A LEAKED ANTHROPIC KEY
+
+**Deliberately above the pause banner. It is a live credential, and the in-session
+cron reminder for it was session-only and did not survive.**
+
+**What happened, 2026-08-22.** A masking script I wrote printed the value of
+`Claude-llm` from `bookbuddy/audiobook_catalog/.env` into the session transcript
+in full. The regex was `^([A-Za-z_][A-Za-z0-9_]*)=`, which does not match a
+hyphen — the exact trap that file's own header (lines 19–21) warns about, in the
+same output that leaked it. Anthropic API key, `sk-ant-api03-…`, **last 4
+`5AAA`**. Deferred to Sunday only because the weekly limit was at 95% and the
+owner had no credits to spend; the reset is 16:00 Phoenix.
+
+**Steps, in order:**
+
+1. **Revoke first** — console.anthropic.com → API keys → the key ending `5AAA`.
+   Revoking first makes everything after it safe.
+2. Mint a replacement.
+3. **Install in BOTH halves.** Per `.env` line 17 this key is paired, and
+   changing one alone gives a **silent 401**, not a visible error:
+   - `bookbuddy/audiobook_catalog/.env` line 38, `Claude-llm=` — ⚠️ hyphenated
+     and mixed-case on purpose; do not "normalise" the name, several readers
+     depend on it
+   - GitHub secret **`CLAUDE_LLM`** — owner runs `gh secret set CLAUDE_LLM` and
+     pastes at the prompt. Never `--body` (shell history). Claude must not ask
+     for or handle the value.
+4. **Verify a consumer**, do not assume the paste landed — e.g. run
+   `app/tools/fetch_content_warnings.py` or trigger the `cw-fulfill` workflow.
+
+**Readers (name only — only `.env` and the GitHub secret hold the VALUE):**
+`.github/workflows/cw-fulfill.yml` · `app/tools/extract_chapters.py` ·
+`app/tools/fetch_content_warnings.py` · `app/tools/generate_prompts.py` ·
+`docker-compose.sync.yml` · `scripts/sync_to_drive.py` · `docs/access/CREDENTIALS.md` ·
+`docs/access/EXTERNAL_APIS.md`
+
+**Owner's open question, answered but not acted on:** replace the static key with
+**Workload Identity Federation** — GA, no beta header. The SDK auto-detects it
+when `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` +
+`ANTHROPIC_SERVICE_ACCOUNT_ID` + `ANTHROPIC_IDENTITY_TOKEN_FILE` (or
+`_TOKEN`) are all set, and `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` /
+`ANTHROPIC_PROFILE` each **outrank** it, so all three must be unset. GitHub
+Actions is the natural fit — it issues an OIDC token, so the `CLAUDE_LLM`
+secret could disappear entirely; the pipeline PC is better served by
+`ant auth login` (a profile the SDKs read, no key in `.env` at all).
+⚠️ **NOT VERIFIED:** whether Anthropic's federation rules accept the GitHub
+Actions issuer specifically. Check in the console before promising it.
+
+---
+
 ## ⏸️▶️ PAUSED 2026-08-19 · RESTART **Sunday 2026-08-23, 15:49 Phoenix** — READ BEFORE ANYTHING ELSE
 
 > **This is the first thing in this file on purpose.** Everything below it is
