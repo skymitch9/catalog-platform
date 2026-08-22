@@ -135,6 +135,25 @@ Run ./03-shelf-parity.sh once, then reload this page — Last used should show a
     rotateHow: 'Generate above → paste into /srv/shelf/.parity.env on the shelf server → chmod 600. The old key keeps working 24 h, so nothing goes dark if the paste goes wrong.',
   },
   {
+    id: 'shelf-config',
+    label: 'Shelf connection reader',
+    tag: 'reads four config values, one route',
+    body: "Used by audiobook_catalog/scripts/sync_to_server.py on the pipeline PC to read where Justin's box is - host, path, ssh user, port - so those never have to be relayed through a chat message and hand-copied into a .env.",
+    blast: "A leaked one can READ a tailnet hostname, a unix username, a path and a port. It writes nothing and is accepted on no other route. ⚠️ Worth being honest about what that is: those four are CONFIG, not credentials - knowing them gets you nowhere without the SSH private key, which lives only on the pipeline PC and is not in this estate at all. It is still a disclosure, which is why the route is gated rather than public.",
+    livesAt: "the pipeline PC's environment (SHELF_CONFIG_TOKEN), beside the SSH key it pairs with",
+    mode: 'self-service',
+    prefix: 'shelfcfg_',
+    kvKey: 'shelf:config:token',
+    installHow: `On the pipeline PC (the owner's machine):
+  setx SHELF_CONFIG_TOKEN "<the value>"      # new shells only
+Then check the pipeline can read the config, without printing it:
+  python scripts/sync_to_server.py --dry-run
+"not configured" means the four values are still blank in the form; an auth
+error means the token did not land.`,
+    origin: 'Minted on this page - 32 bytes of CSPRNG as base64url, stored only as a SHA-256 hash. There is no legacy value: this key was born self-service.',
+    rotateHow: 'Generate above, then setx SHELF_CONFIG_TOKEN on the pipeline PC. The old key keeps working 24 h, so a bad paste does not strand the push.',
+  },
+  {
     id: 'claude-usage',
     label: 'Claude usage reporter',
     tag: 'writes four percentages, one route',

@@ -361,6 +361,65 @@ it; one without still falls back to the derivation.
 
 ---
 
+## ☐ Shelf connection details: a form Justin fills in, stored server-side
+
+**Owner ask, 2026-08-22:** *"make those left open things he can enter on the ui
+and they get saved somewhere secure, like our own version of a keyvault or to
+our cloudflare keyvault or something."*
+
+**The four values** currently blank in `audiobook_catalog/.env`, which
+`scripts/sync_to_server.py` needs before the direct push can run at all:
+`SHELF_SERVER_HOST`, `SHELF_SERVER_PATH`, `SHELF_SERVER_USER`,
+`SHELF_SERVER_SSH_PORT`. Only Justin knows the first three; today they reach us
+by him typing them into a chat message, which is exactly the hand-off this is
+meant to kill.
+
+### ⚠️ Design correction to make BEFORE building: this is CONFIG, not a key vault
+
+A tailnet hostname, a unix username, a filesystem path and a port number are
+**not secrets**. The secret in this system is the SSH *private* key, and it
+never leaves the pipeline PC. So do **not** reach for the `/status/api` pattern
+wholesale — that stores a **SHA-256 hash** and verifies against it, which is
+correct for a token you only ever compare, and useless here because the
+pipeline must read these values back in plaintext to use them.
+
+Build a **config store** with an authenticated read, not a vault:
+
+| | |
+|---|---|
+| **Write** | `POST /api/estate/shelf/config` — devops Access gate, the same one Justin already passes for `/runbooks/`. Body is the four fields, validated (host as a hostname, port 1–65535, path absolute) |
+| **Store** | one JSON blob in KV, e.g. key `shelf:config` in an existing namespace. Values in plaintext — they have to be |
+| **Read** | `GET /api/estate/shelf/config`, gated on a **machine token** minted at `/status/api` (that flow already exists and already hashes correctly). The token is the secret; the config is not |
+| **Consume** | `sync_to_server.py`'s `get_config()` reads the endpoint when the `.env` keys are blank, and keeps its current "not configured" behaviour when neither source answers. ⚠️ It must NOT start guessing — that honest degradation is the best thing about that script |
+| **UI** | extend the existing self-service facts form (`/runbooks/shelf-migration/`, SHELF_SERVER.md §8) rather than building a second form. One surface owns "Justin tells us a fact about his box" |
+
+### Why it is worth building at all
+
+Every Mashton hour this week traced back to nobody outside Justin's house being
+able to see that disk. The direct push is what fixes that permanently, and
+these four values are the last thing standing between it and working. A form
+also means the next value — and there will be one — arrives the same way instead
+of as a chat message somebody has to transcribe.
+
+### Not to be forgotten
+
+- ⚠️ **Decide `rclone sync` → `copy` in the same change.** `sync_to_server.py`
+  line ~153 runs `rclone sync`, which makes the server match the local folder
+  EXACTLY — anything on the shelf not on the pipeline PC is **deleted**. Correct
+  for a mirror, wrong for the "push my missing books up" button this is being
+  built to serve. `--dry-run` first, always.
+- The read endpoint returning a host and username is a small disclosure. Keep it
+  behind the machine token, do not log the values, and do not put them in a
+  public repo — `audiobook_catalog/docs/` is gitignored, this repo is PUBLIC.
+- Blocked until Justin does `SHELF_JUSTIN.md` §4 part C (Tailscale + `shelfsync`)
+  — there is nothing to store until the hostname exists.
+
+**Size:** small-to-medium; one Worker route pair, one KV key, one form section,
+one `get_config()` change. **Not started — filed 2026-08-22 with weekly usage at
+95%, deliberately not begun so it does not land half-built.**
+
+---
+
 ## K8. Shelf link on every book — ~2–3 h — see `audiobook_catalog/docs/TODO.md`
 
 Full plan is in that file under **"Shelf link on every book"**. The short version:

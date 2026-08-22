@@ -20,8 +20,61 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FACT_FIELDS, validateFactsInput, factsRoutes } from '../src/facts.js';
 
-test('FACT_FIELDS: the exact five fields the form and §0 table both key on', () => {
-  assert.deepEqual([...FACT_FIELDS].sort(), ['disk_free', 'hardware', 'library_size', 'notes', 'os'].sort());
+test('FACT_FIELDS: the exact nine fields the form and §0 table both key on', () => {
+  // ⚠️ A PIN, NOT A TALLY. The five originals describe Justin's BOX; the four
+  // `shelf_*` added 2026-08-22 are the SHELF_SERVER_* connection values the
+  // pipeline dials it with. A field appearing here without anyone noticing is a
+  // field with no form input, no validation shape and no consumer.
+  assert.deepEqual([...FACT_FIELDS].sort(), [
+    'disk_free', 'hardware', 'library_size', 'notes', 'os',
+    'shelf_host', 'shelf_path', 'shelf_ssh_port', 'shelf_user',
+  ].sort());
+});
+
+test('the four shelf_* fields enforce a SHAPE, not just a length', () => {
+  // ⚠️ These end up in an rclone argv. A space or a shell metacharacter is
+  // fine in a form field and is not fine on a command line, so each is pinned
+  // to a shape and every rejection says what the value should look like.
+  const badShape: [string, string][] = [
+    ['shelf_host', 'not a host'],
+    ['shelf_host', 'http://box.tailnet.ts.net'],
+    ['shelf_path', 'media/napling/books'],
+    ['shelf_path', '/media/../etc/shadow'],
+    ['shelf_user', 'Shelf Sync'],
+    ['shelf_ssh_port', '70000'],
+  ];
+  for (const [field, value] of badShape) {
+    const r = validateFactsInput({ [field]: value });
+    assert.equal(r.ok, false, `${field}=${JSON.stringify(value)} was accepted`);
+    if (!r.ok) assert.match(r.error, new RegExp(`^${field} must be `));
+  }
+
+  // ⚠️ Rejected, but by the LENGTH cap rather than the shape - shelf_ssh_port
+  // maxes at 5 characters and this is 12. Asserted separately and honestly:
+  // claiming the shape caught it would be describing a defence that did not
+  // fire, and the day someone widens maxLen the shape becomes the only guard.
+  const injected = validateFactsInput({ shelf_ssh_port: '22; rm -rf /' });
+  assert.equal(injected.ok, false);
+  if (!injected.ok) assert.match(injected.error, /^shelf_ssh_port exceeds/);
+  const injectedShort = validateFactsInput({ shelf_ssh_port: '22;rm' });
+  assert.equal(injectedShort.ok, false, 'a 5-char injection slipped past the shape');
+  if (!injectedShort.ok) assert.match(injectedShort.error, /^shelf_ssh_port must be /);
+});
+
+test('the four shelf_* fields accept the real values, and accept BLANK', () => {
+  const good = validateFactsInput({
+    shelf_host: 'napling.tail1234.ts.net',
+    shelf_path: '/media/napling/books',
+    shelf_user: 'shelfsync',
+    shelf_ssh_port: '22',
+  });
+  assert.ok(good.ok, good.ok ? '' : good.error);
+
+  // ⚠️ Blank must stay legal on every field. "Justin has not filled this in
+  // yet" is a real state and must not read as a validation failure - the same
+  // reasoning as GET answering `{ facts: null }` rather than 404.
+  const blank = validateFactsInput({ shelf_host: '', shelf_path: '', shelf_user: '', shelf_ssh_port: '' });
+  assert.ok(blank.ok, blank.ok ? '' : blank.error);
 });
 
 test('validateFactsInput: a full, well-formed submission passes and defaults nothing away', () => {

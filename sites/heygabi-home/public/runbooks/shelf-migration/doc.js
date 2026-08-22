@@ -23,7 +23,13 @@ const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
 const DOC_SLUG = 'shelf-migration';
 const FACTS_SLUG = 'shelf';
-const FACT_FIELDS = ['hardware', 'os', 'disk_free', 'library_size', 'notes'];
+// Must match FACT_FIELDS in apps/auth-worker/src/facts.ts - the POST body is
+// strict and refuses any key the Worker does not know. The four shelf_* were
+// added 2026-08-22 so the connection details stop travelling by chat message.
+const FACT_FIELDS = [
+  'hardware', 'os', 'disk_free', 'library_size', 'notes',
+  'shelf_host', 'shelf_path', 'shelf_user', 'shelf_ssh_port',
+];
 
 const gateMain = document.getElementById('gate-main');
 const gateStatusEl = document.getElementById('gate-status');

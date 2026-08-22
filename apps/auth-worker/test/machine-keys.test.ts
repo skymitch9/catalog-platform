@@ -197,7 +197,9 @@ test('the self-service keys are exactly the ones this Worker verifies', () => {
   // entry whose rotation story nobody has thought about. `claude-usage` joined
   // 2026-08-21 with the budget meter.
   const ss = KEY_REGISTRY.filter((k) => k.mode === 'self-service').map((k) => k.id).sort();
-  assert.deepEqual(ss, ['claude-usage', 'conductor', 'shelf-parity', 'worker-events']);
+  // `shelf-config` joined 2026-08-22 with the connection form: the pipeline PC
+  // reads host/path/user/port through it instead of them being relayed by hand.
+  assert.deepEqual(ss, ['claude-usage', 'conductor', 'shelf-config', 'shelf-parity', 'worker-events']);
 });
 
 test('⚠️ the Claude usage key has NO legacy env leg', () => {

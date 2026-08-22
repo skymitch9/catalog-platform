@@ -114,6 +114,7 @@
   .facts-form { display: flex; flex-direction: column; gap: .85rem; }
   .f-row { display: flex; flex-direction: column; gap: .3rem; }
   .f-label { font-size: .8125rem; font-weight: 700; color: var(--muted); }
+  .f-sep { border:0; border-top:1px solid rgba(255,255,255,.14); margin:1.5rem 0 0 }
   .facts-form input, .facts-form textarea {
     font: inherit; font-size: .9375rem; padding: .55em .7em; border-radius: 8px;
     border: 1px solid var(--hairline); background: var(--bg); color: var(--ink);
@@ -173,6 +174,44 @@
         <label class="f-label" for="f-notes">Anything odd about this machine?</label>
         <textarea id="f-notes" name="notes" maxlength="2000" rows="3" placeholder="Optional — dual boot, a flaky drive, a weird BIOS setting, whatever's worth knowing"></textarea>
       </div>
+      <hr class="f-sep">
+      <h3 class="facts-h" style="font-size:1rem;margin:1.25rem 0 .25rem">Connect the shelf to the pipeline</h3>
+      <p class="facts-sub">
+        These four let Skylar&rsquo;s pipeline push new books straight to your box,
+        instead of you waiting on a Drive pull &mdash; and instead of anyone
+        having to message you when something goes missing.
+        <strong>Do the three steps on your runbook page first</strong>
+        (<a href="/runbooks/shelf-justin/">Justin&rsquo;s steps</a> &sect;4);
+        these boxes are the last thing, once <code>shelfsync</code> and Tailscale exist.
+        Leave them blank until then &mdash; a half-filled form is treated as not
+        filled in, never as a guess.
+      </p>
+      <div class="f-row">
+        <label class="f-label" for="f-shelf-host">Tailscale hostname</label>
+        <input id="f-shelf-host" name="shelf_host" maxlength="253" autocomplete="off" spellcheck="false" placeholder="e.g. napling.tail1234.ts.net">
+        <p class="facts-sub">Run <code>tailscale status</code> &mdash; it is the name shown for this box. An IP works too. No <code>https://</code>.</p>
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-shelf-path">Library folder</label>
+        <input id="f-shelf-path" name="shelf_path" maxlength="400" autocomplete="off" spellcheck="false" placeholder="/media/napling/books">
+        <p class="facts-sub">The real library, <strong>not</strong> the <code>abs</code> shadow tree. Must start with <code>/</code>.</p>
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-shelf-user">SSH username</label>
+        <input id="f-shelf-user" name="shelf_user" maxlength="32" autocomplete="off" spellcheck="false" placeholder="shelfsync">
+        <p class="facts-sub">The user you created in &sect;4 &mdash; lowercase, no spaces. Not your own login, and never <code>root</code>.</p>
+      </div>
+      <div class="f-row">
+        <label class="f-label" for="f-shelf-port">SSH port</label>
+        <input id="f-shelf-port" name="shelf_ssh_port" maxlength="5" inputmode="numeric" autocomplete="off" placeholder="22">
+        <p class="facts-sub">Leave as <code>22</code> unless you changed it.</p>
+      </div>
+      <p class="facts-sub">
+        <strong>Nothing secret goes in this form.</strong> A hostname, a username, a
+        folder and a port are not passwords &mdash; the key that actually opens
+        anything stays on Skylar&rsquo;s machine and is never typed here.
+        Never paste a password or a private key into these boxes.
+      </p>
       <div class="facts-actions">
         <button id="facts-save" class="btn" type="submit">Save facts</button>
         <span id="facts-status" class="facts-status" role="status" aria-live="polite"></span>
