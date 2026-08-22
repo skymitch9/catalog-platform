@@ -107,7 +107,14 @@ test('the mirror derives its store list from the real backup.yml', async () => {
   assert.ok(prefixes.includes('r2/audiobook-covers'));
   assert.ok(prefixes.includes('firestore/audiobook-catalog'));
   // Every prefix is `<kind>/<store>` — nothing else may slip through the filter.
-  for (const p of prefixes) assert.match(p, /^(d1|r2|firestore)\/[A-Za-z0-9_-]+$/);
+  // ⚠️ `docs` joined the kinds with the gitignored-docs backup (db5b4aa,
+  // 2026-08-2x) and this guard was not widened with it, so it failed for every
+  // run afterwards. That matters more than a red test: `deploy:home` runs
+  // `npm test` first, so a stale guard here has been BLOCKING the home-site
+  // deploy. Same shape as the audiobook promote gate on 2026-08-22 — a new
+  // kind added to one list and not to the guard. If you add a kind, add it in
+  // BOTH places in the same commit.
+  for (const p of prefixes) assert.match(p, /^(d1|r2|firestore|docs)\/[A-Za-z0-9_-]+$/);
   assert.equal(keep, 8, 'the mirror inherits the bucket’s retention depth; this changed');
 });
 
