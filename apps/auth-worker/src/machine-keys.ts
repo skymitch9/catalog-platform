@@ -116,9 +116,9 @@ export type KeyDef = {
 export const KEY_REGISTRY: KeyDef[] = [
   {
     id: 'shelf-parity',
-    label: 'Shelf server reporter',
-    tag: 'writes one number, one route',
-    body: 'Used by 03-shelf-parity.sh on the shelf server to post how many books match Drive.',
+    label: "Shelf parity reporter — Justin's box",
+    tag: 'SENDS a number TO us · installed on the shelf server',
+    body: "⚠️ Not to be confused with the OTHER shelf key. THIS one lives on JUSTIN'S BOX and SENDS us a number: 03-shelf-parity.sh posts how many books match Drive, which is what fills the parity bar on /status. It reads nothing from the estate.",
     blast: 'A leaked one can report a false number and nothing else. It cannot read the library, cannot pass the Google gate, and is accepted on no other route.',
     livesAt: '/srv/shelf/.parity.env on the shelf server (hardware outside the estate)',
     mode: 'self-service',
@@ -136,9 +136,9 @@ Run ./03-shelf-parity.sh once, then reload this page — Last used should show a
   },
   {
     id: 'shelf-config',
-    label: 'Shelf connection reader',
-    tag: 'reads four config values, one route',
-    body: "Used by audiobook_catalog/scripts/sync_to_server.py on the pipeline PC to read where Justin's box is - host, path, ssh user, port - so those never have to be relayed through a chat message and hand-copied into a .env.",
+    label: 'Shelf connection reader — the pipeline PC',
+    tag: "READS four settings FROM us · installed on the owner's PC",
+    body: "⚠️ Not to be confused with the OTHER shelf key. THIS one lives on the OWNER'S PIPELINE PC and READS four settings from us — the host, path, ssh user and port Justin typed into the connection form — so sync_to_server.py can push new books to his box without anyone relaying those values by hand. It writes nothing.",
     blast: "A leaked one can READ a tailnet hostname, a unix username, a path and a port. It writes nothing and is accepted on no other route. ⚠️ Worth being honest about what that is: those four are CONFIG, not credentials - knowing them gets you nowhere without the SSH private key, which lives only on the pipeline PC and is not in this estate at all. It is still a disclosure, which is why the route is gated rather than public.",
     livesAt: "the pipeline PC's environment (SHELF_CONFIG_TOKEN), beside the SSH key it pairs with",
     mode: 'self-service',
