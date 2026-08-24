@@ -17,6 +17,36 @@
 > safe; do that first even if the replacement waits.
 
 
+## 🌙 OVERNIGHT RUN POLICY — owner decisions 2026-08-23 ~21:25, before bed
+
+Owner going to bed; wants questions answered NOW and work done before he wakes,
+timing irrelevant. Four decisions, binding on every overnight agent:
+
+1. **LAND FOR MORNING REVIEW — no unattended production changes.** Overnight
+   agents build, merge to main, run tests, commit. They do **NOT**: deploy to
+   prod, apply a REMOTE migration, run a PAID sweep (LLM covers/research), or
+   flip a live flag. The owner approves ONE deploy pass in the morning. Local
+   migrations for testing are fine.
+2. **AUDIT: fix critical + high, report medium/low.** Fix agents write fixes on
+   branches → main + tests, NOT deployed. ⚠️ A finding that is a DESIGN decision,
+   not a clear bug (e.g. the `/api/series` gated-shelf metadata visibility), is
+   FLAGGED for the owner, never auto-fixed — a wrong fix to intended behaviour is
+   worse than none.
+3. **GABI T2 catalog-fix lane: build DARK** (off-by-default flag), wired to
+   Discord + the library chat panel, audiobook surface EXCLUDED (no audit seam).
+   Owner flips it on himself after watching it live.
+4. **Ebook-site audio count: YES** — change `audiobook_catalog`’s ebook matcher
+   (`_agreed_row`, which refuses two-cover rows as ambiguous) so two audio
+   editions render a COUNT, not a vanished mark. Flag any side effect the
+   ambiguity-refusal protected against.
+
+⚠️ **The conductor stays on Fable and orchestrates only** — every build is an
+   Opus subagent. Watch usage each cycle; pause at ~78% session / 55% weekly and
+   reschedule. Weekly is the real ceiling (~11 sessions per allowance); session
+   caps are naps.
+
+---
+
 ## ☐ HELD BUILD QUEUE — paused at 75% session 2026-08-23 ~21:17, resume at session reset
 
 Paused to protect the session window (weekly 15%, Fable 2% — both fine). One-shot
