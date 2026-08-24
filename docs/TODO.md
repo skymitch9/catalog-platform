@@ -422,7 +422,7 @@ sessions allow. Tier 3 only with the owner's go-ahead.
 
 ---
 
-## ☐ Index machine read: BUILT, waiting on the owner's secret + a deploy (2026-08-23)
+## ☐ Index machine read: DEPLOYED 2026-08-24, waiting on the owner's secret (2026-08-23)
 
 The index can now be read by a **sibling Worker**, which it never could before:
 `/api/lookup` and `/api/search` sit below the `requireEstateMember()` blanket,
@@ -444,8 +444,17 @@ the route answers a worded 503 naming the missing secret while unkeyed, so
 deploying first is safe; minting first would leave a token with nothing to
 present it to.
 
-1. **Deploy** the index Worker from `main` once the branch merges. No migration
-   — this change touches no schema.
+1. ✅ **DONE 2026-08-24 04:02Z — the deploy.** Branch merged as `2603f36`,
+   deployed with `npx wrangler deploy` in `apps/index-worker`, version
+   **`4e07d0dd-570f-4258-92d9-d32c55e90e45`**. No migration was needed and none
+   was run — ⚠️ `wrangler d1 migrations list index_catalog --remote` answered
+   *"No migrations to apply!"* **before** the deploy, so `0003_visibility_cache`
+   and `0004_series_registry` are BOTH already applied remotely and the
+   `library_catalog/docs/access/index-worker.md` line calling 0003 **PENDING is
+   stale** (last verified there 2026-08-14). Live: `GET
+   /api/machine/lookup?title=x` → **503 `machine_read_unconfigured`**, body
+   naming `INDEX_READ_TOKEN_LIBRARY` and the both-holders ritual, exactly the
+   worded refusal §10 promises for the unkeyed state.
 2. **Mint ONE value and set it on BOTH holders in one sitting** (they are
    write-only secrets; no readable copy will exist):
    - `wrangler secret put INDEX_READ_TOKEN_LIBRARY` — in `apps/index-worker/`
@@ -455,15 +464,29 @@ present it to.
    ⚠️ **Must NOT be the same value as `INDEX_PUSH_TOKEN_LIBRARY`** — push writes
    a whole source's snapshot, read sees across every catalog.
 3. **Re-run `npm run probe:estate`** and confirm `I9`/`I10` report **401
-   `machine_token_missing`** rather than 503. Expect **105** probes; before the
-   deploy those three fail with a 404, which is the pre-deploy state.
+   `machine_token_missing`** rather than 503. ⚠️ **They PASS today at 503** —
+   the probe deliberately accepts either worded refusal, so it proves the route
+   exists and is wired but **cannot tell you whether the secret landed**. Step 2
+   is verified by the code changing 503 → 401, not by the suite going green.
+   Measured 2026-08-24 04:12Z, clean run: **118 passed, 0 failed** (the "105"
+   written here on 2026-08-23 is stale — the suite has grown).
+
+   ⚠️ **Run the suite ONCE.** Measured the same night: a second run inside a few
+   minutes tripped `auth.heygabi.ai`'s own rate limiter and reported **12
+   spurious failures**, every one a `429 {"error":"rate_limited"}` or a missing
+   CORS header on a preflight that never got through. A back-to-back re-run
+   measures the rate limiter, not the estate. Wait a couple of minutes.
 
 **Then, separately:** wire the library Worker's ladder to call it, and add the
 two rows to `library_catalog/docs/access/index-worker.md` (that repo is not
 touched by this branch).
 
-⚠️ **Shipped ≠ verified**: nothing has been called against `index.heygabi.ai`,
-and the probes have never been executed live. §10.8 is the table.
+⚠️ **Shipped ≠ verified, and the gap is now a NARROW one rather than a total
+one.** Superseded 2026-08-24: the probes HAVE been executed live (118 passed,
+0 failed) and the machine route HAS been called against `index.heygabi.ai` —
+but only ever into its **refusal**. **The machine read has never returned a
+row**, because no token exists to present, so the happy path is unexercised in
+production and stays that way until step 2. §10.8 is the table.
 
 ---
 

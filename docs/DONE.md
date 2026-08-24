@@ -16,6 +16,64 @@
 
 
 
+## ✅ Pausing ingestion is a QUESTION now — LIVE 2026-08-24
+
+His ask, verbatim (2026-08-23): *"when i manually pause the pipeline it says
+nothing can override it. I want it to ask me if i want to stop all work until
+unpaused or if scheduled window is fine to continue."* His decision: **ask every
+time**, save nothing as a preference, and show which mode is active.
+
+**Live at** [/status/pipelines/](https://heygabi.ai/status/pipelines/) — the
+"Ingestion — pause & resume" card. "Pause now" became "Pause now…" and opens:
+
+> [Stop all work until unpaused] [Let the scheduled window continue] [Cancel]
+
+| | |
+|---|---|
+| Built on | `feature/pause-asks`, merged to `main` as `310152b` |
+| auth-worker | version `151273b2-70c7-47e5-944e-036118866767`, 04:01Z |
+| heygabi-home | deployment `197b9230`, 04:05Z |
+| Tests | auth-worker **462 pass / 0 fail**; whole workspace **2009 pass / 0 fail**; `typecheck` clean |
+| Probes | `npm run probe:estate` **118 passed, 0 failed** |
+
+⚠️ **THE DEPLOY ORDER IS PART OF THE FEATURE, not housekeeping.** The Worker
+went first and the site second. The page asks the new question and sends an
+answer `ops.ts` must already understand — site-first would render two buttons
+whose answer the Worker discards, which is the worst possible failure here: a
+control that looks like it worked and did nothing. Worker-first only means the
+Worker can answer a question nobody is asking yet, which is harmless. Anyone
+re-deploying this pair does it in the same order.
+
+**Two design calls worth keeping**, both recorded in `9471961`'s own message:
+`pause_mode` is written **unconditionally into the updateMask beside `paused`**,
+so the flag and its meaning land in one write and there is no instant where the
+document says "paused" carrying the *previous* pause's meaning; and Resume and
+Start-now **reset it to `'all'`**, because the question is asked every time and
+a leftover `'manual_only'` would silently become the default of a pause nobody
+chose it for. Fails closed everywhere: absent or null → `'all'`; present but not
+a mode → **400 in words**, never coerced.
+
+⚠️ **NOT VERIFIED — and it is the half that matters most.** Nobody signed in and
+actually pressed "Pause now…". The two answers are proven by **42 auth-worker
+unit tests** and **9 `ingestion-time` tests**, not by a live pause. The live
+evidence goes exactly this far: `/assets/ingestion-time.js` is byte-identical to
+`HEAD` and carries `pause_mode` three times, `/status/pipelines/pipelines.js` is
+byte-identical to `HEAD`, and `auth.heygabi.ai/api/health` is `ok:true`.
+
+⚠️ **The handed-down verification step for this was WRONG and would have read as
+a failed deploy** — `curl .../status/pipelines/pipelines.js | grep -c pause_mode`
+was specified to be > 0. `pause_mode` appears **nowhere** in `pipelines.js`:
+not live, not at `HEAD`, not in the working tree. It is written by the Worker's
+`ops.ts` and read by `assets/ingestion-time.js`; `pipelines.js` only renders the
+card. **The grep returns 0 on a perfectly good deploy.** Kept here because the
+next person handed that check would have rolled back working production.
+
+---
+
+
+
+
+
 
 ## ✅ K3 and K19 — the two kept patterns, distilled to `info/` 2026-08-23
 
