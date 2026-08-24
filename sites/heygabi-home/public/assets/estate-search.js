@@ -343,6 +343,8 @@ export function groupBySeries(rows) {
         background: var(--et-bg); overflow: hidden;
       }
       .es-hit-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      a.es-hit-cover { cursor: pointer; }
+      a.es-hit-cover:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
       .es-hit-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
       .es-hit-title { font-weight: 600; }
       .es-hit-title a { color: var(--et-fg); text-decoration: none; }
@@ -750,9 +752,26 @@ export function groupBySeries(rows) {
     }
 
     _coverFor(li, row) {
-      const box = document.createElement('span');
+      // The cover is a LINK to the item whenever we have both an image to show
+      // and a destination — same target the title anchor uses, routed through
+      // _openHit so the cancelable estate-search:select event still fires. With
+      // no cover image there is nothing to click, so the slot stays an inert,
+      // aria-hidden placeholder span (keeps rows aligned).
+      const linkUrl = row && row.cover_url ? row.detail_url : null;
+      const box = document.createElement(linkUrl ? 'a' : 'span');
       box.className = 'es-hit-cover';
-      box.setAttribute('aria-hidden', 'true');
+      if (linkUrl) {
+        box.href = linkUrl;
+        box.target = '_blank';
+        box.rel = 'noopener';
+        box.setAttribute('aria-label', row.title ? `Open ${row.title}` : 'Open item');
+        box.addEventListener('click', (e) => {
+          e.preventDefault();
+          this._openHit(linkUrl, row);
+        });
+      } else {
+        box.setAttribute('aria-hidden', 'true');
+      }
       if (row && row.cover_url) {
         const img = document.createElement('img');
         img.alt = '';

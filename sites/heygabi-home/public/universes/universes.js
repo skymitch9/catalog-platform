@@ -170,9 +170,19 @@ function metaBits(row) {
 }
 
 function coverFor(li, row) {
-  const box = document.createElement('span');
+  // Clickable cover → the item's detail page (same target as the title link),
+  // but only when there is an image to click; otherwise an inert placeholder.
+  const linkUrl = row && row.cover_url ? row.detail_url : null;
+  const box = document.createElement(linkUrl ? 'a' : 'span');
   box.className = 'hit-cover';
-  box.setAttribute('aria-hidden', 'true');
+  if (linkUrl) {
+    box.href = linkUrl;
+    box.target = '_blank';
+    box.rel = 'noopener';
+    box.setAttribute('aria-label', row.title ? `Open ${row.title}` : 'Open item');
+  } else {
+    box.setAttribute('aria-hidden', 'true');
+  }
   if (row && row.cover_url) {
     const img = document.createElement('img');
     img.alt = '';

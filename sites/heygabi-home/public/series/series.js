@@ -293,10 +293,22 @@ function numberBadge(text) {
   return span;
 }
 
-function coverBox(entry) {
-  const box = document.createElement('span');
+function coverBox(entry, fallbackUrl) {
+  // A cover with somewhere to go becomes a LINK to that item (same target the
+  // title uses): the entry's own detail_url, or the row's linked destination
+  // as a fallback. With no image there is nothing to click, so the slot stays
+  // an inert, aria-hidden placeholder span (keeps rows aligned).
+  const linkUrl = entry && entry.cover_url ? (entry.detail_url || fallbackUrl || null) : null;
+  const box = document.createElement(linkUrl ? 'a' : 'span');
   box.className = 'hit-cover';
-  box.setAttribute('aria-hidden', 'true');
+  if (linkUrl) {
+    box.href = linkUrl;
+    box.target = '_blank';
+    box.rel = 'noopener';
+    box.setAttribute('aria-label', entry.title ? `Open ${entry.title}` : 'Open item');
+  } else {
+    box.setAttribute('aria-hidden', 'true');
+  }
   if (entry && entry.cover_url) {
     const img = document.createElement('img');
     img.alt = '';
@@ -338,8 +350,9 @@ function volumeRow(index, entries, seriesSources) {
   li.className = 'hit';
   li.appendChild(numberBadge(index === null ? '—' : fmtIndex(index)));
 
+  const linked = entries.find((e) => e.detail_url);
   const withCover = entries.find((e) => e.cover_url);
-  li.appendChild(coverBox(withCover));
+  li.appendChild(coverBox(withCover, linked ? linked.detail_url : null));
 
   const body = document.createElement('div');
   body.className = 'hit-body';
@@ -351,7 +364,6 @@ function volumeRow(index, entries, seriesSources) {
   const lead = entries[0];
   const title = document.createElement('span');
   title.className = 'hit-title';
-  const linked = entries.find((e) => e.detail_url);
   if (linked) {
     const a = document.createElement('a');
     a.href = linked.detail_url;
