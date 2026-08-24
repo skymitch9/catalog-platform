@@ -308,7 +308,7 @@ export async function replyToMessage(
   messageId: string,
   content: string,
   mentionUserId: string | null,
-  opts: { components?: unknown[]; sleep?: Sleeper } = {},
+  opts: { components?: unknown[]; embeds?: unknown[]; sleep?: Sleeper } = {},
 ): Promise<Response> {
   return discordFetch(
     `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages`,
@@ -324,6 +324,9 @@ export async function replyToMessage(
           replied_user: false,
         },
         ...(opts.components && opts.components.length > 0 ? { components: opts.components } : {}),
+        // ⚠️ The T2 confirm card's embed. Absent on every other message, so the
+        // reply shape is unchanged for them.
+        ...(opts.embeds && opts.embeds.length > 0 ? { embeds: opts.embeds } : {}),
       }),
     },
     opts.sleep,

@@ -198,10 +198,33 @@ import {
   type DelegatedDeps,
   type DelegatedOutcome,
 } from './delegated-flow.js';
+import type { ConfirmProposer } from './confirm-propose.js';
+import type { ConfirmChangePending } from './conversation.js';
 
 /** Discord's own ceiling on a message body. Truncating here rather than
  * discovering it as a 400 that loses the whole answer. */
 export const DISCORD_CONTENT_MAX = 2000;
+
+/** Narrow a loaded pending slot to a live T2 confirm, or `null`. ⚠️ Only a prior
+ *  CONFIRM is "the change I offered a moment ago" (design §2.1 cost 1); a
+ *  `book_pick`/`instance_pick` being displaced is not, so it is dropped silently
+ *  as it always was. */
+function confirmPendingOf(pending: PendingChoice | null): ConfirmChangePending | null {
+  return pending && pending.kind === 'confirm_change' ? pending : null;
+}
+
+/** The reply's `extra`, built so ABSENT stays `undefined` (the pre-confirm
+ *  behaviour a dozen tests assert) and a confirm card carries its `embeds`
+ *  alongside the button `components`. */
+function replyExtra(
+  components?: unknown[] | null,
+  embeds?: unknown[] | null,
+): { components?: unknown[]; embeds?: unknown[] } | undefined {
+  const extra: { components?: unknown[]; embeds?: unknown[] } = {};
+  if (components) extra.components = components;
+  if (embeds) extra.embeds = embeds;
+  return components || embeds ? extra : undefined;
+}
 
 /**
  * ⚠️ **DISCORD'S 2,000-CHARACTER CEILING, AND WHAT USED TO HAPPEN AT IT.**
@@ -280,8 +303,11 @@ export interface MentionDeps {
   capCheck(userId: string): Promise<CapVerdict>;
   /** Called once, only when an answer was actually produced. */
   recordTurn(userId: string): Promise<void>;
-  /** Post the reply. Returns nothing useful — a failed post is logged, not retried. */
-  reply(content: string, extra?: { components?: unknown[] }): Promise<void>;
+  /** Post the reply. Returns nothing useful — a failed post is logged, not retried.
+   *  ⚠️ `embeds` rides the T2 confirm card (design §5.3 — an embed with before→
+   *  after fields); every other lane leaves it absent, so the surface is
+   *  unchanged for them. */
+  reply(content: string, extra?: { components?: unknown[]; embeds?: unknown[] }): Promise<void>;
   /** ⚠️ REQUIRED, not optional. A memoryless surface is a real thing (a test,
    * a future one-shot lane) but it must be an explicit no-op that somebody
    * wrote down, never a dependency somebody forgot to pass. */
@@ -299,6 +325,18 @@ export interface MentionDeps {
    * replaced and the owner decision that ended it.
    */
   delegated?: DelegatedDeps;
+  /**
+   * ⚠️ **TIER 2 CONFIRM — the propose trigger, OPTIONAL BY DESIGN and DARK.**
+   *
+   * Absent means the surface cannot propose a catalog fix — the state of every
+   * caller not given one, and of production while `GABI_CONFIRM_T2` is off or the
+   * app token / service account is unset. An injected port so THIS FILE holds no
+   * credential (`confirm-propose.ts` is the module that names them). ⚠️ It is
+   * consulted ONLY when `cfg.confirmT2` is also true (the affirmative flag), so
+   * the flag OFF is byte-for-byte the pre-confirm fix path. See `delegated.ts`'s
+   * header for the seam this mirrors.
+   */
+  confirm?: ConfirmProposer;
   /**
    * Post a SECOND, later message — the async report after a sweep. Absent means
    * the surface has no way to speak again (a test, or a lane where the only
@@ -444,6 +482,14 @@ export interface MentionConfig {
    */
   instances?: readonly LibraryInstance[];
   delegatedWrites?: boolean;
+  /**
+   * ⚠️ **TIER 2 CONFIRM — the `GABI_CONFIRM_T2` posture, affirmative-only, read
+   * at the composition root.** Defaults to FALSE so a caller that predates the
+   * confirm lane — or forgets the flag — never proposes. ⚠️ Both this AND
+   * `deps.confirm` must be true before a single fix message is parsed for a
+   * proposal; either alone leaves the fix path exactly as it was.
+   */
+  confirmT2?: boolean;
   /**
    * ⚠️ TIER 0b. The `GABI_DOCS` posture, affirmative-only and read at the
    * composition root. Defaults to FALSE here so a caller that predates the docs
@@ -1116,6 +1162,12 @@ export interface AnsweredQuestion {
   pending: PendingChoice | null;
   intent: MentionIntent;
   components: unknown[] | null;
+  /**
+   * ⚠️ **THE T2 CONFIRM CARD'S EMBED** (design §5.3). Present only on a proposal;
+   * every other lane leaves it absent and the reply carries content + components
+   * exactly as before. Threaded through `say` to `deps.reply`.
+   */
+  embeds?: unknown[];
   /**
    * ⚠️ **AUTO-CONTINUE, and the sentence that ends it** (owner decision
    * 2026-08-18, option C).
@@ -1806,6 +1858,18 @@ async function answerQuestion(
    *  `person` is resolved by the caller from the asker's own identity — see
    *  `gabi-tools.ts`'s recall array for why no tool parameter could carry it. */
   recallCtx?: { port: ArchivePort; person: string },
+  /**
+   * ⚠️ **TIER 2 CONFIRM — the propose trigger for the `fix_request` lane.**
+   * Present ONLY when `cfg.confirmT2` is on AND a proposer port was built
+   * (`handleMention` gates it), so its mere presence is the flag being on. The
+   * `currentPending` is the loaded slot, so a displaced confirm can be named as
+   * dropped (design §2.1). Absent → the fix lane is byte-for-byte the pre-confirm
+   * propose-and-deep-link answer.
+   */
+  confirmCtx?: {
+    proposer: ConfirmProposer;
+    currentPending: ConfirmChangePending | null;
+  },
 ): Promise<AnsweredQuestion> {
   const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
 
@@ -2230,10 +2294,38 @@ async function answerQuestion(
   }
 
   if (intent === 'fix_request') {
+    // ── ⚠️ TIER 2 CONFIRM — the propose trigger, DARK behind `GABI_CONFIRM_T2`.
+    //
+    // `confirmCtx` is present ONLY when the flag is on AND a proposer port was
+    // built (`handleMention` gates both), so this whole block is inert with the
+    // flag off — the fix path below is then byte-for-byte what it was. When it
+    // IS on, a message that parses to ONE book + ONE confirmable field + ONE
+    // editable shelf becomes a dry-run proposal and a confirm card; every
+    // ambiguity returns null and falls through to the same deep link (design
+    // §4.3 sends anything that is not "exactly one book on the table" to the
+    // site).
+    if (confirmCtx) {
+      const proposed = await confirmCtx.proposer.tryPropose(
+        question,
+        { discordUserId: who.discordUserId, guildId: who.guildId },
+        history,
+        confirmCtx.currentPending,
+      );
+      if (proposed) {
+        cfg.trace?.lane('confirm_propose');
+        return {
+          content: proposed.content,
+          pending: proposed.pending,
+          intent,
+          components: proposed.components ?? null,
+          ...(proposed.embeds ? { embeds: proposed.embeds } : {}),
+        };
+      }
+    }
+
     cfg.trace?.lane('fix_link');
     // ⚠️ Propose-and-deep-link, `/gabi`'s shape (b) verbatim: she reads, she
     // says what she found, and the change happens where her authority is.
-    // Phase B is where a write path could exist; this build has none.
     // ⚠️ THE SITE THE OWNER HIT. A fix-shaped ask is the one message whose
     // whole point is the link, so it is the one that must point at HIS shelf
     // and open loaded with what he typed.
@@ -2397,7 +2489,12 @@ export async function handleMention(
     // 2,000 characters loses its last steps, and the old `truncate` said so with
     // a single `…`. Chunks after the first ride `followUp`; a surface without
     // one is told in words that the answer was cut rather than left to guess.
-    const say = async (body: string, components?: unknown[] | null, overflow?: string) => {
+    const say = async (
+      body: string,
+      components?: unknown[] | null,
+      overflow?: string,
+      embeds?: unknown[] | null,
+    ) => {
       const whole = `${greeting} ${body}`.trim();
       said = true;
       let parts = splitForDiscord(whole);
@@ -2434,7 +2531,7 @@ export async function handleMention(
         const room = DISCORD_CONTENT_MAX - notice.length;
         await deps.reply(
           `${truncate(parts[0] as string, room)}${notice}`,
-          components ? { components } : undefined,
+          replyExtra(components, embeds),
         );
         return;
       }
@@ -2449,7 +2546,7 @@ export async function handleMention(
 
       await deps.reply(
         `${label(0)}${parts[0] as string}${total === 1 ? tail : ''}`,
-        components ? { components } : undefined,
+        replyExtra(components, embeds),
       );
       // ⚠️ Each continuation is its own try: a failed second message must never
       // discard the first, and must never look like the whole turn failed.
@@ -2566,8 +2663,15 @@ export async function handleMention(
       // never from anything a model emitted. That is the whole of design §4.4's
       // privacy guarantee, and it is one line.
       archiveCtx,
+      // ⚠️ TIER 2 CONFIRM. Present ONLY when the flag is on AND a proposer port
+      // was built — so its mere presence at the fix lane is the flag being on,
+      // and the flag off means this is `undefined` and nothing is parsed. The
+      // loaded pending travels so a displaced confirm can be named as dropped.
+      cfg.confirmT2 && deps.confirm
+        ? { proposer: deps.confirm, currentPending: confirmPendingOf(memory.pending) }
+        : undefined,
     );
-    await say(answer.content, answer.components, answer.overflowNote);
+    await say(answer.content, answer.components, answer.overflowNote, answer.embeds);
 
     // ⚠️ EVERYTHING PAST THE POST IS BOOKKEEPING, AND BOOKKEEPING MUST NOT
     // SPEAK. Before this, a throw from `save`, `recordTurn` or the docs fuse

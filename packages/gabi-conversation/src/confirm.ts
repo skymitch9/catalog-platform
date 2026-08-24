@@ -184,6 +184,65 @@ export function isConfirmableField(field: unknown): field is T2ConfirmableField 
   return typeof field === 'string' && (T2_CONFIRMABLE_FIELDS as readonly string[]).includes(field);
 }
 
+/**
+ * ⚠️ **THE HUMAN-WORD → API-FIELD MAP for the PROPOSE trigger** — the inverse of
+ * `fieldLabel`, so a chat message ("fix the *series*", "set the *volume* to 3",
+ * "wrong *cover*") resolves to the destination's own field name BEFORE anything
+ * is proposed. It exists here, beside the allowlist it maps INTO, so both
+ * surfaces parse the same vocabulary rather than each inventing one.
+ *
+ * ⚠️ **A `switch`, not a `Record`, and default-deny.** Same reasoning as
+ * `fieldLabel`: a `Record` makes `__proto__`/`toString`/`constructor` quietly
+ * truthy (the classic allowlist hole), and this function is a gate — an
+ * unrecognised word, and every KEY-MOVING one (`title`, `authors`/`author`,
+ * `narrator`, …), returns `null` so the caller falls through to the site's own
+ * careful edit rather than proposing a change it must never make from chat.
+ *
+ * ⚠️ The model is asked to emit either the API name or a human word; both are
+ * accepted here, so a parse that answers `"seriesIndexDisplay"` and one that
+ * answers `"volume"` land on the same field. It never widens the allowlist:
+ * every arm returns a member of `T2_CONFIRMABLE_FIELDS`, which the DESTINATION
+ * re-checks regardless.
+ */
+export function confirmableFieldFromLabel(word: unknown): T2ConfirmableField | null {
+  if (typeof word !== 'string') return null;
+  // An exact API name is accepted as-is (the model may already emit the camelCase
+  // `seriesIndexDisplay`/`coverUrl`), checked BEFORE the case fold below.
+  const exact = word.trim();
+  if (isConfirmableField(exact)) return exact;
+  const w = exact.toLowerCase();
+  switch (w) {
+    case 'subtitle':
+      return 'subtitle';
+    case 'series':
+    case 'series name':
+      return 'series';
+    case 'volume':
+    case 'series index':
+    case 'series number':
+    case 'book number':
+    case 'seriesindex':
+      return 'seriesIndexDisplay';
+    case 'description':
+    case 'blurb':
+    case 'summary':
+      return 'description';
+    case 'cover':
+    case 'cover url':
+    case 'cover image':
+    case 'coverurl':
+      return 'coverUrl';
+    case 'illustrator':
+    case 'artist':
+      return 'illustrator';
+    default:
+      // ⚠️ `title`, `author(s)`, `narrator` and everything else fall here on
+      // purpose: they are not confirmable from chat (key-moves, or not a `work`
+      // field at all), and a null is how the caller knows to defer to the site.
+      return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Propose — build the proposal, validating the fields (pure)
 // ---------------------------------------------------------------------------

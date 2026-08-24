@@ -17,6 +17,7 @@ import {
   buildRestatement,
   checkConfirmPress,
   compareAndSet,
+  confirmableFieldFromLabel,
   confirmSignedMaterial,
   fieldLabel,
   formatConfirmCustomId,
@@ -57,6 +58,37 @@ describe('⚠️ the field allowlist is default-deny', () => {
     assert.equal(isConfirmableField('__proto__'), false);
     assert.equal(isConfirmableField('toString'), false);
     assert.equal(fieldLabel('title'), null);
+  });
+});
+
+// ── the propose-trigger's human-word → field map ────────────────────────────
+
+describe('⚠️ confirmableFieldFromLabel — maps chat words, default-denies key-moves', () => {
+  it('maps every human synonym onto a member of the allowlist', () => {
+    assert.equal(confirmableFieldFromLabel('series'), 'series');
+    assert.equal(confirmableFieldFromLabel('volume'), 'seriesIndexDisplay');
+    assert.equal(confirmableFieldFromLabel('series number'), 'seriesIndexDisplay');
+    assert.equal(confirmableFieldFromLabel('cover'), 'coverUrl');
+    assert.equal(confirmableFieldFromLabel('blurb'), 'description');
+    assert.equal(confirmableFieldFromLabel('artist'), 'illustrator');
+    assert.equal(confirmableFieldFromLabel('SubTitle '), 'subtitle');
+  });
+
+  it('accepts an API field name verbatim (the model may emit it)', () => {
+    assert.equal(confirmableFieldFromLabel('seriesIndexDisplay'), 'seriesIndexDisplay');
+    assert.equal(confirmableFieldFromLabel('coverUrl'), 'coverUrl');
+  });
+
+  it('⚠️ default-denies the key-movers, non-work fields, and rubbish → null', () => {
+    for (const w of ['title', 'author', 'authors', 'narrator', 'genre', 'none', '', 'toString', '__proto__', 42])
+      assert.equal(confirmableFieldFromLabel(w as unknown), null, `${String(w)} must not map`);
+  });
+
+  it('every non-null result is in the allowlist — it can never widen it', () => {
+    for (const w of ['series', 'volume', 'cover', 'blurb', 'artist', 'subtitle', 'summary']) {
+      const f = confirmableFieldFromLabel(w);
+      assert.ok(f && (T2_CONFIRMABLE_FIELDS as readonly string[]).includes(f), w);
+    }
   });
 });
 

@@ -124,6 +124,8 @@ import type { Env } from './env.js';
 import { createChannelMessage, getGatewayBot, replyToMessage } from './discord-api.js';
 import { delegatedWritesOn, libraryInstances, writeCapDecision } from './delegated.js';
 import { makeDelegate } from './delegated-exec.js';
+import { confirmT2On } from './confirm.js';
+import { makeConfirmProposer } from './confirm-propose.js';
 import { loadSharedMemory, saveSharedMemory } from './memory-client.js';
 import { docsCapDecision, docsOn } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
@@ -1466,6 +1468,13 @@ export class GabiGateway {
     // a port that outlived its turn would read the wrong person's shelf.
     const shelfPort = makeShelfPort(this.env);
 
+    // ⚠️ TIER 2 CONFIRM — the propose trigger. `null` when the estate has not
+    // finished the wiring (no delegated app token, or no service account) — the
+    // ships-dark state, in which the fix lane is exactly the propose-and-deep-
+    // link answer. Even when non-null it is INERT unless `GABI_CONFIRM_T2` is on
+    // (`cfg.confirmT2` below): both must be true before a fix message is parsed.
+    const confirmProposer = makeConfirmProposer(this.env);
+
     // ⚠️ PHASE 2 — resolve the asker's Firebase UID for shared memory sync.
     // Uses the same delegate port built above. Degrades gracefully: if the
     // person is not linked or the lookup fails, shared memory is simply skipped.
@@ -1602,6 +1611,7 @@ export class GabiGateway {
         ...(memoryPort ? { memory: memoryPort } : {}),
         ...(archivePort ? { archive: archivePort } : {}),
         ...(shelfPort ? { shelf: shelfPort } : {}),
+        ...(confirmProposer ? { confirm: confirmProposer } : {}),
         persona: {
           pin: async (userId: string, trope: Trope, writer?: PersonaWriter) => {
             await this.personaPin(userId, trope, writer ?? 'self');
@@ -1635,7 +1645,10 @@ export class GabiGateway {
             trigger.messageId,
             content,
             trigger.authorId,
-            extra?.components ? { components: extra.components } : {},
+            {
+              ...(extra?.components ? { components: extra.components } : {}),
+              ...(extra?.embeds ? { embeds: extra.embeds } : {}),
+            },
           );
           if (res.ok) {
             delivered = true;
@@ -1647,6 +1660,7 @@ export class GabiGateway {
           const retry = await createChannelMessage(botToken, trigger.channelId, {
             content,
             ...(extra?.components ? { components: extra.components } : {}),
+            ...(extra?.embeds ? { embeds: extra.embeds } : {}),
             allowed_mentions: { parse: [], users: [trigger.authorId] },
           });
           if (retry.ok) {
@@ -1686,6 +1700,9 @@ export class GabiGateway {
         catalogBaseUrl: catalogBase(this.env),
         instances: libraryInstances(this.env),
         delegatedWrites: delegatedWritesOn(this.env),
+        // ⚠️ TIER 2 CONFIRM — affirmative-only, ships OFF. With it off the fix
+        // lane never parses a message and is byte-for-byte the pre-confirm path.
+        confirmT2: confirmT2On(this.env),
         docsEnabled: docsOn(this.env),
         booksEnabled: booksOn(this.env),
         memoryEnabled: memoryOn(this.env),
