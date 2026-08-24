@@ -17,6 +17,21 @@
 > safe; do that first even if the replacement waits.
 
 
+## ☐ HELD BUILD QUEUE — paused at 75% session 2026-08-23 ~21:17, resume at session reset
+
+Paused to protect the session window (weekly 15%, Fable 2% — both fine). One-shot
+cron `6d8b7313` fires ~23:42 to resume. In priority order:
+
+1. **Resume the library_catalog audit** — `resumeFromRunId: wf_69d2365f-d02` (completed units replay from cache).
+2. **OR-1 follow-ups** (owner-approved): a narrow `{id,displayName}` members endpoint at `editCatalog`; strict-create SHADOW mode (shadow→enforce) for `POST /copies`,`/works`,`/editions` — library KI-6.
+3. **`--llm` double-bill fix** (owner: do it): in `feature/covers-owner-key` `backfill-missing-covers.mjs`, gate the LLM CALL on `--commit`, not just the SQL write — a dry pass currently bills and is not even a reliable preview. Merge the branch after.
+4. **Alias-aware research** (owner: do it, cost accepted): make `research-run.ts` + free-details + `research.ts:388` ask under `work_alias`, capped like `enrich.ts` MAX_QUERIES=4. ~6–8 h. ⚠️ Re-opens a PAID question when an alias is added — owner accepted this 2026-08-23.
+5. **Merge** `feature/audio-edition-count` to library main; the ebook-site audio count lives in `audiobook_catalog` (`build_ebook_manifest.py` + `ebooks.html`) — separate dispatch.
+6. **GABI write access** — see the dedicated item below (scope pending owner answer).
+7. **Audiobook + Board_Game audits** — the remaining two repos.
+
+---
+
 ## ☐ ESTATE CODE AUDIT — scoped + prepped 2026-08-23, awaiting owner go
 
 > Owner, 2026-08-23 ~20:05: *"a full audit code review of all the codebases,
