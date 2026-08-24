@@ -184,6 +184,56 @@ export function validateFactsInput(body: unknown): ValidatedFacts {
   return { ok: true, fields };
 }
 
+/**
+ * The fields the client ACTUALLY included in its payload — presence, not
+ * truthiness. `body` has already passed validateFactsInput (a non-null,
+ * non-array object with only known keys), so `key in body` is a safe and
+ * exact test of "did the caller mention this field". This is what the merge
+ * below keys off: a field the client sent (even as '') is an intentional
+ * write; a field it omitted is left alone.
+ */
+export function submittedKeysOf(body: Record<string, unknown>): FactField[] {
+  return FACT_FIELDS.filter((k) => k in body);
+}
+
+/**
+ * Read-modify-write MERGE for `facts:<slug>` — the F2 fix.
+ *
+ * ⚠️ WHY THIS EXISTS. Two devops pages POST the SAME `facts:shelf` record but
+ * know different subsets of it: shelf-migration knows all nine fields,
+ * shelf-justin knows only five. The old handler `kv.put` the whole validated
+ * record every time, so saving shelf-justin's five-field form BLANKED the four
+ * `shelf_*` connection values the migration page had set, and
+ * `/api/machine/shelf-config` then told the pipeline `configured:false`. A
+ * merge means a form that knows a subset can never wipe fields it does not
+ * manage — this protects EVERY facts form, present and future, not just
+ * shelf-justin.
+ *
+ * ⚠️ MERGE ON PRESENCE, NOT TRUTHINESS. `submittedKeys` (from `submittedKeysOf`)
+ * is the set of fields the caller actually sent. A field submitted as '' is an
+ * intentional CLEAR and is applied; a field the caller OMITTED is preserved
+ * exactly as `existing` holds it. Overlaying on truthiness instead would make
+ * an intentional clear impossible AND re-open F2 for any field a form leaves
+ * blank. `configured` is not stored — it is re-derived at read time in
+ * `/machine/shelf-config` from the merged record, so preserving `shelf_host`
+ * and `shelf_path` here keeps it true with no separate write.
+ */
+export function mergeFacts(
+  existing: Partial<ShelfFacts> | null,
+  validatedFields: Record<FactField, string>,
+  submittedKeys: readonly FactField[],
+  stamps: { submitted_by: string; submitted_at: string },
+): ShelfFacts {
+  const overlay: Partial<Record<FactField, string>> = {};
+  for (const k of submittedKeys) overlay[k] = validatedFields[k];
+  return {
+    ...(existing ?? {}),
+    ...overlay,
+    submitted_by: stamps.submitted_by,
+    submitted_at: stamps.submitted_at,
+  } as ShelfFacts;
+}
+
 export const factsRoutes = new Hono<AppBindings>();
 
 factsRoutes.get('/estate/facts/:slug', requireDevops(), async (c) => {
@@ -232,13 +282,30 @@ factsRoutes.post('/estate/facts/:slug', requireDevops(), async (c) => {
     return c.json({ error: 'invalid_facts', detail: validated.error }, 400);
   }
 
+  // ⚠️ READ-MODIFY-WRITE MERGE, never a whole-record replace (F2). Read the
+  // stored record first and overlay ONLY the fields this caller actually
+  // submitted, so a form that knows a subset (shelf-justin's five of nine)
+  // cannot blank the fields it does not manage (the four `shelf_*` the
+  // migration page set). See mergeFacts() for the presence-not-truthiness rule.
+  let existing: Partial<ShelfFacts> | null = null;
+  const priorRaw = await kv.get(`facts:${slug}`, 'text');
+  if (priorRaw !== null) {
+    try {
+      existing = JSON.parse(priorRaw) as Partial<ShelfFacts>;
+    } catch {
+      // A corrupt stored value cannot be safely merged — refuse rather than
+      // overwrite (and so wipe) fields we can no longer read. Same code GET
+      // answers for the same condition; recover by hand-fixing the KV key.
+      return c.json({ error: 'facts_corrupt' }, 500);
+    }
+  }
+
   // requireDevops() has already resolved and set the actor (middleware/auth.ts).
   const actor = c.get('actor');
-  const facts: ShelfFacts = {
-    ...validated.fields,
+  const facts = mergeFacts(existing, validated.fields, submittedKeysOf(body as Record<string, unknown>), {
     submitted_by: actor.email,
     submitted_at: new Date().toISOString(),
-  };
+  });
   await kv.put(`facts:${slug}`, JSON.stringify(facts));
   return c.json({ facts });
 });

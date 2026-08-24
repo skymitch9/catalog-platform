@@ -18,7 +18,22 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FACT_FIELDS, validateFactsInput, factsRoutes } from '../src/facts.js';
+import { FACT_FIELDS, validateFactsInput, factsRoutes, mergeFacts, submittedKeysOf } from '../src/facts.js';
+
+/** A full, nine-field stored record as the migration page would have left it. */
+const NINE_FIELD_RECORD = {
+  hardware: 'Dell OptiPlex 7060',
+  os: 'Ubuntu Server 24.04 LTS',
+  disk_free: '612 GB free',
+  library_size: '~310 GB',
+  notes: 'Second NIC is flaky.',
+  shelf_host: 'napling.tail1234.ts.net',
+  shelf_path: '/media/napling/books',
+  shelf_user: 'shelfsync',
+  shelf_ssh_port: '22',
+  submitted_by: 'migration@heygabi.ai',
+  submitted_at: '2026-08-22T00:00:00.000Z',
+} as const;
 
 test('FACT_FIELDS: the exact nine fields the form and §0 table both key on', () => {
   // ⚠️ A PIN, NOT A TALLY. The five originals describe Justin's BOX; the four
@@ -166,6 +181,101 @@ test('validateFactsInput: notes MAY contain newlines — it is the one multi-lin
   const result = validateFactsInput({ notes: 'first line\nsecond line\nthird line' });
   assert.ok(result.ok);
   if (result.ok) assert.equal(result.fields.notes, 'first line\nsecond line\nthird line');
+});
+
+// ── F2: the subset-form merge (the audit finding this file's fix closes) ──────
+//
+// The bug was a whole-record replace: shelf-justin's five-field POST blanked
+// the four shelf_* connection values the migration page had set, so
+// /api/machine/shelf-config reported configured:false and the pipeline lost the
+// box. The fix is a read-modify-write merge keyed on PRESENCE of a field in the
+// payload. These exercise mergeFacts()/submittedKeysOf() directly — the same
+// pure-function idiom validateFactsInput() is tested with, because the
+// requireDevops() gate cannot be driven to a real actor from a stub env (see
+// the header note above).
+
+test('F2: submittedKeysOf reports exactly the fields the caller included (presence, not truthiness)', () => {
+  // shelf-justin's form only ever sends its five fields...
+  const justin = { hardware: 'x', os: 'y', disk_free: 'z', library_size: 'w', notes: 'n' };
+  assert.deepEqual(submittedKeysOf(justin).sort(), ['disk_free', 'hardware', 'library_size', 'notes', 'os'].sort());
+  // ...and a field sent as '' still counts as submitted (it is an intentional
+  // clear), while an omitted field simply is not in the set.
+  assert.deepEqual(submittedKeysOf({ shelf_path: '' }), ['shelf_path']);
+  assert.deepEqual(submittedKeysOf({}), []);
+});
+
+test("F2: shelf-justin's 5-field POST MERGES — the four shelf_* survive and configured stays true", () => {
+  // Seed a full nine-field record (what shelf-migration saved).
+  const existing = { ...NINE_FIELD_RECORD };
+  // shelf-justin submits only its five fields, all changed.
+  const body = {
+    hardware: 'Dell OptiPlex 7070',
+    os: 'Ubuntu Server 24.04.1 LTS',
+    disk_free: '590 GB free',
+    library_size: '~330 GB',
+    notes: 'Updated by Justin.',
+  };
+  const v = validateFactsInput(body);
+  assert.ok(v.ok, v.ok ? '' : v.error);
+  const merged = mergeFacts(existing, v.fields, submittedKeysOf(body), {
+    submitted_by: 'justin@heygabi.ai',
+    submitted_at: '2026-08-24T12:00:00.000Z',
+  });
+
+  // The five Justin manages were updated...
+  assert.equal(merged.hardware, 'Dell OptiPlex 7070');
+  assert.equal(merged.os, 'Ubuntu Server 24.04.1 LTS');
+  assert.equal(merged.notes, 'Updated by Justin.');
+
+  // configured is re-derived at read time as host && path both non-empty
+  // (facts.ts /machine/shelf-config). Both survived the merge, so it stays
+  // true. Asserted here, BEFORE the literal equality checks below narrow these
+  // fields to their exact string.
+  assert.ok(merged.shelf_host !== '' && merged.shelf_path !== '', 'configured would be false');
+
+  // ⚠️ ...and the four shelf_* he does NOT manage SURVIVED — this is F2.
+  assert.equal(merged.shelf_host, 'napling.tail1234.ts.net');
+  assert.equal(merged.shelf_path, '/media/napling/books');
+  assert.equal(merged.shelf_user, 'shelfsync');
+  assert.equal(merged.shelf_ssh_port, '22');
+
+  // The stamps advance to the new submitter.
+  assert.equal(merged.submitted_by, 'justin@heygabi.ai');
+  assert.equal(merged.submitted_at, '2026-08-24T12:00:00.000Z');
+});
+
+test('F2: an explicitly submitted empty value DOES clear, while an omitted sibling is preserved', () => {
+  const existing = { ...NINE_FIELD_RECORD };
+  // The migration page intentionally clears the path (host omitted this time).
+  const body = { shelf_path: '' };
+  const v = validateFactsInput(body);
+  assert.ok(v.ok, v.ok ? '' : v.error);
+  const merged = mergeFacts(existing, v.fields, submittedKeysOf(body), {
+    submitted_by: 'migration@heygabi.ai',
+    submitted_at: '2026-08-24T13:00:00.000Z',
+  });
+
+  assert.equal(merged.shelf_path, '', 'an explicit empty must clear the field');
+  // Everything not mentioned is untouched — including the sibling shelf_host.
+  assert.equal(merged.shelf_host, 'napling.tail1234.ts.net');
+  assert.equal(merged.shelf_user, 'shelfsync');
+  assert.equal(merged.hardware, 'Dell OptiPlex 7060');
+});
+
+test('F2: first save (no existing record) writes only the submitted fields plus stamps', () => {
+  const body = { shelf_host: 'napling.tail1234.ts.net', shelf_path: '/media/napling/books', shelf_user: 'shelfsync', shelf_ssh_port: '22' };
+  const v = validateFactsInput(body);
+  assert.ok(v.ok, v.ok ? '' : v.error);
+  const merged = mergeFacts(null, v.fields, submittedKeysOf(body), {
+    submitted_by: 'migration@heygabi.ai',
+    submitted_at: '2026-08-24T14:00:00.000Z',
+  });
+  assert.equal(merged.shelf_host, 'napling.tail1234.ts.net');
+  assert.equal(merged.shelf_path, '/media/napling/books');
+  assert.equal(merged.submitted_by, 'migration@heygabi.ai');
+  // A field nobody has ever submitted is simply absent (GET/consumers read it
+  // as '' via `?? ''`/`|| ''`), never a spurious value.
+  assert.equal(merged.hardware, undefined);
 });
 
 test('GET /estate/facts/:slug: bad slug shape is refused before touching KV or identity', async () => {
