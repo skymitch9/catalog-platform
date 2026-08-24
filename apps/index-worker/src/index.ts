@@ -130,7 +130,14 @@ function readCors() {
         .filter(Boolean);
       return allowed.includes(origin) ? origin : null;
     },
-    allowMethods: ['GET', 'OPTIONS'],
+    // ⚠️ POST belongs here: two write routes sit under `/api/*` — /api/scan/shelf
+    // (scan.ts) and /api/series/pending/:fold (series-route.ts) — and the apex
+    // already calls /api/scan/shelf cross-origin with an Authorization header,
+    // which makes the browser PREFLIGHT. With GET,OPTIONS only, the preflight
+    // answered without POST and the browser refused the POST before sending it,
+    // surfacing as a bare "network" error (audit F5; the same CORS-mount class
+    // as the 2026-08-14 search preflight bug above).
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
   });
