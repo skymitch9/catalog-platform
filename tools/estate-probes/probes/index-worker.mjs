@@ -10,6 +10,29 @@
  * before reaching any handler — `/api/scan/shelf` in particular spends real
  * money per call (vision.ts), which is exactly why that gate matters most
  * there.
+ *
+ * `/api/machine/*` (added 2026-08-23) is the third case: a NAMED MACHINE READ
+ * exception mounted above the blanket, taking a per-app `INDEX_READ_TOKEN_*`
+ * bearer. This suite holds no credentials of any kind (README: nothing here
+ * signs in, nothing reads a secret), so it probes the UNAUTHENTICATED shape
+ * only — which is the half worth pinning anyway:
+ *
+ *   - ⚠️ **never a 404.** A 404 here would read as "not built" and send an
+ *     operator hunting for a feature that exists and is merely unkeyed. That
+ *     is the single assertion most likely to catch a botched mount.
+ *   - ⚠️ **never a 500.** An unauthenticated caller must not reach anything
+ *     that can throw.
+ *   - a WORDED refusal (`error` + `detail` + `needs` + `how`), because the
+ *     estate rule is that no caller ever sees a bare status.
+ *
+ * ⚠️ **Two refusals are BOTH correct here, and the probe accepts either while
+ * naming which it got.** `401 machine_token_missing` once the owner has minted
+ * `INDEX_READ_TOKEN_LIBRARY`; `503 machine_read_unconfigured` before that. The
+ * Worker deploys before the secret exists, so a probe demanding only the 401
+ * would fail for a correctly-deployed Worker in exactly the window where
+ * somebody is watching it — and the 503 is the one that NAMES the missing
+ * secret, so seeing it is information, not a failure. What is not tolerated
+ * either way is a 404, a 500, or an unworded body.
  */
 
 import { get, post, options, check, header } from '../lib/kit.mjs';
@@ -25,6 +48,39 @@ function expectUnauthenticated(id, method, path, r) {
   }
   const ok = r.status === 401 && r.json?.error === 'unauthenticated';
   check(AREA, id, method, url, 'answers 401 { error: "unauthenticated" }', ok, `status=${r.status} body=${JSON.stringify(r.json)}`);
+}
+
+/**
+ * A machine-read route, called with no credential: a WORDED refusal that is
+ * neither 404 nor 500. Both live shapes are accepted and the one seen is
+ * printed — see this file's header for why that is the honest assertion.
+ */
+const MACHINE_REFUSALS = {
+  401: 'machine_token_missing',
+  503: 'machine_read_unconfigured',
+};
+
+async function expectMachineRefusal(id, path) {
+  const url = `${INDEX_ORIGIN}${path}`;
+  const want = 'worded refusal: 401 machine_token_missing OR 503 machine_read_unconfigured — never 404/500';
+  const r = await get(url);
+  if (!r.ok) {
+    check(AREA, id, 'GET', url, want, false, `request failed: ${r.error}`);
+    return;
+  }
+  const expectedError = MACHINE_REFUSALS[r.status];
+  // Every field a refusal owes a person: what happened, what it needs, how to
+  // get it (`detail`/`needs`/`how`). A bare `{ error }` fails this.
+  const worded =
+    r.json !== null &&
+    typeof r.json === 'object' &&
+    r.json.error === expectedError &&
+    typeof r.json.detail === 'string' &&
+    r.json.detail.length > 0 &&
+    r.json.needs !== undefined &&
+    typeof r.json.how === 'string' &&
+    r.json.how.length > 0;
+  check(AREA, id, 'GET', url, want, expectedError !== undefined && worded, `status=${r.status} body=${JSON.stringify(r.json)?.slice(0, 300)}`);
 }
 
 export async function probeIndexWorker() {
@@ -64,6 +120,24 @@ export async function probeIndexWorker() {
   // POST with no body: requireEstateMember() runs before route validation,
   // so an empty/garbage body never reaches scan.ts's zod-shaped checks.
   expectUnauthenticated('I6', 'POST', '/api/scan/shelf', await post(`${INDEX_ORIGIN}/api/scan/shelf`, { headers: { 'Content-Type': 'application/json' }, body: '{}' }));
+
+  // --- /api/machine/*: the machine read exception, unauthenticated -------
+  await expectMachineRefusal('I9', '/api/machine/lookup?title=test');
+  await expectMachineRefusal('I10', '/api/machine/search?q=test');
+
+  // ⚠️ NO CORS on /api/machine — mounted ABOVE readCors() deliberately, so a
+  // browser can never call it cross-origin even from the apex, which
+  // /api/search DOES admit (I7). This asserts the mount stayed above it: a
+  // well-meaning "add CORS to the new routes" edit is the regression.
+  const machineApex = await options(`${INDEX_ORIGIN}/api/machine/lookup?title=test`, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET' },
+  });
+  if (!machineApex.ok) {
+    check(AREA, 'I11', 'OPTIONS', `${INDEX_ORIGIN}/api/machine/lookup`, `no access-control-allow-origin, even for ${APEX_ORIGIN}`, false, `request failed: ${machineApex.error}`);
+  } else {
+    const acao = header(machineApex, 'access-control-allow-origin');
+    check(AREA, 'I11', 'OPTIONS', `${INDEX_ORIGIN}/api/machine/lookup`, `no access-control-allow-origin, even for ${APEX_ORIGIN} (machine routes are not browser-callable)`, acao === null, `ACAO=${acao}`);
+  }
 
   // --- CORS on /api/search (readCors(), mounted before the route) --------
   const searchApex = await options(searchUrl, { headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET' } });
