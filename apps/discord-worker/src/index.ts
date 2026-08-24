@@ -782,6 +782,59 @@ app.get('/admin/gabi/turnlog', async (c) => {
   return c.json((await res.json()) as Record<string, unknown>);
 });
 
+// Which Discord servers is the bot actually in, + a member count per server —
+// the "is GABI where it should be, and can it read data back" check the owner
+// asked for (2026-08-24). Devops-gated like the rest of /admin; asks Discord
+// `GET /users/@me/guilds?with_counts=true` with the bot token.
+app.get('/admin/guilds', async (c) => {
+  const refusal = await devopsHttpGate(c);
+  if (refusal) return refusal;
+
+  const botToken = c.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          'DISCORD_BOT_TOKEN is not configured on this Worker, so the bot cannot be asked which ' +
+          'servers it is in. Set the secret and redeploy.',
+      },
+      503,
+    );
+  }
+  const res = await fetch('https://discord.com/api/v10/users/@me/guilds?with_counts=true', {
+    headers: { authorization: `Bot ${botToken}` },
+  });
+  if (!res.ok) {
+    return c.json(
+      {
+        ok: false,
+        message:
+          `Discord refused the guild list (HTTP ${res.status}). The bot token may be wrong, or the ` +
+          'bot has not been invited to any server.',
+        detail: (await res.text()).slice(0, 300),
+      },
+      502,
+    );
+  }
+  const guilds = (await res.json()) as Array<{
+    id: string;
+    name: string;
+    owner?: boolean;
+    approximate_member_count?: number;
+  }>;
+  return c.json({
+    ok: true,
+    count: guilds.length,
+    guilds: guilds.map((g) => ({
+      id: g.id,
+      name: g.name,
+      owns_server: Boolean(g.owner),
+      approx_members: g.approximate_member_count ?? null,
+    })),
+  });
+});
+
 app.post('/admin/gateway/start', async (c) => {
   const refusal = await adminGate(c);
   if (refusal) return refusal;
