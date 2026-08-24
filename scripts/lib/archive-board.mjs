@@ -14,9 +14,21 @@
  *     size, its **sha256** and its `uploaded_at`, plus a `failures` map. This is
  *     the numerator, and the sha256 is what makes "verified" a fact rather than
  *     a hope.
- *   · `audio_archive.log` — its progress lines carry `[n/TOTAL]`, and TOTAL is
- *     the only place the denominator exists. Without it there is no percentage,
- *     which is exactly why the first version of this panel had none.
+ *   · `audio_archive.log` — every run prints a steady-state summary:
+ *       `On disk  : 1253 files, 686.53 GB (author folders only; …)`
+ *       `Recorded : 1267 files, 686.66 GB`
+ *       `Archive now holds 1267 objects, 686.66 GB (100.0% of the library).`
+ *     THOSE lines are the denominator, and they are written on EVERY run —
+ *     commit or dry-run, backlog or caught-up. `On disk` is the live library
+ *     scan the archiver itself divides by to print its `(Z% of the library)`,
+ *     so it is the total the board must use; the printed `Z%` is the archiver's
+ *     own live-computed (by-bytes, capped) percentage, and the board shows THAT
+ *     so its number can never disagree with the log. The transient `[n/TOTAL]`
+ *     per-file progress marker is only a mid-run FALLBACK — it exists solely
+ *     while files are pending, and its `N` is that one run's queue size (a
+ *     handful of new books), never the library total, so relying on it showed
+ *     "total unknown" the moment the archive caught up and a false 100% before
+ *     that. See docs/info/backup-100-investigation-2026-08-24.md.
  *   · `audio_archive.lock` — the live run: pid, `current_file`, `done_this_run`,
  *     `bytes_this_run` and a `heartbeat_at`. A lock whose heartbeat has stopped
  *     is a DEAD run, not a running one, and the difference is the whole point
@@ -32,12 +44,59 @@
 export const HEARTBEAT_STALE_MS = 10 * 60_000;
 
 /** `[813/1257]` -> 1257. The LAST such line wins: the total can be re-counted
- *  between runs, and the newest count is the one describing the current run. */
+ *  between runs, and the newest count is the one describing the current run.
+ *
+ *  ⚠️ This is the MID-RUN FALLBACK ONLY. `N` is `len(pending)` — the files
+ *  queued in ONE run — not the library size, and the line is absent entirely
+ *  once the backlog clears. `parseLogTotals()` below is the real denominator;
+ *  this survives only for a run whose steady-state summary hasn't printed yet. */
 export function totalFromLog(text) {
   if (typeof text !== 'string') return null;
   let total = null;
   for (const m of text.matchAll(/\[(\d+)\/(\d+)\]/g)) total = Number(m[2]);
   return Number.isFinite(total) && total > 0 ? total : null;
+}
+
+/**
+ * The library total and the archiver's own printed percent, from the lines it
+ * writes on EVERY run — not the transient `[i/N]` marker.
+ *
+ * The archiver prints, each run (see the sample in the header):
+ *   `On disk  : 1253 files, …`  — the live library scan (author folders only)
+ *   `Recorded : 1267 files, …`  — what the manifest holds (cumulative)
+ *   `Archive now holds 1267 objects, … (100.0% of the library).`
+ *
+ * The `(Z% of the library)` the archiver prints is `archive_bytes /
+ * on_disk_bytes`, capped at 100 — so `On disk` is the denominator that percent
+ * is *of*, and it is what the board reports as `files_total`. The LAST match of
+ * each wins: the tailed window holds many hourly runs and the newest describes
+ * the current state. Falls back to the `[i/N]` total only when no steady-state
+ * `On disk` line is in the window (a run mid-upload before its summary prints).
+ *
+ * @returns {{ files_total: number|null, on_disk: number|null, recorded: number|null, printed_percent: number|null }}
+ */
+export function parseLogTotals(text) {
+  if (typeof text !== 'string') return { files_total: null, on_disk: null, recorded: null, printed_percent: null };
+  const lastNum = (re) => {
+    let v = null;
+    for (const m of text.matchAll(re)) {
+      const n = Number(String(m[1]).replace(/,/g, ''));
+      if (Number.isFinite(n)) v = n;
+    }
+    return v;
+  };
+  const onDisk = lastNum(/On disk\s*:\s*([\d,]+)\s+files/gi);
+  const recorded = lastNum(/Recorded\s*:\s*([\d,]+)\s+files/gi);
+  const printed = lastNum(/\(\s*([\d.,]+)\s*%\s+of the library\s*\)/gi);
+  // `On disk` is the library the archiver divides by; `Recorded` is a usable
+  // second choice (it too is printed every run); `[i/N]` is the last resort.
+  const files_total = onDisk ?? recorded ?? totalFromLog(text);
+  return {
+    files_total: Number.isFinite(files_total) && files_total > 0 ? files_total : null,
+    on_disk: onDisk,
+    recorded,
+    printed_percent: Number.isFinite(printed) ? printed : null,
+  };
 }
 
 /** The newest `uploaded_at` across the manifest's files, or null. */
@@ -99,12 +158,21 @@ export function buildArchiveBlock({ manifest, lock, logText, restore = null, now
   }
 
   const filesDone = Number.isFinite(Number(manifest.count)) ? Number(manifest.count) : null;
-  const filesTotal = totalFromLog(logText);
+  const totals = parseLogTotals(logText);
+  const filesTotal = totals.files_total;
   const bytesDone = Number.isFinite(Number(manifest.total_bytes)) ? Number(manifest.total_bytes) : null;
+  // ⚠️ The archiver's OWN printed `(Z% of the library)` is the authority when
+  // present — it is live-computed by bytes and capped at 100, so showing it
+  // means the board can never disagree with the log. Only when a run is
+  // mid-upload and hasn't printed its summary yet do we compute a files-based
+  // percent from the always-printed `On disk` denominator (or the `[i/N]`
+  // fallback). A percentage with no denominator is still null — never 0%.
   const percent =
-    Number.isFinite(filesDone) && Number.isFinite(filesTotal) && filesTotal > 0
-      ? Math.min(100, (filesDone / filesTotal) * 100)
-      : null;
+    Number.isFinite(totals.printed_percent)
+      ? Math.min(100, totals.printed_percent)
+      : Number.isFinite(filesDone) && Number.isFinite(filesTotal) && filesTotal > 0
+        ? Math.min(100, (filesDone / filesTotal) * 100)
+        : null;
 
   const failuresMap = manifest.failures && typeof manifest.failures === 'object' ? manifest.failures : {};
   const failures = Object.entries(failuresMap).map(([name, f]) => ({

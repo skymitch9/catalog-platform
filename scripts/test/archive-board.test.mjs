@@ -13,6 +13,7 @@ import {
   HEARTBEAT_STALE_MS,
   buildArchiveBlock,
   lastUploadAt,
+  parseLogTotals,
   totalFromLog,
   transferState,
 } from '../lib/archive-board.mjs';
@@ -53,6 +54,36 @@ const LOCK = {
 
 const LOG = '  [814/1257] x.m4b (672 MB) …\n  [ok] archive/x.m4b\n  [815/1257] y.m4b (675 MB) …\n';
 
+/**
+ * The steady-state summary the archiver prints on EVERY run — the real sample
+ * off the home machine, 2026-08-24 00:05 (six identical hourly runs in a row),
+ * from docs/info/backup-100-investigation-2026-08-24.md. There is NO `[i/N]`
+ * line here: the archive is caught up, which is exactly the state that made the
+ * old parser return "total unknown".
+ */
+const IDLE_LOG = [
+  'On disk  : 1253 files, 686.53 GB (author folders only; zzzz_Books_to_be_Converted excluded)',
+  'Recorded : 1267 files, 686.66 GB',
+  'To upload: 0 files, 0.00 GB',
+  '',
+  'Uploaded 0 / 0 (0.00 GB) in 0.0 min at 0.0 MB/s; 0 failed.',
+  'Archive now holds 1267 objects, 686.66 GB (100.0% of the library).',
+].join('\n');
+
+/**
+ * A run mid-upload: the steady-state header has printed (so `On disk` is the
+ * denominator) and files are streaming (so `[i/N]` lines exist too) but the
+ * final `(Z% of the library)` summary line has NOT been written yet.
+ */
+const MIDRUN_LOG = [
+  'On disk  : 1257 files, 690.10 GB (author folders only; zzzz_Books_to_be_Converted excluded)',
+  'Recorded : 816 files, 258.85 GB',
+  'To upload: 441 files, 431.25 GB',
+  '  [814/441] x.m4b (672 MB) …',
+  '  [ok] archive/x.m4b',
+  '  [815/441] y.m4b (675 MB) …',
+].join('\n');
+
 // ---------------------------------------------------------------------------
 // The denominator
 // ---------------------------------------------------------------------------
@@ -61,6 +92,80 @@ test('⚠️ the TOTAL comes from the log — it exists nowhere else', () => {
   assert.equal(totalFromLog(LOG), 1257);
   // The last line wins: the library is re-counted between runs.
   assert.equal(totalFromLog('[1/10] a\n[2/900] b\n'), 900);
+});
+
+test('⚠️ the steady-state total comes from the ALWAYS-printed lines, idle or not', () => {
+  // The idle archive: no `[i/N]` line anywhere, yet the total and percent are
+  // both knowable — this is the whole bug the old totalFromLog() had.
+  assert.equal(totalFromLog(IDLE_LOG), null, 'no transient marker on a caught-up run');
+  const t = parseLogTotals(IDLE_LOG);
+  assert.equal(t.on_disk, 1253, 'the live library scan');
+  assert.equal(t.recorded, 1267, 'the cumulative manifest holdings');
+  assert.equal(t.files_total, 1253, 'files_total is the On disk denominator the archiver divides by');
+  assert.equal(t.printed_percent, 100, "the archiver's own printed (Z% of the library)");
+});
+
+test('parseLogTotals: mid-run prefers On disk over the transient [i/N] queue size', () => {
+  const t = parseLogTotals(MIDRUN_LOG);
+  // 441 is this run's QUEUE size (len(pending)), never the library total.
+  assert.equal(totalFromLog(MIDRUN_LOG), 441, 'the [i/N] N is the run queue, not the library');
+  assert.equal(t.on_disk, 1257, 'the library size is the real denominator');
+  assert.equal(t.files_total, 1257);
+  assert.equal(t.printed_percent, null, 'no summary line yet mid-run');
+});
+
+test('parseLogTotals: falls back to [i/N] only when no On disk line is present', () => {
+  assert.equal(parseLogTotals(LOG).files_total, 1257, 'legacy log with only [i/N] still yields a total');
+  assert.equal(parseLogTotals(LOG).printed_percent, null);
+  // Junk and non-strings never invent a total.
+  for (const bad of ['', 'nothing here', null, undefined, 42]) {
+    assert.equal(parseLogTotals(bad).files_total, null, `expected null for ${JSON.stringify(bad)}`);
+  }
+});
+
+test('parseLogTotals: the LAST run in a multi-run tail wins', () => {
+  const tail = [
+    'On disk  : 100 files, 1.00 GB',
+    'Archive now holds 90 objects, 0.90 GB (90.0% of the library).',
+    'On disk  : 1253 files, 686.53 GB',
+    'Recorded : 1267 files, 686.66 GB',
+    'Archive now holds 1267 objects, 686.66 GB (100.0% of the library).',
+  ].join('\n');
+  const t = parseLogTotals(tail);
+  assert.equal(t.files_total, 1253);
+  assert.equal(t.printed_percent, 100);
+});
+
+// ---------------------------------------------------------------------------
+// The whole point: an idle, caught-up archive reads 100%, not "unknown"
+// ---------------------------------------------------------------------------
+
+test('⚠️ a CAUGHT-UP archive reads 100% off the every-run summary, not "unknown"', () => {
+  // count = 1267 (Recorded/manifest holdings); no lock (idle); the log is the
+  // real idle sample. Before the fix this showed files_total=null, percent=null.
+  const b = buildArchiveBlock({
+    manifest: { ...MANIFEST, count: 1267 },
+    lock: null,
+    logText: IDLE_LOG,
+    nowMs: NOW,
+  });
+  assert.equal(b.available, true);
+  assert.equal(b.transfer, 'idle');
+  assert.equal(b.files_total, 1253, 'the library denominator, present on every run');
+  assert.equal(b.percent, 100, "matches the archiver's printed 100.0% of the library");
+});
+
+test('⚠️ mid-run shows a REAL partial percent, computed from the library total', () => {
+  const b = buildArchiveBlock({
+    manifest: { ...MANIFEST, count: 816 },
+    lock: LOCK,
+    logText: MIDRUN_LOG,
+    nowMs: NOW,
+  });
+  assert.equal(b.files_total, 1257);
+  // 816 / 1257 = 64.9% — a genuine fraction of the library, not the run queue.
+  assert.ok(Math.abs(b.percent - 64.916) < 0.01, `percent was ${b.percent}`);
+  assert.equal(b.transfer, 'running');
 });
 
 test('⚠️ NO DENOMINATOR MEANS NO PERCENTAGE — not 100%, not 0%', () => {
