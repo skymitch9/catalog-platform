@@ -13,6 +13,36 @@ export interface Env {
   INDEX_PUSH_TOKEN_LIBRARY?: string;
   INDEX_PUSH_TOKEN_AUDIOBOOK?: string;
 
+  /**
+   * Per-app MACHINE READ tokens — the named machine exception on the read
+   * side (`machine-route.ts`; design §9 Q3's owner-approved widening,
+   * 2026-08-23). Same idiom as the push tokens above and for the same
+   * reasons: one secret per calling app, so one leaked token revokes one
+   * app's read access rather than every app's, and so the token VALUE is
+   * what identifies the caller (`identifyApp`'s estate-wide pattern — there
+   * is no `app` field on the wire to lie in).
+   *
+   * ⚠️ THE PAIRING, which is the half that goes wrong: the INDEX Worker holds
+   * the SUFFIXED name, the calling app holds the UN-suffixed one. So
+   * `INDEX_READ_TOKEN_LIBRARY` here is the same minted value the library
+   * Worker holds as **`INDEX_READ_TOKEN`** — exactly the push tokens'
+   * `INDEX_PUSH_TOKEN_LIBRARY` ↔ `INDEX_PUSH_TOKEN` shape (one un-suffixed
+   * name per source repo). A value that is needed is re-minted and set on
+   * BOTH holders in one sitting; no readable copy exists anywhere.
+   *
+   * ⚠️ READ and PUSH tokens are DIFFERENT credentials and must never be the
+   * same value: push writes a whole source's snapshot, read sees across every
+   * catalog. One name per direction, per app.
+   *
+   * Unset is not a 404 — the route answers a worded 503 naming this secret,
+   * because "nobody has minted it yet" and "this was never built" are
+   * different facts (the `push_token_unset` idiom).
+   *
+   * Only `library` exists today. A second app is one field here, one line in
+   * `MACHINE_APPS`, and one `wrangler secret put`.
+   */
+  INDEX_READ_TOKEN_LIBRARY?: string;
+
   // — Estate auth (estate-auth-design.md §5.2, §7.1) — the read surface is
   //   estate-members-only. Vars in wrangler.toml; the token is a secret.
 
@@ -67,6 +97,28 @@ export function parseOwnerEmails(raw: string | undefined): string[] {
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/**
+ * The apps allowed to hold a machine READ token, in the order they are tried.
+ * One entry, deliberately: the brief that opened this surface named the
+ * library Worker's free-details ladder and nothing else, and every extra name
+ * here is access granted to something that has not asked for it yet.
+ */
+export const MACHINE_APPS = ['library'] as const;
+export type MachineApp = (typeof MACHINE_APPS)[number];
+
+/** The secret this Worker expects a given calling app to present. */
+export function readTokenFor(env: Env, app: MachineApp): string | undefined {
+  switch (app) {
+    case 'library':
+      return env.INDEX_READ_TOKEN_LIBRARY;
+  }
+}
+
+/** The secret NAME, for refusals — names only, never values (KI-2). */
+export function readTokenNameFor(app: MachineApp): string {
+  return `INDEX_READ_TOKEN_${app.toUpperCase()}`;
 }
 
 export function pushTokenFor(env: Env, source: Source): string | undefined {

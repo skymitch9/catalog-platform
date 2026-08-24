@@ -25,7 +25,7 @@
  * resemblance and never identity — the full argument is search.ts's header.
  */
 
-import { Hono } from 'hono';
+import { Hono, type Handler } from 'hono';
 import type { Env } from './env.js';
 import { titleFoldOrNull } from './fold.js';
 import type { ScopeVariables } from './middleware/scope.js';
@@ -46,8 +46,14 @@ const ENTRY_COLS =
  * row whose `title_fold` matches, across all sources — games included,
  * matched on title alone. Work-tier rows are a subset of these (work_fold
  * shares its title half), so one indexed equality answers both tiers.
+ *
+ * ⚠️ Exported as a HANDLER (2026-08-23) because `/api/machine/lookup` mounts
+ * this same function rather than a parallel implementation of it. Two lookup
+ * endpoints that could disagree about what "do I own this?" means is the
+ * second-matcher failure (design §8) wearing a different hat. The gates
+ * differ; the read does not.
  */
-readRoutes.get('/lookup', async (c) => {
+export const lookupHandler: Handler<{ Bindings: Env; Variables: ScopeVariables }> = async (c) => {
   const title = c.req.query('title');
   if (!title || !title.trim()) {
     return c.json({ error: 'missing_title', usage: '/api/lookup?title=…' }, 400);
@@ -71,7 +77,9 @@ readRoutes.get('/lookup', async (c) => {
     .all();
 
   return c.json({ query: title, title_fold: fold, matches: results });
-});
+};
+
+readRoutes.get('/lookup', lookupHandler);
 
 /**
  * GET /api/universe/:name — everything in one fiction, across every VISIBLE

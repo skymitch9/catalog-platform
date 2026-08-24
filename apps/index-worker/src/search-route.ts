@@ -27,7 +27,7 @@
  * after narrowing — the SQL is still the scope, same rule as before.
  */
 
-import { Hono } from 'hono';
+import { Hono, type Handler } from 'hono';
 import type { Catalog } from '@platform/estate-auth';
 import type { Env } from './env.js';
 import { searchIndex, type SearchRow } from './search.js';
@@ -103,7 +103,18 @@ export const searchRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables 
 
 searchRoutes.use('*', searchScope());
 
-searchRoutes.get('/', async (c) => {
+/**
+ * The search itself, with NO gate of its own — it reads `visibility` out of
+ * the context and scopes its SQL to it, so whichever middleware stamped that
+ * set decides what this can reach.
+ *
+ * ⚠️ Exported as a HANDLER (2026-08-23) so `/api/machine/search` mounts THIS
+ * function and not a copy. `searchScope()` is mounted on `searchRoutes` and
+ * would overwrite a machine caller's stamped visibility with the anonymous
+ * public slice, which is exactly why the machine mount takes the handler
+ * rather than re-mounting the router.
+ */
+export const searchHandler: Handler<{ Bindings: Env; Variables: ScopeVariables }> = async (c) => {
   const raw = c.req.query('q');
   if (raw === undefined || raw.trim() === '') {
     return c.json({ error: 'missing_query', usage: '/api/search?q=…' }, 400);
@@ -188,4 +199,6 @@ searchRoutes.get('/', async (c) => {
   // games-only member's "×31" counts 31 game rows, not 25 library ones.
   const found = searchIndex(query, (results ?? []) as unknown as SearchRow[], universeIndex);
   return c.json({ query, scope: effectiveScope, ...found });
-});
+};
+
+searchRoutes.get('/', searchHandler);

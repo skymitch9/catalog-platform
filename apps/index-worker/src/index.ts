@@ -17,15 +17,21 @@
  * before the blanket, BY NAME, each with its reason; everything mounted after
  * the blanket is members-only automatically.
  *
- * ⚠️ NOT DEPLOYED YET — deploy, the remote 0002 migration, and the
- * ESTATE_APP_TOKEN_INDEX secret are the dispatcher's (§9 step 3's second
- * half). Everything here is exercised via `wrangler dev` + `npm run probe`.
+ * ✅ LIVE at `index.heygabi.ai`. (This header said "⚠️ NOT DEPLOYED YET" until
+ * 2026-08-23 — stale by six days and counting: `docs/deploys.log` records
+ * index-worker deploys from 2026-08-17T06:41Z onward, and the design doc's own
+ * status note has it live with all three sources pushed since 2026-08-14. A
+ * banner that says a live Worker is unshipped is worse than no banner, because
+ * it is the first thing a session reads and it argues against deploying.)
+ * Local exercise is still `wrangler dev` + `npm run probe`; the live suite is
+ * `npm run probe:estate` from the repo root.
  */
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { reportEvent } from '@platform/estate-events';
 import type { Env } from './env.js';
+import { machineRoutes } from './machine-route.js';
 import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
 import { scanRoutes } from './scan.js';
@@ -41,6 +47,20 @@ const app = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 // own per-source bearer tokens (push.ts), not people — §8.2 #3's named
 // exception, the library's ingest-route precedent.
 app.route('/api/push', pushRoutes);
+
+// The machine READ exception, also BEFORE the blanket by name (2026-08-23,
+// owner-approved widening of design §9 Q3). A sibling Worker holds no
+// Firebase ID token and cannot mint one, so requireEstateMember() refuses it
+// by construction — and the push tokens authenticate writes only. These two
+// routes take a per-app `INDEX_READ_TOKEN_*` bearer, resolve the caller to an
+// APPROVED MEMBER's visibility set, and delegate to the very same handlers the
+// human routes mount. The full argument, and what slice it resolves to, is
+// machine-route.ts's header.
+//
+// ⚠️ Mounted ABOVE readCors() deliberately: no CORS headers, so no browser can
+// call these cross-origin. A machine `fetch` never preflights, and the read
+// token must never be somewhere a browser could hold it.
+app.route('/api/machine', machineRoutes);
 
 // CORS for the estate status page (heygabi.ai/status), GET-only, no auth
 // header needed — health.ts is already public, this only lets a BROWSER on

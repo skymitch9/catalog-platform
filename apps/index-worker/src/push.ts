@@ -10,6 +10,7 @@
  */
 
 import { Hono } from 'hono';
+import { tokenMatches } from './bearer.js';
 import type { Env } from './env.js';
 import { pushTokenFor } from './env.js';
 import type { EntryRow } from './rows.js';
@@ -20,17 +21,8 @@ import { seriesCanonIndex } from './series-canon-data.js';
 import { planSeries, type SeriesPlan } from './series.js';
 import { loadRegistry, planStatements } from './series-store.js';
 
-/**
- * Bearer-token check. Length-gated `crypto.subtle.timingSafeEqual` — the
- * length itself is not a secret worth hiding, the token bytes are.
- */
-async function tokenMatches(header: string | undefined, expected: string): Promise<boolean> {
-  if (!header?.startsWith('Bearer ')) return false;
-  const given = new TextEncoder().encode(header.slice('Bearer '.length));
-  const want = new TextEncoder().encode(expected);
-  if (given.byteLength !== want.byteLength) return false;
-  return crypto.subtle.timingSafeEqual(given, want);
-}
+// The bearer check moved to `bearer.ts` (2026-08-23) so the machine READ
+// surface uses THIS comparison rather than a second copy of it.
 
 export const pushRoutes = new Hono<{ Bindings: Env }>();
 

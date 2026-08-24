@@ -37,7 +37,7 @@ import {
   type Catalog,
   type EstateStatus,
 } from '@platform/estate-auth';
-import type { Env } from '../env.js';
+import type { Env, MachineApp } from '../env.js';
 import { parseOwnerEmails } from '../env.js';
 import { readEstateCache, writeEstateCache } from '../estate-cache.js';
 
@@ -52,6 +52,17 @@ export interface ScopeVariables {
    * been verified once this request.
    */
   email: string | null;
+  /**
+   * The calling APP, when the caller is a machine holding a per-app read
+   * token (`machine-route.ts`, 2026-08-23) — absent for every human caller.
+   *
+   * ⚠️ Deliberately a THIRD state, not an email-shaped fake: a machine has no
+   * person behind it, so `email` stays `null` and anything that gates on a
+   * person (`requireOwnerStanding`) refuses it by construction rather than by
+   * remembering to. Set from the token VALUE that matched, never from
+   * anything the caller said about itself.
+   */
+  machineApp?: MachineApp;
 }
 
 /**
