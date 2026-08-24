@@ -311,6 +311,210 @@ function checkThemeRegistry(files) {
   return themes.length;
 }
 
+/* ── 3b. The module graph actually resolves (pre-deploy render gate) ───── */
+
+/**
+ * THE PRE-DEPLOY RENDER GATE (2026-08-24).
+ *
+ * `node --check` (§1 above) parses each file in isolation, so it proves a file
+ * is syntactically valid ESM — and nothing more. It does NOT resolve imports.
+ * `import { fetchBoard } from './lib/board.js'` sails through `--check` whether
+ * or not board.js exists and whether or not it exports `fetchBoard`. In a
+ * browser both are FATAL at module load: a missing specifier or a missing
+ * named binding throws before a single line runs, the page white-screens, and
+ * `curl /` still answers a cheerful 200 (verify with the right instrument).
+ *
+ * That is the exact failure class predeploy.checks.json's markers chase AFTER
+ * the deploy — "a missing lib/ file takes the page's script down at parse time
+ * while the route still serves 200", repeated on entry after entry. Those pins
+ * are the live safety net; this is the pre-deploy one, so a white-screen fails
+ * BEFORE `wrangler pages deploy`, not after. It is the estate's own rule that a
+ * step depending on someone looking cannot catch what someone-not-looking ships
+ * — so this looks mechanically, at every static run.
+ *
+ * WHAT IT PROVES, and its honest boundary:
+ *   • every RELATIVE import/export specifier resolves to a file on disk;
+ *   • every NAMED import binds to a name the target module actually exports
+ *     (following simple re-exports; a target this parser cannot fully
+ *     enumerate degrades to existence-only rather than cry wolf).
+ * It does NOT execute the modules — these are browser modules that touch
+ * `document`, `window` and a Firebase CDN import at load, so a runtime throw in
+ * top-level DOM code is out of scope here and stays the live phase's job. What
+ * is in scope is the whole "renamed an export, missed a caller / moved a lib/
+ * file" family, which is what actually white-screens these pages on a refactor.
+ *
+ * FALSE ALARMS ARE THE ONE FAILURE MODE THAT MATTERS (a check that cries wolf
+ * gets disabled): CDN/bare specifiers are skipped, strings and comments are
+ * stripped before scanning so a `from` inside prose never registers, and any
+ * export shape this parser is unsure of marks the target "incomplete" and
+ * suppresses the named-binding assertion for it.
+ */
+
+/**
+ * Strip COMMENTS while preserving string/template contents — because the
+ * import specifier IS a string, so blanking strings would erase the very thing
+ * we scan for. Strings are still tracked (not blanked) so that a `//` or `/*`
+ * INSIDE a string is not mistaken for a comment. Prose inside comments (where
+ * the estate describes its own imports at length) is removed; prose inside a
+ * template string is kept, and the `import|export … from '…'` statement anchor
+ * is what keeps a stray `from` in that prose from being read as a specifier.
+ */
+function stripComments(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === '/' && d === '/') {
+      i += 2;
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < n) {
+        out += src[i];
+        if (src[i] === '\\') { out += src[i + 1] ?? ''; i += 2; continue; }
+        if (src[i] === quote) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/** Names a module exports, and whether the enumeration is COMPLETE. When a
+ * shape is not fully understood, `complete` is false and callers skip the
+ * named-binding assertion for that target (existence is still enforced). */
+function moduleExports(file, seen = new Set()) {
+  if (seen.has(file)) return { names: new Set(), complete: true };
+  seen.add(file);
+  let raw;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch {
+    return { names: new Set(), complete: false };
+  }
+  const code = stripComments(raw);
+  const names = new Set();
+  let complete = true;
+
+  // export function/async function/const/let/var/class NAME
+  for (const m of code.matchAll(/\bexport\s+(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/g)) {
+    names.add(m[1]);
+  }
+  // export default …
+  if (/\bexport\s+default\b/.test(code)) names.add('default');
+  // export * from './x' — cannot enumerate without merging; recurse if we can.
+  for (const m of code.matchAll(/\bexport\s*\*\s*from\s*(['"])([^'"]+)\1/g)) {
+    const target = resolveSpecifier(file, m[2]);
+    if (target) {
+      const sub = moduleExports(target, seen);
+      for (const nm of sub.names) names.add(nm);
+      if (!sub.complete) complete = false;
+    } else {
+      complete = false;
+    }
+  }
+  // export { a, b as c } [from './x'] — the EXPORTED name is after `as`.
+  for (const m of code.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
+    for (const part of m[1].split(',')) {
+      const seg = part.trim();
+      if (!seg) continue;
+      const as = /\bas\s+([A-Za-z_$][\w$]*)\s*$/.exec(seg);
+      if (as) { names.add(as[1]); continue; }
+      const id = /^([A-Za-z_$][\w$]*)$/.exec(seg);
+      if (id) { names.add(id[1]); continue; }
+      complete = false; // an unusual clause — do not risk a false positive
+    }
+  }
+  return { names, complete };
+}
+
+/** Resolve a relative/root specifier to a file under public/, or null for a
+ * bare/URL specifier (npm package, https CDN) that has no on-disk target. */
+function resolveSpecifier(fromFile, spec) {
+  if (spec.startsWith('.')) return resolve(dirname(fromFile), spec);
+  if (spec.startsWith('/')) return join(PUBLIC_DIR, spec.replace(/^\/+/, ''));
+  return null; // bare or protocol specifier — not ours to resolve
+}
+
+function checkModuleGraph(files) {
+  const js = files.filter((f) => extname(f) === '.js');
+  let scanned = 0;
+  for (const file of js) {
+    let code;
+    try {
+      code = stripComments(readFileSync(file, 'utf8'));
+    } catch (err) {
+      fail(rel(file), `unreadable for module-graph check: ${err.message}`);
+      continue;
+    }
+    if (!/\bimport\b|\bexport\b/.test(code)) continue; // classic script — no graph
+    scanned++;
+
+    // Every `import <clause> from '<spec>'` and `export … from '<spec>'`.
+    const stmt = /\b(?:import|export)\b([\s\S]*?)\bfrom\s*(['"])([^'"]+)\2/g;
+    for (const m of code.matchAll(stmt)) {
+      const clause = m[1];
+      const spec = m[3];
+      const target = resolveSpecifier(file, spec);
+      if (!target) continue; // CDN / bare — skipped by design
+
+      let exists = false;
+      try { exists = statSync(target).isFile(); } catch { exists = false; }
+      if (!exists) {
+        fail(
+          rel(file),
+          `imports "${spec}", which resolves to a file that does not exist (${rel(target)}).\n` +
+            '      In a browser a missing module specifier throws at load and white-screens the page,\n' +
+            '      while the route still serves a cheerful 200. Fix the path or restore the file.',
+        );
+        continue;
+      }
+
+      // Named bindings: `import { a, b as c } from …`. Namespace (`* as x`)
+      // and default imports bind nothing to assert here.
+      const braced = /\{([^}]*)\}/.exec(clause);
+      if (!braced) continue;
+      const wanted = braced[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => (/\bas\b/.test(s) ? s.split(/\bas\b/)[0].trim() : s)) // import name is BEFORE `as`
+        .filter((s) => /^[A-Za-z_$][\w$]*$/.test(s));
+      if (wanted.length === 0) continue;
+
+      const exp = moduleExports(target);
+      if (!exp.complete) continue; // do not risk a false positive on a shape we can't read
+      for (const name of wanted) {
+        if (!exp.names.has(name)) {
+          fail(
+            rel(file),
+            `imports { ${name} } from "${spec}", but ${rel(target)} exports no such name.\n` +
+              '      A missing named binding throws at module load in the browser (\'does not provide an\n' +
+              `      export named ${JSON.stringify(name)}') and white-screens the page behind a 200.\n` +
+              '      This usually means an export was renamed or removed and a caller was missed.',
+          );
+        }
+      }
+    }
+  }
+  return scanned;
+}
+
 /* ── 4. The tree is clean (what actually gets uploaded) ────────────────── */
 
 function checkCleanTree() {
@@ -460,12 +664,14 @@ if (LIVE) {
   console.log(`  ${n} page(s) fetched`);
 } else {
   const jsCount = checkJavaScript(files);
+  const graphCount = checkModuleGraph(files);
   const htmlCount = checkAllHtml(files);
   const themeCount = checkThemeRegistry(files);
   const surfaceCount = checkSurfaceOwnership(files);
   checkCleanTree();
   console.log(
-    `  ${jsCount} JS file(s) parsed · ${htmlCount} HTML file(s) structurally checked · ` +
+    `  ${jsCount} JS file(s) parsed · ${graphCount} module graph(s) resolved · ` +
+      `${htmlCount} HTML file(s) structurally checked · ` +
       `${themeCount} theme(s) registered · ${surfaceCount} surface owner(s) enforced · tree checked`,
   );
 }
