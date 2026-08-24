@@ -3,7 +3,7 @@
  *
  * ⚠️ EVERY CONTROL IN THIS FILE MOVED HERE FROM status.js ON 2026-08-18, in
  * the four-page split (docs/info/status-pages.md). The ingestion pause card,
- * the Run button, the seven pipeline steps and their interlock, the Run levers
+ * the Run button, the eight pipeline steps and their interlock, the Run levers
  * and the shelf-server force-upload are the SAME implementations, moved rather
  * than rewritten — their comments are the originals and are worth reading as
  * such. Their tests did not move and did not change:
@@ -90,6 +90,13 @@ const PIPELINE_STEPS = [
   { key: 'upload', label: 'Upload to Drive', kind: 'mutating' },
   { key: 'catalog', label: 'Rebuild catalog', kind: 'publishing' },
   { key: 'publish', label: 'Commit & deploy', kind: 'publishing' },
+  // ⚠️ STEP 11 (2026-08-23). `publishing`, not `mutating`, for a reason none
+  // of the others share: it writes a DIFFERENT APPLICATION's production D1 —
+  // the library catalogue's audiobook_holding table, via that repo's
+  // backfill-audiobook-holdings.mjs. It also runs unattended on every 8-hourly
+  // cycle INCLUDING the idle ones, because the drift it repairs arrives when
+  // the LIBRARY gains books, not when the audiobook machine does.
+  { key: 'link', label: 'Link sibling catalogues', kind: 'publishing' },
 ];
 /**
  * The standalone shelf-server force-upload's OWN status doc (owner ask

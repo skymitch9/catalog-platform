@@ -85,14 +85,20 @@ export function pipelineRequestFields(input: { token: string; requestedBy: strin
 // ---------------------------------------------------------------------------
 
 /**
- * The 7 pipeline stages this route can trigger individually. `kind` is the
+ * The 8 pipeline stages this route can trigger individually. `kind` is the
  * blast-radius classification the status page's UI uses to pick a
  * confirmation tier (admin.js's confirmBtn two-tap idiom, reused via
  * assets/estate-controls.js):
  *   read-only  — audit, detect: plain button, no confirmation.
  *   mutating   — sort, folders, upload: two-tap confirm.
- *   publishing — catalog, publish: two-tap confirm PLUS an explicit
+ *   publishing — catalog, publish, link: two-tap confirm PLUS an explicit
  *                "this updates the live site" warning.
+ *
+ * ⚠️ `link` (STEP 11, added 2026-08-23) is classified `publishing` rather than
+ * `mutating` for a reason none of the others share: it writes a DIFFERENT
+ * APPLICATION's production D1 — the library catalogue's `audiobook_holding`
+ * table, via that repo's backfill-audiobook-holdings.mjs. A button that
+ * reaches into another app's live database earns the top confirmation tier.
  */
 export const PIPELINE_STEPS = {
   audit: { label: 'Purchase audit', kind: 'read-only' },
@@ -102,6 +108,7 @@ export const PIPELINE_STEPS = {
   upload: { label: 'Upload to Drive', kind: 'mutating' },
   catalog: { label: 'Rebuild catalog', kind: 'publishing' },
   publish: { label: 'Commit & deploy', kind: 'publishing' },
+  link: { label: 'Link sibling catalogues', kind: 'publishing' },
 } as const;
 
 export type PipelineStepKey = keyof typeof PIPELINE_STEPS;
@@ -122,7 +129,7 @@ export function isPipelineStepKey(value: unknown): value is PipelineStepKey {
 /**
  * Same fields as pipelineRequestFields(), plus `step` — validated on the
  * audiobook_catalog side by firestore.rules' validPipelineStep() (bounded
- * to the 7 stage keys or FORCE_UPLOAD_STEP).
+ * to the 8 stage keys or FORCE_UPLOAD_STEP).
  */
 export function pipelineStepRequestFields(input: {
   token: string;
@@ -349,7 +356,7 @@ opsRoutes.post('/estate/ops/pipeline/step', requireDevops(), async (c) => {
  * POST /api/estate/ops/pipeline/force-upload — the standalone shelf-server
  * reconciliation (owner ask 2026-08-16: "a button to force a full upload to
  * the server... without the full pipeline"). Deliberately its own route,
- * not under /step: it is NOT one of the 7 pipeline stages (no entry in
+ * not under /step: it is NOT one of the 8 pipeline stages (no entry in
  * PIPELINE_STEPS) — see scripts/sync_to_server.py's module docstring on the
  * audiobook_catalog side for why.
  *

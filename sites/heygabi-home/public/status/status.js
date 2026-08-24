@@ -27,7 +27,7 @@
  *
  * ⚠️ WHAT LEFT THIS FILE ON 2026-08-18, and where it went, because a reader
  * looking for it here is the likeliest next visitor: the ingestion pause card,
- * the Run button, the seven pipeline steps, the Run levers and the
+ * the Run button, the eight pipeline steps, the Run levers and the
  * shelf-server force-upload ALL moved to `/status/pipelines/pipelines.js`,
  * intact. The shared helpers they used moved to `lib/core.js`, and the devops
  * gate to `lib/gate.js`, so the four pages share one implementation of each
