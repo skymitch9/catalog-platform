@@ -1,7 +1,9 @@
 # catalog-platform — docs map
 
 > **Audience:** Claude/Kiro sessions first, the owner second. **Status:** TRACKED.
-> Last verified: **2026-08-21** (the tree below was measured that day).
+> Last verified: **2026-08-23** — the tree was re-measured that day and `info/`
+> gained `doc-tree-maintenance.md`. ⚠️ The estate-wide claims further down were
+> NOT re-checked.
 >
 > 📐 **The rules for this tree — filing, formatting, when to move things — live
 > in [`DOCS_STANDARD.md`](DOCS_STANDARD.md), and ONLY there.** All four repos

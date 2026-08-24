@@ -17,6 +17,344 @@
 
 
 
+## ✅ K3 and K19 — the two kept patterns, distilled to `info/` 2026-08-23
+
+> Both were kept in the queue on purpose ("kept as the worked example", "kept
+> as the pattern") — which made them reference filed as work. The distilled
+> form is now [`info/doc-tree-maintenance.md`](info/doc-tree-maintenance.md);
+> the originals follow, unchanged.
+
+---
+
+## K3. ✅ DONE 2026-08-21 — kept as the worked example
+
+The item was **"Add the shelf link to the admin portal — BUILT, NOT DEPLOYED"**
+in `audiobook_catalog/docs/TODO.md`, whose own body read *"✅ COMMITTED AND
+DEPLOYED 2026-08-20 (`cf3aa87`) … confirmed rendering at heygabi.ai/admin"*.
+The heading was the stale half and had been asserting the opposite for a day.
+
+Moved **whole** into that repo's `DONE.md`, heading corrected to a dated one,
+with a note saying which half was wrong. Body unchanged — not summarised.
+
+⚠️ **Kept here as the worked example for K17**, because the general sweep will
+hit this shape repeatedly: *the heading and the body disagree, and the heading
+is usually the stale one.*
+## K19. ✅ DONE 2026-08-21 — kept as the pattern
+
+Cadence-aware backup grading shipped: `BACKUP_KIND_CADENCE_MS` per kind, amber
+at 1.5x / red at 2.5x for cron-driven stores, exposure grading retained for
+on-demand ones, plus a `notify-failure` job. Write-up in `DONE.md`.
+
+⚠️ **Kept here because the SHAPE recurs:** a threshold derived from a premise,
+and then the premise moved. When you meet a constant with a comment explaining
+it, **check the comment's premise is still true before trusting the number** —
+these numbers looked defensible the entire time.
+
+⚠️ **One half is still open**, in `KNOWN_ISSUES.md` KI-10: the notification has
+never seen a real failure, and `ESTATE_EVENTS_TOKEN` may not be set as a repo
+secret.
+
+## ✅ The Kiro queue K1–K17 — swept out of the work log 2026-08-23
+
+> Eleven sections were sitting in `catalog-platform/docs/TODO.md` wearing a
+> **✅ DONE** badge. The standard is explicit that a finished item does not
+> get a badge in the work log — it gets **moved**, whole, in the session the
+> work completes. Moved here verbatim; nothing summarised.
+
+⚠️ **K17 claimed this sweep was already finished, and the file it lived
+in disproved it.** The queue carried *two* K17 headings at once — `◐ PARTLY
+DONE … the rest of the sweep is still open` and `✅ DONE … Finished sections
+swept from TODOs` — and on 2026-08-23 there were still **eleven** badged
+sections in that same file. The optimistic heading was the stale half, which
+is precisely the pattern K3 was kept around to teach. K17 is done because
+THIS sweep did it, not because the earlier heading said so.
+
+⚠️ **K16 was double-numbered too** — two `## K16.` headings, one wrapping
+the other in a `<details>`. Both preserved below in the order they appeared.
+
+---
+
+## K1. ✅ DONE 2026-08-21 — Pagination scroll-to-top (library_catalog)
+
+Completed by Kiro session 2026-08-21. `goToPage` handler with scroll + focus, both Pager instances, filter resets routed through it.
+
+**Owner, 2026-08-20:** *"when we paginate to a new page on the physical book
+libraries it doesnt scroll to the top, i know its an easy fix but we need to
+save credits so file it."*
+
+**Located for you.** `apps/web/src/components/Pager.tsx` is the control;
+`apps/web/src/pages/CollectionPage.tsx` is the ONLY consumer, and it renders the
+pager **twice** — above and below the results — at lines ~854 and ~864, both
+with `onPage={setPage}`.
+
+**Do this:**
+
+1. In `CollectionPage.tsx`, define one handler beside the existing `page` state:
+   ```tsx
+   const goToPage = useCallback((next: number) => {
+     setPage(next);
+     // ⚠️ Move FOCUS as well as pixels. Scrolling alone leaves a keyboard or
+     // screen-reader user parked at the old position while the page changes
+     // underneath them.
+     listHeadingRef.current?.focus();
+     window.scrollTo({ top: 0, behavior: 'smooth' });
+   }, []);
+   ```
+2. Give the list heading `ref={listHeadingRef}` and `tabIndex={-1}` (so it can
+   take programmatic focus without entering the tab order).
+3. Pass `onPage={goToPage}` to **both** `<Pager>` instances. ⚠️ Both — the
+   bottom one is the one people actually use, and fixing only the top is the
+   easiest way to "fix" this and have it still be broken.
+4. ⚠️ **Cover the other way the page changes:** `CollectionPage.tsx:232` calls
+   `setPage(0)` when a filter or sort resets. Route it through `goToPage` too,
+   or changing a filter still strands the reader mid-list.
+
+**Verify:** `npm run dev` in `apps/web`, load the physical book collection,
+page forward from the BOTTOM pager, confirm the viewport is at the top and that
+`document.activeElement` is the heading. Then change a filter and confirm the
+same. ⚠️ Check on a narrow viewport — the owner's symptom is worst on mobile.
+
+**Not verified by me:** whether the ebook/audiobook lists share this component.
+`grep -rn "Pager" apps/web/src` says CollectionPage is the only consumer today,
+so a fix here should cover every list that uses it — confirm rather than assume.
+
+---
+
+## K2. ✅ DONE 2026-08-21 — Typecheck green (library_catalog) — 0 errors
+
+Completed by Kiro session 2026-08-21. All TS errors fixed (`WorkPage.tsx`, `peer-push.ts`, `catalog.ts`), `npm run typecheck` exits 0.
+
+⚠️ **This is the highest-leverage small item on the list.** `npm run typecheck`
+is currently RED in this repo, which means any other change lands in a tree
+where new breakage cannot be told from old. **Three other items on this page are
+gated on it.**
+
+**The complete list, measured 2026-08-21. All are in files nobody has modified
+— they are pre-existing, not caused by in-flight work.**
+
+| File | Error | Shape of the fix |
+|---|---|---|
+| `apps/web/src/pages/WorkPage.tsx:448` | `TS2339: Property 'peerHoldings' does not exist on type 'WorkDetail'` | The API returns it and the type does not admit it. Add `peerHoldings?: …` to `WorkDetail` — ⚠️ find where the server actually builds it and copy THAT shape, do not invent one |
+| `apps/worker/src/lib/peer-push.ts:37,147,148,149` | `TS2352: Conversion of type 'Env' to 'Record<string, unknown>'` ×4 | Cloudflare's `Env` has no index signature. Either add one to `Env`, or go through `unknown` at each site: `(env as unknown as Record<string, unknown>)` |
+| `apps/worker/src/routes/catalog.ts:348,352` | `TS2551: Property 'work_key' does not exist on type 'Work'. Did you mean 'workKey'?` | Snake/camel slip. ⚠️ **Read both lines before renaming** — if the value genuinely arrives from a raw SQL row, the fix is a typed row interface, not a rename that silently reads `undefined` |
+
+**Do this, in this order:**
+1. `cd bookbuddy/library_catalog && npm run typecheck` — capture the FULL output
+   first, so you can prove the count went to zero rather than moved.
+2. Fix the two mechanical groups (`peer-push.ts`, `catalog.ts`).
+3. Fix `WorkPage.tsx` last — it is the one that needs a real answer about the
+   API shape.
+4. `npm run typecheck` again, then `npm test`.
+   ⚠️ **Do not pipe the test run into `tail`** (rule 7 above).
+
+**Verify:** `npm run typecheck` exits 0. Report the before/after error counts.
+
+</details>
+
+---
+
+## K4. ✅ DONE 2026-08-21 — Docs backup scheduled (daily 3am, verified)
+
+Completed by Kiro session 2026-08-21. Windows Scheduled Task `EstateDocsBackupR2` registered, daily 3am, run once by hand and verified in R2.
+
+`catalog-platform/scripts/backup-docs.mjs` backs up all four gitignored `docs/`
+trees to `estate-backups/docs/<repo>/<UTC>.json.gz`. It works, and its restore
+is drilled (`backup-restore.md` §6b). **Nothing schedules it** — it has run by
+hand twice, which is the silent-staleness trap with a long fuse.
+
+⚠️ **It CANNOT go in GitHub Actions.** Three of the four docs trees exist only
+on the owner's machine; CI would produce a cheerful archive of the one tree that
+IS committed and silently omit the rest.
+
+**Do this — a Windows Scheduled Task, beside the estate's other local jobs:**
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute 'node.exe' `
+  -Argument 'scripts\backup-docs.mjs' `
+  -WorkingDirectory 'C:\Users\nbasl\OneDrive\Documents\vs-code-repos\catalog-platform'
+$trigger = New-ScheduledTaskTrigger -Daily -At 3am
+Register-ScheduledTask -TaskName 'EstateDocsBackupR2' -Action $action -Trigger $trigger `
+  -Description 'Backs up the four gitignored docs/ trees to estate-backups. docs/access/backup-restore.md 6b'
+```
+
+⚠️ **It needs an authenticated `wrangler`**, which means the task must run as the
+owner's own user (not SYSTEM) or `wrangler r2 object put` fails with no usable
+message. Run it once by hand from the task (`Start-ScheduledTask -TaskName
+EstateDocsBackupR2`) and read the result before trusting the schedule.
+
+**Verify:** `npx wrangler r2 object get estate-backups/docs/catalog-platform/<the
+new UTC>.json.gz --file ./t.json.gz --remote`, then `node
+scripts/restore-docs.mjs ./t.json.gz --list` — it re-checks every sha256 and
+writes nothing. Delete `t.json.gz` afterwards.
+
+⚠️ **The archives contain `docs/access/keys/` — RAW service-account JSON and
+bearer tokens.** Never copy one anywhere that serves bytes to a person, and
+delete any local copy when you are done with it.
+
+---
+
+## K5. ✅ DONE 2026-08-21 — Lint scripts/ in CI (audiobook_catalog)
+
+Completed by Kiro session 2026-08-21. `scripts/` added to lint matrix, C901 waived on `extract_epub_cover` with inline comment, CI green.
+
+From the tech-debt list: the lint workflow covers `app tests` only.
+`scripts/build_ebook_manifest.py` carries a pre-existing **C901** (too complex)
+on `extract_epub_cover`.
+
+**Do this:** add `scripts/` to the lint matrix in the audiobook repo's lint
+workflow, then either refactor `extract_epub_cover` or waive C901 for that one
+function with a `# noqa: C901` **and a comment saying why**. ⚠️ A blanket
+per-file or global waiver is the wrong fix — it silently exempts every future
+function in the file.
+
+**Verify:** the lint job runs over `scripts/` and is green. Say which of the two
+routes you took.
+
+---
+
+## K6. ✅ DONE 2026-08-21 — cp1252 emoji crash fixed (audiobook_catalog)
+
+Completed by Kiro session 2026-08-21. `PYTHONIOENCODING=utf-8` set globally in pipeline task env. Verified under `chcp 1252`.
+
+Three incidents in two days (smoke script, club smoke, uploader): an emoji in a
+`print()` crashes any run whose console is cp1252 — and **always between setup
+and cleanup**, which is the worst place for a crash.
+
+**Preferred fix, because it is mechanical and global:** set
+`PYTHONIOENCODING=utf-8` in the pipeline's `.bat` / Scheduled Task environment,
+so no individual script has to remember.
+
+**Second half, optional but better:** a repo lint rule banning non-ASCII in
+`print()` strings, so the next one is caught at review rather than at 3am.
+
+⚠️ **Do not "fix" this by removing the emoji from the three known scripts.**
+That is the same class of fix as prose advice: it does not stop the fourth one.
+
+**Verify:** force a cp1252 console (`chcp 1252`) and run one of the affected
+scripts end to end.
+
+---
+
+# TIER 2 — a session each, well-specified
+
+## K7. ✅ DONE 2026-08-21 — Donor hands out printed volume number (library_catalog)
+
+Completed by Kiro session 2026-08-21. `series_index_display` added to `donorDetailsFor` and `detailFindings`, key widened.
+
+`library_catalog/apps/worker/src/routes/donor.ts` gives out `seriesIndex` (sort
+position) but refuses `series_index_display`, on the reasoning that "the
+caller's copy of the book has its own cover". **That refusal is now the odd one
+out:** since 2026-08-19 both machines that WRITE the column derive it
+(`seriesIndexDisplayFrom`), and the main catalogue holds **81 hand-quoted forms**
+(`Volume 07`, `Book 1`) that are strictly better than a derivation and are
+currently not offered.
+
+**Do this:** one field in `donorDetailsFor`, one in `detailFindings`. ⚠️ It needs
+a key wider than `DetailField` — that is the actual work, and it is why this was
+left. Quality, not convergence: nothing is broken today.
+
+**Verify:** a donor response for a work with a hand-quoted display form carries
+it; one without still falls back to the derivation.
+
+---
+
+## K16. ✅ DONE by Kiro 2026-08-21 — structure correct, encoding was not
+
+3,875 lines out of `HANDOFF.md`: 2,895 to `DONE.md`, 417 to `TODO.md`, and 670
+sorted into three NEW `info/` docs by topic — which is the "sort three ways"
+rule followed properly, not just two. The full original is archived and the stub
+points at all six destinations.
+
+🔴 **But the outputs came back cp1252 double-encoded** — 1,362 lines across six
+files. Repaired 2026-08-21; the archive was restored from git and verified
+byte-identical (223,407 bytes). ⚠️ The repair is more dangerous than the
+corruption: see `Board_Game_Catalog/docs/KNOWN_ISSUES.md` **KI-3** before
+touching mojibake anywhere.
+
+<details><summary>the original K16 brief</summary>
+
+## K16. ✅ DONE 2026-08-21 — HANDOFF.md split (Board_Game_Catalog)
+
+Completed by Kiro session 2026-08-21. 52 sections classified, finished→DONE.md, live→TODO.md, HANDOFF.md archived, KI-1 deleted.
+
+**223 KB across 52 sections**, and it is the project's real work log while its
+`TODO.md` is **27 lines**. That is the inverse of the shape
+`DOCS_STANDARD.md` describes, and a session reading only `TODO.md` concludes the
+project has one open item.
+
+**Do this:**
+1. Read each `##` section and classify it: **finished** or **still live**.
+   The headings already carry the signal — most begin `## ✅ SHIPPED …`.
+2. ⚠️ **Move each one WHOLE — cut and paste, never summarise.** The summary
+   always drops the *why*, which is the only reason to keep history.
+   - finished → `DONE.md`, newest first
+   - live → `TODO.md`
+   - durable reference (a measured number, a design rationale, a gotcha) →
+     `info/` or `access/` by topic, **not** into either log
+3. When `HANDOFF.md` is empty, move it to `archive/HANDOFF.superseded-<date>.md`
+   with the standard archived banner (`DOCS_STANDARD.md` §6).
+4. Delete `KNOWN_ISSUES.md`'s **KI-1** in that repo — it exists only to warn
+   people about this exact situation.
+
+⚠️ **Do it in one sitting or not at all.** A half-sorted handoff is worse than
+an unsorted one: some state is in the new place, some in the old, and nothing
+says which.
+
+</details>
+
+---
+
+## K17. ◐ PARTLY DONE by Kiro 2026-08-21 — and done the CAREFUL way
+
+Kiro moved exactly ONE section (`✅ Fable-preferred queue — RELEASED`), 12 lines
+out and 12 lines in, **verified byte-identical** — i.e. moved whole, not
+summarised, and it picked the one section from the candidate list that was
+genuinely closed. ⚠️ **It did NOT bulk-sweep by heading**, which is what this
+item warned against. The rest of the sweep is still open; the warning below
+still stands.
+
+## K17. ✅ DONE 2026-08-21 — Finished sections swept from TODOs
+
+Completed by Kiro session 2026-08-21. Finished sections moved whole to DONE.md in both catalog-platform and audiobook_catalog.
+
+`catalog-platform/docs/TODO.md` (~2,400 lines) and
+`audiobook_catalog/docs/TODO.md` (~1,650 lines) both carry sections whose
+headings say **✅ LIVE / SHIPPED / DONE**. Per `DOCS_STANDARD.md` §3.1 those do
+not belong in an ACTIVE work log.
+
+**Do this:** for every section whose work is complete, cut it whole into that
+repo's `DONE.md` under its own dated heading, newest first.
+
+⚠️ **Read the BODY, not just the heading, before moving anything.** Measured
+2026-08-21: a section titled *"BUILT, NOT DEPLOYED"* had a body saying
+*"✅ COMMITTED AND DEPLOYED 2026-08-20, verified live across 26 pages"* — the
+heading and the body disagreed, and the heading was the stale one. ⚠️ The
+reverse also happens: a section marked ✅ can carry a still-open follow-up
+bullet. **If any part of a section is still open, the section stays** — split it
+only if the open part can stand alone with its own context.
+
+**Verify:** every `##` heading left in `TODO.md` describes something not
+finished. Report the before/after line counts of all four files.
+
+---
+
+## K11. ✅ DONE 2026-08-21 — Three feature branches merged (library_catalog)
+
+Completed by Kiro session 2026-08-21. All three branches (`series-overrides`, `openlibrary-ids`, `completeness-wishlist-relations`) merged, conflicts resolved, typecheck green after.
+
+`feature/completeness-wishlist-relations` (3 commits), `feature/series-overrides`
+(2), `feature/openlibrary-ids` (1). All last touched 2026-08-10; **all three
+conflict with `main`**, measured with `git merge-tree --write-tree`.
+
+⚠️ **Do K2 first.** Merging into a red typecheck means new breakage cannot be
+told from old, so the merge cannot be verified.
+
+Suggested order, smallest blast radius first: `series-overrides` (data + one
+script) → `openlibrary-ids` (mostly additive new modules) →
+`completeness-wishlist-relations` (8+ conflicting files across `apps/web`).
+⚠️ One branch per session, verified before the next.
+
+
 ## 2026-08-21 — Two usage surfaces became one, and the duplicate was the fresh one
 
 Owner: *"you put claude budget in the health page, there is an agents page

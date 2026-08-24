@@ -1,7 +1,9 @@
 # catalog-platform — Known Issues, Waivers & Exceptions
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-21**.
+> Last verified: **2026-08-23** — KI-10 was re-measured that day (still true).
+> The others were NOT re-checked; KI-8 needs the Cloudflare dashboard, which
+> only the owner can open.
 >
 > **This file exists to stop the same non-bug being re-reported every month.**
 > It holds things that ARE wrong, or look wrong, and are deliberately tolerated.
@@ -188,7 +190,9 @@ shrugged at.
 any non-clean result to the estate event ring, so it surfaces on `/status`.
 🔴 **MEASURED 2026-08-21 — `ESTATE_EVENTS_TOKEN` IS NOT A REPO SECRET.**
 `gh secret list` on `catalog-platform` returns exactly two: `CLOUDFLARE_API_TOKEN`
-and `FIREBASE_SERVICE_ACCOUNT_JSON`. **So the notification is currently a no-op**
+and `FIREBASE_SERVICE_ACCOUNT_JSON`. ⚠️ **Re-measured 2026-08-23 and unchanged** —
+still exactly those two, so this has now been a no-op for two days rather than
+one. **So the notification is currently a no-op**
 — it will emit a loud `::error::` annotation naming the missing secret rather
 than exiting quietly, which is the best it can do from inside CI, but nothing
 reaches `/status`. It has also never been tested against a real failure.

@@ -1,6 +1,6 @@
 # catalog-platform — Information References
 
-> **Audience:** Claude sessions. **Status:** TRACKED. Last verified: **2026-08-14**
+> **Audience:** Claude sessions. **Status:** TRACKED. Last verified: **2026-08-23** — this index gained `doc-tree-maintenance.md` that day; the other rows were NOT re-checked
 > — the estate stack went LIVE overnight 2026-08-13→14 (auth Worker deployed +
 > seeded, index Worker deployed with all three catalogs pushed, apex search +
 > `/admin`, games enforcing, library in shadow). Operational runbooks live in
@@ -13,6 +13,7 @@ in flight live in [`../TODO.md`](../TODO.md); the system design in
 
 | File | What it holds |
 |---|---|
+| [`doc-tree-maintenance.md`](doc-tree-maintenance.md) | The **worked examples** behind `DOCS_STANDARD.md` — the shapes that keep coming back, extracted 2026-08-23 from the Kiro queue where they sat as work items nobody could finish. ⚠️ Three patterns, each measured rather than asserted: **the heading and the body disagree and the heading is the stale half** (of 11 sections claiming done, 11 had open work; and a `K17 ✅ DONE — finished sections swept` sat directly above eleven un-swept sections); **a threshold outlives the premise it was derived from** (the backup grading constants looked defensible the whole time they were wrong); and **a dated deadline that has passed still reads as upcoming** (the leaked-key rotation was found un-done 3.5 h after its window, with the heading unchanged) |
 | [`status-pages.md`](status-pages.md) | The **four status pages** after the 2026-08-18 split (owner mock: "a health page… a page for data processing, a page for running the pipelines") — who owns what, the file/module map, and the probed-vs-pushed line that runs through the whole surface. ⚠️ Read its last section before editing any of them: `_headers` does **not** match by prefix (the three new pages nearly shipped with no CSP at all), a Hono CORS mount is **not implied by a route** (`/ops/ingestion` shipped correct, answered curl perfectly, and was unreachable from a browser), and predeploy pins **move with their subject** |
 | [`agent-board-contract.md`](agent-board-contract.md) | The **pushed state blob** behind /status/agents and /status/processing (2026-08-18): the four sections (`agents`, `events`, `usage`, `processing`), field by field, and why it is a **doc rather than a schema** — the home-machine pusher for `processing` does not exist yet, so the Worker validates the envelope only (JSON object, ≤256 KB) and the renderers carry the tolerance. ⚠️ The two rules that fall out of that: **a missing number is not zero**, and the four causes of silence never collapse into one. Also the refusal table, and why `pushed_at` is the Worker's clock and never the pusher's |
 | [`matching-thresholds.md`](matching-thresholds.md) | The 2026-08-12 re-measurement of `MIN_TITLE_SIMILARITY` (0.34) and the 0.7 spine floor against both production D1s; verdict on sharing them across books and games; the bare-series-name refusal rule |
