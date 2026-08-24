@@ -711,6 +711,15 @@ export async function converseWithTools(
   // the other silently.
   const booksOffered = Boolean(toolCtx.books);
   const booksSpend = () => toolCtx.books?.budget.spent() ?? { bytes: 0, passages: 0 };
+  // ⚠️ The shelf (Tier 0d) and recall (Tier 4) surfaces are decided the SAME
+  // way and SEPARATELY, from whether the composition root handed us a port.
+  // Before audit F6 this call site built the tool array from `{docs, books}`
+  // only, so `my_tbr`, `my_reviews`, `book_reviews` and `recall_conversation`
+  // were NEVER described to the model even when their ports were wired and
+  // `GABI_SHELF`/recall were on — the executor could run them but the model was
+  // never told they existed.
+  const shelfOffered = Boolean(toolCtx.shelf);
+  const recallOffered = Boolean(toolCtx.recall);
   const finish = (text: string | null, toolCalls: number, tools: string[], iterationCount: number): ToolTurnResult => {
     const spent = docsSpend();
     const booksSpent = booksSpend();
@@ -751,7 +760,7 @@ ${CHAT_CUT_SHORT}`
   const messages: { role: 'user' | 'assistant'; content: unknown }[] = modelMessages(history, user);
 
   const client = chatClient(apiKey, overrides);
-  const tools = toolsForApi({ docs: docsOffered, books: booksOffered });
+  const tools = toolsForApi({ docs: docsOffered, books: booksOffered, shelf: shelfOffered, recall: recallOffered });
   const executed: string[] = [];
   let iterations = 0;
 

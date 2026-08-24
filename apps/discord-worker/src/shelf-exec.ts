@@ -266,7 +266,10 @@ function shapeReviews(docs: FsDoc[], cap: number): ShelfCallResult<ReviewRow> {
     ...(ts(d.fields?.updatedAt) ? { updatedAt: ts(d.fields?.updatedAt) as string } : {}),
   }));
   rows.sort((x, y) => (y.updatedAt ?? '').localeCompare(x.updatedAt ?? ''));
-  return { ok: true, rows: rows.slice(0, cap), total: rows.length };
+  // ⚠️ `allBookIds` is the FULL set — computed BEFORE the display slice — so an
+  // exclusion set never inherits the 15-row cap (audit F7).
+  const allBookIds = rows.map((r) => r.bookId).filter(Boolean);
+  return { ok: true, rows: rows.slice(0, cap), total: rows.length, allBookIds };
 }
 
 export type { ShelfPort };

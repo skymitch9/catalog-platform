@@ -38,6 +38,7 @@
 
 import { Hono } from 'hono';
 import { resolveEbookAccess } from './ebook-gate.js';
+import { audioIndex } from './audio-manifest.js';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import type { Env } from './env.js';
 
@@ -64,6 +65,45 @@ streamPingRoutes.post('/api/audio/:anchor/stream-ping', async (c) => {
   const anchor = (c.req.param('anchor') ?? '').trim();
   if (!anchor) {
     return c.json({ error: 'no_anchor', detail: 'No book anchor provided.' }, 400);
+  }
+
+  // 1b. ⚠️ THE ANCHOR IS A LOOKUP, NEVER A CONSTRUCTION — the same rule
+  //     audio-manifest.ts states and audio-file.ts obeys. The `:anchor` in the
+  //     URL is a client-supplied string; interpolating it straight into the
+  //     Firestore document path (as the earlier code did) let an admitted
+  //     caller pick which document the rules-bypassing service account writes
+  //     — a `%2F`/`%23` payload escapes the `audio_streams` collection and
+  //     drops the update mask. So validate it against the gated manifest and
+  //     404 on a miss, exactly as the byte route does; only a known anchor may
+  //     name a Firestore document. (audit F3, 2026-08.)
+  const gatedBucket = c.env.EBOOKS_GATED;
+  if (!gatedBucket) {
+    // Cannot validate the anchor without the catalogue — a deployment problem.
+    // Fail closed: no unvalidated string reaches the Firestore path.
+    return c.json(
+      {
+        error: 'manifest_store_unbound',
+        detail: 'The catalogue is not attached to this Worker, so the ping cannot be recorded.',
+        fix: 'add the [[r2_buckets]] EBOOKS_GATED binding (bucket ebooks-gated) and redeploy',
+      },
+      503,
+    );
+  }
+  const idx = await audioIndex(gatedBucket);
+  if (!idx.ok) {
+    // The manifest is absent or unreadable, so the anchor cannot be validated.
+    // Non-fatal (the player still plays) and fail-closed: record nothing.
+    return new Response(null, { status: 204 });
+  }
+  if (!idx.index.has(anchor)) {
+    // ⚠️ 404, never a write. An anchor absent from the manifest is a fact
+    // about the LINK, not the caller — and no client-supplied byte ever
+    // reaches the Firestore path, the way audio-file.ts refuses an unknown
+    // book. This is the line that closes the path-injection.
+    return c.json(
+      { error: 'unknown_book', detail: 'No audiobook matches that link.' },
+      404,
+    );
   }
 
   // 2. Throttle — server-side, per anchor.
@@ -112,7 +152,10 @@ streamPingRoutes.post('/api/audio/:anchor/stream-ping', async (c) => {
   }
 
   // Write the document via REST (lighter than importing the Admin SDK).
-  const docPath = `audio_streams/${anchor}`;
+  // ⚠️ encodeURIComponent regardless — the anchor is manifest-validated above,
+  // but a document-path component is still never built from a raw client
+  // string. Belt to the lookup's braces.
+  const docPath = `audio_streams/${encodeURIComponent(anchor)}`;
   const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${docPath}`;
 
   const body = {

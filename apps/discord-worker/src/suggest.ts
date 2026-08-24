@@ -784,6 +784,14 @@ const indexOf = (row: CatalogRow): number => {
 export function buildSuggestions(opts: {
   rows: readonly CatalogRow[];
   reviews: readonly ReviewRow[];
+  /**
+   * ⚠️ The FULL, uncapped set of reviewed bookIds (audit F7). `reviews` is only
+   * the capped display slice and still feeds the ratings heuristic, but the
+   * exclusion set MUST key off this — otherwise a shelf with more than 15
+   * reviews has its older-reviewed books suggested back. Falls back to the ids
+   * in `reviews` when absent, so existing callers keep working.
+   */
+  reviewedIds?: readonly string[];
   tbr: readonly TbrRow[];
   format: SuggestFormat;
   limit?: number;
@@ -799,7 +807,9 @@ export function buildSuggestions(opts: {
   // estate has no such record — but a book somebody reviewed is a book they have
   // finished with, and suggesting it back is the single most obviously wrong
   // thing this feature could do.
-  const reviewed = new Set(opts.reviews.map((r) => r.bookId).filter(Boolean));
+  const reviewed = new Set(
+    (opts.reviewedIds ?? opts.reviews.map((r) => r.bookId)).filter(Boolean),
+  );
   const ratings = new Map<string, number>();
   for (const r of opts.reviews) {
     if (r.bookId && typeof r.rating === 'number') ratings.set(r.bookId, r.rating);

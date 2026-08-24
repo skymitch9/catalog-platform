@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  backupLastWriteText,
   describeBucket,
   describeProofAge,
   describeRestore,
@@ -178,4 +179,40 @@ test('a small clock skew reads as "just now" rather than shouting', () => {
   assert.match(describeProofAge(5_000), /just now/);
   assert.match(describeProofAge(90 * 60_000), /ago/);
   assert.match(describeProofAge(NaN), /unreadable/);
+});
+
+test('⚠️ F8: the backups "last write" is the NEWEST timestamp, not a scraped age fragment', () => {
+  const now = Date.parse('2026-08-24T12:00:00Z');
+  const group = {
+    // A multi-store roll-up whose oldest is a TWO-PART age and whose newest is
+    // 12 minutes ago — the exact shape the old regex misparsed.
+    oldest: '2026-08-21T10:00:00Z', // 3d 2h before `now`
+    newest: '2026-08-24T11:48:00Z', // 12 min before `now`
+    count: 9,
+    stores: 5,
+  };
+  // The fix uses the group's own numbers → the NEWEST backup, 12 minutes ago.
+  assert.equal(backupLastWriteText(group, now), 'newest backup 12 min ago');
+
+  // Documented reproduction of the bug this replaces: the old code scraped the
+  // rendered sentence with /(\d+[a-z ]*(?:ago))/i, which on a two-part age
+  // matched the SECOND fragment — publishing "2h ago", days too fresh.
+  const renderedSentence =
+    'Oldest of 5 stores 3d 2h ago (estate-backups) · newest 12m ago · 9 copies kept.';
+  const oldScrape = /(\d+[a-z ]*(?:ago))/i.exec(renderedSentence);
+  assert.equal(oldScrape[1], '2h ago', 'the old scrape really did understate the age');
+});
+
+test('F8: no timestamps → null (last write not reported), never a guess', () => {
+  assert.equal(backupLastWriteText({ count: 0 }), null);
+  assert.equal(backupLastWriteText(null), null);
+  assert.equal(backupLastWriteText({ newest: 'not-a-date' }), null);
+});
+
+test('F8: a single-store group with only `oldest` still reports it', () => {
+  const now = Date.parse('2026-08-24T12:00:00Z');
+  assert.equal(
+    backupLastWriteText({ oldest: '2026-08-24T09:00:00Z' }, now),
+    'newest backup 3h 0m ago',
+  );
 });

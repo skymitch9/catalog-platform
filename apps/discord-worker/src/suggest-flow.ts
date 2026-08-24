@@ -215,19 +215,23 @@ export async function gatherSuggestions(opts: {
   const overrides = opts.fetchOverride ? { fetch: opts.fetchOverride } : undefined;
 
   const shelfReads = opts.shelf
-    ? (async (): Promise<{ reviews: ReviewRow[]; tbr: TbrRow[]; ok: boolean } | null> => {
+    ? (async (): Promise<{ reviews: ReviewRow[]; reviewedIds: string[]; tbr: TbrRow[]; ok: boolean } | null> => {
         const who = await opts.shelf!.port.asker(opts.shelf!.discordUserId);
         // ⚠️ NOT LINKED IS NOT AN ERROR HERE. An audiobook suggestion is offered
         // to anybody, so an unlinked asker simply gets an un-personalised one —
         // refusing them would gate the public shelf behind a link the format
         // does not require.
-        if (!who.ok) return { reviews: [], tbr: [], ok: who.reason === 'unlinked' };
+        if (!who.ok) return { reviews: [], reviewedIds: [], tbr: [], ok: who.reason === 'unlinked' };
         const [reviews, tbr] = await Promise.all([
           opts.shelf!.port.myReviews(who.asker),
           opts.shelf!.port.myTbr(who.asker),
         ]);
         return {
+          // ⚠️ `reviews` (the display rows) still feeds the RATINGS heuristic,
+          // but the EXCLUSION set keys off `reviewedIds` — the FULL uncapped set
+          // — so a >15-review shelf never has old reviews suggested back (F7).
           reviews: reviews.ok ? reviews.rows : [],
+          reviewedIds: reviews.ok ? (reviews.allBookIds ?? reviews.rows.map((r) => r.bookId).filter(Boolean)) : [],
           tbr: tbr.ok ? tbr.rows : [],
           ok: reviews.ok && tbr.ok,
         };
@@ -253,7 +257,7 @@ export async function gatherSuggestions(opts: {
     if (!opts.browsed) {
       return { candidates: [], shelfUnavailable: shelfNow !== null && !shelfNow.ok };
     }
-    const reviewed = new Set((shelfNow?.reviews ?? []).map((r) => r.bookId).filter(Boolean));
+    const reviewed = new Set(shelfNow?.reviewedIds ?? []);
     const candidates = opts.browsed.rows
       // ⚠️ Excluded the same way every other rung excludes: by REVIEW, the only
       // record the estate keeps. Never "already read".
@@ -275,6 +279,7 @@ export async function gatherSuggestions(opts: {
     candidates: buildSuggestions({
       rows,
       reviews: shelf?.reviews ?? [],
+      reviewedIds: shelf?.reviewedIds ?? [],
       tbr: shelf?.tbr ?? [],
       format: opts.format,
       limit: opts.limit ?? SUGGEST_ROWS,

@@ -119,6 +119,27 @@ export function describeTotals(section) {
  * would paint the row red for a week and teach him to ignore it, which is the
  * whole lesson of the ebook lane.
  */
+/**
+ * The estate-backups bucket's "last write" line, from the backup roll-up
+ * group's OWN timestamps — NEVER scraped back out of the sentence
+ * `renderBackupGroup` printed.
+ *
+ * ⚠️ **AUDIT F8.** The old `lastWriteFor` read the rendered detail text and ran
+ * `/(\d+[a-z ]*(?:ago))/i` over it. Against a two-part age that regex matches
+ * the SECOND fragment: *"Oldest of 5 stores 3d 2h ago … newest 12m ago"* was
+ * published as *"2h ago"* — neither the oldest (3d 2h) nor the newest (12m),
+ * understating the age by days. The value was in hand all along: the group
+ * carries `newest`/`oldest` ISO instants. This returns the NEWEST as the "last
+ * write" (the most recent backup), or null when the group has none.
+ */
+export function backupLastWriteText(group, nowMs = Date.now()) {
+  if (!group || typeof group !== 'object') return null;
+  const iso = group.newest || group.oldest || null;
+  const at = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(at)) return null;
+  return `newest backup ${formatAgeShort(nowMs - at)} ago`;
+}
+
 export function describeArchive(a, nowMs = Date.now()) {
   if (!a || a.available === false) {
     return {

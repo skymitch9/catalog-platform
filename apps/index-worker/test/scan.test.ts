@@ -308,3 +308,29 @@ test('unreadable photo: empty books, unreadable true, forwarded as-is', async ()
     f.restore();
   }
 });
+
+/* ── CORS preflight (audit F5) ──────────────────────────────────────────────
+ * The apex calls POST /api/scan/shelf cross-origin with an Authorization
+ * header, so the browser sends an OPTIONS preflight. readCors() must allow
+ * POST, or the browser refuses the POST before sending it — a config refusal
+ * that surfaced as a bare "network" error. Before the fix, allowMethods was
+ * ['GET','OPTIONS'] and the assertion below (POST present) went red.
+ */
+test('F5: the /api/scan/shelf preflight allows POST from the apex', async () => {
+  const res = await app.request(
+    '/api/scan/shelf',
+    {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://heygabi.ai',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'authorization, content-type',
+      },
+    },
+    ownerEnv(),
+  );
+  // hono/cors short-circuits the preflight (204) and echoes the allowed methods.
+  const allowMethods = res.headers.get('access-control-allow-methods') ?? '';
+  assert.match(allowMethods, /POST/, `preflight must allow POST, got "${allowMethods}"`);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'https://heygabi.ai');
+});

@@ -72,7 +72,7 @@ import { ebookLaneVerdict } from './lib/ebook-lane.js';
 // The blob-storage panel (owner ask 2026-08-18). PUSHED, not probed — see the
 // section comment in index.html for why a Worker route was rejected.
 import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness, str } from './lib/board.js';
-import { describeArchive, describeBucket, describeTotals } from './lib/storage-view.js';
+import { backupLastWriteText, describeArchive, describeBucket, describeTotals } from './lib/storage-view.js';
 import { mountGate } from './lib/gate.js';
 import { idToken } from '../assets/estate-auth.js';
 
@@ -899,7 +899,13 @@ function backupKindRowId(kind) {
  * gradeBackups() returns: {label, stores, count, newest, oldest, oldest_store,
  * age_ms, never, state}. Nothing is recomputed here — `state` arrives decided.
  */
+// ⚠️ The backup roll-up group, stashed so `lastWriteFor('estate-backups')` can
+// read the NEWEST timestamp directly (audit F8) instead of scraping it back out
+// of the sentence this function printed. Set only when the roll-up renders.
+let backupOverallGroup = null;
+
 function renderBackupGroup(id, group, now) {
+  if (id === 'backup-age') backupOverallGroup = group;
   // ⚠️ `group.stores || 0` used to render a missing store count as "(0 stores)"
   // — a label asserting a number nobody sent. An absent count is unknown.
   const stores = Number.isFinite(Number(group.stores)) ? Number(group.stores) : null;
@@ -1149,9 +1155,9 @@ function lastWriteFor(name, board) {
     // a second one.
     const row = rowRegistry.get('backup-age');
     if (row && row.checkedAt && row.el.dataset.state !== 'pending') {
-      const text = row.detailEl.textContent || '';
-      const m = /(\d+[a-z ]*(?:ago))/i.exec(text);
-      if (m) return `newest backup ${m[1]}`;
+      // ⚠️ From the group's OWN numbers, never scraped from the rendered text —
+      // the two-part-age misparse (audit F8) lived in the old regex here.
+      return backupLastWriteText(backupOverallGroup);
     }
     return null;
   }
