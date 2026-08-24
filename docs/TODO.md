@@ -1,6 +1,6 @@
 # TODO — catalog-platform (ACTIVE work log)
 
-> 🔄 **CONDUCTOR STATUS (~01:5x, session 13%):** LIB MAIN: audio-count+covers+lent+universe+picker (1517).
-> alias-aware research BUILT (0410, 1515 tests) → merging now. BRANCHES for morning: ebook-audio-count,
-> ingest-lock-pid (audiobook). IN FLIGHT → GABI T2 dark (gabicp+gabilib); alias merge. LAST → merge GABI
-> when it lands, then resume library audit (wf_69d2365f) + audiobook/board audits, pace vs 55% weekly.
+> 🔄 **CONDUCTOR STATUS (~02:0x, session 13%):** LIB MAIN done: audio-count+covers+lent+universe+picker+alias
+> (1543 tests, 0c95ec6). BRANCHES for morning: ebook-audio-count, ingest-lock-pid (audiobook). IN FLIGHT →
+> GABI T2 dark (last build); BOARD-GAME audit (wf_ec16df83). AUDITS remaining: library (resume wf_69d2365f
+> after GABI merges), audiobook. Then fix crit/high per repo. Pace vs 55% weekly (at 18%).
