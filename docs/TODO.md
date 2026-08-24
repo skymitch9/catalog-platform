@@ -1,7 +1,6 @@
 # TODO — catalog-platform (ACTIVE work log)
 
-> 🔄 **CONDUCTOR STATUS (~00:5x, session 5%):** MERGED→main: audio-count, covers-owner-key, backup-board fix
-> (ecd9f10 — board now shows real 100%). REPORTS: T-C,T-D,T-B done. OR-1 follow-ups landed on branch (1386
-> tests) → merging lent-to-person now. IN FLIGHT → shelf review; universe --friend fix+padhard sweep;
-> ebook-site count; lent merge. NEXT → GABI T2; T-G; alias research; audits; ingest-lock PID + manifest
-> stale-key delete (audiobook, pipeline idle now — can dispatch next cycle).
+> 🔄 **CONDUCTOR STATUS (~01:0x, session 6%):** MERGED→main: audio-count, covers-owner-key, backup-board.
+> REPORTS done: T-C, T-D, T-B, shelf(5706a62). IN FLIGHT → universe --friend fix+padhard; ebook-site count;
+> lent-to-person merge; T-G random picker; ingest-lock PID fix. NEXT → GABI T2 (dark); alias-aware research;
+> library audit resume + fixes; audiobook+board audits. Manifest stale-key delete → flagged for owner (live data).
