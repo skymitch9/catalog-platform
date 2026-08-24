@@ -68,6 +68,14 @@
  * limit alone gets the other case wrong.
  */
 
+import type { ConfirmChangePending } from './confirm.js';
+
+/** ⚠️ The T2/T3 confirm lane's surface-neutral half — the `confirm_change`
+ * proposal shape, the propose/compare-and-set arithmetic, the `Restatement`
+ * structure and the MAC material. Re-exported so `@platform/gabi-conversation`
+ * and the panel's synced copy expose one entry point. */
+export * from './confirm.js';
+
 // ---------------------------------------------------------------------------
 // The shape
 // ---------------------------------------------------------------------------
@@ -186,7 +194,17 @@ export type PendingChoice =
       verb: 'add-isbn' | 'run-details';
       /** Present for `add-isbn` and for nothing else. */
       isbn?: string;
-    } & PendingBase);
+    } & PendingBase)
+  /**
+   * ⚠️ **THE THIRD KIND — the T2/T3 confirm lane** (design
+   * `gabi-confirm-lanes-design.md` §2). A proposed mutation of existing data,
+   * awaiting a human press, living in this same `pending` slot as a new kind so
+   * it costs ZERO new Durable Object writes. Its shape and all its logic are in
+   * `./confirm.ts` — surface-neutral, so the panel imports the same type rather
+   * than reimplementing it. The field stayed neutral here precisely because *"a
+   * T2 confirm on the panel is the same shape"* (the note on `instance_pick`).
+   */
+  | ConfirmChangePending;
 
 export interface ConversationRecord {
   v: number;
