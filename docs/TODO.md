@@ -83,6 +83,37 @@ action.
 
 ---
 
+## ☐ T-G · Random TBR picker with pizzazz (BUILD, Opus) — owner ask 2026-08-23
+
+Padhard admins want to "wheel-spin" the TBR to pick a book at random. Owner wants
+animated presentations (wheel spin, dice roll, card shuffle…) + filter params, and
+gave design/hosting discretion.
+
+**Conductor design call (my discretion, revise if the owner reacts):**
+- **Host: ONE reusable component in a shared `packages/` module**, mounted on each
+  site’s TBR page, reading THAT site’s own TBR via its existing TBR API — mirrors
+  the `@platform/gabi-conversation` "one canonical module, per-surface mount"
+  pattern. TBR lives per-instance (library, padhard, audiobook), so the picker
+  reads whichever site it’s on. One implementation, no duplicated logic.
+- **Core:** `pickRandom(tbr, filters)` — pure, tested, deterministic given a seed
+  (so a "reroll" is a new seed, and animations can be replayed). Never a second
+  random impl.
+- **Filters/params:** format (audio / physical / ebook), hardcover ⟷ no-hardcover,
+  first-in-series-only, series-continuation-only, owned-vs-wishlist, exclude just-
+  rerolled. **Reroll** button. Respect the estate’s format-gating (TBR already
+  carries format; do not surface a book a person can’t open).
+- **Presentation:** a THEME system with a polished **wheel spin** as v1, built so
+  dice-roll / card-shuffle are drop-in additional themes (data-driven, not forked
+  components). Reduced-motion respected; theme picker persists per-person
+  (localStorage). Pure front-end animation, no new data.
+- Land for review (branch, not deployed). Ship the wheel + all params + reroll in
+  v1; leave dice/cards as clearly-stubbed follow-on themes if time-boxed.
+
+⚠️ Opus subagent — ration Fable. Tests for `pickRandom` (each filter, empty-TBR
+worded empty state, reroll excludes last, seed determinism).
+
+---
+
 ## 🌙 OVERNIGHT RUN POLICY — owner decisions 2026-08-23 ~21:25, before bed
 
 Owner going to bed; wants questions answered NOW and work done before he wakes,
