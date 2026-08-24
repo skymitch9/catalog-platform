@@ -78,3 +78,7 @@ docs/access/keys/*
 # an agent's task description — none of which belongs in a PUBLIC repo's history.
 # See docs/access/agent-board.md and scripts/push-processing-board.mjs.
 .local/
+
+# Audit F1 (2026-08-23): backup-docs.mjs writes UNFILTERED docs archives here — raw
+# service-account JSON and bearer tokens. This repo is PUBLIC. Never tracked.
+.docs-backup-tmp/
