@@ -1341,8 +1341,11 @@ async function myUnread(
     return shelfRefusal(name, 'shelf_unreachable', reviews.message ?? SHELF_MSG.estateUnreachable);
   }
   // ⚠️ The whole review set, not the capped display slice — a cap meant for a
-  // readable message must never decide which books count as reviewed.
-  const reviewed = new Set(reviews.rows.map((r) => r.bookId));
+  // readable message must never decide which books count as reviewed. Before
+  // audit F7 this read `reviews.rows` (the 15-row slice), so anyone with more
+  // than 15 reviews saw older-reviewed books reported as "not reviewed". Fall
+  // back to the row ids only when a caller/stub predates `allBookIds`.
+  const reviewed = new Set((reviews.allBookIds ?? reviews.rows.map((r) => r.bookId)).filter(Boolean));
 
   const load = await loadCatalog(
     ctx.catalogBaseUrl,

@@ -107,8 +107,12 @@ export async function gatherNotReviewed(opts: {
 
   // ⚠️ THE WHOLE REVIEW SET, not the capped display slice. A cap meant for a
   // readable message must never decide which books count as reviewed — the same
-  // rule `tool_exec.ts`'s `my_unread` states.
-  const reviewed = new Set(reviews.ok ? reviews.rows.map((r) => r.bookId).filter(Boolean) : []);
+  // rule `tool_exec.ts`'s `my_unread` states. `allBookIds` is that uncapped set
+  // (audit F7); `rows` is only the 15-row slice shown to a reader. Fall back to
+  // the row ids only when a caller/stub predates `allBookIds`.
+  const reviewed = new Set(
+    reviews.ok ? (reviews.allBookIds ?? reviews.rows.map((r) => r.bookId)).filter(Boolean) : [],
+  );
 
   const subject = opts.ask.author ?? opts.ask.series ?? null;
   const field: NotReviewedResult['field'] = opts.ask.author

@@ -598,6 +598,39 @@ describe('⚠️ the ask-instead-of-deliver defect', () => {
     assert.equal(worked.notReviewed, 5);
   });
 
+  it('⚠️ F7: the exclusion uses the UNCAPPED review set, not the display slice', async () => {
+    resetCatalogCache();
+    // A shelf with more reviews than the 15-row display cap: `rows` carries only
+    // ONE review (the slice a reader sees), but `allBookIds` carries all three.
+    // Before the fix the "reviewed" set was built from `rows`, so the two books
+    // that fell outside the display slice were counted as NOT reviewed and would
+    // be suggested back. After the fix all three count as reviewed.
+    const cappedPort = {
+      asker: async () => ({ ok: true as const, asker: ASKER }),
+      myTbr: async () => ({ ok: true, rows: [], total: 0 }),
+      myReviews: async () => ({
+        ok: true,
+        rows: [{ bookId: 'mistborn', displayName: 'Sky', rating: 5 }],
+        total: 3,
+        allBookIds: ['mistborn', 'the-way-of-kings', 'words-of-radiance'],
+      }),
+      bookReviews: async () => ({ ok: true, rows: [], total: 0 }),
+    } as unknown as ShelfPort;
+
+    const worked = await gatherNotReviewed({
+      catalogBaseUrl: 'https://example.test',
+      ask: { author: 'Sanderson' },
+      port: cappedPort,
+      asker: ASKER,
+      fetchOverride: catalogFetch as unknown as typeof fetch,
+    });
+    assert.ok(worked);
+    assert.equal(worked.owned, 7);
+    // All THREE reviewed books are excluded, though only one was in the slice.
+    assert.equal(worked.reviewedHere, 3);
+    assert.equal(worked.notReviewed, 4);
+  });
+
   it('⚠️ THE ANSWER SHE COULD NOT GIVE IS NOW IN FRONT OF HER', async () => {
     resetCatalogCache();
     const worked = await gatherNotReviewed({

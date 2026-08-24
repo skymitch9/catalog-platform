@@ -381,6 +381,16 @@ export interface ShelfCallResult<T> {
   rows: T[];
   /** ⚠️ The TRUE total before capping. Never omitted — see `SHELF_UNREAD_ROWS`. */
   total: number;
+  /**
+   * ⚠️ **For REVIEW results: the FULL, UNCAPPED set of reviewed bookIds** — the
+   * one thing an exclusion set (was-this-reviewed?) must key off, so a cap meant
+   * for a readable MESSAGE never decides which books count as reviewed. Before
+   * audit F7 every "not reviewed" / suggestion exclusion was built from the
+   * capped 15-row display slice (`rows`), so anyone with >15 reviews had their
+   * older-reviewed books counted as unread and suggested back. Undefined for
+   * non-review results (TBR) and on a failure.
+   */
+  allBookIds?: string[];
   message?: string;
 }
 
