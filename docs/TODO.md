@@ -147,3 +147,14 @@ tests). Then Firestore rules if STEP 11's `link` button is wanted live.
 > Library crit/high fix agent IN FLIGHT (feature/audit-fixes-library). 🔴 OWNER: rotate PEER_TOKEN (public
 > library wrangler.toml:203/:418). After library fixes land+merge → write MORNING SUMMARY + CronDelete conductor.
 > Audiobook branches (ebook-count, ingest-lock-pid, audit-fixes) merge in the morning when pipeline idle.
+
+---
+
+## ☐ BUG (not urgent, owner 2026-08-24) — ebook "also on audio" button resolves to nothing
+Some books in the ebooks library show an "also on audio" affordance, but there is
+no matching audiobook, so the link/button dead-ends. The ebook→audiobook match is
+stale or over-eager (shows the button when no live audio edition exists). Fix:
+only surface "also on audio" when a real matching audiobook resolves; otherwise
+hide it. **Locate exact surface first** — likely audiobook_catalog `site/ebooks.html`
+(the recent "N audiobooks" ebook-count work) or the library work-page audio cross-link.
+Land for review. Candidate for a Fable/subagent build once located.

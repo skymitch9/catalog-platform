@@ -289,6 +289,14 @@ GABI_MENTIONS = "on"
 # exist yet.
 GABI_DELEGATED_WRITES = "on"
 
+# The Tier-2 CONFIRM LANE — the "confirm lane that does not exist yet" the comment
+# above once referenced; it exists now (confirm.ts + confirm-propose.ts, Discord
+# surface). Same affirmative-only idiom: "on" and nothing else is on; the propose
+# path is fully inert when this is absent/off. Flipped ON 2026-08-24 with the owner
+# present to watch the first live proposals (never-before-exercised live; the
+# library-panel surface remains separate/undeployed).
+GABI_CONFIRM_T2 = "on"
+
 # The two catalogs a delegated verb may be routed to. Vars, not secrets: they
 # are public hostnames that appear in her own replies.
 #
