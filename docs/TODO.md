@@ -6,6 +6,16 @@
 > **session 53% · weekly 26% · Fable 2%** (~03:50 Phoenix). The conductor cron is
 > now retired. This block is the handoff; delete it once you've actioned it.
 
+## ✅ DONE 2026-08-24 (post-wake, owner-driven)
+
+- **Dice + card-shuffle spinner animations** — built, merged, DEPLOYED both instances (main e8fb5e50 / padhard de0f5486, 1591 tests). Theme picker at /tbr now offers wheel / dice / cards.
+- **Padhard details queue → 0.** The "4" were 4 field-gaps across 2 works: 490 Ex Hex Duo filled via paid lookup (~1.6c on owner key, corroborated); 468 Veil of Darkness = unidentifiable, unknown verdicts. No open gaps remain.
+- ⚠️ **FOLLOW-UP: `scripts/research-queue.mjs` is broken by schema drift** — its in-memory mirror omits `work_alias` (0410) + `change_log`, and `makeShim.batch` is non-atomic (a partial write occurred: work.series written but change_log insert failed). Add both tables to MIRRORED + make batch atomic before using it. Padhard 490 was finalized with direct sanctioned writes instead.
+- ⏳ ebook-count auto-merge armed (cron, fires when the pipeline clears site/ebooks.html).
+- 🔴 STILL OWNER-ONLY: rotate PEER_TOKEN (public repo wrangler.toml); mint INDEX_READ_TOKEN x2.
+
+---
+
 ## ✅ DEPLOYED 2026-08-24 AM (owner-driven, from phone)
 
 - **library main + padhard**: migrated 0400+0410, deployed (75818eff / bf1c225c), health green. Spinner live at /tbr on both.
