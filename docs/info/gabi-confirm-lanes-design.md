@@ -1,8 +1,23 @@
 # GABI T2/T3 — the confirm grammar
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (public repo
-> — no secrets, no household names). **DESIGN ONLY — nothing here is built.**
-> Last verified: **2026-08-18**.
+> — no secrets, no household names). Last verified: **2026-08-18** (design);
+> **2026-08-24** (build status below).
+>
+> ⚠️ **BUILD STATUS — T2 phase 1 BUILT DARK, pending review (2026-08-24).**
+> Phase 1 (§10) — **the grammar with the one verb `fix-field`, compare-and-set
+> and the 409** — is built on branches `feature/gabi-t2-confirm`
+> (catalog-platform: the surface-neutral core in `packages/gabi-conversation/
+> src/confirm.ts` + the discord-worker wiring) and `feature/gabi-t2-panel`
+> (library_catalog: the `fix-field` worker verb + the panel card). **Owner scope:
+> T2 only (catalog-fix), Discord + library panel, audiobook surface EXCLUDED.**
+> It ships **DARK** behind `GABI_CONFIRM_T2` (affirmative-only, off) on both
+> surfaces; nothing changes for users until the owner flips it. ⚠️ **One
+> deliberate departure from §3.3:** the confirm nonce **IS MAC'd** (like
+> `moderation.ts`), per the owner's T2 brief — access-reducing belt-and-braces on
+> top of the stateful per-presser check. T3, `add-photo`, and phases 2/4/6 remain
+> DESIGN ONLY. The rest of this document is the design as written; where the
+> build diverged, the code comments say so.
 >
 > Companions: [`gabi-application-map.md`](gabi-application-map.md) §2a (T1's
 > delegation contract, which this extends **unchanged**) and §2d (photo intake,

@@ -16,6 +16,36 @@
 
 
 
+## ✅ GABI T2 catalog-fix confirm lane — BUILT DARK 2026-08-24
+
+Phase 1 of the T2/T3 confirm grammar (`docs/info/gabi-confirm-lanes-design.md`
+§10): **the grammar with the one verb `fix-field`, compare-and-set and the 409.**
+Owner scope: **T2 only (catalog-fix), Discord + library panel, audiobook surface
+EXCLUDED.** Ships **DARK** behind `GABI_CONFIRM_T2` (affirmative-only, off on both
+surfaces) — nothing changes for users until the owner flips it. On branch
+`feature/gabi-t2-confirm` here; `feature/gabi-t2-panel` in library_catalog.
+
+What landed here (catalog-platform):
+- **Surface-neutral core** in `packages/gabi-conversation/src/confirm.ts` — the
+  `confirm_change` `PendingChoice` kind (zero new Durable Object writes), the
+  `FieldChange`/`Restatement` shapes, a default-deny field allowlist
+  (`T2_CONFIRMABLE_FIELDS` — free-tier only, never `title`/`authors`),
+  `buildConfirmProposal`, `buildRestatement`, `compareAndSet` (the §4 409, whole-
+  state exact equality), `checkConfirmPress` (10-min TTL, nonce, redundant
+  `askerId`), and the canonical MAC material + `gc2` custom_id format.
+- **Discord wiring** in `apps/discord-worker` — the `GABI_CONFIRM_T2` flag,
+  `fix-field` as a seventh Tier-2 allowlist (separate from the additive Tier-1
+  array), the MAC (mirrors `moderation.ts`, keyed on `ESTATE_APP_TOKEN_DISCORD`),
+  the embed + confirm/cancel rendering, `proposeConfirm`/`pressConfirm` (dry-run =
+  capability check #1; apply = check #2 + compare-and-set; nonce consumed BEFORE
+  the call), the `fixField` port, and the `gc2` router + dispatch.
+
+Invariants enforced: capability checked TWICE, compare-and-set on `before`, the
+nonce MAC'd (⚠️ a deliberate departure from design §3.3, per the owner's T2
+brief), the proposal in the existing pending slot, ~10-min TTL, worded refusals,
+DARK by default. Tests: 918 discord-worker + 30 package, typecheck clean. No live
+Discord/panel exercise (unit-level only). Pending owner review.
+
 ## ✅ Pausing ingestion is a QUESTION now — LIVE 2026-08-24
 
 His ask, verbatim (2026-08-23): *"when i manually pause the pipeline it says
