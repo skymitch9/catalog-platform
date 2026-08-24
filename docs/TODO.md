@@ -17,6 +17,23 @@
 > safe; do that first even if the replacement waits.
 
 
+## ☐ ESTATE CODE AUDIT — scoped + prepped 2026-08-23, awaiting owner go
+
+> Owner, 2026-08-23 ~20:05: *"a full audit code review of all the codebases,
+> apis, uis, etc that are attached to heygabi … ongoing … in the background …
+> sub agents so we can still work on other things while it happens."*
+
+**Plan:** [`info/estate-audit-2026-08.md`](info/estate-audit-2026-08.md) — scope
+(~246k lines, ~24 units, 4 repos), the incident-traced checklist, the harness,
+the cost band (5–7M tokens ≈ 10–15 weekly points, a GUESS), and the three
+owner decisions. **Harness:** `scripts/audit/estate-audit.workflow.mjs`
+(inventory → per-unit Opus review → per-finding Opus refuter → per-repo
+synthesis). Read-only on source; writes only `docs/`. No push.
+
+**Status:** NOT RUNNING. Starts on the owner's go; the conductor pulse-checks
+usage between other tasks and pauses it at 60% weekly. Deliverable per repo:
+`docs/info/audit-2026-08-findings.md` + a ranked AUDIT section in its TODO.
+
 ## 🔴 SUNDAY 2026-08-23, 16:00 Phoenix — ROTATE A LEAKED ANTHROPIC KEY
 
 **Deliberately above the pause banner. It is a live credential, and the in-session
