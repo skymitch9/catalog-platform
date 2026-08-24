@@ -17,6 +17,53 @@
 > safe; do that first even if the replacement waits.
 
 
+## ☐ NEW OWNER TASKS 2026-08-23 ~21:40 — queued for the conductor (Opus/Sonnet, NEVER Fable)
+
+⚠️ Owner: "ration Fable 5 credits above all else." Every one of these is an
+Opus or Sonnet subagent; the Fable main loop only orchestrates. All READ-ONLY
+analysis except the universe sweep (idempotent data backfill). Land-for-review:
+report + propose, no deploy / remote migration / paid sweep / flag / destructive
+action.
+
+- **T-A · Damsels covers — DONE 2026-08-23 (Fable, direct).** All 5 Damsels of
+  Distress works on both instances now carry the publisher cover art
+  (mountaindalepress.store `Author_spotlight_with_brand_{28,29,30,27,31}`),
+  cover_status=ok. ⚠️ The store only offers 3D-mockup-on-grey art, not flat
+  jackets; `00.png`/`1.png` were the "random text" marketing graphics. If flat
+  jackets are wanted, a later pass hunts Amazon/audiobook covers.
+
+- **T-B · Universe series sweep, ALL libraries (Opus).** Run
+  `backfill-universes.mjs` (library_catalog) DRY then --commit on
+  library-catalog + library-catalog-2nd; the equivalent universe backfill in
+  Board_Game_Catalog and audiobook_catalog; re-push to the estate index if the
+  script does not. Idempotent free backfill — OK to --commit, but NO deploy/push.
+  Report what universes changed per instance.
+
+- **T-C · R2 backup mirror to a verifiable 100% (Sonnet).** Board (board-push-
+  task@home-pc) shows 1,267 files / 687 GB / "total unknown" so no %, 1 failure
+  KindleForPC-installer-2.9.71006.exe, last upload 23h ago, next run 10:05 PM.
+  Investigate: is the mirror actually COMPLETE (any missing files vs source)?
+  why is there no denominator (can `_mirror_estate_backups` record a total so
+  100% is showable)? is the KindleForPC .exe a real upload failure or junk that
+  should be excluded? Report + propose action; take none unattended. `access/`
+  RECOVERY / backup-restore docs are the map.
+
+- **T-D · OpenAudible pipeline SANCTITY analysis (Opus).** The whole path:
+  OpenAudible export -> sort m4b + epub into author folders -> Drive uploads ->
+  catalog rebuild -> index/docs push (audiobook_catalog `scripts/sync_to_drive.py`,
+  `app/`, sort_books/sort_companion_files). Analyze correctness, robustness,
+  failure modes, idempotency, what can be improved. Read-only report to
+  audiobook_catalog `docs/info/`.
+
+- **T-E · Shelf author-folder cover + 2 persistent issues (Opus).** Audiobookshelf
+  on Justin’s box. (1) Find Kiro’s notes on the "author folder book cover"
+  thing — grep all four docs trees. (2) The 2 persistent shelf issues — identify
+  them from the docs and current state. (3) Opus previously proposed a COMPLEX
+  path involving the server owner — find that proposal, assess whether it is
+  sound or there is a simpler way, and recommend. Read-only report.
+
+---
+
 ## 🌙 OVERNIGHT RUN POLICY — owner decisions 2026-08-23 ~21:25, before bed
 
 Owner going to bed; wants questions answered NOW and work done before he wakes,
