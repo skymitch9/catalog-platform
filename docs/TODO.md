@@ -65,6 +65,22 @@ action.
   on purpose (ABS not configured to build them / a metadata-agent setting) or a
   fault, and how to populate them. Owner asked 2026-08-23.
 
+- **T-F · Shelf migration research — reader/player + the audio-filter bug (Opus).**
+  Owner is slowly migrating things onto the shelf (Audiobookshelf, Justin’s box).
+  Research, read-only, report with recommendations:
+  (1) ⚠️ On shelf, EVERYTHING is under the AUDIO filter — including ebooks and the
+  ereader. Find why (ABS library-type / media-type config, or how items are
+  pushed) and how to separate ebooks/ereader from audio.
+  (2) What happened to the option to READ ebooks on the shelf and generate a
+  DIRECT LINK to the opened book — trace the estate’s in-browser ebook viewer
+  work (catalog-platform `GET /api/ebook/:anchor/file`, the vendored-pdf.js
+  reader at `/read`, `docs/info/ebook-viewer-*`) vs what ABS offers natively,
+  and whether a deep link into an opened book is possible on ABS.
+  (3) Feasibility of an embedded SHELF PLAYER on the audiobook catalog
+  (audiobooks.heygabi.ai) vs having to flip out to the ABS page — what ABS
+  exposes (stream URLs, an embeddable player, auth via Cloudflare Access) and
+  the honest limits. Owner asked 2026-08-23.
+
 ---
 
 ## 🌙 OVERNIGHT RUN POLICY — owner decisions 2026-08-23 ~21:25, before bed
