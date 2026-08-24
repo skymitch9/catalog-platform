@@ -6,6 +6,16 @@
 > **session 53% · weekly 26% · Fable 2%** (~03:50 Phoenix). The conductor cron is
 > now retired. This block is the handoff; delete it once you've actioned it.
 
+## ✅ DONE 2026-08-24 (later AM)
+
+- **Audiobook site XSS fix SHIPPED** — the pipeline was leaving site/ regenerations uncommitted on idle runs; --rebuild-only published + pushed (index.html regenerated with the escape fixes). XSS fix is live.
+- **ebook-count SHIPPED** — merged (bbe1ae6); root-caused why it could not ship: site/ebooks.html was in NEITHER the pipeline commit allowlist NOR the auto-promote allow-regex (a3aaf5 added it to both, mirroring index.html), then --rebuild-only committed+pushed ebooks.html with the count (c26572d). Auto-promote gate takes it to prod.
+- **SHELF: researched, NOT fixed.** docs/info/shelf-review-2026-08-24.md. Blocked on standing ABS-box access + owner decisions (ebook gate, base-path). Nothing shelf-side changed.
+- ⏳ research-queue.mjs fix IN FLIGHT (work_alias + change_log mirror, atomic batch).
+- 🔴 STILL OWNER-ONLY: rotate PEER_TOKEN.
+
+---
+
 ## ✅ DONE 2026-08-24 (post-wake, owner-driven)
 
 - **Dice + card-shuffle spinner animations** — built, merged, DEPLOYED both instances (main e8fb5e50 / padhard de0f5486, 1591 tests). Theme picker at /tbr now offers wheel / dice / cards.
