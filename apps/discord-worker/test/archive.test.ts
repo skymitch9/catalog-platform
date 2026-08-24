@@ -389,7 +389,7 @@ describe('⚠️ the clear verbs cover BOTH tiers, distinctly', () => {
 describe('the archive write', () => {
   it('is inside the bookkeeping block, AFTER the answer is posted', () => {
     const flow = strip(repoFile('src/mention-flow.ts'));
-    const say = flow.indexOf('await say(answer.content, answer.components, answer.overflowNote);');
+    const say = flow.indexOf('await say(answer.content, answer.components, answer.overflowNote, answer.embeds);');
     const write = flow.indexOf('await archiveTurn(archiveCtx,');
     assert.ok(say > 0 && write > say, 'archiving must never delay or fail a delivered answer');
   });
