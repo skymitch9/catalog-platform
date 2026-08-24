@@ -145,8 +145,11 @@
 # /universes (added 2026-08-15, one row per estate universe expanding to
 # /api/universe/:name). Signs in (universes.js reuses estate-auth.js), so it
 # carries the front door's script-src (Firebase SDK) and frame-src (the
-# popup/redirect sign-in flow), but connect-src drops auth.heygabi.ai — this
-# page shows no admin surface and never calls that Worker. img-src is the
+# popup/redirect sign-in flow). connect-src NAMES auth.heygabi.ai as of
+# 2026-08-24 (audit F4): universes.js runs bootstrapEstateSso()/handleRedirectResult()
+# which fetch() that Worker, and sign-out DELETEs the estate session there — the
+# old note "never calls that Worker" was wrong and silently broke sign-out here.
+# It shows no admin surface, but it DOES participate in estate SSO. img-src is the
 # SAME cover-host allow-list as the front door's own "/" rule below, copied
 # verbatim rather than hand-maintained separately, because a universe's rows
 # can carry a cover from any source the estate indexes (audiobook, library or
@@ -166,11 +169,15 @@
 #               an evening on /admin's role columns the day before (see the
 #               connect-src note above and estate-auth-design.md §1.2), so it
 #               is named here first. Plus identitytoolkit + securetoken for
-#               sign-in and token refresh. NOT named, because this page does
-#               not call them: auth.heygabi.ai (no admin surface),
-#               openlibrary.org and 'self' (no <estate-search scan> here —
-#               the scanner's wasm fetch and ISBN resolve live on / and
-#               /universes), library.heygabi.ai (no barcode intake).
+#               sign-in and token refresh. auth.heygabi.ai IS named as of
+#               2026-08-24 (audit F4): series.js runs bootstrapEstateSso()/
+#               handleRedirectResult() and sign-out DELETEs the estate session
+#               there — the old "IS THE WHOLE PAGE / does not call auth" note was
+#               wrong and silently broke sign-out. NOT named, because this page
+#               genuinely does not call them: openlibrary.org and 'self' (no
+#               <estate-search scan> here — the scanner's wasm fetch and ISBN
+#               resolve live on / and /universes), library.heygabi.ai (no
+#               barcode intake).
 #   script-src  no 'wasm-unsafe-eval' for the same reason — no scanner, so
 #               nothing on this page compiles WebAssembly.
 #   img-src     the SAME cover-host allow-list as "/" — a series' volumes can
@@ -301,20 +308,20 @@
 
 /universes
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /universes/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://openlibrary.org https://library.heygabi.ai; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # ⚠️ BOTH forms, per the trailing-slash 308 trap documented atop this file.
 /series
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /series/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://covers.heygabi.ai https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # /r/* — unlisted AUTH-LOCKED doc shims (2026-08-15; first tenant: the
 # shelf-server runbook, devops-gated). The pages themselves are GITIGNORED
