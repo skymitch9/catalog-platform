@@ -26,6 +26,10 @@ import {
   cleanBookIds,
   ingestionActionDetail,
   sameIdList,
+  PAUSE_MODES,
+  isPauseMode,
+  normalisePauseMode,
+  pauseModeWords,
   MAX_CONTROL_LIST,
   MAX_CONTROL_ENTRY_CHARS,
   type IngestionControl,
@@ -97,6 +101,11 @@ test('decodeIngestionControl: reads the six agreed fields off the REST shape', (
   );
   assert.deepEqual(control, {
     paused: true,
+    // ⚠️ ABSENT from the document above, exactly like every pause written
+    // before 2026-08-23 — and absent means 'all', the strict meaning. A
+    // decoder that defaulted the other way would reinterpret an old pause into
+    // permission to run the nightly window.
+    pause_mode: 'all',
     paused_until: MIDNIGHT,
     dont_check_until: null,
     pause_windows: [{ from: '2026-08-19T02:00:00.000Z', until: MIDNIGHT }],
@@ -157,6 +166,7 @@ test('nextIngestionControl: "pause until" pressed during an INDEFINITE pause cle
   const r = nextIngestionControl({
     current: {
       paused: true,
+      pause_mode: 'all', // irrelevant to this test; 'all' is what an old document means
       paused_until: null,
       dont_check_until: null,
       pause_windows: [],
@@ -180,6 +190,7 @@ test('nextIngestionControl: RESUME clears the flag, both timers, and a window in
   const r = nextIngestionControl({
     current: {
       paused: true,
+      pause_mode: 'all', // irrelevant to this test; 'all' is what an old document means
       paused_until: MIDNIGHT,
       dont_check_until: '2026-08-19T15:00:00.000Z',
       pause_windows: [
@@ -209,6 +220,7 @@ test('nextIngestionControl: past times self-clear on the next write', () => {
   const r = nextIngestionControl({
     current: {
       paused: false,
+      pause_mode: 'all', // irrelevant to this test; 'all' is what an old document means
       paused_until: SIX_PM,
       dont_check_until: SIX_PM,
       pause_windows: [
@@ -268,6 +280,7 @@ test('nextIngestionControl: pause/resume never need a time and are never refused
 test('ingestionControlFields: nulls are written as explicit nullValue, so a clear really clears', () => {
   const fields = ingestionControlFields({
     paused: false,
+    pause_mode: 'all', // irrelevant to this test; 'all' is what an old document means
     paused_until: null,
     dont_check_until: null,
     pause_windows: [],
@@ -286,6 +299,10 @@ test('ingestionControlFields: nulls are written as explicit nullValue, so a clea
 test('ingestionControlFields: round-trips back through decodeIngestionControl unchanged', () => {
   const control = {
     paused: true,
+    // 'manual_only' rather than the default, so this catches a field that
+    // encodes but decodes back to the fail-closed value — a bug an 'all'
+    // fixture would sail straight through.
+    pause_mode: 'manual_only' as const,
     paused_until: MIDNIGHT,
     dont_check_until: '2026-08-19T15:00:00.000Z',
     pause_windows: [{ from: '2026-08-20T02:00:00.000Z', until: '2026-08-20T07:00:00.000Z' }],
@@ -502,6 +519,191 @@ test('every action in INGESTION_ACTIONS is accepted and has wording of its own',
     assert.equal(isIngestionAction(action), true, action);
     assert.ok(ingestionActionDetail(action, emptyIngestionControl()).length > 10, action);
   }
+});
+
+// ---------------------------------------------------------------------------
+// WHAT A MANUAL PAUSE MEANS — `pause_mode` (owner ask 2026-08-23, verbatim:
+// "when i manually pause the pipeline it says nothing can override it. I want
+// it to ask me if i want to stop all work until unpaused or if scheduled
+// window is fine to continue."). His decision: ASK EVERY TIME, nothing saved
+// as a preference.
+//
+// ⚠️ THE FAILURE THESE GUARD IS SILENT IN BOTH DIRECTIONS. A mode that never
+// persists leaves the owner pressing a button that changes nothing; a mode
+// that survives a Resume makes the NEXT pause mean something he did not
+// choose. Neither shows on screen.
+//
+// The BEHAVIOUR (which triggers a mode actually stops) is enforced on the home
+// machine — audiobook_catalog `control_blocks_start()`, tested there in
+// tests/test_ingest_books.py::TestPauseMode. This Worker only decides what gets
+// written, so these tests pin the write.
+// ---------------------------------------------------------------------------
+
+test('pause_mode: “stop all work” is the default when the body says nothing', () => {
+  // ⚠️ Fail closed. A caller that predates this field — or a script — must not
+  // be able to write a permissive pause by omission.
+  const r = nextIngestionControl({
+    current: emptyIngestionControl(),
+    action: 'pause',
+    actor: 'estate-ops:owner@example.com',
+    nowMs: NOW,
+  });
+  assert.ok('control' in r);
+  assert.equal(r.control.pause_mode, 'all');
+  assert.equal(r.control.paused, true);
+});
+
+test('pause_mode: “let the scheduled window continue” is written when chosen', () => {
+  const r = nextIngestionControl({
+    current: emptyIngestionControl(),
+    action: 'pause',
+    mode: 'manual_only',
+    actor: 'estate-ops:owner@example.com',
+    nowMs: NOW,
+  });
+  assert.ok('control' in r);
+  assert.equal(r.control.pause_mode, 'manual_only');
+  assert.equal(r.control.paused, true, 'it is still a pause — only its meaning changed');
+});
+
+test('pause_mode: a value that is not a mode is REFUSED in words, never coerced', () => {
+  for (const junk of ['manual-only', 'MANUAL_ONLY', 'window', '', 7, true, {}]) {
+    const r = nextIngestionControl({
+      current: emptyIngestionControl(),
+      action: 'pause',
+      mode: junk,
+      actor: 'estate-ops:owner@example.com',
+      nowMs: NOW,
+    });
+    assert.ok('error' in r, `${JSON.stringify(junk)} must not be accepted`);
+    assert.equal(r.error, 'invalid_pause_mode');
+    assert.ok(r.detail.length > 20, 'a refusal is always worded, never a bare code');
+  }
+});
+
+test('pause_mode: the mode is validated even for actions that do not read it', () => {
+  // ⚠️ Validating inside the two pause branches would let `resume` accept a
+  // typo'd mode silently — the body would be wrong and nothing would say so.
+  const r = nextIngestionControl({
+    current: emptyIngestionControl(),
+    action: 'resume',
+    mode: 'nonsense',
+    actor: 'estate-ops:owner@example.com',
+    nowMs: NOW,
+  });
+  assert.ok('error' in r);
+});
+
+test('⚠️ pause_mode: RESUME resets the meaning, so the next pause cannot inherit it', () => {
+  // The owner's decision was that the question is asked EVERY time. A
+  // 'manual_only' left on the document after a Resume would become the silent
+  // default of a pause he never chose it for.
+  const r = nextIngestionControl({
+    current: withLists({ paused: true, pause_mode: 'manual_only' }),
+    action: 'resume',
+    actor: 'estate-ops:owner@example.com',
+    nowMs: NOW,
+  });
+  assert.ok('control' in r);
+  assert.equal(r.control.paused, false);
+  assert.equal(r.control.pause_mode, 'all');
+});
+
+test('⚠️ pause_mode: START NOW resets it too — it clears every pause lever', () => {
+  const r = nextIngestionControl({
+    current: withLists({ paused: true, pause_mode: 'manual_only' }),
+    action: 'start_now',
+    actor: 'estate-ops:owner@example.com',
+    nowMs: NOW,
+  });
+  assert.ok('control' in r);
+  assert.equal(r.control.pause_mode, 'all');
+});
+
+test('pause_mode: a timed pause carries the meaning field too', () => {
+  const r = nextIngestionControl({
+    current: emptyIngestionControl(),
+    action: 'pause_until',
+    until: MIDNIGHT,
+    mode: 'manual_only',
+    actor: 'estate-ops:owner@example.com',
+    nowMs: NOW,
+  });
+  assert.ok('control' in r);
+  assert.equal(r.control.pause_mode, 'manual_only');
+  assert.equal(r.control.paused_until, MIDNIGHT);
+  assert.equal(r.control.paused, false, 'still a timer with the flag OFF');
+});
+
+test('⚠️ pause_mode: the list actions carry it through UNCHANGED', () => {
+  // A requeue that rewrote the meaning of a pause in force would be a control
+  // with an invisible side effect — the same rule `requeue` and
+  // `priority_front` already follow in the other direction.
+  for (const action of ['requeue', 'priority_front'] as const) {
+    const r = nextIngestionControl({
+      current: withLists({ paused: true, pause_mode: 'manual_only' }),
+      action,
+      bookIds: ['a-book'],
+      actor: 'estate-ops:owner@example.com',
+      nowMs: NOW,
+    });
+    assert.ok('control' in r, action);
+    assert.equal(r.control.pause_mode, 'manual_only', action);
+    assert.equal(r.control.paused, true, action);
+  }
+});
+
+test('pause_mode: decoded defensively — an unexpected value is the STRICT meaning', () => {
+  for (const raw of [
+    { stringValue: 'manual-only' },
+    { stringValue: '' },
+    { booleanValue: true },
+    { nullValue: null },
+  ]) {
+    const decoded = decodeIngestionControl(
+      fsControlDoc({ paused: { booleanValue: true }, pause_mode: raw }),
+    );
+    assert.equal(decoded!.pause_mode, 'all', JSON.stringify(raw));
+  }
+  const good = decodeIngestionControl(
+    fsControlDoc({ paused: { booleanValue: true }, pause_mode: { stringValue: 'manual_only' } }),
+  );
+  assert.equal(good!.pause_mode, 'manual_only', 'the one value that unlocks it must survive');
+});
+
+test('normalisePauseMode / isPauseMode agree with the reader’s fail-closed rule', () => {
+  assert.deepEqual([...PAUSE_MODES], ['all', 'manual_only']);
+  assert.equal(isPauseMode('manual_only'), true);
+  assert.equal(isPauseMode('all'), true);
+  assert.equal(isPauseMode('manual-only'), false);
+  assert.equal(normalisePauseMode(undefined), 'all');
+  assert.equal(normalisePauseMode('manual_only'), 'manual_only');
+});
+
+test('⚠️ the pause wording says WHICH answer landed, in the owner’s own words', () => {
+  // A pause that reported only "Saved" would leave the one thing he was just
+  // asked to decide invisible — and the two outcomes differ by whether the
+  // machine runs tonight.
+  const strict = ingestionActionDetail('pause', withLists({ paused: true, pause_mode: 'all' }));
+  const lenient = ingestionActionDetail(
+    'pause',
+    withLists({ paused: true, pause_mode: 'manual_only' }),
+  );
+  assert.notEqual(strict, lenient, 'the two answers must not read identically');
+  assert.match(strict, /all work is stopped/i);
+  assert.match(lenient, /scheduled 12am–8am window may continue/i);
+  assert.match(lenient, /by hand is refused/i);
+  assert.match(pauseModeWords('all'), /stop all work until unpaused/);
+  assert.match(pauseModeWords('manual_only'), /let the scheduled window continue/);
+});
+
+test('⚠️ pause_mode is encoded on EVERY write, so the flag and its meaning land together', () => {
+  // A document that said `paused: true` with the previous pause's meaning
+  // still attached — even for an instant — is the bug this pins.
+  const fields = ingestionControlFields(withLists({ paused: true, pause_mode: 'manual_only' }));
+  assert.deepEqual((fields as Record<string, unknown>).pause_mode, { stringValue: 'manual_only' });
+  const cleared = ingestionControlFields(emptyIngestionControl());
+  assert.deepEqual((cleared as Record<string, unknown>).pause_mode, { stringValue: 'all' });
 });
 
 test('decodeIngestionControl reads the two lists defensively, like every other field', () => {

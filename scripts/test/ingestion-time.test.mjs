@@ -184,6 +184,113 @@ test('describeIngestion: an indefinite pause says there is no timer to end it', 
   assert.ok(d.lines.join(' ').includes('Resume'));
 });
 
+// ---------------------------------------------------------------------------
+// WHAT THE PAUSE MEANS — `pause_mode` (owner ask 2026-08-23, verbatim: "when i
+// manually pause the pipeline it says nothing can override it. I want it to
+// ask me if i want to stop all work until unpaused or if scheduled window is
+// fine to continue.").
+//
+// ⚠️ THE CARD IS HALF THE FEATURE. The behaviour lives on the home machine;
+// what the owner can SEE is this wording, and the failure it guards is a card
+// that reads identically for two pauses that do opposite things — one lets the
+// nightly run proceed, the other does not.
+// ---------------------------------------------------------------------------
+
+const PAUSED_BASE = { paused: true, paused_until: null, dont_check_until: null, pause_windows: [] };
+
+test('describeIngestion: a “stop everything” pause still says nothing overrides it', () => {
+  const d = describeIngestion({ ...PAUSED_BASE, pause_mode: 'all' }, AT_7_30_PM);
+  assert.equal(d.state, 'paused');
+  assert.equal(d.pauseMode, 'all');
+  assert.equal(d.headline, 'Paused, with no end time set.');
+  assert.match(d.lines.join(' '), /Nothing overrides it/);
+  assert.match(d.lines.join(' '), /not the scheduled 12am–8am window/);
+});
+
+test('describeIngestion: ⚠️ a “window may continue” pause must NOT read like a total stop', () => {
+  const d = describeIngestion({ ...PAUSED_BASE, pause_mode: 'manual_only' }, AT_7_30_PM);
+  assert.equal(d.state, 'paused', 'it is still a pause — the badge must not go green');
+  assert.equal(d.badge, 'warn');
+  assert.equal(d.pauseMode, 'manual_only');
+  assert.equal(d.headline, 'Paused for work started by hand — the scheduled window may continue.');
+  assert.match(d.lines.join(' '), /12am–8am window runs as if nothing were paused/);
+  assert.ok(
+    !d.lines.join(' ').includes('Nothing overrides it'),
+    'the total-stop sentence would be a lie about the nightly run',
+  );
+});
+
+test('describeIngestion: the two answers never produce the same headline', () => {
+  const strict = describeIngestion({ ...PAUSED_BASE, pause_mode: 'all' }, AT_7_30_PM);
+  const lenient = describeIngestion({ ...PAUSED_BASE, pause_mode: 'manual_only' }, AT_7_30_PM);
+  assert.notEqual(strict.headline, lenient.headline);
+  assert.notEqual(strict.lines.join(' '), lenient.lines.join(' '));
+});
+
+test('describeIngestion: ⚠️ an ABSENT mode reads as “stop everything”, like every old pause', () => {
+  // Every pause document written before 2026-08-23 lacks the field, and every
+  // one of them meant stop-everything. A card that softened its wording for
+  // them would be describing a machine that is more paused than it says.
+  const d = describeIngestion(PAUSED_BASE, AT_7_30_PM);
+  assert.equal(d.pauseMode, 'all');
+  assert.equal(d.headline, 'Paused, with no end time set.');
+});
+
+test('describeIngestion: an unrecognised mode fails closed in the wording too', () => {
+  for (const junk of ['manual-only', 'MANUAL_ONLY', '', 1, true, null, undefined]) {
+    const d = describeIngestion({ ...PAUSED_BASE, pause_mode: junk }, AT_7_30_PM);
+    assert.equal(d.pauseMode, 'all', JSON.stringify(junk));
+    assert.equal(d.headline, 'Paused, with no end time set.', JSON.stringify(junk));
+  }
+});
+
+test('describeIngestion: a TIMED pause carries its mode into the wording too', () => {
+  const d = describeIngestion(
+    {
+      paused: false,
+      paused_until: '2026-08-19T07:00:00.000Z',
+      dont_check_until: null,
+      pause_windows: [],
+      pause_mode: 'manual_only',
+    },
+    AT_7_30_PM,
+  );
+  assert.equal(d.state, 'paused');
+  assert.equal(d.pauseMode, 'manual_only');
+  assert.match(d.headline, /work started by hand/);
+  assert.match(d.lines.join(' '), /restarts by itself/);
+  assert.match(d.lines.join(' '), /only work started by hand is refused/);
+});
+
+test('describeIngestion: the mode never softens a SCHEDULED pause window', () => {
+  // ⚠️ A pause window IS the owner's quiet hours. "Let the scheduled window
+  // continue" must not read as though it overrode one — the home machine does
+  // not, and the card must not disagree with it.
+  const d = describeIngestion(
+    {
+      paused: false,
+      paused_until: null,
+      dont_check_until: null,
+      pause_windows: [{ from: '2026-08-19T02:00:00.000Z', until: '2026-08-19T07:00:00.000Z' }],
+      pause_mode: 'manual_only',
+    },
+    AT_7_30_PM,
+  );
+  assert.equal(d.state, 'window');
+  assert.equal(d.headline, 'Paused by a scheduled window — waiting until midnight tonight.');
+});
+
+test('describeIngestion: an unpaused control is unaffected by either mode', () => {
+  for (const mode of ['all', 'manual_only']) {
+    const d = describeIngestion(
+      { paused: false, paused_until: null, dont_check_until: null, pause_windows: [], pause_mode: mode },
+      AT_7_30_PM,
+    );
+    assert.equal(d.state, 'running', mode);
+    assert.equal(d.badge, 'ok', mode);
+  }
+});
+
 test('describeIngestion: an EXPIRED timer reads as running, and says the old value clears itself', () => {
   // Their control_blocks_start() stops matching the instant paused_until
   // passes, so "still paused" would be a claim about a machine that has

@@ -758,7 +758,7 @@ function prefillIngestionInputs(control) {
  * ⚠️ Every refusal is worded, never a bare status — the estate's standing
  * rule, and the four causes are kept distinct because their fixes differ.
  */
-async function sendIngestionControl(action, until, verb) {
+async function sendIngestionControl(action, until, verb, mode) {
   const token = await idToken();
   if (!token) {
     setIngestionMsg('Sign-in lapsed — sign in again.', 'warn');
@@ -770,7 +770,11 @@ async function sendIngestionControl(action, until, verb) {
     res = await fetch(`${AUTH_ORIGIN}/api/estate/ops/ingestion`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(until ? { action, until } : { action }),
+      // ⚠️ `mode` rides only when the caller decided one (the two pause
+      // buttons). Omitting it is the SAFE default — the Worker and the home
+      // machine both read an absent mode as "stop all work" — so a caller that
+      // has nothing to say about the meaning of a pause says nothing.
+      body: JSON.stringify({ action, ...(until ? { until } : {}), ...(mode ? { mode } : {}) }),
     });
   } catch {
     setIngestionMsg('The auth Worker did not answer (network). Nothing changed — try again shortly.', 'warn');
@@ -827,13 +831,96 @@ function readPhoenixPicker(input, what) {
   return { iso };
 }
 
+/**
+ * ⚠️ PAUSING IS A QUESTION NOW, NOT A BUTTON (owner ask 2026-08-23, verbatim:
+ * *"when i manually pause the pipeline it says nothing can override it. I want
+ * it to ask me if i want to stop all work until unpaused or if scheduled
+ * window is fine to continue."*). His decision was ASK EVERY TIME — nothing is
+ * saved as a preference, so there is no remembered default to pre-select and
+ * no settings row anywhere; the question is the control.
+ *
+ * ⚠️ THE TWO CHOICE BUTTONS ARE NOT `confirmBtn`, AND THAT IS DELIBERATE.
+ * Everything else on this card is two-tap because the label alone ("Resume",
+ * "Start now") does not say what it will do. Here the first tap has already
+ * opened a question and each answer is a full sentence naming its own
+ * consequence — so the answer IS the confirmation. Wrapping them would make
+ * pausing three taps and, worse, would put "Tap again to…" over the one
+ * moment the owner is being asked to read two options and pick.
+ *
+ * Cancel exists because an opened question must be closeable without
+ * answering it: a control that can only be escaped by doing something is how
+ * an accidental pause happens.
+ */
+function buildPauseChoice(holder) {
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'btn small quiet warn';
+  open.textContent = 'Pause now…'; // the ellipsis promises the question
+
+  const choice = document.createElement('span');
+  choice.className = 'ing-pause-choice';
+  // ⚠️ `style.display`, not the `hidden` attribute: this page's stylesheet sets
+  // display on .btn and friends, and a CSS `display` beats `hidden` — the exact
+  // attribute-says-hidden/pixels-say-visible trap the estate's verification
+  // rule names. Setting display directly cannot be overridden that way.
+  choice.style.display = 'none';
+
+  const ask = document.createElement('span');
+  ask.className = 'ing-label';
+  ask.textContent = 'Pause what?';
+
+  const closeChoice = () => {
+    choice.style.display = 'none';
+    open.style.display = '';
+  };
+
+  /** One answer. `words` is the label AND the promise — they must not drift. */
+  const answer = (label, mode, verb) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small danger';
+    b.textContent = label;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await sendIngestionControl('pause', undefined, verb, mode);
+      } finally {
+        b.disabled = false;
+        // Closed on both paths: leaving the question open after a FAILED
+        // write invites a second press against a card whose message line
+        // already says what went wrong.
+        closeChoice();
+      }
+    });
+    return b;
+  };
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn small quiet';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', closeChoice);
+
+  choice.append(
+    ask,
+    answer('Stop all work until unpaused', 'all', 'Pausing everything'),
+    answer('Let the scheduled window continue', 'manual_only', 'Pausing work started by hand'),
+    cancel,
+  );
+
+  open.addEventListener('click', () => {
+    open.style.display = 'none';
+    choice.style.display = '';
+  });
+
+  holder.append(open, choice);
+}
+
 function buildIngestionCard() {
   const holder = document.getElementById('ingestion-buttons');
   if (!holder) return;
 
-  holder.appendChild(
-    confirmBtn('Pause now', 'quiet', () => sendIngestionControl('pause', undefined, 'Pausing'), 'warn'),
-  );
+  buildPauseChoice(holder);
   holder.appendChild(
     confirmBtn('Resume', 'quiet', () => sendIngestionControl('resume', undefined, 'Resuming')),
   );

@@ -387,6 +387,11 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 .ing-lines { display: grid; gap: .2rem; margin: .3rem 0 0; }
 .ing-lines p { margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
 .ing-buttons { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+/* The two-answer pause question (owner ask 2026-08-23). ⚠️ `display: flex`
+   here is what `style.display = ''` reverts to when the question is opened —
+   the JS toggles between 'none' and '', so the visible state is defined once,
+   here, rather than hard-coded at both call sites. */
+.ing-pause-choice { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .ing-timer { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .ing-label { font-size: var(--et-text-small); font-weight: 600; flex: 0 0 auto; }
 .ing-tz {

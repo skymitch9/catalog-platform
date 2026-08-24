@@ -502,6 +502,44 @@ export const MAX_CONTROL_LIST = 200;
 export const MAX_CONTROL_ENTRY_CHARS = 200;
 
 /**
+ * What a manual pause MEANS (owner ask 2026-08-23, verbatim: *"when i manually
+ * pause the pipeline it says nothing can override it. I want it to ask me if i
+ * want to stop all work until unpaused or if scheduled window is fine to
+ * continue."*).
+ *
+ * His decision was ASK EVERY TIME — the choice is two buttons at the moment of
+ * pausing and nothing is remembered as a preference, so this field describes
+ * ONE pause and is reset by every Resume.
+ *
+ *   'all'          stop all work until unpaused — the historical meaning.
+ *   'manual_only'  let the scheduled 12am–8am window continue; refuse
+ *                  interactive/by-hand starts.
+ *
+ * ⚠️ MIRRORS `audiobook_catalog/app/core/ingest_control.py`'s `PAUSE_MODES` —
+ * the same hand-mirrored contract as MAX_CONTROL_LIST above, with no shared
+ * module across the two repos. The READER is the source of truth: it defaults
+ * an absent or unrecognised value to 'all' (fail closed), so the worst a drift
+ * here can do is write a value the processor reads as "stop everything". That
+ * asymmetry is deliberate — drift must never invent permission to run.
+ */
+export const PAUSE_MODES = ['all', 'manual_only'] as const;
+export type PauseMode = (typeof PAUSE_MODES)[number];
+
+export function isPauseMode(value: unknown): value is PauseMode {
+  return typeof value === 'string' && (PAUSE_MODES as readonly string[]).includes(value);
+}
+
+/** Whatever was decoded → a mode, failing closed exactly as the reader does. */
+export function normalisePauseMode(value: unknown): PauseMode {
+  return value === 'manual_only' ? 'manual_only' : 'all';
+}
+
+/** The mode in the owner's own words — the card and the audit line use these. */
+export function pauseModeWords(mode: PauseMode): string {
+  return mode === 'all' ? 'stop all work until unpaused' : 'let the scheduled window continue';
+}
+
+/**
  * Clean a `book_ids` array from a browser into the list the processor will
  * accept. Pure. Order preserved, duplicates dropped keeping the first — for
  * `priority_front` the order IS the instruction.
@@ -544,6 +582,10 @@ export interface IngestionWindow {
 
 export interface IngestionControl {
   paused: boolean;
+  /** ⚠️ What `paused` / `paused_until` MEAN. Never null: an absent field on the
+   *  document decodes to 'all', which is what every pause written before
+   *  2026-08-23 meant. See PAUSE_MODES. */
+  pause_mode: PauseMode;
   paused_until: string | null;
   dont_check_until: string | null;
   pause_windows: IngestionWindow[];
@@ -605,6 +647,10 @@ export function decodeIngestionControl(doc: unknown): IngestionControl | null {
   const rawWindows = Array.isArray(m.pause_windows) ? (m.pause_windows as unknown[]) : [];
   return {
     paused: m.paused === true,
+    // ⚠️ Absent on every document written before 2026-08-23, and absent means
+    // 'all'. Same narrow posture as every field here: an unexpected value reads
+    // as the STRICT meaning, never as the permissive one.
+    pause_mode: normalisePauseMode(m.pause_mode),
     paused_until: asIsoOrNull(m.paused_until),
     dont_check_until: asIsoOrNull(m.dont_check_until),
     pause_windows: rawWindows
@@ -627,6 +673,11 @@ export function decodeIngestionControl(doc: unknown): IngestionControl | null {
 export function ingestionControlFields(control: IngestionControl) {
   return {
     paused: { booleanValue: control.paused },
+    // Always written as a real string, never a nullValue: the processor reads
+    // an absent field as 'all', so writing null and writing 'all' mean the
+    // same thing there — but a document that always states the mode is one a
+    // human can read without knowing the default.
+    pause_mode: { stringValue: control.pause_mode },
     paused_until: control.paused_until
       ? { stringValue: control.paused_until }
       : { nullValue: null as null },
@@ -670,6 +721,7 @@ export function sameIdList(a: string[], b: string[]): boolean {
 export function emptyIngestionControl(): IngestionControl {
   return {
     paused: false,
+    pause_mode: 'all',
     paused_until: null,
     dont_check_until: null,
     pause_windows: [],
@@ -701,6 +753,12 @@ export function nextIngestionControl(input: {
   action: IngestionAction;
   until?: unknown;
   bookIds?: unknown;
+  /** ⚠️ 'all' | 'manual_only', and ONLY the two pause actions read it (owner
+   *  ask 2026-08-23). Absent means 'all' — the strict meaning — so a caller
+   *  that predates the field, or a script, cannot accidentally write a
+   *  permissive pause. A value that is present but not a mode is REFUSED
+   *  rather than coerced: silence is safe, garbage is a bug worth surfacing. */
+  mode?: unknown;
   actor: string;
   nowMs: number;
 }): { control: IngestionControl } | { error: string; detail: string } {
@@ -717,8 +775,25 @@ export function nextIngestionControl(input: {
   const keptDontCheck =
     base.dont_check_until && Date.parse(base.dont_check_until) > now ? base.dont_check_until : null;
 
+  // ⚠️ Validated BEFORE anything is computed, and for every action, so a typo
+  // in the body can never be written by an action that happens not to read it.
+  if (input.mode !== undefined && input.mode !== null && !isPauseMode(input.mode)) {
+    return {
+      error: 'invalid_pause_mode',
+      detail:
+        'That pause choice was not recognised. Pick “Stop all work until unpaused” or ' +
+        '“Let the scheduled window continue” and try again.',
+    };
+  }
+  const requestedMode = normalisePauseMode(input.mode);
+
   const next: IngestionControl = {
     paused: base.paused,
+    // Carried through unchanged by the list actions and the timers: they are a
+    // different conversation than what the pause MEANS, and a requeue that
+    // rewrote the meaning of a pause in force would be a control with an
+    // invisible side effect. The four pause/resume actions below set it.
+    pause_mode: base.pause_mode,
     paused_until: keptPausedUntil,
     dont_check_until: keptDontCheck,
     pause_windows: keptWindows,
@@ -773,12 +848,17 @@ export function nextIngestionControl(input: {
     next.paused = false;
     next.paused_until = null;
     next.dont_check_until = null;
+    // Nothing is paused any more, so the meaning of the last pause is stale.
+    // Left in place it would be the default for a pause nobody chose it for —
+    // and the owner's decision was that the question is asked EVERY time.
+    next.pause_mode = 'all';
     return { control: next };
   }
 
   if (input.action === 'pause') {
     next.paused = true;
     next.paused_until = null; // an indefinite pause has no end time by definition
+    next.pause_mode = requestedMode;
     return { control: next };
   }
 
@@ -786,6 +866,8 @@ export function nextIngestionControl(input: {
     next.paused = false;
     next.paused_until = null;
     next.dont_check_until = null;
+    next.pause_mode = 'all'; // same reason as start_now — see above
+
     // A window in force would otherwise re-pause it seconds later, which
     // would read as "Resume did nothing".
     next.pause_windows = keptWindows.filter(
@@ -820,6 +902,11 @@ export function nextIngestionControl(input: {
     // inherit that flag and never expire.
     next.paused = false;
     next.paused_until = untilIso;
+    // A timed pause is a manual pause too, so it carries the same meaning
+    // field. The card sends 'all' for it today (unchanged behaviour); the
+    // reader honours whatever is here, so a mode picker can be added to this
+    // button later without touching the home machine.
+    next.pause_mode = requestedMode;
     return { control: next };
   }
 
@@ -892,6 +979,7 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
     action?: unknown;
     until?: unknown;
     book_ids?: unknown;
+    mode?: unknown;
   } | null;
   const action = body?.action;
   if (!isIngestionAction(action)) {
@@ -922,6 +1010,7 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
     action,
     until: body?.until,
     bookIds: body?.book_ids,
+    mode: body?.mode,
     actor: `estate-ops:${actor.email}`,
     nowMs: Date.now(),
   });
@@ -930,7 +1019,14 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
 
   const windowsChanged =
     (current?.pause_windows.length ?? 0) !== control.pause_windows.length;
-  const mask = ['paused', 'paused_until', 'dont_check_until', 'updated_by', 'updated_at'];
+  // ⚠️ `pause_mode` IS UNCONDITIONALLY IN THE MASK, beside `paused` itself, and
+  // that pairing is the point: the flag and what it MEANS have to land in the
+  // same write or there is an instant where the document says "paused" with
+  // the previous pause's meaning attached. Every action here already carries a
+  // decided value for it (the two pause actions set it, resume/start_now reset
+  // it, the rest carry it through), so writing it always is also what stops a
+  // stale mode surviving a Resume.
+  const mask = ['paused', 'pause_mode', 'paused_until', 'dont_check_until', 'updated_by', 'updated_at'];
   if (windowsChanged) mask.push('pause_windows');
   // ⚠️ EACH LIST ENTERS THE MASK ONLY WHEN THIS WRITE CHANGES IT, exactly as
   // `pause_windows` does, and for a sharper version of the same reason. The
@@ -968,6 +1064,11 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
       actor: actor.email,
       action,
       paused: control.paused,
+      // ⚠️ `paused: true` alone no longer says what the pause DID. The audit
+      // line is the only durable record of which of the two buttons was
+      // pressed, so it carries both the value and its meaning in words.
+      pause_mode: control.pause_mode,
+      pause_mode_means: pauseModeWords(control.pause_mode),
       paused_until: control.paused_until,
       dont_check_until: control.dont_check_until,
       // The ids, not just the counts: this line is the only record of WHICH
@@ -1013,6 +1114,17 @@ export function ingestionActionDetail(action: IngestionAction, control: Ingestio
       );
     case 'priority_front_clear':
       return 'The priority list is empty. The queue goes back to its ordinary tier order. Any pending retry requests were left alone.';
+    // ⚠️ The pause actions report WHICH of the two answers landed, in the
+    // owner's own words. A pause that reported only "Saved" would leave the
+    // one thing he was just asked to decide invisible — and the two outcomes
+    // differ by whether the machine runs tonight.
+    case 'pause':
+    case 'pause_until':
+      return control.pause_mode === 'manual_only'
+        ? 'Paused — but the scheduled 12am–8am window may continue. Work started by hand is refused ' +
+            'until you press Resume; the nightly run proceeds as if nothing were paused.'
+        : 'Paused — all work is stopped until you press Resume. Nothing overrides this: not the ' +
+            'scheduled 12am–8am window, not a run started by hand.';
     case 'start_now':
       return (
         'Cleared the pause, the pause timer and the don’t-check timer. Scheduled quiet hours were ' +

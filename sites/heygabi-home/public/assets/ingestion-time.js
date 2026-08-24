@@ -186,12 +186,27 @@ export function nextWindow(windows, nowMs) {
  * `app/core/ingest_control.py::control_blocks_start()`, and its order is:
  *
  *   1. unreadable control        → treated as PAUSED (fails closed, their side)
- *   2. paused === true           → blocked, UNCONDITIONALLY
- *   3. paused_until in future    → blocked until that instant
+ *   2. paused === true           → blocked, UNLESS `pause_mode` is
+ *                                  'manual_only' AND this start is inside the
+ *                                  nightly 12am–8am window (see below)
+ *   3. paused_until in future    → blocked until that instant, same exception
  *   4. inside a pause window     → blocked until the window ends
  *   5. otherwise                 → free to start
  *
- * ⚠️ STEP 2 IS UNCONDITIONAL, AND THAT IS WHY "Pause until…" WRITES
+ * ⚠️ STEPS 2 AND 3 GAINED THEIR ONE EXCEPTION ON 2026-08-23 (owner ask: "when
+ * i manually pause the pipeline it says nothing can override it. I want it to
+ * ask me if i want to stop all work until unpaused or if scheduled window is
+ * fine to continue."). `pause_mode` says what a pause MEANS — 'all' (the
+ * historical, absolute meaning, and what an absent or unrecognised value
+ * decodes to) or 'manual_only', which exempts the nightly window and nothing
+ * else. It does NOT touch step 4: a pause window IS a scheduled block, so
+ * "let the scheduled window continue" overriding one would make quiet hours
+ * meaningless. The wording below carries the difference in the HEADLINE,
+ * because two pauses that do opposite things must never read the same.
+ *
+ * ⚠️ EVERYTHING BELOW ABOUT "Pause until…" IS UNCHANGED BY THAT. Step 2 is
+ * still unconditional *with respect to the timer*, and that is why "Pause
+ * until…" WRITES
  * `paused: false`. The obvious encoding — set the flag AND the timer — would
  * leave the flag true at midnight and the machine paused forever, because
  * nothing in their step 2 consults the timer. A `paused_until` on its own is
@@ -222,6 +237,12 @@ export function describeIngestion(control, nowMs) {
   }
 
   const pausedFlag = control.paused === true;
+  // ⚠️ WHAT THE PAUSE MEANS (owner ask 2026-08-23). Same fail-closed rule as
+  // both readers: absent, mis-spelled or the wrong type all mean 'all', which
+  // is what every pause written before that date meant. 'manual_only' is the
+  // ONLY value that softens the wording, because it is the only value that
+  // softens the behaviour.
+  const manualOnly = control.pause_mode === 'manual_only';
   const until = parseIso(control.paused_until);
   const dont = parseIso(control.dont_check_until);
   const win = activeWindow(control.pause_windows, nowMs);
@@ -240,8 +261,21 @@ export function describeIngestion(control, nowMs) {
   if (pausedFlag) {
     state = 'paused';
     badge = 'warn';
-    headline = 'Paused, with no end time set.';
-    lines.push('It stays paused until someone presses Resume — no timer will restart it.');
+    // ⚠️ THE TWO ANSWERS MUST NOT READ THE SAME. Before this field existed the
+    // card said "It stays paused until someone presses Resume" and that was
+    // the whole truth; under 'manual_only' that sentence would be a lie about
+    // the nightly run. The headline carries the difference, not a footnote —
+    // this line is what the owner reads to know which button he pressed.
+    headline = manualOnly
+      ? 'Paused for work started by hand — the scheduled window may continue.'
+      : 'Paused, with no end time set.';
+    lines.push(
+      manualOnly
+        ? 'The 12am–8am window runs as if nothing were paused. Anything started by hand is ' +
+            'refused until someone presses Resume — no timer will restart it.'
+        : 'It stays paused until someone presses Resume — no timer will restart it. Nothing ' +
+            'overrides it: not the scheduled 12am–8am window, not a run started by hand.',
+    );
     if (until !== null) {
       lines.push(
         `A pause-until time (${wordTime(control.paused_until, nowMs)}) is also on the document, but the ` +
@@ -253,8 +287,13 @@ export function describeIngestion(control, nowMs) {
     // it is what "Pause until…" writes, so that it expires by itself.
     state = 'paused';
     badge = 'warn';
-    headline = `Paused until ${wordTime(control.paused_until, nowMs)}.`;
+    headline = manualOnly
+      ? `Paused until ${wordTime(control.paused_until, nowMs)} for work started by hand — the scheduled window may continue.`
+      : `Paused until ${wordTime(control.paused_until, nowMs)}.`;
     lines.push('It restarts by itself at that time — nobody has to press anything.');
+    if (manualOnly) {
+      lines.push('Until then the 12am–8am window runs as usual; only work started by hand is refused.');
+    }
   } else if (win) {
     state = 'window';
     badge = 'warn';
@@ -296,5 +335,8 @@ export function describeIngestion(control, nowMs) {
     );
   }
 
-  return { state, badge, headline, lines };
+  // `pauseMode` is reported alongside the words so the card can key off the
+  // MODE rather than re-parsing the headline — normalised here so there is one
+  // place in this file that decides what an unrecognised value means.
+  return { state, badge, headline, lines, pauseMode: manualOnly ? 'manual_only' : 'all' };
 }
