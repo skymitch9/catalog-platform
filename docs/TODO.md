@@ -1,10 +1,10 @@
 # TODO — catalog-platform (ACTIVE work log)
 
-> 🔄 **CONDUCTOR IN-FLIGHT (cycle 2026-08-24 00:07, session reset):** 4 agents —
-> OR-1 follow-ups (members endpoint + strict shadow, on feature/lent-to-person);
-> --llm double-bill fix (feature/covers-owner-key); MERGE feature/audio-edition-count
-> to library main; T-C backup-100% investigation (read-only). Do NOT re-dispatch these.
-> ebook-site count (T-F item) HELD — audiobook pipeline mid-run, commit-collision risk.
+> 🔄 **CONDUCTOR STATUS (00:1x, session 2%):** DONE this session → audio-edition-count
+> MERGED to library main (11f1317, 1445 tests). IN FLIGHT → OR-1 follow-ups
+> (feature/lent-to-person); --llm double-bill fix (feature/covers-owner-key); T-C
+> backup-100%; T-D pipeline-sanctity; T-B universe sweep all libraries. Do NOT
+> re-dispatch. HELD → ebook-site count (pipeline mid-run).
 
 
 > 🔴🔴 **THE ROTATION DEADLINE BELOW HAS PASSED AND THE KEY IS STILL LIVE.**
