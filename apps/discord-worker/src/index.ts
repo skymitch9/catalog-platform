@@ -59,6 +59,8 @@ import {
   type InteractionActor,
 } from './interactions.js';
 import { resumeConversation } from './conversation-flow.js';
+import { CONFIRM_MSG, confirmT2On, verifyConfirmPress } from './confirm.js';
+import { resumeConfirm } from './confirm-resume.js';
 import {
   buildQuestionModal,
   CONV_MSG,
@@ -1070,6 +1072,40 @@ app.post('/interactions', async (c) => {
         ),
       );
       return c.json({ type: ResponseType.DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // -----------------------------------------------------------------------
+    // T2 CONFIRM LANE — a press on a `gc2|` confirm button (DARK behind
+    // GABI_CONFIRM_T2). ⚠️ NO GATEWAY WEBSOCKET: an ordinary signed interaction.
+    // -----------------------------------------------------------------------
+
+    case 'gabi_confirm': {
+      // The switch first — an off lane does not even reveal whether a confirm id
+      // was valid, exactly as the moderation confirm does.
+      if (!confirmT2On(c.env)) return c.json(ephemeralMessage(CONFIRM_MSG.switchedOff));
+      const keyMaterial = c.env.ESTATE_APP_TOKEN_DISCORD;
+      const presser = decision.actor.user;
+      if (!keyMaterial) return c.json(ephemeralMessage(CONFIRM_MSG.notConfigured));
+      if (!presser || !decision.actor.token) return c.json(ephemeralMessage(CONFIRM_MSG.noToken));
+
+      // ⚠️ The MAC, before any storage is touched — a hand-typed or lifted button
+      // is refused here and never reaches the pending slot.
+      const verified = await verifyConfirmPress(
+        keyMaterial,
+        decision.customId,
+        presser.id,
+        Date.now(),
+      );
+      if (!verified.ok) {
+        return c.json(
+          ephemeralMessage(verified.reason === 'expired' ? CONFIRM_MSG.expired : CONFIRM_MSG.invalid),
+        );
+      }
+      defer(
+        c,
+        resumeConfirm(c.env, decision.actor, { action: verified.action, nonce: verified.nonce }),
+      );
+      return c.json(deferredPublic());
     }
 
     // -----------------------------------------------------------------------

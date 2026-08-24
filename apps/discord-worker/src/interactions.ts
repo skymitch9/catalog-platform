@@ -9,6 +9,7 @@
 import { parsePollCustomId, POLL_VOTE_PREFIX, type PollVoteRef } from './poll-vote.js';
 import { MOD_CONFIRM_PREFIX } from './moderation.js';
 import {
+  CONFIRM_PREFIX,
   GABI_CONV_PREFIX,
   modalInputValue,
   parseConvCustomId,
@@ -187,6 +188,9 @@ export type RouterDecision =
       contains: string;
     }
   | { kind: 'mod_confirm'; customId: string; actor: InteractionActor }
+  /** ⚠️ T2 CONFIRM LANE. A press on a `gc2|` confirm button. The MAC is verified
+   * downstream (the id itself is a capability here), so the router only routes. */
+  | { kind: 'gabi_confirm'; customId: string; actor: InteractionActor }
   /** ⚠️ CONTINUITY. A click on something GABI attached to an earlier answer:
    * `pick` chose from her select menu, `more` asks for the free-text modal. */
   | { kind: 'gabi_component'; action: ConvAction; nonce: string; choice: string; actor: InteractionActor }
@@ -302,6 +306,12 @@ export function routeInteraction(i: Interaction): RouterDecision {
       const customId = i.data?.custom_id ?? '';
       if (customId.startsWith(`${MOD_CONFIRM_PREFIX}|`)) {
         return { kind: 'mod_confirm', customId, actor: interactionActor(i) };
+      }
+      // ⚠️ `gc2|` BEFORE `gc|` — the confirm prefix is a superstring of the
+      // continuity prefix, and `startsWith('gc|')` would never match `gc2|`
+      // anyway, but ordering the more specific one first keeps the intent plain.
+      if (customId.startsWith(`${CONFIRM_PREFIX}|`)) {
+        return { kind: 'gabi_confirm', customId, actor: interactionActor(i) };
       }
       if (customId.startsWith(`${GABI_CONV_PREFIX}|`)) {
         const conv = parseConvCustomId(customId);

@@ -71,6 +71,7 @@ import {
   gabiDelegatedVerbByName,
   type GabiDelegatedVerbName,
 } from './gabi-tools.js';
+import type { ConfirmSubject } from './conversation.js';
 
 // ---------------------------------------------------------------------------
 // The posture
@@ -360,7 +361,47 @@ export interface DelegatePort {
     uid: string,
     body?: Record<string, unknown>,
   ): Promise<DelegatedCallResult>;
+
+  /**
+   * ⚠️ **THE TIER-2 CONFIRM VERB.** One call, two modes:
+   *
+   *  - `dryRun: true` (PROPOSE) — the destination checks the asker's capability
+   *    (check #1) and returns the current `before` values. Nothing is written.
+   *  - `dryRun: false` (PRESS) — the destination checks the capability AGAIN
+   *    (check #2, revocation beats everything) and applies with a compare-and-set
+   *    on `before`; a field changed underneath comes back as `changed` (a 409),
+   *    never a silent overwrite.
+   *
+   * Never throws — an outage is `{ kind: 'unreachable' }`, a capability refusal
+   * is `{ kind: 'refused', message }` relayed verbatim from the destination.
+   */
+  fixField(
+    instance: LibraryInstance,
+    uid: string,
+    req: FixFieldRequest,
+  ): Promise<FixFieldResult>;
 }
+
+/** One request to the `fix-field` verb. On a dry-run only `field` is read; on an
+ * apply every change carries `before` (the compare-and-set material) and `after`. */
+export interface FixFieldRequest {
+  subject: ConfirmSubject;
+  changes: { field: string; before?: string; after?: string }[];
+  dryRun: boolean;
+}
+
+/** The destination's answer, discriminated so every outcome is worded once. */
+export type FixFieldResult =
+  /** dry-run: capability ok, current values read. */
+  | { kind: 'dryrun'; before: Record<string, string> }
+  /** apply: written; `message` is the destination's own report. */
+  | { kind: 'applied'; message: string }
+  /** apply: §4.2's 409 — a field's `before` no longer matches; `nowIs` is now. */
+  | { kind: 'changed'; field: string; nowIs: string }
+  /** capability refused at the destination (either call) — relayed VERBATIM. */
+  | { kind: 'refused'; message: string }
+  /** the site could not be reached, or answered unreadably. */
+  | { kind: 'unreachable' };
 
 // ---------------------------------------------------------------------------
 // Routing — one shelf, two, or none

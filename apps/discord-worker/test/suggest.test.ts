@@ -76,6 +76,7 @@ function delegatePort(over: Partial<DelegatePort> = {}): DelegatePort {
     // ⚠️ Defaults to the EMPTY shelf so a gate test proves the GATE and nothing
     // else; the physical-source tests override it explicitly.
     browseWorks: async () => ({ app: 'library', site: 'x', total: 0, rows: [] }),
+    fixField: async () => ({ kind: 'unreachable' as const }),
     whoami: async (): Promise<WhoAmI | null> => ({ app: 'library', site: 'x', known: true }),
     call: async () => ({ ok: true, status: 200, message: 'done', instance: INSTANCES[0] as LibraryInstance }),
     ...over,

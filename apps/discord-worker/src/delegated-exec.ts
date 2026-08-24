@@ -44,6 +44,8 @@ import {
   libraryInstances,
   type DelegatePort,
   type DelegatedCallResult,
+  type FixFieldRequest,
+  type FixFieldResult,
   type LibraryInstance,
   type WhoAmI,
 } from './delegated.js';
@@ -257,6 +259,77 @@ export function makeDelegate(env: Env): DelegatePort | null {
         ...(typeof payload?.outcome === 'string' ? { outcome: payload.outcome } : {}),
         instance,
       };
+    },
+
+    /**
+     * ⚠️ **THE TIER-2 CONFIRM VERB, on the wire.** Same door, same bearer, same
+     * "the destination is the authority" posture as `call` — the capability is
+     * checked THERE, on both the dry-run and the apply. This end only shapes the
+     * request and reads the answer; it decides nothing.
+     */
+    async fixField(instance, uid, req: FixFieldRequest): Promise<FixFieldResult> {
+      const { res, error } = await post(
+        instance,
+        // ⚠️ Not a `GabiDelegatedVerbName` — `fix-field` is its own Tier-2
+        // allowlist (`GABI_CONFIRM_VERB_NAMES`), so the verb string is passed
+        // literally rather than through the Tier-1 union. The library Worker
+        // pins the identical name on its own end.
+        'fix-field' as never,
+        {
+          onBehalfOf: uid,
+          subject: req.subject,
+          changes: req.changes,
+          dryRun: req.dryRun,
+        },
+        token,
+        CALL_TIMEOUT_MS,
+      );
+      if (!res) {
+        console.error(`GABI confirm: ${instance.app} fix-field unreachable — ${error}`);
+        return { kind: 'unreachable' };
+      }
+      const payload = (await res.json().catch(() => null)) as {
+        outcome?: unknown;
+        reason?: unknown;
+        field?: unknown;
+        nowIs?: unknown;
+        before?: unknown;
+        message?: unknown;
+      } | null;
+
+      // 409 — compare-and-set failed. A field moved under the proposal.
+      if (res.status === 409 && payload?.reason === 'changed_underneath') {
+        return {
+          kind: 'changed',
+          field: typeof payload.field === 'string' ? payload.field : '',
+          nowIs: typeof payload.nowIs === 'string' ? payload.nowIs : '',
+        };
+      }
+      // Any other non-2xx carrying a worded message is a capability/estate
+      // refusal — relayed VERBATIM, never re-worded and never re-checked here.
+      if (!res.ok) {
+        const message =
+          typeof payload?.message === 'string' && payload.message.trim()
+            ? payload.message.trim()
+            : DELEGATE_MSG.siteUnreachable(instance.label);
+        return { kind: 'refused', message };
+      }
+      if (payload?.outcome === 'dryrun') {
+        const before: Record<string, string> = {};
+        const raw = payload.before;
+        if (raw && typeof raw === 'object') {
+          for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+            before[k] = typeof v === 'string' ? v : v == null ? '' : String(v);
+          }
+        }
+        return { kind: 'dryrun', before };
+      }
+      // Applied. The message is the destination's own report of what happened.
+      const message =
+        typeof payload?.message === 'string' && payload.message.trim()
+          ? payload.message.trim()
+          : DELEGATE_MSG.siteUnreachable(instance.label);
+      return { kind: 'applied', message };
     },
   };
 }

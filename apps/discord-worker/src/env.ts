@@ -380,6 +380,31 @@ export interface Env {
    */
   GABI_SUGGEST?: string;
 
+  /**
+   * ⚠️ **TIER 2 — GABI's CATALOG-FIX CONFIRM LANE, and it ships OFF.**
+   *
+   * The confirm grammar: propose a change to an EXISTING field, restate exactly
+   * what will change, and apply on the asker's borrowed authority only when a
+   * human presses (`docs/info/gabi-confirm-lanes-design.md`; `src/confirm.ts`).
+   *
+   * Affirmative-only `"on"`, the exact idiom of `MODERATION_ENABLED`,
+   * `GABI_MENTIONS`, `GABI_DELEGATED_WRITES` and `GABI_DOCS`: `"on"` and nothing
+   * else; absent, empty, `"true"`, `"1"`, `"yes"` and every typo all mean OFF.
+   *
+   * ⚠️ **IT SHIPS OFF, and that is a departure from `GABI_DELEGATED_WRITES`
+   * rather than an oversight.** Tier 1 is additive-with-undo; this MUTATES data a
+   * person already has, on their borrowed authority. Flipping it is the OWNER's
+   * evidence-gated step — never a side effect of a deploy, never done by an
+   * agent — exactly like the moderation switch.
+   *
+   * ⚠️ **OFF means the whole lane is invisible: no proposal is offered, no
+   * confirm button is rendered, and a stale button from before a flip answers a
+   * worded "switched off" rather than acting.** The switch removes the
+   * capability; the destination still checks the asker's own role TWICE (at
+   * propose and at press) even when it is on — GABI owns no permissions.
+   */
+  GABI_CONFIRM_T2?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

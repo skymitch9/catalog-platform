@@ -25,6 +25,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import {
+  GABI_CONFIRM_TIER,
+  GABI_CONFIRM_VERBS,
+  GABI_CONFIRM_VERB_NAMES,
   GABI_DELEGATED_TIER,
   GABI_DELEGATED_VERBS,
   GABI_DELEGATED_VERB_NAMES,
@@ -33,8 +36,10 @@ import {
   GABI_TOOL_TIER,
   MAX_TOOL_CALLS_PER_TURN,
   MAX_TOOL_ITERATIONS,
+  gabiConfirmVerbByName,
   gabiDelegatedVerbByName,
   gabiToolByName,
+  isGabiConfirmVerb,
   isGabiDelegatedVerb,
   isGabiToolName,
   toolBook,
@@ -308,6 +313,57 @@ describe('⚠️ TIER 1 — the delegated verbs are their own allowlist', () => 
         `'${name}' names a power above Tier 1`,
       );
     }
+  });
+});
+
+describe('⚠️ TIER 2 — the confirm verbs are a SEVENTH allowlist, separate from Tier 1', () => {
+  it('declares itself tier 2, and is exactly the one confirm verb', () => {
+    assert.equal(GABI_CONFIRM_TIER, 2);
+    // The library Worker pins the identical name on its own end. Adding a row is
+    // a design decision behind the DARK GABI_CONFIRM_T2 switch.
+    assert.deepEqual([...GABI_CONFIRM_VERB_NAMES], ['fix-field']);
+    assert.deepEqual(
+      GABI_CONFIRM_VERBS.map((v) => v.name).sort(),
+      [...GABI_CONFIRM_VERB_NAMES].sort(),
+    );
+  });
+
+  it('every confirm verb MUTATES, is confirmed, borrows editCatalog, and spends nothing', () => {
+    for (const v of GABI_CONFIRM_VERBS) {
+      assert.equal(v.mutates, true, `'${v.name}' must mutate — that is what makes it Tier 2`);
+      assert.equal(v.confirm, true, `'${v.name}' must be confirmed`);
+      assert.equal(v.requiredCapability, 'editCatalog');
+      assert.equal(v.spends, false);
+      assert.deepEqual([...v.methods], ['POST']);
+    }
+  });
+
+  it('⚠️ a confirm verb is NOT a Tier-1 delegated verb, and is NEVER offered to a model', () => {
+    // The tiers are separate arrays on purpose: fix-field must not leak into the
+    // additive door NOR into what the Messages API sees.
+    for (const name of GABI_CONFIRM_VERB_NAMES) {
+      assert.equal(isGabiDelegatedVerb(name), false, `'${name}' leaked into the Tier-1 array`);
+      assert.equal(isGabiToolName(name), false, `'${name}' leaked into the read-only tools`);
+    }
+    const offered = toolsForApi({ docs: true, books: true, shelf: true, recall: true }).map((t) => t.name);
+    for (const name of GABI_CONFIRM_VERB_NAMES) {
+      assert.ok(!offered.includes(name as never), `'${name}' is offered to the model`);
+    }
+  });
+
+  it('⚠️ the confirm allowlist names no key-mover and no T3/T4 power', () => {
+    for (const name of GABI_CONFIRM_VERB_NAMES) {
+      // No retitle (title/authors move work_key), no people/club/status/delete/etc.
+      assert.doesNotMatch(
+        name,
+        /(title|author|retitle|delete|remove|revoke|grant|role|approve|deploy|promote|secret|kick|club|status|merge)/,
+        `'${name}' names a power beyond a book's own field`,
+      );
+    }
+    assert.equal(gabiConfirmVerbByName('set-author'), null);
+    assert.equal(gabiConfirmVerbByName('club-admin-change'), null);
+    assert.equal(isGabiConfirmVerb('__proto__'), false);
+    assert.equal(gabiConfirmVerbByName('fix-field')?.entity, 'work');
   });
 });
 

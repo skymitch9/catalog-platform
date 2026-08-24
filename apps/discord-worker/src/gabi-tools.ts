@@ -1073,6 +1073,99 @@ export function gabiDelegatedVerbByName(name: unknown): GabiDelegatedVerb | null
   return GABI_DELEGATED_VERBS.find((v) => v.name === name) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// TIER 2 — the CONFIRM verbs. A SEVENTH allowlist, deliberately separate.
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE CONFIRM-LANE ALLOWLIST — a SEVENTH array, not a row bolted onto the
+ * Tier-1 one.** `docs/info/gabi-confirm-lanes-design.md`. Same reasoning every
+ * previous split had, on the axis that matters most here: **what may happen
+ * without a human eyeball**.
+ *
+ * | | Tier 1 delegated | Tier 2 confirm |
+ * |---|---|---|
+ * | on the data | ADDITIVE (a new book, a filled blank) | ⚠️ **MUTATES an existing value** |
+ * | applied | auto, then reported | ⚠️ **only on a human PRESS** |
+ * | reached by | a checksummed ISBN or a pattern | a propose → restate → confirm grammar |
+ * | capability checked | once, at the write | ⚠️ **TWICE — at propose AND at press** |
+ *
+ * Keeping these OUT of `GABI_DELEGATED_VERB_NAMES` is what lets
+ * `test/gabi-tools.test.ts`'s Tier-1 wall stay literally true — *"no T2/T3/T4
+ * verb is reachable"* through the additive door — while this door has its own
+ * name, its own switch (`GABI_CONFIRM_T2`, ships OFF) and its own test.
+ *
+ * ⚠️ **STILL NEVER SHOWN TO A MODEL.** Like every delegated verb, a confirm verb
+ * is chosen by a deterministic flow, never offered to the Messages API —
+ * `toolsForApi()` returns Tier 0 and nothing else, asserted by the guard.
+ *
+ * ⚠️ Note what is NOT here and cannot arrive without failing the test: no
+ * `title`/`authors` retitle (that moves `work_key`, the review-bridge join —
+ * the edit-audit key-move ceremony's subject, never a chat confirm's), no
+ * people/club/status verb (that is T3, excluded), and nothing on the audiobook
+ * surface (no audit seam — design §6.5).
+ */
+export const GABI_CONFIRM_VERB_NAMES = ['fix-field'] as const;
+
+export type GabiConfirmVerbName = (typeof GABI_CONFIRM_VERB_NAMES)[number];
+
+/** Which shipped slice this is. Tier 2 = mutate an existing field behind a
+ * propose→restate→confirm grammar (owner-approved, ships DARK). */
+export const GABI_CONFIRM_TIER = 2;
+
+/** One confirm verb. Mirrors `GabiDelegatedVerb` but records the two things a
+ * confirm needs that an additive verb does not: the entity it edits, and that
+ * it is confirmed rather than auto-applied. */
+export interface GabiConfirmVerb {
+  name: GabiConfirmVerbName;
+  /** For a human reading this file and for the report. NEVER sent to a model. */
+  description: string;
+  /** The capability the DESTINATION requires of the asker — the same one the
+   *  equivalent edit form is gated on. ⚠️ Recorded, not enforced: the library
+   *  Worker's own `can(role, capability)` is the check, TWICE. */
+  requiredCapability: 'editCatalog';
+  /** The entity whose fields this verb edits, in phase 1. */
+  entity: 'work';
+  methods: readonly ('POST')[];
+  /** ⚠️ Every confirm verb mutates — that is what makes it Tier 2 and not Tier 1. */
+  mutates: true;
+  /** Whether one call may cost money. `fix-field` writes a field; it spends nothing. */
+  spends: false;
+  /** ⚠️ Always true here — the property that separates this array from Tier 1. */
+  confirm: true;
+}
+
+export const GABI_CONFIRM_VERBS: readonly GabiConfirmVerb[] = [
+  {
+    name: 'fix-field',
+    description:
+      "Change a book's OWN existing field on one library instance — subtitle, series, volume, " +
+      'description, cover or illustrator — on the asker\'s behalf, behind a confirm button. ' +
+      '⚠️ Proposes and restates before/after; applies ONLY on a human press, with a compare-and-set ' +
+      'on the before values so a stale confirm is refused rather than clobbering somebody else\'s ' +
+      'edit. ⚠️ NEVER title or authors (those move work_key, the review join) and NEVER anything on ' +
+      'the audiobook surface (no audit seam).',
+    requiredCapability: 'editCatalog',
+    entity: 'work',
+    methods: ['POST'],
+    mutates: true,
+    spends: false,
+    confirm: true,
+  },
+];
+
+/** The one place anything decides whether a confirm verb name is allowed.
+ *  Default-deny, and an ARRAY for the same reason `isGabiToolName` is one. */
+export function isGabiConfirmVerb(name: unknown): name is GabiConfirmVerbName {
+  return typeof name === 'string' && (GABI_CONFIRM_VERB_NAMES as readonly string[]).includes(name);
+}
+
+/** The definition for an allowlisted confirm verb, or `null`. Never throws. */
+export function gabiConfirmVerbByName(name: unknown): GabiConfirmVerb | null {
+  if (!isGabiConfirmVerb(name)) return null;
+  return GABI_CONFIRM_VERBS.find((v) => v.name === name) ?? null;
+}
+
 /** ⚠️ Absent fields are OMITTED, not emitted as `null` or `"unknown"`. A model
  * shown `"narrator": null` will sometimes fill it in; a model shown no narrator
  * key at all has nothing to fill. */

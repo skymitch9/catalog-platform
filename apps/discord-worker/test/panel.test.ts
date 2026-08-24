@@ -430,6 +430,7 @@ describe('⚠️ REGRESSION: a fix-shaped ask points at the asker\'s shelf', () 
                     // browses the print shelf; a stub that lies about the shape
                     // is how a port grows a hole.
                     browseWorks: async () => null,
+                    fixField: async () => ({ kind: 'unreachable' as const }),
                     // ⚠️ Never reached by a link resolution. If it ever is, the
                     // read path grew a write and this test says so.
                     call: async () => {
