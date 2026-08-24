@@ -6,6 +6,16 @@
 > **session 53% · weekly 26% · Fable 2%** (~03:50 Phoenix). The conductor cron is
 > now retired. This block is the handoff; delete it once you've actioned it.
 
+## ✅ DEPLOYED 2026-08-24 AM (owner-driven, from phone)
+
+- **library main + padhard**: migrated 0400+0410, deployed (75818eff / bf1c225c), health green. Spinner live at /tbr on both.
+- **catalog-platform**: discord-worker deployed (GABI T2 DARK, 82818629); backup-board push triggered (/status shows real 100%).
+- **audiobook**: ingest-lock-pid + audit-fixes (XSS, Drive->trash, CI gate) merged to main (5b154e8); SyncPipeline triggered to rebuild+publish → ships the XSS fix.
+- ⏸ **ebook-count** still held — merge after the running pipeline commits site/ebooks.html (clears the collision).
+- 🔴 STILL OWNER-ONLY (type the secret): rotate PEER_TOKEN (wrangler.toml:203/:418, public repo); mint INDEX_READ_TOKEN x2 for GABI index rung 2.
+
+---
+
 ## ☐ OWNER DECISIONS 2026-08-24 AM (from phone)
 
 - **Damsels of Distress covers → KEEP the 3D publisher mockups.** Done, no flat-jacket hunt.
