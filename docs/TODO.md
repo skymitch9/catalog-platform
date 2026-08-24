@@ -1,7 +1,7 @@
 # TODO — catalog-platform (ACTIVE work log)
 
-> 🔄 **CONDUCTOR STATUS (~03:0x, session 49%, weekly 25%):** ALL FEATURES/FIXES BUILT+MERGED. AUDITS filed
-> (5337fbf): library 4crit/13high, audiobook 1crit/5high, board 0/0. 🔴 OWNER: rotate PEER_TOKEN (tracked in
-> PUBLIC library wrangler.toml:203/:418) — not auto-fixed. IN FLIGHT → crit/high FIX agents: library
-> (feature/audit-fixes-library) + audiobook (feature/audit-fixes-audiobook), design-calls flagged not fixed.
-> QUEUE NEARLY EMPTY — after fixes land+merge, write morning summary + CronDelete the conductor.
+> 🔄 **CONDUCTOR STATUS (~03:1x, session 51%, weekly 26%):** AUDIT FIXES: audiobook 1crit+5high FIXED
+> (feature/audit-fixes-audiobook, 7 commits, 1466py+730js tests — XSS x4, Drive delete->trash, CI JS gate).
+> Library crit/high fix agent IN FLIGHT (feature/audit-fixes-library). 🔴 OWNER: rotate PEER_TOKEN (public
+> library wrangler.toml:203/:418). After library fixes land+merge → write MORNING SUMMARY + CronDelete conductor.
+> Audiobook branches (ebook-count, ingest-lock-pid, audit-fixes) merge in the morning when pipeline idle.
