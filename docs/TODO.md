@@ -61,6 +61,9 @@ action.
   them from the docs and current state. (3) Opus previously proposed a COMPLEX
   path involving the server owner — find that proposal, assess whether it is
   sound or there is a simpler way, and recommend. Read-only report.
+  (4) Shelf **series and collections are EMPTY** — determine whether that is
+  on purpose (ABS not configured to build them / a metadata-agent setting) or a
+  fault, and how to populate them. Owner asked 2026-08-23.
 
 ---
 
