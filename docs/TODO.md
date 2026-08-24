@@ -30,8 +30,18 @@ owner decisions. **Harness:** `scripts/audit/estate-audit.workflow.mjs`
 (inventory → per-unit Opus review → per-finding Opus refuter → per-repo
 synthesis). Read-only on source; writes only `docs/`. No push.
 
-**Status:** NOT RUNNING. Starts on the owner's go; the conductor pulse-checks
-usage between other tasks and pauses it at 60% weekly. Deliverable per repo:
+**Status, 2026-08-23:** **THIS REPO'S PASS HAS RUN AND SYNTHESISED.** 79
+findings survived verification (1 critical · 7 high · 29 medium · 42 low)
+across 13 units; 7 more were refuted. Read
+[`info/audit-2026-08-findings.md`](info/audit-2026-08-findings.md), and the
+ranked critical/high work items at the **AUDIT 2026-08** section at the bottom
+of this file. ⚠️ **F1 is a credential-exposure item and should be done first.**
+
+The other three repos (`library_catalog`, `audiobook_catalog`,
+`Board_Game_Catalog`) synthesise into their own `docs/`; **their state is not
+knowable from here** — check each repo's own `docs/info/` rather than assuming
+this row covers them. The conductor pulse-checks usage between other tasks and
+pauses at 60% weekly. Deliverable per repo:
 `docs/info/audit-2026-08-findings.md` + a ranked AUDIT section in its TODO.
 
 ## 🔴 SUNDAY 2026-08-23, 16:00 Phoenix — ROTATE A LEAKED ANTHROPIC KEY
@@ -2564,3 +2574,118 @@ times. The body is the authority, both ways.
 
 ---
 
+
+## 🔍 AUDIT 2026-08 — confirmed findings (`catalog-platform`), ranked
+
+> Landed **2026-08-23**. Full document, with all 79 findings, the evidence for
+> each and what would fix it:
+> [`info/audit-2026-08-findings.md`](info/audit-2026-08-findings.md).
+>
+> **79 findings survived verification** (1 critical · 7 high · 29 medium · 42
+> low) across 13 review units; 7 further findings were refuted and are not
+> recorded. **Only critical and high get an item here** — medium and low stay
+> in the findings doc, which is the one home for them. Ratings are the
+> refuter's final ones, so a few read `orig → final`.
+>
+> ⚠️ **The audit changed no code.** Every item below is unstarted work, and
+> each is an owner-decided dispatch, not a sweep. ⚠️ **It was read-only:** no
+> production request, no database read, no browser. Findings whose *impact*
+> depends on runtime state say so in the doc's §7 — check that before sizing.
+
+### ☐ F1 · 🔴 CRITICAL — unfiltered docs backups sit in the public repo's tree
+
+`scripts/backup-docs.mjs:270` writes archives containing **raw secret values**
+(service-account JSON, bearer tokens) into `.docs-backup-tmp/`, never deletes
+them, and that path is **not** in `.gitignore`. Eight archives, ~6.6 MB, are
+there right now — one `git add .` from being published on a public repo.
+**Fix:** add `.docs-backup-tmp/` to the tracked `.gitignore`, `rmSync` the temp
+file after the R2 put (or write under `os.tmpdir()`), and delete the eight.
+**Size:** XS. **Do this one first** — the other seven can wait a week.
+
+### ☐ F2 · 🟠 HIGH — one runbook form silently wipes the other's saved facts
+
+`sites/heygabi-home/public/runbooks/shelf-justin/doc.js:26` knows 5 of the 9
+`shelf` fact fields but POSTs to the same **whole-record-replace** endpoint
+`/runbooks/shelf-migration/` uses with 9 — so saving on Justin's page blanks
+`shelf_host`/`shelf_path`/`shelf_user`/`shelf_ssh_port` and
+`/api/machine/shelf-config` starts answering `configured:false` to the
+pipeline. Introduced by `2656741`, which updated one page and not the other.
+**Fix:** make the POST a merge, or collapse to one form per this file's own
+rule at §*Shelf connection details* (*one surface owns it*).
+
+### ☐ F3 · 🟠 HIGH — `stream-ping` lets the caller choose the Firestore document
+
+`apps/audiobook-worker/src/stream-ping.ts:115` interpolates the client-supplied
+`anchor` into a Firestore REST path with no `encodeURIComponent` and **no
+manifest lookup**, so an admitted caller steers a rules-bypassing service
+account: `..%2Fsite_roles%2F<uid>%23` both escapes `audio_streams` and drops the
+update mask, making the PATCH a full-document replace — answered `204`.
+Breaks `audio-manifest.ts:11-17` verbatim (*"THE MAPPING IS A LOOKUP, NEVER A
+CONSTRUCTION"*). **Fix:** look the anchor up and 404 on a miss; encode anyway;
+use `patchFsDoc`. The module has **no tests at all**.
+
+### ☐ F4 · 🟠 HIGH — estate SSO is CSP-blocked on `/series` and `/universes`
+
+Both pages call `handleRedirectResult()`, which unconditionally fires
+`bootstrapEstateSso()` at `auth.heygabi.ai`, but neither page's `connect-src`
+names that host (`public/_headers:304`, `:308`, `:313`, `:317`) under
+`default-src 'none'`. Every failure path is a silent `catch { return false }`.
+**Signing out on either page never clears the `.heygabi.ai` session cookie**,
+and signing in there never propagates. **Fix:** add the host to those four
+rules. ⚠️ Distinct from KI-6, which is `frame-src`. Also re-date
+`info/sso-design.md:257` — its "connect-src already names it" measurement was
+taken against `/` and `/admin` before `/series` existed.
+
+### ☐ F5 · 🟠 HIGH — index-worker's CORS blocks every POST on `/api/*`
+
+`apps/index-worker/src/index.ts:113` sets `allowMethods: ['GET','OPTIONS']` on
+the whole prefix. `/api/scan/shelf` is **already called from the apex**
+(`assets/estate-search.js:1415`), so shelf-photo identify cannot work from a
+browser today — and the catch prints *"The scan endpoint did not answer
+(network)"*, an outage sentence for a config refusal.
+`POST /api/series/pending/:fold` is blocked the same way, latently.
+**Fix:** allow `POST`. Same class as the `/ops/ingestion` incident: **a Hono
+CORS mount is not implied by a route.** (medium → high on verification, because
+one of the two routes is live rather than latent.)
+
+### ☐ F6 · 🟠 HIGH — GABI's shelf and recall tools are never offered to the model
+
+`apps/discord-worker/src/gabi-chat.ts:754` builds the API tool array as
+`{docs, books}` only, so `my_tbr`, `my_reviews`, `book_reviews` and
+`recall_conversation` are unreachable — with `GABI_SHELF="on"` and the ports
+wired in production. Two in-repo comments assert the opposite. Only `my_unread`
+works, because it is computed deterministically ahead of the model.
+**Fix:** pass `shelf`/`recall` at that call site, and add a test asserting what
+the **call site** passes — today's tests pin the pure function, which is why
+this passed CI.
+
+### ☐ F7 · 🟠 HIGH — "reviewed" is computed from the capped 15-row display slice
+
+`apps/discord-worker/src/shelf-flow.ts:111` builds the reviewed set from
+`reviews.rows`, which `shelf-exec.ts:269` has already sliced to 15 — directly
+beneath a comment insisting it uses the whole set. Anyone with more than 15
+reviews has older-reviewed books counted as **not reviewed**, and gets
+already-reviewed books suggested back to them (`suggest.ts:802`, the set that
+file calls *"the single most obviously wrong thing this feature could do"* to
+get wrong). `tool-exec.ts:1343` carries the same wrong comment.
+**Fix:** return an uncapped reviewed-id set from the port and key all three
+exclusion sets off it.
+
+### ☐ F8 · 🟠 HIGH — the storage panel scrapes its own rendered sentence for an age
+
+`sites/heygabi-home/public/status/status.js:1153` regexes the backups row's
+text for `(\d+[a-z ]*ago)` and publishes the **trailing fragment of a compound
+age** as "newest backup": *"Oldest of 5 stores 3d 2h ago … newest 12m ago"*
+renders as *"newest backup 2h ago"* — neither number, understating the backup's
+age by days, on the page whose whole purpose is honest ages.
+**Fix:** hand `lastWriteFor` the value; `renderBackupGroup` already holds
+`group.newest`.
+
+### Not listed here, on purpose
+
+The **29 medium** and **42 low** findings live only in
+[`info/audit-2026-08-findings.md`](info/audit-2026-08-findings.md). Its §8
+flags the two cheapest wins in the whole document: `KNOWN_ISSUES.md:13` points
+at a `info/gotchas.md` that does not exist, and six separate findings are the
+same shape — a flag flipped, the sweep updated three or four places, and the
+missed copy was **always a comment or a README, never code**.
