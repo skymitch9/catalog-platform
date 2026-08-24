@@ -1,3 +1,25 @@
+# ✅ CONDUCTOR FINAL — security-fix batch COMPLETE (2026-08-24)
+
+> All queued security fixes are merged, deployed, and verified live. Conductor cron `5a38e1dd` retired.
+>
+> **catalog-platform audit highs** — `feature/audit-fixes-platform` merged `717acee` → `3ae51aa`, all targets deployed + logged in `docs/deploys.log`:
+> - index-worker `4f9de096` — F5 CORS (POST no longer preflight-refused; verified live `GET,POST,OPTIONS`)
+> - audiobook-worker `aecf8bd8` — F3 stream-ping path-injection (manifest lookup + encode; health 200)
+> - discord-worker `f0fa48c3` — F6/F7 GABI shelf/recall tools offered + reviewed-set off full id set (health ok)
+> - heygabi-home `e53e99ef` — F8 backup "last write" no longer scraped (verify:home 28 pages passed)
+> - (auth-worker F2 `d1d53800` shipped earlier this session)
+> Full platform suite green before deploys.
+>
+> **library PEER_TOKEN leak** — `feature/peer-token-secret` merged `d9fefa4`, both instances deployed (`ae88bf6` main, `dc67fdd` friend): token moved out of the public `PEERS` config into the `PEER_TOKEN` secret.
+>
+> ✅ **PEER_TOKEN secret ROTATED by the owner this session** — fresh random value set on BOTH instances (main + padhard). Incoming gate (`routes/peer.ts:69,127`) + outbound push (`peer-push.ts`) both key off `env.PEER_TOKEN`; leaked value is now invalid. This was the last 🔴 owner-only step — now closed.
+>
+> 🚩 **Still FLAGGED — owner design-call, NOT auto-fixed:** F4 — estate SSO is silently CSP-blocked (`connect-src`) on `/series` + `/universes`. Two opposite resolutions (widen the CSP vs guard `bootstrapEstateSso()`); access-increasing and sits beside KI-6, so it needs a browser measurement + your decision. See `docs/info/audit-2026-08-findings.md` (F4).
+>
+> (Separately in flight, NOT part of this security batch: T-B universe sweep + T-D pipeline-sanctity report — owner-directed research, land-for-review.)
+
+---
+
 # ☀️ MORNING SUMMARY — overnight autonomous run 2026-08-23 → 24
 
 > Conductor (Fable, orchestrating; all builds on Opus/Sonnet) ran the whole queue
