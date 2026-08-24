@@ -61,10 +61,11 @@
 ## ☐ OWNER DECISIONS 2026-08-24 AM (from phone)
 
 - **Damsels of Distress covers → KEEP the 3D publisher mockups.** Done, no flat-jacket hunt.
-- **GABI T2 propose-trigger → BUILD IT (queued).** Wire the live classifier: model-parse a chat
-  message → subject + field → dry-run propose → render the confirm card, on Discord + the library
-  panel, behind the existing `GABI_CONFIRM_T2` flag (still DARK). Builds on the merged T2 plumbing.
-  Dispatch when owner is at the PC / next run. Land for review.
+- **GABI T2 propose-trigger → ✅ BUILT (land-for-review, 2026-08-24).** Discord surface wired on
+  `feature/gabi-t2-propose-trigger`: model-parse a chat message → subject + field → dry-run propose
+  → confirm card, behind `GABI_CONFIRM_T2` (still DARK, inert when off). See the 🟡 decisions item
+  below for the go-live steps and the phase-1 boundaries. The library panel's own propose trigger
+  remains separate (library_catalog `feature/gabi-t2-panel`).
 
 ---
 
@@ -100,9 +101,15 @@ tests). Then Firestore rules if STEP 11's `link` button is wanted live.
 ## 🟡 DECISIONS / FOLLOW-ONS waiting on you
 - **Mint `INDEX_READ_TOKEN`** (one value, set on BOTH: index-worker `INDEX_READ_TOKEN_LIBRARY`
   + library worker `INDEX_READ_TOKEN`) to light GABI's index rung 2 — different from the push token.
-- **GABI T2 flag** `GABI_CONFIRM_T2` ships OFF. ⚠️ The press path is wired but the
-  **propose trigger is NOT yet hooked to the live classifier** — flipping the flag alone
-  won't surface a proposal until that follow-on lands. Review the two branches, then decide.
+- **GABI T2 flag** `GABI_CONFIRM_T2` ships OFF. ✅ **Propose trigger now BUILT (land-for-review,
+  2026-08-24)** on `feature/gabi-t2-propose-trigger` (Discord surface + shared parse map): a
+  `fix_request` message → Haiku parse `{book,field,value}` → route to the one editable shelf →
+  `browse-works` title match → `fix-field` dry-run → confirm card, all DARK behind the flag and
+  inert with it off (pinned at the `handleMention` call site). Full estate suite green (discord-worker
+  948, gabi-conversation 34), typecheck clean. ⚠️ Phase-1 defers to the panel link on any ambiguity
+  (not-a-single-field / editable on both-or-neither shelf / 0-or->1 title match / modal door). To go
+  live: review + merge the branch, deploy discord-worker, THEN flip `GABI_CONFIRM_T2`. The panel's OWN
+  propose trigger stays separate (library_catalog `feature/gabi-t2-panel`).
 - **details-sweep** now honestly heals **1 book/tick** (was silently over-budget at 2 and
   dying mid-second-book). Raise the cron frequency if you want the old rate; do NOT raise
   the budget (must stay under the 50-subrequest ceiling).

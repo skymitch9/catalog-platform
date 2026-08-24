@@ -19,6 +19,26 @@
 > DESIGN ONLY. The rest of this document is the design as written; where the
 > build diverged, the code comments say so.
 >
+> ⚠️ **PROPOSE-TRIGGER BUILT DARK, pending review (2026-08-24).** The press half
+> above was merged to `main`; the **propose trigger** — turning a chat message
+> into a proposal + confirm card — is built on `feature/gabi-t2-propose-trigger`
+> (catalog-platform, **Discord surface + the surface-neutral parse map**). Flow:
+> `fix_request` + `GABI_CONFIRM_T2` on → `confirm-propose.ts` parses the message
+> (Haiku) into `{book, field, value}` (`confirmableFieldFromLabel` default-denies
+> `title`/`author`/anything unmapped), routes by the asker's own `whoami` to the
+> ONE shelf they can edit, resolves the title to exactly one held work via
+> `browse-works`, dry-runs `fix-field` for `before`, and renders the confirm card
+> through the EXISTING press path. ⚠️ **Phase-1 boundaries, all deferring to the
+> panel-link answer (design §4.3):** a message that isn't a single confirmable-
+> field change; the asker editable on BOTH shelves or neither (no nested "which
+> shelf?"); a title matching zero or >1 held works (no disambiguation nested in a
+> confirm); and the **modal typed-follow-up door** (its `ResumeOutcome` can't
+> carry buttons yet). ⚠️ **Still DARK** — `GABI_CONFIRM_T2` unflipped; the panel's
+> OWN propose trigger (library_catalog `feature/gabi-t2-panel`) is separate. The
+> subject-resolution note in §12 (no title→id search existed) is answered by the
+> `browse-works` local match, since the whole physical shelf (~341 works) fits
+> under that verb's 500 ceiling.
+>
 > Companions: [`gabi-application-map.md`](gabi-application-map.md) §2a (T1's
 > delegation contract, which this extends **unchanged**) and §2d (photo intake,
 > which becomes a T2 citizen here);
