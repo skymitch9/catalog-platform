@@ -1,5 +1,11 @@
 # Shared Index Worker — Information Reference (design)
 
+> **STATUS UPDATE 2026-08-23:** **§10 is new** — a named MACHINE READ exception
+> (`/api/machine/lookup`, `/api/machine/search`), the owner-approved widening of
+> §9 Q3 that lets a sibling **Worker** read the index at all. Built and tested;
+> ⚠️ **NOT deployed, and its secret is not minted** — see §10.8 for what is and
+> is not verified. Nothing about the human read surface changed.
+>
 > **STATUS UPDATE 2026-08-14 (status lines only; the header below predates the
 > deploy):** the Worker is **LIVE at `index.heygabi.ai`** — remote 0001 + 0002
 > applied, `ESTATE_APP_TOKEN_INDEX` + all three `INDEX_PUSH_TOKEN_*` secrets
@@ -409,3 +415,155 @@ design §1's drift class. It prints them and names the honest fix: an edit to
    is preserved because the private catalogs are exactly what an unscoped
    caller never gets. `/api/lookup` stays members-only and unscoped;
    `/api/universe` stays members-only and is scoped to the member's set.
+   *Widened 2026-08-23 by a THIRD named case — a machine. See §10.*
+
+---
+
+## 10. The machine read (`/api/machine/*`) — BUILT 2026-08-23, NOT deployed
+
+⚠️ **This is an OWNER-APPROVED WIDENING of §9 Q3, recorded as one.** §9 Q3
+answered "auth for reads" with **estate members only**, and its 2026-08-13
+amendment carved out `/api/search` alone for the anonymous internet. This adds
+a **third named case — a machine** — and the reasoning above is not retracted:
+the read surface still aggregates titles across the two private catalogs, and
+that is still why no human reaches it without an estate membership.
+
+### 10.1 The gap was total, not awkward
+
+| Credential | Authenticates | Reaches the read surface? |
+|---|---|---|
+| Firebase ID token (`requireEstateMember`) | a **human** | yes — and no Worker holds or can mint one |
+| `INDEX_PUSH_TOKEN_*` (`push.ts`) | a **pushing machine** | no — `/api/push` only, writes only |
+| — | a **reading machine** | ⚠️ **nothing existed** |
+
+So the library Worker's free-details ladder — which needs `/api/lookup` for
+exact identity and `/api/search?source=library` for series — had no way in at
+all. Not an inconvenient path: no credential.
+
+### 10.2 The shape
+
+```
+GET /api/machine/lookup?title=…          Authorization: Bearer <INDEX_READ_TOKEN_LIBRARY>
+GET /api/machine/search?q=… [&source=…]  Authorization: Bearer <INDEX_READ_TOKEN_LIBRARY>
+```
+
+Mounted **above the `requireEstateMember()` blanket, BY NAME**, with its reason
+in a comment — conformance §8.2 #3's named-exception rule, the `/api/push`
+precedent exactly. ⚠️ **And above `readCors()` too, on purpose: these routes
+carry NO CORS headers**, so no browser can call them cross-origin even from the
+apex, which `/api/search` does admit. A machine `fetch` never preflights, and
+the read token must never be anywhere a browser could hold it.
+
+⚠️ **The human routes are untouched.** `/api/lookup` and `/api/universe` stay
+below the blanket, members-only; presenting a machine read token to them
+answers the same `401 unauthenticated` as presenting nothing. There is a test
+for that specific confusion.
+
+### 10.3 One token per app, and the pairing that goes wrong
+
+The push tokens' idiom, reused wholesale — *one secret per calling app, so one
+leaked token revokes one app's read access rather than every app's.*
+
+| Secret | Index Worker holds | Calling app holds |
+|---|---|---|
+| machine read, library | `INDEX_READ_TOKEN_LIBRARY` | library Worker: **`INDEX_READ_TOKEN`** (one un-suffixed name per repo) |
+
+⚠️ **The suffixed name lives here; the un-suffixed name lives there** — the same
+shape as `INDEX_PUSH_TOKEN_LIBRARY` ↔ `INDEX_PUSH_TOKEN`. ⚠️ **Read and push
+tokens are different credentials and must never share a value**: push writes
+one source's whole snapshot, read sees across every catalog. The refusal for a
+push token presented here says so in words.
+
+**The caller is identified by the token VALUE, never by anything it says about
+itself** — there is no `app` field on the wire to lie in. That is the estate's
+standing `identifyApp` pattern, and `estate-auth-design.md` §4.5's `library2`
+note records what happens when it is skipped. `library` is the only app
+configured; a second is one `Env` field, one `MACHINE_APPS` entry, and one
+`wrangler secret put`.
+
+### 10.4 What slice a machine resolves to — an APPROVED MEMBER's
+
+`MACHINE_VISIBILITY = {audiobook, library, games}`, per `estate-auth-design.md`
+§4.5.
+
+| Candidate | Verdict |
+|---|---|
+| **`{audiobook, library, games}`** | ✅ **chosen** — `0002_visibility.sql`'s `DEFAULT 1` trio, i.e. §4.5's *"every already-approved member holds all three"*. That IS the approved-member default |
+| `CATALOGS` (all five) | ❌ `OWNER_EMAILS`' **computed break-glass** set (§4.3). A leaked machine token must not be worth more than a leaked member session |
+| `PUBLIC_CATALOGS` (`{audiobook}`) | ❌ the private library shelf is the entire reason this surface exists |
+
+⚠️ **`library2` (0007) and `ebooks` (0008) are `DEFAULT 0` on purpose** — another
+household's shelf, and *"the estate's most copyable asset"* under an explicit
+owner directive about scraping. People are switched on there **by hand**, so a
+machine nobody switched on by hand gets neither. Adding either is a fresh owner
+decision, not a config tweak.
+
+**Per route, concretely:**
+
+- **`/api/machine/search`** scopes its SQL to those three sources, so the
+  private library and games shelves are readable and `library2` rows never are.
+  `scopeSeesEbooks()` is FALSE for this set, so the `format='ebook'` carve-out
+  (the measured hole in `search-route.ts`) subtracts every ebook row **before
+  the ranker**.
+- ⚠️ **`/api/machine/lookup` is UNSCOPED**, because `lookupHandler` is unscoped
+  for humans too — recorded in `read.ts` as an explicit owner call, *"lookup
+  stays membership-gated, unscoped"*. The machine **inherits that stance
+  verbatim** rather than inventing a stricter or looser one. This is not the
+  ebook-enumeration hole: lookup answers ONE exact folded title and cannot
+  enumerate a shelf, which is why the carve-out lives on the ranked scan. If
+  lookup's scoping ever changes for members it changes here for free.
+
+### 10.5 One code path, not a parallel one
+
+`lookupHandler` and `searchHandler` are exported and mounted by **both** the
+human and the machine routes. The gates differ; the read does not. Two lookup
+endpoints that could disagree about what *"do I own this?"* means is §8's
+second-matcher failure wearing a different hat.
+
+⚠️ `searchScope()` stays mounted on `searchRoutes` only — re-mounting that
+router for machines would overwrite the stamped visibility with the anonymous
+public slice, which is exactly why the machine mount takes the **handler**.
+
+### 10.6 Three distinct refusals, each worded
+
+The estate rule: never a bare status — *what happened / what it needs / how to
+get it.*
+
+| | Answer | When |
+|---|---|---|
+| config | **503** `machine_read_unconfigured` | no read token minted. ⚠️ **Never 404** — 404 reads as *"not built"* and sends an operator hunting a feature that exists and is merely unkeyed. Names the secret, since only the owner can mint it |
+| credential absent | **401** `machine_token_missing` | no bearer offered at all |
+| credential wrong | **401** `machine_token_invalid` | offered and not one we hold — says outright that a **push** token will not work here |
+
+⚠️ **The configuration question is asked BEFORE the credential question**
+(`push.ts`'s order), so a fault of ours is never reported as the caller's.
+
+### 10.7 🔴 A gap this found: no test had EVER presented a correct token
+
+`crypto.subtle.timingSafeEqual` is a **Cloudflare Workers extension**; Node's
+WebCrypto has no such method. `test/auth.test.ts`'s push case sends
+`Bearer wrong`, which differs in **length** and returns false at the length
+gate — so the one line that can say *"yes, this credential is valid"* had never
+been executed under `npm test`. The first test to present a **matching** token
+threw `TypeError` on all seven of its cases.
+
+`src/bearer.ts` (the check, lifted out of `push.ts` unchanged so there is one
+canonical copy) now falls back to a constant-time XOR accumulation on Node
+while the Workers runtime keeps using the platform primitive.
+
+### 10.8 State — shipped ≠ verified
+
+| | |
+|---|---|
+| **Built** | ✅ `apps/index-worker/src/machine-route.ts`, `bearer.ts`; `env.ts`; mount in `index.ts` |
+| **Tested** | ✅ `test/machine-read.test.ts`, 16 tests — mount order, the three refusals, delegation per route. `npm test` 145/145; `npm run typecheck` clean |
+| **Probed** | ⚠️ rows added (`I9`–`I11`, `tools/estate-probes/probes/index-worker.mjs`) but **never executed live** — they will 404 until the deploy |
+| **Secret minted** | ❌ owner only — `INDEX_READ_TOKEN_LIBRARY` here, `INDEX_READ_TOKEN` on the library Worker: one value, both holders, one sitting |
+| **Deployed** | ❌ |
+| **Verified live** | ❌ nothing has been called against `index.heygabi.ai` |
+| **Consumer wired** | ❌ the library Worker's free-details ladder does not call this yet |
+
+⚠️ Order: **deploy the index first** — the route answers a worded 503 while
+unkeyed, which is safe and names the missing secret — then mint and set the
+secret on **both** holders, then re-run `npm run probe:estate` and expect
+`I9`/`I10` to report the **401** rather than the 503.

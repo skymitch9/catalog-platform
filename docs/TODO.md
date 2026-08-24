@@ -422,6 +422,51 @@ sessions allow. Tier 3 only with the owner's go-ahead.
 
 ---
 
+## ☐ Index machine read: BUILT, waiting on the owner's secret + a deploy (2026-08-23)
+
+The index can now be read by a **sibling Worker**, which it never could before:
+`/api/lookup` and `/api/search` sit below the `requireEstateMember()` blanket,
+which verifies a **human's** Firebase ID token, and the `INDEX_PUSH_TOKEN_*`
+bearers authenticate writes only. No credential existed for a reading machine,
+so the library Worker's free-details ladder had no way in at all.
+
+Branch **`feature/index-machine-read`** (worktree `C:/lcw/index-read`), three
+commits. Full design: **`docs/info/index-worker-design.md` §10** — an
+owner-approved widening of §9 Q3, one token per calling app, resolved to an
+**approved member's** slice (`{audiobook, library, games}` — *not* the owner's
+break-glass set, and `library2`/`ebooks` stay out because they are `DEFAULT 0`
+and hand-granted).
+
+`npm test` 145/145 · `npm run typecheck` clean.
+
+**Blocked on the owner — these three, in this order.** ⚠️ The order matters:
+the route answers a worded 503 naming the missing secret while unkeyed, so
+deploying first is safe; minting first would leave a token with nothing to
+present it to.
+
+1. **Deploy** the index Worker from `main` once the branch merges. No migration
+   — this change touches no schema.
+2. **Mint ONE value and set it on BOTH holders in one sitting** (they are
+   write-only secrets; no readable copy will exist):
+   - `wrangler secret put INDEX_READ_TOKEN_LIBRARY` — in `apps/index-worker/`
+   - `wrangler secret put INDEX_READ_TOKEN` — on the **library** Worker
+     (`library_catalog/apps/worker/`)
+
+   ⚠️ **Must NOT be the same value as `INDEX_PUSH_TOKEN_LIBRARY`** — push writes
+   a whole source's snapshot, read sees across every catalog.
+3. **Re-run `npm run probe:estate`** and confirm `I9`/`I10` report **401
+   `machine_token_missing`** rather than 503. Expect **105** probes; before the
+   deploy those three fail with a 404, which is the pre-deploy state.
+
+**Then, separately:** wire the library Worker's ladder to call it, and add the
+two rows to `library_catalog/docs/access/index-worker.md` (that repo is not
+touched by this branch).
+
+⚠️ **Shipped ≠ verified**: nothing has been called against `index.heygabi.ai`,
+and the probes have never been executed live. §10.8 is the table.
+
+---
+
 ## ☐ Backup: the mid-body-drop fix is SHIPPED but not yet proven on a real bucket (2026-08-21)
 
 Run `32469907247` (the 09:12 UTC schedule) lost `library-covers` and
