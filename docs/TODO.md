@@ -1,5 +1,12 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+> 🔄 **CONDUCTOR IN-FLIGHT (cycle 2026-08-24 00:07, session reset):** 4 agents —
+> OR-1 follow-ups (members endpoint + strict shadow, on feature/lent-to-person);
+> --llm double-bill fix (feature/covers-owner-key); MERGE feature/audio-edition-count
+> to library main; T-C backup-100% investigation (read-only). Do NOT re-dispatch these.
+> ebook-site count (T-F item) HELD — audiobook pipeline mid-run, commit-collision risk.
+
+
 > 🔴🔴 **THE ROTATION DEADLINE BELOW HAS PASSED AND THE KEY IS STILL LIVE.**
 > **Verified 2026-08-23 ~19:30 Phoenix**, 3½ hours after the 16:00 window this
 > file set: `gh secret list --repo skymitch9/audiobook_catalog` reports
