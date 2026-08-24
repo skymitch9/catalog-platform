@@ -27,7 +27,7 @@ cron `6d8b7313` fires ~23:42 to resume. In priority order:
 3. **`--llm` double-bill fix** (owner: do it): in `feature/covers-owner-key` `backfill-missing-covers.mjs`, gate the LLM CALL on `--commit`, not just the SQL write — a dry pass currently bills and is not even a reliable preview. Merge the branch after.
 4. **Alias-aware research** (owner: do it, cost accepted): make `research-run.ts` + free-details + `research.ts:388` ask under `work_alias`, capped like `enrich.ts` MAX_QUERIES=4. ~6–8 h. ⚠️ Re-opens a PAID question when an alias is added — owner accepted this 2026-08-23.
 5. **Merge** `feature/audio-edition-count` to library main; the ebook-site audio count lives in `audiobook_catalog` (`build_ebook_manifest.py` + `ebooks.html`) — separate dispatch.
-6. **GABI write access** — see the dedicated item below (scope pending owner answer).
+6. **GABI T2 catalog-fix lane** (owner chose T2, 2026-08-23): build the `gabi-confirm-lanes-design.md` T2 grammar — propose→restate→confirm-button→apply on the ASKER's borrowed role→report, for a book's own fields (title, series, volume, cover, format, description, notes). ⚠️ NOT raw SQL/direct DB — owner explicitly steered to the confirm lane. Capability checked at BOTH propose and press. T3 (people/club/status) deferred. Design of record: `library_catalog` `info/gabi-confirm-lanes-design.md`.
 7. **Audiobook + Board_Game audits** — the remaining two repos.
 
 ---
