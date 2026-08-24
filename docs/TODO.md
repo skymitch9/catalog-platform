@@ -6,6 +6,16 @@
 > **session 53% · weekly 26% · Fable 2%** (~03:50 Phoenix). The conductor cron is
 > now retired. This block is the handoff; delete it once you've actioned it.
 
+## ☐ OWNER DECISIONS 2026-08-24 AM (from phone)
+
+- **Damsels of Distress covers → KEEP the 3D publisher mockups.** Done, no flat-jacket hunt.
+- **GABI T2 propose-trigger → BUILD IT (queued).** Wire the live classifier: model-parse a chat
+  message → subject + field → dry-run propose → render the confirm card, on Discord + the library
+  panel, behind the existing `GABI_CONFIRM_T2` flag (still DARK). Builds on the merged T2 plumbing.
+  Dispatch when owner is at the PC / next run. Land for review.
+
+---
+
 ## 🔴 DO THESE FIRST (only you can)
 1. **ROTATE `PEER_TOKEN`** — the library audit found it as a **plaintext value TRACKED
    in the PUBLIC repo** (`bookbuddy/library_catalog/apps/worker/wrangler.toml:203` &
