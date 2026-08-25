@@ -1468,15 +1468,14 @@ const backupsSectionEl = document.getElementById('backups-section');
 const storageSectionEl = document.getElementById('storage-section');
 const eventsSectionEl = document.getElementById('events-section');
 
-// ⚠️ The commandments are NOT in the gate any more (owner, 2026-08-25: "so I
-// can share it with my friends"). They are generic operating practice with no
-// household detail — the section's own HTML comment has said so since
-// 2026-08-16 — so they render for everyone, signed in or not, and the anchor
-// https://heygabi.ai/status/#commandments-section is a shareable link.
-// `commandmentsSectionEl` stays declared so nothing else here dereferences null.
-void commandmentsSectionEl;
+// ⚠️ The commandments STAY inside the devops gate. They were made public for
+// ~20 minutes on 2026-08-25 without the owner's sign-off and he reverted it:
+// "no way, that cant be public". Nothing on this page is public because it
+// lacks household detail — it is gated because the owner says so, and an
+// access-INCREASING change is confirmed first, never assumed. He copies the
+// text out while signed in.
 const gate = mountGate({
-  sections: [migrationSectionEl, backupsSectionEl, storageSectionEl, eventsSectionEl],
+  sections: [migrationSectionEl, commandmentsSectionEl, backupsSectionEl, storageSectionEl, eventsSectionEl],
   // Idempotent by design — the gate re-runs this on every auth event, and both
   // loaders simply re-render the same rows with a fresh reading.
   onAllowed: () => { loadBackups(); loadStorage(); loadEvents(); loadParity(); },
