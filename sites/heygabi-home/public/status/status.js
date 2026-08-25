@@ -979,6 +979,10 @@ const PARITY_WORDS = {
   in_parity: '100% — complete copy',
   behind: 'behind',
   cannot_fit: 'will not fit',
+  // ⚠️ Files are all on disk (rclone reads 100%) but some are NOT in
+  // Audiobookshelf's shadow tree, so ABS shows them Missing. Warned, never
+  // green — see deriveState's shelf_behind branch in shelf-parity.ts.
+  shelf_behind: 'ABS: books missing',
   unknown: 'unknown',
   never_reported: 'never reported',
 };
@@ -992,7 +996,8 @@ function setParity(state, detail, report) {
   // its last width. A bar frozen at 100% beside the word "unknown" is read as
   // 100% — people read the picture, not the caption.
   let pct = 0;
-  if (report && report.total > 0 && (state === 'in_parity' || state === 'behind' || state === 'cannot_fit')) {
+  if (report && report.total > 0 &&
+      (state === 'in_parity' || state === 'behind' || state === 'cannot_fit' || state === 'shelf_behind')) {
     pct = Math.round((report.matched / report.total) * 100);
   }
   parityFillEl.style.width = pct + '%';

@@ -768,6 +768,10 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 .parity-row[data-state="in_parity"]   .parity-state { color: var(--et-ok, #3a8d5c); }
 .parity-row[data-state="behind"]      .parity-fill  { background: var(--et-warn, #d9a03f); }
 .parity-row[data-state="behind"]      .parity-state { color: var(--et-warn, #d9a03f); }
+/* Shadow-tree drift: files are all on disk but not hardlinked into ABS, so
+   books show Missing. Warn treatment — never the green of a complete copy. */
+.parity-row[data-state="shelf_behind"] .parity-fill  { background: var(--et-warn, #d9a03f); }
+.parity-row[data-state="shelf_behind"] .parity-state { color: var(--et-warn, #d9a03f); }
 .parity-row[data-state="cannot_fit"]  .parity-fill  { background: var(--et-danger, #b3453a); }
 .parity-row[data-state="cannot_fit"]  .parity-state { color: var(--et-danger, #b3453a); }
 /* Never green, never silent: a stale or failed measurement is not a result. */

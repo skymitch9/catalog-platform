@@ -79,6 +79,19 @@ test('containers is optional, bounded, and strings only', () => {
   assert.equal(validateReport({ ...good, containers: new Array(51).fill('x') }).ok, false);
 });
 
+test('shadow_missing is optional, bounded, and stored when valid', () => {
+  // Absent → valid (back-compat with reporters that predate the field).
+  assert.equal(validateReport({ ...good }).ok, true);
+  // Present and valid → accepted AND flows through to the stored report.
+  const v = validateReport({ ...good, shadow_missing: 2 });
+  assert.equal(v.ok, true);
+  if (v.ok) assert.equal(v.report.shadow_missing, 2);
+  // Negative, fractional, string, or absurd → rejected.
+  for (const bad of [{ shadow_missing: -1 }, { shadow_missing: 1.5 }, { shadow_missing: '2' }, { shadow_missing: 99_999_999_999 }]) {
+    assert.equal(validateReport({ ...good, ...bad }).ok, false, JSON.stringify(bad));
+  }
+});
+
 // ── states ─────────────────────────────────────────────────────────────────
 
 test('a fresh, complete report is in_parity', () => {
@@ -144,6 +157,36 @@ test('cannot_fit never fires when nothing is missing', () => {
   // disk with a complete library is FINE, and was briefly misread as a blocker.
   const s = deriveState(stamp({ missing: 0, differing: 0, free_kb: 0 }), NOW);
   assert.equal(s.state, 'in_parity');
+});
+
+// ── shadow-tree drift (books on disk, missing from Audiobookshelf) ──────────
+
+test('⚠️ shadow_missing>0 on an otherwise-perfect fresh report is shelf_behind, not green', () => {
+  // The live failure: rclone reads 100% (missing 0, differing 0) yet books are
+  // not hardlinked into ABS's shadow tree, so ABS shows them Missing. This must
+  // NOT render as in_parity.
+  const s = deriveState(stamp({ shadow_missing: 2 }), NOW);
+  assert.equal(s.state, 'shelf_behind');
+  assert.match(s.detail, /shadow tree/);
+  assert.match(s.detail, /^2 book/); // uses the actual count
+});
+
+test('shadow_missing===0 leaves an otherwise-perfect report in_parity', () => {
+  assert.equal(deriveState(stamp({ shadow_missing: 0 }), NOW).state, 'in_parity');
+});
+
+test('shadow_missing absent behaves exactly as before (back-compat)', () => {
+  assert.equal(deriveState(stamp({}), NOW).state, 'in_parity');
+});
+
+test('⚠️ staleness beats shadow_missing — a stale report is unknown even with drift', () => {
+  const s = deriveState(stamp({ shadow_missing: 2 }, STALE_AFTER_MS + 1000), NOW);
+  assert.equal(s.state, 'unknown');
+});
+
+test('a failed check (rc>1) beats shadow_missing — still unknown, not shelf_behind', () => {
+  const s = deriveState(stamp({ rc: 7, shadow_missing: 2 }), NOW);
+  assert.equal(s.state, 'unknown');
 });
 
 // ── refusals ───────────────────────────────────────────────────────────────

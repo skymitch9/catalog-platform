@@ -138,6 +138,16 @@ export type ParityReport = {
   free_kb: number;
   used_kb: number;
   containers?: string[];
+  /**
+   * ⚠️ SHADOW-TREE DRIFT — books on Justin's disk that are NOT hardlinked into
+   * Audiobookshelf's shadow tree, so ABS renders them "Missing". Optional and
+   * for back-compat: a report that omits it is valid and treated as "not
+   * reported" (no shadow alarm). This is the one thing `rclone check` cannot
+   * see — it compares Drive⇄disk and passes 100% while ABS is still broken,
+   * which is exactly the live failure (Mashton / Arcane Pathfinder) that this
+   * field exists to surface. Only the box can count it.
+   */
+  shadow_missing?: number;
 };
 
 function intOk(v: unknown, max: number): v is number {
@@ -201,6 +211,17 @@ export function validateReport(body: unknown): { ok: true; report: ParityReport 
     containers = b.containers as string[];
   }
 
+  // Optional shadow-tree drift count. Absent OR null → not reported, which is
+  // valid for back-compat with reporters that predate this field. When
+  // present it is bounded exactly like the other counts.
+  let shadow_missing: number | undefined;
+  if (b.shadow_missing !== undefined && b.shadow_missing !== null) {
+    if (!intOk(b.shadow_missing, MAX_COUNT)) {
+      return { ok: false, detail: `"shadow_missing" must be a whole number between 0 and ${MAX_COUNT}.` };
+    }
+    shadow_missing = b.shadow_missing as number;
+  }
+
   return {
     ok: true,
     report: {
@@ -213,6 +234,7 @@ export function validateReport(body: unknown): { ok: true; report: ParityReport 
       free_kb: b.free_kb as number,
       used_kb: b.used_kb as number,
       ...(containers ? { containers } : {}),
+      ...(shadow_missing !== undefined ? { shadow_missing } : {}),
     },
   };
 }
@@ -260,6 +282,21 @@ export function deriveState(
       state: 'cannot_fit',
       detail:
         'What is still missing looks larger than the free space left on the server, so waiting will not finish this.',
+    };
+  }
+  // ⚠️ SHADOW-TREE DRIFT — checked AFTER staleness and rc>1 (a stale or crashed
+  // report must still win), but BEFORE the in_parity green branch below, so a
+  // report that is file-parity-100% can never render green while books on disk
+  // are missing from Audiobookshelf's shadow tree. rclone compares Drive⇄disk
+  // and cannot see this; only the box's own shadow count can, and it is the
+  // exact live failure this alarm exists for. Absent/null → behave as today.
+  if (typeof stored.shadow_missing === 'number' && stored.shadow_missing > 0) {
+    const n = stored.shadow_missing;
+    return {
+      state: 'shelf_behind',
+      detail:
+        `${n} book(s) are on the disk but not in Audiobookshelf's shadow tree, so ABS shows them Missing. ` +
+        'The hardlink rebuild has not run — see SHELF_JUSTIN §4 (re-run 02-abs-hardlinks.sh + install the */15 cron).',
     };
   }
   if (stored.missing === 0 && stored.differing === 0) {
