@@ -16,6 +16,17 @@
 
 
 
+## ✅ HeyGabi homepage — internal links open in new tabs — DEPLOYED 2026-08-25
+
+Owner: *open everything — especially admin and universes — in a new tab.* The
+external catalog cards (audiobooks/ebooks/library/padhard/boardgames) already
+carried `target="_blank" rel="noopener"`; the five same-origin card links did
+not. Added `target=_blank rel=noopener` + the `sr-only "(opens in a new tab)"`
+hint to **Universes, Series, Members(/admin), Status, Todo** in
+`sites/heygabi-home/public/index.html` (commit `037cb35`, deployed via
+`deploy:home`). ⚠️ Hrefs were left unchanged so `apex-admin-link.js`, which finds
+`/admin` + `/todo` by href to gate them to approvers, still works.
+
 ## ✅ GABI T2 catalog-fix confirm lane — BUILT DARK 2026-08-24
 
 Phase 1 of the T2/T3 confirm grammar (`docs/info/gabi-confirm-lanes-design.md`
