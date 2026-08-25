@@ -18,7 +18,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { STALE_AFTER_MS, deriveState, parityRefusal, validateReport, type ParityReport } from '../src/shelf-parity.js';
+import {
+  STALE_AFTER_MS,
+  deriveState,
+  parityRefusal,
+  shadowReported,
+  validateReport,
+  type ParityReport,
+} from '../src/shelf-parity.js';
 
 const good: ParityReport = {
   rc: 0,
@@ -187,6 +194,48 @@ test('⚠️ staleness beats shadow_missing — a stale report is unknown even w
 test('a failed check (rc>1) beats shadow_missing — still unknown, not shelf_behind', () => {
   const s = deriveState(stamp({ rc: 7, shadow_missing: 2 }), NOW);
   assert.equal(s.state, 'unknown');
+});
+
+// ── shadowReported: "was it counted?" is a different question to "is it 0?" ──
+
+test('⚠️ a payload LACKING shadow_missing reports shadowReported=false while still deriving in_parity', () => {
+  // The whole defect in one test (found 2026-08-25): the state machine says
+  // green either way, so the page needs a second fact to tell "no books adrift"
+  // from "nobody counted". Both halves are asserted together, because the bug
+  // was precisely that the first half looked like an answer on its own.
+  const stored = stamp({});
+  assert.equal(deriveState(stored, NOW).state, 'in_parity');
+  assert.equal(shadowReported(stored), false, 'an absent count was not reported');
+});
+
+test('shadow_missing===0 IS reported — the number zero is a measurement', () => {
+  const stored = stamp({ shadow_missing: 0 });
+  assert.equal(deriveState(stored, NOW).state, 'in_parity');
+  assert.equal(shadowReported(stored), true);
+  // ⚠️ The pair that must never render the same: identical state, different
+  // reported-ness. If these two ever agree, the card is lying again.
+  assert.notEqual(shadowReported(stored), shadowReported(stamp({})));
+});
+
+test('shadow_missing>0 is reported too — reported-ness is not a synonym for healthy', () => {
+  assert.equal(shadowReported(stamp({ shadow_missing: 4 })), true);
+});
+
+test('null is NOT a report — validateReport drops it, and it must not read as counted', () => {
+  // The reporter's own JSON can carry `"shadow_missing": null` for "I did not
+  // run that step". validateReport strips it to absent; this pins that the
+  // stripped shape then reads as not-reported rather than as a zero.
+  const v = validateReport({ ...good, shadow_missing: null });
+  assert.equal(v.ok, true);
+  if (v.ok) {
+    assert.equal('shadow_missing' in v.report, false, 'null must not be stored as a value');
+    assert.equal(shadowReported(v.report), false);
+  }
+});
+
+test('never_reported is not reported either — there is no report to have carried the field', () => {
+  assert.equal(shadowReported(null), false);
+  assert.equal(deriveState(null, NOW).state, 'never_reported');
 });
 
 // ── refusals ───────────────────────────────────────────────────────────────

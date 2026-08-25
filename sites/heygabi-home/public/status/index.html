@@ -198,6 +198,12 @@
         <div id="parity-fill" class="parity-fill" style="width:0%"></div>
       </div>
       <p id="parity-detail" class="parity-detail">Reading the last report…</p>
+      <!-- ⚠️ Shown only when the last report carried NO `shadow_missing` field.
+           An absent count and a count of zero render the same green card
+           otherwise, which is the trap the drift alarm exists to catch — so the
+           page says which one it is instead of guessing. Filled by status.js
+           from the API's `shadowReported`; hidden whenever it is true. -->
+      <p id="parity-shadow-note" class="parity-detail parity-shadow-note" hidden></p>
     </div>
 
     <ul class="lever-list">

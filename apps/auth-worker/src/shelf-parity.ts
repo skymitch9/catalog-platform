@@ -310,6 +310,35 @@ export function deriveState(
 }
 
 /**
+ * ⚠️ **Is the shadow-tree count being SENT at all?** — the question `deriveState`
+ * cannot answer and must not try to.
+ *
+ * Measured 2026-08-25 13:30 Phoenix: the card read a green `1,253 of 1,253 ·
+ * checked 9:47 AM`, and whether the reporter was sending `shadow_missing` was
+ * **unknowable from the page**. `deriveState` fires `shelf_behind` only on
+ * `shadow_missing > 0`, so a reporter that never sends the field renders
+ * IDENTICALLY to one that sends `0` — an absent measurement wearing a clean
+ * measurement's clothes, which is the exact silent-staleness trap the alarm was
+ * built to catch.
+ *
+ * So the fact travels **beside** the state rather than inside it:
+ *
+ * - ⚠️ `deriveState` is deliberately UNCHANGED. Absent still means "no shadow
+ *   alarm", because a missing count is not evidence of drift any more than it
+ *   is evidence of health — inventing a fourth state would put an amber card in
+ *   front of the household over a reporter version, not over their books.
+ * - The PAGE says so in muted words instead, so the reader can tell "0 books
+ *   adrift" from "nobody counted".
+ *
+ * `stored === null` (never reported) is `false` too: there is no report, so
+ * nothing in it was reported. The card is already red in that case and says
+ * why, so the note is suppressed there — see `status.js`.
+ */
+export function shadowReported(stored: ParityReport | null): boolean {
+  return stored !== null && typeof stored.shadow_missing === 'number';
+}
+
+/**
  * POST — the box reporting. Bearer only, never a user session.
  *
  * ⚠️ A SIGNED-IN COOKIE MUST NOT WORK HERE. This is machine auth: a family
@@ -405,5 +434,5 @@ shelfParityRoutes.get('/estate/shelf/parity', requireDevops(), async (c: Context
   }
 
   const { state, detail } = deriveState(stored, Date.now());
-  return c.json({ state, detail, report: stored });
+  return c.json({ state, detail, report: stored, shadowReported: shadowReported(stored) });
 });

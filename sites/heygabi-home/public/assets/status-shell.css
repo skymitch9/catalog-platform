@@ -763,6 +763,19 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   margin: .4rem 0 0; color: var(--et-muted);
   font-size: var(--et-text-small); text-wrap: pretty;
 }
+/* ⚠️ The "nobody counted" line — MUTED on purpose, and never a state colour.
+   It says the shadow-tree count is absent from the last report, which is not a
+   fault in the shelf; it is a gap in what we can see. Dressing it as a warning
+   would put an amber-looking line under a green card over a reporter version,
+   and the household would read it as their books being at risk. `hidden` on the
+   element wins because [hidden] is display:none; this only styles it when
+   status.js unhides it. */
+.parity-shadow-note {
+  margin-top: .25rem;
+  color: color-mix(in srgb, var(--et-muted) 80%, transparent);
+  font-size: var(--et-text-small);
+  font-style: italic;
+}
 /* ⚠️ Only this one is green. */
 .parity-row[data-state="in_parity"]   .parity-fill  { background: var(--et-ok, #3a8d5c); }
 .parity-row[data-state="in_parity"]   .parity-state { color: var(--et-ok, #3a8d5c); }

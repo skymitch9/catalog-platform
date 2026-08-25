@@ -973,6 +973,21 @@ const parityRowEl = document.getElementById('parity-row');
 const parityStateEl = document.getElementById('parity-state');
 const parityFillEl = document.getElementById('parity-fill');
 const parityDetailEl = document.getElementById('parity-detail');
+const parityShadowNoteEl = document.getElementById('parity-shadow-note');
+
+/**
+ * ⚠️ The words for "the shadow-tree count is ABSENT from the last report".
+ *
+ * `deriveState` raises `shelf_behind` only on `shadow_missing > 0`, so a
+ * reporter that never sends the field renders as the same green "100% —
+ * complete copy" as one that sends 0. Measured 2026-08-25: the card was green
+ * and whether the field was being sent was unknowable from this page. The state
+ * machine is deliberately unchanged — an absent count is not evidence of drift
+ * — so the honesty lives here, in a muted line beside the number.
+ */
+const SHADOW_UNREPORTED =
+  'shadow tree: not reported — add the §4 reporter field. ' +
+  'Until then this card cannot tell "no books adrift" from "nobody counted".';
 
 /** State -> the short words in the corner. Only in_parity is a good answer. */
 const PARITY_WORDS = {
@@ -987,10 +1002,23 @@ const PARITY_WORDS = {
   never_reported: 'never reported',
 };
 
-function setParity(state, detail, report) {
+function setParity(state, detail, report, shadowReported) {
   if (!parityRowEl) return;
   parityRowEl.dataset.state = state;
   parityStateEl.textContent = PARITY_WORDS[state] || state;
+
+  // ⚠️ Only ever shown beside a REAL report. On a never_reported / unreadable /
+  // unauthorized card there is nothing to have reported the field in, and the
+  // card already says what is wrong in words — a second "not reported" line
+  // there reads as a second fault. `shadowReported === false` and not
+  // `!shadowReported`: an older auth Worker that does not send the key at all
+  // must leave the note hidden rather than accuse a reporter of a gap this page
+  // cannot actually see (deploy skew, the /status/api 404 branch's lesson).
+  if (parityShadowNoteEl) {
+    const show = Boolean(report) && shadowReported === false;
+    parityShadowNoteEl.textContent = show ? SHADOW_UNREPORTED : '';
+    parityShadowNoteEl.hidden = !show;
+  }
 
   // ⚠️ The bar is EMPTIED for unknown/never_reported rather than left at
   // its last width. A bar frozen at 100% beside the word "unknown" is read as
@@ -1050,7 +1078,10 @@ async function loadParity() {
     setParity('unknown', 'The parity answer was unreadable.', null);
     return;
   }
-  setParity(body.state || 'unknown', body.detail || '', body.report || null);
+  // ⚠️ `body.shadowReported` is passed through as-is, INCLUDING `undefined`.
+  // undefined means "this Worker predates the field" and must not be collapsed
+  // into false — see setParity.
+  setParity(body.state || 'unknown', body.detail || '', body.report || null, body.shadowReported);
 }
 
 // ⚠️ The Claude budget block was removed on 2026-08-21, the day it shipped:
