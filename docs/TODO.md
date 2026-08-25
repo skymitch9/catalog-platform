@@ -28,6 +28,23 @@
 > **session 53% · weekly 26% · Fable 2%** (~03:50 Phoenix). The conductor cron is
 > now retired. This block is the handoff; delete it once you've actioned it.
 
+## ☐ Shelf parity card: an ABSENT `shadow_missing` looks identical to zero (found 2026-08-25)
+
+The drift alarm (`auth-worker/src/shelf-parity.ts`, `deriveState`) sets
+`shelf_behind` only when `shadow_missing > 0`. A reporter that never sends the
+field (Justin's box before the runbook §4 snippet is added) therefore renders as
+the same green "100% — complete copy" as a reporter saying 0 — the exact
+silent-staleness trap the alarm exists to catch. Measured 2026-08-25 13:30
+Phoenix: card green, `1,253 of 1,253 · checked 9:47 AM`; whether the field is
+being sent is unknowable from the page.
+
+**Fix (small, next Opus batch):** when `shadow_missing` is absent from the last
+report, render a muted "shadow tree: not reported — add the §4 reporter field"
+line on the card (`status.js`) and expose `shadowReported: false` in the API;
+`deriveState` unchanged. Add a test with a payload lacking the field.
+**Owner-side:** ask Justin for `crontab -l` and one line of the reporter's JSON
+to confirm both the `*/15` hardlink cron and the field.
+
 ## ✅ DONE 2026-08-24 (later AM)
 
 - **Audiobook site XSS fix SHIPPED** — the pipeline was leaving site/ regenerations uncommitted on idle runs; --rebuild-only published + pushed (index.html regenerated with the escape fixes). XSS fix is live.
