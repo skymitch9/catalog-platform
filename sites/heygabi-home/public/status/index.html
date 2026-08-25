@@ -218,23 +218,38 @@
        tab"). Same devops gate; native <details> so collapsing needs no JS.
        The rules are generic operating practice — no household detail — so
        unlike the runbooks' KV-held content they can live in this file. -->
-  <section id="commandments-section" aria-labelledby="cmd-h" hidden>
-    <h2 id="cmd-h">The 12 AI commandments</h2>
-    <details class="cmd-details">
-      <summary>The estate's global rules — how everything here gets built (tap to expand)</summary>
+  <!-- PUBLIC since 2026-08-25 (owner: "so I can share it with my friends") —
+       no `hidden`, and status.js no longer lists this section in the gate.
+       Shareable anchor: https://heygabi.ai/status/#commandments-section
+       Content v2, distilled from the operator's global rules as of 2026-08-25;
+       every line is a lesson that cost real time somewhere in this estate.
+       Generic practice only — no household detail belongs in here. -->
+  <section id="commandments-section" aria-labelledby="cmd-h">
+    <h2 id="cmd-h">The AI commandments</h2>
+    <p class="section-note">
+      How this estate works with AI agents — every rule below is a lesson that
+      cost real time first. Generic practice; feel free to steal it.
+      <em>v2 · 2026-08-25.</em>
+    </p>
+    <details class="cmd-details" open>
+      <summary>The rules (tap to collapse)</summary>
       <ol class="cmd-list">
-        <li><strong>Three doc folders:</strong> <code>access/</code> (how to operate — secrets <em>named</em>, never valued), <code>info/</code> (how it works, dates on every measured fact), and one living work log. Never duplicate a fact across them.</li>
-        <li><strong>Agent instructions stay thin</strong> — only what bites in the first ten minutes, pointing at the work log for everything else.</li>
-        <li><strong>Stale docs are bugs</strong> — if reality disagrees with a doc you touched, fix the doc in the same session.</li>
-        <li><strong>Every report states what was NOT verified.</strong> No guessing to unblock — an unavailable fact is reported unavailable.</li>
-        <li><strong>Shipped ≠ verified.</strong> Track them separately. Run the change; don't reason about it.</li>
-        <li><strong>Guards are scripts, not advice</strong> — deploys refuse a dirty tree; escape hatches are deliberate env vars; write the guard the day of the incident and name it after it.</li>
-        <li><strong>Every ask goes on the todo list the moment it's said</strong> — never memory-only.</li>
-        <li><strong>Big model plans and reviews; cheap models build from tight briefs</strong> — exact paths, rules, verification steps, off-limits files.</li>
-        <li><strong>Concurrent agents claim work in an append-only log</strong> <em>before</em> starting, never rewrite entries, and write down what they <em>couldn't</em> solve.</li>
-        <li><strong>If agents are metered:</strong> read the budget before every dispatch and after every landing — an agent's cost is invisible until it finishes — and a limit is a pause with a scheduled resume, never a stop.</li>
+        <li><strong>Read the docs first, every session.</strong> Before planning, before the first edit. Every incident we've had was knowable from a doc that existed and went unread. Say what you read and what was missing.</li>
+        <li><strong>One shape for every project's docs:</strong> a one-screen map, a todo (active work only), a done log (append-only — finished work moves <em>whole</em>, never summarised), a known-issues file (accepted defects, with the <em>number</em> that would change the verdict), how-to-operate, how-it-works, archive. A missing piece is a finding; create it before the task you came for.</li>
+        <li><strong>One fact, one home — for documents <em>and</em> for screens.</strong> Two places showing one number will disagree, and the duplicate is often the fresher one. Consolidating is a bug fix, not tidying; never leave a fallback to the old source.</li>
+        <li><strong>Measured, not asserted.</strong> A number is dated and re-checkable or it's labelled a guess. A measurement has an age; a stale one is not evidence — re-measure before contradicting someone's live report.</li>
+        <li><strong>Shipped ≠ verified.</strong> Run the change; don't reason about it. Verify with the right instrument (the pixels, not the attribute; the page, not the 200). Every report states what was <em>not</em> verified. No guessing to unblock.</li>
+        <li><strong>Guards are scripts, not advice.</strong> Deploys refuse a dirty tree; migrate before deploy; every deploy writes a log line; enforcement rolls out shadow-first (log would-deny, act on nothing) and is flipped only on measured zero false denials; exports are default-deny. Escape hatches are deliberate env vars, never an easy flag. Write the guard the day of the incident and name it after it.</li>
+        <li><strong>A person never sees a bare status code.</strong> Every refusal says what happened, what it needs, and how to get it. An outage is not a permission problem — mislabelling it sends people begging for access they already have.</li>
+        <li><strong>Secrets are named, never valued.</strong> A raw key never enters a chat. The shell fills the file; the assistant runs the push and never reads the file. Check for a trailing newline before you append — a glued line ships a corrupted secret.</li>
+        <li><strong>Every ask goes on the todo the moment it's said</strong> — never memory-only. Decisions go to the owner <em>one at a time</em>, with a count of how many remain.</li>
+        <li><strong>The big model conducts; cheap models build from tight briefs</strong> — exact paths, the repo's rules, verification steps, honest-reporting requirements, off-limits files. When an agent refuses on provenance, re-dispatch fresh with the settled design in its <em>initial</em> brief; never argue. Mid-flight messages narrow or stop, never expand.</li>
+        <li><strong>If agents are metered, read the budget before every dispatch and after every landing.</strong> An agent's cost is invisible until it lands. Size the agent first; commit and push before a big one. A limit is a pause with a scheduled resume, never a stop.</li>
+        <li><strong>Say which model you're on.</strong> If it's older than the newest available, say so in the first reply. A day on a superseded model is a day of wasted budget nobody flagged.</li>
+        <li><strong>Never revert a dirty file until you know who wrote it.</strong> A scheduled job, a pipeline, another agent — check the writer before <code>checkout</code>. Never <code>git stash</code> in a shared tree. Directory deploys ship whatever is on disk: deploy from a committed-clean tree or a throwaway worktree of HEAD.</li>
+        <li><strong>One canonical implementation of anything that decides.</strong> A second matcher, a second normaliser, a second copy of a rule will drift, and the drift ships as a confident wrong answer. A function that mints a persisted key is a migration to change, not an edit.</li>
         <li><strong>Anything visible ships with its review link</strong> — the exact deep URL plus one line on what to look at. A change you have to hunt for isn't delivered.</li>
-        <li><strong>Directory deploys ship whatever's on disk</strong> — deploy only from a committed-clean tree (or a throwaway worktree of HEAD), or you'll ship a colleague's half-built work.</li>
+        <li><strong>Keep the handoff current as you go.</strong> The last tenth of any budget is for an orderly shutdown, not more work: refresh the handoff, commit, push, schedule the resume. A pause without a resume is only half a rule.</li>
       </ol>
     </details>
   </section>
