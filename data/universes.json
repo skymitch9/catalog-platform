@@ -63,7 +63,12 @@
     "innworld": "Innworld",
     "the innworld": "Innworld",
     "innverse": "Innworld",
-    "the wandering inn universe": "Innworld"
+    "the wandering inn universe": "Innworld",
+    "dothack": "DotHack",
+    ".hack": "DotHack",
+    "dot hack": "DotHack",
+    "dot-hack": "DotHack",
+    "dothack universe": "DotHack"
   },
   "universes": [
     {
