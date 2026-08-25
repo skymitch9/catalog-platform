@@ -28,23 +28,6 @@
 > **session 53% · weekly 26% · Fable 2%** (~03:50 Phoenix). The conductor cron is
 > now retired. This block is the handoff; delete it once you've actioned it.
 
-## ☐ Shelf parity card: an ABSENT `shadow_missing` looks identical to zero (found 2026-08-25)
-
-The drift alarm (`auth-worker/src/shelf-parity.ts`, `deriveState`) sets
-`shelf_behind` only when `shadow_missing > 0`. A reporter that never sends the
-field (Justin's box before the runbook §4 snippet is added) therefore renders as
-the same green "100% — complete copy" as a reporter saying 0 — the exact
-silent-staleness trap the alarm exists to catch. Measured 2026-08-25 13:30
-Phoenix: card green, `1,253 of 1,253 · checked 9:47 AM`; whether the field is
-being sent is unknowable from the page.
-
-**Fix (small, next Opus batch):** when `shadow_missing` is absent from the last
-report, render a muted "shadow tree: not reported — add the §4 reporter field"
-line on the card (`status.js`) and expose `shadowReported: false` in the API;
-`deriveState` unchanged. Add a test with a payload lacking the field.
-**Owner-side:** ask Justin for `crontab -l` and one line of the reporter's JSON
-to confirm both the `*/15` hardlink cron and the field.
-
 ## ✅ DONE 2026-08-24 (later AM)
 
 - **Audiobook site XSS fix SHIPPED** — the pipeline was leaving site/ regenerations uncommitted on idle runs; --rebuild-only published + pushed (index.html regenerated with the escape fixes). XSS fix is live.
@@ -116,8 +99,19 @@ directory deploy).
 tests). Then Firestore rules if STEP 11's `link` button is wanted live.
 
 ## 🟡 DECISIONS / FOLLOW-ONS waiting on you
-- **Mint `INDEX_READ_TOKEN`** (one value, set on BOTH: index-worker `INDEX_READ_TOKEN_LIBRARY`
-  + library worker `INDEX_READ_TOKEN`) to light GABI's index rung 2 — different from the push token.
+- ~~**Mint `INDEX_READ_TOKEN`**~~ ✅ **DONE 2026-08-25** — minted and set on all four holders in
+  one sitting, **two values, not one**: index-worker `INDEX_READ_TOKEN_LIBRARY` ↔ library main
+  `INDEX_READ_TOKEN`, and index-worker `INDEX_READ_TOKEN_LIBRARY2` ↔ padhard's own
+  `INDEX_READ_TOKEN`. ⚠️ The original ask said *one value on both*; that is right for ONE calling
+  app and wrong for two, because the index resolves the app **from the value presented** — a
+  shared value would make the app name meaningless and one leak would revoke both instances.
+  `MACHINE_APPS` gained `library2` accordingly; `MACHINE_VISIBILITY` is unchanged, so the
+  `library2` APP still cannot read the `library2` SHELF. Verified live: 200 with rows for a real
+  title on each token, named 401 `machine_token_invalid` on a wrong one. Rung 2's contract is
+  `library_catalog/docs/info/free-details-ladder.md` §4.
+  ⚠️ **It was never merely unminted** — the library rung was pointed at the HUMAN `/api/lookup`
+  with both env vars set, so it was refused every run while looking configured. Fixed in the
+  same batch.
 - **GABI T2 flag** `GABI_CONFIRM_T2` ships OFF. ✅ **Propose trigger now BUILT (land-for-review,
   2026-08-24)** on `feature/gabi-t2-propose-trigger` (Discord surface + shared parse map): a
   `fix_request` message → Haiku parse `{book,field,value}` → route to the one editable shelf →

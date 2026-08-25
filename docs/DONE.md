@@ -16,6 +16,59 @@
 
 
 
+## ✅ Shelf parity card: an ABSENT `shadow_missing` looks identical to zero (found 2026-08-25)
+
+The drift alarm (`auth-worker/src/shelf-parity.ts`, `deriveState`) sets
+`shelf_behind` only when `shadow_missing > 0`. A reporter that never sends the
+field (Justin's box before the runbook §4 snippet is added) therefore renders as
+the same green "100% — complete copy" as a reporter saying 0 — the exact
+silent-staleness trap the alarm exists to catch. Measured 2026-08-25 13:30
+Phoenix: card green, `1,253 of 1,253 · checked 9:47 AM`; whether the field is
+being sent is unknowable from the page.
+
+**Fix (small, next Opus batch):** when `shadow_missing` is absent from the last
+report, render a muted "shadow tree: not reported — add the §4 reporter field"
+line on the card (`status.js`) and expose `shadowReported: false` in the API;
+`deriveState` unchanged. Add a test with a payload lacking the field.
+**Owner-side:** ask Justin for `crontab -l` and one line of the reporter's JSON
+to confirm both the `*/15` hardlink cron and the field.
+
+### As built — 2026-08-25 (evening)
+
+Shipped exactly as written above. `deriveState` is **unchanged** — that was the
+load-bearing half of the instruction, and it is why the fix is three small
+pieces rather than a fourth parity state:
+
+- **`apps/auth-worker/src/shelf-parity.ts`** — a new exported
+  `shadowReported(stored)`: true only when the stored report carries a
+  `shadow_missing` NUMBER. `GET /api/estate/shelf/parity` now answers
+  `{ state, detail, report, shadowReported }`. ⚠️ `null` and a never-reported
+  shelf are both `false`: `validateReport` strips a `"shadow_missing": null`
+  to absent, and an absent report cannot have carried anything.
+- **`sites/heygabi-home/public/status/index.html`** — a `#parity-shadow-note`
+  paragraph under the detail line, `hidden` by default.
+- **`status.js`** — `setParity` gained a fourth argument and shows the note as
+  *"shadow tree: not reported — add the §4 reporter field. Until then this card
+  cannot tell 'no books adrift' from 'nobody counted'."* ⚠️ Shown only when
+  `shadowReported === false` **and** there is a report: `undefined` (an auth
+  Worker predating the field) leaves it hidden, so deploy skew cannot make the
+  page accuse a reporter of a gap it cannot actually see — the lesson of the
+  404 branch two lines above it.
+- **`status-shell.css`** — `.parity-shadow-note`, muted and italic, ⚠️
+  deliberately NOT a state colour. An absent count is a gap in what we can see,
+  not a fault in the shelf; an amber-looking line under a green card would be
+  read as the household's books being at risk.
+
+Five tests in `apps/auth-worker/test/shelf-parity.test.ts`, including the one
+the defect asks for: a payload lacking the field derives `in_parity` **and**
+reports `shadowReported: false` — both asserted together, because the bug was
+precisely that the first fact looked like an answer on its own.
+
+⚠️ **NOT verified live in the condition that matters:** the note has not been
+seen rendered on a real card. The live shelf report either does or does not
+carry the field, and reading that needs a signed-in devops session nobody in
+this batch held. The owner-side ask below is untouched and still open.
+
 ## ✅ OneDrive-full rescue — junction dev clutter out of sync — 2026-08-25
 
 Owner's OneDrive was full and failing to sync ("too many files in `.claude`",
