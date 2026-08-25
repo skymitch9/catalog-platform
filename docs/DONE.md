@@ -16,6 +16,33 @@
 
 
 
+## ✅ OneDrive-full rescue — junction dev clutter out of sync — 2026-08-25
+
+Owner's OneDrive was full and failing to sync ("too many files in `.claude`",
+items in use). Root cause: the dev repos live *inside* OneDrive, so node_modules,
+ML models, build output, and Claude worktrees all sync. Fixes applied (nothing
+deleted, nothing broken):
+- **Cleared 2 dead subagent worktrees** — `wave3`/`wave4` branches
+  (`feature/scanjobs-vision`, `feature/research-details`, from 2026-08-10) were
+  **fully merged into main** (verified 0-ahead), so removing them lost nothing;
+  that was the owner's "499 pending commits". Plus an orphaned `agent-*` worktree
+  (487 files) under `catalog-platform/.claude/worktrees/` — the "too many files"
+  sync-killer.
+- **Junctioned ~5.4 GB out of OneDrive**: the 3.6 GB Vosk speech model
+  (`tome-of-lore`) + 36 `node_modules`/`.claude` folders (1.85 GB) moved to
+  `C:\lcw\onedrive-excluded\` (same-volume instant rename) with a directory
+  **junction** left in place. OneDrive ignores reparse points, so it stops syncing
+  them and reclaims the space; git/Node/Claude read them transparently.
+- ⚠️ **OneDrive has NO native "don't sync this nested folder"** — "Choose folders"
+  is top-level only, "Free up space" is cloud-only (still counts). The junction is
+  the standard workaround.
+- Tool + repeatable process: [`scripts/onedrive-exclude.ps1`](../scripts/onedrive-exclude.ps1)
+  — idempotent, same-volume-guarded, skips in-use folders, has `-Undo`. **Run it
+  after cloning any new repo** (owner's standing ask). Skipped once:
+  `wow-recorder\node_modules` (electron.exe locked) — rerun when it's closed.
+- Long-term real fix (not done): move the dev repos out of OneDrive entirely
+  (e.g. `C:\dev`).
+
 ## ✅ HeyGabi homepage — internal links open in new tabs — DEPLOYED 2026-08-25
 
 Owner: *open everything — especially admin and universes — in a new tab.* The
