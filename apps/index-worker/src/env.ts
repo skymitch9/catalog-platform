@@ -38,10 +38,28 @@ export interface Env {
    * because "nobody has minted it yet" and "this was never built" are
    * different facts (the `push_token_unset` idiom).
    *
-   * Only `library` exists today. A second app is one field here, one line in
-   * `MACHINE_APPS`, and one `wrangler secret put`.
+   * Two apps exist today — `library` (the main library Worker) and `library2`
+   * (padhard, the same build's `[env.friend]`). A third app is one field here,
+   * one line in `MACHINE_APPS`, and one `wrangler secret put`.
    */
   INDEX_READ_TOKEN_LIBRARY?: string;
+  /**
+   * padhard's own machine read token (added 2026-08-25 with the free-details
+   * ladder's rung 2). ⚠️ **A DIFFERENT VALUE from `INDEX_READ_TOKEN_LIBRARY`,
+   * and that is the whole point of a second name**: the two instances are two
+   * callers, exactly as they are two estate consumers
+   * (`ESTATE_APP_TOKEN_LIBRARY` / `…_LIBRARY2`), so one leaked value revokes
+   * one instance's read access. Both Workers hold their own value under the
+   * un-suffixed `INDEX_READ_TOKEN`, per the pairing note above.
+   *
+   * ⚠️ **Holding this grants `MACHINE_VISIBILITY`, NOT the `library2` shelf.**
+   * The app NAME here identifies the caller; it does not widen what the caller
+   * can see. `MACHINE_VISIBILITY` is `{audiobook, library, games}` for every
+   * machine app, and `library2` rows stay unreadable by any of them — see
+   * machine-route.ts's header for why that is deliberate rather than an
+   * oversight, and `test/machine-read.test.ts` for the test that pins it.
+   */
+  INDEX_READ_TOKEN_LIBRARY2?: string;
 
   // — Estate auth (estate-auth-design.md §5.2, §7.1) — the read surface is
   //   estate-members-only. Vars in wrangler.toml; the token is a secret.
@@ -101,11 +119,19 @@ export function parseOwnerEmails(raw: string | undefined): string[] {
 
 /**
  * The apps allowed to hold a machine READ token, in the order they are tried.
- * One entry, deliberately: the brief that opened this surface named the
- * library Worker's free-details ladder and nothing else, and every extra name
- * here is access granted to something that has not asked for it yet.
+ *
+ * Two entries, and still deliberately short: every extra name here is access
+ * granted to something that has not asked for it yet. `library2` was added
+ * 2026-08-25 because padhard runs the SAME build as `library` and therefore the
+ * same free-details ladder — the rung would otherwise have to be dark on one of
+ * the two instances, or the two instances would have to share one credential,
+ * which is the `ESTATE_APP_TOKEN_LIBRARY`-on-her-Worker mistake wearing a
+ * different name.
+ *
+ * ⚠️ **Adding a name here does NOT widen what a machine caller can see.**
+ * Every app resolves to `MACHINE_VISIBILITY` and nothing else.
  */
-export const MACHINE_APPS = ['library'] as const;
+export const MACHINE_APPS = ['library', 'library2'] as const;
 export type MachineApp = (typeof MACHINE_APPS)[number];
 
 /** The secret this Worker expects a given calling app to present. */
@@ -113,6 +139,8 @@ export function readTokenFor(env: Env, app: MachineApp): string | undefined {
   switch (app) {
     case 'library':
       return env.INDEX_READ_TOKEN_LIBRARY;
+    case 'library2':
+      return env.INDEX_READ_TOKEN_LIBRARY2;
   }
 }
 

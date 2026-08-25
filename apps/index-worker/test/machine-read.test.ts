@@ -17,6 +17,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { app } from '../src/index.js';
+import { MACHINE_APPS, readTokenFor, readTokenNameFor } from '../src/env.js';
 import { MACHINE_VISIBILITY } from '../src/machine-route.js';
 import type { SearchRow } from '../src/search.js';
 
@@ -106,6 +107,13 @@ function estateRows(): SearchRow[] {
 }
 
 const READ_TOKEN = 'machine-read-token-for-tests';
+/**
+ * padhard's own value. ⚠️ Deliberately a DIFFERENT string from `READ_TOKEN`:
+ * the app is resolved from the value, so two apps sharing one value would make
+ * the whole identification meaningless — and a test that used one value for
+ * both would pass while proving nothing.
+ */
+const FRIEND_TOKEN = 'machine-read-token-for-padhard-tests';
 
 /**
  * Production env with NO dev-bypass identity — a machine caller is
@@ -243,7 +251,7 @@ test('REFUSAL 2/3: a PUSH token is not a READ token — the two credentials are 
   assert.equal((await res.json() as any).error, 'machine_token_invalid');
 });
 
-test('REFUSAL 3/3: INDEX_READ_TOKEN_LIBRARY unset → worded 503 naming the secret, NEVER 404', async () => {
+test('REFUSAL 3/3: NO machine read token set at all → worded 503 naming every secret, NEVER 404', async () => {
   const res = await app.request(
     '/api/machine/lookup?title=Mistborn',
     bearer(READ_TOKEN),
@@ -256,9 +264,75 @@ test('REFUSAL 3/3: INDEX_READ_TOKEN_LIBRARY unset → worded 503 naming the secr
   const body = (await res.json()) as any;
   assert.equal(body.error, 'machine_read_unconfigured');
   assert.match(body.detail, /built and deployed/);
-  assert.deepEqual(body.needs, ['INDEX_READ_TOKEN_LIBRARY']);
-  assert.match(body.how, /wrangler secret put INDEX_READ_TOKEN_LIBRARY/);
+  // ⚠️ EVERY configurable app is named, not just the first: an operator whose
+  // instance is `library2` must be told the secret THEY need.
+  assert.deepEqual(body.needs, ['INDEX_READ_TOKEN_LIBRARY', 'INDEX_READ_TOKEN_LIBRARY2']);
+  assert.match(body.how, /wrangler secret put INDEX_READ_TOKEN_LIBRARY\b/);
+  assert.match(body.how, /wrangler secret put INDEX_READ_TOKEN_LIBRARY2\b/);
   assert.match(body.how, /wrangler secret put INDEX_READ_TOKEN\b/);
+});
+
+// --- Two configured apps: the VALUE names the caller, and nothing else. -----
+
+test('TWO APPS: each app is resolved from its own token VALUE — there is no `app` field to lie in', async () => {
+  const db = new FakeDB(estateRows());
+  const env = machineEnv(db, { INDEX_READ_TOKEN_LIBRARY2: FRIEND_TOKEN });
+
+  // Both values are accepted, and neither is the other.
+  for (const token of [READ_TOKEN, FRIEND_TOKEN]) {
+    const res = await app.request('/api/machine/lookup?title=Mistborn', bearer(token), env);
+    assert.equal(res.status, 200, 'both configured apps may read');
+  }
+  const wrong = await app.request('/api/machine/lookup?title=Mistborn', bearer('neither-value'), env);
+  assert.equal(wrong.status, 401);
+  assert.equal((await wrong.json() as any).error, 'machine_token_invalid');
+});
+
+test('TWO APPS: library2 resolves to MACHINE_VISIBILITY — the APP name does not open the `library2` SHELF', async () => {
+  // ⚠️ The trap this pins: `library2` is BOTH an app name (env.ts MACHINE_APPS)
+  // and a catalog name (estate-auth §4.5 / migration 0007). Resolving the first
+  // must never grant the second — a machine caller sees an approved MEMBER's
+  // slice, and `library2` is `DEFAULT 0` and hand-granted for people.
+  const res = await app.request(
+    '/api/machine/search?q=Mistborn',
+    bearer(FRIEND_TOKEN),
+    machineEnv(new FakeDB(estateRows()), { INDEX_READ_TOKEN_LIBRARY2: FRIEND_TOKEN }),
+  );
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.deepEqual(body.scope, [...MACHINE_VISIBILITY]);
+  assert.ok(!body.scope.includes('library2'), 'the app name must not widen the scope');
+  const sources = new Set(
+    [...body.books.flatMap((b: any) => b.entries), ...body.games].map((r: any) => r.source),
+  );
+  assert.ok(!sources.has('library2'), 'padhard reading the index still cannot read padhard rows');
+});
+
+test('TWO APPS: one app configured and the other not is NOT `unconfigured` — the live pair is asked', async () => {
+  // `library2` unset while `library` is set must behave exactly as it did
+  // before the second app existed: a good library token reads, a made-up one
+  // is `machine_token_invalid`, and nothing answers 503.
+  const env = machineEnv(new FakeDB(estateRows()));
+  const ok = await app.request('/api/machine/lookup?title=Mistborn', bearer(READ_TOKEN), env);
+  assert.equal(ok.status, 200);
+  const bad = await app.request('/api/machine/lookup?title=Mistborn', bearer(FRIEND_TOKEN), env);
+  assert.equal(bad.status, 401);
+  assert.equal((await bad.json() as any).error, 'machine_token_invalid');
+});
+
+test('TWO APPS: MACHINE_APPS is the one list, and every entry has a secret name and a reader', async () => {
+  // A third app added to MACHINE_APPS without a field in Env + a case in
+  // readTokenFor would compile (the switch is exhaustive) but silently never
+  // be configurable. This asserts the three stay in step.
+  assert.deepEqual([...MACHINE_APPS], ['library', 'library2']);
+  const env = machineEnv(new FakeDB(), {
+    INDEX_READ_TOKEN_LIBRARY: 'a',
+    INDEX_READ_TOKEN_LIBRARY2: 'b',
+  }) as unknown as Parameters<typeof readTokenFor>[0];
+  for (const app_ of MACHINE_APPS) {
+    assert.equal(readTokenNameFor(app_), `INDEX_READ_TOKEN_${app_.toUpperCase()}`);
+    assert.ok(readTokenFor(env, app_), `${app_} must have a readable field on Env`);
+  }
 });
 
 test('REFUSAL 3/3: unconfigured beats missing-header — a config fault is never reported as the caller’s', async () => {

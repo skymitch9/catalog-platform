@@ -16,10 +16,22 @@
  *
  * ⚠️ **This is an OWNER-APPROVED WIDENING of §9 Q3, on the record.** It is a
  * genuine access INCREASE, so it is deliberately the narrowest shape that
- * closes the gap: named routes, one token per calling app, one app configured,
- * an approved member's slice and not the owner's, and refusals that say which
- * of the three things went wrong. It does NOT loosen the human routes by one
- * inch — those still sit below the blanket, and the mount-order test proves it.
+ * closes the gap: named routes, one token per calling app, an approved
+ * member's slice and not the owner's, and refusals that say which of the three
+ * things went wrong. It does NOT loosen the human routes by one inch — those
+ * still sit below the blanket, and the mount-order test proves it.
+ *
+ * ⚠️ **Two apps are configured since 2026-08-25 — `library` and `library2`**
+ * (`MACHINE_APPS` in env.ts). They are the two instances of the same library
+ * build, and they hold DIFFERENT values: the app name is resolved from the
+ * value presented, so one shared value would make the name meaningless and one
+ * leak would revoke both. ⚠️ **A second app changes WHO may read; it changes
+ * nothing about WHAT is readable** — every machine caller resolves to
+ * `MACHINE_VISIBILITY` below, so `library2` the APP still cannot read
+ * `library2` the SHELF. That is not an oversight to tidy up later: padhard's
+ * rows are pushed by nobody today (her `INDEX_PUSH_TOKEN` is deliberately
+ * unset), and the day they are, admitting them here is a fresh owner decision
+ * under the `DEFAULT 0` rule below, not a config tweak.
  *
  * ## Mounted ABOVE the blanket, BY NAME (conformance §8.2 #3)
  *
@@ -135,9 +147,13 @@ export function requireMachineApp(): MiddlewareHandler<{ Bindings: Env; Variable
           detail:
             'the machine read surface is built and deployed, but this index Worker holds no machine read token, so it cannot recognise any calling app. This is a missing secret on the index, not a problem with your request.',
           needs: MACHINE_APPS.map(readTokenNameFor),
-          how: `the estate owner mints one value and sets it on BOTH holders in one sitting: \`wrangler secret put ${readTokenNameFor(
-            'library',
-          )}\` on apps/index-worker, and \`wrangler secret put INDEX_READ_TOKEN\` on the calling app's Worker`,
+          how:
+            'the estate owner mints one value PER APP and sets each on BOTH of ITS holders in one sitting: ' +
+            MACHINE_APPS.map(
+              (app) => `\`wrangler secret put ${readTokenNameFor(app)}\` on apps/index-worker`,
+            ).join(', and ') +
+            ", each paired with `wrangler secret put INDEX_READ_TOKEN` on that app's own Worker " +
+            '(⚠️ one value per app — two apps sharing one value would make the app name meaningless)',
         },
         503,
       );
