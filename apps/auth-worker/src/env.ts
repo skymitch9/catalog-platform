@@ -203,12 +203,30 @@ export interface Env {
    * key as FIREBASE_SERVICE_ACCOUNT, which does hold real Firestore/identity
    * scopes. What this key can do: mint a Firebase custom token for ANY uid
    * (§7.2 — "impersonation of anyone"), nothing more; it is not a Firestore
-   * credential and grants no IAM permission of its own. Rotation runbook:
-   * docs/access/estate-auth.md. `wrangler secret put TOKEN_SIGNER_KEY`,
-   * piped from the key file — never committed, never logged, never echoed.
-   * ⚠️ DOES NOT EXIST YET as of this build — an owner console step. Every
-   * route that needs it answers 503 `{error:'token_signer_unset', fix:
-   * 'wrangler secret put TOKEN_SIGNER_KEY'}` until it is set (session.ts).
+   * credential and grants no IAM permission of its own.
+   *
+   * ⚠️ CUSTODY: GOOGLE ISSUES THIS KEY; the estate never generates it. There
+   * is NO readable master anywhere on disk or in the vault — the only copy
+   * that can be recovered is a FRESH key minted from the GCP console
+   * (IAM → Service Accounts → `estate-token-minter` → Keys). Rotation is
+   * therefore not dangerous: create a SECOND key, both are valid at once, so
+   * there is no outage window. Order: new key in console → `wrangler secret
+   * put TOKEN_SIGNER_KEY` → `wrangler deploy` → verify with
+   * tools/estate-probes/run.mjs → ONLY THEN delete the old key. Never
+   * committed, never logged, never echoed. Full runbook:
+   * docs/access/estate-auth.md §3.4; custody row:
+   * docs/info/secrets-review-2026-08-26.md §3.1.
+   *
+   * ✅ IT IS SET. This comment said "⚠️ DOES NOT EXIST YET as of this build"
+   * for long enough that the secrets review had to correct it by measurement
+   * (§3.6, 2026-08-26) — re-measured the same day with `wrangler secret list`
+   * on `estate-auth`: the name is there. ⚠️ The stale form of this comment was
+   * the worst kind, because this is the impersonation-capable key and a
+   * session reading "does not exist" concludes there is nothing to protect.
+   * The 503 idiom below is still real and still correct — it is what an UNSET
+   * key answers (session.ts), not a description of today's state: every route
+   * needing the key answers 503 `{error:'token_signer_unset', fix:'wrangler
+   * secret put TOKEN_SIGNER_KEY'}` rather than a 500 or a confusing 401.
    */
   TOKEN_SIGNER_KEY?: string;
 

@@ -12,9 +12,16 @@
  * The signing key is a DIFFERENT, dedicated, zero-IAM-role service account
  * from the one behind FIREBASE_SERVICE_ACCOUNT — see env.ts's
  * TOKEN_SIGNER_KEY doc and docs/access/estate-auth.md for what it can and
- * cannot do, and the rotation runbook. ⚠️ It does not exist yet as of this
- * build (an owner console step) — see `tokenSignerOrUnset` below for the
- * 503 idiom every route using this module must go through first.
+ * cannot do, and the rotation runbook. Google issues the key; the estate
+ * never generates it, and rotation mints a SECOND console key (both valid at
+ * once, no outage) before the old one is deleted.
+ *
+ * ✅ The secret IS SET on `estate-auth` — this comment said "it does not exist
+ * yet as of this build (an owner console step)" until 2026-08-26, when
+ * `wrangler secret list` said otherwise. `tokenSignerOrUnset` below is
+ * unchanged and still correct: it is the 503 idiom for an UNSET key, which
+ * every route using this module must go through first — a guard, not a
+ * statement about today.
  */
 
 import { b64url, b64urlOfJson, importPrivateKey, parseServiceAccount, type ServiceAccount } from './firebase-sa.js';

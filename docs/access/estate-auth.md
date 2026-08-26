@@ -3,7 +3,13 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values — this repo is public on GitHub, so this
 > discipline is load-bearing here, not just habit).
-> Last verified: **2026-08-16** — written at build time for Phase 1
+> Last verified: **2026-08-26** — §3.3, §6 and §7's first gotcha were
+> re-measured that day with `wrangler secret list` on `estate-auth` (names
+> only): `TOKEN_SIGNER_KEY` **IS SET**, correcting three places that said it
+> did not exist yet or that the session routes were idle. ⚠️ **Nothing else in
+> this file was re-checked**, and the SSO end-to-end exchange remains the
+> standing not-verified item (§7's last gotcha).
+> Originally written **2026-08-16**, at build time for Phase 1
 > (`/__/auth/*` proxy) and Phase 2 (the session service), per
 > `docs/info/sso-design.md` §8/§9 Q2 ("the rotation runbook is a build
 > deliverable, not a follow-up"). The `TOKEN_SIGNER_KEY` rotation runbook
@@ -88,10 +94,28 @@ out. Locally (dev only, never commit): paste the real JSON into a
 gitignored `.dev.vars` — never as a placeholder string, exactly like
 `FIREBASE_SERVICE_ACCOUNT`'s existing convention.
 
-⚠️ **Does not exist yet as of this build.** Every route that needs it
-(`POST /api/session/token`) answers a clear
+✅ **IT IS SET** — measured **2026-08-26** with `wrangler secret list` on
+`estate-auth` (names only; a Worker secret can never be read back). This
+paragraph said *"⚠️ Does not exist yet as of this build"* until that day, and
+so did `src/env.ts` and `src/token-signer.ts`. All three are corrected in
+place rather than deleted, because a session that read "does not exist"
+concluded there was nothing here to protect — and this is the
+impersonation-capable key.
+
+⚠️ **The 503 idiom below is a GUARD, not a description of today.** Every route
+that needs the key (`POST /api/session/token`) answers a clear
 `503 { error: "token_signer_unset", fix: "wrangler secret put TOKEN_SIGNER_KEY" }`
-until the owner creates it — see §6 for the exact console steps.
+when it is **un**set. That is still exactly how the code behaves; it simply is
+not the state the estate is in.
+
+**Custody, and why rotation is safe.** ⚠️ **Google issues this key; the estate
+never generates it, and there is NO readable master** — not on disk, not in
+the 1Password vault. What recovery means here is *minting a fresh key from the
+GCP console* (IAM & Admin → Service Accounts → `estate-token-minter` → Keys),
+which is why the "no readable master" row in
+[`../info/secrets-review-2026-08-26.md`](../info/secrets-review-2026-08-26.md)
+§3.1 marks it **not dangerous**: a service account can hold **two valid keys at
+once**, so the swap in §3.4 has no outage window.
 
 ### 3.4 Routine rotation
 
@@ -205,28 +229,39 @@ flip, never the other way round.
 
 ## 6. 🔴 Owner console steps required to make any of this live
 
-Nothing in this build requires these to exist — the proxy is dormant until
+Nothing in this build required these to exist — the proxy is dormant until
 a surface's `authDomain` points at it, and the session routes 503-idle
-until the signer key exists. In the order they unblock:
+until the signer key exists. ✅ **Step 3 has since been done** (§3.3, measured
+2026-08-26), so that sentence is history for the signer key. In the order they
+unblock:
 
 | # | Step | Where | Unblocks |
 |---|---|---|---|
 | 1 | Verify/add `auth.heygabi.ai` to **Firebase Authorised domains** | Firebase Console → Authentication → Settings → Authorized domains, project `audiobook-catalog` | Any future `authDomain` flip (Phase 1's actual payoff) |
 | 2 | Add `https://auth.heygabi.ai/__/auth/handler` to the **OAuth client's authorised redirect URIs** | Google Cloud Console → APIs & Services → Credentials → the Firebase-managed OAuth 2.0 Client ID | Same as #1 — both are required together |
-| 3 | Create the `estate-token-minter` service account, zero IAM roles (§3.6), download its key, `wrangler secret put TOKEN_SIGNER_KEY` | Google Cloud Console → IAM & Admin → Service Accounts | `POST /api/session/token` (currently 503 `token_signer_unset`) |
+| 3 | ✅ **DONE** — `estate-token-minter` service account, zero IAM roles (§3.6), key downloaded, `wrangler secret put TOKEN_SIGNER_KEY` | Google Cloud Console → IAM & Admin → Service Accounts | `POST /api/session/token` — **no longer 503 `token_signer_unset`** |
 
 Steps 1-2 are Phase 1's console gate; step 3 is Phase 2's. None of the three
 touches an existing surface's config — they only make dormant capability
 reachable.
 
-> ⚠️ **STEP 3 IS NOW THE ONLY THING BETWEEN THE ESTATE AND WORKING SSO.**
-> As of 2026-08-18 every other piece is built and deployed: the routes, the
-> minter, the revocation check, the widened origin list, and client adoption
-> on the apex, `www`, `library`, `padhard` and `boardgames`
-> (`docs/info/sso-design.md` §8c). All of it sits inert because this secret
-> is unset — MEASURED that day with `wrangler secret list`, which returns
-> seven secrets, none of them this one. Setting it turns single sign-on on
-> across the estate with **no further deploy**.
+> ✅ **STEP 3 IS DONE — the secret is set.** Re-measured **2026-08-26** with
+> `wrangler secret list` on `estate-auth`: `TOKEN_SIGNER_KEY` is among the
+> names. Everything else was already built and deployed as of 2026-08-18 (the
+> routes, the minter, the revocation check, the widened origin list, and
+> client adoption on the apex, `www`, `library`, `padhard` and `boardgames` —
+> `docs/info/sso-design.md` §8c), and setting the secret needed **no further
+> deploy**.
+>
+> ⚠️ **The paragraph this replaces read "All of it sits inert because this
+> secret is unset — MEASURED that day…", and it was right on the day and wrong
+> for every day after.** A measurement has an age. Nobody knows whether the
+> key was set the next week or the next month, because the sentence that would
+> have been re-checked was written as a fact rather than as a dated reading —
+> which is why the correction above carries its date and its instrument.
+> ⚠️ **NOT verified here:** that SSO end-to-end actually works. The secret's
+> presence is a name in a list; `signInWithCustomToken` succeeding against
+> Google is a separate claim, and §7's last gotcha still stands.
 
 > ⚠️ **DO NOT PIPE THIS KEY IN WITHOUT KILLING THE BOM FIRST.** A separate
 > incident the same day (see `docs/access/discord-bot.md`) established that
@@ -244,7 +279,7 @@ reachable.
 
 | Gotcha | Detail |
 |---|---|
-| The 503-unset idiom is deliberate, not a bug | Every route needing `TOKEN_SIGNER_KEY` answers `503 {error:'token_signer_unset', fix:'wrangler secret put TOKEN_SIGNER_KEY'}` — never 500, never a confusing 401 — so the routes sit safely idle pre-§6 step 3. Same pattern as the pre-existing `FIREBASE_SERVICE_ACCOUNT` (`service_account_unset`) and per-app `/seen` tokens (`app_tokens_unset`). |
+| The 503-unset idiom is deliberate, not a bug | Every route needing `TOKEN_SIGNER_KEY` answers `503 {error:'token_signer_unset', fix:'wrangler secret put TOKEN_SIGNER_KEY'}` — never 500, never a confusing 401. Same pattern as the pre-existing `FIREBASE_SERVICE_ACCOUNT` (`service_account_unset`) and per-app `/seen` tokens (`app_tokens_unset`). ⚠️ **It is a guard, not today's state**: this row used to end *"so the routes sit safely idle pre-§6 step 3"*, and the key has been set since at least 2026-08-26 (§3.3). The 503 is what an unset key answers — and what a **BOM-damaged** one does *not* (see §6's warning: a BOM'd value 500s or mints tokens Google refuses instead). |
 | Session validity beats config-error, on purpose | `POST /api/session/token` checks the cookie's validity BEFORE checking whether the signer key is configured — a caller with no session learns nothing about backend configuration state (mirrors `requireApprover`/`requireDevops` outranking the 503-unset routes elsewhere in this Worker). |
 | The cookie's `Domain` is env-driven | `COOKIE_DOMAIN` (default `.heygabi.ai`) — `wrangler dev` needs a non-production value since `Domain=.heygabi.ai` can never be set from a `localhost` origin. |
 | `SESSION_ORIGINS` is its own CORS list | Not `ADMIN_ORIGINS` (apex-only) or `ME_ORIGINS` (apex + audiobook) — the session routes must admit every estate surface, including library and games. Defaults to the production list if unset; see `env.ts`. ⚠️ **Widened 4 → 7 on 2026-08-18** (`www`, `ebooks`, `padhard` — each measured live, see `sso-design.md` §8c.4). |

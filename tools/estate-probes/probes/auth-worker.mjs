@@ -324,13 +324,18 @@ export async function probeAuthWorker() {
     );
   }
 
-  // --- Phase 2 (sso-design.md §4.3): the session routes. All three sit
-  // safely idle pre-owner-console-step (docs/access/estate-auth.md §6) —
-  // what is probed here is the tokenless/no-cookie edge, exactly like every
-  // other unauthenticated-edge assertion in this suite. The TOKEN_SIGNER_KEY
-  // 503 path is NOT reachable from here: it requires a live session, which
+  // --- Phase 2 (sso-design.md §4.3): the session routes. What is probed here
+  // is the tokenless/no-cookie edge, exactly like every other
+  // unauthenticated-edge assertion in this suite. The TOKEN_SIGNER_KEY 503
+  // path is NOT reachable from here: it requires a live session, which
   // requires a real ID token this suite deliberately holds none of (see the
   // README's "What is NOT covered" — same class as every signed-in path).
+  // ⚠️ This block used to open "All three sit safely idle
+  // pre-owner-console-step". That is stale: TOKEN_SIGNER_KEY IS SET on
+  // `estate-auth` (measured 2026-08-26, `wrangler secret list`), so the routes
+  // are live, not idle. It changes nothing about what is asserted below — but
+  // "idle" is exactly the word that makes a reader stop looking for coverage
+  // of a route that is now serving real sessions.
   const sessionUrl = `${AUTH_ORIGIN}/api/session`;
   const sessionResp = await post(sessionUrl);
   check(
