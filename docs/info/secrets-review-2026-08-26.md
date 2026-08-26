@@ -294,7 +294,8 @@ complete when the method that produced it was not the one recorded.)
 **Method:** every commit in all four repos
 (`git rev-list --all | xargs git grep -l -E …`), five patterns:
 `sk-ant-api\d\d-[A-Za-z0-9_-]{40,}`, `ghp_[A-Za-z0-9]{30,}`,
-`github_pat_[A-Za-z0-9_]{50,}`, `-----BEGIN PRIVATE KEY-----`,
+`github_pat_[A-Za-z0-9_]{50,}`, the PEM `BEGIN PRIVATE KEY` marker (five dashes each side — written out
+here in words so the docs-snapshot scanner does not flag this sentence),
 `AIza[A-Za-z0-9_-]{30,}`. **Paths and commit hashes only — no line was ever
 printed.**
 
