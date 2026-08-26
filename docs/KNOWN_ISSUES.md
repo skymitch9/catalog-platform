@@ -236,8 +236,17 @@ available to test against.** Options, in preference order: wait for the next
 genuine failure; or post one test event by hand with the token and confirm it
 lands on <https://heygabi.ai/status/> (the ring's own GET is devops-gated).
 
-Until step 2 is confirmed green, treat backup health as **checked, not
-alerted** — i.e. it still depends on somebody looking.
+✅ **Hand-posted test event landed — 2026-08-26 15:17 Phoenix.** The second
+option above was taken: one `[{worker:"backup.yml", level:"info", message:"TEST
+2026-08-26 15:20 Phoenix — …"}]` body, posted with the same token and the same
+bare-array shape `backup.yml` now sends, answered `200 {"ok":true,"stored":1}`
+and was **seen rendered on <https://heygabi.ai/status/>** as a `backup.yml`
+service-log entry within the minute. So token, route, payload shape and the
+status surface are verified together. ⏳ **What is still NOT verified:** the CI
+branch itself — a real `notify-failure` job on a real failed run has never
+posted successfully. That closes on the next genuine failure; until then backup
+health is **alerted in principle, confirmed by hand** rather than "checked, not
+alerted".
 
 ⚠️ **The age grading is the other half, and it catches a different failure.**
 This job answers "it ran and broke"; the freshness grade answers "it never ran
