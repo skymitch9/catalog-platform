@@ -191,6 +191,9 @@ Land for review. Candidate for a Fable/subagent build once located.
    installed**; owner's keystrokes: `winget install AgileBits.1Password.CLI`, app
    Settings → Developer → *Integrate with 1Password CLI*, then `op whoami`.
    Sessions never see a value — every move is `op` reading a file or a vault item.
+   **15:57:** CLI 2.34.1 installed (winget), app integration ON, account connected,
+   vault **`Estate`** created (`y5w264u3akx22cf2ffric32kii`). Build delegated to an
+   Opus agent: steps 1–3 of §5 in order, step 4 (`audiobook_catalog/.env`) estimate only.
 
 ## ☐ DESIGNED, NOT BUILT (owner asks 2026-08-24) — two designs landed 2026-08-26
 
