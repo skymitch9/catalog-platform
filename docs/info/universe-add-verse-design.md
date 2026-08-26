@@ -407,3 +407,9 @@ access to.
   not from what a visitor actually sees.
 </content>
 </invoke>
+
+---
+
+**Mockup:** https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
+(private artifact, published 2026-08-26) — the trigger, the request form with the
+live alias / near-miss check, the pending queue, and what each role sees.

@@ -495,9 +495,9 @@ is not the place to start.
   is a number that will eventually disagree with itself.
 - **"Which rung spends"** → a link to `info/role-capability-map.md`.
 
-**Mockup:** `llm-billing-panel-mockup.html` (scratchpad, this session) — the
-matrix, the drawer, the four cell states and the refusal wording, in the estate
-cyberpunk theme, light and dark.
+**Mockup:** https://claude.ai/code/artifact/2f288c59-d6ca-4fdf-b3e0-da732f0e78d1
+(private artifact, published 2026-08-26) — the matrix, the drawer, the four cell
+states and the refusal wording, in the estate cyberpunk theme, light and dark.
 
 ---
 

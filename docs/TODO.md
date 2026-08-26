@@ -178,6 +178,7 @@ Both are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
 applied. Each doc carries its own phases, effort guesses and open questions.
 
 ### 1. Toggle what can bill the LLM — `docs/info/llm-billing-control-design.md`
+Mockup (private artifact): https://claude.ai/code/artifact/2f288c59-d6ca-4fdf-b3e0-da732f0e78d1
 Owner: *"we need a way to toggle what can bill the LLM and what can't inside the
 admin page somewhere. and even finer than that, i want to be able to determine
 which features can bill and which can't per site per user etc"*
@@ -198,6 +199,7 @@ which features can bill and which can't per site per user etc"*
   found while reading (see §6.1).
 
 ### 2. "+ Add a verse" on /universes — `docs/info/universe-add-verse-design.md`
+Mockup (private artifact): https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
 Owner: *"in the universe page add a plus button somewhere to add a verse and let
 it take series as an input"*
 
