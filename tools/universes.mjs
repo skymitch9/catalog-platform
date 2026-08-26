@@ -97,7 +97,25 @@ function saveChecked(data, message, { dryRun }) {
 
 /* ------------------------------- commands ------------------------------- */
 
-const HELP = `
+// ⚠️ HELP is a FUNCTION, not a constant, because it quotes a COUNT — and a
+// hardcoded count goes stale silently. It said "Six exist" from the day it was
+// written until 2026-08-26, by which time there were seventeen; the help text
+// was the last place anybody thought to look. Derive every number that has a
+// live source, or do not print it.
+//
+// The count is read defensively: help must work when the data file is missing
+// or malformed, because "the CLI cannot even print help" is the worst possible
+// way to learn that data/universes.json is broken. When it cannot be read the
+// sentence simply drops the number instead of guessing one.
+function helpText() {
+  let existing = 'The universes that exist each carry';
+  try {
+    const n = load().universes.length;
+    if (Number.isInteger(n) && n > 0) existing = `${n} exist, each with`;
+  } catch {
+    /* fall through to the number-free wording */
+  }
+  return `
 The shared universe list — local editor.
 
   data/universes.json is the ONE copy. library_catalog and audiobook_catalog
@@ -124,10 +142,11 @@ EDITING  (every command needs --why; --dry-run shows the result without writing)
   a book inside a universe's series is kept OUT of it — The Frugal Wizard's
   Handbook is the reason the mechanism exists.
 
-  This CLI does not create or delete universes. Six exist, each with owner
-  sign-off recorded in its \`confirmed\` field; a seventh is a decision to make
-  in the file, with its evidence, not a command to run.
+  This CLI does not create or delete universes. ${existing} owner
+  sign-off recorded in its \`confirmed\` field; the next one is a decision to
+  make in the file, with its evidence, not a command to run.
 `;
+}
 
 function cmdList(data) {
   out('');
@@ -218,7 +237,7 @@ function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
   const [command, arg1] = positional;
   if (!command || command === 'help' || flags.help) {
-    out(HELP);
+    out(helpText());
     return;
   }
 

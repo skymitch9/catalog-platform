@@ -95,6 +95,17 @@ close call.
 Both are one-line fixes and both are *arguments for §4's Phase 0*: the moment
 the page grows a "+" it must stop guessing what the list is.
 
+✅ **BOTH FIXED 2026-08-26** — recorded here so a later reader does not chase a
+closed finding. `DotHack` is on the page and the help text derives its count
+from the data file. ⚠️ **Neither was left as the one-line fix this section
+predicted**, and that is the lesson: a by-hand sync note is not a guard, so the
+page's list is now diffed against `data/universes.json` by
+`scripts/test/universe-names-parity.test.mjs` (which `npm run deploy:home` runs
+before it uploads anything), and the CLI's count is derived rather than typed.
+The design's own argument stands unchanged — the tripwire makes the duplication
+survivable, it does not make it right; a real "list names" route is still what
+the "+" needs.
+
 ---
 
 ## 3. The design

@@ -51,7 +51,7 @@ node tools/universes.mjs restore "CAL Verse" --series "Damsels of Distress" \
 | Gotcha | Detail |
 |---|---|
 | ⚠️ `--why` under 10 characters is **refused** | Not a warning. An unexplained mapping is indistinguishable from a typo, and nobody re-checks one |
-| ⚠️ The CLI cannot create or delete a universe | Six exist, each with owner sign-off in its `confirmed` field. A seventh is a decision to write into the file with evidence, not a command |
+| ⚠️ The CLI cannot create or delete a universe | Each one carries owner sign-off in its `confirmed` field. The next one is a decision to write into the file with evidence, not a command. ⚠️ **The COUNT is deliberately not written here** — this line said *"Six exist"* until 2026-08-26, when there were seventeen. `node tools/universes.mjs list` prints the live number |
 | A held-out series cannot be re-added with `add-series` | It points you at `restore`, which overturns the refusal explicitly instead of leaving one the data contradicts |
 | Nothing invalid is ever written | Every mutation validates first and refuses to save on any error |
 | Removals leave a trail | `_changelog` in the data file. Git shows a deleted line; only this says why |

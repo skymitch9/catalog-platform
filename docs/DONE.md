@@ -18,6 +18,61 @@
 
 
 
+## 2026-08-26 — the /universes page was one universe short, and nothing said so
+
+Moved whole from [`TODO.md`](TODO.md)'s *"DESIGNED, NOT BUILT"* section, where it
+read:
+
+> - 🔴 **Two live discrepancies found, fixable today and independent of the design:**
+>   - `sites/heygabi-home/public/universes/universes.js` hardcodes **16** universe
+>     names; `data/universes.json` holds **17** — `DotHack` is missing, so the page
+>     has been silently one universe short.
+>   - `tools/universes.mjs:127`'s help text still says *"Six exist"*.
+
+Both fixed. Neither was left as the one-line fix the design doc predicted,
+because a one-line fix is exactly what created them.
+
+| Discrepancy | Fix |
+|---|---|
+| Page listed 16, data holds 17 | `'DotHack'` added to `UNIVERSE_NAMES`, **and** a tripwire: `scripts/test/universe-names-parity.test.mjs` |
+| CLI help said *"Six exist"* | `HELP` (a const) became `helpText()` (a function) and **derives** the count from `load()` |
+| Same stale six in two more places | `tools/README.md` and `info/UNIVERSES.md` now print **no count at all** and point at `universes list` |
+
+⚠️ **Why the durable fix is a tripwire and not a build step.** The obvious
+answer — have the page read `data/universes.json` at publish time — has nowhere
+to run. `sites/heygabi-home` has no `package.json` and no build; `npm run
+deploy:home` is `wrangler pages deploy sites/heygabi-home/public`, a raw
+directory upload. And `read.ts` still exposes no public "list universe names"
+route, which is the reason the list is hardcoded in the first place (checked
+again, not assumed). So the duplication stays and the *drift* is what gets
+guarded: the test extracts `UNIVERSE_NAMES` out of the page source and diffs it
+against the data file, and `deploy:home` runs `npm test` before it uploads
+anything, so a divergent page cannot ship.
+
+🔴 **The tripwire asserts that its own extraction worked, before it asserts the
+names.** The failure mode of a regex-based guard is passing *vacuously*: rename
+the const or reshape the literal and a naive matcher finds nothing, then
+cheerfully reports two empty sets in agreement. **Proved it can fail** —
+deleting `'DotHack'` from the page produced
+`missingFromPage: [ 'DotHack' ]`, and restoring it went green again. A tripwire
+nobody has watched fail is a tripwire nobody knows is armed.
+
+⚠️ **What this cost, and why the count moved out of prose.** The page's own
+header said *"keep this list in sync by hand; that file changes roughly monthly,
+so a periodic check is enough — this is a maintenance note, not a bug."* It was
+a bug. `DotHack` landed in the data on 2026-08-25 and the page served a cheerful
+200 with sixteen rows until somebody read the two files side by side. The help
+text's *"Six exist"* is the same failure aged further: it was written when six
+was true and outlived it by eleven universes, in the one file that teaches a
+session the rule. **A number with a live source does not get a frozen second
+copy in prose** — derive it or drop it.
+
+**Not verified:** nothing was measured about how the page *renders* the new row
+beyond the name reaching `UNIVERSE_NAMES`; `/api/universe/DotHack` is
+members-only and was not called signed-in.
+
+---
+
 ## 2026-08-26 — a master-less estate pair finally has a master (§5 step 3, 1 of 4)
 
 `INDEX_READ_TOKEN_LIBRARY2` — padhard's free-details rung 2 — had **no readable

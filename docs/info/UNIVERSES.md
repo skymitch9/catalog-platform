@@ -253,9 +253,14 @@ Three more refusals that matter:
   first, with a reason.
 - **A held-out series** is refused with a pointer to `restore`, so a refusal is
   never silently contradicted by the data.
-- **The CLI cannot create or delete a universe.** Six exist, each with owner
-  sign-off in its `confirmed` field. A seventh is a decision to write into the
-  file with its evidence, not a command to run.
+- **The CLI cannot create or delete a universe.** Each one carries owner
+  sign-off in its `confirmed` field. The next one is a decision to write into
+  the file with its evidence, not a command to run.
+  ⚠️ **No count is written here on purpose.** This sentence said *"Six exist"*
+  from the day it was written until 2026-08-26, by which point there were
+  seventeen — and the same stale six sat in `tools/README.md` and in the CLI's
+  own help text. A number with a live source (`node tools/universes.mjs list`,
+  or `data/universes.json` itself) does not get a second, frozen copy in prose.
 
 Every mutation appends to `_changelog` in the file. Git records *what* changed;
 a deleted line cannot say *why*, and that is exactly the case — a removal —

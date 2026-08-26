@@ -28,10 +28,23 @@
  * THE NAMES ARE HARDCODED, deliberately, because read.ts exposes no public
  * "list universe names" route — only /api/lookup (title-keyed) and the
  * members-only /api/universe/:name. Checked before assuming this: no such
- * route exists today. Keep this list in sync with data/universes.json's
- * `universes[].name` by hand; that file's own docs say it changes roughly
- * monthly, so a periodic check is enough — this is a maintenance note, not a
- * bug, and outgrowing it is the moment to add a real "list names" route.
+ * route exists today. The page is also a PLAIN DIRECTORY UPLOAD
+ * (`wrangler pages deploy sites/heygabi-home/public`) with no build step, so
+ * there is nowhere to read data/universes.json at publish time either.
+ *
+ * ⚠️ "Keep it in sync by hand, a periodic check is enough" is what this note
+ * used to say, and it was WRONG — measured 2026-08-26. DotHack was added to
+ * data/universes.json on 2026-08-25 and this page was silently one universe
+ * short until somebody read both files side by side. Nothing failed, nothing
+ * went red, and the page served a cheerful 200 the whole time. A by-hand sync
+ * note is not a guard.
+ *
+ * 🔴 The guard is now `scripts/test/universe-names-parity.test.mjs`, which
+ * diffs UNIVERSE_NAMES below against data/universes.json `universes[].name`
+ * and fails `npm test` — which `npm run deploy:home` runs before it uploads
+ * anything. Outgrowing the hardcoded list is still the moment to add a real
+ * "list names" route; until then the tripwire is what makes the duplication
+ * survivable.
  *
  * ALPHABETICAL DISPLAY (owner-ordered upgrade #2): UNIVERSE_NAMES itself
  * stays in add-order (a running log — see the comment above it) so its own
@@ -60,13 +73,22 @@ import { groupBySeries } from '../assets/estate-search.js';
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
 // ⚠️ Keep in sync with data/universes.json `universes[].name` — see header.
+// 🔴 THIS IS NOW MECHANICALLY ENFORCED. `scripts/test/universe-names-parity.test.mjs`
+// reads this array out of this file and diffs it against data/universes.json;
+// a name in one and not the other FAILS `npm test`, which `npm run deploy:home`
+// runs first. The by-hand sync note in the header above was not enough:
+// DotHack was added to the data on 2026-08-25 and this page stayed one
+// universe short until 2026-08-26, silently — nothing anywhere went red.
+// The tripwire also fails if this const is renamed or reshaped, so a refactor
+// cannot quietly turn the check into a no-op.
 // Marvel and Disney added 2026-08-15 (owner/coordinator: separate universes).
 // Same day, revised further: Star Wars split out of Disney (crossover-
 // potential criterion) and Alliances created (owner-approved). Later the same
 // day, during the estate-wide orphan sweep, Cytoverse and Reckoners were
 // created, both owner-approved. Then the owner ruled on that sweep's verdict
 // table and approved three more — Middle-earth, Dungeon Crawler Carl and
-// Innworld — so 16 now.
+// Innworld — so 16. DotHack added 2026-08-25 (owner: "change .hack to DotHack
+// as the verse name") — 17 now.
 const UNIVERSE_NAMES = [
   'The Cosmere',
   'Runnerverse',
@@ -84,6 +106,7 @@ const UNIVERSE_NAMES = [
   'Middle-earth',
   'Dungeon Crawler Carl',
   'Innworld',
+  'DotHack',
 ];
 
 // ALPHABETICAL UNIVERSES (owner-ordered upgrade #2) — display order only; the

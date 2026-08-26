@@ -366,8 +366,5 @@ it take series as an input"*
 - ☐ **OWNER DECISION Q1:** should `tools/universes.mjs` grow a `create` command?
   Recommendation: yes, with `--why` **and** `--confirmed` both required — stricter
   than the hand edits that have happened 11 times already.
-- 🔴 **Two live discrepancies found, fixable today and independent of the design:**
-  - `sites/heygabi-home/public/universes/universes.js` hardcodes **16** universe
-    names; `data/universes.json` holds **17** — `DotHack` is missing, so the page
-    has been silently one universe short.
-  - `tools/universes.mjs:127`'s help text still says *"Six exist"*.
+- ✅ **The two live discrepancies are FIXED 2026-08-26** — moved whole to
+  [`DONE.md`](DONE.md). The design itself is still ☐ unbuilt.
