@@ -561,11 +561,30 @@ jobs:
           fi
           # Best effort by design: a notification that fails must not turn an
           # otherwise-fine run red, and must never mask the real failure above.
+          #
+          # 🔴 THE PAYLOAD IS A BARE ARRAY OF EVENTS, NOT `{"events": [...]}` —
+          # MEASURED 2026-08-26, on the FIRST run that ever exercised this job
+          # against a real failure (run 33016196134, `r2 (game-covers)` red).
+          # `ESTATE_EVENTS_TOKEN` had been added 1 min 13 s earlier, so this was
+          # the first time the curl actually ran — and it came back
+          #
+          #     event ring responded 400
+          #     {"error":"missing_worker","detail":"Every event must name the
+          #      `worker` that produced it."}
+          #
+          # ⚠️ The refusal is CORRECT and the payload was wrong. `parseEvents`
+          # (apps/auth-worker/src/worker-events.ts) does
+          # `Array.isArray(body) ? body : [body]` — it takes ONE event object or
+          # an ARRAY of them, and nothing else. Wrapped in `{"events": …}` the
+          # whole wrapper became "the event", which of course names no worker.
+          # ⚠️ Note what this cost: the notification looked shipped for five
+          # days (KI-10) and would have failed the first time it mattered.
+          # Nothing had ever posted a real body through this path.
           code=$(curl -sS -o /tmp/notify.out -w '%{http_code}' \
             -X POST https://auth.heygabi.ai/api/estate/ops/worker-events \
             -H "Authorization: Bearer $ESTATE_EVENTS_TOKEN" \
             -H 'content-type: application/json' \
-            --data "$(printf '{"events":[{"worker":"backup.yml","level":"error","message":"Nightly backup did not complete cleanly: %s","detail":"%s"}]}' "$RESULTS" "$RUN_URL")" \
+            --data "$(printf '[{"worker":"backup.yml","level":"error","message":"Nightly backup did not complete cleanly: %s","detail":"%s"}]' "$RESULTS" "$RUN_URL")" \
             || echo 000)
           echo "event ring responded $code"
           if [ "$code" != "200" ]; then

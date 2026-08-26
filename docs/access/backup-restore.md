@@ -430,6 +430,9 @@ a night's backup. `backup-r2.mjs` now retries — **narrowly, on purpose**:
   vanished key; retrying it turns a clear failure into a slow one.
 - **4 attempts**, exponential backoff with jitter (~0.5 s / 1 s / 2 s). A
   dropped socket counts as the same class of problem as a 500.
+  ⚠️ **429 no longer uses this backoff — see §3.2c** (2026-08-26). Lumping a
+  rate limit in with a server error is what lost `ebooks-gated`: 429 now gets
+  its own, far longer wait, more attempts, and pacing to avoid it.
 - **Every retry is logged.** A bucket that only succeeds by retrying must read
   differently in the log from one that succeeded first time — a silent retry
   would hide a degrading bucket.
@@ -495,6 +498,80 @@ makes `fetch()` itself reject, which the *old* code already handled — the firs
 cut of the fixture did exactly that and passed against the very bug it exists to
 catch. Verified both ways on 2026-08-21: 2 failures against `HEAD` (with the
 identical `TypeError: terminated` signature), 6/6 green with the fix.
+
+### 3.2c 🔴 "the ebooks backup failed with 429" — a RATE LIMIT is not a 500
+
+⚠️ **If you are here because `r2 (ebooks-gated)` (or any bucket) went red, look
+first for the words `rate-limited by the Cloudflare API (HTTP 429)` in the job
+log.** That is a different failure from §3.2 and §3.2b and it has a different
+fix. A 500 says *"that request went wrong, try it again"*; a **429 says "you are
+going too fast, stop asking for a while"** — and the estate's account shares one
+Cloudflare REST API budget, counted over a window of MINUTES, across every job
+presenting `CLOUDFLARE_API_TOKEN` at once.
+
+**Measured 2026-08-26** (run
+[`32955691152`](https://github.com/skymitch9/catalog-platform/actions/runs/32955691152),
+the daily schedule): **12 of 13 jobs succeeded and `r2 (ebooks-gated)` failed.**
+It listed **1,324 objects**, downloaded for just under four minutes (09:57:14Z →
+10:01:09Z), and then every remaining request came back "too many requests":
+
+```
+retry 1/3 for text/…-book-1.json.gz after 637ms — HTTP 429
+retry 2/3 for text/…-book-1.json.gz after 1215ms — HTTP 429
+retry 3/3 for text/…-book-1.json.gz after 2666ms — HTTP 429
+Error: GET ebooks-gated/text/vigilance-…-book-1.json.gz failed (HTTP 429):
+```
+
+⚠️ **Look at those numbers: four attempts spending under five seconds, against a
+window counted in minutes.** §3.2's retry policy lumped 429 in with 5xx, so
+every "retry" was another request into a budget that was already empty — it
+could not have cleared the window if it had run all night, and it made the limit
+worse while failing.
+
+⚠️ **`ebooks-gated` was not special.** The `r2` matrix runs FIVE buckets on five
+runners in parallel, all on the same token, so the aggregate burst is what trips
+the limit; `ebooks-gated` was simply the job still downloading when the shared
+budget ran out. Do not go looking for something wrong with that bucket.
+
+**Fixed the same day**, in `scripts/backup-r2.mjs`, in three parts:
+
+| Part | What it does |
+|---|---|
+| **429 gets its own backoff** | `Retry-After` is honoured verbatim when the server sends one (seconds or HTTP-date, capped at 180 s so a silly value cannot park the job); otherwise ~15 s / 30 s / 60 s / 120 s with jitter |
+| **429 gets more attempts** | **7**, not 4 — enough total wait (~7¾ min worst case) to actually cross a minutes-long window |
+| **Pacing** | A floor of **200 ms between requests** that **grows by 250 ms every time a 429 is seen** (ceiling 5 s) and decays 10 ms per clean request. Five parallel jobs cannot see each other, but a limit everyone backs off from is one everyone converges below |
+
+Two smaller things landed with it and both matter when reading a log:
+
+- ⚠️ **The LISTING call (`objects?cursor=`) now goes through the same policy.**
+  It used to be a bare `fetch` with no retry at all — so a 429 on the very first
+  call a bucket makes, the one most likely to land in the five-job starting
+  burst, killed the whole bucket outright while a 429 four minutes later at
+  least got four tries.
+- ⚠️ **A SUCCESSFUL dump now says if it was rate-limited on the way**
+  (`⚠️ the Cloudflare API refused N request(s) as too-many-requests (HTTP 429)`).
+  A bucket that only got through by waiting is a bucket heading for this
+  failure, and that has to be visible before it fails.
+
+**What did NOT change, on purpose:** a bucket that genuinely cannot be read
+still FAILS the backup. The byte-size check, the zero-object rule and the
+whole-bucket-excluded rule are untouched. This survives a rate limit; it does
+not tolerate an unreadable bucket.
+
+**Regression:** `scripts/test/backup-r2-exclusions.test.mjs` — five tests, all
+spawning the real script against a stand-in API: five consecutive 429s survived
+(⚠️ *five*, one past what the old four-attempt policy could ever have taken),
+`Retry-After` honoured (proven by the clock, not by a log line), the listing
+call retried, a permanently-rate-limited bucket still failing after 7 attempts,
+and the pacing floor. ⚠️ The tests set `BACKUP_R2_MIN_INTERVAL_MS=0` and
+`BACKUP_R2_RATE_LIMIT_BACKOFF_MS` to millisecond values — testing seams, same
+rule as `CLOUDFLARE_API_BASE`: **nothing sets either in CI or in any runbook.**
+
+**If it happens anyway** (the buckets keep growing, and the budget is shared
+with anything else using that token): raise the pacing floor rather than the
+attempt count — `BACKUP_R2_MIN_INTERVAL_MS` on the `r2` job's `Back up …` step —
+or stagger the matrix so five jobs do not start together. Re-run the failed jobs
+with `gh run rerun <run-id> --failed`.
 
 ### 3.3 ⚠️ `audiobook-covers` outgrew the uploader — dumps over 250 MiB are SPLIT
 
@@ -1070,7 +1147,7 @@ else. Note who currently holds either before relying on this path.
 | `scripts/lib/firestore-timestamps.mjs` | The reviver itself: pure, dependency-free, with the one accepted ambiguity argued in its header |
 | `scripts/lib/d1-dump.mjs` | The dump splitter/reorderer + the `estate_auth` membership reader §4c prints from |
 | `scripts/test/*.test.mjs` | The offline proofs for both of the above — `npm run test:scripts`, also run by the root `npm test`. No network, no credential, no write |
-| `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before. ⚠️ **Retries 5xx/429 with backoff as of 2026-08-18** — see §3.2. ⚠️ **Applies per-bucket prefix exclusions as of 2026-08-19** (§6's `ebooks-gated` block), and gained a `--dry-run` flag that lists + reports the exclusion accounting without downloading anything |
+| `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before. ⚠️ **Retries 5xx/429 with backoff as of 2026-08-18** — see §3.2. ⚠️ **429 is handled SEPARATELY, with a much longer wait, `Retry-After` support and request pacing, as of 2026-08-26 — §3.2c** (a rate limit is not a server error, and treating it as one lost `ebooks-gated`). ⚠️ **Applies per-bucket prefix exclusions as of 2026-08-19** (§6's `ebooks-gated` block), and gained a `--dry-run` flag that lists + reports the exclusion accounting without downloading anything |
 | `scripts/lib/backup-exclusions.mjs` | **The prefix exclusions themselves** — which prefixes inside an otherwise-backed-up bucket are skipped, and why. One entry today: `ebooks-gated/transcripts/`. Logged on every run whether it matched or not, and written into every dump's `manifest.json`; an exclusion that swallowed a whole bucket FAILS the backup rather than reporting an empty success. ⚠️ Not the same mechanism as `backup-r2.mjs`'s `REFUSED_BUCKETS` (whole-bucket refusal, `estate-audio`) — its header argues the difference |
 | `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite) |
 | `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported. **A mandatory step of the D1 restore path, with a regression test** (2026-08-18), and the place §4c's `estate_auth` warning is printed |

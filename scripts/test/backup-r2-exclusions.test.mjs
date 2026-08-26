@@ -48,8 +48,15 @@ const EBOOKS_GATED = [
   { key: 'transcripts/the-primal-hunter-2.json.gz', body: 'TRANSCRIPT-TWO-VERY-LARGE' },
 ];
 
-/** A stand-in for `api.cloudflare.com/client/v4`, serving one bucket. */
-async function startFakeApi(objectsByBucket) {
+/**
+ * A stand-in for `api.cloudflare.com/client/v4`, serving one bucket.
+ *
+ * `opts.listFailTimes` / `opts.listRetryAfter` make the LISTING call rate-limit
+ * the first N times, which is the path that had no retry at all before
+ * 2026-08-26.
+ */
+async function startFakeApi(objectsByBucket, opts = {}) {
+  const state = { listFailTimes: opts.listFailTimes ?? 0, listAttempts: 0 };
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const m = url.pathname.match(/\/accounts\/[^/]+\/r2\/buckets\/([^/]+)\/objects(?:\/(.*))?$/);
@@ -61,6 +68,15 @@ async function startFakeApi(objectsByBucket) {
     const objects = objectsByBucket[bucket] ?? [];
 
     if (rawKey === undefined || rawKey === '') {
+      state.listAttempts += 1;
+      if (state.listFailTimes > 0) {
+        state.listFailTimes -= 1;
+        const headers = { 'content-type': 'application/json' };
+        if (opts.listRetryAfter !== undefined) headers['retry-after'] = String(opts.listRetryAfter);
+        res.writeHead(429, headers);
+        res.end(JSON.stringify({ success: false, errors: [{ code: 10000, message: 'Too many requests' }] }));
+        return;
+      }
       const result = objects.map((o) => ({
         key: o.key,
         size: Buffer.byteLength(o.body),
@@ -86,6 +102,16 @@ async function startFakeApi(objectsByBucket) {
     if (hit.failTimes > 0) {
       hit.failTimes -= 1;
       hit.attempts = (hit.attempts ?? 0) + 1;
+      if (hit.failMode === 'ratelimit') {
+        // ⚠️ The shape run 32955691152 died on: an empty-bodied 429 from
+        // api.cloudflare.com. `retryAfter` (seconds) is set only by the test
+        // that proves the header is honoured — the live API sent none.
+        const headers = { 'content-type': 'application/json' };
+        if (hit.retryAfter !== undefined) headers['retry-after'] = String(hit.retryAfter);
+        res.writeHead(429, headers);
+        res.end('');
+        return;
+      }
       if (hit.failMode === 'terminate') {
         // ⚠️ THE DELAY IS THE WHOLE POINT. Headers + a byte, flushed, and only
         // THEN the socket dies — so the client's `fetch()` has already resolved
@@ -115,8 +141,23 @@ async function startFakeApi(objectsByBucket) {
 
 function run(args, env) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [SCRIPT, ...args], { env: { ...process.env, ...env } }, (err, stdout, stderr) =>
-      resolve({ code: err ? (err.code ?? 1) : 0, stdout, stderr }),
+    execFile(
+      process.execPath,
+      [SCRIPT, ...args],
+      {
+        env: {
+          ...process.env,
+          // ⚠️ Pacing OFF by default in the offline tests, and the 429 backoff
+          // scaled to milliseconds — the real values are a 200 ms floor and a
+          // 15 s first wait, which are correct against Cloudflare and would
+          // turn this suite into a four-minute nap. Any test that is ABOUT the
+          // pacing or the backoff sets its own value below.
+          BACKUP_R2_MIN_INTERVAL_MS: '0',
+          BACKUP_R2_RATE_LIMIT_BACKOFF_MS: '5,10,20,40,40,40',
+          ...env,
+        },
+      },
+      (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, stdout, stderr }),
     );
   });
 }
@@ -289,6 +330,151 @@ test('⚠️ a socket that dies MID-BODY is retried, not crashed on', async (t) 
   // retry hides a degrading bucket, which is its own kind of dishonesty.
   const retries = stdout.split('\n').filter((l) => l.includes('retry') && l.includes('dies-mid-body.png'));
   assert.equal(retries.length, 2, `expected two logged retries:\n${stdout}`);
+});
+
+/**
+ * 🔴 THE REGRESSION FOR RUN 32955691152 (2026-08-26) — the ebooks-gated 429.
+ *
+ * The daily backup lost `ebooks-gated` (1,324 objects, ~4 minutes in) because
+ * api.cloudflare.com started answering "too many requests" (HTTP 429) on every
+ * GET and the retry policy treated that exactly like a 500: four attempts in
+ * under five seconds, against a rate-limit window counted in MINUTES.
+ *
+ * These four tests pin the three halves of the fix — more attempts, a longer
+ * and Retry-After-aware wait, and pacing — plus the listing call, which had no
+ * retry at all.
+ */
+test('⚠️ a run of 429s is waited out, not hammered — 5 refusals and the object still lands', async (t) => {
+  const objects = [
+    { key: 'text/a.json.gz', body: 'AAAA' },
+    { key: 'text/rate-limited.json.gz', body: 'BBBBBBBB', failTimes: 5, failMode: 'ratelimit' },
+  ];
+  const { server, base } = await startFakeApi({ 'game-covers': objects });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-429-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const { code, stdout, stderr } = await run(['game-covers'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+  });
+
+  // ⚠️ FIVE refusals is the assertion that matters: the OLD policy had four
+  // attempts total, so this fixture is one past what it could ever survive.
+  assert.equal(code, 0, `a survivable rate limit still killed the bucket\n${stdout}\n${stderr}`);
+  assert.equal(objects[1].attempts, 6, 'wrong number of attempts for a rate-limited object');
+  assert.equal(await readFile(join(outDir, 'objects/text/rate-limited.json.gz'), 'utf8'), 'BBBBBBBB');
+
+  // ⚠️ And it must be VISIBLE, in WORDS as well as the code — a bare "429" in
+  // a log tells a reader at 3am nothing about what to do.
+  const waits = stdout.split('\n').filter((l) => l.includes('rate-limited by the Cloudflare API (HTTP 429)'));
+  assert.equal(waits.length, 5, `expected five logged rate-limit waits:\n${stdout}`);
+  assert.match(waits[0], /no Retry-After header, backing off/);
+  assert.match(waits[0], /retry 1 of 7/);
+  // The successful dump still says the limit was hit — a bucket that only got
+  // through by waiting is one heading for the next failure.
+  assert.match(stdout, /refused 5 request\(s\) as too-many-requests/);
+});
+
+test('⚠️ `Retry-After` is HONOURED — the server, not our guess, sets the wait', async (t) => {
+  const objects = [{ key: 'text/asked-to-wait.json.gz', body: 'CCCC', failTimes: 1, failMode: 'ratelimit', retryAfter: 1 }];
+  const { server, base } = await startFakeApi({ 'game-covers': objects });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-429-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const started = Date.now();
+  const { code, stdout, stderr } = await run(['game-covers'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+    // The configured backoff is 5 ms here, so a run that takes ≥1 s can only
+    // have got that second from the header.
+    BACKUP_R2_RATE_LIMIT_BACKOFF_MS: '5,5,5,5,5,5',
+  });
+
+  assert.equal(code, 0, `${stdout}\n${stderr}`);
+  assert.match(stdout, /Cloudflare asked us to wait 1s \(Retry-After\)/);
+  assert.ok(Date.now() - started >= 1000, 'Retry-After was ignored — the run was too fast to have waited');
+});
+
+test('⚠️ the LISTING call retries a 429 too — it used to have no retry at all', async (t) => {
+  const { server, base } = await startFakeApi({ 'ebooks-gated': EBOOKS_GATED }, { listFailTimes: 2 });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-429-list-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const { code, stdout, stderr } = await run(['ebooks-gated'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+  });
+
+  assert.equal(code, 0, `a rate-limited listing killed the bucket\n${stdout}\n${stderr}`);
+  assert.match(stdout, /rate-limited by the Cloudflare API \(HTTP 429\) on Listing ebooks-gated/);
+  assert.match(stdout, /Listed 7 object\(s\) in ebooks-gated/);
+  // The exclusion still applies afterwards — the retry must not skip the rest.
+  assert.ok(!existsSync(join(outDir, 'objects', 'transcripts')), 'transcripts/ was downloaded anyway');
+});
+
+test('a bucket that is rate-limited FOR EVER still FAILS, after 7 attempts', async (t) => {
+  const objects = [{ key: 'text/never.json.gz', body: 'DDDD', failTimes: 99, failMode: 'ratelimit' }];
+  const { server, base } = await startFakeApi({ 'game-covers': objects });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-429-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const { code, stdout, stderr } = await run(['game-covers'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+  });
+
+  // Waiting longer makes a rate limit survivable; it must NOT make a backup
+  // that could not be read report success.
+  assert.notEqual(code, 0, 'a bucket that was never readable reported success');
+  assert.match(stdout + stderr, /GET game-covers\/text\/never\.json\.gz failed \(HTTP 429\)/);
+  assert.equal(objects[0].attempts, 7, 'wrong number of attempts');
+});
+
+test('pacing puts a floor under the request rate', async (t) => {
+  const objects = [
+    { key: 'a.png', body: 'A' },
+    { key: 'b.png', body: 'B' },
+    { key: 'c.png', body: 'C' },
+  ];
+  const { server, base } = await startFakeApi({ 'game-covers': objects });
+  const outDir = await mkdtemp(join(tmpdir(), 'r2-pace-'));
+  t.after(async () => {
+    server.close();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const started = Date.now();
+  const { code, stdout } = await run(['game-covers'], {
+    CLOUDFLARE_API_BASE: base,
+    CLOUDFLARE_API_TOKEN: 'test-token',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account',
+    BACKUP_OUT_DIR: outDir,
+    BACKUP_R2_MIN_INTERVAL_MS: '300',
+  });
+
+  assert.equal(code, 0, stdout);
+  // 1 listing + 3 GETs = 4 paced requests; three gaps of 300 ms is the floor.
+  assert.ok(Date.now() - started >= 900, 'the requests were not paced');
 });
 
 test('an object that NEVER finishes its body still FAILS the backup, after 4 attempts', async (t) => {

@@ -1,9 +1,10 @@
 # catalog-platform — Known Issues, Waivers & Exceptions
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-23** — KI-10 was re-measured that day (still true).
-> The others were NOT re-checked; KI-8 needs the Cloudflare dashboard, which
-> only the owner can open.
+> Last verified: **2026-08-26** — KI-10 was re-measured that day against a real
+> failed backup run (secret now present; the report itself was refused — see the
+> entry). ⚠️ **KI-1 through KI-9 were NOT re-checked**; KI-8 needs the
+> Cloudflare dashboard, which only the owner can open.
 >
 > **This file exists to stop the same non-bug being re-reported every month.**
 > It holds things that ARE wrong, or look wrong, and are deliberately tolerated.
@@ -188,25 +189,53 @@ shrugged at.
 
 **Why tolerated.** Half of it no longer is: a `notify-failure` job now reports
 any non-clean result to the estate event ring, so it surfaces on `/status`.
-🔴 **MEASURED 2026-08-21 — `ESTATE_EVENTS_TOKEN` IS NOT A REPO SECRET.**
-`gh secret list` on `catalog-platform` returns exactly two: `CLOUDFLARE_API_TOKEN`
-and `FIREBASE_SERVICE_ACCOUNT_JSON`. ⚠️ **Re-measured 2026-08-23 and unchanged** —
-still exactly those two, so this has now been a no-op for two days rather than
-one. **So the notification is currently a no-op**
-— it will emit a loud `::error::` annotation naming the missing secret rather
-than exiting quietly, which is the best it can do from inside CI, but nothing
-reaches `/status`. It has also never been tested against a real failure.
+It was a no-op for five days because the secret did not exist (measured
+2026-08-21, re-measured unchanged 2026-08-23) — the job emitted a loud
+`::error::` annotation naming the missing secret rather than exiting quietly,
+which is the best it can do from inside CI, but nothing reached `/status`.
+
+✅ **STEP 1 CLOSED — `ESTATE_EVENTS_TOKEN` IS NOW A REPO SECRET.** Measured
+2026-08-26 21:35 UTC with `gh secret list` (names only): three secrets, not two —
+`CLOUDFLARE_API_TOKEN`, `ESTATE_EVENTS_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`.
 
 **What would change it.** Two things, both measurable and in order:
 
-1. **Owner: add the secret.** Mint a *Service event log* key at
-   <https://heygabi.ai/status/api>, then
-   `gh secret set ESTATE_EVENTS_TOKEN --repo skymitch9/catalog-platform`.
-   ⚠️ Until this exists every failure notification is a no-op with a warning.
+1. ~~**Owner: add the secret.**~~ ✅ **DONE 2026-08-26** (set 21:35:50 UTC).
 2. **See one real failure arrive on `/status`.** Shipped is not verified.
+   🔴 **STILL OPEN as of 2026-08-26 — and the first attempt FAILED. Read on.**
 
-Until both, treat backup health as **checked, not alerted** — i.e. it still
-depends on somebody looking.
+**MEASURED 2026-08-26 — the first run that ever exercised this path.** Manual
+dispatch
+[`33016196134`](https://github.com/skymitch9/catalog-platform/actions/runs/33016196134),
+started 21:37 UTC, 1 min 13 s after the secret was set. `r2 (game-covers)`
+failed on a Cloudflare rate limit (`backup-restore.md` §3.2c), so
+`notify-failure` ran against a REAL failure with a REAL token — and the estate
+event ring **rejected the report as a bad request (HTTP 400)**:
+
+```
+##[warning]Backup run did not complete cleanly: d1=success firestore=success r2=failure retention=success
+event ring responded 400
+{"error":"missing_worker","detail":"Every event must name the `worker` that produced it."}
+```
+
+⚠️ **The refusal was CORRECT and the workflow was wrong.** `parseEvents`
+(`apps/auth-worker/src/worker-events.ts:100`) does
+`Array.isArray(body) ? body : [body]` — it accepts one event object, or an array
+of them. `backup.yml` was posting `{"events":[{…}]}`, so the *wrapper* became
+"the event", and a wrapper names no worker. Nothing had ever posted a real body
+through this path, so five days of "the notification is shipped, it just has no
+secret" was hiding a payload that would have failed on the day it mattered.
+
+✅ **Fixed 2026-08-26** in the same commit as the §3.2c backup fix: the curl now
+sends a bare `[{ … }]` array, with the incident written beside it in the
+workflow. ⏳ **NOT YET VERIFIED END-TO-END** — proving it needs another *failed*
+backup run, and the §3.2c fix is designed to stop those happening. Options, in
+preference order: wait for the next genuine failure; or post one test event by
+hand with the token and confirm it lands on
+<https://heygabi.ai/status/> (the ring's own GET is devops-gated).
+
+Until step 2 is confirmed green, treat backup health as **checked, not
+alerted** — i.e. it still depends on somebody looking.
 
 ⚠️ **The age grading is the other half, and it catches a different failure.**
 This job answers "it ran and broke"; the freshness grade answers "it never ran

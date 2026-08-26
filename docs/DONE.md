@@ -16,6 +16,111 @@
 
 
 
+## ✅ The nightly backup lost a bucket to a Cloudflare RATE LIMIT — 429 was being retried like a 500 (2026-08-26)
+
+**The failure.** Scheduled run
+[`32955691152`](https://github.com/skymitch9/catalog-platform/actions/runs/32955691152)
+(2026-08-26 09:56 UTC): 12 of 13 jobs succeeded and **`r2 (ebooks-gated)`
+failed**. It listed **1,324 objects**, downloaded for just under four minutes,
+and then every remaining `text/*.json.gz` GET came back from api.cloudflare.com
+as "too many requests" (HTTP 429). It gave up on the first object whose four
+attempts were all refused.
+
+**The root cause, and why it is not the bucket's fault.** `scripts/backup-r2.mjs`
+had one retry policy for everything transient: `status >= 500 || status === 429`,
+4 attempts, ~0.5 s / 1 s / 2 s of backoff. ⚠️ **Those two statuses ask for
+opposite things.** A 500 means *"that request went wrong, try it again"*; a 429
+means *"you are going too fast, stop asking for a while"* — and Cloudflare's REST
+API budget is counted over a window of **minutes**, per user. Under five seconds
+of retrying could never have cleared it, and each attempt made the limit worse
+while failing.
+
+⚠️ **It is a whole-matrix problem wearing one bucket's name.** `backup.yml`'s
+`r2` matrix runs five buckets on five runners in parallel, all presenting the
+same `CLOUDFLARE_API_TOKEN`, so they share one budget and the aggregate burst is
+what trips it. **Proven the same day, accidentally:** manual run
+[`33016196134`](https://github.com/skymitch9/catalog-platform/actions/runs/33016196134),
+still on the unfixed code, failed on **`game-covers`** while `ebooks-gated`
+succeeded in 7m37s. Whichever job is still downloading when the shared budget
+runs out is the one that dies. Do not go looking for something wrong with
+`ebooks-gated`.
+
+⚠️ **This is NOT the same failure as run 32469907247** (2026-08-21,
+`library-covers` + `game-covers`). That one contained no 429s at all — it was
+the mid-body socket death, `backup-restore.md` §3.2b. Two different bugs, two
+different fixes; conflating them sends you to the wrong section.
+
+**The fix** (`scripts/backup-r2.mjs`), three parts:
+
+1. **429 has its own backoff:** `Retry-After` honoured verbatim when the server
+   sends one (seconds or HTTP-date, capped at 180 s so a silly value cannot park
+   the job); otherwise ~15 s / 30 s / 60 s / 120 s with jitter.
+2. **429 has its own attempt budget: 7**, not 4 — enough total wait (~7¾ min
+   worst case) to genuinely cross a minutes-long window. 5xx and transport
+   failures keep their 4.
+3. **Pacing**, so the limit is mostly never reached: a 200 ms floor between
+   requests that **grows 250 ms per 429** (ceiling 5 s) and decays 10 ms per
+   clean request. The five jobs cannot see each other, but a limit everyone
+   backs off from is one everyone converges below.
+
+Two more that matter when reading a log:
+
+- ⚠️ **The listing call (`objects?cursor=`) now uses the same policy.** It was a
+  bare `fetch` with no retry at all — so a 429 on the very first call a bucket
+  makes, the one most likely to land in the five-job starting burst, killed the
+  whole bucket outright, while a 429 four minutes later at least got four tries.
+- ⚠️ **A SUCCESSFUL dump now says if it was rate-limited on the way.** A bucket
+  that only got through by waiting is one heading for this failure, and the
+  difference has to be visible before it fails again. Every wait is logged in
+  words as well as the code — nobody reads a bare `429` at 3am and knows what to
+  do.
+
+**What deliberately did NOT change:** a bucket that genuinely cannot be read
+still FAILS. The byte-size check, the zero-object rule and the
+whole-bucket-excluded rule are untouched. This survives a rate limit; it does not
+tolerate an unreadable bucket.
+
+**Regression:** `scripts/test/backup-r2-exclusions.test.mjs` gained five tests —
+five consecutive 429s survived (⚠️ *five*, one past what the old policy could
+ever have taken), `Retry-After` honoured (asserted on the clock, not on a log
+line), the listing call retried, a permanently-rate-limited bucket still failing
+after 7 attempts, and the pacing floor. 11/11 in that file, 215/215 across
+`npm run test:scripts`.
+
+**Doc:** `docs/access/backup-restore.md` **§3.2c**, titled for the symptom
+("the ebooks backup failed with 429") because that is what a debugger will
+search for.
+
+### 🔴 The same day, the failure NOTIFICATION turned out to be broken too
+
+The manual run above was dispatched to exercise KI-10 step 2 — *"see one real
+failure arrive on `/status`"* — because the owner had set `ESTATE_EVENTS_TOKEN`
+at 21:35:50 UTC, 1 min 13 s before it started. `r2 (game-covers)` duly failed,
+so `notify-failure` ran **against a real failure with a real token for the first
+time ever**, and the event ring refused it as a bad request:
+
+```
+event ring responded 400
+{"error":"missing_worker","detail":"Every event must name the `worker` that produced it."}
+```
+
+⚠️ **The refusal was correct and the workflow was wrong.** `parseEvents`
+(`apps/auth-worker/src/worker-events.ts:100`) does
+`Array.isArray(body) ? body : [body]` — one event object, or an array of them.
+`backup.yml` posted `{"events":[{…}]}`, so the *wrapper* became "the event", and
+a wrapper names no worker. Fixed in the same commit: the curl now sends a bare
+`[{ … }]`.
+
+⚠️ **The lesson is bigger than the JSON.** For five days KI-10 read "the
+notification is shipped, it just has no secret" — a shipped-≠-verified failure
+of exactly the kind the estate's verification rule names. **The missing secret
+was hiding a payload that had never once been posted**, and the notification
+would have failed silently on the first night it mattered. It is still not
+verified end-to-end: proving it needs another *failed* backup, and the fix above
+exists to stop those happening. KI-10 carries the open step and how to close it.
+
+---
+
 ## ✅ Shelf parity card: an ABSENT `shadow_missing` looks identical to zero (found 2026-08-25)
 
 The drift alarm (`auth-worker/src/shelf-parity.ts`, `deriveState`) sets

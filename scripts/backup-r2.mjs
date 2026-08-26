@@ -85,6 +85,15 @@
  * statement into each dump's own manifest. ⚠️ A restore of `ebooks-gated` from
  * these dumps therefore does NOT contain transcripts; where they DO come from
  * in a disaster is in docs/access/backup-restore.md §6 and RECOVERY.md §5.
+ *
+ * 🔴 THE API IS RATE-LIMITED AND THIS SCRIPT PACES ITSELF (2026-08-26). Run
+ * 32955691152 lost `ebooks-gated` — 1,324 objects, ~4 minutes in — to
+ * api.cloudflare.com answering "too many requests" (HTTP 429) on every
+ * remaining GET. The retry policy below now treats 429 as its own thing (a
+ * request to slow down for MINUTES, not a request to try again in half a
+ * second), honours `Retry-After`, and paces every call so the limit is mostly
+ * not reached. See the long comment on the retry block, and
+ * docs/access/backup-restore.md §3.2c.
  */
 
 import { mkdirSync, writeFileSync, statSync } from 'node:fs';
@@ -179,30 +188,6 @@ async function cfFetch(path, opts = {}) {
   return res;
 }
 
-/** Paginate GET .../objects, return the full array of object metadata. */
-async function listAllObjects(bucket) {
-  const all = [];
-  let cursor;
-  for (;;) {
-    const qs = new URLSearchParams({ per_page: '1000' });
-    if (cursor) qs.set('cursor', cursor);
-    const res = await cfFetch(`/accounts/${ACCOUNT_ID}/r2/buckets/${bucket}/objects?${qs}`);
-    const body = await res.json();
-    if (!res.ok || !body.success) {
-      const detail = JSON.stringify(body.errors ?? body);
-      throw new Error(
-        `Listing ${bucket} failed (HTTP ${res.status}): ${detail}\n` +
-          `If this is a 9109/403/"not authorized": the token needs the account-level ` +
-          `"Workers R2 Storage Read" permission group — see this script's header comment.`
-      );
-    }
-    all.push(...body.result);
-    if (!body.result_info?.is_truncated) break;
-    cursor = body.result_info.cursor;
-  }
-  return all;
-}
-
 /**
  * ⚠️ RETRY EXISTS BECAUSE ONE TRANSIENT 500 KILLED A WHOLE BUCKET — MEASURED.
  *
@@ -234,22 +219,165 @@ async function listAllObjects(bucket) {
  *     read an object still FAILS — the size check below and the zero-object
  *     rule above are unchanged. This makes the job survive a blip, not
  *     tolerate a broken bucket.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * 🔴 …AND THEN A RATE LIMIT ATE `ebooks-gated`, BECAUSE 429 IS NOT A 500 —
+ * MEASURED 2026-08-26.
+ *
+ * Run 32955691152 (the daily schedule): 12 of 13 jobs succeeded and
+ * **`r2 (ebooks-gated)` failed**. It listed 1,324 objects, downloaded happily
+ * for just under four minutes, and then EVERY request began coming back
+ * "too many requests" (HTTP 429) from api.cloudflare.com. It gave up on the
+ * first object whose four attempts were all refused:
+ *
+ *     GET ebooks-gated/text/vigilance-…-book-1.json.gz failed (HTTP 429):
+ *
+ * ⚠️ THE BUG IS THAT THE RETRY POLICY ABOVE TREATED 429 EXACTLY LIKE A 500.
+ * Those two statuses ask for opposite things. A 500 means "that request went
+ * wrong, try it again"; a 429 means **"you are going too fast — stop asking for
+ * a while"**. Four attempts spaced ~0.5 s / 1 s / 2 s spend under five seconds,
+ * and Cloudflare's REST API rate limit is counted over a window of MINUTES
+ * (per user, per five minutes). So every "retry" was another request into a
+ * bucket that was already empty, which both failed and made the limit worse.
+ * The old backoff could not have cleared that window if it had tried all night.
+ *
+ * ⚠️ It is also not really a per-bucket problem, which is why the fix is not
+ * per-bucket. `backup.yml`'s `r2` matrix runs FIVE buckets in parallel, on five
+ * runners, all presenting the SAME `CLOUDFLARE_API_TOKEN` — so they share one
+ * rate-limit budget, and the aggregate burst is what trips it. `ebooks-gated`
+ * was not special; it was the job still downloading when the shared budget ran
+ * out. (The earlier failure, run 32469907247, contained no 429s at all and is
+ * the separate mid-body-socket bug in §3.2b — do not conflate them.)
+ *
+ * Two changes, and they do different jobs:
+ *
+ *  1. **A 429 gets its OWN, much longer backoff, and more attempts.** If the
+ *     response carries `Retry-After`, that is Cloudflare telling us the answer
+ *     and it is honoured verbatim (seconds or an HTTP-date, capped so a silly
+ *     value cannot park the job for an hour). Otherwise: ~15 s, 30 s, 60 s,
+ *     then 120 s, jittered, for up to RATE_LIMIT_ATTEMPTS tries — long enough
+ *     to actually cross a minutes-long window instead of hammering inside it.
+ *  2. **PACING, so we mostly never get there.** Every request now waits for a
+ *     minimum interval since the last one, and that interval GROWS each time a
+ *     429 is seen and decays slowly on success. Fixed pacing alone cannot be
+ *     right (the five jobs cannot see each other), but a limit that everyone
+ *     backs off from is one everyone converges below. `BACKUP_R2_MIN_INTERVAL_MS`
+ *     overrides the floor if a future bucket needs a different shape; nothing
+ *     sets it in CI.
+ *
+ * Everything else is deliberately unchanged: every wait is still logged, in
+ * words as well as the code, and a bucket that genuinely cannot be read still
+ * FAILS the backup rather than reporting a short dump as a success.
  */
 const GET_ATTEMPTS = 4;
-const isRetryable = (status) => status >= 500 || status === 429;
+/** A rate limit is worth waiting out for longer than a server error is. */
+const RATE_LIMIT_ATTEMPTS = 7;
+/**
+ * ~15 s / 30 s / 60 s / 120 s / 120 s / 120 s, before jitter.
+ *
+ * ⚠️ `BACKUP_R2_RATE_LIMIT_BACKOFF_MS` (comma-separated ms) exists ONLY so the
+ * offline test can exercise the real 429 path without sleeping for four
+ * minutes — the same testing seam, and the same rule, as `CLOUDFLARE_API_BASE`
+ * above: nothing sets it in CI or in any runbook, and a run that overrides it
+ * has said so in its own environment.
+ */
+const backoffOverride = (process.env.BACKUP_R2_RATE_LIMIT_BACKOFF_MS || '')
+  .split(',')
+  .map((s) => Number(s.trim()))
+  .filter((n) => Number.isFinite(n) && n >= 0);
+const RATE_LIMIT_BACKOFF_MS = backoffOverride.length
+  ? backoffOverride
+  : [15_000, 30_000, 60_000, 120_000, 120_000, 120_000];
+/** Never park on a `Retry-After` longer than this, whatever the header says. */
+const RATE_LIMIT_MAX_WAIT_MS = 180_000;
+const MAX_ATTEMPTS = Math.max(GET_ATTEMPTS, RATE_LIMIT_ATTEMPTS);
+
+const isRateLimit = (status) => status === 429;
+const isRetryable = (status) => status >= 500 || isRateLimit(status);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function getObjectBytes(bucket, key) {
-  // Object keys can contain characters that need escaping per path segment,
-  // but literal '/' must stay unescaped (Cloudflare's own docs: send slashes
-  // literally, do not percent-encode them).
-  const encodedKey = key.split('/').map(encodeURIComponent).join('/');
-  const path = `/accounts/${ACCOUNT_ID}/r2/buckets/${bucket}/objects/${encodedKey}`;
+// ── PACING ─────────────────────────────────────────────────────────────────
+// The floor between two requests from THIS process. 200 ms ≈ 5 requests/second,
+// a little under the rate this script was measured downloading at when the
+// 2026-08-26 limit hit — the adaptive part below is what closes the rest of the
+// gap, because five parallel jobs share one budget and none of them can see the
+// others. Set BACKUP_R2_MIN_INTERVAL_MS=0 to turn pacing off (the offline tests
+// do; a real run against Cloudflare should not).
+const MIN_INTERVAL_MS = Number.isFinite(Number(process.env.BACKUP_R2_MIN_INTERVAL_MS))
+  ? Math.max(0, Number(process.env.BACKUP_R2_MIN_INTERVAL_MS))
+  : 200;
+/** Added to the interval each time a 429 is seen… */
+const THROTTLE_STEP_MS = 250;
+/** …up to this ceiling… */
+const THROTTLE_MAX_MS = 5_000;
+/** …and given back this much per clean request, so it recovers but not fast. */
+const THROTTLE_DECAY_MS = 10;
 
+let throttleMs = 0;
+let lastRequestAt = 0;
+let rateLimitHits = 0;
+
+async function paceRequest() {
+  const due = lastRequestAt + MIN_INTERVAL_MS + throttleMs;
+  const wait = due - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastRequestAt = Date.now();
+}
+
+function onRateLimited() {
+  rateLimitHits += 1;
+  throttleMs = Math.min(THROTTLE_MAX_MS, throttleMs + THROTTLE_STEP_MS);
+}
+
+function onCleanRequest() {
+  if (throttleMs > 0) throttleMs = Math.max(0, throttleMs - THROTTLE_DECAY_MS);
+}
+
+/**
+ * How long the server ASKED us to wait, in ms, or null if it did not say.
+ * `Retry-After` is either a number of seconds or an HTTP-date; both are legal
+ * and Cloudflare has been seen to send either.
+ */
+function retryAfterMs(res) {
+  const raw = res.headers?.get?.('retry-after');
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.round(seconds * 1000));
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) return Math.max(0, when - Date.now());
+  return null;
+}
+
+/** The wait before attempt N+1, and the words that explain it in the log. */
+function rateLimitWait(res, attempt) {
+  const asked = retryAfterMs(res);
+  if (asked !== null) {
+    const wait = Math.min(asked, RATE_LIMIT_MAX_WAIT_MS);
+    return { wait, why: `Cloudflare asked us to wait ${Math.round(asked / 1000)}s (Retry-After)` };
+  }
+  const base = RATE_LIMIT_BACKOFF_MS[Math.min(attempt - 1, RATE_LIMIT_BACKOFF_MS.length - 1)];
+  return { wait: Math.round(base * (0.85 + Math.random() * 0.3)), why: 'no Retry-After header, backing off' };
+}
+
+/** A never-a-real-value sentinel, so an empty body is not mistaken for a miss. */
+const NOT_READ = Symbol('not-read');
+
+/**
+ * ONE Cloudflare request with the whole policy above: pacing, then up to
+ * MAX_ATTEMPTS tries, with the budget and the wait chosen by WHAT failed.
+ *
+ * `readBody(res)` is called INSIDE the try on purpose — see the mid-body socket
+ * note below; "the request succeeded" and "the bytes arrived" are two different
+ * events and only the first is what `await fetch(...)` reports.
+ */
+async function requestWithRetry({ path, describe, readBody, statusHint = '' }) {
   let lastError = null;
-  for (let attempt = 1; attempt <= GET_ATTEMPTS; attempt++) {
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await paceRequest();
+
     let res;
-    let bytes = null;
+    let value = NOT_READ;
     let text = null;
     try {
       res = await cfFetch(path);
@@ -266,42 +394,109 @@ async function getObjectBytes(bucket, key) {
       // (headers arrived, `res.ok` is true), and the failure lands later, when
       // the body is drained. The read used to sit BELOW this block, so it was
       // outside the only `catch` in the retry loop — it bypassed all four
-      // attempts, escaped `getObjectBytes`, escaped the top-level `await`, and
-      // took the whole process down with an unhandled rejection. The retry
-      // logic was correct and simply never ran.
-      //
-      // The lesson worth keeping: for `fetch`, "the request succeeded" and
-      // "the bytes arrived" are two different events, and only the first one
-      // is what `await fetch(...)` tells you. A blip between them is the same
-      // class of problem as a 500 and is retried as one.
-      if (res.ok) bytes = Buffer.from(await res.arrayBuffer());
+      // attempts, escaped the caller, escaped the top-level `await`, and took
+      // the whole process down with an unhandled rejection. The retry logic was
+      // correct and simply never ran.
+      if (res.ok) value = await readBody(res);
       else text = await res.text();
     } catch (err) {
       // A dropped socket / DNS blip is the same class of problem as a 500.
-      lastError = new Error(`GET ${bucket}/${key} failed (network): ${err.message}`);
-      if (attempt === GET_ATTEMPTS) break;
+      lastError = new Error(`${describe} failed (network): ${err.message}`);
+      if (attempt >= GET_ATTEMPTS) break;
       const wait = Math.round(250 * 2 ** attempt * (1 + Math.random()));
-      console.log(`  retry ${attempt}/${GET_ATTEMPTS - 1} for ${key} after ${wait}ms — ${err.message}`);
+      console.log(`  retry ${attempt} of ${GET_ATTEMPTS} for ${describe} after ${wait}ms — ${err.message}`);
       await sleep(wait);
       continue;
     }
 
-    // ⚠️ `!== null`, not a truthiness check: a legitimately EMPTY object
-    // yields a zero-length Buffer, and `if (bytes)` would loop on it forever.
-    if (bytes !== null) return bytes;
+    // ⚠️ The sentinel, not a truthiness check: a legitimately EMPTY object
+    // yields a zero-length Buffer, and `if (value)` would loop on it forever.
+    if (value !== NOT_READ) {
+      onCleanRequest();
+      return value;
+    }
 
-    lastError = new Error(`GET ${bucket}/${key} failed (HTTP ${res.status}): ${text.slice(0, 500)}`);
-    if (!isRetryable(res.status) || attempt === GET_ATTEMPTS) break;
+    lastError = new Error(`${describe} failed (HTTP ${res.status}): ${text.slice(0, 500)}${statusHint}`);
+
+    if (isRateLimit(res.status)) {
+      onRateLimited();
+      if (attempt >= RATE_LIMIT_ATTEMPTS) break;
+      const { wait, why } = rateLimitWait(res, attempt);
+      console.log(
+        `  rate-limited by the Cloudflare API (HTTP 429) on ${describe} — ${why}; ` +
+          `retry ${attempt} of ${RATE_LIMIT_ATTEMPTS} in ${Math.round(wait / 1000)}s ` +
+          `(now pacing +${throttleMs}ms between requests)`
+      );
+      await sleep(wait);
+      continue;
+    }
+
+    if (!isRetryable(res.status) || attempt >= GET_ATTEMPTS) break;
 
     const wait = Math.round(250 * 2 ** attempt * (1 + Math.random()));
-    console.log(`  retry ${attempt}/${GET_ATTEMPTS - 1} for ${key} after ${wait}ms — HTTP ${res.status}`);
+    console.log(
+      `  retry ${attempt} of ${GET_ATTEMPTS} for ${describe} after ${wait}ms — ` +
+        `the Cloudflare API returned a server error (HTTP ${res.status})`
+    );
     await sleep(wait);
   }
+
   throw lastError;
+}
+
+/** Paginate GET .../objects, return the full array of object metadata. */
+async function listAllObjects(bucket) {
+  const all = [];
+  let cursor;
+  for (;;) {
+    const qs = new URLSearchParams({ per_page: '1000' });
+    if (cursor) qs.set('cursor', cursor);
+    // ⚠️ The listing goes through the SAME retry/pacing policy as the object
+    // GETs (2026-08-26). It used to be a bare `cfFetch`, so a rate limit here
+    // — the very first call a bucket makes, and the one most likely to land in
+    // the burst when five jobs start at once — failed the whole bucket with no
+    // retry at all, while a 429 four minutes later got four of them.
+    const body = await requestWithRetry({
+      path: `/accounts/${ACCOUNT_ID}/r2/buckets/${bucket}/objects?${qs}`,
+      describe: `Listing ${bucket}`,
+      readBody: (res) => res.json(),
+      statusHint:
+        `\nIf this is a 9109/403/"not authorized": the token needs the account-level ` +
+        `"Workers R2 Storage Read" permission group — see this script's header comment.`,
+    });
+    if (!body.success) {
+      // A 200 that says `success: false` is a real answer, not a blip — the
+      // token is wrong, or the bucket is. Retrying it would only be slower.
+      throw new Error(
+        `Listing ${bucket} failed: ${JSON.stringify(body.errors ?? body)}\n` +
+          `If this is a 9109/403/"not authorized": the token needs the account-level ` +
+          `"Workers R2 Storage Read" permission group — see this script's header comment.`
+      );
+    }
+    all.push(...body.result);
+    if (!body.result_info?.is_truncated) break;
+    cursor = body.result_info.cursor;
+  }
+  return all;
+}
+
+async function getObjectBytes(bucket, key) {
+  // Object keys can contain characters that need escaping per path segment,
+  // but literal '/' must stay unescaped (Cloudflare's own docs: send slashes
+  // literally, do not percent-encode them).
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+  return requestWithRetry({
+    path: `/accounts/${ACCOUNT_ID}/r2/buckets/${bucket}/objects/${encodedKey}`,
+    describe: `GET ${bucket}/${key}`,
+    readBody: async (res) => Buffer.from(await res.arrayBuffer()),
+  });
 }
 
 async function backupBucket(bucket) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // The counter is process-wide (the rate limit is per TOKEN, not per bucket),
+  // so a multi-bucket run reports each bucket's own share of it.
+  const rateLimitHitsBefore = rateLimitHits;
   const outDir = process.env.BACKUP_OUT_DIR || `backups/r2-${bucket}-${stamp}`;
   console.log(`\n=== ${bucket} → ${outDir}${DRY_RUN ? ' (DRY RUN — nothing will be downloaded)' : ''} ===`);
 
@@ -378,7 +573,18 @@ async function backupBucket(bucket) {
   }
 
   console.log(`${bucket}: downloaded ${objects.length} object(s), ${totalBytes} bytes total, into ${outDir}/objects/`);
-  return { bucket, outDir, count: objects.length, totalBytes, skipped, dryRun: false };
+  // ⚠️ Say it out loud even though the run SUCCEEDED. A bucket that only got
+  // through by waiting out a rate limit is a bucket heading for the failure of
+  // 2026-08-26, and the difference has to be visible before it fails again.
+  const bucketRateLimitHits = rateLimitHits - rateLimitHitsBefore;
+  if (bucketRateLimitHits > 0) {
+    console.log(
+      `${bucket}: ⚠️ the Cloudflare API refused ${bucketRateLimitHits} request(s) as too-many-requests ` +
+        `(HTTP 429) during this dump and each was retried after a wait. This dump is complete, but ` +
+        `the account is close to its API rate limit — see docs/access/backup-restore.md §3.2c.`
+    );
+  }
+  return { bucket, outDir, count: objects.length, totalBytes, skipped, dryRun: false, rateLimitHits: bucketRateLimitHits };
 }
 
 const results = [];
