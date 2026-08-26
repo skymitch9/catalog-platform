@@ -3,6 +3,11 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (public repo
 > — env var / secret NAMES only, never values; no member emails).
 > **Last verified: 2026-08-18** (second pass — §3c-drill, §4.3a, §7a, §11, §12).
+> ⚠️ **EXCEPT §11.3, the secrets custody table, which was re-measured against
+> the LIVE account on 2026-08-26** and rebuilt from 11 rows to a full inventory
+> (`docs/info/secrets-review-2026-08-26.md`). **Nothing else on this page was
+> re-checked that day** — the drill counts, the restore recipes and §12's status
+> table all still carry their 2026-08-17/18 dates.
 >
 > **Every command in §§1–10 was executed in a SANDBOX on the drill date.**
 > Drill date: **2026-08-17/18** (restore drill, `target=all` snapshot of
@@ -1353,19 +1358,69 @@ the other three**, because it is the repo that can read their backups.
 ⚠️ **No values here, ever.** ⚠️ **Every Cloudflare Worker secret is write-only —
 there is no "look it up".** A rebuild re-mints all of them.
 
+> ⚠️ **REBUILT FROM A LIVE MEASUREMENT, 2026-08-26** (`docs/info/secrets-review-2026-08-26.md`).
+> The table below used to carry **11 rows**; a `wrangler secret list` against
+> every Worker environment that day found **59 bindings across 8 environments**,
+> and the missing ones were not obscure — they included every
+> `INDEX_PUSH_TOKEN_*`, every `INDEX_READ_TOKEN_*`, four of the eight
+> `ESTATE_APP_TOKEN_*`, and the entire library and board-game side. Rows added
+> or corrected that day are marked **(added 2026-08-26, secrets review)** /
+> **(corrected 2026-08-26)**. Names only, as always — no value was read.
+>
+> 🔴 **THE CUSTODY COLUMN IS THE POINT OF THIS TABLE, AND IT NOW SAYS "NONE"
+> ELEVEN TIMES.** A "readable master" means a copy this machine can open and
+> re-push without minting anything. `apps/auth-worker` and `apps/audiobook-worker`
+> **have no `.dev.vars` at all** — measured, not inferred — so every secret whose
+> only holders are those two Workers has no master anywhere. That was not
+> previously written down.
+>
+> ⚠️ **Custody entries reading "`<repo>` `.dev.vars`" mean THE FILE EXISTS.** The
+> review never opened one, so which key names are inside is unverified. Treat it
+> as a strong lead, not a guarantee, on rebuild day.
+
 | Secret | Held by | Custody today | Re-mint at |
 |---|---|---|---|
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions, all 4 repos | GH repo secret; ⚠️ **not on this machine** | dash.cloudflare.com → My Profile → API Tokens ("Edit Cloudflare Workers" template) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | GH secret (`catalog-platform`) | ✅ **also 2 working local copies** — §7a | Firebase console → `audiobook-catalog` → Service accounts |
-| `TOKEN_SIGNER_KEY` | `estate-auth` | Worker secret (write-only) | Google Cloud Console → IAM → Service Accounts |
-| `FIREBASE_SERVICE_ACCOUNT` | `estate-auth` | Worker secret (write-only) | same as above |
-| `ESTATE_CONDUCTOR_TOKEN` | `estate-auth` | Worker secret **+** `docs/access/keys/estate-conductor-token.txt` (gitignored) | self-generated random |
-| `ESTATE_EVENTS_TOKEN` | `estate-auth` | Worker secret (write-only) | self-generated random |
-| `ESTATE_APP_TOKEN_LIBRARY` / `_INDEX` / `_DISCORD` | ⚠️ **PAIRED** — `estate-auth` + the app | Worker secrets both sides | self-generated; ⚠️ **set both sides together or the failure is a silent 401** |
-| `ANTHROPIC_API_KEY_GABI` | `estate-auth` | Worker secret | console.anthropic.com |
-| `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` | `estate-discord` | Worker secret | discord.com/developers |
-| `POLL_SYNC_TOKEN` | ⚠️ **PAIRED** — `estate-discord` + audiobook pipeline `.env` | Worker secret + local `.env` | self-generated |
+| `TOKEN_SIGNER_KEY` | `estate-auth` | Worker secret (write-only) — 🔴 **NO local copy; a DIFFERENT service account (`estate-token-minter`) from `FIREBASE_SERVICE_ACCOUNT`.** ⚠️ **(corrected 2026-08-26)** it **IS SET** — `env.ts:209` and `CREDENTIALS.md` §7 rule 7 both still say it is deliberately unset, and both are wrong. This is the impersonation-capable key | Google Cloud Console → IAM → Service Accounts → `estate-token-minter` → Keys. ⚠️ Create a SECOND key (both valid at once), swap, verify, **then** delete the old — `library_catalog/docs/access/estate-auth.md` §3.4 |
+| `FIREBASE_SERVICE_ACCOUNT` | `estate-auth`, **`audiobook-worker`, `estate-discord`** ⚠️ **(corrected 2026-08-26 — 6 holders, not 2)** | Worker secret ×3 + GH secret + **2 local JSONs that are DIFFERENT KEYS on the same SA** (§7a) — revoking one does not revoke the other | same as above |
+| `ESTATE_CONDUCTOR_TOKEN` | `estate-auth` | Worker secret **+** `docs/access/keys/estate-conductor-token.txt` (gitignored) | self-generated random — ✅ **prefer minting at <https://heygabi.ai/status/api> → "Agent board publisher"** (KV-hashed, 24 h grace) |
+| `ESTATE_EVENTS_TOKEN` | `estate-auth`, **`catalog-index`, `audiobook-worker`** ⚠️ **(corrected 2026-08-26)** | Worker secret ×3 **+** `docs/access/keys/estate-events-token.txt` — 🔴 **NOT a GH repo secret; re-measured 2026-08-26 and still missing (KI-10, 5 days)** | self-generated — ✅ prefer `/status/api` → "Service event log". ⚠️ Rotation must reach **all three** Workers inside the 24 h window |
+| `ESTATE_APP_TOKEN_LIBRARY` | ⚠️ **PAIRED** — `estate-auth` (verifier) + library **main** | library `apps/worker/.dev.vars` | self-generated (`openssl rand -hex 32`); ⚠️ **set both sides together or the failure is a silent 401** |
+| `ESTATE_APP_TOKEN_LIBRARY2` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + library **`--env friend`** (padhard) | 🔴 **NONE** — auth-worker has no `.dev.vars`, and there is deliberately no `.dev.vars.friend` | self-generated. ✅ Both sides verified present 2026-08-26 (`CREDENTIALS.md` §6's *"pipe outstanding"* is stale) |
+| `ESTATE_APP_TOKEN_GAMES` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + BGC Worker | `Board_Game_Catalog/apps/worker/.dev.vars` | self-generated |
+| `ESTATE_APP_TOKEN_INDEX` | ⚠️ **PAIRED** — `estate-auth` + `catalog-index` | `apps/index-worker/.dev.vars` | self-generated |
+| `ESTATE_APP_TOKEN_AUDIOBOOK` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + `audiobook-worker` | 🔴 **NONE** — neither holder has a `.dev.vars` | self-generated |
+| `ESTATE_APP_TOKEN_DISCORD` ⚠️ **(corrected 2026-08-26)** | ⚠️ **PAIRED, 3 holders — `estate-discord` (presenter) + library main + library friend (verifiers).** 🔴 **`estate-auth` does NOT hold it**, and that is correct: it is not a `/seen` bearer | library main `.dev.vars` | self-generated. ⚠️ **Also MAC key material** for the confirm lanes — rotating invalidates in-flight confirm cards |
+| `ESTATE_APP_TOKEN_DISCORD_DOCS` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + `estate-discord`, exactly 2 holders | `apps/discord-worker/.dev.vars` | self-generated. ⚠️ **Never merge with `ESTATE_APP_TOKEN_DISCORD`** (`auth-worker/src/env.ts:157`) — a library leak would otherwise open the whole docs corpus |
+| `ESTATE_APP_TOKEN_BOOKS` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `audiobook-worker` (**verifier**) + `estate-discord` (presenter) | 🔴 **NONE on the verifier side** — `audiobook-worker` has no `.dev.vars` | self-generated. ⚠️ Its own pair, **not** `ESTATE_APP_TOKEN_DISCORD` |
+| `PIPELINE_TRIGGER_TOKEN` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` (**presenter**) + audiobook pipeline `.env` (**verifier**) | ✅ `audiobook_catalog/.env` | self-generated. 🔴 **OUTBOUND — rotate the watcher's `.env` FIRST.** No grace window can cover this cutover (`auth-worker/src/machine-keys.ts:200`) |
+| `SHELF_PARITY_TOKEN` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + `/srv/shelf/.parity.env` on Justin's box | 🔴 **NONE reachable** — the other copy is on hardware outside the estate | ⚠️ **LEGACY — retire, do not rotate.** Superseded by the KV-hashed `shelf:parity:token`; delete secret + fallback once a minted key shows a `Last used` |
+| `INDEX_PUSH_TOKEN_LIBRARY` / `_AUDIOBOOK` / `_GAME` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED, per source** — `catalog-index` (verifier) + library main / audiobook `.env` / BGC, each as un-suffixed `INDEX_PUSH_TOKEN` | library + BGC `.dev.vars`; ✅ `audiobook_catalog/.env` | self-generated, **one value per source**. ⚠️ The index derives the SOURCE from which suffixed secret matched — a shared value files rows under the wrong catalog. ⚠️ **`INDEX_PUSH_TOKEN_LIBRARY2` is deliberately absent on both sides** (padhard does not push); do not "tidy" it into existence |
+| `INDEX_READ_TOKEN_LIBRARY` / `_LIBRARY2` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `catalog-index` + library main / library friend, each as un-suffixed `INDEX_READ_TOKEN` | main: library `.dev.vars`. 🔴 **`_LIBRARY2`: NONE** | self-generated — ⚠️ **TWO DIFFERENT VALUES, deliberately** (`index-worker/src/env.ts:48`). Minted 2026-08-25. Verify: 200 with rows on each token, named `401 machine_token_invalid` on a wrong one |
+| `ANTHROPIC_API_KEY` (index) **(added 2026-08-26, secrets review)** | `catalog-index` — same value as library main's | ✅ library `apps/worker/.dev.vars` | console.anthropic.com. Unset ⇒ 503, never a silent skip |
+| `ANTHROPIC_API_KEY_GABI` ⚠️ **(corrected 2026-08-26)** | 🔴 **`estate-discord` — NOT `estate-auth`.** The old row named the wrong Worker; `estate-auth` holds no Anthropic key at all | 🔴 no known file copy | console.anthropic.com |
+| `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, **`DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`** **(two added 2026-08-26)** | `estate-discord` | `apps/discord-worker/.dev.vars` | discord.com/developers. ⚠️ `DISCORD_PUBLIC_KEY` is a **signature-verification** key — changing it makes every slash command fail. ⚠️ `DISCORD_APPLICATION_ID` is a public identifier held as a secret |
+| `POLL_SYNC_TOKEN` | ⚠️ **PAIRED** — `estate-discord` (verifier) + audiobook pipeline `.env` | Worker secret + ✅ local `.env` | self-generated |
 | `CATALOG_PLATFORM_TOKEN` | GH Actions (library + BGC repos) | GH repo secret | github.com → Settings → Developer settings → PAT |
+| **library Worker, both envs** — `PEER_TOKEN`, `DONOR_TOKEN`, `EBOOK_INGEST_TOKEN`, `AUDIOBOOK_MAPPING_TOKEN`, `GOOGLE_BOOKS_API_KEY`, `HARDCOVER_API_TOKEN`, `ANTHROPIC_API_KEY` **(added 2026-08-26, secrets review)** | library `apps/worker` main (11 secrets) + `--env friend` (10) | `apps/worker/.dev.vars` — 🔴 **except `DONOR_TOKEN` (no readable copy anywhere) and `AUDIOBOOK_MAPPING_TOKEN` (master is `audiobook_catalog/.env` `LIBRARY_MAPPING_TOKEN`, absent from `.dev.vars` so a bulk run cannot rotate it)** — library `TODO.md` "Custody gap". 🔴 **friend's `ANTHROPIC_API_KEY` has no master at all** (library KI-7) | `openssl rand -hex 32` / the vendor console. Procedure: `library_catalog/docs/access/secrets.md` (`secrets:push` / `:both` / `-- --enable NAME`) |
+| **BGC Worker** — `ANTHROPIC_API_KEY`, `BGG_API_TOKEN` **(added 2026-08-26, secrets review)** | `board-game-catalog` (4 secrets total; the other two are paired above) | `Board_Game_Catalog/apps/worker/.dev.vars` | vendor consoles. 🔴 **That repo has NO secrets runbook** — see the review's §6 |
+| **KV-hashed, self-service** — `CLAUDE_USAGE_TOKEN`, `SHELF_CONFIG_TOKEN` **(added 2026-08-26, secrets review)** | auth-worker KV (SHA-256 hash only) + the reporting session's env / the pipeline PC | ✅ `docs/access/keys/claude-usage-token.txt`; ✅ `audiobook_catalog/.env` `SHELF_CONFIG_TOKEN` | <https://heygabi.ai/status/api>. ⚠️ `CLAUDE_USAGE_TOKEN` has **no legacy fallback** — until installed, nothing can report |
+| **audiobook pipeline `.env`** — `ABS_USERNAME`/`ABS_PASSWORD`/`ABS_CF_CLIENT_ID`/`ABS_CF_CLIENT_SECRET`, `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `HARDCOVER_TOKEN`, `DOESTHEDOGDIE_API_KEY`, `Claude-llm` **(added 2026-08-26, secrets review)** | `audiobook_catalog/.env` (gitignored, `.gitignore:275`) | ✅ the `.env` itself is the master | vendor consoles. ⚠️ **`Claude-llm` is hyphenated + mixed-case and is INVISIBLE to `grep '^[A-Z_]*='`** — enumerate with `sed 's/=.*/=<REDACTED>/'` (`CREDENTIALS.md` §7 rule 1) |
+| **Drive OAuth (backup mirror half 2)** — `scripts/token.json` + `scripts/credentials.json` **(added 2026-08-26, secrets review)** | `audiobook_catalog/scripts/`, this machine only, gitignored | ✅ both files | `python scripts/drive_auth.py` re-consents. Already named in §7's table; recorded here so §11.3 is a complete inventory |
+
+⚠️ **ROTATION ORDER, THE ONE RULE THAT IS NOT UNIFORM (added 2026-08-26).**
+Almost every pair above is **inbound-verified**, so the verifier can accept old
+and new at once: **set the VERIFIER first, the presenter second.**
+`PIPELINE_TRIGGER_TOKEN` is the exception — it is **outbound**, the far side is
+the verifier, and it must be changed on the **home machine first**. Getting this
+backwards produces a silent 401/403/404 that reads like a code bug. Per-secret
+steps and verification probes: `docs/info/secrets-review-2026-08-26.md` §4.
+
+⚠️ **TRANSPORT (added 2026-08-26).** Never a PowerShell pipe into
+`wrangler secret put` — a piped value picks up an invisible UTF-8 BOM and the
+stored credential is wrong *while looking perfect everywhere a human can check*.
+Use the file-redirect transport (`access/agent-board.md` §3).
 
 📖 **The complete, cross-repo credential map is
 `audiobook_catalog/docs/access/CREDENTIALS.md`** — 7 Workers, 8 environments, 6
