@@ -172,6 +172,19 @@ Land for review. Candidate for a Fable/subagent build once located.
 
 ---
 
+## ☐ Secrets review follow-ups — owner decisions, one at a time (from `info/secrets-review-2026-08-26.md`)
+
+1. ✅ **DECIDED 2026-08-26 — leave the raw key files where they are.** Asked whether to move
+   `docs/access/keys/` (+ `.dev.vars` / `.env`) out of OneDrive via a junction
+   (Finding 4, §3.4). Owner: *"no thats fine"*. Not re-asking; the finding stays
+   recorded in the review as accepted.
+2. ☐ **`ESTATE_EVENTS_TOKEN` as a `catalog-platform` repo secret** (KI-10 no-op
+   since 2026-08-21). Custody copy exists at `docs/access/keys/estate-events-token.txt`;
+   `gh secret set ESTATE_EVENTS_TOKEN --repo skymitch9/catalog-platform < <that file>`
+   never shows the value. Awaiting owner yes/no.
+3. ☐ **The 11 secrets with no readable master** (§3.2) + the 1Password plan (owner
+   has 1Password; vault deferred "c for now" on 2026-08-26). Not yet asked.
+
 ## ☐ DESIGNED, NOT BUILT (owner asks 2026-08-24) — two designs landed 2026-08-26
 
 Both are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
