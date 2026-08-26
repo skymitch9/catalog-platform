@@ -305,7 +305,7 @@ printed.**
 |---|---|---|
 | `sk-ant-api…` | **0**, all four repos, all history | ✅ clean |
 | `ghp_…` / `github_pat_…` | **0**, all four repos, all history | ✅ clean |
-| `-----BEGIN PRIVATE KEY-----` (literal, dashed) | **0** at HEAD and in the commits sampled | ✅ clean |
+| `BEGIN PRIVATE KEY` with the five dashes on each side (literal, dashed) | **0** at HEAD and in the commits sampled | ✅ clean |
 | `BEGIN PRIVATE KEY` (loose — inside `\n`-escaped strings) | 9 files at HEAD in `catalog-platform` | ✅ **Not key material.** Test fixtures (`apps/auth-worker/test/session.test.ts`, `token-signer.test.ts`, `revoke-clears-site-role.test.ts`, `apps/audiobook-worker/test/{enforce-routes,gate-shadow,me,stream-ping}.test.ts`) and the PEM **parser** (`packages/firebase-sa/src/index.ts`, `tools/estate-probes/authorized-domains.mjs`). The marker is the format string, not a key |
 | `AIza…` | `catalog-platform`: `apps/discord-worker/src/link-pages.ts`, `sites/heygabi-home/public/assets/estate-auth.js` · `library_catalog`: `apps/web/src/lib/firebase.ts`, `scripts/backfill-read-from-ratings.mjs`, `scripts/backfill-review-keys.mjs` · `Board_Game_Catalog`: `apps/web/src/lib/firebase.ts` · `audiobook_catalog`: `site/fb-env.js`, `frontend/src/services/firebase.ts`, `site/*.html`, `app/tools/*.py`, `.gitguardian.yml` | ✅ **Firebase WEB API keys — public by design.** They are client identifiers, not secrets; protection is Firestore rules + the authorized-domains list. ⚠️ **Do not "fix" these** — removing them breaks every browser client. `.gitguardian.yml` matching is the allowlist entry that says so |
 
