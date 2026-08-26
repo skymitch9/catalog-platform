@@ -16,6 +16,67 @@
 
 
 
+
+## 2026-08-26 — 1Password adopted: the three raw key files are vault items (§5 step 2)
+
+📌 **Owner decision 2026-08-26 (option A)**, superseding the 2026-08-25 "defer".
+Step 2 of [`info/secrets-review-2026-08-26.md`](info/secrets-review-2026-08-26.md) §5 —
+*"three items, no code, and it removes three raw values from a synced disk in one
+sitting."*
+
+**Landed**
+
+- `scripts/op-import-keys.mjs` — ⚠️ **a LAUNCHER, not a second implementation.**
+  The naming convention, the idempotent create/update, the glued-value refusal
+  and the rule that a VALUE reaches `op` over **stdin** and never argv all stay in
+  ONE place: `library_catalog/scripts/op-import-dev-vars.mjs`, which grew a
+  `--keys-dir` mode for this caller. Two copies of a function that decides how a
+  secret is NAMED is "one canonical implementation" broken on the worst possible
+  subject. The dependency runs the *opposite* way to the usual one (library syncs
+  code FROM here) because that is where the allowlists and guards already lived —
+  the ordering §5 chose. If the repos ever stop sitting side by side, move the
+  shared module; do not fork it.
+- `--bare` and `--tag` on the shared importer. ⚠️ `--bare` is a **claim about the
+  names**, not a convenience: in `keys/` one FILE is one value and the file name
+  IS that secret's name estate-wide, so nothing is holder-scoped. A `.dev.vars` is
+  the opposite case, which is why it is per-run and not the default.
+
+**Measured, 2026-08-26**
+
+| Check | Result |
+|---|---|
+| Import | **3 created**, 0 failed — `ESTATE_CONDUCTOR_TOKEN`, `ESTATE_EVENTS_TOKEN`, `CLAUDE_USAGE_TOKEN` |
+| Re-run | **3 unchanged**, 0 writes — idempotent, and it proves each vault value is byte-identical to its file |
+| Whole vault | **16 items** by `op item list --vault Estate` — 13 from `library_catalog`, 3 from here. Titles and tags only |
+| `gh secret list` (while verifying a custody row) | `ESTATE_EVENTS_TOKEN` set **2026-08-26T21:35:50Z** — ✅ KI-10's missing CI holder is closed |
+
+⚠️ **THE FILES WERE NOT DELETED, deliberately.** That is the owner's call. They
+are now a **courtesy copy**: a local script can read one without raising a
+1Password approval prompt a human has to click. `keys/README.md` records the new
+arrangement — vault is master, a disagreement is resolved in the vault's favour.
+
+🔴 **A doc that was wrong before anyone changed anything.** `keys/README.md` said
+*"Nothing here is backed up off this machine, on purpose."* That was **already
+functionally false** — the folder is under `OneDriveDocuments`, and `.gitignore`
+stops git, not OneDrive (secrets review §3.4). It is struck through and corrected
+**in place** rather than deleted, because a session reading it would have drawn
+exactly the wrong conclusion about exposure, and the reasoning underneath it
+(these are conductor-minted values, so loss costs one re-mint, not an account
+recovery) is still sound.
+
+⚠️ **What this does NOT do:** it changes none of §3.1's eleven "no readable
+master" rows. A vault holds what somebody could read; those are secrets nothing
+on this machine can read. Step 3 is what would change that, and it is **not
+done** — see [`TODO.md`](TODO.md).
+
+**A tagging bug the second caller found immediately, worth recording:** `tagsFor`
+originally called anything absent from *this repo's* credential lists
+`local-config`. `ESTATE_CONDUCTOR_TOKEN` and `ESTATE_EVENTS_TOKEN` are absent from
+those lists because they belong to a different repo — and were labelled config. A
+real credential wearing a config label is the dangerous direction, so the rule was
+inverted: `local-config` now comes from the **explicit** `LOCAL_ONLY` list and an
+unrecognised name defaults to `credential`. One already-imported item
+(`library.GABI_PANEL`, a dev flag) had its tag corrected by hand.
 ## ✅ The nightly backup lost a bucket to a Cloudflare RATE LIMIT — 429 was being retried like a 500 (2026-08-26)
 
 **The failure.** Scheduled run

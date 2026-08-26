@@ -552,9 +552,34 @@ npx wrangler secret list --config apps/<worker>/wrangler.toml [--env <env>]
 
 ## 5. The 1Password end state
 
-**Owner decision on record, 2026-08-25: the vault is DEFERRED (option C), and
-when it happens the target is 1Password — not Bitwarden.** This section sketches
-the end state so that when it is picked up, the shape is already argued.
+> ✅ **SUPERSEDED THE SAME DAY, AND HALF-EXECUTED — 2026-08-26.** The owner
+> reversed the deferral hours after this section was written (*"a do it, I have
+> 1 password and time now"* — option A). ⚠️ **This section is the PLAN; the
+> sections below it are no longer a sketch for steps 1 and 2.**
+>
+> | Step | State | Where the record is |
+> |---|---|---|
+> | 1. `library_catalog` | ✅ **DONE** — 13 items, `--source op` proves plan-identical, one key pushed live from the vault to both instances | `library_catalog/docs/DONE.md` + `docs/access/secrets.md` |
+> | 2. `docs/access/keys/*.txt` | ✅ **DONE** — 3 items, files deliberately kept as a courtesy copy | `docs/access/keys/README.md`, `scripts/op-import-keys.mjs` |
+> | 3. `catalog-platform` Workers (the no-master set) | 🔴 **NOT DONE** | `docs/TODO.md` |
+> | 4. `audiobook_catalog/.env` | 🔴 **NOT DONE** — estimate only | `docs/TODO.md` |
+>
+> **16 items in vault `Estate`**, verified by `op item list` — titles only.
+> ⚠️ **§3.1's "no readable master" list is UNCHANGED by any of this.** A vault
+> holds what somebody could read, and every one of those secrets is a secret
+> nothing on this machine can read. Step 3 is what would change it.
+>
+> ⚠️ **Two of §3.1's rows were also falsified by step 1**, by measurement rather
+> than by the work: `ESTATE_APP_TOKEN_LIBRARY` and `INDEX_PUSH_TOKEN` are
+> recorded above as *"master: library `.dev.vars` (file exists; contents
+> unopened)"*. Parsing that file for NAMES (never values) showed **neither is in
+> it**, so both belong on the no-master list. This review's own header was honest
+> that those rows were claims about a FILE; this is that caveat coming true.
+
+**The original 2026-08-25 decision, kept for the record: the vault is DEFERRED
+(option C), and when it happens the target is 1Password — not Bitwarden.** This
+section sketches the end state so that when it is picked up, the shape is already
+argued.
 
 **The principle: `.dev.vars` and `.env` stop being hand-edited masters and
 become GENERATED artifacts.** The master moves into 1Password; the file on disk

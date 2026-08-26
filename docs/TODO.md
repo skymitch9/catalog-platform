@@ -195,6 +195,73 @@ Land for review. Candidate for a Fable/subagent build once located.
    vault **`Estate`** created (`y5w264u3akx22cf2ffric32kii`). Build delegated to an
    Opus agent: steps 1–3 of §5 in order, step 4 (`audiobook_catalog/.env`) estimate only.
 
+   ### ✅ STEPS 1 + 2 DONE — 2026-08-26. **16 items in vault `Estate`.**
+
+   | Step | Result |
+   |---|---|
+   | 1. `library_catalog` | **13 items** (8 credentials + 5 local dev config, 3 empty drop-boxes skipped by name). `.dev.vars.tpl` tracked; `--source op` on `push-secrets.mjs`; `--source op` and `--source file` dry-run plans **byte-identical** on all three paths; `HARDCOVER_API_TOKEN` pushed to BOTH instances **from the vault** and landed (new *Secret Change* versions, 16:22 Phoenix). Pushed to `library_catalog` main. |
+   | 2. `docs/access/keys/*.txt` | **3 items** — `ESTATE_CONDUCTOR_TOKEN`, `ESTATE_EVENTS_TOKEN`, `CLAUDE_USAGE_TOKEN`. `scripts/op-import-keys.mjs` is a **launcher**, not a second implementation — the logic stays in `library_catalog/scripts/op-import-dev-vars.mjs` (`--keys-dir`). ⚠️ **Files deliberately NOT deleted** — the owner's call; `keys/README.md` now says the vault is the master and the files are a courtesy copy. |
+
+   ⚠️ **Owner keystrokes: ~5–6 1Password approval prompts** across the whole
+   run (each `op` process can raise one; the scripts batch them so the count is
+   a handful, not one per secret). **Two early calls FAILED on an unanswered
+   prompt** — `authorization timeout` and `authorization prompt dismissed` — and
+   both were re-run and succeeded. No result was taken from a failed call.
+
+## ☐ 🔴 STEP 3 of the 1Password adoption — the no-master pairs — NOT DONE (2026-08-26)
+
+**This is the step that actually changes the recovery story** (secrets review
+§5's own words), and it is the only one of the four that **mints new values and
+touches live estate-internal pairs**. It was scoped, not executed. Four pairs,
+each a `crypto.randomBytes(32).toString('hex')` minted inside a script, stored as
+a vault item, then pushed to **both holders in the same run**, then proved by the
+handshake that only agreeing sides can pass:
+
+| Pair | Holder A (verifier) | Holder B | The proof it worked |
+|---|---|---|---|
+| `ESTATE_APP_TOKEN_LIBRARY2` | `estate-auth` | library **friend** (padhard) | `POST /api/estate/seen` accepted; padhard's health line |
+| `ESTATE_APP_TOKEN_AUDIOBOOK` | `estate-auth` | `audiobook-worker` | the `/api/estate/…` health path |
+| `ESTATE_APP_TOKEN_BOOKS` | `audiobook-worker` | `estate-discord` | `/api/books/*` on a linked asker's behalf |
+| `INDEX_READ_TOKEN_LIBRARY2` | `catalog-index` | library friend's `INDEX_READ_TOKEN` | the index machine lookup returns rows for that app |
+
+⚠️ **ONE PAIR AT A TIME, verify, then the next — stop at the first failure.** A
+half-pushed pair does not error; it goes silently 401/403/404 and reads exactly
+like a code bug. Verifier first for all four (they are inbound-verified).
+
+**Deliberately OUT of scope — the owner re-mints these into the vault himself,
+because each is a console he holds and a session should not:**
+`ANTHROPIC_*`, `CLOUDFLARE_API_TOKEN`, `CATALOG_PLATFORM_TOKEN`,
+`TOKEN_SIGNER_KEY` (GCP `estate-token-minter`), and `SHELF_PARITY_TOKEN` —
+⚠️ the last is **RETIRE, not rotate** (superseded by the KV-hashed self-service
+key since 2026-08-20).
+
+## ☐ 🔴 STEP 4 of the 1Password adoption — `audiobook_catalog/.env` — NOT DONE, estimate only (2026-08-26)
+
+Deliberately not attempted. The estimate, from the secrets review's own §2.6
+inventory (names only; the file was **not** opened by this work):
+
+- **~30 keys**, split **14 credentials / 16 config-and-identifiers**. Each one
+  needs the config-vs-credential call made by hand — `R2_ACCOUNT_ID` and
+  `ABS_BASE_URL` are identifiers, `R2_SECRET_ACCESS_KEY` and `ABS_PASSWORD` are
+  not, and only a human reading the file can finish that sort.
+- ⚠️ **The key count is a FLOOR, not a census.** `Claude-llm` is hyphenated and
+  mixed-case, so the `^[A-Z_]+=` grep that produced the list cannot see it
+  (§3.1). Any real census must use the `sed 's/=.*/=<REDACTED>/'` form.
+- ⚠️ **Four files are not `NAME=value` at all and need DOCUMENT-type vault
+  items, not password items:** `scripts/firebase_service_account.json` and
+  `docs/access/keys/firebase-sa-restore.json` (⚠️ **two DIFFERENT keys on the
+  same service account** — revoking one does not revoke the other), plus
+  `scripts/token.json` and `scripts/credentials.json` (the estate's Drive OAuth
+  token and its client secret). `op document create` is a different code path
+  from everything built for steps 1–2.
+- **Reusable as-is:** the importer (`--keys-dir` already handles one-value-per-
+  file), the title convention, the idempotent create/update, the glued-value
+  guard. **Needed new:** an `.env`-shaped template + the document-item path.
+- ⚠️ **A concurrent agent was working in that repo** when steps 1–2 ran, which
+  is a second reason it was left alone.
+- **Rough size:** the 30 `NAME=` keys are a short sitting once the config/credential
+  sort is made; the four JSON documents are the real work.
+
 ## ☐ DESIGNED, NOT BUILT (owner asks 2026-08-24) — two designs landed 2026-08-26
 
 Both are **DESIGN ONLY**. Nothing was built, no route exists, no migration was

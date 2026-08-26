@@ -2,9 +2,11 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (this file
 > only — **every other file in this folder is gitignored**).
-> Last verified: **2026-08-18** — the ignore rules were proved with real files,
-> not read off `.gitignore`: a probe token file written into this folder does
-> not appear in `git status --untracked-files=all`, and this README does.
+> Last verified: **2026-08-26** — 🔐 **all three values are now in the 1Password
+> vault `Estate`** (see the next block). Ignore rules previously proved with real
+> files on **2026-08-18**, not read off `.gitignore`: a probe token file written
+> into this folder does not appear in `git status --untracked-files=all`, and
+> this README does. ⚠️ That proof was **not** re-run today.
 
 ⚠️ **THIS REPO IS PUBLIC ON GITHUB.** One mis-staged file in this folder is a
 published credential. That is why `.gitignore` excludes `docs/access/keys/*`
@@ -16,6 +18,43 @@ Git never descends into an excluded *directory*, so `keys/` plus
 `!keys/README.md` silently ignores this README too. Excluding the CONTENTS
 leaves the directory walkable, which is the only reason one file can be
 re-included. Measured here on 2026-08-18, the wrong way round first.
+
+## 🔐 THE VAULT IS THE MASTER NOW — 2026-08-26
+
+📌 **Owner decision 2026-08-26 (option A): adopt 1Password**, superseding the
+2026-08-25 "defer". All three values here were imported into vault **`Estate`**
+that day — step 2 of
+[`../../info/secrets-review-2026-08-26.md`](../../info/secrets-review-2026-08-26.md) §5:
+
+| File | Vault item | Tags |
+|---|---|---|
+| `estate-conductor-token.txt` | `ESTATE_CONDUCTOR_TOKEN` | `estate`, `catalog-platform`, `credential` |
+| `estate-events-token.txt` | `ESTATE_EVENTS_TOKEN` | same |
+| `claude-usage-token.txt` | `CLAUDE_USAGE_TOKEN` | same |
+
+Titles are **bare** — one FILE here is one value, and the file name IS that
+secret's name across the estate, so nothing is holder-scoped. The convention in
+full, and the reason the separator elsewhere is a dot and never a slash, is in
+[`library_catalog/docs/access/secrets.md`](../secrets.md) — one fact, one home.
+
+```
+node scripts/op-import-keys.mjs --dry-run    # names + actions, no writes
+node scripts/op-import-keys.mjs              # create/update. Idempotent
+op item list --vault Estate                  # titles only, never a value
+```
+
+⚠️ **THE FILES ARE STILL HERE, AND THAT IS DELIBERATE.** Deleting them is the
+**owner's** call, not a session's. They are now a **courtesy copy**: a script on
+this machine can read one without raising a 1Password approval prompt that a
+human has to click, which the vault cannot avoid. Until he says otherwise:
+
+- **The vault is the master.** A rotation updates the vault item, then this file.
+- **A disagreement is resolved in the vault's favour**, and the file re-written
+  from it — never the other way round.
+- ⚠️ **The "nothing here is backed up off this machine" line further down is now
+  FALSE**, and was already misleading before today (this folder is inside
+  OneDrive — secrets review §3.4). It is corrected in place rather than deleted,
+  because the *reasoning* under it is still sound.
 
 ⚠️ **SUPERSEDED IN PART, 2026-08-20 — READ THIS BEFORE ROTATING ANYTHING
 HERE.** Both tokens in the table below can now be **minted from
@@ -91,8 +130,22 @@ then overwrite this file. ⚠️ The auth Worker also still accepts
 
 ## ⚠️ NOT verified / deliberately absent
 
-- **Nothing here is backed up off this machine, on purpose.** Every value in
-  this folder is conductor-MINTED (`openssl rand -hex 32`), not portal-issued,
-  so losing the folder costs one re-mint and one `wrangler secret put` per
-  file — not an account recovery. Do not "back it up" somewhere less private
+- 🔴 ~~**Nothing here is backed up off this machine, on purpose.**~~
+  **CORRECTED TWICE, and the correction is the point of the entry.**
+  1. It was already **functionally false** before anyone changed anything: this
+     folder lives under `C:\Users\nbasl\OneDrive\Documents\`, so every value in
+     it is a candidate for upload to Microsoft's cloud, and `.gitignore` does
+     nothing about that — it stops git, not OneDrive (secrets review §3.4).
+     ⚠️ **A session reading the old sentence would have drawn exactly the wrong
+     conclusion about exposure**, which is why it is struck through rather than
+     quietly edited away.
+  2. Since **2026-08-26** it is false on purpose as well: all three values are
+     in the 1Password vault `Estate`. That is the deliberate off-machine copy
+     the old sentence refused — chosen, in a place with reviewed sharing
+     semantics, rather than accidental.
+
+  **The reasoning underneath it still holds and is worth keeping:** every value
+  here is conductor-MINTED (`openssl rand -hex 32`), not portal-issued, so
+  losing them costs one re-mint and one `wrangler secret put` per file — not an
+  account recovery. So: do not copy them anywhere *less* private than the vault
   to solve a problem that does not exist.

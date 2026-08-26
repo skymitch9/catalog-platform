@@ -1358,6 +1358,32 @@ the other three**, because it is the repo that can read their backups.
 ⚠️ **No values here, ever.** ⚠️ **Every Cloudflare Worker secret is write-only —
 there is no "look it up".** A rebuild re-mints all of them.
 
+> 🔐 **NEW CUSTODY STORE, 2026-08-26 — the 1Password vault `Estate`.** Owner
+> decision that day (option A), superseding the 2026-08-25 "defer". It is the
+> **first custody store in this table that survives the loss of this machine**,
+> which §11.4 names as the single biggest gap in the rebuild story.
+>
+> | In the vault as of 2026-08-26 | Items |
+> |---|---|
+> | `catalog-platform/docs/access/keys/*.txt` (rows below) | **3** — `ESTATE_CONDUCTOR_TOKEN`, `ESTATE_EVENTS_TOKEN`, `CLAUDE_USAGE_TOKEN` |
+> | `library_catalog/apps/worker/.dev.vars` | **13** (8 credentials + 5 local dev config) |
+> | **Total** | **16**, verified by `op item list --vault Estate` — titles only |
+>
+> ⚠️ **The vault does NOT change any 🔴 NONE below.** A vault holds what somebody
+> could read; every 🔴 NONE row is a secret nothing on this machine can read, so
+> there was nothing to put in it. Those rows still need a **mint-and-set-both-sides**
+> operation before the vault can become their master — step 3 of
+> [`../info/secrets-review-2026-08-26.md`](../info/secrets-review-2026-08-26.md) §5,
+> and it is **NOT done**.
+>
+> ⚠️ **And it does not make a Worker secret readable.** `wrangler secret list`
+> still proves only that a NAME exists. The vault is a *master*, never a
+> *readback of what is installed*.
+>
+> Convention, commands and the two `op inject` traps live in
+> `bookbuddy/library_catalog/docs/access/secrets.md` — one fact, one home.
+> Import here: `node scripts/op-import-keys.mjs`.
+
 > ⚠️ **REBUILT FROM A LIVE MEASUREMENT, 2026-08-26** (`docs/info/secrets-review-2026-08-26.md`).
 > The table below used to carry **11 rows**; a `wrangler secret list` against
 > every Worker environment that day found **59 bindings across 8 environments**,
@@ -1384,8 +1410,8 @@ there is no "look it up".** A rebuild re-mints all of them.
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | GH secret (`catalog-platform`) | ✅ **also 2 working local copies** — §7a | Firebase console → `audiobook-catalog` → Service accounts |
 | `TOKEN_SIGNER_KEY` | `estate-auth` | Worker secret (write-only) — 🔴 **NO local copy; a DIFFERENT service account (`estate-token-minter`) from `FIREBASE_SERVICE_ACCOUNT`.** ⚠️ **(corrected 2026-08-26)** it **IS SET** — `env.ts:209` and `CREDENTIALS.md` §7 rule 7 both still say it is deliberately unset, and both are wrong. This is the impersonation-capable key | Google Cloud Console → IAM → Service Accounts → `estate-token-minter` → Keys. ⚠️ Create a SECOND key (both valid at once), swap, verify, **then** delete the old — `library_catalog/docs/access/estate-auth.md` §3.4 |
 | `FIREBASE_SERVICE_ACCOUNT` | `estate-auth`, **`audiobook-worker`, `estate-discord`** ⚠️ **(corrected 2026-08-26 — 6 holders, not 2)** | Worker secret ×3 + GH secret + **2 local JSONs that are DIFFERENT KEYS on the same SA** (§7a) — revoking one does not revoke the other | same as above |
-| `ESTATE_CONDUCTOR_TOKEN` | `estate-auth` | Worker secret **+** `docs/access/keys/estate-conductor-token.txt` (gitignored) | self-generated random — ✅ **prefer minting at <https://heygabi.ai/status/api> → "Agent board publisher"** (KV-hashed, 24 h grace) |
-| `ESTATE_EVENTS_TOKEN` | `estate-auth`, **`catalog-index`, `audiobook-worker`** ⚠️ **(corrected 2026-08-26)** | Worker secret ×3 **+** `docs/access/keys/estate-events-token.txt` — 🔴 **NOT a GH repo secret; re-measured 2026-08-26 and still missing (KI-10, 5 days)** | self-generated — ✅ prefer `/status/api` → "Service event log". ⚠️ Rotation must reach **all three** Workers inside the 24 h window |
+| `ESTATE_CONDUCTOR_TOKEN` | `estate-auth` | 🔐 **1Password `Estate` → `ESTATE_CONDUCTOR_TOKEN` (2026-08-26 — the master)** + Worker secret + `docs/access/keys/estate-conductor-token.txt` (gitignored; now a courtesy copy) | self-generated random — ✅ **prefer minting at <https://heygabi.ai/status/api> → "Agent board publisher"** (KV-hashed, 24 h grace) |
+| `ESTATE_EVENTS_TOKEN` | `estate-auth`, **`catalog-index`, `audiobook-worker`** ⚠️ **(corrected 2026-08-26)** | Worker secret ×3 **+** 🔐 **1Password `Estate` → `ESTATE_EVENTS_TOKEN` (2026-08-26 — the master)** + `docs/access/keys/estate-events-token.txt` (courtesy copy). ✅ **The GH-repo-secret half is CLOSED** — `gh secret list` re-measured 2026-08-26 shows `ESTATE_EVENTS_TOKEN` set at 21:35:50Z (14:35 Phoenix), and a test event was seen on `/status` at 15:17. KI-10 done | self-generated — ✅ prefer `/status/api` → "Service event log". ⚠️ Rotation must reach **all three** Workers inside the 24 h window |
 | `ESTATE_APP_TOKEN_LIBRARY` | ⚠️ **PAIRED** — `estate-auth` (verifier) + library **main** | library `apps/worker/.dev.vars` | self-generated (`openssl rand -hex 32`); ⚠️ **set both sides together or the failure is a silent 401** |
 | `ESTATE_APP_TOKEN_LIBRARY2` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + library **`--env friend`** (padhard) | 🔴 **NONE** — auth-worker has no `.dev.vars`, and there is deliberately no `.dev.vars.friend` | self-generated. ✅ Both sides verified present 2026-08-26 (`CREDENTIALS.md` §6's *"pipe outstanding"* is stale) |
 | `ESTATE_APP_TOKEN_GAMES` **(added 2026-08-26, secrets review)** | ⚠️ **PAIRED** — `estate-auth` + BGC Worker | `Board_Game_Catalog/apps/worker/.dev.vars` | self-generated |
@@ -1405,7 +1431,7 @@ there is no "look it up".** A rebuild re-mints all of them.
 | `CATALOG_PLATFORM_TOKEN` | GH Actions (library + BGC repos) | GH repo secret | github.com → Settings → Developer settings → PAT |
 | **library Worker, both envs** — `PEER_TOKEN`, `DONOR_TOKEN`, `EBOOK_INGEST_TOKEN`, `AUDIOBOOK_MAPPING_TOKEN`, `GOOGLE_BOOKS_API_KEY`, `HARDCOVER_API_TOKEN`, `ANTHROPIC_API_KEY` **(added 2026-08-26, secrets review)** | library `apps/worker` main (11 secrets) + `--env friend` (10) | `apps/worker/.dev.vars` — 🔴 **except `DONOR_TOKEN` (no readable copy anywhere) and `AUDIOBOOK_MAPPING_TOKEN` (master is `audiobook_catalog/.env` `LIBRARY_MAPPING_TOKEN`, absent from `.dev.vars` so a bulk run cannot rotate it)** — library `TODO.md` "Custody gap". 🔴 **friend's `ANTHROPIC_API_KEY` has no master at all** (library KI-7) | `openssl rand -hex 32` / the vendor console. Procedure: `library_catalog/docs/access/secrets.md` (`secrets:push` / `:both` / `-- --enable NAME`) |
 | **BGC Worker** — `ANTHROPIC_API_KEY`, `BGG_API_TOKEN` **(added 2026-08-26, secrets review)** | `board-game-catalog` (4 secrets total; the other two are paired above) | `Board_Game_Catalog/apps/worker/.dev.vars` | vendor consoles. 🔴 **That repo has NO secrets runbook** — see the review's §6 |
-| **KV-hashed, self-service** — `CLAUDE_USAGE_TOKEN`, `SHELF_CONFIG_TOKEN` **(added 2026-08-26, secrets review)** | auth-worker KV (SHA-256 hash only) + the reporting session's env / the pipeline PC | ✅ `docs/access/keys/claude-usage-token.txt`; ✅ `audiobook_catalog/.env` `SHELF_CONFIG_TOKEN` | <https://heygabi.ai/status/api>. ⚠️ `CLAUDE_USAGE_TOKEN` has **no legacy fallback** — until installed, nothing can report |
+| **KV-hashed, self-service** — `CLAUDE_USAGE_TOKEN`, `SHELF_CONFIG_TOKEN` **(added 2026-08-26, secrets review)** | auth-worker KV (SHA-256 hash only) + the reporting session's env / the pipeline PC | ✅ 🔐 **1Password `Estate` → `CLAUDE_USAGE_TOKEN` (2026-08-26 — the master)** + `docs/access/keys/claude-usage-token.txt` (courtesy copy); ✅ `audiobook_catalog/.env` `SHELF_CONFIG_TOKEN` — ⚠️ **not in the vault**: it lives in the `.env` that step 4 deliberately did not touch | <https://heygabi.ai/status/api>. ⚠️ `CLAUDE_USAGE_TOKEN` has **no legacy fallback** — until installed, nothing can report |
 | **audiobook pipeline `.env`** — `ABS_USERNAME`/`ABS_PASSWORD`/`ABS_CF_CLIENT_ID`/`ABS_CF_CLIENT_SECRET`, `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `HARDCOVER_TOKEN`, `DOESTHEDOGDIE_API_KEY`, `Claude-llm` **(added 2026-08-26, secrets review)** | `audiobook_catalog/.env` (gitignored, `.gitignore:275`) | ✅ the `.env` itself is the master | vendor consoles. ⚠️ **`Claude-llm` is hyphenated + mixed-case and is INVISIBLE to `grep '^[A-Z_]*='`** — enumerate with `sed 's/=.*/=<REDACTED>/'` (`CREDENTIALS.md` §7 rule 1) |
 | **Drive OAuth (backup mirror half 2)** — `scripts/token.json` + `scripts/credentials.json` **(added 2026-08-26, secrets review)** | `audiobook_catalog/scripts/`, this machine only, gitignored | ✅ both files | `python scripts/drive_auth.py` re-consents. Already named in §7's table; recorded here so §11.3 is a complete inventory |
 
@@ -1441,6 +1467,13 @@ weakness of the current custody design.
   is absent from the dump and the expected-collection check warns on every run
   (§4.1).
 - ⚠️ **`CREDENTIALS.md` itself**, if the machine is the casualty (§11.3).
+  ✅ **Partly answered 2026-08-26:** the 1Password vault `Estate` survives the
+  machine and now holds **16 values**, each with a note recording which holders
+  receive it — so for those, the custody record is no longer only in a file on
+  the casualty. ⚠️ It is **not** a replacement for `CREDENTIALS.md`: the vault
+  holds values and their holders, not the pairing map, the rotation ORDERING
+  rules, or the three env-file patterns — and every 🔴 NONE row in §11.3 is still
+  absent from it.
 
 ---
 
