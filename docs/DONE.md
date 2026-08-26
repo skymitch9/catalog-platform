@@ -91,6 +91,26 @@ after 7 attempts, and the pacing floor. 11/11 in that file, 215/215 across
 ("the ebooks backup failed with 429") because that is what a debugger will
 search for.
 
+**PROVEN LIVE — run
+[`33017504084`](https://github.com/skymitch9/catalog-platform/actions/runs/33017504084)
+(2026-08-26 21:55 UTC, `target=all`): 14/14 jobs green.** `r2 (ebooks-gated)`
+**816 objects / 227,645,607 bytes in 7m54s** (1,473 listed, 657 `transcripts/`
+excluded per KI-5), surviving one rate limit. `audiobook-covers` 1,990 objects
+in 16m26s and `game-covers` 1,125 in 11m33s, two rate limits each. Full table in
+§3.2c.
+
+⚠️ **The run measured two things nothing else could have.** First, **the live
+API sends `Retry-After: 300`** — every one of the five waits was Cloudflare
+asking for the full five-minute window, so the old ~2 s backoff was not merely
+short, it was **150× short**, and no number of extra attempts at that scale
+could ever have helped. (`RATE_LIMIT_MAX_WAIT_MS` trims it to 180 s and every
+trimmed wait still succeeded; the trim is now measured, not assumed.) Second,
+**the three big buckets were rate-limited at the same instant** — 21:58:07.2,
+21:58:07.4, 21:58:07.6 — which proves the shared-budget diagnosis to the tenth
+of a second. The cost is time: ~15 min → 16m26s, bounded by `audiobook-covers`.
+A backup that takes longer and exists beats a faster one that loses a bucket a
+night.
+
 ### 🔴 The same day, the failure NOTIFICATION turned out to be broken too
 
 The manual run above was dispatched to exercise KI-10 step 2 — *"see one real

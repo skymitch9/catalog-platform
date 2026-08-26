@@ -288,7 +288,17 @@ const backoffOverride = (process.env.BACKUP_R2_RATE_LIMIT_BACKOFF_MS || '')
 const RATE_LIMIT_BACKOFF_MS = backoffOverride.length
   ? backoffOverride
   : [15_000, 30_000, 60_000, 120_000, 120_000, 120_000];
-/** Never park on a `Retry-After` longer than this, whatever the header says. */
+/**
+ * Never park on a `Retry-After` longer than this, whatever the header says.
+ *
+ * ⚠️ MEASURED 2026-08-26 (run 33017504084, the first run on this code): the
+ * live API DOES send the header, and it asks for **300 seconds** — the
+ * five-minute window, stated outright. This cap therefore TRIMS what Cloudflare
+ * asked for, deliberately, and it was measured to still work: five 429s across
+ * three buckets, every one of them waited 180 s and every one then succeeded.
+ * Keep the trim unless a run appears where a 180 s wait is refused a second
+ * time; then raise this to 300_000 and re-measure, rather than adding attempts.
+ */
 const RATE_LIMIT_MAX_WAIT_MS = 180_000;
 const MAX_ATTEMPTS = Math.max(GET_ATTEMPTS, RATE_LIMIT_ATTEMPTS);
 

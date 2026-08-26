@@ -228,11 +228,13 @@ secret" was hiding a payload that would have failed on the day it mattered.
 
 ✅ **Fixed 2026-08-26** in the same commit as the §3.2c backup fix: the curl now
 sends a bare `[{ … }]` array, with the incident written beside it in the
-workflow. ⏳ **NOT YET VERIFIED END-TO-END** — proving it needs another *failed*
-backup run, and the §3.2c fix is designed to stop those happening. Options, in
-preference order: wait for the next genuine failure; or post one test event by
-hand with the token and confirm it lands on
-<https://heygabi.ai/status/> (the ring's own GET is devops-gated).
+workflow. ⏳ **NOT YET VERIFIED END-TO-END, and deliberately so.** The next run
+([`33017504084`](https://github.com/skymitch9/catalog-platform/actions/runs/33017504084))
+went **14/14 green**, so `notify-failure` took its "all jobs succeeded" branch
+in 3 s and posted nothing — ⚠️ **the §3.2c fix removed the only failure that was
+available to test against.** Options, in preference order: wait for the next
+genuine failure; or post one test event by hand with the token and confirm it
+lands on <https://heygabi.ai/status/> (the ring's own GET is devops-gated).
 
 Until step 2 is confirmed green, treat backup health as **checked, not
 alerted** — i.e. it still depends on somebody looking.

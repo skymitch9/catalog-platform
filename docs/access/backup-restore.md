@@ -567,6 +567,42 @@ and the pacing floor. ⚠️ The tests set `BACKUP_R2_MIN_INTERVAL_MS=0` and
 `BACKUP_R2_RATE_LIMIT_BACKOFF_MS` to millisecond values — testing seams, same
 rule as `CLOUDFLARE_API_BASE`: **nothing sets either in CI or in any runbook.**
 
+**PROVEN — run
+[`33017504084`](https://github.com/skymitch9/catalog-platform/actions/runs/33017504084),
+2026-08-26 21:55 UTC, `target=all`: 14/14 jobs green.**
+
+| Bucket | Listed | Backed up | Bytes | 429s survived | Job time |
+|---|---:|---:|---:|---:|---:|
+| `ebooks-gated` | 1,473 | **816** (657 `transcripts/` excluded) | 227,645,607 | 1 | **7m54s** |
+| `audiobook-covers` | 1,990 | 1,990 | 342,469,322 | 2 | 16m26s |
+| `game-covers` | 1,125 | 1,125 | 179,588,542 | 2 | 11m33s |
+| `library-covers` | — | — | 23,454,932 (tar) | 0 | 1m21s |
+| `estate-docs-gated` | — | — | — | 0 | 19s |
+
+⚠️ **Two things that run measured which nothing else could have:**
+
+1. 🔴 **The live API DOES send `Retry-After`, and it asks for 300 SECONDS** —
+   the five-minute window, stated outright. Every one of the five waits above
+   was `Cloudflare asked us to wait 300s (Retry-After)`. So the old ~2-second
+   backoff was not merely too short, it was **150× too short**, and no number of
+   extra attempts at that scale would ever have helped.
+   ⚠️ `RATE_LIMIT_MAX_WAIT_MS` **trims that to 180 s** and every trimmed wait
+   still succeeded. That trim is deliberate and now measured; if a run ever
+   shows a 180 s wait refused a second time, raise the cap to 300 s and
+   re-measure — do **not** add attempts.
+2. 🔴 **The three big buckets were rate-limited at the SAME INSTANT** —
+   21:58:07.2 (`audiobook-covers`), 21:58:07.4 (`game-covers`),
+   21:58:07.6 (`ebooks-gated`), and two of them again together at 22:03:11.
+   That is the shared-budget claim above proven to the tenth of a second: the
+   limit is per TOKEN, not per bucket, and the parallel matrix is what spends
+   it. ⚠️ **Never diagnose this as a problem with the bucket that happened to
+   go red.**
+
+The price is time: the whole run went from ~15 min to **16m26s bounded by
+`audiobook-covers`** (three minutes of which was two 180 s waits), and every
+store landed. That is the trade — a backup that takes longer and exists, over a
+faster one that loses a bucket a night.
+
 **If it happens anyway** (the buckets keep growing, and the budget is shared
 with anything else using that token): raise the pacing floor rather than the
 attempt count — `BACKUP_R2_MIN_INTERVAL_MS` on the `r2` job's `Back up …` step —
