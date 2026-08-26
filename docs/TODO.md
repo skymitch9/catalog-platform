@@ -178,12 +178,19 @@ Land for review. Candidate for a Fable/subagent build once located.
    `docs/access/keys/` (+ `.dev.vars` / `.env`) out of OneDrive via a junction
    (Finding 4, §3.4). Owner: *"no thats fine"*. Not re-asking; the finding stays
    recorded in the review as accepted.
-2. ☐ **`ESTATE_EVENTS_TOKEN` as a `catalog-platform` repo secret** (KI-10 no-op
-   since 2026-08-21). Custody copy exists at `docs/access/keys/estate-events-token.txt`;
-   `gh secret set ESTATE_EVENTS_TOKEN --repo skymitch9/catalog-platform < <that file>`
-   never shows the value. Awaiting owner yes/no.
-3. ☐ **The 11 secrets with no readable master** (§3.2) + the 1Password plan (owner
-   has 1Password; vault deferred "c for now" on 2026-08-26). Not yet asked.
+2. ✅ **DECIDED + DONE 2026-08-26 14:35 — `ESTATE_EVENTS_TOKEN` set as a repo
+   secret** from the custody file (owner: *"yes do it"*); test event seen on
+   `/status` 15:17 (KI-10).
+3. ✅ **DECIDED 2026-08-26 15:35 — option A: adopt 1Password NOW** (owner: *"a do
+   it, I have 1 password and time now"*). Supersedes the 2026-08-25 "deferred (C)".
+   Plan = `info/secrets-review-2026-08-26.md` §5, in its order: (1) `library_catalog`
+   templates + `op`-sourced push; (2) `docs/access/keys/*.txt` → vault items;
+   (3) `catalog-platform` Workers — the 10 no-master secrets (`DONOR_TOKEN` closed
+   2026-08-26); (4) `audiobook_catalog/.env` last.
+   Measured 15:35: desktop app **8.12.32** installed (Store package); **CLI not
+   installed**; owner's keystrokes: `winget install AgileBits.1Password.CLI`, app
+   Settings → Developer → *Integrate with 1Password CLI*, then `op whoami`.
+   Sessions never see a value — every move is `op` reading a file or a vault item.
 
 ## ☐ DESIGNED, NOT BUILT (owner asks 2026-08-24) — two designs landed 2026-08-26
 
