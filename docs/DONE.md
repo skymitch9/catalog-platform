@@ -17,6 +17,49 @@
 
 
 
+
+## 2026-08-26 — a master-less estate pair finally has a master (§5 step 3, 1 of 4)
+
+`INDEX_READ_TOKEN_LIBRARY2` — padhard's free-details rung 2 — had **no readable
+master anywhere** (secrets review §3.1). `scripts/op-rotate-pair.mjs` minted a
+fresh value into vault item `library2.INDEX_READ_TOKEN` and set it on both
+holders in one run, verifier first.
+
+| Step | Result |
+|---|---|
+| pre-flight probe with the new value | **401** — the route is live and actually checking |
+| vault item created | `library2.INDEX_READ_TOKEN` |
+| VERIFIER set | `catalog-index` ← `INDEX_READ_TOKEN_LIBRARY2` |
+| **handshake** | `GET index.heygabi.ai/api/machine/lookup?title=…` → **200, 2 matching rows** |
+| PRESENTER set | library-catalog-friend ← `INDEX_READ_TOKEN` |
+| padhard's secret NAMES after | **10** — unchanged |
+
+⚠️ **NOT proved:** that padhard *sends* the new value on her own traffic. Worker
+secrets are write-only; the evidence is that wrangler accepted the write and the
+name is still listed. The verifier half is proved directly.
+
+🔴 **The other three pairs were REFUSED before anything was minted**, because
+none has a live handshake a script can run — see [`TODO.md`](TODO.md) for the
+per-pair reason and the two ways forward. The refusal is a guard in the script,
+not a judgement call at the keyboard: a half-applied pair raises no error
+anywhere, so rotating without a way to watch the new pair agree is shipping that
+state and hoping.
+
+### ⚠️ Two things this run taught, both bought the hard way
+
+1. **A Cloudflare secret change is not live the instant `wrangler` returns.** The
+   first attempt set the verifier, probed immediately, got 401, and correctly
+   stopped half-applied — padhard's rung 2 was down for the couple of minutes it
+   took to resume. The value was right; the edge had not caught up. The handshake
+   now retries with backoff (2s/4s/8s/15s) before declaring failure, because a
+   false negative there is itself the outage.
+2. 🔴 **"Re-run this command" was NOT a safe retry, and the script said it was.**
+   A second run would have minted a SECOND value and created a DUPLICATE vault
+   item under the same title — two masters for one secret, which is worse than
+   the half-applied pair it was recovering from. `--resume` reads the value back
+   from the item the failed run created. **Any script that mints into a vault and
+   then does something fallible needs a resume path**, or its own error message
+   tells you to corrupt your custody store.
 ## 2026-08-26 — 1Password adopted: the three raw key files are vault items (§5 step 2)
 
 📌 **Owner decision 2026-08-26 (option A)**, superseding the 2026-08-25 "defer".

@@ -1380,6 +1380,14 @@ there is no "look it up".** A rebuild re-mints all of them.
 > still proves only that a NAME exists. The vault is a *master*, never a
 > *readback of what is installed*.
 >
+> ✅ **UPDATED 2026-08-26 (step 3, 1 of 4):** `INDEX_READ_TOKEN_LIBRARY2` /
+> library-friend `INDEX_READ_TOKEN` **now has a master** — vault item
+> `library2.INDEX_READ_TOKEN`, minted fresh and set on both holders, handshake
+> proved by `GET index.heygabi.ai/api/machine/lookup` (200). Its 🔴 NONE row
+> below is superseded. The other three master-less PAIRS
+> (`ESTATE_APP_TOKEN_LIBRARY2`, `_AUDIOBOOK`, `_BOOKS`) are unchanged and are
+> blocked on having no runnable handshake — `docs/TODO.md`.
+>
 > Convention, commands and the two `op inject` traps live in
 > `bookbuddy/library_catalog/docs/access/secrets.md` — one fact, one home.
 > Import here: `node scripts/op-import-keys.mjs`.

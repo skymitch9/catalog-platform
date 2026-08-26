@@ -208,7 +208,73 @@ Land for review. Candidate for a Fable/subagent build once located.
    prompt** — `authorization timeout` and `authorization prompt dismissed` — and
    both were re-run and succeeded. No result was taken from a failed call.
 
-## ☐ 🔴 STEP 3 of the 1Password adoption — the no-master pairs — NOT DONE (2026-08-26)
+## ☐ STEP 3 of the 1Password adoption — 1 of 4 pairs DONE, 3 REFUSED for want of a probe (2026-08-26)
+
+`scripts/op-rotate-pair.mjs` mints a fresh value into the vault and sets it on
+BOTH holders in one run, verifier first, stopping at the first failure.
+`--list` prints the four and their probe status.
+
+### ✅ `INDEX_READ_TOKEN_LIBRARY2` — ROTATED AND PROVED, 2026-08-26
+
+Vault item `library2.INDEX_READ_TOKEN`; `catalog-index` (verifier) and
+library-catalog-friend (presenter) both set in one run. **Handshake proved
+directly**: `GET index.heygabi.ai/api/machine/lookup?title=…` with the new value
+returns **200, 2 matching rows**, having returned 401 before the rotation. It had
+**no readable master** before today (secrets review §3.1); it has one now.
+padhard's secret NAME list re-measured after: **10**, unchanged.
+
+⚠️ **What it does NOT prove:** that padhard is *sending* the new value on her own
+traffic. Worker secrets are write-only, so the evidence there is that wrangler
+accepted the write and the name is still listed. The VERIFIER half is proved.
+
+### 🔴 The other three are REFUSED, and that is a guard, not an omission
+
+```
+ESTATE_APP_TOKEN_LIBRARY2    estate-auth      ↔ library-catalog-friend
+ESTATE_APP_TOKEN_AUDIOBOOK   estate-auth      ↔ audiobook-worker
+ESTATE_APP_TOKEN_BOOKS       audiobook-worker ↔ estate-discord
+```
+
+**None has a live handshake a script can run**, and the script refuses a pair
+that has none **before minting anything**:
+
+| Pair | Why no probe |
+|---|---|
+| `ESTATE_APP_TOKEN_LIBRARY2` | `POST /api/estate/seen` needs the app token **and a real signed-in identity**, and it WRITES a seen record. `GET /api/estate/health` is open but exercises no app token at all (`apps/auth-worker/src/estate.ts:647` — counts and a version) |
+| `ESTATE_APP_TOKEN_AUDIOBOOK` | Only reached from the ebook gate and `/api/me` (`apps/audiobook-worker/src/estate-status.ts:74`), both of which need a signed-in identity. `/api/health` reports the estate-check MODE, not whether the pair authenticates |
+| `ESTATE_APP_TOKEN_BOOKS` | Needs the token **plus** `X-Estate-On-Behalf-Of` naming a linked Discord asker (`apps/audiobook-worker/src/book-routes.ts:35,126`). ⚠️ Fabricating an on-behalf identity to test a token is asserting an identity to a live gate, which is not a probe |
+
+⚠️ **Why refusing is right.** A half-applied pair raises no error anywhere: the
+verifier stops recognising the presenter and the result is a silent 401/403/404
+on a route nobody is watching. Rotating with no way to observe the new pair
+agreeing is shipping that state and hoping — and the one pair that WAS rotated
+today proves the point twice over (see the propagation note below).
+
+**Two ways forward, either is fine:**
+1. **Give each a read-only self-check route** — an endpoint on the VERIFIER that
+   answers "does this bearer authenticate, and as which app?" without touching a
+   human identity or writing anything. That is exactly what
+   `/api/machine/lookup` already is for the index, which is why that pair could
+   be done. One small route per Worker unblocks all three permanently.
+2. **Do them by hand with the owner watching the surface each feeds** — sign in
+   on padhard; open an ebook; ask GABI a book question in Discord. Slower, and it
+   needs him present, but it needs no new code.
+
+### ⚠️ The gotcha this run bought, worth more than the rotation
+
+**A Cloudflare secret change is not live the instant `wrangler` returns.** The
+first run set the verifier, probed immediately, got **401**, and correctly
+stopped with the pair half-applied — padhard's rung 2 was down for the couple of
+minutes it took to resume. The value was fine; the *edge* had not caught up. The
+script now **retries the handshake with backoff (2s, 4s, 8s, 15s)** before
+declaring failure, because a false negative there is itself an outage.
+
+⚠️ **And "just re-run it" was NOT a safe retry**, which is the sharper half:
+re-running would have minted a SECOND value and created a DUPLICATE vault item
+under the same title — two masters for one secret. Hence `--resume`, which takes
+the value from the vault item the failed run already created. **Any script that
+mints into a vault and then does something fallible needs a resume path**, or its
+own error message tells you to corrupt your custody store.
 
 **This is the step that actually changes the recovery story** (secrets review
 §5's own words), and it is the only one of the four that **mints new values and

@@ -561,7 +561,7 @@ npx wrangler secret list --config apps/<worker>/wrangler.toml [--env <env>]
 > |---|---|---|
 > | 1. `library_catalog` | ✅ **DONE** — 13 items, `--source op` proves plan-identical, one key pushed live from the vault to both instances | `library_catalog/docs/DONE.md` + `docs/access/secrets.md` |
 > | 2. `docs/access/keys/*.txt` | ✅ **DONE** — 3 items, files deliberately kept as a courtesy copy | `docs/access/keys/README.md`, `scripts/op-import-keys.mjs` |
-> | 3. `catalog-platform` Workers (the no-master set) | 🔴 **NOT DONE** | `docs/TODO.md` |
+> | 3. `catalog-platform` Workers (the no-master set) | ⚠️ **1 of 4** — `INDEX_READ_TOKEN_LIBRARY2` rotated and handshake-proved; the other 3 REFUSED, no runnable probe | `docs/TODO.md`, `scripts/op-rotate-pair.mjs --list` |
 > | 4. `audiobook_catalog/.env` | 🔴 **NOT DONE** — estimate only | `docs/TODO.md` |
 >
 > **16 items in vault `Estate`**, verified by `op item list` — titles only.
