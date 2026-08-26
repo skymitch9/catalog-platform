@@ -169,3 +169,47 @@ only surface "also on audio" when a real matching audiobook resolves; otherwise
 hide it. **Locate exact surface first** — likely audiobook_catalog `site/ebooks.html`
 (the recent "N audiobooks" ebook-count work) or the library work-page audio cross-link.
 Land for review. Candidate for a Fable/subagent build once located.
+
+---
+
+## ☐ DESIGNED, NOT BUILT (owner asks 2026-08-24) — two designs landed 2026-08-26
+
+Both are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
+applied. Each doc carries its own phases, effort guesses and open questions.
+
+### 1. Toggle what can bill the LLM — `docs/info/llm-billing-control-design.md`
+Owner: *"we need a way to toggle what can bill the LLM and what can't inside the
+admin page somewhere. and even finer than that, i want to be able to determine
+which features can bill and which can't per site per user etc"*
+
+- ⚠️ **35 money-spending code paths inventoried** across the four repos, each with
+  today's gate cited (library 13 — deployed twice; games 7; audiobook 9;
+  platform 6). §2 of the doc is the inventory.
+- ☐ **OWNER DECISION Q1:** may policy GRANT, or only DENY? Recommendation: deny-only.
+- ☐ **OWNER DECISION Q2:** the `system` (cron) principal vs games'
+  `SWEEP_LIMIT` "a knob nobody tunes hides its value" intent. Recommendation:
+  on/off switch only, no numeric budgets in v1.
+- ☐ **OWNER DECISION Q3:** 🔴 A3 — `audiobook_catalog/site/user-warnings.js:102`
+  is a **public, no-sign-in button** that queues work the hourly GitHub Action
+  (`cw-fulfill.yml:20`) pays Anthropic for. Gate it now, or in phase 6?
+  ⚠️ Any gate must be on `create`/`write` only — `allow delete: if true` on the
+  same Firestore block is load-bearing for the fulfiller.
+- ☐ Phase 0 is worth doing alone: the feature registry + three refusal defects
+  found while reading (see §6.1).
+
+### 2. "+ Add a verse" on /universes — `docs/info/universe-add-verse-design.md`
+Owner: *"in the universe page add a plus button somewhere to add a verse and let
+it take series as an input"*
+
+- ⚠️ A direct "add" **cannot write** — a universe is compiled into two catalogs
+  and pinned by `library_catalog/packages/core/test/universes.test.ts:347`, and
+  `tools/universes.mjs:126` refuses to create one. The "+" creates a PENDING
+  request; the owner approves; a session prepares the commit; the owner deploys.
+- ☐ **OWNER DECISION Q1:** should `tools/universes.mjs` grow a `create` command?
+  Recommendation: yes, with `--why` **and** `--confirmed` both required — stricter
+  than the hand edits that have happened 11 times already.
+- 🔴 **Two live discrepancies found, fixable today and independent of the design:**
+  - `sites/heygabi-home/public/universes/universes.js` hardcodes **16** universe
+    names; `data/universes.json` holds **17** — `DotHack` is missing, so the page
+    has been silently one universe short.
+  - `tools/universes.mjs:127`'s help text still says *"Six exist"*.
