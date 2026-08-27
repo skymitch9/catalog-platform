@@ -650,11 +650,21 @@ recommendations for those repos' own sessions.
 1. **Fix two stale rows in `CREDENTIALS.md` §6**: the library2 bearer is **no
    longer "pipe outstanding"**, and the Firebase service account has **6
    holders, not 5**.
-2. **Fix §7 rule 7**: `TOKEN_SIGNER_KEY` is listed as a deliberately-unset
-   secret. **It is set.** That rule protects real deliberate absences
-   (`ebooks-door`'s empty list, friend's absent `INDEX_PUSH_TOKEN`,
+2. ✅ **DONE 2026-08-26 — §7 rule 7 fixed.** `TOKEN_SIGNER_KEY` was listed as a
+   deliberately-unset secret. **It is set.** That rule protects real deliberate
+   absences (`ebooks-door`'s empty list, friend's absent `INDEX_PUSH_TOKEN`,
    `GATE_HASH_SALT`, main's absent `DONOR_URL`) and a wrong entry weakens all of
-   them.
+   them. ⚠️ **Two MORE copies of the same claim were in that one file** than
+   this recommendation named — §10's *"not findings — verified intentional"*
+   line and the `TOKEN_SIGNER_KEY` row in the estate-secrets table — so all
+   three are corrected, in place, each carrying the date and the instrument.
+   ⚠️ **Also corrected in the same pass, and NOT on this list: §4.4
+   `DONOR_TOKEN`.** It said *"Not in any push allowlist"* and gave a
+   two-command interactive rotation; it is on `SHARED_ALWAYS`
+   (`library_catalog/scripts/push-secrets.mjs:232-237`), it now has a master,
+   and rotation is one `npm run secrets:push:both`. The old two-command form is
+   two hand-typed pastes of one value with nothing checking they matched, and
+   the failure mode of a mismatch is a silent **404** on her sweep.
 3. **Add `Claude-llm` to the §2.6-equivalent list explicitly**, flagged as the
    key every `^[A-Z_]+=` grep misses — its own §7 rule 1 predicts this exact
    failure and it happened again today.
