@@ -428,6 +428,44 @@ one.
 | Universe page renders `err.message` verbatim, which for an `ApiError` is `body?.error ?? "HTTP <status>"` — so a person sees the literal word `forbidden` or `HTTP 503` | `library_catalog/apps/web/src/pages/UniversePage.tsx:61,67` (bypasses `describeError`) | route through `describeError` |
 | Games' `ESTATE_CHECK` comment says *"deliberately `off` … must be inert until the owner flips it"*; the value is `enforce` | `Board_Game_Catalog/apps/worker/src/middleware/estate.ts` comment vs `wrangler.toml` | update the comment |
 
+✅ **ALL THREE FIXED 2026-08-26.** ⚠️ **None of them lives in this repo** —
+defect 2 is `library_catalog`, defects 1 and 3 are `Board_Game_Catalog` — so
+the commits are there, not here.
+
+| # | Repo | Commit | What landed |
+|---|---|---|---|
+| 1 | `Board_Game_Catalog` | `93fad25` | `estate_revoked` carries `detail: 'this account no longer has access to the estate; ask an owner to restore it'` |
+| 2 | `library_catalog` | `06a2bfb` | `UniversePage` routes through `describeError`; `err.message` gone |
+| 3 | `Board_Game_Catalog` | `93fad25` | `wrangler.toml`'s comment now names the value that is actually set |
+
+**Each got a tripwire, not just a fix**, because all three are the kind of
+defect that reappears silently:
+`Board_Game_Catalog/apps/worker/src/lib/estate-refusals.test.ts` (6 tests) asserts
+**every** `c.json` refusal in `estateGate` carries a `detail`, that the outage
+stays a 503, and that the `ESTATE_CHECK` comment block contains the literal
+`⚠️ ESTATE_CHECK IS "<value>"` matching the committed value — so the next flip
+cannot skip the prose beside it. `library_catalog/apps/web/test/universe-page-refusal.test.ts`
+(4 tests) pins the `describeError` route and forbids `err.message` returning.
+
+⚠️ **Two things worth carrying into the rest of this design.**
+
+1. **"The client translates the code" is not compliance.** Defect 1 survived
+   because `Board_Game_Catalog/apps/web/src/lib/errors.ts` maps
+   `estate_revoked` to a sentence, so no browser ever showed the bare code.
+   The rule is about the **response**; curl, GABI, a second surface and every
+   future app got a machine code and no route back. The `billing_denied`
+   sentences in §6 above need the same reading — the Worker must carry them,
+   not only the React app.
+2. 🔴 **Defect 2's real harm was the OUTAGE, not the bare code.**
+   `estate_unreachable` is a 503, and rendering `err.message` put it on screen
+   worded exactly like a refusal — which sends people asking for access they
+   already have. That is the failure §6's own outage row exists to prevent, and
+   it was live on a real page while the row was being written.
+
+**NOT verified:** nothing was deployed for any of the three, and no live
+403/503 was provoked. `Board_Game_Catalog`'s live Worker still answers the bare
+`estate_revoked` body until someone ships it.
+
 ---
 
 ## 7. The admin UI — a "Spending" panel on the Members page

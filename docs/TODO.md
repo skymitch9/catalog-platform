@@ -353,6 +353,12 @@ which features can bill and which can't per site per user etc"*
   same Firestore block is load-bearing for the fulfiller.
 - ☐ Phase 0 is worth doing alone: the feature registry + three refusal defects
   found while reading (see §6.1).
+  - ✅ **The three refusal defects are FIXED 2026-08-26**, each with a tripwire —
+    `Board_Game_Catalog` `93fad25` (defects 1 + 3) and `library_catalog` `06a2bfb`
+    (defect 2). ⚠️ **None of the three was in this repo**, and ⚠️ **neither commit is
+    deployed** — games' live Worker still answers the bare `estate_revoked` body.
+    §6.1 carries the table and the two lessons. The **feature registry** half of
+    Phase 0 is still ☐ unbuilt.
 
 ### 2. "+ Add a verse" on /universes — `docs/info/universe-add-verse-design.md`
 Mockup (private artifact): https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
