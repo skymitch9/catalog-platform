@@ -103,7 +103,7 @@ paths are Python, run by the home machine and by GitHub Actions. The secret is
 |---|---|---|---|---|---|---|
 | A1 | Chapter list, LLM fallback | `app/tools/extract_chapters.py:220` | CLI + pipeline STEP 5.5 (`scripts/sync_to_drive.py:1481`) | `claude-opus-4-8` | ⚠️ secret presence + `--no-llm` | per book (only after 3 free rungs miss) |
 | A2 | Content warnings via web search | `app/tools/fetch_content_warnings.py:244` | CLI + pipeline STEP 5.6 (`sync_to_drive.py:1494`) | `claude-opus-4-8` | ⚠️ secret presence + `--no-llm` + answered-cache | per book |
-| **A3** | 🔴 **"Request AI warning check" button** | write `site/user-warnings.js:102`; fulfil `app/tools/fetch_content_warnings.py:523` | ⚠️ **PUBLIC UI BUTTON, NO SIGN-IN** | `claude-opus-4-8` | 🔴 **NOTHING.** `firestore.rules:857-861` → `validCwRequest()` at `:646` never inspects `request.auth` | per request, **volume is attacker-controlled** |
+| **A3** | ✅ **"Request AI warning check" button — GATED 2026-08-26** | write `site/user-warnings.js`; fulfil `app/tools/fetch_content_warnings.py:523` | signed-in only (was ⚠️ **PUBLIC UI BUTTON, NO SIGN-IN**) | `claude-opus-4-8` | `firestore.rules` `cw_requests` → `allow create, update: if request.auth != null && validCwRequest()`. Was 🔴 **NOTHING** — shape-only, never inspected `request.auth`. ⚠️ `read`/`delete` stay open for the fulfiller; see §9 Q3 | per request, **no longer attacker-controlled — volume is bounded by the household's accounts** |
 | A4 | Author → Drive folder match | `scripts/sync_to_drive.py:501,536` | 8-hourly pipeline | `claude-haiku-4-5-20251001` | secret presence, after exact/normalised/fuzzy all miss | per new author, cheap |
 | **A5** | 🔴 **CW request fulfiller — unattended** | `.github/workflows/cw-fulfill.yml:68` | **cron `17 * * * *`** | A2's call | ⚠️ secret presence only. The workflow header (`:15-16`) says out loud to loosen the schedule if you want to avoid the paid backfill | batch, hourly, driven by A3's public queue |
 | A6 | Ebook AI cover-page classifier | `scripts/build_ebook_manifest.py:839` | manifest build | `claude-haiku-4-5` | ⚠️ **deliberately dead** — keyed on `ANTHROPIC_API_KEY` (`:286`), absent from `.env` on purpose (`:274-285`) | currently **zero** |
@@ -549,7 +549,7 @@ states and the refusal wording, in the estate cyberpunk theme, light and dark.
 | **3** | Consumers read the answer, `BILLING_POLICY = "shadow"` in library, library2, games, discord-worker, index-worker | ~1 day | ⚠️ `off` in the committed file; shadow flipped per site |
 | **4** | ⏳ **Soak ≥ 7 days**, then `enforce` one site at a time against §4.2 | ~½ day work, 7+ days elapsed | Not a build task — a measurement |
 | **5** | 🔴 The audiobook Python paths (A1–A9): a small policy client (one HTTPS GET on the app token, cached to a file, 10-min TTL) + the `--no-llm` wiring | ~1 day | The hard one — no estate client exists on that side today |
-| **6** | A3's public button: require sign-in on `create` ⚠️ **while keeping `delete` open** | ~½ day | Owner's call, §9 Q3 |
+| ~~**6**~~ | ✅ **DONE 2026-08-26, ahead of the plan** — A3's public button requires sign-in on `create`/`update`, `delete` **and** `read` kept open. ⚠️ In Firestore `write` COVERS delete, so this row's own wording would have broken the fulfiller | landed | §9 Q3 |
 
 **Total: ~5 days of build, plus a soak.** ⚠️ Labelled guesses. Phases 0–2 touch
 one repo (`catalog-platform`) and are the cheap, reversible half; phases 3–5
@@ -610,6 +610,49 @@ the estate reachable with no identity at all.
 > breaks. The cheap interim, if the owner wants one now: switch `warnings.web`
 > off for `system` on the `audiobook` site, which stops A5 paying for the queue
 > without touching the rules file. ⚠️ That interim needs Phase 5 first.
+
+✅ **ANSWERED BY DOING IT — GATED AND DEPLOYED 2026-08-26**
+(`audiobook_catalog` `172e3ba`). The recommendation above was *"gate it in
+Phase 6"*, and it was overtaken: this is the only money path in the estate
+reachable with no identity at all, and Phase 6 has no date.
+
+```
+- allow write:          if validCwRequest()
++ allow create, update: if request.auth != null && validCwRequest()
+  allow read:   if true      # untouched — the fulfiller LISTS with the public key
+  allow delete: if true      # untouched — the fulfiller CLEARS with the public key
+```
+
+⚠️ **The `delete` warning above was right, and sharper than it reads:** in
+Firestore `write` *covers* delete, so "add the gate on `create`/`write`" would
+itself have broken the fulfiller. The gate had to be on `create, update`
+specifically, with `delete` left as its own statement. Read is load-bearing for
+the same reason — the fulfiller lists the collection with the same public key.
+It never writes; checked in `fetch_content_warnings.py`, not assumed.
+
+The gate is `request.auth != null` and nothing more — the same mechanism
+`/readingLists` uses, **not** a new one. ⚠️ **A `site_roles` check was
+considered and refused**: that collection holds admin/moderator only, so
+requiring it would have locked out every ordinary member of the household to
+fix a problem they are not causing. This is the shape §3's *"policy can only
+DENY"* rule protects against from the other side — an over-tightened gate is
+also a wrong answer.
+
+UI: signed-out readers get *"Sign in to request a content warning."* in the
+button's place — ⚠️ keyed on the **live uid**, never `getSession()`, because a
+legacy passphrase session carries a display name and **no `request.auth` at
+all** and would otherwise be handed a button that always fails.
+
+**Verified:** rules deployed and compiled; `scripts/smoke_cw_request_rules.py`
+**9/9 against the LIVE rules**, asserting both directions *and* that the
+anonymous read and delete still answer 200; vitest 781. ⚠️ **NOT verified:**
+nobody has seen the sentence rendered, and the static site was not republished
+in that pass — the live page still shows the button, which now fails with a
+worded refusal instead of succeeding.
+
+⚠️ **Phase 6's row (§ build plan) is therefore CLOSED, and the `KNOWN_ISSUES`
+entry the recommendation asked for was never needed** — the fix landed first.
+The interim (`warnings.web` off for `system`) is moot.
 
 ### Q4 Does a per-user deny follow the DELEGATED path?
 

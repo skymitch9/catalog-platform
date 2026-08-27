@@ -346,11 +346,24 @@ which features can bill and which can't per site per user etc"*
 - ☐ **OWNER DECISION Q2:** the `system` (cron) principal vs games'
   `SWEEP_LIMIT` "a knob nobody tunes hides its value" intent. Recommendation:
   on/off switch only, no numeric budgets in v1.
-- ☐ **OWNER DECISION Q3:** 🔴 A3 — `audiobook_catalog/site/user-warnings.js:102`
-  is a **public, no-sign-in button** that queues work the hourly GitHub Action
-  (`cw-fulfill.yml:20`) pays Anthropic for. Gate it now, or in phase 6?
-  ⚠️ Any gate must be on `create`/`write` only — `allow delete: if true` on the
-  same Firestore block is load-bearing for the fulfiller.
+- ✅ **Q3 ANSWERED BY DOING IT — A3 IS GATED AND DEPLOYED 2026-08-26.**
+  `audiobook_catalog/site/user-warnings.js:102` was a **public, no-sign-in
+  button** queueing work the hourly `cw-fulfill.yml` pays Anthropic for.
+  `cw_requests` (+ `_dev`) now read
+  `allow create, update: if request.auth != null && validCwRequest()` —
+  `request.auth` only, the same mechanism `/readingLists` uses, **not** a new
+  one (a `site_roles` check was refused: it holds admin/moderator only and
+  would lock out the household). ⚠️ `allow delete: if true` **and**
+  `allow read: if true` are untouched and load-bearing — the fulfiller lists
+  and clears with the *public web API key* and no account, which is why
+  create/update were split out rather than `write` tightened. Signed-out
+  readers now see *"Sign in to request a content warning."* instead of a dead
+  button, keyed on the LIVE uid (a legacy passphrase session has a display name
+  and no `request.auth`). Rules deployed; `scripts/smoke_cw_request_rules.py`
+  **9/9 against live**; vitest 781. ⚠️ **NOT verified:** nobody has seen the
+  sentence rendered, and the static site has not been republished, so the live
+  page still shows the button — it now fails with a worded refusal rather than
+  succeeding.
 - ☐ Phase 0 is worth doing alone: the feature registry + three refusal defects
   found while reading (see §6.1).
   - ✅ **The three refusal defects are FIXED 2026-08-26**, each with a tripwire —
