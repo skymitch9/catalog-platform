@@ -194,6 +194,16 @@ Land for review. Candidate for a Fable/subagent build once located.
    **15:57:** CLI 2.34.1 installed (winget), app integration ON, account connected,
    vault **`Estate`** created (`y5w264u3akx22cf2ffric32kii`). Build delegated to an
    Opus agent: steps 1–3 of §5 in order, step 4 (`audiobook_catalog/.env`) estimate only.
+   **22:40 Phoenix — owner's four console keys are in the vault and pushed:**
+   `CLOUDFLARE_API_TOKEN` → GH secret on all 4 repos (proved: audiobook `deploy.yml`
+   run 33042797119 deployed with it); `CATALOG_PLATFORM_TOKEN` → GH secret on
+   library + games (proved: `git ls-remote` with checkout-style basic auth answers
+   HEAD; API sees all 8 repos); `ANTHROPIC_API_KEY_GABI` → `estate-discord`;
+   `library2.ANTHROPIC_API_KEY` → padhard `ANTHROPIC_API_KEY` (both by name only —
+   a live call spends money; owner to test one GABI message / one padhard research
+   before revoking the OLD keys). Vault now 21 items. **Owner still to do:** revoke
+   the superseded Cloudflare token, GitHub PAT and two Anthropic keys at their consoles
+   once the live tests pass.
 
    ### ✅ STEPS 1 + 2 DONE — 2026-08-26. **16 items in vault `Estate`.**
 
