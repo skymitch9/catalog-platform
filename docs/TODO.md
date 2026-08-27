@@ -204,6 +204,13 @@ Land for review. Candidate for a Fable/subagent build once located.
    before revoking the OLD keys). Vault now 21 items. **Owner still to do:** revoke
    the superseded Cloudflare token, GitHub PAT and two Anthropic keys at their consoles
    once the live tests pass.
+   **~22:50 Phoenix — owner: "gabi answered and padhard research worked, revoking old
+   keys now."** Both Anthropic keys verified LIVE by the owner; the four superseded
+   console credentials are being revoked by him (not measurable from here — a
+   revoked key only shows as a future 401). The vault is now the only master for
+   all four. Remaining in this item: the three refused `ESTATE_APP_TOKEN_*` pairs
+   (needs the probe question), `.env` step 4, and the two newly master-less
+   secrets (`ESTATE_APP_TOKEN_LIBRARY`, `INDEX_PUSH_TOKEN`).
 
    ### ✅ STEPS 1 + 2 DONE — 2026-08-26. **16 items in vault `Estate`.**
 
