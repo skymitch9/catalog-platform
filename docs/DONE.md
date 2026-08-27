@@ -18,6 +18,26 @@
 
 
 
+## ✅ Rotated `CLOUDFLARE_API_TOKEN` lacks the D1 permission — backups' five `d1` jobs fail (found 2026-08-27 12:25 Phoenix)
+
+Scheduled `backup.yml` run `33110351045` (19:50 UTC): every `wrangler d1 export`
+job died with Cloudflare **"Authentication error [code: 10000]"**; every R2 job,
+Firestore and retention passed. The token was rotated into the vault on
+2026-08-26 22:30 from the "Edit Cloudflare Workers" template — which in today's
+dashboard does NOT carry **D1**, contrary to `access/backup-restore.md` line ~654
+("D1 edit is already in scope", verified 2026-08-15 against the OLD token).
+Fix = owner edits the token in dash.cloudflare.com → API Tokens → **Edit** (value
+unchanged, no re-push needed): add **Account · D1 · Edit**. Then re-dispatch
+`backup.yml` and confirm 14/14. Correct the backup doc's permission table in the
+same commit. ⚠️ Anything else that runs `wrangler d1` in CI with this token
+(library/games `deploy.yml` migrations) is broken the same way until then.
+
+**CLOSED 2026-08-27 ~15:10 Phoenix.** Owner added `Account · D1 · Edit` to the
+token (value unchanged, nothing re-pushed); re-dispatched `backup.yml` run
+`33119401066` → **14/14 green** (all five `d1` jobs, all R2 buckets, Firestore,
+retention). `access/backup-restore.md` permission row corrected in `372b5dc`.
+Lesson kept there: the "Edit Cloudflare Workers" template does NOT include D1.
+
 ## 2026-08-26 — the /universes page was one universe short, and nothing said so
 
 Moved whole from [`TODO.md`](TODO.md)'s *"DESIGNED, NOT BUILT"* section, where it
