@@ -242,11 +242,13 @@ option above was taken: one `[{worker:"backup.yml", level:"info", message:"TEST
 bare-array shape `backup.yml` now sends, answered `200 {"ok":true,"stored":1}`
 and was **seen rendered on <https://heygabi.ai/status/>** as a `backup.yml`
 service-log entry within the minute. So token, route, payload shape and the
-status surface are verified together. ⏳ **What is still NOT verified:** the CI
-branch itself — a real `notify-failure` job on a real failed run has never
-posted successfully. That closes on the next genuine failure; until then backup
-health is **alerted in principle, confirmed by hand** rather than "checked, not
-alerted".
+status surface are verified together. ✅ **CLOSED 2026-08-27 — verified by a real failure.** Scheduled run
+[`33110351045`](https://github.com/skymitch9/catalog-platform/actions/runs/33110351045)
+(19:50 UTC) failed all five `d1` jobs (the freshly rotated `CLOUDFLARE_API_TOKEN`
+lacked the D1 permission — see TODO), and `notify-failure` posted
+`d1=failure firestore=success r2=success retention=success` to the ring:
+**`event ring responded 200`**, 20:06 UTC. Backup health is now genuinely
+**alerted**. Status of this issue → `WATCHING` only for the age grading below.
 
 ⚠️ **The age grading is the other half, and it catches a different failure.**
 This job answers "it ran and broke"; the freshness grade answers "it never ran
