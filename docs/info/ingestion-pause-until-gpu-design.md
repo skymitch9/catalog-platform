@@ -1,11 +1,27 @@
-# Soft pauses + recurring blockers + do-not-disturb processes — DESIGN ONLY (v3)
+# Soft pauses + recurring blockers + do-not-disturb processes — BUILT (v3)
 
-> **Audience:** Claude sessions and the owner. **Status:** TRACKED, **DESIGN
-> ONLY — nothing built** (owner: *"plan this dont buil yet"*). v1 written
-> 2026-08-31 against a live read of `ingest_control.py`; **v2 the same day**
-> after the owner's clarification replaced v1's single new button with a
-> pause TAXONOMY. v1's mechanics survive as §3's GPU-release machinery.
-> ⚠️ Nothing live was measured beyond reading source; no control doc written.
+> **Audience:** Claude sessions and the owner. **Status:** TRACKED, ✅ **BUILT
+> 2026-09-01** (owner: *"yes lets build this"*), in two halves and in the order
+> §5 demanded:
+>
+> | Half | Where | Commit |
+> |---|---|---|
+> | **Reader** — `ingest_control.py`: the two fail-OPEN fields, the recurrence evaluation, the GPU release | `audiobook_catalog` | **76aa89b** (merged **36a0f21**) |
+> | **Platform** — `ops.ts` routes, the card's three-way pause + both editors, the words, the tests | `catalog-platform` | **d752d93** |
+>
+> ⚠️ **What is BUILT is not what is EXERCISED.** No live control document has
+> been written through these routes, no human has clicked the signed-in card,
+> and **the end-to-end soft-pause release has never run** — the live round trip
+> §6 asks for is still owed. The operating contract, with the same NOT-verified
+> list kept current, is
+> [`ingestion-pause-controls.md`](ingestion-pause-controls.md) §§2, 3, 3c, 6.
+>
+> History: v1 written 2026-08-31 against a live read of `ingest_control.py`;
+> **v2 the same day** after the owner's clarification replaced v1's single new
+> button with a pause TAXONOMY (v1's mechanics survive as §3's GPU-release
+> machinery); **v3 on 2026-09-01** after the WoW-at-midnight incident added
+> §4a. The design below is left as it was written — it is the record of what
+> was decided and why, not a description of the code.
 
 ## 1. The ask — two owner messages, and the model they add up to
 
@@ -235,6 +251,33 @@ human" debt gets paid in the same session.
    Q4's taste), the list is dashboard-editable, an unreadable process
    listing fails toward not-starting.
 
-**All questions are settled. The design is BUILD-READY** — nothing is
-built; the build starts on the owner's go, reader half (`ingest_control.py`)
-first per §5's TWO fail-open rows.
+**All questions are settled.** ✅ **BUILT 2026-09-01**, reader half first per
+§5's two fail-open rows — see the header table for the two commits, and
+[`ingestion-pause-controls.md`](ingestion-pause-controls.md) §6 for what is
+still unexercised (chiefly the live round trip §6 above describes).
+
+### 8. Deviations from this design, as built — stated rather than buried
+
+1. **`pause_until` was CHANGED, not left alone.** §6's surface table implied a
+   new soft action beside the existing picker; in fact §1a's ruling ("an
+   explicit *pause until Tuesday 6pm* is still a SOFT pause") means the existing
+   `pause_until` action itself now writes `pause_until_gpu_free: true`. It is
+   the one non-additive change in the build, and it is why the card's picker
+   label had to gain the words "at latest".
+2. **The three-way pause kept the `pause_mode` question on the HARD pause
+   only.** A soft pause is window-exempt by construction, so 'all' vs
+   'manual_only' has nothing to decide there; asking anyway would have been a
+   question with one honest answer. "Pause now…" was renamed "Pause until I
+   unpause…" so that two adjacent buttons do not differ by one word and mean
+   opposite things.
+3. **`fsValue()` in `ops.ts` gained an `integerValue` branch.** Weekday numbers
+   are the first integers on this document and Firestore REST sends an integer
+   as a *string*; without the branch every blocker would have decoded to a
+   dropped row, invisibly. Not in the design because nobody had looked at the
+   wire shape yet.
+4. **Seeding the do-not-disturb list was NOT done.** §4a said "seed the list
+   with `Wow.exe` + `WowClassic.exe` at build time"; seeding means writing the
+   live control document, which this build deliberately did not do (no
+   fabricated identity against a live gate). They are offered as one-tap
+   suggestions on the card instead, and the owner's first tap is what creates
+   them. `Wow.exe` is verified from his own `tasklist`; `WowClassic.exe` is not.

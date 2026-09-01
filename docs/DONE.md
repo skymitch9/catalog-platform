@@ -18,6 +18,55 @@
 
 
 
+## 2026-09-01 — soft pauses, recurring blockers and the do-not-disturb list, BUILT in both repos
+
+Moved WHOLE from [`TODO.md`](TODO.md)'s *"DESIGNED, NOT BUILT"* item 0 on the
+day it stopped being true. Owner's go: *"yes lets build this"*. The design is
+[`info/ingestion-pause-until-gpu-design.md`](info/ingestion-pause-until-gpu-design.md)
+(now headed BUILT, with a §8 listing the four deviations); the operating
+contract is
+[`info/ingestion-pause-controls.md`](info/ingestion-pause-controls.md) §§2, 3,
+3c, 5, 6.
+
+**Shipped in the order §5 demanded — reader FIRST**, because an old
+`ingest_control.py` ignores `recurring_windows` and `exempt_processes` and
+therefore fails **OPEN** (it would run during blocked hours, beside a running
+game):
+
+| Half | Repo | Commit |
+|---|---|---|
+| Reader — the two fail-open fields, recurrence evaluation, the GPU release | `audiobook_catalog` | **76aa89b**, merged **36a0f21** |
+| Platform — `ops.ts`, the card, the words, the tests, the docs | `catalog-platform` | **d752d93** |
+
+⚠️ **Shipped ≠ verified, and the gap is named rather than implied:** no live
+control document was written through these routes, no human has clicked the
+signed-in card, and the end-to-end soft-pause release has never run. Those
+remain as a small ☐ item in `TODO.md`.
+
+The item as it stood in TODO.md:
+
+> ### 0. Soft pauses + recurring blockers — `docs/info/ingestion-pause-until-gpu-design.md` (v2)
+> Owner asks 2026-08-31 (two messages; Q1 answered by the second): every pause
+> that is not "until I unpause" becomes SOFT — released at the earliest of the
+> next window opening (12am), the GPU next sustained-free, or an explicit
+> ceiling — plus RECURRING weekly blockers (*"MTW 630-1015"*). Designed against
+> the live `ingest_control.py`: soft pause = `paused_until` ceiling computed at
+> write time + `pause_until_gpu_free` (processor-released, clear-then-start,
+> fails closed); blockers = `recurring_windows` (absolute while in force).
+> Effort ~M. 🔴 **Deploy order is load-bearing: reader FIRST** — an old reader
+> ignores `recurring_windows`, which fails OPEN.
+> - ✅ **ALL QUESTIONS SETTLED (Q1–Q4 + the v3 do-not-disturb addition) — the
+>   design is BUILD-READY.** v3 (2026-09-01): the WoW-at-midnight incident —
+>   the in-window guard is one lenient poll and a menu-idle game reads under
+>   50%, so §4a adds `exempt_processes` (process PRESENCE blocks all new
+>   starts, window or not; seeds with the WoW image names, verified live).
+>   Build on the owner's go: reader half FIRST (two fail-open fields:
+>   `recurring_windows`, `exempt_processes`), then ops.ts + the card. ~M
+>   effort, ~2 days, live round trip at the end.
+> - Found while designing: `pause_mode` (`all`|`manual_only`, owner ask
+>   2026-08-23) is already BUILT in `ingest_control.py` — that is library TODO's
+>   OR-3 answered; verify the card offers the choice, then close OR-3 there.
+
 ## 2026-08-31 — the 2026-08-24 conductor/morning-summary handoff blocks, actioned and retired from TODO.md
 
 Moved WHOLE from the top of [`TODO.md`](TODO.md), where they had sat as layered

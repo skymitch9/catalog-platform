@@ -1,7 +1,14 @@
 # Ingestion pause controls — Information Reference
 
 > **Audience:** Claude sessions. **Status:** TRACKED (public repo — no household names).
-> Last verified: **2026-08-18** — routes live (401 unauthenticated, 404 on a
+> ⚠️ **Last verified: 2026-09-01** — the soft pause, the recurring blockers and
+> the do-not-disturb list landed (§§2, 3, 3c below). What was MEASURED that day:
+> the full workspace suite (2185 pass / 0 fail, up from 2128) and `npm run
+> typecheck` clean, the auth-worker deployed, `verify:home` live, and the
+> unauthenticated `POST /api/estate/ops/ingestion` answering a worded 401. What
+> was **NOT**: no live control-document write was made from these routes, and
+> **the signed-in card has still never been clicked by a human** — §6.
+> Earlier verification: **2026-08-18** — routes live (401 unauthenticated, 404 on a
 > neighbouring path, so the gate is real and not a routing accident); page
 > shell live via `npm run verify:home`. ⚠️ **Re-verified later the same day**,
 > when the three fine controls landed: the control DOCUMENT round trip is now
@@ -21,13 +28,20 @@ don't even check to start until x time."*
 
 | Piece | Path |
 |---|---|
-| Card shell + CSS | `sites/heygabi-home/public/status/index.html` (`#ingestion-card`) |
-| Card behaviour (DOM only) | `sites/heygabi-home/public/status/status.js` |
+| Card shell | `sites/heygabi-home/public/status/pipelines/index.html` (`#ingestion-card`) |
+| Card behaviour (DOM only) | `sites/heygabi-home/public/status/pipelines/pipelines.js` |
+| Card CSS | `sites/heygabi-home/public/assets/status-shell.css` (`.ing-*`) |
 | Every word + the timezone | `sites/heygabi-home/public/assets/ingestion-time.js` |
 | Routes | `apps/auth-worker/src/ops.ts` (`GET`/`POST /api/estate/ops/ingestion`) |
-| Tests | `scripts/test/ingestion-time.test.mjs` (23) · `apps/auth-worker/test/ingestion-control.test.ts` (14) |
+| Tests | `scripts/test/ingestion-time.test.mjs` (**59**) · `apps/auth-worker/test/ingestion-control.test.ts` (**71**) — counts measured 2026-09-01 |
 | **The reader (other repo)** | `audiobook_catalog/app/core/ingest_control.py` |
-| Live pins | `sites/heygabi-home/predeploy.checks.json` (`/status/`, `/status/status.js`, `/assets/ingestion-time.js`) |
+| Live pins | `sites/heygabi-home/predeploy.checks.json` (`/status/pipelines/`, `/status/pipelines/pipelines.js`, `/assets/ingestion-time.js`) |
+
+⚠️ **The first two rows were WRONG until 2026-09-01** — they still named
+`/status/index.html` and `/status/status.js`, where the card lived before the
+four-page split moved it to `/status/pipelines/` on 2026-08-18. The stale
+pointers were corrected here rather than left, because a brief written from this
+table sends a session to edit a file the card is not in.
 
 ## 2. The control document
 
@@ -40,8 +54,11 @@ status page is prod-only and never touches it.
 |---|---|---|
 | `paused` | bool | hard stop, no end time |
 | `paused_until` | ISO8601 \| null | no new starts before this instant |
-| `dont_check_until` | ISO8601 \| null | do not even *evaluate* the guard yet |
-| `pause_windows` | `[{from, until}]` | scheduled quiet hours |
+| `pause_until_gpu_free` | bool | ⚠️ **added 2026-09-01.** With a `paused_until` still in the future, the processor releases the pause EARLY the moment the GPU reads sustained-free (2 polls, 120 s apart, under 50%) — so the timer beside it is a **ceiling, not a promise**. The reader coerces with `is True`, so this is written as a real JSON boolean and anything else reads as off. ⚠️ The **processor writes it too** (see §3c) |
+| `dont_check_until` | ISO8601 \| null | do not even *evaluate* the guard yet. ⚠️ It also **delays a soft release**: a don't-check is a spend-nothing instruction and polling the GPU is spending, so nothing releases a soft pause while one is set |
+| `pause_windows` | `[{from, until}]` | scheduled quiet hours, one-shot |
+| `recurring_windows` | `[{days:[1..7], from:"HH:MM", until:"HH:MM"}]` | ⚠️ **added 2026-09-01.** Standing weekly blockers, **never consumed**. ISO weekdays (**1 = Monday**); `from`/`until` are **Phoenix wall clock**, not instants. `from > until` **crosses midnight** and belongs to the day it starts; `from == until` is **REFUSED** by the reader as ambiguous, so the card and the route refuse it too. Bounded at **20** |
+| `exempt_processes` | `[image name]` | ⚠️ **added 2026-09-01** (the WoW-at-midnight incident). Any listed process running ⇒ the machine is IN USE ⇒ **no new starts at all**, GPU or CPU, window or not. Matched against `tasklist` **case-insensitively but otherwise exactly** ("Wow.exe", not "World of Warcraft"); stored case-preserving. Bounded at **20** |
 | `requeue` | `[bookId]` | ⚠️ **consumed** by the processor at its next run start, then cleared by it |
 | `priority_front` | `[bookId \| series]` | books to move to the head of the queue; **never** consumed |
 | `updated_by` | string | who wrote it |
@@ -65,11 +82,14 @@ Hence the encoding this repo writes:
 
 | Control | Writes |
 |---|---|
-| **Pause now** | `paused: true`, `paused_until: null` |
-| **Pause until…** | `paused: false`, `paused_until: <ISO>` — a timer with the flag **off** is the correct form of a timed pause, and it expires by itself |
+| **Pause until I unpause…** (the hard pause; was "Pause now") | `paused: true`, `paused_until: null`, `pause_until_gpu_free: false` — the one pause a free GPU must NOT end |
+| **Pause for now** (soft, 2026-09-01) | `paused: false`, `paused_until: <the next 00:00 Phoenix, computed at write time>`, `pause_until_gpu_free: true` |
+| **Pause until…** (soft with a ceiling) | `paused: false`, `paused_until: <ISO>`, ⚠️ **`pause_until_gpu_free: true` since 2026-09-01** — the picked time became the LATEST it can last, not a promise. A timer with the flag **off** is still the correct form of a timed pause, and it expires by itself |
 | **Don't even check to start until…** | `dont_check_until: <ISO>` |
-| **Resume** | `paused: false`, both timers `null`, and any window *currently in force* dropped (otherwise it re-pauses seconds later and Resume looks broken) |
-| **▶ Start now** | `paused: false`, both timers `null`, and ⚠️ **`pause_windows` untouched** — see §3a |
+| **Resume** | `paused: false`, both timers `null`, `pause_until_gpu_free: false`, and any window *currently in force* dropped (otherwise it re-pauses seconds later and Resume looks broken). ⚠️ **`recurring_windows` and `exempt_processes` untouched** — §3c |
+| **▶ Start now** | `paused: false`, both timers `null`, `pause_until_gpu_free: false`, and ⚠️ **`pause_windows`, `recurring_windows` and `exempt_processes` all untouched** — see §3a and §3c |
+| **Add / delete a recurring blocker** | the whole new `recurring_windows` list, in the mask **only when it changed** |
+| **Add / delete a do-not-disturb program** | the whole new `exempt_processes` list, same rule |
 | **↻ Re-queue** (per book, on /status/processing) | appends the book id to `requeue` |
 | **⇧ Front of queue** (per book) | appends the book id to `priority_front` |
 
@@ -119,6 +139,42 @@ the button four more times.
 `ingestion-time.js`'s `describeIngestion()` mirrors that same order, so the
 card never promises a restart the reader will not perform.
 
+## 3c. ⚠️ The two STANDING lists, and the one field this Worker does not own alone
+
+Added 2026-09-01 (design
+[`ingestion-pause-until-gpu-design.md`](ingestion-pause-until-gpu-design.md)
+§§3, 4, 4a; the reader half landed first in `audiobook_catalog` **76aa89b**).
+
+**`recurring_windows` and `exempt_processes` survive every other action.** Not a
+pause, not a Resume, not a Start-now. This is §3a's lesson applied to two more
+fields: quiet hours and a named program are instructions the owner set on
+purpose, and deleting one to satisfy a one-off *"go now"* would be a control
+with an invisible side effect. Deleting a row is the only edit — replacing one
+is a delete plus an add. Both enter the `updateMask` **only when the write
+changed them**, per §3b, even though nothing else writes them today.
+
+🔴 **The deploy order was load-bearing and is now spent.** An `ingest_control.py`
+that predates these two fields IGNORES them, which fails **OPEN** — it would run
+during blocked hours and beside a running game. That is why the reader shipped
+first. Anyone reversing the order for a future field on this document should
+re-derive the direction: `pause_until_gpu_free` fails CLOSED (the pause merely
+lasts to its ceiling), both lists fail OPEN.
+
+⚠️ **`pause_until_gpu_free` and `paused_until` have TWO writers.** When the GPU
+frees up, the processor writes
+`{paused_until: null, pause_until_gpu_free: false, updated_by: "processor"}`
+itself — clear-then-start, so the card never says "paused" while books run. The
+route therefore reads the document immediately before every write (it always
+did, for `requeue`) and the GET rendering has to expect a control whose
+`updated_by` is the home machine rather than a person.
+
+⚠️ **The card is deliberately MORE complete than the reader's refusal.** When a
+soft pause and a recurring blocker are both in force, the home machine's refusal
+names the pause (the first thing its ordered check matched) and says nothing
+about the blocker. The card renders **both**, because it is showing the whole
+document rather than answering one question — an owner reading "it releases when
+the GPU goes quiet" needs to know a blocker will still be holding when it does.
+
 ## 4. Why a state document, not a request document
 
 Everything else in `ops.ts` writes `pipeline_requests` — create-only,
@@ -150,6 +206,23 @@ Their `parse_iso()` reads a **naive** value as Phoenix for the same reason.
 This repo always writes a full UTC instant with `Z`, which they parse
 correctly, so the two conventions do not collide.
 
+⚠️ **Two more Phoenix conversions arrived 2026-09-01, and both are arithmetic
+rather than a library, for the same fixed-UTC-7 reason:**
+
+- `nextPhoenixMidnightIso()` in `ops.ts` computes the soft pause's ceiling
+  **at write time**, so the reader needs no understanding of window boundaries
+  at all — "the next scheduled start" reaches it as an ordinary timestamp. It is
+  **strictly** in the future: a ceiling equal to *now* would be self-cleared by
+  the write that set it, reporting success and pausing nothing. Pinned in
+  January and July.
+- `activeRecurringWindow()` in `ingestion-time.js` evaluates a blocker against
+  Phoenix weekday + minute-of-day. ⚠️ **ISO weekdays (1 = Monday), not
+  JavaScript's `getDay()` (0 = Sunday)** — mixing them shifts every blocker by a
+  day with nothing on screen saying so. ⚠️ A row whose end is EARLIER than its
+  start covers `[its day, from → 24:00)` **and** `[the next day, 00:00 → until)`;
+  evaluating it as a plain "between from and until" inverts it, which is a test
+  rather than a footnote.
+
 Words, not ISO strings: `wordTime()` renders "midnight tonight", "7:00 PM
 today", "8:00 AM tomorrow", "3:00 PM on Thursday". "midnight tonight" is the
 owner's own phrase and is the *start of tomorrow* — rendering it as "12:00 AM
@@ -172,6 +245,21 @@ tomorrow" is true and reads as a different time at 9pm.
   through `POST /api/estate/ops/ingestion` with a signed-in devops token, so the
   route's own 200 path and the card's buttons have still never been clicked by a
   human.
+- ⚠️ **The end-to-end soft-pause release has NEVER RUN** (2026-09-01). Nothing
+  has set a soft pause on the live document, watched the processor refuse with a
+  GPU reading, freed the GPU and watched it release. Every part of it is tested
+  on one side or the other and the round trip is inference. The design's §6 names
+  this as the one live round trip the build owes: set a soft pause with the GPU
+  busy, watch the worded refusal, free the GPU, watch the release; then set a
+  5-minute recurring blocker and watch it bite and lapse.
+- ⚠️ **No live control-document write was made by the 2026-09-01 build** — the
+  routes need a signed-in devops token, and fabricating an identity to test a
+  live gate is not a probe. What WAS checked live that day: the unauthenticated
+  `POST` still answers a **worded 401**, and `verify:home` passed.
+- ⚠️ **"WowClassic.exe" is NOT verified.** `Wow.exe` was read off `tasklist` on
+  the owner's own machine while the game ran (2026-09-01); the classic-client
+  name is the documented one and nobody has seen it in a process list here. Both
+  are only *suggestions* on the card — the box takes any name.
 - **The reader was uncommitted when this was written** (`ingest_control.py`
   present in `audiobook_catalog`'s working tree, no info doc). If it changed
   after 2026-08-18, re-check §2 and §3 — §3 in particular.

@@ -171,32 +171,32 @@ inventory (names only; the file was **not** opened by this work):
 - **Rough size:** the 30 `NAME=` keys are a short sitting once the config/credential
   sort is made; the four JSON documents are the real work.
 
-## ☐ DESIGNED, NOT BUILT — three designs (two landed 2026-08-26, one 2026-08-31)
+## ☐ DESIGNED — two still unbuilt, one BUILT 2026-09-01
 
-All are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
-applied. Each doc carries its own phases, effort guesses and open questions.
+Items 1 and 2 are **DESIGN ONLY**: nothing was built, no route exists, no
+migration was applied. Each doc carries its own phases, effort guesses and open
+questions. Item 0 was built on 2026-09-01 and has moved to
+[`DONE.md`](DONE.md); only its live round trip remains.
 
-### 0. Soft pauses + recurring blockers — `docs/info/ingestion-pause-until-gpu-design.md` (v2)
-Owner asks 2026-08-31 (two messages; Q1 answered by the second): every pause
-that is not "until I unpause" becomes SOFT — released at the earliest of the
-next window opening (12am), the GPU next sustained-free, or an explicit
-ceiling — plus RECURRING weekly blockers (*"MTW 630-1015"*). Designed against
-the live `ingest_control.py`: soft pause = `paused_until` ceiling computed at
-write time + `pause_until_gpu_free` (processor-released, clear-then-start,
-fails closed); blockers = `recurring_windows` (absolute while in force).
-Effort ~M. 🔴 **Deploy order is load-bearing: reader FIRST** — an old reader
-ignores `recurring_windows`, which fails OPEN.
-- ✅ **ALL QUESTIONS SETTLED (Q1–Q4 + the v3 do-not-disturb addition) — the
-  design is BUILD-READY.** v3 (2026-09-01): the WoW-at-midnight incident —
-  the in-window guard is one lenient poll and a menu-idle game reads under
-  50%, so §4a adds `exempt_processes` (process PRESENCE blocks all new
-  starts, window or not; seeds with the WoW image names, verified live).
-  Build on the owner's go: reader half FIRST (two fail-open fields:
-  `recurring_windows`, `exempt_processes`), then ops.ts + the card. ~M
-  effort, ~2 days, live round trip at the end.
-- Found while designing: `pause_mode` (`all`|`manual_only`, owner ask
-  2026-08-23) is already BUILT in `ingest_control.py` — that is library TODO's
-  OR-3 answered; verify the card offers the choice, then close OR-3 there.
+### 0. ✅ BUILT 2026-09-01 — soft pauses + recurring blockers + do-not-disturb
+The whole item moved to [`DONE.md`](DONE.md) (*"2026-09-01 — soft pauses,
+recurring blockers and the do-not-disturb list, BUILT in both repos"*). Both
+halves are live: reader `audiobook_catalog` **76aa89b** (merged 36a0f21),
+platform **d752d93**. What is left open is the part no build can do
+for itself:
+
+- ☐ **The live round trip has never been run, and no human has clicked the
+  card.** Set a soft pause with the GPU busy and read the worded refusal; free
+  the GPU and watch the processor release it; add a 5-minute recurring blocker
+  and watch it bite and lapse; add `Wow.exe` from the card and confirm a start
+  is refused while the game runs. Needs the owner signed in at
+  <https://heygabi.ai/status/pipelines/> — the routes require a devops token
+  no session holds, and fabricating one against a live gate is not a test.
+  ⚠️ This also finally pays the standing *"the signed-in card has never been
+  rendered by a human"* debt (`info/ingestion-pause-controls.md` §6).
+- ☐ **`WowClassic.exe` is unverified.** `Wow.exe` was read off `tasklist` while
+  the game ran (2026-09-01); the classic-client name was not. If he plays
+  Classic, check the real image name before trusting the suggestion.
 
 ### 1. Toggle what can bill the LLM — `docs/info/llm-billing-control-design.md`
 Mockup (private artifact): https://claude.ai/code/artifact/2f288c59-d6ca-4fdf-b3e0-da732f0e78d1
