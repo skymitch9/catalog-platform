@@ -1,9 +1,15 @@
 # GABI's Groq first line — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
-> **Status:** TRACKED — **BUILT, DEPLOYED, SHIPPING DARK.** `GABI_GROQ = "off"`
-> and `GROQ_API_KEY_GABI` is unset, so every GABI answer today is byte-for-byte
-> the one it was before this landed.
+> **Status:** TRACKED — **BUILT, DEPLOYED, NOW IN `shadow`** (superseded the
+> same day it was written: the owner's key is pushed — byte-verified, 56
+> bytes / `gsk` prefix / no BOM — and `GABI_GROQ = "shadow"` deployed,
+> `8286150`; health reports `gabi_groq: shadow`, `gabi_groq_ready: true`).
+> Answers are still Haiku's in shadow. ⚠️ **The first live shadow lines ever
+> logged came back `reason: "refused"` in 16–21 ms** — under diagnosis; the
+> shadow logger gained `status` the same evening for exactly this (at build
+> time it carried only `reason`, while the runbook already told the owner to
+> look for `status: 401` on these lines).
 > Last verified: **2026-09-01** — the code was written and the test suite run
 > this session (`test/gabi-groq.test.ts`, 44 tests; workspace 2247 pass / 0
 > fail; typecheck clean). ⚠️ **NOT verified:** **no live Groq call has ever been

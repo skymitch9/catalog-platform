@@ -556,7 +556,11 @@ export async function viaGroq<T>(args: {
       haikuChars: answer === null ? 0 : sizeOf(answer),
       groqAnswered: seen.ok,
       haikuAnswered: answer !== null,
-      ...(seen.ok ? {} : { reason: seen.reason }),
+      // ⚠️ Status included since 2026-09-01 (same day as the build): the FIRST
+      // live shadow lines came back reason:"refused" with no way to tell a 401
+      // (bad key) from a 400 (retired model id) — while the runbook was already
+      // telling the owner to look for `status: 401` on these very lines.
+      ...(seen.ok ? {} : { reason: seen.reason, ...(seen.status === undefined ? {} : { status: seen.status }) }),
       ...(seen.ok && args.compare ? { agreed: args.compare(seen.value, answer) } : {}),
       ...(seen.ok ? { inputTokens: seen.inputTokens, outputTokens: seen.outputTokens } : {}),
       ...(args.who ? { who: args.who } : {}),
