@@ -98,11 +98,16 @@ if (!existsSync(DROPBOX)) {
 const raw = readFileSync(DROPBOX, 'utf8');
 const lines = raw.split(/\r?\n/);
 
-/** Which line index holds `NAME=`, or -1. Comments and blanks are skipped. */
+/** Which line index holds the var, or -1. Comments and blanks are skipped.
+ *  ⚠️ Accepts BOTH `NAME=value` and the library-style `NAME = "value"` —
+ *  measured 2026-09-01: the drop-box line was written in the second shape,
+ *  the owner pasted his key into it, and the strict `NAME=` match reported
+ *  "no line" while the key sat right there. */
 function lineFor(varName) {
+  const re = new RegExp(`^${varName}\\s*=`);
   return lines.findIndex((l) => {
     const t = l.trimStart();
-    return !t.startsWith('#') && t.startsWith(`${varName}=`);
+    return !t.startsWith('#') && re.test(t);
   });
 }
 
@@ -112,7 +117,10 @@ function lineFor(varName) {
  *  does not get to have opinions about its contents. */
 function valueOn(index) {
   const line = lines[index];
-  let v = line.slice(line.indexOf('=') + 1);
+  // ⚠️ TRIM BEFORE the quote check. ` "value"` starts with a SPACE, so the
+  // old order skipped the strip and would have pushed a literally-quoted
+  // secret — wrong while looking perfect, the same failure family as the BOM.
+  let v = line.slice(line.indexOf('=') + 1).trim();
   // Only a matched pair of surrounding quotes, and only one pair.
   if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
     v = v.slice(1, -1);

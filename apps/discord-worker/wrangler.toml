@@ -530,7 +530,7 @@ GABI_SUGGEST = "on"
 #
 # ⚠️ IT DOES NOTHING WITHOUT GROQ_API_KEY_GABI (a secret, below). The switch and
 # the key are two independent owner steps and neither alone changes an answer.
-GABI_GROQ = "off"
+GABI_GROQ = "shadow"
 
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
