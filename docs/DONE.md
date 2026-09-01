@@ -18,6 +18,53 @@
 
 
 
+## 2026-09-01 — the ingestion card's UX condense: 22 controls down to 2
+
+Moved WHOLE from [`TODO.md`](TODO.md)'s *"Ingestion card UX condense (owner ask
+2026-09-01, in flight)"*, which read:
+
+> Owner, after using the shipped pause feature: *"this all works good, the time
+> selector is a not my favorite and its getting to be a lot of menus and
+> buttons, can you reassess and condense for a better ux."* Plan: one contextual
+> primary action (Pause menu when running / Resume when paused), preset time
+> chips with the native picker demoted to "Custom…", both standing editors
+> behind one counted disclosure. Presentation only — no route or reader changes.
+
+⚠️ That item was written into `TODO.md` and **never committed** — it was handed
+to this build as the working tree's one uncommitted edit, and removing it
+returned the file to its committed state. So this entry is the only record of
+it, which is why the whole item is quoted above rather than referenced.
+
+**Landed and deployed the same day.** Commit **05c079e**, `heygabi-home`
+version **2b39c4a5** (`deploys.log`, 2026-09-01T18:05:29Z). The plan was
+executed as written; the rationale, the before/after table and the three rules
+the condense had to obey are
+[`info/ingestion-pause-until-gpu-design.md`](info/ingestion-pause-until-gpu-design.md)
+**§9**, and the operating contract's card rows now carry the new labels beside
+the unchanged writes
+([`info/ingestion-pause-controls.md`](info/ingestion-pause-controls.md) §3, §3a,
+§3c, §6).
+
+**Presentation only, and the boundary was held:** `ops.ts` was never opened, no
+route changed, no written shape changed, no feature semantic changed, the
+reader repo was untouched. **Measured:** the default signed-in state with
+nothing paused carried **22** visible interactive elements and now carries
+**2**. Tests `59 → 77` on the card's pure half, workspace `2185 → 2203`, 0 fail,
+typecheck clean, no existing assertion weakened.
+
+**Three refinements the code argued for, all in §9:** the clock chips are
+dropped rather than rolled forward when their hour has passed (a 23-hour pause
+under a label reading "7:00 PM" is worse than no chip); the 8am chip is the
+*next* 8am, because that is the whole meaning of that one; and a failed READ
+became its own state offering **both** buttons, since the card cannot know
+which single one is right when it could not read the document.
+
+⚠️ **Still owed, and unchanged by this work:** nobody has clicked the card —
+now including a layout nobody has *seen*, since the menu, chips, drawer and
+disclosure are all injected after Firebase sign-in. That debt, and the live
+soft-pause round trip, stay recorded in the entry below and in
+`info/ingestion-pause-controls.md` §6.
+
 ## 2026-09-01 — soft pauses, recurring blockers and the do-not-disturb list, BUILT in both repos
 
 Moved WHOLE from [`TODO.md`](TODO.md)'s *"DESIGNED, NOT BUILT"* item 0 on the
