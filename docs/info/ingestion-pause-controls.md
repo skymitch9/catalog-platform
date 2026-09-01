@@ -282,7 +282,11 @@ tomorrow" is true and reads as a different time at 9pm.
   `STOP before 'Amber the Cursed Berserker: Book 4…': Wow.exe is running -
   the machine is in use; no new starts` and receipted `0 packed, 0 failed`.
   The guard's functions were also run directly against the live document and
-  live process table minutes earlier with the same verdict.
+  live process table minutes earlier with the same verdict. **And the release
+  half, one hour later:** WoW closed 12:15; the 12:30 tick ran the sustained
+  GPU check (12:30:04 → 12:32:06, exactly the 2-poll/120 s bar) and **started
+  transcribing the very book it had refused at 11:30** — block and release,
+  both proven on the real schedule the same day.
 - ✅ **SUPERSEDED 2026-08-18 — the document HAS now been written and read
   back.** The full round trip was exercised against the live control document
   and the live processor: a Worker-shaped write of `requeue` + `priority_front`
