@@ -984,7 +984,13 @@ ambiguity possible) answered normally. Health was green throughout; nothing
 was down. The chase started at permissions and ended at the picker.
 
 **The fix is a naming convention, not code** (owner, same day): the
-integration role is renamed **`role_gabi_bot`**, so the picker's two entries
+integration role is renamed **`role_gabi_bot`** — ✅ **done and verified
+2026-09-01 ~15:20 Phoenix** via the web UI (⚠️ useful fact: a managed
+integration role's "cannot be assigned" lock does NOT lock its NAME — the
+rename saved normally), and the root cause was then proven from the channel
+history itself: the failed 2:59 PM message renders as `@role_gabi_bot …`
+while the answered 3:07 PM retry renders `@GABI …`. The picker now shows the
+two entries unmistakably — so the picker's two entries
 can no longer be confused — `@GABI` is always the user, `@role_gabi_bot` is
 visibly not a way to talk to her. ⚠️ If a future server or re-invite recreates
 a role named like the bot, apply the same rename before anyone tests
