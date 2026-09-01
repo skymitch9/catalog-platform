@@ -62,5 +62,43 @@ export async function probeDiscordWorker() {
     // the suite over it — configuration completeness is the deployer's
     // checklist, not this suite's contract.
     console.log(`      ↳ configured: ${JSON.stringify(body.configured)}`);
+
+    // --- GABI's book knowledge: the FOURTH tool allowlist, live ----------
+    //
+    // The four retrieval routes on the audiobook Worker are probed there
+    // (AB17–AB22) but only ever from OUTSIDE the gate. This is the other
+    // end of the same wire: `gabi_books_ready` is the AND of posture-on +
+    // `ESTATE_APP_TOKEN_BOOKS` set + service account set, so a `false` here
+    // is a SETUP gap and never a permissions one (access doc §6) — which is
+    // exactly the distinction worth catching mechanically, because the
+    // feature's failure mode is silent: `makeBooksPort()` returns null, the
+    // tools are never described to the model, and she simply answers from
+    // the catalogue instead. Nothing looks broken.
+    //
+    // ⚠️ Asserted as a SET, not a count. The whole point of the fourth
+    // allowlist is that these four names travel together and no fifth tool
+    // joins them without a decision; the discord-worker's own
+    // `book-knowledge.test.ts` pins that structurally at build time, and
+    // this pins the same claim against what is actually deployed.
+    const BOOKS_TOOLS = ['book_presence', 'list_book_knowledge', 'read_book_passage', 'search_book_text'];
+    const got = Array.isArray(body.gabi_books_tools) ? [...body.gabi_books_tools].sort() : null;
+    check(
+      AREA,
+      'D5',
+      'GET',
+      healthUrl,
+      `gabi_books_tools === the four names in GABI_BOOKS_TOOL_NAMES (${BOOKS_TOOLS.join(', ')})`,
+      got !== null && got.length === BOOKS_TOOLS.length && got.every((n, i) => n === BOOKS_TOOLS[i]),
+      `gabi_books_tools=${JSON.stringify(body.gabi_books_tools)}`,
+    );
+
+    // Posture and readiness are PRINTED, not failed on: `GABI_BOOKS` is an
+    // affirmative-only lever the owner may legitimately pull to "off" (access
+    // doc §3, and it is the documented rollback), so a suite that failed on
+    // it would fight the rollback it exists to make safe.
+    console.log(
+      `      ↳ gabi_books: enabled=${body.gabi_books_enabled} ready=${body.gabi_books_ready} ` +
+        `bytes/turn=${body.gabi_books_bytes_per_turn} passages/turn=${body.gabi_books_passages_per_turn} turns/day=${body.gabi_books_turns_per_day}`,
+    );
   }
 }

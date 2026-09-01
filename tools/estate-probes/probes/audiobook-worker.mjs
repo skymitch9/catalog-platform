@@ -8,6 +8,10 @@
  *   POST /api/gate/shadow  the would-deny telemetry receiver — 204 ALWAYS.
  *   GET  /api/audio/status      audio player phase 1 (2026-08-18); gated.
  *   GET|HEAD /api/audio/:anchor/file  the audiobook byte stream; gated.
+ *   GET  /api/books/available          GABI's book knowledge (2026-08-18); gated.
+ *   GET  /api/books/presence           one term rolled up across ≤6 books; gated.
+ *   GET  /api/book/:bookId/search      four modes (§6.2); gated.
+ *   GET  /api/book/:bookId/passage     one passage + its ±1 stitch; gated.
  *
  * ⚠️ The two audio routes and the two ebook ones are gated on the SAME estate
  * grant (`vis_ebooks`) by owner decision, so this suite can only ever see
@@ -241,6 +245,65 @@ export async function probeAudiobookWorker() {
       audioFileUrl,
       'the refusal names no file (.m4b) and no path — the gate runs before the bucket',
       !body.includes('.m4b') && !body.includes('estate-audio'),
+      body.slice(0, 200),
+    );
+  }
+
+  // --- GABI's book knowledge: four gated retrieval routes ----------------
+  //
+  // ⚠️ THE PATHS ARE NOT SYMMETRIC AND THIS COST A ROUND-TRIP TO DISCOVER.
+  // The two corpus-wide routes are `/api/books/…` (PLURAL) and the two
+  // per-book ones are `/api/book/:bookId/…` (SINGULAR) — `book-routes.ts`
+  // lines 277/311 vs 372/429. Guessing `/api/books/pht-1/search` gets Hono's
+  // BARE text/plain `404 Not Found`, which looks exactly like "the feature is
+  // not deployed" and is in fact "you spelled the route wrong". Recorded here
+  // because the next session will otherwise diagnose it twice.
+  //
+  // These ride the SAME `vis_ebooks` gate as the audio and ebook routes
+  // (design: reading rides `vis_ebooks`, never the download capability), so
+  // like every other gated route this suite can only ever see the refusal —
+  // which is the half that matters for a surface holding the household's
+  // derived book text. Nothing here holds `ESTATE_APP_TOKEN_BOOKS`; the
+  // suite's zero-credential contract is unchanged.
+  expectWordedUnauthenticated('AB17', 'GET', '/api/books/available', await get(`${AUDIOBOOK_API_ORIGIN}/api/books/available`));
+  expectWordedUnauthenticated(
+    'AB18',
+    'GET',
+    '/api/books/available',
+    await get(`${AUDIOBOOK_API_ORIGIN}/api/books/available`, { headers: { Authorization: GARBAGE_BEARER } }),
+  );
+  expectWordedUnauthenticated(
+    'AB19',
+    'GET',
+    '/api/books/presence',
+    await get(`${AUDIOBOOK_API_ORIGIN}/api/books/presence?term=probe&books=b-probe000000`),
+  );
+  expectWordedUnauthenticated(
+    'AB20',
+    'GET',
+    '/api/book/:bookId/search',
+    await get(`${AUDIOBOOK_API_ORIGIN}/api/book/b-probe000000/search?q=probe`),
+  );
+  const passageUrl = `${AUDIOBOOK_API_ORIGIN}/api/book/b-probe000000/passage?ord=0`;
+  const passage = await get(passageUrl);
+  expectWordedUnauthenticated('AB21', 'GET', '/api/book/:bookId/passage', passage);
+
+  // ⚠️ AND THE REFUSAL LEAKS NO BOOK TEXT AND NO STORAGE SHAPE. Same argument
+  // as AB16 one layer in: the gate runs before any R2 GET, so an anonymous
+  // caller must not be able to learn from a refusal which books are packed,
+  // what the bucket is called, or that packs live under a `text/` prefix.
+  // The derived text is a MORE attractive scrape target than the files
+  // (access doc §5: smaller, cleaner, searchable), so this is asserted rather
+  // than assumed.
+  if (passage.ok) {
+    const body = JSON.stringify(passage.json ?? passage.text ?? '');
+    check(
+      AREA,
+      'AB22',
+      'GET',
+      passageUrl,
+      'the refusal names no pack, bucket or prefix — the gate runs before R2',
+      !body.includes('ebooks-gated') && !body.includes('.json.gz') && !body.includes('text/'),
       body.slice(0, 200),
     );
   }

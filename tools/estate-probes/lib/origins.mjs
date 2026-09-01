@@ -32,14 +32,16 @@ export const LIBRARY2_ORIGIN = 'https://padhard.heygabi.ai';
 export const AUDIOBOOK_API_ORIGIN = 'https://audiobook-api.heygabi.ai';
 
 /**
- * The discord-worker (`apps/discord-worker`) is BUILT but NOT DEPLOYED — no
- * Discord application is registered yet, so it has no hostname. `null` here
- * makes `probes/discord-worker.mjs` print a visible SKIP instead of the
- * suite silently not knowing the worker exists. The day it deploys, set
- * this to its real origin (e.g. 'https://discord-api.heygabi.ai') and the
- * already-written health probes switch on — a one-line change.
+ * The discord-worker (`apps/discord-worker`), live at `discord.heygabi.ai`.
+ *
+ * ⚠️ **This was `null` — the documented "one-line change" — for long after
+ * the Worker actually deployed**, so the suite printed "not deployed yet
+ * (expected)" every run while the Worker was serving GABI in production.
+ * Switched on 2026-09-01. The lesson is the skip's own design: a visible SKIP
+ * only stays honest if something makes it stop skipping, and nothing did.
+ * A skip that has outlived its reason reads exactly like a passing suite.
  */
-export const DISCORD_API_ORIGIN = null;
+export const DISCORD_API_ORIGIN = 'https://discord.heygabi.ai';
 
 /** The apex — the one origin every estate CORS allow-list admits. */
 export const APEX_ORIGIN = 'https://heygabi.ai';

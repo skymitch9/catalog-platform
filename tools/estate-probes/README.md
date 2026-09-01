@@ -2,14 +2,28 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
 >
-> ⚠️ **NOT re-run since 2026-08-23's +3.** The machine-read rows (`I9`–`I11`,
-> `/api/machine/*`) were added with the feature and have **never been executed
-> against production**, because the routes are not deployed yet. Expect
-> **105 probes**, and expect those three to FAIL with a 404 until the deploy
-> lands — that is the pre-deploy state, not a regression. The count below
-> (102/102) is the last MEASURED figure and predates them.
+> Last verified: **2026-09-01** — **129/129 passing** against live
+> production, measured by running `npm run probe:estate`. **+6 for GABI's book
+> knowledge** (`AB17`–`AB22`: the four gated retrieval routes refusing a
+> tokenless caller with the worded 401, `available` refusing a garbage bearer
+> too, and one assertion that a refusal names no pack, bucket or `text/`
+> prefix — the gate runs before any R2 GET) and **+5 because the
+> discord-worker probes were SWITCHED ON** (`D1`–`D5`).
 >
-> Last verified: **2026-08-16** (102/102 passing against live production,
+> ⚠️ **The discord-worker rows had been printing "not deployed yet (expected)"
+> long after the Worker was live and serving GABI in production.** The skip was
+> designed to be visible precisely so the suite would not silently forget the
+> Worker existed — but nothing ever made it stop skipping, and a skip that has
+> outlived its reason reads exactly like a passing suite. `D5` now pins
+> `gabi_books_tools` against the four names in `GABI_BOOKS_TOOL_NAMES`, so the
+> fourth allowlist is asserted against what is DEPLOYED and not only against
+> what is built. The earlier `I9`–`I11` machine-read caveat is resolved: they
+> pass.
+>
+> Prior MEASURED figure: **102/102** on 2026-08-16 (below), which predated the
+> `I9`–`I11` machine-read rows added 2026-08-23.
+>
+> Earlier: **2026-08-16** (102/102 passing against live production,
 > measured by running `npm run probe:estate` — **+11 for
 > `padhard.heygabi.ai`** ("Sam's library", `library_catalog`'s
 > `[env.friend]`), added the day the estate began MANAGING that instance's
@@ -68,8 +82,8 @@ time, by anyone with this repo checked out, with no credentials at all.
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
 | `padhard.heygabi.ai` | `probes/library2-worker.mjs` | **"Sam's library"** — the SECOND library instance (`library_catalog`'s `[env.friend]`: Worker `library-catalog-friend`, own D1 `library-catalog-2nd`, own bucket). Probed because the CODE is shared with `library.heygabi.ai` and the DEPLOY is not — a green main library says nothing about hers. `/api/admin/users` (the surface `heygabi.ai/admin`'s fourth role column drives) tokenless AND garbage-bearer → the worded 401; its `adminCors()` apex-only preflight admitting `https://heygabi.ai` with GET+PATCH and refusing a foreign origin. ⚠️ `PATCH /api/admin/users/:id/role` is deliberately NEVER exercised — it changes what a real person may do on a real catalog; its escalation rules (`canGrantRole`) are unit-tested in that repo. *(sibling repo, read-only reference: `library_catalog/apps/worker/src/routes/admin.ts`, `wrangler.toml [env.friend]`)* |
 | `boardgames.heygabi.ai` | `probes/health.mjs` | `/api/health` only — no other public surface is asked for by design |
-| `audiobook-api.heygabi.ai` | `probes/audiobook-worker.mjs` | The audiobook-worker (deployed 2026-08-16). `/api/health` → 200 with this Worker's OWN envelope `{ ok, service, time, estate_check }` (no `detail`, by design — not the estate health envelope), `estate_check` asserted ∈ {off, shadow, enforce} **and printed on every run** (the shadow flip / an accidental revert shows here without reading wrangler config); `/api/me` tokenless AND garbage-bearer → the WORDED 401 (`error: "unauthenticated"` + a non-empty human `detail` — the ROLES.md §1e contract, asserted, not just the shape); `/api/me` CORS (audiobook site admitted, foreign origin refused); `POST /api/gate/shadow` with `{ action: "probe" }` → 204 + empty body — **the one by-design non-refused POST in this suite, see the note below** |
-| discord-worker | `probes/discord-worker.mjs` | **NOT DEPLOYED — visible SKIP, on purpose.** Prints `discord-worker: not deployed yet (expected)` every run so the suite knows the worker exists. Health probes (200, `service === "estate-discord"`, config-presence booleans printed) are already written against `apps/discord-worker/src/index.ts`'s real shape; the day it deploys, setting `DISCORD_API_ORIGIN` in `lib/origins.mjs` switches them on — a one-line change |
+| `audiobook-api.heygabi.ai` | `probes/audiobook-worker.mjs` | The audiobook-worker (deployed 2026-08-16). `/api/health` → 200 with this Worker's OWN envelope `{ ok, service, time, estate_check }` (no `detail`, by design — not the estate health envelope), `estate_check` asserted ∈ {off, shadow, enforce} **and printed on every run** (the shadow flip / an accidental revert shows here without reading wrangler config); `/api/me` tokenless AND garbage-bearer → the WORDED 401 (`error: "unauthenticated"` + a non-empty human `detail` — the ROLES.md §1e contract, asserted, not just the shape); `/api/me` CORS (audiobook site admitted, foreign origin refused); `POST /api/gate/shadow` with `{ action: "probe" }` → 204 + empty body — **the one by-design non-refused POST in this suite, see the note below**; **GABI's four book-knowledge routes** (`AB17`–`AB22`, 2026-09-01) tokenless → the worded 401, `/api/books/available` on a garbage bearer too, and the `passage` refusal asserted to name no pack, bucket or `text/` prefix. ⚠️ **The paths are not symmetric:** `/api/books/available` and `/api/books/presence` are PLURAL, `/api/book/:bookId/search` and `/api/book/:bookId/passage` are SINGULAR (`book-routes.ts:277,311,372,429`) — a wrong guess gets Hono's bare `text/plain` 404, which looks like "not deployed" and is "misspelled" |
+| `discord.heygabi.ai` | `probes/discord-worker.mjs` | **LIVE — switched on 2026-09-01** (it had printed "not deployed yet (expected)" for weeks after actually deploying; see the header note). `/api/health` → 200, `service === "estate-discord"`, the `{ ok, service, configured }` envelope with config-PRESENCE booleans printed (never values), and **`D5`: `gabi_books_tools` equals the four names in `GABI_BOOKS_TOOL_NAMES`** — the fourth allowlist asserted against the DEPLOY, not just the build. Posture/readiness (`gabi_books_enabled`, `gabi_books_ready`, the caps) are PRINTED but never failed on: `GABI_BOOKS = "off"` is the documented rollback, and a suite that failed on it would fight the lever it exists to keep safe. `POST /interactions` is deliberately NOT probed — Ed25519-gated Discord machinery, covered by the worker's own tests |
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
 | Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on; `shelf_upload_status/current` (2026-08-16) — read permitted (200 or 404, never denied) |
 

@@ -2,7 +2,14 @@
 
 > **Audience:** Claude sessions. **Status:** TRACKED (this repo is PUBLIC on
 > GitHub — resource and secret NAMES only, never values).
-> Last verified: **2026-08-18**, by execution against the live Workers.
+> Last verified: **2026-09-01** — the UNAUTHENTICATED half re-verified live
+> (all four routes answer the worded 401; `discord.heygabi.ai/api/health` is
+> green with `gabi_books_ready: true` and the four tool names) and pinned by
+> **11 new probes** (§9). ⚠️ **The AUTHENTICATED half was NOT re-measured on
+> this date** — no signed-in read, no real Discord question, and no pack was
+> read by a live authorized caller. The §6 table's figures remain those
+> measured **2026-08-18**; the pack COUNT there (158) is certainly stale, since
+> the ingester adds packs nightly with no deploy.
 
 *How to switch GABI's reading on and off, who holds what, how to prove it works,
 and how to roll it back.* For how and why it is shaped this way, see
@@ -32,7 +39,8 @@ a book packed at 03:00 answers at 03:01.
 |---|---|---|
 | Chunk packs | R2 `ebooks-gated`, prefix `text/` | ⚠️ **opaque gzip** — no `Content-Encoding` metadata, every reader gunzips explicitly |
 | Index | `text/_index.json.gz` | a DECORATION; its absence is reported, not hidden |
-| Retrieval routes | `apps/audiobook-worker/src/book-routes.ts` | `available`, `presence`, `book/:id/search`, `book/:id/passage` |
+| Retrieval routes | `apps/audiobook-worker/src/book-routes.ts` | ⚠️ paths are NOT symmetric — `/api/books/available` (`:277`) and `/api/books/presence` (`:311`) are **plural**; `/api/book/:bookId/search` (`:372`) and `/api/book/:bookId/passage` (`:429`) are **singular** |
+| Unauthenticated-edge probes | `tools/estate-probes/probes/audiobook-worker.mjs` (`AB17`–`AB22`), `probes/discord-worker.mjs` (`D5`) | added 2026-09-01; `npm run probe:estate` |
 | Tool definitions | `apps/discord-worker/src/gabi-tools.ts` → `GABI_BOOKS_TOOL_NAMES` | the FOURTH allowlist |
 | The contract | `apps/discord-worker/src/book-knowledge.ts` | holds no credential |
 | The credential seam | `apps/discord-worker/src/book-knowledge-exec.ts` | the ONLY module here that names the token |
@@ -161,6 +169,16 @@ Invoke-RestMethod "https://audiobook-api.heygabi.ai/api/books/available?limit=5"
 
 ## 7. Gotchas that cost real time
 
+- ⚠️ **THE ROUTE PATHS ARE NOT SYMMETRIC, AND GUESSING WRONG LOOKS LIKE "NOT
+  DEPLOYED".** The corpus-wide pair is `/api/books/…` (**plural**); the
+  per-book pair is `/api/book/:bookId/…` (**singular**). A wrong guess —
+  `/api/books/{id}/search` is the natural one — gets Hono's default
+  `text/plain` **`404 Not Found`**, with no worded refusal, which is exactly
+  what an undeployed route looks like. Cost a round-trip on 2026-09-01 to
+  diagnose; recorded so it is not diagnosed a third time. ⚠️ It is also the one
+  bare status on this surface, and it is Hono's fallback rather than anything
+  this feature writes — a real refusal from these routes is always a worded
+  JSON body.
 - ⚠️ **Packs are opaque gzip on purpose.** The `Content-Encoding` metadata was
   deliberately removed: the Workers R2 binding returns STORED bytes, so a reader
   that assumes inflation gets gzip magic where it wanted JSON. Gunzip explicitly.
@@ -224,3 +242,54 @@ Invoke-RestMethod "https://audiobook-api.heygabi.ai/api/books/available?limit=5"
 | Stop her durably | `GABI_BOOKS = "off"` + deploy |
 | Undo the code | the feature is four commits on `main`, `apps/discord-worker` only; the routes it calls predate it and are used by nothing else yet |
 | Suspect a leaked token | re-mint and re-store on **both** holders (§5). Nothing else holds it, so there is no third place to remember |
+
+---
+
+## 9. The probes — what is checked with NO credential
+
+Added 2026-09-01, per the estate's new-endpoint-gets-a-probe rule. Run with
+`npm run probe:estate` from the repo root. **129/129 passing**, measured
+2026-09-01 (was 118 before these; see `tools/estate-probes/README.md`).
+
+| Probe | Asserts |
+|---|---|
+| `AB17` | `GET /api/books/available` tokenless → worded 401 |
+| `AB18` | same, on a **garbage bearer** → worded 401 |
+| `AB19` | `GET /api/books/presence` tokenless → worded 401 |
+| `AB20` | `GET /api/book/:bookId/search` tokenless → worded 401 |
+| `AB21` | `GET /api/book/:bookId/passage` tokenless → worded 401 |
+| `AB22` | that refusal names **no pack, bucket or `text/` prefix** — the gate runs before any R2 GET |
+| `D5` | `gabi_books_tools` on the live health route equals the four names in `GABI_BOOKS_TOOL_NAMES` |
+
+The worded 401, quoted live 2026-09-01 from all four routes, identically:
+
+```json
+{"error":"unauthenticated","detail":"The ebook shelf is for the household. Sign in with Google to see it — signed-out visitors get no list at all."}
+```
+
+⚠️ **The probes can only ever see the refusal, and that is deliberate.** The
+suite holds no credential and mints no identity; §5's note stands — fabricating
+an `X-Estate-On-Behalf-Of` to exercise a token is asserting an identity to a
+live gate, which is not a probe. So the reading half is proven by the owner's
+acceptance test, never by this suite.
+
+⚠️ **`D5` pins the fourth allowlist against the DEPLOY.** The discord-worker's
+own `test/book-knowledge.test.ts` pins it structurally at build time — that a
+tool cannot leave its array, and that `toolsForApi()` with no argument still
+returns Tier 0 and nothing else. `D5` is the other end: what is actually
+serving. Both are needed, because a green build says nothing about which
+version is live.
+
+⚠️ **`gabi_books_enabled` / `gabi_books_ready` and the caps are PRINTED, never
+failed on.** `GABI_BOOKS = "off"` is §3's documented rollback, so a probe that
+failed on it would fight the lever it exists to keep safe. Measured live
+2026-09-01: `enabled=true ready=true bytes/turn=49152 passages/turn=12
+turns/day=40` — matching §4's table exactly.
+
+⚠️ **`ESTATE_APP_TOKEN_BOOKS` does NOT appear in the health route's
+`configured` map** (measured 2026-09-01; the map lists ten other secrets).
+Its presence is only observable through `gabi_books_ready`, which is the AND of
+posture + book token + service account. So a `ready: false` still means "a
+setup gap, never a permissions one" (§6), but it does **not** tell you *which*
+of the three is missing. Not fixed here; recorded so the next session does not
+hunt for a token name that was never published.

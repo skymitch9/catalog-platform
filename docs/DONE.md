@@ -18,6 +18,104 @@
 
 
 
+## 2026-09-01 — GABI's book-knowledge SERVING half: found ALREADY BUILT, and closed the one real gap (the probes)
+
+**Dispatched to build the serving half; found it shipped 2026-08-18 and
+verified that instead.** Nothing was moved from [`TODO.md`](TODO.md) — there
+was no entry, because the work had already landed and been recorded. This entry
+exists so the next session does not build it a second time.
+
+**The brief was stale, and the docs said so before any code was read.** The
+task named phases 3 and 4 of
+[`../info/gabi-book-knowledge-design.md`](../info/gabi-book-knowledge-design.md)
+as unbuilt ("978 book packs sit inert… this build makes GABI able to read
+them"). But that document's own §4.6 carries an **"⚠️ AS BUILT 2026-08-18 —
+FOUR TOOLS, NOT TWO"** banner, and
+[`gabi-book-knowledge.md`](gabi-book-knowledge.md) is an operating manual for a
+shipped feature. **Reading the docs first is what turned a multi-layer
+rebuild into an afternoon of verification** — and a rebuild would have been
+actively destructive, since the live routes and tools are the ones GABI is
+serving from.
+
+**What already existed, verified by execution and not by reading the banner:**
+
+| Asked for | Found at | State |
+|---|---|---|
+| Four retrieval modes (§6.2) | `apps/audiobook-worker/src/book-retrieval.ts:97` `RETRIEVAL_MODES` | built; `earliest`/`latest` sort by `ord`, `presence` returns a roll-up not passages |
+| Explicit gunzip (opaque gzip) | `book-packs.ts:121` `gunzipJson()` via `DecompressionStream` | built, with the "no `Content-Encoding`" reason in its header |
+| ±1-neighbour stitch at RETURN time | `book-retrieval.ts:515` `stitchPassage()` | built; clamped to the chapter, drops a neighbour rather than cutting text |
+| Derive-never-store ceiling (§4.3) | `book-retrieval.ts:167` + `:232` | built; `through_ord` REFUSES without a matching `ingester_version` |
+| The four routes, behind `vis_ebooks` | `book-routes.ts:277,311,372,429` | built and live |
+| The FOURTH tool allowlist | `apps/discord-worker/src/gabi-tools.ts:448` `GABI_BOOKS_TOOL_NAMES` | built |
+| The structural pinning test | `apps/discord-worker/test/book-knowledge.test.ts:76,131,142` | built; pins the set, that docs tools do not leak in, and the total |
+| Tests | audiobook-worker **248**, discord-worker **950** | green before this work and after it — **unchanged, because no product code was touched** |
+
+**The one genuine gap: NO PROBES.** `tools/estate-probes/` had not a single row
+for any of the four routes, against the estate's own new-endpoint-gets-a-probe
+rule. Closed with **+11**, taking the suite **118 → 129, all passing**:
+
+- `AB17`–`AB21` — each route tokenless → the worded 401, plus
+  `/api/books/available` on a garbage bearer.
+- `AB22` — the refusal names **no pack, bucket or `text/` prefix**, asserting
+  that the gate runs before any R2 GET. The derived text is a more attractive
+  scrape target than the files (§5), so this is asserted rather than assumed.
+- `D1`–`D4` — **the discord-worker probes were SWITCHED ON.**
+- `D5` — new: `gabi_books_tools` on the live health route equals the four names
+  in `GABI_BOOKS_TOOL_NAMES`, pinning the fourth allowlist against the DEPLOY
+  and not only against the build.
+
+**⚠️ The discord-worker finding is the one worth carrying forward.**
+`DISCORD_API_ORIGIN` was still `null` in `lib/origins.mjs`, so the suite printed
+*"discord-worker: not deployed yet (expected)"* on every run — **for weeks after
+the Worker deployed and began serving GABI in production.** The skip was
+deliberately designed to be *visible* so the suite would never silently forget
+the Worker existed, and it still failed, because **nothing ever made it stop
+skipping.** A skip that has outlived its reason reads exactly like a passing
+suite. The lesson generalises past this repo: a visible-SKIP needs an owner or
+an expiry, not just visibility.
+
+**⚠️ A second gotcha, recorded because it cost a live round-trip:** the route
+paths are **not symmetric**. `/api/books/available` and `/api/books/presence`
+are plural; `/api/book/:bookId/search` and `/api/book/:bookId/passage` are
+singular. The natural guess (`/api/books/{id}/search`) gets Hono's default
+`text/plain` **`404 Not Found`** — no worded body — which is indistinguishable
+from "the feature is not deployed". Now in §7 of the access doc.
+
+**⚠️ `ESTATE_APP_TOKEN_BOOKS` is absent from the health route's `configured`
+map** (measured; the map names ten other secrets). Its presence is observable
+only through `gabi_books_ready`, the AND of three things — so a `false` there is
+still "a setup gap, never a permissions one", but it does not say *which*.
+Recorded, not fixed.
+
+**Live, measured 2026-09-01** — all four routes answer identically to a
+tokenless caller and to a garbage bearer:
+
+```json
+{"error":"unauthenticated","detail":"The ebook shelf is for the household. Sign in with Google to see it — signed-out visitors get no list at all."}
+```
+
+`discord.heygabi.ai/api/health`: `ok: true`, `gabi_books_enabled: true`,
+`gabi_books_ready: true`, the four tool names, and the caps matching §4 exactly
+(`bytes/turn=49152`, `passages/turn=12`, `turns/day=40`).
+
+**NO DEPLOY WAS MADE, and that is the correct outcome.** The brief's deploy step
+presumed new product code; none was written. `apps/` is byte-for-byte unchanged
+— the change is confined to `tools/estate-probes/` and `docs/`, neither of which
+ships to a Worker. **`docs/deploys.log` therefore gains no line**, because
+nothing was deployed; writing one would have recorded a deploy that did not
+happen.
+
+**⚠️ NOT verified, and none of it can be from this side:** no signed-in read, no
+real Discord question, and **no pack was read by a live authorized caller** —
+the probe suite holds no credential by design, and fabricating an
+`X-Estate-On-Behalf-Of` to exercise the token would be asserting an identity to
+a live gate, which is not a probe. The **978 pack count in the brief is
+unconfirmed** (the last MEASURED figure is 158, on 2026-08-18; the ingester adds
+packs nightly, so the true number is certainly higher and certainly not 158).
+The reading half stays the owner's acceptance test.
+
+---
+
 ## 2026-09-01 — the ingestion card's UX condense: 22 controls down to 2
 
 Moved WHOLE from [`TODO.md`](TODO.md)'s *"Ingestion card UX condense (owner ask
