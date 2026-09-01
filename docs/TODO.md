@@ -186,11 +186,14 @@ write time + `pause_until_gpu_free` (processor-released, clear-then-start,
 fails closed); blockers = `recurring_windows` (absolute while in force).
 Effort ~M. 🔴 **Deploy order is load-bearing: reader FIRST** — an old reader
 ignores `recurring_windows`, which fails OPEN.
-- ✅ **ALL FOUR QUESTIONS SETTLED (Q1/Q2 2026-08-31, Q3 delegated, Q4
-  2026-09-01 "block everything") — the design is BUILD-READY.** Build starts
-  on the owner's go: reader half (`ingest_control.py`) FIRST (the
-  `recurring_windows` fail-open row), then ops.ts + the card. ~M effort,
-  ~1.5 days, live round trip at the end.
+- ✅ **ALL QUESTIONS SETTLED (Q1–Q4 + the v3 do-not-disturb addition) — the
+  design is BUILD-READY.** v3 (2026-09-01): the WoW-at-midnight incident —
+  the in-window guard is one lenient poll and a menu-idle game reads under
+  50%, so §4a adds `exempt_processes` (process PRESENCE blocks all new
+  starts, window or not; seeds with the WoW image names, verified live).
+  Build on the owner's go: reader half FIRST (two fail-open fields:
+  `recurring_windows`, `exempt_processes`), then ops.ts + the card. ~M
+  effort, ~2 days, live round trip at the end.
 - Found while designing: `pause_mode` (`all`|`manual_only`, owner ask
   2026-08-23) is already BUILT in `ingest_control.py` — that is library TODO's
   OR-3 answered; verify the card offers the choice, then close OR-3 there.

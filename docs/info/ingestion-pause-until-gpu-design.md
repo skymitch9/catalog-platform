@@ -1,4 +1,4 @@
-# Soft pauses + recurring blockers — DESIGN ONLY (v2)
+# Soft pauses + recurring blockers + do-not-disturb processes — DESIGN ONLY (v3)
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED, **DESIGN
 > ONLY — nothing built** (owner: *"plan this dont buil yet"*). v1 written
@@ -133,6 +133,54 @@ recurring_windows: [{days: [1,2,3], from: "18:30", until: "22:15"}]
   time fields, add/delete rows; each row rendered in words ("Mon Tue Wed,
   6:30 PM – 10:15 PM"). Deleting is the only edit (replace = delete + add).
 
+## 4a. Do-not-disturb processes (v3, owner incident 2026-09-01)
+
+Owner, after the 2026-09-01 00:00 window start ran batch-16 transcription
+beside his game: *"I was playing wow at midnight and the ingestion didnt
+pause. is there an alternate check I can add to make sure World of Warcraft
+is an exemption."*
+
+**Why the existing guard could never catch this:** inside the window
+`_gpu_clearance` is a SINGLE lenient poll — *"at 2am the window IS the
+guarantee"* — and the incident falsified that guarantee. Worse, no
+utilisation threshold can ever be strict enough: the module's own words are
+*"a game paused on a menu still owns the GPU the moment it unpauses;
+loading screens read 3%"*. **Process PRESENCE is the check that cannot be
+fooled by an idle frame.**
+
+New field, standing (dashboard-editable like `priority_front`):
+
+```
+exempt_processes: ["Wow.exe", "WowClassic.exe"]
+```
+
+- **Semantics: any listed process running ⇒ the machine is IN USE ⇒ no new
+  book starts of any kind** — GPU or CPU, window or not. (Consistent with
+  Q4's *"block everything"* taste; a per-lane split can come later if packing
+  during a game ever proves wanted.) A book already mid-transcription is not
+  killed — same as every other guard, this gates STARTS.
+- It also **holds a soft pause's GPU release**: release requires sustained-
+  free AND no exempt process running, or a menu dip re-creates the incident.
+- **Check:** `tasklist /FO CSV /NH` (dependency-free on this box), image name
+  compared case-insensitively, exact match. Evaluated wherever the GPU
+  clearance runs, including the in-window single-poll path — that line is the
+  fix for the incident. Cheap (~100 ms) and logged when it bites:
+  *"Wow.exe is running — the machine is in use; no new starts"*.
+- **Fail posture:** an unreadable process listing is treated as IN USE, with
+  a loud log line — the same fail-toward-not-starting the GPU and CPU guards
+  take. The escape from a permanently broken `tasklist` is deleting the list
+  entries from the card.
+- Validation mirrors `clean_id_list` (another repo writes it): bounded
+  (`MAX_EXEMPT_PROCESSES = 20`), malformed entries dropped with a log line
+  and surfaced on the board.
+- Card UX: a small standing list beside the recurring blockers — add/delete
+  process names, each row echoed back in words.
+- ⚠️ Old reader ignores the field → **fails OPEN**, same as
+  `recurring_windows` — one more reason the reader half ships first (§5).
+- Seed the list with `Wow.exe` + `WowClassic.exe` at build time and verify
+  the image names against his actual client (`tasklist` while WoW runs)
+  rather than trusting memory.
+
 ## 5. Old-reader behaviour per field — and the one that dictates deploy order
 
 | Field | Un-updated `ingest_control.py` does | Direction |
@@ -140,6 +188,7 @@ recurring_windows: [{days: [1,2,3], from: "18:30", until: "22:15"}]
 | `pause_until_gpu_free` | ignores it → soft pause runs to its `paused_until` ceiling | fails CLOSED (pause merely lasts longer) ✅ |
 | soft pause's computed `paused_until` | honoured today already | ✅ |
 | `recurring_windows` | **ignored → the machine RUNS during blocked hours** | 🔴 fails OPEN |
+| `exempt_processes` (§4a) | **ignored → starts beside a running game** | 🔴 fails OPEN |
 
 🔴 **Therefore: the reader ships FIRST, the dashboard's blocker editor only
 after.** The reverse order gives the owner an editor whose rows silently do
@@ -180,6 +229,12 @@ human" debt gets paid in the same session.
    pause waits, nothing runs — CPU packing included. The GPU reading is only
    the release trigger; paused means paused.
 
-**All four questions are settled. The design is BUILD-READY** — nothing is
+5. **v3 addition (2026-09-01), settled in principle** — the WoW incident's
+   fix is §4a's `exempt_processes`. Defaults chosen without a fifth
+   round-trip, vetoable: a listed process blocks ALL new starts (matching
+   Q4's taste), the list is dashboard-editable, an unreadable process
+   listing fails toward not-starting.
+
+**All questions are settled. The design is BUILD-READY** — nothing is
 built; the build starts on the owner's go, reader half (`ingest_control.py`)
-first per §5's fail-open row.
+first per §5's TWO fail-open rows.
