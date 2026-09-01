@@ -171,8 +171,10 @@ human" debt gets paid in the same session.
 2. ✅ **ANSWERED 2026-08-31** (owner: *"pm and your rule is fine"*): blockers
    beat the nightly window when they overlap, and the MTW 6:30–10:15 example
    is PM — evening hours, no overlap with 12am–8am in practice.
-3. **Release bar:** sustained-free (2 polls, 120s — recommended, a
-   loading-screen dip can't unpause mid-game) vs a single poll (~4 min
-   faster).
+3. ✅ **DECIDED 2026-08-31** (owner: *"your choice"* — delegated, the
+   recommendation taken): **sustained-free**, 2 polls 120s apart under 50% —
+   the same `gpu_sustained_free()` bar opportunistic starts use, so there is
+   one definition of "the GPU is free" in the whole module. A loading-screen
+   dip cannot unpause mid-game; the cost is ~4 minutes of release lag.
 4. **Scope while a soft pause waits:** block everything (recommended) or let
    CPU-only packing continue?
