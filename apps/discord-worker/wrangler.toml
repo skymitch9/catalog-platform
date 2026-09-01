@@ -445,6 +445,36 @@ GABI_MEMORY = "on"
 # ⚠️ OFF IS SILENT — nobody asks a question only a personality could answer.
 GABI_PERSONALITY = "on"
 
+# ⚠️ THE INTENSITY DIAL — how far she takes whatever voice she is in.
+#
+# Owner ask 2026-09-01, verbatim: "Gabi can be a bit more into her personality,
+# she can be a bit snarkier or a bit more flirty. this is a private server so we
+# can be a bit mean to my friends. let her really sell the personality. Think of
+# Grok from X in its all go mode. have it really lean into stuff she's ingested
+# from the books to build out those personalities."
+#
+#   standard — ⚠️ BYTE-IDENTICAL to the pre-dial bot. Nothing is appended, and a
+#              test holds the whole prompt as a literal so softening her is this
+#              one word plus a deploy rather than an archaeology dig.
+#   full     — the roast licence, the book-fuelled personalisation instruction
+#              and the written floor are appended to the system prompt.
+#
+# ⚠️ FAIL CLOSED. Anything that is not exactly "full" reads as "standard" —
+# "on" and "true" included, because they are what somebody who knows this
+# Worker's OTHER postures would type, and guessing them would turn her voice up
+# by typo.
+#
+# ⚠️ IT SHIPS AT "full", which IS the owner's ask. It multiplies whatever trope
+# GABI_PERSONALITY picked; the eleven tropes, the drift graph and the pin are
+# untouched. The persona block is still appended LAST, so its PG-13 register
+# clause and its invariance clause remain the final words in the prompt: the
+# dial raises BITE, never explicitness, and it changes no refusal, no spoiler
+# bound and no citation.
+#
+# ⚠️ ONE PROMPT, TWO PROVIDERS. Haiku and the Groq shadow rung render the same
+# system string; there is no provider-specific fork and there must not be one.
+GABI_EDGE = "full"
+
 # ⚠️ TIER 0d — the asker's OWN shelf: their reading list, their reviews, and the
 # books they have not reviewed. Affirmative-only "on".
 #

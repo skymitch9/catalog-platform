@@ -160,6 +160,14 @@ import {
  *  (2026-09-01) — `GROQ_API_KEY_GABI` and `GABI_GROQ` are read here and nowhere
  *  downstream. See `gabi-groq.ts`. */
 import { groqRung } from './gabi-groq.js';
+/**
+ * ⚠️ **THE INTENSITY DIAL (2026-09-01).** Read HERE because this is where the
+ * env lives, exactly as `groqRung` and `personaBlock` are — `mention-flow.ts`
+ * receives a rendered STRING and never learns there is a var. It ships `"full"`
+ * per the owner's ask; `"standard"` makes every prompt below byte-for-byte the
+ * pre-dial one.
+ */
+import { edgeBlock, edgeMode } from './gabi-prompt.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -1729,6 +1737,13 @@ export class GabiGateway {
         // between "switched off" and "this surface never had one".
         personalityEnabled: personalityOn(this.env),
         ...(persona ? { personaBlock: personaBlock(persona.trope) } : {}),
+        // ⚠️ THE INTENSITY DIAL, rendered here and spread conditionally exactly
+        // as the persona block is. Absent on `standard`, which is what makes
+        // that posture byte-identical to the pre-dial prompt rather than merely
+        // similar to it. ⚠️ It is INDEPENDENT of `personalityEnabled`: the dial
+        // is about her register, not about which trope she is wearing, and a
+        // person talking to a personality-less GABI still gets the licence.
+        ...(edgeBlock(edgeMode(this.env)) ? { edgeBlock: edgeBlock(edgeMode(this.env)) } : {}),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
         // ⚠️ **THE GROQ FIRST-LINE RUNG.** Built here because this is where the
         // env lives; `mention-flow.ts` receives it opaque and names no secret.

@@ -392,6 +392,31 @@ export interface Env {
   GABI_PERSONALITY?: string;
 
   /**
+   * ⚠️ **THE INTENSITY DIAL — how far she takes whatever voice she is in.**
+   *
+   * Owner ask 2026-09-01: *"Gabi can be a bit more into her personality, she can
+   * be a bit snarkier or a bit more flirty. this is a private server so we can be
+   * a bit mean to my friends… Think of Grok from X in its all go mode."*
+   *
+   * Two states, coerced **fail-closed** by `edgeMode()` in `gabi-prompt.ts`:
+   *
+   * | Value | Behaviour |
+   * |---|---|
+   * | `standard` | ⚠️ **Byte-identical to the pre-dial bot.** Nothing is appended; pinned by a test that holds the whole prompt as a literal. |
+   * | `full` (ships) | The roast licence, the book-fuelled personalisation instruction and the written floor are appended to the system prompt. |
+   *
+   * ⚠️ Anything that is not exactly `full` reads as `standard` — `"on"` and
+   * `"true"` included, because they are what somebody who knows this Worker's
+   * other postures would type and guessing them would turn her voice up by typo.
+   *
+   * ⚠️ **IT MULTIPLIES THE TROPE, IT DOES NOT REPLACE IT.** The eleven tropes,
+   * the drift graph and the hidden pin are untouched, and the persona block still
+   * comes LAST so its PG-13 register clause and its invariance clause remain the
+   * final words in the prompt. The dial raises BITE, never explicitness.
+   */
+  GABI_EDGE?: string;
+
+  /**
    * ⚠️ **TIER 0d — the asker's OWN shelf (TBR, reviews, "not reviewed").**
    *
    * Affirmative-only `"on"`, and it **ships off**: this reaches a named person's

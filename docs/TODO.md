@@ -100,6 +100,42 @@ most of the tokens are, so it is where the actual savings live. Open-weights
 tool-calling accuracy is the real question and the shadow ladder cannot answer
 it without executing tools twice.
 
+## ☐ GABI personality intensity — snark/flirt dial up (owner ask 2026-09-01)
+
+Owner: *"Gabi can be a bit more into her personality, she can be a bit snarkier
+or a bit more flirty. this is a private server so we can be a bit mean to my
+friends. let her really sell the personality. Think of Grok from X in its all
+go mode. have it really lean into stuff she's ingested from the books to build
+out those personalities."*
+
+✅ **BUILT AND DEPLOYED 2026-09-01.** `GABI_EDGE` (`standard` | `full`, fail
+closed, ships **`full`**) in `apps/discord-worker/wrangler.toml`; the block
+lives in `src/gabi-prompt.ts` beside the canonical prompt and is appended
+BETWEEN memory and the persona block, so the PG-13 register clause and the
+invariance clause stay last. `/api/health` reports `gabi_edge`. Tests:
+`test/gabi-edge.test.ts` (18), including a literal pin of the whole pre-dial
+prompt so `standard` is byte-identical. Operating it and the floor:
+[`access/gabi-personality.md`](access/gabi-personality.md) §9; design:
+[`info/gabi-personality-design.md`](info/gabi-personality-design.md) §11.
+
+⚠️ **REMAINING — what is NOT done:**
+
+1. **The owner has to HEAR the difference.** Nobody has talked to her at
+   `full`; a test over a prompt proves the instruction is present, never that
+   it is obeyed. Turning her down is `GABI_EDGE = "standard"` plus a deploy.
+2. ⚠️ **The Groq shadow rung now renders this same prompt and its voice at
+   `full` is UNMEASURED** — the shadow lines carry lengths and latencies and
+   deliberately never texts, so nothing in them can show how a 70B
+   open-weights model handles a roast licence. That needs `first`.
+3. **The library panel does NOT have it, by design, and the step is
+   library-side.** Phase 3's unification is a COPIED prompt with a comment
+   naming its source (`library_catalog/packages/research/src/gabi.ts` →
+   `GABI_SYSTEM`), not a shared package. This change did not touch the copied
+   core — the byte pin proves it — so the copy is still in sync. Giving the
+   panel the dial means appending its own `GABI_EDGE_FULL` there with its own
+   posture, and that is an OWNER decision, not a sync: the panel's audience is
+   not this private server's audience.
+
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;

@@ -1,6 +1,10 @@
 # GABI's personality — design
 
-> **Audience:** Claude sessions. **Status:** TRACKED. Written **2026-08-18**.
+> **Audience:** Claude sessions. **Status:** TRACKED. Written **2026-08-18**;
+> **§11 (the intensity dial) added 2026-09-01**, built and deployed the same
+> session. Last verified: **2026-09-01** for §11 — the suite was run and the
+> Worker deployed; §§1–10 were NOT re-measured. ⚠️ Nobody has heard her at
+> `full` yet (§11.7).
 > Owner ask, verbatim: *"we need to give Gabi personality settings, I want you to
 > find some common personality tropes like peppy, tsundere, shy, etc for Gabi and
 > then each time a person talks to her she picks a personality. as they talk to
@@ -421,6 +425,120 @@ Durable Object storage read and (on drift or a new conversation) one small write
   string and that the persona block is additive; they do not prove the model
   never paraphrases one. That gap is real and is the thing to watch in the first
   week.
+
+---
+
+## 11. ⚠️ THE INTENSITY DIAL — `GABI_EDGE` (added 2026-09-01)
+
+Owner ask, verbatim: *"Gabi can be a bit more into her personality, she can be a
+bit snarkier or a bit more flirty. this is a private server so we can be a bit
+mean to my friends. let her really sell the personality. Think of Grok from X in
+its all go mode. have it really lean into stuff she's ingested from the books to
+build out those personalities."*
+
+Operating it: [`../access/gabi-personality.md`](../access/gabi-personality.md) §9.
+Code: `apps/discord-worker/src/gabi-prompt.ts`. Tests: `test/gabi-edge.test.ts`.
+
+### 11.1 A DIAL, not a twelfth trope, and not a rewrite of the eleven
+
+Three shapes were available and two are wrong:
+
+| Approach | Verdict |
+|---|---|
+| Rewrite the eleven voice blocks to be sharper | ⚠️ REJECT. It makes the owner's *"be a bit snarkier"* an irreversible edit spread across eleven strings, and softening her later becomes an archaeology dig through a diff rather than a decision |
+| Add a twelfth `savage` trope | ⚠️ REJECT. The ask is not *"give her another mood"* — it is *"turn all the moods up"*. As a trope it would be one roll in eleven, so nine times in ten the ask would not have been honoured, and it would need an edge on the drift graph the owner never approved |
+| **An orthogonal dial that MULTIPLIES the live trope** | ✅ ADOPT. One block, one var, one deploy to undo. The eleven, the wings and the pin are untouched; the roster is still exactly what the owner locked |
+
+⚠️ **`standard` is BYTE-IDENTICAL to the pre-dial prompt**, and that is asserted
+by a test holding the whole prompt as a literal rather than as a checksum. A hash
+would tell a future session that something changed and nothing about *what* —
+and this literal is the string the owner would be reverting to.
+
+### 11.2 ⚠️ THE PLACEMENT IS THE SAFETY ARGUMENT
+
+The block is appended in `mention-flow.ts`'s one assembly line, and it goes
+**between** memory and personality:
+
+```
+[memory?.block, cfg.edgeBlock, persona?.block]
+```
+
+⚠️ **Not after the persona block, and this is the whole of it.** The persona
+block ends with the PG-13 `REGISTER` clause and the `INVARIANT` clause. §2.1 and
+`personality.ts`'s own header both say a rule three paragraphs from an
+instruction is a rule that loses to it — so putting a *roast licence* after both
+safety clauses would move them further from the instruction they exist to bound.
+In this order the licence is qualified by the clauses; in the other, the clauses
+are qualified by the licence. Pinned by test, per trope.
+
+⚠️ **And the licence carries its own floor besides**, written as plainly as the
+permission. A permission in bold beside a limit in a mumble is a permission with
+no limit.
+
+### 11.3 ⚠️ IT RAISES BITE, NOT THE CEILING
+
+PG-13 (§2.1) is unchanged and the no-escalation clause is unchanged. The block
+says so in its own words — *"Louder is not cruder. This raises how much BITE you
+have, never how explicit you get"* — so a model reading the licence reads the
+limit in the same breath, which is the same reason §2.1's clause rides every
+trope rather than being stated once.
+
+⚠️ **The honesty rules are load-bearing here in a way they are not for a mood.**
+A roast built on an invented five-star review is funnier than a roast built on a
+real one, and that is exactly why the block forbids it in capitals: *"an invented
+review, an invented rating or an invented passage is not a joke, it is a lie with
+a punchline stapled to it."* Without that sentence the personalisation
+instruction would be a standing incentive to fabricate.
+
+### 11.4 ⚠️ THE PANEL IS NOT COVERED, and the sync is manual
+
+Phase 3's unification is **option (a): a copied prompt with a comment naming its
+source**, not a shared package. The canonical text is
+`library_catalog/packages/research/src/gabi.ts` → `GABI_SYSTEM`; this repo holds
+the synced copy in `apps/discord-worker/src/gabi-prompt.ts` (`GABI_CORE`).
+`packages/gabi-conversation` carries the conversation RECORD and the history
+helpers — never the prompt.
+
+⚠️ **So the dial reaches Discord and nothing else today**, exactly as §9 says of
+personality itself. The core prompt is deliberately **not touched** by this
+change (the byte-identical pin proves it), so the copy is still in sync and the
+library-side step is purely additive if the owner ever wants the panel to have
+it. Naming it rather than doing it: the panel would need `GABI_EDGE_FULL`
+appended to its own turn's system blocks, with its own posture — the panel's
+audience is not this private server's audience, and inheriting a roast licence
+by accident is precisely the failure this note exists to prevent.
+
+### 11.5 ⚠️ ONE PROMPT, TWO PROVIDERS
+
+The Groq rung ([`gabi-groq-rung.md`](gabi-groq-rung.md)) renders whatever
+`system` string it is handed. There is **no provider-specific fork** and there
+must never be one: a prompt that said different things to Haiku and to Groq
+would make every `gabi_groq_shadow` line a comparison of two different questions,
+and nobody reading them could tell. Pinned by a test that captures both request
+bodies and asserts the strings are equal.
+
+### 11.6 Cost
+
+≈900 tokens appended to the system prompt on every conversational turn at
+`full` — roughly ten times the persona block (§8), and still under a fifth of a
+docs turn. At Haiku's input price that is well under a hundredth of a cent per
+turn. ⚠️ No model call is added, no tool is added, no cap moves.
+
+### 11.7 ⚠️ Limitations and what is NOT verified
+
+- ⚠️ **Nobody has heard her at `full`.** The block is written, tested and
+  deployed; graded it is not. §10's limit applies unchanged: a test over a prompt
+  string proves the instruction is present, never that it is obeyed.
+- ⚠️ **The Groq voice at `full` is unmeasured and the shadow lines CANNOT show
+  it.** They carry latencies and lengths and deliberately never texts
+  (`gabi-groq-rung.md` §5), so how a 70B open-weights model handles a roast
+  licence is not knowable from them. That needs `first` and a conversation.
+- **The floor is asserted by wording, not enforced.** Same posture as §2.1's
+  family-friendliness: the underlying model's own behaviour is doing the actual
+  work, and the prompt is telling it what this household wants.
+- **Nothing measured how often the mirroring rule fires.** "Somebody asking a
+  straight question gets a straight answer with garnish" is a judgement the model
+  makes every turn and nothing counts it.
 
 ## Model guidance (read me if you are Kiro)
 

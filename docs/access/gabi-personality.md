@@ -1,7 +1,9 @@
 # GABI's personality (and person-keyed conversations) — Access Reference
 
 > **Audience:** Claude sessions. **Status:** TRACKED (this repo is PUBLIC).
-> Last verified: **2026-08-18**, deployed and checked live.
+> Last verified: **2026-09-01** — §9 (the intensity dial) built, tested and
+> deployed this session; §§1–8 last checked live **2026-08-18** and NOT
+> re-measured today. ⚠️ **Nobody has heard her at `full` yet** (§9.5).
 > ⚠️ **The pin in §4 is deliberately UNDOCUMENTED to end users** — it lives here
 > and in `docs/info/` only. Do not put it in any user-facing text.
 
@@ -15,6 +17,7 @@ and [`../info/gabi-memory-design.md`](../info/gabi-memory-design.md) §11.
 | Lever | Where | Ships |
 |---|---|---|
 | `GABI_PERSONALITY` | `apps/discord-worker/wrangler.toml` | **`"on"`** |
+| `GABI_EDGE` | same | **`"full"`** (owner ask 2026-09-01 — §9) |
 | `GABI_MEMORY` | same | `"on"` (owner flipped it 2026-08-18) |
 
 ⚠️ **Personality ships ON and the other postures do not.** It changes *wording*;
@@ -24,10 +27,10 @@ personality could answer.
 
 ```powershell
 (Invoke-RestMethod https://discord.heygabi.ai/api/health) |
-  Select-Object gabi_personality_enabled, gabi_personality_tropes, gabi_conversation_scope
+  Select-Object gabi_personality_enabled, gabi_personality_tropes, gabi_conversation_scope, gabi_edge
 ```
 
-Expect `True`, 11 tropes, and `person`.
+Expect `True`, 11 tropes, `person`, and **`full`**.
 
 ---
 
@@ -184,3 +187,102 @@ last-write-wins, so the person can undo it exactly as they could undo their own.
 
 **c) "It refused to act on a name."** Correct. Only a Discord mention targets
 another person — a name is ambiguous the moment two people share one.
+
+---
+
+## 9. ⚠️ THE INTENSITY DIAL — `GABI_EDGE` (added 2026-09-01)
+
+Design: [`../info/gabi-personality-design.md`](../info/gabi-personality-design.md) §11.
+
+Owner ask, verbatim: *"Gabi can be a bit more into her personality, she can be a
+bit snarkier or a bit more flirty. this is a private server so we can be a bit
+mean to my friends. let her really sell the personality. Think of Grok from X in
+its all go mode. have it really lean into stuff she's ingested from the books to
+build out those personalities."*
+
+### 9.1 The lever
+
+| Value | Behaviour |
+|---|---|
+| `standard` | ⚠️ **Byte-identical to the pre-dial bot.** Nothing is appended. A test holds the ENTIRE pre-dial system prompt as a literal, so this is a promise rather than a hope |
+| **`full`** — ships this way | The licence, the book-fuelled personalisation instruction and the written floor are appended to the system prompt |
+
+⚠️ **FAIL CLOSED.** Anything that is not exactly `full` reads as `standard` —
+`"on"` and `"true"` included, because they are what somebody who knows this
+Worker's *other* postures would type, and guessing them would turn her voice up
+by typo. `/api/health` reports the **coerced** word as `gabi_edge`, so a typo is
+visible in one curl.
+
+⚠️ **Turning her down is ONE WORD and a deploy.** `GABI_EDGE = "standard"` in
+`apps/discord-worker/wrangler.toml`, then `npx wrangler deploy`. There is no
+archaeology and no revert to hunt for.
+
+⚠️ **It MULTIPLIES the trope, it does not replace one.** The eleven (§2), the
+drift graph (§3) and the hidden pin (§4) are untouched — the dial decides how
+far she takes whatever voice she is already in.
+
+⚠️ **It raises BITE, never the ceiling.** PG-13 is still the ceiling and the
+no-escalation clause is still in force; the block says so in its own words
+(*"Louder is not cruder"*), and the persona block — which carries both clauses —
+is still appended **last**, so they bound the licence rather than the reverse.
+
+### 9.2 The posture at `full`, quotable to a friend who asks *"why is she like this now?"*
+
+> This is a private household server, so she has been given a licence: real
+> opinions with her whole weight behind them, no corporate padding, and playful
+> roasting of your taste in books because that is the point of her rather than a
+> risk she is taking. Whatever mood she is in that day, she now goes all the way
+> in — flirty means she flirts like she means it; tsundere means the grumbling
+> has teeth; noir and deadpan go dry and merciless. The calibration is
+> *irreverent, quick and a little dangerous — the friend who roasts you across
+> the table because she knows you'll laugh.*
+>
+> And she roasts you with **your own shelves**: your to-be-read pile, your own
+> reviews and star ratings quoted back at you, and the text of the books she has
+> actually read. *"Your five-star review of that is a confession, not a rating."*
+
+### 9.3 ⚠️ THE FLOOR — where the bit stops, every time
+
+This half is written into the prompt as plainly as the licence, and each line is
+pinned by a test:
+
+| Rule | What it means |
+|---|---|
+| **Tastes, choices, fictional allegiances — never people** | Your reading pile, your ratings, the series you abandoned at book four, your ship. ⚠️ **Never** a body, looks, age, intelligence, money, work, family, health, or anything that reads like a real sore spot |
+| **Mirror them** | Banter gets banter; a straight question gets a straight answer with garnish, not a roast; somebody quiet or new gets the warm version. **They set the pace** |
+| **Drop it instantly** | Genuinely hurt, or asked to stop → she stops. No sulking, no wounded aside, never making anybody ask twice |
+| ⚠️ **Spoilers and privacy OUTRANK the joke** | A bit that spoils a book is damage, not a bit. And §6's posture is now in the prompt in its own words: in a public channel she may **use** what she knows privately and must **never quote or restate it** |
+| **Content warnings are not comedy** | Somebody asking what is in a book before they read it gets a straight, kind answer — never a joke about it, never a joke about them for asking |
+| **Still GABI** | Resident bookworm, keeper of these shelves. The volume is up; the character is not new. Every fact, citation, refusal and tool-given sentence is unchanged |
+
+⚠️ **A roast has to be built on something REAL** — a tool result from that turn
+or a book she has genuinely read here. An invented review or rating is *"a lie
+with a punchline stapled to it"*, and the prompt says so, because a funny
+fabrication would undo the honesty rules the base prompt spends five sections
+establishing.
+
+### 9.4 ⚠️ Things that will be reported as bugs, and are not
+
+**a) "She's meaner to me than to Sam."** Probably correct — she **mirrors**. The
+person who banters hard gets it back; the person who asks straight questions
+gets straight answers. The trope she rolled matters too (§7).
+
+**b) "She quoted my own review at me."** That is the feature (§9.2), and it is
+the asker's own shelf read with the asker's own identity — never somebody
+else's. Another person's TBR is never offered on any surface.
+
+**c) "She went quiet and normal mid-roast."** Correct: the floor fired. Something
+read as *stop*, and the prompt says drop it instantly and without sulking.
+
+### 9.5 ⚠️ NOT verified
+
+- ⚠️ **Nobody has heard her at `full` yet.** The block is written and pinned by
+  tests; a test over a prompt proves the instruction is PRESENT, never that it is
+  obeyed. This is §10 of the design applied to the dial, and it is the same gap.
+- ⚠️ **The Groq shadow rung renders this same prompt**, and its voice at `full`
+  is **unmeasured** — the shadow lines carry lengths and latencies, never texts
+  ([`../info/gabi-groq-rung.md`](../info/gabi-groq-rung.md) §5), so nothing in
+  them can show how a 70B open-weights model handles a roast licence. Reading
+  that needs the `first` posture and a conversation.
+- **The panel is NOT covered.** The canonical prompt is a synced COPY here; the
+  library repo holds the source. See the design §11.4.

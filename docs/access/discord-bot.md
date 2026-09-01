@@ -105,8 +105,8 @@ THREE-state posture on this Worker** — every other one is affirmative-only
 
 | Value | Behaviour |
 |---|---|
-| `off` — **ships this way** | byte-identical to the pre-Groq bot; no prompt is built and no request is made |
-| `shadow` | Groq is called beside Haiku, one `gabi_groq_shadow` line is logged, and ⚠️ **Haiku's answer is used** |
+| `off` | byte-identical to the pre-Groq bot; no prompt is built and no request is made |
+| `shadow` — **ships this way** (flipped off → shadow 2026-09-01, `8286150`) | Groq is called beside Haiku, one `gabi_groq_shadow` line is logged, and ⚠️ **Haiku's answer is used** |
 | `first` | Groq is tried once; any failure falls through to Haiku invisibly |
 
 ⚠️ **Fail closed**: anything that is not exactly `shadow` or `first` — including
@@ -114,6 +114,22 @@ THREE-state posture on this Worker** — every other one is affirmative-only
 postures would type — coerces to `off`. ⚠️ **Shadow before first**, and the flip
 is the OWNER's after reading the lines, never a deploy's side effect. Scope:
 **toolless calls only** — a tool-loop turn stays on Anthropic in every posture.
+
+A fourth, **`GABI_EDGE`** (added 2026-09-01), is the **second** multi-state
+posture — GABI's intensity dial, owner ask *"she can be a bit snarkier or a bit
+more flirty… Think of Grok from X in its all go mode."*
+
+| Value | Behaviour |
+|---|---|
+| `standard` | ⚠️ **Byte-identical to the pre-dial bot.** Nothing is appended, and a test holds the whole prompt as a literal |
+| `full` — **ships this way** | The roast licence, the book-fuelled personalisation instruction and the written floor ride the system prompt |
+
+⚠️ **Fail closed the same way**: anything that is not exactly `full` reads as
+`standard`. ⚠️ **Turning her down is ONE WORD and a deploy** — `full` →
+`standard` in `wrangler.toml`. It multiplies whatever trope
+`GABI_PERSONALITY` picked rather than replacing one, and it raises **bite**,
+never the PG-13 ceiling. Full posture and floor:
+[`gabi-personality.md`](gabi-personality.md) §9.
 
 ## 3. Owner runbook — Developer Portal steps, in order
 

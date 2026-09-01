@@ -117,6 +117,7 @@ import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
 import { GABI_GROQ_MODEL, groqMode } from './gabi-groq.js';
 import { ARCHIVE_RETENTION_DAYS, RECALL_SCAN_ROWS } from './archive.js';
 import { personalityOn, TROPES } from './personality.js';
+import { edgeMode } from './gabi-prompt.js';
 import { shelfOn } from './shelf.js';
 import { PHYSICAL_SOURCE_INSTANCE, suggestOn } from './suggest.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
@@ -443,6 +444,17 @@ app.get('/api/health', (c) =>
     // is deliberately NOT named anywhere a person would look, per the owner.
     gabi_personality_enabled: personalityOn(c.env),
     gabi_personality_tropes: TROPES,
+    // ⚠️ **THE INTENSITY DIAL (2026-09-01) — the POSTURE, not a boolean.**
+    // Reported as the COERCED word rather than the raw var, exactly as
+    // `gabi_groq` is, so what is READ is what is shown: a typo'd `GABI_EDGE`
+    // reads `standard` here, which is both the truth and the fail-closed rule
+    // made visible in one curl.
+    //   standard — byte-identical to the pre-dial bot; nothing is appended
+    //   full     — the roast licence, the book-fuelled personalisation
+    //              instruction and the written floor ride the system prompt
+    // ⚠️ It multiplies whatever trope `gabi_personality_tropes` produced; it
+    // does not replace one, and it raises BITE rather than the PG-13 ceiling.
+    gabi_edge: edgeMode(c.env),
     // ⚠️ Person-keyed conversations, stated so a debugger does not go hunting
     // for channel-scoped records that no longer exist.
     gabi_conversation_scope: 'person',

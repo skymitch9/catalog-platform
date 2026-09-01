@@ -563,6 +563,23 @@ export interface MentionConfig {
    * never had one".
    */
   personalityEnabled?: boolean;
+  /**
+   * ⚠️ **THE INTENSITY DIAL, ALREADY RENDERED** (owner ask 2026-09-01) — a
+   * STRING for the same reason `personaBlock` is one: only the composition root
+   * reads env, and handing this file a mode word would put the posture's
+   * coercion in a second place.
+   *
+   * ⚠️ **Absent means `GABI_EDGE = "standard"`, and absent means the prompt is
+   * byte-for-byte the pre-dial one.** There is deliberately no "the dial is off"
+   * sentence anywhere: like the personality posture, off is silent, because
+   * nobody asks a question only a register could answer.
+   *
+   * ⚠️ It is NOT a licence to change a fact. It rides in the same appended block
+   * as memory and persona and is placed BEFORE the persona block, so the
+   * register ceiling and the invariance clause stay the last words the model
+   * reads.
+   */
+  edgeBlock?: string;
   /** ⚠️ The `GABI_SUGGEST` posture, affirmative-only, read at the composition
    *  root. Defaults to FALSE so a caller that predates the feature falls through
    *  unchanged rather than being handed a sentence about a lane it never had. */
@@ -1925,11 +1942,22 @@ async function answerQuestion(
   // ⚠️ Deterministic for the same reason the memory control is: a model deciding
   // somebody *probably* meant to change her personality is a model that changes
   // it when they said something else.
-  // ⚠️ ONE BLOCK, in a fixed order: who she is talking TO, then how she sounds.
-  // Personality goes LAST so the voice is the freshest instruction — and it is
-  // APPENDED to the system prompt, never substituted for any of it, which is the
-  // structural half of "tone, never truth".
-  const extraBlock = [memory?.block, persona?.block].filter(Boolean).join('\n') || undefined;
+  // ⚠️ ONE BLOCK, in a fixed order: who she is talking TO, then how hard she is
+  // allowed to go, then how she sounds. Personality goes LAST so the voice is
+  // the freshest instruction — and it is APPENDED to the system prompt, never
+  // substituted for any of it, which is the structural half of "tone, never
+  // truth".
+  //
+  // ⚠️ THE INTENSITY DIAL SITS IN THE MIDDLE, AND THAT PLACEMENT IS THE SAFETY
+  // ARGUMENT (owner ask 2026-09-01). The persona block ends with the PG-13
+  // register clause and the invariance clause; putting the roast licence AFTER
+  // it would move both of those further from the instruction they qualify, and
+  // `personality.ts`'s own header says a rule three paragraphs from an
+  // instruction is a rule that loses to it. So the licence is qualified by the
+  // clauses rather than the other way round, and the dial carries its own
+  // written floor besides.
+  const extraBlock =
+    [memory?.block, cfg.edgeBlock, persona?.block].filter(Boolean).join('\n') || undefined;
 
   const personaAsk = personaCommand(question);
   if (personaAsk && persona?.deps.persona) {

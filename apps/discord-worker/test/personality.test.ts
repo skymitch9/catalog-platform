@@ -128,7 +128,12 @@ describe('⚠️ personality cannot change what is true', () => {
     assert.match(chat, /CHAT_TOOLS_SYSTEM,/);
     assert.match(chat, /\.\.\.\(memoryBlock \? \[memoryBlock\] : \[\]\)/);
     const flow = repoFile('src/mention-flow.ts');
-    assert.match(flow, /\[memory\?\.block, persona\?\.block\]\.filter\(Boolean\)/);
+    // ⚠️ Widened 2026-09-01 for the intensity dial, and NOT weakened: the
+    // persona block must still be the LAST entry, because its PG-13 register
+    // clause and its invariance clause are what qualify everything above them.
+    // A dial that appended itself after the persona block would push both of
+    // those away from the instruction they bound.
+    assert.match(flow, /\[memory\?\.block, cfg\.edgeBlock, persona\?\.block\]\.filter\(Boolean\)/);
   });
 
   it('⚠️ the three risky tropes carry their explicit floors', () => {
