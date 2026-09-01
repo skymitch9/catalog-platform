@@ -10,6 +10,96 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ Groq as GABI's first-line model before Haiku — BUILT + DEPLOYED DARK, awaiting the owner's key
+
+Owner ask 2026-09-01: *"we just used groq in a different project, lets integrate
+that into our gabi model as a first line before going to haiku tokens"* +
+*"use the information from the other project to help reduce duplicate work."*
+
+**Built, tested and deployed 2026-09-01** — and it changes nothing today,
+because `GABI_GROQ = "off"` ships in `wrangler.toml` and `GROQ_API_KEY_GABI` is
+unset. Design of record: [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md).
+Runbook: [`access/discord-bot.md`](access/discord-bot.md) §11.8. Money path:
+[`info/llm-billing-control-design.md`](info/llm-billing-control-design.md) §2.4
+row **E7**.
+
+**What landed:** `apps/discord-worker/src/gabi-groq.ts` — a first-line rung in
+front of the pinned Haiku on the **four TOOLLESS** call sites (classification,
+small talk, memory distill, T2 fix parse). ⚠️ The tool loop is **out of scope by
+construction** — the Anthropic↔OpenAI tool-schema translation is phase 2, and a
+build-failing test keeps a tool turn off `api.groq.com` in every posture. Model
+pinned `llama-3.3-70b-versatile` (black_bot_baf's own choice); one attempt, 4 s
+timeout, eight failure reasons, every one of them an **invisible** fall-through
+to the unchanged Haiku call. 44 new tests, workspace 2247 pass / 0 fail.
+
+### 🔴 THE OWNER'S FIVE REMAINING STEPS, in order
+
+1. **Mint a Groq key** at `console.groq.com`. ⚠️ A new key — not an Anthropic
+   one, and not the other project's, so this spend is separately auditable.
+2. **Paste it into the FILE** — `apps/discord-worker/.dev.vars`, after
+   `GROQ_API_KEY_GABI=`, with an editor. Never onto a terminal line, where it
+   lands in shell history.
+3. **Push it with the script** (⚠️ **THE BOM-FREE RITUAL — this is the whole
+   point of step 3**), from the repo root:
+
+   ```bash
+   node scripts/push-discord-secret.mjs GROQ_API_KEY_GABI
+   ```
+
+   ⚠️ **NEVER `$value | npx wrangler secret put`.** A PowerShell pipe to a
+   native process prepends an invisible UTF-8 BOM (`EF BB BF`); the stored key
+   is then wrong **while looking perfect everywhere a human can check it**, and
+   fails as a plain 401. That is exactly how `ANTHROPIC_API_KEY_GABI` was
+   broken on 2026-08-18 (GABI heard every mention and answered none), and its
+   first "fix" — `$OutputEncoding` + trim — was **measured not to work** and is
+   revoked as ritual. See [`access/agent-board.md`](access/agent-board.md) §3
+   and [`access/discord-bot.md`](access/discord-bot.md) §7.
+
+   The script reads the one named line out of `.dev.vars`, **prints the byte
+   facts and never the value** (length, first three bytes — a BOM is
+   `239 187 191` — and the last byte), writes raw bytes to `wrangler`'s stdin
+   from Node where no encoder can add a BOM, refuses a value that already
+   carries a BOM, and **blanks the `.dev.vars` line afterwards**. Confirm:
+   `curl -s https://discord.heygabi.ai/api/health | jq '.configured.groq_key_gabi'`
+   → `true`.
+
+4. **Flip SHADOW, deploy, and read the lines.** `GABI_GROQ = "shadow"` in
+   `apps/discord-worker/wrangler.toml`, `npx wrangler deploy`. Nothing a person
+   sees changes — Groq is called beside Haiku and ⚠️ **Haiku's answer is used.**
+   @mention GABI a few times, then:
+
+   ```bash
+   npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_groq_shadow")'
+   ```
+
+   Look for `agreed: true` on nearly every `classify` line, `groq_answered:
+   true` on nearly all of them, and `groq_ms` below `haiku_ms`. A wall of
+   `reason: "refused"` / `status: 401` means **a BOM'd key** — redo step 3.
+   `status: 400` naming a decommission means the pinned model was retired.
+
+5. **Flip `first`** once the shadow lines look right, and talk to her. ⚠️ Prose
+   quality is **not** readable off the shadow lines (they carry lengths, never
+   text — these are household conversations). Backing out is one line:
+   `GABI_GROQ = "off"` and deploy, or delete the secret and skip the deploy.
+
+### 🔴 NOT VERIFIED — no live Groq call has ever been made from this repo
+
+Every test drives an injected `fetch`. Whether Groq accepts this body, whether
+`llama-3.3-70b-versatile` is still a live id, whether the answers are good
+enough, and what the savings actually are (⚠️ the tool loop — the expensive
+half — is excluded) are all unknown until step 4.
+
+### ☐ Phase 2 — the tool-schema translation
+
+Not started, and not a "small addition": `tool_use`/`tool_result` ↔
+`tool_calls`/`role: "tool"`, preserving every invariant `converseWithTools`'s
+header records (all results for one turn in ONE user message; a failed tool
+comes back `is_error` rather than dropped; the last pass sends no tools; the
+dangling-colon guard against the 2026-08-18 silent partial). ⚠️ This is where
+most of the tokens are, so it is where the actual savings live. Open-weights
+tool-calling accuracy is the real question and the shadow ladder cannot answer
+it without executing tools twice.
+
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;
@@ -204,9 +294,11 @@ Owner: *"we need a way to toggle what can bill the LLM and what can't inside the
 admin page somewhere. and even finer than that, i want to be able to determine
 which features can bill and which can't per site per user etc"*
 
-- ⚠️ **35 money-spending code paths inventoried** across the four repos, each with
+- ⚠️ **36 money-spending code paths inventoried** across the four repos, each with
   today's gate cited (library 13 — deployed twice; games 7; audiobook 9;
-  platform 6). §2 of the doc is the inventory.
+  platform 7). §2 of the doc is the inventory. ⚠️ **E7 was added 2026-09-01** —
+  GABI's Groq first line, and it is the first path in this estate that bills a
+  provider OTHER than Anthropic. Its posture ships `off`.
 - ☐ **OWNER DECISION Q1:** may policy GRANT, or only DENY? Recommendation: deny-only.
 - ☐ **OWNER DECISION Q2:** the `system` (cron) principal vs games'
   `SWEEP_LIMIT` "a knob nobody tunes hides its value" intent. Recommendation:

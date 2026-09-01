@@ -114,6 +114,7 @@ import {
 } from './book-knowledge.js';
 import { audiobookApiBase } from './book-knowledge-exec.js';
 import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
+import { GABI_GROQ_MODEL, groqMode } from './gabi-groq.js';
 import { ARCHIVE_RETENTION_DAYS, RECALL_SCAN_ROWS } from './archive.js';
 import { personalityOn, TROPES } from './personality.js';
 import { shelfOn } from './shelf.js';
@@ -179,6 +180,10 @@ app.get('/api/health', (c) =>
       // auth Worker. Named here so "can she answer how do I promote?" is
       // answerable in one curl rather than by DMing her.
       'gabi_estate_docs',
+      // ⚠️ Added 2026-09-01: the Groq first-line rung, SHIPPING DARK. Named
+      // here so "is there a cheaper model in front of Haiku?" is answerable in
+      // one curl; `gabi_groq` below says which of the three postures is live.
+      'gabi_groq_rung_dark',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -202,6 +207,15 @@ app.get('/api/health', (c) =>
       // (src/mentions.ts), she just has no conversational half. A missing key
       // never produces an error message in a channel.
       anthropic_key_gabi: Boolean(c.env.ANTHROPIC_API_KEY_GABI),
+      // ⚠️ THE GROQ FIRST-LINE KEY (2026-09-01). Reports FALSE until the owner
+      // mints and pastes it, and that honest false is the point: the rung ships
+      // with the posture `off` AND no key, so BOTH halves of "nothing is
+      // reachable" are visible in one curl rather than inferred. A missing key
+      // is a LADDER, not a fault — `viaGroq` is a straight call to the existing
+      // Haiku path without it, whatever `GABI_GROQ` says.
+      // ⚠️ A boolean about a NAME. It is not proof the value works — only a
+      // `gabi_groq` log line with `outcome: "groq"` is that.
+      groq_key_gabi: Boolean(c.env.GROQ_API_KEY_GABI),
       // ⚠️ TIER 1. Reports FALSE until the conductor mints it and pipes the
       // SAME value to BOTH library Workers — one value, three holders, same
       // name (the DONOR_TOKEN idiom). Same honest-false discipline as every row
@@ -380,6 +394,30 @@ app.get('/api/health', (c) =>
     gabi_memory_enabled: memoryOn(c.env),
     gabi_memory_ready: memoryOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
     gabi_memory_profile_max_bytes: PROFILE_MAX_BYTES,
+    // ⚠️ **THE GROQ FIRST-LINE RUNG (2026-09-01) — the POSTURE, not a boolean.**
+    // Three states, and reported as the coerced word rather than the raw var so
+    // what is READ is what is shown: a typo'd `GABI_GROQ` reads `off` here,
+    // which is both the truth and the fail-closed rule made visible.
+    //   off    — byte-identical to the pre-Groq bot; no request is made
+    //   shadow — Groq is called beside Haiku and HAIKU'S answer is used
+    //   first  — Groq is tried once, any failure falls through to Haiku
+    gabi_groq: groqMode(c.env),
+    // The AND a reader would otherwise compute: the posture is not `off` AND
+    // the key exists. `configured.groq_key_gabi` above carries the key half on
+    // its own, beside its Anthropic twin.
+    gabi_groq_ready: groqMode(c.env) !== 'off' && Boolean(c.env.GROQ_API_KEY_GABI),
+    // ⚠️ The PINNED model id, stated rather than inferred — Groq retires model
+    // names faster than a deploy can follow (black_bot_baf's own gotcha), and a
+    // retirement shows up as a silent fall-through to Haiku. This row is how
+    // "which model is the first line actually asking for?" is answerable in one
+    // curl instead of by reading TypeScript.
+    gabi_groq_model: GABI_GROQ_MODEL,
+    // ⚠️ THE SCOPE, stated rather than inferred, because it is the claim the
+    // whole rung rests on: only TOOLLESS calls are eligible. A tool-loop turn
+    // stays on Anthropic in every posture until the Anthropic↔OpenAI tool-schema
+    // translation lands (phase 2). If this row ever says otherwise, somebody
+    // made that decision and it should be findable in one curl.
+    gabi_groq_scope: 'toolless_calls_only_tool_loops_stay_anthropic',
     // ⚠️ **TIER 3 + 4 — THE 90-DAY ARCHIVE AND THE RECALL TOOL, REPORTED AS
     // THEIR OWN ROWS.** The design shares ONE posture across tiers 2-4, so
     // flipping `GABI_MEMORY` on turned these on too the moment they deployed —

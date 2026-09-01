@@ -51,7 +51,7 @@ bill."*** Policy, not time, not measurement, not rung.
 
 ---
 
-## 2. The money-path inventory — 35 paths across 4 repos
+## 2. The money-path inventory — 36 paths across 4 repos
 
 ⚠️ **Every row was read from source this session.** "Today's gate" is what
 actually stops the call, not what a comment says stops it.
@@ -111,21 +111,49 @@ paths are Python, run by the home machine and by GitHub Actions. The secret is
 | A8 | "Run pipeline now" button | `app/tools/pipeline_watcher.py:114,125` | Firestore `pipeline_requests` doc | runs A1+A2+A3-fulfil+A4 | shared-secret HMAC vs `PIPELINE_TRIGGER_TOKEN` (`:203`) + age cutoff. ⚠️ **no role or estate check** | whole pipeline |
 | A9 | Filesystem watcher auto-pipeline | `app/tools/fs_watcher.py:331,337` | Task Scheduler, **every 1 min** | same as A8 | ⚠️ rate limit + the single-flight pipeline lock only | whole pipeline, event-driven |
 
-### 2.4 `estate` — `catalog-platform` (6 paths)
+### 2.4 `estate` — `catalog-platform` (7 paths)
+
+> ⚠️ **Line anchors in E1–E5 re-read 2026-09-01** when the Groq rung (E7) moved
+> each Anthropic call into a `viaHaiku` closure. The calls themselves are
+> unchanged — same model, same prompts, same caps.
 
 | # | Feature | Entry point | Trigger | Model / secret | Today's gate | Cost |
 |---|---|---|---|---|---|---|
-| E1 | GABI intent classify | `apps/discord-worker/src/gabi-chat.ts:350` | Discord @mention / reply / DM | `claude-haiku-4-5-20251001` (`:81`), `ANTHROPIC_API_KEY_GABI` | env posture `GABI_MENTIONS` (`wrangler.toml:261`) + key presence | 24 max tokens (`:90`) |
-| E2 | GABI conversational turn | `apps/discord-worker/src/gabi-chat.ts:421` | same | same | same | 400 max tokens (`:94`) |
-| E3 | GABI tool-loop turn | `apps/discord-worker/src/gabi-chat.ts:774` | same, when tools are offered | same | `GABI_MENTIONS` + the per-feature postures `GABI_DOCS` / `GABI_BOOKS` / `GABI_SHELF` / `GABI_SUGGEST` | 1024 max tokens (`:114`) × `MAX_TOOL_ITERATIONS` |
-| E4 | GABI memory distill | `apps/discord-worker/src/memory-distill.ts:110` | end of a remembered conversation | same | env posture `GABI_MEMORY` (`wrangler.toml:424`) | per distill |
-| E5 | GABI confirm-lane restatement | `apps/discord-worker/src/confirm-propose.ts:177` | a T2/T3 proposal | same | env posture `GABI_CONFIRM_T2` (`wrangler.toml:298`) | per proposal |
+| E1 | GABI intent classify | `apps/discord-worker/src/gabi-chat.ts:377` | Discord @mention / reply / DM | `claude-haiku-4-5-20251001` (`:91`), `ANTHROPIC_API_KEY_GABI` | env posture `GABI_MENTIONS` (`wrangler.toml:261`) + key presence | 24 max tokens (`:100`) |
+| E2 | GABI conversational turn | `apps/discord-worker/src/gabi-chat.ts:480` | same | same | same | 400 max tokens (`:104`) |
+| E3 | GABI tool-loop turn | `apps/discord-worker/src/gabi-chat.ts:857` | same, when tools are offered | same | `GABI_MENTIONS` + the per-feature postures `GABI_DOCS` / `GABI_BOOKS` / `GABI_SHELF` / `GABI_SUGGEST` | 1024 max tokens (`:124`) × `MAX_TOOL_ITERATIONS` |
+| E4 | GABI memory distill | `apps/discord-worker/src/memory-distill.ts:147` | end of a remembered conversation | same | env posture `GABI_MEMORY` (`wrangler.toml:424`) | per distill |
+| E5 | GABI confirm-lane restatement | `apps/discord-worker/src/confirm-propose.ts:187` | a T2/T3 proposal | same | env posture `GABI_CONFIRM_T2` (`wrangler.toml:298`) | per proposal |
+| **E7** | 🆕 **GABI Groq first line** — one attempt in FRONT of E1, E2, E4 and E5 | `apps/discord-worker/src/gabi-groq.ts:278` (`groqComplete`), driven by `viaGroq` (`:471`) | the same four triggers as E1/E2/E4/E5 — ⚠️ **never E3** | 🆕 **`llama-3.3-70b-versatile`** on **Groq** (`gabi-groq.ts:109`), 🆕 `GROQ_API_KEY_GABI` | ⚠️ **THREE-state posture `GABI_GROQ`** (`wrangler.toml:533`, ships `"off"`, fail-closed coercion) **AND** key presence — plus whatever gate the call it fronts already had | ⚠️ **A NEW PROVIDER = A NEW BILL.** Groq's tier is cheap-to-free **today** and that is not a promise. Bounded by the same `max_tokens` as the call it fronts (24 / 400 / 600 / 200), one attempt, 4 s timeout (`:122`) |
 | E6 | Apex shelf-photo identify | `apps/index-worker/src/scan.ts:77` → `src/vision.ts:326` | `POST /api/scan/shelf` from `<estate-search scan>` | 🔴 **`claude-opus-5`** (`vision.ts:216`), `ANTHROPIC_API_KEY` | ⚠️ **`requireEstateMember()` only** (`index.ts:96`) — estate membership, **no role, no capability**. `scan.ts:6-13` says so and calls it *"the one endpoint that spends real money per call"* | $5/$25 per MTok (`vision.ts:211`) |
 
-Haiku pricing is declared at `gabi-chat.ts:85-86` ($1 / $5 per MTok) and every
-GABI turn writes one accounting line (`accountTurn`, `gabi-chat.ts:160`) — ⚠️ a
+Haiku pricing is declared at `gabi-chat.ts:95-96` ($1 / $5 per MTok) and every
+GABI turn writes one accounting line (`accountTurn`, `gabi-chat.ts:170`) — ⚠️ a
 **log line, not a table**, because the Discord Worker has no D1 binding
-(`gabi-chat.ts:154-159`).
+(`gabi-chat.ts:164-169`).
+
+⚠️ **E7 IS ACCOUNTED SEPARATELY, AND THAT SEPARATION IS DELIBERATE (2026-09-01).**
+A Groq turn emits its own `gabi_groq` line (`gabi-groq.ts`, `logGroq`) and
+**does NOT call `accountTurn`**, because `gabi_turn` means *Anthropic spend* and
+a rung that logged free tokens as Haiku ones would inflate the only number this
+document's §2 can be checked against. Two consequences, stated rather than
+discovered:
+
+- **`gabi_groq` carries RAW token counts and NO cents.** There is no Groq price
+  table in this repo, and a fabricated price would be wrong the day the tier is
+  not free. `black_bot_baf` prices Groq at zero for the same reason and records
+  it as *"a decision to revisit when it is not"* — this is that same open
+  decision, in this estate.
+- **Reading the whole GABI bill now takes two filters, not one.**
+  `wrangler tail estate-discord | jq 'select(.evt=="gabi_turn")'` is Anthropic;
+  `select(.evt=="gabi_groq")` is Groq. A fall-through writes **one of each** for
+  the same person-turn, which is correct: it really did spend both.
+
+⚠️ **What E7 does to the OTHER rows' cost, unmeasured:** with the posture at
+`first`, E1/E2/E4/E5 should each fire *less often*, and a Groq failure makes a
+turn cost E7 **plus** the original row rather than instead of it. Nothing has
+measured either direction — see §"NOT verified" in
+[`gabi-groq-rung.md`](gabi-groq-rung.md).
 
 ### 2.5 What the inventory says, in three sentences
 

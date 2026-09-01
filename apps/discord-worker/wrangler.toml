@@ -501,6 +501,37 @@ GABI_SHELF = "on"
 # Worker already builds.
 GABI_SUGGEST = "on"
 
+# ⚠️ THE GROQ FIRST-LINE POSTURE — the ONLY three-state switch on this Worker
+# (owner ask 2026-09-01: "we just used groq in a different project, lets
+# integrate that into our gabi model as a first line before going to haiku
+# tokens"). Design: docs/info/gabi-groq-rung.md; code: src/gabi-groq.ts.
+#
+#   off    — SHIPS THIS WAY. Byte-identical to the pre-Groq bot: no prompt is
+#            built, no request is made, and every call is the Haiku one it
+#            always was. Pinned by test/gabi-groq.test.ts.
+#   shadow — Groq is called BESIDE Haiku, one `gabi_groq_shadow` line is logged
+#            (latency, lengths, did-it-answer, and agreement where that means
+#            something) and ⚠️ HAIKU'S ANSWER IS THE ONE USED. Nothing a person
+#            sees changes.
+#   first  — Groq is tried ONCE; on any failure the existing Haiku call runs
+#            unchanged and the person cannot tell it happened.
+#
+# ⚠️ FAIL CLOSED: `groqMode()` coerces anything that is not exactly "shadow" or
+# "first" to "off" — absent, empty, "on", "true", "1", a capital, a typo. An
+# unrecognised mode is NEVER guessed into the more permissive neighbour.
+#
+# ⚠️ SHADOW BEFORE FIRST. This is the estate's shadow-first enforcement rule
+# (off → shadow → enforce), and the flip to "first" is the OWNER'S, made after
+# reading the shadow lines — never a side effect of a deploy, never an agent's.
+#
+# ⚠️ SCOPE: TOOLLESS CALLS ONLY — classification, small talk, the memory
+# distillation and the T2 fix parse. A tool-loop turn stays on Anthropic in
+# EVERY posture; the Anthropic<->OpenAI tool-schema translation is phase 2.
+#
+# ⚠️ IT DOES NOTHING WITHOUT GROQ_API_KEY_GABI (a secret, below). The switch and
+# the key are two independent owner steps and neither alone changes an answer.
+GABI_GROQ = "off"
+
 # Not in this file, ever — the secrets. At deploy time (owner/dispatcher):
 #   wrangler secret put ESTATE_APP_TOKEN_DISCORD  (TIER 1, added 2026-08-18.
 #     ⚠️ NOT A PORTAL VALUE — the conductor MINTS it (`openssl rand -hex 32`)
@@ -622,3 +653,24 @@ GABI_SUGGEST = "on"
 #     toward the panel, and /api/health reports
 #     configured.anthropic_key_gabi = false. A missing key must NEVER produce
 #     an error message in a Discord channel — it logs a worded line instead.)
+#
+#   wrangler secret put GROQ_API_KEY_GABI         (THE GROQ FIRST-LINE RUNG,
+#     added 2026-09-01. ⚠️ NOT AN ANTHROPIC KEY and NOT the other project's —
+#     a NEW key minted at console.groq.com, held nowhere else in this estate.
+#     ⚠️ A DIFFERENT PROVIDER MEANS A DIFFERENT BILL: Groq is cheap-to-free
+#     today and that is not a promise. It gets its own row in
+#     docs/info/llm-billing-control-design.md §2, and a Groq turn is accounted
+#     as a `gabi_groq` log line with RAW token counts and NO cents — a
+#     fabricated price would be wrong the day the tier is not free.
+#     ⚠️ NEVER PIPE IT FROM POWERSHELL — a pipe to a native process prepends an
+#     invisible UTF-8 BOM and the stored key then fails as a plain 401 while
+#     looking perfect (docs/access/agent-board.md §3; this Worker's own
+#     incident is docs/access/discord-bot.md §7). Push it with
+#       node scripts/push-discord-secret.mjs GROQ_API_KEY_GABI
+#     which reads the named line out of apps/discord-worker/.dev.vars, writes
+#     BOM-free bytes to a temp file, redirects it through `cmd`, and blanks the
+#     .dev.vars line afterwards — never echoing the value.
+#     ⚠️ SHIPS DARK until set, and the absence is a LADDER not a failure: with
+#     no key `viaGroq` is a straight call to the existing Haiku path whatever
+#     GABI_GROQ says, and /api/health reports configured.groq_key_gabi = false
+#     with gabi_groq_ready = false.)

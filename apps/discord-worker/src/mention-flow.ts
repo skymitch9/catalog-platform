@@ -67,6 +67,7 @@ import { lookupHave, renderHit, truncate, type SearchBookHit } from './have.js';
 import { searchTermFor } from './gabi.js';
 import { panelLinkFor, type PanelLink } from './panel.js';
 import { classifyIntent, converse, converseWithTools } from './gabi-chat.js';
+import type { GroqRung, ModelOverrides } from './gabi-groq.js';
 import {
   CATALOG_MSG,
   DEFAULT_CATALOG_BASE,
@@ -278,6 +279,24 @@ export const CUT_FOR_LENGTH =
 /** Fewer than `/have`'s five: a chat reply that is mostly list is a reply
  * nobody reads. Overflow is COUNTED and stated, never dropped silently. */
 export const MAX_MENTION_HITS = 3;
+
+/**
+ * ⚠️ **ONE PLACE THAT BUILDS THE MODEL BAG.** Before the Groq rung this was the
+ * expression `cfg.fetchOverride ? { fetch: … } : undefined`, written out at each
+ * of three call sites — and a rung added to two of them and forgotten at the
+ * third would be a posture that silently did not apply to one lane. It is a
+ * function now for exactly that reason.
+ *
+ * ⚠️ Returns `undefined` when there is nothing to inject, so a caller with
+ * neither a test fetch nor a rung passes the same `undefined` it always did.
+ */
+function modelOverrides(cfg: Pick<MentionConfig, 'fetchOverride' | 'groq'>): ModelOverrides | undefined {
+  if (!cfg.fetchOverride && !cfg.groq) return undefined;
+  return {
+    ...(cfg.fetchOverride ? { fetch: cfg.fetchOverride } : {}),
+    ...(cfg.groq ? { groq: cfg.groq } : {}),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // The injected world
@@ -550,6 +569,17 @@ export interface MentionConfig {
   suggestEnabled?: boolean;
   /** Test seam: counts the model calls without spending. */
   fetchOverride?: typeof fetch;
+  /**
+   * ⚠️ **THE GROQ FIRST-LINE RUNG (2026-09-01)**, built at the composition root
+   * and passed through opaque — this file names no secret, exactly as it names
+   * none for `anthropicKey`. Absent, or `{ mode: 'off' }`, and every model call
+   * below is byte-for-byte the pre-Groq one.
+   *
+   * ⚠️ It reaches only the TOOLLESS helpers (`classifyIntent`, `converse`);
+   * `converseWithTools` receives the same bag and ignores it, because the
+   * Anthropic↔OpenAI tool-schema translation is phase 2.
+   */
+  groq?: GroqRung;
   /**
    * ⚠️ **THE TURN TRACE, and it is OPTIONAL ON PURPOSE.** Added 2026-08-18 after
    * a real person got no answer at all and nothing in the estate could say why
@@ -1212,7 +1242,7 @@ async function docsAnswer(
   who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
   cfg: MentionConfig,
   docs: DocsToolContext,
-  overrides: { fetch?: typeof fetch } | undefined,
+  overrides: ModelOverrides | undefined,
   /** ⚠️ Tier 2 rides EVERY lane. Who she is talking to is not a property of
    *  which router won. */
   memoryBlock?: string,
@@ -1277,7 +1307,7 @@ async function booksAnswer(
   who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
   cfg: MentionConfig,
   books: BooksToolContext,
-  overrides: { fetch?: typeof fetch } | undefined,
+  overrides: ModelOverrides | undefined,
   memoryBlock?: string,
   shelfCtx?: { port: ShelfPort; discordUserId: string },
 ): Promise<AnsweredQuestion> {
@@ -1368,7 +1398,7 @@ async function personalShelfAnswer(
   who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
   cfg: MentionConfig,
   shelfCtx: { port: ShelfPort; discordUserId: string },
-  overrides: { fetch?: typeof fetch } | undefined,
+  overrides: ModelOverrides | undefined,
   memoryBlock?: string,
 ): Promise<AnsweredQuestion> {
   // ⚠️ Every shelf answer carries the overflow sentence: a TBR of forty rows or
@@ -1489,7 +1519,7 @@ async function suggestAnswer(
   history: readonly ConversationTurn[],
   who: { discordUserId: string; guildId: string | null; authorName: string; via: MentionVia | 'component' },
   cfg: MentionConfig,
-  overrides: { fetch?: typeof fetch } | undefined,
+  overrides: ModelOverrides | undefined,
   ctx: {
     shelf?: { port: ShelfPort; discordUserId: string };
     books?: BooksToolContext;
@@ -1871,7 +1901,7 @@ async function answerQuestion(
     currentPending: ConfirmChangePending | null;
   },
 ): Promise<AnsweredQuestion> {
-  const overrides = cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined;
+  const overrides = modelOverrides(cfg);
 
   // ── ⚠️ THE MEMORY CONTROL, AHEAD OF EVERY OTHER ROUTER ────────────────────
   //
@@ -2832,7 +2862,7 @@ export async function handlePick(
       `They picked "${option.label}" from the list you offered. Say something useful about it and what they can do next.`,
       option.detail,
       { ...who, via: 'component' },
-      cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined,
+      modelOverrides(cfg),
       memory.turns,
     );
 

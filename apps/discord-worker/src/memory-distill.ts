@@ -28,6 +28,7 @@
  */
 
 import { chatClient, GABI_CHAT_MODEL, logNoKey } from './gabi-chat.js';
+import { groqLive, viaGroq, type ModelOverrides } from './gabi-groq.js';
 import {
   capProfile,
   DISTILL_SYSTEM,
@@ -86,7 +87,7 @@ export async function distillConversation(
   port: MemoryPort,
   who: { discordUserId: string },
   turns: readonly ConversationTurn[],
-  overrides?: { fetch?: typeof fetch },
+  overrides?: ModelOverrides,
   now: number = Date.now(),
 ): Promise<DistillOutcome> {
   const key = personKey({ discordUserId: who.discordUserId });
@@ -98,54 +99,98 @@ export async function distillConversation(
   const said = turns.filter((t) => t.role === 'user');
   if (said.length === 0) return { ok: true, written: false, why: 'nothing_said' };
 
-  if (!apiKey) {
+  // ⚠️ **"NO MODEL AT ALL" IS THE CHECK, NOT "NO ANTHROPIC KEY".** With the Groq
+  // rung live this sweep can distil without an Anthropic key, so the early
+  // return has to ask about both — otherwise the cheaper transport would be
+  // switched off by the absence of the expensive one it exists to precede.
+  if (!apiKey && !groqLive(overrides?.groq)) {
     logNoKey('the memory distillation');
     return { ok: false, written: false, why: 'no_key' };
   }
 
   const current = (await port.load(key)) ?? emptyProfile(key, now);
+  const asked =
+    `The note you have so far:\n${JSON.stringify({
+      callMe: current.callMe,
+      notes: current.notes,
+      reading: current.reading.map((r) => ({ book: r.book, said: r.said })),
+      threads: current.threads.map((t) => ({ what: t.what })),
+    })}\n\nThe conversation that just ended:\n${distillTranscript(turns)}`;
 
-  let text: string;
-  try {
-    const res = await chatClient(apiKey, overrides).messages.create({
-      model: GABI_CHAT_MODEL,
-      max_tokens: DISTILL_MAX_TOKENS,
+  /**
+   * ⚠️ **THE SHARED VALIDATOR — one schema, two transports.** Un-fence, then
+   * `parseProfile`, which is the memory feature's own schema and the only thing
+   * allowed to decide what a profile is. A Groq reply that fails it is a
+   * FAILURE (the rung falls through to Haiku), never a half-parsed profile that
+   * overwrites what she already knew: design's asymmetry is that forgetting is
+   * acceptable and corruption is not, and that holds for both transports.
+   *
+   * ⚠️ Models fence JSON even when told not to. Stripping a fence is not the
+   * same as tolerating malformed output — anything still unparseable is a no-op.
+   */
+  const asProfile = (raw: string): MemoryProfile | null =>
+    parseProfile(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''), key, now);
+
+  /** Which failure the caller is told about, when nothing parsed. Set by
+   *  whichever transport actually ran; `unparseable` is the default because a
+   *  reply that arrived and did not parse is the commoner case. */
+  let why: 'model_failed' | 'unparseable' | 'no_key' = 'unparseable';
+
+  const viaHaiku = async (): Promise<MemoryProfile | null> => {
+    if (!apiKey) {
+      logNoKey('the memory distillation');
+      why = 'no_key';
+      return null;
+    }
+    try {
+      const res = await chatClient(apiKey, overrides).messages.create({
+        model: GABI_CHAT_MODEL,
+        max_tokens: DISTILL_MAX_TOKENS,
+        system: DISTILL_SYSTEM,
+        messages: [{ role: 'user', content: asked }],
+      });
+      const text = (res.content as readonly unknown[])
+        .map((b) => b as { type?: string; text?: unknown })
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string)
+        .join('')
+        .trim();
+      why = 'unparseable';
+      return asProfile(text);
+    } catch (err) {
+      console.error('GABI memory: the distillation call failed:', err instanceof Error ? err.message : err);
+      why = 'model_failed';
+      return null;
+    }
+  };
+
+  const parsed = await viaGroq<MemoryProfile>({
+    ...(overrides?.groq ? { rung: overrides.groq } : { rung: undefined }),
+    purpose: 'distill',
+    turn: () => ({
       system: DISTILL_SYSTEM,
-      messages: [
-        {
-          role: 'user',
-          content:
-            `The note you have so far:\n${JSON.stringify({
-              callMe: current.callMe,
-              notes: current.notes,
-              reading: current.reading.map((r) => ({ book: r.book, said: r.said })),
-              threads: current.threads.map((t) => ({ what: t.what })),
-            })}\n\nThe conversation that just ended:\n${distillTranscript(turns)}`,
-        },
-      ],
-    });
-    text = (res.content as readonly unknown[])
-      .map((b) => b as { type?: string; text?: unknown })
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .join('')
-      .trim();
-  } catch (err) {
-    console.error('GABI memory: the distillation call failed:', err instanceof Error ? err.message : err);
-    return { ok: false, written: false, why: 'model_failed' };
-  }
+      messages: [{ role: 'user', content: asked }],
+      maxTokens: DISTILL_MAX_TOKENS,
+      // ⚠️ Strict JSON out, so ask for it. `DISTILL_SYSTEM` says "JSON" in
+      // words, which is what `json_object` requires; `test/gabi-groq.test.ts`
+      // pins that it still does.
+      json: true,
+    }),
+    validate: asProfile,
+    haiku: viaHaiku,
+    ...(overrides?.fetch ? { fetchImpl: overrides.fetch } : {}),
+    who: { discordUserId: who.discordUserId },
+    size: (p) => JSON.stringify(p).length,
+  });
 
-  // ⚠️ Models fence JSON even when told not to. Stripping a fence is not the
-  // same as tolerating malformed output — anything still unparseable below is a
-  // no-op.
-  const unfenced = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  const parsed = parseProfile(unfenced, key, now);
   if (!parsed) {
     // ⚠️ NOT an error the person ever sees, and NOT a reason to drop what she
     // already knew. Logged so a bad prompt is visible in `wrangler tail` rather
     // than only as a memory that never grows.
-    console.error('GABI memory: the distiller returned something unparseable; the profile stands.');
-    return { ok: false, written: false, why: 'unparseable' };
+    if (why === 'unparseable') {
+      console.error('GABI memory: the distiller returned something unparseable; the profile stands.');
+    }
+    return { ok: false, written: false, why };
   }
 
   const next: MemoryProfile = capProfile({

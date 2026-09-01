@@ -156,6 +156,10 @@ import {
   DISTILL_GIVE_UP_MS,
   DISTILL_MAX_PER_SWEEP,
 } from './memory-distill.js';
+/** ⚠️ The Groq first-line rung's ONE composition root on the mention path
+ *  (2026-09-01) — `GROQ_API_KEY_GABI` and `GABI_GROQ` are read here and nowhere
+ *  downstream. See `gabi-groq.ts`. */
+import { groqRung } from './gabi-groq.js';
 import { indexBase } from './have.js';
 import { panelBase, panelDeepLink } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
@@ -685,6 +689,12 @@ export class GabiGateway {
         port,
         { discordUserId: person },
         record.turns ?? [],
+        // ⚠️ The distillation is TOOLLESS and JSON-shaped, so it is in the Groq
+        // rung's scope. This is a CRON path with nobody watching a typing
+        // indicator, so the 4s first-line timeout is pure upside here: a
+        // failure costs one extra second before the sweep's Haiku call runs
+        // exactly as it did before.
+        { groq: groqRung(this.env) },
       );
       if (result.written) {
         // ⚠️ ONLY NOW. The profile is durable, so the conversation may go.
@@ -1720,6 +1730,12 @@ export class GabiGateway {
         personalityEnabled: personalityOn(this.env),
         ...(persona ? { personaBlock: personaBlock(persona.trope) } : {}),
         ...(this.env.ANTHROPIC_API_KEY_GABI ? { anthropicKey: this.env.ANTHROPIC_API_KEY_GABI } : {}),
+        // ⚠️ **THE GROQ FIRST-LINE RUNG.** Built here because this is where the
+        // env lives; `mention-flow.ts` receives it opaque and names no secret.
+        // It ships `{ mode: 'off' }`, which makes every model call below
+        // byte-for-byte the pre-Groq one — the switch and the key are two
+        // separate owner steps and neither alone changes an answer.
+        groq: groqRung(this.env),
         trace,
       },
     );

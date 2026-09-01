@@ -292,6 +292,15 @@ test('health answers config-presence booleans and never values', async () => {
     // ships-dark gate: with no key she still answers @mentions from the keyword
     // router, so this row means "duller", not "broken".
     anthropic_key_gabi: false,
+    // Added with the GROQ FIRST-LINE RUNG (2026-09-01), and its `false` is a
+    // LADDER exactly as its Anthropic neighbour's is: with no key `viaGroq` is
+    // a straight call to the existing Haiku path whatever `GABI_GROQ` says, so
+    // this row means "no cheap first line", never "broken". ⚠️ A boolean about a
+    // NAME — it is not proof the value works; only a `gabi_groq` log line with
+    // `outcome: "groq"` is that. The POSTURE is its own top-level `gabi_groq`
+    // row, deliberately not folded in here: the key and the switch are two
+    // independent owner steps and neither alone changes an answer.
+    groq_key_gabi: false,
     // Added with TIER 1 (2026-08-18) — the delegated write door's bearer, and
     // the same honest-false contract as every row above. ⚠️ Its `false` is a
     // ships-dark gate rather than a ladder: with it unset she says "I'm not

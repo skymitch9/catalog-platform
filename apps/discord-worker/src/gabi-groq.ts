@@ -1,0 +1,596 @@
+/**
+ * **THE GROQ FIRST-LINE RUNG** — one cheap, fast attempt before GABI's pinned
+ * Haiku, on the calls that carry no tools.
+ *
+ * Owner ask 2026-09-01, verbatim: *"we just used groq in a different project,
+ * lets integrate that into our gabi model as a first line before going to haiku
+ * tokens"* and *"use the information from the other project to help reduce
+ * duplicate work"*. Design of record: `docs/info/gabi-groq-rung.md`.
+ *
+ * ## ⚠️ THE SCOPE RULE — TOOLLESS CALLS ONLY, AND IT IS STRUCTURAL
+ *
+ * Anthropic's `tools` block and OpenAI's `tools` block are different schemas
+ * with different result-echo grammars, and `converseWithTools` in
+ * `gabi-chat.ts` is a hand-written loop built around the Anthropic one (a
+ * `tool_use` block echoed back with a matching `tool_result`, `is_error`, the
+ * dangling-call 400). Translating that is **phase 2** and is deliberately not
+ * attempted here. So this module is reachable from exactly four call sites,
+ * every one of which sends `system` + `messages` and nothing else:
+ *
+ * | call site | shape | validator |
+ * |---|---|---|
+ * | `classifyIntent` (`gabi-chat.ts`) | one bucket word | `isMentionIntent` |
+ * | `converse` (`gabi-chat.ts`) | free prose | non-empty text |
+ * | `distillConversation` (`memory-distill.ts`) | strict JSON | `parseProfile` |
+ * | `parseFixRequest` (`confirm-propose.ts`) | strict JSON | `firstJsonObject` |
+ *
+ * ⚠️ **The validator is SHARED, not re-implemented.** One schema, two
+ * transports: whatever the Anthropic path would have accepted is exactly what
+ * the Groq path must produce, and a reply that fails it is a FAILURE (→ fall
+ * through to Haiku), never a slightly-worse answer that ships. `viaGroq`'s
+ * `validate` argument is the same function object the Haiku path runs.
+ *
+ * ## THE LADDER — three postures, and the fallback is invisible
+ *
+ * `GABI_GROQ` is a plain var, coerced fail-closed to `'off'` by `groqMode`:
+ *
+ * - **`off`** (ships this way) — byte-identical to the pre-Groq behaviour. No
+ *   prompt is built, no request is made, and `viaGroq` returns the Haiku call's
+ *   own result. Pinned by `test/gabi-groq.test.ts`.
+ * - **`shadow`** — Groq is called *beside* Haiku and **Haiku's answer is the
+ *   one used**. One comparison line per turn (latency, lengths, did-it-answer)
+ *   is what the owner reads before flipping. This is the estate's shadow-first
+ *   enforcement rule applied to a model swap.
+ * - **`first`** — Groq is tried once; on ANY failure the existing Haiku call
+ *   runs unchanged and the person cannot tell which answered.
+ *
+ * ⚠️ **ONE ATTEMPT, NEVER A RETRY LOOP.** The fallback IS the retry, and it
+ * falls to a *different provider*, which is strictly better than asking the
+ * same rate-limited endpoint twice. This mirrors `NO_RETRIES` on the Anthropic
+ * client for the same reason: a retried turn is double spend on an answer that
+ * may already have landed.
+ *
+ * ## WHAT CAME FROM `black_bot_baf` (the estate's other Groq integration)
+ *
+ * Carried over unchanged, because those decisions were already paid for:
+ *
+ * - the endpoint (`/openai/v1/chat/completions`) and the OpenAI body shape;
+ * - the **model id**, `llama-3.3-70b-versatile` (see `GABI_GROQ_MODEL`);
+ * - the **error taxonomy** — 429 is its own reason, 5xx is "unreachable", other
+ *   non-200 is "refused", a transport error is wrapped at the boundary so one
+ *   `catch` sees one type;
+ * - ⚠️ **an answer with no words in it is a FAILURE, not a silent blank**
+ *   (`test_an_answer_with_no_words_in_it_is_a_failure_not_a_silent_blank`);
+ * - the model id lives as a **constant**, because — in that repo's own words —
+ *   *"Groq retires model names faster than a deploy can follow."*
+ *
+ * Deliberately CHANGED, with the reason:
+ *
+ * - **The timeout is 4s here, not their 15s.** Theirs is a chat bot with a
+ *   ladder that can afford to wait; this is a first line whose failure costs
+ *   the person the Groq timeout **plus** the full 20s Haiku turn. Groq's entire
+ *   value is sub-second completions, so 4s is already ~10× the expected
+ *   latency, and a slow first line is worse than a costlier fast one.
+ * - **No ledger row.** They write one `llm_ledger` row per call with a shared
+ *   `turn` id so a fall-through is two rows and one turn; this Worker has no D1
+ *   binding (see `accountTurn`'s note), so a Groq turn emits its own
+ *   `gabi_groq` log line and ⚠️ **does NOT call `accountTurn`** — `gabi_turn`
+ *   means *Anthropic spend* and must keep meaning that, or the billing
+ *   inventory starts counting free tokens as Haiku ones.
+ */
+
+import type { Env } from './env.js';
+import type { ModelMessage } from './conversation.js';
+
+// ---------------------------------------------------------------------------
+// The pins
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **PINNED, and pinned for the same reason `GABI_CHAT_MODEL` is** — a model
+ * that changes under a fixed posture changes what the posture means, and the
+ * comparison the owner reads in shadow mode is only worth reading if both
+ * halves are named.
+ *
+ * `llama-3.3-70b-versatile` is `black_bot_baf`'s own choice
+ * (`black_bloc/groq.py:21`), taken there as the SIMPLE tier — banter and small
+ * talk — with the heavier work left on Haiku. That is the same cut this rung
+ * makes, so the decision transfers rather than being re-argued. Their
+ * `code-notes.md` records no reason it is wrong for chat; what it does record is
+ * the gotcha this constant exists for:
+ *
+ * > *"Groq retires model names faster than a deploy can follow."*
+ *
+ * So a retirement shows up as a `refused` reason on the `gabi_groq` line and a
+ * silent fall-through to Haiku — never as a broken bot — and the fix is one
+ * constant plus a deploy. `/api/health` reports this id so the running pin is
+ * checkable in one curl.
+ */
+export const GABI_GROQ_MODEL = 'llama-3.3-70b-versatile';
+
+/** The OpenAI-compatible endpoint. Same URL `black_bloc/groq.py:20` uses. */
+export const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+/**
+ * ⚠️ **4 SECONDS, AND THE SHORTNESS IS THE POINT.** This is Discord: a person is
+ * watching a typing indicator. On `first`, a Groq call that hangs costs them
+ * this timeout *plus* the whole Haiku turn (`CHAT_TIMEOUT_MS`, 20s) — so the
+ * budget for the first line has to be small enough that failing it is cheap.
+ * Groq answers a 70B completion in well under a second; 4s is ~10× that and
+ * still a fifth of the fallback's own ceiling.
+ */
+export const GROQ_TIMEOUT_MS = 4_000;
+
+// ---------------------------------------------------------------------------
+// The posture
+// ---------------------------------------------------------------------------
+
+export const GROQ_MODES = ['off', 'shadow', 'first'] as const;
+export type GroqMode = (typeof GROQ_MODES)[number];
+
+/**
+ * ⚠️ **FAIL CLOSED.** Anything that is not exactly `shadow` or `first` — absent,
+ * empty, `"on"`, `"true"`, `"1"`, `"First"` with a capital, a typo, a value
+ * somebody meant to set later — is `'off'`.
+ *
+ * This is the affirmative-only idiom every other posture on this Worker uses
+ * (`mentionsOn`, `docsOn`, `booksOn`), widened from a boolean to a three-state
+ * ladder, and it matches `normalise_pause_mode` in the audiobook repo: an
+ * unrecognised mode is never guessed into the more permissive neighbour.
+ * Case and surrounding whitespace are forgiven because those are typing, not
+ * intent; nothing else is.
+ */
+export function groqMode(env: Pick<Env, 'GABI_GROQ'>): GroqMode {
+  const raw = (env.GABI_GROQ ?? '').trim().toLowerCase();
+  return (GROQ_MODES as readonly string[]).includes(raw) ? (raw as GroqMode) : 'off';
+}
+
+/**
+ * The rung as the chat helpers receive it — a mode and a key, never `env`.
+ * `gabi-chat.ts` and `confirm-propose.ts` are handed this by their composition
+ * roots exactly as they are handed `anthropicKey`; neither names the secret.
+ */
+export interface GroqRung {
+  mode: GroqMode;
+  apiKey?: string;
+}
+
+/**
+ * ⚠️ **Is there actually a first line?** Both halves are required: a posture
+ * that is not `off` AND a key. This is the one predicate — `viaGroq` uses it and
+ * so does `memory-distill.ts`, which has to answer "is there ANY model at all"
+ * before it decides whether a missing Anthropic key is `no_key`. Two copies of
+ * this test would drift the day a fourth mode appears.
+ */
+export function groqLive(rung: GroqRung | undefined): boolean {
+  return Boolean(rung && rung.mode !== 'off' && rung.apiKey);
+}
+
+/** Build the rung from `env`. Called only at a composition root. */
+export function groqRung(env: Pick<Env, 'GABI_GROQ' | 'GROQ_API_KEY_GABI'>): GroqRung {
+  return {
+    mode: groqMode(env),
+    ...(env.GROQ_API_KEY_GABI ? { apiKey: env.GROQ_API_KEY_GABI } : {}),
+  };
+}
+
+/**
+ * ⚠️ **The bag every model helper already took, widened by ONE optional field.**
+ *
+ * `overrides` was `{ fetch?: typeof fetch }` — the test seam. Adding `groq` here
+ * rather than a seventh positional parameter keeps every existing call site and
+ * every existing test compiling untouched, and it is the same kind of thing:
+ * what the caller injects into a function that otherwise knows nothing about
+ * its world.
+ */
+export interface ModelOverrides {
+  /** Test seam: a fake `fetch` for the model call. Never set in production. */
+  fetch?: typeof fetch;
+  /** The Groq first-line rung. Absent → the pre-Groq behaviour exactly. */
+  groq?: GroqRung;
+}
+
+// ---------------------------------------------------------------------------
+// The client
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a Groq attempt did not produce a usable answer. ⚠️ Every one of these is
+ * a **fall-through to Haiku**, not an error anybody sees — the taxonomy exists
+ * so the log line can say *which*, because "Groq is rate-limiting all evening"
+ * and "the pinned model was retired" want completely different fixes and look
+ * identical from a channel.
+ *
+ * `black_bot_baf`'s four reasons (`rate_limited` / `refused` / `unreachable` /
+ * `broken`) with three splits this surface needs: `timeout` out of
+ * `unreachable` (the one that costs the person real seconds), `empty` out of
+ * `broken` (a 200 with no words — their
+ * `test_an_answer_with_no_words_in_it_is_a_failure_not_a_silent_blank`), and
+ * `invalid` for a well-formed reply that failed the SHARED validator.
+ */
+export type GroqReason =
+  | 'timeout'
+  | 'unreachable'
+  | 'rate_limited'
+  | 'refused'
+  | 'server'
+  | 'malformed'
+  | 'empty'
+  | 'invalid';
+
+export class GroqFailure extends Error {
+  readonly reason: GroqReason;
+  readonly status: number | undefined;
+  constructor(reason: GroqReason, message: string, status?: number) {
+    super(message);
+    this.name = 'GroqFailure';
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
+export interface GroqTurn {
+  /** The SAME system prompt the Anthropic path sends, moved to a leading
+   *  `system` message — that is the whole of the translation. */
+  system: string;
+  /** Already `{role, content: string}` on every toolless call site, which is
+   *  both the Anthropic shape and the OpenAI shape. No conversion is needed and
+   *  none is done: a conversion is a place for a bug. */
+  messages: readonly ModelMessage[];
+  maxTokens: number;
+  /**
+   * ⚠️ Ask for `response_format: json_object` on the two call sites whose
+   * validator is a JSON parse. It is not a substitute for the validator — the
+   * validator still runs and still decides — it just stops the commonest
+   * avoidable failure (a fenced or prefaced object) from spending a fallback.
+   */
+  json?: boolean;
+}
+
+export interface GroqAnswer {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function messageText(payload: unknown): string {
+  const choices = (payload as { choices?: unknown } | null)?.choices;
+  if (!Array.isArray(choices)) return '';
+  for (const choice of choices) {
+    const said = (choice as { message?: { content?: unknown } } | null)?.message?.content;
+    if (typeof said === 'string' && said.trim().length > 0) return said.trim();
+  }
+  return '';
+}
+
+function tokenCount(usage: unknown, key: string): number {
+  const raw = (usage ?? {}) as Record<string, unknown>;
+  return typeof raw[key] === 'number' ? (raw[key] as number) : 0;
+}
+
+/**
+ * One Groq completion, or a `GroqFailure` naming why not.
+ *
+ * ⚠️ **Every transport error is wrapped at this boundary**, exactly as
+ * `black_bloc/groq.py:53` wraps its own, so one `catch` in `viaGroq` sees one
+ * type from a DNS failure, an abort and a malformed body alike.
+ */
+export async function groqComplete(
+  apiKey: string,
+  turn: GroqTurn,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GroqAnswer> {
+  // ⚠️ `json_object` REQUIRES the word "JSON" somewhere in the prompt (the
+  // OpenAI contract Groq implements); asking for it without that is a 400 that
+  // would fall through to Haiku on every single turn, for ever, while looking
+  // like an outage. Both JSON call sites' prompts do say it, and
+  // `test/gabi-groq.test.ts` pins that they still do — this guard is the
+  // belt to that braces, so a future prompt edit degrades to plain mode
+  // instead of silently disabling the rung.
+  const jsonSafe = turn.json === true && /json/i.test(turn.system);
+  const body = {
+    model: GABI_GROQ_MODEL,
+    max_tokens: turn.maxTokens,
+    messages: [{ role: 'system', content: turn.system }, ...turn.messages],
+    ...(jsonSafe ? { response_format: { type: 'json_object' } } : {}),
+  };
+
+  let res: Response;
+  try {
+    res = await fetchImpl(GROQ_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        // ⚠️ The key rides the Authorization header and nowhere else — never a
+        // query string, never the body. Same assertion `black_bot_baf`'s
+        // `test_the_key_rides_the_authorization_header_and_nothing_else` makes.
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const name = (err as { name?: unknown })?.name;
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new GroqFailure('timeout', `groq did not answer within ${GROQ_TIMEOUT_MS}ms`);
+    }
+    throw new GroqFailure('unreachable', `groq unreachable: ${String(name ?? 'error')}`);
+  }
+
+  if (res.status === 429) throw new GroqFailure('rate_limited', 'groq is rate limiting', 429);
+  if (res.status >= 500) throw new GroqFailure('server', `groq answered ${res.status}`, res.status);
+  if (res.status !== 200) throw new GroqFailure('refused', `groq answered ${res.status}`, res.status);
+
+  let payload: unknown;
+  try {
+    payload = await res.json();
+  } catch {
+    throw new GroqFailure('malformed', 'groq answered 200 with a body that is not JSON', 200);
+  }
+
+  const text = messageText(payload);
+  // ⚠️ A 200 with no words in it is a FAILURE, never a silent blank. Returning
+  // '' here would make an empty Groq reply indistinguishable from a person
+  // whose question genuinely had no answer.
+  if (text.length === 0) throw new GroqFailure('empty', 'groq answered with no words in it', 200);
+
+  const usage = (payload as { usage?: unknown } | null)?.usage;
+  return {
+    text,
+    inputTokens: tokenCount(usage, 'prompt_tokens'),
+    outputTokens: tokenCount(usage, 'completion_tokens'),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The log lines
+// ---------------------------------------------------------------------------
+
+export interface GroqWho {
+  discordUserId?: string;
+  guildId?: string | null;
+}
+
+/**
+ * ⚠️ **ONE structured line per Groq attempt, and never the TEXTS.** These are
+ * household conversations; the line carries how LONG, how BIG and whether it
+ * ANSWERED, which is everything a decision to flip needs and nothing a person
+ * would mind being in a log stream. Same rule `accountTurn` follows for the
+ * remembered text and the docs/book payloads.
+ *
+ * JSON on one line so `wrangler tail estate-discord | jq 'select(.evt ==
+ * "gabi_groq")'` aggregates it.
+ */
+export function logGroq(entry: {
+  mode: GroqMode;
+  purpose: string;
+  /** `groq` — Groq's answer was used. `fallback` — Haiku answered instead. */
+  outcome: 'groq' | 'fallback';
+  reason?: GroqReason;
+  status?: number | undefined;
+  ms: number;
+  chars?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  who?: GroqWho;
+}): void {
+  console.log(
+    JSON.stringify({
+      evt: 'gabi_groq',
+      surface: 'discord_mention',
+      mode: entry.mode,
+      purpose: entry.purpose,
+      model: GABI_GROQ_MODEL,
+      outcome: entry.outcome,
+      ...(entry.reason ? { reason: entry.reason } : {}),
+      ...(entry.status ? { status: entry.status } : {}),
+      ms: entry.ms,
+      chars: entry.chars ?? 0,
+      // ⚠️ Raw counts, no cents. Groq's tier is free TODAY and a fabricated
+      // price would be wrong the day it is not — see `black_bot_baf`'s own
+      // note that charging Groq at zero "is a decision to revisit when it is
+      // not". `docs/info/llm-billing-control-design.md` §2 carries the row.
+      input_tokens: entry.inputTokens ?? 0,
+      output_tokens: entry.outputTokens ?? 0,
+      discord_user_id: entry.who?.discordUserId ?? null,
+      guild_id: entry.who?.guildId ?? null,
+      at: new Date().toISOString(),
+    }),
+  );
+}
+
+/**
+ * ⚠️ **THE SHADOW LINE — the one the owner reads before flipping to `first`.**
+ *
+ * Never the texts, for the reason above. `groq_answered` / `haiku_answered` are
+ * the did-it-answer bits: an answer that failed the SHARED validator reads
+ * `false` here, which is exactly the question "would Groq have been good
+ * enough" reduced to one boolean. `agreed` appears only where an agreement is
+ * meaningful (a bucket name, a parsed fix) — comparing two free-prose replies
+ * for equality would be noise wearing a number.
+ */
+export function logGroqShadow(entry: {
+  purpose: string;
+  groqMs: number;
+  haikuMs: number;
+  groqChars: number;
+  haikuChars: number;
+  groqAnswered: boolean;
+  haikuAnswered: boolean;
+  reason?: GroqReason;
+  agreed?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  who?: GroqWho;
+}): void {
+  console.log(
+    JSON.stringify({
+      evt: 'gabi_groq_shadow',
+      surface: 'discord_mention',
+      purpose: entry.purpose,
+      model: GABI_GROQ_MODEL,
+      groq_ms: entry.groqMs,
+      haiku_ms: entry.haikuMs,
+      groq_chars: entry.groqChars,
+      haiku_chars: entry.haikuChars,
+      groq_answered: entry.groqAnswered,
+      haiku_answered: entry.haikuAnswered,
+      ...(entry.reason ? { reason: entry.reason } : {}),
+      ...(entry.agreed === undefined ? {} : { agreed: entry.agreed }),
+      input_tokens: entry.inputTokens ?? 0,
+      output_tokens: entry.outputTokens ?? 0,
+      discord_user_id: entry.who?.discordUserId ?? null,
+      guild_id: entry.who?.guildId ?? null,
+      at: new Date().toISOString(),
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The rung itself
+// ---------------------------------------------------------------------------
+
+const now = (): number => Date.now();
+
+/**
+ * **Try Groq, then fall through to Haiku** — the whole ladder, in one place, so
+ * the four call sites each add three lines rather than a copy of this.
+ *
+ * ⚠️ **`turn` IS A THUNK, DELIBERATELY.** With the posture `off` the prompt is
+ * never even BUILT: no string is concatenated, no message array is allocated,
+ * no request is made, and the function is a straight `return haiku()`. That is
+ * what makes "`off` is byte-identical to yesterday" a property a test can
+ * assert rather than a claim — `test/gabi-groq.test.ts` fails the build if
+ * `turn` is ever invoked with the posture off.
+ *
+ * ⚠️ **`haiku` is always the EXISTING call, unchanged.** This module makes no
+ * Anthropic request of its own; it calls back into the function that was
+ * already there. A fallback that re-implemented the Haiku turn would be a
+ * second place for it to drift.
+ */
+export async function viaGroq<T>(args: {
+  rung: GroqRung | undefined;
+  /** `classify` / `converse` / `distill` / `parse_fix` — the log's key. */
+  purpose: string;
+  /** Builds the Groq request. NOT called when the posture is `off`. */
+  turn: () => GroqTurn;
+  /**
+   * ⚠️ THE SHARED VALIDATOR — the same function the Anthropic path applies to
+   * its own reply. `null` means "this is not a usable answer", which is a
+   * FAILURE (`reason: 'invalid'`) and falls through.
+   */
+  validate: (text: string) => T | null;
+  /** The existing Anthropic call, verbatim. */
+  haiku: () => Promise<T | null>;
+  fetchImpl?: typeof fetch;
+  who?: GroqWho;
+  /** Optional, and only where agreement means something. See `logGroqShadow`. */
+  compare?: (fromGroq: T, fromHaiku: T | null) => boolean;
+  /** How long the answer was, for the log. Defaults to a JSON length. */
+  size?: (value: T) => number;
+}): Promise<T | null> {
+  const rung = args.rung;
+  const mode = rung?.mode ?? 'off';
+
+  // ⚠️ THE OFF PATH. Nothing below this line runs, including `args.turn()`.
+  // A missing key is the same non-event a missing `ANTHROPIC_API_KEY_GABI` is:
+  // the rung simply does not exist, and no line is written about it on every
+  // turn — the absence is visible on `/api/health` instead.
+  if (!groqLive(rung) || !rung?.apiKey) return args.haiku();
+
+  const apiKey = rung.apiKey;
+  const sizeOf = args.size ?? ((v: T) => (typeof v === 'string' ? v.length : JSON.stringify(v).length));
+
+  const attempt = async (): Promise<
+    { ok: true; value: T; ms: number; chars: number; inputTokens: number; outputTokens: number }
+    | { ok: false; ms: number; reason: GroqReason; status?: number | undefined }
+  > => {
+    const started = now();
+    try {
+      const answer = await groqComplete(apiKey, args.turn(), args.fetchImpl ?? fetch);
+      const value = args.validate(answer.text);
+      if (value === null) {
+        return { ok: false, ms: now() - started, reason: 'invalid' };
+      }
+      return {
+        ok: true,
+        value,
+        ms: now() - started,
+        chars: answer.text.length,
+        inputTokens: answer.inputTokens,
+        outputTokens: answer.outputTokens,
+      };
+    } catch (err) {
+      const failure =
+        err instanceof GroqFailure
+          ? err
+          : // ⚠️ Anything unforeseen — a validator that threw, a runtime quirk —
+            // is `malformed` rather than an escape into the caller. A first line
+            // must never be able to cost somebody the answer Haiku would have
+            // given.
+            new GroqFailure('malformed', `groq rung failed: ${String((err as Error)?.name ?? err)}`);
+      return {
+        ok: false,
+        ms: now() - started,
+        reason: failure.reason,
+        ...(failure.status === undefined ? {} : { status: failure.status }),
+      };
+    }
+  };
+
+  // ── shadow ───────────────────────────────────────────────────────────────
+  // ⚠️ Started BEFORE the Haiku call and awaited AFTER it, so the comparison
+  // costs the person no extra latency. A shadow that made turns slower would be
+  // measured, correctly, as a reason not to flip.
+  if (mode === 'shadow') {
+    const shadowed = attempt();
+    const haikuStarted = now();
+    const answer = await args.haiku();
+    const haikuMs = now() - haikuStarted;
+    const seen = await shadowed;
+    logGroqShadow({
+      purpose: args.purpose,
+      groqMs: seen.ms,
+      haikuMs,
+      groqChars: seen.ok ? seen.chars : 0,
+      haikuChars: answer === null ? 0 : sizeOf(answer),
+      groqAnswered: seen.ok,
+      haikuAnswered: answer !== null,
+      ...(seen.ok ? {} : { reason: seen.reason }),
+      ...(seen.ok && args.compare ? { agreed: args.compare(seen.value, answer) } : {}),
+      ...(seen.ok ? { inputTokens: seen.inputTokens, outputTokens: seen.outputTokens } : {}),
+      ...(args.who ? { who: args.who } : {}),
+    });
+    // ⚠️ HAIKU'S ANSWER, ALWAYS. Groq's is measured and discarded — that is the
+    // entire difference between `shadow` and `first`.
+    return answer;
+  }
+
+  // ── first ────────────────────────────────────────────────────────────────
+  const seen = await attempt();
+  if (seen.ok) {
+    logGroq({
+      mode,
+      purpose: args.purpose,
+      outcome: 'groq',
+      ms: seen.ms,
+      chars: seen.chars,
+      inputTokens: seen.inputTokens,
+      outputTokens: seen.outputTokens,
+      ...(args.who ? { who: args.who } : {}),
+    });
+    return seen.value;
+  }
+  // ⚠️ ONE line naming the reason, then the existing Haiku call, unchanged. The
+  // person cannot tell this happened, and that is the requirement.
+  logGroq({
+    mode,
+    purpose: args.purpose,
+    outcome: 'fallback',
+    reason: seen.reason,
+    status: seen.status,
+    ms: seen.ms,
+    ...(args.who ? { who: args.who } : {}),
+  });
+  return args.haiku();
+}

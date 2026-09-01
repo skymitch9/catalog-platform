@@ -69,6 +69,9 @@ import {
   type T2ConfirmableField,
 } from './conversation.js';
 import { accountTurn, GABI_CHAT_MODEL, type TurnUsage } from './gabi-chat.js';
+/** ⚠️ The Groq first-line rung (2026-09-01). This parse is TOOLLESS and
+ *  JSON-shaped, so it is in scope — see `gabi-groq.ts`'s header table. */
+import { groqLive, groqRung, viaGroq, type GroqRung, type ModelOverrides } from './gabi-groq.js';
 
 /** The whole physical shelf is ~341 held works (measured live 2026-08-19), well
  *  under `browse-works`' 500 ceiling, so one call lists all of it and the title
@@ -156,10 +159,12 @@ export async function parseFixRequest(
   apiKey: string | undefined,
   question: string,
   who: { discordUserId: string; guildId: string | null },
-  overrides?: { fetch?: typeof fetch },
+  overrides?: ModelOverrides,
   history: readonly ConversationTurn[] = [],
 ): Promise<ParsedFix | null> {
-  if (!apiKey) return null;
+  // ⚠️ "No model at all", not "no Anthropic key" — with the Groq rung live this
+  // parse can run without one. See `memory-distill.ts` for the same check.
+  if (!apiKey && !groqLive(overrides?.groq)) return null;
   const recent = history.slice(-2);
   const preamble =
     recent.length > 0
@@ -167,39 +172,76 @@ export async function parseFixRequest(
           .map((t) => `${t.role === 'user' ? 'Them' : 'You'}: ${t.text.slice(0, 300)}`)
           .join('\n')}\n\nTheir message now:\n`
       : '';
-  try {
-    const client = new Anthropic({
-      apiKey,
-      maxRetries: 0,
-      timeout: 20_000,
-      ...(overrides?.fetch ? { fetch: overrides.fetch } : {}),
-    });
-    const res = await client.messages.create({
-      model: GABI_CHAT_MODEL,
-      max_tokens: PARSE_MAX_TOKENS,
+  const asked = `${preamble}${question}`;
+
+  const viaHaiku = async (): Promise<ParseModelRaw | null> => {
+    if (!apiKey) return null;
+    try {
+      const client = new Anthropic({
+        apiKey,
+        maxRetries: 0,
+        timeout: 20_000,
+        ...(overrides?.fetch ? { fetch: overrides.fetch } : {}),
+      });
+      const res = await client.messages.create({
+        model: GABI_CHAT_MODEL,
+        max_tokens: PARSE_MAX_TOKENS,
+        system: PARSE_SYSTEM,
+        messages: [{ role: 'user', content: asked }],
+      });
+      accountTurn({
+        purpose: 'classify',
+        usage: usageOf(res.usage),
+        discordUserId: who.discordUserId,
+        guildId: who.guildId,
+      });
+      return firstJsonObject(textOf(res.content));
+    } catch (err) {
+      console.error('GABI confirm: the fix parse failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
+  };
+
+  /**
+   * ⚠️ **THE SHARED VALIDATOR IS THE PARSE, NOT THE DECISION — and that cut is
+   * load-bearing.** `firstJsonObject` asks "did the model produce a well-formed
+   * object"; the field mapping below asks "does that object describe a change
+   * we may propose". Only the FIRST is a transport failure. `{"field":"none"}`
+   * is the model answering correctly about the overwhelming majority of
+   * messages, and treating it as a Groq failure would spend a full Haiku turn on
+   * every piece of small talk — the exact opposite of what this rung is for.
+   */
+  const raw = await viaGroq<ParseModelRaw>({
+    ...(overrides?.groq ? { rung: overrides.groq } : { rung: undefined }),
+    purpose: 'parse_fix',
+    turn: () => ({
       system: PARSE_SYSTEM,
-      messages: [{ role: 'user', content: `${preamble}${question}` }],
-    });
-    accountTurn({
-      purpose: 'classify',
-      usage: usageOf(res.usage),
-      discordUserId: who.discordUserId,
-      guildId: who.guildId,
-    });
-    const raw = firstJsonObject(textOf(res.content));
-    if (!raw) return null;
-    const field = confirmableFieldFromLabel(raw.field);
-    if (!field) return null; // "none", a key-move, or an unmapped word — defer to the site.
-    const book = typeof raw.book === 'string' ? raw.book.trim() : '';
-    const after = typeof raw.value === 'string' ? raw.value.trim() : '';
-    // ⚠️ An empty book cannot be resolved to a row and an empty value is not a
-    // change anybody asked for — either way there is nothing safe to propose.
-    if (!book || !after) return null;
-    return { book, field, after };
-  } catch (err) {
-    console.error('GABI confirm: the fix parse failed:', err instanceof Error ? err.message : err);
-    return null;
-  }
+      messages: [{ role: 'user', content: asked }],
+      maxTokens: PARSE_MAX_TOKENS,
+      // ⚠️ Strict JSON out. `PARSE_SYSTEM` says "JSON" in words, which
+      // `json_object` requires; `test/gabi-groq.test.ts` pins that it still does.
+      json: true,
+    }),
+    validate: firstJsonObject,
+    haiku: viaHaiku,
+    ...(overrides?.fetch ? { fetchImpl: overrides.fetch } : {}),
+    who,
+    // A parsed field/value pair IS a decision, so agreement is meaningful — and
+    // it is our own vocabulary (a field label), never the person's words.
+    compare: (fromGroq, fromHaiku) =>
+      confirmableFieldFromLabel(fromGroq.field) === confirmableFieldFromLabel(fromHaiku?.field),
+    size: (r) => JSON.stringify(r).length,
+  });
+
+  if (!raw) return null;
+  const field = confirmableFieldFromLabel(raw.field);
+  if (!field) return null; // "none", a key-move, or an unmapped word — defer to the site.
+  const book = typeof raw.book === 'string' ? raw.book.trim() : '';
+  const after = typeof raw.value === 'string' ? raw.value.trim() : '';
+  // ⚠️ An empty book cannot be resolved to a row and an empty value is not a
+  // change anybody asked for — either way there is nothing safe to propose.
+  if (!book || !after) return null;
+  return { book, field, after };
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +346,11 @@ export interface ProposerDeps {
   /** Test seam: a fake `fetch` for the parse model call ONLY (the port is
    *  stubbed directly). Never used in production. */
   fetchOverride?: typeof fetch;
+  /** ⚠️ The Groq first-line rung, passed opaque exactly as `apiKey` is — this
+   *  module names `GROQ_API_KEY_GABI` in ONE place, `makeConfirmProposer`, and
+   *  the orchestration below never sees a secret's name. Absent → the parse is
+   *  byte-for-byte the pre-Groq one. */
+  groq?: GroqRung;
 }
 
 /**
@@ -325,13 +372,14 @@ export async function tryProposeWith(
     // 1. Parse first — cheapest way to bail on the overwhelming majority of
     //    fix-shaped messages that are not a single confirmable-field change,
     //    before any library call is made.
-    const parsed = await parseFixRequest(
-      deps.apiKey,
-      question,
-      who,
-      deps.fetchOverride ? { fetch: deps.fetchOverride } : undefined,
-      history,
-    );
+    const overrides: ModelOverrides | undefined =
+      deps.fetchOverride || deps.groq
+        ? {
+            ...(deps.fetchOverride ? { fetch: deps.fetchOverride } : {}),
+            ...(deps.groq ? { groq: deps.groq } : {}),
+          }
+        : undefined;
+    const parsed = await parseFixRequest(deps.apiKey, question, who, overrides, history);
     if (!parsed) return null;
 
     // 2. Who is this? Never guessed from a Discord name.
@@ -422,6 +470,10 @@ export function makeConfirmProposer(env: Env): ConfirmProposer | null {
     instances,
     keyMaterial: token,
     ...(env.ANTHROPIC_API_KEY_GABI ? { apiKey: env.ANTHROPIC_API_KEY_GABI } : {}),
+    // ⚠️ THE GROQ RUNG, built here because this is a composition root. It ships
+    // `{ mode: 'off' }` and is then a no-op by construction — `viaGroq` returns
+    // the Haiku call's own result without building a prompt.
+    groq: groqRung(env),
   };
   return {
     tryPropose: (question, who, history, currentPending) =>

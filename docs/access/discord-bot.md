@@ -90,11 +90,30 @@ first deploy creates the Worker; locally they go in `.dev.vars`, gitignored):
 | `POLL_SYNC_TOKEN` | ⚠️ **Nobody issues this one — the conductor MINTS it.** `python -c "import secrets; print(secrets.token_urlsafe(32))"` | ✅ **SET on the Worker** (measured 2026-08-17: `/api/health` reports `poll_sync_token: true`). ⚠️ **NOT VERIFIED:** whether the audiobook pipeline's `.env` holds the SAME value — without that the cadence trigger cannot authenticate. The shared secret gating `POST /polls/sync` (§8). Goes to **both** sides: `wrangler secret put POLL_SYNC_TOKEN` here, and the *same value* into the audiobook pipeline's `.env` under the same name. A third, deliberately weaker credential class: holding it lets someone make the bot re-render its **own** poll messages sooner than it would have — it grants no Discord powers, holds no Firestore access of its own, and can post nothing a poll doc does not already say |
 | `ESTATE_APP_TOKEN_DISCORD` | ⚠️ **Nobody issues this one either — the conductor MINTS it** (`openssl rand -hex 32`) | ✅ **SET on all three holders 2026-08-18, and the pairing VERIFIED LIVE**: a real bearer call to both library instances answered 200/403 with worded bodies, a wrong bearer answered 401. The bearer for GABI's **Tier-1 delegated write door** (§13). **One value, THREE holders, the same NAME on each**: here, plus both library Workers (`npm run secret -- ESTATE_APP_TOKEN_DISCORD` and `npm run secret:friend -- ESTATE_APP_TOKEN_DISCORD` in `library_catalog`) — the `DONOR_TOKEN` idiom. ⚠️ **Holding it authorises NO WRITE.** It proves only "this request came from the estate's Discord Worker"; the destination then resolves the on-behalf-of Firebase uid to its OWN `app_user` row and checks THAT person's capability. So a leak buys the ability to act for people who already hold the capability, on a surface where every write is stamped `gabi-discord` and is revertible in the app — a smaller blast radius than the bot token's. Read by exactly one module (`src/delegated-exec.ts`), pinned by a build-failing test |
 
-Two **vars** (not secrets) were added to `wrangler.toml` with the link
-ceremony, both mirroring auth-worker's: `FIREBASE_PROJECT_ID =
+| `ANTHROPIC_API_KEY_GABI` | ⚠️ **Nobody issues it — MINT a new key** at console.anthropic.com | ✅ **SET.** Deliberately separate from `library_catalog`'s `ANTHROPIC_API_KEY` so the Discord spend is separately capped, rotated and auditable. Its absence is a **LADDER not a fault**: the keyword router still answers. ⚠️ Its value passed through a Cloudflare tail during the 2026-08-18 BOM diagnosis and the owner **accepted that exposure** — do not re-raise rotation for this key unless NEW exposure occurs (§7) |
+| `GROQ_API_KEY_GABI` | ⚠️ **Nobody issues it — MINT a new key** at console.groq.com | 🔴 **NOT SET (2026-09-01) — the owner's step.** The **Groq first line** in front of Haiku on the four TOOLLESS GABI calls ([`info/gabi-groq-rung.md`](../info/gabi-groq-rung.md)). ⚠️ **A DIFFERENT PROVIDER, SO A DIFFERENT BILL** — cheap-to-free today and that is not a promise; it is row **E7** in the money-path inventory. Its absence is a **LADDER not a fault**: with no key every call is the Haiku one it always was, whatever `GABI_GROQ` says, and `/api/health` reports `configured.groq_key_gabi: false` with `gabi_groq_ready: false`. ⚠️ **PUSH IT WITH THE SCRIPT, NEVER A POWERSHELL PIPE** — `node scripts/push-discord-secret.mjs GROQ_API_KEY_GABI` (§11.8). A BOM'd key here is *harder* to spot than the 2026-08-18 one was, because this rung is designed to fail invisibly: every turn would still be answered, by Haiku |
+
+Three **vars** (not secrets) that matter are in `wrangler.toml`. Two were added
+with the link ceremony, both mirroring auth-worker's: `FIREBASE_PROJECT_ID =
 "audiobook-catalog"` (the canonical verifier asserts it as *both* issuer and
 audience — ⚠️ removing it does not make the check smaller, it makes it
 absent) and `OWNER_EMAILS` (read by exactly one thing: the gate on §4).
+
+The third is **`GABI_GROQ`** (added 2026-09-01), and ⚠️ **it is the only
+THREE-state posture on this Worker** — every other one is affirmative-only
+`"on"`:
+
+| Value | Behaviour |
+|---|---|
+| `off` — **ships this way** | byte-identical to the pre-Groq bot; no prompt is built and no request is made |
+| `shadow` | Groq is called beside Haiku, one `gabi_groq_shadow` line is logged, and ⚠️ **Haiku's answer is used** |
+| `first` | Groq is tried once; any failure falls through to Haiku invisibly |
+
+⚠️ **Fail closed**: anything that is not exactly `shadow` or `first` — including
+`"on"` and `"true"`, which are what somebody who knows this Worker's *other*
+postures would type — coerces to `off`. ⚠️ **Shadow before first**, and the flip
+is the OWNER's after reading the lines, never a deploy's side effect. Scope:
+**toolless calls only** — a tool-loop turn stays on Anthropic in every posture.
 
 ## 3. Owner runbook — Developer Portal steps, in order
 
@@ -911,6 +930,83 @@ and logged as `gabi_turn` lines visible in `wrangler tail`.
   and the reply rendering in a real client are all unproven.
 - **No model call has ever been made on this surface** — the cents figures are
   arithmetic over the published price table, not an invoice.
+- ⚠️ **NO LIVE GROQ CALL HAS EVER BEEN MADE FROM THIS REPO** (2026-09-01).
+  The first-line rung in §11.8 is exercised only by tests with an injected
+  `fetch`. Whether Groq accepts the body, whether `llama-3.3-70b-versatile` is
+  still a live model id, and whether the answers are good enough are all
+  unknown — which is exactly what §11.8's shadow step is for.
+
+### 11.8 The Groq first line — turning it on, in three owner steps
+
+*Built + deployed 2026-09-01, SHIPPING DARK. Design of record:
+[`info/gabi-groq-rung.md`](../info/gabi-groq-rung.md). Owner:* "we just used
+groq in a different project, lets integrate that into our gabi model as a first
+line before going to haiku tokens."
+
+A cheap, fast attempt in **front** of Haiku on the four TOOLLESS calls
+(classification, small talk, the memory distillation, the T2 fix parse). Any
+failure falls through to the Haiku call unchanged and ⚠️ **the person cannot tell
+it happened.** A tool-loop turn stays on Anthropic in every posture.
+
+**Step 1 — the key.** Mint a **NEW** key at `console.groq.com` (⚠️ not an
+Anthropic key, and not the other project's). Paste it into
+`apps/discord-worker/.dev.vars` after `GROQ_API_KEY_GABI=` — into the FILE, with
+an editor, never onto a terminal line where it lands in history. Then, from the
+repo root:
+
+```bash
+node scripts/push-discord-secret.mjs GROQ_API_KEY_GABI
+```
+
+⚠️ **Use the script, never a PowerShell pipe.** A pipe prepends an invisible
+UTF-8 BOM and the stored key then fails as a plain 401 while looking perfect
+(§7 — this Worker's own incident). The script prints the byte facts, never the
+value; pushes raw bytes to `wrangler`'s stdin; and blanks the `.dev.vars` line
+afterwards. Confirm:
+
+```bash
+curl -s https://discord.heygabi.ai/api/health | jq '.configured.groq_key_gabi'   # true
+```
+
+**Step 2 — SHADOW first.** In `apps/discord-worker/wrangler.toml` set
+`GABI_GROQ = "shadow"`, then `npx wrangler deploy` from `apps/discord-worker/`.
+Nothing a person sees changes: Groq is called *beside* Haiku and **Haiku's
+answer is used**. @mention GABI a few times, then read the comparison:
+
+```bash
+npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_groq_shadow")'
+```
+
+Each line carries `groq_ms` / `haiku_ms`, `groq_chars` / `haiku_chars`,
+`groq_answered` / `haiku_answered`, a `reason` when it did not answer, and —
+on `classify` and `parse_fix` only — `agreed`. ⚠️ **The texts are never
+logged**; these are household conversations.
+
+Look for: `agreed: true` on nearly every `classify` line, `groq_answered: true`
+on nearly all of them, and `groq_ms` genuinely below `haiku_ms`. A wall of
+`reason: "refused"` with `status: 401` is a **BOM'd key** — redo step 1.
+`status: 400` with a decommission message means the pinned model was retired;
+that is a one-constant change in `src/gabi-groq.ts`.
+
+**Step 3 — flip `first`.** `GABI_GROQ = "first"` and deploy. Now a toolless call
+tries Groq once and falls through on any failure. Watch:
+
+```bash
+npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_groq")'
+```
+
+`outcome: "groq"` is a turn that cost no Haiku tokens. `outcome: "fallback"` is
+**the ladder working**, not an incident — the incident shape is a *sustained*
+run of them, which means the rung is buying nothing while costing up to 4 s a
+turn.
+
+**Backing it out is one line:** `GABI_GROQ = "off"` and deploy. Deleting the
+secret works too and needs no deploy — either half alone disables the rung.
+
+⚠️ **Prose quality cannot be read off the shadow lines** (they carry lengths,
+never text). `converse` is the call where the owner has to actually talk to her
+after flipping `first` — knowing a bad turn is one posture flip from undone.
+
 
 ---
 

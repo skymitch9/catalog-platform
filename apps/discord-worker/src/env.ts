@@ -103,6 +103,58 @@ export interface Env {
    * toward the panel. ⚠️ A missing key must NEVER produce an error message in a
    * channel — the absence is logged as a worded line and nothing else. */
   ANTHROPIC_API_KEY_GABI?: string;
+
+  /**
+   * ⚠️ **THE GROQ FIRST-LINE KEY** — a NEW secret and a NEW money path, held
+   * nowhere else in the estate (owner ask 2026-09-01: *"lets integrate that
+   * into our gabi model as a first line before going to haiku tokens"*).
+   *
+   * ⚠️ **SHIPS UNSET, and its absence is a LADDER not a fault**: with no key
+   * `viaGroq` is a straight call to the existing Haiku path, whatever
+   * `GABI_GROQ` says. That is why the posture and the key are two separate
+   * things — the switch can be flipped ahead of the key landing, or the key
+   * can land ahead of the flip, and neither half alone changes a single
+   * answer.
+   *
+   * ⚠️ **A DIFFERENT PROVIDER, SO A DIFFERENT BILL.** Groq's tier is cheap-to-
+   * free today and that is not a promise; `docs/info/llm-billing-control-design.md`
+   * §2 carries the row. Read by exactly two composition roots (`gateway.ts`
+   * and `makeConfirmProposer`) and passed onward as an opaque `GroqRung` —
+   * `gabi-chat.ts`, `memory-distill.ts` and `mention-flow.ts` never name it.
+   *
+   * ⚠️ Push it with `node scripts/push-discord-secret.mjs GROQ_API_KEY_GABI`,
+   * NEVER a PowerShell pipe — see docs/access/agent-board.md §3 (a piped value
+   * arrives with an invisible UTF-8 BOM and fails as a plain 401 while looking
+   * perfect).
+   */
+  GROQ_API_KEY_GABI?: string;
+
+  /**
+   * ⚠️ **THE GROQ POSTURE — a THREE-state ladder, not a boolean**, and the only
+   * posture on this Worker that is not affirmative-only `"on"`, because it has
+   * three genuinely different meanings (src/gabi-groq.ts):
+   *
+   * | value | what happens |
+   * |---|---|
+   * | `off` (ships) | byte-identical to the pre-Groq bot — no prompt built, no request made |
+   * | `shadow` | Groq is called beside Haiku, one comparison line is logged, **Haiku's answer is used** |
+   * | `first` | Groq is tried once; any failure falls through to Haiku invisibly |
+   *
+   * ⚠️ **FAIL CLOSED.** `groqMode()` coerces anything that is not exactly
+   * `shadow` or `first` to `off` — absent, empty, `"on"`, `"true"`, `"1"`, a
+   * typo, a capital. An unrecognised mode is never guessed into the more
+   * permissive neighbour.
+   *
+   * ⚠️ **SHADOW BEFORE FIRST is the estate's enforcement rule**, the same
+   * off → shadow → enforce ladder every other gate here shipped through. The
+   * owner flips `first` after reading the `gabi_groq_shadow` lines, never as a
+   * side effect of a deploy.
+   *
+   * ⚠️ **SCOPE: TOOLLESS CALLS ONLY.** Tool-loop turns stay on Anthropic in
+   * every mode — the Anthropic↔OpenAI tool-schema translation is phase 2.
+   */
+  GABI_GROQ?: string;
+
   /**
    * ⚠️ **THE TIER-1 KILL SWITCH — the delegated WRITE verbs** (`delegated.ts`).
    *

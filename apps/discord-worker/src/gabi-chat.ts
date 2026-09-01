@@ -71,6 +71,16 @@ import {
   toolsForApi,
 } from './gabi-tools.js';
 import { runTool, type ToolContext } from './tool-exec.js';
+/**
+ * ⚠️ **THE GROQ FIRST-LINE RUNG (2026-09-01), AND ITS BOUNDARY.** `viaGroq`
+ * wraps the two TOOLLESS calls below — `classifyIntent` and `converse` — and
+ * NOTHING else in this file. `converseWithTools` is deliberately untouched in
+ * every posture: its loop is built on Anthropic's `tool_use`/`tool_result`
+ * grammar, and translating that to OpenAI's is phase 2. See
+ * `gabi-groq.ts`'s header and `docs/info/gabi-groq-rung.md`.
+ */
+import { viaGroq, type ModelOverrides } from './gabi-groq.js';
+export type { ModelOverrides } from './gabi-groq.js';
 
 /**
  * ⚠️ Pinned, not aliased. `claude-haiku-4-5` is the moving alias for this
@@ -332,13 +342,9 @@ export async function classifyIntent(
   apiKey: string | undefined,
   question: string,
   who: { discordUserId: string; guildId: string | null; via?: string },
-  overrides?: { fetch?: typeof fetch },
+  overrides?: ModelOverrides,
   history: readonly ConversationTurn[] = [],
 ): Promise<MentionIntent | null> {
-  if (!apiKey) {
-    logNoKey('intent classification');
-    return null;
-  }
   const recent = history.slice(-CLASSIFY_CONTEXT_TURNS);
   const preamble =
     recent.length > 0
@@ -346,31 +352,74 @@ export async function classifyIntent(
           .map((t) => `${t.role === 'user' ? 'Them' : 'You'}: ${t.text.slice(0, CLASSIFY_CONTEXT_CHARS)}`)
           .join('\n')}\n\nTheir message now:\n`
       : '';
-  try {
-    const res = await chatClient(apiKey, overrides).messages.create({
-      model: GABI_CHAT_MODEL,
-      max_tokens: CLASSIFY_MAX_TOKENS,
+  const asked = `${preamble}${question}`;
+
+  /**
+   * ⚠️ **THE SHARED VALIDATOR.** One bucket vocabulary, two transports: this is
+   * exactly what the Haiku branch below applies to its own reply, handed to the
+   * Groq rung as the same function. A Groq answer that is not a bucket name is
+   * a FAILURE and falls through to Haiku — it does NOT shortcut to the keyword
+   * router, because the keyword router is the last rung and skipping a model
+   * would make a cheap model's stumble cost the answer's quality.
+   */
+  const asBucket = (text: string): MentionIntent | null => {
+    const word = text.toLowerCase().replace(/[^a-z_]/g, '');
+    return isMentionIntent(word) ? word : null;
+  };
+
+  const viaHaiku = async (): Promise<MentionIntent | null> => {
+    if (!apiKey) {
+      logNoKey('intent classification');
+      return null;
+    }
+    try {
+      const res = await chatClient(apiKey, overrides).messages.create({
+        model: GABI_CHAT_MODEL,
+        max_tokens: CLASSIFY_MAX_TOKENS,
+        system: CLASSIFY_SYSTEM,
+        messages: [{ role: 'user', content: asked }],
+      });
+      accountTurn({
+        purpose: 'classify',
+        usage: usageOf(res.usage),
+        discordUserId: who.discordUserId,
+        guildId: who.guildId,
+        ...(who.via ? { via: who.via } : {}),
+        ...historyCost(recent),
+      });
+      const said = textOf(res.content);
+      const bucket = asBucket(said);
+      if (bucket) return bucket;
+      // A model that answered something else is not an outage; the keyword router
+      // is a real router, so use it rather than reporting a failure.
+      console.log(
+        `GABI mentions: classifier returned "${said.toLowerCase().replace(/[^a-z_]/g, '')}", using the keyword router instead.`,
+      );
+      return classifyByKeyword(question);
+    } catch (err) {
+      console.error('GABI mentions: classification failed:', err instanceof Error ? err.message : err);
+      return classifyByKeyword(question);
+    }
+  };
+
+  return viaGroq<MentionIntent>({
+    ...(overrides?.groq ? { rung: overrides.groq } : { rung: undefined }),
+    purpose: 'classify',
+    // ⚠️ A THUNK — with the posture off this is never called and no prompt is built.
+    turn: () => ({
       system: CLASSIFY_SYSTEM,
-      messages: [{ role: 'user', content: `${preamble}${question}` }],
-    });
-    accountTurn({
-      purpose: 'classify',
-      usage: usageOf(res.usage),
-      discordUserId: who.discordUserId,
-      guildId: who.guildId,
-      ...(who.via ? { via: who.via } : {}),
-      ...historyCost(recent),
-    });
-    const word = textOf(res.content).toLowerCase().replace(/[^a-z_]/g, '');
-    if (isMentionIntent(word)) return word;
-    // A model that answered something else is not an outage; the keyword router
-    // is a real router, so use it rather than reporting a failure.
-    console.log(`GABI mentions: classifier returned "${word}", using the keyword router instead.`);
-    return classifyByKeyword(question);
-  } catch (err) {
-    console.error('GABI mentions: classification failed:', err instanceof Error ? err.message : err);
-    return classifyByKeyword(question);
-  }
+      messages: [{ role: 'user', content: asked }],
+      maxTokens: CLASSIFY_MAX_TOKENS,
+    }),
+    validate: asBucket,
+    haiku: viaHaiku,
+    ...(overrides?.fetch ? { fetchImpl: overrides.fetch } : {}),
+    who: { discordUserId: who.discordUserId, guildId: who.guildId },
+    // ⚠️ Agreement is meaningful here — a bucket name is a decision, not prose —
+    // and it is the single number that answers "would Groq have routed this the
+    // same way?" It is safe to log: a bucket name is our vocabulary, never theirs.
+    compare: (fromGroq, fromHaiku) => fromGroq === fromHaiku,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -404,41 +453,66 @@ export async function converse(
   question: string,
   grounding: string | null,
   who: { discordUserId: string; guildId: string | null; authorName: string; via?: string },
-  overrides?: { fetch?: typeof fetch },
+  overrides?: ModelOverrides,
   history: readonly ConversationTurn[] = [],
   /** ⚠️ Tier 2 applies to SMALL TALK too, and arguably most of all: "how's the
    *  reading going" is the turn where being a fresh bot is most obvious. */
   memoryBlock?: string,
 ): Promise<string | null> {
-  if (!apiKey) {
-    logNoKey('the conversational reply');
-    return null;
-  }
   const user = grounding
     ? `${question}\n\n(What the estate's public shelf says, for your answer — quote it rather than inventing anything: ${grounding})`
     : question;
-  try {
-    const res = await chatClient(apiKey, overrides).messages.create({
-      model: GABI_CHAT_MODEL,
-      max_tokens: CHAT_MAX_TOKENS,
-      system: memoryBlock ? `${CHAT_SYSTEM}
-${memoryBlock}` : CHAT_SYSTEM,
+  const system = memoryBlock ? `${CHAT_SYSTEM}
+${memoryBlock}` : CHAT_SYSTEM;
+
+  /** ⚠️ THE SHARED VALIDATOR, and for prose it is the whole of the contract:
+   *  an empty reply is not an answer. Both transports apply it, so a blank from
+   *  Groq falls through to Haiku rather than becoming a silent nothing. */
+  const asAnswer = (text: string): string | null => (text.length > 0 ? text : null);
+
+  const viaHaiku = async (): Promise<string | null> => {
+    if (!apiKey) {
+      logNoKey('the conversational reply');
+      return null;
+    }
+    try {
+      const res = await chatClient(apiKey, overrides).messages.create({
+        model: GABI_CHAT_MODEL,
+        max_tokens: CHAT_MAX_TOKENS,
+        system,
+        messages: modelMessages(history, user),
+      });
+      accountTurn({
+        purpose: 'converse',
+        usage: usageOf(res.usage),
+        discordUserId: who.discordUserId,
+        guildId: who.guildId,
+        ...(who.via ? { via: who.via } : {}),
+        ...historyCost(history),
+      });
+      return asAnswer(textOf(res.content));
+    } catch (err) {
+      console.error('GABI mentions: conversational turn failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
+  };
+
+  return viaGroq<string>({
+    ...(overrides?.groq ? { rung: overrides.groq } : { rung: undefined }),
+    purpose: 'converse',
+    turn: () => ({
+      system,
       messages: modelMessages(history, user),
-    });
-    accountTurn({
-      purpose: 'converse',
-      usage: usageOf(res.usage),
-      discordUserId: who.discordUserId,
-      guildId: who.guildId,
-      ...(who.via ? { via: who.via } : {}),
-      ...historyCost(history),
-    });
-    const text = textOf(res.content);
-    return text.length > 0 ? text : null;
-  } catch (err) {
-    console.error('GABI mentions: conversational turn failed:', err instanceof Error ? err.message : err);
-    return null;
-  }
+      maxTokens: CHAT_MAX_TOKENS,
+    }),
+    validate: asAnswer,
+    haiku: viaHaiku,
+    ...(overrides?.fetch ? { fetchImpl: overrides.fetch } : {}),
+    who: { discordUserId: who.discordUserId, guildId: who.guildId },
+    // ⚠️ NO `compare`. Two free-prose replies are never string-equal and an
+    // equality bit here would be a number that always says the same thing.
+    // The shadow line's lengths and latencies are the honest comparison.
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -688,7 +762,15 @@ export async function converseWithTools(
   grounding: string | null,
   who: { discordUserId: string; guildId: string | null; authorName: string; via?: string },
   toolCtx: ToolContext,
-  overrides?: { fetch?: typeof fetch },
+  /**
+   * ⚠️ It accepts the same bag the toolless helpers do, and **ignores
+   * `overrides.groq` on purpose** — see this file's Groq import note. A tool
+   * loop is Anthropic's `tool_use`/`tool_result` grammar end to end; the OpenAI
+   * translation is phase 2, and until it exists a tool turn must stay on
+   * Anthropic in EVERY posture. `test/gabi-groq.test.ts` fails the build if a
+   * tool turn ever reaches `api.groq.com`.
+   */
+  overrides?: ModelOverrides,
   history: readonly ConversationTurn[] = [],
   /**
    * ⚠️ **TIER 2 — the durable profile, already rendered** (design §6). A STRING
