@@ -678,6 +678,10 @@ test('⚠️ describeIngestion: a blocker in force is its own state, and says it
   assert.match(all, /absolute while they are in force/);
   // ⚠️ The consequence the design said to state to his face.
   assert.match(all, /beats the scheduled 12am–8am window/);
+  // ⚠️ AND IT NAMES THE DISCLOSURE (2026-09-01). The row is one tap away
+  // rather than on screen, so "delete it below" would point at a collapsed box
+  // — an instruction the reader cannot follow.
+  assert.match(all, /Open “Schedules & exemptions” below to delete it/);
 });
 
 test('⚠️ describeIngestion: a blocker OUT of force does not pause the card', () => {

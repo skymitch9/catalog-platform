@@ -680,7 +680,7 @@ export function describeIngestion(control, nowMs) {
       // the middle of it — the exact incident that created the list.
       lines.push(
         `It will not release while ${programs} is running, however quiet the GPU goes — that is ` +
-          'what the do-not-disturb list below is for.',
+          'what the do-not-disturb list under “Schedules & exemptions” below is for.',
       );
     }
     if (dont !== null && dont > nowMs) {
@@ -727,9 +727,12 @@ export function describeIngestion(control, nowMs) {
     badge = 'warn';
     headline = `Paused by a recurring blocker — ${blockerWords}.`;
     lines.push(
-      'Blockers are absolute while they are in force: no GPU reading releases one, a “pause for ' +
+      'Blockers are absolute while they are in force: no GPU reading releases one, a pause “for ' +
         'now” does not outrank it, and it beats the scheduled 12am–8am window for any hours they ' +
-        'overlap. Delete it below if you want these hours back.',
+        // ⚠️ NAMES THE DISCLOSURE since 2026-09-01 — the row is one tap away
+        // rather than on screen, and "delete it below" pointing at a collapsed
+        // box is an instruction the reader cannot follow.
+        'overlap. Open “Schedules & exemptions” below to delete it if you want these hours back.',
     );
   } else if (dont !== null && dont > nowMs) {
     state = 'not-checking';
