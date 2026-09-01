@@ -186,11 +186,11 @@ write time + `pause_until_gpu_free` (processor-released, clear-then-start,
 fails closed); blockers = `recurring_windows` (absolute while in force).
 Effort ~M. 🔴 **Deploy order is load-bearing: reader FIRST** — an old reader
 ignores `recurring_windows`, which fails OPEN.
-- ✅ Q2 answered 2026-08-31 (*"pm and your rule is fine"*): blockers beat the
-  window; the example was PM. ✅ Q3 decided (owner delegated: *"your choice"*):
-  sustained-free, 2 polls/120s — one definition of "GPU free" module-wide.
-  ☐ **OWNER Q4 (ask next, the last):** while a soft pause waits, block
-  everything (recommended) or let CPU-only packing continue?
+- ✅ **ALL FOUR QUESTIONS SETTLED (Q1/Q2 2026-08-31, Q3 delegated, Q4
+  2026-09-01 "block everything") — the design is BUILD-READY.** Build starts
+  on the owner's go: reader half (`ingest_control.py`) FIRST (the
+  `recurring_windows` fail-open row), then ops.ts + the card. ~M effort,
+  ~1.5 days, live round trip at the end.
 - Found while designing: `pause_mode` (`all`|`manual_only`, owner ask
   2026-08-23) is already BUILT in `ingest_control.py` — that is library TODO's
   OR-3 answered; verify the card offers the choice, then close OR-3 there.

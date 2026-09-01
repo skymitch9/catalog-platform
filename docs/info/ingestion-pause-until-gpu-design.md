@@ -176,5 +176,10 @@ human" debt gets paid in the same session.
    the same `gpu_sustained_free()` bar opportunistic starts use, so there is
    one definition of "the GPU is free" in the whole module. A loading-screen
    dip cannot unpause mid-game; the cost is ~4 minutes of release lag.
-4. **Scope while a soft pause waits:** block everything (recommended) or let
-   CPU-only packing continue?
+4. ✅ **ANSWERED 2026-09-01** (owner: *"block everything"*): while a soft
+   pause waits, nothing runs — CPU packing included. The GPU reading is only
+   the release trigger; paused means paused.
+
+**All four questions are settled. The design is BUILD-READY** — nothing is
+built; the build starts on the owner's go, reader half (`ingest_control.py`)
+first per §5's fail-open row.
