@@ -168,10 +168,9 @@ human" debt gets paid in the same session.
 1. ✅ **ANSWERED 2026-08-31** (the clarification above): soft pauses release
    at the earliest of window-open / GPU-free / explicit ceiling, and
    recurring weekly blockers exist.
-2. **Q-next — blocker vs the nightly window:** when a recurring blocker
-   overlaps 12am–8am, the blocker wins and scheduled ingestion stops for the
-   overlap (recommended — anything else makes blockers mean nothing). Confirm
-   — and, incidentally, was MTW 6:30–10:15 AM or PM? (PM never overlaps.)
+2. ✅ **ANSWERED 2026-08-31** (owner: *"pm and your rule is fine"*): blockers
+   beat the nightly window when they overlap, and the MTW 6:30–10:15 example
+   is PM — evening hours, no overlap with 12am–8am in practice.
 3. **Release bar:** sustained-free (2 polls, 120s — recommended, a
    loading-screen dip can't unpause mid-game) vs a single poll (~4 min
    faster).
