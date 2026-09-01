@@ -116,10 +116,15 @@
       <h3 class="step-list-h">Ingestion — pause &amp; resume</h3>
       <p class="section-note step-section-note">
         Stops and starts the ingestion process flow on the home machine.
+        There are three ways to pause: <strong>Pause until I unpause…</strong>
+        (nothing but Resume ends it), <strong>Pause for now</strong> and
+        <strong>Pause until…</strong> — the last two end themselves as soon as
+        the GPU has been quiet for about four minutes, or when the 12am window
+        opens, whichever comes first.
         Every control here takes two taps: the others arm and then confirm,
-        while <strong>Pause now…</strong> asks what the pause should mean and
-        the answer you pick <em>is</em> the confirmation. Both times are read
-        as <strong>Phoenix time</strong>.
+        while <strong>Pause until I unpause…</strong> asks what the pause should
+        mean and the answer you pick <em>is</em> the confirmation. Every time on
+        this card is read as <strong>Phoenix time</strong>.
       </p>
       <div id="ingestion-card" class="ing-card">
         <div id="ingestion-status" class="ing-status" data-state="pending">
@@ -139,6 +144,18 @@
           <input id="ingestion-pause-until" class="ing-input" type="datetime-local">
           <span id="ingestion-pause-until-slot"></span>
         </div>
+        <!-- ⚠️ THE PICKED TIME IS A CEILING, NOT A PROMISE (2026-09-01, owner:
+             "i want any pause thats not the 'until i unpause' to be unpaused by
+             either next scheduled start or the next gpu free availability").
+             Saying "at latest" here is the whole honesty of this control: a
+             label reading "Pause until 6pm" over a document a free GPU can
+             clear at 2pm would be the card lying about the machine. -->
+        <p class="ing-note">
+          <strong>At latest.</strong> This is the longest it can last, not a
+          promise: it also ends as soon as the GPU has been quiet for about four
+          minutes, or when the 12am window opens — whichever comes first. Use
+          <strong>Pause until I unpause…</strong> if it has to survive all three.
+        </p>
 
         <div class="ing-timer">
           <!-- The owner's own phrase, kept as the label rather than
@@ -149,6 +166,63 @@
           </label>
           <input id="ingestion-dont-check" class="ing-input" type="datetime-local">
           <span id="ingestion-dont-check-slot"></span>
+        </div>
+
+        <!-- ⚠️ THE TWO STANDING LISTS (owner asks 2026-08-31 / 2026-09-01;
+             design §§4 and 4a). They are NOT pauses and nothing on the card
+             above clears them: Resume, Start now and every pause leave both
+             exactly as they are, the same rule scheduled quiet hours already
+             follow. Deleting a row is the only edit — replacing one is a
+             delete and an add, which is one gesture more and no ambiguity
+             about what is in force meanwhile.
+
+             ⚠️ THE ROWS ARE RENDERED IN WORDS by assets/ingestion-time.js
+             ("Mon Tue Wed, 6:30 PM – 10:15 PM"), never as raw 24-hour
+             numbers: a blocker crossing midnight reads as twelve hours
+             backwards otherwise, and the row that says so is the only place
+             the owner can catch it. -->
+        <div class="ing-standing">
+          <h4 class="ing-standing-h">Recurring blockers</h4>
+          <p class="ing-note">
+            Standing weekly quiet hours — <em>Mon Tue Wed, 6:30 PM – 10:15 PM</em>,
+            say. A blocker is <strong>absolute while it is in force</strong>: no GPU
+            reading releases it, a “Pause for now” does not outrank it, and it beats
+            the scheduled 12am–8am window for any hours they overlap. To block an
+            evening into the next morning set the end <em>earlier</em> than the start
+            (10:00 PM to 2:00 AM). Times are <strong>Phoenix time</strong>.
+          </p>
+          <div class="ing-recurring">
+            <fieldset id="ingestion-recurring-days" class="ing-days">
+              <legend class="ing-label">Days</legend>
+            </fieldset>
+            <div class="ing-timer">
+              <label class="ing-label" for="ingestion-recurring-from">From</label>
+              <input id="ingestion-recurring-from" class="ing-input" type="time">
+              <label class="ing-label" for="ingestion-recurring-until">Until</label>
+              <input id="ingestion-recurring-until" class="ing-input" type="time">
+              <span id="ingestion-recurring-add-slot"></span>
+            </div>
+          </div>
+          <ul id="ingestion-recurring-rows" class="ing-rows"></ul>
+        </div>
+
+        <div class="ing-standing">
+          <h4 class="ing-standing-h">Do not disturb — programs</h4>
+          <p class="ing-note">
+            While any of these is running the machine counts as in use and
+            <strong>nothing new starts</strong> — window or no window, GPU or CPU.
+            A book already being transcribed is never killed. Type the name Windows
+            uses (the image name, like <code>Wow.exe</code>), not the title of the
+            game; the match ignores capitals but is otherwise exact.
+          </p>
+          <div class="ing-timer">
+            <label class="ing-label" for="ingestion-process">Program</label>
+            <input id="ingestion-process" class="ing-input" type="text"
+                   placeholder="Wow.exe" autocomplete="off" spellcheck="false">
+            <span id="ingestion-process-add-slot"></span>
+          </div>
+          <div id="ingestion-process-quickadd" class="ing-quickadd"></div>
+          <ul id="ingestion-process-rows" class="ing-rows"></ul>
         </div>
 
         <p id="ingestion-msg" class="ops-run-msg"></p>

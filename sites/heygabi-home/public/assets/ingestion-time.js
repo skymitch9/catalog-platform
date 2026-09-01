@@ -44,6 +44,12 @@ export const PHOENIX_TZ = 'America/Phoenix';
 /** Arizona does not observe DST — see the file header before changing this. */
 export const PHOENIX_OFFSET = '-07:00';
 
+/** The same fixed offset in milliseconds, for the arithmetic the recurring
+ *  blockers need (weekday + minute-of-day in Phoenix). Deliberately adjacent
+ *  to the string above: if one is ever wrong they are both wrong, and the
+ *  tests pin January and July alike so a DST assumption cannot creep in. */
+export const PHOENIX_OFFSET_MS = 7 * 3_600_000;
+
 const MS_PER_DAY = 86_400_000;
 
 /** Wall-clock fields, in Phoenix, for an instant. `h23` (not hour12:false)
@@ -147,6 +153,193 @@ export function wordTime(iso, nowMs) {
   return `${clock} on ${DATE_FMT.format(new Date(ms))}`;
 }
 
+// ---------------------------------------------------------------------------
+// RECURRING BLOCKERS + DO-NOT-DISTURB PROGRAMS (owner asks 2026-08-31 /
+// 2026-09-01; design docs/info/ingestion-pause-until-gpu-design.md §4 + §4a).
+//
+// ⚠️ EVERY WORD AND EVERY REFUSAL FOR THE TWO NEW EDITORS LIVES HERE, for the
+// reason in the file header: pipelines.js cannot be tested at all, and a
+// blocker rendered as "Mon Tue Wed, 6:30 PM – 10:15 PM" when the document says
+// something else is exactly the class of bug a screenshot cannot catch.
+//
+// ⚠️ THE REFUSAL STRINGS ARE DELIBERATELY THE SAME SENTENCES THE WORKER SENDS
+// (apps/auth-worker/src/ops.ts). Two enforcement points, one wording: the card
+// refuses locally so the owner is told before a round trip, and the Worker
+// refuses again because a page is not a gate. If they ever drift, the WORKER
+// wins — it is the one the home machine actually reads.
+// ---------------------------------------------------------------------------
+
+/** ISO weekday numbers are 1 = Monday … 7 = Sunday — the reader's convention,
+ *  not JavaScript's (`getDay()` is 0 = Sunday). The mismatch is the single
+ *  most likely off-by-one in this file, so the two are never mixed: every
+ *  weekday in this module is ISO. */
+export const ISO_WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/**
+ * What the card offers as one-tap additions to the do-not-disturb list.
+ *
+ * ⚠️ "Wow.exe" is VERIFIED — read off `tasklist` on the owner's own machine
+ * while the game ran, 2026-09-01. "WowClassic.exe" is the documented name of
+ * the classic client and is NOT verified here. Both are suggestions only: the
+ * text box takes any name, because the list is worthless if it cannot hold the
+ * program the owner is actually running.
+ */
+export const SUGGESTED_EXEMPT_PROCESSES = ['Wow.exe', 'WowClassic.exe'];
+
+/** ⚠️ MIRRORS the reader's MAX_RECURRING_WINDOWS / MAX_EXEMPT_PROCESSES and
+ *  the Worker's copies of the same two numbers. */
+export const MAX_RECURRING_WINDOWS = 20;
+export const MAX_EXEMPT_PROCESSES = 20;
+
+const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** "18:30" → "6:30 PM"; "00:00" → "midnight"; "12:00" → "noon". Returns null
+ *  for anything that is not a complete 24-hour wall clock. */
+export function hhmmWords(hhmm) {
+  if (typeof hhmm !== 'string' || !HHMM_RE.test(hhmm)) return null;
+  return clockWords({ hour: hhmm.slice(0, 2), minute: hhmm.slice(3, 5) });
+}
+
+/** [1,2,3] → "Mon Tue Wed"; all seven → "Every day". Sorted, so the row reads
+ *  the same however the checkboxes were ticked. */
+export function weekdayWords(days) {
+  if (!Array.isArray(days) || days.length === 0) return null;
+  const nums = [...new Set(days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))].sort(
+    (a, b) => a - b,
+  );
+  if (nums.length === 0) return null;
+  if (nums.length === 7) return 'Every day';
+  return nums.map((d) => ISO_WEEKDAY_SHORT[d - 1]).join(' ');
+}
+
+/**
+ * One blocker, in words — "Mon Tue Wed, 6:30 PM – 10:15 PM".
+ *
+ * ⚠️ A window whose end is EARLIER than its start crosses midnight and belongs
+ * to the day it STARTS, so "Mon, 10:00 PM – 2:00 AM" is Monday night into
+ * Tuesday morning. The row says "the next morning" out loud, because a reader
+ * who took it as "2am on Monday" would think he had blocked twelve hours
+ * fewer than he has.
+ */
+export function recurringWindowWords(win) {
+  if (!win || typeof win !== 'object') return null;
+  const days = weekdayWords(win.days);
+  const from = hhmmWords(win.from);
+  const until = hhmmWords(win.until);
+  if (!days || !from || !until || win.from === win.until) return null;
+  const crosses = win.from > win.until; // string compare is safe on zero-padded HH:MM
+  return `${days}, ${from} – ${until}${crosses ? ' the next morning' : ''}`;
+}
+
+/**
+ * Validate what the editor collected, in the owner's words. Returns
+ * `{ window }` or `{ error }` — never throws, and NEVER repairs: a blocker
+ * quietly "fixed" into different hours is a control that does something other
+ * than what it says.
+ */
+export function validateRecurringWindow(input) {
+  const raw = input && typeof input === 'object' ? input : {};
+  const days = Array.isArray(raw.days)
+    ? [...new Set(raw.days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))].sort(
+        (a, b) => a - b,
+      )
+    : [];
+  if (days.length === 0) {
+    return { error: 'Pick at least one day of the week for this blocker.' };
+  }
+  if (typeof raw.from !== 'string' || !HHMM_RE.test(raw.from) ||
+      typeof raw.until !== 'string' || !HHMM_RE.test(raw.until)) {
+    return {
+      error:
+        'Both times need to be a real time of day, like 6:30 PM. Set the start and the end, then add it.',
+    };
+  }
+  // ⚠️ THE READER REFUSES from === until AS AMBIGUOUS (no minutes, or the
+  // whole day?), so the card refuses it here rather than letting the owner add
+  // a row the home machine will silently ignore.
+  if (raw.from === raw.until) {
+    return {
+      error:
+        'A blocker that starts and ends at the same time means nothing — it could be no minutes or ' +
+        'the whole day, and the home machine refuses it rather than guess. Pick an end time that is ' +
+        'different from the start. (To block from an evening into the next morning, set the end ' +
+        'EARLIER than the start — 10:00 PM to 2:00 AM, say.)',
+    };
+  }
+  return { window: { days, from: raw.from, until: raw.until } };
+}
+
+/** A do-not-disturb entry, validated in words. Case is PRESERVED — the reader
+ *  matches image names case-insensitively, so the owner's own capitalisation
+ *  costs nothing and makes the row readable back to him. */
+export function validateExemptProcess(raw) {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text || text.length > 200) {
+    return {
+      error:
+        'Type the program’s name as Windows lists it — the image name, like “Wow.exe”. ' +
+        'It cannot be blank or longer than 200 characters.',
+    };
+  }
+  return { name: text };
+}
+
+/** Phoenix ISO weekday (1 = Monday) and minute-of-day for an instant. */
+export function phoenixWeekdayAndMinutes(nowMs) {
+  const shifted = new Date(nowMs - PHOENIX_OFFSET_MS);
+  const jsDay = shifted.getUTCDay(); // 0 = Sunday
+  return {
+    weekday: jsDay === 0 ? 7 : jsDay,
+    minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
+  };
+}
+
+function hhmmToMinutes(hhmm) {
+  return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+}
+
+/**
+ * The recurring blocker covering `nowMs`, or null.
+ *
+ * ⚠️ THE MIDNIGHT-CROSSING CASE IS THE WHOLE DIFFICULTY, and it is a test
+ * rather than a footnote: a row whose end is earlier than its start covers
+ * [its day, from → 24:00) AND [the NEXT day, 00:00 → until). Evaluating it as
+ * a plain "is now between from and until" would make a 10pm–2am blocker cover
+ * 2am–10pm instead — the exact inverse of what the owner set.
+ */
+export function activeRecurringWindow(windows, nowMs) {
+  if (!Array.isArray(windows)) return null;
+  const { weekday, minutes } = phoenixWeekdayAndMinutes(nowMs);
+  for (const w of windows) {
+    if (!w || !Array.isArray(w.days)) continue;
+    if (typeof w.from !== 'string' || !HHMM_RE.test(w.from)) continue;
+    if (typeof w.until !== 'string' || !HHMM_RE.test(w.until)) continue;
+    if (w.from === w.until) continue; // the reader refuses it; the card must not render it as live
+    const start = hhmmToMinutes(w.from);
+    const end = hhmmToMinutes(w.until);
+    for (const rawDay of w.days) {
+      if (!Number.isInteger(rawDay) || rawDay < 1 || rawDay > 7) continue;
+      if (end > start) {
+        if (weekday === rawDay && minutes >= start && minutes < end) return w;
+      } else {
+        const nextDay = (rawDay % 7) + 1;
+        if (weekday === rawDay && minutes >= start) return w;
+        if (weekday === nextDay && minutes < end) return w;
+      }
+    }
+  }
+  return null;
+}
+
+/** The do-not-disturb list as a readable clause: "Wow.exe", "Wow.exe or
+ *  WowClassic.exe", "Wow.exe, WowClassic.exe or Steam.exe". */
+export function processListWords(names) {
+  const list = Array.isArray(names) ? names.filter((n) => typeof n === 'string' && n.trim()) : [];
+  if (list.length === 0) return null;
+  if (list.length === 1) return list[0];
+  return `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`;
+}
+
 /** A pause window covering `nowMs`, or null. Windows without a usable
  *  `until` are ignored rather than treated as open-ended — an unreadable
  *  window must never silently pause the display forever. */
@@ -247,7 +440,19 @@ export function describeIngestion(control, nowMs) {
   const dont = parseIso(control.dont_check_until);
   const win = activeWindow(control.pause_windows, nowMs);
   const soon = nextWindow(control.pause_windows, nowMs);
+  // ⚠️ THE SOFT PAUSE (2026-09-01). `pause_until_gpu_free` says the timer
+  // below is a CEILING and not a promise: the home machine releases the pause
+  // the moment the GPU reads sustained-free (2 polls, 120s apart, under 50%),
+  // and only falls back on the timer if it never does. `=== true` is the
+  // reader's own coercion — anything else on the document reads as off.
+  const softRelease = control.pause_until_gpu_free === true;
+  const blocker = activeRecurringWindow(control.recurring_windows, nowMs);
+  const blockerWords = blocker ? recurringWindowWords(blocker) : null;
+  const programs = processListWords(control.exempt_processes);
   const lines = [];
+  // Set by the soft branch when it has already explained the don't-check
+  // interaction, so the generic sentence further down does not repeat it.
+  let saidDontCheck = false;
 
   let state;
   let badge;
@@ -282,9 +487,54 @@ export function describeIngestion(control, nowMs) {
           'hard pause overrides it and outlives it. Resume clears both.',
       );
     }
+  } else if (until !== null && until > nowMs && softRelease) {
+    // ⚠️ THE SOFT PAUSE, AND THE ONE THING ITS WORDING MUST NEVER DO IS
+    // PROMISE THE TIMER. "Paused until midnight" over a document a free GPU
+    // can clear at 9pm is the card lying about the machine — so every
+    // sentence here says "at latest", and the release condition comes FIRST
+    // because it is the one that usually fires.
+    state = 'paused';
+    badge = 'warn';
+    headline = `Paused for now — until ${wordTime(control.paused_until, nowMs)} at the latest.`;
+    lines.push(
+      'It resumes itself once the GPU has been quiet for ~4 minutes — at latest ' +
+        `${wordTime(control.paused_until, nowMs)}. Nobody has to press anything.`,
+    );
+    lines.push(
+      'Nothing runs while it waits — the CPU work is stopped too. The GPU reading is only what ' +
+        'releases it.',
+    );
+    if (programs) {
+      // ⚠️ A do-not-disturb program HOLDS the release: a game paused on a menu
+      // reads under 50% for a moment, and without this the pause would end in
+      // the middle of it — the exact incident that created the list.
+      lines.push(
+        `It will not release while ${programs} is running, however quiet the GPU goes — that is ` +
+          'what the do-not-disturb list below is for.',
+      );
+    }
+    if (dont !== null && dont > nowMs) {
+      // ⚠️ A don't-check is a SPEND-NOTHING instruction and polling is
+      // spending, so the home machine will not even look at the GPU while one
+      // is set. That delays the release past the don't-check time, which is
+      // surprising unless it is said out loud.
+      lines.push(
+        `The “don’t check until” time (${wordTime(control.dont_check_until, nowMs)}) delays even that: ` +
+          'while it is set the home machine does not poll the GPU at all, so nothing can release ' +
+          'this pause before then.',
+      );
+      saidDontCheck = true;
+    }
+    if (manualOnly) {
+      lines.push('Until then the 12am–8am window runs as usual; only work started by hand is refused.');
+    }
   } else if (until !== null && until > nowMs) {
     // A timer with the flag OFF is the correct encoding of a timed pause —
-    // it is what "Pause until…" writes, so that it expires by itself.
+    // it is what "Pause until…" writes, so that it expires by itself. ⚠️ This
+    // branch is now the LEGACY one: every pause the card writes today is soft.
+    // A document reaching it was written before 2026-09-01, or by something
+    // else — so it keeps the old, honest wording rather than claiming a GPU
+    // release the flag does not ask for.
     state = 'paused';
     badge = 'warn';
     headline = manualOnly
@@ -298,6 +548,19 @@ export function describeIngestion(control, nowMs) {
     state = 'window';
     badge = 'warn';
     headline = `Paused by a scheduled window — waiting until ${wordTime(win.until, nowMs)}.`;
+  } else if (blocker) {
+    // ⚠️ A RECURRING BLOCKER IS ABSOLUTE WHILE IT IS IN FORCE — the same rule
+    // as a one-shot pause window, and for the same reason: a standing block
+    // anything could override would mean nothing. It outranks the nightly
+    // window too, which is the consequence worth stating rather than burying.
+    state = 'blocker';
+    badge = 'warn';
+    headline = `Paused by a recurring blocker — ${blockerWords}.`;
+    lines.push(
+      'Blockers are absolute while they are in force: no GPU reading releases one, a “pause for ' +
+        'now” does not outrank it, and it beats the scheduled 12am–8am window for any hours they ' +
+        'overlap. Delete it below if you want these hours back.',
+    );
   } else if (dont !== null && dont > nowMs) {
     state = 'not-checking';
     badge = 'warn';
@@ -308,7 +571,18 @@ export function describeIngestion(control, nowMs) {
     headline = 'Running — nothing here is pausing ingestion.';
   }
 
-  if (dont !== null && dont > nowMs && state !== 'not-checking') {
+  // ⚠️ THE CARD RENDERS BOTH WHEN BOTH ARE TRUE, deliberately differing from
+  // the reader's single refusal string. The home machine names ONE reason (the
+  // first one that matched) because a refusal is one sentence; this page is
+  // showing the whole document, and an owner looking at a soft pause needs to
+  // know a blocker will still be holding when it releases.
+  if (blocker && state !== 'blocker') {
+    lines.push(
+      `A recurring blocker is also in force right now (${blockerWords}) — it blocks new starts on ` +
+        'its own, whatever else this card says.',
+    );
+  }
+  if (dont !== null && dont > nowMs && state !== 'not-checking' && !saidDontCheck) {
     lines.push(`It will not even check whether to start until ${wordTime(control.dont_check_until, nowMs)}.`);
   }
   if (dont !== null && dont <= nowMs) {
@@ -328,6 +602,16 @@ export function describeIngestion(control, nowMs) {
     const to = wordTime(soon.until, nowMs);
     lines.push(`A scheduled pause window opens at ${from}${to ? ` and ends at ${to}` : ''}.`);
   }
+  // The do-not-disturb list changes what happens at EVERY moment, not only
+  // while something is paused, so it gets a line whenever it is non-empty —
+  // including on a green card. A guard nobody can see is a guard nobody
+  // remembers setting.
+  if (programs) {
+    lines.push(
+      `Do not disturb: nothing new starts while ${programs} is running — window or no window, ` +
+        'GPU or CPU. A book already being transcribed is never killed.',
+    );
+  }
   if (control.updated_by || control.updated_at) {
     const when = wordTime(control.updated_at, nowMs);
     lines.push(
@@ -338,5 +622,16 @@ export function describeIngestion(control, nowMs) {
   // `pauseMode` is reported alongside the words so the card can key off the
   // MODE rather than re-parsing the headline — normalised here so there is one
   // place in this file that decides what an unrecognised value means.
-  return { state, badge, headline, lines, pauseMode: manualOnly ? 'manual_only' : 'all' };
+  return {
+    state,
+    badge,
+    headline,
+    lines,
+    pauseMode: manualOnly ? 'manual_only' : 'all',
+    // Reported alongside the words for the same reason `pauseMode` is: the
+    // card keys off these rather than re-parsing a headline, and this file
+    // stays the one place that decides what the document MEANS.
+    softPause: state === 'paused' && !pausedFlag && softRelease,
+    blocker: blocker ?? null,
+  };
 }

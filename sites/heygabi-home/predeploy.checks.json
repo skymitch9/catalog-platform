@@ -74,7 +74,12 @@
         "the card exists to prevent), and the two picker ids are the timers.",
         "'Phoenix time' is asserted as TEXT, not as an element: a datetime-local input with no zone stated is a",
         "control that silently means a different hour on a travelling phone, and that label is the only thing on",
-        "the page saying which zone the picker is read in."
+        "the page saying which zone the picker is read in.",
+        "\u26a0 ADDED 2026-09-01 with the soft pauses, the recurring blockers and the do-not-disturb list. The",
+        "four new ids are the two editors' mounts \u2014 a missing one leaves a heading with silence under it,",
+        "which reads as 'you have no blockers' rather than as 'this shipped broken'. 'At latest.' is pinned as",
+        "TEXT for the same reason 'Phoenix time' is: it is the ONE sentence admitting the pause-until picker is",
+        "a ceiling a free GPU can beat, and a card that lost it would be promising a pause it cannot keep."
       ],
       "path": "/status/pipelines/",
       "mustContain": [
@@ -87,7 +92,14 @@
         "id=\"ingestion-headline\"",
         "id=\"ingestion-pause-until\"",
         "id=\"ingestion-dont-check\"",
-        "Phoenix time"
+        "Phoenix time",
+        "id=\"ingestion-recurring-days\"",
+        "id=\"ingestion-recurring-rows\"",
+        "id=\"ingestion-process\"",
+        "id=\"ingestion-process-rows\"",
+        "Recurring blockers",
+        "Do not disturb",
+        "At latest."
       ]
     },
     {
@@ -99,14 +111,22 @@
         "card renders a status line and no controls), and the ingestion-time.js import (the two files must ship",
         "together or the page's script dies at parse time with the usual cheerful 200 on the route).",
         "The pure half's own 23 tests still live in scripts/test/ingestion-time.test.mjs and still pass \u2014 the",
-        "module did not move, only its caller did."
+        "module did not move, only its caller did.",
+        "\u26a0 ADDED 2026-09-01: pause_for_now / recurring_add / exempt_add are the three new writes, and the",
+        "two build functions are the editors themselves. A bundle that shipped the status line without them",
+        "would render a card that reads correctly and can change nothing \u2014 the failure this list catches."
       ],
       "path": "/status/pipelines/pipelines.js",
       "mustContain": [
         "/api/estate/ops/ingestion",
         "buildIngestionCard",
         "ingestion-time.js",
-        "/api/estate/ops/pipeline"
+        "/api/estate/ops/pipeline",
+        "pause_for_now",
+        "recurring_add",
+        "exempt_add",
+        "buildRecurringEditor",
+        "buildProcessEditor"
       ]
     },
     {
@@ -343,14 +363,22 @@
         "are about the file having actually SHIPPED: status.js imports it, and a missing module takes the whole",
         "page's script down at parse time with the usual cheerful 200 on the route.",
         "'America/Phoenix' and 'midnight tonight' are the two strings whose disappearance would mean the estate's",
-        "timezone or the owner's own phrasing had been refactored away."
+        "timezone or the owner's own phrasing had been refactored away.",
+        "\u26a0 ADDED 2026-09-01: 'the next morning' is the midnight-crossing blocker's own wording (without it",
+        "a 10pm-2am row reads as twelve hours backwards), 'at latest' is the soft pause's honesty about its own",
+        "ceiling, and 'Wow.exe' is the verified suggested program name from the WoW-at-midnight incident."
       ],
       "path": "/assets/ingestion-time.js",
       "mustContain": [
         "America/Phoenix",
         "phoenixLocalToIso",
         "describeIngestion",
-        "midnight tonight"
+        "midnight tonight",
+        "recurringWindowWords",
+        "activeRecurringWindow",
+        "the next morning",
+        "at latest",
+        "Wow.exe"
       ]
     },
     {

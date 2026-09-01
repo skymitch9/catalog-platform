@@ -52,9 +52,15 @@ import { mountGate } from '../lib/gate.js';
 import { idToken } from '../../assets/estate-auth.js';
 import { actionBtn, confirmBtn } from '../../assets/estate-controls.js';
 import {
+  ISO_WEEKDAY_SHORT,
+  SUGGESTED_EXEMPT_PROCESSES,
   describeIngestion,
   isoToPhoenixLocal,
   phoenixLocalToIso,
+  processListWords,
+  recurringWindowWords,
+  validateExemptProcess,
+  validateRecurringWindow,
   wordTime,
 } from '../../assets/ingestion-time.js';
 
@@ -653,6 +659,12 @@ const ingLinesEl = document.getElementById('ingestion-lines');
 const ingMsgEl = document.getElementById('ingestion-msg');
 const ingPauseUntilInput = document.getElementById('ingestion-pause-until');
 const ingDontCheckInput = document.getElementById('ingestion-dont-check');
+const ingRecurringDaysEl = document.getElementById('ingestion-recurring-days');
+const ingRecurringFromInput = document.getElementById('ingestion-recurring-from');
+const ingRecurringUntilInput = document.getElementById('ingestion-recurring-until');
+const ingRecurringRowsEl = document.getElementById('ingestion-recurring-rows');
+const ingProcessInput = document.getElementById('ingestion-process');
+const ingProcessRowsEl = document.getElementById('ingestion-process-rows');
 
 /** The last control document read, kept so the ticker can re-word it (a
  *  pause "until 7:05 PM" has to stop saying "paused" at 7:05 even if no
@@ -678,6 +690,112 @@ function renderIngestion(control, nowMs = Date.now()) {
     p.textContent = line;
     ingLinesEl.appendChild(p);
   }
+  renderStandingLists(control, nowMs);
+}
+
+// ---------------------------------------------------------------------------
+// The two STANDING lists — recurring blockers and do-not-disturb programs
+// (owner asks 2026-08-31 / 2026-09-01, design §§4 and 4a).
+//
+// ⚠️ RE-RENDERED ONLY WHEN THE CONTENT CHANGED, and that guard is not an
+// optimisation. renderIngestion() runs every 5 seconds off the ticker, and
+// rebuilding these rows each time would destroy every confirmBtn's armed state
+// under somebody's finger — a Delete you tapped once would go back to
+// unarmed a moment later, and it would look like the button was broken.
+// The signature is the whole of both lists, so a change made on the phone
+// still repaints here within the 60-second re-read.
+// ---------------------------------------------------------------------------
+
+let lastStandingSignature = null;
+
+function standingSignature(control) {
+  return JSON.stringify([control?.recurring_windows ?? [], control?.exempt_processes ?? []]);
+}
+
+function renderStandingLists(control, nowMs = Date.now()) {
+  if (!ingRecurringRowsEl || !ingProcessRowsEl) return;
+  const signature = standingSignature(control);
+  if (signature === lastStandingSignature) {
+    // Only the "in force right now" marker can change without the list
+    // changing, and that is a class flip rather than a rebuild.
+    markBlockerInForce(control, nowMs);
+    return;
+  }
+  lastStandingSignature = signature;
+
+  ingRecurringRowsEl.replaceChildren();
+  const blockers = Array.isArray(control?.recurring_windows) ? control.recurring_windows : [];
+  if (blockers.length === 0) {
+    ingRecurringRowsEl.appendChild(
+      emptyRow('No recurring blockers. Ingestion is free to run at any hour the other controls allow.'),
+    );
+  }
+  for (const win of blockers) {
+    const words = recurringWindowWords(win);
+    const li = document.createElement('li');
+    li.className = 'ing-row';
+    const text = document.createElement('span');
+    text.className = 'ing-row-words';
+    // ⚠️ A row this page cannot put into words is shown as unreadable rather
+    // than skipped: the home machine drops it too, and an owner who set it
+    // deserves to see that it is not doing anything.
+    text.textContent = words || 'Unreadable blocker — the home machine ignores it. Delete it.';
+    if (!words) text.dataset.unreadable = 'true';
+    li.append(text);
+    li.appendChild(
+      confirmBtn('Delete', 'quiet', () =>
+        sendIngestionControl('recurring_delete', undefined, 'Deleting the blocker', undefined, {
+          window: win,
+        }),
+      'warn'),
+    );
+    ingRecurringRowsEl.appendChild(li);
+  }
+
+  ingProcessRowsEl.replaceChildren();
+  const programs = Array.isArray(control?.exempt_processes) ? control.exempt_processes : [];
+  if (programs.length === 0) {
+    ingProcessRowsEl.appendChild(
+      emptyRow('No programs listed. Nothing on this machine stops a start just by running.'),
+    );
+  }
+  for (const name of programs) {
+    const li = document.createElement('li');
+    li.className = 'ing-row';
+    const text = document.createElement('span');
+    text.className = 'ing-row-words';
+    text.textContent = name;
+    li.append(text);
+    li.appendChild(
+      confirmBtn('Delete', 'quiet', () =>
+        sendIngestionControl('exempt_delete', undefined, `Removing ${name}`, undefined, {
+          process: name,
+        }),
+      'warn'),
+    );
+    ingProcessRowsEl.appendChild(li);
+  }
+  markBlockerInForce(control, nowMs);
+}
+
+function emptyRow(text) {
+  const li = document.createElement('li');
+  li.className = 'ing-row ing-row-empty';
+  li.textContent = text;
+  return li;
+}
+
+/** Mark the blocker that is in force RIGHT NOW, so the list agrees with the
+ *  headline above it. `describeIngestion` decides which one — this file never
+ *  re-implements the midnight-crossing arithmetic. */
+function markBlockerInForce(control, nowMs) {
+  if (!ingRecurringRowsEl) return;
+  const active = describeIngestion(control ?? null, nowMs).blocker;
+  const activeWords = active ? recurringWindowWords(active) : null;
+  for (const li of ingRecurringRowsEl.children) {
+    const words = li.querySelector('.ing-row-words');
+    li.dataset.inForce = words && activeWords && words.textContent === activeWords ? 'true' : 'false';
+  }
 }
 
 /**
@@ -696,6 +814,16 @@ function failIngestion(detail) {
   const p = document.createElement('p');
   p.textContent = `${detail} The buttons below still work — this is only the reading.`;
   ingLinesEl.appendChild(p);
+  // ⚠️ THE STANDING LISTS MUST GO TOO, and they must NOT go to "none". Leaving
+  // the last good rows on screen would be the same silent-staleness trap the
+  // headline above just avoided, and rendering an empty list would state
+  // something stronger and falser — "you have no blockers" — than "we could
+  // not read them".
+  lastStandingSignature = null;
+  for (const el of [ingRecurringRowsEl, ingProcessRowsEl]) {
+    if (!el) continue;
+    el.replaceChildren(emptyRow('Cannot read this list right now — it is unchanged on the home machine.'));
+  }
 }
 
 async function loadIngestionControl() {
@@ -758,7 +886,7 @@ function prefillIngestionInputs(control) {
  * ⚠️ Every refusal is worded, never a bare status — the estate's standing
  * rule, and the four causes are kept distinct because their fixes differ.
  */
-async function sendIngestionControl(action, until, verb, mode) {
+async function sendIngestionControl(action, until, verb, mode, extra) {
   const token = await idToken();
   if (!token) {
     setIngestionMsg('Sign-in lapsed — sign in again.', 'warn');
@@ -774,7 +902,16 @@ async function sendIngestionControl(action, until, verb, mode) {
       // buttons). Omitting it is the SAFE default — the Worker and the home
       // machine both read an absent mode as "stop all work" — so a caller that
       // has nothing to say about the meaning of a pause says nothing.
-      body: JSON.stringify({ action, ...(until ? { until } : {}), ...(mode ? { mode } : {}) }),
+      // `extra` carries `window` (a recurring blocker) or `process` (a
+      // do-not-disturb name) for the four standing-list actions, and nothing
+      // at all for every other control — the same "say nothing unless this
+      // caller decided something" rule `mode` follows.
+      body: JSON.stringify({
+        action,
+        ...(until ? { until } : {}),
+        ...(mode ? { mode } : {}),
+        ...(extra || {}),
+      }),
     });
   } catch {
     setIngestionMsg('The auth Worker did not answer (network). Nothing changed — try again shortly.', 'warn');
@@ -855,7 +992,11 @@ function buildPauseChoice(holder) {
   const open = document.createElement('button');
   open.type = 'button';
   open.className = 'btn small quiet warn';
-  open.textContent = 'Pause now…'; // the ellipsis promises the question
+  // ⚠️ RENAMED 2026-09-01, and the name is now load-bearing. Since that day
+  // there are three pauses and only THIS one lasts until a human ends it —
+  // "Pause now…" beside a "Pause for now" would be two buttons whose labels
+  // differ by one word and whose behaviour differs by everything.
+  open.textContent = 'Pause until I unpause…'; // the ellipsis promises the question
 
   const choice = document.createElement('span');
   choice.className = 'ing-pause-choice';
@@ -921,6 +1062,22 @@ function buildIngestionCard() {
   if (!holder) return;
 
   buildPauseChoice(holder);
+
+  // ⚠️ THE SOFT PAUSE (owner 2026-08-31: "i want any pause thats not the
+  // 'until i unpause' to be unpaused by either next scheduled start or the
+  // next gpu free availability"). It asks NO mode question, unlike its
+  // neighbour: a soft pause is window-exempt by construction — the window
+  // opening is its own ceiling — so there is nothing for 'all' versus
+  // 'manual_only' to decide. Two taps, like every other mutating control.
+  holder.appendChild(
+    confirmBtn(
+      'Pause for now',
+      'quiet',
+      () => sendIngestionControl('pause_for_now', undefined, 'Pausing for now'),
+      'warn',
+    ),
+  );
+
   holder.appendChild(
     confirmBtn('Resume', 'quiet', () => sendIngestionControl('resume', undefined, 'Resuming')),
   );
@@ -968,6 +1125,109 @@ function buildIngestionCard() {
         if (r.error) { setIngestionMsg(r.error, 'warn'); return; }
         return sendIngestionControl('dont_check_until', r.iso, `Holding off until ${wordTime(r.iso, Date.now())}`);
       }, 'warn'),
+    );
+  }
+
+  buildRecurringEditor();
+  buildProcessEditor();
+}
+
+// ---------------------------------------------------------------------------
+// The recurring-blocker editor and the do-not-disturb editor.
+//
+// ⚠️ EVERY WORD THEY PRODUCE COMES FROM assets/ingestion-time.js — the row
+// sentences, the refusals, the weekday names and the suggested program names.
+// This file collects checkbox states and hands them over; it decides nothing
+// that could be silently wrong, which is the same split the pause card has
+// followed since 2026-08-18.
+// ---------------------------------------------------------------------------
+
+/** The seven ISO weekday checkboxes, built here rather than typed into the
+ *  HTML so the numbering comes from ONE place (ISO_WEEKDAY_SHORT) and cannot
+ *  drift from the numbering the reader uses. */
+function buildRecurringEditor() {
+  if (!ingRecurringDaysEl) return;
+  ISO_WEEKDAY_SHORT.forEach((label, i) => {
+    const iso = i + 1; // ⚠️ ISO: 1 = Monday. NOT JavaScript's getDay().
+    const wrap = document.createElement('label');
+    wrap.className = 'ing-day';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = String(iso);
+    box.dataset.isoDay = String(iso);
+    const text = document.createElement('span');
+    text.textContent = label;
+    wrap.append(box, text);
+    ingRecurringDaysEl.appendChild(wrap);
+  });
+
+  const slot = document.getElementById('ingestion-recurring-add-slot');
+  if (!slot) return;
+  slot.appendChild(
+    confirmBtn('Add blocker', 'quiet', () => {
+      const days = [...ingRecurringDaysEl.querySelectorAll('input[type="checkbox"]')]
+        .filter((b) => b.checked)
+        .map((b) => Number(b.dataset.isoDay));
+      // ⚠️ VALIDATED HERE FIRST so the owner is told before a round trip — and
+      // validated AGAIN by the Worker, because a page is not a gate. The two
+      // use the same sentences on purpose (see ingestion-time.js).
+      const checked = validateRecurringWindow({
+        days,
+        from: ingRecurringFromInput?.value || '',
+        until: ingRecurringUntilInput?.value || '',
+      });
+      if (checked.error) { setIngestionMsg(checked.error, 'warn'); return; }
+      return sendIngestionControl(
+        'recurring_add',
+        undefined,
+        `Adding ${recurringWindowWords(checked.window)}`,
+        undefined,
+        { window: checked.window },
+      );
+    }, 'warn'),
+  );
+}
+
+function buildProcessEditor() {
+  const slot = document.getElementById('ingestion-process-add-slot');
+  if (slot) {
+    slot.appendChild(
+      confirmBtn('Add program', 'quiet', () => {
+        const checked = validateExemptProcess(ingProcessInput?.value);
+        if (checked.error) { setIngestionMsg(checked.error, 'warn'); return; }
+        return sendIngestionControl(
+          'exempt_add',
+          undefined,
+          `Adding ${checked.name}`,
+          undefined,
+          { process: checked.name },
+        ).then(() => {
+          // Cleared only after the attempt: a box that still held the name
+          // would invite a second press, and the second press of an add is a
+          // no-op that looks like a failure.
+          if (ingProcessInput) ingProcessInput.value = '';
+        });
+      }, 'warn'),
+    );
+  }
+
+  // ⚠️ THE QUICK-ADDS ARE SUGGESTIONS, NOT THE LIST. "Wow.exe" was read off
+  // `tasklist` on the owner's own machine while the game ran (2026-09-01);
+  // "WowClassic.exe" is the documented classic-client name and is NOT
+  // verified. Either way the text box above takes anything — a list that only
+  // held names this page knew about would be useless the first time he ran
+  // something else.
+  const quick = document.getElementById('ingestion-process-quickadd');
+  if (!quick) return;
+  const note = document.createElement('span');
+  note.className = 'ing-quickadd-note';
+  note.textContent = `Suggestions: ${processListWords(SUGGESTED_EXEMPT_PROCESSES)}`;
+  quick.appendChild(note);
+  for (const name of SUGGESTED_EXEMPT_PROCESSES) {
+    quick.appendChild(
+      confirmBtn(`+ ${name}`, 'quiet', () =>
+        sendIngestionControl('exempt_add', undefined, `Adding ${name}`, undefined, { process: name }),
+      'warn'),
     );
   }
 }

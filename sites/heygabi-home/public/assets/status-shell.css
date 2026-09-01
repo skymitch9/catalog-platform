@@ -417,6 +417,73 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   font-size: var(--et-text-small);
 }
 .ing-input:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+
+/* --- The two STANDING lists: recurring blockers + do-not-disturb programs
+   (owner asks 2026-08-31 / 2026-09-01, design §§4 and 4a) -------------------
+
+   ⚠️ Set apart from the pause controls above by a rule and a heading, on
+   purpose: everything above ENDS BY ITSELF and everything here KEEPS GOING
+   until it is deleted. Two controls that outlive every button beside them
+   should not look like more buttons. */
+.ing-standing {
+  display: grid;
+  gap: .5rem;
+  padding-top: .7rem;
+  border-top: 1px solid var(--et-hairline);
+}
+.ing-standing-h {
+  margin: 0;
+  font-size: var(--et-text-small);
+  font-weight: 700;
+  color: var(--et-heading-color);
+}
+.ing-note { margin: 0; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.ing-recurring { display: grid; gap: .5rem; }
+.ing-days {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: .35rem .6rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+}
+.ing-day {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: var(--et-text-small);
+  /* A 44px-ish target: these are seven checkboxes side by side on a phone,
+     which is exactly where a cramped one gets mis-tapped. */
+  min-height: 32px;
+}
+.ing-day input { min-width: 18px; min-height: 18px; }
+.ing-rows { list-style: none; display: grid; gap: .35rem; margin: 0; padding: 0; }
+.ing-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  padding: .3rem .55rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  font-size: var(--et-text-small);
+}
+.ing-row-words { flex: 1 1 12rem; text-wrap: pretty; }
+/* ⚠️ AMBER, the page's own "look at me", for the blocker that is stopping
+   starts RIGHT NOW — the list must agree with the headline above it, or a
+   reader has to do the weekday arithmetic himself to tell which row is
+   biting. */
+.ing-row[data-in-force="true"] {
+  border-color: var(--et-warn);
+  background: var(--et-warn-bg);
+}
+.ing-row-words[data-unreadable="true"] { color: var(--et-danger); font-weight: 600; }
+.ing-row-empty { color: var(--et-muted); font-size: var(--et-text-micro); border-style: dashed; }
+.ing-quickadd { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.ing-quickadd-note { color: var(--et-muted); font-size: var(--et-text-micro); }
+
 @media (prefers-reduced-motion: reduce) {
   .ing-status[data-state="pending"] .dot { animation: none !important; }
 }

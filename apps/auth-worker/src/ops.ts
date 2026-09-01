@@ -477,16 +477,43 @@ export const INGESTION_CONTROL_DOC = 'ingestion_control/state';
  * reads; they are not pauses and carry `book_ids`, never `until`. See
  * `nextIngestionControl` for the append rules and `audiobook_catalog`'s
  * `app/core/ingest_queue.py` for what each one does when it lands.
+ *
+ * ⚠️ THE FIVE ADDED 2026-09-01 (design
+ * `docs/info/ingestion-pause-until-gpu-design.md`, owner: *"i want any pause
+ * thats not the 'until i unpause' to be unpaused by either next scheduled
+ * start or the next gpu free availability and then i can set blocker times
+ * that are reoccuring"*, plus the v3 WoW-at-midnight incident):
+ *
+ *   `pause_for_now`   the SOFT pause. Flag off, ceiling = the next 00:00
+ *                     Phoenix computed at write time, `pause_until_gpu_free`
+ *                     on. Released by whichever comes first — the GPU reading
+ *                     sustained-free, or the ceiling.
+ *   `recurring_add` / `recurring_delete`   standing weekly quiet hours.
+ *   `exempt_add` / `exempt_delete`         do-not-disturb process names.
+ *
+ * ⚠️ AND `pause_until` CHANGED MEANING IN THE SAME BUILD, which is the one
+ * thing in this list that is not additive: it now writes
+ * `pause_until_gpu_free` too, so an explicit "pause until Tuesday 6pm" is
+ * ALSO soft and a free GPU can release it EARLY. That was the owner's own
+ * sweep ("any pause that's not the until-I-unpause"), and it makes the
+ * picker a CEILING rather than a promise — which is why the card's label had
+ * to gain the words "at latest". Anything that must survive a free GPU is
+ * either `pause` (hard) or a recurring blocker.
  */
 export const INGESTION_ACTIONS = [
   'pause',
   'resume',
   'pause_until',
+  'pause_for_now',
   'dont_check_until',
   'start_now',
   'requeue',
   'priority_front',
   'priority_front_clear',
+  'recurring_add',
+  'recurring_delete',
+  'exempt_add',
+  'exempt_delete',
 ] as const;
 export type IngestionAction = (typeof INGESTION_ACTIONS)[number];
 
@@ -500,6 +527,50 @@ export type IngestionAction = (typeof INGESTION_ACTIONS)[number];
  */
 export const MAX_CONTROL_LIST = 200;
 export const MAX_CONTROL_ENTRY_CHARS = 200;
+
+/**
+ * ⚠️ MIRRORS `ingest_control.py`'s `MAX_RECURRING_WINDOWS` /
+ * `MAX_EXEMPT_PROCESSES` (both 20), added with the soft-pause build
+ * 2026-09-01. Same hand-mirrored contract as MAX_CONTROL_LIST above: the
+ * reader caps defensively on read regardless of what this writes, so a drift
+ * costs entries silently dropped on the far side rather than a crash — and
+ * keeping the numbers equal is what makes the card's refusal ("you already
+ * have 20") agree with the machine that would otherwise drop the 21st.
+ */
+export const MAX_RECURRING_WINDOWS = 20;
+export const MAX_EXEMPT_PROCESSES = 20;
+
+/**
+ * Arizona has not observed DST since 1968, so America/Phoenix is a FIXED
+ * UTC-7 and the conversion is arithmetic rather than a timezone library —
+ * the same constant, for the same reason, as
+ * `sites/heygabi-home/public/assets/ingestion-time.js`'s `PHOENIX_OFFSET`
+ * and `status/pipelines/pipelines.js`'s `PHOENIX_OFFSET_MS`. ⚠️ If the
+ * estate ever moves to a DST-observing zone this becomes a lie that no test
+ * catches, because the tests pin Phoenix specifically.
+ */
+export const PHOENIX_OFFSET_MS = 7 * 3_600_000;
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * The next 00:00 Phoenix STRICTLY AFTER `nowMs`, as a UTC ISO instant.
+ *
+ * ⚠️ THIS IS THE WHOLE REASON A SOFT PAUSE NEEDS NO NEW READER FIELD FOR ITS
+ * CEILING (design §3): "release at the next scheduled window opening" is
+ * computed HERE, at write time, and stored as an ordinary `paused_until`
+ * timestamp the reader already honours. The only genuinely new reader
+ * behaviour is the GPU release.
+ *
+ * Strictly after: at exactly midnight Phoenix this returns TOMORROW's
+ * midnight, never "now" — a ceiling that had already passed would be
+ * self-cleared by the very write that set it, and the owner would be looking
+ * at a control that reported success and changed nothing.
+ */
+export function nextPhoenixMidnightIso(nowMs: number): string {
+  const phoenixWall = nowMs - PHOENIX_OFFSET_MS;
+  const nextWallMidnight = (Math.floor(phoenixWall / MS_PER_DAY) + 1) * MS_PER_DAY;
+  return new Date(nextWallMidnight + PHOENIX_OFFSET_MS).toISOString();
+}
 
 /**
  * What a manual pause MEANS (owner ask 2026-08-23, verbatim: *"when i manually
@@ -580,6 +651,146 @@ export interface IngestionWindow {
   until: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// RECURRING BLOCKERS + DO-NOT-DISTURB PROCESSES (2026-09-01)
+//
+// ⚠️ BOTH LISTS FAIL **OPEN** ON AN OLD READER (design §5): an
+// `ingest_control.py` that predates them ignores the fields and runs during
+// hours the owner blocked, beside a game he named. That is why the reader
+// half shipped FIRST (audiobook_catalog 76aa89b) and this editor only after —
+// the reverse order would have given him rows that silently do nothing, which
+// is the "control with an invisible side effect" this whole surface bans.
+//
+// ⚠️ NEITHER LIST IS EVER CLEARED BY A PAUSE, A RESUME OR A START-NOW. They
+// are standing schedules, the §3a Start-now-vs-Resume lesson applied verbatim
+// to two more fields: quiet hours the owner set on purpose must not be
+// deleted to satisfy a one-off "go now".
+// ---------------------------------------------------------------------------
+
+/**
+ * One standing weekly blocker. ⚠️ Shape owned by `ingest_control.py`:
+ *   days   ISO weekday numbers, 1 = Monday … 7 = Sunday.
+ *   from   Phoenix wall clock "HH:MM" (24h) — NOT an instant, NOT a zone.
+ *   until  the same. `from > until` CROSSES MIDNIGHT and belongs to the day
+ *          it starts (Mon 22:00→02:00 is Monday night into Tuesday morning).
+ *          `from === until` is REFUSED, here and by the reader, because it
+ *          is ambiguous between "zero minutes" and "the whole 24 hours".
+ */
+export interface RecurringWindow {
+  days: number[];
+  from: string;
+  until: string;
+}
+
+/** "HH:MM", 24-hour, zero-padded — exactly what an <input type="time"> hands
+ *  back, and exactly what the reader parses. */
+const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function isHhMm(value: unknown): value is string {
+  return typeof value === 'string' && HHMM_RE.test(value);
+}
+
+/** ISO weekday numbers, sorted and de-duplicated. The ORDER is not the
+ *  instruction here (unlike `priority_front`), so normalising means two rows
+ *  the owner would read as identical really are identical — which is what
+ *  makes "delete this exact row" and "do not add a duplicate" work. */
+function cleanDays(raw: unknown): number[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out = new Set<number>();
+  for (const d of raw) {
+    const n = typeof d === 'number' ? d : typeof d === 'string' ? Number(d) : NaN;
+    if (!Number.isInteger(n) || n < 1 || n > 7) return null;
+    out.add(n);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/**
+ * A blocker from a browser (or off the document) → the row the processor will
+ * accept, or `null`. Pure and total: it never throws and never repairs — a
+ * half-readable row is dropped, never guessed at, because a GUESSED blocker
+ * would run the GPU during hours the owner thought he had blocked.
+ */
+export function cleanRecurringWindow(raw: unknown): RecurringWindow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const days = cleanDays(o.days);
+  if (!days) return null;
+  if (!isHhMm(o.from) || !isHhMm(o.until)) return null;
+  if (o.from === o.until) return null; // ambiguous — the reader refuses it too
+  return { days, from: o.from, until: o.until };
+}
+
+/** The whole list, cleaned and capped — the decode-side posture, mirroring
+ *  `clean_id_list`: drop what cannot be read, keep going, never crash. */
+export function cleanRecurringWindows(raw: unknown): RecurringWindow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RecurringWindow[] = [];
+  for (const entry of raw) {
+    const w = cleanRecurringWindow(entry);
+    if (!w) continue;
+    if (out.some((existing) => sameRecurringWindow(existing, w))) continue;
+    if (out.length >= MAX_RECURRING_WINDOWS) break;
+    out.push(w);
+  }
+  return out;
+}
+
+/** Row equality — what "delete this exact row" means. Days are compared as a
+ *  normalised list, so Mon/Wed and Wed/Mon are the same blocker. */
+export function sameRecurringWindow(a: RecurringWindow, b: RecurringWindow): boolean {
+  return (
+    a.from === b.from &&
+    a.until === b.until &&
+    a.days.length === b.days.length &&
+    a.days.every((d, i) => d === b.days[i])
+  );
+}
+
+export function sameRecurringList(a: RecurringWindow[], b: RecurringWindow[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((w, i) => {
+    const other = b[i];
+    return other !== undefined && sameRecurringWindow(w, other);
+  });
+}
+
+/**
+ * A do-not-disturb process name. ⚠️ STORED CASE-PRESERVING, COMPARED
+ * CASE-INSENSITIVELY — the reader matches image names from `tasklist`
+ * case-insensitively, so "wow.exe" and "Wow.exe" are one entry and storing
+ * the owner's own capitalisation is what makes the row readable back to him.
+ */
+export function cleanProcessName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  if (!text || text.length > MAX_CONTROL_ENTRY_CHARS) return null;
+  return text;
+}
+
+export function cleanProcessNames(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    const name = cleanProcessName(entry);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (out.length >= MAX_EXEMPT_PROCESSES) break;
+    out.push(name);
+  }
+  return out;
+}
+
+/** Exact-string list equality, for the updateMask comparison. A change of
+ *  CASE is a real change to the document even though the reader would match
+ *  either way — the owner would see a different row. */
+export function sameStringList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 export interface IngestionControl {
   paused: boolean;
   /** ⚠️ What `paused` / `paused_until` MEAN. Never null: an absent field on the
@@ -587,8 +798,26 @@ export interface IngestionControl {
    *  2026-08-23 meant. See PAUSE_MODES. */
   pause_mode: PauseMode;
   paused_until: string | null;
+  /**
+   * ⚠️ THE SOFT-PAUSE FLAG (2026-09-01). True means: while `paused_until` is
+   * still in the future, a GPU reading of sustained-free RELEASES the pause
+   * early — the processor writes `{paused_until: null,
+   * pause_until_gpu_free: false, updated_by: "processor"}` when it does. So
+   * this Worker is not the only writer of either field, which is why both are
+   * read back from Firestore before every write here.
+   *
+   * ⚠️ It is never true on its own: without a `paused_until` in the future
+   * there is no pause for the GPU to release, and the reader ignores it.
+   */
+  pause_until_gpu_free: boolean;
   dont_check_until: string | null;
   pause_windows: IngestionWindow[];
+  /** ⚠️ STANDING, never consumed, and never touched by any pause/resume/
+   *  start-now — see the RECURRING BLOCKERS section header. */
+  recurring_windows: RecurringWindow[];
+  /** ⚠️ STANDING. Any listed process running means the machine is IN USE and
+   *  nothing new starts — GPU or CPU, window or not (design §4a). */
+  exempt_processes: string[];
   /** ⚠️ CONSUMED by the processor at its next run start, then removed by it.
    *  A non-empty list here means "not acted on yet"; empty means either nobody
    *  asked or the processor already did. The page must word it that way — it
@@ -613,6 +842,15 @@ function fsValue(v: unknown): unknown {
   if (typeof o.stringValue === 'string') return o.stringValue;
   if (typeof o.booleanValue === 'boolean') return o.booleanValue;
   if (typeof o.timestampValue === 'string') return o.timestampValue;
+  // ⚠️ Firestore REST sends integers as a STRING ("integerValue": "3"), which
+  // is why this needs its own branch rather than riding stringValue. Added
+  // 2026-09-01 for `recurring_windows[].days`; before it, an integer decoded
+  // to null — harmless for every field that existed then (`cleanBookIds`
+  // dropped it anyway, and a test pins that) and fatal for weekday numbers.
+  if (typeof o.integerValue === 'string' || typeof o.integerValue === 'number') {
+    const n = Number(o.integerValue);
+    return Number.isInteger(n) ? n : null;
+  }
   if (o.mapValue && typeof o.mapValue === 'object') {
     return fsMap((o.mapValue as { fields?: Record<string, unknown> }).fields ?? {});
   }
@@ -652,10 +890,22 @@ export function decodeIngestionControl(doc: unknown): IngestionControl | null {
     // as the STRICT meaning, never as the permissive one.
     pause_mode: normalisePauseMode(m.pause_mode),
     paused_until: asIsoOrNull(m.paused_until),
+    // ⚠️ `=== true`, matching the reader's own `is True` coercion: a string
+    // "true", a 1, or anything else on the document reads as OFF. A soft flag
+    // invented out of a malformed value would make the card promise a
+    // GPU release the home machine is not going to perform.
+    pause_until_gpu_free: m.pause_until_gpu_free === true,
     dont_check_until: asIsoOrNull(m.dont_check_until),
     pause_windows: rawWindows
       .filter((w): w is Record<string, unknown> => !!w && typeof w === 'object')
       .map((w) => ({ from: asIsoOrNull(w.from), until: asIsoOrNull(w.until) })),
+    // Both standing lists are cleaned exactly as the reader cleans them, so
+    // the card's count and the processor's count agree. A malformed BLOCKER
+    // dropped here is dropped there too — and the reader surfaces its rejects
+    // on the board, which is what stops a silently-dropped blocker from
+    // running the GPU during hours the owner thought were his.
+    recurring_windows: cleanRecurringWindows(m.recurring_windows),
+    exempt_processes: cleanProcessNames(m.exempt_processes),
     // Same narrow posture as every field above: an unexpected type reads as
     // "unset", never as something plausible. The processor writes these too
     // (it removes consumed requeue entries), so this decoder meets values this
@@ -681,6 +931,11 @@ export function ingestionControlFields(control: IngestionControl) {
     paused_until: control.paused_until
       ? { stringValue: control.paused_until }
       : { nullValue: null as null },
+    // ⚠️ A REAL JSON BOOLEAN, always written, never omitted and never a
+    // string: the reader coerces with `is True`, so `"false"` would be TRUE
+    // to Python's truthiness if it ever slipped through a different decoder,
+    // and an omitted field would leave a stale `true` behind on a Resume.
+    pause_until_gpu_free: { booleanValue: control.pause_until_gpu_free },
     dont_check_until: control.dont_check_until
       ? { stringValue: control.dont_check_until }
       : { nullValue: null as null },
@@ -695,6 +950,26 @@ export function ingestionControlFields(control: IngestionControl) {
           },
         })),
       },
+    },
+    recurring_windows: {
+      arrayValue: {
+        values: control.recurring_windows.map((w) => ({
+          mapValue: {
+            fields: {
+              // ⚠️ `integerValue` takes a STRING in the REST shape. Sending a
+              // number here is accepted by nothing and rejected by Firestore.
+              days: {
+                arrayValue: { values: w.days.map((d) => ({ integerValue: String(d) })) },
+              },
+              from: { stringValue: w.from },
+              until: { stringValue: w.until },
+            },
+          },
+        })),
+      },
+    },
+    exempt_processes: {
+      arrayValue: { values: control.exempt_processes.map((p) => ({ stringValue: p })) },
     },
     requeue: {
       arrayValue: { values: control.requeue.map((id) => ({ stringValue: id })) },
@@ -723,12 +998,53 @@ export function emptyIngestionControl(): IngestionControl {
     paused: false,
     pause_mode: 'all',
     paused_until: null,
+    pause_until_gpu_free: false,
     dont_check_until: null,
     pause_windows: [],
+    recurring_windows: [],
+    exempt_processes: [],
     requeue: [],
     priority_front: [],
     updated_by: null,
     updated_at: null,
+  };
+}
+
+/**
+ * Why a blocker was refused, in words — ⚠️ the three causes are kept APART
+ * because their fixes are different, and "invalid window" would send somebody
+ * re-picking the days when the problem is the clock. The
+ * start-equals-end case in particular is a real refusal, not a shrug: the
+ * reader rejects it as ambiguous, so a card that let it through would show a
+ * row the home machine silently ignores.
+ */
+function recurringRefusal(raw: unknown): { error: string; detail: string } {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  if (!cleanDays(o.days)) {
+    return {
+      error: 'invalid_recurring_days',
+      detail: 'Pick at least one day of the week for this blocker.',
+    };
+  }
+  if (!isHhMm(o.from) || !isHhMm(o.until)) {
+    return {
+      error: 'invalid_recurring_time',
+      detail: 'Both times need to be a real time of day, like 6:30 PM. Set the start and the end, then add it.',
+    };
+  }
+  if (o.from === o.until) {
+    return {
+      error: 'recurring_zero_length',
+      detail:
+        'A blocker that starts and ends at the same time means nothing — it could be no minutes or ' +
+        'the whole day, and the home machine refuses it rather than guess. Pick an end time that is ' +
+        'different from the start. (To block from an evening into the next morning, set the end ' +
+        'EARLIER than the start — 10:00 PM to 2:00 AM, say.)',
+    };
+  }
+  return {
+    error: 'invalid_recurring_window',
+    detail: 'That blocker could not be read. Pick the days and both times again.',
   };
 }
 
@@ -759,6 +1075,10 @@ export function nextIngestionControl(input: {
    *  permissive pause. A value that is present but not a mode is REFUSED
    *  rather than coerced: silence is safe, garbage is a bug worth surfacing. */
   mode?: unknown;
+  /** `{days, from, until}` — read ONLY by `recurring_add` / `recurring_delete`. */
+  window?: unknown;
+  /** A process image name — read ONLY by `exempt_add` / `exempt_delete`. */
+  process?: unknown;
   actor: string;
   nowMs: number;
 }): { control: IngestionControl } | { error: string; detail: string } {
@@ -795,8 +1115,18 @@ export function nextIngestionControl(input: {
     // invisible side effect. The four pause/resume actions below set it.
     pause_mode: base.pause_mode,
     paused_until: keptPausedUntil,
+    // ⚠️ Carried through, and DROPPED WITH ITS CEILING by the self-clear
+    // above: a soft flag whose `paused_until` has expired describes a pause
+    // that no longer exists, and leaving it set would arm the NEXT timed
+    // pause with a GPU release nobody asked for.
+    pause_until_gpu_free: keptPausedUntil ? base.pause_until_gpu_free : false,
     dont_check_until: keptDontCheck,
     pause_windows: keptWindows,
+    // ⚠️ STANDING SCHEDULES, CARRIED THROUGH BY EVERY ACTION. Only their own
+    // add/delete actions below change them — not a pause, not a Resume, not a
+    // Start-now. Same rule as `pause_windows` under §3a, and the tests pin it.
+    recurring_windows: base.recurring_windows.map((w) => ({ ...w, days: [...w.days] })),
+    exempt_processes: [...base.exempt_processes],
     // ⚠️ Carried through UNCHANGED by every pause/resume action. These lists
     // belong to a different conversation than the pause does, and a Resume that
     // quietly emptied the owner's priority list would be a control with a side
@@ -840,6 +1170,78 @@ export function nextIngestionControl(input: {
     return { control: { ...next, priority_front: [] } };
   }
 
+  // ── The two STANDING lists (2026-09-01) ─────────────────────────────────
+  // Unlike `requeue`, nothing on the far side writes these — but they follow
+  // the same §3b discipline anyway (the route puts each in the updateMask
+  // only when this write actually changed it). Two reasons the discipline is
+  // kept for lists with one writer: the reader may gain the ability to prune
+  // rejected rows later, and a mask that carries only what changed is the
+  // shape that stays correct when that day comes.
+  if (input.action === 'recurring_add' || input.action === 'recurring_delete') {
+    const win = cleanRecurringWindow(input.window);
+    if (!win) return recurringRefusal(input.window);
+    if (input.action === 'recurring_delete') {
+      return {
+        control: {
+          ...next,
+          recurring_windows: next.recurring_windows.filter((w) => !sameRecurringWindow(w, win)),
+        },
+      };
+    }
+    // ⚠️ Adding a row that is already there is a NO-OP THAT REPORTS SUCCESS:
+    // the state the caller asked for IS the state. It must not duplicate the
+    // row (the card would show the same blocker twice and deleting one would
+    // look like it failed) and it must not raise — a double-tap is not an
+    // error.
+    if (next.recurring_windows.some((w) => sameRecurringWindow(w, win))) {
+      return { control: next };
+    }
+    if (next.recurring_windows.length >= MAX_RECURRING_WINDOWS) {
+      return {
+        error: 'too_many_recurring_windows',
+        detail:
+          `There are already ${MAX_RECURRING_WINDOWS} recurring blockers, which is all the home ` +
+          'machine will read. Delete one you no longer need, then add this.',
+      };
+    }
+    return { control: { ...next, recurring_windows: [...next.recurring_windows, win] } };
+  }
+
+  if (input.action === 'exempt_add' || input.action === 'exempt_delete') {
+    const name = cleanProcessName(input.process);
+    if (!name) {
+      return {
+        error: 'invalid_process',
+        detail:
+          'Type the program’s name as Windows lists it — the image name, like “Wow.exe”. ' +
+          `It cannot be blank or longer than ${MAX_CONTROL_ENTRY_CHARS} characters.`,
+      };
+    }
+    const key = name.toLowerCase();
+    if (input.action === 'exempt_delete') {
+      // Case-INSENSITIVE removal, because that is how the reader matches: an
+      // owner who typed "wow.exe" to delete "Wow.exe" means the same program.
+      return {
+        control: {
+          ...next,
+          exempt_processes: next.exempt_processes.filter((p) => p.toLowerCase() !== key),
+        },
+      };
+    }
+    if (next.exempt_processes.some((p) => p.toLowerCase() === key)) {
+      return { control: next }; // already listed — a no-op that reports success
+    }
+    if (next.exempt_processes.length >= MAX_EXEMPT_PROCESSES) {
+      return {
+        error: 'too_many_exempt_processes',
+        detail:
+          `There are already ${MAX_EXEMPT_PROCESSES} programs on the do-not-disturb list, which is ` +
+          'all the home machine will read. Delete one, then add this.',
+      };
+    }
+    return { control: { ...next, exempt_processes: [...next.exempt_processes, name] } };
+  }
+
   if (input.action === 'start_now') {
     // The inverse of every pause lever — and NOT `resume`. See the comment on
     // INGESTION_ACTIONS: `pause_windows` is deliberately left exactly as it is,
@@ -847,6 +1249,13 @@ export function nextIngestionControl(input: {
     // above, which is bookkeeping, not a schedule change).
     next.paused = false;
     next.paused_until = null;
+    // ⚠️ THE SOFT FLAG IS CLEARED TOO (2026-09-01). It is half of a pause —
+    // the half that says how the pause ends — so a Start-now that cleared the
+    // ceiling and left the flag would leave a document claiming a GPU release
+    // for a pause that no longer exists. `recurring_windows` and
+    // `exempt_processes` are deliberately NOT cleared: standing schedules
+    // survive, exactly as `pause_windows` does.
+    next.pause_until_gpu_free = false;
     next.dont_check_until = null;
     // Nothing is paused any more, so the meaning of the last pause is stale.
     // Left in place it would be the default for a pause nobody chose it for —
@@ -858,13 +1267,38 @@ export function nextIngestionControl(input: {
   if (input.action === 'pause') {
     next.paused = true;
     next.paused_until = null; // an indefinite pause has no end time by definition
+    // ⚠️ THE HARD PAUSE IS THE ONE PAUSE A FREE GPU MUST NOT RELEASE. The flag
+    // is cleared explicitly rather than carried, so pressing "Pause until I
+    // unpause" while a soft pause is in force really does harden it.
+    next.pause_until_gpu_free = false;
     next.pause_mode = requestedMode;
+    return { control: next };
+  }
+
+  if (input.action === 'pause_for_now') {
+    // ⚠️ THE SOFT PAUSE (design §3). Flag OFF — the §3 gotcha applies here
+    // exactly as it does to `pause_until`: `control_blocks_start()`'s step 2
+    // never consults a timer, so a `paused: true` would outlive every one of
+    // the three things that are supposed to release this.
+    //
+    // The ceiling is "the next scheduled window opening", computed HERE at
+    // write time as an ordinary timestamp, so the reader needs no new
+    // understanding of window boundaries — see nextPhoenixMidnightIso.
+    next.paused = false;
+    next.paused_until = nextPhoenixMidnightIso(now);
+    next.pause_until_gpu_free = true;
+    // A soft pause is window-exempt BY CONSTRUCTION (the window opening is
+    // its ceiling), so the 'all' / 'manual_only' question the hard pause asks
+    // has nothing to decide here. 'all' is the strict value and the one an
+    // absent field means to the reader.
+    next.pause_mode = 'all';
     return { control: next };
   }
 
   if (input.action === 'resume') {
     next.paused = false;
     next.paused_until = null;
+    next.pause_until_gpu_free = false; // same reason as start_now — see above
     next.dont_check_until = null;
     next.pause_mode = 'all'; // same reason as start_now — see above
 
@@ -902,6 +1336,14 @@ export function nextIngestionControl(input: {
     // inherit that flag and never expire.
     next.paused = false;
     next.paused_until = untilIso;
+    // ⚠️ SOFT SINCE 2026-09-01, AND THE PICKED TIME IS NOW A CEILING RATHER
+    // THAN A PROMISE. The owner's own sweep was "any pause that's not the
+    // until-I-unpause" gets released by the next window opening or a free
+    // GPU, and an explicit "until Tuesday 6pm" is one of those. The card's
+    // label had to gain the words "at latest" in the same change; a picker
+    // that still read "Pause until 6pm" over a document a free GPU can clear
+    // at 2pm would be the card lying about the machine.
+    next.pause_until_gpu_free = true;
     // A timed pause is a manual pause too, so it carries the same meaning
     // field. The card sends 'all' for it today (unchanged behaviour); the
     // reader honours whatever is here, so a mode picker can be added to this
@@ -980,6 +1422,8 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
     until?: unknown;
     book_ids?: unknown;
     mode?: unknown;
+    window?: unknown;
+    process?: unknown;
   } | null;
   const action = body?.action;
   if (!isIngestionAction(action)) {
@@ -1011,6 +1455,8 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
     until: body?.until,
     bookIds: body?.book_ids,
     mode: body?.mode,
+    window: body?.window,
+    process: body?.process,
     actor: `estate-ops:${actor.email}`,
     nowMs: Date.now(),
   });
@@ -1026,8 +1472,36 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
   // decided value for it (the two pause actions set it, resume/start_now reset
   // it, the rest carry it through), so writing it always is also what stops a
   // stale mode surviving a Resume.
-  const mask = ['paused', 'pause_mode', 'paused_until', 'dont_check_until', 'updated_by', 'updated_at'];
+  // ⚠️ `pause_until_gpu_free` RIDES UNCONDITIONALLY BESIDE `paused_until`, for
+  // the same reason `pause_mode` rides beside `paused`: it is the half of a
+  // pause that says HOW IT ENDS, and a document that carried a new ceiling
+  // with the previous pause's release rule — even for an instant — is exactly
+  // the split-state this pairing exists to prevent. Every action here decides
+  // a value for it (the pauses set it, resume/start_now clear it, everything
+  // else carries through what Firestore just held, PROCESSOR WRITES INCLUDED
+  // — the soft release is written by the home machine, so the read-then-write
+  // above is what stops this Worker resurrecting a released pause).
+  const mask = [
+    'paused',
+    'pause_mode',
+    'paused_until',
+    'pause_until_gpu_free',
+    'dont_check_until',
+    'updated_by',
+    'updated_at',
+  ];
   if (windowsChanged) mask.push('pause_windows');
+  // ⚠️ THE TWO STANDING LISTS ENTER ONLY WHEN THIS WRITE CHANGED THEM — the
+  // §3b rule. Nothing else writes them TODAY (unlike `requeue`, which the
+  // processor prunes), so this is discipline rather than a live hazard; it is
+  // kept because the day the reader starts pruning its own rejected rows, a
+  // mask that carried the whole document would put them straight back.
+  if (!sameRecurringList(current?.recurring_windows ?? [], control.recurring_windows)) {
+    mask.push('recurring_windows');
+  }
+  if (!sameStringList(current?.exempt_processes ?? [], control.exempt_processes)) {
+    mask.push('exempt_processes');
+  }
   // ⚠️ EACH LIST ENTERS THE MASK ONLY WHEN THIS WRITE CHANGES IT, exactly as
   // `pause_windows` does, and for a sharper version of the same reason. The
   // PROCESSOR writes `requeue` too — it removes the entries it has consumed —
@@ -1070,7 +1544,15 @@ opsRoutes.post('/estate/ops/ingestion', requireDevops(), async (c) => {
       pause_mode: control.pause_mode,
       pause_mode_means: pauseModeWords(control.pause_mode),
       paused_until: control.paused_until,
+      // ⚠️ A soft pause and a hard-ceiling pause write the SAME
+      // `paused_until`; this flag is the only thing in the log that tells the
+      // two apart afterwards.
+      pause_until_gpu_free: control.pause_until_gpu_free,
       dont_check_until: control.dont_check_until,
+      // The rows themselves, not counts: this line is the only durable record
+      // of WHICH hours somebody blocked and WHICH program he named.
+      recurring_windows: control.recurring_windows,
+      exempt_processes: control.exempt_processes,
       // The ids, not just the counts: this line is the only record of WHICH
       // book somebody asked to retry, and a count cannot be traced back.
       requeue: control.requeue,
@@ -1118,13 +1600,61 @@ export function ingestionActionDetail(action: IngestionAction, control: Ingestio
     // owner's own words. A pause that reported only "Saved" would leave the
     // one thing he was just asked to decide invisible — and the two outcomes
     // differ by whether the machine runs tonight.
-    case 'pause':
+    // ⚠️ SPLIT FROM `pause` ON 2026-09-01, when the picked time became a
+    // CEILING. The two used to share a sentence and must not any more: one of
+    // them is released by a free GPU and the other is not.
     case 'pause_until':
+      return (
+        (control.pause_mode === 'manual_only'
+          ? 'Paused for work started by hand — the scheduled 12am–8am window may continue. '
+          : 'Paused. ') +
+        'The time you picked is the LATEST it can last, not a promise: it also releases as soon ' +
+        'as the GPU has been quiet for about four minutes, or when the 12am window opens — ' +
+        'whichever comes first. Use “Pause until I unpause” if it has to survive all three.'
+      );
+    case 'pause':
       return control.pause_mode === 'manual_only'
         ? 'Paused — but the scheduled 12am–8am window may continue. Work started by hand is refused ' +
             'until you press Resume; the nightly run proceeds as if nothing were paused.'
         : 'Paused — all work is stopped until you press Resume. Nothing overrides this: not the ' +
             'scheduled 12am–8am window, not a run started by hand.';
+    // ⚠️ THE SOFT PAUSE'S SENTENCE MUST SAY "AT LATEST", because its timer is
+    // a CEILING and not a promise: the GPU going quiet releases it earlier,
+    // and an owner who read "paused until midnight" and found books running
+    // at 9pm would rightly stop trusting this card.
+    case 'pause_for_now':
+      return (
+        'Paused for now. It releases itself as soon as the GPU has been quiet for about four ' +
+        'minutes — and at the latest when tonight’s 12am window opens. Nothing runs while it ' +
+        'waits: not the CPU work either. Press Resume if you want it to stay paused past that.'
+      );
+    case 'recurring_add':
+      return (
+        `${control.recurring_windows.length} recurring blocker${control.recurring_windows.length === 1 ? '' : 's'} set. ` +
+        'A blocker is absolute while it is in force — no GPU reading releases it and the nightly ' +
+        '12am–8am window does not override it, so a blocker that overlaps those hours stops the ' +
+        'scheduled run for the overlap. The home machine picks the list up before its next book.'
+      );
+    case 'recurring_delete':
+      return (
+        `${control.recurring_windows.length} recurring blocker${control.recurring_windows.length === 1 ? '' : 's'} left. ` +
+        'Deleting one does not start anything — it only stops that blocker from refusing starts ' +
+        'from now on. A book already running was never affected either way.'
+      );
+    case 'exempt_add':
+      return (
+        `${control.exempt_processes.length} program${control.exempt_processes.length === 1 ? '' : 's'} on the do-not-disturb list. ` +
+        'While any of them is running the machine counts as in use and NOTHING new starts — window ' +
+        'or no window, GPU or CPU. A book already being transcribed is not killed. The name is ' +
+        'matched against the running programs exactly, ignoring capitals, so it has to be the ' +
+        'name Windows uses (“Wow.exe”, not “World of Warcraft”).'
+      );
+    case 'exempt_delete':
+      return (
+        `${control.exempt_processes.length} program${control.exempt_processes.length === 1 ? '' : 's'} left on the do-not-disturb list. ` +
+        'That program no longer stops a start. Everything else — the pause, the blockers, the ' +
+        'window and the GPU guard — is unchanged.'
+      );
     case 'start_now':
       return (
         'Cleared the pause, the pause timer and the don’t-check timer. Scheduled quiet hours were ' +
