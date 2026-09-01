@@ -176,16 +176,19 @@ inventory (names only; the file was **not** opened by this work):
 All are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
 applied. Each doc carries its own phases, effort guesses and open questions.
 
-### 0. Pause until the GPU is next free — `docs/info/ingestion-pause-until-gpu-design.md`
-Owner ask 2026-08-31: *"for ingestion pause, I also want a feature that says
-pause until the next gpu check. plan this dont buil yet."* Designed against the
-live `ingest_control.py`: one new control-doc field (`pause_until_gpu_free`),
-the PROCESSOR releases the pause when `gpu_sustained_free()` next passes
-(clear-then-start, every failure mode fails closed), one new card button.
-Effort S–M, deploy-order safe both directions.
-- ☐ **OWNER Q1 (ask first):** confirm the reading — "pause now, resume yourself
-  when the GPU is next free"? (Q2 release bar and Q3 scope follow, one at a
-  time — §6 of the doc.)
+### 0. Soft pauses + recurring blockers — `docs/info/ingestion-pause-until-gpu-design.md` (v2)
+Owner asks 2026-08-31 (two messages; Q1 answered by the second): every pause
+that is not "until I unpause" becomes SOFT — released at the earliest of the
+next window opening (12am), the GPU next sustained-free, or an explicit
+ceiling — plus RECURRING weekly blockers (*"MTW 630-1015"*). Designed against
+the live `ingest_control.py`: soft pause = `paused_until` ceiling computed at
+write time + `pause_until_gpu_free` (processor-released, clear-then-start,
+fails closed); blockers = `recurring_windows` (absolute while in force).
+Effort ~M. 🔴 **Deploy order is load-bearing: reader FIRST** — an old reader
+ignores `recurring_windows`, which fails OPEN.
+- ☐ **OWNER Q2 (ask next, one at a time — §7):** a recurring blocker
+  overlapping 12am–8am stops scheduled ingestion for the overlap — confirm
+  (and was the example AM or PM?). Then Q3 release bar, Q4 scope.
 - Found while designing: `pause_mode` (`all`|`manual_only`, owner ask
   2026-08-23) is already BUILT in `ingest_control.py` — that is library TODO's
   OR-3 answered; verify the card offers the choice, then close OR-3 there.

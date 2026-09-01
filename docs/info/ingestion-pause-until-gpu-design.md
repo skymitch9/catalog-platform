@@ -1,142 +1,179 @@
-# Pause until the GPU is next free — DESIGN ONLY
+# Soft pauses + recurring blockers — DESIGN ONLY (v2)
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED, **DESIGN
-> ONLY — nothing built** (owner: *"plan this dont buil yet"*, 2026-08-31).
-> Written 2026-08-31 against the LIVE machinery: `ingest_control.py` was read
-> that day (PAUSE_MODES block, `ControlState`, `control_blocks_start`,
-> `_gpu_clearance`, `gpu_sustained_free`), and
-> [`ingestion-pause-controls.md`](ingestion-pause-controls.md) is the contract
-> this extends. ⚠️ Nothing live was measured beyond reading source; no control
-> document was written.
+> ONLY — nothing built** (owner: *"plan this dont buil yet"*). v1 written
+> 2026-08-31 against a live read of `ingest_control.py`; **v2 the same day**
+> after the owner's clarification replaced v1's single new button with a
+> pause TAXONOMY. v1's mechanics survive as §3's GPU-release machinery.
+> ⚠️ Nothing live was measured beyond reading source; no control doc written.
 
-## 1. The ask, and what it could mean
+## 1. The ask — two owner messages, and the model they add up to
 
-Owner, 2026-08-31, verbatim: *"for ingestion pause, I also want a feature that
-says pause until the next gpu check."*
+2026-08-31, first: *"for ingestion pause, I also want a feature that says
+pause until the next gpu check."* Then, clarifying: *"i want any pause thats
+not the 'until i unpause' to be unpaused by either next scheduled start or
+the next gpu free availability and then i can set blocker times that are
+reoccuring. for instance MTW 630-1015 I want ingestion paused."*
 
-Three readings, because "the next GPU check" is not a clock event — the
-processor checks the GPU only when it is deciding whether to start a book:
+The model:
 
-| | Reading | Verdict |
+| Kind | Ends by | Encodes as |
 |---|---|---|
-| **A** | **"Pause, and resume yourself when the GPU is next free"** — stop new work now; the pause dissolves on the first GPU evaluation that passes, no human unpause needed | 🎯 **Recommended.** The only reading that adds a capability: today every pause needs either a clock (`paused_until`) or a hand (`Resume`). "I'm using the GPU right now, take it back when I'm done" fits neither |
-| B | "Snooze one check cycle" — skip the next evaluation only | Already expressible: `dont_check_until` + ~30 min. Not worth a control |
-| C | "Block the current start, allow the next evaluation" | A one-shot no-op by the next tick; same as B in practice |
+| **Hard pause** — "until I unpause" | a human pressing Resume. Unchanged | `paused: true` (today's form) |
+| **Soft pause** — every other ad-hoc pause | **the EARLIEST of:** the next scheduled window opening (12am Phoenix), the GPU next reading sustained-free, or an explicit "until…" time if one was chosen | `paused: false` + `paused_until` + new `pause_until_gpu_free: true` (§3) |
+| **Recurring blockers** — standing weekly quiet hours (e.g. Mon/Tue/Wed 6:30–10:15) | nothing — they recur until deleted; absolute while in force | new `recurring_windows` (§4) |
 
-The rest of this design is reading A. **§6 Q1 confirms it with the owner
-before anything is built.**
+Unchanged: `dont_check_until` (spend-nothing deferral, not a pause),
+one-shot `pause_windows`, and `pause_mode` — though soft pauses make
+`manual_only` nearly redundant (a soft pause is window-exempt by
+construction, since the window opening releases it).
 
-## 2. What exists today (the four facts the design hangs on)
+### 1a. Interpretations pinned down (assumptions, stated so they can be corrected)
 
-1. **A pause means "do not even poll the GPU."** `decide_start` consults
-   `control_blocks_start` BEFORE `_gpu_clearance`, so a paused processor
-   spends nothing looking. This feature deliberately inverts that for one
-   pause variant — the GPU reading IS the release condition — which is exactly
-   why it needs its own field rather than piggybacking `paused`.
-2. **The GPU bar is already two-tier:** inside the 12am–8am window a single
-   poll suffices; outside it `gpu_sustained_free(polls=2, interval=120s,
-   threshold=50%)` — because *"a game paused on a menu still owns the GPU the
-   moment it unpauses; loading screens read 3%"* (the module's own words).
-3. **Absent-or-unknown fails closed.** `normalise_pause_mode` treats any
-   unrecognised value as `all`; unknown fields are ignored by old readers. Any
-   new field must inherit this posture.
-4. **The processor already writes the control doc** (it clears consumed
-   `requeue` entries via ArrayRemove), so "the processor releases the pause"
-   has a precedent and a write path (`write_control`), with the §3b/§4
-   updateMask discipline from the contract doc.
+- **"Next scheduled start" = the next window-OPENING boundary**, not the next
+  30-minute processor tick (that reading would make the GPU condition
+  pointless — a tick always comes first). A soft pause set at 1am, mid-window,
+  therefore holds until the GPU frees up or tomorrow's midnight — which is the
+  behaviour that makes sense when the reason for pausing at 1am is that the
+  owner is using the machine.
+- **An explicit "pause until Tuesday 6pm" is still a SOFT pause** per the
+  owner's own sweep ("any pause that's not the until-I-unpause"), so the
+  window opening or a free GPU releases it early. If something must survive
+  nights and a free GPU, that is what hard pause and recurring blockers are
+  for. ⚠️ This makes the timer a CEILING, not a promise — the card wording
+  must say "at latest".
+- The MTW 6:30–10:15 example is taken as a shape, not a spec — the editor
+  accepts any weekday set and any times, AM or PM.
 
-## 3. Proposed contract change
+## 2. What exists today (the facts the design hangs on)
 
-One new field on `ingestion_control/state`:
+1. **The §3 gotcha of [`ingestion-pause-controls.md`](ingestion-pause-controls.md):**
+   `paused: true` blocks unconditionally and never consults timers, so every
+   self-ending pause must be encoded flag-OFF + condition — the soft pause
+   follows that rule exactly.
+2. **A pause today means "don't even poll the GPU"** (`control_blocks_start`
+   runs before `_gpu_clearance`). The soft pause deliberately inverts this —
+   the GPU reading IS its release condition — which is why it needs its own
+   field.
+3. **The GPU bar is two-tier already:** single poll inside the window,
+   `gpu_sustained_free(2 polls, 120s, 50%)` outside — *"a game paused on a
+   menu still owns the GPU"*.
+4. **Unknown fields are ignored; unknown values fail closed**
+   (`normalise_pause_mode`). Each new field's old-reader behaviour is derived
+   in §5's table — one of them fails OPEN and dictates deploy order.
+5. **The processor already writes the control doc** (requeue clears), so
+   processor-side release has a precedent and a masked write path.
 
-| Field | Type | Meaning |
-|---|---|---|
-| `pause_until_gpu_free` | bool | this pause releases ITSELF on the first evaluation where the GPU is sustained-free; the PROCESSOR clears `paused` + this flag when that happens |
+## 3. The soft pause
 
-**Dashboard writes** (new card control, *"Pause until the GPU is free"*):
-`paused: true`, `pause_until_gpu_free: true` — mask carries exactly those two
-plus `updated_by`/`updated_at`. `Resume` and `Start now` both add
-`pause_until_gpu_free: false` to their masks (a cleared pause must not leave a
-live release condition behind).
-
-**Processor behaviour** (in `decide_start`, before the normal
-`control_blocks_start` refusal):
+**Dashboard writes** (both the "Pause for now" button and the "Pause until…"
+picker become this one shape):
 
 ```
-if state.paused and state.pause_until_gpu_free:
-    if gpu_sustained_free():          # the SAME bar as opportunistic starts
-        write_control({paused: false, pause_until_gpu_free: false,
-                       updated_by: "processor"})   # masked, per §3b discipline
+paused: false
+paused_until: <the chosen time, or — for the bare button — the next
+              00:00 Phoenix, computed at write time>
+pause_until_gpu_free: true
+```
+
+Encoding the "next scheduled start" release as a timer the dashboard computes
+at write time keeps the reader simple and the §3 gotcha satisfied: the window
+boundary is just a timestamp, and there is exactly one new reader behaviour —
+the GPU release.
+
+**Processor release** (in `decide_start`, evaluated while the soft pause is
+in force):
+
+```
+if paused_until in the future and pause_until_gpu_free:
+    if gpu_sustained_free():
+        write_control({paused_until: null, pause_until_gpu_free: false,
+                       updated_by: "processor"})       # masked write
         if that write FAILED: stay paused this tick, log why   # fail closed
-        else: fall through to the normal decision (window, deadline, CPU…)
+        else: fall through to the normal decision (blockers, deadline, CPU…)
     else:
-        refuse with a worded reason carrying the actual reading:
-        "paused until the GPU is free — GPU at 84% (> 50%); checking again next tick"
+        refuse with the reading: "soft-paused — GPU at 84% (> 50%);
+        releases when the GPU is quiet, at latest <wordTime(paused_until)>"
 ```
 
-⚠️ **Clear-then-start, never start-then-clear.** If the release write fails
-(network), the processor stays paused and says so — running books while the
-dashboard still shows *paused* is the dishonest-board state this surface
-exists to prevent.
+⚠️ **Clear-then-start, never start-then-clear** — running books while the card
+says paused is the dishonest-board state this surface exists to prevent.
+⚠️ `dont_check_until` wins over the GPU probe (a don't-check is a
+spend-nothing instruction; polling is spending); the card wording says so.
 
-### Fail-closed table (every row inherits posture 3 above)
+## 4. Recurring blockers
 
-| Failure | Behaviour |
-|---|---|
-| Old reader meets the new field | Ignores it → plain hard pause until Resume. The button under-delivers, never over-delivers |
-| Old reader + old `pause_mode` typo rules | Unchanged — `pause_until_gpu_free` never touches `pause_mode` |
-| `nvidia-smi` unreadable | `gpu_is_free` already fails closed → pause stands forever, each tick logs the reason; the escape is dashboard **Resume** |
-| Control unreadable | Treated as paused, as today — the flag is never even read |
-| Release write fails | Stays paused this tick, retries next tick |
+New field, standing (like `priority_front`, never consumed):
 
-### Interactions, each decided rather than left to fall out
+```
+recurring_windows: [{days: [1,2,3], from: "18:30", until: "22:15"}]
+```
 
-| With | Rule |
-|---|---|
-| `pause_mode` | Orthogonal. The mode still governs what the pause BLOCKS while it stands (default `all`); the flag only governs how it ENDS. A `manual_only` + GPU-release pause is coherent and needs no special case |
-| `dont_check_until` | **Wins over the flag.** A don't-check is a spend-nothing instruction; polling the GPU is spending. If both are set, no GPU read happens until the don't-check expires — the card wording must say so |
-| `pause_windows` | Untouched, same as Start-now (§3a of the contract doc): a release that lands inside quiet hours clears the ad-hoc pause and the window still blocks — the refusal names the window |
-| `paused_until` | If both set, the pause ends at whichever clears FIRST (timer expiry or GPU release) — matching the intuition "resume when the GPU frees up, or at 9pm regardless" |
-| Deadline gate / CPU guard | Unchanged — release only re-enters the normal decision, it does not skip any later check |
+- `days` are ISO weekday numbers (1 = Monday); `from`/`until` are **Phoenix
+  wall clock** `HH:MM` (the estate's fixed UTC-7, no DST — same §5 reasoning
+  as the existing pickers).
+- **A window may cross midnight** (`from: "22:00", until: "02:00"` = the
+  named day's 10pm into the NEXT day's 2am). The reader evaluates "am I
+  inside one" against Phoenix now; the crossing case is a test, not a
+  footnote.
+- **Absolute while in force** — same rule as one-shot `pause_windows`
+  (*"a pause window IS a scheduled block; letting anything override one would
+  make windows mean nothing"*): no GPU reading, no soft-release, and not the
+  nightly window either. ⚠️ **Consequence worth saying to the owner's face:
+  a recurring blocker that overlaps 12am–8am stops scheduled ingestion for
+  the overlap** — e.g. a 6:30–10:15 **AM** blocker eats the window's last
+  90 minutes every named day (a **PM** one touches nothing). §7 Q-next.
+- Validation in the reader mirrors `clean_id_list`'s posture: this is another
+  repo's promise, so a malformed entry is dropped WITH a log line, bounded
+  (`MAX_RECURRING_WINDOWS = 20`), and never crashes the guard. ⚠️ But unlike
+  a malformed requeue id, a malformed BLOCKER dropped silently would run the
+  GPU during hours the owner blocked — so the processor also surfaces
+  rejected entries on the board (the same lesson as `requeue_rejected`).
+- Card UX: a small standing list under Operations — weekday checkboxes, two
+  time fields, add/delete rows; each row rendered in words ("Mon Tue Wed,
+  6:30 PM – 10:15 PM"). Deleting is the only edit (replace = delete + add).
 
-## 4. Surface changes
+## 5. Old-reader behaviour per field — and the one that dictates deploy order
+
+| Field | Un-updated `ingest_control.py` does | Direction |
+|---|---|---|
+| `pause_until_gpu_free` | ignores it → soft pause runs to its `paused_until` ceiling | fails CLOSED (pause merely lasts longer) ✅ |
+| soft pause's computed `paused_until` | honoured today already | ✅ |
+| `recurring_windows` | **ignored → the machine RUNS during blocked hours** | 🔴 fails OPEN |
+
+🔴 **Therefore: the reader ships FIRST, the dashboard's blocker editor only
+after.** The reverse order gives the owner an editor whose rows silently do
+nothing — the exact "control with an invisible side effect" this surface
+bans. (The GPU-release half has no ordering constraint.)
+
+## 6. Surface changes
 
 | Piece | Change |
 |---|---|
-| `sites/heygabi-home/public/status/index.html` + `status.js` | one new button in the Operations card; paused-state line gains the variant *"Paused — will resume itself once the GPU has been quiet for ~4 minutes"* |
-| `assets/ingestion-time.js` | the words (all wording lives there, per the contract); `describeIngestion()` renders the release condition and the dont-check precedence sentence |
-| `apps/auth-worker/src/ops.ts` | new action on `POST /api/estate/ops/ingestion`; masks per §3 |
-| `audiobook_catalog/app/core/ingest_control.py` | field on `ControlState` (default `False`, `__post_init__`-coerced), release logic in `decide_start`, the worded refusals |
-| Tests | ops.ts route masks (incl. Resume/Start-now clearing the flag); ingestion-time words; ingest_control release / GPU-busy / GPU-unreadable / write-fail / dont-check-precedence paths — failing-before where applicable |
-| [`ingestion-pause-controls.md`](ingestion-pause-controls.md) | §2 field table + §3 encoding table rows, in the build commit |
+| `audiobook_catalog/app/core/ingest_control.py` | `pause_until_gpu_free` + `recurring_windows` on `ControlState` (coerced in `__post_init__`), recurrence evaluation in `control_blocks_start`, GPU release in `decide_start`, worded refusals for each |
+| `apps/auth-worker/src/ops.ts` | soft-pause action (computes next-midnight ceiling), recurring add/delete actions; masks carry only what changed, per the contract's §3b discipline; Resume/Start-now clear `pause_until_gpu_free` and the soft ceiling but ⚠️ never touch `recurring_windows` (the Start-now-vs-Resume lesson, §3a, applies verbatim) |
+| `status/index.html` + `status.js` + `assets/ingestion-time.js` | the pause control becomes a three-way choice — **Pause until I unpause** / **Pause for now** (soft) / **Pause until…** (soft with a ceiling) — plus the blocker list; ALL words in `ingestion-time.js` |
+| Tests | recurrence incl. midnight-crossing + Phoenix pinning; GPU release / busy / unreadable / write-fail / dont-check precedence; masks incl. "blockers survive every other action"; failing-before where applicable |
+| [`ingestion-pause-controls.md`](ingestion-pause-controls.md) | §2/§3 tables updated in the build commit |
 
-**Deploy order is safe in both directions** (fail-closed table row 1): ship
-the reader first and the field is inert; ship the dashboard first and the
-button degrades to a plain pause. No flag, no migration, no new collection.
+**Effort:** M — roughly a day and a half across both repos (the recurring
+editor and its validation are the growth over v1), then one live round trip:
+set a soft pause with the GPU busy, watch the worded refusal, free the GPU,
+watch the processor release it; set a 5-minute recurring blocker and watch it
+bite and lapse. The standing "the signed-in card has never been clicked by a
+human" debt gets paid in the same session.
 
-**Effort:** S–M. Reader half ~half a day with tests; card/route half ~half a
-day; then one live round trip (set the flag with the GPU busy, watch the
-refusal wording, free the GPU, watch the processor release it and the card
-update — the §6 "the signed-in card has never been clicked by a human" debt
-applies here too and should be paid in the same session).
+## 7. Owner questions — asked ONE at a time
 
-## 5. Deliberately NOT in scope
-
-- No change to what a pause blocks (that is `pause_mode`, already built —
-  2026-08-23, and note it answers library TODO's OR-3).
-- No new poller: release is evaluated at the processor's existing cadence
-  (run ticks + between-book decisions). Worst-case latency from "GPU went
-  quiet" to "release noticed" is one tick (~30 min idle); say that on the
-  card rather than building a daemon.
-- No auto-set of this flag by anything: only a human presses it.
-
-## 6. Owner questions (ask ONE at a time, recommendations first)
-
-1. **Is reading A right** — "pause now, resume yourself when the GPU is next
-   free"? (Recommended; B/C are already expressible with `dont_check_until`.)
-2. **Release bar: sustained-free (2 polls, 120s apart — recommended, same as
-   opportunistic starts) or a single poll?** Single releases faster but a
-   loading-screen dip would unpause mid-game.
-3. **While it waits, does it block everything (recommended, default `all`) or
-   should CPU-only work (packing) continue?** CPU packs don't touch the GPU,
-   but they do compete with whatever you're doing; `all` is predictable.
+1. ✅ **ANSWERED 2026-08-31** (the clarification above): soft pauses release
+   at the earliest of window-open / GPU-free / explicit ceiling, and
+   recurring weekly blockers exist.
+2. **Q-next — blocker vs the nightly window:** when a recurring blocker
+   overlaps 12am–8am, the blocker wins and scheduled ingestion stops for the
+   overlap (recommended — anything else makes blockers mean nothing). Confirm
+   — and, incidentally, was MTW 6:30–10:15 AM or PM? (PM never overlaps.)
+3. **Release bar:** sustained-free (2 polls, 120s — recommended, a
+   loading-screen dip can't unpause mid-game) vs a single poll (~4 min
+   faster).
+4. **Scope while a soft pause waits:** block everything (recommended) or let
+   CPU-only packing continue?
