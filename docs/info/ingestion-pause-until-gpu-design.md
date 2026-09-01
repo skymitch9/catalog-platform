@@ -16,6 +16,11 @@
 > list kept current, is
 > [`ingestion-pause-controls.md`](ingestion-pause-controls.md) §§2, 3, 3c, 6.
 >
+> ⚠️ **The CARD was re-laid-out later the same day — [§9](#9-ux-condense--2026-09-01-the-same-day-after-he-used-it).**
+> Presentation only: 22 visible controls in the default state became 2, and
+> nothing in §§1–8 changed. Read §9 before reading the card's markup, or the
+> three-button layout described in §6 will not match what is on screen.
+>
 > History: v1 written 2026-08-31 against a live read of `ingest_control.py`;
 > **v2 the same day** after the owner's clarification replaced v1's single new
 > button with a pause TAXONOMY (v1's mechanics survive as §3's GPU-release
@@ -281,3 +286,59 @@ still unexercised (chiefly the live round trip §6 above describes).
    fabricated identity against a live gate). They are offered as one-tap
    suggestions on the card instead, and the owner's first tap is what creates
    them. `Wow.exe` is verified from his own `tasklist`; `WowClassic.exe` is not.
+
+## 9. UX condense — 2026-09-01, the same day, after he used it
+
+Owner, having used the card built that morning: *"this all works good, the time
+selector is a not my favorite and its getting to be a lot of menus and buttons,
+can you reassess and condense for a better ux."*
+
+⚠️ **PRESENTATION ONLY. Nothing in §§1–8 changed** — not a route, not a written
+shape, not a field, not a semantic. `ops.ts` was not touched. The same four
+pause meanings, the same Resume/Start-now distinction (§3a), the same two
+standing lists surviving every other action (§3c). What changed is **how many
+controls are on screen at once**.
+
+**Measured, default state, signed in, nothing paused:** the card carried **22
+visible interactive elements** (4 pause/resume buttons + 2 pickers + their 2
+Set buttons + 7 weekday checkboxes + 2 blocker time fields + Add blocker + the
+program box + Add program + 2 quick-adds). It now carries **2** — one button
+and one disclosure. Everything else is one tap away.
+
+| Was | Is | Why |
+|---|---|---|
+| Four standing buttons (**Pause until I unpause…**, **Pause for now**, **Resume**, **▶ Start now**) | **ONE contextual button** — `Pause…` when there is nothing to resume, `Resume` when there is | Three of the four were always wrong for the current state. "Resume" over a running pipeline and "Pause for now" over an already-paused one are controls that mean nothing, and four of them together were most of *"a lot of menus and buttons"*. The choice is made by `describeIngestion()`'s new `primary`, beside the words, not in the DOM file |
+| **▶ Start now** always visible | shown **only inside a live `pause_window`** (`showStartNow`) | That is the ONE state where it differs from Resume (§3a: Resume drops the window in force, Start now deliberately does not). Everywhere else the two write the same document, so the second button is noise |
+| Pausing = pick one of three buttons; the hard one then asks a question | **One `Pause…` opens four answers** — *For now* / *Until a time…* / *Until I unpause* / *Don't even check until a time…* — each carrying the sentence naming its consequence | The 2026-08-23 grammar generalised: the button opens a question and the answer IS the confirmation, so a pause is still exactly two gestures. "Until I unpause" keeps its own second question, because `pause_mode` is a real difference in what the pause MEANS |
+| Two `datetime-local` pickers, always on screen | a **chip row computed in Phoenix at open time** — *In an hour*, *In 3 hours*, *7:00 PM today*, *Midnight tonight*, *8:00 AM tomorrow* — with the picker behind **Custom…** | The owner's actual complaint. A datetime-local asks for a date, an hour, a minute and an AM/PM on a phone keyboard to express "an hour from now". Chips are labelled with `wordTime()`'s own vocabulary, so a chip reads exactly as the status line above it, and they write the **same shapes through the same routes** |
+| Two standing editors, always expanded | **one `Schedules & exemptions` disclosure**, collapsed, whose summary carries the counts in words | Two editors that outlive every button beside them do not need to be open while somebody is deciding whether to pause for an hour |
+
+**The three rules the condense had to obey, and how each is kept:**
+
+1. ⚠️ **Collapsed must never read as absent.** The disclosure's summary states
+   the counts (*"2 blockers · 1 exemption"*, or *"none set"* — stated, never
+   blank), and when a blocker is **in force right now** it leads the line in
+   amber: *"Blocker in force until 10:15 PM · 1 blocker · 1 exemption"*. A live
+   blocker behind a closed disclosure would be the invisible control this whole
+   surface exists to prevent.
+2. ⚠️ **A chip's label must name the instant the chip writes.** Same class of
+   bug as the Phoenix conversion — the words and the stored instant would agree
+   with each other while both being wrong — so it is a test, not a comment.
+   Chips already past or **less than ten minutes away are dropped**, never
+   rolled forward: offering a 23-hour pause under a label reading "7:00 PM"
+   would be worse than offering nothing.
+3. ⚠️ **A failed READ is its own state.** The card cannot know which single
+   button is right when it could not read the document, so it offers **both**
+   and says why — and the disclosure summary says *"cannot read these right
+   now"* rather than *"none set"*, which would be a stronger and falser claim.
+
+**Consequence, admitted rather than buried:** changing the KIND of pause now
+costs Resume-then-Pause, because a paused card offers no Pause button. That is
+two extra taps on an uncommon flow, traded for a card that never shows three
+controls that would do nothing.
+
+Words in `assets/ingestion-time.js` (`PAUSE_MENU`, `pausePresets()`,
+`standingSummaryWords()`, `whenTitleWords()`, plus `primary`/`showStartNow` on
+`describeIngestion()`), DOM in `pipelines.js`, CSS in `status-shell.css`. No new
+asset file, so `_headers`/CSP are untouched. **18 new tests** (`ingestion-time`
+59 → 77; workspace 2185 → 2203, 0 fail), every existing assertion intact.

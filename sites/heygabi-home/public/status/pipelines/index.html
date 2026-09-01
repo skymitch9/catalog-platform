@@ -32,6 +32,12 @@
   assets/estate-controls.js's confirmBtn — the idiom /admin's revoke and role
   buttons already use. The datetime pickers are inputs, not commits: a typed
   time does nothing at all until its own button is armed and tapped again.
+  ⚠️ THE ONE EXCEPTION, and it costs no safety: where a button has already
+  OPENED A QUESTION (the Pause menu since 2026-09-01, and the hard pause's two
+  meanings before it), each answer is a full sentence naming its consequence
+  and the answer IS the second tap. Wrapping those in confirmBtn would make a
+  pause three gestures and put "Tap again to…" over the one moment somebody is
+  being asked to read the options.
 
   ⚠️ TIMES ARE PHOENIX TIME, SAID OUT LOUD ON BOTH LABELS. A datetime-local
   input hands back a bare wall clock with no zone; assets/ingestion-time.js
@@ -114,17 +120,25 @@
 
     <div id="ops-controls">
       <h3 class="step-list-h">Ingestion — pause &amp; resume</h3>
+      <!-- ⚠️ CONDENSED 2026-09-01 (owner, after using the shipped card: "this
+           all works good, the time selector is a not my favorite and its
+           getting to be a lot of menus and buttons, can you reassess and
+           condense for a better ux"). Nothing this card can DO changed — the
+           four pause meanings, Resume, Start now, both standing editors and
+           every written shape are exactly as they were. What changed is how
+           many of them are on screen at once: ONE contextual button, the times
+           as one-tap chips instead of a raw picker, and the two standing
+           editors behind one counted disclosure. -->
       <p class="section-note step-section-note">
         Stops and starts the ingestion process flow on the home machine.
-        There are three ways to pause: <strong>Pause until I unpause…</strong>
-        (nothing but Resume ends it), <strong>Pause for now</strong> and
-        <strong>Pause until…</strong> — the last two end themselves as soon as
-        the GPU has been quiet for about four minutes, or when the 12am window
-        opens, whichever comes first.
-        Every control here takes two taps: the others arm and then confirm,
-        while <strong>Pause until I unpause…</strong> asks what the pause should
-        mean and the answer you pick <em>is</em> the confirmation. Every time on
-        this card is read as <strong>Phoenix time</strong>.
+        One button: <strong>Pause</strong> when it is running,
+        <strong>Resume</strong> when it is not. Pause asks what kind —
+        <em>for now</em>, <em>until a time</em>, <em>until I unpause</em>, or
+        <em>don’t even check until a time</em>; only the third survives a quiet
+        GPU and the 12am window. Two gestures still commit every change: the
+        button opens the question and the answer you pick <em>is</em> the
+        confirmation. Every time on this card is read as
+        <strong>Phoenix time</strong>.
       </p>
       <div id="ingestion-card" class="ing-card">
         <div id="ingestion-status" class="ing-status" data-state="pending">
@@ -135,37 +149,63 @@
           </div>
         </div>
 
+        <!-- ONE contextual primary action, built by pipelines.js from the
+             control document: Pause (which opens the four-way question) when
+             nothing is in force, Resume when something is — plus ▶ Start now
+             ONLY inside a live quiet-hours window, the one state where the two
+             write different documents (§3a). -->
         <div id="ingestion-buttons" class="ing-buttons"></div>
 
-        <div class="ing-timer">
-          <label class="ing-label" for="ingestion-pause-until">
-            Pause until… <span class="ing-tz">Phoenix time</span>
-          </label>
-          <input id="ingestion-pause-until" class="ing-input" type="datetime-local">
-          <span id="ingestion-pause-until-slot"></span>
-        </div>
-        <!-- ⚠️ THE PICKED TIME IS A CEILING, NOT A PROMISE (2026-09-01, owner:
-             "i want any pause thats not the 'until i unpause' to be unpaused by
-             either next scheduled start or the next gpu free availability").
-             Saying "at latest" here is the whole honesty of this control: a
-             label reading "Pause until 6pm" over a document a free GPU can
-             clear at 2pm would be the card lying about the machine. -->
-        <p class="ing-note">
-          <strong>At latest.</strong> This is the longest it can last, not a
-          promise: it also ends as soon as the GPU has been quiet for about four
-          minutes, or when the 12am window opens — whichever comes first. Use
-          <strong>Pause until I unpause…</strong> if it has to survive all three.
-        </p>
+        <!-- ⚠️ THE TIME DRAWER, and the raw picker is no longer the front door
+             (owner 2026-09-01: "the time selector is a not my favorite"). It
+             opens only after "Until a time…" or "Don’t even check until a
+             time…", offers five one-tap chips computed in Phoenix at render
+             time, and keeps the native datetime-local input behind "Custom…"
+             for the pause that genuinely wants an arbitrary instant. Both
+             inputs stay exactly where they were, with their ids and their
+             "Phoenix time" labels — a chip and the picker write the SAME
+             shapes through the SAME routes. -->
+        <div id="ingestion-when" class="ing-when" hidden>
+          <p id="ingestion-when-title" class="ing-label"></p>
+          <div id="ingestion-when-chips" class="ing-chips"></div>
 
-        <div class="ing-timer">
-          <!-- The owner's own phrase, kept as the label rather than
-               paraphrased into "defer next check": it is the sentence he
-               will look for. -->
-          <label class="ing-label" for="ingestion-dont-check">
-            Don’t even check to start until… <span class="ing-tz">Phoenix time</span>
-          </label>
-          <input id="ingestion-dont-check" class="ing-input" type="datetime-local">
-          <span id="ingestion-dont-check-slot"></span>
+          <div id="ingestion-when-custom" class="ing-custom" hidden>
+            <div id="ingestion-pause-until-block">
+              <div class="ing-timer">
+                <label class="ing-label" for="ingestion-pause-until">
+                  Pause until… <span class="ing-tz">Phoenix time</span>
+                </label>
+                <input id="ingestion-pause-until" class="ing-input" type="datetime-local">
+                <span id="ingestion-pause-until-slot"></span>
+              </div>
+              <!-- ⚠️ THE PICKED TIME IS A CEILING, NOT A PROMISE (2026-09-01,
+                   owner: "i want any pause thats not the 'until i unpause' to
+                   be unpaused by either next scheduled start or the next gpu
+                   free availability"). Saying "at latest" here is the whole
+                   honesty of this control: a label reading "Pause until 6pm"
+                   over a document a free GPU can clear at 2pm would be the card
+                   lying about the machine. -->
+              <p class="ing-note">
+                <strong>At latest.</strong> This is the longest it can last, not a
+                promise: it also ends as soon as the GPU has been quiet for about four
+                minutes, or when the 12am window opens — whichever comes first. Use
+                <strong>Until I unpause</strong> if it has to survive all three.
+              </p>
+            </div>
+
+            <div id="ingestion-dont-check-block">
+              <div class="ing-timer">
+                <!-- The owner's own phrase, kept as the label rather than
+                     paraphrased into "defer next check": it is the sentence he
+                     will look for. -->
+                <label class="ing-label" for="ingestion-dont-check">
+                  Don’t even check to start until… <span class="ing-tz">Phoenix time</span>
+                </label>
+                <input id="ingestion-dont-check" class="ing-input" type="datetime-local">
+                <span id="ingestion-dont-check-slot"></span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- ⚠️ THE TWO STANDING LISTS (owner asks 2026-08-31 / 2026-09-01;
@@ -180,50 +220,64 @@
              ("Mon Tue Wed, 6:30 PM – 10:15 PM"), never as raw 24-hour
              numbers: a blocker crossing midnight reads as twelve hours
              backwards otherwise, and the row that says so is the only place
-             the owner can catch it. -->
-        <div class="ing-standing">
-          <h4 class="ing-standing-h">Recurring blockers</h4>
-          <p class="ing-note">
-            Standing weekly quiet hours — <em>Mon Tue Wed, 6:30 PM – 10:15 PM</em>,
-            say. A blocker is <strong>absolute while it is in force</strong>: no GPU
-            reading releases it, a “Pause for now” does not outrank it, and it beats
-            the scheduled 12am–8am window for any hours they overlap. To block an
-            evening into the next morning set the end <em>earlier</em> than the start
-            (10:00 PM to 2:00 AM). Times are <strong>Phoenix time</strong>.
-          </p>
-          <div class="ing-recurring">
-            <fieldset id="ingestion-recurring-days" class="ing-days">
-              <legend class="ing-label">Days</legend>
-            </fieldset>
-            <div class="ing-timer">
-              <label class="ing-label" for="ingestion-recurring-from">From</label>
-              <input id="ingestion-recurring-from" class="ing-input" type="time">
-              <label class="ing-label" for="ingestion-recurring-until">Until</label>
-              <input id="ingestion-recurring-until" class="ing-input" type="time">
-              <span id="ingestion-recurring-add-slot"></span>
-            </div>
-          </div>
-          <ul id="ingestion-recurring-rows" class="ing-rows"></ul>
-        </div>
+             the owner can catch it.
 
-        <div class="ing-standing">
-          <h4 class="ing-standing-h">Do not disturb — programs</h4>
-          <p class="ing-note">
-            While any of these is running the machine counts as in use and
-            <strong>nothing new starts</strong> — window or no window, GPU or CPU.
-            A book already being transcribed is never killed. Type the name Windows
-            uses (the image name, like <code>Wow.exe</code>), not the title of the
-            game; the match ignores capitals but is otherwise exact.
-          </p>
-          <div class="ing-timer">
-            <label class="ing-label" for="ingestion-process">Program</label>
-            <input id="ingestion-process" class="ing-input" type="text"
-                   placeholder="Wow.exe" autocomplete="off" spellcheck="false">
-            <span id="ingestion-process-add-slot"></span>
+             ⚠️ COLLAPSED BY DEFAULT SINCE 2026-09-01, AND THE SUMMARY IS WHAT
+             MAKES THAT SAFE. Both editors live behind one disclosure, whose
+             line carries the live counts in words ("2 blockers · 1 exemption",
+             "none set") and, when one is biting, says so in amber before it is
+             opened. A blocker stopping starts right now behind a closed
+             disclosure would be the invisible control this surface bans. -->
+        <details id="ingestion-standing" class="ing-disclosure">
+          <summary class="ing-disclosure-summary">
+            <span class="ing-disclosure-title">Schedules &amp; exemptions</span>
+            <span id="ingestion-standing-summary" class="ing-standing-summary"></span>
+          </summary>
+
+          <div class="ing-standing">
+            <h4 class="ing-standing-h">Recurring blockers</h4>
+            <p class="ing-note">
+              Standing weekly quiet hours — <em>Mon Tue Wed, 6:30 PM – 10:15 PM</em>,
+              say. A blocker is <strong>absolute while it is in force</strong>: no GPU
+              reading releases it, a “Pause for now” does not outrank it, and it beats
+              the scheduled 12am–8am window for any hours they overlap. To block an
+              evening into the next morning set the end <em>earlier</em> than the start
+              (10:00 PM to 2:00 AM). Times are <strong>Phoenix time</strong>.
+            </p>
+            <div class="ing-recurring">
+              <fieldset id="ingestion-recurring-days" class="ing-days">
+                <legend class="ing-label">Days</legend>
+              </fieldset>
+              <div class="ing-timer">
+                <label class="ing-label" for="ingestion-recurring-from">From</label>
+                <input id="ingestion-recurring-from" class="ing-input" type="time">
+                <label class="ing-label" for="ingestion-recurring-until">Until</label>
+                <input id="ingestion-recurring-until" class="ing-input" type="time">
+                <span id="ingestion-recurring-add-slot"></span>
+              </div>
+            </div>
+            <ul id="ingestion-recurring-rows" class="ing-rows"></ul>
           </div>
-          <div id="ingestion-process-quickadd" class="ing-quickadd"></div>
-          <ul id="ingestion-process-rows" class="ing-rows"></ul>
-        </div>
+
+          <div class="ing-standing">
+            <h4 class="ing-standing-h">Do not disturb — programs</h4>
+            <p class="ing-note">
+              While any of these is running the machine counts as in use and
+              <strong>nothing new starts</strong> — window or no window, GPU or CPU.
+              A book already being transcribed is never killed. Type the name Windows
+              uses (the image name, like <code>Wow.exe</code>), not the title of the
+              game; the match ignores capitals but is otherwise exact.
+            </p>
+            <div class="ing-timer">
+              <label class="ing-label" for="ingestion-process">Program</label>
+              <input id="ingestion-process" class="ing-input" type="text"
+                     placeholder="Wow.exe" autocomplete="off" spellcheck="false">
+              <span id="ingestion-process-add-slot"></span>
+            </div>
+            <div id="ingestion-process-quickadd" class="ing-quickadd"></div>
+            <ul id="ingestion-process-rows" class="ing-rows"></ul>
+          </div>
+        </details>
 
         <p id="ingestion-msg" class="ops-run-msg"></p>
       </div>

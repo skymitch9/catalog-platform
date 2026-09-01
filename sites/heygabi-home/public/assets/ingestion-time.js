@@ -154,6 +154,136 @@ export function wordTime(iso, nowMs) {
 }
 
 // ---------------------------------------------------------------------------
+// THE ONE PAUSE MENU AND ITS TIME CHIPS (owner ask 2026-09-01, verbatim: "this
+// all works good, the time selector is a not my favorite and its getting to be
+// a lot of menus and buttons, can you reassess and condense for a better ux").
+//
+// ⚠️ THE RAW datetime-local PICKER IS NO LONGER THE FRONT DOOR. It is still
+// there, under "Custom…", because some pauses genuinely want an arbitrary
+// instant — but the common cases are five one-tap chips, and every chip is
+// labelled in wordTime()'s own vocabulary so the owner reads the TIME he is
+// choosing rather than a duration he has to add to the clock himself.
+//
+// ⚠️ A CHIP IS SKIPPED RATHER THAN ROLLED FORWARD when its clock time has
+// passed or is nearly here. Rolling "7:00 PM" to tomorrow evening at 6:58 PM
+// would offer a 25-hour pause under a label that reads like two minutes, which
+// is a worse control than no chip at all. The one exception is the morning
+// chip, whose whole meaning is "the next 8am" — see PRESET_MIN_MS.
+// ---------------------------------------------------------------------------
+
+/** A chip nearer than this is dropped: pausing for eight minutes is a mis-tap,
+ *  not an intent, and a control whose effect expires before the owner looks up
+ *  from the screen is indistinguishable from one that did nothing. */
+export const PRESET_MIN_MS = 10 * 60_000;
+
+/**
+ * The four things "Pause" can mean, in the order they are offered.
+ *
+ * ⚠️ EACH LABEL IS AN ANSWER TO THE QUESTION THE BUTTON OPENED, and the
+ * `detail` beside it names the consequence — that is what lets the answer BE
+ * the confirmation instead of demanding a second tap (the same grammar the
+ * hard pause's own two answers have used since 2026-08-23). A menu of bare
+ * verbs would need a confirm step and would have condensed nothing.
+ */
+export const PAUSE_MENU = [
+  {
+    key: 'for_now',
+    label: 'For now',
+    detail:
+      'Ends itself as soon as the GPU has been quiet for about four minutes, or when the 12am ' +
+      'window opens — whichever comes first.',
+  },
+  {
+    key: 'until_time',
+    label: 'Until a time…',
+    detail:
+      'The same pause with a ceiling. At latest — a quiet GPU or the 12am window can still end ' +
+      'it sooner.',
+  },
+  {
+    key: 'hard',
+    label: 'Until I unpause',
+    detail: 'Nothing but Resume ends it: no timer, no GPU reading, no window. Asks what it should stop.',
+  },
+  {
+    key: 'dont_check',
+    label: 'Don’t even check until a time…',
+    detail:
+      'Not a pause — a spend-nothing instruction. The home machine will not so much as poll the ' +
+      'GPU until then.',
+  },
+];
+
+/** The heading over the chips, so the drawer says which control it is about. */
+export function whenTitleWords(intent) {
+  if (intent === 'pause_until') return 'Pause until… (at latest)';
+  if (intent === 'dont_check_until') return 'Don’t even check to start until…';
+  return null;
+}
+
+/** The label on the escape hatch back to the native picker. */
+export const PRESET_CUSTOM_LABEL = 'Custom…';
+
+/** Phoenix wall-clock HH:MM on the Phoenix calendar day `dayOffset` days from
+ *  the one `nowMs` falls on, as a UTC instant. Goes through
+ *  phoenixLocalToIso() on purpose: one conversion path, already pinned. */
+function phoenixClockIso(nowMs, hh, mm, dayOffset) {
+  const p = phoenixParts(nowMs);
+  const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)) + dayOffset * MS_PER_DAY);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const da = String(d.getUTCDate()).padStart(2, '0');
+  return phoenixLocalToIso(`${y}-${mo}-${da}T${hh}:${mm}`);
+}
+
+function capitalise(text) {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+/**
+ * The five one-tap times, computed in Phoenix at render time.
+ *
+ * Two relative ("In an hour", "In 3 hours") and three clock times — 7:00 PM
+ * today, the next midnight, and the next 8:00 AM. Each is labelled with
+ * wordTime()'s vocabulary, so "midnight tonight" and "8:00 AM tomorrow" read
+ * on a chip exactly as they read in the status sentence above it.
+ *
+ * ⚠️ RETURNS ONLY THE CHIPS THAT MAKE SENSE RIGHT NOW: anything already past
+ * or less than PRESET_MIN_MS away is dropped, and two presets landing on the
+ * same instant collapse to one (at 6:00 PM sharp, "In an hour" IS the 7:00 PM
+ * chip). Sorted by time, so the row reads as a timeline.
+ */
+export function pausePresets(nowMs) {
+  const morningToday = phoenixClockIso(nowMs, '08', '00', 0);
+  const morningNear = morningToday === null || Date.parse(morningToday) - nowMs < PRESET_MIN_MS;
+  const raw = [
+    { key: 'plus1h', iso: new Date(nowMs + 3_600_000).toISOString(), relative: 'In an hour' },
+    { key: 'plus3h', iso: new Date(nowMs + 3 * 3_600_000).toISOString(), relative: 'In 3 hours' },
+    { key: 'evening', iso: phoenixClockIso(nowMs, '19', '00', 0), relative: null },
+    // ⚠️ The next 00:00 is the START of tomorrow — the same instant wordTime()
+    // calls "midnight tonight", and the same ceiling "For now" writes.
+    { key: 'midnight', iso: phoenixClockIso(nowMs, '00', '00', 1), relative: null },
+    // The only preset that rolls: "8am" means the next 8am, which is today's
+    // before breakfast and tomorrow's after it.
+    { key: 'morning', iso: phoenixClockIso(nowMs, '08', '00', morningNear ? 1 : 0), relative: null },
+  ];
+
+  const seen = new Set();
+  const out = [];
+  for (const p of raw) {
+    if (!p.iso) continue;
+    const ms = Date.parse(p.iso);
+    if (!Number.isFinite(ms) || ms - nowMs < PRESET_MIN_MS) continue;
+    if (seen.has(p.iso)) continue;
+    seen.add(p.iso);
+    const words = wordTime(p.iso, nowMs);
+    if (!words) continue;
+    out.push({ key: p.key, iso: p.iso, label: p.relative ? `${p.relative} — ${words}` : capitalise(words) });
+  }
+  return out.sort((a, b) => Date.parse(a.iso) - Date.parse(b.iso));
+}
+
+// ---------------------------------------------------------------------------
 // RECURRING BLOCKERS + DO-NOT-DISTURB PROGRAMS (owner asks 2026-08-31 /
 // 2026-09-01; design docs/info/ingestion-pause-until-gpu-design.md §4 + §4a).
 //
@@ -340,6 +470,43 @@ export function processListWords(names) {
   return `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`;
 }
 
+/**
+ * The one line a COLLAPSED "Schedules & exemptions" disclosure shows (owner
+ * ask 2026-09-01 — the condense).
+ *
+ * ⚠️ COLLAPSED MUST NEVER READ AS ABSENT. Two standing editors folded behind a
+ * closed disclosure are two controls the owner cannot see; the estate's rule is
+ * to say "this is here and here is how much of it there is" rather than to hide
+ * so much that the page looks broken. So the summary carries the COUNTS in
+ * words, and "none set" is stated rather than left blank.
+ *
+ * ⚠️ AND IT CARRIES THE IN-FORCE BLOCKER FIRST. A recurring blocker stopping
+ * starts RIGHT NOW, hidden behind a closed disclosure, would be exactly the
+ * invisible control this whole surface exists to prevent — so the live fact
+ * leads the line and `inForce` lets the card tint it amber, the same "look at
+ * me" the row itself already gets.
+ *
+ * Returns { text, inForce } — never null, never blank.
+ */
+export function standingSummaryWords(control, nowMs) {
+  const blockers = Array.isArray(control?.recurring_windows) ? control.recurring_windows : [];
+  const programs = Array.isArray(control?.exempt_processes) ? control.exempt_processes : [];
+  const parts = [];
+  if (blockers.length > 0) parts.push(`${blockers.length} blocker${blockers.length === 1 ? '' : 's'}`);
+  if (programs.length > 0) parts.push(`${programs.length} exemption${programs.length === 1 ? '' : 's'}`);
+  const counts = parts.length > 0 ? parts.join(' · ') : 'none set';
+  const active = activeRecurringWindow(blockers, nowMs);
+  if (active) {
+    const until = hhmmWords(active.until);
+    return { text: `Blocker in force until ${until} · ${counts}`, inForce: true };
+  }
+  return { text: counts, inForce: false };
+}
+
+/** What the summary says when the control could not be READ — never "none
+ *  set", which would be a stronger and falser claim than "we cannot see it". */
+export const STANDING_UNKNOWN_WORDS = 'Cannot read these right now — they are unchanged on the home machine.';
+
 /** A pause window covering `nowMs`, or null. Windows without a usable
  *  `until` are ignored rather than treated as open-ended — an unreadable
  *  window must never silently pause the display forever. */
@@ -424,8 +591,11 @@ export function describeIngestion(control, nowMs) {
       headline: 'No ingestion control has ever been set.',
       lines: [
         'There is no control document yet, so nothing here is pausing ingestion — it runs on its ' +
-          'normal schedule. The first “Pause now” or “Pause until…” creates the document.',
+          'normal schedule. The first “Pause” creates the document.',
       ],
+      // Nothing to resume, so the card offers the one thing that can be done.
+      primary: 'pause',
+      showStartNow: false,
     };
   }
 
@@ -619,6 +789,20 @@ export function describeIngestion(control, nowMs) {
     );
   }
 
+  // ⚠️ WHICH ONE CONTROL THE CARD OFFERS (owner ask 2026-09-01: "its getting
+  // to be a lot of menus and buttons"). Decided HERE, with the words, rather
+  // than by pipelines.js re-reading the document: which button is honest in a
+  // given state is exactly the kind of thing that can be silently wrong, and
+  // the DOM side is untestable by construction.
+  //
+  // `clearable` is precisely what Resume acts on — the hard flag, a live pause
+  // timer, a live don't-check, or a window in force. Nothing else. A recurring
+  // blocker on its own therefore leaves the card offering PAUSE, because Resume
+  // cannot end a blocker and a button that would do nothing is worse than none.
+  const windowInForce = Boolean(win);
+  const clearable =
+    pausedFlag || (until !== null && until > nowMs) || (dont !== null && dont > nowMs) || windowInForce;
+
   // `pauseMode` is reported alongside the words so the card can key off the
   // MODE rather than re-parsing the headline — normalised here so there is one
   // place in this file that decides what an unrecognised value means.
@@ -628,6 +812,15 @@ export function describeIngestion(control, nowMs) {
     headline,
     lines,
     pauseMode: manualOnly ? 'manual_only' : 'all',
+    // The single primary action. 'pause' opens the four-way question;
+    // 'resume' is the one button that ends whatever is currently in force.
+    primary: clearable ? 'resume' : 'pause',
+    // ⚠️ START NOW IS SHOWN ONLY INSIDE A LIVE WINDOW, because that is the ONE
+    // state where it differs from Resume (§3a of ingestion-pause-controls.md:
+    // Resume drops the window in force, Start now deliberately does not). In
+    // every other state the two write the same document and a second button is
+    // noise — which is half of what the owner was complaining about.
+    showStartNow: windowInForce,
     // Reported alongside the words for the same reason `pauseMode` is: the
     // card keys off these rather than re-parsing a headline, and this file
     // stays the one place that decides what the document MEANS.

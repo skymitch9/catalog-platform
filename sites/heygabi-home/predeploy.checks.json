@@ -79,7 +79,14 @@
         "four new ids are the two editors' mounts \u2014 a missing one leaves a heading with silence under it,",
         "which reads as 'you have no blockers' rather than as 'this shipped broken'. 'At latest.' is pinned as",
         "TEXT for the same reason 'Phoenix time' is: it is the ONE sentence admitting the pause-until picker is",
-        "a ceiling a free GPU can beat, and a card that lost it would be promising a pause it cannot keep."
+        "a ceiling a free GPU can beat, and a card that lost it would be promising a pause it cannot keep.",
+        "\u26a0 ADDED 2026-09-01 (second pass \u2014 the UX condense, owner: 'the time selector is a not my",
+        "favorite and its getting to be a lot of menus and buttons'). Every id above SURVIVED the condense,",
+        "which is the point of pinning them: the pickers moved behind 'Custom...' and the two editors behind",
+        "one disclosure, and nothing was deleted. The two new ids are the halves that make the condense safe \u2014",
+        "id=ingestion-when is the time drawer the chips are written into (without it 'Until a time...' opens",
+        "onto nothing) and id=ingestion-standing is the disclosure. 'Schedules' is its title, pinned as TEXT:",
+        "a disclosure whose summary never renders is two standing editors nobody can find."
       ],
       "path": "/status/pipelines/",
       "mustContain": [
@@ -97,6 +104,9 @@
         "id=\"ingestion-recurring-rows\"",
         "id=\"ingestion-process\"",
         "id=\"ingestion-process-rows\"",
+        "id=\"ingestion-when\"",
+        "id=\"ingestion-standing\"",
+        "Schedules",
         "Recurring blockers",
         "Do not disturb",
         "At latest."
@@ -110,11 +120,16 @@
         "leave the card permanently unreadable), buildIngestionCard (the four two-tap buttons \u2014 without it the",
         "card renders a status line and no controls), and the ingestion-time.js import (the two files must ship",
         "together or the page's script dies at parse time with the usual cheerful 200 on the route).",
-        "The pure half's own 23 tests still live in scripts/test/ingestion-time.test.mjs and still pass \u2014 the",
-        "module did not move, only its caller did.",
+        "The pure half's own tests still live in scripts/test/ingestion-time.test.mjs and still pass (77 of",
+        "them as of the 2026-09-01 condense) \u2014 the module did not move, only its caller did.",
         "\u26a0 ADDED 2026-09-01: pause_for_now / recurring_add / exempt_add are the three new writes, and the",
         "two build functions are the editors themselves. A bundle that shipped the status line without them",
-        "would render a card that reads correctly and can change nothing \u2014 the failure this list catches."
+        "would render a card that reads correctly and can change nothing \u2014 the failure this list catches.",
+        "\u26a0 ADDED 2026-09-01 (the condense): buildPauseMenu is the ONE button's four answers, pausePresets is",
+        "the chip row that replaced the raw time selector as the front door, and standingSummaryWords is the",
+        "counted line on the collapsed disclosure. Each is a way the new card can ship LOOKING fine and doing",
+        "nothing: no menu means Pause opens onto silence, no chips means the owner is back on the picker he",
+        "asked to be rid of, and no summary means two standing editors hidden behind a line reading nothing."
       ],
       "path": "/status/pipelines/pipelines.js",
       "mustContain": [
@@ -126,7 +141,10 @@
         "recurring_add",
         "exempt_add",
         "buildRecurringEditor",
-        "buildProcessEditor"
+        "buildProcessEditor",
+        "buildPauseMenu",
+        "pausePresets",
+        "standingSummaryWords"
       ]
     },
     {
@@ -366,7 +384,10 @@
         "timezone or the owner's own phrasing had been refactored away.",
         "\u26a0 ADDED 2026-09-01: 'the next morning' is the midnight-crossing blocker's own wording (without it",
         "a 10pm-2am row reads as twelve hours backwards), 'at latest' is the soft pause's honesty about its own",
-        "ceiling, and 'Wow.exe' is the verified suggested program name from the WoW-at-midnight incident."
+        "ceiling, and 'Wow.exe' is the verified suggested program name from the WoW-at-midnight incident.",
+        "\u26a0 ADDED 2026-09-01 (the condense): pausePresets is the chip row's instants and labels, and",
+        "'none set' is the collapsed disclosure refusing to render blank \u2014 a summary that vanished would",
+        "leave two standing editors behind a line saying nothing, which reads as 'there is nothing here'."
       ],
       "path": "/assets/ingestion-time.js",
       "mustContain": [
@@ -378,7 +399,9 @@
         "activeRecurringWindow",
         "the next morning",
         "at latest",
-        "Wow.exe"
+        "Wow.exe",
+        "pausePresets",
+        "none set"
       ]
     },
     {

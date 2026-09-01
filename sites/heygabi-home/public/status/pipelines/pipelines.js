@@ -7,8 +7,8 @@
  * and the shelf-server force-upload are the SAME implementations, moved rather
  * than rewritten — their comments are the originals and are worth reading as
  * such. Their tests did not move and did not change:
- * `scripts/test/ingestion-time.test.mjs` (23) and
- * `apps/auth-worker/test/ingestion-control.test.ts` (14) still own the
+ * `scripts/test/ingestion-time.test.mjs` (**77**, measured 2026-09-01) and
+ * `apps/auth-worker/test/ingestion-control.test.ts` (**71**) still own the
  * behaviour this file plumbs.
  *
  * ⚠️ ONE BEHAVIOURAL CHANGE IN THE MOVE, and it is here rather than hidden:
@@ -53,14 +53,20 @@ import { idToken } from '../../assets/estate-auth.js';
 import { actionBtn, confirmBtn } from '../../assets/estate-controls.js';
 import {
   ISO_WEEKDAY_SHORT,
+  PAUSE_MENU,
+  PRESET_CUSTOM_LABEL,
+  STANDING_UNKNOWN_WORDS,
   SUGGESTED_EXEMPT_PROCESSES,
   describeIngestion,
   isoToPhoenixLocal,
+  pausePresets,
   phoenixLocalToIso,
   processListWords,
   recurringWindowWords,
+  standingSummaryWords,
   validateExemptProcess,
   validateRecurringWindow,
+  whenTitleWords,
   wordTime,
 } from '../../assets/ingestion-time.js';
 
@@ -647,10 +653,19 @@ if (opsForceUploadBtn) {
 // stays closed on the audiobook_catalog side that way — see ops.ts's
 // GET /estate/ops/ingestion header for the full reasoning.
 //
-// ⚠️ SAME TWO-TAP GRAMMAR, NO THIRD GESTURE. All four controls are
-// confirmBtn (assets/estate-controls.js). The pickers are inputs, not
-// commits: a typed time does nothing at all until its "Set" button is armed
-// and tapped a second time.
+// ⚠️ SAME TWO-TAP GRAMMAR, NO THIRD GESTURE. Resume, Start now, both "Set"
+// buttons and every add/delete are confirmBtn (assets/estate-controls.js).
+// The Pause menu's four answers are NOT, for the reason its own comment gives:
+// the button has already opened a question and each answer is a sentence
+// naming its consequence, so the answer IS the second tap.
+//
+// ⚠️ CONDENSED 2026-09-01 (owner: "this all works good, the time selector is a
+// not my favorite and its getting to be a lot of menus and buttons, can you
+// reassess and condense for a better ux"). The card's DEFAULT state went from
+// 22 visible interactive elements to 2 — one contextual button and one counted
+// disclosure — with no route, no written shape and no semantic changed. What
+// this file gained is three renderers keyed off describeIngestion(): the
+// primary button, the time drawer, and the disclosure summary.
 // ---------------------------------------------------------------------------
 
 const ingStatusEl = document.getElementById('ingestion-status');
@@ -659,6 +674,14 @@ const ingLinesEl = document.getElementById('ingestion-lines');
 const ingMsgEl = document.getElementById('ingestion-msg');
 const ingPauseUntilInput = document.getElementById('ingestion-pause-until');
 const ingDontCheckInput = document.getElementById('ingestion-dont-check');
+const ingButtonsEl = document.getElementById('ingestion-buttons');
+const ingWhenEl = document.getElementById('ingestion-when');
+const ingWhenTitleEl = document.getElementById('ingestion-when-title');
+const ingWhenChipsEl = document.getElementById('ingestion-when-chips');
+const ingWhenCustomEl = document.getElementById('ingestion-when-custom');
+const ingPauseUntilBlock = document.getElementById('ingestion-pause-until-block');
+const ingDontCheckBlock = document.getElementById('ingestion-dont-check-block');
+const ingStandingSummaryEl = document.getElementById('ingestion-standing-summary');
 const ingRecurringDaysEl = document.getElementById('ingestion-recurring-days');
 const ingRecurringFromInput = document.getElementById('ingestion-recurring-from');
 const ingRecurringUntilInput = document.getElementById('ingestion-recurring-until');
@@ -690,7 +713,85 @@ function renderIngestion(control, nowMs = Date.now()) {
     p.textContent = line;
     ingLinesEl.appendChild(p);
   }
+  renderPrimaryAction(d.primary, d.showStartNow);
   renderStandingLists(control, nowMs);
+  renderStandingSummary(control, nowMs);
+}
+
+// ---------------------------------------------------------------------------
+// THE ONE CONTEXTUAL PRIMARY ACTION (owner ask 2026-09-01 — the condense).
+//
+// ⚠️ WHICH BUTTON IS HONEST IS DECIDED IN ingestion-time.js, not here: this
+// function is handed `primary` and `showStartNow` and does nothing but build
+// the DOM for them. The card used to show four pause/resume buttons at all
+// times, three of which were wrong in any given state — "Resume" over a
+// running pipeline and "Pause for now" over an already-paused one are both
+// controls that mean nothing, and four of them together were most of what the
+// owner meant by "a lot of menus and buttons".
+//
+// ⚠️ REBUILT ONLY WHEN THE ANSWER CHANGES, for exactly the reason the standing
+// lists are: the ticker re-renders every 5 seconds and a rebuild would disarm
+// a confirmBtn under somebody's finger and close an open question mid-read.
+// ---------------------------------------------------------------------------
+
+let lastPrimarySignature = null;
+
+function renderPrimaryAction(primary, showStartNow) {
+  if (!ingButtonsEl) return;
+  const signature = `${primary}|${showStartNow ? 'start' : ''}`;
+  if (signature === lastPrimarySignature) return;
+  lastPrimarySignature = signature;
+
+  closeWhen();
+  ingButtonsEl.replaceChildren();
+
+  // ⚠️ 'unknown' is the FAILED-READ state (failIngestion). We cannot tell
+  // which single button is right, so both are offered rather than guessing —
+  // hiding the control somebody needs because a fetch failed would be a worse
+  // failure than showing one that turns out to be a no-op, and the headline
+  // above already says the reading is what broke.
+  if (primary === 'pause' || primary === 'unknown') buildPauseMenu(ingButtonsEl);
+  if (primary === 'resume' || primary === 'unknown') {
+    ingButtonsEl.appendChild(
+      confirmBtn('Resume', 'quiet', () => sendIngestionControl('resume', undefined, 'Resuming')),
+    );
+  }
+
+  // ⚠️ "START NOW" IS NOT A SECOND RESUME BUTTON (owner-approved fine control
+  // #2, 2026-08-18), and since 2026-09-01 it is shown ONLY in the one state
+  // where that is true. Both clear the pause flag and both timers. RESUME
+  // additionally drops a scheduled window that is in force right now — it has
+  // to, or the window re-pauses ingestion seconds later and Resume reads as
+  // broken. START NOW leaves `pause_windows` completely untouched: quiet hours
+  // are a schedule the owner set on purpose, and silently deleting tonight's
+  // 7pm window to satisfy a one-off request would take away a recurring
+  // instruction he never withdrew. Outside a live window the two write the
+  // same document, so a second button there is noise.
+  //
+  // ⚠️ THE CONSEQUENCE IS ADMITTED RATHER THAN HIDDEN: inside a live window
+  // this clears the ad-hoc pauses and the window STILL blocks the start. The
+  // route's own wording says so and lands in the message line below.
+  if (showStartNow) {
+    ingButtonsEl.appendChild(
+      confirmBtn(
+        '▶ Start now',
+        'quiet',
+        () => sendIngestionControl('start_now', undefined, 'Clearing the pauses'),
+        'warn',
+      ),
+    );
+  }
+}
+
+/** The counted line on the collapsed disclosure. Cheap enough to repaint on
+ *  every tick — it is text, so it cannot disarm a button or close the
+ *  disclosure — and it MUST repaint, because "blocker in force" becomes true
+ *  at a wall-clock boundary no fetch is waiting for. */
+function renderStandingSummary(control, nowMs = Date.now()) {
+  if (!ingStandingSummaryEl) return;
+  const summary = standingSummaryWords(control ?? null, nowMs);
+  ingStandingSummaryEl.textContent = summary.text;
+  ingStandingSummaryEl.dataset.inForce = summary.inForce ? 'true' : 'false';
 }
 
 // ---------------------------------------------------------------------------
@@ -812,8 +913,18 @@ function failIngestion(detail) {
   ingHeadlineEl.textContent = 'Cannot tell whether ingestion is paused.';
   ingLinesEl.innerHTML = '';
   const p = document.createElement('p');
-  p.textContent = `${detail} The buttons below still work — this is only the reading.`;
+  p.textContent =
+    `${detail} The controls below still work — this is only the reading. Pause AND Resume are both ` +
+    'offered because nothing here can tell which one you need right now.';
   ingLinesEl.appendChild(p);
+  // ⚠️ The contextual primary needs a state, and "we could not read it" is a
+  // state — not an excuse to leave the last answer on screen. 'unknown' offers
+  // both buttons; see renderPrimaryAction().
+  renderPrimaryAction('unknown', false);
+  if (ingStandingSummaryEl) {
+    ingStandingSummaryEl.textContent = STANDING_UNKNOWN_WORDS;
+    ingStandingSummaryEl.dataset.inForce = 'false';
+  }
   // ⚠️ THE STANDING LISTS MUST GO TOO, and they must NOT go to "none". Leaving
   // the last good rows on screen would be the same silent-staleness trap the
   // headline above just avoided, and rendering an empty list would state
@@ -969,53 +1080,83 @@ function readPhoenixPicker(input, what) {
 }
 
 /**
- * ⚠️ PAUSING IS A QUESTION NOW, NOT A BUTTON (owner ask 2026-08-23, verbatim:
+ * ⚠️ PAUSING IS A QUESTION, NOT A BUTTON (owner ask 2026-08-23, verbatim:
  * *"when i manually pause the pipeline it says nothing can override it. I want
  * it to ask me if i want to stop all work until unpaused or if scheduled
  * window is fine to continue."*). His decision was ASK EVERY TIME — nothing is
  * saved as a preference, so there is no remembered default to pre-select and
  * no settings row anywhere; the question is the control.
  *
- * ⚠️ THE TWO CHOICE BUTTONS ARE NOT `confirmBtn`, AND THAT IS DELIBERATE.
- * Everything else on this card is two-tap because the label alone ("Resume",
- * "Start now") does not say what it will do. Here the first tap has already
- * opened a question and each answer is a full sentence naming its own
- * consequence — so the answer IS the confirmation. Wrapping them would make
- * pausing three taps and, worse, would put "Tap again to…" over the one
- * moment the owner is being asked to read two options and pick.
+ * ⚠️ SINCE 2026-09-01 THE QUESTION IS THE WHOLE PAUSE MENU, not just the hard
+ * pause's two meanings ("its getting to be a lot of menus and buttons"). One
+ * **Pause** opens four answers — for now / until a time / until I unpause /
+ * don't even check until a time — and the fourth control the card used to
+ * carry standing is now the fourth line of one question. The two-tap total is
+ * unchanged: open the question, pick the answer.
+ *
+ * ⚠️ THE ANSWERS ARE NOT `confirmBtn`, AND THAT IS DELIBERATE. Everything else
+ * on this card is two-tap because the label alone ("Resume", "Start now") does
+ * not say what it will do. Here the first tap has already opened a question and
+ * each answer carries a full sentence naming its own consequence — so the
+ * answer IS the confirmation. Wrapping them would make pausing three taps and,
+ * worse, would put "Tap again to…" over the one moment the owner is being
+ * asked to read the options and pick.
+ *
+ * ⚠️ "Until I unpause" ASKS A SECOND QUESTION, and it has to: `pause_mode`
+ * is a real difference in what the pause MEANS (all work, versus everything
+ * but the nightly window) and the owner's answer was that it is asked every
+ * time. It is the one two-step answer, and it is the one whose two outcomes
+ * are genuinely different documents.
  *
  * Cancel exists because an opened question must be closeable without
  * answering it: a control that can only be escaped by doing something is how
  * an accidental pause happens.
  */
-function buildPauseChoice(holder) {
+function buildPauseMenu(holder) {
   const open = document.createElement('button');
   open.type = 'button';
   open.className = 'btn small quiet warn';
-  // ⚠️ RENAMED 2026-09-01, and the name is now load-bearing. Since that day
-  // there are three pauses and only THIS one lasts until a human ends it —
-  // "Pause now…" beside a "Pause for now" would be two buttons whose labels
-  // differ by one word and whose behaviour differs by everything.
-  open.textContent = 'Pause until I unpause…'; // the ellipsis promises the question
+  open.textContent = 'Pause…'; // the ellipsis promises the question
 
-  const choice = document.createElement('span');
-  choice.className = 'ing-pause-choice';
+  const menu = document.createElement('div');
+  menu.className = 'ing-menu';
   // ⚠️ `style.display`, not the `hidden` attribute: this page's stylesheet sets
   // display on .btn and friends, and a CSS `display` beats `hidden` — the exact
   // attribute-says-hidden/pixels-say-visible trap the estate's verification
   // rule names. Setting display directly cannot be overridden that way.
-  choice.style.display = 'none';
+  menu.style.display = 'none';
 
+  const closeMenu = () => {
+    menu.style.display = 'none';
+    open.style.display = '';
+    modeRow.style.display = 'none';
+  };
+
+  /** One menu answer: the label, and underneath it the sentence that makes the
+   *  answer safe to act on without a confirm step. */
+  const item = (entry, onPick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small quiet ing-menu-item';
+    const label = document.createElement('span');
+    label.className = 'ing-menu-label';
+    label.textContent = entry.label;
+    const detail = document.createElement('span');
+    detail.className = 'ing-menu-detail';
+    detail.textContent = entry.detail;
+    b.append(label, detail);
+    b.addEventListener('click', onPick);
+    return b;
+  };
+
+  // The hard pause's own two answers, revealed under the menu rather than
+  // replacing it — the owner can still see which of the four he picked.
+  const modeRow = document.createElement('div');
+  modeRow.className = 'ing-pause-choice';
+  modeRow.style.display = 'none';
   const ask = document.createElement('span');
   ask.className = 'ing-label';
   ask.textContent = 'Pause what?';
-
-  const closeChoice = () => {
-    choice.style.display = 'none';
-    open.style.display = '';
-  };
-
-  /** One answer. `words` is the label AND the promise — they must not drift. */
   const answer = (label, mode, verb) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -1030,81 +1171,138 @@ function buildPauseChoice(holder) {
         // Closed on both paths: leaving the question open after a FAILED
         // write invites a second press against a card whose message line
         // already says what went wrong.
-        closeChoice();
+        closeMenu();
       }
     });
     return b;
   };
+  modeRow.append(
+    ask,
+    answer('Stop all work until unpaused', 'all', 'Pausing everything'),
+    answer('Let the scheduled window continue', 'manual_only', 'Pausing work started by hand'),
+  );
+
+  const items = document.createElement('div');
+  items.className = 'ing-menu-items';
+  for (const entry of PAUSE_MENU) {
+    if (entry.key === 'for_now') {
+      // ⚠️ THE SOFT PAUSE (owner 2026-08-31: "i want any pause thats not the
+      // 'until i unpause' to be unpaused by either next scheduled start or the
+      // next gpu free availability"). It asks NO mode question, unlike the hard
+      // pause: a soft pause is window-exempt by construction — the window
+      // opening is its own ceiling — so there is nothing for 'all' versus
+      // 'manual_only' to decide.
+      items.appendChild(
+        item(entry, async () => {
+          await sendIngestionControl('pause_for_now', undefined, 'Pausing for now');
+          closeMenu();
+        }),
+      );
+    } else if (entry.key === 'until_time') {
+      items.appendChild(item(entry, () => { closeMenu(); openWhen('pause_until'); }));
+    } else if (entry.key === 'hard') {
+      items.appendChild(item(entry, () => { modeRow.style.display = ''; }));
+    } else if (entry.key === 'dont_check') {
+      items.appendChild(item(entry, () => { closeMenu(); openWhen('dont_check_until'); }));
+    }
+  }
 
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'btn small quiet';
   cancel.textContent = 'Cancel';
-  cancel.addEventListener('click', closeChoice);
+  cancel.addEventListener('click', closeMenu);
 
-  choice.append(
-    ask,
-    answer('Stop all work until unpaused', 'all', 'Pausing everything'),
-    answer('Let the scheduled window continue', 'manual_only', 'Pausing work started by hand'),
-    cancel,
-  );
+  menu.append(items, modeRow, cancel);
 
   open.addEventListener('click', () => {
+    closeWhen();
     open.style.display = 'none';
-    choice.style.display = '';
+    menu.style.display = '';
   });
 
-  holder.append(open, choice);
+  holder.append(open, menu);
+}
+
+// ---------------------------------------------------------------------------
+// THE TIME DRAWER — preset chips, with the native picker demoted to "Custom…".
+//
+// ⚠️ THIS IS THE OWNER'S ACTUAL COMPLAINT ("the time selector is a not my
+// favorite"). A datetime-local input asks for a date, an hour, a minute and an
+// AM/PM on a phone keyboard to express "an hour from now", and it opens on
+// whatever the browser feels like. The chips are the same instants, computed in
+// Phoenix at render time, labelled in the words the status line above uses —
+// and they write the SAME shapes through the SAME routes. The picker is still
+// here, one tap away, because some pauses genuinely want an arbitrary instant.
+// ---------------------------------------------------------------------------
+
+let whenIntent = null;
+
+function closeWhen() {
+  whenIntent = null;
+  if (ingWhenEl) ingWhenEl.hidden = true;
+  if (ingWhenCustomEl) ingWhenCustomEl.hidden = true;
+}
+
+function openWhen(intent) {
+  if (!ingWhenEl || !ingWhenChipsEl) return;
+  whenIntent = intent;
+  ingWhenEl.hidden = false;
+  if (ingWhenCustomEl) ingWhenCustomEl.hidden = true;
+  // Only the block belonging to this intent — two pickers side by side was
+  // half of what made the old card a wall of controls, and the one that is not
+  // being set would be a second, silent way to write a different field.
+  if (ingPauseUntilBlock) ingPauseUntilBlock.hidden = intent !== 'pause_until';
+  if (ingDontCheckBlock) ingDontCheckBlock.hidden = intent !== 'dont_check_until';
+  if (ingWhenTitleEl) ingWhenTitleEl.textContent = whenTitleWords(intent) || '';
+
+  const verb = intent === 'pause_until' ? 'Pausing until' : 'Holding off until';
+  ingWhenChipsEl.replaceChildren();
+  // ⚠️ COMPUTED AT OPEN TIME, NOT AT PAGE LOAD. "In an hour" is a lie the
+  // moment the card has been open for ten minutes, and the fixed clock chips
+  // drop themselves as their hour passes.
+  for (const preset of pausePresets(Date.now())) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small quiet ing-chip';
+    b.textContent = preset.label;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await sendIngestionControl(intent, preset.iso, `${verb} ${wordTime(preset.iso, Date.now())}`);
+      } finally {
+        b.disabled = false;
+        closeWhen();
+      }
+    });
+    ingWhenChipsEl.appendChild(b);
+  }
+
+  const custom = document.createElement('button');
+  custom.type = 'button';
+  custom.className = 'btn small quiet ing-chip';
+  custom.textContent = PRESET_CUSTOM_LABEL;
+  custom.addEventListener('click', () => {
+    if (ingWhenCustomEl) ingWhenCustomEl.hidden = false;
+    const input = intent === 'pause_until' ? ingPauseUntilInput : ingDontCheckInput;
+    input?.focus();
+  });
+  ingWhenChipsEl.appendChild(custom);
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn small quiet';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', closeWhen);
+  ingWhenChipsEl.appendChild(cancel);
 }
 
 function buildIngestionCard() {
-  const holder = document.getElementById('ingestion-buttons');
-  if (!holder) return;
-
-  buildPauseChoice(holder);
-
-  // ⚠️ THE SOFT PAUSE (owner 2026-08-31: "i want any pause thats not the
-  // 'until i unpause' to be unpaused by either next scheduled start or the
-  // next gpu free availability"). It asks NO mode question, unlike its
-  // neighbour: a soft pause is window-exempt by construction — the window
-  // opening is its own ceiling — so there is nothing for 'all' versus
-  // 'manual_only' to decide. Two taps, like every other mutating control.
-  holder.appendChild(
-    confirmBtn(
-      'Pause for now',
-      'quiet',
-      () => sendIngestionControl('pause_for_now', undefined, 'Pausing for now'),
-      'warn',
-    ),
-  );
-
-  holder.appendChild(
-    confirmBtn('Resume', 'quiet', () => sendIngestionControl('resume', undefined, 'Resuming')),
-  );
-
-  // ⚠️ "START NOW" IS NOT A SECOND RESUME BUTTON (owner-approved fine control
-  // #2, 2026-08-18). Both clear the pause flag, the pause timer and the
-  // don't-check timer. RESUME additionally drops a scheduled window that is in
-  // force right now — it has to, or the window re-pauses ingestion seconds
-  // later and Resume reads as broken. START NOW leaves `pause_windows`
-  // completely untouched: quiet hours are a schedule the owner set on purpose,
-  // and silently deleting tonight's 7pm window to satisfy a one-off request
-  // would take away a recurring instruction he never withdrew.
-  //
-  // ⚠️ THE CONSEQUENCE IS ADMITTED RATHER THAN HIDDEN: inside a live window
-  // this clears the ad-hoc pauses and the window STILL blocks the start. The
-  // route's own wording says so and lands in the message line below, so the
-  // owner reads it at the moment it matters instead of wondering why nothing
-  // started. A control that hid that would be promising a run it cannot
-  // deliver, which is the failure this page exists to end.
-  holder.appendChild(
-    confirmBtn(
-      '▶ Start now',
-      'quiet',
-      () => sendIngestionControl('start_now', undefined, 'Clearing the pauses'),
-      'warn',
-    ),
-  );
+  // ⚠️ The pause/resume buttons themselves are NOT built here any more — they
+  // depend on the control document, so renderPrimaryAction() builds them and
+  // rebuilds them when (and only when) the answer changes. What is built once
+  // here is everything whose existence does not depend on the state: the two
+  // "Set" buttons behind Custom…, and the two standing editors.
 
   const pauseSlot = document.getElementById('ingestion-pause-until-slot');
   if (pauseSlot) {
@@ -1112,7 +1310,11 @@ function buildIngestionCard() {
       confirmBtn('Set pause', 'quiet', () => {
         const r = readPhoenixPicker(ingPauseUntilInput, 'the pause');
         if (r.error) { setIngestionMsg(r.error, 'warn'); return; }
-        return sendIngestionControl('pause_until', r.iso, `Pausing until ${wordTime(r.iso, Date.now())}`);
+        return sendIngestionControl(
+          'pause_until',
+          r.iso,
+          `Pausing until ${wordTime(r.iso, Date.now())}`,
+        ).then(closeWhen);
       }, 'warn'),
     );
   }
@@ -1123,7 +1325,11 @@ function buildIngestionCard() {
       confirmBtn('Set check time', 'quiet', () => {
         const r = readPhoenixPicker(ingDontCheckInput, 'the check time');
         if (r.error) { setIngestionMsg(r.error, 'warn'); return; }
-        return sendIngestionControl('dont_check_until', r.iso, `Holding off until ${wordTime(r.iso, Date.now())}`);
+        return sendIngestionControl(
+          'dont_check_until',
+          r.iso,
+          `Holding off until ${wordTime(r.iso, Date.now())}`,
+        ).then(closeWhen);
       }, 'warn'),
     );
   }
@@ -1398,9 +1604,12 @@ const opsSectionEl = document.getElementById('ops-section');
 const gate = mountGate({
   sections: [opsSectionEl],
   // ⚠️ IDEMPOTENT ON PURPOSE — the gate re-runs this on every auth event.
-  // Each call is a re-read, never a re-build: the buttons are constructed once
-  // at boot (below), because rebuilding them here would silently reset
-  // confirmBtn's armed-state timer under someone's finger.
+  // Each call is a re-read, never a re-build: everything whose existence does
+  // not depend on the control document is constructed once at boot (below),
+  // because rebuilding it here would silently reset confirmBtn's armed-state
+  // timer under someone's finger. The ONE contextual button does depend on the
+  // document, so renderPrimaryAction() owns it — and it too rebuilds only when
+  // the answer actually changes, for the same reason.
   onAllowed: () => {
     loadIngestionControl();
     loadShelfUploadStatus();

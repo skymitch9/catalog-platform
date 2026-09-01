@@ -1,7 +1,19 @@
 # Ingestion pause controls — Information Reference
 
 > **Audience:** Claude sessions. **Status:** TRACKED (public repo — no household names).
-> ⚠️ **Last verified: 2026-09-01** — the soft pause, the recurring blockers and
+> ⚠️ **Last verified: 2026-09-01 (second pass — the UX condense).** The card was
+> re-laid-out the same day on the owner's feedback: **one contextual button
+> instead of four, preset time chips instead of the raw picker as the front
+> door, and both standing editors behind one counted disclosure** — 22 visible
+> controls in the default state down to 2. **Presentation only: no route, no
+> written shape and no semantic changed, and `ops.ts` was not touched.** The
+> full rationale is [`ingestion-pause-until-gpu-design.md`](ingestion-pause-until-gpu-design.md)
+> §9; the tables below carry the new labels beside the unchanged writes. What
+> was MEASURED that pass: the full workspace suite (**2203** pass / 0 fail, up
+> from 2185) and `npm run typecheck` clean. What was **NOT**: nobody has clicked
+> the new layout either — see §6.
+>
+> Earlier that day — the soft pause, the recurring blockers and
 > the do-not-disturb list landed (§§2, 3, 3c below). What was MEASURED that day:
 > the full workspace suite (2185 pass / 0 fail, up from 2128) and `npm run
 > typecheck` clean, the auth-worker deployed, `verify:home` live, and the
@@ -33,7 +45,7 @@ don't even check to start until x time."*
 | Card CSS | `sites/heygabi-home/public/assets/status-shell.css` (`.ing-*`) |
 | Every word + the timezone | `sites/heygabi-home/public/assets/ingestion-time.js` |
 | Routes | `apps/auth-worker/src/ops.ts` (`GET`/`POST /api/estate/ops/ingestion`) |
-| Tests | `scripts/test/ingestion-time.test.mjs` (**59**) · `apps/auth-worker/test/ingestion-control.test.ts` (**71**) — counts measured 2026-09-01 |
+| Tests | `scripts/test/ingestion-time.test.mjs` (**77**) · `apps/auth-worker/test/ingestion-control.test.ts` (**71**) — counts measured 2026-09-01, after the UX condense (59 → 77; the Worker's are unchanged because the routes were not touched) |
 | **The reader (other repo)** | `audiobook_catalog/app/core/ingest_control.py` |
 | Live pins | `sites/heygabi-home/predeploy.checks.json` (`/status/pipelines/`, `/status/pipelines/pipelines.js`, `/assets/ingestion-time.js`) |
 
@@ -80,12 +92,17 @@ the machine paused indefinitely, which is the opposite of what was asked for.
 
 Hence the encoding this repo writes:
 
-| Control | Writes |
+⚠️ **The LABELS below changed on 2026-09-01 (the UX condense — design §9) and
+the WRITES did not.** There is now one **Pause…** button that opens four
+answers; the answer names are in the left column. What each writes is exactly
+what the same control wrote before the condense.
+
+| Control (where it lives on the card) | Writes |
 |---|---|
-| **Pause until I unpause…** (the hard pause; was "Pause now") | `paused: true`, `paused_until: null`, `pause_until_gpu_free: false` — the one pause a free GPU must NOT end |
-| **Pause for now** (soft, 2026-09-01) | `paused: false`, `paused_until: <the next 00:00 Phoenix, computed at write time>`, `pause_until_gpu_free: true` |
-| **Pause until…** (soft with a ceiling) | `paused: false`, `paused_until: <ISO>`, ⚠️ **`pause_until_gpu_free: true` since 2026-09-01** — the picked time became the LATEST it can last, not a promise. A timer with the flag **off** is still the correct form of a timed pause, and it expires by itself |
-| **Don't even check to start until…** | `dont_check_until: <ISO>` |
+| **Until I unpause** — Pause menu, 3rd answer; asks the mode question (the hard pause; "Pause now" before 2026-08-23, "Pause until I unpause…" before the condense) | `paused: true`, `paused_until: null`, `pause_until_gpu_free: false` — the one pause a free GPU must NOT end |
+| **For now** — Pause menu, 1st answer (soft, 2026-09-01) | `paused: false`, `paused_until: <the next 00:00 Phoenix, computed at write time>`, `pause_until_gpu_free: true` |
+| **Until a time…** — Pause menu, 2nd answer; then a preset chip or **Custom…** + the `datetime-local` picker (soft with a ceiling) | `paused: false`, `paused_until: <ISO>`, ⚠️ **`pause_until_gpu_free: true` since 2026-09-01** — the picked time became the LATEST it can last, not a promise. A timer with the flag **off** is still the correct form of a timed pause, and it expires by itself. ⚠️ A **chip and the picker write the identical shape** — the chip is only a pre-computed Phoenix instant |
+| **Don't even check until a time…** — Pause menu, 4th answer; same chips | `dont_check_until: <ISO>` |
 | **Resume** | `paused: false`, both timers `null`, `pause_until_gpu_free: false`, and any window *currently in force* dropped (otherwise it re-pauses seconds later and Resume looks broken). ⚠️ **`recurring_windows` and `exempt_processes` untouched** — §3c |
 | **▶ Start now** | `paused: false`, both timers `null`, `pause_until_gpu_free: false`, and ⚠️ **`pause_windows`, `recurring_windows` and `exempt_processes` all untouched** — see §3a and §3c |
 | **Add / delete a recurring blocker** | the whole new `recurring_windows` list, in the mask **only when it changed** |
@@ -98,6 +115,12 @@ Hence the encoding this repo writes:
 Added 2026-08-18 (owner-approved fine control #2). Both clear `paused`,
 `paused_until` and `dont_check_until`. **Resume additionally drops a
 `pause_window` in force; Start-now does not.**
+
+⚠️ **This section is why `▶ Start now` is only ON THE CARD inside a live
+window** (2026-09-01, the condense). Everywhere else the two buttons write the
+same document, so the second one is noise — `describeIngestion()` returns
+`showStartNow` and the card renders it on nothing else. The route is unchanged
+and still accepts `start_now` at any time.
 
 Resume has to drop it, or the window re-pauses ingestion seconds later and the
 button reads as broken. Start-now must not, because **quiet hours are a schedule
@@ -168,6 +191,15 @@ route therefore reads the document immediately before every write (it always
 did, for `requeue`) and the GET rendering has to expect a control whose
 `updated_by` is the home machine rather than a person.
 
+⚠️ **BOTH LISTS SIT BEHIND ONE COLLAPSED DISCLOSURE SINCE 2026-09-01** (the
+condense, design §9) — *"Schedules & exemptions"*, whose summary line carries
+the counts in words (*"2 blockers · 1 exemption"* / *"none set"*) and, when a
+blocker is in force, says so in amber **before it is opened**. Collapsing a
+standing control is only safe because the summary never reads as absent; a live
+blocker hidden behind a closed disclosure would be the invisible control this
+surface bans. `standingSummaryWords()` owns that line, in `ingestion-time.js`
+with every other word.
+
 ⚠️ **The card is deliberately MORE complete than the reader's refusal.** When a
 soft pause and a recurring blocker are both in force, the home machine's refusal
 names the pause (the first thing its ordered check matched) and says nothing
@@ -233,6 +265,15 @@ tomorrow" is true and reads as a different time at 9pm.
 - **The signed-in card has never been rendered by a human.** Every marker in
   `predeploy.checks.json` is the shell; the buttons are injected after Firebase
   sign-in, which an unauthenticated fetch never has.
+- ⚠️ **AND THAT NOW COVERS A LAYOUT NOBODY HAS SEEN AT ALL** (2026-09-01, the
+  condense). The pause menu, the chip row, the drawer and the disclosure are all
+  built by `pipelines.js` **after sign-in**, so no fetch this session can make
+  will render one. What IS pinned live is that the shell ships them
+  (`id="ingestion-when"`, `id="ingestion-standing"`, and the chips' own function
+  names inside the served `pipelines.js`), and the WORDS are pinned by 77 node
+  tests. **The pixels are inference.** Specifically unseen: whether a chip row
+  wraps sanely on a phone, whether the `<details>` marker reads as tappable, and
+  whether the amber in-force summary is legible in every theme.
 - ✅ **SUPERSEDED 2026-08-18 — the document HAS now been written and read
   back.** The full round trip was exercised against the live control document
   and the live processor: a Worker-shaped write of `requeue` + `priority_front`

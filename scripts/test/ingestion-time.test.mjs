@@ -22,9 +22,13 @@ import { test } from 'node:test';
 import {
   MAX_EXEMPT_PROCESSES,
   MAX_RECURRING_WINDOWS,
+  PAUSE_MENU,
   PHOENIX_OFFSET,
   PHOENIX_OFFSET_MS,
   PHOENIX_TZ,
+  PRESET_CUSTOM_LABEL,
+  PRESET_MIN_MS,
+  STANDING_UNKNOWN_WORDS,
   SUGGESTED_EXEMPT_PROCESSES,
   activeRecurringWindow,
   activeWindow,
@@ -33,14 +37,17 @@ import {
   isoToPhoenixLocal,
   nextWindow,
   parseIso,
+  pausePresets,
   phoenixDayIndex,
   phoenixLocalToIso,
   phoenixWeekdayAndMinutes,
   processListWords,
   recurringWindowWords,
+  standingSummaryWords,
   validateExemptProcess,
   validateRecurringWindow,
   weekdayWords,
+  whenTitleWords,
   wordTime,
 } from '../../sites/heygabi-home/public/assets/ingestion-time.js';
 
@@ -752,6 +759,246 @@ test('⚠️ describeIngestion: the HARD flag still outranks everything, soft fl
   assert.equal(d.softPause, false);
   assert.equal(d.headline, 'Paused, with no end time set.');
   assert.ok(!d.lines.join(' ').includes('GPU'));
+});
+
+// ---------------------------------------------------------------------------
+// THE CONDENSE (owner ask 2026-09-01: "this all works good, the time selector
+// is a not my favorite and its getting to be a lot of menus and buttons, can
+// you reassess and condense for a better ux").
+//
+// ⚠️ These pin the two halves a screenshot cannot check: that a chip's LABEL
+// names the instant the chip WRITES (the same class of bug as the Phoenix
+// conversion — the words and the instant would agree with each other while
+// both being wrong), and that a COLLAPSED disclosure never reads as absent.
+// ---------------------------------------------------------------------------
+
+const AT_6_PM = Date.parse('2026-08-19T01:00:00Z'); // 6:00 PM sharp, Tue 18 Aug
+const AT_6_55_PM = Date.parse('2026-08-19T01:55:00Z'); // five minutes before 7
+const AT_11_55_PM = Date.parse('2026-08-19T06:55:00Z'); // five minutes before midnight
+const AT_7_55_AM = Date.parse('2026-08-18T14:55:00Z'); // five minutes before 8am
+
+test('pausePresets: every chip is labelled with the words the status line uses', () => {
+  const chips = pausePresets(AT_7_30_PM);
+  assert.deepEqual(
+    chips.map((c) => c.label),
+    [
+      'In an hour — 8:30 PM today',
+      'In 3 hours — 10:30 PM today',
+      'Midnight tonight',
+      '8:00 AM tomorrow',
+    ],
+  );
+  // ⚠️ THE LABEL MUST NAME THE INSTANT THE CHIP WRITES. A chip saying "in an
+  // hour" over an ISO an hour and a half out is the exact silent-wrongness
+  // this module exists to prevent.
+  for (const chip of chips) {
+    const words = wordTime(chip.iso, AT_7_30_PM);
+    assert.ok(
+      chip.label.toLowerCase().endsWith(words.toLowerCase()),
+      `${chip.key}: "${chip.label}" does not end in its own instant ("${words}")`,
+    );
+  }
+});
+
+test('⚠️ pausePresets: a clock time already PAST is skipped, never rolled to tomorrow', () => {
+  // At 7:30 PM the "7:00 PM" chip is gone. Rolling it to tomorrow evening
+  // would offer a 23-hour pause under a label reading like half an hour.
+  const keys = pausePresets(AT_7_30_PM).map((c) => c.key);
+  assert.ok(!keys.includes('evening'));
+  assert.deepEqual(keys, ['plus1h', 'plus3h', 'midnight', 'morning']);
+});
+
+test('⚠️ pausePresets: a chip less than ten minutes away is skipped too', () => {
+  // A pause that expires before the owner looks up from the screen is
+  // indistinguishable from a control that did nothing.
+  assert.equal(PRESET_MIN_MS, 10 * 60_000);
+  assert.ok(!pausePresets(AT_6_55_PM).map((c) => c.key).includes('evening'), '7:00 PM is 5 min away');
+  assert.ok(!pausePresets(AT_11_55_PM).map((c) => c.key).includes('midnight'), 'midnight is 5 min away');
+});
+
+test('pausePresets: two presets landing on the same instant collapse to one', () => {
+  // At 6:00 PM sharp "In an hour" IS the 7:00 PM chip; two chips writing the
+  // same instant under different labels is a menu that looks like a choice.
+  const chips = pausePresets(AT_6_PM);
+  assert.deepEqual(chips.map((c) => c.key), ['plus1h', 'plus3h', 'midnight', 'morning']);
+  assert.equal(chips[0].label, 'In an hour — 7:00 PM today');
+  assert.equal(new Set(chips.map((c) => c.iso)).size, chips.length);
+});
+
+test('pausePresets: the 8am chip is the NEXT 8am, and the row is sorted by time', () => {
+  // Before breakfast it is today's; after it, tomorrow's — and when today's is
+  // minutes away it rolls, because "the next 8am" is the whole meaning of the
+  // chip (unlike "7:00 PM", which is an evening or nothing).
+  const morning = pausePresets(AT_7_55_AM).find((c) => c.key === 'morning');
+  assert.equal(morning.label, '8:00 AM tomorrow');
+  const evening = pausePresets(AT_7_55_AM).find((c) => c.key === 'evening');
+  assert.equal(evening.label, '7:00 PM today');
+  for (const at of [AT_7_55_AM, AT_6_PM, AT_7_30_PM, AT_11_55_PM]) {
+    const times = pausePresets(at).map((c) => Date.parse(c.iso));
+    assert.deepEqual(times, [...times].sort((a, b) => a - b), 'chips are a timeline');
+    for (const t of times) assert.ok(t - at >= PRESET_MIN_MS, 'no chip in the past or nearly here');
+  }
+});
+
+test('pausePresets: a chip writes a real UTC instant, Phoenix-correct in January and July', () => {
+  // The chip goes through the same conversion the picker does, so a laptop on
+  // Eastern still means 8:00 AM at home. Pinned in both halves of the year
+  // because Arizona has no DST and a library that thought otherwise would
+  // shift these by an hour for half the year.
+  for (const [now, expected] of [
+    [Date.parse('2026-01-15T05:00:00Z'), '2026-01-15T15:00:00.000Z'], // 10pm Jan 14 Phoenix → 8am Jan 15
+    [Date.parse('2026-07-15T05:00:00Z'), '2026-07-15T15:00:00.000Z'],
+  ]) {
+    const morning = pausePresets(now).find((c) => c.key === 'morning');
+    assert.equal(morning.iso, expected);
+  }
+});
+
+test('the pause MENU is four distinct answers, each naming its own consequence', () => {
+  // ⚠️ The detail sentence is what lets the answer BE the confirmation instead
+  // of demanding a third tap — a menu of bare verbs would have condensed
+  // nothing. Every entry must carry one.
+  assert.deepEqual(PAUSE_MENU.map((m) => m.key), ['for_now', 'until_time', 'hard', 'dont_check']);
+  assert.equal(new Set(PAUSE_MENU.map((m) => m.label)).size, 4);
+  for (const entry of PAUSE_MENU) {
+    assert.ok(entry.detail.length > 20, `${entry.key} has no consequence sentence`);
+  }
+  // The two that open the time drawer say so with an ellipsis; the two that
+  // write immediately do not.
+  assert.ok(PAUSE_MENU[1].label.endsWith('…'));
+  assert.ok(PAUSE_MENU[3].label.endsWith('…'));
+  assert.ok(!PAUSE_MENU[0].label.endsWith('…'));
+  assert.ok(!PAUSE_MENU[2].label.endsWith('…'));
+  // ⚠️ The ceiling is admitted in the menu itself, not only in the drawer.
+  assert.match(PAUSE_MENU[1].detail, /At latest/);
+  assert.match(PAUSE_MENU[2].detail, /Nothing but Resume/);
+});
+
+test('whenTitleWords: each drawer says which control it is about, and refuses to guess', () => {
+  assert.equal(whenTitleWords('pause_until'), 'Pause until… (at latest)');
+  assert.equal(whenTitleWords('dont_check_until'), 'Don’t even check to start until…');
+  assert.equal(whenTitleWords('something_else'), null);
+  assert.equal(PRESET_CUSTOM_LABEL, 'Custom…');
+});
+
+// --- the counted disclosure ------------------------------------------------
+
+test('standingSummaryWords: a collapsed disclosure says how much is in there', () => {
+  const two = standingSummaryWords(
+    { recurring_windows: [{ days: [1], from: '18:30', until: '22:15' }, { days: [5], from: '09:00', until: '10:00' }], exempt_processes: ['Wow.exe'] },
+    AT_7_30_PM,
+  );
+  assert.equal(two.text, '2 blockers · 1 exemption');
+  assert.equal(two.inForce, false);
+  const one = standingSummaryWords(
+    { recurring_windows: [{ days: [5], from: '09:00', until: '10:00' }], exempt_processes: [] },
+    AT_7_30_PM,
+  );
+  assert.equal(one.text, '1 blocker', 'singular, and an empty list is not counted at all');
+});
+
+test('⚠️ standingSummaryWords: “none set” is STATED — collapsed must never read as absent', () => {
+  for (const control of [null, undefined, {}, { recurring_windows: [], exempt_processes: [] }]) {
+    const s = standingSummaryWords(control, AT_7_30_PM);
+    assert.equal(s.text, 'none set');
+    assert.equal(s.inForce, false);
+  }
+});
+
+test('⚠️ standingSummaryWords: a blocker IN FORCE leads the line and flags itself amber', () => {
+  // A blocker stopping starts right now, hidden behind a closed disclosure,
+  // would be the invisible control this surface bans — so the live fact is
+  // first, and `inForce` is what tints it.
+  const s = standingSummaryWords(
+    { recurring_windows: [IN_FORCE], exempt_processes: ['Wow.exe'] },
+    AT_7_30_PM,
+  );
+  assert.equal(s.text, 'Blocker in force until 10:15 PM · 1 blocker · 1 exemption');
+  assert.equal(s.inForce, true);
+});
+
+test('standingSummaryWords: a blocker OUT of force is only counted, never announced', () => {
+  const s = standingSummaryWords({ recurring_windows: [{ days: [4], from: '18:30', until: '22:15' }] }, AT_7_30_PM);
+  assert.equal(s.text, '1 blocker');
+  assert.equal(s.inForce, false);
+});
+
+test('a FAILED read says so — never “none set”, which is a stronger and falser claim', () => {
+  assert.match(STANDING_UNKNOWN_WORDS, /Cannot read/);
+  assert.ok(!STANDING_UNKNOWN_WORDS.includes('none'));
+});
+
+// --- the ONE contextual primary action -------------------------------------
+
+test('⚠️ describeIngestion: the card offers PAUSE when there is nothing to resume', () => {
+  const running = describeIngestion(
+    { paused: false, paused_until: null, dont_check_until: null, pause_windows: [] },
+    AT_7_30_PM,
+  );
+  assert.equal(running.primary, 'pause');
+  assert.equal(running.showStartNow, false);
+  // A document that does not exist yet is the same answer.
+  assert.equal(describeIngestion(null, AT_7_30_PM).primary, 'pause');
+  assert.equal(describeIngestion(null, AT_7_30_PM).showStartNow, false);
+});
+
+test('⚠️ describeIngestion: a blocker ALONE still offers Pause — Resume cannot end one', () => {
+  // Blockers are absolute and survive every button on the card, so a Resume
+  // offered here would be a control that does nothing. That is worse than no
+  // control: it teaches the owner that Resume is broken.
+  const d = describeIngestion(
+    { paused: false, paused_until: null, dont_check_until: null, pause_windows: [], recurring_windows: [IN_FORCE] },
+    AT_7_30_PM,
+  );
+  assert.equal(d.state, 'blocker');
+  assert.equal(d.primary, 'pause');
+  assert.equal(d.showStartNow, false);
+});
+
+test('describeIngestion: every kind of pause offers RESUME, and only that', () => {
+  const cases = [
+    { paused: true, paused_until: null, dont_check_until: null, pause_windows: [] },
+    { ...SOFT_BASE },
+    { paused: false, paused_until: '2026-08-19T04:00:00Z', dont_check_until: null, pause_windows: [] },
+    { paused: false, paused_until: null, dont_check_until: '2026-08-19T04:00:00Z', pause_windows: [] },
+  ];
+  for (const control of cases) {
+    const d = describeIngestion(control, AT_7_30_PM);
+    assert.equal(d.primary, 'resume', JSON.stringify(control));
+    assert.equal(d.showStartNow, false, 'no window in force, so Start now would be a duplicate Resume');
+  }
+});
+
+test('⚠️ describeIngestion: START NOW appears ONLY inside a live window — §3a, the one state where it differs', () => {
+  // Resume drops the window in force; Start now deliberately does not. That is
+  // the entire difference between the two buttons, so this is the only state
+  // where showing both is honest rather than noise.
+  const d = describeIngestion(
+    {
+      paused: false,
+      paused_until: null,
+      dont_check_until: null,
+      pause_windows: [{ from: '2026-08-19T02:00:00Z', until: '2026-08-19T07:00:00Z' }],
+    },
+    AT_7_30_PM,
+  );
+  assert.equal(d.state, 'window');
+  assert.equal(d.primary, 'resume');
+  assert.equal(d.showStartNow, true);
+});
+
+test('describeIngestion: an EXPIRED window is not a live one, so Start now stays away', () => {
+  const d = describeIngestion(
+    {
+      paused: false,
+      paused_until: null,
+      dont_check_until: null,
+      pause_windows: [{ from: '2026-08-18T02:00:00Z', until: '2026-08-18T07:00:00Z' }],
+    },
+    AT_7_30_PM,
+  );
+  assert.equal(d.primary, 'pause');
+  assert.equal(d.showStartNow, false);
 });
 
 test('the card’s caps mirror the reader’s and the Worker’s — one number, three copies', () => {
