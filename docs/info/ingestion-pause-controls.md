@@ -262,18 +262,27 @@ tomorrow" is true and reads as a different time at 9pm.
 
 ## 6. NOT verified
 
-- **The signed-in card has never been rendered by a human.** Every marker in
-  `predeploy.checks.json` is the shell; the buttons are injected after Firebase
-  sign-in, which an unauthenticated fetch never has.
-- ⚠️ **AND THAT NOW COVERS A LAYOUT NOBODY HAS SEEN AT ALL** (2026-09-01, the
-  condense). The pause menu, the chip row, the drawer and the disclosure are all
-  built by `pipelines.js` **after sign-in**, so no fetch this session can make
-  will render one. What IS pinned live is that the shell ships them
-  (`id="ingestion-when"`, `id="ingestion-standing"`, and the chips' own function
-  names inside the served `pipelines.js`), and the WORDS are pinned by 77 node
-  tests. **The pixels are inference.** Specifically unseen: whether a chip row
-  wraps sanely on a phone, whether the `<details>` marker reads as tappable, and
-  whether the amber in-force summary is legible in every theme.
+- ✅ **SUPERSEDED 2026-09-01 (midday) — THE OWNER HAS NOW USED THE CARD, both
+  layouts' worth of debt paid at once.** He rendered the condensed card signed
+  in, pressed Resume (the document read back `paused: false`, timers null),
+  quick-added `Wow.exe` to do-not-disturb, and created the Mon/Tue/Wed
+  18:30–22:15 recurring blocker — all through `POST /api/estate/ops/ingestion`
+  with his own devops token, so **the route's 200 path and the card's buttons
+  are exercised end to end for the standing-list and resume actions**. Read
+  back from the live document minutes later:
+  `exempt_processes: ['Wow.exe']`,
+  `recurring_windows: [{days:[1,2,3], from:'18:30', until:'22:15'}]`.
+  ⚠️ Still unseen even so: a phone-width render (his session's viewport was not
+  recorded), the amber in-force summary in every theme, and the SOFT pause
+  buttons — he has not yet pressed *Pause for now* or a chip, so those two
+  actions' 200 paths remain unexercised.
+- ✅ **THE DO-NOT-DISTURB GUARD IS VERIFIED END TO END, 2026-09-01 11:30:04.**
+  With `Wow.exe` freshly launched by the owner, the REAL scheduled tick — not
+  a test harness — logged
+  `STOP before 'Amber the Cursed Berserker: Book 4…': Wow.exe is running -
+  the machine is in use; no new starts` and receipted `0 packed, 0 failed`.
+  The guard's functions were also run directly against the live document and
+  live process table minutes earlier with the same verdict.
 - ✅ **SUPERSEDED 2026-08-18 — the document HAS now been written and read
   back.** The full round trip was exercised against the live control document
   and the live processor: a Worker-shaped write of `requeue` + `priority_front`
