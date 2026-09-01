@@ -933,7 +933,7 @@ no second switch to find.
 
 | You do this | She hears it |
 |---|---|
-| `@GABI …` in a channel | ✅ as before |
+| `@GABI …` in a channel — **the USER mention** | ✅ as before — ⚠️ but see 12.2a: the ROLE looks identical in the picker and is invisible |
 | **Reply** to one of her messages, **ping left ON** | ✅ **new** |
 | Reply to one of her messages, **ping switched OFF** | ❌ **invisible — see 12.2** |
 | Reply to a `/have` or `/gabi` **slash-command answer** | ❌ **Discord excludes it — see 12.2** |
@@ -966,6 +966,33 @@ So:
 
 If somebody reports "I replied and she ignored me", this is the first thing to
 check, and it is a client setting, not a deploy.
+
+### 12.2a ⚠️ Mentioning her ROLE is invisible — and it looks exactly like mentioning her (incident 2026-09-01)
+
+`mentions.ts` requires **her user id in the message's `mentions` array**
+(`mentionTrigger`, ~line 452); a mention of a **role** she holds lands in
+`mention_roles` and is **ignored on purpose** (the file's own comment, ~line 65
+— same class as `@everyone`: a bot that answered every role ping would be a
+menace). The trap: Discord's @-autocomplete offers the integration role and
+the bot user as two identically-rendered "GABI" entries, and a message built
+from the ROLE entry looks byte-identical on screen while delivering no event
+her handler accepts.
+
+**Measured 2026-09-01:** the owner @'d her in the standing test channel — a
+channel she had answered in before — and got silence, while a DM (no role
+ambiguity possible) answered normally. Health was green throughout; nothing
+was down. The chase started at permissions and ended at the picker.
+
+**The fix is a naming convention, not code** (owner, same day): the
+integration role is renamed **`role_gabi_bot`**, so the picker's two entries
+can no longer be confused — `@GABI` is always the user, `@role_gabi_bot` is
+visibly not a way to talk to her. ⚠️ If a future server or re-invite recreates
+a role named like the bot, apply the same rename before anyone tests
+mentions. The role-mention door stays closed by design; do not "fix" this by
+answering `mention_roles`.
+
+If somebody reports "I @'d her and she ignored me" in a channel she can see:
+ask which autocomplete entry they picked, before anything else.
 
 ### 12.3 What she remembers, and for how long
 
