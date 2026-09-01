@@ -171,10 +171,24 @@ inventory (names only; the file was **not** opened by this work):
 - **Rough size:** the 30 `NAME=` keys are a short sitting once the config/credential
   sort is made; the four JSON documents are the real work.
 
-## ☐ DESIGNED, NOT BUILT (owner asks 2026-08-24) — two designs landed 2026-08-26
+## ☐ DESIGNED, NOT BUILT — three designs (two landed 2026-08-26, one 2026-08-31)
 
-Both are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
+All are **DESIGN ONLY**. Nothing was built, no route exists, no migration was
 applied. Each doc carries its own phases, effort guesses and open questions.
+
+### 0. Pause until the GPU is next free — `docs/info/ingestion-pause-until-gpu-design.md`
+Owner ask 2026-08-31: *"for ingestion pause, I also want a feature that says
+pause until the next gpu check. plan this dont buil yet."* Designed against the
+live `ingest_control.py`: one new control-doc field (`pause_until_gpu_free`),
+the PROCESSOR releases the pause when `gpu_sustained_free()` next passes
+(clear-then-start, every failure mode fails closed), one new card button.
+Effort S–M, deploy-order safe both directions.
+- ☐ **OWNER Q1 (ask first):** confirm the reading — "pause now, resume yourself
+  when the GPU is next free"? (Q2 release bar and Q3 scope follow, one at a
+  time — §6 of the doc.)
+- Found while designing: `pause_mode` (`all`|`manual_only`, owner ask
+  2026-08-23) is already BUILT in `ingest_control.py` — that is library TODO's
+  OR-3 answered; verify the card offers the choice, then close OR-3 there.
 
 ### 1. Toggle what can bill the LLM — `docs/info/llm-billing-control-design.md`
 Mockup (private artifact): https://claude.ai/code/artifact/2f288c59-d6ca-4fdf-b3e0-da732f0e78d1
