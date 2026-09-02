@@ -341,6 +341,63 @@ ul.users-list { list-style: none; margin: .55rem 0 0; padding: 0; display: grid;
 }
 .role-tree-note { margin: .6rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
 
+/* ═══ THE SPENDING PANEL ════════════════════════════════════════════════
+   admin.js: renderSpendingPanel(). Same <details> language and the same
+   surface treatment as the permission map above — it sits beside it because
+   it answers an adjacent question ("what may bill") rather than a new kind
+   of question, and giving it its own visual idiom would suggest otherwise.
+   ⚠️ The table scrolls inside itself on a narrow screen; the page must not
+   scroll sideways. */
+#spending-panel {
+  margin: 0 0 var(--et-space-2);
+  padding: .6em .9em;
+  border: var(--et-border-w) solid var(--et-panel-border);
+  border-radius: var(--et-radius);
+  background: var(--et-surface);
+}
+#spending-panel .adv-summary { padding: .2em .1em; }
+#spending-panel-body { overflow-x: auto; }
+.spend-table { min-width: 46rem; }
+.spend-table th.spend-group {
+  padding-top: .9em;
+  color: var(--et-fg);
+  font-size: var(--et-text-micro);
+}
+.spend-detail { display: block; margin-top: .15em; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.spend-cost { color: var(--et-muted); font-size: var(--et-text-micro); white-space: nowrap; }
+.spend-cell { white-space: nowrap; }
+.spend-na { color: var(--et-muted); font-size: var(--et-text-micro); }
+/* ⚠️ ON and OFF must be legible without colour alone — the button carries the
+   WORD, and the colour only reinforces it. A cell that said only "green" or
+   "red" would be unreadable to a chunk of the household and unscreenshotable
+   in a bug report. */
+.spend-toggle {
+  min-width: 3.4em;
+  padding: .18em .6em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: transparent;
+  color: var(--et-fg);
+  font: inherit;
+  font-size: var(--et-text-micro);
+  cursor: pointer;
+}
+.spend-toggle[data-on="false"] { border-color: var(--et-warn); color: var(--et-warn); }
+/* A STAGED cell is outlined, exactly as a staged grant is on the cards below —
+   one visual language for "you have changed this and not saved it". */
+.spend-toggle[data-staged="true"] { outline: 2px solid var(--et-accent, currentColor); outline-offset: 1px; }
+.spend-some { margin-left: .4em; color: var(--et-muted); font-size: var(--et-text-micro); }
+.spend-footer { margin-top: .4rem; }
+.spend-warn { margin: .6rem 0 0; color: var(--et-warn); font-size: var(--et-text-small); text-wrap: pretty; }
+.spend-staging {
+  margin-top: .9rem;
+  padding: .7em .9em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+}
+.spend-summary { margin: 0 0 .6rem; font-size: var(--et-text-small); text-wrap: pretty; }
+.spend-actions { display: flex; gap: .5rem; margin-top: .7rem; flex-wrap: wrap; }
+
 #gaps {
   margin: var(--et-space-2) 0 0;
   padding: .7em 1em;
@@ -622,6 +679,35 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       <span class="ctl-label">Permission map — every site's ladder</span>
     </summary>
     <div id="permission-map-body"></div>
+  </details>
+
+  <!-- THE SPENDING PANEL — admin.js: renderSpendingPanel().
+       Owner ask 2026-08-24: "we need a way to toggle what can bill the LLM
+       and what can't inside the admin page somewhere." Design:
+       docs/info/llm-billing-control-design.md §7.1.
+
+       ⚠️ FEATURES AS ROWS, SITES AS COLUMNS — the TRANSPOSE of the permission
+       grid on every member card, deliberately: the question here is "what is
+       switched on where", not "what can this person do". Drawing it the same
+       way round would make two different questions look like one table
+       disagreeing with itself.
+
+       🔴 EVERY SWITCH IN HERE CAN ONLY DENY. Turning a cell back ON removes
+       the rule and returns it to "no rule = today's behaviour"; it grants
+       nobody anything, because each site's own gate (a role capability, a
+       missing key, an env posture) is still ANDed in front of it.
+
+       ⚠️ It owns ONE question and links out for the neighbours: how much has
+       been spent is /status/agents' measurement, and pausing the pipeline for
+       a night is /status/pipelines' TIME control. Neither number is restated
+       here — a number worth showing twice will eventually disagree with
+       itself. Collapsed by default, and hidden entirely when the billing
+       route does not answer, exactly like the permission map above. -->
+  <details id="spending-panel" class="adv" hidden>
+    <summary class="adv-summary">
+      <span class="ctl-label">Spending — what may bill the model, and where</span>
+    </summary>
+    <div id="spending-panel-body"></div>
   </details>
 
   <!-- CONTROLS: search first, catalog chips + count/reset always visible,

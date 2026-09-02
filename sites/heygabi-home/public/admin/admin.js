@@ -453,6 +453,32 @@ function roleDirFor(key) {
   return key === 'audiobook' ? siteRolesDir : appDirs[key];
 }
 
+/**
+ * THE SPENDING PANEL's data — GET /api/estate/billing/rules, which answers the
+ * registry AND the rules in one call.
+ *
+ * ⚠️ THE REGISTRY COMES FROM THE SERVER AND IS NEVER RESTATED HERE. A second
+ * copy of the feature list in this file would be the `research.cover` /
+ * `research.covers` drift the auth Worker's pin test exists to catch, one layer
+ * up and with no test in front of it — and a mis-spelled id posts a rule that
+ * denies nothing while looking exactly like a switch that worked.
+ *   null | { features, sites, groups, rules, unknown, effect_delay_note }
+ */
+let billingDir = null;
+
+/**
+ * Staged cell edits, keyed `${feature}|${site}` → true (ON) | false (OFF).
+ *
+ * ⚠️ GRANT-CLASS, per this page's two-gesture grammar: clicking a cell changes
+ * NOTHING. It stages, the cell is outlined, and one Save at the foot of the
+ * panel commits the lot with the `why` typed beside it. That matches the
+ * owner's own settlement of the shape ("do a confirm/save button and no set
+ * role button for each role"), and it is also forced by the data: a deny row
+ * cannot be written without a `why`, and a per-cell write would ask for one
+ * per click.
+ */
+const billingStaged = new Map();
+
 /** The full directory as last loaded — filters/sort run over this, it is never re-fetched for a view change. */
 let allEstateUsers = [];
 
@@ -732,16 +758,22 @@ async function loadDirectory() {
   // One fetch per app Worker, driven by APPS rather than positional
   // destructuring — adding a fourth managed site is a row in APPS and
   // nothing else. A failed app fetch degrades that column only.
-  const [estate, appResults, sroles, rtree] = await Promise.all([
+  const [estate, appResults, sroles, rtree, billing] = await Promise.all([
     api('/api/estate/users'),
     Promise.all(APPS.map((app) => fetchAppDirectory(app))),
     fetchSiteRoles(),
     fetchRoleTree(),
+    // ⚠️ `api()` returns null on any failure and has already said why, so an
+    // unreachable billing route costs the Spending panel and nothing else —
+    // the same degrade-alone rule every other federation here follows.
+    api('/api/estate/billing/rules'),
   ]);
   appDirs = Object.fromEntries(APPS.map((app, i) => [app.key, appResults[i]]));
   siteRolesDir = sroles;
   roleTreeDir = rtree;
+  billingDir = billing;
   renderPermissionMap();
+  renderSpendingPanel();
   // Owner: "just always auto fill and write the max role possible for each
   // site." Fire-and-forget — the render below must not wait on it.
   void reconcileOwnerRoles();
@@ -2139,6 +2171,383 @@ function renderPermissionMap() {
   body.appendChild(note);
 }
 
+// ---------------------------------------------------------------------------
+// THE SPENDING PANEL — "who and what is ALLOWED to bill"
+// (docs/info/llm-billing-control-design.md §7.1, phase 2)
+//
+// Owner ask 2026-08-24: *"we need a way to toggle what can bill the LLM and
+// what can't inside the admin page somewhere."*
+//
+// ⚠️ FEATURES AS ROWS, SITES AS COLUMNS — the TRANSPOSE of the permission grid
+// below, deliberately. The question here is "what is switched on where", not
+// "what can this person do", and drawing it the other way round would make the
+// two panels look like the same table disagreeing with itself.
+//
+// ⚠️ THIS PANEL OWNS ONE QUESTION AND LINKS OUT FOR THE OTHERS. It is a POLICY
+// switch. "How much has been spent" is /status/agents' measurement; "pause the
+// pipeline tonight" is /status's TIME control. A number worth showing twice is
+// a number that will eventually disagree with itself, so neither is restated
+// here — both are links.
+//
+// 🔴 EVERY SWITCH HERE CAN ONLY DENY. Turning a cell ON removes the rule and
+// returns the cell to "no rule", which is today's behaviour; it never grants
+// anybody anything they could not already do, because the site's own gate
+// (a capability, a secret, an env posture) is still ANDed in front of it.
+// ---------------------------------------------------------------------------
+
+/** `feature|site` → the rules that reach that cell, split by who they name. */
+function billingCellRules(featureId, site) {
+  const rules = billingDir?.rules ?? [];
+  const reaches = (r) =>
+    (r.feature === featureId || r.feature === '*') && (r.site === site || r.site === '*');
+  return {
+    broad: rules.filter((r) => reaches(r) && (r.principal_kind === 'everyone' || r.principal_kind === 'system')),
+    narrow: rules.filter((r) => reaches(r) && (r.principal_kind === 'user' || r.principal_kind === 'role')),
+  };
+}
+
+/**
+ * The four cell states of §7.1. ⚠️ `n/a` is a REAL answer and must not be drawn
+ * as `on` — a cell nobody can click that looks clickable invites a click that
+ * does nothing.
+ */
+function billingCellState(feature, site) {
+  if (!feature.sites.includes(site)) return { kind: 'na' };
+  const { broad, narrow } = billingCellRules(feature.id, site);
+  const off = broad.length > 0 && broad.every((r) => r.allow === false);
+  const deniedNarrow = narrow.filter((r) => r.allow === false);
+  if (off) return { kind: 'off', why: broad.find((r) => r.allow === false)?.why ?? '' };
+  if (deniedNarrow.length > 0) return { kind: 'some', count: deniedNarrow.length };
+  return { kind: 'on' };
+}
+
+/**
+ * Which principals a cell's switch writes. A feature that BOTH a person and a
+ * cron can trigger (`warnings.web`, `chapters.llm`, `pipeline.run`) needs one
+ * rule of each kind, because `system` resolves alone — writing only the
+ * `everyone` row would switch the button off and leave the hourly Action
+ * paying, which is the opposite of what the click said.
+ */
+function billingPrincipalKinds(feature) {
+  return feature.principals.map((p) => (p === 'system' ? 'system' : 'everyone'));
+}
+
+function billingKey(featureId, site) {
+  return `${featureId}|${site}`;
+}
+
+function renderSpendingPanel() {
+  const details = document.getElementById('spending-panel');
+  const body = document.getElementById('spending-panel-body');
+  if (!details || !body) return;
+
+  if (!billingDir) {
+    details.hidden = true;
+    return;
+  }
+  details.hidden = false;
+  body.innerHTML = '';
+
+  const table = document.createElement('table');
+  table.className = 'role-tree-table spend-table';
+  const thead = document.createElement('thead');
+  const hrow = document.createElement('tr');
+  for (const h of ['Money path', 'The code’s own estimate', ...billingDir.sites]) {
+    const th = document.createElement('th');
+    th.textContent = h === 'Money path' || h.startsWith('The code') ? h : (CATALOG_LABELS[h] || h);
+    hrow.appendChild(th);
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (const group of billingDir.groups) {
+    const inGroup = billingDir.features.filter((f) => f.group === group.id);
+    if (inGroup.length === 0) continue;
+
+    const gr = document.createElement('tr');
+    const gth = document.createElement('th');
+    gth.colSpan = billingDir.sites.length + 2;
+    gth.className = 'spend-group';
+    gth.textContent = group.label;
+    gr.appendChild(gth);
+    tbody.appendChild(gr);
+
+    for (const feature of inGroup) {
+      tbody.appendChild(spendingRow(feature));
+    }
+  }
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  body.appendChild(spendingFooter());
+}
+
+function spendingRow(feature) {
+  const tr = document.createElement('tr');
+
+  const name = document.createElement('td');
+  const label = document.createElement('strong');
+  // ⚠️ A CLOCK, NOT A PERSON, on the unattended rows — `sweep.details` and its
+  // neighbours have no user at all, and switching one off here is the only
+  // control in the estate that stops an unattended hourly biller without a
+  // deploy. The icon is the one-line explanation of why this row behaves
+  // differently from the ones above it.
+  const isSystem = feature.principals.includes('system');
+  label.textContent = `${isSystem ? '⏱ ' : ''}${feature.label}`;
+  name.appendChild(label);
+  const detail = document.createElement('span');
+  detail.className = 'spend-detail';
+  detail.textContent = feature.detail;
+  name.appendChild(detail);
+  tr.appendChild(name);
+
+  const cost = document.createElement('td');
+  cost.className = 'spend-cost';
+  // ⚠️ "the code's own estimate", never "spend" — the measured number is the
+  // usage meter's question and this panel must not answer it.
+  cost.textContent = feature.cost;
+  tr.appendChild(cost);
+
+  for (const site of billingDir.sites) {
+    tr.appendChild(spendingCell(feature, site));
+  }
+  return tr;
+}
+
+function spendingCell(feature, site) {
+  const td = document.createElement('td');
+  td.className = 'spend-cell';
+  const state = billingCellState(feature, site);
+
+  if (state.kind === 'na') {
+    const span = document.createElement('span');
+    span.className = 'spend-na';
+    span.textContent = 'n/a';
+    span.title = `${feature.label} does not exist on ${CATALOG_LABELS[site] || site}.`;
+    td.appendChild(span);
+    return td;
+  }
+
+  const key = billingKey(feature.id, site);
+  const staged = billingStaged.get(key);
+  const live = state.kind !== 'off';
+  const shown = staged === undefined ? live : staged;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'spend-toggle';
+  btn.dataset.on = String(shown);
+  if (staged !== undefined) btn.dataset.staged = 'true';
+  btn.textContent = shown ? 'On' : 'Off';
+
+  if (state.kind === 'some' && shown) {
+    const some = document.createElement('span');
+    some.className = 'spend-some';
+    some.textContent = `⊘ ${state.count} off`;
+    some.title =
+      `On for the site, but denied for ${state.count} named ${state.count === 1 ? 'person or role' : 'people or roles'}. ` +
+      'Those rules are per-person and are managed as their own rows.';
+    td.appendChild(btn);
+    td.appendChild(some);
+  } else {
+    td.appendChild(btn);
+  }
+
+  btn.title = shown
+    ? `Switch ${feature.label} off for ${CATALOG_LABELS[site] || site}.`
+    : state.why
+      ? `Switched off — “${state.why}”. Click to turn it back on.`
+      : `Switched off. Click to turn it back on.`;
+
+  btn.addEventListener('click', () => {
+    // GRANT-CLASS: this stages and writes nothing (see billingStaged's header).
+    const next = !shown;
+    if (next === live) billingStaged.delete(key);
+    else billingStaged.set(key, next);
+    renderSpendingPanel();
+    const openWhy = document.getElementById('spend-why');
+    if (openWhy) openWhy.focus();
+  });
+
+  return td;
+}
+
+function spendingFooter() {
+  const wrap = document.createElement('div');
+  wrap.className = 'spend-footer';
+
+  if (billingDir.unknown?.length) {
+    // ⚠️ Shown, never auto-deleted. A row pointing at an id the registry no
+    // longer knows is a fact the owner should see — silently dropping it would
+    // draw a feature as ON while a row in the table says otherwise.
+    const warn = document.createElement('p');
+    warn.className = 'spend-warn';
+    warn.textContent =
+      `${billingDir.unknown.length} stored rule${billingDir.unknown.length === 1 ? '' : 's'} ` +
+      `name${billingDir.unknown.length === 1 ? 's' : ''} a money path this estate no longer has ` +
+      `(${billingDir.unknown.map((r) => `${r.feature} on ${r.site}`).join(', ')}). ` +
+      'They are ignored — nothing is switched off by them — and they are left in place rather than deleted behind your back.';
+    wrap.appendChild(warn);
+  }
+
+  const note = document.createElement('p');
+  note.className = 'role-tree-note';
+  // ⚠️ THE TEN-MINUTE DELAY IS SAID OUT LOUD. A panel that implies "instantly"
+  // invites pressing the switch twice, and the number is the revocation delay
+  // on purpose — the answer rides the same cache and ages with it.
+  note.textContent =
+    `${billingDir.effect_delay_note} Switching something OFF only ever stops spending: every site's own gate — ` +
+    'a role capability, a missing key, an env posture — still applies in front of this, and turning a cell back ' +
+    'on grants nobody anything they could not already do.';
+  wrap.appendChild(note);
+
+  const links = document.createElement('p');
+  links.className = 'role-tree-note';
+  links.append('How much has actually been spent: ');
+  const meter = document.createElement('a');
+  meter.href = '/status/agents/';
+  meter.textContent = 'the usage meter on /status/agents';
+  links.append(meter, '. To pause the ingestion pipeline for tonight (a TIME control, not a policy one): ');
+  const pause = document.createElement('a');
+  pause.href = '/status/pipelines/';
+  pause.textContent = 'the ingestion card on /status/pipelines';
+  links.append(pause, '.');
+  wrap.appendChild(links);
+
+  if (billingStaged.size === 0) return wrap;
+
+  const staging = document.createElement('div');
+  staging.className = 'spend-staging';
+
+  const summary = document.createElement('p');
+  summary.className = 'spend-summary';
+  const off = [...billingStaged.entries()].filter(([, v]) => v === false);
+  const on = [...billingStaged.entries()].filter(([, v]) => v === true);
+  const describe = (k) => {
+    const [featureId, site] = k.split('|');
+    const f = billingDir.features.find((x) => x.id === featureId);
+    return `${f ? f.label : featureId} on ${CATALOG_LABELS[site] || site}`;
+  };
+  const parts = [];
+  if (off.length) parts.push(`switch OFF — ${off.map(([k]) => describe(k)).join('; ')}`);
+  if (on.length) parts.push(`switch back ON — ${on.map(([k]) => describe(k)).join('; ')}`);
+  summary.textContent = `Staged (nothing is saved yet): ${parts.join(' · ')}.`;
+  staging.appendChild(summary);
+
+  const whyLabel = document.createElement('label');
+  whyLabel.className = 'ctl';
+  const whySpan = document.createElement('span');
+  whySpan.className = 'ctl-label';
+  // ⚠️ REQUIRED, and the label says why rather than just marking it required.
+  // A switched-off feature is INVISIBLE: in six months "why does cover search
+  // not work on padhard?" has exactly one cheap answer, and it is this box.
+  whySpan.textContent = 'Why (required — a switched-off feature is invisible, and this is the only record of the reason)';
+  const why = document.createElement('input');
+  why.id = 'spend-why';
+  why.className = 'ctl-input';
+  why.type = 'text';
+  why.maxLength = 500;
+  why.placeholder = 'e.g. six cents a cover and the free rungs are doing fine';
+  whyLabel.append(whySpan, why);
+  staging.appendChild(whyLabel);
+
+  const row = document.createElement('div');
+  row.className = 'spend-actions';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'btn';
+  save.textContent = `Save spending changes (${billingStaged.size})`;
+  save.addEventListener('click', () => saveSpending(why.value, save));
+  const discard = document.createElement('button');
+  discard.type = 'button';
+  discard.className = 'btn small quiet';
+  discard.textContent = 'Discard';
+  discard.addEventListener('click', () => {
+    billingStaged.clear();
+    renderSpendingPanel();
+    setStatus('');
+  });
+  row.append(save, discard);
+  staging.appendChild(row);
+
+  wrap.appendChild(staging);
+  return wrap;
+}
+
+/**
+ * Commit the staged cells.
+ *
+ * ⚠️ TURNING A CELL ON DELETES THE RULE rather than writing an `allow` row.
+ * "No rule" IS the default state, so a table that filled up with allow-rows
+ * meaning "the same as nothing" would slowly stop being readable — and the day
+ * somebody asks "what has been switched off here?", the answer should be the
+ * rows, not the rows minus the ones that cancel out.
+ *
+ * ⚠️ It stops at the first failure and says how far it got. A half-applied
+ * batch that reported success would leave the panel disagreeing with the table.
+ */
+async function saveSpending(why, saveBtn) {
+  const trimmed = (why || '').trim();
+  if (trimmed.length < 3) {
+    setStatus('Say why first — a switched-off feature is invisible, and this note is the only record of the reason.', 'warn');
+    document.getElementById('spend-why')?.focus();
+    return;
+  }
+  saveBtn.disabled = true;
+  setStatus('Saving spending changes…');
+
+  let done = 0;
+  for (const [key, on] of billingStaged.entries()) {
+    const [featureId, site] = key.split('|');
+    const feature = billingDir.features.find((f) => f.id === featureId);
+    if (!feature) continue;
+    let ok = true;
+    for (const kind of billingPrincipalKinds(feature)) {
+      if (on) {
+        const existing = (billingDir.rules ?? []).find(
+          (r) => r.feature === featureId && r.site === site && r.principal_kind === kind,
+        );
+        if (!existing) continue;
+        const res = await api(`/api/estate/billing/rules/${existing.id}`, { method: 'DELETE' });
+        if (!res) ok = false;
+      } else {
+        const res = await api('/api/estate/billing/rules', {
+          method: 'POST',
+          body: JSON.stringify({
+            feature: featureId,
+            site,
+            principal_kind: kind,
+            principal_value: null,
+            allow: false,
+            why: trimmed,
+          }),
+        });
+        if (!res) ok = false;
+      }
+      if (!ok) break;
+    }
+    if (!ok) {
+      // api() has already said what went wrong; add how far this got, because
+      // "it failed" without "and three of five landed" is unactionable.
+      saveBtn.disabled = false;
+      setStatus(
+        `Stopped after ${done} of ${billingStaged.size} change${billingStaged.size === 1 ? '' : 's'} — ` +
+        `${statusEl.textContent || 'the server refused one of them'} Reload to see what actually landed.`,
+        'warn',
+      );
+      return;
+    }
+    done += 1;
+  }
+
+  billingStaged.clear();
+  await loadDirectory();
+  setStatus(
+    `Saved ${done} spending change${done === 1 ? '' : 's'}. It takes effect within 10 minutes — the same delay as a revocation.`,
+  );
+}
+
 /** The Audiobooks/Ebooks ladder — the rich one, straight from GET /site-roles/tree. */
 function audiobookLadder(row) {
   const section = ladderSection(
@@ -2405,8 +2814,14 @@ function clearSignedInState() {
   appDirs = Object.fromEntries(APPS.map((a) => [a.key, null]));
   siteRolesDir = null;
   roleTreeDir = null;
+  // The Spending panel goes with them, staged edits included — for exactly the
+  // reason above: an unsaved "switch cover search off" belonging to the person
+  // who just signed out must not be handed to whoever signs in next.
+  billingDir = null;
+  billingStaged.clear();
   updateCountLine(0, 0);
   renderPermissionMap();
+  renderSpendingPanel();
 }
 
 function renderAuthState() {
