@@ -543,6 +543,18 @@ export function logGroq(entry: {
   /** How many tools this pass offered. ⚠️ 0 on the loop's final tools-free pass
    *  as well as on a toolless call — the `iteration` field distinguishes them. */
   toolsOffered?: number;
+  /**
+   * ⚠️ **THE PRE-FLIGHT NUMBERS (2026-09-02), and they are here so the owner
+   * can act on the ceiling rather than interpret an error.** On a `too_large`
+   * fallback these say how far over the tier's allowance the request was; on a
+   * successful pass they say how much room was left. A 413 on its own is an
+   * error nobody can size. Both, as ever, in BOTH places.
+   */
+  estimatedTokens?: number;
+  budget?: number;
+  /** ⚠️ Tool NAMES the shaping withheld from the Groq request this pass —
+   *  our vocabulary, never a person's words. `[]` and absent both mean none. */
+  toolsDropped?: readonly string[];
   /** On `ineligible` only: which of the two reasons. */
   ineligibleReason?: 'tool_not_allowlisted' | 'posture_shadow';
   /** On `ineligible` only: the offered tool names that are not allowlisted, so
@@ -574,6 +586,14 @@ export function logGroq(entry: {
       // carry the key.
       iteration: entry.iteration ?? 0,
       tools_offered: entry.toolsOffered ?? 0,
+      // ⚠️ THE EMITTED HALF of the pre-flight numbers. Omitted rather than
+      // logged as 0 on the toolless lane, which does no pre-flight at all — a 0
+      // budget would read as a ceiling of nothing.
+      ...(entry.estimatedTokens === undefined ? {} : { estimated_tokens: entry.estimatedTokens }),
+      ...(entry.budget === undefined ? {} : { token_budget: entry.budget }),
+      ...(entry.toolsDropped && entry.toolsDropped.length > 0
+        ? { tools_dropped: [...entry.toolsDropped] }
+        : {}),
       ...(entry.ineligibleReason ? { ineligible_reason: entry.ineligibleReason } : {}),
       ...(entry.blockedTools && entry.blockedTools.length > 0
         ? { blocked_tools: [...entry.blockedTools] }

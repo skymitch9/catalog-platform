@@ -116,6 +116,8 @@ import {
 import { audiobookApiBase } from './book-knowledge-exec.js';
 import { memoryOn, PROFILE_MAX_BYTES } from './memory.js';
 import { GABI_GROQ_MODEL, groqMode } from './gabi-groq.js';
+import { groqInputBudget, GROQ_TPM_LIMIT } from './gabi-groq-tools.js';
+import { CHAT_TOOL_MAX_TOKENS } from './gabi-chat.js';
 import { ARCHIVE_RETENTION_DAYS, RECALL_SCAN_ROWS } from './archive.js';
 import { personalityOn, TROPES } from './personality.js';
 import { edgeMode } from './gabi-prompt.js';
@@ -469,7 +471,24 @@ app.get('/api/health', (c) =>
     // and every tool loop under `shadow`, because shadowing one would execute
     // its tools twice — stays 100% Anthropic. If this row ever says otherwise,
     // somebody made that decision and it should be findable in one curl.
-    gabi_groq_scope: 'toolless_calls_plus_read_only_tool_loops_first_only',
+    //
+    // ⚠️ **NARROWED THE SAME DAY, 2026-09-02 evening, and the narrowing is the
+    // point of the row.** The owner's live test measured the phase-2 lane doing
+    // the one job it is worst at: the single answer that fully rode Groq was
+    // flat AND answered a different question than the one asked. So the loop is
+    // now a HYBRID — Groq reads the question and picks the lookups; every pass
+    // from the first tool result onward is Haiku's. It is also the payload fix,
+    // because the composing pass is the one carrying every tool result and the
+    // one measured going over the tier's ceiling.
+    gabi_groq_scope: 'toolless_calls_plus_tool_selection_pass_first_only',
+    // ⚠️ THE TIER'S CEILING, stated rather than discovered. Groq publishes
+    // 8,000 TPM for this model on the FREE plan, and a single request larger
+    // than the whole minute's allowance is refused 413 rather than queued —
+    // which is what the owner met, in ~37 ms, on every 12-tool pass. This row
+    // is how "is the bot small enough for the plan we are on?" is answerable in
+    // one curl, and it is the number that changes if the plan is upgraded.
+    gabi_groq_request_budget_tokens: groqInputBudget(CHAT_TOOL_MAX_TOKENS),
+    gabi_groq_tpm_limit: GROQ_TPM_LIMIT,
     // ⚠️ THE ALLOWLIST ITSELF, because "which tool loops can ride the cheap
     // model?" is the question the scope row raises and cannot answer. Named
     // rather than counted: a count would change silently in both directions.

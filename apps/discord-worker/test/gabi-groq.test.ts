@@ -43,8 +43,17 @@ import {
 } from '../src/gabi-groq.js';
 import {
   blocksFromCompletion,
+  capToolResult,
+  estimateTokens,
+  fitGroqRequest,
+  groqInputBudget,
   groqToolComplete,
+  GROQ_TOOL_DESCRIPTION_MAX,
+  GROQ_TOOL_RESULT_MAX,
+  GROQ_TPM_LIMIT,
   invalidToolArgs,
+  leanTools,
+  narrowToFamilies,
   toOpenAiMessages,
   toOpenAiTools,
   TOOL_ERROR_PREFIX,
@@ -1117,14 +1126,160 @@ describe('reading Groq back — refusing what cannot honestly be executed', () =
   });
 });
 
-describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', () => {
-  it('an eligible loop under `first` runs end to end on Groq and spends NO Haiku turn', async () => {
+// ---------------------------------------------------------------------------
+// ⚠️ THE 413 CEILING — measured 2026-09-02, and the shaping that answers it
+// ---------------------------------------------------------------------------
+
+describe('⚠️ fitting the request to the tier — the 413 the owner met', () => {
+  const ALL = toolsForApi({ docs: true, books: true, shelf: true, recall: true });
+
+  it('⚠️ THE DIAGNOSIS: the full 13-tool request does NOT fit the free tier', () => {
+    // Measured off the wire in the owner's live test: 12-tool passes refused
+    // 413 in ~37 ms, every time; a 6-tool pass at 4,736 input tokens SUCCEEDED.
+    // Groq publishes 8,000 TPM for openai/gpt-oss-120b on the free plan, and a
+    // single request bigger than the whole minute's allowance can never
+    // succeed — so it is refused outright rather than queued, which is exactly
+    // that instant refusal.
+    assert.equal(GROQ_TPM_LIMIT, 8_000);
+    const full = estimateTokens(JSON.stringify(toOpenAiTools(ALL as never)));
+    assert.ok(full > 4_000, `13 tool schemas alone are ~${full} tokens`);
+    // `max_tokens` is charged against the same allowance, so it is subtracted
+    // rather than ignored.
+    assert.ok(groqInputBudget(1024) < GROQ_TPM_LIMIT - 1024);
+  });
+
+  it('lean schemas cut the tool payload by more than half, Groq-side ONLY', () => {
+    const full = JSON.stringify(toOpenAiTools(ALL as never)).length;
+    const lean = JSON.stringify(toOpenAiTools(leanTools(ALL as never))).length;
+    // Measured 2026-09-02: 16,474 b → 7,522 b, 54% off. Asserted as a ratio
+    // rather than a byte count so a new tool does not fail the build for
+    // existing.
+    assert.ok(lean < full * 0.6, `lean ${lean} b vs full ${full} b`);
+    // ⚠️ AND THE ANTHROPIC ARRAY IS UNTOUCHED. The long descriptions are long
+    // on purpose — every ⚠️ line in them is a failure this estate has seen —
+    // and a shaping pass that mutated the shared definitions would quietly
+    // degrade the model that was supposed to be the good one.
+    const again = JSON.stringify(toOpenAiTools(ALL as never)).length;
+    assert.equal(again, full, 'leanTools must not mutate its input');
+  });
+
+  it('a lean description ends on a sentence where it can, and is MARKED where it cannot', () => {
+    const [lean] = leanTools([
+      {
+        name: 'catalog_lookup',
+        description: `${'a'.repeat(300)} and more`,
+        input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+      },
+    ]);
+    assert.ok(lean!.description.endsWith('…'), 'a hard cut says so');
+    assert.ok(lean!.description.length <= GROQ_TOOL_DESCRIPTION_MAX + 1);
+  });
+
+  it('⚠️ a capped tool result is MARKED — a silent truncation reads as an absence', () => {
+    const body = 'x'.repeat(GROQ_TOOL_RESULT_MAX + 500);
+    const capped = capToolResult(body);
+    assert.ok(capped.includes('TRUNCATED'), 'the cut says, in words, that it is a cut');
+    assert.match(capped, /never report it as an absence/i);
+    // ⚠️ Appended, never substituted: what the model DOES see is real.
+    assert.ok(capped.startsWith('x'.repeat(GROQ_TOOL_RESULT_MAX)));
+    assert.equal(capToolResult('short'), 'short', 'a result that fits is untouched');
+  });
+
+  it('the cap reaches the WIRE, through toOpenAiMessages', () => {
+    const out = toOpenAiMessages('sys', [
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'c1', content: 'y'.repeat(9_000) }],
+      },
+    ]);
+    const answer = out.find((m) => m.role === 'tool')!;
+    assert.ok(answer.content.length < 9_000);
+    assert.ok(answer.content.includes('TRUNCATED'));
+  });
+
+  it('⚠️ narrowing is by FAMILY, not by tool — the book sequence must survive', () => {
+    // The book addendum's own instruction: "list_book_knowledge (always first —
+    // it is where book ids come from), THEN search_book_text". Narrowing to
+    // "tools already executed" would offer the first and withhold the second,
+    // which is the very call the next pass exists to make.
+    const after = narrowToFamilies(ALL as never, ['list_book_knowledge']);
+    const names = after.tools.map((t) => t.name);
+    assert.ok(names.includes('search_book_text'), 'the rest of the family stays');
+    assert.ok(names.includes('catalog_lookup'), 'Tier 0 is always kept');
+    assert.ok(!names.includes('search_estate_docs'), 'an unused family goes');
+    assert.ok(after.dropped.includes('recall_conversation'));
+  });
+
+  it('nothing is narrowed on the FIRST pass — the loop knows nothing yet', () => {
+    const first = narrowToFamilies(ALL as never, []);
+    assert.equal(first.tools.length, ALL.length);
+    assert.deepEqual(first.dropped, []);
+  });
+
+  it('⚠️ fitGroqRequest turns the measured 413 into a request that FITS', () => {
+    const system = 'x'.repeat(11_267); // the measured full system prompt, ~2,817 tok
+    const req = {
+      system,
+      messages: [{ role: 'user' as const, content: 'who narrates The Way of Kings?' }],
+      tools: ALL as never,
+      maxTokens: 1024,
+    };
+    const fit = fitGroqRequest(req, []);
+    assert.ok(fit.fits, `estimated ${fit.estimatedTokens} against a budget of ${fit.budget}`);
+    assert.equal(fit.toolsOffered, ALL.length, 'pass 1 still offers everything');
+    // The same request with the FULL schemas would not have fitted — which is
+    // the 37 ms refusal, reproduced as arithmetic.
+    const unshaped =
+      estimateTokens(JSON.stringify(toOpenAiMessages(system, req.messages))) +
+      estimateTokens(JSON.stringify(toOpenAiTools(ALL as never)));
+    assert.ok(unshaped > fit.budget, `unshaped ${unshaped} > budget ${fit.budget}`);
+  });
+
+  it('⚠️ a request that STILL does not fit is refused BEFORE it is sent', async () => {
+    // A 413 is cheap but it arrives with no number in it. A pre-flight line
+    // saying how far over we were is something the owner can act on.
     const spy = spyFetch({
       catalog: catalogDown,
-      groq: inOrder([
-        () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
-        () => groqSaid('The catalogue could not be reached just now — ask me again in a minute.'),
-      ]),
+      anthropic: () => haikuSaid('Kate Reading and Michael Kramer.'),
+    });
+    const { value, lines } = await captureLogs(() =>
+      converseWithTools(
+        'anthropic-key',
+        // A question so long that nothing can shrink the request enough.
+        'who narrates '.repeat(4_000),
+        null,
+        CHATTER_TOOLS,
+        toolCtxFor(spy),
+        { fetch: spy.fetch, groq: { mode: 'first', apiKey: 'g' } },
+      ),
+    );
+    assert.equal(value.text, 'Kate Reading and Michael Kramer.', 'the person still gets an answer');
+    assert.equal(spy.groqCalls().length, 0, '⚠️ a doomed request is never SENT');
+    const fell = groqLines(lines).find((l) => l.outcome === 'fallback')!;
+    assert.equal(fell.reason, 'too_large');
+    assert.ok(Number(fell.estimated_tokens) > Number(fell.token_budget), 'the line carries both numbers');
+  });
+});
+
+describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', () => {
+  // ── ⚠️ THE HYBRID LANE (2026-09-02): GROQ CHOOSES, HAIKU SPEAKS ───────────
+  //
+  // Phase 2 ran the WHOLE loop on Groq. It shipped on 09-02 and the owner's
+  // live test measured two things that changed the design the same day:
+  //
+  //  1. the one answer that fully rode Groq was FLAT and answered a DIFFERENT
+  //     QUESTION than the one asked (chars 273) — composition is the job it is
+  //     worst at and the only job the person actually sees;
+  //  2. the composing pass is the one that 413s, because it is the pass
+  //     carrying every tool result, and the tier's ceiling is 8,000 tokens.
+  //
+  // So the pass that reads the question and picks the lookups rides Groq; the
+  // pass that speaks does not. A quality fix and a payload fix at once.
+  it('⚠️ THE HYBRID: Groq picks the tools, Haiku composes — and the tool really ran', async () => {
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
+      anthropic: () => haikuSaid('The catalogue could not be reached just now — ask me again in a minute.'),
     });
     const { value, lines } = await captureLogs(() =>
       converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
@@ -1134,35 +1289,37 @@ describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', (
     );
     assert.match(String(value.text), /could not be reached/);
     assert.deepEqual(value.tools, ['catalog_lookup'], 'the tool really ran');
-    assert.equal(spy.anthropicCalls().length, 0, 'the expensive half of the bill was not spent');
-    assert.equal(spy.groqCalls().length, 2);
+    assert.equal(spy.groqCalls().length, 1, 'exactly ONE Groq pass: the selection');
+    assert.equal(spy.anthropicCalls().length, 1, 'and exactly one Haiku pass: the prose');
 
     const groq = groqLines(lines);
     assert.deepEqual(
       groq.map((l) => [l.outcome, l.purpose, l.iteration]),
-      [
-        ['groq', 'converse_tools', 1],
-        ['groq', 'converse_tools', 2],
-      ],
+      [['groq', 'converse_tools', 1]],
     );
     // Tier 0 only: this context carries no docs, books, shelf or recall port.
     assert.equal(groq[0]!.tools_offered, 2, 'the tools-bearing pass names how many it offered');
-    // ⚠️ Still 2: the answering pass is only the SECOND of four permitted, so it
-    // still carries tools. Tools are dropped on the LAST pass, not on the one
-    // that happens to answer — pinned by the bounded-loop test below.
-    assert.equal(groq[1]!.tools_offered, 2);
-    // ⚠️ NO gabi_turn line: `gabi_turn` means ANTHROPIC spend and must keep
-    // meaning that, or the billing inventory counts free tokens as Haiku ones.
-    assert.equal(lines.filter((l) => l.includes('"evt":"gabi_turn"')).length, 0);
+    // ⚠️ The pre-flight numbers ride the SUCCESS line too, so the estimator can
+    // be checked against Groq's own prompt_tokens beside it.
+    assert.ok(Number(groq[0]!.estimated_tokens) > 0);
+    assert.ok(Number(groq[0]!.token_budget) > 0);
+    // ⚠️ ONE gabi_turn line, for the ONE Anthropic pass. `gabi_turn` means
+    // Anthropic spend and must keep meaning that, or the billing inventory
+    // counts free tokens as Haiku ones — so a hybrid turn shows exactly the
+    // Haiku half and no more.
+    assert.equal(lines.filter((l) => l.includes('"evt":"gabi_turn"')).length, 1);
   });
 
-  it('⚠️ the SECOND request carries the tool result back, keyed to the call it answers', async () => {
+  it('⚠️ THE HAND-OFF: Haiku inherits the Groq-authored call, keyed to its result', async () => {
+    // The state Haiku is handed is byte-identical ANTHROPIC grammar whichever
+    // provider produced the tool_use in it — that is the whole reason the
+    // translation never touches `messages`. This is the invariant the hybrid
+    // rests on: a `tool_use` Groq chose, echoed with the `tool_result` that
+    // answers it, and a 400 if the pairing were ever broken.
     const spy = spyFetch({
       catalog: catalogDown,
-      groq: inOrder([
-        () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
-        () => groqSaid('done'),
-      ]),
+      groq: () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
+      anthropic: () => haikuSaid('done'),
     });
     await captureLogs(() =>
       converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
@@ -1170,16 +1327,26 @@ describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', (
         groq: { mode: 'first', apiKey: 'g' },
       }),
     );
-    const body = JSON.parse(String(spy.groqCalls()[1]!.init?.body)) as {
-      messages: { role: string; tool_calls?: { id: string }[]; tool_call_id?: string; content: string }[];
+    const body = JSON.parse(String(spy.anthropicCalls()[0]!.init?.body)) as {
+      messages: { role: string; content: unknown }[];
     };
     const assistant = body.messages.find((m) => m.role === 'assistant')!;
-    assert.deepEqual(assistant.tool_calls?.map((c) => c.id), ['c1']);
-    const answer = body.messages.find((m) => m.role === 'tool')!;
-    assert.equal(answer.tool_call_id, 'c1');
+    const use = (assistant.content as { type: string; id?: string; name?: string }[]).find(
+      (b) => b.type === 'tool_use',
+    )!;
+    assert.equal(use.id, 'c1', 'the id Groq minted survives into the Anthropic turn');
+    assert.equal(use.name, 'catalog_lookup');
+    const results = body.messages[body.messages.length - 1]!.content as {
+      type: string;
+      tool_use_id?: string;
+      is_error?: boolean;
+    }[];
+    assert.equal(results[0]?.type, 'tool_result');
+    assert.equal(results[0]?.tool_use_id, 'c1');
     // ⚠️ The catalogue was down, so this result is an ERROR — and it must arrive
-    // as words rather than vanish. `is_error` has no OpenAI equivalent.
-    assert.ok(answer.content.startsWith(TOOL_ERROR_PREFIX), answer.content);
+    // flagged rather than vanish: a silently-empty result teaches the model that
+    // an outage and an absence are the same thing.
+    assert.equal(results[0]?.is_error, true);
   });
 
   const perTurnFailures: [string, () => Response][] = [
@@ -1219,14 +1386,18 @@ describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', (
     });
   }
 
-  it('⚠️ once a loop falls back it STAYS on Haiku — no ping-pong mid-loop', async () => {
+  it('⚠️ the hand-off is one-way: once Haiku has the turn it KEEPS it', async () => {
+    // Ping-ponging providers mid-loop would leave a conversation half
+    // translated and half native — two grammars to be wrong about instead of
+    // one. Under the hybrid the rule is stronger and simpler: the moment a
+    // tool has run, every remaining pass is Haiku's, so a loop that goes round
+    // three more times makes no further Groq request at all.
+    const call = (n: number) => () =>
+      haikuCalled([{ id: `h${n}`, name: 'catalog_lookup', args: { query: 'x' } }]);
     const spy = spyFetch({
       catalog: catalogDown,
-      groq: inOrder([
-        () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
-        () => json({ error: 'slow down' }, 429),
-      ]),
-      anthropic: () => haikuSaid('the shelf is unreachable right now.'),
+      groq: () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
+      anthropic: inOrder([call(2), call(3), () => haikuSaid('the shelf is unreachable right now.')]),
     });
     const { value, lines } = await captureLogs(() =>
       converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
@@ -1235,14 +1406,11 @@ describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', (
       }),
     );
     assert.equal(value.text, 'the shelf is unreachable right now.');
-    assert.equal(spy.groqCalls().length, 2, 'no third attempt after the fall-back');
-    assert.equal(spy.anthropicCalls().length, 1);
+    assert.equal(spy.groqCalls().length, 1, 'no second attempt once the turn is composing');
+    assert.equal(spy.anthropicCalls().length, 3);
     assert.deepEqual(
       groqLines(lines).map((l) => [l.outcome, l.iteration]),
-      [
-        ['groq', 1],
-        ['fallback', 2],
-      ],
+      [['groq', 1]],
     );
   });
 
@@ -1303,12 +1471,13 @@ describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', (
     assert.equal(groqLines(lines).length, 0);
   });
 
-  it('⚠️ the loop is still BOUNDED on Groq — the last pass offers no tools', async () => {
+  it('⚠️ the loop is still BOUNDED, and the LAST pass offers no tools', async () => {
     const call = (n: number) => () =>
-      groqCalled([{ id: `c${n}`, name: 'catalog_lookup', args: { query: 'x' } }]);
+      haikuCalled([{ id: `h${n}`, name: 'catalog_lookup', args: { query: 'x' } }]);
     const spy = spyFetch({
       catalog: catalogDown,
-      groq: inOrder([call(1), call(2), call(3), () => groqSaid('I could not reach the shelf.')]),
+      groq: () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'x' } }]),
+      anthropic: inOrder([call(2), call(3), () => haikuSaid('I could not reach the shelf.')]),
     });
     const { value } = await captureLogs(() =>
       converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
@@ -1318,10 +1487,14 @@ describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', (
     );
     assert.equal(value.text, 'I could not reach the shelf.');
     assert.equal(value.iterations, 4, 'MAX_TOOL_ITERATIONS + the final tools-free pass');
-    const lastBody = JSON.parse(String(spy.groqCalls()[3]!.init?.body)) as Record<string, unknown>;
+    // The final pass drops `tools` entirely: offering them on a turn whose
+    // results could never be executed is how a loop ends with an unanswered
+    // call and no text at all.
+    const lastBody = JSON.parse(String(spy.anthropicCalls()[2]!.init?.body)) as Record<string, unknown>;
     assert.equal(lastBody.tools, undefined);
-    const firstBody = JSON.parse(String(spy.groqCalls()[0]!.init?.body)) as { tools: unknown[] };
-    assert.equal(firstBody.tools.length, 2, 'Tier 0 only on this context');
+    // ⚠️ The ONE Groq pass is the selection, and it carries the tools.
+    const groqBody = JSON.parse(String(spy.groqCalls()[0]!.init?.body)) as { tools: unknown[] };
+    assert.equal(groqBody.tools.length, 2, 'Tier 0 only on this context');
   });
 
   it('⚠️ the two providers are handed the SAME system prompt, byte for byte', async () => {

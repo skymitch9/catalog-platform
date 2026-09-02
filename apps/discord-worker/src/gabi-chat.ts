@@ -82,7 +82,7 @@ import { runTool, type ToolContext } from './tool-exec.js';
  * See `gabi-groq-tools.ts`'s header and `docs/info/gabi-groq-rung.md`.
  */
 import { GroqFailure, groqLive, logGroq, viaGroq, type ModelOverrides } from './gabi-groq.js';
-import { groqToolComplete, type WireTool } from './gabi-groq-tools.js';
+import { fitGroqRequest, groqToolComplete, type WireTool } from './gabi-groq-tools.js';
 export type { ModelOverrides } from './gabi-groq.js';
 
 /**
@@ -948,10 +948,41 @@ ${CHAT_CUT_SHORT}`
     // silence; nothing about that reasoning is Anthropic's.
     const offered: readonly WireTool[] = last ? [] : (tools as readonly WireTool[]);
     const started = Date.now();
+
+    // ── ⚠️ THE PRE-FLIGHT (2026-09-02) ──────────────────────────────────────
+    // Shape the request to the tier — lean schemas, capped results, families
+    // this turn has actually used — and if it STILL does not fit, do not send
+    // it. The measured failure is a 413 in ~37 ms: cheap, but it arrives with
+    // no number in it, and a fallback line saying *how far over* is something
+    // the owner can act on (raise the tier) rather than interpret.
+    const fit = fitGroqRequest(
+      { system: systemPrompt, messages, tools: offered, maxTokens: CHAT_TOOL_MAX_TOKENS },
+      executed,
+    );
+    if (!fit.fits) {
+      logGroq({
+        mode: 'first',
+        purpose: 'converse_tools',
+        outcome: 'fallback',
+        reason: 'too_large',
+        ms: Date.now() - started,
+        iteration: pass,
+        toolsOffered: fit.toolsOffered,
+        toolsDropped: fit.toolsDropped,
+        estimatedTokens: fit.estimatedTokens,
+        budget: fit.budget,
+        who: logWho,
+      });
+      // ⚠️ Sticky, like every other fallback: a turn only ever GROWS, so a pass
+      // that did not fit guarantees the next one will not either.
+      groqArmed = false;
+      return null;
+    }
+
     try {
       const seen = await groqToolComplete(
         rung?.apiKey ?? '',
-        { system: systemPrompt, messages, tools: offered, maxTokens: CHAT_TOOL_MAX_TOKENS },
+        fit.request,
         overrides?.fetch ?? fetch,
       );
       iterations += 1;
@@ -964,7 +995,13 @@ ${CHAT_CUT_SHORT}`
         inputTokens: seen.inputTokens,
         outputTokens: seen.outputTokens,
         iteration: pass,
-        toolsOffered: offered.length,
+        toolsOffered: fit.toolsOffered,
+        toolsDropped: fit.toolsDropped,
+        // ⚠️ Logged on the SUCCESS line too, so the estimator can be checked
+        // against Groq's own `prompt_tokens` beside it. An estimate nobody ever
+        // compares to a measurement is a guess with a decimal point.
+        estimatedTokens: fit.estimatedTokens,
+        budget: fit.budget,
         who: logWho,
       });
       return { blocks: seen.blocks, stopReason: seen.stopReason };
@@ -985,7 +1022,10 @@ ${CHAT_CUT_SHORT}`
         errorText: failure.errorText,
         ms: Date.now() - started,
         iteration: pass,
-        toolsOffered: offered.length,
+        toolsOffered: fit.toolsOffered,
+        toolsDropped: fit.toolsDropped,
+        estimatedTokens: fit.estimatedTokens,
+        budget: fit.budget,
         who: logWho,
       });
       groqArmed = false;
@@ -1000,7 +1040,33 @@ ${CHAT_CUT_SHORT}`
       // unanswered `tool_use` block and no text at all — the person gets
       // silence because the bot ran out of budget mid-thought.
       const last = i === MAX_TOOL_ITERATIONS;
-      const attempted = groqArmed ? await groqPass(last, i + 1) : null;
+      // ── ⚠️ THE HYBRID LANE (2026-09-02): GROQ CHOOSES, HAIKU SPEAKS ────────
+      //
+      // Pre-approved option, taken. Two measurements pushed it over:
+      //
+      //  1. **The one answer that fully rode Groq was flat AND answered a
+      //     different question than the one asked** (owner's live test, chars
+      //     273). Composition is the job it is worst at, and it is the job the
+      //     person actually sees.
+      //  2. **The composing pass is the one that 413s.** It is the pass that
+      //     carries every tool result, which is exactly the request measured
+      //     going over the tier's 8,000-token ceiling — so this is a quality
+      //     fix and a payload fix at once, and it removes the biggest request
+      //     of the turn from the smallest budget in the estate.
+      //
+      // The rule is `executed.length === 0`: before any tool has run, the pass
+      // is a SELECTION (read the question, pick the lookups) and Groq is good
+      // and free at it. The moment results exist, the turn's remaining job is
+      // prose, and prose is Haiku's. The final tools-free pass is prose by
+      // definition and is excluded for the same reason.
+      //
+      // ⚠️ This is a NARROWING of phase 2, not a retreat from it: the pass that
+      // rides Groq is the one that used to cost a full Haiku turn to decide
+      // which two of thirteen tools to call, and the loop is still a genuine
+      // replay — the state Haiku inherits is byte-identical Anthropic grammar
+      // whichever provider produced the tool_use blocks in it.
+      const composing = last || executed.length > 0;
+      const attempted = groqArmed && !composing ? await groqPass(last, i + 1) : null;
       const pass = attempted ?? (await haikuPass(last));
 
       const blocks = pass.blocks;
