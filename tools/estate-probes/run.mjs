@@ -74,6 +74,42 @@ function auditMethodDiscipline() {
   );
 }
 
+/**
+ * ⚠️ **NO TWO PROBES IN ONE AREA MAY SHARE AN ID**, and this is a guard rather
+ * than prose because the failure is invisible: a duplicate id passes, counts
+ * twice, and prints twice — the run still says "133 passed, 0 failed".
+ *
+ * MEASURED 2026-09-02, which is why it exists: the two new `app-check` rows
+ * were written as `auth:A36`/`A37` because a grep of the file's tail found
+ * `A35` as the highest number. `A36`–`A39` were declared **earlier in the same
+ * file** (the docs-corpus block), so the suite ran four rows under two ids and
+ * reported nothing. The README has always said ids are "unique within `area`";
+ * saying it did not enforce it.
+ *
+ * ⚠️ It also breaks the thing ids are FOR. `deploys.log`, `DONE.md` and this
+ * suite's own README refer to probes by id — `A39`, `AB22`, `D5` — so a
+ * duplicate makes those references ambiguous forever, including in entries
+ * already written.
+ */
+function auditUniqueIds() {
+  const seen = new Map();
+  const duplicates = [];
+  for (const r of results) {
+    const key = `${r.area}:${r.id}`;
+    if (seen.has(key)) duplicates.push(`${key} (${seen.get(key)} AND ${r.endpoint})`);
+    else seen.set(key, r.endpoint);
+  }
+  check(
+    'discipline',
+    'RO2',
+    'PARSE',
+    '(the probe list itself)',
+    'no two probes in one area share an id — ids are how deploys.log and DONE.md refer to a row',
+    duplicates.length === 0,
+    duplicates.join('; '),
+  );
+}
+
 async function main() {
   console.log('estate-probes: read-only checks against LIVE production. No writes, no tokens minted.\n');
 
@@ -106,6 +142,7 @@ async function main() {
 
   console.log('\n— read-only discipline audit —');
   auditMethodDiscipline();
+  auditUniqueIds();
 
   printTable();
 

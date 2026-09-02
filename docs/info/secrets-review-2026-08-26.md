@@ -561,7 +561,7 @@ npx wrangler secret list --config apps/<worker>/wrangler.toml [--env <env>]
 > |---|---|---|
 > | 1. `library_catalog` | ✅ **DONE** — 13 items, `--source op` proves plan-identical, one key pushed live from the vault to both instances | `library_catalog/docs/DONE.md` + `docs/access/secrets.md` |
 > | 2. `docs/access/keys/*.txt` | ✅ **DONE** — 3 items, files deliberately kept as a courtesy copy | `docs/access/keys/README.md`, `scripts/op-import-keys.mjs` |
-> | 3. `catalog-platform` Workers (the no-master set) | ⚠️ **1 of 4** — `INDEX_READ_TOKEN_LIBRARY2` rotated and handshake-proved; the other 3 REFUSED, no runnable probe | `docs/TODO.md`, `scripts/op-rotate-pair.mjs --list` |
+> | 3. `catalog-platform` Workers (the no-master set) | ⚠️ **1 of 4 ROTATED, but 4 of 4 now RUNNABLE (2026-09-02)** — `INDEX_READ_TOKEN_LIBRARY2` rotated and handshake-proved on 2026-08-26; the other 3 were REFUSED for want of a probe, **and the probes now exist** | `docs/TODO.md`, `scripts/op-rotate-pair.mjs --list` |
 > | 4. `audiobook_catalog/.env` | 🔴 **NOT DONE** — estimate only | `docs/TODO.md` |
 >
 > **16 items in vault `Estate`**, verified by `op item list` — titles only.
@@ -575,6 +575,44 @@ npx wrangler secret list --config apps/<worker>/wrangler.toml [--env <env>]
 > unopened)"*. Parsing that file for NAMES (never values) showed **neither is in
 > it**, so both belong on the no-master list. This review's own header was honest
 > that those rows were claims about a FILE; this is that caveat coming true.
+>
+> ### ✅ Step 3's blocker is GONE — 2026-09-02
+>
+> The three refusals were never about the ceremony. They were about there being
+> **nothing to watch**: `op-rotate-pair.mjs` refuses a pair with no runnable
+> handshake *before minting anything*, because a half-applied pair raises no
+> error anywhere. Two read-only routes were built, each answering one question
+> and touching nothing:
+>
+> | Route | Pairs it unblocks | Deliberately reaches |
+> |---|---|---|
+> | `GET auth.heygabi.ai/api/estate/app-check` (`apps/auth-worker/src/app-check.ts`) | `ESTATE_APP_TOKEN_LIBRARY2`, `ESTATE_APP_TOKEN_AUDIOBOOK` | no D1, no identity, no write |
+> | `GET audiobook-api.heygabi.ai/api/books/app-check` (`apps/audiobook-worker/src/app-check.ts`) | `ESTATE_APP_TOKEN_BOOKS` | no bucket, no pack, no email — **no book** |
+>
+> 🔴 **Nothing was minted and nothing was rotated.** §3.1's no-master list is
+> still true, word for word. What changed is that the ceremony that would change
+> it is now *runnable* — commands in [`../TODO.md`](../TODO.md).
+>
+> ⚠️ **Why the BOOKS one is a new route and not a flag on `/api/books/*`.** The
+> recorded objection was exactly right: door B's contract is *token AND asker*,
+> and fabricating an on-behalf identity to test a token is asserting an identity
+> to a live gate. A probe route that quietly became a second, weaker door onto
+> the household's book text would be worse than no probe. So its test drives the
+> real app with a `fetch` that THROWS on any outbound call and a bucket that
+> THROWS on any read — *"it cannot reach a book"* is asserted, not merely true
+> today.
+>
+> ⚠️ **The answer names the APP, and that is the load-bearing half.** A value
+> pushed to the wrong `ESTATE_APP_TOKEN_*` secret still authenticates — as the
+> wrong app — so `appCheckProbe()` requires 200 **and** the expected name. A
+> status-only check would call that a success and set the presenter against it.
+>
+> ⚠️ **One measured finding from building it:** `ESTATE_APP_TOKEN_BOOKS` **is
+> set** on `audiobook-worker`. Live, unauthenticated, 2026-09-02: the route
+> answers `401 unrecognised_app_token`, not the `503 app_token_unset` an absent
+> secret would give. A name-only `wrangler secret list` says as much from
+> inside; this is the first time it could be told **from outside**, which is the
+> half a rebuild day actually has.
 
 **The original 2026-08-25 decision, kept for the record: the vault is DEFERRED
 (option C), and when it happens the target is 1Password — not Bitwarden.** This

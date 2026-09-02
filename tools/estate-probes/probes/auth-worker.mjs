@@ -430,8 +430,8 @@ export async function probeAuthWorker() {
   // during the owner's mint ceremony, by the rotation script.
   const appCheckUrl = `${AUTH_ORIGIN}/api/estate/app-check`;
   for (const [id, label, init] of [
-    ['A36', 'no bearer', {}],
-    ['A37', 'a garbage bearer', { headers: { Authorization: GARBAGE_BEARER } }],
+    ['A40', 'no bearer', {}],
+    ['A41', 'a garbage bearer', { headers: { Authorization: GARBAGE_BEARER } }],
   ]) {
     const r = await get(appCheckUrl, init);
     if (!r.ok) {

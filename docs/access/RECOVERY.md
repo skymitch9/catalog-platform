@@ -1388,6 +1388,28 @@ there is no "look it up".** A rebuild re-mints all of them.
 > (`ESTATE_APP_TOKEN_LIBRARY2`, `_AUDIOBOOK`, `_BOOKS`) are unchanged and are
 > blocked on having no runnable handshake — `docs/TODO.md`.
 >
+> ✅ **UNBLOCKED 2026-09-02 — the three now HAVE a runnable handshake.** Two
+> read-only routes were built for exactly this and nothing else:
+>
+> | Route | Proves | Reaches |
+> |---|---|---|
+> | `GET auth.heygabi.ai/api/estate/app-check` | `ESTATE_APP_TOKEN_LIBRARY2`, `ESTATE_APP_TOKEN_AUDIOBOOK` | no D1, no identity, no write |
+> | `GET audiobook-api.heygabi.ai/api/books/app-check` | `ESTATE_APP_TOKEN_BOOKS` | no bucket, no pack, no email — **no book** |
+>
+> Each answers *"does this bearer authenticate, and as which app?"* and nothing
+> else. `scripts/op-rotate-pair.mjs --list` now shows ✅ against all four pairs,
+> and its refusal guard is unchanged for any pair added later without one.
+>
+> 🔴 **RUNNABLE IS NOT RUN.** Nothing was minted and no pair was rotated — that
+> is the owner's mint-and-set-both-sides ceremony, and the three rows below
+> still say 🔴 NONE **truthfully**. The exact commands are in
+> [`../TODO.md`](../TODO.md); this line changes when the ceremony does.
+>
+> ⚠️ **The `app` NAME in the answer is the load-bearing half.** A value pushed
+> to the wrong `ESTATE_APP_TOKEN_*` secret still authenticates — as the wrong
+> app — so the probe requires 200 **and** the expected name. A status-only
+> check would call that a success and go on to set the presenter.
+>
 > Convention, commands and the two `op inject` traps live in
 > `bookbuddy/library_catalog/docs/access/secrets.md` — one fact, one home.
 > Import here: `node scripts/op-import-keys.mjs`.

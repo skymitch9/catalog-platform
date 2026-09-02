@@ -9,6 +9,102 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-02 — THE HANDSHAKE PROBES: three master-less token pairs become rotatable
+
+Commit `1cfa531`; `estate-auth` `9fb859be-202f-40c5-9a6c-168263d2754e`,
+`audiobook-worker` `ee8255dd-8219-4372-bc48-a2c6688f6dc9` (`deploys.log`
+21:10Z). ⚠️ **This is the BLOCKER being removed, not the work being finished** —
+the three ceremonies are still open and are tracked in
+[`TODO.md`](TODO.md) with their exact commands.
+
+**The blocker was never the ceremony. It was that nothing could WATCH one.**
+`scripts/op-rotate-pair.mjs` refuses a pair with no runnable handshake *before
+minting anything*, and that refusal is correct: a half-applied pair raises no
+error anywhere — the verifier stops recognising the presenter, and the result is
+a silent 401/403/404 on a route nobody watches.
+
+| Route | Unblocks | Deliberately reaches |
+|---|---|---|
+| `GET auth.heygabi.ai/api/estate/app-check` | `ESTATE_APP_TOKEN_LIBRARY2`, `ESTATE_APP_TOKEN_AUDIOBOOK` | no D1, no identity, no write |
+| `GET audiobook-api.heygabi.ai/api/books/app-check` | `ESTATE_APP_TOKEN_BOOKS` | no bucket, no pack, no email — **no book** |
+
+One route for two pairs, because one Worker verifies both. Option 1 of the two
+the TODO offered; option 2 (by hand, with the owner watching each surface) is
+still available and needs no code.
+
+### 🔴 The app NAME is the load-bearing half, not `ok`
+
+A value pushed to the **wrong** `ESTATE_APP_TOKEN_*` secret still
+authenticates — as the wrong app. A probe checking only the status would call
+that a success and go on to set the presenter. `appCheckProbe()` requires 200
+**and** the expected name, and reports a mismatch in those words: *"the value is
+set on the WRONG secret"*.
+
+### ⚠️ Why the BOOKS one is a new route, not a flag on `/api/books/*`
+
+The recorded objection was exactly right and is the whole design: door B's
+contract is *token **AND** asker*, and *"fabricating an on-behalf identity to
+test a token is asserting an identity to a live gate, which is not a probe."* A
+probe route that quietly became a second, weaker door onto the household's book
+text would be worse than no probe at all. Its test drives the **real** app with
+a `fetch` that THROWS on any outbound call and a bucket that THROWS on any
+read — so *"it cannot reach a book"* is **asserted**, not merely true today.
+
+### The refusal contract, on both routes
+
+- **401 and 503 are kept apart.** "Wrong token" and "no token was ever set" have
+  different fixes; on rotation day one status for both sends an operator to
+  re-mint a value that was fine.
+- ⚠️ **A refusal is not a listing.** It names no app, no configured secret, and
+  carries **neither `ok` nor `app`** — one careless `if (body.ok)` in a rotation
+  script turns a 401 into a success.
+- No secret value appears in any answer, in either direction.
+
+The three `whyNoProbe` sentences are kept **in place**, above the probes that
+answered them: the reason a route exists is worth more than the fact that it
+does. ⚠️ The guard is unchanged — a pair added later with `probe: null` is still
+refused.
+
+### 🔴 Three findings this run bought, two of them nearly a wrong diagnosis
+
+1. ⚠️ **A newly deployed ROUTE is not live at every edge the instant `wrangler`
+   returns.** `/api/books/app-check` answered **404 for about a minute** after
+   its deploy — which reads exactly like "the route was never mounted", and one
+   more minute of debugging would have gone into a file that was already
+   correct. The estate had recorded this lag for a **secret** change
+   (2026-08-26); it applies to routes too, and it is why the rotation script
+   retries with backoff.
+2. ⚠️ **Running `npm run probe:estate` back to back trips `auth-worker`'s own
+   rate limiter, and the 429s land on UNRELATED rows.** The fourth run in a few
+   minutes came back **115 passed, 19 failed**, every failure a
+   `429 rate_limited` on sessions, CORS and pipeline ops. It reads exactly like
+   a regression. Written into the probes README; the evidence to quote is *one
+   clean run*, never *the last run*.
+3. ⚠️ **A duplicate probe id used to pass silently.** The two new `auth` rows
+   were written as `A36`/`A37` after a grep of the file's **tail** found `A35`
+   as the highest — but `A36`–`A39` were declared **earlier in the same file**.
+   Four rows ran under two ids and the suite still said *"133 passed, 0
+   failed"*. Ids are how `deploys.log` and `DONE.md` refer to a row, so a
+   duplicate makes entries **already written** ambiguous forever. Renumbered to
+   `A40`/`A41`, and `discipline:RO2` now fails the suite on any collision.
+
+**And one measured fact worth keeping:** `ESTATE_APP_TOKEN_BOOKS` **is set** on
+`audiobook-worker` — the live route answers `401 unrecognised_app_token`, not
+the `503 app_token_unset` an absent secret gives. `wrangler secret list` says as
+much from inside; this is the first time it could be told **from outside**,
+which is the half a rebuild day actually has.
+
+**Tests 2567 → 2585** (+10 auth, +8 audiobook), typecheck clean,
+`probe:estate` **134/134** on a clean run. Deployed from a throwaway worktree of
+HEAD; `.bin` 51 / 51 / 51.
+
+🔴 **NOT DONE, deliberately: no token was minted and no pair was rotated.** So
+the 200 side of both routes has never been exercised against a real app token in
+production — only the refusals have — and `RECOVERY.md` §11.3 still says
+🔴 NONE for all three pairs, truthfully.
+
+---
+
 ## 2026-09-02 — AUDIO PLAYER PHASE 2, the PLATFORM half: the byte route stamps the eviction clock
 
 Commit `e3396c5`, deployed version `245ad6a1-408a-41b8-a832-45917a266924`

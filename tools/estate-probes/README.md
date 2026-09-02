@@ -2,8 +2,18 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
 >
-> Last verified: **2026-09-01** — **129/129 passing** against live
-> production, measured by running `npm run probe:estate`. **+6 for GABI's book
+> Last verified: **2026-09-02** — **134/134 passing** against live production
+> on a clean run (`npm run probe:estate`). **+4 for the two handshake-probe
+> routes** (`auth:A40`–`A41`, `ab-worker:AB23`–`AB24`: `/api/estate/app-check`
+> and `/api/books/app-check` refusing a tokenless AND a garbage-bearer caller
+> with the worded 401, and naming no app and no configured secret on the way
+> out) and **+1 for a new mechanical guard**, `discipline:RO2`, which fails the
+> suite if two probes in one area share an id — see the last row of *Gotchas*
+> for the run that made it necessary. ⚠️ Also in *Gotchas*: **running the suite
+> repeatedly trips `auth-worker`'s rate limiter**, and the 429s land on rows
+> that have nothing to do with what you changed.
+>
+> Prior MEASURED figure: **129/129** on 2026-09-01 (below). **+6 for GABI's book
 > knowledge** (`AB17`–`AB22`: the four gated retrieval routes refusing a
 > tokenless caller with the worded 401, `available` refusing a garbage bearer
 > too, and one assertion that a refusal names no pack, bucket or `text/`
@@ -266,3 +276,5 @@ exist to set a precedent for.
 | The Firestore probe has no fallback if the rule changes | If `pipeline_status/current` ever loses its public-read rule, `F1` starts failing with a 403/PERMISSION_DENIED body — that is itself useful signal, not a bug to route around |
 | `redirect: 'manual'` on every request | So a probe that expects 401 does not silently follow a redirect into something else's response. If a route starts redirecting, the probe will show the redirect status (3xx) rather than resolving it |
 | Commit with `git commit -F <file>`, never `-m` | Same PowerShell quoting/em-dash trap as every other doc in this repo |
+| 🔴 **RUNNING THE SUITE BACK TO BACK TRIPS THE ESTATE'S OWN RATE LIMITER, and the failures land on UNRELATED rows** | MEASURED 2026-09-02: the fourth run in a few minutes came back **115 passed, 19 failed**, and the observed values were `429 {"error":"rate_limited"}` from `auth-worker`'s `RATE_LIMITER` binding on rows about sessions, CORS and pipeline ops — nothing to do with what had changed. ⚠️ A 429 in the `observed` column of an `auth:*` row means *you*, not production. Wait a couple of minutes and run once. It is also why "one clean run" is the evidence to quote, never "the last run" |
+| ⚠️ **A duplicate probe id used to pass silently — now `discipline:RO2` fails the suite** | MEASURED 2026-09-02: two new rows were written as `auth:A36`/`A37` because a grep of the file's tail found `A35` as the highest; `A36`–`A39` were declared **earlier in the same file**. Four rows ran under two ids and the suite still said "133 passed, 0 failed". Ids are how `deploys.log` and `DONE.md` refer to a row, so a duplicate makes entries already written ambiguous forever. ⚠️ **Check the WHOLE file for the highest id, not the tail** |
