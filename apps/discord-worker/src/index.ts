@@ -137,9 +137,35 @@ import {
   runTimeout,
   type ModCallContext,
 } from './mod-actions.js';
+// ── ⚠️ THE FUN MENU (2026-09-02) ─────────────────────────────────────────
+import { processRecent } from './recent.js';
+import { processUniverse } from './universe.js';
+import { judgeGuess, processGuessGame } from './guessgame.js';
+import { processSuggestCommand } from './suggest-command.js';
+import { processReview } from './review.js';
+import {
+  clubWritesOn,
+  processProgress,
+  processRsvp,
+  processRsvpPress,
+} from './club-write.js';
+import { makeShelfPort } from './shelf-exec.js';
+import { makeBooksPort } from './book-knowledge-exec.js';
 import { resolveIdentity } from '@platform/estate-auth';
 
 const app = new Hono<AppBindings>();
+
+/**
+ * ⚠️ Discord sent no interaction token, so there is nothing to reply WITH.
+ *
+ * Hoisted to a constant on 2026-09-02: `/have` and `/gabi` each carried their
+ * own copy of this sentence, and the fun menu would have added seven more. Nine
+ * copies of one sentence is nine chances for one of them to drift into saying
+ * something false about whose fault it is.
+ */
+const NO_TOKEN_MSG =
+  'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
+  'Nothing went wrong on the estate side — try the command again.';
 
 // ---------------------------------------------------------------------------
 // Health — same open, no-PII pattern as auth.heygabi.ai / index.heygabi.ai
@@ -195,6 +221,19 @@ app.get('/api/health', (c) =>
       // apart in behaviour terms, and "does the expensive half ride the cheap
       // model?" is the question that decides whether the savings are real.
       'gabi_groq_tool_loops',
+      // ⚠️ Added 2026-09-02: the fun menu's five READ-ONLY commands —
+      // /recent, /universe, /review, /suggest, /guessgame. Named as one
+      // feature because they ship together and share one scope decision (the
+      // public audiobook slice, or the asker's own estate record); "can people
+      // browse the shelves from Discord?" is answerable in one curl.
+      'fun_menu_read',
+      // ⚠️ Added 2026-09-02, and it is DARK: /rsvp and /progress. Named
+      // separately from the row above precisely because it WRITES, and because
+      // `gabi_club_writes` below says whether it is reachable at all. The name
+      // is here while the posture is `off` for the same reason
+      // `moderation_dark` is: the ships-dark state is VISIBLE rather than
+      // inferred from a command nobody could see.
+      'fun_menu_club_writes_dark',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -500,6 +539,24 @@ app.get('/api/health', (c) =>
     // is nothing to ask, and both answer with a setup sentence.
     gabi_persona_admin_ready: personalityOn(c.env) && docsOn(c.env) && Boolean(c.env.ESTATE_APP_TOKEN_DISCORD_DOCS),
     gabi_persona_admin_gate: 'estate_devops_via_docs_port',
+    // ⚠️ THE FUN MENU (2026-09-02). The five READ commands need no posture of
+    // their own — each rides a lever that already exists (`/review` and
+    // `/suggest` obey `gabi_shelf_enabled` and `gabi_suggest_enabled` above;
+    // `/recent`, `/universe` and `/guessgame` read the public slice and are
+    // ungated for the same reason `/have` is). Listing them here is how "which
+    // commands does Discord actually show?" is answerable without a Discord
+    // client.
+    fun_menu_commands: ['recent', 'universe', 'review', 'suggest', 'guessgame'],
+    // ⚠️ THE WRITING PAIR, and it ships OFF. `enabled` is the lever; `ready`
+    // adds the one credential the writes need. ⚠️ NEITHER is a claim that the
+    // DOCUMENT SHAPES are right — `club_write_shapes_verified` is that claim,
+    // and it is `false` on purpose until somebody checks them against the
+    // site's own writers (docs/access/discord-bot.md §15). An honest false is
+    // the whole point: it is the one row that says this feature is not
+    // finished, rather than leaving that inferred from a wrangler comment.
+    gabi_club_writes_enabled: clubWritesOn(c.env),
+    gabi_club_writes_ready: clubWritesOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
+    club_write_shapes_verified: false,
   }),
 );
 
@@ -744,10 +801,11 @@ app.post('/admin/commands/register', async (c) => {
     );
   }
 
-  // ⚠️ The registry is a FUNCTION of MODERATION_ENABLED (commands.ts explains
-  // the choice in full): while the switch is off, Discord is told about /link
-  // and /have only, and the moderation pair is published by re-running this
-  // route AFTER the owner flips it.
+  // ⚠️ The registry is a FUNCTION of TWO switches — MODERATION_ENABLED and,
+  // since 2026-09-02, GABI_CLUB_WRITES (commands.ts explains the choice in
+  // full). While each is off, its pair is not published, and re-running this
+  // route AFTER a flip is what publishes them. The answer below states BOTH
+  // switch states, so "why can I not see /rsvp" is answerable in one curl.
   const registry = commandsFor(c.env);
   const result = await putGlobalCommands(applicationId, botToken, registry);
   if (!result.ok) {
@@ -771,9 +829,15 @@ app.post('/admin/commands/register', async (c) => {
       (moderationOn(c.env)
         ? ' Moderation is ON, so /timeout and /cleanup were published too.'
         : ' Moderation is switched off, so /timeout and /cleanup were deliberately NOT published — ' +
-          're-run this route after MODERATION_ENABLED is flipped to "on" and they will appear.'),
+          're-run this route after MODERATION_ENABLED is flipped to "on" and they will appear.') +
+      (clubWritesOn(c.env)
+        ? ' Club writes are ON, so /rsvp and /progress were published too.'
+        : ' Club writes are switched off, so /rsvp and /progress were deliberately NOT published — ' +
+          'verify CLUB_WRITE_SHAPES (docs/access/discord-bot.md §15), flip GABI_CLUB_WRITES to ' +
+          '"on", then re-run this route.'),
     commands: commandNames(registry),
     moderation_enabled: moderationOn(c.env),
+    club_writes_enabled: clubWritesOn(c.env),
   });
 });
 
@@ -1034,12 +1098,7 @@ app.post('/interactions', async (c) => {
       // with no credential on the call. Deferred because it asks the index —
       // a round trip must never race Discord's 3-second window (§1.7).
       if (!decision.actor.token) {
-        return c.json(
-          ephemeralMessage(
-            'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
-              'Nothing went wrong on the estate side — try the command again.',
-          ),
-        );
+        return c.json(ephemeralMessage(NO_TOKEN_MSG));
       }
       defer(
         c,
@@ -1060,12 +1119,7 @@ app.post('/interactions', async (c) => {
       // reasoning). Deferred for the same reason as /have: it asks the index,
       // and a round trip must never race Discord's 3-second window.
       if (!decision.actor.token) {
-        return c.json(
-          ephemeralMessage(
-            'Discord sent no interaction token, so GABI has no way to reply with the answer. ' +
-              'Nothing went wrong on the estate side — try the command again.',
-          ),
-        );
+        return c.json(ephemeralMessage(NO_TOKEN_MSG));
       }
       // ⚠️ ASKER-AWARE DEEP LINK (2026-08-18). The same port Tier 1 built,
       // used READ-ONLY: `whoami` mutates nothing and needs no capability, so
@@ -1087,6 +1141,165 @@ app.post('/interactions', async (c) => {
           ...(gabiPanelPort
             ? { panel: { port: gabiPanelPort, instances: libraryInstances(c.env) } }
             : {}),
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    // -----------------------------------------------------------------------
+    // ⚠️ THE FUN MENU (2026-09-02). Every one of these is DEFERRED, because
+    // every one of them asks something else (the additions log, the catalogue,
+    // the index, Firestore) before it can answer, and a round trip must never
+    // race Discord's 3-second window (design §1.7). The `noToken` guard is
+    // `/have`'s, reused verbatim: without a token there is nothing to reply
+    // with, and saying so beats a spinner that never resolves.
+    // -----------------------------------------------------------------------
+
+    case 'recent_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processRecent({
+          count: decision.count,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          catalogBaseUrl: catalogBase(c.env),
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'universe_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processUniverse({
+          name: decision.name,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          catalogBaseUrl: catalogBase(c.env),
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'guessgame_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processGuessGame({
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          catalogBaseUrl: catalogBase(c.env),
+        }),
+      );
+      // ⚠️ PUBLIC, not ephemeral: a round is for the channel to play. Each
+      // ANSWER is private (the press below), so nobody spoils it.
+      return c.json(deferredPublic());
+    }
+
+    case 'guess_answer': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      // ⚠️ Answered SYNCHRONOUSLY — judging a guess is two integers and no
+      // I/O at all, so deferring it would add a spinner to an instant answer.
+      return c.json(ephemeralMessage(judgeGuess(decision.chosen, decision.correct)));
+    }
+
+    case 'suggest_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processSuggestCommand({
+          format: decision.format,
+          mood: decision.mood,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          catalogBaseUrl: catalogBase(c.env),
+          discordUserId: decision.actor.user?.id ?? null,
+          suggestOn: suggestOn(c.env),
+          shelf: makeShelfPort(c.env),
+          books: makeBooksPort(c.env),
+          delegated: (() => {
+            const port = makeDelegate(c.env);
+            return port ? { port, instances: libraryInstances(c.env) } : null;
+          })(),
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'review_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processReview({
+          book: decision.book,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          indexBaseUrl: indexBase(c.env),
+          shelf: makeShelfPort(c.env),
+          // ⚠️ The SAME lever the shelf lane obeys — reviews are the shelf
+          // lane's own read, and a second posture could disagree with it.
+          shelfOn: shelfOn(c.env),
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    // -----------------------------------------------------------------------
+    // ⚠️ THE FUN MENU'S WRITING HALF — dark behind GABI_CLUB_WRITES. Both
+    // paths check the posture themselves and answer CLUB_MSG.switchedOff
+    // having performed no I/O at all, exactly as the moderation trio does.
+    // -----------------------------------------------------------------------
+
+    case 'rsvp_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processRsvp({
+          sa: parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT),
+          discordUserId: decision.actor.user?.id ?? null,
+          clubName: decision.club,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          enabled: clubWritesOn(c.env),
+        }),
+      );
+      return c.json(deferredEphemeral());
+    }
+
+    case 'rsvp_answer': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processRsvpPress({
+          sa: parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT),
+          customId: decision.customId,
+          discordUserId: decision.actor.user?.id ?? null,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          enabled: clubWritesOn(c.env),
+        }),
+      );
+      // ⚠️ Type 6, not type 5: a press must not replace the card the buttons
+      // sit on — the answer arrives as an ephemeral followup beside it, which
+      // is the same shape the poll-vote press keeps.
+      return c.json({ type: ResponseType.DEFERRED_UPDATE_MESSAGE });
+    }
+
+    case 'progress_command': {
+      if (!decision.actor.token) return c.json(ephemeralMessage(NO_TOKEN_MSG));
+      defer(
+        c,
+        processProgress({
+          sa: parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT),
+          discordUserId: decision.actor.user?.id ?? null,
+          clubName: decision.club,
+          percent: decision.percent,
+          chapter: decision.chapter,
+          applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
+          interactionToken: decision.actor.token,
+          enabled: clubWritesOn(c.env),
         }),
       );
       return c.json(deferredEphemeral());

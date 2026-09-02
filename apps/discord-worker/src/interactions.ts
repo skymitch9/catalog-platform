@@ -7,6 +7,8 @@
  */
 
 import { parsePollCustomId, POLL_VOTE_PREFIX, type PollVoteRef } from './poll-vote.js';
+import { GUESS_PREFIX, parseGuessCustomId } from './guessgame.js';
+import { RSVP_PREFIX } from './club-write.js';
 import { MOD_CONFIRM_PREFIX } from './moderation.js';
 import {
   CONFIRM_PREFIX,
@@ -72,6 +74,25 @@ export const GABI_COMMAND_NAME = 'gabi';
  * MODERATION_ENABLED is anything but "on". */
 export const TIMEOUT_COMMAND_NAME = 'timeout';
 export const CLEANUP_COMMAND_NAME = 'cleanup';
+
+/**
+ * ⚠️ THE FUN MENU (2026-09-02) — design §2c.2, §2d, §2e, §2h, P1, P2 and P3,
+ * built together because they share one router, one deferral discipline and one
+ * scope decision. Same rule as every name above: **the ROUTER owns the
+ * vocabulary and `commands.ts` imports it**, so a registered command the router
+ * would not recognise cannot exist.
+ *
+ * Read-only, public slice, no credential: `/recent`, `/universe`, `/guessgame`.
+ * Reads the asker's own estate identity: `/suggest`, `/review`.
+ * WRITES per-user club state, behind its own posture: `/rsvp`, `/progress`.
+ */
+export const RECENT_COMMAND_NAME = 'recent';
+export const UNIVERSE_COMMAND_NAME = 'universe';
+export const GUESSGAME_COMMAND_NAME = 'guessgame';
+export const SUGGEST_COMMAND_NAME = 'suggest';
+export const REVIEW_COMMAND_NAME = 'review';
+export const RSVP_COMMAND_NAME = 'rsvp';
+export const PROGRESS_COMMAND_NAME = 'progress';
 
 export interface DiscordUser {
   id: string;
@@ -196,6 +217,26 @@ export type RouterDecision =
   | { kind: 'gabi_component'; action: ConvAction; nonce: string; choice: string; actor: InteractionActor }
   /** ⚠️ CONTINUITY. The modal came back with typed text. */
   | { kind: 'gabi_modal'; nonce: string; text: string; actor: InteractionActor }
+  /** ⚠️ FUN MENU. Read-only, public slice, no credential — the same scope
+   *  `/have` records (design §4 decision 4). */
+  | { kind: 'recent_command'; count: number | undefined; actor: InteractionActor }
+  | { kind: 'universe_command'; name: string; actor: InteractionActor }
+  | { kind: 'guessgame_command'; actor: InteractionActor }
+  /** A press on a `gg|` guess button. */
+  | { kind: 'guess_answer'; chosen: number; correct: number; actor: InteractionActor }
+  /** ⚠️ FUN MENU. Reads the asker's OWN estate identity, never anybody else's. */
+  | { kind: 'suggest_command'; format: string; mood: string; actor: InteractionActor }
+  | { kind: 'review_command'; book: string; actor: InteractionActor }
+  /** ⚠️ FUN MENU, THE WRITING HALF. Per-user club state, behind its own posture. */
+  | { kind: 'rsvp_command'; club: string; actor: InteractionActor }
+  | { kind: 'rsvp_answer'; customId: string; actor: InteractionActor }
+  | {
+      kind: 'progress_command';
+      club: string;
+      percent: number | undefined;
+      chapter: string;
+      actor: InteractionActor;
+    }
   | { kind: 'unknown_command'; name: string }
   | {
       kind: 'poll_vote';
@@ -288,6 +329,49 @@ export function routeInteraction(i: Interaction): RouterDecision {
           contains: stringOption(i, 'contains'),
         };
       }
+      // ── ⚠️ THE FUN MENU (2026-09-02) ────────────────────────────────────
+      // Routed in registry order. Every one of them is answered with a
+      // DEFERRED response by `index.ts`, because every one of them asks
+      // something else (the additions log, the catalogue, Firestore) before it
+      // can answer, and a round trip must never race Discord's 3-second window
+      // (design §1.7).
+      if (name === RECENT_COMMAND_NAME) {
+        return { kind: 'recent_command', count: numberOption(i, 'count'), actor: interactionActor(i) };
+      }
+      if (name === UNIVERSE_COMMAND_NAME) {
+        return { kind: 'universe_command', name: stringOption(i, 'name'), actor: interactionActor(i) };
+      }
+      if (name === GUESSGAME_COMMAND_NAME) {
+        return { kind: 'guessgame_command', actor: interactionActor(i) };
+      }
+      if (name === SUGGEST_COMMAND_NAME) {
+        return {
+          kind: 'suggest_command',
+          format: stringOption(i, 'format'),
+          mood: stringOption(i, 'mood'),
+          actor: interactionActor(i),
+        };
+      }
+      if (name === REVIEW_COMMAND_NAME) {
+        return { kind: 'review_command', book: stringOption(i, 'book'), actor: interactionActor(i) };
+      }
+      // ⚠️ `/rsvp` and `/progress` are ROUTED even while `GABI_CLUB_WRITES` is
+      // off and they are therefore not PUBLISHED — the same kill-switch
+      // contract the moderation pair keeps: a stale global command or a
+      // hand-crafted interaction lands on the worded switched-off answer rather
+      // than on "nothing answers /rsvp".
+      if (name === RSVP_COMMAND_NAME) {
+        return { kind: 'rsvp_command', club: stringOption(i, 'club'), actor: interactionActor(i) };
+      }
+      if (name === PROGRESS_COMMAND_NAME) {
+        return {
+          kind: 'progress_command',
+          club: stringOption(i, 'club'),
+          percent: numberOption(i, 'percent'),
+          chapter: stringOption(i, 'chapter'),
+          actor: interactionActor(i),
+        };
+      }
       return { kind: 'unknown_command', name };
     }
 
@@ -324,6 +408,26 @@ export function routeInteraction(i: Interaction): RouterDecision {
             actor: interactionActor(i),
           };
         }
+      }
+      // ⚠️ FUN MENU. `gg|` carries no state and no credential — it is a game
+      // round's two indices; `parseGuessCustomId` is the only thing that trusts
+      // its shape, and it refuses anything else.
+      if (customId.startsWith(`${GUESS_PREFIX}|`)) {
+        const guess = parseGuessCustomId(customId);
+        if (guess) {
+          return {
+            kind: 'guess_answer',
+            chosen: guess.chosen,
+            correct: guess.correct,
+            actor: interactionActor(i),
+          };
+        }
+      }
+      // ⚠️ FUN MENU. An RSVP press is verified DOWNSTREAM (the club, the
+      // opt-in flag and the link are all re-read server-side), so the router
+      // only routes — the same division `gabi_confirm` keeps.
+      if (customId.startsWith(`${RSVP_PREFIX}|`)) {
+        return { kind: 'rsvp_answer', customId, actor: interactionActor(i) };
       }
       if (customId.startsWith(`${POLL_VOTE_PREFIX}|`)) {
         const ref = parsePollCustomId(customId);

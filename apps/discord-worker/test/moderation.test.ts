@@ -720,7 +720,10 @@ test('auditDocId is sortable, path-safe, and collision-resistant', () => {
 // and removes exactly two", which a subset check cannot make. The base list
 // grew to three when `/gabi` shipped (2026-08-17) — a base command being added
 // SHOULD land here, as a one-line decision, rather than passing silently.
-const BASE = ['link', 'have', 'gabi'];
+// ⚠️ GREW AGAIN 2026-09-02 with the fun menu's five read-only commands. Same
+// rule as when `/gabi` shipped: a base command being added lands HERE, as a
+// one-line decision, rather than passing silently.
+const BASE = ['link', 'have', 'gabi', 'recent', 'universe', 'review', 'suggest', 'guessgame'];
 
 test('while the switch is off, /timeout and /cleanup are NOT published to Discord', () => {
   const off = commandNames(commandsFor({ MODERATION_ENABLED: 'off' }));
@@ -731,6 +734,18 @@ test('while the switch is off, /timeout and /cleanup are NOT published to Discor
 test('flipping the switch adds them — one re-run of the registration route', () => {
   const on = commandNames(commandsFor({ MODERATION_ENABLED: 'on' }));
   assert.deepEqual(on, [...BASE, TIMEOUT_COMMAND_NAME, CLEANUP_COMMAND_NAME]);
+});
+
+// ⚠️ THE REGISTRY IS NOW A FUNCTION OF TWO SWITCHES, and the two must not
+// interfere: flipping moderation must not publish the club writes, and flipping
+// the club writes must not publish the moderation pair. Asserted here rather
+// than in the fun menu's own file because THIS is the file that owns the
+// "registry as a function of a switch" contract.
+test('the two switches are independent — neither flip publishes the other pair', () => {
+  const clubOnly = commandNames(commandsFor({ GABI_CLUB_WRITES: 'on' }));
+  assert.deepEqual(clubOnly, [...BASE, 'rsvp', 'progress']);
+  const both = commandNames(commandsFor({ GABI_CLUB_WRITES: 'on', MODERATION_ENABLED: 'on' }));
+  assert.deepEqual(both, [...BASE, 'rsvp', 'progress', TIMEOUT_COMMAND_NAME, CLEANUP_COMMAND_NAME]);
 });
 
 test('the moderation commands declare Discord\'s own permission gate as a second rail', () => {

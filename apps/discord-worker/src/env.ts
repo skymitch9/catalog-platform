@@ -482,6 +482,38 @@ export interface Env {
    */
   GABI_CONFIRM_T2?: string;
 
+  /**
+   * ⚠️ **THE FUN MENU'S WRITING HALF — `/rsvp` and `/progress`, and it SHIPS
+   * OFF** (2026-09-02, design §2d and §2e).
+   *
+   * Affirmative-only `"on"`, the exact idiom of `MODERATION_ENABLED`,
+   * `GABI_MENTIONS`, `GABI_DELEGATED_WRITES` and `GABI_CONFIRM_T2`: `"on"` and
+   * nothing else; absent, empty, `"true"`, `"1"`, `"yes"` and every typo mean
+   * OFF, and both commands answer a worded "not switched on" while it is.
+   *
+   * ⚠️ **IT SHIPS OFF FOR A REASON THAT IS NOT CAUTION, IT IS A MISSING
+   * MEASUREMENT.** `src/club-write.ts`'s header carries the table: the
+   * collection paths and the slug key are measured, the FIELD NAMES inside an
+   * RSVP and a progress document are not — they live in `audiobook_catalog/
+   * site/`, which the build that wrote this was directed not to read. This
+   * Worker's service account **bypasses `firestore.rules`**, so a write in the
+   * wrong shape is not refused; it succeeds, and the club page then shows
+   * nothing while reporting no error.
+   *
+   * ⚠️ **Flipping it therefore has a step BEFORE the deploy**: verify
+   * `CLUB_WRITE_SHAPES` against the site's own writers, correct anything that
+   * is wrong, and only then flip. `docs/access/discord-bot.md` §15 is the
+   * checklist. Never a side effect of a deploy, never done by an agent.
+   *
+   * ⚠️ **OFF also HIDES the two commands** — `commandsFor()` omits them, the
+   * same choice the moderation pair records: a visible control that answers
+   * "switched off" costs a person the moment they needed it, and commands are
+   * global so the estate cannot show it to one server and not another. The
+   * ROUTER still recognises both, so a stale global command lands on the worded
+   * answer rather than on Discord's bare "This interaction failed".
+   */
+  GABI_CLUB_WRITES?: string;
+
   /** The Durable Object holding the one outbound WebSocket to Discord's
    * gateway (src/gateway.ts). Declared in wrangler.toml's [[durable_objects]]
    * / [[migrations]] pair. ⚠️ Optional at the type level for the same reason

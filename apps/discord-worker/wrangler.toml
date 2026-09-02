@@ -531,6 +531,31 @@ GABI_SHELF = "on"
 # Worker already builds.
 GABI_SUGGEST = "on"
 
+# ⚠️ THE FUN MENU'S WRITING HALF — /rsvp and /progress (2026-09-02, design §2d
+# and §2e). Code: src/club-write.ts; checklist: docs/access/discord-bot.md §15.
+#
+# Affirmative-only in the exact idiom of MODERATION_ENABLED, GABI_MENTIONS,
+# GABI_DELEGATED_WRITES and GABI_CONFIRM_T2 above: "on" and nothing else;
+# "true", "1", "yes" and every typo mean OFF.
+#
+# ⚠️ IT SHIPS OFF, AND THE REASON IS A MISSING MEASUREMENT RATHER THAN CAUTION.
+# The collection paths and the member-slug doc id are MEASURED (enforce-routes.ts
+# sweeps clubs/{id}/reads/{readId}/progress; poll-vote writes votes/{slug}); the
+# FIELD NAMES inside an RSVP and a progress document are NOT — they live in
+# audiobook_catalog/site/, which the build that wrote this was directed not to
+# read. This Worker's service account BYPASSES firestore.rules, so a wrongly
+# shaped write is not refused, it SUCCEEDS — and the club page then shows
+# nothing, with no error anywhere, on somebody else's surface.
+#
+# ⚠️ SO THE FLIP HAS A STEP BEFORE THE DEPLOY: verify CLUB_WRITE_SHAPES in
+# src/club-write.ts against the site's own writers, correct anything wrong, and
+# only then set "on". Never a side effect of a deploy; never done by an agent.
+#
+# ⚠️ OFF also HIDES both commands from Discord (commandsFor()), the moderation
+# pair's precedent — but the ROUTER still answers them, so a stale global
+# command gets the worded "switched off" rather than "This interaction failed".
+GABI_CLUB_WRITES = "off"
+
 # ⚠️ THE GROQ FIRST-LINE POSTURE — the ONLY three-state switch on this Worker
 # (owner ask 2026-09-01: "we just used groq in a different project, lets
 # integrate that into our gabi model as a first line before going to haiku
