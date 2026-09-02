@@ -147,8 +147,14 @@ player phase 2, Discord fun menu, billing phase 0+1, universes +, OR-1,
 format toggle, Wandering Inn, cross-links, newest-authors. Where a TODO said
 "ask first", the recorded recommendation is being built and flagged vetoable
 at landing (owner's nothing-waits order). ⚠️ GENUINELY WAITING: shelf
-ebooks-dropdown + reader-port (the one ebook-gate-vs-Access decision),
-library-panel personality dial, second instance/federation (owner-deferred).
+ebooks-dropdown + reader-port (the one ebook-gate-vs-Access decision — the
+question is with the owner as of 2026-09-02). SETTLED 2026-09-02 by owner:
+**library panel gets full GABI edge, matching Discord** ("library panel should
+match gabi in discord no matter what. same experience different entry point")
+— queued wave 2 (library tree busy; panel prompt lives at
+`library_catalog/packages/research/src/gabi.ts` → append its GABI_EDGE_FULL +
+the NEVER-SOUND-PREWRITTEN section, keep the copied-core byte pin honest).
+Second board-game instance STAYS deferred (owner 2026-09-02: "no use case yet").
 
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
