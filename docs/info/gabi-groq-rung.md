@@ -27,14 +27,21 @@
 > 6. ✅ **PHASE 2 SHIPPED 2026-09-02** — the tool loop, which is where most of
 >    the tokens are, now rides Groq first too when every tool it offers is
 >    read-only. Ledger entry: [§10](#10--2026-09-02--phase-2-the-tool-loop-ledger-entry).
+> 7. 🔴 **AND THE FIRST LIVE TOOL TEST, THE SAME MORNING, REFUSED EVERY PASS
+>    `HTTP 413` IN ~37 ms.** The ceiling is the **free tier's 8,000 TPM**, not
+>    a bug: the request was ~7,960 tokens before the question. Diagnosed and
+>    answered in [§11](#11--the-free-tier-is-the-ceiling--413-diagnosed-2026-09-02) —
+>    lean schemas (54% off the tool payload), capped tool results, family
+>    narrowing, a pre-flight that refuses to send a doomed request, and **the
+>    hybrid: Groq chooses the tools, Haiku speaks.** ⚠️ 🔴 **Half of this is an
+>    OWNER decision — upgrading the Groq plan raises the limit** (§11.2).
 >
-> Last verified: **2026-09-02** — phase 2's code was written, deployed
-> (`7d9a9b3`, version `f9cd77f3`) and its health rows read back live this
-> session; `test/gabi-groq.test.ts` 44 → **82 tests**, workspace **2307 pass /
-> 0 fail**, typecheck clean. ⚠️ **NOT verified:** **no live Groq TOOL call has
-> ever been made from this repo.** Every test drives an injected `fetch`.
-> Whether an open-weights model calls these tools *accurately* is the real
-> question and §5's shadow ladder cannot answer it — see §8.
+> Last verified: **2026-09-02 (evening)** — the polish batch, [§12](#12--2026-09-02-evening--the-polish-batch-ledger-entry).
+> `test/gabi-groq.test.ts` 82 → **97 tests**, workspace **2452 pass / 0 fail**,
+> typecheck clean. ⚠️ **NOT verified:** **no live Groq TOOL call has ever
+> SUCCEEDED from this repo** — every attempt so far was refused before the model
+> saw it. Whether an open-weights model calls these tools *accurately* is still
+> the real question, and §5's shadow ladder cannot answer it — see §8 and §12.2.
 
 The owner's ask, 2026-09-01, verbatim:
 
@@ -473,3 +480,218 @@ A run of `outcome: "groq"` with rising `iteration` is the loop working. A run of
 means the model is *calling tools* but not in a shape the estate accepts, which
 is a prompt-or-model problem rather than an outage, and it costs a Haiku turn per
 occurrence exactly as before phase 2.
+
+---
+
+## 11. ⚠️ THE FREE TIER IS THE CEILING — 413, diagnosed 2026-09-02
+
+**The owner drove the first live tool test the morning after phase 2 shipped.
+Every 12-tool pass refused `HTTP 413` in ~37 ms.** A 6-tool pass at **4,736
+input tokens** rode Groq; the next pass — the same conversation with the tool
+results appended — refused.
+
+### 11.1 The diagnosis, and why it is a diagnosis rather than a hypothesis
+
+Groq publishes, for `openai/gpt-oss-120b` on the **free plan**
+(`console.groq.com/docs/rate-limits`, read 2026-09-02):
+
+| limit | free plan |
+|---|---|
+| requests / minute | 30 |
+| requests / day | 1,000 |
+| **tokens / minute** | **8,000** |
+| tokens / day | 200,000 |
+
+and their errors page documents **413** as *"The request body is too large.
+Please reduce the size of the request body."* A single request larger than the
+whole minute's allowance can never succeed, so it is refused outright rather
+than queued — which is exactly an instant 37 ms refusal rather than a wait.
+
+**The arithmetic, measured in this repo the same day, fits his wire facts
+exactly:**
+
+| part of the request | tokens (≈) |
+|---|---|
+| system prompt with all addenda (11,267 chars) | 2,817 |
+| 13 tool schemas as OpenAI functions (16,474 bytes) | 4,119 |
+| `max_tokens`, charged against the same allowance | 1,024 |
+| **total before one word of question** | **≈ 7,960** |
+
+— against a ceiling of 8,000. And the pass that SUCCEEDED measured 4,736 +
+1,024 = 5,760, comfortably under.
+
+### 11.2 🔴 OWNER DECISION: the tier
+
+⚠️ **Half of this fix is not ours.** The code can make the request smaller; it
+cannot make the tier bigger. **Upgrading to Groq's Developer plan raises the
+limit and turns every mitigation below into headroom rather than necessity.**
+Nothing in the build assumes he will, and everything works — falling back to
+Haiku — if he does not.
+
+### 11.3 What the code does about it
+
+Four levers, Groq-side only. The Anthropic array and prompt are untouched, so a
+fallback always replays the turn at full fidelity.
+
+| lever | measured effect |
+|---|---|
+| `leanTools` — tool + property descriptions clipped at a sentence boundary | **16,474 b → 7,522 b, 54% off**; the full 13-tool request goes from ~7,003 estimated tokens (over the 6,276 budget) to **~4,765 (fits)** |
+| `capToolResult` — a result over 2,000 chars is cut **with a marker** | ⚠️ never silent: a silent truncation reads to the model exactly like an absence |
+| `narrowToFamilies` — from pass 2, Tier 0 plus only the families this turn used | a catalogue turn drops to **2 tools / ~360 tokens** |
+| `fitGroqRequest` — a **pre-flight**; a request that still does not fit is never sent | the fallback line carries `estimated_tokens` and `token_budget` |
+
+⚠️ **There is deliberately NO lever that shortens the system prompt.** The
+register lives there, and every line of it is a failure this estate has seen. A
+cheaper model reading a shorter brief is how a confidently wrong answer gets
+built. A turn that does not fit with the tools trimmed goes to Haiku whole.
+
+### 11.4 ⚠️ THE HYBRID: Groq chooses, Haiku speaks
+
+**Pre-approved option, taken 2026-09-02.** Two measurements pushed it over:
+
+1. **The one answer that fully rode Groq was flat AND answered a different
+   question than the one asked** (chars 273). Composition is the job the cheap
+   model is worst at, and the only job the person actually sees.
+2. **The composing pass is the one that 413s**, because it is the pass carrying
+   every tool result.
+
+So it is a quality fix and a payload fix at once. The rule is
+`executed.length === 0`: before any tool has run, the pass is a **selection**
+(read the question, pick the lookups) and Groq is good and free at it; the
+moment results exist, the remaining job is prose and prose is Haiku's. The final
+tools-free pass is prose by definition and is excluded too.
+
+⚠️ This is a **narrowing** of phase 2, not a retreat: the pass that rides Groq
+is the one that used to cost a full Haiku turn to decide which two of thirteen
+tools to call, and the hand-off is a genuine replay — Haiku inherits
+byte-identical Anthropic grammar whichever provider authored the `tool_use`
+blocks in it.
+
+⚠️ **It also shrinks the savings, and that is honest rather than hidden:** a
+typical tool turn now spends one free pass and one-to-three Haiku passes, where
+phase 2 aimed at all of them. The savings were never measured, so nothing
+measured was lost.
+
+---
+
+## 12. 📓 2026-09-02 (evening) — the polish batch (ledger entry)
+
+Seven commits, one concern each, on top of phase 2. Workspace **2418 → 2452
+pass / 0 fail**, typecheck clean.
+
+| commit | what |
+|---|---|
+| `8d1cc1a` | **Log first.** `error_text` on every `gabi_groq` / `gabi_groq_shadow` line (BOTH the param type and the emitted object); one shared non-200 taxonomy (`failureFor`); **413 becomes its own reason `too_large`**; the reasoning floor becomes `GROQ_MIN_MAX_TOKENS` in one place and rises 512 → 1024 |
+| `a583076` | **Jake's Magical Market** — §13 |
+| `0247cc3` | **The 413 ceiling** — §11 |
+| `b26db3c` | **One retry, `empty` only** — an empty 200 on a reasoning model is a coin toss, not a state; every other reason still gets exactly one attempt, and the tool lane is deliberately excluded |
+| `eebe2c0` | **The register through tool answers** — the licence gains *"the lookup answer is a performance too"*; `CHAT_TOOLS_SYSTEM` (NOT edge-gated) gains *"answer the question that was actually asked"* and *"a lookup answer is still you talking"* |
+| `2cb83bc` | **Member mentions resolve to names** — §14 |
+| `ee688ad` | **`CLUB_WRITE_SHAPES` measured** — four of seven guesses wrong; still dark |
+
+### 12.1 The lines to read now
+
+```bash
+npx wrangler tail estate-discord --format json \
+  | jq 'select(.evt=="gabi_groq")
+        | {purpose, outcome, reason, status, iteration, tools_offered,
+           estimated_tokens, token_budget, error_text, retried, ms}'
+```
+
+| what you want to know | what to look for |
+|---|---|
+| did the selection pass ride Groq? | `purpose:"converse_tools"`, `outcome:"groq"`, `iteration:1` |
+| is the tier still the ceiling? | `reason:"too_large"` — with `estimated_tokens` vs `token_budget` when we refused it ourselves, or `status:413` + `error_text` when Groq did |
+| **the undiagnosed 400** | `outcome:"fallback"` and `status:400` — `error_text` now names the cause |
+| is the reasoning floor holding? | `retried:true` — an `empty` that needed a second attempt |
+
+### 12.2 ⚠️ Still NOT verified
+
+- **No live Groq TOOL call has ever SUCCEEDED from this repo.** Every 12-tool
+  pass so far was refused before the model saw it. Whether
+  `openai/gpt-oss-120b` picks these tools *accurately* remains the open
+  question, and the honest instrument is the `fallback` rate with
+  `reason: "invalid"` on the live lines.
+- **The lean schemas are unexercised against a real model.** Trimming a
+  description is a real cost to tool-choice accuracy, taken deliberately; the
+  downside is bounded (a bad call is refused and replayed on Haiku) but it is
+  not measured.
+- **The 400 on `converse` is not diagnosed.** Ruled out by reading: an
+  empty-content message (`normaliseHistory` drops empty turns and merges
+  same-role ones) and a `json_object` ask without the word JSON (guarded, and
+  `converse` does not ask for it). The body is what will name it.
+- **Every prompt change is unheard.** A test over a prompt string proves the
+  instruction is present, never that it is obeyed.
+
+---
+
+## 13. 📓 "Catalog's got nothing on that one yet" — about three books on the shelf
+
+**Measured 2026-09-02 in #gabi-test:** *"do we have Jake's Magical Market on
+audio?"* answered as an absence. The series has three volumes in the catalogue
+(`catalog.csv` rows 3852 / 3859 / 3870). **Two independent faults**, both fixed.
+
+**1. The reduction carried a format word.** `on` is a stopword and `audio` was
+not, so `searchTermFor` produced `Jake's Magical Market audio` and the have lane
+sent that to the index verbatim. Measured live, 17:54 UTC:
+
+```
+GET index.heygabi.ai/api/search?q=Jake's+Magical+Market&source=audiobook        → 3 books
+GET index.heygabi.ai/api/search?q=Jake's+Magical+Market+audio&source=audiobook  → 0 books
+```
+
+Fixed with a closed list of format nouns stripped from the **tail only**. ⚠️ A
+LEADING strip was written, measured and **rejected**: it helps *"the audiobook
+of X"* and breaks *"The Audio Vault Chronicles"*, because `The` is already a
+stopword, which makes a title's own first word leading. Trading a measured miss
+for an unmeasured one is not a fix.
+
+**2. ⚠️ THE LANE READS THE INDEX, NOT THE CSV — and this is the durable half.**
+The 2026-08-31 scorer fix that handles a chatty query *wrapping* a title lives
+in `catalog-data.ts`; the have lane queries `index.heygabi.ai` and never touches
+it. **Its fixture tests passed all week while the live path missed.** So a zero
+from the index now takes a **second look at the catalogue** — with the whole
+question, which is the input the reverse-containment rule was built for — before
+reporting an absence. ⚠️ Only on a genuine zero: an index **failure** keeps its
+own worded sentence, because an outage is never an absence.
+
+⚠️ **The lesson worth carrying:** a fixture test on the right function is not
+evidence about the live path. Ask which SOURCE the lane actually queries before
+believing a scorer fix reached it.
+
+---
+
+## 14. 📓 @Diva's TBR, answered with the asker's stats
+
+**Measured 2026-09-02:** the owner asked about **@Diva's** TBR. GABI said she
+can only read her own shelf — and then quoted **his** stats as though they were
+Diva's.
+
+⚠️ **The root cause is DATA, not prompt.** `stripMention` removes GABI's own
+token and nothing else, so the question reached the model as a bare snowflake,
+which names nobody. The model then had a question about a person it could not
+identify and a set of tools that read *"the asker's own"* rows, and it filled
+the gap with the only data in the room.
+
+⚠️ **That is the worst class of answer this surface can produce.** Not a refusal
+and not an absence: somebody's private reading, attributed to a third party,
+stated confidently, in a public channel.
+
+- `nameMentions` resolves every OTHER member's `<@id>` to `@DisplayName` once,
+  in `mentionTrigger`, before any door reads the content. Her own token is
+  deliberately left for `stripMention` — naming it would put "@GABI" into her
+  own prompt as a third party.
+- `safeMemberName` sanitises it: `<`, `>`, `@` and backticks removed so a name
+  can never rebuild a mention token, newlines flattened so it cannot open an
+  instruction line of its own, capped at 64 chars. ⚠️ A name that sanitises away
+  to nothing leaves the **raw token** alone — unresolvable beats misleadingly
+  resolved.
+- The prompt rule carries the honest half: the `my_*` tools must not be called
+  for a third party at all, the refusal must use **that person's name** — and
+  `book_reviews` **is** a real cross-person read (reviews are public on the
+  estate sites), so *"what did Sam think of X?"* is answerable while *"what's on
+  Sam's TBR?"* is not, and she offers the one she has.
+
+Checked, per the brief: the fun menu's `/progress` is a **write** command. There
+is **no** cross-member progress read on this surface, so the honest sentence is
+the whole of the answer for anything but reviews.

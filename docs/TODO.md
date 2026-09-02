@@ -215,36 +215,46 @@ because the Discord side saying "recorded" is not the evidence.
 ⚠️ A concurrent agent was working in `audiobook_catalog` on 2026-09-02, which is
 the second reason it was left alone.
 
-## ☐ GABI polish batch (owner live-test findings, 2026-09-02 ~10:33)
+## ☐ OWNER DECISION — upgrade the Groq plan? (2026-09-02)
 
-Owner drove the first live phase-2 test; measured off the wire + his report:
-1. **Groq 413 payload ceiling** — 12-tool passes refuse instantly; a 6-tool
-   pass at 4,736 input tokens RODE GROQ; iteration 2 (tool results appended)
-   refused. Ceiling ≈ just above 5k tokens/request — check the key's tier on
-   the Groq console; fix = leaner tool schemas for the Groq lane + capped
-   tool-result payloads.
-2. **Toolless converse fell back 2/2** — one `empty` status 200 (reasoning
-   quirk past the 512 floor), one `refused` status 400 with NO error body in
-   the log line. Add Groq error-text capture to the log (both param type AND
-   emitted object), then diagnose.
-3. **Personality flat on tool-backed answers** (owner: "she sounded like a
-   bot, the personality wasnt coming through except on" an opinion ask —
-   which WAS on-voice). Hypothesis: edge licence not carried into
-   reporting-mode; extend the prompt so lookup answers are performed in her
-   register too. Both flat turns were HAIKU, so this is prompt work, not
-   Groq.
-4. **Member-mention misattribution**: asked about @Diva's TBR, she claimed
-   she can only read her own shelf, then quoted the ASKER's stats — confident
-   misattribution. Check mention→member resolution and whether the new
-   /progress tool covers cross-member reads.
-5. **Answer QUALITY was poor across the test** (owner follow-up: "She also
-   didnt really answer any of the questions properly"). The conductor's
-   "every answer was right" claim was made off log lines that never carry
-   text — wrong instrument, retracted. Diagnose from the actual channel
-   transcript: retrieval quality vs. composition vs. the one Groq-ridden
-   tool loop.
-Dispatch as ONE agent after the fun-menu builder lands (same tree).
+🔴 **The 413 wall the owner met is the FREE TIER, not a bug.** Groq allows
+`openai/gpt-oss-120b` **8,000 tokens per minute** on the free plan and refuses a
+single request bigger than that with `413` rather than queueing it — which is
+the instant ~37 ms refusal he measured. The request was **~7,960 tokens before
+his question**.
 
+The code side is done (lean schemas cut the tool payload 54%, the full 13-tool
+request now fits with ~1,500 tokens to spare, and a pre-flight refuses to send a
+doomed one). But a three-pass tool loop still spends several thousand tokens a
+minute, so on the free plan a busy turn will meet `429`s where it used to meet
+`413`s.
+
+**Upgrading to Groq's Developer plan turns every mitigation into headroom.**
+Nothing breaks if he does not — the ladder falls back to Haiku invisibly, which
+is what it did all through the live test. Measurement + arithmetic:
+[`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
+
+## ☐ OWNER DECISION — `/progress percent` has no destination field (2026-09-02)
+
+The club-write shapes were finally MEASURED against `audiobook_catalog/site`
+(read-only) and **four of the seven inferred names were wrong** — corrected in
+commit `ee688ad`, with the evidence table in `src/club-write.ts`.
+
+⚠️ **`GABI_CLUB_WRITES` stays `off`, and the remaining blocker is a design
+question rather than a constant.** The club page tracks a **milestone position**
+or a **chapter index**, both numbers; there is no percentage field anywhere in
+it. A percentage is not a milestone index and not a chapter number, so
+converting one to the other would be inventing a value. `/progress percent` is
+now refused in words instead of written into a document nothing reads.
+
+**The question:** should `/progress` drop `percent` and take a chapter only, or
+also learn `milestonePosition` (which needs the read's milestone list to mean
+anything)? Answer that, then the flip checklist in
+[`access/discord-bot.md`](access/discord-bot.md) §15 is the rest.
+
+⚠️ Flipping it is **access-increasing on somebody else's live page** — this
+Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
+silently. It gets confirmed, never assumed.
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;

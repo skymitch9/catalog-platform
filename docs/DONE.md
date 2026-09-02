@@ -14,9 +14,79 @@
 > deleting one would hide that the work log had disagreed with itself.
 
 
+---
 
+## ✅ GABI polish batch (owner live-test findings, 2026-09-02 ~10:33) — 2026-09-02
 
+> ⚠️ Moved WHOLE from `TODO.md`, unedited, on the day the work landed. The
+> original item is verbatim below; what was found and shipped follows it.
 
+Owner drove the first live phase-2 test; measured off the wire + his report:
+1. **Groq 413 payload ceiling** — 12-tool passes refuse instantly; a 6-tool
+   pass at 4,736 input tokens RODE GROQ; iteration 2 (tool results appended)
+   refused. Ceiling ≈ just above 5k tokens/request — check the key's tier on
+   the Groq console; fix = leaner tool schemas for the Groq lane + capped
+   tool-result payloads.
+2. **Toolless converse fell back 2/2** — one `empty` status 200 (reasoning
+   quirk past the 512 floor), one `refused` status 400 with NO error body in
+   the log line. Add Groq error-text capture to the log (both param type AND
+   emitted object), then diagnose.
+3. **Personality flat on tool-backed answers** (owner: "she sounded like a
+   bot, the personality wasnt coming through except on" an opinion ask —
+   which WAS on-voice). Hypothesis: edge licence not carried into
+   reporting-mode; extend the prompt so lookup answers are performed in her
+   register too. Both flat turns were HAIKU, so this is prompt work, not
+   Groq.
+4. **Member-mention misattribution**: asked about @Diva's TBR, she claimed
+   she can only read her own shelf, then quoted the ASKER's stats — confident
+   misattribution. Check mention→member resolution and whether the new
+   /progress tool covers cross-member reads.
+5. **Answer QUALITY was poor across the test** (owner follow-up: "She also
+   didnt really answer any of the questions properly"). The conductor's
+   "every answer was right" claim was made off log lines that never carry
+   text — wrong instrument, retracted. Diagnose from the actual channel
+   transcript: retrieval quality vs. composition vs. the one Groq-ridden
+   tool loop.
+Dispatch as ONE agent after the fun-menu builder lands (same tree).
+
+### What was found and shipped — 7 commits, `8d1cc1a`..`ee688ad`
+
+Full ledger: [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11–§14.
+Workspace **2418 → 2452 pass / 0 fail**, typecheck clean.
+Deployed from a throwaway worktree of HEAD — see `deploys.log`.
+
+| # | root cause, MEASURED | fix |
+|---|---|---|
+| 1 | 🔴 **Not "≈5k" — the FREE TIER's 8,000 TPM.** Groq refuses a request bigger than a whole minute's allowance with 413 rather than queueing it, which is the instant 37 ms refusal. The request measured **≈7,960 tokens before the question**: system prompt 2,817 + 13 tool schemas 4,119 + `max_tokens` 1,024 | `leanTools` (16,474 b → 7,522 b, **54% off**, Groq-side only), `capToolResult` with an explicit marker, `narrowToFamilies` from pass 2, and a **pre-flight** that refuses to send a doomed request and logs `estimated_tokens` vs `token_budget`. The full 13-tool request now fits: ~4,765 against a 6,276 budget |
+| 2 | The body was **thrown away** at the `res.status !== 200` line, in both clients | `error_text` (truncated 200 chars) on every line, in **both** the param type and the emitted object; one shared `failureFor` taxonomy; 413 split out as its own reason `too_large` |
+| 3 | The edge licence is **all about riffing** and never said the register applies while reciting a lookup — which is most of what she is asked | a new licence section (*"the lookup answer is a performance too"*, with *the facts stay exactly as the tool gave them*) + two **not-edge-gated** rules in `CHAT_TOOLS_SYSTEM` |
+| 4 | 🔴 **DATA, not prompt.** Only GABI's own mention token was stripped, so the question named nobody; the model had `my_*` tools that read *the asker's own* rows and filled the gap with the only data in the room | `nameMentions` resolves other members to `@DisplayName`; `safeMemberName` sanitises it; the prompt forbids `my_*` for a third party, requires the refusal to use **their name**, and points at `book_reviews`, which IS a real cross-person read |
+| 5 | *"do we have Jake's Magical Market on audio?"* → "Catalog's got nothing on that one yet", about **three books on the shelf**. TWO faults: the reduction kept the format word `audio` (index returns 3 books without it, **0 with it** — measured live), and ⚠️ **the have lane reads the INDEX, not the CSV**, so the 2026-08-31 scorer fix never touched it — its fixture tests passed all week while the live path missed | a closed list of format nouns stripped from the **tail only** (a leading strip was written, measured and rejected), plus a **second look at the catalogue** on a zero — never on a failure, because an outage is not an absence |
+
+### ⚠️ Settled design taken: the HYBRID — Groq chooses, Haiku speaks
+
+Pre-approved and taken. The one answer that fully rode Groq was flat AND
+answered a different question than the one asked; and the composing pass is the
+one that 413s, because it carries every tool result. So the selection pass rides
+Groq and every pass from the first tool result onward is Haiku's — a quality fix
+and a payload fix at once. It shrinks the (never-measured) savings, which is
+stated in the ledger rather than hidden.
+
+### ⚠️ What is NOT verified, and what is still the owner's
+
+- 🔴 **No live Groq TOOL call has ever SUCCEEDED here.** Every attempt so far
+  was refused before the model saw it. Tool-choice accuracy on an open-weights
+  model remains the open question.
+- **The 400 on `converse` is not diagnosed.** Ruled out by reading: an
+  empty-content message, and a `json_object` ask without the word JSON. The
+  capture now exists and the tail command that names it is in §12.1.
+- **Every prompt change is unheard** — a test proves an instruction is present,
+  never that it is obeyed.
+- 🔴 **OWNER DECISION — the Groq plan.** The code can shrink the request; it
+  cannot raise the tier. Upgrading to Developer turns every mitigation into
+  headroom. Tracked as its own open item in [`TODO.md`](TODO.md).
+- 🔴 **OWNER DECISION — `/progress percent`.** Tracked in `TODO.md` with the
+  club-write flip.
 
 ## 2026-09-02 — THE DISCORD FUN MENU: five commands live, two dark, one toggle honoured
 

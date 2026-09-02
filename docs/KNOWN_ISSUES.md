@@ -1,10 +1,10 @@
 # catalog-platform — Known Issues, Waivers & Exceptions
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-26** — KI-10 was re-measured that day against a real
-> failed backup run (secret now present; the report itself was refused — see the
-> entry). ⚠️ **KI-1 through KI-9 were NOT re-checked**; KI-8 needs the
-> Cloudflare dashboard, which only the owner can open.
+> Last verified: **2026-09-02** — KI-11, KI-12 and KI-13 were opened that day
+> from the owner GABI live test and its measurements. ⚠️ **KI-1 through KI-10
+> were NOT re-checked**; KI-8 needs the Cloudflare dashboard, which only the
+> owner can open.
 >
 > **This file exists to stop the same non-bug being re-reported every month.**
 > It holds things that ARE wrong, or look wrong, and are deliberately tolerated.
@@ -254,3 +254,86 @@ lacked the D1 permission — see TODO), and `notify-failure` posted
 This job answers "it ran and broke"; the freshness grade answers "it never ran
 at all" — and a job that never starts cannot report its own failure. Neither
 substitutes for the other.
+
+---
+
+## KI-11 · GABI's Groq lane is capped by the FREE tier, not by our code — `BLOCKED` (owner)
+
+**Symptom.** `wrangler tail estate-discord` shows `gabi_groq` lines reading
+`outcome: "fallback"` with `reason: "too_large"` (ours, pre-flight) or
+`status: 413` (Groq's, in ~37 ms). Answers still arrive — Haiku picks them up
+invisibly — so nothing looks broken in the channel.
+
+**Why tolerated.** It is the plan, not a defect. Groq allows
+`openai/gpt-oss-120b` **8,000 tokens per minute** on the **free** plan and
+refuses a single request larger than that outright. Measured 2026-09-02, the
+tool-loop request was **~7,960 tokens before the question**: system prompt
+2,817 + 13 tool schemas 4,119 + `max_tokens` 1,024. The code side is done —
+lean schemas took 54% off the tool payload and the full 13-tool request now
+fits with ~1,500 tokens to spare — but the tier is the owner's to raise. The
+ladder falling back to Haiku is the designed behaviour, and the person cannot
+tell.
+
+**What would change it.** Upgrading to Groq's Developer plan (tracked in
+[`TODO.md`](TODO.md) as an owner decision). The number to watch afterwards:
+`reason: "too_large"` should disappear from the stream entirely, and
+`gabi_groq_tpm_limit` on `/api/health` is the value that would need updating.
+Arithmetic and evidence: [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
+
+---
+
+## KI-12 · One `converse` call to Groq returned HTTP 400, cause unknown — `WATCHING`
+
+**Symptom.** In the owner's live test on 2026-09-02, toolless `converse` fell
+back twice: once `empty` (a 200 with no words — the reasoning-model quirk, since
+addressed by raising the floor to 1,024 and retrying `empty` once) and once
+`refused` with `status: 400`. **The 400's cause is not known**, because the log
+line carried no body.
+
+**Why tolerated.** A single occurrence, with a working fallback: the person got
+their answer from Haiku and could not tell. Guessing at it would be worse than
+watching for it — two candidates were ruled out by reading rather than
+speculation (an empty-content message is impossible: `normaliseHistory` drops
+empty turns and merges same-role ones; and `json_object` is guarded and
+`converse` does not request it anyway).
+
+**What would change it.** One more occurrence, now that the body is captured.
+The instrument, and the whole reason the capture shipped first:
+
+```bash
+npx wrangler tail estate-discord --format json \
+  | jq 'select(.evt=="gabi_groq" and .outcome=="fallback" and .status==400)
+        | {purpose, reason, status, error_text}'
+```
+
+One line with `error_text` names it. Until then this is an open question with an
+instrument pointed at it, not a fix.
+
+---
+
+## KI-13 · `/rsvp` and `/progress` ship dark, and now for a NAMED reason — `BLOCKED` (owner)
+
+**Symptom.** The two club-write commands are not published and answer
+"not switched on" if reached through a stale global command. `GABI_CLUB_WRITES`
+is `"off"` in `wrangler.toml`.
+
+**Why tolerated.** They shipped dark because the Firestore document shapes were
+INFERRED. They were measured on **2026-09-02** against
+`audiobook_catalog/site/club-reads.js`, `site/clubs.js` and `firestore.rules`
+(read-only), and **four of the seven guesses were wrong** — the RSVP field
+(`response`, not `status`), its vocabulary (`going`/`maybe`/`cant`), the
+instant's TYPE (a number, compared with `===`, so a string would have stored
+fine and been counted by nothing) and the club's own field (`nextMeetingAt`).
+All four are corrected in commit `ee688ad`. ⚠️ **Every one of them would have
+SUCCEEDED**, because this Worker's service account bypasses `firestore.rules` —
+which is exactly why the posture, not the code, was the thing protecting a live
+club page.
+
+**What would change it.** One owner decision, tracked in [`TODO.md`](TODO.md):
+`/progress percent` has **no destination field** — the page tracks
+`milestonePosition` or `chapterIndex`, both numbers, and a percentage is neither.
+It is now refused in words rather than written into a void. Decide whether
+`/progress` drops `percent` or learns `milestonePosition`, then run the flip
+checklist in [`access/discord-bot.md`](access/discord-bot.md) §15. ⚠️ The flip is
+**access-increasing on somebody else's live page**, so it is confirmed, never
+assumed.

@@ -1073,10 +1073,54 @@ name from `GROQ_READ_ONLY_TOOL_NAMES` in `apps/discord-worker/src/gabi-tools.ts`
 and deploy — every loop that offers it goes back to Anthropic whole. Backing out
 everything is still `GABI_GROQ = "off"`.
 
-⚠️ **NOT VERIFIED as of 2026-09-02:** no live Groq tool call has ever been made.
-Whether an open-weights model calls these tools *accurately* is the real
-question, and it cannot be answered from a shadow — the next tool-bearing
-@mention is the first live test.
+### 11.9a 🔴 THE FIRST LIVE TEST REFUSED EVERY PASS — 413, and it is the TIER
+
+**Measured 2026-09-02, the morning after phase 2 shipped.** Every 12-tool pass
+came back `HTTP 413` in ~37 ms. A 6-tool pass at 4,736 input tokens rode Groq;
+the next pass, with the tool results appended, refused.
+
+**It is not a bug.** Groq allows `openai/gpt-oss-120b` **8,000 tokens per
+minute** on the **free** plan and refuses a single request bigger than the whole
+minute's allowance outright. The request measured **~7,960 tokens before the
+question** — system prompt 2,817 + 13 tool schemas 4,119 + `max_tokens` 1,024.
+
+**What changed in the code** (`0247cc3`; arithmetic in
+[`info/gabi-groq-rung.md` §11](../info/gabi-groq-rung.md)):
+
+- **lean tool schemas for Groq only** — 16,474 b → 7,522 b, **54% off**; the
+  full 13-tool request now fits with ~1,500 tokens to spare;
+- **tool results capped at 2,000 chars with an explicit marker** — never a
+  silent truncation, which would read to the model as an absence;
+- **family narrowing** from the second pass on;
+- a **pre-flight** — a request that still does not fit is never sent, and the
+  line carries `estimated_tokens` and `token_budget`.
+
+⚠️ **AND THE LANE IS NOW A HYBRID: Groq CHOOSES the tools, Haiku SPEAKS.**
+The one answer that fully rode Groq was flat and answered a different question
+than the one asked; and the composing pass is the one that 413s, because it
+carries every tool result. So the selection pass rides Groq and every pass from
+the first tool result onward is Haiku's. `/api/health`'s `gabi_groq_scope` says
+so: `toolless_calls_plus_tool_selection_pass_first_only`.
+
+🔴 **HALF OF THIS IS AN OWNER DECISION.** The code can shrink the request; it
+cannot raise the tier. **Upgrading the Groq plan turns every mitigation above
+into headroom** — tracked in [`../TODO.md`](../TODO.md). Nothing breaks if he
+does not: the ladder falls back to Haiku and the person cannot tell.
+
+Two new health rows answer *"is the bot small enough for the plan we are on?"*
+in one curl:
+
+```bash
+curl -s https://discord.heygabi.ai/api/health \
+  | jq '{scope: .gabi_groq_scope, tpm: .gabi_groq_tpm_limit,
+         budget: .gabi_groq_request_budget_tokens}'
+```
+
+⚠️ **NOT VERIFIED as of 2026-09-02 evening:** no live Groq tool call has ever
+**succeeded** — every attempt so far was refused before the model saw it.
+Whether an open-weights model calls these tools *accurately* is still the real
+question, it cannot be answered from a shadow, and the next tool-bearing
+@mention is still the first real test.
 
 
 ---
@@ -1739,10 +1783,30 @@ rather than caution.** Read this before touching the switch.
 | Both writes are gated `open` in rules, not by a capability | the migration doc's table: *setProgress / setChapterProgress: open, browser-direct*; *RSVP: open, browser-direct* |
 | `features.meetingRsvp` is a real club feature key | `enforce-routes.ts:126` |
 
-**What is NOT measured — and it is the half that matters:** the **field names**
-inside an RSVP and a progress document, and whether `rsvps` hangs off the club
-or off a meeting. They live in `audiobook_catalog/site/`, which the build that
-wrote this was directed not to read.
+✅ **AND THE MISSING HALF WAS MEASURED ON 2026-09-02** — read from
+`audiobook_catalog/site/club-reads.js`, `site/clubs.js` and `firestore.rules`
+(read-only; nothing in that repo was changed). 🔴 **Four of the seven
+inferred names were WRONG**, and every one of them would have SUCCEEDED:
+
+| what | the guess | ⚠️ the MEASURED truth | evidence |
+|---|---|---|---|
+| RSVP collection | `rsvps` | ✅ `rsvps`, doc id = member slug | `club-reads.js:1961` |
+| RSVP answer field | `status` | 🔴 **`response`** | `club-reads.js:1961-66`, `firestore.rules:626` |
+| RSVP answer VALUES | `yes`/`no`/`maybe` | 🔴 **`going`/`maybe`/`cant`** | `RSVP_RESPONSES`, `club-reads.js:1895` |
+| RSVP `meetingAt` | a string | 🔴 **a NUMBER** (epoch ms) | `firestore.rules:628`, `isRsvpCurrent` |
+| club's meeting field | `meetingAt` | 🔴 **`nextMeetingAt`**, also a number | `clubs.js:263,565` |
+| progress fields | `percent`, `chapter` | 🔴 **`milestonePosition`** or **`chapterIndex`**, both NUMBERS, plus `finished` and `history` | `club-reads.js:976-81,1007-12`; `firestore.rules:1143` |
+| `displayName` / `updatedAt` | both | ✅ both, on both documents | `club-reads.js:1962,1975` |
+
+⚠️ **`meetingAt` is the silent killer.** Every reader filters
+`rsvp.meetingAt === club.nextMeetingAt` to drop answers to a rescheduled
+meeting. A string never `===` a number, so an RSVP in the old shape would have
+stored fine and been **absent from every tally for ever**. And reading the
+club's instant from `meetingAt` returns null for every real club, so `/rsvp`
+would have answered *"no meeting scheduled"* always.
+
+All corrected in commit `ee688ad`, with the evidence table in
+`src/club-write.ts` and the pin updated in `test/club-write.test.ts`.
 
 ⚠️ **This Worker's service account BYPASSES `firestore.rules`.** A write in the
 wrong shape is therefore **not refused — it SUCCEEDS**, and the club page then
@@ -1750,24 +1814,39 @@ shows a member who has not RSVP'd, or a progress bar that never moves, with no
 error anywhere. It fails silently, on somebody else's surface, and it looks
 exactly like a bug in their code.
 
-**The flip, in order:**
+### 🔴 THE ONE THING STILL BLOCKING THE FLIP — an OWNER decision
 
-1. Open `audiobook_catalog/site/` (`club-meetings.js` / `club-reads.js` and
-   `firestore.rules`) and read what `setProgress`, `setChapterProgress` and the
-   RSVP writer actually write — field names, doc id, and the collection path.
-2. Correct **`CLUB_WRITE_SHAPES`** in `apps/discord-worker/src/club-write.ts`.
-   Every inferred name sits in that one block, so this is one diff.
-   `test/club-write.test.ts` pins the block with a `deepEqual`, so the
-   correction is a visible decision rather than a silent edit — update the pin
-   in the same commit.
-3. Flip `club_write_shapes_verified` in `/api/health` to `true` **only** once
-   step 1 is actually done, and say in the commit who checked and against what.
+⚠️ **`/progress percent` has NO DESTINATION FIELD, and correcting a constant
+cannot fix that.** The club page tracks a milestone POSITION or a chapter INDEX,
+both numbers; there is no percentage anywhere in it, and a percentage is neither
+of those, so converting one into the other would be **inventing a value**. Since
+`ee688ad` the percentage input is REFUSED in words rather than written into a
+document nothing reads, and a chapter LABEL becomes a `chapterIndex` (`"ch. 14"`
+→ `14`); a label with no number in it is refused too.
+
+**The question, and it is the owner's rather than a coder's:** should
+`/progress` drop `percent` and take a chapter only, or should it also learn
+`milestonePosition` — which needs the read's milestone list to mean anything?
+Tracked in [`../TODO.md`](../TODO.md).
+
+**The flip, once that is answered, in order:**
+
+1. ✅ **DONE 2026-09-02** — the shapes are measured and `CLUB_WRITE_SHAPES` is
+   corrected (see the table above). Nothing to repeat here.
+2. Answer the `/progress percent` question above and land whatever it implies
+   (dropping the option is a command **re-registration**, not just an edit).
+3. Flip `club_write_shapes_verified` in `/api/health` to `true`, saying in the
+   commit who checked and against what. ⚠️ It is still `false` today **on
+   purpose**: the shapes are verified but the command is not yet coherent, and
+   one flag claiming both would be a half-truth.
 4. `GABI_CLUB_WRITES = "on"` in `wrangler.toml`, `npx wrangler deploy`.
 5. Re-run the registration route (§15.2) so `/rsvp` and `/progress` appear.
 6. Opt a club in: `features.meetingRsvp = true` on its club doc. Default OFF —
    the same posture `discordPollVoting` keeps.
 7. **Exercise it against a real club and then look at the club PAGE.** The
    Discord side saying "recorded" is not the evidence; the page rendering it is.
+   ⚠️ Check an RSVP actually appears in the TALLY, not merely that a document
+   exists — the `meetingAt` trap above is invisible from the document side.
 
 **Backing out** is one line: `GABI_CLUB_WRITES = "off"` and deploy. The commands
 disappear from Discord on the next registration run, and a stale one answers the
