@@ -27,6 +27,7 @@ import {
   addSeries,
   buildIndex,
   canonicalName,
+  createUniverse,
   findUniverse,
   holdOut,
   load,
@@ -131,6 +132,7 @@ READING
   fixtures                              run data/universes.fixtures.json
 
 EDITING  (every command needs --why; --dry-run shows the result without writing)
+  create <name> --why W --confirmed "<owner's own words>" [--evidence E]
   add-series <universe> --series S --why W [--decided-how seed|llm|human]
   remove-series <universe> --series S --why W
   add-book <universe> --title T --why W [--exclude]
@@ -142,9 +144,15 @@ EDITING  (every command needs --why; --dry-run shows the result without writing)
   a book inside a universe's series is kept OUT of it — The Frugal Wizard's
   Handbook is the reason the mechanism exists.
 
-  This CLI does not create or delete universes. ${existing} owner
-  sign-off recorded in its \`confirmed\` field; the next one is a decision to
-  make in the file, with its evidence, not a command to run.
+  ⚠️ \`create\` REQUIRES --confirmed, which nothing else here does. ${existing} owner
+  sign-off recorded in its \`confirmed\` field, and creating one is a decision —
+  so the command makes you write the decision down. It is deliberately stricter
+  than editing the JSON by hand, which is how the last eleven got here.
+  This CLI still does not DELETE universes: two catalogs are built from this
+  file, and removing a name is a change to what they already shipped.
+
+  ⚠️ After \`create\`, library_catalog/packages/core/test/universes.test.ts
+  fails until the new name is added there too. That is the tripwire working.
 `;
 }
 
@@ -267,6 +275,15 @@ function main() {
     case 'fixtures':
       return cmdFixtures(data);
 
+    // ⚠️ `--confirmed` is read here and passed straight through; the refusal
+    // when it is missing lives in createUniverse(), beside the reason for it,
+    // so a second entry point could not accidentally skip the check.
+    case 'create':
+      return saveChecked(
+        data,
+        createUniverse(data, { name: arg1, why, confirmed: flag(flags, 'confirmed'), evidence: flag(flags, 'evidence'), decidedHow }),
+        { dryRun }
+      );
     case 'add-series':
       return saveChecked(data, addSeries(data, { universe: arg1, series: flag(flags, 'series'), why, decidedHow }), { dryRun });
     case 'remove-series':

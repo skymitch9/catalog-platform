@@ -406,6 +406,94 @@ function logChange(data, entry) {
   data._changelog.push({ date: today(), ...entry });
 }
 
+/**
+ * CREATE A UNIVERSE — the seventeenth-and-onward decision, made through the
+ * tool instead of by hand.
+ *
+ * ⚠️ THIS CLI REFUSED TO HAVE THIS COMMAND, IN WRITING, FOR MOST OF ITS LIFE:
+ * *"a seventh is a decision to make in the file, with its evidence, not a
+ * command to run."* Read as an argument about DECISIONS that was exactly right.
+ * Read as an argument about SYNTAX it failed, and syntax is what it became —
+ * there are seventeen universes now, not six, so the file has been hand-edited
+ * eleven times, and a hand edit is the ONE path with no `--why` enforcement, no
+ * canonicalNames registration and no `validate` gate in front of it. The
+ * refusal was protecting the decision; it ended up protecting the text editor.
+ *
+ * 🔴 SO THIS IS STRICTER THAN THE HAND EDIT IT REPLACES, NEVER LOOSER:
+ *   --why        the reason, ≥10 chars — the same floor every mutation here has
+ *   --confirmed  ⚠️ REQUIRED, and required by NOTHING ELSE in this file. It is
+ *                the owner's own words, landing in the field the data file
+ *                already reserves for sign-off. Every existing universe carries
+ *                one; a hand edit could simply omit it.
+ * and the write still goes through `saveChecked()`, so `validate()` runs before
+ * anything reaches disk.
+ *
+ * ⚠️ IT REGISTERS THE NAME IN `canonicalNames` IN THE SAME BREATH. A universe
+ * that is not a canonical target can never have an alias folded onto it —
+ * `validate()` errors UNIVERSE_NOT_CANONICAL for exactly that — and it is the
+ * step a hand edit forgets, because the file's shape does not make it obvious.
+ *
+ * ⚠️ WHAT THIS STILL CANNOT DO, AND MUST NOT: make the verse real. The tripwire
+ * in library_catalog/packages/core/test/universes.test.ts will now FAIL, which
+ * is that test working — it is the thing standing between this file and two
+ * catalogs that disagree with it. Editing it in the same commit is the intended
+ * workflow; the returned message says so, because the next person to run this
+ * will meet a red suite ten minutes later and should already know why.
+ */
+export function createUniverse(data, { name, why, confirmed, evidence, decidedHow = 'human' }) {
+  const reason = requireReason(why, 'Creating a universe');
+  requireDecidedHow(decidedHow);
+
+  const label = typeof name === 'string' ? name.trim() : '';
+  if (!label) throw new UniversesError('create needs a universe name');
+
+  const sign = typeof confirmed === 'string' ? confirmed.trim() : '';
+  if (sign.length < 10) {
+    throw new UniversesError(
+      `Creating a universe needs --confirmed "<the owner's own words>" (at least 10 characters).\n` +
+        `Every universe in this file carries a \`confirmed\` field recording who said yes and in what words.\n` +
+        `That is the difference between a decision and a typo, and it is the one thing a hand edit of the\n` +
+        `JSON could always skip. This command exists to make skipping it impossible, so the edit is refused.`
+    );
+  }
+
+  const key = normText(label);
+  const existing = canonicalName(data, label);
+  if (existing) {
+    throw new UniversesError(
+      existing === label
+        ? `"${label}" already exists.`
+        : `"${label}" is a registered spelling of ${existing} — the estate already has that universe under\n` +
+          `that name. If this is genuinely a different fiction, choose a name that is not one of its aliases;\n` +
+          `if it is the same one, there is nothing to create.`
+    );
+  }
+  for (const u of data.universes ?? []) {
+    if (normText(u.name) === key) {
+      throw new UniversesError(`"${label}" already exists as ${u.name} (and is missing from canonicalNames — run validate).`);
+    }
+  }
+
+  const entry = { name: label, decidedHow, confirmed: sign, why: reason };
+  if (typeof evidence === 'string' && evidence.trim()) entry.evidence = evidence.trim();
+  entry.series = [];
+
+  data.universes = data.universes ?? [];
+  data.universes.push(entry);
+  data.canonicalNames = data.canonicalNames ?? {};
+  data.canonicalNames[key] = label;
+
+  logChange(data, { action: 'create', universe: label, why: reason, confirmed: sign, decidedHow });
+
+  return (
+    `Created "${label}". It claims nothing yet — validate will warn EMPTY_UNIVERSE until it does.\n` +
+    `  Next:   node tools/universes.mjs add-series "${label}" --series "<a series>" --why "${reason}"\n` +
+    `  ⚠️ Then: library_catalog/packages/core/test/universes.test.ts pins the list of universe names and\n` +
+    `          their counts. It will FAIL until you add "${label}" there in the same commit — that test\n` +
+    `          failing is it working, and it is what stops a universe existing here and nowhere else.`
+  );
+}
+
 export function addSeries(data, { universe, series, why, decidedHow = 'human' }) {
   const reason = requireReason(why, 'Adding a series');
   requireDecidedHow(decidedHow);
