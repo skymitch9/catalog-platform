@@ -310,6 +310,62 @@ export function stripMention(content: string, appId: string): string {
   return content.replace(mentionTokens(appId), ' ');
 }
 
+/**
+ * ⚠️ **OTHER PEOPLE'S MENTIONS BECOME NAMES — and the absence of this is what
+ * produced a confident misattribution in front of the household.**
+ *
+ * Measured 2026-09-02 in #gabi-test: the owner asked about **@Diva's** TBR. GABI
+ * said she can only read her own shelf — and then quoted **the ASKER's** stats
+ * as though they were Diva's.
+ *
+ * The mechanism is not a prompt failure, it is a data one. `stripMention`
+ * removes GABI's OWN token and nothing else, so the question reached the model
+ * as a bare snowflake — *"what's on `<@314159…>`'s TBR"* — which names nobody.
+ * The model then had a question about a person it could not identify and a set
+ * of tools that read *"the asker's own"* rows, and it filled the gap with the
+ * only data in the room. ⚠️ **That is the worst class of answer this surface
+ * can produce: not a refusal, not an absence, but somebody else's private
+ * reading attributed to a third party, stated confidently, in public.**
+ *
+ * So every OTHER member's mention is resolved to their display name before the
+ * question is built. Then the model can see it is being asked about a named
+ * person who is not the asker, and the prompt rule about that has a name to
+ * attach to.
+ *
+ * ⚠️ **The name is SANITISED, and that is not paranoia.** A display name is
+ * text a household member chooses. `<`, `>` and `@` are stripped so a name can
+ * never rebuild a mention token or smuggle one in, newlines are flattened so it
+ * cannot open a new instruction line in the prompt, and the whole thing is
+ * capped. A name that sanitises away to nothing leaves the raw token alone —
+ * unresolvable is a better state than misleadingly resolved.
+ */
+export const MAX_MENTION_NAME = 64;
+
+export function safeMemberName(raw: string): string {
+  return raw
+    .replace(/[<>@`\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_MENTION_NAME)
+    .trim();
+}
+
+export function nameMentions(content: string, mentions: unknown, appId: string): string {
+  if (!Array.isArray(mentions)) return content;
+  let out = content;
+  for (const entry of mentions) {
+    const user = (entry ?? {}) as GatewayUser;
+    const id = str(user.id).replace(/[^0-9]/g, '');
+    // ⚠️ HER OWN token is left for `stripMention`, which removes it entirely.
+    // Naming it here would put "@GABI" into her own prompt as a third party.
+    if (!id || id === appId) continue;
+    const name = safeMemberName(str(user.global_name) || str(user.username));
+    if (!name) continue;
+    out = out.replace(new RegExp(`<@!?${id}>`, 'g'), `@${name}`);
+  }
+  return out;
+}
+
 /** What is left once the mention and any greeting are removed. */
 export function questionFrom(content: string, appId: string): string {
   let text = stripMention(content, appId);
@@ -417,7 +473,11 @@ export function mentionTrigger(msg: GatewayMessage, appId: string): MentionTrigg
   if (!channelId || !messageId) return { kind: 'ignore', why: 'no_channel_or_message_id' };
 
   const guildId = str(msg.guild_id) || null;
-  const content = str(msg.content);
+  // ⚠️ Resolved ONCE, here, before any door reads it — so all three doors get
+  // the same text and `questionFrom` stays a pure function of a string. See
+  // `nameMentions`: a bare snowflake names nobody, and a question about nobody
+  // is how the asker's own rows got attributed to somebody else.
+  const content = nameMentions(str(msg.content), msg.mentions, appId);
   const who = {
     messageId,
     channelId,
