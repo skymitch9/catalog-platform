@@ -468,8 +468,19 @@ export function searchCatalog(
   // series" (the measured live miss above), "…saga", "…trilogy", "…books".
   // Stripped repeatedly so "the X book series" sheds both. A CLOSED list on
   // purpose — stripping real title words would trade this miss for worse ones.
+  //
+  // ⚠️ FORMAT words joined the list 2026-09-02, after *"do we have Jake's
+  // Magical Market on audio?"* was answered "nothing". The reverse-containment
+  // rule below already RESCUED that query here (score 300), but a rescue is a
+  // weaker match than the real one: with `audio` stripped the same query scores
+  // an exact series hit (450) and ranks the three volumes correctly instead of
+  // behind anything with a stronger accidental match. Same closed list as
+  // `gabi.ts`'s `FORMAT_WORDS`, which is where the live miss actually was.
   for (;;) {
-    const stripped = q.replace(/\s+(series|saga|trilogy|novels?|books?|audiobooks?)$/, '');
+    const stripped = q.replace(
+      /\s+(series|saga|trilogy|novels?|books?|audiobooks?|audio|audible|ebooks?|kindle|epub|print|paperback|hardcover|hardback)$/,
+      '',
+    );
     if (stripped === q) break;
     q = stripped;
   }

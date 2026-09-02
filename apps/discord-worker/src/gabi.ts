@@ -121,7 +121,11 @@ export const MAX_GABI_HITS = 3;
  * question is searched unchanged.
  */
 const STOPWORDS = new Set([
-  'a', 'about', 'an', 'and', 'any', 'anything', 'are', 'ask', 'book', 'books',
+  // ⚠️ `as` joined 2026-09-02 with the format-word strip below: "…as an
+  // audiobook" sheds `audiobook` at the tail and would otherwise leave `as`
+  // stranded there. It is the same family as `about`/`from`/`with`, which have
+  // always been here; its absence was an oversight rather than a decision.
+  'a', 'about', 'an', 'and', 'any', 'anything', 'are', 'as', 'ask', 'book', 'books',
   'can', 'could', 'did', 'do', 'does', 'estate', 'find', 'for', 'from', 'gabi',
   'get', 'has', 'have', 'her', 'his', 'how', 'i', 'in', 'is', 'it', 'know',
   'me', 'my', 'of', 'on', 'our', 'please', 'sam', 'she', 'tell', 'that',
@@ -133,6 +137,61 @@ const STOPWORDS = new Set([
 const MAX_TERM_WORDS = 8;
 
 /**
+ * ⚠️ **FORMAT WORDS — the decoration that cost the owner a live answer, and the
+ * measurement that proves it.**
+ *
+ * Measured 2026-09-02, in the channel: *"do we have Jake's Magical Market on
+ * audio?"* → **"Catalog's got nothing on that one yet."** About a series with
+ * **three volumes in the catalogue**.
+ *
+ * The reduction is the whole of it. `on` is a stopword and `audio` was not, so
+ * this function produced `Jake's Magical Market audio` and the have lane sent
+ * that to the index verbatim:
+ *
+ * ```
+ * GET index.heygabi.ai/api/search?q=Jake%27s+Magical+Market&source=audiobook  → 3 books
+ * GET index.heygabi.ai/api/search?q=Jake%27s+Magical+Market+audio&…           → 0 books
+ * ```
+ *
+ * (both measured live, 2026-09-02 17:54 UTC). ⚠️ **The 2026-08-31 scorer fix
+ * did not cover this**, and that is the trap worth naming: that fix taught
+ * `catalog-data.ts` to ask *"does the QUERY contain the row?"* as well as the
+ * other way round — which handles exactly this shape — but the have lane does
+ * not read the CSV at all. It queries the INDEX, whose scorer is another
+ * Worker's and has no such rule. A fixture test on the right function passed
+ * all week while the live path missed.
+ *
+ * So: a **closed list**, stripped from the TAIL of the reduced term and nowhere
+ * else, in the same idiom `searchCatalog`'s trailing `series|saga|trilogy`
+ * strip already uses — whose own test is titled *"only at the tail"*.
+ *
+ * ⚠️ **A LEADING strip was written, measured and REMOVED.** It would have
+ * helped *"is the audiobook of Dungeon Born any good"* → and it broke *"The
+ * Audio Vault Chronicles"*, because `The` is already a stopword and that makes
+ * a title's own first word leading. Trading a measured miss for an unmeasured
+ * one is not a fix; the tail is where the evidence is.
+ *
+ * Format NOUNS only — nothing that could be a plot word — and a strip that
+ * would empty the term is refused, so a book genuinely called *Print* is still
+ * findable.
+ */
+const FORMAT_WORDS = new Set([
+  'audio', 'audiobook', 'audiobooks', 'audible', 'ebook', 'ebooks', 'e-book',
+  'kindle', 'epub', 'print', 'paperback', 'hardcover', 'hardback', 'physical',
+]);
+
+/** Strip trailing format decoration. ⚠️ Never empties the term: a term reduced
+ *  to nothing is a search for everything. Repeated, so "on audio audiobook"
+ *  sheds both. */
+export function stripFormatWords(words: readonly string[]): string[] {
+  const out = [...words];
+  const isFormat = (w: string | undefined): boolean =>
+    w !== undefined && FORMAT_WORDS.has(w.toLowerCase().replace(/[^a-z-]/g, ''));
+  while (out.length > 1 && isFormat(out[out.length - 1])) out.pop();
+  return out;
+}
+
+/**
  * A spoken question reduced to something `/api/search` can match.
  *
  * Best-effort by design and never load-bearing: it decides only which nibble
@@ -141,10 +200,12 @@ const MAX_TERM_WORDS = 8;
 export function searchTermFor(question: string): string {
   const cleaned = question.replace(/[?!.,;:"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!cleaned) return '';
-  const kept = cleaned
-    .split(' ')
-    .filter((w) => w.length > 0 && !STOPWORDS.has(w.toLowerCase().replace(/^'|'$/g, '')))
-    .slice(0, MAX_TERM_WORDS);
+  const kept = stripFormatWords(
+    cleaned
+      .split(' ')
+      .filter((w) => w.length > 0 && !STOPWORDS.has(w.toLowerCase().replace(/^'|'$/g, '')))
+      .slice(0, MAX_TERM_WORDS),
+  );
   return kept.length > 0 ? kept.join(' ') : cleaned;
 }
 

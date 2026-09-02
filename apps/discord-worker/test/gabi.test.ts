@@ -34,6 +34,7 @@ import {
   processGabi,
   readLinkState,
   searchTermFor,
+  stripFormatWords,
 } from '../src/gabi.js';
 import { BASE_COMMANDS } from '../src/commands.js';
 import { EPHEMERAL, GABI_COMMAND_NAME, routeInteraction } from '../src/interactions.js';
@@ -139,6 +140,48 @@ test('searchTermFor never returns empty — an all-stopword question is searched
   // used, so a bad reduction is visible rather than mysterious.
   assert.equal(searchTermFor('do you have any books?'), 'do you have any books');
   assert.equal(searchTermFor('   '), '');
+});
+
+// ── ⚠️ THE FORMAT WORD, and the live answer it cost ────────────────────────
+//
+// Measured 2026-09-02 in #gabi-test: *"do we have Jake's Magical Market on
+// audio?"* → "Catalog's got nothing on that one yet." About a series with THREE
+// volumes on the shelf.
+//
+// `on` was a stopword and `audio` was not, so the reduction was
+// `Jake's Magical Market audio`, and the have lane sends the reduction to the
+// index VERBATIM. Both halves measured live the same day, 17:54 UTC:
+//
+//   /api/search?q=Jake's Magical Market&source=audiobook        → 3 books
+//   /api/search?q=Jake's Magical Market audio&source=audiobook  → 0 books
+
+test("⚠️ THE LIVE MISS: a trailing format word is decoration, not a title", () => {
+  assert.equal(searchTermFor("do we have Jake's Magical Market on audio?"), "Jake's Magical Market");
+  assert.equal(searchTermFor('do we have Dungeon Born as an ebook'), 'Dungeon Born');
+  assert.equal(searchTermFor('is Mistborn on audiobook'), 'Mistborn');
+});
+
+test('⚠️ only the TAIL — a LEADING strip was measured and rejected', () => {
+  // It would have helped "is the audiobook of X any good" and it BROKE "The
+  // Audio Vault Chronicles", because `The` is already a stopword, which makes
+  // a title's own first word leading. Trading a measured miss for an
+  // unmeasured one is not a fix. Same rule `searchCatalog`'s trailing
+  // genre-word strip keeps, whose test is titled "only at the tail".
+  assert.equal(searchTermFor('The Audio Vault Chronicles'), 'Audio Vault Chronicles');
+  assert.equal(searchTermFor('is the audiobook of Dungeon Born any good'), 'audiobook Dungeon Born good');
+});
+
+test('⚠️ the strip NEVER empties the term — a book called Print is still findable', () => {
+  // A term reduced to nothing is a search for everything, which is worse than
+  // the decoration it was trying to remove.
+  assert.equal(searchTermFor('do we have Print'), 'Print');
+  assert.equal(searchTermFor('audiobook'), 'audiobook');
+  assert.deepEqual(stripFormatWords(['audio']), ['audio']);
+  assert.deepEqual(stripFormatWords(['audio', 'print']), ['audio']);
+});
+
+test('a format word in the MIDDLE is left alone — only the tail is decoration', () => {
+  assert.equal(searchTermFor('The Audio Vault Chronicles are great'), 'Audio Vault Chronicles great');
 });
 
 // ===========================================================================

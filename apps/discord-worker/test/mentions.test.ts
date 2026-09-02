@@ -42,6 +42,7 @@ import {
   BARE_MENTION_GREETING,
 } from '../src/mentions.js';
 import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
+import { resetCatalogCache } from '../src/catalog-data.js';
 import { FATAL_CLOSE_CODES, GATEWAY_INTENTS } from '../src/gateway.js';
 import { classifyIntent, converse, estimateCents, GABI_CHAT_MODEL } from '../src/gabi-chat.js';
 
@@ -390,6 +391,131 @@ describe('⚠️ a missing Anthropic key is a LADDER, never an error in a channe
     }
   });
 
+  // ── ⚠️ THE SECOND LOOK: the index found nothing, the shelf HAS it ─────────
+  //
+  // Measured 2026-09-02 in #gabi-test: *"do we have Jake's Magical Market on
+  // audio?"* → "Catalog's got nothing on that one yet." About a series with
+  // three volumes on the shelf. TWO independent faults produced it, and this
+  // test drives the second one — the one that survives every future wording
+  // nobody predicted:
+  //
+  //   1. the reduction carried the format word `audio` (pinned in gabi.test.ts);
+  //   2. ⚠️ **this lane reads the INDEX, not the CSV.** The 2026-08-31 scorer
+  //      fix that handles a chatty query wrapping a title lives in
+  //      `catalog-data.ts` and the have lane never touches it. Its fixture
+  //      tests passed all week while the live path missed.
+  //
+  // Real rows, copied from the live catalogue on 2026-09-02: the real author
+  // spelling (`J.r. Mathews`, as the pipeline writes it), the real narrators —
+  // book 1 is Travis Baldree and 2–3 are John Pirhalla — the real durations.
+  it('⚠️ a ZERO from the index takes a second look at the catalogue before saying "nothing"', async () => {
+    const JAKE_CSV = [
+      'title,series,series_index_display,series_index_sort,author,narrator,year,genre,duration_hhmm,cover_href,companion_files,desc,library_work_id,library_formats,universe,series_gap',
+      "Jake's Magical Market,Jake's Magical Market,1,1.0,J.r. Mathews,Travis Baldree,2021-11-22,Teen & Young Adult:Science Fiction & Fantasy:Fantasy:Contemporary,20:41,covers/j1.jpg,,Blurb.,,,,",
+      "Jake's Magical Market 2 - A Trek Through Time,Jake's Magical Market,2,2.0,J.r. Mathews,John Pirhalla,2024-02-15,Science Fiction & Fantasy:Fantasy:Action & Adventure,22:05,covers/j2.jpg,,Blurb.,,,,",
+      "Jake's Magical Market 3 - Home Sweet Home,Jake's Magical Market,3,3.0,J.r. Mathews,John Pirhalla,2024-06-18,Science Fiction & Fantasy:Fantasy:Action & Adventure,36:21,covers/j3.jpg,,Blurb.,,,,",
+    ].join('\n');
+
+    resetCatalogCache();
+    const said: string[] = [];
+    const trigger = mentionTrigger(
+      msg({ content: `<@${APP_ID}> do we have Jake's Magical Market on audio?` }),
+      APP_ID,
+    );
+    assert.equal(trigger.kind, 'ask');
+    if (trigger.kind !== 'ask') return;
+
+    const asked: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      asked.push(url);
+      // ⚠️ The index answers HONESTLY and finds nothing — exactly what the live
+      // one does for this wording. Measured 2026-09-02 17:54 UTC.
+      if (url.includes('index.example')) {
+        return new Response(JSON.stringify({ books: [] }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('catalog.example')) {
+        return new Response(JAKE_CSV, { headers: { 'content-type': 'text/csv' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+    try {
+      const out = await handleMention(
+        {
+          capCheck: async () => ({ ok: true }),
+          recordTurn: async () => {},
+          conversation: NO_MEMORY,
+          reply: async (content) => void said.push(content),
+        },
+        trigger,
+        {
+          indexBaseUrl: 'https://index.example',
+          panelUrl: 'https://panel.example/',
+          catalogBaseUrl: 'https://catalog.example',
+        },
+      );
+      assert.equal(out.intent, 'have_lookup');
+      assert.equal(said.length, 1);
+      // ⚠️ The three books, by name. With no Anthropic key the voicing pass
+      // returns null and the FACTS stand alone — so this asserts the retrieval,
+      // not a model's willingness to repeat it.
+      assert.match(said[0]!, /Jake's Magical Market/);
+      assert.match(said[0]!, /Travis Baldree/, 'the catalogue row, not a bare title');
+      assert.doesNotMatch(
+        said[0]!,
+        /Nothing (in|on) the estate/i,
+        '⚠️ THE LIVE FAILURE: an absence reported about three books that are on the shelf',
+      );
+      assert.ok(
+        asked.some((u) => u.includes('catalog.example')),
+        'the second look actually reads the catalogue',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      resetCatalogCache();
+    }
+  });
+
+  it('⚠️ an index OUTAGE is never rescued into an absence — the outage sentence stands', async () => {
+    // The second look is for a genuine zero. A `failure` keeps its own worded
+    // sentence, because an outage is never an answer about the book.
+    resetCatalogCache();
+    const said: string[] = [];
+    const trigger = mentionTrigger(msg({ content: `<@${APP_ID}> do we have Mistborn?` }), APP_ID);
+    if (trigger.kind !== 'ask') return;
+    const originalFetch = globalThis.fetch;
+    let catalogRead = false;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('catalog.example')) catalogRead = true;
+      return new Response('{}', { status: 503 });
+    }) as typeof fetch;
+    try {
+      await handleMention(
+        {
+          capCheck: async () => ({ ok: true }),
+          recordTurn: async () => {},
+          conversation: NO_MEMORY,
+          reply: async (content) => void said.push(content),
+        },
+        trigger,
+        {
+          indexBaseUrl: 'https://index.example',
+          panelUrl: 'https://panel.example/',
+          catalogBaseUrl: 'https://catalog.example',
+        },
+      );
+      assert.match(said[0]!, /NOT an answer about the book/i);
+      assert.equal(catalogRead, false, 'a failure must not spend a catalogue read');
+    } finally {
+      globalThis.fetch = originalFetch;
+      resetCatalogCache();
+    }
+  });
+
   it('the catalogue-absence wording is about the CATALOGUE, never the house', () => {
     assert.match(MENTION_MSG.none, /catalogue/i);
     assert.doesNotMatch(MENTION_MSG.none, /you (do not|don't) own/i);
@@ -706,15 +832,23 @@ describe('⚠️ the voicing pass — the owner: "no personality on that message
   it('⚠️ the facts still come from the lookup — she re-voices a result, never recalls one', () => {
     const lane = flow.slice(flow.indexOf("if (intent === 'have_lookup')"));
     const body = lane.slice(0, lane.indexOf("if (intent === 'fix_request')"));
-    const facts = body.indexOf('const facts = shelfAnswer(');
+    const facts = body.indexOf('const facts =');
     const call = body.indexOf('await converse(');
     assert.ok(facts > 0 && call > facts, 'the lookup must run before the voicing');
     assert.match(body, /voiced \?\? facts/, 'no key must fall back to the template, not to silence');
+    // ⚠️ Since 2026-09-02 the facts may come from the SECOND LOOK instead — the
+    // catalogue, read directly, when the index found nothing. Both sources are
+    // lookups; neither is a recollection, which is the invariant this test is
+    // actually about. And the second look is reached ONLY on a genuine zero:
+    // an index FAILURE keeps its own worded sentence, because an outage must
+    // never be rescued into an absence.
+    assert.match(body, /second \?\? shelfAnswer\(/, 'the template is still the fallback');
+    assert.match(body, /books\.length === 0 && !found\.failure/, 'a zero, never a failure');
   });
 
   it('⚠️ the clarifying MENU stays deterministic — a re-worded menu can lose its options', () => {
     const lane = flow.slice(flow.indexOf("if (intent === 'have_lookup')"));
-    const menu = lane.slice(lane.indexOf('if (pending)'), lane.indexOf('const facts = shelfAnswer('));
+    const menu = lane.slice(lane.indexOf('if (pending)'), lane.indexOf('const second ='));
     assert.doesNotMatch(menu, /await converse/, 'the menu path must not be re-phrased by a model');
     assert.match(menu, /buildChoiceComponents\(pending\)/);
   });

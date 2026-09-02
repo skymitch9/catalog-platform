@@ -1204,6 +1204,47 @@ async function catalogAnswer(cfg: MentionConfig, ask: MetadataAsk): Promise<stri
   return `${renderRow(top)}${others}`;
 }
 
+/**
+ * ⚠️ **THE SECOND LOOK — the index came back empty, so ask the CATALOGUE before
+ * telling somebody the house has nothing.**
+ *
+ * Measured 2026-09-02 in the channel: *"do we have Jake's Magical Market on
+ * audio?"* → **"Catalog's got nothing on that one yet."** The series has three
+ * volumes on the shelf. Two independent things had to be true for that answer
+ * to be produced, and both were:
+ *
+ *  1. `searchTermFor` left the format word `audio` in the term (fixed at
+ *     source — `gabi.ts`'s `FORMAT_WORDS`), and
+ *  2. ⚠️ **this lane reads the INDEX, not the CSV.** The 2026-08-31 scorer fix
+ *     that handles a chatty query wrapping a title — *"does the QUERY contain
+ *     the ROW?"* — lives in `catalog-data.ts` and the have lane never touches
+ *     it. Its fixture tests passed all week while the live path missed.
+ *
+ * ⚠️ Fixing only (1) would leave the second failure loaded for the next
+ * wording nobody predicted. So a zero-hit index answer now gets a second look
+ * at the catalogue, whose scorer is the forgiving one, **with the WHOLE
+ * question** rather than the reduction — that is the input the reverse
+ * containment rule was built for.
+ *
+ * Returns rendered rows for the voicing pass to speak, or `null` when the
+ * catalogue also has nothing (or could not be read — an outage must never
+ * become an absence).
+ *
+ * ⚠️ **The cost is one catalogue read, memoised per isolate for 30 minutes and
+ * shared with the metadata fast path**, and it is paid ONLY on the zero-hit
+ * branch — the branch that was about to give a wrong answer for free.
+ */
+async function catalogueSecondLook(cfg: MentionConfig, question: string): Promise<string | null> {
+  const load = await loadCatalog(
+    cfg.catalogBaseUrl ?? DEFAULT_CATALOG_BASE,
+    cfg.fetchOverride ? { fetch: cfg.fetchOverride } : undefined,
+  );
+  if (!load.ok) return null;
+  const hits = searchCatalog(load.rows, question, 'any', MAX_MENTION_HITS);
+  if (hits.length === 0) return null;
+  return hits.map(renderRow).join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // The one answer engine, shared by every door
 // ---------------------------------------------------------------------------
@@ -2335,7 +2376,17 @@ async function answerQuestion(
     // options exactly; a model re-phrasing "which one did you mean?" can drop
     // the correspondence between the sentence and the dropdown. Voice is worth
     // less than a menu that makes sense.
-    const facts = shelfAnswer(question, found.term, books, found.failure);
+    // ⚠️ **THE SECOND LOOK, and it goes here rather than inside `shelf()`.**
+    // The index answered honestly and found nothing; the catalogue's own scorer
+    // is the forgiving one and it is one memoised read away. Reporting an
+    // absence from the narrower, stricter source when the wider, kinder one
+    // has the book is the 2026-09-02 "Catalog's got nothing on that one yet"
+    // failure — measured, in the channel, about three books on the shelf.
+    // ⚠️ Only on a genuine zero — a FAILURE keeps its own worded sentence,
+    // because an outage is never an absence.
+    const second =
+      books.length === 0 && !found.failure ? await catalogueSecondLook(cfg, question) : null;
+    const facts = second ?? shelfAnswer(question, found.term, books, found.failure);
     const voiced = await converse(
       cfg.anthropicKey,
       question,

@@ -834,6 +834,25 @@ describe('⚠️ a chatty query that WRAPS the title still finds the book', () =
     assert.ok(!hits.some((r) => r.title === 'Us'));
   });
 
+  // ⚠️ THE SECOND LIVE MISS, 2026-09-02: "do we have Jake's Magical Market on
+  // audio?" → "Catalog's got nothing on that one yet." The reverse-containment
+  // rule already RESCUED this query here (score 300) — the miss was in the have
+  // lane, which reads the INDEX and not this CSV. But a rescue is a weaker
+  // match than the real one, so `audio` joined the trailing-decoration list and
+  // the same query now scores an exact series hit and orders the volumes.
+  it("⚠️ \"Jake's Magical Market on audio\" finds all three, in reading order", () => {
+    const hits = searchCatalog(JAKE_ROWS, "do we have Jake's Magical Market on audio");
+    assert.equal(hits.length, 3);
+    assert.equal(hits[0]?.title, "Jake's Magical Market");
+  });
+
+  it('every format word in the closed list is decoration at the tail', () => {
+    for (const word of ['audio', 'audiobook', 'audiobooks', 'audible', 'ebook', 'kindle', 'print']) {
+      const hits = searchCatalog(JAKE_ROWS, `jake s magical market ${word}`);
+      assert.equal(hits.length, 3, `"${word}" must not cost the match`);
+    }
+  });
+
   it('trailing genre-words strip repeatedly, and only at the tail', () => {
     // "…book series" sheds both words; a bare "book" query is untouched
     // (no leading whitespace to match), so nothing real is eaten.
