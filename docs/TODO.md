@@ -255,6 +255,19 @@ anything)? Answer that, then the flip checklist in
 ⚠️ Flipping it is **access-increasing on somebody else's live page** — this
 Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
 silently. It gets confirmed, never assumed.
+## ☐ Register the 5 new slash commands — blocked on CORS, small worker fix first
+
+The fun-menu commands are deployed but invisible until
+`POST discord.heygabi.ai/admin/commands/register` runs with an estate-admin
+Firebase ID token. Measured 2026-09-02 ~11:45: a browser fetch from a
+signed-in heygabi.ai page fails CORS (the admin route was built for curl).
+The conductor will not paste a token value into a transcript, so: add the
+estate origin to the admin route's CORS allowance (one small discord-worker
+change + deploy), then drive the POST from the signed-in page context via
+`estate-auth.js idToken()` — token never leaves the browser. Do NOT weaken
+the auth gate; CORS only. After registering, the route's JSON names what it
+published — global commands can take up to an hour to appear first time.
+
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;
