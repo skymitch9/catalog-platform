@@ -298,6 +298,33 @@ anything)? Answer that, then the flip checklist in
 ⚠️ Flipping it is **access-increasing on somebody else's live page** — this
 Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
 silently. It gets confirmed, never assumed.
+## ☐ OWNER DECISION BATCH 2026-09-02 ~14:00 — queued follow-up builds (dispatch when target trees free)
+
+Owner, verbatim: "fix the wandering inn publisher, fix the duplicates. on your
+shelf should be the main with other editions available under their given
+section. so if its a second physical there should be 2 under physical. we
+should also add being able to set the covers for the alternate editions too.
+for now we want to use only the listen/download here button in the audiobook
+catalog. Anything needing the other computer is on pause"
+
+1. **LIBRARY follow-up agent** (after the billing-phase-3 agent lands there):
+   (a) Harper Voyager publisher batch on editions 322–325 + sweep the other
+   B&N-imported works for retailer-as-publisher; sanctioned batch path, R12
+   change_log. (b) Work-page merge, owner's design: "On your shelf" becomes
+   THE main list; the separate "Other versions available" section folds INTO
+   the shelf's per-format sections — an unowned second physical edition lists
+   under Physical beside the owned one (visually distinct owned vs available).
+   (c) NEW: per-edition cover setting in the edit UI (alternate editions get
+   their own covers).
+2. **AUDIOBOOK follow-up agent** (after the author-cleanup agent lands there):
+   the modal keeps ONLY the estate "Listen/download here" affordance as the
+   play control — the "Open on the shelf" ABS button comes OFF for now (keep
+   the shelf-link module; the button's removal is presentation, not the join).
+3. **ON PAUSE (owner: "anything needing the other computer")**: the ABS box
+   steps for the ebooks shelf library (SHELF_EBOOKS_LIBRARY.md §3–§5) and
+   anything else requiring hands on the shelf box.
+4. Emberdark: links/evidence handed to the owner 2026-09-02; his pick pending.
+
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;
@@ -339,11 +366,17 @@ Land for review. Candidate for a Fable/subagent build once located.
 > 4 below, plus the two master-less secrets tracked in
 > `library_catalog/docs/TODO.md` (*"Custody gaps"*).
 
-## ☐ STEP 3 of the 1Password adoption — 1 of 4 pairs DONE, 3 REFUSED for want of a probe (2026-08-26)
+## ☐ STEP 3 of the 1Password adoption — 1 of 4 pairs ROTATED, and all 4 now RUNNABLE
 
 `scripts/op-rotate-pair.mjs` mints a fresh value into the vault and sets it on
 BOTH holders in one run, verifier first, stopping at the first failure.
 `--list` prints the four and their probe status.
+
+🔴 **THE BLOCKER IS GONE, THE WORK IS NOT DONE.** The three pairs below were
+refused from 2026-08-26 because nothing could *watch* a rotation; the handshake
+routes shipped 2026-09-02 and `--list` now reads ✅ four times. **Three
+ceremonies are waiting on the owner** — the exact commands are below, and
+nothing has been minted.
 
 ### ✅ `INDEX_READ_TOKEN_LIBRARY2` — ROTATED AND PROVED, 2026-08-26
 
@@ -358,7 +391,7 @@ padhard's secret NAME list re-measured after: **10**, unchanged.
 traffic. Worker secrets are write-only, so the evidence there is that wrangler
 accepted the write and the name is still listed. The VERIFIER half is proved.
 
-### 🔴 The other three are REFUSED, and that is a guard, not an omission
+### ✅ The other three were REFUSED for want of a probe — and the probes now EXIST (2026-09-02)
 
 ```
 ESTATE_APP_TOKEN_LIBRARY2    estate-auth      ↔ library-catalog-friend
@@ -366,30 +399,91 @@ ESTATE_APP_TOKEN_AUDIOBOOK   estate-auth      ↔ audiobook-worker
 ESTATE_APP_TOKEN_BOOKS       audiobook-worker ↔ estate-discord
 ```
 
-**None has a live handshake a script can run**, and the script refuses a pair
-that has none **before minting anything**:
+**Option 1 below was taken.** Two read-only routes shipped 2026-09-02 (commit
+`1cfa531`; `estate-auth` version `9fb859be-202f-40c5-9a6c-168263d2754e`,
+`audiobook-worker` version `ee8255dd-8219-4372-bc48-a2c6688f6dc9`), and
+`node scripts/op-rotate-pair.mjs --list` now prints ✅ against all four pairs:
 
-| Pair | Why no probe |
-|---|---|
-| `ESTATE_APP_TOKEN_LIBRARY2` | `POST /api/estate/seen` needs the app token **and a real signed-in identity**, and it WRITES a seen record. `GET /api/estate/health` is open but exercises no app token at all (`apps/auth-worker/src/estate.ts:647` — counts and a version) |
-| `ESTATE_APP_TOKEN_AUDIOBOOK` | Only reached from the ebook gate and `/api/me` (`apps/audiobook-worker/src/estate-status.ts:74`), both of which need a signed-in identity. `/api/health` reports the estate-check MODE, not whether the pair authenticates |
-| `ESTATE_APP_TOKEN_BOOKS` | Needs the token **plus** `X-Estate-On-Behalf-Of` naming a linked Discord asker (`apps/audiobook-worker/src/book-routes.ts:35,126`). ⚠️ Fabricating an on-behalf identity to test a token is asserting an identity to a live gate, which is not a probe |
+| Route | Unblocks | Deliberately reaches |
+|---|---|---|
+| `GET auth.heygabi.ai/api/estate/app-check` | `_LIBRARY2` + `_AUDIOBOOK` (one Worker verifies both) | no D1, no identity, no write |
+| `GET audiobook-api.heygabi.ai/api/books/app-check` | `_BOOKS` | no bucket, no pack, no email — **no book** |
 
-⚠️ **Why refusing is right.** A half-applied pair raises no error anywhere: the
-verifier stops recognising the presenter and the result is a silent 401/403/404
-on a route nobody is watching. Rotating with no way to observe the new pair
-agreeing is shipping that state and hoping — and the one pair that WAS rotated
-today proves the point twice over (see the propagation note below).
+Each answers *"does this bearer authenticate, and as which app?"* and nothing
+else. Neither echoes a value; a refusal names no app and no configured secret.
 
-**Two ways forward, either is fine:**
-1. **Give each a read-only self-check route** — an endpoint on the VERIFIER that
-   answers "does this bearer authenticate, and as which app?" without touching a
-   human identity or writing anything. That is exactly what
-   `/api/machine/lookup` already is for the index, which is why that pair could
-   be done. One small route per Worker unblocks all three permanently.
-2. **Do them by hand with the owner watching the surface each feeds** — sign in
-   on padhard; open an ebook; ask GABI a book question in Discord. Slower, and it
-   needs him present, but it needs no new code.
+### 🔴 THE OWNER'S CEREMONY — three runs, ONE PAIR AT A TIME
+
+⚠️ **A session must not do this**, and none has: minting a value and pushing it
+to two live Workers is the owner's mint-and-set-both-sides step. What follows is
+what to type. From the repo root, with `op` signed in:
+
+```bash
+# 0. See the four pairs and confirm every probe reads ✅ before starting.
+node scripts/op-rotate-pair.mjs --list
+
+# 1. Rehearse. Mints nothing, sets nothing, sends no probe.
+node scripts/op-rotate-pair.mjs --pair ESTATE_APP_TOKEN_LIBRARY2 --dry-run
+
+# 2. The real run, one pair, then STOP and read the seven lines it prints.
+node scripts/op-rotate-pair.mjs --pair ESTATE_APP_TOKEN_LIBRARY2
+
+# 3. Only once that ends "✅ … handshake proved", the next:
+node scripts/op-rotate-pair.mjs --pair ESTATE_APP_TOKEN_AUDIOBOOK
+node scripts/op-rotate-pair.mjs --pair ESTATE_APP_TOKEN_BOOKS
+```
+
+⚠️ **`ESTATE_APP_TOKEN_LIBRARY2` has a holder in `library_catalog`**, so that
+checkout must be present (the script finds it, or set `LIBRARY_CATALOG_DIR`).
+The other two are entirely inside this repo.
+
+🔴 **IF A RUN STOPS AT STEP 5 OR 6, DO NOT RE-RUN IT — RESUME IT:**
+
+```bash
+node scripts/op-rotate-pair.mjs --pair <NAME> --resume
+```
+
+A plain re-run mints a SECOND value and creates a DUPLICATE vault item under the
+same title — two masters for one secret, which is worse than the half-applied
+pair it was trying to fix. `--resume` takes the value from the item the failed
+run already created.
+
+**What each run does, in order:** mint → probe (expect a refusal) → vault item →
+**VERIFIER** → probe (expect 200 naming the app, retried 2s/4s/8s/15s) →
+**PRESENTER** → probe again. It stops at the first failure, and between the
+verifier and the presenter that route is briefly DOWN — inherent to a
+single-valued verifier, which is why both pushes are one run with no question in
+between.
+
+**Verify by hand afterwards, if you want a second opinion** (the value is the
+one now in the vault; ⚠️ header, never a query string — this repo is public):
+
+```bash
+curl -s -H "Authorization: Bearer $(op read 'op://Estate/ESTATE_APP_TOKEN_AUDIOBOOK/password')" \
+  https://auth.heygabi.ai/api/estate/app-check
+# → {"ok":true,"app":"audiobook","verifier":"estate-auth","secret_name":"ESTATE_APP_TOKEN_AUDIOBOOK",…}
+```
+
+⚠️ **`app` is the assertion, not `ok`.** A value pushed to the wrong
+`ESTATE_APP_TOKEN_*` secret still authenticates — as the wrong app — so a
+status-only check would call that a success.
+
+⚠️ **A new Worker version is not live at every edge the instant `wrangler`
+returns.** Measured twice now: the 2026-08-26 rotation's probe 401'd for a
+couple of minutes, and on 2026-09-02 the freshly deployed `/api/books/app-check`
+answered **404 for about a minute** before answering correctly. The script
+retries with backoff for exactly this reason; a by-hand `curl` should too.
+
+### What the probes prove, and what they do NOT
+
+✅ The **verifier** accepts the value presented. 🔴 **NOT** that the holding
+Worker *sends* it on its own traffic — Worker secrets are write-only, so the
+only evidence there is that `wrangler` accepted the write and the name is still
+listed. The routes say so on the wire (`proves` field) rather than only here.
+
+**The alternative, still available and needing no new code:** do them by hand
+with the owner watching the surface each feeds — sign in on padhard; open an
+ebook; ask GABI a book question in Discord. Slower, and it needs him present.
 
 ### ⚠️ The gotcha this run bought, worth more than the rotation
 
