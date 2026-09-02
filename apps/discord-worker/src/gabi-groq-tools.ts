@@ -62,8 +62,10 @@
  */
 
 import {
+  failureFor,
   GABI_GROQ_MODEL,
   GROQ_CHAT_URL,
+  GROQ_MIN_MAX_TOKENS,
   GROQ_TIMEOUT_MS,
   GroqFailure,
 } from './gabi-groq.js';
@@ -397,7 +399,7 @@ export async function groqToolComplete(
 ): Promise<GroqToolPass> {
   const body = {
     model: GABI_GROQ_MODEL,
-    max_tokens: Math.max(req.maxTokens, 512),
+    max_tokens: Math.max(req.maxTokens, GROQ_MIN_MAX_TOKENS),
     reasoning_effort: 'low',
     messages: toOpenAiMessages(req.system, req.messages),
     ...(req.tools.length > 0 ? { tools: toOpenAiTools(req.tools), tool_choice: 'auto' } : {}),
@@ -424,9 +426,11 @@ export async function groqToolComplete(
     throw new GroqFailure('unreachable', `groq unreachable: ${String(name ?? 'error')}`);
   }
 
-  if (res.status === 429) throw new GroqFailure('rate_limited', 'groq is rate limiting', 429);
-  if (res.status >= 500) throw new GroqFailure('server', `groq answered ${res.status}`, res.status);
-  if (res.status !== 200) throw new GroqFailure('refused', `groq answered ${res.status}`, res.status);
+  // ⚠️ The SHARED taxonomy, since 2026-09-02. This branch was a byte-identical
+  // copy of phase 1's, which is how one of them would have gained the error body
+  // and the other would not.
+  const refused = await failureFor(res);
+  if (refused) throw refused;
 
   let payload: unknown;
   try {

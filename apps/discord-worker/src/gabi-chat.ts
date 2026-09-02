@@ -979,6 +979,10 @@ ${CHAT_CUT_SHORT}`
         outcome: 'fallback',
         reason: failure.reason,
         status: failure.status,
+        // ⚠️ WHAT GROQ SAID. Added 2026-09-02 after the owner's live test filled
+        // the stream with `refused`/413 lines whose bodies — carrying the exact
+        // token limit and the exact requested size — were read by nobody.
+        errorText: failure.errorText,
         ms: Date.now() - started,
         iteration: pass,
         toolsOffered: offered.length,

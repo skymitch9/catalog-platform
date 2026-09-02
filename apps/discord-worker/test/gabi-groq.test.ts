@@ -30,6 +30,8 @@ import { dirname, resolve } from 'node:path';
 import {
   GABI_GROQ_MODEL,
   GROQ_CHAT_URL,
+  GROQ_ERROR_TEXT_MAX,
+  GROQ_MIN_MAX_TOKENS,
   GROQ_TIMEOUT_MS,
   groqComplete,
   GroqFailure,
@@ -236,11 +238,21 @@ describe('groqComplete — the request shape, and one failure type out', () => {
     // successful live Groq turn: `converse` answered on Groq while `classify`
     // fell back with an EMPTY 200 on every call, because gpt-oss-120b is a
     // reasoning model and a classification-sized cap is spent entirely on
-    // thinking. The Groq attempt now floors max_tokens at 512 (the shared
-    // validator still enforces the tiny output shape) and pins
-    // reasoning_effort low. Re-argue both if the model pin leaves the
-    // gpt-oss family.
-    assert.equal(body.max_tokens, 512, 'a small caller cap is floored for the reasoning model');
+    // thinking. The Groq attempt floors max_tokens (the shared validator still
+    // enforces the tiny output shape) and pins reasoning_effort low. Re-argue
+    // both if the model pin leaves the gpt-oss family.
+    //
+    // ⚠️ RAISED 512 → 1024 on 2026-09-02: the owner's live test produced a
+    // toolless `converse` that came back empty-with-200 PAST the old floor —
+    // 400 words in GABI's register is ~500 output tokens on its own, so 512
+    // left a reasoning model nothing to think with. Asserted against the
+    // exported constant rather than a literal, so the pin has one home.
+    assert.equal(
+      body.max_tokens,
+      GROQ_MIN_MAX_TOKENS,
+      'a small caller cap is floored for the reasoning model',
+    );
+    assert.equal(GROQ_MIN_MAX_TOKENS, 1024, 'the floor is the measured 2026-09-02 value');
     assert.equal(body.reasoning_effort, 'low');
     assert.deepEqual(body.messages, [
       { role: 'system', content: 'be warm' },
@@ -298,6 +310,11 @@ describe('groqComplete — the request shape, and one failure type out', () => {
       [401, 'refused'],
       [400, 'refused'],
       [404, 'refused'],
+      // ⚠️ 413 IS ITS OWN REASON since 2026-09-02. It read `refused` before,
+      // in the same bucket as a bad key and a retired model id, so the owner's
+      // live test produced a wall of identical lines with three different fixes
+      // behind them. A 413 is "bigger than your tier may send", never "wrong".
+      [413, 'too_large'],
       [500, 'server'],
       [502, 'server'],
     ];
@@ -313,6 +330,84 @@ describe('groqComplete — the request shape, and one failure type out', () => {
         },
       );
     }
+  });
+
+  // ── ⚠️ THE ERROR BODY, and why it is a test rather than a comment ─────────
+  // Measured 2026-09-02, the owner's first live test: one `converse` fallback
+  // read `reason: "refused", status: 400` and NOTHING else. A 400 says the
+  // request was malformed and the response body says HOW, and the body was
+  // being dropped on the floor at the `res.status !== 200` line. Every 413 in
+  // the same run carried its own limit and requested size, and lost them the
+  // same way.
+  it('⚠️ Groq\'s refusal TEXT is captured, flattened and truncated', async () => {
+    const long = `{"error":{"message":"${'x'.repeat(400)}"}}`;
+    const spy = spyFetch({ groq: () => new Response(long, { status: 400 }) });
+    await assert.rejects(
+      () => groqComplete('k', turn, spy.fetch),
+      (err: unknown) => {
+        assert.ok(err instanceof GroqFailure);
+        assert.equal(err.errorText?.length, GROQ_ERROR_TEXT_MAX);
+        assert.ok(err.errorText?.endsWith('…'), 'a truncation is MARKED, never silent');
+        return true;
+      },
+    );
+
+    // A short body survives whole, and its newlines are flattened so the line
+    // stays one line — `wrangler tail | jq` reads lines, not paragraphs.
+    const spy2 = spyFetch({
+      groq: () => new Response('{"error":{\n  "message": "Request too large"\n}}', { status: 413 }),
+    });
+    await assert.rejects(
+      () => groqComplete('k', turn, spy2.fetch),
+      (err: unknown) => {
+        assert.ok(err instanceof GroqFailure);
+        assert.equal(err.reason, 'too_large');
+        assert.equal(err.errorText, '{"error":{ "message": "Request too large" }}');
+        return true;
+      },
+    );
+  });
+
+  it('⚠️ an unreadable refusal body is `undefined`, never a thrown error', async () => {
+    // A first line whose ERROR HANDLING costs somebody an answer is worse than
+    // the missing diagnosis it was added to fix.
+    const hostile = new Response('x', { status: 400 });
+    Object.defineProperty(hostile, 'text', {
+      value: () => Promise.reject(new Error('body already consumed')),
+    });
+    const spy = spyFetch({ groq: () => hostile });
+    await assert.rejects(
+      () => groqComplete('k', turn, spy.fetch),
+      (err: unknown) => {
+        assert.ok(err instanceof GroqFailure);
+        assert.equal(err.reason, 'refused');
+        assert.equal(err.errorText, undefined);
+        return true;
+      },
+    );
+  });
+
+  it('⚠️ the refusal text reaches the LOG LINE — both places, or it does not exist', async () => {
+    // ⚠️ THE FIELD-BY-FIELD LESSON, asserted rather than commented. `logGroq`
+    // builds its output key by key and silently drops anything its emitted
+    // object does not name: a `status` fix shipped as a no-op exactly this way
+    // on 2026-09-01, and phase 2 had to fix the same class again on 09-02.
+    const spy = spyFetch({
+      groq: () => new Response('{"error":{"message":"Request too large for model"}}', { status: 413 }),
+      anthropic: () => haikuSaid('haiku picked it up'),
+    });
+    const { value, lines } = await captureLogs(() =>
+      converse('ak', 'hi', null, CHATTER, {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'gk' },
+      }),
+    );
+    assert.equal(value, 'haiku picked it up', 'the person still gets an answer');
+    const line = lines.map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.evt === 'gabi_groq');
+    assert.equal(line?.outcome, 'fallback');
+    assert.equal(line?.reason, 'too_large');
+    assert.equal(line?.status, 413);
+    assert.match(String(line?.error_text), /Request too large for model/);
   });
 
   it('⚠️ a 200 with no words in it is a FAILURE, never a silent blank', async () => {

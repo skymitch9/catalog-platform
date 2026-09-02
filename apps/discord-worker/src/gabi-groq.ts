@@ -139,6 +139,29 @@ export const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
  */
 export const GROQ_TIMEOUT_MS = 4_000;
 
+/**
+ * ⚠️ **THE REASONING-MODEL FLOOR, now a named constant in ONE place.** It was
+ * the literal `512` written twice — once in `groqComplete`, once in
+ * `groqToolComplete` — which is two places for a pin whose whole value is that
+ * both transports send the same one.
+ *
+ * Why a floor at all: `openai/gpt-oss-120b` is a REASONING model and `max_tokens`
+ * bounds its thinking as well as its words. Measured 2026-09-01: `classify`,
+ * handed its own 24-token cap, spent the entire budget thinking and returned an
+ * empty 200 on every call — reason `empty`, an invisible fallback, and a Haiku
+ * call per mention for ever.
+ *
+ * ⚠️ **RAISED 512 → 1024 on 2026-09-02, and the raise is a measurement, not a
+ * guess.** The owner's live test produced a toolless `converse` that ALSO came
+ * back empty-with-200 — past the old floor. 400 words of GABI's register is
+ * ~500 output tokens on its own, so a 512 ceiling left a reasoning model nothing
+ * to think with before it started writing. 1024 is the smallest number that
+ * leaves the answer room at the measured output size. ⚠️ It is charged against
+ * the tier's TPM (see §12): every token here is a token the request cannot spend
+ * on context, which is why it is a floor and not simply a bigger number.
+ */
+export const GROQ_MIN_MAX_TOKENS = 1_024;
+
 // ---------------------------------------------------------------------------
 // The posture
 // ---------------------------------------------------------------------------
@@ -230,21 +253,109 @@ export type GroqReason =
   | 'timeout'
   | 'unreachable'
   | 'rate_limited'
+  /**
+   * ⚠️ **HTTP 413 — ITS OWN REASON SINCE 2026-09-02, and the split earns its
+   * keep.** It read `refused` before, in the same bucket as a retired model id
+   * and a bad key, and the owner's live test therefore produced a wall of
+   * identical-looking `refused` lines with three different fixes behind them.
+   * A 413 is not a refusal of the REQUEST's contents — it is *"this request is
+   * bigger than your account is allowed to send"* (Groq's own wording: *"The
+   * request body is too large"*), and the fix is smaller payloads or a higher
+   * tier, never a code change to what was asked. See `§12` of the ledger.
+   */
+  | 'too_large'
   | 'refused'
   | 'server'
   | 'malformed'
   | 'empty'
   | 'invalid';
 
+/** Groq's documented "request entity too large". */
+export const GROQ_TOO_LARGE_STATUS = 413;
+
 export class GroqFailure extends Error {
   readonly reason: GroqReason;
   readonly status: number | undefined;
-  constructor(reason: GroqReason, message: string, status?: number) {
+  /**
+   * ⚠️ **WHAT GROQ ACTUALLY SAID, and it is here because its absence cost a
+   * diagnosis.** Measured 2026-09-02: the owner's first live test produced one
+   * `converse` fallback reading `reason: "refused", status: 400` and NOTHING
+   * else — a 400 names a fault in the request, the fault is written in the
+   * response body, and the body was read by nobody and thrown away. Same for
+   * every 413: the refusal sentence carries the LIMIT and the REQUESTED size,
+   * which is the whole of §12's measurement, and it was being discarded at the
+   * `res.status !== 200` line.
+   *
+   * Truncated to {@link GROQ_ERROR_TEXT_MAX}. ⚠️ It is Groq's ERROR ENVELOPE —
+   * a sentence about the request's shape and the account's limits — never the
+   * conversation, and the truncation bounds an envelope that turned out to be
+   * unexpectedly chatty. Undefined when the body could not be read.
+   */
+  readonly errorText: string | undefined;
+  constructor(reason: GroqReason, message: string, status?: number, errorText?: string) {
     super(message);
     this.name = 'GroqFailure';
     this.reason = reason;
     this.status = status;
+    this.errorText = errorText;
   }
+}
+
+/**
+ * ⚠️ How much of Groq's refusal is kept. 200 characters holds the whole of a
+ * TPM refusal (*"Request too large … Limit 8000, Requested 12345"*) and a
+ * validation 400's first clause, and stops a pathological body from becoming a
+ * log line nobody can read.
+ */
+export const GROQ_ERROR_TEXT_MAX = 200;
+
+/**
+ * The refusal body, read defensively. ⚠️ **This can never throw and can never
+ * hang the caller**: a first line whose *error handling* costs somebody an
+ * answer is worse than the missing diagnosis it was added to fix. A body that
+ * is already consumed, is not text, or is not there at all comes back
+ * `undefined`, and the log line simply carries no `error_text`.
+ */
+export async function refusalText(res: Response): Promise<string | undefined> {
+  try {
+    const body = await res.text();
+    const flat = body.replace(/\s+/g, ' ').trim();
+    if (flat.length === 0) return undefined;
+    return flat.length <= GROQ_ERROR_TEXT_MAX ? flat : `${flat.slice(0, GROQ_ERROR_TEXT_MAX - 1)}…`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * ⚠️ **ONE non-200 taxonomy, shared by both clients.** The toolless client and
+ * the tool client had a byte-identical copy of this ladder each, and the error
+ * body had to be added to it — which is exactly the moment two copies become
+ * one copy and one stale copy. `null` means the response is fine and the caller
+ * should carry on reading it.
+ *
+ * ⚠️ **The body is read ONLY on the failure path**, because reading it consumes
+ * the stream: a success must reach `res.json()` with its body intact.
+ */
+export async function failureFor(res: Response): Promise<GroqFailure | null> {
+  if (res.status === 429) {
+    return new GroqFailure('rate_limited', 'groq is rate limiting', 429, await refusalText(res));
+  }
+  if (res.status === GROQ_TOO_LARGE_STATUS) {
+    return new GroqFailure(
+      'too_large',
+      `groq refused the request as too large (${res.status})`,
+      res.status,
+      await refusalText(res),
+    );
+  }
+  if (res.status >= 500) {
+    return new GroqFailure('server', `groq answered ${res.status}`, res.status, await refusalText(res));
+  }
+  if (res.status !== 200) {
+    return new GroqFailure('refused', `groq answered ${res.status}`, res.status, await refusalText(res));
+  }
+  return null;
 }
 
 export interface GroqTurn {
@@ -318,7 +429,7 @@ export async function groqComplete(
     // at 512 (Groq is cheap; the shared validator still enforces the tiny
     // shape) and pins reasoning effort low — this constant is gpt-oss-specific
     // and gets re-argued if the model pin ever changes family.
-    max_tokens: Math.max(turn.maxTokens, 512),
+    max_tokens: Math.max(turn.maxTokens, GROQ_MIN_MAX_TOKENS),
     reasoning_effort: 'low',
     messages: [{ role: 'system', content: turn.system }, ...turn.messages],
     ...(jsonSafe ? { response_format: { type: 'json_object' } } : {}),
@@ -346,9 +457,8 @@ export async function groqComplete(
     throw new GroqFailure('unreachable', `groq unreachable: ${String(name ?? 'error')}`);
   }
 
-  if (res.status === 429) throw new GroqFailure('rate_limited', 'groq is rate limiting', 429);
-  if (res.status >= 500) throw new GroqFailure('server', `groq answered ${res.status}`, res.status);
-  if (res.status !== 200) throw new GroqFailure('refused', `groq answered ${res.status}`, res.status);
+  const refused = await failureFor(res);
+  if (refused) throw refused;
 
   let payload: unknown;
   try {
@@ -405,6 +515,17 @@ export function logGroq(entry: {
   outcome: 'groq' | 'fallback' | 'ineligible';
   reason?: GroqReason;
   status?: number | undefined;
+  /**
+   * ⚠️ **WHAT GROQ SAID, TRUNCATED — and this field is the third time the
+   * field-by-field lesson has been paid for.** The owner's live test on
+   * 2026-09-02 produced a `refused` status 400 with no way to know what was
+   * wrong with the request, and a wall of `refused` 413s whose bodies carried
+   * the exact limit and the exact requested size. ⚠️ Added to BOTH this param
+   * type AND the emitted object below — a `status` fix shipped as a no-op on
+   * 2026-09-01 by being added to only one of them, and phase 2 had to fix the
+   * same class again.
+   */
+  errorText?: string | undefined;
   ms: number;
   chars?: number;
   inputTokens?: number;
@@ -441,6 +562,10 @@ export function logGroq(entry: {
       outcome: entry.outcome,
       ...(entry.reason ? { reason: entry.reason } : {}),
       ...(entry.status ? { status: entry.status } : {}),
+      // ⚠️ THE EMITTED HALF of the field above. Omitted rather than logged as
+      // an empty string when there is nothing to say, so `jq 'select(.error_text)'`
+      // selects the lines that actually carry a refusal.
+      ...(entry.errorText ? { error_text: entry.errorText } : {}),
       ms: entry.ms,
       chars: entry.chars ?? 0,
       // ⚠️ The tool-loop half of the line. Always present (as 0) rather than
@@ -492,6 +617,10 @@ export function logGroqShadow(entry: {
   // builds its output explicitly and silently dropped the extra key. The
   // lesson: a field-by-field logger needs the field in BOTH places.
   status?: number;
+  /** ⚠️ The same refusal text the `gabi_groq` line carries, for the same
+   *  reason and in BOTH places. A shadow line reading `refused` with no body
+   *  is the exact shape of the 2026-09-01 `status` miss. */
+  errorText?: string | undefined;
   agreed?: boolean;
   inputTokens?: number;
   outputTokens?: number;
@@ -511,6 +640,7 @@ export function logGroqShadow(entry: {
       haiku_answered: entry.haikuAnswered,
       ...(entry.reason ? { reason: entry.reason } : {}),
       ...(entry.status === undefined ? {} : { status: entry.status }),
+      ...(entry.errorText ? { error_text: entry.errorText } : {}),
       ...(entry.agreed === undefined ? {} : { agreed: entry.agreed }),
       input_tokens: entry.inputTokens ?? 0,
       output_tokens: entry.outputTokens ?? 0,
@@ -578,7 +708,7 @@ export async function viaGroq<T>(args: {
 
   const attempt = async (): Promise<
     { ok: true; value: T; ms: number; chars: number; inputTokens: number; outputTokens: number }
-    | { ok: false; ms: number; reason: GroqReason; status?: number | undefined }
+    | { ok: false; ms: number; reason: GroqReason; status?: number | undefined; errorText?: string | undefined }
   > => {
     const started = now();
     try {
@@ -609,6 +739,7 @@ export async function viaGroq<T>(args: {
         ms: now() - started,
         reason: failure.reason,
         ...(failure.status === undefined ? {} : { status: failure.status }),
+        ...(failure.errorText === undefined ? {} : { errorText: failure.errorText }),
       };
     }
   };
@@ -635,7 +766,13 @@ export async function viaGroq<T>(args: {
       // live shadow lines came back reason:"refused" with no way to tell a 401
       // (bad key) from a 400 (retired model id) — while the runbook was already
       // telling the owner to look for `status: 401` on these very lines.
-      ...(seen.ok ? {} : { reason: seen.reason, ...(seen.status === undefined ? {} : { status: seen.status }) }),
+      ...(seen.ok
+        ? {}
+        : {
+            reason: seen.reason,
+            ...(seen.status === undefined ? {} : { status: seen.status }),
+            ...(seen.errorText === undefined ? {} : { errorText: seen.errorText }),
+          }),
       ...(seen.ok && args.compare ? { agreed: args.compare(seen.value, answer) } : {}),
       ...(seen.ok ? { inputTokens: seen.inputTokens, outputTokens: seen.outputTokens } : {}),
       ...(args.who ? { who: args.who } : {}),
@@ -668,6 +805,7 @@ export async function viaGroq<T>(args: {
     outcome: 'fallback',
     reason: seen.reason,
     status: seen.status,
+    errorText: seen.errorText,
     ms: seen.ms,
     ...(args.who ? { who: args.who } : {}),
   });
