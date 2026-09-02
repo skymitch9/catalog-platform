@@ -427,7 +427,30 @@ function scoreRow(row: CatalogRow, q: string, field: LookupField): number {
     if (series === q) return 450;
     if (series.includes(q)) return 400;
   }
+  // ⚠️ THE REVERSE DIRECTION — the query CONTAINS the title/series. Measured
+  // live 2026-09-01 ~17:53: "tell me about Jake from Jake's magical market
+  // series" produced the folded query `jake s magical market series`, which is
+  // LONGER than the row (`jake s magical market`), so every includes() above
+  // scored 0 and GABI told the owner the series "isn't ringing any bells" —
+  // about three books sitting in the catalogue. includes() only ever asks
+  // whether the ROW contains the QUERY; a chatty query wraps the title in
+  // extra words and needs the question asked the other way round too. The
+  // floor (two words AND 8+ chars) keeps one-word titles ("It", "Us") from
+  // matching every sentence that mentions them.
+  if (wants('title') && rowInQuery(title, q)) return 350;
+  if (wants('series') && rowInQuery(series, q)) return 300;
   return 0;
+}
+
+/** Word-boundary "the query contains this row value", with the floor above. */
+function rowInQuery(rowValue: string, q: string): boolean {
+  if (rowValue.length < 8 || !rowValue.includes(' ')) return false;
+  return (
+    q === rowValue ||
+    q.startsWith(`${rowValue} `) ||
+    q.endsWith(` ${rowValue}`) ||
+    q.includes(` ${rowValue} `)
+  );
 }
 
 /**
@@ -440,7 +463,16 @@ export function searchCatalog(
   field: LookupField = 'any',
   limit = MAX_LOOKUP_HITS,
 ): CatalogRow[] {
-  const q = foldNoArticle(query);
+  let q = foldNoArticle(query);
+  // ⚠️ Trailing genre-words are QUERY DECORATION, not title. "…magical market
+  // series" (the measured live miss above), "…saga", "…trilogy", "…books".
+  // Stripped repeatedly so "the X book series" sheds both. A CLOSED list on
+  // purpose — stripping real title words would trade this miss for worse ones.
+  for (;;) {
+    const stripped = q.replace(/\s+(series|saga|trilogy|novels?|books?|audiobooks?)$/, '');
+    if (stripped === q) break;
+    q = stripped;
+  }
   if (q.length < MIN_LOOKUP_QUERY) return [];
   const scored: Scored[] = [];
   for (const row of rows) {

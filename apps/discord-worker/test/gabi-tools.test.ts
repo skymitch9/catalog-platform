@@ -799,3 +799,45 @@ describe('the catalogue host is declared, not hardcoded in a call site', () => {
     assert.equal(catalogUrl(DEFAULT_CATALOG_BASE), 'https://audiobooks.heygabi.ai/catalog.csv');
   });
 });
+
+// ── the query CONTAINS the title (measured live miss, 2026-09-01) ───────────
+
+describe('⚠️ a chatty query that WRAPS the title still finds the book', () => {
+  // The owner, live at ~17:53 Phoenix: "tell me about Jake from Jake's magical
+  // market series". The folded query is LONGER than the folded title, so every
+  // includes() rung scored 0 and GABI said the series "isn't ringing any
+  // bells" — about three books in the catalogue. Real rows, real question.
+  const JAKE_CSV = [
+    'title,series,series_index_display,series_index_sort,author,narrator,year,genre,duration_hhmm,cover_href,companion_files,desc,library_work_id,library_formats,universe,series_gap',
+    "Jake's Magical Market,Jake's Magical Market,1,1.0,J. R. Mathews,Travis Baldree,2022,Fantasy,18:00,covers/j1.jpg,,Blurb.,,,,",
+    "Jake's Magical Market 2 - A Trek Through Time,Jake's Magical Market,2,2.0,J. R. Mathews,Travis Baldree,2023,Fantasy,20:00,covers/j2.jpg,,Blurb.,,,,",
+    "Jake's Magical Market 3 - Home Sweet Home,Jake's Magical Market,3,3.0,J. R. Mathews,Travis Baldree,2024,Fantasy,21:00,covers/j3.jpg,,Blurb.,,,,",
+    'Us,,,,Somebody Short,,2019,Fiction,02:00,covers/u.jpg,,Blurb.,,,,',
+  ].join('\n');
+  const JAKE_ROWS = parseCatalogCsv(JAKE_CSV);
+
+  it("⚠️ THE LIVE MISS: \"Jake's magical market series\" finds all three, vol 1 first", () => {
+    const hits = searchCatalog(JAKE_ROWS, "Jake's magical market series");
+    assert.equal(hits.length, 3);
+    assert.equal(hits[0]?.title, "Jake's Magical Market");
+  });
+
+  it('the title buried MID-SENTENCE is found via reverse containment', () => {
+    const hits = searchCatalog(JAKE_ROWS, "the jake s magical market audiobooks we own");
+    assert.ok(hits.some((r) => r.title === "Jake's Magical Market"));
+  });
+
+  it('⚠️ the FLOOR: a short one-word title does not match every sentence naming it', () => {
+    // "Us" (2 chars, one word) must not surface for a query that merely
+    // contains the word — reverse containment is for real multi-word titles.
+    const hits = searchCatalog(JAKE_ROWS, 'tell us about something good');
+    assert.ok(!hits.some((r) => r.title === 'Us'));
+  });
+
+  it('trailing genre-words strip repeatedly, and only at the tail', () => {
+    // "…book series" sheds both words; a bare "book" query is untouched
+    // (no leading whitespace to match), so nothing real is eaten.
+    const hits = searchCatalog(JAKE_ROWS, "jake s magical market book series");
+    assert.equal(hits.length, 3);
+  });
+});
