@@ -136,6 +136,20 @@ prompt so `standard` is byte-identical. Operating it and the floor:
    posture, and that is an OWNER decision, not a sync: the panel's audience is
    not this private server's audience.
 
+## 🔄 BUILD PROGRAM 2026-09-02 (owner: "list me and then build the remaining features. nothing else needs to wait unless it has a dependency")
+
+19 features fanned out in repo-sequenced waves (Opus builds, Fable conducting).
+Wave 1 in flight: Groq phase-2 tool translation (platform) · library quick
+wins (scroll-to-top, Signed toggle, research transparency) · audiobook batch
+(say-2, also-on-audio fix, poll-announce toggle, supplements armed
+disambiguated) · games (deploy guards then disposal/copy-history). Waves 2–4:
+player phase 2, Discord fun menu, billing phase 0+1, universes +, OR-1,
+format toggle, Wandering Inn, cross-links, newest-authors. Where a TODO said
+"ask first", the recorded recommendation is being built and flagged vetoable
+at landing (owner's nothing-waits order). ⚠️ GENUINELY WAITING: shelf
+ebooks-dropdown + reader-port (the one ebook-gate-vs-Access decision),
+library-panel personality dial, second instance/federation (owner-deferred).
+
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;
