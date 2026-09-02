@@ -10,167 +10,6 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ Groq as GABI's first-line model before Haiku — BUILT + DEPLOYED DARK, awaiting the owner's key
-
-Owner ask 2026-09-01: *"we just used groq in a different project, lets integrate
-that into our gabi model as a first line before going to haiku tokens"* +
-*"use the information from the other project to help reduce duplicate work."*
-
-**Built, tested and deployed 2026-09-01** — and it changes nothing today,
-because `GABI_GROQ = "off"` ships in `wrangler.toml` and `GROQ_API_KEY_GABI` is
-unset. Design of record: [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md).
-Runbook: [`access/discord-bot.md`](access/discord-bot.md) §11.8. Money path:
-[`info/llm-billing-control-design.md`](info/llm-billing-control-design.md) §2.4
-row **E7**.
-
-**What landed:** `apps/discord-worker/src/gabi-groq.ts` — a first-line rung in
-front of the pinned Haiku on the **four TOOLLESS** call sites (classification,
-small talk, memory distill, T2 fix parse). Model pinned
-`llama-3.3-70b-versatile` (black_bot_baf's own choice); one attempt, 4 s
-timeout, eight failure reasons, every one of them an **invisible** fall-through
-to the unchanged Haiku call. 44 new tests, workspace 2247 pass / 0 fail.
-
-⚠️ **SUPERSEDED IN PART, 2026-09-02.** The tool loop was *"out of scope by
-construction"* above; **phase 2 shipped and it is not any more** — a tool loop
-whose every tool is read-only now rides Groq first under the same
-`GABI_GROQ = "first"`. The pin also moved to `openai/gpt-oss-120b`. Both are
-recorded in [`DONE.md`](DONE.md) and [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md);
-the paragraph above is left as written because it is the record of what phase 1
-decided, not a claim about today. ⚠️ **The five owner steps below are also
-stale — all five were done on 2026-09-01** (key pushed byte-verified, `shadow`
-read, `first` flipped and verified on the wire). They are NOT swept here because
-that is this item's own close-out, and nobody has re-verified each step; the
-next session that touches this item should move it whole.
-
-### 🔴 THE OWNER'S FIVE REMAINING STEPS, in order
-
-1. **Mint a Groq key** at `console.groq.com`. ⚠️ A new key — not an Anthropic
-   one, and not the other project's, so this spend is separately auditable.
-2. **Paste it into the FILE** — `apps/discord-worker/.dev.vars`, after
-   `GROQ_API_KEY_GABI=`, with an editor. Never onto a terminal line, where it
-   lands in shell history.
-3. **Push it with the script** (⚠️ **THE BOM-FREE RITUAL — this is the whole
-   point of step 3**), from the repo root:
-
-   ```bash
-   node scripts/push-discord-secret.mjs GROQ_API_KEY_GABI
-   ```
-
-   ⚠️ **NEVER `$value | npx wrangler secret put`.** A PowerShell pipe to a
-   native process prepends an invisible UTF-8 BOM (`EF BB BF`); the stored key
-   is then wrong **while looking perfect everywhere a human can check it**, and
-   fails as a plain 401. That is exactly how `ANTHROPIC_API_KEY_GABI` was
-   broken on 2026-08-18 (GABI heard every mention and answered none), and its
-   first "fix" — `$OutputEncoding` + trim — was **measured not to work** and is
-   revoked as ritual. See [`access/agent-board.md`](access/agent-board.md) §3
-   and [`access/discord-bot.md`](access/discord-bot.md) §7.
-
-   The script reads the one named line out of `.dev.vars`, **prints the byte
-   facts and never the value** (length, first three bytes — a BOM is
-   `239 187 191` — and the last byte), writes raw bytes to `wrangler`'s stdin
-   from Node where no encoder can add a BOM, refuses a value that already
-   carries a BOM, and **blanks the `.dev.vars` line afterwards**. Confirm:
-   `curl -s https://discord.heygabi.ai/api/health | jq '.configured.groq_key_gabi'`
-   → `true`.
-
-4. **Flip SHADOW, deploy, and read the lines.** `GABI_GROQ = "shadow"` in
-   `apps/discord-worker/wrangler.toml`, `npx wrangler deploy`. Nothing a person
-   sees changes — Groq is called beside Haiku and ⚠️ **Haiku's answer is used.**
-   @mention GABI a few times, then:
-
-   ```bash
-   npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_groq_shadow")'
-   ```
-
-   Look for `agreed: true` on nearly every `classify` line, `groq_answered:
-   true` on nearly all of them, and `groq_ms` below `haiku_ms`. A wall of
-   `reason: "refused"` / `status: 401` means **a BOM'd key** — redo step 3.
-   `status: 400` naming a decommission means the pinned model was retired.
-
-5. **Flip `first`** once the shadow lines look right, and talk to her. ⚠️ Prose
-   quality is **not** readable off the shadow lines (they carry lengths, never
-   text — these are household conversations). Backing out is one line:
-   `GABI_GROQ = "off"` and deploy, or delete the secret and skip the deploy.
-
-### 🔴 NOT VERIFIED — no live Groq call has ever been made from this repo
-
-Every test drives an injected `fetch`. Whether Groq accepts this body, whether
-`llama-3.3-70b-versatile` is still a live id, whether the answers are good
-enough, and what the savings actually are (⚠️ the tool loop — the expensive
-half — is excluded) are all unknown until step 4.
-
-## ☐ GABI personality intensity — snark/flirt dial up (owner ask 2026-09-01)
-
-Owner: *"Gabi can be a bit more into her personality, she can be a bit snarkier
-or a bit more flirty. this is a private server so we can be a bit mean to my
-friends. let her really sell the personality. Think of Grok from X in its all
-go mode. have it really lean into stuff she's ingested from the books to build
-out those personalities."*
-
-✅ **BUILT AND DEPLOYED 2026-09-01.** `GABI_EDGE` (`standard` | `full`, fail
-closed, ships **`full`**) in `apps/discord-worker/wrangler.toml`; the block
-lives in `src/gabi-prompt.ts` beside the canonical prompt and is appended
-BETWEEN memory and the persona block, so the PG-13 register clause and the
-invariance clause stay last. `/api/health` reports `gabi_edge`. Tests:
-`test/gabi-edge.test.ts` (18), including a literal pin of the whole pre-dial
-prompt so `standard` is byte-identical. Operating it and the floor:
-[`access/gabi-personality.md`](access/gabi-personality.md) §9; design:
-[`info/gabi-personality-design.md`](info/gabi-personality-design.md) §11.
-
-⚠️ **REMAINING — what is NOT done:**
-
-1. **The owner has to HEAR the difference.** Nobody has talked to her at
-   `full`; a test over a prompt proves the instruction is present, never that
-   it is obeyed. Turning her down is `GABI_EDGE = "standard"` plus a deploy.
-2. ⚠️ **The Groq shadow rung now renders this same prompt and its voice at
-   `full` is UNMEASURED** — the shadow lines carry lengths and latencies and
-   deliberately never texts, so nothing in them can show how a 70B
-   open-weights model handles a roast licence. That needs `first`.
-3. **The library panel does NOT have it, by design, and the step is
-   library-side.** Phase 3's unification is a COPIED prompt with a comment
-   naming its source (`library_catalog/packages/research/src/gabi.ts` →
-   `GABI_SYSTEM`), not a shared package. This change did not touch the copied
-   core — the byte pin proves it — so the copy is still in sync. Giving the
-   panel the dial means appending its own `GABI_EDGE_FULL` there with its own
-   posture, and that is an OWNER decision, not a sync: the panel's audience is
-   not this private server's audience.
-
-## 🔄 BUILD PROGRAM 2026-09-02 (owner: "list me and then build the remaining features. nothing else needs to wait unless it has a dependency")
-
-19 features fanned out in repo-sequenced waves (Opus builds, Fable conducting).
-Wave 1 in flight: Groq phase-2 tool translation (platform) · library quick
-wins (scroll-to-top, Signed toggle, research transparency) · audiobook batch
-(say-2, also-on-audio fix, poll-announce toggle, supplements armed
-disambiguated) · games (deploy guards then disposal/copy-history). Waves 2–4:
-player phase 2, ~~Discord fun menu~~, billing phase 0+1, ~~universes +~~, OR-1,
-format toggle, Wandering Inn, cross-links, newest-authors.
-
-✅ **The Discord fun menu LANDED 2026-09-02 and moved WHOLE to
-[`DONE.md`](DONE.md)** (*"THE DISCORD FUN MENU: five commands live, two dark,
-one toggle honoured"*). ⚠️ **Two owner steps remain open and are tracked as
-their own items below** — the registration re-run, without which none of the
-five new commands is visible in any Discord server, and the
-`GABI_CLUB_WRITES` verification checklist. Neither is a build step, which is
-why they are here rather than in the archive. Where a TODO said
-"ask first", the recorded recommendation is being built and flagged vetoable
-at landing (owner's nothing-waits order). SETTLED 2026-09-02 by owner: **"yes
-everyone on the shelf list can have the ebooks"** — the ebook gate question is
-answered: Cloudflare Access (family allowlist) is a lawful second door for the
-ebook FILES on the shelf. Unblocks the shelf cluster (second ABS library on an
-ebooks-only hardlink shadow tree per option A in audiobook TODO, ebooks
-dropdown, reader via ABS's native reader or the port item as its docs record,
-shelf_book_map + "Open on shelf" button — ONE canonical catalog→ABS join per
-the recorded warning). ⚠️ Scope limit: this does NOT make ebook titles public
-anywhere (the no-ebook-chip directive on public pages stands) and does NOT
-retire the estate site's vis_ebooks/download_ebooks gate — two doors coexist.
-Queued in the audiobook-repo wave lane behind player phase 2. SETTLED 2026-09-02 by owner:
-**library panel gets full GABI edge, matching Discord** ("library panel should
-match gabi in discord no matter what. same experience different entry point")
-— queued wave 2 (library tree busy; panel prompt lives at
-`library_catalog/packages/research/src/gabi.ts` → append its GABI_EDGE_FULL +
-the NEVER-SOUND-PREWRITTEN section, keep the copied-core byte pin honest).
-Second board-game instance STAYS deferred (owner 2026-09-02: "no use case yet").
-
 ## ☐ 🔴 OWNER STEP — play Skyward, so the eviction stamp is PROVED rather than deployed
 
 The audiobook player's platform half shipped 2026-09-02 (`e3396c5`, version
@@ -213,29 +52,6 @@ is the bug, and it is one line in `src/stream-stamp.ts`.
 ⚠️ **Do NOT run `--evict --commit` on the strength of this.** `last_position_at`
 is the mid-book shield and it waits for phase 3; until both land, eviction
 correctly deletes nothing.
-
-## ☐ 🔴 OWNER STEP — re-run the slash-command registration, or the fun menu is INVISIBLE
-
-The five new commands (`/recent`, `/universe`, `/review`, `/suggest`,
-`/guessgame`) are **deployed and answering**, and **nobody can see them**:
-Discord shows exactly the list an application PUTs, and that PUT has not been
-made since they were added. One call, and it needs an estate **admin** Firebase
-ID token, which no session holds:
-
-```
-POST https://discord.heygabi.ai/admin/commands/register
-Authorization: Bearer <admin Firebase ID token>
-```
-
-Getting a token: sign in on any estate page and run
-`await (await import('/assets/estate-auth.js')).idToken()` in the console.
-Full ritual and the two-switch registry:
-[`access/discord-bot.md`](access/discord-bot.md) §15.2 and §4. Global commands
-can take up to an hour to appear the first time.
-
-⚠️ **Until this runs, "the fun menu is live" is a fact about the Worker and not
-about Discord** — and the honest way to say so is that it is deployed, not that
-it is usable.
 
 ## ☐ 🔴 OWNER/SESSION STEP — verify `CLUB_WRITE_SHAPES` before `GABI_CLUB_WRITES` is ever flipped
 
@@ -330,16 +146,6 @@ in-memory mirror omits `work_alias` (0410) + `change_log`, and `makeShim.batch`
 is non-atomic (a partial write occurred). Add both tables to MIRRORED + make
 batch atomic before using the script again. ⚠️ **Not re-verified on
 2026-08-31** — if it was fixed since, close this against the commit.
-
-## ☐ BUG (not urgent, owner 2026-08-24) — ebook "also on audio" button resolves to nothing
-
-Some books in the ebooks library show an "also on audio" affordance, but there is
-no matching audiobook, so the link/button dead-ends. The ebook→audiobook match is
-stale or over-eager (shows the button when no live audio edition exists). Fix:
-only surface "also on audio" when a real matching audiobook resolves; otherwise
-hide it. **Locate exact surface first** — likely audiobook_catalog `site/ebooks.html`
-(the recent "N audiobooks" ebook-count work) or the library work-page audio cross-link.
-Land for review. Candidate for a Fable/subagent build once located.
 
 ---
 
@@ -635,30 +441,23 @@ policy can only deny, so a path under two switches is refused if either
 denies, which fails safe. A test pins the list of double covers so a NEW one
 has to be argued for.
 
-### 2. "+ Add a verse" — ⚠️ BUILT, NOT DEPLOYED — `docs/info/universe-add-verse-design.md`
-Phases 0–3 landed 2026-09-02 and are archived whole in [`DONE.md`](DONE.md).
-What is left is a **deploy in a fixed order** and one unbuilt phase.
+### 2. "+ Add a verse" — ✅ DEPLOYED 2026-09-02 ~15:00 on the owner's "Run it"; two open remnants
 
-🔴 **THE ORDER IS NOT OPTIONAL, and the page is LAST.** The page's "+" calls
-`auth.heygabi.ai`; deploying it first means a member presses a button that
-reports an outage. And the Worker's routes need the table, so the migration goes
-before the Worker — the estate's own migrate-before-deploy rule, which exists so
-new code never meets an old schema.
+Phases 0–3 archived whole in [`DONE.md`](DONE.md). The fixed-order deploy RAN:
+migration `0017` applied to remote `estate_auth` first (`npm run db:migrate`,
+✅ in 1.07ms); `estate-auth` deployed from a worktree of HEAD (version
+`07dbe1b0-a58f-4980-a435-c8c01f909f34`); `heygabi-home` deployed LAST from the
+same worktree (`18df9ec9`, 28 live predeploy checks passed) — but ⚠️ only
+after `.gitattributes` pinned `universe-names.generated.ts` to `eol=lf`
+(commit `886b370`): a Windows worktree checkout CRLF'd the generated file and
+the byte-comparing parity test correctly refused the deploy. Live verify:
+"+ Add a verse" and "Missing a verse?" both render signed-in on
+<https://heygabi.ai/universes/>. NOT verified: no request has ever been FILED
+(the first real request → /admin approve → CLI create round-trip is untried),
+and /admin's Verse-requests section is unrendered by human eyes.
 
-1. ☐ **Apply migration `0017_universe_requests.sql` to remote `estate_auth`** —
-   `cd apps/auth-worker && npm run db:migrate`. Purely additive (one
-   `CREATE TABLE IF NOT EXISTS` on a new object plus its index), so it is safe to
-   apply ahead of the Worker and unattended, the same property 0012–0016 had.
-2. ☐ **Deploy `estate-auth`** — from a clean tree or a throwaway
-   `git worktree add <tmp> HEAD`. Adds five routes and three CORS mounts; the
-   only change to an existing surface is none.
-3. ☐ **Deploy `heygabi-home`** — `npm run deploy:home` (runs `npm test` and
-   `check:home` first). ⚠️ A directory upload ships the WORKING TREE, not a
-   commit — [`info/worktree-deploys.md`](info/worktree-deploys.md).
-4. ☐ **Then verify LIVE, signed in**, because none of it has been: the "+"
-   renders on <https://heygabi.ai/universes/>, a request lands, and
-   <https://heygabi.ai/admin> shows it under "Verse requests". Nothing below the
-   build was exercised against a browser or a real D1 — the tests use a fake.
+Remaining, unchanged:
+
 5. ☐ **Phase 4 — notify on a decision** (~½ day, a labelled guess). Reuse
    `estate_prefs` / `notify-prefs.ts`. Unbuilt; it was never a recommendation,
    just a later phase.
