@@ -298,41 +298,18 @@ anything)? Answer that, then the flip checklist in
 ⚠️ Flipping it is **access-increasing on somebody else's live page** — this
 Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
 silently. It gets confirmed, never assumed.
-## ☐ OWNER DECISION BATCH 2026-09-02 ~14:00 — queued follow-up builds (dispatch when target trees free)
+## ⏸ ON PAUSE by owner order 2026-09-02: "Anything needing the other computer is on pause"
 
-Owner, verbatim: "fix the wandering inn publisher, fix the duplicates. on your
-shelf should be the main with other editions available under their given
-section. so if its a second physical there should be 2 under physical. we
-should also add being able to set the covers for the alternate editions too.
-for now we want to use only the listen/download here button in the audiobook
-catalog. Anything needing the other computer is on pause"
+The ABS box steps for the ebooks shelf library
+(`audiobook_catalog/docs/access/SHELF_EBOOKS_LIBRARY.md` §3–§5) and anything
+else requiring hands on the shelf box. Resumes only on the owner's word.
 
-1. **LIBRARY follow-up agent** (after the billing-phase-3 agent lands there):
-   (a) Harper Voyager publisher batch on editions 322–325 + sweep the other
-   B&N-imported works for retailer-as-publisher; sanctioned batch path, R12
-   change_log. (b) Work-page merge, owner's design: "On your shelf" becomes
-   THE main list; the separate "Other versions available" section folds INTO
-   the shelf's per-format sections — an unowned second physical edition lists
-   under Physical beside the owned one (visually distinct owned vs available).
-   (c) NEW: per-edition cover setting in the edit UI (alternate editions get
-   their own covers).
-2. **AUDIOBOOK follow-up agent** (after the author-cleanup agent lands there):
-   (a) the modal keeps ONLY the estate "Listen/download here" affordance as the
-   play control — the "Open on the shelf" ABS button comes OFF for now (keep
-   the shelf-link module; the button's removal is presentation, not the join).
-   (b) EMBERDARK DEDUPE — owner 2026-09-02: "Keep the audible one but make
-   sure all source files stay." The Audible-tagged row (narrators Kaleo
-   Griffith/Jennifer Jill Araya, 2025-07-10) is the surviving catalog
-   identity; the Kickstarter-tagged twin row retires from the catalog through
-   the sanctioned twin/duplicate mechanism — ⚠️ ZERO file deletion anywhere
-   (local, Drive, R2 archive: every source file stays; this is metadata
-   dedupe, not a purge). After the dedupe the ingestion refusal on Emberdark
-   lifts — verify it queues. The ebooks page's "2 audiobooks" count on this
-   title will truthfully become 1.
-3. **ON PAUSE (owner: "anything needing the other computer")**: the ABS box
-   steps for the ebooks shelf library (SHELF_EBOOKS_LIBRARY.md §3–§5) and
-   anything else requiring hands on the shelf box.
-4. Emberdark: links/evidence handed to the owner 2026-09-02; his pick pending.
+(The rest of the ~14:00 owner decision batch — publisher fix + B&N sweep,
+work-page shelf merge, per-edition covers, single play button, Emberdark
+dedupe with all source files kept — was BUILT the same afternoon and moved
+WHOLE to [`DONE.md`](DONE.md) entry "2026-09-02 — the ~14:00 owner decision
+batch, executed"; per-repo detail lives in library_catalog's and
+audiobook_catalog's own DONE files.)
 
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 

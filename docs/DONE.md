@@ -9,6 +9,34 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-02 — the ~14:00 owner decision batch, executed (moved whole from TODO)
+
+Owner, verbatim: "fix the wandering inn publisher, fix the duplicates. on your
+shelf should be the main with other editions available under their given
+section. so if its a second physical there should be 2 under physical. we
+should also add being able to set the covers for the alternate editions too.
+for now we want to use only the listen/download here button in the audiobook
+catalog. Anything needing the other computer is on pause"
+
+All built the same afternoon by two follow-up agents, one per repo:
+**library_catalog** (its DONE has the detail): work-page merge — "On your
+shelf" is THE list, per-format sections, available-but-unowned rows dashed
+with the honest "May be yours" state where `edition_id` is unlinked, the
+audiobook cross-link painted once under Audio (double-paint finding closed);
+per-edition covers (no migration — `edition.cover_url` existed since 0001;
+new cover routes reusing the one pipeline); publisher batch — 7 rows
+corrected with per-row attestation (Harper Voyager ×4, Ballantine, Clarkson
+Potter, Scholastic Press), editions 511/557 correctly REFUSED as real B&N
+imprints, importer-side fix filed as its own item there.
+**audiobook_catalog** (its local DONE has the detail): modal play control is
+the estate "Listen here"/download alone, shelf button off (shelf-link.js kept
+and pinned); Emberdark deduped via the new curated `catalog_twins` mechanism —
+Audible row survives ("Keep the audible one but make sure all source files
+stay"), ZERO files touched (pinned against real bytes+mtimes), 1,088→1,087
+rows; correction of record: the "ingestion refusal" was the m4b RESOLVER's
+ambiguity, and the book's pack has existed from its EPUB since 2026-08-18.
+The only remnant is the ON-PAUSE box-steps item left in TODO.
+
 ## 2026-09-02 — THE HANDSHAKE PROBES: three master-less token pairs become rotatable
 
 Commit `1cfa531`; `estate-auth` `9fb859be-202f-40c5-9a6c-168263d2754e`,
