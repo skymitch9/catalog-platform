@@ -163,6 +163,36 @@ match gabi in discord no matter what. same experience different entry point")
 the NEVER-SOUND-PREWRITTEN section, keep the copied-core byte pin honest).
 Second board-game instance STAYS deferred (owner 2026-09-02: "no use case yet").
 
+## ☐ GABI polish batch (owner live-test findings, 2026-09-02 ~10:33)
+
+Owner drove the first live phase-2 test; measured off the wire + his report:
+1. **Groq 413 payload ceiling** — 12-tool passes refuse instantly; a 6-tool
+   pass at 4,736 input tokens RODE GROQ; iteration 2 (tool results appended)
+   refused. Ceiling ≈ just above 5k tokens/request — check the key's tier on
+   the Groq console; fix = leaner tool schemas for the Groq lane + capped
+   tool-result payloads.
+2. **Toolless converse fell back 2/2** — one `empty` status 200 (reasoning
+   quirk past the 512 floor), one `refused` status 400 with NO error body in
+   the log line. Add Groq error-text capture to the log (both param type AND
+   emitted object), then diagnose.
+3. **Personality flat on tool-backed answers** (owner: "she sounded like a
+   bot, the personality wasnt coming through except on" an opinion ask —
+   which WAS on-voice). Hypothesis: edge licence not carried into
+   reporting-mode; extend the prompt so lookup answers are performed in her
+   register too. Both flat turns were HAIKU, so this is prompt work, not
+   Groq.
+4. **Member-mention misattribution**: asked about @Diva's TBR, she claimed
+   she can only read her own shelf, then quoted the ASKER's stats — confident
+   misattribution. Check mention→member resolution and whether the new
+   /progress tool covers cross-member reads.
+5. **Answer QUALITY was poor across the test** (owner follow-up: "She also
+   didnt really answer any of the questions properly"). The conductor's
+   "every answer was right" claim was made off log lines that never carry
+   text — wrong instrument, retracted. Diagnose from the actual channel
+   transcript: retrieval quality vs. composition vs. the one Groq-ridden
+   tool loop.
+Dispatch as ONE agent after the fun-menu builder lands (same tree).
+
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
 ~15 worktrees from the night's branches. The merged ones can go at leisure;
