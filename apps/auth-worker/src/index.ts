@@ -33,6 +33,7 @@ import { estateDocsRoutes } from './estate-docs.js';
 import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
 import { billingRoutes } from './billing.js';
+import { universeRequestRoutes } from './universe-requests.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
@@ -176,6 +177,20 @@ app.use('/api/estate/claude/*', adminCors());
 // list it.
 app.use('/api/estate/billing', billingCors());
 app.use('/api/estate/billing/*', billingCors());
+// Universe requests ("+ add a verse", 2026-09-02) — apex-only, because both
+// callers are on the apex: /universes for the member half and /admin for the
+// approve/decline half. ⚠️ It borrows adminCors() for its ORIGIN LIST, not for
+// its meaning: the origin allowed is the same one (heygabi.ai), but the routes
+// behind it are member-wide, gated in the handler by requireApprovedMember().
+// Reading the mount's name as the gate would be exactly backwards.
+// ⚠️ A CORS MOUNT IS NOT IMPLIED BY A ROUTE — without these two lines the "+"
+// button reports "could not reach the estate", which looks precisely like a
+// Worker that is down. The wildcard covers /requests/:id/decide|landed|withdraw
+// (Hono mounts are exact-or-wildcard, never prefix-implicit); the bare mounts
+// cover /names and the /requests collection itself.
+app.use('/api/estate/universes/names', adminCors());
+app.use('/api/estate/universes/requests', adminCors());
+app.use('/api/estate/universes/requests/*', adminCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
@@ -236,6 +251,9 @@ app.route('/api', claudeUsageRoutes);
 app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);
 app.route('/api', billingRoutes);
+// "+ add a verse" — a member asks, an approver decides, a devops session says
+// it landed. ⚠️ Nothing here creates a universe; see universe-requests.ts.
+app.route('/api', universeRequestRoutes);
 app.route('/api', sessionRoutes);
 
 function adminCors() {

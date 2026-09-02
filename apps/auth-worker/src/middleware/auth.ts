@@ -95,6 +95,109 @@ export function devAccessAllows(row: EstateUserRow | null, isOwner: boolean): bo
   return row?.status === 'approved' && (row.dev_access === 1 || devopsAllows(row, false));
 }
 
+/**
+ * THE MEMBER PREDICATE (2026-09-02, the "+ add a verse" build — design
+ * docs/info/universe-add-verse-design.md §3.1). The widest of the four, and it
+ * lives here for the header's stated reason: a capability decision written
+ * anywhere else has already drifted from the three above it.
+ *
+ * ⚠️ IT IS DELIBERATELY WIDER THAN `approverAllows`, AND THAT IS THE DESIGN'S
+ * ARGUMENT, NOT AN OVERSIGHT. Requesting a universe spends nothing, writes one
+ * row and grants nobody anything; the access-INCREASING step — the one that
+ * actually changes the estate — is APPROVAL, which stays on `requireApprover()`.
+ * Gating the request behind approver would leave the owner talking to himself.
+ *
+ * ⚠️ `status === 'approved'` is the whole test. A `pending` person is not a
+ * member yet and a `revoked` one stopped being one; neither may write to a
+ * queue an approver has to read. The two get DIFFERENT wording at the door
+ * (`requireApprovedMember` below), because "wait" and "ask the owner" are
+ * different instructions.
+ */
+export function memberAllows(row: EstateUserRow | null, isOwner: boolean): boolean {
+  if (isOwner) return true;
+  return row?.status === 'approved';
+}
+
+/**
+ * The member gate: a verified Firebase ID token PLUS an APPROVED directory row
+ * (or OWNER_EMAILS). Same no-bootstrap stance as its neighbours — an empty
+ * table admits nobody but the owner.
+ *
+ * ⚠️ FOUR CAUSES, FOUR SENTENCES. The estate's standing rule is that a person
+ * never meets a bare status: not signed in / no record yet / awaiting approval /
+ * revoked have four different fixes, and a single "forbidden" would send three
+ * of those four people to the wrong place. The `error` CODES are the ones every
+ * page already branches on (`unauthenticated`, `estate_pending`,
+ * `estate_revoked`), so no consumer needs a new vocabulary.
+ */
+export function requireApprovedMember(): MiddlewareHandler<AppBindings> {
+  return async (c, next) => {
+    let identity;
+    try {
+      identity = await resolveIdentity(c.req.raw, c.env);
+    } catch (err) {
+      return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
+    }
+    if (!identity)
+      return c.json(
+        {
+          error: 'unauthenticated',
+          detail: 'You are not signed in. Sign in with your estate account and try again.',
+        },
+        401,
+      );
+
+    const email = identity.email.trim().toLowerCase();
+    const ownerEmails = parseOwnerEmails(c.env.OWNER_EMAILS);
+    const isOwner = ownerEmails.includes(email);
+
+    let row: EstateUserRow | null = await getUserByEmail(c.env.DB, email);
+
+    if (!memberAllows(row, isOwner)) {
+      if (!row) {
+        return c.json(
+          {
+            error: 'estate_unknown',
+            detail:
+              'The estate directory has no record of this account yet. Open heygabi.ai once while ' +
+              'signed in — that enrols you — and the owner will see your name waiting on /admin.',
+          },
+          403,
+        );
+      }
+      if (row.status === 'revoked') {
+        return c.json(
+          { error: 'estate_revoked', detail: 'Your estate access was revoked. Ask the owner.' },
+          403,
+        );
+      }
+      return c.json(
+        {
+          error: 'estate_pending',
+          detail:
+            'Your estate membership is still awaiting approval, so this is closed for now. ' +
+            'The owner sees your name on /admin; there is nothing more for you to do.',
+        },
+        403,
+      );
+    }
+
+    // An OWNER_EMAILS actor may have no row yet (fresh directory, or the
+    // break-glass path). Materialize one so `requested_by` has an id to stamp —
+    // the same reasoning requireApprover() gives for `decided_by`.
+    if (!row) {
+      row = await materializeOwnerRow(c.env.DB, {
+        email,
+        firebaseUid: identity.uid,
+        displayName: identity.name,
+      });
+    }
+
+    c.set('actor', row);
+    await next();
+  };
+}
+
 export function requireDevops(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     let identity;
