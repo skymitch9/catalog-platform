@@ -302,7 +302,18 @@ export async function groqComplete(
   const jsonSafe = turn.json === true && /json/i.test(turn.system);
   const body = {
     model: GABI_GROQ_MODEL,
-    max_tokens: turn.maxTokens,
+    // ⚠️ REASONING-MODEL FLOOR — measured live 2026-09-01 ~18:10, the first
+    // successful Groq turn in this estate: `converse` answered on Groq (566 ms,
+    // 98 output tokens) while `classify` fell back with an EMPTY 200 on every
+    // call. `openai/gpt-oss-120b` is a reasoning model: handed a
+    // classification-sized cap (a few dozen tokens) it spends the whole budget
+    // thinking and returns empty content — reason "empty", invisible fallback,
+    // a Haiku call per mention for ever. So the Groq ATTEMPT floors max_tokens
+    // at 512 (Groq is cheap; the shared validator still enforces the tiny
+    // shape) and pins reasoning effort low — this constant is gpt-oss-specific
+    // and gets re-argued if the model pin ever changes family.
+    max_tokens: Math.max(turn.maxTokens, 512),
+    reasoning_effort: 'low',
     messages: [{ role: 'system', content: turn.system }, ...turn.messages],
     ...(jsonSafe ? { response_format: { type: 'json_object' } } : {}),
   };

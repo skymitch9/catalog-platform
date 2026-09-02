@@ -205,7 +205,16 @@ describe('groqComplete — the request shape, and one failure type out', () => {
     assert.equal(call.url, GROQ_CHAT_URL);
     const body = JSON.parse(String(call.init?.body)) as Record<string, unknown>;
     assert.equal(body.model, GABI_GROQ_MODEL);
-    assert.equal(body.max_tokens, 400);
+    // ⚠️ Decision of record, 2026-09-01 evening — measured on the first
+    // successful live Groq turn: `converse` answered on Groq while `classify`
+    // fell back with an EMPTY 200 on every call, because gpt-oss-120b is a
+    // reasoning model and a classification-sized cap is spent entirely on
+    // thinking. The Groq attempt now floors max_tokens at 512 (the shared
+    // validator still enforces the tiny output shape) and pins
+    // reasoning_effort low. Re-argue both if the model pin leaves the
+    // gpt-oss family.
+    assert.equal(body.max_tokens, 512, 'a small caller cap is floored for the reasoning model');
+    assert.equal(body.reasoning_effort, 'low');
     assert.deepEqual(body.messages, [
       { role: 'system', content: 'be warm' },
       { role: 'user', content: 'hi' },
