@@ -314,22 +314,32 @@ function renderCompleted(section, historyRows, nowMs) {
     return;
   }
 
-  // The history IS the completed list, so its length is the count. `packs.packed`
-  // is the manifest's own tally of the same thing and is shown beside it when
-  // the two are both present — if they ever disagree, the page shows both rather
-  // than picking a winner, because the disagreement is the interesting fact.
+  // ⚠️ THE COUNT IS `packs.packed`, NEVER THE HISTORY'S LENGTH. This line used
+  // to read the premise the other way ("the history IS the completed list, so
+  // its length is the count") — which was true until the library outgrew the
+  // pusher's MAX_HISTORY cap (500 rows, its board-size budget). Found live
+  // 2026-09-02: the headline said 500 while the state held 1,054 done and the
+  // manifest 1,057+, and the owner asked whether GABI's knowledge was stale.
+  // The history is the NEWEST-N window onto the completed list; `packs.packed`
+  // is the state file's own uncapped tally.
   const headline = el('div', 'complete-headline');
-  const n = historyRows.length || packed;
+  const n = packed !== null ? packed : historyRows.length;
   headline.append(el('span', 'complete-count', n.toLocaleString()));
   headline.append(el('span', 'complete-label', `book${n === 1 ? '' : 's'} in GABI's knowledge base`));
   completeEl.append(headline);
 
   const bits = [];
-  if (historyRows.length && packed !== null && packed !== historyRows.length) {
+  if (historyRows.length && packed !== null && packed > historyRows.length) {
     bits.push(
-      `The pushed history lists ${historyRows.length.toLocaleString()} while the pack manifest counts ` +
-      `${packed.toLocaleString()} — both are shown because a disagreement between them is worth seeing, ` +
-      'not worth hiding behind whichever number is larger.',
+      `The list below shows the newest ${historyRows.length.toLocaleString()} — the pusher trims older ` +
+      'rows to stay inside the board size cap; the count above is the ingest ledger’s own tally.',
+    );
+  } else if (historyRows.length && packed !== null && packed < historyRows.length) {
+    // The genuinely strange direction — more history rows than the ledger
+    // counts done — stays loud rather than being averaged away.
+    bits.push(
+      `⚠️ The pushed history lists ${historyRows.length.toLocaleString()} while the ledger counts only ` +
+      `${packed.toLocaleString()} — that disagreement is the interesting fact, not a rendering choice.`,
     );
   }
   const newest = historyRows.length ? ageOf(historyRows[0].joined_at || historyRows[0].at, nowMs) : '';
