@@ -1023,6 +1023,49 @@ secret works too and needs no deploy — either half alone disables the rung.
 never text). `converse` is the call where the owner has to actually talk to her
 after flipping `first` — knowing a bad turn is one posture flip from undone.
 
+### 11.9 The TOOL LOOP on Groq — phase 2 (shipped 2026-09-02), and what to watch
+
+*Design of record: [`info/gabi-groq-rung.md` §8](../info/gabi-groq-rung.md).*
+Since `7d9a9b3` a **tool-using** turn rides Groq first too — which matters
+because the tool loop is where most of the Anthropic tokens go.
+
+**Nothing new to set.** It runs under the same `GABI_GROQ = "first"` you already
+flipped. Three conditions, all required, and a loop that fails any of them is
+100% Anthropic:
+
+1. the posture is exactly **`first`** — ⚠️ a tool loop is **never shadowed**,
+   because shadowing it would run the loop twice and **execute every tool
+   twice**, against live estate services;
+2. a key exists;
+3. **every** tool offered on that turn is on the read-only allowlist —
+   `curl -s https://discord.heygabi.ai/api/health | jq '.gabi_groq_tool_allowlist'`
+   (13 names today, all reads).
+
+**What to watch, and it is a different line from §11.8's:**
+
+```bash
+npx wrangler tail estate-discord --format json \
+  | jq 'select(.evt=="gabi_groq" and .purpose=="converse_tools")'
+```
+
+| What you see | What it means |
+|---|---|
+| `outcome: "groq"` with `iteration` climbing 1, 2, 3 | the loop is running on Groq. ⚠️ **A `converse_tools` turn with these lines and NO `gabi_turn` line cost nothing at Anthropic** — that is the savings, measured rather than assumed |
+| `outcome: "fallback"`, `reason: "invalid"` | ⚠️ **the interesting one.** The model IS calling tools but not in a shape the estate accepts (a tool it was not offered, arguments that miss a required field). That pass is replayed on Haiku and the person cannot tell; a *run* of them means the rung is buying nothing on tool turns |
+| `outcome: "fallback"`, `reason: "timeout"`/`"rate_limited"`/`"refused"` | as §6 of the design doc — same taxonomy as the toolless rung |
+| `outcome: "ineligible"`, `ineligible_reason: "posture_shadow"` | you are on `shadow`; tool loops do not shadow. Expected, not a fault |
+| `outcome: "ineligible"`, `ineligible_reason: "tool_not_allowlisted"` with `blocked_tools` | a tool was offered that nobody put on the allowlist. Deliberate default: a new tool is NOT eligible until someone says so in `gabi-tools.ts` |
+
+**Backing out phase 2 alone, without giving up the toolless savings:** delete a
+name from `GROQ_READ_ONLY_TOOL_NAMES` in `apps/discord-worker/src/gabi-tools.ts`
+and deploy — every loop that offers it goes back to Anthropic whole. Backing out
+everything is still `GABI_GROQ = "off"`.
+
+⚠️ **NOT VERIFIED as of 2026-09-02:** no live Groq tool call has ever been made.
+Whether an open-weights model calls these tools *accurately* is the real
+question, and it cannot be answered from a shadow — the next tool-bearing
+@mention is the first live test.
+
 
 ---
 

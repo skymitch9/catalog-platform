@@ -18,6 +18,91 @@
 
 
 
+## 2026-09-02 — GABI Groq PHASE 2: the Anthropic↔OpenAI tool translation (the expensive half now rides Groq)
+
+**Moved whole from [`TODO.md`](TODO.md)**, from under *"Groq as GABI's first-line
+model before Haiku"*. The item as it stood there, verbatim:
+
+> ### ☐ Phase 2 — the tool-schema translation
+>
+> Not started, and not a "small addition": `tool_use`/`tool_result` ↔
+> `tool_calls`/`role: "tool"`, preserving every invariant `converseWithTools`'s
+> header records (all results for one turn in ONE user message; a failed tool
+> comes back `is_error` rather than dropped; the last pass sends no tools; the
+> dangling-colon guard against the 2026-08-18 silent partial). ⚠️ This is where
+> most of the tokens are, so it is where the actual savings live. Open-weights
+> tool-calling accuracy is the real question and the shadow ladder cannot answer
+> it without executing tools twice.
+
+**Shipped**: commit `7d9a9b3`, `estate-discord` version
+`f9cd77f3-6c99-4700-93f2-3d28cb147294`, 2026-09-02 17:04 UTC, deployed from a
+throwaway worktree of HEAD (`.bin` 51 / 51 / 51 across the teardown). No
+migration — no D1 on this Worker. Design of record:
+[`info/gabi-groq-rung.md` §8 and its §10 ledger entry](info/gabi-groq-rung.md).
+Runbook: [`access/discord-bot.md` §11.9](access/discord-bot.md).
+
+**The one decision everything else follows from: the conversation state stays in
+ANTHROPIC grammar, always.** `src/gabi-groq-tools.ts` builds OpenAI shapes for
+the length of one HTTP request and translates the reply straight back into
+Anthropic content *blocks*; `converseWithTools`'s `messages` array is never
+touched. That is what makes the per-turn fallback a **genuine replay** (a failed
+Groq pass could not have mutated anything, so the Haiku call that replaces it
+starts from byte-identical state) and what makes every invariant the item above
+lists survive **by construction** rather than by re-implementation.
+
+**Eligibility is an explicit allowlist, not an inference.**
+`GROQ_READ_ONLY_TOOL_NAMES` sits beside the tool definitions in `gabi-tools.ts`:
+thirteen read-only names, every one `mutates: false`. A loop rides Groq only if
+**every** tool it offers is on it; one unlisted name and the **whole loop** —
+not merely that turn — stays 100% Anthropic. ⚠️ It is a **literal**, deliberately
+not a spread of the family arrays: the spread reads better and is wrong, because
+it makes a tool added tomorrow eligible *by default* as a side effect of a commit
+about something else. ⚠️ The gate is per LOOP because a loop carrying a mutating
+tool also carries the state that decides whether to call it — letting its "safe"
+turns ride Groq would put the cheap model in the seat that *proposes* the write.
+
+**`shadow` is excluded, and that answers the item's own open question.** The item
+above says the shadow ladder "cannot answer it without executing tools twice" —
+so tool loops are never shadowed: they go straight to first-with-fallback under
+the existing `GABI_GROQ = "first"`, with **no new env var**. The honest
+instrument in place of a shadow is the live `fallback` rate.
+
+**`is_error` is the one field that cannot be translated and must not be
+dropped** — OpenAI has nowhere to put the flag, so it becomes plain text in front
+of the content. Dropping it would teach the model that an outage and an absence
+are the same thing, which here is the difference between *"the house does not own
+it"* and a wrong answer.
+
+**Argument validation is new, and it is the reason a translation layer is allowed
+to exist.** A different vendor's open-weights model is exactly where a plausible
+call with a wrong-shaped argument is likely and nothing downstream would notice —
+`runTool` would hand junk to a catalogue query and get an empty result, which
+*reads as* "the house does not have it". Required present, no undeclared
+property, declared scalar type, enum membership; anything else falls through.
+
+**The phase-1 guard was REPLACED, not deleted.** The build-failing test that kept
+a tool turn off `api.groq.com` in every posture is now a stricter set: shadowed
+and ineligible loops still make zero Groq requests, `off` is still byte-identical
+to before the rung existed, and every failure class still falls through
+invisibly. `test/gabi-groq.test.ts` 44 → **82 tests**; workspace 2269 → **2307
+pass / 0 fail**; typecheck clean; no existing assertion weakened.
+
+**Verified live** (GET `https://discord.heygabi.ai/api/health`, 200):
+`gabi_groq_scope` → `toolless_calls_plus_read_only_tool_loops_first_only`, new
+`gabi_groq_tool_allowlist` naming the thirteen, new feature
+`gabi_groq_tool_loops`; every pre-existing field unchanged. No secret-shaped
+value in the body.
+
+🔴 **NOT verified, and the posture is already `first` so the next tool-bearing
+@mention is the first live test:** no live Groq *tool* call has ever been made
+from this repo. Whether Groq accepts this exact `tools` body and — the real
+question — whether `openai/gpt-oss-120b` calls these tools *accurately* are both
+unexercised. The savings are now **measurable** but unmeasured: a
+`converse_tools` turn with `gabi_groq` lines and **no** `gabi_turn` line is a
+turn that cost nothing at Anthropic.
+
+---
+
 ## 2026-09-01 — GABI's book-knowledge SERVING half: found ALREADY BUILT, and closed the one real gap (the probes)
 
 **Dispatched to build the serving half; found it shipped 2026-08-18 and

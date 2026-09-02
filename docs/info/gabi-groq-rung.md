@@ -23,15 +23,18 @@
 > 5. ✅ **The classify floor VERIFIED ON THE WIRE, 2026-09-01 20:23 Phoenix**
 >    — the owner's next organic mention: `classify → outcome: "groq"` (94 ms,
 >    19 out) and `converse → outcome: "groq"` (378 ms). **Zero fallback on the
->    turn: every toolless call type now answers on Groq.** The tool loop (most
->    of the tokens) remains Anthropic-only — phase 2.
-> Last verified: **2026-09-01** — the code was written and the test suite run
-> this session (`test/gabi-groq.test.ts`, 44 tests; workspace 2247 pass / 0
-> fail; typecheck clean). ⚠️ **NOT verified:** **no live Groq call has ever been
-> made from this repo.** Every test drives an injected `fetch`. Nothing here
-> proves Groq accepts what is built, that the pinned model is still live, or
-> that the answers are good enough — the shadow ladder in §5 exists precisely
-> because none of that is knowable yet.
+>    turn: every toolless call type now answers on Groq.**
+> 6. ✅ **PHASE 2 SHIPPED 2026-09-02** — the tool loop, which is where most of
+>    the tokens are, now rides Groq first too when every tool it offers is
+>    read-only. Ledger entry: [§10](#10--2026-09-02--phase-2-the-tool-loop-ledger-entry).
+>
+> Last verified: **2026-09-02** — phase 2's code was written, deployed
+> (`7d9a9b3`, version `f9cd77f3`) and its health rows read back live this
+> session; `test/gabi-groq.test.ts` 44 → **82 tests**, workspace **2307 pass /
+> 0 fail**, typecheck clean. ⚠️ **NOT verified:** **no live Groq TOOL call has
+> ever been made from this repo.** Every test drives an injected `fetch`.
+> Whether an open-weights model calls these tools *accurately* is the real
+> question and §5's shadow ladder cannot answer it — see §8.
 
 The owner's ask, 2026-09-01, verbatim:
 
@@ -59,10 +62,11 @@ Operating it: [`../access/discord-bot.md`](../access/discord-bot.md) §3.
 
 ---
 
-## 2. ⚠️ THE SCOPE RULE — toolless calls only, and it is structural
+## 2. ⚠️ THE SCOPE RULE — five call sites, and the fifth has its own gate
 
-The rung is reachable from **four** call sites. There is a fifth model call in
-GABI's Discord surface and it is deliberately excluded.
+The rung is reachable from **five** call sites. Four send `system` + `messages`
+and nothing else; the fifth is the tool loop, and it rides a *different* code
+path under a *stricter* condition.
 
 | Call site | Shape out | The SHARED validator | On the rung? |
 |---|---|---|---|
@@ -70,23 +74,21 @@ GABI's Discord surface and it is deliberately excluded.
 | `converse` — `gabi-chat.ts` | free prose | non-empty text | ✅ |
 | `distillConversation` — `memory-distill.ts` | strict JSON | `parseProfile` | ✅ |
 | `parseFixRequest` — `confirm-propose.ts` | strict JSON | `firstJsonObject` | ✅ |
-| **`converseWithTools`** — `gabi-chat.ts` | tool loop | — | 🔴 **NO — phase 2** |
+| **`converseWithTools`** — `gabi-chat.ts` | tool loop | the loop's own guards | ⚠️ **only under `first`, only when every offered tool is allowlisted** — [§8](#8-phase-2--the-tool-loop-2026-09-02) |
 
-**Why the tool loop is out.** Anthropic's `tools` block and OpenAI's are
-different schemas with different result-echo grammars, and `converseWithTools`
-is a hand-written loop built entirely around the Anthropic one: a `tool_use`
-block echoed back with a matching `tool_result`, `is_error: true` on a failed
-tool, and the 400 that a dangling `tool_use` produces. Translating that is a
-piece of work with its own failure modes, and the 2026-08-18 silent-partial
-incident is the record of how subtle those failure modes are. So a tool turn
-stays on Anthropic **in every posture**, and
-`test/gabi-groq.test.ts` fails the build if one ever reaches `api.groq.com`.
+**Why the tool loop needed its own piece of work.** Anthropic's `tools` block
+and OpenAI's are different schemas with different result-echo grammars, and
+`converseWithTools` is a hand-written loop built entirely around the Anthropic
+one: a `tool_use` block echoed back with a matching `tool_result`,
+`is_error: true` on a failed tool, and the 400 that a dangling `tool_use`
+produces. The 2026-08-18 silent-partial incident is the record of how subtle
+those failure modes are. §8 is the translation and the three conditions that
+gate it.
 
 ⚠️ **This is also where most of the money is.** The tool loop has the largest
 `max_tokens` (1024, against 24 for a classification) and runs several round
-trips per turn. So v1 is deliberately the *cheap* half of the bill — it is
-scoped for **safety**, not for savings, and the savings it produces will be
-smaller than the call count suggests. Phase 2 is where the money is.
+trips per turn. So **phase 1 was deliberately the *cheap* half of the bill** —
+scoped for safety, not for savings — and phase 2 is the half that pays.
 
 ### 2.1 The validators are SHARED, not duplicated
 
@@ -159,6 +161,12 @@ never as a broken bot — and the fix is one constant plus a deploy.
 | **`off`** (ships) | ⚠️ Byte-identical to the pre-Groq bot. The prompt is not even **built** — `viaGroq`'s `turn` argument is a thunk and it is never invoked. Pinned by a test that counts invocations, not requests. |
 | **`shadow`** | Groq is called *beside* Haiku and one `gabi_groq_shadow` line is logged. ⚠️ **Haiku's answer is the one used**, always. |
 | **`first`** | Groq is tried once. On success its answer is used and no Haiku turn is spent. On any failure, one `gabi_groq` line names the reason and the existing Haiku call runs unchanged. |
+
+⚠️ **`shadow` covers the FOUR TOOLLESS calls only.** Since phase 2 a tool loop
+honours `first` and ignores `shadow` — shadowing one would execute every tool
+twice — so under `shadow` a tool loop is 100% Anthropic and logs one
+`outcome: "ineligible", ineligible_reason: "posture_shadow"` line saying so
+([§8.3](#83--the-three-conditions-and-why-each-is-drawn-where-it-is)).
 
 ⚠️ **FAIL CLOSED.** Anything that is not exactly `shadow` or `first` — absent,
 empty, `"on"`, `"true"`, `"1"`, a capital, a typo — is `off`. `"on"` and
@@ -276,43 +284,192 @@ the first live call happen while somebody is watching a log.
 
 ---
 
-## 8. Phase 2 — the tool-schema translation
+## 8. Phase 2 — the tool loop (2026-09-02)
 
-Not started, and not to be attempted as a "small addition":
+Code: [`apps/discord-worker/src/gabi-groq-tools.ts`](../../apps/discord-worker/src/gabi-groq-tools.ts)
+(the translation) + the gate in `converseWithTools`. Allowlist:
+`GROQ_READ_ONLY_TOOL_NAMES` in `gabi-tools.ts`, beside the tool definitions.
 
-- Anthropic `tools[]` (`input_schema`) → OpenAI `tools[].function`
-  (`parameters`), and back for the results.
-- `tool_use` blocks → `tool_calls` on the assistant message; `tool_result`
-  content blocks → `role: "tool"` messages keyed by `tool_call_id`.
-- Every invariant `converseWithTools`'s header records has to survive the
-  translation: one user message carrying **all** the `tool_result`s for one
-  assistant turn; a failed tool coming back `is_error` rather than dropped;
-  the last permitted pass sending no tools at all; `needsFinishing`'s
-  dangling-colon guard against the 2026-08-18 silent partial.
-- Open-weights tool-calling accuracy is the actual question, and it is not
-  answerable from the shadow lines this build produces — a shadow of a *tool*
-  turn would have to execute the tools twice or compare unexecuted calls.
+### 8.1 ⚠️ The one decision everything else follows from
 
-Nothing here blocks phase 2; the boundary is one `if` in `gabi-chat.ts` and the
-health row `gabi_groq_scope` that names it.
+**The conversation state stays in ANTHROPIC grammar, always.** The loop's
+`messages` array is never touched by the translation: OpenAI shapes exist only
+for the length of one HTTP request, built fresh on the way out and translated
+straight back into Anthropic content **blocks** on the way in. Nothing
+downstream — `textOf`, `toolUseBlocks`, `needsFinishing`, the `tool_result`
+echo, the `is_error` rule — learns that a second provider exists.
+
+Two things fall out of that, and both are the reason for it:
+
+1. ⚠️ **A per-turn fallback is a genuine replay.** A failed Groq pass could not
+   have mutated anything, so the Haiku call that replaces it starts from
+   *byte-identical* state. "Replay that turn on Haiku" is a property of the data
+   structure rather than a promise in a comment.
+2. ⚠️ **The invariants survive by construction.** One user message carrying ALL
+   of a turn's results, `is_error` rather than a drop, no tools on the last
+   permitted pass, the dangling-colon guard, `MAX_TOOL_ITERATIONS` — every one
+   lives in the loop and acts on the same array whichever provider answered.
+
+### 8.2 The grammar, field by field
+
+| Anthropic | OpenAI (Groq) |
+|---|---|
+| `tools[].input_schema` | `tools[].function.parameters`, under `type:"function"` — passed **by reference**, never rebuilt |
+| assistant `tool_use` block | `tool_calls[]`, arguments as a **JSON string** (an object there is a 400) |
+| user message of `tool_result` blocks | N consecutive `role:"tool"` messages, `tool_call_id` matching, in order, before any prose |
+| `is_error: true` | ⚠️ no such field — becomes **plain text** in front of the content |
+| `stop_reason: "tool_use"` / `"max_tokens"` | `finish_reason: "tool_calls"` / `"length"` |
+
+⚠️ **`is_error` is the one that cannot be translated and must not be dropped.**
+Dropping it would teach the model that an outage and an absence are the same
+thing — here, the difference between *"the house does not own it"* and a wrong
+answer.
+
+⚠️ **A pass that produced CALLS is `tool_use` whatever `finish_reason` said.**
+Read `finish_reason` alone and a server saying `stop` beside a `tool_calls`
+array would have its calls dropped and its narration posted as the answer — the
+2026-08-18 silent partial arriving through a new door.
+
+### 8.3 ⚠️ The three conditions, and why each is drawn where it is
+
+A loop rides Groq only when **all three** hold. Otherwise it is 100% Anthropic
+and one `outcome: "ineligible"` line says which condition failed.
+
+| Condition | Why |
+|---|---|
+| posture is exactly **`first`** | ⚠️ **`shadow` is excluded and it is not an oversight.** Shadowing a tool loop would run the loop twice and **execute every tool twice** with it, against live estate services. So tool loops go straight to first-with-fallback under the same `GABI_GROQ` var — no new posture, nothing new for the owner to set. |
+| a key exists | unchanged from §4 |
+| **every** offered tool is on `GROQ_READ_ONLY_TOOL_NAMES` | see below |
+
+⚠️ **The allowlist is an explicit LITERAL, not a spread of the family arrays.**
+The spread reads better and is wrong: it would make a tool added tomorrow
+eligible **by default**, silently, as a side effect of a commit about something
+else. Written out, a new tool defaults to NOT allowlisted. Same default-deny
+shape as `GABI_TOOL_NAMES` and `GABI_DELEGATED_VERB_NAMES`. Thirteen names
+today, every one `mutates: false`; a test fails the build if one is not an
+offered tool, and another asserts no delegated or confirm verb can be on it.
+
+⚠️ **The gate is per LOOP, not per turn.** A loop carrying a mutating tool also
+carries the conversation state that decides whether to call it, so letting its
+"safe" turns ride Groq would put the cheap model in the seat that *proposes* the
+write.
+
+⚠️ **The corollary, stated rather than buried:** an eligible loop sends the tool
+RESULTS to Groq too — book passages, the asker's own TBR and reviews, estate
+runbook sections. Every one already goes to Anthropic; phase 2 adds a second
+processor. **Removing a name from the array is the one-line way to take a
+category back**, and it needs no other change.
+
+### 8.4 Fallback: per turn, then sticky
+
+A pass that errors, times out, returns an empty 200, names a tool this turn did
+not offer, or sends arguments that fail validation is replayed on Haiku from the
+identical state — safe **because the failed pass's tools were never executed**.
+Once a loop has fallen back it **finishes** on Haiku: ping-ponging providers
+mid-loop would leave a conversation half-translated and half-native, which is two
+grammars to be wrong about instead of one.
+
+⚠️ **Argument validation is NEW, and it is the reason a translation layer is
+allowed to exist.** The Anthropic path never needed it because the model emitting
+the call and the schema constraining it are one vendor's. A different vendor's
+open-weights model is exactly where a plausible call with a wrong-shaped argument
+is likely and nothing downstream would notice — `runTool` would hand junk to a
+catalogue query and get an empty result, which **reads as** *"the house does not
+have it"*. Checked: every `required` property present, no undeclared property,
+the declared scalar type, enum membership.
+
+### 8.5 The lines to read
+
+```bash
+npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_groq" and .purpose=="converse_tools")'
+```
+
+| Field | What it answers |
+|---|---|
+| `outcome` | `groq` / `fallback` / **`ineligible`** (new) |
+| `iteration` | which pass of the loop, 1-based (`0` on a toolless call) |
+| `tools_offered` | how many tools that pass carried (`0` on the final tools-free pass) |
+| `ineligible_reason` | `tool_not_allowlisted` or `posture_shadow` |
+| `blocked_tools` | the offending names, so *"why is this loop still on Haiku?"* needs no TypeScript |
+
+⚠️ **A Groq pass writes NO `gabi_turn` line.** `gabi_turn` means Anthropic spend
+and must keep meaning that, or the billing inventory counts free tokens as Haiku
+ones. So **a tool turn that produced `gabi_groq` lines and no `gabi_turn` line
+is a turn that cost nothing at Anthropic** — that is the savings measurement.
+
+⚠️ **The field-by-field logger drops unknown keys.** Every phase-2 field had to
+be added in BOTH `logGroq`'s param type and its emitted object. This exact bug
+shipped a `status` fix as a no-op on 2026-09-01 (see §5's note).
 
 ---
 
 ## 9. ⚠️ NOT verified
 
-- **No live Groq call has ever been made from this repo.** Every test drives an
-  injected `fetch`. Whether Groq accepts this exact body, whether
-  `llama-3.3-70b-versatile` is still a live id, and whether `response_format:
-  json_object` behaves as assumed are all **unexercised**.
-- **No shadow comparison has ever been logged**, because the posture is `off`
-  and there is no key. Every claim in §5 about what the lines will say is a
-  claim about code that has run only against fakes.
-- **Answer quality is entirely unmeasured.** Nobody has read a Groq reply from
-  this prompt set. The `converse` call is the one where that matters most and
-  the one shadow can least help with (§5).
-- **The savings are unmeasured, and may be small** (§2): the tool loop is
-  excluded and it is where most of the tokens are.
+- 🔴 **No live Groq TOOL call has ever been made from this repo.** Every phase-2
+  test drives an injected `fetch`. Whether Groq accepts this exact `tools` body,
+  and **whether `openai/gpt-oss-120b` calls these tools accurately**, are both
+  unexercised. ⚠️ Open-weights tool-calling accuracy is the *actual* question and
+  §5's shadow ladder **cannot** answer it — a shadow of a tool turn would have to
+  execute the tools twice. That is precisely why there is no shadow step here,
+  and why the honest instrument is the `fallback` rate on the live lines.
+- **The savings are still unmeasured**, though they are now measurable: count
+  `converse_tools` turns with `gabi_groq` lines and no `gabi_turn` line (§8.5).
+- **Answer quality on a tool turn is unmeasured.** Nobody has read a Groq
+  tool-loop answer. The failure shape to watch for is not an error — it is a
+  confidently wrong answer built on a tool call the model chose badly.
 - **The Groq bill is unknown.** No price table entry exists, deliberately (§3).
 - `black_bot_baf` has **also** never made a live Groq call — its own
   `code-notes.md` says so in the same words. So the decisions carried over in
   §3 are *considered* decisions, not *proven* ones.
+
+---
+
+## 10. 📓 2026-09-02 — phase 2, the tool loop (ledger entry)
+
+**Shipped.** Commit `7d9a9b3`, deployed to `estate-discord` version
+`f9cd77f3-6c99-4700-93f2-3d28cb147294` at 17:04 UTC from a throwaway worktree of
+HEAD (`docs/info/worktree-deploys.md`; `.bin` 51 / 51 / 51 either side of the
+teardown). No migration — this Worker has no D1.
+
+- `src/gabi-groq-tools.ts` (new): the Anthropic↔OpenAI translation, §8.
+- `GROQ_READ_ONLY_TOOL_NAMES` + `isGroqEligibleToolName` + `groqBlockedTools` in
+  `gabi-tools.ts`, beside the tool definitions.
+- `converseWithTools` gained the gate, the per-turn Groq pass and the sticky
+  fallback; its `system` prompt is now built once and shared by both providers
+  **byte for byte** (asserted — a fork would make every comparison a comparison
+  of two different questions).
+- `logGroq` gained `ineligible`, `iteration`, `tools_offered`,
+  `ineligible_reason`, `blocked_tools` — each in **both** places.
+- `/api/health`: `gabi_groq_scope` →
+  `toolless_calls_plus_read_only_tool_loops_first_only`, new
+  `gabi_groq_tool_allowlist` row naming the thirteen, new feature
+  `gabi_groq_tool_loops`. ⚠️ `gabi_groq_rung_dark` keeps its now-inaccurate name
+  on purpose: a feature NAME is what an external reader greps for.
+
+**Verified**, GET `https://discord.heygabi.ai/api/health` → 200: the three rows
+above are live, and every pre-existing field is unchanged (`gabi_groq` `first`,
+ready `true`, model `openai/gpt-oss-120b`, `gabi_edge` `full`, `gabi_tools` 2,
+`gabi_tool_max_iterations` 3, mentions enabled, all eleven `configured` rows
+`true`). No secret-shaped value in the body. Tests before the deploy:
+`test/gabi-groq.test.ts` 44 → 82, workspace 2269 → **2307 pass / 0 fail**,
+typecheck clean, no existing assertion weakened.
+
+**The phase-1 guard was REPLACED, not deleted.** The build-failing test that kept
+a tool turn off `api.groq.com` in every posture is now a stricter set: shadowed
+and ineligible loops still make zero Groq requests, `off` is still byte-identical
+to before the rung existed, and every failure class still falls through
+invisibly.
+
+⚠️ **NOT verified — and the posture is already `first`, so the next tool-bearing
+@mention IS the first live call.** See §9. The one thing to watch:
+
+```bash
+npx wrangler tail estate-discord --format json \
+  | jq 'select(.evt=="gabi_groq" and .purpose=="converse_tools")'
+```
+
+A run of `outcome: "groq"` with rising `iteration` is the loop working. A run of
+`outcome: "fallback"` with `reason: "invalid"` is the interesting failure — it
+means the model is *calling tools* but not in a shape the estate accepts, which
+is a prompt-or-model problem rather than an outage, and it costs a Haiku turn per
+occurrence exactly as before phase 2.

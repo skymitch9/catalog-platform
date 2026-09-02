@@ -25,12 +25,22 @@ row **E7**.
 
 **What landed:** `apps/discord-worker/src/gabi-groq.ts` — a first-line rung in
 front of the pinned Haiku on the **four TOOLLESS** call sites (classification,
-small talk, memory distill, T2 fix parse). ⚠️ The tool loop is **out of scope by
-construction** — the Anthropic↔OpenAI tool-schema translation is phase 2, and a
-build-failing test keeps a tool turn off `api.groq.com` in every posture. Model
-pinned `llama-3.3-70b-versatile` (black_bot_baf's own choice); one attempt, 4 s
+small talk, memory distill, T2 fix parse). Model pinned
+`llama-3.3-70b-versatile` (black_bot_baf's own choice); one attempt, 4 s
 timeout, eight failure reasons, every one of them an **invisible** fall-through
 to the unchanged Haiku call. 44 new tests, workspace 2247 pass / 0 fail.
+
+⚠️ **SUPERSEDED IN PART, 2026-09-02.** The tool loop was *"out of scope by
+construction"* above; **phase 2 shipped and it is not any more** — a tool loop
+whose every tool is read-only now rides Groq first under the same
+`GABI_GROQ = "first"`. The pin also moved to `openai/gpt-oss-120b`. Both are
+recorded in [`DONE.md`](DONE.md) and [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md);
+the paragraph above is left as written because it is the record of what phase 1
+decided, not a claim about today. ⚠️ **The five owner steps below are also
+stale — all five were done on 2026-09-01** (key pushed byte-verified, `shadow`
+read, `first` flipped and verified on the wire). They are NOT swept here because
+that is this item's own close-out, and nobody has re-verified each step; the
+next session that touches this item should move it whole.
 
 ### 🔴 THE OWNER'S FIVE REMAINING STEPS, in order
 
@@ -88,17 +98,6 @@ Every test drives an injected `fetch`. Whether Groq accepts this body, whether
 `llama-3.3-70b-versatile` is still a live id, whether the answers are good
 enough, and what the savings actually are (⚠️ the tool loop — the expensive
 half — is excluded) are all unknown until step 4.
-
-### ☐ Phase 2 — the tool-schema translation
-
-Not started, and not a "small addition": `tool_use`/`tool_result` ↔
-`tool_calls`/`role: "tool"`, preserving every invariant `converseWithTools`'s
-header records (all results for one turn in ONE user message; a failed tool
-comes back `is_error` rather than dropped; the last pass sends no tools; the
-dangling-colon guard against the 2026-08-18 silent partial). ⚠️ This is where
-most of the tokens are, so it is where the actual savings live. Open-weights
-tool-calling accuracy is the real question and the shadow ladder cannot answer
-it without executing tools twice.
 
 ## ☐ GABI personality intensity — snark/flirt dial up (owner ask 2026-09-01)
 
