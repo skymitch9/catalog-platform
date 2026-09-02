@@ -317,9 +317,18 @@ catalog. Anything needing the other computer is on pause"
    (c) NEW: per-edition cover setting in the edit UI (alternate editions get
    their own covers).
 2. **AUDIOBOOK follow-up agent** (after the author-cleanup agent lands there):
-   the modal keeps ONLY the estate "Listen/download here" affordance as the
+   (a) the modal keeps ONLY the estate "Listen/download here" affordance as the
    play control — the "Open on the shelf" ABS button comes OFF for now (keep
    the shelf-link module; the button's removal is presentation, not the join).
+   (b) EMBERDARK DEDUPE — owner 2026-09-02: "Keep the audible one but make
+   sure all source files stay." The Audible-tagged row (narrators Kaleo
+   Griffith/Jennifer Jill Araya, 2025-07-10) is the surviving catalog
+   identity; the Kickstarter-tagged twin row retires from the catalog through
+   the sanctioned twin/duplicate mechanism — ⚠️ ZERO file deletion anywhere
+   (local, Drive, R2 archive: every source file stays; this is metadata
+   dedupe, not a purge). After the dedupe the ingestion refusal on Emberdark
+   lifts — verify it queues. The ebooks page's "2 audiobooks" count on this
+   title will truthfully become 1.
 3. **ON PAUSE (owner: "anything needing the other computer")**: the ABS box
    steps for the ebooks shelf library (SHELF_EBOOKS_LIBRARY.md §3–§5) and
    anything else requiring hands on the shelf box.
