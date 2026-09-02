@@ -13,15 +13,43 @@ import { isEstateStatus, parseVisibility, type Catalog, type SeenCache } from '@
 
 export async function readEstateCache(db: D1Database, email: string): Promise<SeenCache> {
   const row = await db
-    .prepare('SELECT status, checked_at, visibility FROM estate_cache WHERE email = ?')
+    .prepare('SELECT status, checked_at, visibility, billing_denied FROM estate_cache WHERE email = ?')
     .bind(email)
-    .first<{ status: string; checked_at: string; visibility: string | null }>();
-  if (!row || !isEstateStatus(row.status)) return { status: null, checkedAt: null, visibility: null };
+    .first<{ status: string; checked_at: string; visibility: string | null; billing_denied: string | null }>();
+  if (!row || !isEstateStatus(row.status)) {
+    return { status: null, checkedAt: null, visibility: null, billingDenied: null };
+  }
   return {
     status: row.status,
     checkedAt: row.checked_at,
     visibility: parseVisibilityText(row.visibility),
+    billingDenied: parseDeniedText(row.billing_denied),
   };
+}
+
+/**
+ * The stored JSON array of denied money-path ids, or null (0005).
+ *
+ * 🔴 NULL MEANS "UNKNOWN", NEVER "NOTHING IS DENIED". A pre-0005 row and a
+ * pre-0016 auth Worker both land here as null, and returning `[]` instead
+ * would silently un-switch every policy the owner set, for as long as a deploy
+ * took, with nothing anywhere to show it had happened.
+ *
+ * ⚠️ Ids are NOT validated against a registry here, deliberately: this Worker
+ * holds no copy of the registry (the auth Worker declares it, once), and a
+ * consumer that filtered unknown ids would be a second, silently-drifting
+ * opinion about which switches exist. It stores strings and asks
+ * "is my feature id in this list".
+ */
+function parseDeniedText(text: string | null | undefined): string[] | null {
+  if (typeof text !== 'string') return null;
+  try {
+    const v: unknown = JSON.parse(text);
+    if (!Array.isArray(v)) return null;
+    return v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  } catch {
+    return null;
+  }
 }
 
 /** The stored JSON array, validated back into a canonical set — or null. */
@@ -48,17 +76,24 @@ export async function writeEstateCache(
     status: string;
     checkedAt: string;
     visibility: Catalog[] | null;
+    billingDenied: string[] | null;
   },
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO estate_cache (email, firebase_uid, status, checked_at, visibility)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO estate_cache (email, firebase_uid, status, checked_at, visibility, billing_denied)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(email) DO UPDATE SET
-         status       = excluded.status,
-         checked_at   = excluded.checked_at,
-         visibility   = excluded.visibility,
-         firebase_uid = COALESCE(excluded.firebase_uid, estate_cache.firebase_uid)`,
+         status         = excluded.status,
+         checked_at     = excluded.checked_at,
+         visibility     = excluded.visibility,
+         -- ⚠️ NOT COALESCEd, unlike firebase_uid one line down. The three facts
+         -- are ONE ANSWER taken at one moment (§4.5), so a fresh answer that
+         -- carries no billing half must overwrite the old one with NULL —
+         -- keeping the previous set beside a newer status is precisely the
+         -- "fresher or staler" mismatch that rule forbids.
+         billing_denied = excluded.billing_denied,
+         firebase_uid   = COALESCE(excluded.firebase_uid, estate_cache.firebase_uid)`,
     )
     .bind(
       entry.email,
@@ -66,6 +101,7 @@ export async function writeEstateCache(
       entry.status,
       entry.checkedAt,
       entry.visibility === null ? null : JSON.stringify(entry.visibility),
+      entry.billingDenied === null ? null : JSON.stringify(entry.billingDenied),
     )
     .run();
 }

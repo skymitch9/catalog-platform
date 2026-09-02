@@ -98,6 +98,27 @@ function allowedMethods(): Record<string, string[]> {
  */
 function perFile(): { file: string; paths: string[]; verbs: string[] }[] {
   const AUTH_PATH = /(?:\$\{AUTH_ORIGIN\}|https:\/\/auth\.heygabi\.ai)(\/api\/[^`'"\s?,)]*)/g;
+  /**
+   * ⚠️ THE SECOND SCAN, ADDED 2026-09-02, AND THE BUG IT FIXES IS THIS FILE'S
+   * OWN BLIND SPOT.
+   *
+   * `admin.js` reaches most of the auth Worker through its `api(path)` helper,
+   * which prepends AUTH_ORIGIN itself — so the regex above sees only the two
+   * calls that happen to inline the origin (`/site-roles`, `/site-roles/tree`)
+   * and NONE of `/users`, `/users/:id/status`, `/billing/rules`, … The verb
+   * test then intersected a file's verbs against the mounts of the only two
+   * paths it could see, and the Spending panel's DELETE — which goes to
+   * `/api/estate/billing/rules/:id`, a path whose mount DOES allow DELETE —
+   * was reported as refused at the preflight. A false alarm, and this file's
+   * own header says why that matters: a guard that fails on a clean tree gets
+   * ignored, and an ignored guard still gets credited as coverage.
+   *
+   * The fix keeps the origin discipline rather than dropping it: bare
+   * `'/api/estate/...'` literals count, and ONLY that prefix, because it is
+   * unambiguously this Worker (the one real cross-service caller in the estate
+   * uses `/api/admin/`, which this cannot match).
+   */
+  const ESTATE_PATH = /['"`](\/api\/estate\/[^`'"\s?,)]*)/g;
 
   const out: { file: string; paths: string[]; verbs: string[] }[] = [];
   for (const f of jsFiles(SITE)) {
@@ -105,7 +126,7 @@ function perFile(): { file: string; paths: string[]; verbs: string[] }[] {
 
     const paths = [
       ...new Set(
-        [...src.matchAll(AUTH_PATH)].flatMap((m) =>
+        [...src.matchAll(AUTH_PATH), ...src.matchAll(ESTATE_PATH)].flatMap((m) =>
           m[1] ? [m[1].replace(/\$\{[^}]+\}/g, ':x').replace(/\/+$/, '')] : [],
         ),
       ),

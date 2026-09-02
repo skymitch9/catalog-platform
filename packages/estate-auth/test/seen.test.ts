@@ -67,6 +67,9 @@ test('stale cache + reachable estate refreshes and says to persist', async () =>
   assert.deepEqual(r.refresh, {
     status: 'revoked',
     visibility: null,
+    // 0016: no `billing_denied` on this answer, so the cache records "unknown"
+    // — ⚠️ null, NOT [], which would read as "nothing is denied".
+    billingDenied: null,
     checkedAt: new Date(NOW).toISOString(),
   });
 });
@@ -130,20 +133,20 @@ test('parseVisibility: library2 (the 4th catalog, 0007) is a known name, canonic
 
 test('postSeenAnswer carries the effective visibility verbatim, canonicalised', async () => {
   const r = await postSeenAnswer(opts(okFullFetch('approved', ['games', 'audiobook'])), me);
-  assert.deepEqual(r, { status: 'approved', visibility: ['audiobook', 'games'] });
+  assert.deepEqual(r, { status: 'approved', visibility: ['audiobook', 'games'], billingDenied: null });
   const revoked = await postSeenAnswer(opts(okFullFetch('revoked', [])), me);
   assert.deepEqual(
     revoked,
-    { status: 'revoked', visibility: [] },
+    { status: 'revoked', visibility: [], billingDenied: null },
     '[] is an answer, not an absence',
   );
 });
 
 test('a missing or garbage visibility field is null, NOT a failed answer — the status half still stands', async () => {
   const noVis = await postSeenAnswer(opts(okFetch('approved')), me);
-  assert.deepEqual(noVis, { status: 'approved', visibility: null });
+  assert.deepEqual(noVis, { status: 'approved', visibility: null, billingDenied: null });
   const garbage = await postSeenAnswer(opts(okFullFetch('approved', 'everything')), me);
-  assert.deepEqual(garbage, { status: 'approved', visibility: null });
+  assert.deepEqual(garbage, { status: 'approved', visibility: null, billingDenied: null });
 });
 
 test('estateCheck: a fresh answer refreshes visibility WITH status — one write, one age', async () => {
@@ -158,6 +161,7 @@ test('estateCheck: a fresh answer refreshes visibility WITH status — one write
   assert.deepEqual(r.refresh, {
     status: 'approved',
     visibility: ['audiobook', 'games'],
+    billingDenied: null,
     checkedAt: new Date(NOW).toISOString(),
   });
 });
@@ -243,7 +247,10 @@ test('postSeen sends the bearer and the snake_case body the Worker expects', asy
   const got = seen as { url: string; auth: string | null; body: unknown };
   assert.equal(got.url, 'https://auth.example/api/estate/seen');
   assert.equal(got.auth, 'Bearer tok');
-  assert.deepEqual(got.body, { email: 'x@y.z', firebase_uid: 'u1', display_name: 'X' });
+  // 0016 adds `local_role` — the app's claim about its own user's rung, sent
+  // as null by a consumer that has no ladder to claim from. The auth Worker's
+  // schema is `.strict()`, so this field's NAME is part of the contract.
+  assert.deepEqual(got.body, { email: 'x@y.z', firebase_uid: 'u1', display_name: 'X', local_role: null });
 });
 
 // --- 0008: the ebook catalog on the wire ---
@@ -287,14 +294,16 @@ test('⚠️ the estate answers NO download fact — a server still sending one 
       status: 200,
     });
   const answer = await postSeenAnswer(opts(stillSendsIt), me);
-  // deepEqual, not a property check: the whole shape must be these two keys.
-  assert.deepEqual(answer, { status: 'approved', visibility: ['ebooks'] });
+  // deepEqual, not a property check: the whole shape must be these three keys
+  // (`billingDenied` joined 2026-09-02 and is null here — this server sends no
+  // `billing_denied`, and null means UNKNOWN, never "nothing denied").
+  assert.deepEqual(answer, { status: 'approved', visibility: ['ebooks'], billingDenied: null });
   assert.ok(!('downloadEbooks' in (answer as object)), 'the field must not come back');
 
   // …and it reaches neither the result nor the cache write.
   const fresh = await estateCheck({ status: null, checkedAt: null }, me, opts(stillSendsIt), NOW);
-  assert.deepEqual(Object.keys(fresh.refresh ?? {}).sort(), ['checkedAt', 'status', 'visibility']);
-  assert.deepEqual(Object.keys(fresh).sort(), ['refresh', 'stale', 'status', 'visibility']);
+  assert.deepEqual(Object.keys(fresh.refresh ?? {}).sort(), ['billingDenied', 'checkedAt', 'status', 'visibility']);
+  assert.deepEqual(Object.keys(fresh).sort(), ['billingDenied', 'refresh', 'stale', 'status', 'visibility']);
 
   // The visibility half is untouched by the removal: `ebooks` still rides the
   // answer, because SEEING the shelf remains the estate's decision.

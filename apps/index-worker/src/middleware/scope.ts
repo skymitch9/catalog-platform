@@ -63,6 +63,21 @@ export interface ScopeVariables {
    * anything the caller said about itself.
    */
   machineApp?: MachineApp;
+  /**
+   * BILLING POLICY (0016 / 0005) — the money-path ids the estate says this
+   * caller may NOT spend on here, already resolved by the directory. Set by
+   * `requireEstateMember()` alongside `visibility`, from the same one answer.
+   *
+   * 🔴 NULL MEANS "UNKNOWN", NEVER "NOTHING IS DENIED" — an old auth Worker, an
+   * unreachable directory with no cache, or a pre-0005 row. `billingDenies()`
+   * below is the one place that decides what to do about it, so no route has to
+   * remember.
+   *
+   * ⚠️ It is an ANSWER, not a gate. The gate is `billingDenies()` at the call
+   * site that spends the money, ANDed with whatever already stood in front of
+   * it — never instead of it.
+   */
+  billingDenied?: string[] | null;
 }
 
 /**
@@ -133,6 +148,7 @@ export function searchScope(): MiddlewareHandler<{ Bindings: Env; Variables: Sco
         status: result.refresh.status,
         checkedAt: result.refresh.checkedAt,
         visibility: result.refresh.visibility,
+        billingDenied: result.refresh.billingDenied,
       });
     }
     if (result.stale) {

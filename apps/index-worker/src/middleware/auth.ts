@@ -68,6 +68,10 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
     if (!baseUrl || !appToken) {
       if (isOwner) {
         c.set('visibility', [...CATALOGS]); // §4.5: owner's set is computed, never stored
+        // 0016: the break-glass cannot be narrowed into a lockout by a
+        // spending switch either. An EMPTY array, not null — this is a known
+        // "nothing is denied", not an unknown.
+        c.set('billingDenied', []);
         await next();
         return;
       }
@@ -97,6 +101,7 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
         status: result.refresh.status,
         checkedAt: result.refresh.checkedAt,
         visibility: result.refresh.visibility,
+        billingDenied: result.refresh.billingDenied,
       });
     }
     if (result.stale) {
@@ -120,6 +125,13 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
           'visibility',
           isOwner ? [...CATALOGS] : scopeFromAnswer(result.status, result.visibility),
         );
+        // 0016: the billing half of the same one answer (§4.5) — it rides with
+        // the status it was taken beside, stale or fresh, and is applied by the
+        // call site that spends money (`billing-gate.ts`), never here.
+        // ⚠️ An owner gets [] — a known "nothing denied" — while everybody else
+        // gets whatever the answer carried, INCLUDING null, which means
+        // UNKNOWN and is not the same thing.
+        c.set('billingDenied', isOwner ? [] : result.billingDenied);
         await next();
         return;
       case 'request_screen':

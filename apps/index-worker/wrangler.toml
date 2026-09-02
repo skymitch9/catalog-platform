@@ -22,6 +22,27 @@ routes = [{ pattern = "index.heygabi.ai", custom_domain = true }]
 ENVIRONMENT = "production"
 # Pinned as iss AND aud in the verifier. The shared project every consumer uses.
 FIREBASE_PROJECT_ID = "audiobook-catalog"
+# ⚠️ BILLING POLICY POSTURE — off | shadow | enforce
+# (docs/info/llm-billing-control-design.md §4). This Worker has exactly ONE
+# money path: POST /api/scan/shelf (E6, feature id `scan.photo`), which
+# src/scan.ts calls "the one endpoint that spends real money per call".
+#
+# ⚠️ THIS VALUE IS "off" AND THE COMMITTED FILE MUST KEEP SAYING "off".
+#   off      nothing resolves, nothing is logged, nothing costs anything
+#   shadow   the decision is LOGGED WITH ITS OUTCOME (`proceeded`) and the call
+#            still proceeds and still bills — this is the soak, not the switch
+#   enforce  a deny refuses, in words (§6)
+#
+# Flip to `shadow` first and read the lines:
+#   npx wrangler tail catalog-index --format json | jq 'select(.evt=="billing_policy")'
+# Flip to `enforce` only on §4.2's criterion, measured over >= 7 days: ZERO
+# would_deny:true on anything the owner did not switch off, AND AT LEAST ONE
+# would_deny:true on something he DID — the second half is the falsifiable one.
+# Without it, "zero denials" is indistinguishable from "the instrument never
+# ran", which is the exact `0 of 0 - unmeasured, not clean` verdict the
+# audiobook auth soak reached. One site at a time; never as a side effect of an
+# unrelated deploy.
+BILLING_POLICY = "off"
 # Which ORIGINS may read /api/* from a browser (readCors in src/index.ts).
 #
 # ⚠️ Set explicitly 2026-08-16. It was absent, so the code default applied —

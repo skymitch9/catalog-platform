@@ -1,0 +1,31 @@
+-- 0005 — the cached /seen answer grows its BILLING half (billing-control
+-- design §3.4): "`billing_denied` rides with `status` and `visibility` on the
+-- app's own user row and ages with them." Same row, same checked_at, one
+-- answer — the same rule 0003 added visibility under, for the same reason.
+--
+-- TEXT holding the JSON array of denied money-path ids
+-- ('["scan.photo"]'), for the same reason 0003 stored visibility that way:
+-- this is a CACHE of a serialised answer, not a truth table, so storing the
+-- answer verbatim is the honest shape and a new feature id costs nothing here.
+-- Validation lives at the read boundary (estate-cache.ts parses and refuses
+-- garbage to NULL).
+--
+-- 🔴 NULL MEANS "UNKNOWN", NOT "NOTHING IS DENIED", and the difference is the
+-- whole reason this is a nullable column rather than a defaulted one. A
+-- pre-0005 row and a pre-0016 auth Worker both produce NULL, and reading NULL
+-- as an empty deny set would silently un-switch every policy the owner had set,
+-- for as long as the deploy took.
+--
+-- ⚠️ The failure direction with NULL is nonetheless ALLOW — §3.5 row 3, chosen
+-- out loud. Denying every paid feature whenever the directory is unreachable
+-- turns an auth outage into a household-wide "everything is broken", which is
+-- the failure the estate's wording rule exists to prevent. A policy that can
+-- only deny cannot be depended on to fail closed; the ceilings that already
+-- exist (max_tokens, the photo size cap, the timeouts) are what bound the
+-- wallet, and this design does not remove them.
+--
+-- ⚠️ PURELY ADDITIVE: one ADD COLUMN on an existing cache table whose every
+-- row can be rebuilt by one /seen round-trip per person. Losing it costs
+-- latency and nothing else.
+
+ALTER TABLE estate_cache ADD COLUMN billing_denied TEXT;

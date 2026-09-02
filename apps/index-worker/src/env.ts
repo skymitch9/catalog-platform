@@ -84,6 +84,21 @@ export interface Env {
   ESTATE_APP_TOKEN_INDEX?: string;
 
   /**
+   * BILLING POLICY POSTURE — `off` | `shadow` | `enforce`, in the exact idiom
+   * of `ESTATE_CHECK` (billing design §4). Anything unrecognised falls to
+   * `off` AND LOGS (`billing-gate.ts`), because a typo in a wrangler var must
+   * not silently half-enable a money gate.
+   *
+   * ⚠️ IT SHIPS `"off"` AND THE COMMITTED FILE MUST KEEP SAYING `"off"`. A site
+   * is flipped one at a time, on the measured criterion in §4.2 — zero false
+   * denials over ≥7 days AND at least one TRUE denial on something the owner
+   * actually switched off, because "zero denials" is otherwise
+   * indistinguishable from "the instrument never ran". Never flipped as a side
+   * effect of an unrelated deploy.
+   */
+  BILLING_POLICY?: string;
+
+  /**
    * The bearer for `POST /api/estate/ops/worker-events` — the /status event
    * ring (`docs/info/worker-event-ring.md`). Set 2026-08-18.
    *

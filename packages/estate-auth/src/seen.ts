@@ -42,6 +42,21 @@ export interface SeenCache {
    * nothing to say about it and this cache has nothing to carry. The estate
    * still owns the VIEW grant, which is `visibility` including `ebooks`.
    */
+  /**
+   * BILLING POLICY (0016, 2026-09-02) — the money-path ids this person may NOT
+   * spend on, on THIS app's site, already resolved by the directory.
+   *
+   * ⚠️ IT RIDES WITH `status` AND `visibility` AND AGES WITH THEM — §4.5's
+   * one-answer rule. A cached status brings ITS cached denials, never a fresher
+   * or staler set, because "may this person spend" and "is this person still a
+   * member" are one answer taken at one moment.
+   *
+   * Optional, so a consumer that does not gate money keeps compiling and
+   * behaving exactly as before. Null/absent means "no billing fact cached" —
+   * ⚠️ which is NOT the same as "nothing is denied", and a consumer must treat
+   * it as the former: see `EstateCheckResult.billingDenied`.
+   */
+  billingDenied?: string[] | null;
 }
 
 export function cacheIsFresh(
@@ -75,6 +90,15 @@ export interface SeenIdentity {
   email: string;
   firebaseUid?: string | null;
   displayName?: string | null;
+  /**
+   * The app's claim about its OWN user's rung, sent as `local_role` (billing
+   * design §3.4). ⚠️ A CLAIM, and the right trust level: the app is the
+   * authority on its own ladder, it already holds an app token, and the value
+   * is used ONLY to pick a DENY row — policy cannot grant, so a wrong claim
+   * cannot open anything. Omit it and `role`-principal rules are skipped
+   * server-side; `user` and `everyone` rules still apply.
+   */
+  localRole?: string | null;
 }
 
 /**
@@ -92,6 +116,13 @@ export interface SeenIdentity {
 export interface SeenAnswer {
   status: EstateStatus;
   visibility: Catalog[] | null;
+  /**
+   * The denied money-path ids (0016), already resolved for this person on this
+   * app's site. Null when the server's answer carried no clean array — a
+   * pre-0016 auth Worker mid-deploy — which callers must read as "unknown",
+   * never as "nothing denied".
+   */
+  billingDenied: string[] | null;
 }
 
 /**
@@ -117,6 +148,10 @@ export async function postSeenAnswer(
         email: identity.email,
         firebase_uid: identity.firebaseUid ?? null,
         display_name: identity.displayName ?? null,
+        // Omitted entirely when the consumer has no ladder to claim from —
+        // `.strict()` on the server accepts the field as nullish, and sending
+        // an explicit null says the same thing as leaving it out.
+        local_role: identity.localRole ?? null,
       }),
     });
     if (!resp.ok) return null;
@@ -124,11 +159,19 @@ export async function postSeenAnswer(
     const status = (body as { status?: unknown } | null)?.status;
     if (!isEstateStatus(status)) return null;
     const visibility = parseVisibility((body as { visibility?: unknown }).visibility);
+    // ⚠️ A missing or malformed `billing_denied` is NULL, not `[]`. An old
+    // auth Worker mid-deploy answers no such field, and reading that as "no
+    // feature is denied" would silently un-switch every policy the owner set
+    // for as long as the deploy took.
+    const rawDenied = (body as { billing_denied?: unknown }).billing_denied;
+    const billingDenied = Array.isArray(rawDenied)
+      ? rawDenied.filter((v): v is string => typeof v === 'string' && v.length > 0)
+      : null;
     // ⚠️ `download_ebooks` on the body is IGNORED, not parsed. The field was
     // removed from the server the same day it shipped (2026-08-17 role-floor
     // rework); a body still carrying it is an old auth-worker mid-deploy, and
     // reading it would resurrect a fact this system no longer honours.
-    return { status, visibility };
+    return { status, visibility, billingDenied };
   } catch {
     return null;
   }
@@ -158,6 +201,21 @@ export interface EstateCheckResult {
    * one). Null when no visibility fact exists for the answer used.
    */
   visibility: Catalog[] | null;
+  /**
+   * The denied money-path ids riding with that status (0016), or NULL when no
+   * billing fact exists for the answer used.
+   *
+   * 🔴 NULL MEANS "UNKNOWN", AND THE FAILURE DIRECTION IS ALLOW — the design's
+   * §3.5 row 3, chosen out loud: with the directory unreachable and no cache at
+   * all, every paid feature stays available. Denying them instead would turn an
+   * auth outage into a household-wide "everything is broken", which is the
+   * failure the estate's wording rule exists to prevent. The exposure is
+   * bounded by the ceilings that already exist (SWEEP_LIMIT, max_tokens, the
+   * timeouts), so the worst case is the estate's CURRENT spend rate for the
+   * length of the outage. ⚠️ A policy that can only deny cannot be depended on
+   * to fail closed; the ceilings are what bound the wallet.
+   */
+  billingDenied: string[] | null;
   /** True when `status` came from a cache older than the TTL (log it). */
   stale: boolean;
   /**
@@ -167,6 +225,7 @@ export interface EstateCheckResult {
   refresh: {
     status: EstateStatus;
     visibility: Catalog[] | null;
+    billingDenied: string[] | null;
     checkedAt: string;
   } | null;
 }
@@ -193,6 +252,7 @@ export async function estateCheck(
     return {
       status: cache.status,
       visibility: cachedVisibility,
+      billingDenied: cache.billingDenied ?? null,
       stale: false,
       refresh: null,
     };
@@ -203,10 +263,12 @@ export async function estateCheck(
     return {
       status: fresh.status,
       visibility: fresh.visibility,
+      billingDenied: fresh.billingDenied,
       stale: false,
       refresh: {
         status: fresh.status,
         visibility: fresh.visibility,
+        billingDenied: fresh.billingDenied,
         checkedAt: new Date(nowMs).toISOString(),
       },
     };
@@ -216,7 +278,11 @@ export async function estateCheck(
   // visibility rides with its cached status (§4.5), never reconstructed.
   return {
     status: cache.status,
+    // The denials ride with their cached status (§4.5), never reconstructed —
+    // and a stale set is still APPLIED, deliberately, exactly as a stale status
+    // is. One code path, not two.
     visibility: cache.status !== null ? cachedVisibility : null,
+    billingDenied: cache.status !== null ? (cache.billingDenied ?? null) : null,
     stale: cache.status !== null,
     refresh: null,
   };

@@ -22,9 +22,11 @@
 
 import { Hono } from 'hono';
 import type { Env } from './env.js';
+import { billingRefusal } from './billing-gate.js';
+import type { ScopeVariables } from './middleware/scope.js';
 import { isPhotoMediaType, readShelf, VisionError, type Photo } from './vision.js';
 
-export const scanRoutes = new Hono<{ Bindings: Env }>();
+export const scanRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 
 /**
  * Base64 byte ceiling on the wire. Matches library_catalog's own
@@ -72,6 +74,20 @@ scanRoutes.post('/scan/shelf', async (c) => {
   }
 
   const photo: Photo = { data, mediaType };
+
+  // ⚠️ BILLING POLICY (E6 / `scan.photo`), and it is ANDed IN FRONT OF NOTHING
+  // THAT WAS REMOVED: `requireEstateMember()` is still mounted on /api/* in
+  // index.ts and still runs before this handler. Policy can only DENY — it has
+  // never opened this route and must never start.
+  //
+  // ⚠️ Placed AFTER the body validation and BEFORE readShelf(), deliberately.
+  // A malformed request should get its own 400 rather than a policy refusal it
+  // would still meet after fixing the body; and the refusal must land before
+  // the one call in this Worker that costs money.
+  //
+  // Ships inert: BILLING_POLICY is "off" in wrangler.toml.
+  const refusal = billingRefusal(c, 'scan.photo', 'The photo scanner', '$5/$25 per MTok');
+  if (refusal) return c.json(refusal.body, refusal.status);
 
   try {
     const reading = await readShelf(c.env.ANTHROPIC_API_KEY, photo, kind === 'cover' ? 'cover' : 'shelf');
