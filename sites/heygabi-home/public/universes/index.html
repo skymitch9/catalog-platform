@@ -307,6 +307,122 @@ a.hit-cover:focus-visible { outline: 2px solid var(--et-accent); outline-offset:
 .hit-title a:hover { color: var(--et-accent); text-decoration: underline; }
 .hit-meta { color: var(--et-muted); font-size: var(--et-text-small); }
 
+/* ---- "+ add a verse": the request affordance, the form, the queue --------
+   Same token vocabulary as everything above — no new colours, no new radii.
+   The one deliberate difference is `.uni-pending-row`, which is drawn NOTHING
+   like `.uni-row`: a pending request must never look like a universe somebody
+   can open, because clicking it would find nothing. Different chrome, an
+   explicit status chip, and its own section above the list. */
+
+#uni-request { margin: var(--et-space-3) 0 var(--et-space-2); }
+
+.uni-cta { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.uni-cta-note {
+  margin: .5rem 0 0;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+
+.uni-panel {
+  margin-top: var(--et-space-2);
+  padding: 1rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+}
+
+.uni-field { display: block; margin: 0 0 .85rem; }
+.uni-field > .uni-label {
+  display: block;
+  margin-bottom: .25rem;
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+.uni-hint {
+  display: block;
+  margin: .2rem 0 0;
+  color: var(--et-muted);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+.uni-input, .uni-textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: .5rem .7rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: var(--et-bg);
+  color: var(--et-fg);
+  font: inherit;
+}
+.uni-textarea { min-height: 5.5rem; resize: vertical; }
+.uni-input:focus-visible, .uni-textarea:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
+
+/* Repeatable rows (series, exact titles, deliberately-not). One row per value
+   plus an "add another" button — no comma-splitting, because a series name
+   with a comma in it is a real thing and splitting on one would quietly
+   corrupt it. */
+.uni-repeat { display: grid; gap: .4rem; }
+.uni-repeat-row { display: flex; gap: .4rem; align-items: center; }
+.uni-repeat-row .uni-input { flex: 1; }
+.uni-drop {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: none;
+  color: var(--et-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.uni-drop:hover { color: var(--et-fg); }
+
+/* The live name check. ⚠️ Three tones, and they are not decoration: `block`
+   means the submit is refused, `warn` means "look at this and carry on", and
+   they must never look alike — a near miss that reads as a rejection stops
+   somebody filing a legitimate request (Marvel / Disney / Star Wars are three
+   universes the owner split apart on purpose). */
+.uni-check { margin: .35rem 0 0; font-size: var(--et-text-small); text-wrap: pretty; }
+.uni-check[data-tone="block"] { color: var(--et-fg); font-weight: 600; }
+.uni-check[data-tone="warn"] { color: var(--et-muted); }
+.uni-check[data-tone="ok"] { color: var(--et-muted); }
+
+.uni-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .3rem; }
+
+/* The queue. */
+#uni-pending { margin: 0 0 var(--et-space-3); }
+.uni-pending-list { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.uni-pending-row {
+  display: grid;
+  gap: .2rem;
+  padding: .65rem .8rem;
+  border: 1px dashed var(--et-hairline);
+  border-radius: var(--et-radius);
+  background: color-mix(in srgb, var(--et-surface) 55%, transparent);
+}
+.uni-pending-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; justify-content: space-between; }
+.uni-pending-name { font-weight: 700; font-family: var(--et-font-display); }
+.uni-pending-meta { color: var(--et-muted); font-size: var(--et-text-small); }
+.uni-pending-why { color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+.uni-chip {
+  flex: none;
+  padding: .15rem .5rem;
+  border: 1px solid var(--et-hairline);
+  border-radius: 999px;
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+.uni-chip[data-status="approved"] { border-color: color-mix(in srgb, var(--et-accent-2) 55%, var(--et-hairline)); color: var(--et-fg); }
+.uni-chip[data-status="declined"] { border-color: color-mix(in srgb, var(--et-danger) 45%, var(--et-hairline)); }
+
 footer {
   margin-top: var(--et-space-4);
   padding-top: var(--et-space-2);
@@ -419,6 +535,35 @@ footer a { color: var(--et-accent); }
   <p id="uni-who" hidden></p>
   <button id="uni-signin" class="find-btn" type="button" hidden>Sign in to see contents</button>
   <p id="uni-status" hidden></p>
+
+  <!--
+    "+ ADD A VERSE" (owner, 2026-08-24: "in the universe page add a plus button
+    somewhere to add a verse and let it take series as an input").
+    Design: docs/info/universe-add-verse-design.md.
+
+    🔴 IT FILES A REQUEST. IT DOES NOT ADD A UNIVERSE, and the copy in here says
+    so in those words rather than implying otherwise and disappointing somebody
+    later. A universe is not a row anywhere in this estate — it is a decision in
+    data/universes.json, in git, compiled into two catalogs at build time and
+    pinned by a test in library_catalog whose own comment says the assertion
+    failing is that file working. A browser cannot commit to a git repo, and a
+    second, runtime-writable copy of the list is the exact failure the whole
+    design exists to avoid.
+
+    ⚠️ EVERYTHING BELOW IS BUILT BY universes.js, NOT MARKED UP HERE. The three
+    containers are the page's PLACE for the feature; their contents depend on
+    who is looking (signed out / pending / revoked / member / approver), and a
+    hardcoded form would be visible for a beat to a visitor who may not use it.
+    Same split the cog above uses: the page owns the place, the script owns the
+    contents.
+  -->
+  <section id="uni-request" aria-labelledby="uni-request-h" hidden>
+    <h2 id="uni-request-h">Missing a verse?</h2>
+    <div id="uni-request-chrome"></div>
+    <div id="uni-form" hidden></div>
+  </section>
+
+  <div id="uni-pending" hidden></div>
 
   <ul id="uni-list" class="uni-list" aria-label="Estate universes"></ul>
 

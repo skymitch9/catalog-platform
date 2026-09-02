@@ -479,6 +479,21 @@ let billingDir = null;
  */
 const billingStaged = new Map();
 
+/**
+ * THE VERSE QUEUE's data — GET /api/estate/universes/requests (design
+ * docs/info/universe-add-verse-design.md §6 Q2: a collapsed section here, not a
+ * new page and not a tab bar).
+ *
+ * 🔴 NOTHING IN THIS PANEL CREATES A UNIVERSE. Approving sets a status; the
+ * verse itself is a decision in data/universes.json, in git, that a person
+ * commits with `tools/universes.mjs` and ships by rebuilding both catalogs.
+ * That is why the queue has a fourth status — `approved` is not `landed`, and
+ * drawing them the same way would tell a member their verse exists while the
+ * file has not been touched.
+ *   null | { requests, scope, is_approver, approved_stale_days }
+ */
+let verseQueue = null;
+
 /** The full directory as last loaded — filters/sort run over this, it is never re-fetched for a view change. */
 let allEstateUsers = [];
 
@@ -758,7 +773,7 @@ async function loadDirectory() {
   // One fetch per app Worker, driven by APPS rather than positional
   // destructuring — adding a fourth managed site is a row in APPS and
   // nothing else. A failed app fetch degrades that column only.
-  const [estate, appResults, sroles, rtree, billing] = await Promise.all([
+  const [estate, appResults, sroles, rtree, billing, verses] = await Promise.all([
     api('/api/estate/users'),
     Promise.all(APPS.map((app) => fetchAppDirectory(app))),
     fetchSiteRoles(),
@@ -767,13 +782,20 @@ async function loadDirectory() {
     // unreachable billing route costs the Spending panel and nothing else —
     // the same degrade-alone rule every other federation here follows.
     api('/api/estate/billing/rules'),
+    // The verse queue, same degrade-alone rule. ⚠️ A Worker running ahead of
+    // migration 0017 answers 200 with an empty queue and an explanation rather
+    // than an error, so this panel renders and says why it is empty instead of
+    // vanishing and looking like there is nothing to decide.
+    api('/api/estate/universes/requests'),
   ]);
   appDirs = Object.fromEntries(APPS.map((app, i) => [app.key, appResults[i]]));
   siteRolesDir = sroles;
   roleTreeDir = rtree;
   billingDir = billing;
+  verseQueue = verses;
   renderPermissionMap();
   renderSpendingPanel();
+  renderVerseQueue();
   // Owner: "just always auto fill and write the max role possible for each
   // site." Fire-and-forget — the render below must not wait on it.
   void reconcileOwnerRoles();
@@ -2546,6 +2568,259 @@ async function saveSpending(why, saveBtn) {
   setStatus(
     `Saved ${done} spending change${done === 1 ? '' : 's'}. It takes effect within 10 minutes — the same delay as a revocation.`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// THE VERSE QUEUE — "+ add a verse" (design docs/info/universe-add-verse-design.md).
+//
+// 🔴 APPROVING RUNS NOTHING. It sets a status. A universe is a decision in
+// data/universes.json — in git, compiled into two catalogs at build time and
+// pinned by a tripwire test in library_catalog — so the chain from "approved"
+// to "the verse exists" runs through a person editing that file with
+// `tools/universes.mjs create`, updating the tripwire, and rebuilding both
+// catalogs. The footer says this out loud, because a green button that looks
+// like it did the whole job is how an owner ends up believing a verse exists.
+//
+// ⚠️ A DECLINE NEEDS A REASON AND THE ROUTE ENFORCES IT. The requester is shown
+// that sentence verbatim on /universes, so this panel asks for it inline rather
+// than sending a bare no and letting the server refuse.
+//
+// ⚠️ AGE IS SHOWN ON APPROVED ROWS, NOT ON PENDING ONES. A pending row is
+// waiting on the person reading this page; an approved one is waiting on a
+// deploy nobody has run, which is a different failure and the invisible one.
+// ---------------------------------------------------------------------------
+
+/** Which decision is still open on a row. `landed` rows drop out entirely — by
+ *  then the verse is in the catalogs and this queue has nothing to say. */
+const VERSE_OPEN = new Set(['pending', 'approved']);
+
+function verseAge(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
+  if (Number.isNaN(t)) return null;
+  return Math.floor((Date.now() - t) / 86400000);
+}
+
+function verseWhen(iso) {
+  const days = verseAge(iso);
+  if (days === null) return '';
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  return String(iso).slice(0, 10);
+}
+
+function renderVerseQueue() {
+  const details = document.getElementById('verse-queue');
+  const body = document.getElementById('verse-queue-body');
+  const countEl = document.getElementById('verse-queue-count');
+  if (!details || !body) return;
+
+  // api() has already said why on a failure — an unreachable route costs this
+  // panel and nothing else.
+  if (!verseQueue) {
+    details.hidden = true;
+    return;
+  }
+  details.hidden = false;
+  body.innerHTML = '';
+
+  const rows = Array.isArray(verseQueue.requests) ? verseQueue.requests : [];
+  const open = rows.filter((r) => VERSE_OPEN.has(r.status));
+  const pending = open.filter((r) => r.status === 'pending');
+  if (countEl) {
+    countEl.hidden = pending.length === 0;
+    countEl.textContent = `${pending.length} waiting`;
+  }
+
+  // The migration-lag sentence, if the Worker is ahead of its table.
+  if (verseQueue.error) {
+    const p = document.createElement('p');
+    p.className = 'perm-warn';
+    p.textContent = `${verseQueue.detail}${verseQueue.fix ? ` Fix: ${verseQueue.fix}` : ''}`;
+    body.appendChild(p);
+  }
+
+  if (!rows.length) {
+    const p = document.createElement('p');
+    p.className = 'role-tree-note';
+    p.textContent = verseQueue.error
+      ? 'Nothing can be waiting until the migration is applied.'
+      : 'Nobody has asked for a verse. Members ask from the “+ Add a verse” button on /universes.';
+    body.appendChild(p);
+    body.appendChild(verseQueueFooter());
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'verse-list';
+  // Open first, then the decided history — the owner's own question is "what is
+  // waiting on me", and burying two pending rows under nine declined ones
+  // answers a question nobody asked.
+  for (const row of [...open, ...rows.filter((r) => !VERSE_OPEN.has(r.status))]) {
+    list.appendChild(verseRow(row));
+  }
+  body.appendChild(list);
+  body.appendChild(verseQueueFooter());
+}
+
+function verseRow(row) {
+  const wrap = document.createElement('div');
+  wrap.className = 'verse-row';
+  wrap.dataset.status = row.status;
+
+  const head = document.createElement('div');
+  head.className = 'verse-head';
+  const name = document.createElement('strong');
+  name.textContent = row.name;
+  const chip = document.createElement('span');
+  chip.className = 'verse-chip';
+  chip.dataset.status = row.status;
+  if (row.status === 'approved') {
+    // ⚠️ §6 Q3, and the whole reason the fourth status exists: an approved verse
+    // that nobody has shipped is a person told yes with nothing to show for it.
+    // The age is spelled out past the threshold instead of a colour nobody
+    // decodes.
+    chip.textContent = row.stale
+      ? `approved ${row.age_days} days ago, not yet in a build`
+      : 'approved — waiting on the next build';
+    if (row.stale) chip.dataset.stale = 'true';
+  } else {
+    chip.textContent = row.status;
+  }
+  head.append(name, chip);
+  wrap.appendChild(head);
+
+  const meta = document.createElement('span');
+  meta.className = 'spend-detail';
+  const bits = [row.requested_by ? `asked by ${row.requested_by}` : 'asked by you', verseWhen(row.requested_at)];
+  meta.textContent = bits.filter(Boolean).join(' · ');
+  wrap.appendChild(meta);
+
+  const why = document.createElement('p');
+  why.className = 'verse-why';
+  why.textContent = `“${row.why}”`;
+  wrap.appendChild(why);
+
+  const payload = row.payload || {};
+  for (const [label, values] of [
+    ['Series', payload.series],
+    ['Also these titles', payload.titles],
+    ['Deliberately NOT', payload.notSeries],
+  ]) {
+    if (Array.isArray(values) && values.length) {
+      const line = document.createElement('span');
+      line.className = 'spend-detail';
+      line.textContent = `${label}: ${values.join(', ')}`;
+      wrap.appendChild(line);
+    }
+  }
+  // ⚠️ The near misses the requester saw, carried through so the decision is
+  // made on the same information. It is NOT a reason to decline on its own —
+  // Marvel, Disney and Star Wars are three universes split apart on purpose.
+  if (Array.isArray(payload.near) && payload.near.length) {
+    const near = document.createElement('span');
+    near.className = 'spend-detail';
+    near.textContent = `Close to: ${payload.near.join(', ')} — worth a look, not a reason on its own.`;
+    wrap.appendChild(near);
+  }
+
+  if (row.decided_why) {
+    const said = document.createElement('p');
+    said.className = 'verse-why';
+    said.textContent = `↳ ${row.decided_why}`;
+    wrap.appendChild(said);
+  }
+  if (row.landed_commit) {
+    const landed = document.createElement('span');
+    landed.className = 'spend-detail';
+    landed.textContent = `landed in ${row.landed_commit}`;
+    wrap.appendChild(landed);
+  }
+
+  if (row.status === 'pending') wrap.appendChild(verseDecisionControls(row));
+  return wrap;
+}
+
+function verseDecisionControls(row) {
+  const box = document.createElement('div');
+  box.className = 'verse-actions';
+
+  const why = document.createElement('input');
+  why.type = 'text';
+  why.className = 'ctl-input verse-why-input';
+  why.placeholder = 'Reason — required to decline, optional on a yes';
+  why.autocomplete = 'off';
+
+  const approve = document.createElement('button');
+  approve.type = 'button';
+  approve.className = 'btn small';
+  approve.textContent = 'Approve';
+
+  const decline = document.createElement('button');
+  decline.type = 'button';
+  decline.className = 'btn small quiet';
+  decline.textContent = 'Decline';
+
+  async function decide(decision) {
+    const reason = why.value.trim();
+    // ⚠️ Checked here as well as at the route. Not because the route might
+    // forget, but because a person should be told before the round-trip, not
+    // after it — the same sentence either way.
+    if (decision === 'declined' && reason.length < 10) {
+      setStatus(
+        'A decline needs a reason of at least ten characters — the person who asked is shown it word for word. ' +
+          '“That’s The Cosmere under another name” answers the question; a bare no starts an argument.',
+        'warn',
+      );
+      why.focus();
+      return;
+    }
+    approve.disabled = true;
+    decline.disabled = true;
+    const data = await api(`/api/estate/universes/requests/${row.id}/decide`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, why: reason }),
+    });
+    approve.disabled = false;
+    decline.disabled = false;
+    if (!data) return; // api() has already said why
+    await loadDirectory();
+    setStatus(data.detail || `Request #${row.id} is ${decision}.`, '');
+  }
+
+  approve.addEventListener('click', () => decide('approved'));
+  decline.addEventListener('click', () => decide('declined'));
+
+  box.append(why, approve, decline);
+  return box;
+}
+
+function verseQueueFooter() {
+  const wrap = document.createElement('div');
+  wrap.className = 'spend-footer';
+
+  const note = document.createElement('p');
+  note.className = 'role-tree-note';
+  // 🔴 THE SENTENCE THIS PANEL EXISTS TO SAY. Without it, a green Approve looks
+  // like the job is done, and the requester is told a verse exists that does not.
+  note.textContent =
+    'Approving records a decision — it does not create the verse. The universe list is data/universes.json in ' +
+    'git: a session runs `tools/universes.mjs create`, updates the tripwire test in library_catalog, and both ' +
+    'catalogs are rebuilt before anything appears on /universes. Until that happens the requester sees ' +
+    '“approved — waiting on the next build”, which is the truth.';
+  wrap.appendChild(note);
+
+  const links = document.createElement('p');
+  links.className = 'role-tree-note';
+  links.append('Where members ask, and where an approved verse finally shows up: ');
+  const a = document.createElement('a');
+  a.href = '/universes/';
+  a.textContent = 'the universes page';
+  links.append(a, '.');
+  wrap.appendChild(links);
+
+  return wrap;
 }
 
 /** The Audiobooks/Ebooks ladder — the rich one, straight from GET /site-roles/tree. */

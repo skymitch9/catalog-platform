@@ -277,11 +277,17 @@ function parsePayload(raw: string): RequestPayload {
  * `mine` rows carry the viewer's own identity, which they already have, and a
  * member must never learn who else asked for what.
  */
-export function toWire(row: RequestRow, now: number, forApprover: boolean) {
+export function toWire(row: RequestRow, now: number, forApprover: boolean, viewerId?: number) {
   const age = ageDays(row.decided_at, now);
   return {
     id: row.id,
     name: row.name,
+    // ⚠️ COMPUTED HERE, NOT INFERRED ON THE PAGE FROM THE ABSENCE OF
+    // `requested_by`. That inference held right up until an approver looked at
+    // the queue: their own row carries a requester name like every other, so
+    // "no name means mine" quietly took the withdraw button away from the one
+    // person entitled to press it. The server knows who is asking; it says so.
+    mine: viewerId !== undefined && row.requested_by === viewerId,
     why: row.why,
     payload: parsePayload(row.payload),
     status: row.status,
@@ -480,7 +486,7 @@ universeRequestRoutes.get('/estate/universes/requests', requireApprovedMember(),
         );
     const { results } = await stmt.all<RequestRow>();
     return c.json({
-      requests: (results ?? []).map((r) => toWire(r, now, canSeeAll)),
+      requests: (results ?? []).map((r) => toWire(r, now, canSeeAll, actor.id)),
       scope: canSeeAll ? 'all' : 'mine',
       is_approver: canSeeAll,
       approved_stale_days: APPROVED_STALE_DAYS,

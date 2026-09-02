@@ -65,6 +65,13 @@
  * (accessoriesDetails-shaped <details> building, this file's own classes)
  * stays duplicated, same as before. The accessories fold is unaffected — it
  * still collapses out of `games`, upstream of this split, and stays last.
+ *
+ * "+ ADD A VERSE" (owner, 2026-08-24; built 2026-09-02 — design
+ * docs/info/universe-add-verse-design.md): the second half of this file, below
+ * the browse list's own code. 🔴 It FILES A REQUEST and does not add a
+ * universe, for the reason the whole design rests on — the list is a git file
+ * compiled into two catalogs at build time, and a browser cannot commit to a
+ * git repo. See that section's own banner.
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
@@ -112,12 +119,32 @@ const UNIVERSE_NAMES = [
 // ALPHABETICAL UNIVERSES (owner-ordered upgrade #2) — display order only; the
 // list above stays in its historical add-order (a running log, see the
 // header note above it), sorted only at render time in buildRows().
-const DISPLAY_NAMES = [...UNIVERSE_NAMES].sort((a, b) => a.localeCompare(b));
+//
+// ⚠️ NO LONGER A CONST, AND THE HARDCODED LIST IS NOW THE FALLBACK RATHER THAN
+// THE SOURCE (2026-09-02, the "+ add a verse" build). A signed-in member's copy
+// comes from GET /api/estate/universes/names, which is projected from
+// data/universes.json itself — so the page can no longer be silently one
+// universe short for a signed-in reader.
+//
+// ⚠️ THE HARDCODED LIST STAYS, AND ITS TRIPWIRE STAYS. That route is
+// members-only (like /api/universe/:name it sits behind estate membership), so
+// a SIGNED-OUT visitor still has to be given the list from somewhere, and
+// "sign in to see which universes exist" would be a worse page than the one
+// that exists. scripts/test/universe-names-parity.test.mjs still diffs the
+// array above against data/universes.json and still fails `npm test`, which
+// `npm run deploy:home` runs before it uploads anything.
+let DISPLAY_NAMES = [...UNIVERSE_NAMES].sort((a, b) => a.localeCompare(b));
+
+const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 
 const whoEl = document.getElementById('uni-who');
 const signinBtn = document.getElementById('uni-signin');
 const statusEl = document.getElementById('uni-status');
 const listEl = document.getElementById('uni-list');
+const requestEl = document.getElementById('uni-request');
+const requestChromeEl = document.getElementById('uni-request-chrome');
+const formEl = document.getElementById('uni-form');
+const pendingEl = document.getElementById('uni-pending');
 
 let currentUser = null;
 
@@ -475,6 +502,597 @@ async function populate(body, name, stillCurrent) {
 
 buildRows();
 
+// ===========================================================================
+// "+ ADD A VERSE" — owner, 2026-08-24: "in the universe page add a plus button
+// somewhere to add a verse and let it take series as an input".
+// Design: docs/info/universe-add-verse-design.md. Everything below is §3.
+//
+// 🔴 THE BUTTON FILES A REQUEST. IT DOES NOT ADD A UNIVERSE, and every string
+// in here says so plainly rather than letting somebody find out later. The list
+// lives in data/universes.json, in git, compiled into two catalogs at build
+// time; a browser cannot commit to a git repo, and a second runtime-writable
+// copy is the exact failure the whole design refuses. What the "+" creates is a
+// row in the estate directory saying somebody asked, and why.
+//
+// ⚠️ SO `approved` IS NOT `done`, AND THIS PAGE MUST NEVER DRAW IT AS DONE.
+// Between a yes and a build the estate is in a state where a person has been
+// told yes and nothing exists. The chip reads "approved — waiting on the next
+// build" for exactly that window.
+// ===========================================================================
+
+/**
+ * ⚠️ ONE CALL DECIDES THE WHOLE SURFACE. `GET .../requests` is member-gated and
+ * its refusals are already the four the estate distinguishes (not signed in /
+ * no record / awaiting approval / revoked), so its answer IS the standing — no
+ * second /me round-trip, and no chance of the two disagreeing.
+ *
+ * `unreachable` is deliberately its OWN kind and not folded into a refusal. A
+ * network or server failure is not a permissions failure, and mislabelling an
+ * outage sends people asking for access they already have.
+ */
+let standing = { kind: 'anon' };
+let myRequests = [];
+/** The canonical list + alias map, once the server has answered. */
+let nameData = null;
+/** Series suggestions for the autocomplete; fetched lazily when the form opens. */
+let seriesSuggestions = null;
+let formOpen = false;
+
+async function authedJson(origin, path, init) {
+  const token = await idToken();
+  if (!token) return { kind: 'lapsed' };
+  let res;
+  try {
+    res = await fetch(`${origin}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(init && init.body ? { 'content-type': 'application/json' } : {}),
+      },
+    });
+  } catch (e) {
+    // ⚠️ A rejected CORS preflight surfaces to JS as a network error and looks
+    // exactly like a Worker that is down. Either way it is an OUTAGE, and the
+    // caller must not render it as a refusal.
+    return { kind: 'network' };
+  }
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (e) { /* a non-JSON body still has a status, but never shows one to a person */ }
+  return { kind: 'answered', status: res.status, ok: res.ok, body: body || {} };
+}
+
+/** Refusal wording, per the design's §3.5. Every one says what happened, what
+ *  it needs, and how to get it — and the SERVER's own sentence wins whenever it
+ *  sent one, so the two never drift. */
+function standingFrom(answer) {
+  if (answer.kind === 'lapsed') return { kind: 'lapsed' };
+  if (answer.kind === 'network') return { kind: 'unreachable' };
+  if (answer.ok) {
+    return {
+      kind: answer.body.is_approver ? 'approver' : 'member',
+      requests: Array.isArray(answer.body.requests) ? answer.body.requests : [],
+      // A Worker ahead of its migration answers 200 with an explanation and an
+      // empty queue — the page renders, and says why it is empty.
+      note: answer.body.error ? answer.body.detail : null,
+    };
+  }
+  const detail = typeof answer.body.detail === 'string' ? answer.body.detail : null;
+  switch (answer.body.error) {
+    case 'unauthenticated':
+      return { kind: 'anon' };
+    case 'estate_pending':
+      return { kind: 'refused', detail: detail || 'Your estate membership is still awaiting approval, so requests are closed for now. The owner sees your name on /admin.' };
+    case 'estate_revoked':
+      return { kind: 'refused', detail: detail || 'Your estate access was revoked. Ask the owner.' };
+    case 'estate_unknown':
+      return { kind: 'refused', detail: detail || 'The estate directory has no record of this account yet.' };
+    default:
+      return { kind: 'unreachable' };
+  }
+}
+
+async function loadRequestSurface() {
+  if (!currentUser) {
+    standing = { kind: 'anon' };
+    myRequests = [];
+    renderRequestSurface();
+    return;
+  }
+  const answer = await authedJson(AUTH_ORIGIN, '/api/estate/universes/requests');
+  standing = standingFrom(answer);
+  myRequests = standing.requests || [];
+  renderRequestSurface();
+
+  // The real list, for a signed-in reader — see DISPLAY_NAMES's note above for
+  // why the hardcoded copy stays as the signed-out fallback.
+  if (standing.kind === 'member' || standing.kind === 'approver') void loadNames();
+}
+
+async function loadNames() {
+  const answer = await authedJson(AUTH_ORIGIN, '/api/estate/universes/names');
+  if (answer.kind !== 'answered' || !answer.ok || !Array.isArray(answer.body.names)) return;
+  nameData = { names: answer.body.names, canonical: answer.body.canonical_names || {} };
+  const next = [...answer.body.names].sort((a, b) => a.localeCompare(b));
+  // Only rebuild when the served list actually differs — a rebuild collapses
+  // every open row, and doing that on every load for no reason is a page that
+  // shuts itself while you are reading it.
+  if (next.length !== DISPLAY_NAMES.length || next.some((n, i) => n !== DISPLAY_NAMES[i])) {
+    DISPLAY_NAMES = next;
+    buildRows();
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * The name check, in the browser
+ *
+ * ⚠️ THIS IS A CONVENIENCE AND THE SERVER RUNS ITS OWN. The design says it
+ * outright: the browser's copy of canonicalNames is a convenience, the row that
+ * lands in D1 is the one that matters. So a mismatch between the two can only
+ * ever cost a wasted keystroke — never a bad row.
+ * ------------------------------------------------------------------ */
+
+/** normText() from tools/lib/universes.mjs, and it must stay a port of it: the
+ *  alias map's keys were normalised by that function. */
+function normName(s) {
+  return String(s == null ? '' : s)
+    .replace(/[‘’ʼ′]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function localCheck(typed) {
+  const key = normName(typed);
+  if (!key) return { kind: 'empty' };
+  const names = nameData ? nameData.names : UNIVERSE_NAMES;
+  const canonical = nameData ? nameData.canonical : {};
+  const exact = names.find((n) => normName(n) === key);
+  if (exact) return { kind: 'exists', universe: exact };
+  const folded = canonical[key];
+  if (typeof folded === 'string') return { kind: 'alias', universe: folded };
+  const near = names.filter((n) => {
+    const k = normName(n);
+    return k.includes(key) || key.includes(k);
+  });
+  return { kind: 'free', near };
+}
+
+/* ------------------------------------------------------------------ *
+ * Rendering
+ * ------------------------------------------------------------------ */
+
+function note(text, className) {
+  const p = document.createElement('p');
+  p.className = className || 'uni-note';
+  p.textContent = text;
+  return p;
+}
+
+function renderRequestSurface() {
+  renderRequestChrome();
+  renderPending();
+}
+
+function renderRequestChrome() {
+  requestChromeEl.innerHTML = '';
+
+  // ⚠️ SIGNED OUT: NOT RENDERED AT ALL. The page already carries a sign-in
+  // invitation above; a second one attached to a button nobody can press is
+  // noise, and a button that refuses is worse than a button that is absent.
+  if (!authResolved || standing.kind === 'anon') {
+    requestEl.hidden = true;
+    formEl.hidden = true;
+    return;
+  }
+  requestEl.hidden = false;
+
+  if (standing.kind === 'lapsed') {
+    requestChromeEl.appendChild(note('Your sign-in has lapsed — sign in again to ask for a verse.'));
+    return;
+  }
+  if (standing.kind === 'unreachable') {
+    // 🔴 An outage, said as an outage. Never as a permissions problem.
+    requestChromeEl.appendChild(
+      note('Couldn’t reach the estate directory — that’s an outage, not a permissions problem. Try again in a minute.'),
+    );
+    return;
+  }
+  if (standing.kind === 'refused') {
+    requestChromeEl.appendChild(note(standing.detail));
+    return;
+  }
+
+  const cta = document.createElement('div');
+  cta.className = 'uni-cta';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'find-btn';
+  btn.id = 'uni-add';
+  btn.textContent = formOpen ? 'Never mind' : '+ Add a verse';
+  btn.setAttribute('aria-expanded', formOpen ? 'true' : 'false');
+  btn.addEventListener('click', () => {
+    formOpen = !formOpen;
+    renderRequestChrome();
+    if (formOpen) {
+      openForm();
+    } else {
+      formEl.hidden = true;
+      formEl.innerHTML = '';
+    }
+  });
+  cta.appendChild(btn);
+  requestChromeEl.appendChild(cta);
+
+  requestChromeEl.appendChild(
+    note(
+      'A verse is a decision the owner records in the estate’s universe list, so this asks him rather than ' +
+        'adding one. Even a yes takes a rebuild of both catalogs before it shows up here.',
+      'uni-cta-note',
+    ),
+  );
+  if (standing.note) requestChromeEl.appendChild(note(standing.note, 'uni-cta-note'));
+}
+
+/** One repeatable list of text inputs. No comma-splitting: a series name with a
+ *  comma in it is a real thing, and splitting on one corrupts it silently. */
+function repeatField(labelText, hintText, listId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'uni-field';
+  const label = document.createElement('span');
+  label.className = 'uni-label';
+  label.textContent = labelText;
+  wrap.appendChild(label);
+
+  const rows = document.createElement('div');
+  rows.className = 'uni-repeat';
+  wrap.appendChild(rows);
+
+  function addRow(value) {
+    const row = document.createElement('div');
+    row.className = 'uni-repeat-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'uni-input';
+    input.value = value || '';
+    if (listId) input.setAttribute('list', listId);
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'uni-drop';
+    drop.setAttribute('aria-label', `Remove this ${labelText.toLowerCase()} row`);
+    drop.textContent = '×';
+    drop.addEventListener('click', () => {
+      row.remove();
+      if (!rows.querySelector('input')) addRow('');
+    });
+    row.append(input, drop);
+    rows.appendChild(row);
+    return input;
+  }
+  addRow('');
+
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'find-linkbtn';
+  more.textContent = '+ add another';
+  more.addEventListener('click', () => addRow('').focus());
+
+  if (hintText) wrap.appendChild(note(hintText, 'uni-hint'));
+  wrap.appendChild(more);
+
+  return {
+    el: wrap,
+    values: () => [...rows.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean),
+  };
+}
+
+async function loadSeriesSuggestions(datalist) {
+  if (seriesSuggestions) {
+    fillDatalist(datalist, seriesSuggestions);
+    return;
+  }
+  const answer = await authedJson(INDEX_ORIGIN, '/api/series');
+  if (answer.kind !== 'answered' || !answer.ok || !Array.isArray(answer.body.series)) return;
+  seriesSuggestions = answer.body.series.map((s) => s.display_name || s.slug).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  fillDatalist(datalist, seriesSuggestions);
+}
+
+function fillDatalist(datalist, values) {
+  datalist.innerHTML = '';
+  for (const v of values) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    datalist.appendChild(opt);
+  }
+}
+
+function openForm() {
+  formEl.hidden = false;
+  formEl.innerHTML = '';
+
+  const panel = document.createElement('div');
+  panel.className = 'uni-panel';
+
+  // --- name, with the live check ------------------------------------------
+  const nameField = document.createElement('label');
+  nameField.className = 'uni-field';
+  const nameLabel = document.createElement('span');
+  nameLabel.className = 'uni-label';
+  nameLabel.textContent = 'Name';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'uni-input';
+  nameInput.autocomplete = 'off';
+  nameInput.placeholder = 'Discworld';
+  nameField.append(nameLabel, nameInput);
+  const check = document.createElement('p');
+  check.className = 'uni-check';
+  check.hidden = true;
+  nameField.appendChild(check);
+  panel.appendChild(nameField);
+
+  let blocked = false;
+  nameInput.addEventListener('input', () => {
+    const v = localCheck(nameInput.value);
+    blocked = v.kind === 'exists' || v.kind === 'alias';
+    if (v.kind === 'empty') {
+      check.hidden = true;
+      return;
+    }
+    check.hidden = false;
+    if (v.kind === 'exists') {
+      check.dataset.tone = 'block';
+      check.textContent = `${v.universe} already exists — it is in the list below.`;
+    } else if (v.kind === 'alias') {
+      // ⚠️ THE CASE A NAIVE CHECK MISSES, and the common one.
+      check.dataset.tone = 'block';
+      check.textContent = `That’s a spelling of ${v.universe} — the estate already has it under that name.`;
+    } else if (v.near.length) {
+      // ⚠️ A WARNING, NEVER A BLOCK. Marvel, Disney and Star Wars are three
+      // universes the owner deliberately split apart; a veto here would have
+      // refused two of them.
+      check.dataset.tone = 'warn';
+      check.textContent = `Close to ${v.near.join(', ')}. Still a different verse? Say so in the reason and carry on.`;
+    } else {
+      check.dataset.tone = 'ok';
+      check.textContent = 'No universe by that name yet.';
+    }
+  });
+
+  // --- series --------------------------------------------------------------
+  const datalist = document.createElement('datalist');
+  datalist.id = 'uni-series-options';
+  panel.appendChild(datalist);
+  const series = repeatField(
+    'Series',
+    // §6 Q5: the suggestions are visibility-scoped by design, so the hint says
+    // so rather than letting somebody wonder why a series is missing. Free text
+    // is accepted — a series the estate does not hold yet is a legitimate
+    // answer, and often the whole reason for asking.
+    'Series from the catalogs you can see; type anything else freely.',
+    'uni-series-options',
+  );
+  panel.appendChild(series.el);
+  void loadSeriesSuggestions(datalist);
+
+  // --- the two rarer lists -------------------------------------------------
+  const titles = repeatField(
+    'Also these exact titles',
+    'For a standalone that belongs to the verse but sits in no series.',
+  );
+  panel.appendChild(titles.el);
+
+  const notSeries = repeatField(
+    'Deliberately NOT',
+    'Anything that looks like it belongs and does not — worth saying, because somebody will otherwise add it later.',
+  );
+  panel.appendChild(notSeries.el);
+
+  // --- why -----------------------------------------------------------------
+  const whyField = document.createElement('label');
+  whyField.className = 'uni-field';
+  const whyLabel = document.createElement('span');
+  whyLabel.className = 'uni-label';
+  whyLabel.textContent = 'Why';
+  const whyInput = document.createElement('textarea');
+  whyInput.className = 'uni-textarea';
+  whyInput.placeholder = 'What makes these one fiction, and why is it worth grouping?';
+  whyField.append(whyLabel, whyInput);
+  whyField.appendChild(
+    // ⚠️ Mirrors the CLI's --why. tools/universes.mjs: "an entry that cannot say
+    // why it exists is refused." The form must not be softer than the CLI.
+    note('Required. Every entry in the estate’s universe list records why it exists.', 'uni-hint'),
+  );
+  panel.appendChild(whyField);
+
+  // --- actions -------------------------------------------------------------
+  const actions = document.createElement('div');
+  actions.className = 'uni-actions';
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.className = 'find-btn';
+  submit.textContent = 'Ask the owner';
+  const outcome = document.createElement('p');
+  outcome.className = 'uni-check';
+  outcome.hidden = true;
+  actions.appendChild(submit);
+  panel.append(actions, outcome);
+
+  function say(text, tone) {
+    outcome.hidden = false;
+    outcome.dataset.tone = tone;
+    outcome.textContent = text;
+  }
+
+  submit.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) return say('A verse needs a name.', 'block');
+    if (blocked) return say(check.textContent, 'block');
+    if (whyInput.value.trim().length < 10) {
+      return say('Say why this verse should exist — at least ten characters. The owner is being asked to make a decision.', 'block');
+    }
+    submit.disabled = true;
+    say('Asking…', 'ok');
+    const answer = await authedJson(AUTH_ORIGIN, '/api/estate/universes/requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        why: whyInput.value.trim(),
+        series: series.values(),
+        titles: titles.values(),
+        notSeries: notSeries.values(),
+      }),
+    });
+    submit.disabled = false;
+
+    if (answer.kind === 'lapsed') return say('Your sign-in has lapsed — sign in again.', 'block');
+    if (answer.kind === 'network') {
+      return say('Couldn’t reach the estate directory — that’s an outage, not a permissions problem. Try again in a minute.', 'block');
+    }
+    if (!answer.ok) {
+      // ⚠️ THE SERVER'S OWN SENTENCE, VERBATIM. It knows the alias map, it knows
+      // whether somebody else already asked, and a second copy of that wording
+      // here would be a second thing to keep in step. Never a bare status.
+      return say(answer.body.detail || 'That request was not accepted. Try again shortly.', 'block');
+    }
+
+    formOpen = false;
+    formEl.hidden = true;
+    formEl.innerHTML = '';
+    renderRequestChrome();
+    setStatus(answer.body.detail || 'Asked. The owner decides.', '');
+    await loadRequestSurface();
+  });
+
+  formEl.appendChild(panel);
+  nameInput.focus();
+}
+
+/** The status chip's words. ⚠️ `approved` is the one that must not read as
+ *  done: between a yes and a build, the verse does not exist. */
+function chipText(row) {
+  switch (row.status) {
+    case 'pending':
+      return 'pending';
+    case 'approved':
+      return row.stale ? `approved ${row.age_days} days ago, not yet in a build` : 'approved — waiting on the next build';
+    case 'declined':
+      return 'declined';
+    case 'withdrawn':
+      return 'withdrawn';
+    default:
+      return row.status;
+  }
+}
+
+function whenText(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
+  if (Number.isNaN(t)) return '';
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+function renderPending() {
+  pendingEl.innerHTML = '';
+  // ⚠️ `landed` rows are gone from here on purpose — by then the universe is a
+  // real row in the list below, and showing it twice would make one page
+  // disagree with itself.
+  const rows = myRequests.filter((r) => r.status !== 'landed');
+  if (!rows.length) {
+    pendingEl.hidden = true;
+    return;
+  }
+  pendingEl.hidden = false;
+
+  const h = document.createElement('h2');
+  h.textContent = standing.kind === 'approver' ? 'Waiting on a decision — every request' : 'Waiting on a decision';
+  pendingEl.appendChild(h);
+
+  const ul = document.createElement('ul');
+  ul.className = 'uni-pending-list';
+  for (const row of rows) {
+    const li = document.createElement('li');
+    // ⚠️ DELIBERATELY NOT `.uni-row`. A pending request must never be drawn as
+    // a universe: a member would click it and find nothing there.
+    li.className = 'uni-pending-row';
+
+    const head = document.createElement('div');
+    head.className = 'uni-pending-head';
+    const name = document.createElement('span');
+    name.className = 'uni-pending-name';
+    name.textContent = row.name;
+    const chip = document.createElement('span');
+    chip.className = 'uni-chip';
+    chip.dataset.status = row.status;
+    chip.textContent = chipText(row);
+    head.append(name, chip);
+    li.appendChild(head);
+
+    const meta = document.createElement('span');
+    meta.className = 'uni-pending-meta';
+    const who = row.mine ? 'requested by you' : row.requested_by ? `requested by ${row.requested_by}` : 'requested';
+    const counts = [];
+    if (row.payload && row.payload.series && row.payload.series.length) counts.push(`${row.payload.series.length} series`);
+    if (row.payload && row.payload.titles && row.payload.titles.length) counts.push(`${row.payload.titles.length} titles`);
+    meta.textContent = [who, whenText(row.requested_at), ...counts].filter(Boolean).join(' · ');
+    li.appendChild(meta);
+
+    const why = document.createElement('span');
+    why.className = 'uni-pending-why';
+    why.textContent = `“${row.why}”`;
+    li.appendChild(why);
+
+    // ⚠️ A decline ALWAYS shows the owner's reason, verbatim. The route refuses
+    // a decline without one, which is what makes it safe to rely on here.
+    if (row.status === 'declined' && row.decided_why) {
+      const said = document.createElement('span');
+      said.className = 'uni-pending-why';
+      said.textContent = `↳ ${row.decided_why}`;
+      li.appendChild(said);
+    }
+
+    // §6 Q4 — the requester's own exit, and only while it is still pending.
+    // ⚠️ `row.mine` comes from the SERVER. Inferring it from the absence of a
+    // requester name works for a plain member and breaks for an approver, whose
+    // own row is named like every other one in the queue — the button would
+    // vanish for the person most likely to press it. The server knows.
+    if (row.status === 'pending' && row.mine) {
+      const withdraw = document.createElement('button');
+      withdraw.type = 'button';
+      withdraw.className = 'find-linkbtn';
+      withdraw.textContent = 'withdraw';
+      withdraw.addEventListener('click', async () => {
+        withdraw.disabled = true;
+        const answer = await authedJson(AUTH_ORIGIN, `/api/estate/universes/requests/${row.id}/withdraw`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        withdraw.disabled = false;
+        if (answer.kind !== 'answered' || !answer.ok) {
+          setStatus(
+            answer.kind === 'network'
+              ? 'Couldn’t reach the estate directory — that’s an outage, not a permissions problem.'
+              : (answer.body && answer.body.detail) || 'That could not be withdrawn.',
+            'warn',
+          );
+          return;
+        }
+        await loadRequestSurface();
+      });
+      li.appendChild(withdraw);
+    }
+
+    ul.appendChild(li);
+  }
+  pendingEl.appendChild(ul);
+}
+
 // ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
@@ -490,6 +1108,9 @@ watchAuth((user) => {
   // re-render — cheapest correct fix is rebuilding the collapsed list; a
   // signed-out visitor loses nothing since nothing was fetched for them.
   if (changed) buildRows();
+  // The request surface crosses the same boundary: a signed-out visitor sees
+  // no "+" at all, and a returning member's queue has to arrive.
+  if (changed) void loadRequestSurface();
 });
 
 renderAuthState();

@@ -451,6 +451,24 @@ test('⚠️ a member sees only their OWN rows, and no requester names at all', 
   assert.equal(body.requests.length, 1);
   assert.equal(body.requests[0]?.name, 'Discworld');
   assert.ok(!('requested_by' in (body.requests[0] ?? {})), 'a member must not be handed other members’ identities');
+  assert.equal(body.requests[0]?.mine, true);
+});
+
+test('⚠️ `mine` is computed server-side, so an approver keeps the withdraw button on their OWN row', async () => {
+  // The page used to infer this from the absence of a requester name, which is
+  // true for a member and false for an approver — whose own row is named like
+  // every other one in the queue.
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  await post(db, OWNER, '/estate/universes/requests', { ...GOOD, name: 'Xanth' });
+
+  const res = await call(db, OWNER, '/estate/universes/requests');
+  const body = (await res.json()) as { requests: { name: string; mine: boolean; requested_by: string }[] };
+  const own = body.requests.find((r) => r.name === 'Xanth');
+  const theirs = body.requests.find((r) => r.name === 'Discworld');
+  assert.equal(own?.mine, true);
+  assert.equal(theirs?.mine, false);
+  assert.equal(own?.requested_by, 'owner', 'the approver’s own row is named like every other');
 });
 
 test('an approver sees every row, with the requester named', async () => {
@@ -625,12 +643,12 @@ test('⚠️ only an APPROVED row goes stale — a pending one waits on a person
     decided_why: null,
     landed_commit: null,
   };
-  assert.equal(toWire({ ...base, status: 'approved' }, now, true).stale, true);
-  assert.equal(toWire({ ...base, status: 'declined' }, now, true).stale, false);
-  assert.equal(toWire({ ...base, status: 'landed' }, now, true).stale, false);
+  assert.equal(toWire({ ...base, status: 'approved' }, now, true, 1).stale, true);
+  assert.equal(toWire({ ...base, status: 'declined' }, now, true, 1).stale, false);
+  assert.equal(toWire({ ...base, status: 'landed' }, now, true, 1).stale, false);
 
   const fresh = new Date(now - (APPROVED_STALE_DAYS - 1) * 86_400_000).toISOString();
-  assert.equal(toWire({ ...base, status: 'approved', decided_at: fresh }, now, true).stale, false);
+  assert.equal(toWire({ ...base, status: 'approved', decided_at: fresh }, now, true, 1).stale, false);
 });
 
 test('⚠️ a Worker ahead of its migration SAYS SO, and the read still renders', async () => {
