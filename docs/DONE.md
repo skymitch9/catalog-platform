@@ -16,6 +16,98 @@
 
 ---
 
+## ✅ LLM billing control — phases 0, 1, 2 and (this repo's half of) 3 — 2026-09-02
+
+> ⚠️ **NOT the whole item.** `TODO.md`'s *"Toggle what can bill the LLM"* stays
+> open: the per-member drawer, the other three repos' call sites, the soak and
+> the audiobook Python client are all still ahead. This entry archives the
+> phases that LANDED, so nobody re-derives them; the open remainder is in
+> `TODO.md` and the design of record stays
+> [`info/llm-billing-control-design.md`](info/llm-billing-control-design.md).
+
+Owner ask, 2026-08-24: *"we need a way to toggle what can bill the LLM and what
+can't inside the admin page somewhere. and even finer than that, i want to be
+able to determine which features can bill and which can't per site per user
+etc"* — built 2026-09-02 on the recorded recommendations (deny-only switches;
+on/off per registered money path; no budgets and no metering in this phase),
+each flagged vetoable at landing.
+
+**Deployed:** `estate-auth` `e9aee6f4`, `catalog-index` `4804dbb6`,
+`heygabi-home` `a52a8b81`, all from commit `644338d`. Migrations applied to
+remote D1 **before** the deploys that needed them: `estate_auth` 0016, and
+`index_catalog` 0005. Ledger lines in `deploys.log`.
+
+🔴 **Nothing changed for anybody at that deploy, and the fact that it could
+not is the design.** An empty `billing_policy` table is exactly today's
+behaviour (§3.3 rank 17), the table IS empty, and `BILLING_POLICY` ships
+`"off"` on the one consumer that reads the answer. Both properties are
+asserted by a test named for them rather than assumed.
+
+**Phase 0 — the registry** (`apps/auth-worker/src/billing-registry.ts`). 18
+feature ids, declared ONCE, covering 35 of the design's 36 inventoried money
+paths. ⚠️ **Every row was re-verified against source in all four repos before
+being registered** — all 36 paths still exist, NO DEAD ROWS, though several
+line anchors in the design doc have drifted (L4/L5, L8, A4, A9, E1–E3, E7) and
+were re-found by symbol. **A6 is deliberately unregistered**: the ebook cover
+classifier is keyed on a secret absent from `.env` on purpose, so it bills
+zero, and a switch that does nothing is worse than no switch. The id list is
+pinned LITERALLY by a test rather than derived from the table it describes,
+because a derived pin agrees with any typo — and the bug it guards
+(`research.cover` vs `research.covers`) produces no error and no log line,
+only a money gate that is open forever.
+
+**Phase 1 — the switches** (migration 0016, `billing-policy.ts`,
+`billing-db.ts`, `billing.ts`). The resolver, the system door
+(`GET /api/estate/billing/policy`, a cron's own app token — a cron has no
+email to send to `/seen`), and the approver-gated read/write/remove.
+🔴 **Policy can only DENY, structurally rather than by convention:** the
+resolver's only output is a set of denied ids, there is no function that
+returns "allowed", and every call site ANDs the set with the gate it already
+had. 🔴 **The owner cannot be denied** — the write door refuses a deny naming
+an `OWNER_EMAILS` row with a worded 409, because §7.2's "his row draws every
+control disabled" is a UI rule and a UI rule is one fetch away from being
+bypassed.
+
+**Phase 2 — the Spending panel** on `/admin`, beside the permission map:
+<https://heygabi.ai/admin/> → *"Spending — what may bill the model, and
+where"*. Features as rows, sites as columns (the transpose of the member grid,
+deliberately). Grant-class gesture per the page's own two-gesture grammar.
+Turning a cell ON deletes the rule rather than writing an `allow` row, because
+"no rule" IS the default state.
+
+**Phase 3, this repo only** — E6, the apex shelf scanner, reads the answer and
+ships inert. ⚠️ **The shadow line carries `proceeded` and `est_cents`** — the
+outcome bit the 2026-08-16 audiobook soak lacked, and without which the flip
+criterion is unfalsifiable.
+
+**Three readings the design left for the builder, all vetoable:**
+
+1. **`system` resolves ALONE in BOTH directions** — a cron ignores `everyone`
+   rules and a person ignores `system` rules. §3.1 states the first half; the
+   second follows from the same reasoning, and a clock-icon row that an
+   everyone-deny could flip would be a lie about what the click did.
+2. **`/me` answers a per-site MAP** where §3.4 says *"the same array"*. `/me`
+   has no site, and a flat union would hide a control on a site where it is
+   allowed. It is a curtain either way.
+3. **E7 (the Groq rung) is a RUNG, not a feature.** It fronts four rows across
+   three features, so denying `gabi.chat` denies BOTH providers — no Groq
+   attempt and no Haiku fall-through.
+
+**Tests:** 39 + 9 = 48 new; workspace **2500 pass / 0 fail** (baseline 2452).
+Also fixed: `cors-coverage.test.ts` could only see paths that inline
+`${AUTH_ORIGIN}`, so admin.js's whole `api(path)` surface was invisible to it
+and the panel's DELETE was reported as refused at a preflight that in fact
+allows it. A guard that fails on a clean tree gets ignored, and an ignored
+guard still gets credited as coverage.
+
+⚠️ **NOT VERIFIED:** no rule has ever been written, so no resolution has run
+against a non-empty table in production; `billing_denied` has never been seen
+on a real `/seen` or `/me` answer; and **nobody has rendered the Spending
+panel signed in** — no cell has been clicked and the matrix has never been
+drawn against a real `/api/estate/billing/rules` answer.
+
+---
+
 ## ✅ GABI polish batch (owner live-test findings, 2026-09-02 ~10:33) — 2026-09-02
 
 > ⚠️ Moved WHOLE from `TODO.md`, unedited, on the day the work landed. The

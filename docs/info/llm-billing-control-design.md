@@ -1,13 +1,23 @@
 # Switching off what can bill — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
-> **Status:** TRACKED — **DESIGN ONLY, nothing built.** No route exists, no
-> migration was applied, no code was changed.
-> Last verified: **2026-08-26** — the inventory in §2 was read out of source
-> across all four repos this session; every `file:line` was opened. ⚠️ **NOT
-> verified:** anything live. No production request, no D1 query, no
-> `wrangler secret list`, no browser. Cost figures are the constants the code
-> itself declares, not invoices. Effort figures are **labelled guesses**.
+> **Status:** TRACKED — 🔄 **PHASES 0, 1 AND 2 ARE BUILT, MIGRATED AND
+> DEPLOYED (2026-09-02)**, plus phase 3 for this repo's own money path (E6).
+> Phases 3 (other repos), 4 (the soak) and 5 (audiobook Python) are NOT.
+> ⚠️ **This header said "DESIGN ONLY, nothing built" until 2026-09-02** and is
+> corrected in place rather than deleted, because a retired claim that does not
+> say it is retired keeps answering questions with stale facts. The as-built
+> record is §11; the open remainder is [`../TODO.md`](../TODO.md).
+> Last verified: **2026-09-02** — §2's inventory was RE-READ out of source in
+> all four repos before anything was registered: all 36 paths still exist, no
+> dead rows, but several LINE anchors have drifted (L4/L5, L8, A4, A9, E1–E3,
+> E7) and were re-found by symbol. The line numbers below are therefore
+> **approximate**; the entry points are real.
+> ⚠️ **NOT verified:** no policy rule has ever been written, so no resolution
+> has run against a non-empty table in production; `billing_denied` has never
+> been seen on a real `/seen` or `/me` answer; and **nobody has rendered the
+> Spending panel signed in**. Cost figures are the constants the code itself
+> declares, not invoices. Effort figures are **labelled guesses**.
 
 The owner's ask, 2026-08-24, verbatim:
 
@@ -571,10 +581,10 @@ states and the refusal wording, in the estate cyberpunk theme, light and dark.
 
 | Phase | What lands | Rough effort | Notes |
 |---|---|---|---|
-| **0** | The feature registry + its cross-repo pin test; the three refusal defects in §6.1 | ~½ day | ⚠️ Worth doing alone. The registry is what every later phase names |
-| **1** | Migration 0016; the resolver; `/seen`'s `billing_denied` + `local_role`; `/me`; `GET /api/estate/billing/policy`; admin write routes behind `requireApprover()`; tests | ~1 day | Additive. An empty table = today's behaviour |
-| **2** | The Spending panel + the per-member drawer on `/admin` | ~1 day | Reuses the existing card grammar |
-| **3** | Consumers read the answer, `BILLING_POLICY = "shadow"` in library, library2, games, discord-worker, index-worker | ~1 day | ⚠️ `off` in the committed file; shadow flipped per site |
+| ~~**0**~~ | ✅ **DONE 2026-09-02.** `apps/auth-worker/src/billing-registry.ts` + its literal pin test. (The three §6.1 refusal defects landed 2026-08-26, in the other two repos) | landed | §11 |
+| ~~**1**~~ | ✅ **DONE 2026-09-02.** All of it: 0016 applied to remote `estate_auth`, the resolver, `/seen`'s two new fields, `/me`, the system door, the approver-gated write routes, 39 tests | landed | §11 |
+| 🔄 **2** | The Spending panel: ✅ **DONE 2026-09-02** (the §7.1 matrix, live on `/admin`). ⚠️ The §7.2 per-member DRAWER is **not built** — the resolver and write door already take `user`/`role` principals, only the UI is missing | half landed | §11 |
+| 🔄 **3** | ✅ `index-worker` reads the answer 2026-09-02 and ships `BILLING_POLICY = "off"`. ☐ library, library2, games still to do. 🔴 `discord-worker` is BLOCKED on an owner step — `estate-auth` holds no Discord token, so `identifyApp` cannot identify it, and adding one to `CONSUMER_APPS` would also make that bearer a valid `/seen` bearer (guarded against by `test/dev-access.test.ts`). Access-increasing ⇒ confirmed, never assumed | ~1 day | ⚠️ `off` in the committed file; shadow flipped per site |
 | **4** | ⏳ **Soak ≥ 7 days**, then `enforce` one site at a time against §4.2 | ~½ day work, 7+ days elapsed | Not a build task — a measurement |
 | **5** | 🔴 The audiobook Python paths (A1–A9): a small policy client (one HTTPS GET on the app token, cached to a file, 10-min TTL) + the `--no-llm` wiring | ~1 day | The hard one — no estate client exists on that side today |
 | ~~**6**~~ | ✅ **DONE 2026-08-26, ahead of the plan** — A3's public button requires sign-in on `create`/`update`, `delete` **and** `read` kept open. ⚠️ In Firestore `write` COVERS delete, so this row's own wording would have broken the fulfiller | landed | §9 Q3 |
@@ -755,3 +765,68 @@ OneDrive-synced folder, so copies exist outside the owner's control, and
 intentional plumbing rather than a stray. **Worth a rotation decision.** Value
 not read, not quoted, not stored anywhere in this doc.
 </content>
+
+---
+
+## 11. AS BUILT — 2026-09-02
+
+⚠️ **Everything above §11 is the DESIGN as written on 2026-08-26.** It is kept
+verbatim rather than rewritten in place, because the argument is the valuable
+half and a design edited to match its implementation stops being checkable
+against it. **This section is where the two differ.**
+
+### 11.1 What exists, and where
+
+| Piece | File | Deployed |
+|---|---|---|
+| The registry (18 ids) + its literal pin | `apps/auth-worker/src/billing-registry.ts` · `test/billing-registry.test.ts` | `estate-auth` `e9aee6f4` |
+| The resolver + the posture | `apps/auth-worker/src/billing-policy.ts` · `test/billing-policy.test.ts` | same |
+| The table | `apps/auth-worker/migrations/0016_billing_policy.sql` | applied to remote `estate_auth` **before** the deploy |
+| D1 access | `apps/auth-worker/src/billing-db.ts` | same |
+| The four doors | `apps/auth-worker/src/billing.ts` · `test/billing-routes.test.ts` | same |
+| `/seen` + `/me` + `/hello` | `apps/auth-worker/src/estate.ts`, `me.ts` | same |
+| The shared client | `packages/estate-auth/src/seen.ts` | — |
+| The Spending panel | `sites/heygabi-home/public/admin/{admin.js,index.html}` | `heygabi-home` `a52a8b81` |
+| E6's call-site gate | `apps/index-worker/src/billing-gate.ts` · `test/billing-gate.test.ts` | `catalog-index` `4804dbb6`, `BILLING_POLICY = "off"` |
+| E6's cache column | `apps/index-worker/migrations/0005_billing_cache.sql` | applied to remote `index_catalog` **before** the deploy |
+
+**The review link:** <https://heygabi.ai/admin/> → the **"Spending — what may
+bill the model, and where"** disclosure, directly under the permission map.
+
+### 11.2 Where the build DEPARTS from the design, and why
+
+Each of these is a decision a later session could reasonably have made
+differently, so each is written down rather than left to be re-derived.
+
+| # | The design says | The build does | Why |
+|---|---|---|---|
+| 1 | §3.3's rank table lists all sixteen rungs in one ladder | **`system` resolves ALONE in BOTH directions** — a cron ignores `everyone` rules AND a person ignores `system` rules | §3.1 states the first half outright. The second follows from the same argument: an `everyone` deny is a statement about PEOPLE, and letting it silently stop an unattended sweep would make §7.1's clock-icon row a lie about what the click did |
+| 2 | §3.4: `/me` gains *"the same array"* | **a per-SITE map** | `/me` has no site — its origins are the apex AND the audiobook site — and a flat union would HIDE a control on a site where it is allowed. It is a curtain either way (§3.4), so the extra detail costs nothing |
+| 3 | §3.2's table registers E7 under nothing (it predates the Groq rung) | **E7 is a `frontedBy` RUNG, not a feature and not a path** | It fronts E1/E2/E4/E5 across THREE features; a path can only have one switch, and the check runs before the ladder — so denying `gabi.chat` denies BOTH providers, no Groq attempt and no Haiku fall-through |
+| 4 | §3.2 double-covers L9 and L10 | **reproduced verbatim, and pinned by a test** | Policy can only deny, so a path under two switches is refused if EITHER denies. Tidying it would have been a change to the spec dressed as a cleanup; a test now pins the list so a NEW double cover has to be argued for |
+| 5 | §7.1/§7.2 do not say what a WRITE door refuses | **an `OWNER_EMAILS` row cannot be denied** (worded 409) | §7.2's *"the owner's row shows every control disabled"* is a UI rule, and a UI rule is one fetch away from being bypassed. The break-glass must not be narrowable into a lockout, and a spend switch is not the place to start |
+| 6 | §2 registers 36 paths | **35 registered; A6 deliberately left out** | A6 is keyed on a secret absent from `.env` ON PURPOSE and bills zero. A switch that does nothing is worse than no switch — the design's own dead-row warning |
+| 7 | §7.2's per-member drawer ships with the panel | **not built** | The owner's decision of record was *"on/off per registered money path"* — the per-SITE axis. The per-PERSON axis is tracked in `TODO.md`; the resolver and the write door already take `user` and `role` principals, so only the UI is missing |
+
+### 11.3 What is NOT verified
+
+- **No rule has ever been written.** The `billing_policy` table is empty, so
+  the resolver has never run against a non-empty table in production. Every
+  resolution assertion is a unit test.
+- **`billing_denied` has never been seen on a real `/seen` or `/me` answer** —
+  both need a credential a session must not use.
+- 🔴 **Nobody has rendered the Spending panel signed in.** No cell has been
+  clicked, no rule has been written from a browser, and the matrix has never
+  been drawn against a real `GET /api/estate/billing/rules` answer. There is no
+  browser test harness for `admin.js`; `check:home` proves it parses.
+- **The gate has never fired.** `BILLING_POLICY` is `"off"` on the one deployed
+  consumer, so no shadow line has ever been emitted by a live Worker.
+- **What WAS verified live** (2026-09-02, after the deploys): both Workers'
+  `/api/health` answered 200; `GET /api/estate/billing/policy` with no bearer
+  answered `401 {"error":"unauthorized"}`; `GET /api/estate/billing/rules`
+  unauthenticated answered `401 {"error":"unauthenticated"}`; the `OPTIONS`
+  preflight for `DELETE` from `https://heygabi.ai` answered 204 with
+  `Access-Control-Allow-Methods: GET,POST,DELETE,OPTIONS`, and the same
+  preflight from a foreign origin got **no** `Access-Control-Allow-Origin`;
+  `https://heygabi.ai/admin/` serves both the panel markup and
+  `renderSpendingPanel`.

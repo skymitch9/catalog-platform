@@ -429,12 +429,14 @@ inventory (names only; the file was **not** opened by this work):
 - **Rough size:** the 30 `NAME=` keys are a short sitting once the config/credential
   sort is made; the four JSON documents are the real work.
 
-## ☐ DESIGNED — two still unbuilt, one BUILT 2026-09-01
+## ☐ DESIGNED — one still unbuilt, two BUILT (0 on 2026-09-01, 1 on 2026-09-02)
 
-Items 1 and 2 are **DESIGN ONLY**: nothing was built, no route exists, no
-migration was applied. Each doc carries its own phases, effort guesses and open
-questions. Item 0 was built on 2026-09-01 and has moved to
-[`DONE.md`](DONE.md); only its live round trip remains.
+⚠️ **Item 1 is NO LONGER design-only, and this heading said it was until
+2026-09-02.** Its phases 0–2 are built, migrated and deployed; only **item 2**
+still has no route and no migration. Each doc carries its own phases, effort
+guesses and open questions. Item 0 was built on 2026-09-01 and has moved to
+[`DONE.md`](DONE.md); only its live round trip remains — and item 1 is in
+exactly the same shape, waiting on a human to press its switch once.
 
 ### 0. ✅ BUILT 2026-09-01 — soft pauses + recurring blockers + do-not-disturb
 The whole item moved to [`DONE.md`](DONE.md) (*"2026-09-01 — soft pauses,
@@ -456,51 +458,72 @@ for itself:
   the game ran (2026-09-01); the classic-client name was not. If he plays
   Classic, check the real image name before trusting the suggestion.
 
-### 1. Toggle what can bill the LLM — `docs/info/llm-billing-control-design.md`
+### 1. Toggle what can bill the LLM — 🔄 PHASES 0–2 BUILT + DEPLOYED 2026-09-02
+Design of record: [`info/llm-billing-control-design.md`](info/llm-billing-control-design.md).
+What landed moved WHOLE to [`DONE.md`](DONE.md) (*"LLM billing control — phases
+0, 1, 2 and (this repo's half of) 3"*). Panel:
+<https://heygabi.ai/admin/> → **"Spending — what may bill the model, and where"**.
 Mockup (private artifact): https://claude.ai/code/artifact/2f288c59-d6ca-4fdf-b3e0-da732f0e78d1
-Owner: *"we need a way to toggle what can bill the LLM and what can't inside the
-admin page somewhere. and even finer than that, i want to be able to determine
-which features can bill and which can't per site per user etc"*
 
-- ⚠️ **36 money-spending code paths inventoried** across the four repos, each with
-  today's gate cited (library 13 — deployed twice; games 7; audiobook 9;
-  platform 7). §2 of the doc is the inventory. ⚠️ **E7 was added 2026-09-01** —
-  GABI's Groq first line, and it is the first path in this estate that bills a
-  provider OTHER than Anthropic. Its posture ships `off`.
-- ☐ **OWNER DECISION Q1:** may policy GRANT, or only DENY? Recommendation: deny-only.
-- ☐ **OWNER DECISION Q2:** the `system` (cron) principal vs games'
-  `SWEEP_LIMIT` "a knob nobody tunes hides its value" intent. Recommendation:
-  on/off switch only, no numeric budgets in v1.
-- ✅ **Q3 ANSWERED BY DOING IT — A3 IS GATED AND DEPLOYED 2026-08-26.**
-  `audiobook_catalog/site/user-warnings.js:102` was a **public, no-sign-in
-  button** queueing work the hourly `cw-fulfill.yml` pays Anthropic for.
-  `cw_requests` (+ `_dev`) now read
-  `allow create, update: if request.auth != null && validCwRequest()` —
-  `request.auth` only, the same mechanism `/readingLists` uses, **not** a new
-  one (a `site_roles` check was refused: it holds admin/moderator only and
-  would lock out the household). ⚠️ `allow delete: if true` **and**
-  `allow read: if true` are untouched and load-bearing — the fulfiller lists
-  and clears with the *public web API key* and no account, which is why
-  create/update were split out rather than `write` tightened. Signed-out
-  readers now see *"Sign in to request a content warning."* instead of a dead
-  button, keyed on the LIVE uid (a legacy passphrase session has a display name
-  and no `request.auth`). Rules deployed; `scripts/smoke_cw_request_rules.py`
-  **9/9 against live**; vitest 781. ⚠️ **NOT verified:** nobody has seen the
-  sentence rendered. (The static site HAS been republished since — the pipeline
-  auto-committed `site/` on 2026-08-27+ — so the fix should now be live on the
-  page, but no one has looked.)
-- ☐ Phase 0 is worth doing alone: the feature registry + three refusal defects
-  found while reading (see §6.1).
-  - ✅ **The three refusal defects are FIXED 2026-08-26**, each with a tripwire —
-    `Board_Game_Catalog` `93fad25` (defects 1 + 3) and `library_catalog` `06a2bfb`
-    (defect 2). ⚠️ **None of the three was in this repo.** ✅ **Both commits are
-    now DEPLOYED** (corrected 2026-08-31; the line here previously said neither
-    was): games deployed `93fad25` as version `a34971db` on 2026-08-26 ~17:27
-    Phoenix (recorded in that repo's TODO — it still has no deploys.log, which
-    is its own open item there), and the library deployed `06a2bfb` to main
-    (`d7321ebe`) + friend (`1813565d`) on 2026-08-27 00:26Z per its
-    `deploys.log`. §6.1 carries the table and the two lessons. The **feature
-    registry** half of Phase 0 is still ☐ unbuilt.
+🔴 **NOTHING IS SWITCHED OFF TODAY, and nothing can be until somebody presses
+a switch.** The `billing_policy` table is EMPTY (an empty table is exactly
+today's behaviour), and `BILLING_POLICY` ships `"off"` on the one consumer
+that reads the answer. Both were deployed that way on purpose.
+
+- ✅ **OWNER DECISION Q1 — deny-only. BUILT.** Not a convention: the resolver's
+  only output is a set of DENIED ids and every call site ANDs it with the gate
+  it already had, so there is no code path where a policy row opens anything.
+  ⚠️ **Vetoable** — if the owner wants per-person GRANTS, that is a role-ladder
+  change on the site that owns the ladder, not a change here.
+- ✅ **OWNER DECISION Q2 — on/off switches only, no numeric budgets. BUILT.**
+  `SWEEP_LIMIT` stays hard-coded. ⚠️ **Vetoable.**
+- ✅ **Q3 — A3's public button was gated 2026-08-26**, ahead of the plan.
+
+### 🔴 WHAT IS LEFT, in the order it can be done
+
+1. 🔴 **NOBODY HAS RENDERED THE PANEL SIGNED IN.** No cell has been clicked, no
+   rule has ever been written, and the matrix has never been drawn against a
+   real `/api/estate/billing/rules` answer. There is no browser test harness
+   for `admin.js`; `check:home` proves it parses and nothing more. ⚠️ **This is
+   the first step and it needs the owner** — an approver token no session
+   holds. Sign in at <https://heygabi.ai/admin/>, open **Spending**, switch one
+   cheap cell off with a `why`, save, reload, and switch it back on. That one
+   round trip is what turns "deployed" into "works".
+2. ☐ **Phase 2b — the per-member drawer** (§7.2): a **Spending** column on the
+   existing `perm-grid`, staged into the card's one Save. The matrix is the
+   per-SITE axis; this is the per-PERSON one. The resolver and the write door
+   already take `user` and `role` principals — only the UI is missing.
+3. ☐ 🔴 **OWNER STEP — the Discord Worker cannot be wired without a secret.**
+   E1–E5 and E7 are on the design's call-site list, but `estate-auth`
+   **cannot identify** that Worker: `identifyApp` resolves a caller by token
+   VALUE against `CONSUMER_APPS`, and it holds no Discord token. Wiring it
+   means minting one and setting it on both Workers — and ⚠️ adding `discord`
+   to `CONSUMER_APPS` would ALSO make that bearer a valid `/seen` bearer,
+   which `test/dev-access.test.ts` explicitly guards against as *"a capability
+   nobody granted it"*. Access-increasing, so it is confirmed, never assumed.
+   Until then GABI's spend has no switch.
+4. ☐ **Phase 3 for the other three repos** — `library`, `library2` and `games`
+   read `billing_denied` off `/seen` (the shared client already sends
+   `local_role` and parses the field); the audiobook Python paths need the
+   phase-5 client. Each is a separate repo and a separate deploy.
+5. ☐ **Phase 4 — the soak, then `enforce` ONE SITE AT A TIME.** Flip
+   `BILLING_POLICY = "shadow"` first and read the lines:
+   `npx wrangler tail catalog-index --format json | jq 'select(.evt=="billing_policy")'`.
+   ⚠️ The flip criterion is §4.2's and it has TWO halves: zero `would_deny:true`
+   on anything the owner did not switch off, **AND at least one
+   `would_deny:true` on something he DID**. Without the second, "zero denials"
+   is indistinguishable from "the instrument never ran" — the exact
+   `0 of 0 — unmeasured, not clean` verdict the audiobook auth soak reached.
+6. ☐ **Phase 5 — the audiobook Python paths (A1–A9).** A small policy client
+   (one HTTPS GET on the app token, cached to a file, 10-minute TTL) plus the
+   `--no-llm` wiring. The hard one: no estate client exists on that side.
+
+⚠️ **One finding from the build, worth keeping:** the design's §3.2 table
+double-covers L9 and L10 (`research.covers` + `cli.backfill`;
+`research.isbn` + `cli.backfill`). Reproduced VERBATIM rather than tidied —
+policy can only deny, so a path under two switches is refused if either
+denies, which fails safe. A test pins the list of double covers so a NEW one
+has to be argued for.
 
 ### 2. "+ Add a verse" on /universes — `docs/info/universe-add-verse-design.md`
 Mockup (private artifact): https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
