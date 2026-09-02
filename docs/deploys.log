@@ -90,3 +90,4 @@
 2026-09-01T23:42:00Z  discord-worker  92f07e8  claude-fable-5  0cadbf98  shadow lines now carry HTTP status (first live Groq lines: reason=refused @16-21ms, undiagnosable without it). 2265 tests green.
 2026-09-02T00:02:00Z  discord-worker  (logger-status)  claude-fable-5  see-below  shadow logger emits status (first fix was call-site-only; explicit logger dropped the key). 2265 green.
 2026-09-02T01:05:00Z  discord-worker  81cc380  claude-fable-5  6ef9bb95  Groq repin: llama-3.3-70b-versatile (deprecated by Groq 2026-08-16, every shadow line 404) -> openai/gpt-oss-120b. 2265 green. NOT VERIFIED: no live Groq call has succeeded yet - the next mention answers that.
+2026-09-02T01:25:00Z  discord-worker  (jake-fix)  claude-fable-5  see-wrangler  catalog lookup: reverse containment + genre-word strip (live miss at 17:53). 2269 green.
