@@ -71,7 +71,6 @@ import { reportEvent } from '@platform/estate-events';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { audioFileRoutes } from './audio-file.js';
 import { audioStatusRoutes } from './audio-status.js';
-import { streamPingRoutes } from './stream-ping.js';
 import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
 import { ebookFileRoutes } from './ebook-file.js';
@@ -152,13 +151,38 @@ function abCors() {
     // an opaque NETWORK error in the browser. That is indistinguishable from
     // "the Worker is down", which is exactly the misdiagnosis the estate
     // already ate once when a CSP silently blocked a subdomain.
+    // ⚠️ `Authorization` is LOAD-BEARING here and not merely conventional
+    // (audio-player-design.md §3.2 item 4, re-verified live 2026-09-02: the
+    // preflight answers `Access-Control-Allow-Headers: Authorization,
+    // Content-Type, Range`). The `<audio>` element's ranges are given a bearer
+    // by a SERVICE WORKER, which makes every one of them a cross-origin
+    // credentialed request, which makes every one of them preflight. Drop this
+    // name and playback dies as an OPAQUE NETWORK ERROR with no status — the
+    // failure this estate has already misdiagnosed once as "the Worker is
+    // down", and the one the player's dead-play-button mitigation exists for.
     allowHeaders: ['Authorization', 'Content-Type', 'Range'],
     // ⚠️ And the reader must be able to READ these back. Cross-origin
     // JavaScript sees only the safelisted response headers unless they are
     // exposed, so without this pdf.js gets a 206 whose `Content-Range` it
     // cannot see and cannot lay the document out.
     exposeHeaders: ['Content-Range', 'Content-Length', 'Accept-Ranges', 'ETag', 'Retry-After'],
-    maxAge: 600,
+    // `Access-Control-Max-Age`, raised 600 → 7200 on 2026-09-02 for the player
+    // (design §3.2 item 4: *"an Access-Control-Max-Age worth setting so a long
+    // listen is not preflighting all afternoon"*). MEASURED live at 600 the
+    // same day, which is a re-preflight every ten minutes for the whole of a
+    // 13.7-hour mean book — on top of every seek.
+    //
+    // ⚠️ 7200 is CHROMIUM'S CAP, not a round number: it clamps anything larger
+    // to two hours, so a bigger value buys nothing there and only widens the
+    // window in which a SITE_ORIGINS narrowing stays uncached. Firefox allows
+    // 86400 and Safari clamps to 600 — so Safari keeps today's behaviour
+    // whatever this says, which is worth knowing before reading a Safari
+    // preflight trace as a bug.
+    //
+    // ⚠️ What it caches is the PREFLIGHT ANSWER, never an authorisation. The
+    // gate runs on every real request; tightening the allowed origins still
+    // takes effect immediately for anything not already preflighted.
+    maxAge: 7200,
   });
 }
 app.use('/api/*', abCors());
@@ -279,11 +303,24 @@ app.route('/', ebookFileRoutes);
 app.route('/', audioStatusRoutes);
 app.route('/', audioFileRoutes);
 
-// The audio eviction timestamp endpoint (audio phase 2, 2026-08-19). Same gate.
-// When a person streams a book, the player pings this endpoint periodically so
-// the evictor knows which files are actually being listened to. Throttled
-// server-side to one Firestore write per anchor per 10 minutes.
-app.route('/', streamPingRoutes);
+// ⚠️ THERE IS NO `POST /api/audio/:anchor/stream-ping` ANY MORE, and its
+// absence is the design (audio-player-design.md §10.1 + the phase-2 handoff).
+// The route existed here from 2026-08-19; the eviction stamp it wrote now
+// happens INSIDE the byte route above (src/stream-stamp.ts), because:
+//
+//   · a client-driven ping is SPOOFABLE, and a stamp is exactly the thing that
+//     keeps a file from being evicted;
+//   · it cost one request per listener where the byte route costs zero;
+//   · it had NO CALLER — audiobook_catalog's tests/test_listen_page.py asserts
+//     that no site JavaScript mentions it, and the WIP that did call it was
+//     replaced on 2026-09-02;
+//   · it wrote the caller's EMAIL into a collection whose firestore.rules say
+//     `allow read: if true`;
+//   · and it carried its own copy of the SA JWT signing, the OAuth exchange
+//     and the datastore scope string (audit findings F12 + L9), rather than
+//     @platform/firebase-sa.
+//
+// Restoring it needs an argument against all six, not just a git revert.
 
 // The book-knowledge retrieval routes (design phase 3, 2026-08-18). Same gate as
 // every route above — literally the same function (ebook-gate.ts) — because the

@@ -59,6 +59,15 @@
  * same reason pdf.js needed it: a client that learns "no ranges" from the first
  * response it sees — a 401 before sign-in — has been taught to pull the whole
  * 601 MB file when it retries.
+ *
+ * ## It also carries the EVICTION STAMP (phase 2's platform half, 2026-09-02)
+ *
+ * §10.1 puts the `audio_streams/{anchor}` stamp on THIS route rather than on a
+ * client ping, and `stream-stamp.ts` argues the whole shape. What belongs in
+ * this file's head is only the consequence: ⚠️ **serving a byte is what tells
+ * the evictor a book is alive.** A future refactor that answers audio bytes
+ * from somewhere else must carry the stamp with it, or `evict_candidates()`
+ * starts reading a live book as abandoned — and it deletes on that reading.
  */
 
 import { Hono } from 'hono';
@@ -67,6 +76,7 @@ import { resolveEbookAccess } from './ebook-gate.js';
 import { audioIndex, type AudioEntry } from './audio-manifest.js';
 import { chargeListen } from './listen-budget.js';
 import { contentRange, parseRange, unsatisfiedContentRange } from './range.js';
+import { stampStreamInBackground, type WaitUntilCtx } from './stream-stamp.js';
 
 export const audioFileRoutes = new Hono<{ Bindings: Env }>();
 
@@ -115,6 +125,9 @@ function dress(res: Response): Response {
 const handler = async (c: {
   env: Env;
   req: { raw: Request; param: (k: string) => string | undefined };
+  /** ⚠️ Hono THROWS reading this when the app was invoked without one — see
+   *  stream-stamp.ts's `stampStreamInBackground`, which is where it is read. */
+  executionCtx?: WaitUntilCtx;
 }) => {
   const method = c.req.raw.method.toUpperCase();
 
@@ -264,6 +277,28 @@ const handler = async (c: {
       404,
     );
   }
+
+  // 4b. 🔴 THE EVICTION STAMP — audio phase 2's platform half (design §10.1).
+  //     `audio_streams/{anchor}` = `{ anchor, lastStreamAt }`, epoch MS,
+  //     written by THIS Worker's service account and throttled to one write
+  //     per anchor per isolate per hour. stream-stamp.ts carries the whole
+  //     argument; three things about the placement matter here:
+  //
+  //     ⚠️ It is HERE — after the gate, the budget, the manifest lookup and
+  //     the R2 head — so only an admitted caller asking for a book that really
+  //     exists can cause a write, and the anchor reaching Firestore has been
+  //     LOOKED UP rather than constructed (audit finding F3).
+  //
+  //     ⚠️ It stamps on HEAD as well as GET, deliberately. The player's
+  //     mandatory §3.2 item-5 probe is a HEAD, so a listen that begins is a
+  //     HEAD then ranges; and stamping too eagerly only ever DELAYS an
+  //     eviction, while missing one deletes a book somebody is halfway
+  //     through. The asymmetry decides the default.
+  //
+  //     ⚠️ It rides waitUntil and cannot throw or delay a byte. An eviction
+  //     stamp that could 500 this route would trade a growing bucket for a
+  //     broken player.
+  stampStreamInBackground(c, c.env, anchor);
 
   const size = head.size;
   const intent = parseRange(c.req.raw.headers.get('Range'), size);
