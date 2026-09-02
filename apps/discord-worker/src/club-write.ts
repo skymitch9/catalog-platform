@@ -5,37 +5,45 @@
  * ⚠️ **THEY SHIP OFF, BEHIND `GABI_CLUB_WRITES`, AND THAT IS THE WHOLE HEADER.**
  * Read the next section before flipping it.
  *
- * ## ⚠️ WHY DARK: THE DOCUMENT SHAPES ARE NOT MEASURED, AND A GUESS HERE
- * ## SUCCEEDS RATHER THAN FAILING
+ * ## ⚠️ THE SHAPES ARE NOW MEASURED — AND FOUR OF THE SEVEN GUESSES WERE WRONG
  *
- * `poll-vote.ts` could be built confidently because its shapes were **read off
- * `firestore.rules` and verified** (its header says so, and dates it). This
- * build was directed not to read the `bookbuddy` repos, so the same
- * verification was not available, and what IS known from this repo is only
- * half of what a write needs:
+ * This shipped dark because the shapes were inferred: the build that wrote it
+ * was directed not to read the `bookbuddy` repos, and its own header said the
+ * field names were **NOT MEASURED**. They were read on **2026-09-02**, from
+ * `audiobook_catalog/site/club-reads.js`, `site/clubs.js` and `firestore.rules`
+ * (read-only; nothing in that repo was touched). The corrections are in
+ * `CLUB_WRITE_SHAPES` below with per-line evidence. The three that matter:
  *
- * | Fact | Status |
- * |---|---|
- * | `clubs/{id}/reads/{readId}/progress` exists as a subcollection | ⚠️ **MEASURED** — `apps/audiobook-worker/src/enforce-routes.ts:857` sweeps it on read delete |
- * | RSVPs exist and are `meetingAt`-stamped | ⚠️ **MEASURED** — `docs/info/audiobook-auth-migration.md:103` |
- * | Per-member club subdocs are keyed by **member slug** | ⚠️ **MEASURED** — `votes/{slug}` (poll-vote.ts), `members/:slug`, `requests/:slug` (enforce-routes.ts), and `slugifyName = displayName.toLowerCase()` |
- * | Both writes are gated `open` in rules, not by a capability | ⚠️ **MEASURED** — the migration doc's table: *setProgress / setChapterProgress: open, browser-direct*; *RSVP: open, browser-direct* |
- * | The **field names** inside those documents | 🔴 **NOT MEASURED** — they live in `audiobook_catalog/site/`, which this build did not read |
- * | The **rsvps collection path** (club-level vs meeting-level) | 🔴 **NOT MEASURED** |
+ *  1. the RSVP answer lives in **`response`**, not `status`, and its values are
+ *     **`going` / `maybe` / `cant`**, not `yes` / `no` / `maybe`;
+ *  2. **`meetingAt` is a NUMBER** and the club's own field is **`nextMeetingAt`**,
+ *     also a number — and every reader compares them with `===`, so a string
+ *     would have produced an RSVP that stored fine and was counted by nothing;
+ *  3. **`percent` does not exist.** The page tracks `milestonePosition` or
+ *     `chapterIndex`, both numbers.
  *
- * ⚠️ **This Worker's service account BYPASSES `firestore.rules`.** So a write in
- * a wrong shape is not refused — it **succeeds**, and the club page then shows
- * a member who has not RSVP'd, or a progress bar that never moves, with no
- * error anywhere. That failure is silent, it is on somebody else's surface, and
- * it looks exactly like a bug in their code.
+ * ⚠️ **This Worker's service account BYPASSES `firestore.rules`.** So none of
+ * those would have been refused — they would have **succeeded**, and the club
+ * page would have shown a member who had not RSVP'd and a progress bar that
+ * never moved, with no error anywhere. That failure is silent, it is on somebody
+ * else's surface, and it looks exactly like a bug in their code. The old header
+ * predicted this exactly; the measurement found it in four places.
  *
- * The estate's own rule settles it: *a number in a doc is either measured or
- * labelled a guess*, and *functions that produce persisted keys are migrations
- * to change, not edits*. So the code is complete, tested and wired — and the
- * posture ships `off`, exactly as `MODERATION_ENABLED` and `GABI_CONFIRM_T2`
- * do. ⚠️ **The flip is not a deploy step. It is: measure the four constants
- * below against `audiobook_catalog/site/`, correct them if they are wrong, then
- * flip.** `docs/access/discord-bot.md` §15 carries the checklist.
+ * ## ⚠️ AND IT IS STILL DARK, DELIBERATELY — ONE OWNER DECISION REMAINS
+ *
+ * `/progress percent` has **no destination field**. Correcting a constant cannot
+ * fix that, because a percentage is not a milestone index and not a chapter
+ * number: converting one to the other would be inventing a value. So the
+ * percentage input is now REFUSED in words (`PROGRESS_PERCENT_UNSUPPORTED`)
+ * rather than written into a document nothing reads, and the command still
+ * carries the option because removing it is a command re-registration.
+ *
+ * ⚠️ **The remaining question is the owner's, not a coder's:** should `/progress`
+ * drop `percent` and take a chapter only, or should it also learn
+ * `milestonePosition` (which needs the read's milestone list to mean anything)?
+ * `docs/access/discord-bot.md` §15 carries the flip checklist; the posture stays
+ * `off` until that is answered, exactly as `MODERATION_ENABLED` and
+ * `GABI_CONFIRM_T2` stayed off until theirs were.
  *
  * ## What IS enforced, and is not affected by any of the above
  *
@@ -65,31 +73,84 @@ import type { Env } from './env.js';
 // ---------------------------------------------------------------------------
 
 /**
- * ⚠️ **EVERY NAME IN THIS BLOCK IS INFERRED, NOT MEASURED.** They are gathered
- * in one place so that verifying them is one diff rather than a hunt, and so
- * that a reader meets the warning before the code that uses them.
+ * ⚠️ **MEASURED 2026-09-02 — AND FOUR OF THE SEVEN GUESSES WERE WRONG.**
  *
- * Verify each against `audiobook_catalog/site/` (`club-meetings.js` /
- * `club-reads.js` and `firestore.rules`) BEFORE flipping `GABI_CLUB_WRITES`.
+ * They were inferred when this shipped, gathered here so verifying them would be
+ * one diff rather than a hunt. They have now been read off the audiobook site
+ * itself (read-only; nothing in that repo was changed):
+ *
+ * | what | the guess | ⚠️ the MEASURED truth | evidence |
+ * |---|---|---|---|
+ * | RSVP collection | `rsvps` | ✅ `rsvps`, doc id = member slug | `site/club-reads.js:1961` |
+ * | RSVP answer field | `status` | 🔴 **`response`** | `site/club-reads.js:1961-1966`, `firestore.rules:626` |
+ * | RSVP answer VALUES | `yes`/`no`/`maybe` | 🔴 **`going`/`maybe`/`cant`** | `RSVP_RESPONSES`, `site/club-reads.js:1895` |
+ * | RSVP `meetingAt` | a string/timestamp | 🔴 **a NUMBER** (epoch ms) | `firestore.rules:628`, `isRsvpCurrent` |
+ * | club's meeting field | `meetingAt` | 🔴 **`nextMeetingAt`**, also a number | `site/clubs.js:263,565`, `firestore.rules:456` |
+ * | progress collection | `progress` | ✅ `clubs/{id}/reads/{readId}/progress/{slug}` | `site/club-reads.js:971` |
+ * | progress fields | `percent`, `chapter` | 🔴 **`milestonePosition`** or **`chapterIndex`**, both NUMBERS, plus `finished` (bool) and `history` (array) | `site/club-reads.js:976-981, 1007-1012`; `firestore.rules:1143` |
+ * | `displayName` / `updatedAt` | both | ✅ both, on both documents | `site/club-reads.js:1962, 1975` |
+ *
+ * ⚠️ **THE `meetingAt` ONE IS THE SILENT KILLER, and it is worth reading twice.**
+ * Every reader on the site filters RSVPs with `rsvp.meetingAt === club.nextMeetingAt`
+ * (`isRsvpCurrent`) to drop answers to a rescheduled meeting. A string `meetingAt`
+ * never equals a number, so an RSVP written in the old shape would be accepted by
+ * Firestore, stored, and then **filtered out of every tally for ever** — a write
+ * that succeeds and shows nothing. Exactly the failure this file's header
+ * predicted, arriving through the field it did not name.
+ *
+ * ⚠️ **`percent` HAS NO DESTINATION AT ALL.** The site tracks a milestone
+ * POSITION or a chapter INDEX, both numbers; there is no percentage anywhere in
+ * the club page, and `firestore.rules` requires one of those two to be a number
+ * before it will accept a browser write. This Worker's service account bypasses
+ * rules, so the old shape would have written `percent: 40` into a document
+ * nothing reads and reported success. See `PROGRESS_PERCENT_UNSUPPORTED`.
  */
 export const CLUB_WRITE_SHAPES = {
-  /** Where a club's RSVPs live, relative to the club document. */
+  /** Where a club's RSVPs live, relative to the club document. Doc id = slug. */
   rsvpCollection: 'rsvps',
-  /** The field holding `yes` / `no` / `maybe`. */
-  rsvpStatusField: 'status',
-  /** The field the migration doc calls "meetingAt-stamped". */
+  /** ⚠️ `response`, not `status` — and its values are the site's, not ours. */
+  rsvpStatusField: 'response',
+  /** ⚠️ A NUMBER (epoch ms) that must EQUAL the club's `nextMeetingAt`, or every
+   *  reader treats the answer as stale and it is never counted. */
   rsvpMeetingField: 'meetingAt',
-  /** The club document field naming the next meeting instant. */
-  clubMeetingField: 'meetingAt',
-  /** The reads subcollection, and the two fields a member's progress carries. */
+  /** ⚠️ The club document field naming the next meeting instant — `nextMeetingAt`,
+   *  an epoch-ms number (`site/clubs.js:565` validates `Number.isFinite`). */
+  clubMeetingField: 'nextMeetingAt',
+  /** The reads subcollection, and the two fields a member's progress may carry.
+   *  ⚠️ Both are NUMBERS and `firestore.rules:1143` accepts a write only when one
+   *  of them is. */
   progressCollection: 'progress',
-  progressPercentField: 'percent',
-  progressChapterField: 'chapter',
+  progressMilestoneField: 'milestonePosition',
+  progressChapterField: 'chapterIndex',
+  /** Carried on a progress doc beside the position. Not written by this Worker
+   *  today — `/progress` has no "I finished it" input — but named so a reader
+   *  can see the document's real shape rather than a subset of it. */
+  progressFinishedField: 'finished',
+  /** ⚠️ The pace-graph history the site appends to with a read-modify-write.
+   *  This Worker must NEVER write it, and its PATCH `updateMask` is what makes
+   *  that safe: a field not named in the mask is left exactly as it was. */
+  progressHistoryField: 'history',
   /** Carried on both, matching every other per-member club doc in this Worker
    *  (`voteDocFields` writes exactly this pair). */
   displayNameField: 'displayName',
   updatedAtField: 'updatedAt',
 } as const;
+
+/**
+ * ⚠️ **OUR WORD → THEIRS, at the write boundary and nowhere else.**
+ *
+ * The site's vocabulary is `going` / `maybe` / `cant` (`RSVP_RESPONSES`,
+ * `site/club-reads.js:1895`) and Discord's is `yes` / `no` / `maybe` — the words
+ * a person actually picks off a button. Mapping here rather than renaming the
+ * command keeps the person-facing vocabulary the one a person would choose,
+ * keeps every existing button `custom_id` valid, and puts the translation in the
+ * one place a reader checking the wire shape will look.
+ */
+export const SITE_RSVP_RESPONSE: Record<RsvpStatus, 'going' | 'maybe' | 'cant'> = {
+  yes: 'going',
+  no: 'cant',
+  maybe: 'maybe',
+};
 
 /** ⚠️ Affirmative-only `"on"`, the exact idiom of `MODERATION_ENABLED`,
  * `GABI_MENTIONS`, `GABI_DELEGATED_WRITES` and `GABI_CONFIRM_T2`: `"on"` and
@@ -151,7 +212,11 @@ export function parseRsvpCustomId(customId: string): RsvpRef | null {
 export const CHAPTER_MAX = 60;
 
 export type ProgressInput =
-  | { ok: true; percent?: number; chapter?: string }
+  /** ⚠️ `chapterIndex` is REQUIRED on the ok branch since 2026-09-02: it is the
+   *  only thing the club page can actually store, so a validated input that
+   *  does not carry one is a validated input with nowhere to go. `chapter` rides
+   *  along only so the confirmation can quote the person's own words back. */
+  | { ok: true; chapterIndex: number; chapter?: string }
   | { ok: false; message: string };
 
 /**
@@ -172,12 +237,42 @@ export function validateProgress(percent: number | undefined, chapter: string): 
   if (label.length > CHAPTER_MAX) {
     return { ok: false, message: CLUB_MSG.progressChapter(CHAPTER_MAX) };
   }
-  return {
-    ok: true,
-    ...(percent !== undefined ? { percent } : {}),
-    ...(label ? { chapter: label } : {}),
-  };
+  // ⚠️ **THE INPUT IS REJECTED, NEVER STRIPPED** — this file's own rule, applied
+  // to what the 2026-09-02 measurement found. A chapter label with no number in
+  // it cannot become a `chapterIndex`, and a percentage has no field on the club
+  // page at all. Both were previously written into the document anyway, and
+  // because this Worker's service account BYPASSES `firestore.rules` they would
+  // have been accepted, stored, and read by nothing.
+  const index = label ? chapterIndexOf(label) : null;
+  if (label && index === null) {
+    return { ok: false, message: CLUB_MSG.progressChapterNumber };
+  }
+  if (index === null) {
+    return { ok: false, message: PROGRESS_PERCENT_UNSUPPORTED };
+  }
+  return { ok: true, chapterIndex: index, ...(label ? { chapter: label } : {}) };
 }
+
+/**
+ * ⚠️ **A PERCENTAGE HAS NOWHERE TO GO, and saying so is the whole of the fix.**
+ *
+ * Measured 2026-09-02: the club page tracks a milestone POSITION or a chapter
+ * INDEX, both numbers, and `firestore.rules:1143` will not accept a browser
+ * write without one of them. There is no percentage field anywhere in it. The
+ * old code wrote `percent` regardless — and because this Worker bypasses rules,
+ * that write would have SUCCEEDED and shown nothing, on somebody else's page,
+ * looking exactly like a bug in their code.
+ *
+ * ⚠️ Worded for the person, per the estate's no-bare-status rule: what happened,
+ * what it needs, and how to get it — and never a hint that they did something
+ * wrong. The `/percent` option is still on the command because removing it is a
+ * command re-registration and an owner decision; until then it is refused
+ * honestly rather than written into a void.
+ */
+export const PROGRESS_PERCENT_UNSUPPORTED =
+  "The club page tracks progress by CHAPTER, not by percentage — so a percentage has nowhere to go " +
+  'and nothing was recorded. Tell GABI the chapter instead (`chapter:ch. 14`) and it will land ' +
+  'exactly where the club page reads it.';
 
 // ---------------------------------------------------------------------------
 // The words — every refusal says what happened, what it needs, and how to fix it
@@ -228,6 +323,14 @@ export const CLUB_MSG = {
   progressPercent:
     'A percentage has to be a whole number between 0 and 100. Nothing was recorded — GABI does not ' +
     'round a number you did not type.',
+  /** ⚠️ Measured 2026-09-02: the club page stores `chapterIndex`, a NUMBER. A
+   *  label with no number in it cannot become one, and this Worker bypasses
+   *  `firestore.rules`, so writing the prose anyway would succeed and be read by
+   *  nothing. Rejected, never stripped — the rule this file already keeps. */
+  progressChapterNumber:
+    'GABI needs a chapter NUMBER to file this against — the club page tracks which chapter you are ' +
+    "on, so “ch. 14” or just “14” lands, and a label with no number in it has nowhere to go. " +
+    'Nothing was recorded.',
   progressChapter: (max: number) =>
     `That chapter label is longer than ${max} characters, so nothing was recorded. GABI will not ` +
     'shorten it for you — a trimmed label is a claim you did not make. Send a shorter one.',
@@ -240,10 +343,11 @@ export const CLUB_MSG = {
           'or on the club page, they are the same record.'
         : `✅ You're down as a **maybe** for **${club}**'s next meeting. Change it any time — here or ` +
           'on the club page, they are the same record.',
-  progressDone: (club: string, percent?: number, chapter?: string) => {
-    const bits: string[] = [];
-    if (percent !== undefined) bits.push(`**${percent}%**`);
-    if (chapter) bits.push(`**${chapter}**`);
+  /** ⚠️ Quotes the person's OWN label when they gave one and falls back to the
+   *  number that was actually stored — never a percentage, which is not a thing
+   *  the club page has (measured 2026-09-02). */
+  progressDone: (club: string, chapterIndex: number, chapter?: string) => {
+    const bits: string[] = [chapter ? `**${chapter}**` : `**chapter ${chapterIndex}**`];
     return (
       `✅ Recorded on **${club}**'s current read: ${bits.join(' · ')}. It shows on the club page ` +
       'alongside everybody else\'s — the same record, reached from two places.'
@@ -261,6 +365,9 @@ export const CLUB_MSG = {
 type FsValue = {
   stringValue?: string;
   integerValue?: string | number;
+  /** ⚠️ Firestore's REST encoding for a JS number that is not an integer — and
+   *  `nextMeetingAt` arrives as whichever of the two the writer produced. */
+  doubleValue?: string | number;
   booleanValue?: boolean;
   timestampValue?: string;
   mapValue?: { fields?: Record<string, FsValue> };
@@ -270,14 +377,34 @@ type FsDoc = { name?: string; fields?: Record<string, FsValue> };
 const fsString = (v: FsValue | undefined): string | null =>
   typeof v?.stringValue === 'string' ? v.stringValue : null;
 
-/** ⚠️ A meeting instant may be stored as a Firestore timestamp OR as an ISO
- * string; both are read, and neither is invented. `null` means "no meeting
- * scheduled", which is a real and common state. */
-export function meetingInstantOf(doc: FsDoc): string | null {
+/**
+ * ⚠️ **THE MEETING INSTANT IS A NUMBER — measured 2026-09-02, and it decides
+ * whether an RSVP is ever counted.**
+ *
+ * `site/clubs.js:565` validates `nextMeetingAt` with `Number.isFinite` and
+ * `firestore.rules:628` requires `meetingAt is number` on the RSVP. Every reader
+ * then filters `rsvp.meetingAt === club.nextMeetingAt` — a strict equality, in
+ * JavaScript, so a string never matches. Writing the instant in any other form
+ * produces an RSVP that is stored, accepted, and silently absent from every
+ * tally.
+ *
+ * The timestamp and ISO-string branches are kept because reading them costs
+ * nothing and a club created by some older path may still carry one — but the
+ * value returned is always **epoch milliseconds**, because that is what the
+ * comparison on the other side is made of. `null` means "no meeting scheduled",
+ * which is a real and common state.
+ */
+export function meetingInstantOf(doc: FsDoc): number | null {
   const v = doc.fields?.[CLUB_WRITE_SHAPES.clubMeetingField];
-  if (typeof v?.timestampValue === 'string') return v.timestampValue;
-  const s = fsString(v);
-  return s && s.trim() ? s : null;
+  const numeric = v?.integerValue ?? v?.doubleValue;
+  if (numeric !== undefined && numeric !== null) {
+    const n = Number(numeric);
+    return Number.isFinite(n) ? n : null;
+  }
+  const raw = typeof v?.timestampValue === 'string' ? v.timestampValue : fsString(v);
+  if (!raw || !raw.trim()) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** club doc → is `features.meetingRsvp` affirmatively true? ⚠️ Affirmative
@@ -390,25 +517,50 @@ export async function resolveActor(
   return { ok: true, actor: { slug, displayName } };
 }
 
-export function rsvpDocFields(status: RsvpStatus, actor: ClubActor, meetingAt: string) {
+/**
+ * ⚠️ The RSVP document, in the SITE'S vocabulary and the SITE'S types. Our
+ * `yes`/`no`/`maybe` becomes their `going`/`cant`/`maybe`, and the instant goes
+ * out as an integer so `rsvp.meetingAt === club.nextMeetingAt` can be true.
+ */
+export function rsvpDocFields(status: RsvpStatus, actor: ClubActor, meetingAt: number) {
   return {
-    [CLUB_WRITE_SHAPES.rsvpStatusField]: { stringValue: status },
+    [CLUB_WRITE_SHAPES.rsvpStatusField]: { stringValue: SITE_RSVP_RESPONSE[status] },
     [CLUB_WRITE_SHAPES.displayNameField]: { stringValue: actor.displayName },
-    [CLUB_WRITE_SHAPES.rsvpMeetingField]: { stringValue: meetingAt },
+    [CLUB_WRITE_SHAPES.rsvpMeetingField]: { integerValue: String(Math.trunc(meetingAt)) },
   };
 }
 
+/**
+ * ⚠️ **A CHAPTER LABEL IS PROSE; `chapterIndex` IS A NUMBER.** "ch. 14" is what
+ * a person types and `14` is what the club page stores and draws with, so the
+ * number is taken out of the label. A label with no number in it has nowhere to
+ * go — see `validateProgress`, which refuses it before anything is read.
+ */
+export function chapterIndexOf(label: string): number | null {
+  const m = /\d+/.exec(label);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+}
+
+/**
+ * ⚠️ **THE PROGRESS DOCUMENT, and note what is NOT in it.**
+ *
+ * `history` is never written: the site appends to it with a read-modify-write
+ * and this Worker's PATCH names its fields in an `updateMask`, so an untouched
+ * field survives untouched. Writing it would clobber the pace graph.
+ *
+ * `percent` is never written either, because there is no such field — see
+ * `PROGRESS_PERCENT_UNSUPPORTED`.
+ */
 export function progressDocFields(
-  input: { percent?: number; chapter?: string },
+  input: { chapterIndex?: number },
   actor: ClubActor,
   nowIso: string,
 ) {
   return {
-    ...(input.percent !== undefined
-      ? { [CLUB_WRITE_SHAPES.progressPercentField]: { integerValue: String(input.percent) } }
-      : {}),
-    ...(input.chapter
-      ? { [CLUB_WRITE_SHAPES.progressChapterField]: { stringValue: input.chapter } }
+    ...(input.chapterIndex !== undefined
+      ? { [CLUB_WRITE_SHAPES.progressChapterField]: { integerValue: String(input.chapterIndex) } }
       : {}),
     [CLUB_WRITE_SHAPES.displayNameField]: { stringValue: actor.displayName },
     [CLUB_WRITE_SHAPES.updatedAtField]: { timestampValue: nowIso },
@@ -437,7 +589,7 @@ export interface RsvpContext {
 /** The RSVP card: which meeting, and the three buttons. */
 export function buildRsvpCard(
   club: ClubSummary,
-  meetingAt: string,
+  meetingAt: number,
 ): { content: string; components: unknown[] } {
   return {
     // ⚠️ The instant is printed as the store holds it, and Discord's own
@@ -448,11 +600,14 @@ export function buildRsvpCard(
   };
 }
 
-export function renderMeetingLine(clubName: string, meetingAt: string): string {
-  const parsed = Date.parse(meetingAt);
-  const when = Number.isFinite(parsed)
-    ? `<t:${Math.floor(parsed / 1000)}:F>`
-    : `\`${meetingAt}\` (GABI could not read that as a date — the club page shows it properly)`;
+export function renderMeetingLine(clubName: string, meetingAt: number): string {
+  // ⚠️ EPOCH MILLISECONDS since 2026-09-02 — `nextMeetingAt` is a number on the
+  // club document (`site/clubs.js:565` validates `Number.isFinite`), and
+  // `meetingInstantOf` normalises every stored form to that one. Discord's own
+  // `<t:...:F>` renderer takes SECONDS, so the division stays.
+  const when = Number.isFinite(meetingAt)
+    ? `<t:${Math.floor(meetingAt / 1000)}:F>`
+    : `\`${String(meetingAt)}\` (GABI could not read that as a date — the club page shows it properly)`;
   return (
     `**${clubName}** meets ${when}. Are you coming?\n\n` +
     '_Whatever you press is the same record the club page keeps — change it as often as you like._'
@@ -595,7 +750,7 @@ export async function processProgress(ctx: ProgressContext): Promise<void> {
     await say(
       CLUB_MSG.progressDone(
         club.name,
-        input.percent,
+        input.chapterIndex,
         input.chapter,
       ),
     );

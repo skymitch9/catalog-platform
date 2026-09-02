@@ -3,11 +3,19 @@
  *
  * ⚠️ **THE MOST IMPORTANT TEST IN THIS FILE IS `while the posture is off,
  * NOTHING is written and NO network call is made`**, because the reason this
- * pair ships dark is not caution: `src/club-write.ts`'s header records that the
- * DOCUMENT SHAPES are inferred rather than measured, and this Worker's service
- * account bypasses `firestore.rules`, so a wrongly shaped write would SUCCEED
- * and fail silently on somebody else's page. The posture is the thing standing
- * between that and a live club, so it is tested first and hardest.
+ * pair ships dark is not caution: the DOCUMENT SHAPES were inferred rather than
+ * measured, and this Worker's service account bypasses `firestore.rules`, so a
+ * wrongly shaped write would SUCCEED and fail silently on somebody else's page.
+ * The posture is the thing standing between that and a live club, so it is
+ * tested first and hardest.
+ *
+ * ⚠️ **AND THE POSTURE EARNED ITS KEEP ON 2026-09-02.** The shapes were finally
+ * read off `audiobook_catalog/site` (read-only) and **four of the seven guesses
+ * were wrong** — the RSVP field, its vocabulary, the instant's TYPE, and the
+ * club's own meeting field. Every one of them would have been accepted and
+ * stored, and counted by nothing. The corrected names are pinned below with
+ * their evidence; the posture stays `off` because `/progress percent` still has
+ * no destination field and that is an owner decision, not a constant.
  *
  * After that, the rules that hold whether or not the posture is on:
  *  - input is REJECTED, never stripped or clamped;
@@ -21,6 +29,7 @@ import { test } from 'node:test';
 import {
   buildRsvpButtons,
   buildRsvpCustomId,
+  chapterIndexOf,
   CHAPTER_MAX,
   CLUB_COLLECTION,
   CLUB_MSG,
@@ -35,11 +44,13 @@ import {
   processRsvp,
   processRsvpPress,
   progressDocFields,
+  PROGRESS_PERCENT_UNSUPPORTED,
   renderMeetingLine,
   resolveClub,
   RSVP_PREFIX,
   RSVP_STATUSES,
   rsvpDocFields,
+  SITE_RSVP_RESPONSE,
   validateProgress,
 } from '../src/club-write.js';
 import { CLUB_WRITE_COMMANDS, commandNames, commandsFor } from '../src/commands.js';
@@ -174,15 +185,23 @@ test('⚠️ but the ROUTER still answers them, so a stale global command is not
 // ⚠️ The unverified constants — pinned so a change is a decision
 // ---------------------------------------------------------------------------
 
-test('⚠️ CLUB_WRITE_SHAPES is pinned: every name a future session must VERIFY is in one block', () => {
+// ⚠️ THE PIN, AND IT HAS NOW DONE ITS JOB ONCE. It held the INFERRED names
+// still so that verifying them would be one diff rather than a hunt. They were
+// read off audiobook_catalog/site on 2026-09-02 and FOUR of them were wrong;
+// this is the measured set, with the evidence in CLUB_WRITE_SHAPES' own
+// docblock. It stays pinned for the same reason: these are persisted keys on
+// somebody else's page, and a change to one is a migration, not an edit.
+test('⚠️ CLUB_WRITE_SHAPES is pinned to the MEASURED names (2026-09-02)', () => {
   assert.deepEqual(CLUB_WRITE_SHAPES, {
     rsvpCollection: 'rsvps',
-    rsvpStatusField: 'status',
+    rsvpStatusField: 'response',
     rsvpMeetingField: 'meetingAt',
-    clubMeetingField: 'meetingAt',
+    clubMeetingField: 'nextMeetingAt',
     progressCollection: 'progress',
-    progressPercentField: 'percent',
-    progressChapterField: 'chapter',
+    progressMilestoneField: 'milestonePosition',
+    progressChapterField: 'chapterIndex',
+    progressFinishedField: 'finished',
+    progressHistoryField: 'history',
     displayNameField: 'displayName',
     updatedAtField: 'updatedAt',
   });
@@ -209,8 +228,16 @@ test('⚠️ an out-of-range percent is REFUSED, never rounded or clamped', () =
     assert.equal(out.ok === false && out.message, CLUB_MSG.progressPercent);
   }
   assert.match(CLUB_MSG.progressPercent, /does not round a number you did not type/);
-  assert.equal(validateProgress(0, '').ok, true);
-  assert.equal(validateProgress(100, '').ok, true);
+  // ⚠️ AND AN IN-RANGE ONE IS REFUSED TOO SINCE 2026-09-02, for a different
+  // reason and with a different sentence: the range was never the problem —
+  // there is no percentage field on the club page at all. The range check stays
+  // FIRST so "40.5 is not a whole number" is still answered as itself rather
+  // than as "percentages are not supported", which are two different fixes.
+  for (const inRange of [0, 40, 100]) {
+    const out = validateProgress(inRange, '');
+    assert.equal(out.ok, false, `${inRange} has nowhere to go`);
+    assert.equal(out.ok === false && out.message, PROGRESS_PERCENT_UNSUPPORTED);
+  }
 });
 
 test('⚠️ an over-long chapter is REFUSED, never truncated — a trimmed label is a claim you did not make', () => {
@@ -242,12 +269,52 @@ test('⚠️ invalid input is refused BEFORE the club list is walked', async () 
   }
 });
 
-test('only the fields actually given are written, and the display name always rides along', () => {
+// ⚠️ MEASURED 2026-09-02 against audiobook_catalog/site/club-reads.js:1007-1012
+// and firestore.rules:1143 — the club page stores `chapterIndex`, a NUMBER,
+// and there is NO percentage field anywhere in it. The old shape wrote
+// `percent` and a prose `chapter`; this Worker's service account bypasses
+// firestore.rules, so both would have been ACCEPTED, stored, and read by
+// nothing, on somebody else's page.
+test('⚠️ the progress doc carries chapterIndex as a NUMBER — the measured field', () => {
   const actor = { slug: 'sam', displayName: 'Sam' };
-  const both = progressDocFields({ percent: 40, chapter: 'ch. 14' }, actor, '2026-09-02T00:00:00.000Z');
-  assert.deepEqual(Object.keys(both).sort(), ['chapter', 'displayName', 'percent', 'updatedAt']);
-  const onlyPercent = progressDocFields({ percent: 40 }, actor, '2026-09-02T00:00:00.000Z');
-  assert.equal('chapter' in onlyPercent, false, 'an absent chapter must not be written as empty');
+  const fields = progressDocFields({ chapterIndex: 14 }, actor, '2026-09-02T00:00:00.000Z');
+  assert.deepEqual(fields, {
+    chapterIndex: { integerValue: '14' },
+    displayName: { stringValue: 'Sam' },
+    updatedAt: { timestampValue: '2026-09-02T00:00:00.000Z' },
+  });
+  // ⚠️ `history` is the site's pace-graph array, appended with a
+  // read-modify-write. This Worker must never write it — the PATCH updateMask
+  // is what leaves it alone.
+  assert.equal('history' in fields, false);
+  assert.equal('percent' in fields, false, 'there is no such field on the club page');
+});
+
+test('⚠️ a chapter LABEL becomes an INDEX, and a label with no number is refused', () => {
+  assert.equal(chapterIndexOf('ch. 14'), 14);
+  assert.equal(chapterIndexOf('14'), 14);
+  assert.equal(chapterIndexOf('Chapter 3 — the duel'), 3);
+  assert.equal(chapterIndexOf('about halfway'), null);
+  const refused = validateProgress(undefined, 'about halfway');
+  assert.equal(refused.ok, false);
+  if (!refused.ok) assert.match(refused.message, /chapter NUMBER/);
+});
+
+test('⚠️ a PERCENTAGE is refused in words — it has nowhere to go', () => {
+  // Rejected, never stripped: this file's own rule, applied to the field that
+  // turned out not to exist.
+  const out = validateProgress(40, '');
+  assert.equal(out.ok, false);
+  if (!out.ok) {
+    assert.equal(out.message, PROGRESS_PERCENT_UNSUPPORTED);
+    assert.match(out.message, /nothing was recorded/i);
+    assert.match(out.message, /chapter/i, 'a refusal must say how to get what they wanted');
+  }
+  // ⚠️ And a percentage BESIDE a usable chapter is fine — the chapter is what
+  // gets written, so nothing is lost and nothing is invented.
+  const both = validateProgress(40, 'ch. 14');
+  assert.equal(both.ok, true);
+  if (both.ok) assert.equal(both.chapterIndex, 14);
 });
 
 // ---------------------------------------------------------------------------
@@ -296,16 +363,31 @@ test('⚠️ features.meetingRsvp is AFFIRMATIVE-ONLY — an absent flag is off'
   assert.equal(clubRsvpEnabled({}), false);
 });
 
-test('a meeting instant is read as a timestamp OR a string, and its absence is a real state', () => {
-  assert.equal(meetingInstantOf({ fields: { meetingAt: { timestampValue: '2026-09-09T02:00:00Z' } } }), '2026-09-09T02:00:00Z');
-  assert.equal(meetingInstantOf({ fields: { meetingAt: { stringValue: '2026-09-09T02:00:00Z' } } }), '2026-09-09T02:00:00Z');
+// ⚠️ MEASURED 2026-09-02: the club document's field is `nextMeetingAt`, not
+// `meetingAt`, and it is a NUMBER (site/clubs.js:565 validates
+// Number.isFinite; firestore.rules:456 lists it). Reading the old name returned
+// null for every real club, which would have made /rsvp answer "no meeting
+// scheduled" for ever.
+const MEETING = Date.parse('2026-09-09T02:00:00Z');
+
+test('⚠️ the meeting instant is read from nextMeetingAt, as EPOCH MILLISECONDS', () => {
+  assert.equal(meetingInstantOf({ fields: { nextMeetingAt: { integerValue: String(MEETING) } } }), MEETING);
+  assert.equal(meetingInstantOf({ fields: { nextMeetingAt: { doubleValue: MEETING } } }), MEETING);
+  // Older stored forms still read, and are NORMALISED to the number — because
+  // the site compares `rsvp.meetingAt === club.nextMeetingAt` with ===, and a
+  // string never equals a number.
+  assert.equal(meetingInstantOf({ fields: { nextMeetingAt: { timestampValue: '2026-09-09T02:00:00Z' } } }), MEETING);
+  assert.equal(meetingInstantOf({ fields: { nextMeetingAt: { stringValue: '2026-09-09T02:00:00Z' } } }), MEETING);
+  // ⚠️ The OLD guessed name now reads as no meeting, which is the honest
+  // state: this Worker has never written one and the site does not keep one
+  // there.
+  assert.equal(meetingInstantOf({ fields: { meetingAt: { integerValue: String(MEETING) } } }), null);
   assert.equal(meetingInstantOf({ fields: {} }), null);
 });
 
-test('⚠️ an unparseable instant is shown VERBATIM rather than rendered as a wrong time', () => {
-  assert.match(renderMeetingLine('Club', '2026-09-09T02:00:00Z'), /<t:\d+:F>/);
-  const odd = renderMeetingLine('Club', 'next tuesday-ish');
-  assert.match(odd, /next tuesday-ish/);
+test('⚠️ an unreadable instant is never rendered as a wrong time', () => {
+  assert.match(renderMeetingLine('Club', MEETING), /<t:\d+:F>/);
+  const odd = renderMeetingLine('Club', Number.NaN);
   assert.doesNotMatch(odd, /<t:/);
 });
 
@@ -343,13 +425,29 @@ test('the card offers exactly three buttons — a fourth would be a new column o
   );
 });
 
-test('the RSVP doc carries the status, the display name and the meeting stamp', () => {
-  const fields = rsvpDocFields('yes', { slug: 'sam', displayName: 'Sam' }, '2026-09-09T02:00:00Z');
+// ⚠️ MEASURED 2026-09-02 against site/club-reads.js:1961-1966 and
+// firestore.rules:626-629. Three of the four guesses in this document were
+// wrong, and every one of them would have SUCCEEDED — the service account
+// bypasses firestore.rules.
+test('⚠️ the RSVP doc is written in the SITE vocabulary and the SITE types', () => {
+  const fields = rsvpDocFields('yes', { slug: 'sam', displayName: 'Sam' }, MEETING);
   assert.deepEqual(fields, {
-    status: { stringValue: 'yes' },
+    // `response`, not `status`; `going`, not `yes`.
+    response: { stringValue: 'going' },
     displayName: { stringValue: 'Sam' },
-    meetingAt: { stringValue: '2026-09-09T02:00:00Z' },
+    // ⚠️ A NUMBER. Every reader filters `rsvp.meetingAt === club.nextMeetingAt`,
+    // so a string would store fine and be counted by nothing, for ever.
+    meetingAt: { integerValue: String(MEETING) },
   });
+});
+
+test('⚠️ our three words map onto the site three, and onto nothing else', () => {
+  // The person-facing vocabulary stays what a person would pick off a button;
+  // the translation lives at the write boundary and nowhere else.
+  assert.deepEqual(SITE_RSVP_RESPONSE, { yes: 'going', no: 'cant', maybe: 'maybe' });
+  for (const s of RSVP_STATUSES) {
+    assert.ok(['going', 'maybe', 'cant'].includes(SITE_RSVP_RESPONSE[s]), s);
+  }
 });
 
 test('docIdOf takes the last path segment of a Firestore document name', () => {
