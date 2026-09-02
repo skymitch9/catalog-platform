@@ -9,6 +9,116 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-02 — AUDIO PLAYER PHASE 2, the PLATFORM half: the byte route stamps the eviction clock
+
+Commit `e3396c5`, deployed version `245ad6a1-408a-41b8-a832-45917a266924`
+(`deploys.log` 20:58Z). The other end of the seam `audiobook_catalog` built the
+same day — its `docs/info/listen-page.md` and its `DONE.md` 2026-09-02 entry
+left a three-item handoff table, and all three are closed. Design of record:
+[`info/audio-player-design.md`](info/audio-player-design.md) §10.1 (the stamp)
+and §3.2 item 4 (the preflight).
+
+**What is left open is the only part a build cannot do for itself** — a human
+with ears — and it is tracked as its own item in [`TODO.md`](TODO.md)
+(*"OWNER STEP — play Skyward"*).
+
+### 1. The eviction stamp — `src/stream-stamp.ts`
+
+`audio_streams/{anchor}` = `{ anchor, lastStreamAt }`, `lastStreamAt` in
+**epoch MILLISECONDS**, PATCHed with an `updateMask` through
+`FIREBASE_SERVICE_ACCOUNT`, throttled to **one write per anchor per isolate per
+hour**. Called from the BYTE route, after the gate, the budget, the manifest
+lookup and the R2 head — so only an admitted caller asking for a book that
+really exists can cause one, and the anchor reaching Firestore has been
+*looked up* rather than constructed.
+
+🔴 **The units are stated three times between here and
+`fulfill_audio_requests.py`'s `parse_stream_doc`, and that is not belt and
+braces — it is the failure that DELETES BOOKS.** The reader's `_parse_stamp`
+divides by 1000 only above `1e11`, so a **seconds** stamp reads as a date in
+1970: a book somebody is halfway through looks two generations idle, and
+`evict_candidates()` deletes on that reading. Nothing throws, nothing logs.
+
+⚠️ **It stamps on HEAD as well as GET**, deliberately: the player's mandatory
+§3.2 item-5 probe *is* a HEAD, so a real listen begins with one. Stamping
+eagerly only ever **delays** an eviction; missing a stamp deletes a book. The
+asymmetry decides the default.
+
+⚠️ **One lane on purpose.** It writes `audio_streams` only. Nothing in a
+request can tell the site's lanes apart — `/dev/` is a PATH on the same host,
+so the Origin, the host and the bearer are identical — and a guess would be
+wrong half the time. The reader unions `audio_streams` + `audio_streams_dev`
+and takes the newest, so a `/dev/` listen still counts.
+
+⚠️ **The throttle slot is claimed BEFORE the write, not after** — audit finding
+L9 on the route this replaces, which recorded the key only on success and so
+re-did the whole mint-and-write on every single range request while Firestore
+was failing.
+
+### 2. CORS — one already true, one measured and raised
+
+`Authorization` was already in `allowHeaders` and was **verified live before
+the change** (the preflight answered `Authorization,Content-Type,Range`). It is
+now pinned by a test that says what breaking it costs: ⚠️ **an opaque network
+error, not a status** — the failure this estate has already misdiagnosed once
+as "the Worker is down".
+
+`Access-Control-Max-Age` was **measured at 600**, a re-preflight every ten
+minutes for the whole of a 13.7-hour mean book, on top of every seek. Raised to
+**7200 — Chromium's own cap**, not a round number. ⚠️ Firefox allows 86400 and
+**Safari clamps to 600 regardless**, which is worth knowing before reading a
+Safari preflight trace as a bug. It caches the preflight ANSWER, never an
+authorisation: the gate still runs on every real request.
+
+### 3. The 401's wording — verified live, and LEFT ALONE
+
+Phase 2's own recommendation, and the measurement agrees with it: an
+unauthenticated `curl` on the byte route answers **401** with a worded refusal
+(*"The ebook shelf is for the household. Sign in with Google to see it —
+signed-out visitors get no list at all."*) carrying `Accept-Ranges: bytes` and
+`Cache-Control: private, max-age=0, no-store`. `ebook-gate.ts` is one decision
+with one answer; forking its copy forks the gate. The PAGE words audio
+refusals itself from the HEAD probe and prefers the Worker's sentence when it
+can read one. ⚠️ Vetoable — audio-specific wording is a Worker change.
+
+### 🔴 And a route was DELETED: `POST /api/audio/:anchor/stream-ping`
+
+It had been mounted since 2026-08-19. Six standing reasons, and ⚠️ **a git
+revert is not an argument against any of them**:
+
+1. The design puts the stamp on the byte route *"never a client-driven ping,
+   which is both spoofable and one request per listener"*.
+2. A stamp is **exactly what keeps a file from being evicted**, so a forgeable
+   one pins the household's bucket at full size for ever.
+3. It had **no caller**. `audiobook_catalog`'s `tests/test_listen_page.py`
+   asserts that no site JavaScript mentions it, and the WIP that did call it
+   was replaced on 2026-09-02.
+4. 🔴 It wrote the **caller's email** (`updatedBy`) into a collection whose
+   `firestore.rules` say `allow read: if true` — household addresses in a
+   world-readable place. The replacement writes **nothing personal**: a book
+   and a moment, never a person.
+5. It carried its own copy of the SA JWT signing, the OAuth exchange and the
+   datastore scope string (audit findings **F12** and **L9**) instead of
+   `@platform/firebase-sa`.
+6. Its ten-minute throttle contradicted the design's hour.
+
+⚠️ **Audit finding F3's guard did not go with it.** The path-injection it
+closed (`..%2Fsite_roles%2Fvictim%23` escaping the collection to name whichever
+document a rules-bypassing service account writes) is closed on the byte route
+by the manifest LOOKUP, and a test now pins that the stamp sits **downstream**
+of that lookup — the same anchor gets a 404 and reaches no Firestore.
+
+**Tests 2552 → 2567** (+16 `stream-stamp`, +2 CORS, −3 with the deleted
+route), typecheck clean. Deployed from a throwaway worktree of HEAD with the
+`node_modules` junction; `.bin` 51 before / 51 after the link's `rmdir` / 51
+after `git worktree remove`.
+
+🔴 **NOT VERIFIED, and it is the whole of what remains:** no stamp has ever
+been written to a real Firestore, because no byte of audio has ever been
+streamed by anybody. Every test drives a stubbed `fetch`.
+
+---
+
 ## 2026-09-02 — Slash-command registration ran; the "CORS blocker" premise was wrong
 
 Moved whole from TODO.md, superseding its own diagnosis. The item said the
