@@ -20,11 +20,11 @@
 >    gpt-oss is a REASONING model and spends a classification-sized cap
 >    entirely on thinking. The Groq attempt now floors `max_tokens` at 512 +
 >    `reasoning_effort: "low"`.
-> ⚠️ **Still wire-unverified: the classify floor** (deployed, unit-tested; no
-> tail caught a post-floor turn — attach-timing races, and the night's
-> distills had not fired by 19:00). Its failure mode is an invisible
-> pennies-cost fallback; the next organic conversation settles it. The tool
-> loop (most of the tokens) remains Anthropic-only — phase 2.
+> 5. ✅ **The classify floor VERIFIED ON THE WIRE, 2026-09-01 20:23 Phoenix**
+>    — the owner's next organic mention: `classify → outcome: "groq"` (94 ms,
+>    19 out) and `converse → outcome: "groq"` (378 ms). **Zero fallback on the
+>    turn: every toolless call type now answers on Groq.** The tool loop (most
+>    of the tokens) remains Anthropic-only — phase 2.
 > Last verified: **2026-09-01** — the code was written and the test suite run
 > this session (`test/gabi-groq.test.ts`, 44 tests; workspace 2247 pass / 0
 > fail; typecheck clean). ⚠️ **NOT verified:** **no live Groq call has ever been
