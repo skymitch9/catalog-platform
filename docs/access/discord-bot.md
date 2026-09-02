@@ -2,6 +2,14 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
+>
+> ⚠️ **ADDED 2026-09-02 — §15, THE FUN MENU** (`/recent`, `/universe`,
+> `/review`, `/suggest`, `/guessgame` live; `/rsvp` and `/progress` DARK behind
+> `GABI_CLUB_WRITES`). ⚠️ **§4's registration ritual now has a second switch —
+> see §15.2**, and **nothing in §15 has been typed in Discord yet**: the
+> registration route has not been re-run, so the five new commands are not
+> visible in any server. The verification below was NOT re-taken.
+>
 > Last verified: **2026-08-18** — LIVE at `discord.heygabi.ai`, version
 > **`c9af75f0-f8e3-4de6-b6ac-81a02c98ce9f`** (the **asker-aware, prefilled deep
 > link**, §10.3). Measured live this deploy: `/api/health` `ok: true`, 12
@@ -236,10 +244,13 @@ the Worker is deployed **with `DISCORD_PUBLIC_KEY` set** fails and reads as
 Discord does not discover commands — an application **PUTs** its command
 list and Discord shows exactly that. GABI's registry is
 `apps/discord-worker/src/commands.ts`: `BASE_COMMANDS` (`/link`, `/have`,
-`/gabi`) always, **plus** `MODERATION_COMMANDS` (`/timeout`, `/cleanup`) **only when
-`MODERATION_ENABLED` is `"on"`** — see §9.5 for why hiding them was chosen
-over showing a control that answers "switched off". It is published by calling
-the Worker:
+`/gabi`, and since 2026-09-02 `/recent`, `/universe`, `/review`, `/suggest`,
+`/guessgame`) always, **plus** `MODERATION_COMMANDS` (`/timeout`, `/cleanup`)
+**only when `MODERATION_ENABLED` is `"on"`** — see §9.5 for why hiding them was
+chosen over showing a control that answers "switched off" — **plus**
+`CLUB_WRITE_COMMANDS` (`/rsvp`, `/progress`) **only when `GABI_CLUB_WRITES` is
+`"on"`**, which it is not: ⚠️ **see §15.3 before flipping it.** It is published
+by calling the Worker:
 
 ```
 POST https://discord.heygabi.ai/admin/commands/register
@@ -263,9 +274,10 @@ or take it from an authenticated request's `Authorization` header.
 
 Registration is a **bulk overwrite**. ⚠️ It is idempotent *for a given switch
 state* — it is no longer a pure constant, because the payload depends on
-`MODERATION_ENABLED`. Re-running it after a flip is therefore a REAL step, not
-a no-op, and the route's own JSON answer states which commands it published and
-what the switch was. Commands are
+**two** switches, `MODERATION_ENABLED` and `GABI_CLUB_WRITES`. Re-running it
+after **either** flip is therefore a REAL step, not a no-op, and the route's own
+JSON answer states which commands it published and what **both** switches were.
+Commands are
 **global** (design §1.4: any server's own admin invites GABI, and the estate
 never enumerates the servers it is in — per-guild registration would require
 exactly that enumeration). Global commands can take up to an hour to appear
@@ -1652,3 +1664,178 @@ Two client artefacts cost time verifying this build. Neither is the Worker.
   file, which reads exactly like a dead host. Same family as the existing
   `curl -o /dev/null` artefact. **Fix: use PowerShell's `Invoke-WebRequest`, or
   pipe the body straight to a parser instead of `-o`.**
+
+---
+
+## 15. THE FUN MENU — five commands live, two dark (built 2026-09-02)
+
+Design of record: [`../info/discord-bot-design.md`](../info/discord-bot-design.md)
+§2c.2, §2d, §2e, P1, P2, P3, plus
+[`../info/gabi-suggestions-design.md`](../info/gabi-suggestions-design.md) for
+`/suggest`. Code: `src/recent.ts`, `src/universe.ts`, `src/review.ts`,
+`src/suggest-command.ts`, `src/guessgame.ts`, `src/club-write.ts`.
+
+### 15.1 What a person types, and what they get
+
+| Command | What it does | Who can use it | Where the data comes from |
+|---|---|---|---|
+| `/recent [count]` | The newest arrivals on the shelves, 1–25 (default 10) | anybody | `audiobooks.heygabi.ai/additions_log.json` — public, **no credential** |
+| `/universe [name]` | One universe's works, or the list of them all | anybody | `catalog.csv`'s `universe` column — public, **no credential** |
+| `/review book:<title>` | What the house thought of a book, with the average rating; and a link to add your own | anybody | the `reviews` collection, via the shelf port |
+| `/suggest [format] [mood]` | A few picks built on your own ratings and reading list | anybody (personalised once linked) | the catalogue + your own shelf |
+| `/guessgame` | Guess the book from its facts — four titles, one right | anybody | `catalog.csv` |
+| `/rsvp club:<name>` | 🔴 **DARK.** Offers Coming / Not coming / Maybe for the club's next meeting | linked members | `clubs/{id}` + `rsvps/{slug}` |
+| `/progress club:<name> [percent] [chapter]` | 🔴 **DARK.** Records where you are in the club's current read | linked members | `clubs/{id}/reads/{readId}/progress/{slug}` |
+
+**Answer shapes, so nothing surprises a channel:**
+
+- `/recent`, `/universe`, `/review`, `/suggest`, `/rsvp` and `/progress` answer
+  **ephemerally** — only the person who typed it sees the reply.
+- `/guessgame` posts the **round publicly** (a channel plays it together) and
+  answers each **press privately**, so the first person to click does not spoil
+  it for the next reader.
+
+### 15.2 Publishing them — §4's ritual, with one change
+
+The registration route is unchanged:
+
+```
+POST https://discord.heygabi.ai/admin/commands/register
+Authorization: Bearer <a Firebase ID token from an estate ADMIN account>
+```
+
+⚠️ **The registry is now a function of TWO switches**, not one. It publishes:
+
+- `BASE_COMMANDS` always — `/link`, `/have`, `/gabi`, **`/recent`,
+  `/universe`, `/review`, `/suggest`, `/guessgame`** (eight);
+- **plus** `/rsvp` and `/progress` only while `GABI_CLUB_WRITES = "on"`;
+- **plus** `/timeout` and `/cleanup` only while `MODERATION_ENABLED = "on"`.
+
+The route's JSON answer states **both** switch states (`moderation_enabled`,
+`club_writes_enabled`) and lists exactly what it published, so *"why can I not
+see /rsvp"* is answerable in one call. Re-running after **either** flip is a
+real step, not a no-op. Global commands take up to an hour to appear the first
+time; updates show up almost immediately.
+
+**Confirm from outside Discord:**
+
+```bash
+curl -s https://discord.heygabi.ai/api/health \
+  | jq '.fun_menu_commands, .gabi_club_writes_enabled, .club_write_shapes_verified'
+```
+
+### 15.3 🔴 THE CHECKLIST BEFORE `GABI_CLUB_WRITES` IS EVER FLIPPED
+
+⚠️ **`/rsvp` and `/progress` ship OFF, and the reason is a MISSING MEASUREMENT
+rather than caution.** Read this before touching the switch.
+
+**What is measured** (from this repo, 2026-09-02):
+
+| Fact | Evidence |
+|---|---|
+| `clubs/{id}/reads/{readId}/progress` exists as a subcollection | `apps/audiobook-worker/src/enforce-routes.ts:857` sweeps it on read delete |
+| RSVPs exist and are `meetingAt`-stamped | `../info/audiobook-auth-migration.md` line 103 |
+| Per-member club subdocs are keyed by **member slug** | `votes/{slug}` (`poll-vote.ts`), `members/:slug`, `requests/:slug` (`enforce-routes.ts`), `slugifyName = displayName.toLowerCase()` |
+| Both writes are gated `open` in rules, not by a capability | the migration doc's table: *setProgress / setChapterProgress: open, browser-direct*; *RSVP: open, browser-direct* |
+| `features.meetingRsvp` is a real club feature key | `enforce-routes.ts:126` |
+
+**What is NOT measured — and it is the half that matters:** the **field names**
+inside an RSVP and a progress document, and whether `rsvps` hangs off the club
+or off a meeting. They live in `audiobook_catalog/site/`, which the build that
+wrote this was directed not to read.
+
+⚠️ **This Worker's service account BYPASSES `firestore.rules`.** A write in the
+wrong shape is therefore **not refused — it SUCCEEDS**, and the club page then
+shows a member who has not RSVP'd, or a progress bar that never moves, with no
+error anywhere. It fails silently, on somebody else's surface, and it looks
+exactly like a bug in their code.
+
+**The flip, in order:**
+
+1. Open `audiobook_catalog/site/` (`club-meetings.js` / `club-reads.js` and
+   `firestore.rules`) and read what `setProgress`, `setChapterProgress` and the
+   RSVP writer actually write — field names, doc id, and the collection path.
+2. Correct **`CLUB_WRITE_SHAPES`** in `apps/discord-worker/src/club-write.ts`.
+   Every inferred name sits in that one block, so this is one diff.
+   `test/club-write.test.ts` pins the block with a `deepEqual`, so the
+   correction is a visible decision rather than a silent edit — update the pin
+   in the same commit.
+3. Flip `club_write_shapes_verified` in `/api/health` to `true` **only** once
+   step 1 is actually done, and say in the commit who checked and against what.
+4. `GABI_CLUB_WRITES = "on"` in `wrangler.toml`, `npx wrangler deploy`.
+5. Re-run the registration route (§15.2) so `/rsvp` and `/progress` appear.
+6. Opt a club in: `features.meetingRsvp = true` on its club doc. Default OFF —
+   the same posture `discordPollVoting` keeps.
+7. **Exercise it against a real club and then look at the club PAGE.** The
+   Discord side saying "recorded" is not the evidence; the page rendering it is.
+
+**Backing out** is one line: `GABI_CLUB_WRITES = "off"` and deploy. The commands
+disappear from Discord on the next registration run, and a stale one answers the
+worded switched-off sentence rather than acting.
+
+### 15.4 The per-club poll-ANNOUNCEMENT opt-out
+
+`features.discordPollAnnouncements` is read by the sync tick
+(`src/poll-vote.ts`'s `clubPollAnnouncementsEnabled`). ⚠️ **Its default is the
+OPPOSITE of `discordPollVoting`'s, on purpose: ABSENT MEANS YES.** No club doc
+carries the key yet, so an affirmative `=== true` check would have silently
+muted every club that already announces its polls, and the symptom would have
+looked like the sync tick being broken.
+
+- `discordPollVoting` — may Discord vote at all? Affirmative-only, **default
+  OFF**. Unchanged.
+- `discordPollAnnouncements` — may the tick PUSH a poll into the channel?
+  **Default ON**; an explicit `false` opts out.
+
+An opted-out club is a **noted** skip (the tick's `notes` say the club chose it
+and name the toggle), never a silent one — because it still has voting on, and
+"opted in, nothing posted, no reason" reads as a fault. Turning it off does not
+touch a poll message already in the channel; its vote buttons keep working.
+
+⚠️ **This Worker only READS that key.** It is defined and written on the
+audiobook side (`enforce-routes.ts`'s `CLUB_FEATURE_KEYS`, and the Edit Club
+modal).
+
+### 15.5 The decisions worth knowing, and what they cost
+
+- **`/universe` does not call the index.** Measured 2026-09-02:
+  `GET index.heygabi.ai/api/universes` → **401** for an anonymous caller, and
+  `have.ts` already recorded why this Worker cannot widen a caller's index scope
+  (it needs a Firebase ID token Discord cannot produce). So P3's "one more index
+  endpoint" is unreachable from here; the answer comes from `catalog.csv`'s
+  `universe` column instead. ⚠️ **Consequence, said in every answer: it counts
+  ONE shelf.** The print and board-game catalogues are not in the number.
+- **`/guessgame` guesses from FACTS, not from an obscured cover** — P1's
+  "fiddly part" needs an image pipeline this Worker does not have, and
+  `catalog-data.ts` deliberately throws `cover_href` away. ⚠️ **Accepted limit:
+  the round is stateless, so the answer rides in the button's `custom_id` and
+  anybody who opens Discord's developer tools can read it.** That is fine for a
+  party game and would not be if the game ever gained a leaderboard.
+- **`/suggest` calls no model.** It renders the composer's own `why` clauses
+  instead of handing the rows to Haiku, so it spends nothing and is **not** a
+  new row in `llm-billing-control-design.md`'s 36-path inventory. It reads
+  flatter than she does; the answer says to @mention her for the conversation.
+- **`/review` shows reviews and does not write one.** The doc-id convention
+  belongs to `site/reviews.js`; inventing one would create a second review by
+  the same person under a different id, and the service account would not be
+  refused. The write half is a **deep link to the book's page**, the same
+  propose-and-deep-link shape `/gabi` uses. What would change it: the id
+  convention, measured and written down.
+
+### 15.6 ⚠️ NOT VERIFIED LIVE
+
+- **No command in this section has been typed in Discord.** Every test drives
+  an injected `fetch` or a signed synthetic interaction. Registration has not
+  been re-run, so **none of the five is visible in any server yet** — that is
+  §15.2, and it needs an admin Firebase ID token no session holds.
+- **`additions_log.json` was fetched live and its shape measured; `/recent`'s
+  rendering of it was not** — the flow was exercised against a fixture.
+- **The `reviews` join is unproven against real data.** Reviews are filed under
+  `bookIdFromTitle(title)`; nobody has confirmed that the index's spelling of a
+  title and the audiobook site's agree for a book that actually has reviews.
+- **`/suggest`'s picks have still never been judged by a person** — unchanged
+  from `gabi-suggestions-design.md` §10, and this surface does not change the
+  ladder, only the door to it.
+- **Nothing has been written to Firestore by `/rsvp` or `/progress`**, by
+  construction: the posture is off, and the tests assert no call is even
+  attempted while it is.

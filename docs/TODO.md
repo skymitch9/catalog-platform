@@ -142,8 +142,16 @@ Wave 1 in flight: Groq phase-2 tool translation (platform) · library quick
 wins (scroll-to-top, Signed toggle, research transparency) · audiobook batch
 (say-2, also-on-audio fix, poll-announce toggle, supplements armed
 disambiguated) · games (deploy guards then disposal/copy-history). Waves 2–4:
-player phase 2, Discord fun menu, billing phase 0+1, universes +, OR-1,
-format toggle, Wandering Inn, cross-links, newest-authors. Where a TODO said
+player phase 2, ~~Discord fun menu~~, billing phase 0+1, universes +, OR-1,
+format toggle, Wandering Inn, cross-links, newest-authors.
+
+✅ **The Discord fun menu LANDED 2026-09-02 and moved WHOLE to
+[`DONE.md`](DONE.md)** (*"THE DISCORD FUN MENU: five commands live, two dark,
+one toggle honoured"*). ⚠️ **Two owner steps remain open and are tracked as
+their own items below** — the registration re-run, without which none of the
+five new commands is visible in any Discord server, and the
+`GABI_CLUB_WRITES` verification checklist. Neither is a build step, which is
+why they are here rather than in the archive. Where a TODO said
 "ask first", the recorded recommendation is being built and flagged vetoable
 at landing (owner's nothing-waits order). SETTLED 2026-09-02 by owner: **"yes
 everyone on the shelf list can have the ebooks"** — the ebook gate question is
@@ -162,6 +170,50 @@ match gabi in discord no matter what. same experience different entry point")
 `library_catalog/packages/research/src/gabi.ts` → append its GABI_EDGE_FULL +
 the NEVER-SOUND-PREWRITTEN section, keep the copied-core byte pin honest).
 Second board-game instance STAYS deferred (owner 2026-09-02: "no use case yet").
+
+## ☐ 🔴 OWNER STEP — re-run the slash-command registration, or the fun menu is INVISIBLE
+
+The five new commands (`/recent`, `/universe`, `/review`, `/suggest`,
+`/guessgame`) are **deployed and answering**, and **nobody can see them**:
+Discord shows exactly the list an application PUTs, and that PUT has not been
+made since they were added. One call, and it needs an estate **admin** Firebase
+ID token, which no session holds:
+
+```
+POST https://discord.heygabi.ai/admin/commands/register
+Authorization: Bearer <admin Firebase ID token>
+```
+
+Getting a token: sign in on any estate page and run
+`await (await import('/assets/estate-auth.js')).idToken()` in the console.
+Full ritual and the two-switch registry:
+[`access/discord-bot.md`](access/discord-bot.md) §15.2 and §4. Global commands
+can take up to an hour to appear the first time.
+
+⚠️ **Until this runs, "the fun menu is live" is a fact about the Worker and not
+about Discord** — and the honest way to say so is that it is deployed, not that
+it is usable.
+
+## ☐ 🔴 OWNER/SESSION STEP — verify `CLUB_WRITE_SHAPES` before `GABI_CLUB_WRITES` is ever flipped
+
+`/rsvp` and `/progress` are built, tested and **dark** (`GABI_CLUB_WRITES =
+"off"`). The blocker is a **measurement, not caution**: the field names inside
+an RSVP and a progress document live in `audiobook_catalog/site/`, which the
+build was directed not to read, and this Worker's service account **bypasses
+`firestore.rules`** — so a wrongly shaped write is not refused, it **succeeds**,
+and the club page then shows nothing with no error anywhere.
+
+The checklist is [`access/discord-bot.md`](access/discord-bot.md) §15.3, in
+order: read `site/club-meetings.js` / `site/club-reads.js` + `firestore.rules`
+→ correct `CLUB_WRITE_SHAPES` in `apps/discord-worker/src/club-write.ts` (one
+block, `deepEqual`-pinned by `test/club-write.test.ts`, so update the pin in the
+same commit) → flip `club_write_shapes_verified` in `/api/health` → flip the
+posture and deploy → re-run registration → opt a club in with
+`features.meetingRsvp = true` → **exercise it and then look at the club PAGE**,
+because the Discord side saying "recorded" is not the evidence.
+
+⚠️ A concurrent agent was working in `audiobook_catalog` on 2026-09-02, which is
+the second reason it was left alone.
 
 ## ☐ GABI polish batch (owner live-test findings, 2026-09-02 ~10:33)
 

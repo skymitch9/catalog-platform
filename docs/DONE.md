@@ -18,6 +18,136 @@
 
 
 
+## 2026-09-02 — THE DISCORD FUN MENU: five commands live, two dark, one toggle honoured
+
+The **"Discord fun menu"** lane of the *BUILD PROGRAM 2026-09-02* item in
+[`TODO.md`](TODO.md) — built in one pass on `apps/discord-worker`, on top of the
+Groq phase-2 commit that landed the same day. Design of record:
+[`info/discord-bot-design.md`](info/discord-bot-design.md) §2c.2, §2d, §2e, P1,
+P2, P3 (as-built departures now recorded there as §9) plus
+[`info/gabi-suggestions-design.md`](info/gabi-suggestions-design.md) for
+`/suggest`. Runbook: [`access/discord-bot.md`](access/discord-bot.md) §15.
+
+**Live, published by re-running the registration route** (§15.2 — the owner's
+step; it needs an admin Firebase ID token no session holds):
+
+| Command | Source | Credential |
+|---|---|---|
+| `/recent [count]` | `audiobooks.heygabi.ai/additions_log.json` | none |
+| `/universe [name]` | `catalog.csv`'s `universe` column | none |
+| `/review book:<title>` | the `reviews` collection via the existing shelf port | the service account already held |
+| `/suggest [format] [mood]` | the catalogue + the asker's own shelf | ports already built |
+| `/guessgame` | `catalog.csv` | none |
+
+**Dark behind `GABI_CLUB_WRITES = "off"`:** `/rsvp club:<name>` and
+`/progress club:<name> [percent] [chapter]`.
+
+### ⚠️ Why the two writes ship dark — a missing measurement, not caution
+
+Measured from this repo: the collection paths (`enforce-routes.ts:857` sweeps
+`clubs/{id}/reads/{readId}/progress`), the member-slug doc id (`votes/{slug}`,
+`members/:slug`, `slugifyName = displayName.toLowerCase()`), the `open` rules
+gate, and `features.meetingRsvp` as a real club feature key. **NOT measured: the
+field names inside an RSVP and a progress document** — they live in
+`audiobook_catalog/site/`, which this build was directed not to read.
+
+⚠️ This Worker's service account **bypasses `firestore.rules`**, so a wrongly
+shaped write is not refused — it **succeeds**, and the club page then shows a
+member who has not RSVP'd or a bar that never moves, with no error anywhere, on
+somebody else's surface. `CLUB_WRITE_SHAPES` gathers every inferred name in one
+block (`deepEqual`-pinned by a test) so verifying them is one diff, and
+`/api/health` reports `club_write_shapes_verified: false` — an honest false that
+says the feature is unfinished rather than leaving it inferred from a comment.
+The flip checklist is `access/discord-bot.md` §15.3.
+
+### The measurements that decided the build
+
+- `GET audiobooks.heygabi.ai/additions_log.json` → **200**, 241,010 bytes,
+  `{entries:[{key,title,author,added,source}]}`. `catalog.csv` has **no arrival
+  date**, so answering "what is new" from its publication `year` would be a
+  different question wearing the right word.
+- `GET index.heygabi.ai/api/universes` → **401**. P3's *"one more index
+  endpoint"* is unreachable from Discord (the index widens only for a Firebase
+  ID token this Worker structurally cannot mint — `have.ts`'s own measurement),
+  so `/universe` answers from `catalog.csv` and says in **every** answer that it
+  counted ONE shelf.
+- P2's open question — *"confirm the exact reviews read path before build"* — is
+  answered: `shelf-exec.ts` already reads them with the service account this
+  Worker holds. No new credential, no sixth credential-holding module.
+
+### The decisions taken, each vetoable
+
+1. **`/review` shows reviews and does not write one.** The doc-id convention
+   belongs to `site/reviews.js`; a guessed id would not be refused, it would
+   duplicate. The write half is a deep link to the book's page — `/gabi`'s
+   propose-and-deep-link shape. A test asserts over every outbound call that
+   `/review` issues no Firestore write and no non-GET, so a later session cannot
+   "finish" it by guessing.
+2. **`/suggest` is the RECOMMENDATION lane, not §2h's TBR write.** §2h remains
+   unbuilt and needs a different name. The lane was already built and could only
+   be reached by phrasing an @mention so `suggestIntent()` claimed the turn —
+   the surface §10f's incident showed a stranger failing to find. Nothing about
+   the lane was re-designed. ⚠️ It calls **no model**, so it is not a new row in
+   `info/llm-billing-control-design.md`'s 36-path inventory.
+3. **`/guessgame` guesses from FACTS, not an obscured cover.** No image pipeline
+   exists here and `catalog-data.ts` throws `cover_href` away. ⚠️ Accepted
+   limit: the round is stateless, so the answer rides in the button's
+   `custom_id` and dev tools can read it. First thing to change if the game ever
+   gains a leaderboard.
+4. **`/progress` takes design §2e's recommendation (i)** — a required `club`
+   argument — because (ii) would need this Worker to map a guild to a club,
+   i.e. to enumerate the servers it is in, which §1.4 exists to avoid.
+5. **`/rsvp` OFFERS buttons and does not write.** A command that both asked and
+   answered would have to invent a default.
+
+### The poll-ANNOUNCEMENT toggle, honoured (read only)
+
+`features.discordPollAnnouncements` — an existing club feature key the audiobook
+Worker already allows through `updateClubDetails`, with its toggle built on that
+side — is now read by the sync tick. ⚠️ **Its default is the OPPOSITE of
+`discordPollVoting`'s, on purpose: ABSENT MEANS YES.** No club doc carries the
+key yet, so an affirmative `=== true` check would have silently muted every club
+that already announces, and the symptom would have looked like a broken tick.
+That is the `promptsEnabled !== false` idiom the estate already uses for a
+club-level opt-out. An opted-out club is a **noted** skip naming the toggle, not
+a silent one, and the opt-out does not touch a poll message already posted.
+
+### Two touches to existing behaviour
+
+- `commandsFor()` is now a function of **two** switches; re-running registration
+  after either flip is a real step, and the route's answer states both.
+- The *"Discord sent no interaction token"* sentence is hoisted to one constant.
+  Two copies were about to become nine.
+
+### Groq phase 2 untouched
+
+No new model tool, no change to `GROQ_READ_ONLY_TOOL_NAMES` (the deliberate
+literal allowlist), and `/api/health`'s phase-2 rows — `gabi_groq`,
+`gabi_groq_ready`, `gabi_groq_model`, `gabi_groq_scope`,
+`gabi_groq_tool_allowlist` — are unchanged.
+
+### Tests
+
+**2307 → 2418 workspace pass, 0 fail** (+111). Two existing tests were corrected
+rather than deleted, and both corrections are findings: `interactions.test.ts`
+used `/recent` as its stand-in for "a command the router does not know" — a
+placeholder named after a designed-but-unbuilt feature has an expiry date, and
+it expired the day `/recent` was built; and `moderation.test.ts`'s `BASE` list
+grew from three to eight, deliberately a `deepEqual` so a base command being
+added lands as a one-line decision.
+
+### ⚠️ NOT VERIFIED
+
+- **No command has been typed in Discord**, and registration has not been
+  re-run, so none of the five is visible in any server yet.
+- **The `reviews` join is unproven against real data** — nobody has confirmed
+  the index's spelling of a title and the audiobook site's agree for a book that
+  actually has reviews.
+- **`/suggest`'s picks have still never been judged by a person.**
+- **Nothing has been written to Firestore by `/rsvp` or `/progress`**, by
+  construction.
+
+
 ## 2026-09-02 — GABI Groq PHASE 2: the Anthropic↔OpenAI tool translation (the expensive half now rides Groq)
 
 **Moved whole from [`TODO.md`](TODO.md)**, from under *"Groq as GABI's first-line

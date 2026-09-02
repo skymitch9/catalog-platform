@@ -1021,6 +1021,146 @@ Operational detail and the owner's switch-on steps:
 
 ---
 
+## 9. AS BUILT — the fun menu, 2026-09-02
+
+Seven of §2's options shipped in one pass. Operating them:
+[`../access/discord-bot.md`](../access/discord-bot.md) §15. What follows is only
+where the BUILD departs from what §2 imagined, and why — the parts that matched
+need no entry.
+
+| §2 item | Built as | Departure from the design |
+|---|---|---|
+| (c.2) `/recent` | `src/recent.ts` | none of substance. `additions_log.json` was fetched live and its shape measured (`{entries:[{key,title,author,added,source}]}`, 241 KB) before anything was written. |
+| P3 `/universe` | `src/universe.ts` | ⚠️ **does NOT call `/api/universe/:name`.** See below. |
+| P2 `/review` | `src/review.ts` | P2's open question is ANSWERED; the write half is deliberately a deep link. See below. |
+| (h) `/suggest` | `src/suggest-command.ts` | ⚠️ **a different `/suggest` from §2h's.** See below. |
+| P1 `/guessgame` | `src/guessgame.ts` | ⚠️ **facts, not an obscured cover.** See below. |
+| (d) RSVP | `src/club-write.ts` | shape kept (buttons); ships DARK. See below. |
+| (e) `/progress` | `src/club-write.ts` | club resolution took recommendation (i); ships DARK. See below. |
+
+### 9.1 ⚠️ P3 — the index tier is not reachable from Discord, measured
+
+P3 assumed *"`GET /api/universe/:name` (already live, members-only today — same
+scope design as (b))"*. Measured 2026-09-02:
+
+```
+GET https://index.heygabi.ai/api/universes  ->  401 Unauthorized
+```
+
+and `have.ts`'s §2b measurement already recorded why this Worker cannot widen a
+caller's index scope at all: the index resolves scope from a **Firebase ID
+token**, Discord's OAuth does not produce one, and `firebase-sa.ts` is
+deliberately scoped to `datastore` only. P3's *"one more index endpoint wired
+the same way"* therefore had no way to be wired, and building it would have
+shipped a command that 401s at every caller.
+
+**What replaced it:** the same fact from the other side. `catalog.csv` carries a
+`universe` column — the pipeline stamps it from `data/universes.json`, the
+estate's one shared list — and `catalog-data.ts` already owns `knownUniverses()`
+and `filterCatalog({ universe })`. So the command adds a surface and no new data
+path, no credential, and no trust edge.
+
+⚠️ **The honest cost, said in EVERY answer: it counts ONE shelf.** The estate's
+`/universes` page is genuinely cross-catalog; this is the public audiobook slice,
+and an answer that sounded estate-wide while omitting print and games would be a
+wrong answer wearing a number.
+
+### 9.2 ⚠️ P2's open question, answered — and why the write half is a link
+
+P2 shipped with: *"Did not verify whether the reviews collection is readable by
+an unauthenticated caller … confirm the exact read path before build."*
+
+**Confirmed, and it is neither option P2 imagined:** this Worker already reads
+`reviews` with the service account it already holds, through
+`ShelfPort.bookReviews()` (`shelf-exec.ts`, built 2026-08-18 for the shelf
+lane), whose own comment records the scope decision — *"PUBLIC content — the
+sites show these to anybody."* So `/review` needs **no new credential and no
+sixth credential-holding module**.
+
+⚠️ **The write half is deliberately NOT built, and this is the sharpest call in
+the menu.** The review document's FIELDS are known (`shelf-exec.ts` reads
+`bookId`, `displayName`, `rating`, `text`, `updatedAt`); its **doc-id
+convention is not** — that belongs to `audiobook_catalog/site/reviews.js`'s
+`submitReview`, which the build was directed not to read. And this Worker's
+service account **bypasses `firestore.rules`**, so a write under a guessed id
+would not be refused: it would succeed, and the site would then show one person
+two reviews of one book, or none.
+
+A doc id is a persisted key, and the estate's own rule is that changing one is a
+migration rather than an edit. **Inventing one is worse than changing one.** So
+the write half is `/gabi`'s established shape — **propose and deep-link** — and
+`test/review.test.ts` asserts over every outbound call that `/review` issues no
+Firestore write and no non-GET, so a later session cannot "finish" it by
+guessing. **What would change it:** the id convention, measured and written down
+in `info/`.
+
+### 9.3 ⚠️ §2h and `/suggest` are two different features with one name
+
+§2h's `/suggest` is *"suggest a book for a club's TBR list"* — a phase-3 WRITE
+to the `tbr` subcollection. The `/suggest` that shipped is
+[`gabi-suggestions-design.md`](gabi-suggestions-design.md)'s recommendation lane
+— GABI suggests a book TO you — which was already built and could only be
+reached by phrasing an @mention so `suggestIntent()` claimed the turn.
+
+That is precisely the surface §10f's incident showed a stranger failing to find
+(*"NOBODY ASKS FOR A RECOMMENDATION. THEY ASK FOR SOMETHING GOOD."*). A slash
+command cannot be missed by a detector, because there is no detector: typing
+`/suggest` IS the intent, stated by the person. Nothing about the lane was
+re-designed — the three-format permission model, the gate-before-gathering
+order, the ladder and its four-star threshold are all reused unchanged.
+
+⚠️ **§2h's TBR write remains UNBUILT** and would need a different name.
+
+⚠️ **The slash surface calls no model**: it renders the composer's own `why`
+clauses, so it spends nothing and is not a new row in
+[`llm-billing-control-design.md`](llm-billing-control-design.md)'s 36-path
+inventory. The trade is that it reads flatter than she does, and the answer says
+where her voice lives.
+
+### 9.4 ⚠️ P1 — facts, not an obscured cover
+
+P1 named the obscuring as *"the fiddly part"*. It is worse than fiddly from
+here: this Worker has no image pipeline — no canvas, no decoder, no place to put
+a derived asset — and `catalog-data.ts` deliberately parses `cover_href` and
+throws it away. Cropping a cover would have meant a new binding, a new stored
+artefact and a new thing to back up, for a party game.
+
+The catalogue already carries narrator, duration, genre, year, series and
+universe, so a round is five or six real facts and four real titles. ⚠️ **The
+title is never a clue and a series that contains the title is withheld** — a
+puzzle that contains its own answer is not a puzzle.
+
+⚠️ **ACCEPTED LIMIT: the round is stateless, so the answer rides in the button's
+`custom_id`** and anybody who opens Discord's developer tools can read it. The
+alternatives are a signed round (a new secret) or a stored round (a new
+collection to write, expire and back up), and neither is worth spending on a
+party game. **If the game ever gains a leaderboard, this is the first thing that
+has to change.**
+
+### 9.5 🔴 (d) and (e) ship DARK — a missing measurement, not caution
+
+Both were built to `poll-vote.ts`'s shape exactly, and both are behind
+`GABI_CLUB_WRITES = "off"`. The reason, in one line: **the collection paths and
+the member-slug doc id are measured; the FIELD NAMES inside an RSVP and a
+progress document are not**, they live in `audiobook_catalog/site/`, and this
+Worker's service account bypasses `firestore.rules` — so a wrongly shaped write
+is not refused, it succeeds, and the club page then shows nothing with no error
+anywhere. The full evidence table and the flip checklist are
+[`../access/discord-bot.md`](../access/discord-bot.md) §15.3.
+
+Two design choices inside them worth recording:
+
+- **(e)'s club resolution took recommendation (i)** — a REQUIRED `club`
+  argument — rather than (ii)'s per-server single-club scoping. (ii) would have
+  needed this Worker to map a guild to a club, which means enumerating the
+  servers it is in, which §1.4 exists to avoid. An ambiguous name is refused
+  with the candidates in the sentence, never resolved by picking the first.
+- **(d)'s `/rsvp` OFFERS the buttons and does not write.** A command that both
+  asked and answered would have to invent a default, and *"GABI put you down as
+  coming because you ran `/rsvp`"* is a claim nobody made.
+
+---
+
 ## Sources
 
 Read directly, 2026-08-14: `audiobook_catalog/docs/info/
