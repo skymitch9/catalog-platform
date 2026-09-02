@@ -146,9 +146,17 @@ disambiguated) · games (deploy guards then disposal/copy-history). Waves 2–4:
 player phase 2, Discord fun menu, billing phase 0+1, universes +, OR-1,
 format toggle, Wandering Inn, cross-links, newest-authors. Where a TODO said
 "ask first", the recorded recommendation is being built and flagged vetoable
-at landing (owner's nothing-waits order). ⚠️ GENUINELY WAITING: shelf
-ebooks-dropdown + reader-port (the one ebook-gate-vs-Access decision — the
-question is with the owner as of 2026-09-02). SETTLED 2026-09-02 by owner:
+at landing (owner's nothing-waits order). SETTLED 2026-09-02 by owner: **"yes
+everyone on the shelf list can have the ebooks"** — the ebook gate question is
+answered: Cloudflare Access (family allowlist) is a lawful second door for the
+ebook FILES on the shelf. Unblocks the shelf cluster (second ABS library on an
+ebooks-only hardlink shadow tree per option A in audiobook TODO, ebooks
+dropdown, reader via ABS's native reader or the port item as its docs record,
+shelf_book_map + "Open on shelf" button — ONE canonical catalog→ABS join per
+the recorded warning). ⚠️ Scope limit: this does NOT make ebook titles public
+anywhere (the no-ebook-chip directive on public pages stands) and does NOT
+retire the estate site's vis_ebooks/download_ebooks gate — two doors coexist.
+Queued in the audiobook-repo wave lane behind player phase 2. SETTLED 2026-09-02 by owner:
 **library panel gets full GABI edge, matching Discord** ("library panel should
 match gabi in discord no matter what. same experience different entry point")
 — queued wave 2 (library tree busy; panel prompt lives at
