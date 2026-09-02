@@ -1,15 +1,30 @@
 # GABI's Groq first line — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
-> **Status:** TRACKED — **BUILT, DEPLOYED, NOW IN `shadow`** (superseded the
-> same day it was written: the owner's key is pushed — byte-verified, 56
-> bytes / `gsk` prefix / no BOM — and `GABI_GROQ = "shadow"` deployed,
-> `8286150`; health reports `gabi_groq: shadow`, `gabi_groq_ready: true`).
-> Answers are still Haiku's in shadow. ⚠️ **The first live shadow lines ever
-> logged came back `reason: "refused"` in 16–21 ms** — under diagnosis; the
-> shadow logger gained `status` the same evening for exactly this (at build
-> time it carried only `reason`, while the runbook already told the owner to
-> look for `status: 401` on these lines).
+> **Status:** TRACKED — **LIVE IN `first` since 2026-09-01 evening** (owner:
+> *"make sure Groq is the primary"*), and the primary claim is **proven on the
+> wire**: a real household turn's `converse` answered `outcome: "groq"`
+> (566 ms, 2,477 in / 98 out) on `openai/gpt-oss-120b`. The evening's ledger,
+> each step measured:
+>
+> 1. Key pushed byte-verified (56 bytes / `gsk` / no BOM) → `shadow` deployed.
+> 2. Every first shadow line `refused` — the shadow logger did not carry
+>    `status` (fixed TWICE: once at the call site, which the field-by-field
+>    logger silently dropped, then in the logger itself — a field-by-field
+>    logger needs the field in BOTH places).
+> 3. The status was **404**: the inherited pin `llama-3.3-70b-versatile` had
+>    been DEPRECATED by Groq on 2026-08-16 — and `black_bot_baf` never made a
+>    live call either, so nothing ever exercised it. Repinned to
+>    `openai/gpt-oss-120b` (their named replacement); that repo's TODO warned.
+> 4. First success (`converse`), but `classify` fell back on an EMPTY 200 —
+>    gpt-oss is a REASONING model and spends a classification-sized cap
+>    entirely on thinking. The Groq attempt now floors `max_tokens` at 512 +
+>    `reasoning_effort: "low"`.
+> ⚠️ **Still wire-unverified: the classify floor** (deployed, unit-tested; no
+> tail caught a post-floor turn — attach-timing races, and the night's
+> distills had not fired by 19:00). Its failure mode is an invisible
+> pennies-cost fallback; the next organic conversation settles it. The tool
+> loop (most of the tokens) remains Anthropic-only — phase 2.
 > Last verified: **2026-09-01** — the code was written and the test suite run
 > this session (`test/gabi-groq.test.ts`, 44 tests; workspace 2247 pass / 0
 > fail; typecheck clean). ⚠️ **NOT verified:** **no live Groq call has ever been
