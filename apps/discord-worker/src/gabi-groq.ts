@@ -56,6 +56,13 @@
  * client for the same reason: a retried turn is double spend on an answer that
  * may already have landed.
  *
+ * ⚠️ **ONE NARROW EXCEPTION SINCE 2026-09-02: `empty`, retried ONCE.** An
+ * `empty` is a 200 that spent its whole budget thinking and emitted no words —
+ * a coin toss on a reasoning model, not a state a second identical request
+ * would land in again. Every other reason still gets exactly one attempt. The
+ * argument is written out in full at the retry itself; the line carries
+ * `retried: true` so the frequency is measurable rather than assumed.
+ *
  * ## WHAT CAME FROM `black_bot_baf` (the estate's other Groq integration)
  *
  * Carried over unchanged, because those decisions were already paid for:
@@ -538,6 +545,14 @@ export function logGroq(entry: {
    * in a line. ⚠️ **A new field goes in BOTH places, this type and the object
    * below, or it does not exist.**
    */
+  /**
+   * ⚠️ **A SECOND ATTEMPT WAS MADE — and it is a field rather than a second
+   * line so that one turn is still one line.** True only on the narrow
+   * retry-on-`empty` below; every other failure class still gets exactly one
+   * attempt. `jq 'select(.retried)'` is how "is the reasoning model still
+   * eating its own budget?" is asked of the whole stream.
+   */
+  retried?: boolean;
   /** Which pass of the tool loop this was, 1-based. 0 on a toolless call. */
   iteration?: number;
   /** How many tools this pass offered. ⚠️ 0 on the loop's final tools-free pass
@@ -578,6 +593,9 @@ export function logGroq(entry: {
       // an empty string when there is nothing to say, so `jq 'select(.error_text)'`
       // selects the lines that actually carry a refusal.
       ...(entry.errorText ? { error_text: entry.errorText } : {}),
+      // ⚠️ THE EMITTED HALF. Only ever present when true — a `retried: false` on
+      // every line would be noise in the stream somebody reads to decide.
+      ...(entry.retried ? { retried: true } : {}),
       ms: entry.ms,
       chars: entry.chars ?? 0,
       // ⚠️ The tool-loop half of the line. Always present (as 0) rather than
@@ -803,7 +821,36 @@ export async function viaGroq<T>(args: {
   }
 
   // ── first ────────────────────────────────────────────────────────────────
-  const seen = await attempt();
+  let seen = await attempt();
+
+  // ── ⚠️ THE ONE RETRY, AND ONLY FOR `empty` (2026-09-02) ──────────────────
+  //
+  // The header above says ONE ATTEMPT, NEVER A RETRY LOOP, and the reason is
+  // still right: the fallback IS the retry, and it falls to a *different
+  // provider*, which beats asking the same rate-limited endpoint twice.
+  //
+  // ⚠️ **`empty` is the one failure where that reasoning does not hold**, and
+  // the owner's live test is why. `openai/gpt-oss-120b` is a reasoning model:
+  // an `empty` is not a refusal, an outage or a rate limit — it is a 200 that
+  // spent its whole budget THINKING and emitted no words, which is a coin toss
+  // rather than a state. Falling through spends a Haiku turn on a call that
+  // would very likely have answered the second time. Every other reason still
+  // gets exactly one attempt, because every other reason is a state that a
+  // second identical request would land in again.
+  //
+  // ⚠️ **ONCE. Not a loop, not a backoff.** It costs a second helping of the
+  // tier's per-minute allowance (see `gabi-groq-tools.ts` §the ceiling), so a
+  // third try would be spending the budget of the next person's turn.
+  //
+  // ⚠️ Deliberately NOT extended to the tool lane: a tool pass is followed
+  // immediately by a composing pass, and spending the minute's tokens twice on
+  // selection is how the pass that matters meets a 429.
+  let retried = false;
+  if (!seen.ok && seen.reason === 'empty') {
+    retried = true;
+    seen = await attempt();
+  }
+
   if (seen.ok) {
     logGroq({
       mode,
@@ -813,6 +860,7 @@ export async function viaGroq<T>(args: {
       chars: seen.chars,
       inputTokens: seen.inputTokens,
       outputTokens: seen.outputTokens,
+      ...(retried ? { retried: true } : {}),
       ...(args.who ? { who: args.who } : {}),
     });
     return seen.value;
@@ -827,6 +875,7 @@ export async function viaGroq<T>(args: {
     status: seen.status,
     errorText: seen.errorText,
     ms: seen.ms,
+    ...(retried ? { retried: true } : {}),
     ...(args.who ? { who: args.who } : {}),
   });
   return args.haiku();

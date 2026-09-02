@@ -605,14 +605,88 @@ describe('posture FIRST — Groq answers, or Haiku does and nobody can tell', ()
         }),
       );
       assert.equal(value, 'have_lookup', `${name}: the person still gets the answer`);
-      assert.equal(spy.groqCalls().length, 1, `${name}: exactly one Groq attempt, never a retry loop`);
+      // ⚠️ ONE attempt for every reason EXCEPT `empty`, which gets exactly two
+      // since 2026-09-02 — see the retry test below for the argument. It is
+      // still never a loop, and the second attempt is still followed by the
+      // same single fall-through.
+      assert.equal(
+        spy.groqCalls().length,
+        reason === 'empty' ? 2 : 1,
+        `${name}: one Groq attempt, never a retry loop`,
+      );
       assert.equal(spy.anthropicCalls().length, 1, `${name}: exactly one Haiku turn`);
       const line = lines.find((l) => l.includes('"evt":"gabi_groq"'));
       assert.ok(line, `${name}: the fall-through must be one structured line`);
+      assert.equal(
+        lines.filter((l) => l.includes('"evt":"gabi_groq"')).length,
+        1,
+        `${name}: one TURN is one LINE, retry or not`,
+      );
       const entry = JSON.parse(line) as Record<string, unknown>;
       assert.equal(entry.outcome, 'fallback', name);
       assert.equal(entry.reason, reason, name);
+      assert.equal(entry.retried, reason === 'empty' ? true : undefined, name);
     }
+  });
+
+  // ── ⚠️ THE ONE RETRY, AND WHY IT IS ONLY `empty` ─────────────────────────
+  //
+  // Measured in the owner's live test, 2026-09-02: toolless `converse` fell
+  // back 2/2 — one `empty` with status 200 (past the old 512 floor) and one
+  // `refused` 400 whose body was thrown away. The floor rose to 1024 in the
+  // same batch; this is the other half.
+  //
+  // An `empty` on a REASONING model is not a state. It is a 200 that spent its
+  // whole budget thinking and emitted no words — a coin toss, where every other
+  // reason is a condition a second identical request would land in again.
+  it('⚠️ an EMPTY 200 is retried ONCE, and a second empty still falls through', async () => {
+    const empty = () => json({ choices: [{ message: { content: '' } }] });
+    const spy = spyFetch({ groq: empty, anthropic: () => haikuSaid('have_lookup') });
+    const { value, lines } = await captureLogs(() =>
+      classifyIntent('anthropic-key', 'do we have Mistborn?', WHO, {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value, 'have_lookup');
+    assert.equal(spy.groqCalls().length, 2, 'ONCE — not a loop, not a backoff');
+    const entry = JSON.parse(lines.find((l) => l.includes('"evt":"gabi_groq"'))!) as Record<string, unknown>;
+    assert.equal(entry.retried, true, 'the frequency must be measurable, not assumed');
+  });
+
+  it('⚠️ a retry that SUCCEEDS costs no Haiku turn at all', async () => {
+    let n = 0;
+    const spy = spyFetch({
+      groq: () => (n++ === 0 ? json({ choices: [{ message: { content: '' } }] }) : groqSaid('have_lookup')),
+      anthropic: () => haikuSaid('smalltalk'),
+    });
+    const { value, lines } = await captureLogs(() =>
+      classifyIntent('anthropic-key', 'do we have Mistborn?', WHO, {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value, 'have_lookup', "Groq's second answer is used");
+    assert.equal(spy.anthropicCalls().length, 0, 'the whole point: no Haiku turn was spent');
+    const entry = JSON.parse(lines.find((l) => l.includes('"evt":"gabi_groq"'))!) as Record<string, unknown>;
+    assert.equal(entry.outcome, 'groq');
+    assert.equal(entry.retried, true);
+  });
+
+  it('⚠️ the TOOL lane is deliberately NOT retried — the composing pass needs the budget', async () => {
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: () => json({ choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: '' } }] }),
+      anthropic: () => haikuSaid('Kate Reading and Michael Kramer.'),
+    });
+    const { value } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value.text, 'Kate Reading and Michael Kramer.');
+    assert.equal(spy.groqCalls().length, 1, 'one selection attempt, then Haiku');
   });
 
   it('a transport failure falls through the same way', async () => {
