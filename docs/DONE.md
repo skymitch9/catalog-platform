@@ -16,6 +16,105 @@
 
 ---
 
+## ✅ "+ Add a verse" on /universes — phases 0–3 BUILT — 2026-09-02
+
+> ⚠️ **BUILT, NOT DEPLOYED, AND THE DISTINCTION IS THE POINT.** Every line below
+> describes code in `main` and tests that pass. Nothing is live: migration
+> `0017` has not been applied to remote `estate_auth`, neither Worker nor the
+> page has been deployed, and no browser has rendered any of it. The ordered
+> deploy runbook, phase 4, and the first `landed` call are on
+> [`TODO.md`](TODO.md). Design of record:
+> [`info/universe-add-verse-design.md`](info/universe-add-verse-design.md).
+
+**The item as it stood on `TODO.md`, moved whole:**
+
+> ### 2. "+ Add a verse" on /universes — `docs/info/universe-add-verse-design.md`
+> Mockup (private artifact): https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
+> Owner: *"in the universe page add a plus button somewhere to add a verse and let
+> it take series as an input"*
+>
+> - ⚠️ A direct "add" **cannot write** — a universe is compiled into two catalogs
+>   and pinned by `library_catalog/packages/core/test/universes.test.ts:347`, and
+>   `tools/universes.mjs:126` refuses to create one. The "+" creates a PENDING
+>   request; the owner approves; a session prepares the commit; the owner deploys.
+> - ☐ **OWNER DECISION Q1:** should `tools/universes.mjs` grow a `create` command?
+>   Recommendation: yes, with `--why` **and** `--confirmed` both required — stricter
+>   than the hand edits that have happened 11 times already.
+> - ✅ **The two live discrepancies are FIXED 2026-08-26** — moved whole to
+>   [`DONE.md`](DONE.md). The design itself is still ☐ unbuilt.
+
+**What landed** — commits `c27c5c9` (Worker), `24c96a6` (CLI), `4430352` (pages).
+
+| Piece | Where |
+|---|---|
+| Migration (additive, unapplied) | `apps/auth-worker/migrations/0017_universe_requests.sql` |
+| Five routes + the name check | `apps/auth-worker/src/universe-requests.ts` |
+| The member gate | `memberAllows()` / `requireApprovedMember()`, `middleware/auth.ts` |
+| The served name list | `src/universe-names.generated.ts` ← `scripts/gen-universe-names.mjs` |
+| The "+", the form, the queue | `sites/heygabi-home/public/universes/universes.js` + `index.html` |
+| The approve/decline section | `verse-queue` in `sites/heygabi-home/public/admin/` |
+| The sanctioned verb | `createUniverse()` in `tools/lib/universes.mjs`, `create` in `tools/universes.mjs` |
+
+🔴 **Nothing built here can create a universe, and that was the whole design
+problem rather than a limitation of the build.** A universe is not a row
+anywhere in this estate: it is a decision in `data/universes.json`, in git,
+compiled into two catalogs at build time and pinned by
+`library_catalog/packages/core/test/universes.test.ts`, whose own comment says
+the assertion failing IS that file working. A browser cannot commit to a git
+repo. So the "+" files a **request**; the owner decides; a person edits the
+file, updates the tripwire and rebuilds both catalogs. Making the list
+runtime-writable was considered and rejected in the design (§1) — it deletes the
+git history that is the entire value of the file.
+
+⚠️ **THE FOURTH STATUS IS THE HONEST ONE, and it is why `approved` is never
+drawn as done.** Between a yes and a build, a person has been told yes and
+nothing exists. Both surfaces read *"approved — waiting on the next build"* for
+that window, and past seven days `/admin` spells the age out — §6 Q3's
+recommendation, which does not fix the gap (a page cannot deploy somebody else's
+catalog) and only stops it being invisible.
+
+**The two recommendations built as recommended, both VETOABLE:**
+
+- **§6 Q1 — `tools/universes.mjs create`, gated by `--why` AND `--confirmed`.**
+  The CLI refused to create a universe, in writing, and the refusal was right
+  about DECISIONS and wrong about SYNTAX — there are 17 universes and it could
+  make zero, so **eleven arrived by hand-editing the JSON**, the one path with no
+  `--why`, no `canonicalNames` registration and no `validate` gate. The command
+  is therefore **stricter than the hand edit it replaces**: `--confirmed` is
+  required and nothing else in the CLI requires it. Veto = revert `24c96a6`.
+- **§6 Q2 — a collapsed section on `/admin`, not a tab bar.** One surface per
+  question, and *"what is waiting on my decision"* is the question that page
+  already answers about pending members. Veto = move it to its own page.
+
+§6 Q4 (withdraw) and Q5 (scoped autocomplete with a hint saying so) were also
+built as recommended; both are one small function each.
+
+**Two findings from the build, worth keeping:**
+
+1. ⚠️ **`mine` has to be computed SERVER-side.** The page first inferred it from
+   the absence of a requester name — true for a member, false for an approver,
+   whose own row is named like every other one in the queue. That inference
+   would have taken the withdraw button away from the one person entitled to
+   press it. A test pins it.
+2. ⚠️ **The 180 KB data file cannot simply be imported into a Worker.** esbuild
+   cannot tree-shake inside a JSON object, and 145 KB of that file is `notes`
+   prose and `_changelog` — history that belongs in git and not in a bundle.
+   Hence a 3 KB generated projection plus a parity test that regenerates it in
+   memory and diffs, rather than a hand-kept copy: a checked-in generated file
+   is a hand-kept copy the moment nothing proves it is current, which is exactly
+   how the page went a day one universe short in August.
+
+⚠️ **§3.5's `GET …/names` did NOT delete the page's hardcoded list** — it demoted
+it to the SIGNED-OUT fallback, because the route is members-only and *"sign in to
+see which universes exist"* is a worse page than the one that exists. The parity
+tripwire still holds it.
+
+**Tests:** 2500 → 2552 pass, 0 fail. `npm run check:home` passes. **Not
+verified:** anything live — every route test uses a fake D1, and no page has been
+opened in a browser.
+
+---
+
 ## ✅ LLM billing control — phases 0, 1, 2 and (this repo's half of) 3 — 2026-09-02
 
 > ⚠️ **NOT the whole item.** `TODO.md`'s *"Toggle what can bill the LLM"* stays

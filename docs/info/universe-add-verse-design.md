@@ -1,13 +1,33 @@
 # "+ Add a verse" on /universes — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
-> **Status:** TRACKED — **DESIGN ONLY, nothing built.** No code was written, no
-> route exists, no migration was applied.
-> Last verified: **2026-08-26** — every file:line below was read this session
-> against the working tree at `main` (`ec0cf7c`). ⚠️ **NOT verified:** anything
-> live. No request was made to `index.heygabi.ai` or `auth.heygabi.ai`, no D1
-> was read, no page was opened in a browser. Effort figures are **labelled
-> guesses**, not measurements.
+> **Status:** TRACKED — **BUILT 2026-09-02, phases 0–3. NOT DEPLOYED, and
+> migration 0017 is NOT applied.** Phase 4 (notify on a decision) is still
+> unbuilt. The code of record is `apps/auth-worker/src/universe-requests.ts`,
+> `sites/heygabi-home/public/universes/universes.js`, the `verse-queue` section
+> of `sites/heygabi-home/public/admin/`, and `createUniverse()` in
+> `tools/lib/universes.mjs`. What remains is on
+> [`../TODO.md`](../TODO.md); what landed and why is in
+> [`../DONE.md`](../DONE.md).
+>
+> ⚠️ **THREE THINGS BELOW ARE NOW STALE AS INSTRUCTIONS AND KEPT AS REASONING.**
+> The design is left verbatim rather than rewritten, because the arguments are
+> the value and a doc edited to match its own implementation stops being
+> checkable against it. Where the build differs, it says so at the point of
+> difference:
+> 1. **The migration is `0017`, not `0016`** (§3.4) — `billing_policy` took 0016
+>    while this sat unbuilt. The shape is the design's, verbatim.
+> 2. **There are FIVE statuses, not four** (§3.4) — `withdrawn` was added when
+>    §6 Q4 was built as recommended.
+> 3. **§3.5's `GET …/names` did NOT delete the page's hardcoded list** (§2) — it
+>    demoted it to the SIGNED-OUT fallback. That route is members-only, and
+>    "sign in to see which universes exist" would be a worse page. The parity
+>    tripwire still holds it.
+>
+> Last verified: **2026-09-02** — the build session read every file:line below
+> again and exercised the routes under `node --test`. ⚠️ **NOT verified:**
+> anything live. Nothing was deployed, no remote D1 was touched, and no page was
+> opened in a browser. Effort figures are still **labelled guesses**.
 
 The owner's ask, 2026-08-24, verbatim:
 

@@ -142,7 +142,7 @@ Wave 1 in flight: Groq phase-2 tool translation (platform) · library quick
 wins (scroll-to-top, Signed toggle, research transparency) · audiobook batch
 (say-2, also-on-audio fix, poll-announce toggle, supplements armed
 disambiguated) · games (deploy guards then disposal/copy-history). Waves 2–4:
-player phase 2, ~~Discord fun menu~~, billing phase 0+1, universes +, OR-1,
+player phase 2, ~~Discord fun menu~~, billing phase 0+1, ~~universes +~~, OR-1,
 format toggle, Wandering Inn, cross-links, newest-authors.
 
 ✅ **The Discord fun menu LANDED 2026-09-02 and moved WHOLE to
@@ -525,17 +525,39 @@ policy can only deny, so a path under two switches is refused if either
 denies, which fails safe. A test pins the list of double covers so a NEW one
 has to be argued for.
 
-### 2. "+ Add a verse" on /universes — `docs/info/universe-add-verse-design.md`
-Mockup (private artifact): https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
-Owner: *"in the universe page add a plus button somewhere to add a verse and let
-it take series as an input"*
+### 2. "+ Add a verse" — ⚠️ BUILT, NOT DEPLOYED — `docs/info/universe-add-verse-design.md`
+Phases 0–3 landed 2026-09-02 and are archived whole in [`DONE.md`](DONE.md).
+What is left is a **deploy in a fixed order** and one unbuilt phase.
 
-- ⚠️ A direct "add" **cannot write** — a universe is compiled into two catalogs
-  and pinned by `library_catalog/packages/core/test/universes.test.ts:347`, and
-  `tools/universes.mjs:126` refuses to create one. The "+" creates a PENDING
-  request; the owner approves; a session prepares the commit; the owner deploys.
-- ☐ **OWNER DECISION Q1:** should `tools/universes.mjs` grow a `create` command?
-  Recommendation: yes, with `--why` **and** `--confirmed` both required — stricter
-  than the hand edits that have happened 11 times already.
-- ✅ **The two live discrepancies are FIXED 2026-08-26** — moved whole to
-  [`DONE.md`](DONE.md). The design itself is still ☐ unbuilt.
+🔴 **THE ORDER IS NOT OPTIONAL, and the page is LAST.** The page's "+" calls
+`auth.heygabi.ai`; deploying it first means a member presses a button that
+reports an outage. And the Worker's routes need the table, so the migration goes
+before the Worker — the estate's own migrate-before-deploy rule, which exists so
+new code never meets an old schema.
+
+1. ☐ **Apply migration `0017_universe_requests.sql` to remote `estate_auth`** —
+   `cd apps/auth-worker && npm run db:migrate`. Purely additive (one
+   `CREATE TABLE IF NOT EXISTS` on a new object plus its index), so it is safe to
+   apply ahead of the Worker and unattended, the same property 0012–0016 had.
+2. ☐ **Deploy `estate-auth`** — from a clean tree or a throwaway
+   `git worktree add <tmp> HEAD`. Adds five routes and three CORS mounts; the
+   only change to an existing surface is none.
+3. ☐ **Deploy `heygabi-home`** — `npm run deploy:home` (runs `npm test` and
+   `check:home` first). ⚠️ A directory upload ships the WORKING TREE, not a
+   commit — [`info/worktree-deploys.md`](info/worktree-deploys.md).
+4. ☐ **Then verify LIVE, signed in**, because none of it has been: the "+"
+   renders on <https://heygabi.ai/universes/>, a request lands, and
+   <https://heygabi.ai/admin> shows it under "Verse requests". Nothing below the
+   build was exercised against a browser or a real D1 — the tests use a fake.
+5. ☐ **Phase 4 — notify on a decision** (~½ day, a labelled guess). Reuse
+   `estate_prefs` / `notify-prefs.ts`. Unbuilt; it was never a recommendation,
+   just a later phase.
+6. ☐ **First real use closes its own loop:** after the JSON edit and both
+   catalog rebuilds, `POST /api/estate/universes/requests/:id/landed { commit }`
+   flips the row from `approved` to `landed`. Until somebody does that once, the
+   fourth status is a claim this estate has not yet exercised.
+
+⚠️ **Two recommendations were built as recommended and are VETOABLE** (§6 Q1's
+`create` verb, gated by `--why` **and** `--confirmed`; §6 Q2's collapsed `/admin`
+section rather than a tab). Both are reversible in one commit each; the reasoning
+is in `DONE.md`.
