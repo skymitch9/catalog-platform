@@ -165,11 +165,17 @@ describe('groqMode — fail closed, always', () => {
 // ---------------------------------------------------------------------------
 
 describe('the pins — a silent model change is what these stop', () => {
-  it('⚠️ the model id is PINNED, taken from black_bot_baf\'s own choice', () => {
-    // Groq retires model names faster than a deploy can follow (that repo's own
-    // gotcha), so this is a constant and changing it is a decision somebody
+  it('⚠️ the model id is PINNED — and the pin has already fired once', () => {
+    // Groq retires model names faster than a deploy can follow (black_bot_baf's
+    // own gotcha), so this is a constant and changing it is a decision somebody
     // makes on purpose — including in `/api/health`, which reports it.
-    assert.equal(GABI_GROQ_MODEL, 'llama-3.3-70b-versatile');
+    // ⚠️ Decision of record, 2026-09-01: the inherited pin
+    // `llama-3.3-70b-versatile` had been DEPRECATED by Groq on 2026-08-16 —
+    // every first-day live shadow line read `refused` 404 — and was repinned to
+    // `openai/gpt-oss-120b`, one of Groq's two named replacements (over
+    // `qwen/qwen3.6-27b`: the prompt carries a full personality register and
+    // strict-JSON parses, where the bigger model is the safer bet).
+    assert.equal(GABI_GROQ_MODEL, 'openai/gpt-oss-120b');
   });
 
   it('the endpoint is the OpenAI-compatible one, not Groq\'s native route', () => {

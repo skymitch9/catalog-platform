@@ -105,8 +105,20 @@ import type { ModelMessage } from './conversation.js';
  * silent fall-through to Haiku — never as a broken bot — and the fix is one
  * constant plus a deploy. `/api/health` reports this id so the running pin is
  * checkable in one curl.
+ *
+ * ⚠️ AND THE GOTCHA FIRED ON DAY ONE — the comment above aged one evening.
+ * `llama-3.3-70b-versatile` was DEPRECATED BY GROQ ON 2026-08-16 (their
+ * deprecations page), two weeks before this rung inherited the pin — and it
+ * was never caught earlier because black_bot_baf has never made a live Groq
+ * call either (its own code-notes say so). Every first-day shadow line read
+ * `refused` status 404 in ~20 ms. Repinned 2026-09-01 to `openai/gpt-oss-120b`,
+ * one of Groq's two named replacements (the other, `qwen/qwen3.6-27b`, is
+ * smaller/faster — chosen against because this prompt now carries a full
+ * personality register and strict-JSON parses, where the bigger model is the
+ * safer bet at Groq speeds). A pin inherited from a project that never ran it
+ * is a decision, not a validation.
  */
-export const GABI_GROQ_MODEL = 'llama-3.3-70b-versatile';
+export const GABI_GROQ_MODEL = 'openai/gpt-oss-120b';
 
 /** The OpenAI-compatible endpoint. Same URL `black_bloc/groq.py:20` uses. */
 export const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
