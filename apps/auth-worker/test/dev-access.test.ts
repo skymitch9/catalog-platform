@@ -394,7 +394,15 @@ test('⚠️ /seen answers `devops` from devopsAllows() — not a re-derivation'
   // enforced rather than hoped for.
   const src = ESTATE_SRC.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(src, /const devops = devopsAllows\(row, isOwner\)/, '/seen stopped using devopsAllows()');
-  assert.match(src, /devops,?\s*\}\s*\)/, '`devops` is computed but not returned on the envelope');
+  // ⚠️ Was `/devops,?\s*\}\s*\)/` — an anchor on `devops` being the LAST key,
+  // which broke the day `billing_denied` (0016) was appended after it and said
+  // "devops is not returned" about an envelope that returned it. The check that
+  // matters is that it is IN the returned object, not that it is last.
+  assert.match(
+    src,
+    /return c\.json\(\{[^}]*\bdevops\b[^}]*\}\)/,
+    '`devops` is computed but not returned on the envelope',
+  );
   // ⚠️ `\b` before `devops` is load-bearing: `_` is a word character, so this
   // does NOT match `userJson`'s legitimate `is_devops: row.is_devops === 1`
   // (the ADMIN listing's raw-flag report, which is correct there). It matches

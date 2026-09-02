@@ -3,6 +3,13 @@ import { test } from 'node:test';
 import type { EstateUserRow } from '../src/env.js';
 import { meAnswer } from '../src/me.js';
 
+/**
+ * The default `billing_denied` (0016): nothing switched off anywhere. An EMPTY
+ * policy table is exactly today's behaviour (§3.3 rank 17), so this is what
+ * every one of these envelopes must carry until somebody writes a rule.
+ */
+const NO_DENIALS = { library: [], library2: [], games: [], audiobook: [], estate: [] };
+
 function row(over: Partial<EstateUserRow> = {}): EstateUserRow {
   return {
     id: 1,
@@ -44,6 +51,9 @@ test('meAnswer: not in the directory → status null, never an error shape', () 
     dev_access: false,
     // The public slice — the same thing the anonymous internet sees (§4.5).
     visibility: ['audiobook'],
+    // 0016: nothing is switched off, because the default answer is the empty
+    // one — an empty policy table is exactly today's behaviour (§3.3 rank 17).
+    billing_denied: NO_DENIALS,
   });
 });
 
@@ -54,6 +64,7 @@ test('meAnswer: pending → the public slice, whatever the stored flags say', ()
     is_devops: false,
     dev_access: false,
     visibility: ['audiobook'],
+    billing_denied: NO_DENIALS,
   });
 });
 
@@ -64,6 +75,7 @@ test('meAnswer: approved → the stored set, narrowing included', () => {
     is_devops: false,
     dev_access: false,
     visibility: ['audiobook', 'library', 'games'],
+    billing_denied: NO_DENIALS,
   });
   assert.deepEqual(
     meAnswer(row({ status: 'approved', vis_library: 0, vis_games: 0 }), false).visibility,
@@ -109,6 +121,7 @@ test('meAnswer: revoked → {} — revocation beats the public slice', () => {
     is_devops: false,
     dev_access: false,
     visibility: [],
+    billing_denied: NO_DENIALS,
   });
 });
 
@@ -133,6 +146,9 @@ test('meAnswer: OWNER_EMAILS break-glass wins over every table state (§4.3)', (
     // to make impossible.
     dev_access: true,
     visibility: ['audiobook', 'library', 'games', 'library2', 'ebooks'],
+    // 0016 rides the break-glass too: an owner cannot have his spending
+    // switched off, for the same reason his visibility cannot be narrowed.
+    billing_denied: NO_DENIALS,
   };
   // No row at all — the empty-directory bootstrap.
   assert.deepEqual(meAnswer(null, true), want);
@@ -197,7 +213,9 @@ test('⚠️ /me answers NOTHING about downloads — that is the ladder’s ques
       // ⚠️ `dev_access` (0011) is NOT a download key — it is the /dev/ lane
       // curtain's answer, and it gates no bytes. The assertion below still
       // pins the absence of any download field on every branch.
-      ['dev_access', 'is_approver', 'is_devops', 'status', 'visibility'],
+      // `billing_denied` (0016) joined 2026-09-02 and is not a download key
+      // either — it is the SPENDING curtain, per site, and it opens nothing.
+      ['billing_denied', 'dev_access', 'is_approver', 'is_devops', 'status', 'visibility'],
       'no download key on any branch, including the owner break-glass',
     );
   }

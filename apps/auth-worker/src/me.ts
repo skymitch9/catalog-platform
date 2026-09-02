@@ -54,6 +54,25 @@ export interface MeAnswer {
    */
   dev_access: boolean;
   visibility: Catalog[];
+  /**
+   * BILLING POLICY (0016, 2026-09-02) — the money paths this person may not
+   * spend on, PER SITE, already resolved.
+   *
+   * ⚠️ CURTAIN, NOT LOCK (§3.4). It decides whether a button is DRAWN. It never
+   * decides whether a call is served — the Worker resolves that itself off
+   * `/seen`, because a check the caller performs is a check the caller can skip.
+   *
+   * ⚠️ A PER-SITE MAP, where the design's §3.4 says *"the same array"*, and the
+   * departure is deliberate: `/me` has no site. Its origins are the apex AND
+   * the audiobook site, and "is the cover button drawn" is a different question
+   * on library than on games. A flat union would hide a control on a site where
+   * it is allowed. Since it is a curtain either way, the extra detail costs
+   * nothing and removes a guess.
+   *
+   * ⚠️ An OWNER's map is empty everywhere, computed and never stored — the same
+   * break-glass rule `status` and `visibility` follow.
+   */
+  billing_denied: Record<string, string[]>;
   /*
    * ⚠️ NO `download_ebooks` FIELD, and no `downloadEbooks()` function beneath
    * this interface. Both existed for one day (2026-08-17) and were removed the
@@ -69,7 +88,25 @@ export interface MeAnswer {
    */
 }
 
-export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer {
+const NO_DENIALS: Record<string, string[]> = {
+  library: [],
+  library2: [],
+  games: [],
+  audiobook: [],
+  estate: [],
+};
+
+/**
+ * ⚠️ `billingDenied` is passed IN, resolved, rather than computed here. This
+ * module is pure by design (its header says so) and the resolution needs the
+ * rule table; the route reads D1 and hands the answer over, exactly as it
+ * already hands over the row.
+ */
+export function meAnswer(
+  row: EstateUserRow | null,
+  isOwner: boolean,
+  billingDenied: Record<string, string[]> = NO_DENIALS,
+): MeAnswer {
   if (isOwner) {
     // §4.3: OWNER_EMAILS is approved + approver REGARDLESS of table state,
     // and sees every catalog (`library2`'s and `ebooks`' DEFAULT 0 included —
@@ -84,6 +121,9 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
       is_devops: true,
       dev_access: devAccessAllows(row, true),
       visibility: [...CATALOGS],
+      // The break-glass cannot be narrowed into a lockout — not by visibility
+      // (above) and not by a spending switch either.
+      billing_denied: { ...NO_DENIALS },
     };
   }
   if (!row) {
@@ -93,6 +133,10 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
       is_devops: false,
       dev_access: devAccessAllows(null, false),
       visibility: [...PUBLIC_CATALOGS],
+      // Not in the directory: no row, so no `user` rule can name them and no
+      // `role` rule is resolvable. `everyone` rules still reach them, which is
+      // what the caller passed in.
+      billing_denied: billingDenied,
     };
   }
   return {
@@ -103,5 +147,6 @@ export function meAnswer(row: EstateUserRow | null, isOwner: boolean): MeAnswer 
     is_devops: row.is_devops === 1 || row.is_approver === 1,
     dev_access: devAccessAllows(row, false),
     visibility: effectiveVisibility(row.status, row),
+    billing_denied: billingDenied,
   };
 }

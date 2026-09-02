@@ -32,6 +32,7 @@ import { machineKeyRoutes } from './machine-keys.js';
 import { estateDocsRoutes } from './estate-docs.js';
 import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
+import { billingRoutes } from './billing.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
@@ -162,6 +163,19 @@ app.use('/api/estate/keys/*', adminCors());
 // that is down. test/cors-coverage.test.ts caught precisely that on the first
 // run of this feature.
 app.use('/api/estate/claude/*', adminCors());
+// The Spending panel (billing policy, 0016 — 2026-09-02). Apex-only like every
+// other /admin control. ⚠️ A CORS MOUNT IS NOT IMPLIED BY A ROUTE — this line
+// is the difference between the panel working and the panel rendering
+// "could not reach the estate", which looks exactly like a Worker that is down.
+// The wildcard covers /rules and /rules/:id (Hono mounts are exact-or-wildcard,
+// never prefix-implicit); the bare exact mount below covers /policy, which is a
+// MACHINE door (a cron's bearer, no browser, no preflight) and needs no CORS at
+// all — it is covered only because Hono mounts by path, not by method.
+// ⚠️ DELETE is in allowMethods here and nowhere else in this file: the rule
+// removal is the estate's first browser-issued DELETE, and adminCors() does not
+// list it.
+app.use('/api/estate/billing', billingCors());
+app.use('/api/estate/billing/*', billingCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
@@ -221,6 +235,7 @@ app.route('/api', shelfParityRoutes);
 app.route('/api', claudeUsageRoutes);
 app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);
+app.route('/api', billingRoutes);
 app.route('/api', sessionRoutes);
 
 function adminCors() {
@@ -230,6 +245,24 @@ function adminCors() {
       return allowed.includes(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  });
+}
+
+/**
+ * The Spending panel's CORS — adminCors() plus DELETE, which the rule removal
+ * needs and which no other admin control uses. Its own function rather than
+ * widening adminCors(): adding DELETE to every admin route would hand a browser
+ * origin a method nobody audited those routes for.
+ */
+function billingCors() {
+  return cors({
+    origin: (origin, c) => {
+      const allowed = parseAdminOrigins(c.env.ADMIN_ORIGINS);
+      return allowed.includes(origin) ? origin : null;
+    },
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
   });

@@ -39,6 +39,9 @@ import {
   statusCounts,
 } from './estate-db.js';
 import { meAnswer } from './me.js';
+import type { BillingSite } from './billing-registry.js';
+import { resolveDenied, resolveDeniedBySite } from './billing-policy.js';
+import { listPolicyRules } from './billing-db.js';
 import { devAccessAllows, devopsAllows, requireApprover } from './middleware/auth.js';
 import { clearSiteRoleOnRevocation, type RoleClearResult } from './site-roles.js';
 import { CATALOGS, effectiveVisibility, normalizeVisibility, storedVisibility } from './visibility.js';
@@ -56,8 +59,15 @@ export async function tokenMatches(header: string | undefined, expected: string)
   return crypto.subtle.timingSafeEqual(given, want);
 }
 
-/** Which consumer app is calling, by its bearer token. */
-async function identifyApp(
+/**
+ * Which consumer app is calling, by its bearer token.
+ *
+ * ⚠️ Exported since 2026-09-02 so the billing SYSTEM door (billing.ts) resolves
+ * a caller the same way `/seen` does. One implementation: identity comes from
+ * the token VALUE and never from a body field, which is the property that made
+ * the `library2` orphan (F-5) invisible here and must not be weakened.
+ */
+export async function identifyApp(
   env: AppBindings['Bindings'],
   header: string | undefined,
 ): Promise<{ app: ConsumerApp | null; anyConfigured: boolean }> {
@@ -81,8 +91,43 @@ const seenBodySchema = z
       .refine((s) => s.includes('@'), 'not an email'),
     firebase_uid: z.string().min(1).max(200).nullish(),
     display_name: z.string().min(1).max(200).nullish(),
+    /**
+     * ⚠️ THE APP'S CLAIM ABOUT ITS OWN USER'S RUNG (billing design §3.4), added
+     * 2026-09-02 with `billing_denied`. Without it a `role`-principal rule is
+     * unresolvable server-side for library and games, because the estate does
+     * not hold their ladders — those live in each app's own `app_user`.
+     *
+     * A CLAIM is exactly the right trust level: the app is the authority on its
+     * own ladder, it already holds an app token, and the value is used ONLY to
+     * pick a DENY row — never to grant anything, because policy cannot grant.
+     * Optional, so an old consumer mid-deploy keeps working: absent ⇒ `role`
+     * rules are skipped and `user`/`everyone` rules still apply (§3.5 row 5).
+     */
+    local_role: z.string().trim().min(1).max(64).nullish(),
   })
   .strict();
+
+/**
+ * Which billing SITE a consumer app is. ⚠️ A separate mapping rather than a
+ * cast: `index` is the estate apex's Worker, and its money path (E6, the shelf
+ * scanner behind `<estate-search scan>`) is an ESTATE path, not a catalog one.
+ * Naming the two vocabularies' join here means the day they diverge, they
+ * diverge in one visible place.
+ */
+export function siteForApp(app: ConsumerApp): BillingSite {
+  switch (app) {
+    case 'library':
+      return 'library';
+    case 'library2':
+      return 'library2';
+    case 'games':
+      return 'games';
+    case 'audiobook':
+      return 'audiobook';
+    case 'index':
+      return 'estate';
+  }
+}
 
 /**
  * The visibility set as the API speaks it (§4.5): an array of catalog names,
@@ -263,13 +308,36 @@ estateRoutes.post('/estate/seen', async (c) => {
   // is a check the caller can skip.
   const devops = devopsAllows(row, isOwner);
 
+  // ⚠️ BILLING POLICY (0016, 2026-09-02) — the feature ids this person may NOT
+  // spend money on, on THIS app's site, ALREADY RESOLVED. The same stance
+  // `visibility`, `dev_access` and `devops` take on this answer, and for the
+  // same reason: one resolver on the server, a consumer applies it as-is and
+  // never recomputes it (§3.4, "three callers, ONE resolver").
+  //
+  // 🔴 IT CAN ONLY EVER DENY. The consumer ANDs this with the gate it already
+  // had — *"the code's gate says yes AND policy does not say no"*. Nothing in
+  // §2's "today's gate" column is removed by this field, and no value it could
+  // ever carry opens anything.
+  //
+  // ⚠️ The OWNER is never denied, computed here and never stored — the same
+  // break-glass rule `status` and `visibility` follow two paragraphs up. An
+  // owner who could switch off his own ability to fix the estate is a lockout
+  // wearing a spending switch's clothes.
+  const billingDenied = isOwner
+    ? []
+    : resolveDenied(await listPolicyRules(c.env.DB), siteForApp(app), {
+        kind: 'person',
+        userId: String(row.id),
+        localRole: parsed.data.local_role ?? null,
+      });
+
   // ⚠️ NO `download_ebooks` on this answer. It rode here for one day
   // (2026-08-17) and was removed the same day: downloading an ebook is a rung
   // on the consuming site's own ladder now, not an estate fact (owner: *"use
   // roles we have… match library"*). `visibility` still carries `ebooks`, which
   // is the whole of what the estate decides about the shelf — seeing it, and
   // reading in the browser viewer.
-  return c.json({ status, visibility, dev_access: devAccess, devops });
+  return c.json({ status, visibility, dev_access: devAccess, devops, billing_denied: billingDenied });
 });
 
 // ---------------------------------------------------------------------------
@@ -319,7 +387,7 @@ estateRoutes.post('/estate/hello', async (c) => {
   });
 
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
-  return c.json(meAnswer(row, owners.includes(email)));
+  return c.json(meAnswer(row, owners.includes(email), await meBillingDenied(c.env.DB, row)));
 });
 
 // ---------------------------------------------------------------------------
@@ -343,8 +411,37 @@ estateRoutes.get('/estate/me', async (c) => {
   const email = identity.email.trim().toLowerCase();
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
   const row = await getUserByEmail(c.env.DB, email);
-  return c.json(meAnswer(row, owners.includes(email)));
+  return c.json(meAnswer(row, owners.includes(email), await meBillingDenied(c.env.DB, row)));
 });
+
+/**
+ * The `/me` and `/hello` curtain: which money paths this person may not spend
+ * on, per site (§3.4 row 2).
+ *
+ * ⚠️ `localRole` is NULL here and always will be. A browser has no app ladder
+ * to claim from — `local_role` is a claim an APP makes about its own user on
+ * `/seen`, and taking one from a browser would be taking a person's word about
+ * their own rung. So `role` rules are skipped on this answer and `user` /
+ * `everyone` rules still apply. Since this is a curtain and never a lock, the
+ * consequence is bounded and stated: a control denied only by a ROLE rule is
+ * still DRAWN, and the Worker still refuses the call.
+ */
+async function meBillingDenied(
+  db: D1Database,
+  row: EstateUserRow | null,
+): Promise<Record<string, string[]>> {
+  const rules = await listPolicyRules(db);
+  if (rules.length === 0) {
+    // The common case, and worth short-circuiting: an empty table is exactly
+    // today's behaviour (§3.3 rank 17), so there is nothing to resolve.
+    return { library: [], library2: [], games: [], audiobook: [], estate: [] };
+  }
+  return resolveDeniedBySite(rules, {
+    kind: 'person',
+    userId: row ? String(row.id) : null,
+    localRole: null,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // The admin API — approver-gated. The admin PAGE lives on the apex.
