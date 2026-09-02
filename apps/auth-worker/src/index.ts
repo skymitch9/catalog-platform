@@ -17,6 +17,7 @@ import { cors } from 'hono/cors';
 import { declareAuthPosture } from '@platform/estate-auth';
 import type { AppBindings } from './env.js';
 import { parseAdminOrigins, parseSessionOrigins } from './env.js';
+import { appCheckRoutes } from './app-check.js';
 import { estateRoutes } from './estate.js';
 import { siteRolesRoutes } from './site-roles.js';
 import { opsRoutes } from './ops.js';
@@ -223,6 +224,19 @@ app.use('/api/health', healthCors());
 // same tokenless-preflight reasoning as every CORS mount above.
 app.use('/api/session', sessionCors());
 app.use('/api/session/token', sessionCors());
+
+// GET /api/estate/app-check — THE HANDSHAKE PROBE (app-check.ts). Read-only,
+// no D1, no identity, no write: it answers "does this bearer authenticate, and
+// as which app?" and nothing else. It exists so a token pair with NO MASTER
+// COPY can be rotated and PROVED in one run instead of being refused by
+// scripts/op-rotate-pair.mjs for want of anything to watch.
+//
+// ⚠️ Mounted BEFORE estateRoutes on purpose. estateRoutes owns
+// /estate/users/:id, and Hono matches in mount order; keeping the specific
+// path ahead of any parameterised sibling is the same rule the
+// estateDocsRoutes/docsRoutes comment below states, and the failure it
+// prevents is a 404 that reads like "the route was never deployed".
+app.route('/api', appCheckRoutes);
 
 app.route('/api', estateRoutes);
 app.route('/api', siteRolesRoutes);

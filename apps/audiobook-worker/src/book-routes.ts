@@ -151,7 +151,7 @@ function booksGate(): MiddlewareHandler<{ Bindings: Env }> {
 
 /** Length-gated `crypto.subtle.timingSafeEqual`, the estate's one bearer idiom
  *  (`auth-worker/src/estate.ts`). The length is not a secret; the bytes are. */
-async function bearerMatches(header: string | undefined, expected: string): Promise<boolean> {
+export async function bearerMatches(header: string | undefined, expected: string): Promise<boolean> {
   if (!header?.startsWith('Bearer ')) return false;
   const given = new TextEncoder().encode(header.slice('Bearer '.length));
   const want = new TextEncoder().encode(expected);

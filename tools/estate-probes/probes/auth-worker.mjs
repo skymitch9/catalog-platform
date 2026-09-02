@@ -415,4 +415,48 @@ export async function probeAuthWorker() {
     const acao = header(sessionEvil, 'access-control-allow-origin');
     check(AREA, 'A19', 'OPTIONS', sessionUrl, `no access-control-allow-origin for ${FOREIGN_ORIGIN}`, acao === null, `ACAO=${acao}`);
   }
+
+  // --- GET /api/estate/app-check — THE HANDSHAKE PROBE (2026-09-02) -------
+  //
+  // `src/app-check.ts`, built so `ESTATE_APP_TOKEN_LIBRARY2` and
+  // `ESTATE_APP_TOKEN_AUDIOBOOK` — neither of which has a master copy
+  // anywhere — can be rotated and PROVED in one run instead of being refused
+  // by `scripts/op-rotate-pair.mjs` for want of anything to watch. One route
+  // for both pairs: the same Worker verifies both.
+  //
+  // ⚠️ This suite holds no app token and mints none, so it can only assert
+  // the REFUSAL half — which is exactly the half that must hold for a route
+  // whose whole job is to be presented a secret. The 200 side is exercised
+  // during the owner's mint ceremony, by the rotation script.
+  const appCheckUrl = `${AUTH_ORIGIN}/api/estate/app-check`;
+  for (const [id, label, init] of [
+    ['A36', 'no bearer', {}],
+    ['A37', 'a garbage bearer', { headers: { Authorization: GARBAGE_BEARER } }],
+  ]) {
+    const r = await get(appCheckUrl, init);
+    if (!r.ok) {
+      check(AREA, id, 'GET', appCheckUrl, `${label} → 401, worded`, false, `request failed: ${r.error}`);
+      continue;
+    }
+    const body = JSON.stringify(r.json ?? r.text ?? '');
+    check(
+      AREA,
+      id,
+      'GET',
+      appCheckUrl,
+      `${label} → 401 { error: "unrecognised_app_token", detail: <worded> }, naming no app and no secret`,
+      r.status === 401 &&
+        r.json?.error === 'unrecognised_app_token' &&
+        typeof r.json?.detail === 'string' &&
+        r.json.detail.length > 0 &&
+        // ⚠️ A refusal must not become a LISTING of what is configured. It
+        // names no app and no secret name — an anonymous caller learns only
+        // that the value it presented is not one of them.
+        r.json?.app === undefined &&
+        r.json?.ok === undefined &&
+        !body.includes('ESTATE_APP_TOKEN_LIBRARY2') &&
+        !body.includes('ESTATE_APP_TOKEN_AUDIOBOOK'),
+      `status=${r.status} body=${body.slice(0, 240)}`,
+    );
+  }
 }

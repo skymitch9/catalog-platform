@@ -27,9 +27,26 @@
  * is that a claim is measured or it is labelled a guess; here a guess is an
  * outage.
  *
- * So three of the four pairs in the registry below carry `probe: null` and a
- * sentence naming what a probe would need. That is a deliberate, documented
- * blocker and not an omission — see `docs/TODO.md`.
+ * ✅ **ALL FOUR PAIRS NOW HAVE ONE — 2026-09-02.** Three of them carried
+ * `probe: null` from 2026-08-26 until then, each with a sentence naming what a
+ * probe would need; those sentences are kept **in place**, above the probe that
+ * answered them, because the reason a route exists is worth more than the fact
+ * that it does. Two read-only routes were built:
+ *
+ * | Route | Proves | Reaches |
+ * |---|---|---|
+ * | `GET auth.heygabi.ai/api/estate/app-check` | `ESTATE_APP_TOKEN_LIBRARY2`, `ESTATE_APP_TOKEN_AUDIOBOOK` | no D1, no identity, no write |
+ * | `GET audiobook-api.heygabi.ai/api/books/app-check` | `ESTATE_APP_TOKEN_BOOKS` | no bucket, no pack, no email — **no book** |
+ *
+ * ⚠️ **The guard stays exactly as it was.** A future pair added with
+ * `probe: null` is still refused before anything is minted; nothing about this
+ * change makes the refusal weaker, and re-adding a pair without a probe is not
+ * a shortcut anybody should reach for.
+ *
+ * 🔴 **A probe existing does NOT mean a pair has been rotated.** As of
+ * 2026-09-02 the three are *runnable*, not *run* — minting is the owner's
+ * ceremony and a session must not perform it. `docs/TODO.md` carries the exact
+ * commands.
  *
  * ## The order, and why it is this order
  *
@@ -128,11 +145,13 @@ export const PAIRS = {
       { role: 'verifier', label: 'estate-auth', repo: 'catalog-platform', config: join(root, 'apps', 'auth-worker', 'wrangler.toml'), env: null, secret: 'ESTATE_APP_TOKEN_LIBRARY2' },
       { role: 'presenter', label: 'library-catalog-friend', repo: 'library_catalog', config: ['apps', 'worker', 'wrangler.toml'], env: 'friend', secret: 'ESTATE_APP_TOKEN_LIBRARY2' },
     ],
-    probe: null,
-    whyNoProbe:
-      'POST /api/estate/seen needs the app token AND a real signed-in identity, and it WRITES a seen record. ' +
-      'GET /api/estate/health is open and exercises no app token at all (apps/auth-worker/src/estate.ts:647 — it returns counts and a version). ' +
-      'A probe would need either a read-only "does this app token authenticate?" route on estate-auth, or the owner signing in on padhard and watching the estate row update.',
+    // ✅ PROBE BUILT 2026-09-02 — apps/auth-worker/src/app-check.ts. What used
+    // to be written here: "POST /api/estate/seen needs the app token AND a real
+    // signed-in identity, and it WRITES a seen record; GET /api/estate/health
+    // exercises no app token at all. A probe would need a read-only 'does this
+    // app token authenticate?' route on estate-auth." That route now exists.
+    probe: (value) => appCheckProbe(APP_CHECK_ESTATE, value, 'library2'),
+    probeName: 'GET auth.heygabi.ai/api/estate/app-check → app: library2 (read-only, no D1, no identity, no write)',
   },
 
   ESTATE_APP_TOKEN_AUDIOBOOK: {
@@ -142,10 +161,14 @@ export const PAIRS = {
       { role: 'verifier', label: 'estate-auth', repo: 'catalog-platform', config: join(root, 'apps', 'auth-worker', 'wrangler.toml'), env: null, secret: 'ESTATE_APP_TOKEN_AUDIOBOOK' },
       { role: 'presenter', label: 'audiobook-worker', repo: 'catalog-platform', config: join(root, 'apps', 'audiobook-worker', 'wrangler.toml'), env: null, secret: 'ESTATE_APP_TOKEN_AUDIOBOOK' },
     ],
-    probe: null,
-    whyNoProbe:
-      'The token is used by estateAnswerFor/estateStatusFor (apps/audiobook-worker/src/estate-status.ts:74), which are only reached from the ebook gate and /api/me — both of which require a signed-in identity. ' +
-      'GET /api/health on audiobook-worker reports the estate-check MODE, not whether the pair authenticates. A probe needs a signed-in request, or a new read-only self-check route.',
+    // ✅ PROBE BUILT 2026-09-02 — the SAME route as library2's above, because
+    // both pairs are verified by the same Worker. One route unblocked two
+    // pairs, which is why option 1 of the TODO's two ways forward was taken.
+    // ⚠️ The `app` assertion is what makes them different probes: presenting
+    // audiobook's value must answer `audiobook` and not merely `ok`, or a
+    // rotation that set the WRONG app's secret would pass.
+    probe: (value) => appCheckProbe(APP_CHECK_ESTATE, value, 'audiobook'),
+    probeName: 'GET auth.heygabi.ai/api/estate/app-check → app: audiobook (read-only, no D1, no identity, no write)',
   },
 
   ESTATE_APP_TOKEN_BOOKS: {
@@ -155,13 +178,64 @@ export const PAIRS = {
       { role: 'verifier', label: 'audiobook-worker', repo: 'catalog-platform', config: join(root, 'apps', 'audiobook-worker', 'wrangler.toml'), env: null, secret: 'ESTATE_APP_TOKEN_BOOKS' },
       { role: 'presenter', label: 'estate-discord', repo: 'catalog-platform', config: join(root, 'apps', 'discord-worker', 'wrangler.toml'), env: null, secret: 'ESTATE_APP_TOKEN_BOOKS' },
     ],
-    probe: null,
-    whyNoProbe:
-      '/api/books/* needs the app token PLUS an X-Estate-On-Behalf-Of naming a linked Discord asker (apps/audiobook-worker/src/book-routes.ts:35,126). ' +
-      'Sending a fabricated on-behalf identity to prove a token works would be asserting an identity to a live gate, which is not a probe. ' +
-      'The real check is the owner asking GABI a book question in Discord and seeing her answer instead of falling back — a human step.',
+    // ✅ PROBE BUILT 2026-09-02 — apps/audiobook-worker/src/app-check.ts, and
+    // the OLD objection here is the reason it is a separate route rather than a
+    // flag on /api/books/*: "sending a fabricated on-behalf identity to prove a
+    // token works would be asserting an identity to a live gate, which is not a
+    // probe." So this route reaches NO book — no bucket, no pack, no email
+    // resolved. Door B's contract stays token AND asker.
+    probe: (value) => appCheckProbe(APP_CHECK_BOOKS, value, 'books'),
+    probeName: 'GET audiobook-api.heygabi.ai/api/books/app-check → app: books (read-only, reaches no book)',
   },
 };
+
+// ── The handshake, one shape for all three ──────────────────────────────────
+
+export const APP_CHECK_ESTATE = 'https://auth.heygabi.ai/api/estate/app-check';
+export const APP_CHECK_BOOKS = 'https://audiobook-api.heygabi.ai/api/books/app-check';
+
+/**
+ * Present `value` to a read-only app-check route and require it to name
+ * `expectedApp`.
+ *
+ * ⚠️ **`ok` is 200 AND the right app name, never 200 alone.** A rotation that
+ * pushed a value to the wrong `ESTATE_APP_TOKEN_*` secret would still get a 200
+ * — from the app it was wrongly filed under — and a probe that only checked the
+ * status would call that a success and move on to set the presenter. The app
+ * name is the assertion that tells the two apart.
+ *
+ * ⚠️ It sends the value in an `Authorization` header and NEVER in a URL: a query
+ * string lands in access logs, and this repo is public.
+ */
+async function appCheckProbe(url, value, expectedApp) {
+  let res;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${value}` } });
+  } catch (e) {
+    // ⚠️ A NETWORK failure is not a refusal, and must never be reported as one
+    // — that is how an outage gets read as "the token is wrong" and a working
+    // value gets re-minted. Named distinctly.
+    return { ok: false, status: 0, detail: `unreachable (${e?.message ?? e})` };
+  }
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    /* a non-JSON body is itself the detail */
+  }
+  const app = body?.app ?? null;
+  if (res.status !== 200) {
+    return { ok: false, status: res.status, detail: `${res.status} ${body?.error ?? ''}`.trim() };
+  }
+  if (app !== expectedApp) {
+    return {
+      ok: false,
+      status: 200,
+      detail: `200 but the route named app "${app}", not "${expectedApp}" — the value is set on the WRONG secret`,
+    };
+  }
+  return { ok: true, status: 200, detail: `200, app: ${app}` };
+}
 
 // ── Plumbing ────────────────────────────────────────────────────────────────
 

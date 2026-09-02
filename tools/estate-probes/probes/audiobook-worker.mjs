@@ -307,4 +307,62 @@ export async function probeAudiobookWorker() {
       body.slice(0, 200),
     );
   }
+
+  // --- GET /api/books/app-check — THE HANDSHAKE PROBE (2026-09-02) --------
+  //
+  // `src/app-check.ts`, built so `ESTATE_APP_TOKEN_BOOKS` — which has NO
+  // master copy anywhere — can be rotated and PROVED in one run instead of
+  // being refused by `scripts/op-rotate-pair.mjs` for want of anything to
+  // watch. What this suite can assert is the REFUSAL half, and that is the
+  // half worth a standing check: a route built to be presented a secret must
+  // refuse everything else, in words, and must name nothing on the way.
+  //
+  // ⚠️ This suite holds no token and mints none. The 200 side is exercised
+  // only during the owner's mint ceremony, by the rotation script.
+  const bookAppCheckUrl = `${AUDIOBOOK_API_ORIGIN}/api/books/app-check`;
+  for (const [id, label, init] of [
+    ['AB23', 'no bearer', {}],
+    ['AB24', 'a garbage bearer', { headers: { Authorization: GARBAGE_BEARER } }],
+  ]) {
+    const r = await get(bookAppCheckUrl, init);
+    if (!r.ok) {
+      check(AREA, id, 'GET', bookAppCheckUrl, `${label} → 401, worded`, false, `request failed: ${r.error}`);
+      continue;
+    }
+    // ⚠️ 503 `app_token_unset` is a LEGAL answer here and is NOT a failure of
+    // this probe — it means the secret is not set on this Worker, which is
+    // the documented ships-dark state for door B. It is reported so the run
+    // says which world it is in, rather than turning a posture into a red row.
+    if (r.status === 503 && r.json?.error === 'app_token_unset') {
+      check(
+        AREA,
+        id,
+        'GET',
+        bookAppCheckUrl,
+        `${label} → 503 app_token_unset (door B ships dark — a posture, not a fault), worded`,
+        typeof r.json?.detail === 'string' && r.json.detail.length > 0,
+        `status=${r.status} body=${JSON.stringify(r.json)}`,
+      );
+      continue;
+    }
+    const body = JSON.stringify(r.json ?? r.text ?? '');
+    check(
+      AREA,
+      id,
+      'GET',
+      bookAppCheckUrl,
+      `${label} → 401 { error: "unrecognised_app_token", detail: <worded> }, and it names no app`,
+      r.status === 401 &&
+        r.json?.error === 'unrecognised_app_token' &&
+        typeof r.json?.detail === 'string' &&
+        r.json.detail.length > 0 &&
+        // ⚠️ A refusal is a fact about the value presented, never a listing of
+        // what would have worked. `ok` must be absent too — a probe that
+        // reported `ok:false` in a 401 body would be one careless `if (body.ok)`
+        // away from a rotation script reading a refusal as a success.
+        r.json?.app === undefined &&
+        r.json?.ok === undefined,
+      `status=${r.status} body=${body.slice(0, 240)}`,
+    );
+  }
 }

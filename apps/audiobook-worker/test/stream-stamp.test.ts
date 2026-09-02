@@ -20,6 +20,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { before, beforeEach, test } from 'node:test';
 import app from '../src/index.js';
 import { resetEstateCache } from '../src/estate-status.js';
@@ -102,24 +103,18 @@ function fakeAudioBucket() {
  */
 let FAKE_SA = '';
 
-before(async () => {
-  const pair = (await crypto.subtle.generateKey(
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: 'SHA-256',
-    },
-    true,
-    ['sign', 'verify'],
-  )) as CryptoKeyPair;
-  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
-  let bin = '';
-  for (const b of pkcs8) bin += String.fromCharCode(b);
-  const b64 = btoa(bin).replace(/(.{64})/g, '$1\n');
+before(() => {
+  // ⚠️ `node:crypto` rather than WebCrypto: the PKCS#8 PEM comes out directly,
+  // and this file's tsconfig types `crypto.subtle` from @cloudflare/workers-types
+  // where the export overloads do not line up with Node's runtime object.
+  const { privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
   FAKE_SA = JSON.stringify({
     client_email: 'sa@audiobook-catalog.iam.gserviceaccount.com',
-    private_key: `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`,
+    private_key: privateKey,
     project_id: 'audiobook-catalog',
   });
 });
@@ -243,7 +238,7 @@ test('a stamp PATCHes audio_streams/{anchor} with an updateMask, never a full re
     const outcome = await stampStream(envWith(), UP_ANCHOR, 1_772_000_000_000);
     assert.equal(outcome, 'written');
     assert.equal(f.captured.length, 1);
-    const [call] = f.captured;
+    const call = f.captured[0] as Captured;
     assert.equal(call.method, 'PATCH');
     assert.ok(call.url.includes(`/documents/audio_streams/${UP_ANCHOR}?`), call.url);
     assert.ok(call.url.includes('updateMask.fieldPaths=anchor'), call.url);
@@ -268,7 +263,7 @@ test('⚠️ NOTHING PERSONAL is written — the collection is world-readable by
   try {
     assert.equal(await stampStream(envWith(), UP_ANCHOR, 1_772_000_000_000), 'written');
     assert.equal(f.captured.length, 1, 'nothing was written — this test would pass vacuously');
-    const serialised = JSON.stringify(f.captured[0].body);
+    const serialised = JSON.stringify((f.captured[0] as Captured).body);
     assert.equal(serialised.includes('@'), false, serialised);
     assert.equal(serialised.includes('updatedBy'), false, serialised);
     assert.equal(serialised.includes('email'), false, serialised);
@@ -347,7 +342,7 @@ test('🔴 SERVING A BYTE STAMPS THE BOOK — the whole point, through the real 
     assert.equal(res.status, 206);
     await w.settle();
     assert.equal(f.captured.length, 1);
-    assert.ok(f.captured[0].url.includes('audio_streams/' + UP_ANCHOR));
+    assert.ok((f.captured[0] as Captured).url.includes('audio_streams/' + UP_ANCHOR));
   } finally {
     f.restore();
   }

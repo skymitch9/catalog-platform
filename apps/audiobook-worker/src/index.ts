@@ -71,6 +71,7 @@ import { reportEvent } from '@platform/estate-events';
 import { parseServiceAccount } from '@platform/firebase-sa';
 import { audioFileRoutes } from './audio-file.js';
 import { audioStatusRoutes } from './audio-status.js';
+import { appCheckRoutes } from './app-check.js';
 import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
 import { ebookFileRoutes } from './ebook-file.js';
@@ -334,6 +335,19 @@ app.route('/', audioFileRoutes);
 // ⚠️ They serve WHATEVER PACKS EXIST at query time, discovered by an R2 listing
 // rather than compiled in, so a book ingested overnight is answerable in the
 // morning with no deploy (owner requirement, docs/TODO.md status-page item 4).
+// GET /api/books/app-check — the ESTATE_APP_TOKEN_BOOKS handshake probe
+// (app-check.ts). ⚠️ MOUNTED BEFORE bookRoutes, and the order is load-bearing:
+// bookRoutes puts `booksGate()` in front of everything it owns, so mounted the
+// other way round a probe with the RIGHT token would be answered by the gate's
+// `no_proven_email` 400 instead of by this route — which is the same shape of
+// swallowed-route bug the auth Worker's estateDocsRoutes/docsRoutes comment
+// records, and it would read as "the probe route was never deployed".
+//
+// ⚠️ It reaches NO book. It touches no bucket, loads no pack and resolves no
+// email — it answers a fact about the CREDENTIAL only. Door B's contract is
+// token AND asker, and nothing here weakens that.
+app.route('/', appCheckRoutes);
+
 app.route('/', bookRoutes);
 
 // Phase 3 wave A — the prebuilt write routes, DORMANT until the owner flips
