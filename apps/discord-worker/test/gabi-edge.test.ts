@@ -388,3 +388,48 @@ describe('⚠️ ONE PROMPT, TWO PROVIDERS — no provider-specific fork', () =>
     assert.equal(sent, STANDARD_PROMPT_AS_SHIPPED, 'standard sent something other than the pinned prompt');
   });
 });
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE REGISTER REACHES THE REPORTING ANSWERS TOO (owner, 2026-09-02)
+// ---------------------------------------------------------------------------
+//
+// His verdict on the first live test at `full`: *"she sounded like a bot, the
+// personality wasnt coming through"* — except on one pure-opinion ask, which
+// was excellent. The dial was already on. The gap was that every instruction in
+// the licence is about RIFFING, and the licence never said the register still
+// applies when she is reciting a lookup — which is most of what anybody asks
+// her.
+//
+// ⚠️ The honest limit, the same one this whole file states: a test over a
+// prompt string proves the instruction is PRESENT, never that it is obeyed.
+describe('⚠️ the register survives contact with a tool result', () => {
+  it('the licence says the lookup answer is a performance, and that the FACTS are not', () => {
+    assert.match(GABI_EDGE_FULL, /LOOKUP ANSWER IS A PERFORMANCE TOO/);
+    assert.match(GABI_EDGE_FULL, /the facts stay exactly as the tool gave them/i);
+    // ⚠️ The licence may raise the VOICE and never the CLAIMS. A section that
+    // told her to enliven a lookup without that clause would be a section
+    // inviting her to improve a number.
+    assert.match(GABI_EDGE_FULL, /never the CLAIMS/);
+    assert.match(GABI_EDGE_FULL, /Do not narrate the machinery/i);
+  });
+
+  it('⚠️ and the two CORRECTNESS halves are NOT edge-gated — they hold at standard too', () => {
+    // The owner's second complaint was "she didnt really answer any of the
+    // questions properly", and the measured example is not a register problem:
+    // asked "what's the deal with Jake in Primal Hunter 14… his bloodline", she
+    // asked for "a series name and a book number" — the two things the question
+    // contained. Answering the question asked is a correctness rule, so it goes
+    // in the tool persona where every posture reads it, not in the dial.
+    const chat = repoFile('src/gabi-chat.ts');
+    assert.match(chat, /ANSWER THE QUESTION THAT WAS ACTUALLY ASKED/);
+    assert.match(chat, /never ask for what is already in front of you/i);
+    assert.match(chat, /A LOOKUP ANSWER IS STILL YOU TALKING/);
+    assert.match(chat, /Personality goes in the frame, never in the numbers/);
+  });
+
+  it('⚠️ standard is STILL byte-identical to the pre-dial prompt', () => {
+    // The whole promise of the dial: softening her is one var flip. Nothing
+    // added for the register may leak into the block that ships by default.
+    assert.equal(edgeBlock('standard'), undefined);
+  });
+});
