@@ -418,6 +418,13 @@ export function logGroqShadow(entry: {
   groqAnswered: boolean;
   haikuAnswered: boolean;
   reason?: GroqReason;
+  // ⚠️ The HTTP status behind a `refused`/`rate_limited`/`server` reason. Added
+  // 2026-09-01 evening: the first live shadow lines ever logged read
+  // `reason: "refused"` with no way to tell a 401 (bad key) from a 400 (retired
+  // model id) — and the first fix landed at the CALL SITE while this function
+  // builds its output explicitly and silently dropped the extra key. The
+  // lesson: a field-by-field logger needs the field in BOTH places.
+  status?: number;
   agreed?: boolean;
   inputTokens?: number;
   outputTokens?: number;
@@ -436,6 +443,7 @@ export function logGroqShadow(entry: {
       groq_answered: entry.groqAnswered,
       haiku_answered: entry.haikuAnswered,
       ...(entry.reason ? { reason: entry.reason } : {}),
+      ...(entry.status === undefined ? {} : { status: entry.status }),
       ...(entry.agreed === undefined ? {} : { agreed: entry.agreed }),
       input_tokens: entry.inputTokens ?? 0,
       output_tokens: entry.outputTokens ?? 0,
