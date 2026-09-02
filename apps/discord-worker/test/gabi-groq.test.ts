@@ -39,6 +39,23 @@ import {
   viaGroq,
   type GroqReason,
 } from '../src/gabi-groq.js';
+import {
+  blocksFromCompletion,
+  groqToolComplete,
+  invalidToolArgs,
+  toOpenAiMessages,
+  toOpenAiTools,
+  TOOL_ERROR_PREFIX,
+  type WireTool,
+} from '../src/gabi-groq-tools.js';
+import {
+  GABI_CONFIRM_VERB_NAMES,
+  GABI_DELEGATED_VERB_NAMES,
+  GROQ_READ_ONLY_TOOL_NAMES,
+  groqBlockedTools,
+  isGroqEligibleToolName,
+  toolsForApi,
+} from '../src/gabi-tools.js';
 import { classifyIntent, converse, converseWithTools } from '../src/gabi-chat.js';
 import { parseFixRequest } from '../src/confirm-propose.js';
 import { distillConversation } from '../src/memory-distill.js';
@@ -59,6 +76,11 @@ interface Seen {
 function spyFetch(handlers: {
   groq?: (init: RequestInit | undefined) => Response | Promise<Response>;
   anthropic?: (init: RequestInit | undefined) => Response | Promise<Response>;
+  /** ⚠️ Phase 2: a tool loop actually EXECUTES tools, and `catalog_lookup` reads
+   *  the shelf CSV. Routed separately so `anthropicCalls()` keeps counting model
+   *  turns and nothing else — a catalogue read miscounted as a Haiku turn would
+   *  make "did Groq answer alone?" unanswerable. */
+  catalog?: (init: RequestInit | undefined) => Response | Promise<Response>;
 }): { fetch: typeof fetch; calls: Seen[]; groqCalls: () => Seen[]; anthropicCalls: () => Seen[] } {
   const calls: Seen[] = [];
   const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -68,6 +90,10 @@ function spyFetch(handlers: {
       if (!handlers.groq) throw new Error(`unexpected Groq call in this test: ${url}`);
       return handlers.groq(init);
     }
+    if (url.includes('catalog.test')) {
+      if (!handlers.catalog) throw new Error(`unexpected catalogue read in this test: ${url}`);
+      return handlers.catalog(init);
+    }
     if (!handlers.anthropic) throw new Error(`unexpected Anthropic call in this test: ${url}`);
     return handlers.anthropic(init);
   }) as unknown as typeof fetch;
@@ -75,7 +101,8 @@ function spyFetch(handlers: {
     fetch: impl,
     calls,
     groqCalls: () => calls.filter((c) => c.url.includes('api.groq.com')),
-    anthropicCalls: () => calls.filter((c) => !c.url.includes('api.groq.com')),
+    anthropicCalls: () =>
+      calls.filter((c) => !c.url.includes('api.groq.com') && !c.url.includes('catalog.test')),
   };
 }
 
@@ -631,31 +658,614 @@ describe('⚠️ posture SHADOW — Groq is measured and DISCARDED; Haiku answer
 });
 
 // ---------------------------------------------------------------------------
-// 7. ⚠️ THE SCOPE RULE — tool turns never touch Groq, in any posture
+// 7. ⚠️ PHASE 2 (2026-09-02) — THE ANTHROPIC↔OPENAI TOOL TRANSLATION
+//
+// Phase 1 shipped with a build-failing test here asserting that a tool loop
+// NEVER reached api.groq.com, in any posture. That guard has been REPLACED
+// rather than deleted, and by a stricter set: a tool loop now rides Groq only
+// under `first`, only when every tool it offers is on the read-only allowlist,
+// and never under `shadow` — because shadowing a tool loop would run the loop
+// twice and EXECUTE EVERY TOOL TWICE with it.
 // ---------------------------------------------------------------------------
 
-describe('⚠️ THE SCOPE RULE — a TOOLFUL turn never reaches Groq, in ANY posture', () => {
-  for (const mode of ['off', 'shadow', 'first'] as const) {
-    it(`converseWithTools makes no Groq request with the posture "${mode}"`, async () => {
-      const spy = spyFetch({ anthropic: () => haikuSaid('the catalogue says…') });
-      const { value } = await captureLogs(() =>
-        converseWithTools(
-          'anthropic-key',
-          'who narrates The Way of Kings?',
-          null,
-          { ...WHO, authorName: 'Sam' },
-          { catalogBaseUrl: 'https://audiobooks.example' },
-          { fetch: spy.fetch, groq: { mode, apiKey: 'g' } },
-        ),
+/** Groq's OpenAI-shaped 200 carrying tool calls. */
+const groqCalled = (calls: { id: string; name: string; args: unknown }[], text = ''): Response =>
+  json({
+    id: 'chatcmpl-2',
+    model: GABI_GROQ_MODEL,
+    choices: [
+      {
+        index: 0,
+        finish_reason: 'tool_calls',
+        message: {
+          role: 'assistant',
+          content: text,
+          tool_calls: calls.map((c) => ({
+            id: c.id,
+            type: 'function',
+            // ⚠️ A JSON STRING, which is the contract and the commonest thing a
+            // hand-rolled translation gets wrong in both directions.
+            function: { name: c.name, arguments: JSON.stringify(c.args) },
+          })),
+        },
+      },
+    ],
+    usage: { prompt_tokens: 120, completion_tokens: 40 },
+  });
+
+/** Anthropic's Messages 200 carrying `tool_use` blocks. */
+const haikuCalled = (calls: { id: string; name: string; args: unknown }[]): Response =>
+  json({
+    id: 'm',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-haiku-4-5-20251001',
+    content: calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args })),
+    stop_reason: 'tool_use',
+    usage: { input_tokens: 10, output_tokens: 4 },
+  });
+
+/** Answers a queue in order and REFUSES a call it has no answer for — a loop
+ *  that goes round once too often must fail loudly, not reuse the last reply. */
+function inOrder(responses: (() => Response)[]): () => Response {
+  let at = 0;
+  return () => {
+    const next = responses[at++];
+    if (!next) throw new Error(`unexpected extra model call (#${at}) in this test`);
+    return next();
+  };
+}
+
+/**
+ * ⚠️ The catalogue read FAILS on purpose throughout this section, for two
+ * reasons. It is deterministic — `loadCatalog` caches a SUCCESS for 30 minutes
+ * inside one isolate, so a passing read in one test would leak into the next —
+ * and it exercises the half of the translation that has no OpenAI equivalent at
+ * all: `is_error`.
+ */
+const catalogDown = (): Response => new Response('nope', { status: 503 });
+
+const toolCtxFor = (spy: { fetch: typeof fetch }) => ({
+  catalogBaseUrl: 'https://catalog.test',
+  fetchOverride: spy.fetch,
+});
+
+const ASKED = 'who narrates The Way of Kings?';
+const CHATTER_TOOLS = { ...WHO, authorName: 'Sam' };
+const groqLines = (lines: string[]): Record<string, unknown>[] =>
+  lines
+    .filter((l) => l.includes('"evt":"gabi_groq"'))
+    .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+describe('⚠️ THE ELIGIBILITY ALLOWLIST — read-only names, written out, default-deny', () => {
+  const everything = toolsForApi({ docs: true, books: true, shelf: true, recall: true });
+
+  it('every allowlisted name is a tool that is actually OFFERED — no stale entries', () => {
+    const offered = new Set(everything.map((t) => t.name));
+    for (const name of GROQ_READ_ONLY_TOOL_NAMES) {
+      assert.ok(
+        offered.has(name),
+        `"${name}" is on GROQ_READ_ONLY_TOOL_NAMES but no longer exists as an offered tool. ` +
+          'A stale allowlist entry is dead weight at best and a name somebody re-uses at worst.',
       );
-      assert.equal(value.text, 'the catalogue says…');
+    }
+  });
+
+  it('⚠️ NO delegated or confirm verb can ever be on it', () => {
+    for (const verb of [...GABI_DELEGATED_VERB_NAMES, ...GABI_CONFIRM_VERB_NAMES]) {
       assert.equal(
-        spy.groqCalls().length,
-        0,
-        'the Anthropic↔OpenAI tool-schema translation is PHASE 2 — a tool loop must stay on Anthropic',
+        isGroqEligibleToolName(verb),
+        false,
+        `"${verb}" WRITES (or is chosen by a router, never offered to a model). A write a cheap ` +
+          'model may choose is a write that happens when a cheap model misreads a sentence.',
+      );
+    }
+  });
+
+  it('default-deny: an invented name, and the classic prototype holes, are all refused', () => {
+    for (const junk of ['set_narrator', 'toString', '__proto__', 'constructor', '', 'CATALOG_LOOKUP']) {
+      assert.equal(isGroqEligibleToolName(junk), false, `"${junk}" must not be eligible`);
+    }
+    assert.equal(isGroqEligibleToolName(undefined), false);
+  });
+
+  it('⚠️ ONE unlisted tool takes the WHOLE loop off Groq — not merely that turn', () => {
+    // The gate is per LOOP by design: a loop carrying a mutating tool also
+    // carries the conversation state that decides whether to call it, so letting
+    // its "safe" turns ride Groq would put the cheap model in the seat that
+    // PROPOSES the write.
+    assert.deepEqual(groqBlockedTools(everything), [], 'today every offered tool is read-only');
+    assert.deepEqual(groqBlockedTools([...everything, { name: 'fix-field' }]), ['fix-field']);
+    assert.deepEqual(groqBlockedTools([{ name: 'add-isbn' }, { name: 'catalog_lookup' }]), ['add-isbn']);
+  });
+});
+
+describe('the schema conversion — Anthropic tools → OpenAI functions', () => {
+  const tools = toolsForApi({ docs: true }) as WireTool[];
+
+  it('wraps each tool as {type:"function", function:{name, description, parameters}}', () => {
+    const wired = toOpenAiTools(tools);
+    assert.equal(wired.length, tools.length);
+    for (const [i, t] of tools.entries()) {
+      const w = wired[i]!;
+      assert.equal(w.type, 'function');
+      assert.equal(w.function.name, t.name);
+      assert.equal(w.function.description, t.description);
+      // ⚠️ The SAME object, not a copy. A hand-rebuilt schema is a second place
+      // for the tool's contract to live, and the two drift the first time
+      // somebody adds a property.
+      assert.equal(w.function.parameters, t.input_schema);
+    }
+  });
+
+  it('the required/enum/additionalProperties detail survives untouched', () => {
+    const lookup = toOpenAiTools(tools).find((t) => t.function.name === 'catalog_lookup')!;
+    assert.equal(lookup.function.parameters.additionalProperties, false);
+    assert.deepEqual(lookup.function.parameters.properties.mode?.enum, ['list', 'count']);
+    const series = toOpenAiTools(tools).find((t) => t.function.name === 'series_volumes')!;
+    assert.deepEqual(series.function.parameters.required, ['series']);
+  });
+});
+
+describe('the message translation — tool_use ↔ tool_calls, tool_result → role:"tool"', () => {
+  const conversation = [
+    { role: 'user' as const, content: ASKED },
+    {
+      role: 'assistant' as const,
+      content: [
+        { type: 'text', text: 'let me look' },
+        { type: 'tool_use', id: 'call_a', name: 'catalog_lookup', input: { query: 'Way of Kings' } },
+        { type: 'tool_use', id: 'call_b', name: 'series_volumes', input: { series: 'Stormlight' } },
+      ],
+    },
+    {
+      role: 'user' as const,
+      content: [
+        { type: 'tool_result', tool_use_id: 'call_a', content: '{"total_matches":1}' },
+        { type: 'tool_result', tool_use_id: 'call_b', content: '{"error":"unreachable"}', is_error: true },
+      ],
+    },
+  ];
+
+  it('the system prompt leads, and a plain string message is passed through untouched', () => {
+    const out = toOpenAiMessages('be warm', conversation);
+    assert.deepEqual(out[0], { role: 'system', content: 'be warm' });
+    assert.deepEqual(out[1], { role: 'user', content: ASKED });
+  });
+
+  it('⚠️ tool_use becomes tool_calls with arguments as a JSON STRING', () => {
+    const assistant = toOpenAiMessages('s', conversation).find((m) => m.role === 'assistant')!;
+    assert.equal(assistant.content, 'let me look');
+    assert.equal(assistant.tool_calls?.length, 2);
+    const first = assistant.tool_calls![0]!;
+    assert.equal(first.id, 'call_a');
+    assert.equal(first.type, 'function');
+    assert.equal(first.function.name, 'catalog_lookup');
+    assert.equal(typeof first.function.arguments, 'string', 'an OBJECT here is a 400');
+    assert.deepEqual(JSON.parse(first.function.arguments), { query: 'Way of Kings' });
+  });
+
+  it('⚠️ EVERY result comes back, keyed by a matching tool_call_id, in order', () => {
+    // Anthropic states this invariant as "one user message carrying ALL of this
+    // turn's tool_results"; OpenAI states it as "one tool message per emitted
+    // call, immediately after the assistant message". Same rule, and a missing
+    // one is a 400 that eats somebody's answer on either provider.
+    const out = toOpenAiMessages('s', conversation);
+    const assistantAt = out.findIndex((m) => m.role === 'assistant');
+    const answers = out.slice(assistantAt + 1).filter((m) => m.role === 'tool');
+    assert.deepEqual(
+      answers.map((m) => m.tool_call_id),
+      ['call_a', 'call_b'],
+    );
+    assert.deepEqual(
+      out.slice(assistantAt + 1, assistantAt + 3).map((m) => m.role),
+      ['tool', 'tool'],
+      'the answers must sit immediately after the calls they answer',
+    );
+  });
+
+  it('⚠️ is_error becomes PLAIN TEXT the model can read — it is never dropped', () => {
+    // OpenAI has nowhere to put the flag. Dropping it would teach the model that
+    // an outage and an absence are the same thing, which on this surface is the
+    // difference between "the house does not own it" and a wrong answer.
+    const failed = toOpenAiMessages('s', conversation).find((m) => m.tool_call_id === 'call_b')!;
+    assert.ok(failed.content.startsWith(TOOL_ERROR_PREFIX), failed.content);
+    assert.match(failed.content, /unreachable/);
+    const fine = toOpenAiMessages('s', conversation).find((m) => m.tool_call_id === 'call_a')!;
+    assert.equal(fine.content, '{"total_matches":1}', 'a SUCCESS must not wear the error prefix');
+  });
+
+  it('an assistant turn with neither text nor calls becomes a placeholder, never empty', () => {
+    // An assistant message with no content at all is a 400 on both providers —
+    // the same reason `converseWithTools` substitutes "(cut off)" on its own side.
+    const out = toOpenAiMessages('s', [{ role: 'assistant', content: [] }]);
+    assert.equal(out[1]?.content, '(cut off)');
+  });
+
+  it('a prose block riding with the results stays a USER message, and goes AFTER them', () => {
+    const out = toOpenAiMessages('s', [
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'call_a', content: 'ok' },
+          { type: 'text', text: 'and also…' },
+        ],
+      },
+    ]);
+    assert.deepEqual(
+      out.slice(1).map((m) => m.role),
+      ['tool', 'user'],
+      'a tool answer arriving after a new user sentence reads as stale',
+    );
+  });
+});
+
+describe('reading Groq back — refusing what cannot honestly be executed', () => {
+  const offered = toolsForApi({}) as WireTool[];
+  const completion = (message: unknown, finish = 'tool_calls'): unknown => ({
+    choices: [{ index: 0, finish_reason: finish, message }],
+    usage: { prompt_tokens: 5, completion_tokens: 2 },
+  });
+
+  it('tool_calls become Anthropic tool_use blocks with parsed object input', () => {
+    const pass = blocksFromCompletion(
+      completion({
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'x1', type: 'function', function: { name: 'series_volumes', arguments: '{"series":"Mistborn"}' } },
+        ],
+      }),
+      offered,
+    );
+    assert.equal(pass.stopReason, 'tool_use');
+    assert.deepEqual(pass.blocks, [{ type: 'tool_use', id: 'x1', name: 'series_volumes', input: { series: 'Mistborn' } }]);
+  });
+
+  it('⚠️ a pass that produced CALLS is tool_use whatever finish_reason claimed', () => {
+    // Read finish_reason alone and a server saying "stop" beside a tool_calls
+    // array would have its calls silently dropped and its narration posted as
+    // the answer — the 2026-08-18 silent partial, arriving through a new door.
+    const pass = blocksFromCompletion(
+      completion(
+        {
+          role: 'assistant',
+          content: 'let me check:',
+          tool_calls: [
+            { id: 'x1', type: 'function', function: { name: 'series_volumes', arguments: '{"series":"M"}' } },
+          ],
+        },
+        'stop',
+      ),
+      offered,
+    );
+    assert.equal(pass.stopReason, 'tool_use');
+  });
+
+  it('finish_reason "length" maps to max_tokens, so needsFinishing still bites', () => {
+    const pass = blocksFromCompletion(
+      completion({ role: 'assistant', content: 'found it. Let me read:' }, 'length'),
+      offered,
+    );
+    assert.equal(pass.stopReason, 'max_tokens');
+  });
+
+  it('⚠️ a 200 with no words AND no call is a FAILURE, not a silent blank', () => {
+    assert.throws(
+      () => blocksFromCompletion(completion({ role: 'assistant', content: '' }, 'stop'), offered),
+      (err: unknown) => err instanceof GroqFailure && err.reason === 'empty',
+    );
+  });
+
+  const refusals: [string, unknown][] = [
+    [
+      'a tool this turn did not offer',
+      { role: 'assistant', content: '', tool_calls: [{ id: 'x', type: 'function', function: { name: 'add-isbn', arguments: '{}' } }] },
+    ],
+    [
+      'arguments that are not JSON',
+      { role: 'assistant', content: '', tool_calls: [{ id: 'x', type: 'function', function: { name: 'series_volumes', arguments: 'Mistborn' } }] },
+    ],
+    [
+      'arguments that are a JSON ARRAY rather than an object',
+      { role: 'assistant', content: '', tool_calls: [{ id: 'x', type: 'function', function: { name: 'series_volumes', arguments: '["Mistborn"]' } }] },
+    ],
+    [
+      'a missing required property',
+      { role: 'assistant', content: '', tool_calls: [{ id: 'x', type: 'function', function: { name: 'series_volumes', arguments: '{}' } }] },
+    ],
+    [
+      'a property the schema does not declare',
+      { role: 'assistant', content: '', tool_calls: [{ id: 'x', type: 'function', function: { name: 'series_volumes', arguments: '{"series":"M","limit":5}' } }] },
+    ],
+    [
+      'a value outside an enum',
+      { role: 'assistant', content: '', tool_calls: [{ id: 'x', type: 'function', function: { name: 'catalog_lookup', arguments: '{"mode":"everything"}' } }] },
+    ],
+    [
+      'a call with no id',
+      { role: 'assistant', content: '', tool_calls: [{ type: 'function', function: { name: 'series_volumes', arguments: '{"series":"M"}' } }] },
+    ],
+  ];
+  for (const [what, message] of refusals) {
+    it(`refuses ${what} — reason "invalid", and NOTHING was executed`, () => {
+      assert.throws(
+        () => blocksFromCompletion(completion(message), offered),
+        (err: unknown) => {
+          assert.ok(err instanceof GroqFailure, String(err));
+          assert.equal(err.reason, 'invalid');
+          return true;
+        },
       );
     });
   }
+
+  it('invalidToolArgs names the FIRST problem, or null when the arguments are usable', () => {
+    const schema = offered.find((t) => t.name === 'catalog_lookup')!.input_schema;
+    assert.equal(invalidToolArgs(schema, { query: 'Mistborn', mode: 'count' }), null);
+    assert.match(String(invalidToolArgs(schema, { query: 7 })), /should be string/);
+    assert.match(String(invalidToolArgs(schema, { nope: 'x' })), /unknown property/);
+    assert.match(String(invalidToolArgs(schema, { field: 'publisher' })), /not one of/);
+  });
+
+  it('the final tools-free pass sends NO tools key at all', async () => {
+    const spy = spyFetch({ groq: () => groqSaid('here is the answer') });
+    await groqToolComplete('k', { system: 's', messages: [{ role: 'user', content: 'hi' }], tools: [], maxTokens: 1024 }, spy.fetch);
+    const body = JSON.parse(String(spy.groqCalls()[0]!.init?.body)) as Record<string, unknown>;
+    assert.equal(body.tools, undefined, 'offering tools whose results can never run is how a loop goes silent');
+    assert.equal(body.tool_choice, undefined);
+    // ⚠️ The phase-1 pins, unchanged: same model, same floor, same effort. A tool
+    // loop quietly on a different model would make /api/health's row a half-truth.
+    assert.equal(body.model, GABI_GROQ_MODEL);
+    assert.equal(body.max_tokens, 1024);
+    assert.equal(body.reasoning_effort, 'low');
+  });
+});
+
+describe('⚠️ THE TOOL LOOP ON GROQ — gating, and the per-turn fallback', () => {
+  it('an eligible loop under `first` runs end to end on Groq and spends NO Haiku turn', async () => {
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: inOrder([
+        () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
+        () => groqSaid('The catalogue could not be reached just now — ask me again in a minute.'),
+      ]),
+    });
+    const { value, lines } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.match(String(value.text), /could not be reached/);
+    assert.deepEqual(value.tools, ['catalog_lookup'], 'the tool really ran');
+    assert.equal(spy.anthropicCalls().length, 0, 'the expensive half of the bill was not spent');
+    assert.equal(spy.groqCalls().length, 2);
+
+    const groq = groqLines(lines);
+    assert.deepEqual(
+      groq.map((l) => [l.outcome, l.purpose, l.iteration]),
+      [
+        ['groq', 'converse_tools', 1],
+        ['groq', 'converse_tools', 2],
+      ],
+    );
+    // Tier 0 only: this context carries no docs, books, shelf or recall port.
+    assert.equal(groq[0]!.tools_offered, 2, 'the tools-bearing pass names how many it offered');
+    // ⚠️ Still 2: the answering pass is only the SECOND of four permitted, so it
+    // still carries tools. Tools are dropped on the LAST pass, not on the one
+    // that happens to answer — pinned by the bounded-loop test below.
+    assert.equal(groq[1]!.tools_offered, 2);
+    // ⚠️ NO gabi_turn line: `gabi_turn` means ANTHROPIC spend and must keep
+    // meaning that, or the billing inventory counts free tokens as Haiku ones.
+    assert.equal(lines.filter((l) => l.includes('"evt":"gabi_turn"')).length, 0);
+  });
+
+  it('⚠️ the SECOND request carries the tool result back, keyed to the call it answers', async () => {
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: inOrder([
+        () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
+        () => groqSaid('done'),
+      ]),
+    });
+    await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    const body = JSON.parse(String(spy.groqCalls()[1]!.init?.body)) as {
+      messages: { role: string; tool_calls?: { id: string }[]; tool_call_id?: string; content: string }[];
+    };
+    const assistant = body.messages.find((m) => m.role === 'assistant')!;
+    assert.deepEqual(assistant.tool_calls?.map((c) => c.id), ['c1']);
+    const answer = body.messages.find((m) => m.role === 'tool')!;
+    assert.equal(answer.tool_call_id, 'c1');
+    // ⚠️ The catalogue was down, so this result is an ERROR — and it must arrive
+    // as words rather than vanish. `is_error` has no OpenAI equivalent.
+    assert.ok(answer.content.startsWith(TOOL_ERROR_PREFIX), answer.content);
+  });
+
+  const perTurnFailures: [string, () => Response][] = [
+    ['a 429', () => json({ error: 'slow down' }, 429)],
+    ['a 500', () => json({ error: 'boom' }, 500)],
+    ['a body that is not JSON', () => new Response('<html>', { status: 200 })],
+    ['an empty 200', () => json({ choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: '' } }] })],
+    [
+      'a call to a tool that was never offered',
+      () => groqCalled([{ id: 'c1', name: 'delete_everything', args: {} }]),
+    ],
+    [
+      'arguments that fail validation',
+      () => groqCalled([{ id: 'c1', name: 'series_volumes', args: { nonsense: true } }]),
+    ],
+  ];
+  for (const [what, failure] of perTurnFailures) {
+    it(`⚠️ ${what} replays THAT pass on Haiku, from identical state`, async () => {
+      const spy = spyFetch({
+        catalog: catalogDown,
+        groq: failure,
+        anthropic: () => haikuSaid('Kate Reading and Michael Kramer.'),
+      });
+      const { value, lines } = await captureLogs(() =>
+        converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+          fetch: spy.fetch,
+          groq: { mode: 'first', apiKey: 'g' },
+        }),
+      );
+      // ⚠️ The person cannot tell. That is the requirement, unchanged from phase 1.
+      assert.equal(value.text, 'Kate Reading and Michael Kramer.');
+      assert.equal(spy.groqCalls().length, 1, 'one attempt, never a retry loop');
+      const fell = groqLines(lines).find((l) => l.outcome === 'fallback')!;
+      assert.equal(fell.purpose, 'converse_tools');
+      assert.equal(fell.iteration, 1);
+      assert.ok(typeof fell.reason === 'string' && fell.reason.length > 0, 'the reason is named');
+    });
+  }
+
+  it('⚠️ once a loop falls back it STAYS on Haiku — no ping-pong mid-loop', async () => {
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: inOrder([
+        () => groqCalled([{ id: 'c1', name: 'catalog_lookup', args: { query: 'The Way of Kings' } }]),
+        () => json({ error: 'slow down' }, 429),
+      ]),
+      anthropic: () => haikuSaid('the shelf is unreachable right now.'),
+    });
+    const { value, lines } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value.text, 'the shelf is unreachable right now.');
+    assert.equal(spy.groqCalls().length, 2, 'no third attempt after the fall-back');
+    assert.equal(spy.anthropicCalls().length, 1);
+    assert.deepEqual(
+      groqLines(lines).map((l) => [l.outcome, l.iteration]),
+      [
+        ['groq', 1],
+        ['fallback', 2],
+      ],
+    );
+  });
+
+  it('⚠️ a Groq answer that trails off mid-thought gets the SAME nudge Haiku gets', async () => {
+    // The dangling-colon guard is the 2026-08-18 silent partial's fix and it
+    // lives in the loop, on the shared Anthropic-shaped blocks — so it applies
+    // to a Groq answer without being re-implemented for it.
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: inOrder([() => groqSaid('Perfect — found it. Let me read the section:'), () => groqSaid('Kate Reading.')]),
+    });
+    const { value } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value.text, 'Kate Reading.', 'the narration must never be posted as the answer');
+    assert.equal(spy.groqCalls().length, 2);
+  });
+
+  it('⚠️ SHADOW never shadows a tool loop — it would execute every tool twice', async () => {
+    const spy = spyFetch({ catalog: catalogDown, anthropic: () => haikuSaid('the catalogue says…') });
+    const { value, lines } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'shadow', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value.text, 'the catalogue says…');
+    assert.equal(spy.groqCalls().length, 0);
+    const line = groqLines(lines)[0]!;
+    assert.equal(line.outcome, 'ineligible');
+    assert.equal(line.ineligible_reason, 'posture_shadow');
+    assert.equal(line.blocked_tools, undefined, 'the tools were fine; the posture was not');
+  });
+
+  it('with the posture OFF a tool loop is byte-identical to before the rung existed', async () => {
+    const spy = spyFetch({ catalog: catalogDown, anthropic: () => haikuSaid('the catalogue says…') });
+    const { value, lines } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'off', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value.text, 'the catalogue says…');
+    assert.equal(spy.groqCalls().length, 0);
+    assert.equal(groqLines(lines).length, 0, 'with nothing armed there is nothing to explain');
+  });
+
+  it('…and with no rung in the bag at all, likewise', async () => {
+    const spy = spyFetch({ catalog: catalogDown, anthropic: () => haikuSaid('the catalogue says…') });
+    const { value, lines } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), { fetch: spy.fetch }),
+    );
+    assert.equal(value.text, 'the catalogue says…');
+    assert.equal(spy.groqCalls().length, 0);
+    assert.equal(groqLines(lines).length, 0);
+  });
+
+  it('⚠️ the loop is still BOUNDED on Groq — the last pass offers no tools', async () => {
+    const call = (n: number) => () =>
+      groqCalled([{ id: `c${n}`, name: 'catalog_lookup', args: { query: 'x' } }]);
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: inOrder([call(1), call(2), call(3), () => groqSaid('I could not reach the shelf.')]),
+    });
+    const { value } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    assert.equal(value.text, 'I could not reach the shelf.');
+    assert.equal(value.iterations, 4, 'MAX_TOOL_ITERATIONS + the final tools-free pass');
+    const lastBody = JSON.parse(String(spy.groqCalls()[3]!.init?.body)) as Record<string, unknown>;
+    assert.equal(lastBody.tools, undefined);
+    const firstBody = JSON.parse(String(spy.groqCalls()[0]!.init?.body)) as { tools: unknown[] };
+    assert.equal(firstBody.tools.length, 2, 'Tier 0 only on this context');
+  });
+
+  it('⚠️ the two providers are handed the SAME system prompt, byte for byte', async () => {
+    // A fork would make every comparison a comparison of two different
+    // questions — the same argument `gabi-edge.test.ts` makes for the toolless
+    // half, applied to the loop.
+    const spy = spyFetch({
+      catalog: catalogDown,
+      groq: () => json({ error: 'slow down' }, 429),
+      anthropic: () => haikuSaid('ok'),
+    });
+    await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    const groqBody = JSON.parse(String(spy.groqCalls()[0]!.init?.body)) as {
+      messages: { role: string; content: string }[];
+    };
+    const haikuBody = JSON.parse(String(spy.anthropicCalls()[0]!.init?.body)) as { system: string };
+    const groqSystem = groqBody.messages.find((m) => m.role === 'system')!.content;
+    assert.equal(groqSystem, haikuBody.system);
+  });
+
+  it('⚠️ neither line ever carries the reply TEXT — household conversations', async () => {
+    const secret = 'the narrator is Kate Reading and Sam asked at midnight';
+    const spy = spyFetch({ catalog: catalogDown, groq: () => groqSaid(secret) });
+    const { lines } = await captureLogs(() =>
+      converseWithTools('anthropic-key', ASKED, null, CHATTER_TOOLS, toolCtxFor(spy), {
+        fetch: spy.fetch,
+        groq: { mode: 'first', apiKey: 'g' },
+      }),
+    );
+    for (const line of groqLines(lines)) {
+      assert.equal(JSON.stringify(line).includes(secret), false, JSON.stringify(line));
+    }
+    assert.equal(groqLines(lines)[0]!.chars, secret.length, 'how long, never what');
+  });
 });
 
 // ---------------------------------------------------------------------------

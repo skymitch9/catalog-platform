@@ -7,15 +7,21 @@
  * tokens"* and *"use the information from the other project to help reduce
  * duplicate work"*. Design of record: `docs/info/gabi-groq-rung.md`.
  *
- * ## ⚠️ THE SCOPE RULE — TOOLLESS CALLS ONLY, AND IT IS STRUCTURAL
+ * ## ⚠️ THE SCOPE RULE — THIS MODULE IS THE TOOLLESS HALF
  *
  * Anthropic's `tools` block and OpenAI's `tools` block are different schemas
  * with different result-echo grammars, and `converseWithTools` in
  * `gabi-chat.ts` is a hand-written loop built around the Anthropic one (a
  * `tool_use` block echoed back with a matching `tool_result`, `is_error`, the
- * dangling-call 400). Translating that is **phase 2** and is deliberately not
- * attempted here. So this module is reachable from exactly four call sites,
- * every one of which sends `system` + `messages` and nothing else:
+ * dangling-call 400). ⚠️ **That translation now EXISTS, in its own file** —
+ * `gabi-groq-tools.ts`, phase 2, 2026-09-02 — and it is deliberately not in
+ * this one: this module's four call sites send `system` + `messages` and
+ * nothing else, which is why they needed no translation at all, and mixing the
+ * two would hide that difference. The gate that decides whether a tool loop may
+ * ride Groq is `GROQ_READ_ONLY_TOOL_NAMES` in `gabi-tools.ts`, beside the tool
+ * definitions, so a new tool defaults to NOT eligible.
+ *
+ * The four call sites this module serves:
  *
  * | call site | shape | validator |
  * |---|---|---|
@@ -387,14 +393,42 @@ export interface GroqWho {
 export function logGroq(entry: {
   mode: GroqMode;
   purpose: string;
-  /** `groq` — Groq's answer was used. `fallback` — Haiku answered instead. */
-  outcome: 'groq' | 'fallback';
+  /**
+   * `groq` — Groq's answer was used. `fallback` — Haiku answered instead.
+   * ⚠️ `ineligible` — **phase 2 (2026-09-02)** — a TOOL LOOP that a live rung was
+   * not allowed to try at all: either its tool array carries a name that is not
+   * on `GROQ_READ_ONLY_TOOL_NAMES`, or the posture is `shadow` and a tool loop is
+   * never shadowed (shadowing would execute every tool twice, and some tools have
+   * side effects). It is logged ONCE PER TURN rather than per pass, and only when
+   * a rung is actually live — with the posture `off` there is nothing to explain.
+   */
+  outcome: 'groq' | 'fallback' | 'ineligible';
   reason?: GroqReason;
   status?: number | undefined;
   ms: number;
   chars?: number;
   inputTokens?: number;
   outputTokens?: number;
+  /**
+   * ⚠️ **TOOL-LOOP FIELDS (phase 2), AND THE LESSON THAT PUT THEM HERE.** This
+   * logger builds its output field by field and SILENTLY DROPS anything it was
+   * not told about — which is exactly how the first `status` fix shipped as a
+   * no-op on 2026-09-01: it was added at the call site alone and never appeared
+   * in a line. ⚠️ **A new field goes in BOTH places, this type and the object
+   * below, or it does not exist.**
+   */
+  /** Which pass of the tool loop this was, 1-based. 0 on a toolless call. */
+  iteration?: number;
+  /** How many tools this pass offered. ⚠️ 0 on the loop's final tools-free pass
+   *  as well as on a toolless call — the `iteration` field distinguishes them. */
+  toolsOffered?: number;
+  /** On `ineligible` only: which of the two reasons. */
+  ineligibleReason?: 'tool_not_allowlisted' | 'posture_shadow';
+  /** On `ineligible` only: the offered tool names that are not allowlisted, so
+   *  "why is this loop still on Haiku?" is answerable from `wrangler tail`
+   *  without reading TypeScript. Tool names are our vocabulary, never a
+   *  person's words — nothing here is a text. */
+  blockedTools?: readonly string[];
   who?: GroqWho;
 }): void {
   console.log(
@@ -409,6 +443,16 @@ export function logGroq(entry: {
       ...(entry.status ? { status: entry.status } : {}),
       ms: entry.ms,
       chars: entry.chars ?? 0,
+      // ⚠️ The tool-loop half of the line. Always present (as 0) rather than
+      // conditional, so `jq 'select(.iteration > 1)'` is a question that can be
+      // asked of the whole stream instead of only of the lines that happened to
+      // carry the key.
+      iteration: entry.iteration ?? 0,
+      tools_offered: entry.toolsOffered ?? 0,
+      ...(entry.ineligibleReason ? { ineligible_reason: entry.ineligibleReason } : {}),
+      ...(entry.blockedTools && entry.blockedTools.length > 0
+        ? { blocked_tools: [...entry.blockedTools] }
+        : {}),
       // ⚠️ Raw counts, no cents. Groq's tier is free TODAY and a fabricated
       // price would be wrong the day it is not — see `black_bot_baf`'s own
       // note that charging Groq at zero "is a decision to revisit when it is

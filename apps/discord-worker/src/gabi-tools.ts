@@ -878,6 +878,92 @@ export function gabiRecallToolByName(name: unknown): GabiRecallTool | null {
   return GABI_RECALL_TOOLS.find((t) => t.name === name) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// ⚠️ THE GROQ ELIGIBILITY ALLOWLIST (phase 2, 2026-09-02)
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **WHICH TOOLS MAY RIDE THE CHEAP MODEL — AN EXPLICIT ARRAY, NOT AN
+ * INFERENCE.**
+ *
+ * Phase 2 lets a *tool loop* try Groq first (`docs/info/gabi-groq-rung.md`), and
+ * the whole safety argument rests on this one list. A loop is eligible only when
+ * **every** tool offered on it is named here; one unlisted name and the entire
+ * loop — not merely that turn — stays 100% Anthropic.
+ *
+ * ⚠️ **IT IS A LITERAL, DELIBERATELY, AND NOT A SPREAD OF THE FAMILY ARRAYS.**
+ * `[...GABI_TOOL_NAMES, ...GABI_DOCS_TOOL_NAMES, …]` would read better and would
+ * be wrong: it makes a tool added tomorrow eligible **by default**, silently, as
+ * a side effect of a commit about something else. Written out, a new tool
+ * defaults to NOT allowlisted and somebody has to come here and say so — which
+ * is the same default-deny shape as `GABI_TOOL_NAMES` itself and as
+ * `GABI_DELEGATED_VERB_NAMES` ("allowed fields as an explicit array, never
+ * SELECT-*-minus-exclusions"). `test/gabi-groq.test.ts` fails the build if a
+ * name here is not an offered tool, so the literal cannot go stale in the other
+ * direction either.
+ *
+ * ⚠️ **What can NEVER appear here, and why the rule is about the LOOP and not
+ * the turn.** Nothing from `GABI_DELEGATED_VERB_NAMES` (`add-isbn`,
+ * `run-details`, `whoami`, `browse-works`) and nothing from
+ * `GABI_CONFIRM_VERB_NAMES` (`fix-field`) — those are chosen by a ROUTER and are
+ * never offered to a model at all, and a write a cheap model may choose is a
+ * write that happens when a cheap model misreads a sentence. But the guard has
+ * to bite one level up: a loop that carries a mutating tool ALSO carries the
+ * conversation state that decides whether to call it, so letting the "safe"
+ * turns of that loop ride Groq would put a cheaper model in the seat that
+ * *proposes* the write. Hence: all-or-nothing, per loop.
+ *
+ * ⚠️ **The corollary the owner should know about, stated rather than buried:**
+ * an eligible loop sends the tool RESULTS to Groq too — book passages, the
+ * asker's own TBR and reviews, estate runbook sections. Every one of those
+ * already goes to Anthropic; phase 2 adds a second processor. Removing a name
+ * from this array is the one-line way to take a category back, and it needs no
+ * other change.
+ */
+export const GROQ_READ_ONLY_TOOL_NAMES = [
+  // Tier 0 — the public audiobook catalogue.
+  'catalog_lookup',
+  'series_volumes',
+  // Tier 0b — the estate's own docs corpus, on the asker's own standing.
+  'search_estate_docs',
+  'read_estate_doc',
+  // Tier 0c — the household's book text, inside the turn's spoiler bound.
+  'list_book_knowledge',
+  'search_book_text',
+  'read_book_passage',
+  'book_presence',
+  // Tier 0d — the asker's own shelf.
+  'my_tbr',
+  'my_reviews',
+  'book_reviews',
+  'my_unread',
+  // Tier 4 — the asker's own past conversations.
+  'recall_conversation',
+] as const;
+
+export type GroqEligibleToolName = (typeof GROQ_READ_ONLY_TOOL_NAMES)[number];
+
+/** ⚠️ Default-deny, and an ARRAY rather than a `Record` for the same reason
+ *  `isGabiToolName` is: `toString` and `__proto__` must not be quietly truthy. */
+export function isGroqEligibleToolName(name: unknown): name is GroqEligibleToolName {
+  return typeof name === 'string' && (GROQ_READ_ONLY_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+/**
+ * ⚠️ **THE WHOLE-LOOP GATE.** Returns the names that are NOT allowlisted, so the
+ * caller can both decide (`length === 0`) and *say which* in its log line — a
+ * bare `false` would make "why is this loop still on Haiku?" unanswerable from
+ * `wrangler tail`.
+ *
+ * An empty tool array comes back eligible, which is correct and never reached in
+ * practice: that is the toolless case, and it has its own rung.
+ */
+export function groqBlockedTools(
+  tools: readonly { name: string }[],
+): string[] {
+  return tools.map((t) => t.name).filter((n) => !isGroqEligibleToolName(n));
+}
+
 /**
  * The `tools` array as the Messages API wants it — the executor's own fields
  * (`reads`, `methods`, `mutates`) are ours and are never sent.

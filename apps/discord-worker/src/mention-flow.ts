@@ -592,9 +592,13 @@ export interface MentionConfig {
    * none for `anthropicKey`. Absent, or `{ mode: 'off' }`, and every model call
    * below is byte-for-byte the pre-Groq one.
    *
-   * ⚠️ It reaches only the TOOLLESS helpers (`classifyIntent`, `converse`);
-   * `converseWithTools` receives the same bag and ignores it, because the
-   * Anthropic↔OpenAI tool-schema translation is phase 2.
+   * ⚠️ **SINCE PHASE 2 (2026-09-02) IT REACHES `converseWithTools` TOO** — but
+   * under a stricter gate this file deliberately knows nothing about: the
+   * posture must be exactly `first` (a tool loop is never shadowed, because
+   * shadowing one would execute its tools twice) and every tool offered on the
+   * loop must be on `GROQ_READ_ONLY_TOOL_NAMES`. The gate lives in
+   * `gabi-chat.ts` beside the loop it guards, and the translation in
+   * `gabi-groq-tools.ts`.
    */
   groq?: GroqRung;
   /**

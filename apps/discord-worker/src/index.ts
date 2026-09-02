@@ -93,6 +93,7 @@ import {
   GABI_DOCS_TOOL_NAMES,
   GABI_TOOL_NAMES,
   GABI_TOOLS,
+  GROQ_READ_ONLY_TOOL_NAMES,
   MAX_TOOL_ITERATIONS,
 } from './gabi-tools.js';
 import { delegatedWritesOn, libraryInstances } from './delegated.js';
@@ -181,10 +182,19 @@ app.get('/api/health', (c) =>
       // auth Worker. Named here so "can she answer how do I promote?" is
       // answerable in one curl rather than by DMing her.
       'gabi_estate_docs',
-      // ⚠️ Added 2026-09-01: the Groq first-line rung, SHIPPING DARK. Named
-      // here so "is there a cheaper model in front of Haiku?" is answerable in
-      // one curl; `gabi_groq` below says which of the three postures is live.
+      // ⚠️ Added 2026-09-01: the Groq first-line rung. Named here so "is there a
+      // cheaper model in front of Haiku?" is answerable in one curl; `gabi_groq`
+      // below says which of the three postures is live. ⚠️ The name still reads
+      // `_dark` and the posture is no longer dark — it is left alone
+      // deliberately, because a feature NAME is what an external reader greps
+      // for and renaming one to fix a comment is a contract change for a
+      // cosmetic gain. The posture row is the truth.
       'gabi_groq_rung_dark',
+      // ⚠️ Added 2026-09-02: PHASE 2 — an eligible tool loop rides Groq first
+      // too. Named separately from the row above because the two shipped weeks
+      // apart in behaviour terms, and "does the expensive half ride the cheap
+      // model?" is the question that decides whether the savings are real.
+      'gabi_groq_tool_loops',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -414,11 +424,17 @@ app.get('/api/health', (c) =>
     // curl instead of by reading TypeScript.
     gabi_groq_model: GABI_GROQ_MODEL,
     // ⚠️ THE SCOPE, stated rather than inferred, because it is the claim the
-    // whole rung rests on: only TOOLLESS calls are eligible. A tool-loop turn
-    // stays on Anthropic in every posture until the Anthropic↔OpenAI tool-schema
-    // translation lands (phase 2). If this row ever says otherwise, somebody
-    // made that decision and it should be findable in one curl.
-    gabi_groq_scope: 'toolless_calls_only_tool_loops_stay_anthropic',
+    // whole rung rests on. ⚠️ **WIDENED 2026-09-02 (phase 2)**: the toolless
+    // calls, PLUS a tool loop whose every tool is on the read-only allowlist
+    // below, and only under the posture `first`. A loop carrying anything else —
+    // and every tool loop under `shadow`, because shadowing one would execute
+    // its tools twice — stays 100% Anthropic. If this row ever says otherwise,
+    // somebody made that decision and it should be findable in one curl.
+    gabi_groq_scope: 'toolless_calls_plus_read_only_tool_loops_first_only',
+    // ⚠️ THE ALLOWLIST ITSELF, because "which tool loops can ride the cheap
+    // model?" is the question the scope row raises and cannot answer. Named
+    // rather than counted: a count would change silently in both directions.
+    gabi_groq_tool_allowlist: GROQ_READ_ONLY_TOOL_NAMES,
     // ⚠️ **TIER 3 + 4 — THE 90-DAY ARCHIVE AND THE RECALL TOOL, REPORTED AS
     // THEIR OWN ROWS.** The design shares ONE posture across tiers 2-4, so
     // flipping `GABI_MEMORY` on turned these on too the moment they deployed —

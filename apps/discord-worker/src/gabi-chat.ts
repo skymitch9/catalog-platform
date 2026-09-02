@@ -66,20 +66,23 @@ import { GABI_DISCORD_SYSTEM } from './gabi-prompt.js';
  */
 export { modelMessages, historyCost, type ModelMessage } from './conversation.js';
 import {
+  groqBlockedTools,
   MAX_TOOL_CALLS_PER_TURN,
   MAX_TOOL_ITERATIONS,
   toolsForApi,
 } from './gabi-tools.js';
 import { runTool, type ToolContext } from './tool-exec.js';
 /**
- * ⚠️ **THE GROQ FIRST-LINE RUNG (2026-09-01), AND ITS BOUNDARY.** `viaGroq`
- * wraps the two TOOLLESS calls below — `classifyIntent` and `converse` — and
- * NOTHING else in this file. `converseWithTools` is deliberately untouched in
- * every posture: its loop is built on Anthropic's `tool_use`/`tool_result`
- * grammar, and translating that to OpenAI's is phase 2. See
- * `gabi-groq.ts`'s header and `docs/info/gabi-groq-rung.md`.
+ * ⚠️ **THE GROQ FIRST-LINE RUNG (2026-09-01) AND ITS PHASE-2 WIDENING
+ * (2026-09-02).** `viaGroq` wraps the two TOOLLESS calls below — `classifyIntent`
+ * and `converse`. `converseWithTools` now rides the rung too, but through a
+ * different door and under a stricter gate: `gabi-groq-tools.ts` translates the
+ * Anthropic tool grammar to OpenAI's for the length of one request, and a loop is
+ * eligible ONLY when every tool it offers is on `GROQ_READ_ONLY_TOOL_NAMES`.
+ * See `gabi-groq-tools.ts`'s header and `docs/info/gabi-groq-rung.md`.
  */
-import { viaGroq, type ModelOverrides } from './gabi-groq.js';
+import { GroqFailure, groqLive, logGroq, viaGroq, type ModelOverrides } from './gabi-groq.js';
+import { groqToolComplete, type WireTool } from './gabi-groq-tools.js';
 export type { ModelOverrides } from './gabi-groq.js';
 
 /**
@@ -763,12 +766,13 @@ export async function converseWithTools(
   who: { discordUserId: string; guildId: string | null; authorName: string; via?: string },
   toolCtx: ToolContext,
   /**
-   * ⚠️ It accepts the same bag the toolless helpers do, and **ignores
-   * `overrides.groq` on purpose** — see this file's Groq import note. A tool
-   * loop is Anthropic's `tool_use`/`tool_result` grammar end to end; the OpenAI
-   * translation is phase 2, and until it exists a tool turn must stay on
-   * Anthropic in EVERY posture. `test/gabi-groq.test.ts` fails the build if a
-   * tool turn ever reaches `api.groq.com`.
+   * ⚠️ **IT USES `overrides.groq` SINCE PHASE 2 (2026-09-02), AND ONLY UNDER
+   * THREE CONDITIONS** — the posture is exactly `first`, a key exists, and every
+   * tool offered on this loop is on `GROQ_READ_ONLY_TOOL_NAMES`. `shadow` is
+   * deliberately NOT a posture a tool loop honours: shadowing would run the
+   * whole loop twice and execute every tool twice with it, and some of these
+   * tools reach live estate services. `test/gabi-groq.test.ts` fails the build
+   * if a shadowed or ineligible loop ever reaches `api.groq.com`.
    */
   overrides?: ModelOverrides,
   history: readonly ConversationTurn[] = [],
@@ -846,6 +850,145 @@ ${CHAT_CUT_SHORT}`
   const executed: string[] = [];
   let iterations = 0;
 
+  /** ⚠️ Built ONCE and shared by both providers, byte for byte. `gabi-edge`'s
+   *  own test pins that Anthropic's and Groq's system strings are equal, for the
+   *  reason it records: a fork would make every comparison a comparison of two
+   *  different questions. */
+  const systemPrompt = [
+    CHAT_TOOLS_SYSTEM,
+    // ⚠️ Each addendum rides ONLY the turn its tools are offered on, and the
+    // two are independent: a book turn on a surface with docs switched off
+    // describes books and not docs, and vice versa.
+    ...(docsOffered ? [CHAT_DOCS_SYSTEM] : []),
+    ...(booksOffered ? [CHAT_BOOKS_SYSTEM] : []),
+    // ⚠️ LAST, so the freshest thing in the system prompt is who she is
+    // talking to — and absent entirely when there is nothing to say, since a
+    // block reading "here is what you know: nothing" spends tokens teaching
+    // her she is ignorant.
+    ...(memoryBlock ? [memoryBlock] : []),
+  ].join('\n');
+
+  // ── ⚠️ THE GROQ GATE (phase 2, 2026-09-02) ────────────────────────────────
+  // Three conditions, all required: a live rung, the posture EXACTLY `first`,
+  // and every offered tool on the read-only allowlist. `shadow` is excluded on
+  // purpose and it is not an oversight — shadowing a tool loop would run the
+  // loop twice and EXECUTE EVERY TOOL TWICE with it, against live estate
+  // services, to compare two answers. The ladder for tool loops is therefore
+  // straight to first-with-fallback, under the same `GABI_GROQ` var and with no
+  // second posture to set.
+  const rung = overrides?.groq;
+  const blockedTools = groqBlockedTools(tools);
+  const logWho = { discordUserId: who.discordUserId, guildId: who.guildId };
+  let groqArmed = groqLive(rung) && rung?.mode === 'first' && blockedTools.length === 0;
+  if (groqLive(rung) && !groqArmed) {
+    // ⚠️ ONE line per TURN, not per pass, and only when a rung is actually live:
+    // with the posture `off` there is nothing to explain and a line every turn
+    // would be noise in the stream somebody reads to make a decision.
+    logGroq({
+      mode: rung?.mode ?? 'off',
+      purpose: 'converse_tools',
+      outcome: 'ineligible',
+      ms: 0,
+      toolsOffered: tools.length,
+      ineligibleReason: blockedTools.length > 0 ? 'tool_not_allowlisted' : 'posture_shadow',
+      ...(blockedTools.length > 0 ? { blockedTools } : {}),
+      who: logWho,
+    });
+  }
+
+  interface ModelPass {
+    blocks: unknown[];
+    stopReason: string | null;
+  }
+
+  /** The Anthropic pass — the call that was always here, unchanged. */
+  const haikuPass = async (last: boolean): Promise<ModelPass> => {
+    const res = await client.messages.create({
+      model: GABI_CHAT_MODEL,
+      max_tokens: CHAT_TOOL_MAX_TOKENS,
+      system: systemPrompt,
+      messages: messages as never,
+      ...(last ? {} : { tools: tools as never }),
+    });
+    iterations += 1;
+    accountTurn({
+      purpose: 'converse_tools',
+      usage: usageOf(res.usage),
+      discordUserId: who.discordUserId,
+      guildId: who.guildId,
+      ...(who.via ? { via: who.via } : {}),
+      ...historyCost(history),
+      toolCalls: executed.length,
+      tools: [...executed],
+      toolIterations: iterations,
+      ...(docsOffered ? { docsSections: docsSpend().sections, docsBytes: docsSpend().bytes } : {}),
+      ...(booksOffered
+        ? { booksPassages: booksSpend().passages, booksBytes: booksSpend().bytes }
+        : {}),
+    });
+    return { blocks: content(res), stopReason: res.stop_reason ?? null };
+  };
+
+  /**
+   * One Groq pass, or `null` meaning *"replay this same pass on Haiku"*.
+   *
+   * ⚠️ **THE FALLBACK IS SAFE PRECISELY BECAUSE IT HAPPENS HERE.** A failed pass
+   * never touched `messages` and never executed a tool, so the Haiku call that
+   * replaces it starts from byte-identical state. ⚠️ And once a loop has fallen
+   * back it STAYS on Haiku (`groqArmed` is cleared): ping-ponging providers
+   * mid-loop would mean a conversation half-translated and half-native, which is
+   * two grammars to be wrong about instead of one.
+   *
+   * ⚠️ **NO `accountTurn`.** `gabi_turn` means ANTHROPIC spend and must keep
+   * meaning that, or the billing inventory counts free tokens as Haiku ones.
+   */
+  const groqPass = async (last: boolean, pass: number): Promise<ModelPass | null> => {
+    // ⚠️ The final pass sends NO tools on this path either. The Anthropic branch
+    // drops them because a turn whose results could never be executed ends in
+    // silence; nothing about that reasoning is Anthropic's.
+    const offered: readonly WireTool[] = last ? [] : (tools as readonly WireTool[]);
+    const started = Date.now();
+    try {
+      const seen = await groqToolComplete(
+        rung?.apiKey ?? '',
+        { system: systemPrompt, messages, tools: offered, maxTokens: CHAT_TOOL_MAX_TOKENS },
+        overrides?.fetch ?? fetch,
+      );
+      iterations += 1;
+      logGroq({
+        mode: 'first',
+        purpose: 'converse_tools',
+        outcome: 'groq',
+        ms: Date.now() - started,
+        chars: seen.chars,
+        inputTokens: seen.inputTokens,
+        outputTokens: seen.outputTokens,
+        iteration: pass,
+        toolsOffered: offered.length,
+        who: logWho,
+      });
+      return { blocks: seen.blocks, stopReason: seen.stopReason };
+    } catch (err) {
+      const failure =
+        err instanceof GroqFailure
+          ? err
+          : new GroqFailure('malformed', `groq tool pass failed: ${String((err as Error)?.name ?? err)}`);
+      logGroq({
+        mode: 'first',
+        purpose: 'converse_tools',
+        outcome: 'fallback',
+        reason: failure.reason,
+        status: failure.status,
+        ms: Date.now() - started,
+        iteration: pass,
+        toolsOffered: offered.length,
+        who: logWho,
+      });
+      groqArmed = false;
+      return null;
+    }
+  };
+
   try {
     for (let i = 0; i <= MAX_TOOL_ITERATIONS; i++) {
       // ⚠️ The LAST permitted request drops `tools` entirely. Offering them on
@@ -853,45 +996,12 @@ ${CHAT_CUT_SHORT}`
       // unanswered `tool_use` block and no text at all — the person gets
       // silence because the bot ran out of budget mid-thought.
       const last = i === MAX_TOOL_ITERATIONS;
-      const res = await client.messages.create({
-        model: GABI_CHAT_MODEL,
-        max_tokens: CHAT_TOOL_MAX_TOKENS,
-        // ⚠️ Each addendum rides ONLY the turn its tools are offered on, and the
-        // two are independent: a book turn on a surface with docs switched off
-        // describes books and not docs, and vice versa.
-        system: [
-          CHAT_TOOLS_SYSTEM,
-          ...(docsOffered ? [CHAT_DOCS_SYSTEM] : []),
-          ...(booksOffered ? [CHAT_BOOKS_SYSTEM] : []),
-          // ⚠️ LAST, so the freshest thing in the system prompt is who she is
-          // talking to — and absent entirely when there is nothing to say, since a
-          // block reading "here is what you know: nothing" spends tokens teaching
-          // her she is ignorant.
-          ...(memoryBlock ? [memoryBlock] : []),
-        ].join('\n'),
-        messages: messages as never,
-        ...(last ? {} : { tools: tools as never }),
-      });
-      iterations += 1;
-      accountTurn({
-        purpose: 'converse_tools',
-        usage: usageOf(res.usage),
-        discordUserId: who.discordUserId,
-        guildId: who.guildId,
-        ...(who.via ? { via: who.via } : {}),
-        ...historyCost(history),
-        toolCalls: executed.length,
-        tools: [...executed],
-        toolIterations: iterations,
-        ...(docsOffered ? { docsSections: docsSpend().sections, docsBytes: docsSpend().bytes } : {}),
-        ...(booksOffered
-          ? { booksPassages: booksSpend().passages, booksBytes: booksSpend().bytes }
-          : {}),
-      });
+      const attempted = groqArmed ? await groqPass(last, i + 1) : null;
+      const pass = attempted ?? (await haikuPass(last));
 
-      const blocks = content(res);
+      const blocks = pass.blocks;
       const calls = toolUseBlocks(blocks);
-      if (res.stop_reason !== 'tool_use' || calls.length === 0) {
+      if (pass.stopReason !== 'tool_use' || calls.length === 0) {
         const text = textOf(blocks);
 
         // ⚠️ THE FIX FOR THE SILENT PARTIAL. A turn that trails off mid-thought
@@ -900,9 +1010,9 @@ ${CHAT_CUT_SHORT}`
         // can actually take the step it announced. The loop's own bound stops
         // this running away, and the final pass sends no tools at all, so the
         // model must produce prose there.
-        if (!last && needsFinishing(text, res.stop_reason)) {
+        if (!last && needsFinishing(text, pass.stopReason)) {
           console.error(
-            `GABI mentions: the turn stopped mid-thought (stop_reason=${String(res.stop_reason)}, ` +
+            `GABI mentions: the turn stopped mid-thought (stop_reason=${String(pass.stopReason)}, ` +
               `iterations=${iterations}, docs=${docsOffered}, books=${booksOffered}); nudging it to finish rather than ` +
               'posting the narration.',
           );
@@ -926,7 +1036,7 @@ ${CHAT_CUT_SHORT}`
           // question. It used to log NOTHING, so the reply was the only
           // evidence it had happened. Now it is one greppable line.
           console.error(
-            `GABI mentions: the tool-using turn produced no text (stop_reason=${String(res.stop_reason)}, ` +
+            `GABI mentions: the tool-using turn produced no text (stop_reason=${String(pass.stopReason)}, ` +
               `iterations=${iterations}, tool_calls=${executed.length}, docs=${docsOffered}, books=${booksOffered}). ` +
               'The caller will use its fallback.',
           );
