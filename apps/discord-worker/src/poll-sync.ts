@@ -69,6 +69,7 @@ import { Hono } from 'hono';
 import type { AppBindings } from './env.js';
 import {
   buildPollMessage,
+  clubPollAnnouncementsEnabled,
   clubVotingEnabled,
   listVoteIndices,
   pollFromDoc,
@@ -111,6 +112,13 @@ export interface ClubRow {
   id: string;
   name: string;
   votingEnabled: boolean;
+  /** ⚠️ `features.discordPollAnnouncements`, read with the OPPOSITE default to
+   *  `votingEnabled`: ABSENT MEANS YES. See `clubPollAnnouncementsEnabled` in
+   *  poll-vote.ts for why — the affirmative form would have silently switched
+   *  off every club that already announces, because no club doc carries the key
+   *  yet. Optional on the interface so an existing test fixture that predates
+   *  the toggle still describes a club that announces. */
+  announcementsEnabled?: boolean;
 }
 
 export interface PollRow {
@@ -192,6 +200,12 @@ export const SYNC_MSG = {
   clubFailed: (label: string, detail: string) =>
     `${label}: this club was skipped because something went wrong reading or posting it (${detail}). ` +
     'Every other club was unaffected, and the tick will retry this one next time.',
+  /** ⚠️ Not a fault, and said so: the club chose this. The sentence names the
+   *  toggle and where it lives, so nobody goes looking for a bug in the tick. */
+  announcementsOff: (label: string) =>
+    `${label}: Discord voting is on, but this club has poll ANNOUNCEMENTS switched off, so nothing ` +
+    'was posted. That is the club’s own choice (Edit Club → Discord poll announcements), not a ' +
+    'fault — votes on any poll message that is already in Discord still count.',
   capped: (label: string, total: number) =>
     `${label}: ${total} polls is more than one tick handles (cap ${MAX_POLLS_PER_CLUB}); the rest ` +
     'are left for the next tick rather than dropped.',
@@ -363,6 +377,15 @@ export async function runPollSync(deps: SyncDeps, clubCol: ClubCollection): Prom
     // not an event; it is the normal case, and it makes no note.
     if (!club.votingEnabled) continue;
     stats.clubs_opted_in += 1;
+    // ⚠️ THE SECOND TOGGLE (2026-09-02), and it is a real skip rather than a
+    // silent one: a club that has deliberately turned poll ANNOUNCEMENTS off
+    // still has Discord voting on, so "opted in but nothing posted" would read
+    // as the tick being broken. It is NOTED, once, with the reason.
+    if (club.announcementsEnabled === false) {
+      stats.skipped += 1;
+      stats.notes.push(SYNC_MSG.announcementsOff(`${clubCol}/${club.id} (${club.name || '?'})`));
+      continue;
+    }
     try {
       await syncClub(deps, clubCol, club, stats);
     } catch (err) {
@@ -469,6 +492,7 @@ export function firestoreDeps(
           id,
           name: doc.fields?.name?.stringValue ?? '',
           votingEnabled: clubVotingEnabled(doc),
+          announcementsEnabled: clubPollAnnouncementsEnabled(doc),
         });
       }
       return rows;

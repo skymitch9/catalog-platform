@@ -513,3 +513,83 @@ test('recordFromDoc refuses a half-written record and defaults status to open', 
     'closed',
   );
 });
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE POLL-ANNOUNCEMENT OPT-OUT — read here, defined and written elsewhere
+// ---------------------------------------------------------------------------
+//
+// `features.discordPollAnnouncements` is an existing club feature key
+// (`apps/audiobook-worker/src/enforce-routes.ts` allows it through
+// `updateClubDetails`); the toggle itself is built on the audiobook side. This
+// Worker only READS it, and the DEFAULT is the whole risk — which is why it has
+// a test of its own rather than riding along on somebody else's.
+
+test('⚠️ ABSENT means YES — a deployment must not silently mute every club that already announces', async () => {
+  const f = fake({
+    // ⚠️ No `announcementsEnabled` at all: exactly the shape of every club doc
+    // in the estate before the toggle is written to any of them. The
+    // affirmative `=== true` form would have skipped every one of them, and the
+    // symptom would have looked like the sync tick being broken.
+    clubs: [OPEN_CLUB],
+    polls: { club1: [OPEN_POLL] },
+    settings: { discordChannelId: 'chan-9' },
+  });
+  const stats = await runPollSync(f.deps, 'clubs');
+  assert.equal(f.posts.length, 1);
+  assert.equal(stats.posted, 1);
+  assert.equal(stats.skipped, 0);
+});
+
+test('an EXPLICIT false opts the club out — nothing is posted, and the skip says WHY', async () => {
+  const f = fake({
+    clubs: [{ ...OPEN_CLUB, announcementsEnabled: false }],
+    polls: { club1: [OPEN_POLL] },
+    settings: { discordChannelId: 'chan-9' },
+  });
+  const stats = await runPollSync(f.deps, 'clubs');
+  assert.equal(f.posts.length, 0, 'an opted-out club must have nothing posted into it');
+  assert.equal(stats.posted, 0);
+  assert.equal(stats.skipped, 1);
+  // ⚠️ NOTED, not silent: this club HAS Discord voting on, so "opted in and
+  // nothing posted" without a reason reads as the tick being broken.
+  assert.equal(stats.notes.length, 1);
+  assert.match(stats.notes[0]!, /ANNOUNCEMENTS switched off/);
+  assert.match(stats.notes[0]!, /own choice/);
+  assert.doesNotMatch(stats.notes[0]!, /error|failed/i);
+});
+
+test('⚠️ the two toggles are orthogonal — voting off still short-circuits first, and silently', async () => {
+  const f = fake({
+    clubs: [{ id: 'c9', name: 'Quiet', votingEnabled: false, announcementsEnabled: true }],
+    polls: { c9: [OPEN_POLL] },
+    settings: { discordChannelId: 'chan-9' },
+  });
+  const stats = await runPollSync(f.deps, 'clubs');
+  assert.equal(stats.clubs_opted_in, 0);
+  assert.equal(stats.skipped, 0);
+  // A club that never opted into Discord voting is the NORMAL case and makes
+  // no note — that behaviour is unchanged by the announcements toggle.
+  assert.deepEqual(stats.notes, []);
+});
+
+test('the announcement opt-out does not touch a club that already has a posted message', async () => {
+  // ⚠️ The opt-out stops POSTING; it deliberately does not delete or freeze a
+  // message already in the channel, whose vote buttons still work. Turning a
+  // toggle off must not reach backwards into a live conversation.
+  const f = fake({
+    clubs: [{ ...OPEN_CLUB, announcementsEnabled: false }],
+    polls: { club1: [OPEN_POLL] },
+    settings: { discordChannelId: 'chan-9' },
+    records: {
+      'clubs__club1__poll1': { channelId: 'chan-9', messageId: '55', renderedStatus: 'open' },
+    },
+  });
+  await runPollSync(f.deps, 'clubs');
+  assert.equal(f.edits.length, 0);
+  assert.equal(f.posts.length, 0);
+  assert.deepEqual(f.records.get('clubs__club1__poll1'), {
+    channelId: 'chan-9',
+    messageId: '55',
+    renderedStatus: 'open',
+  });
+});

@@ -170,6 +170,36 @@ export function clubVotingEnabled(doc: FsDoc): boolean {
   return doc.fields?.features?.mapValue?.fields?.discordPollVoting?.booleanValue === true;
 }
 
+/**
+ * club doc → may the sync tick POST this club's polls into Discord?
+ *
+ * ⚠️ **A SECOND, DIFFERENT TOGGLE FROM `discordPollVoting`, AND IT IS READ WITH
+ * THE OPPOSITE DEFAULT — on purpose** (2026-09-02).
+ *
+ * `features.discordPollAnnouncements` is a club feature key the estate already
+ * carries: `apps/audiobook-worker/src/enforce-routes.ts:123` allows it through
+ * `updateClubDetails`, and the toggle itself is being built on the audiobook
+ * side. This Worker only READS it — it neither writes nor defines it.
+ *
+ * ⚠️ **ABSENT MEANS YES, and an explicit `false` means no.** That is the
+ * `promptsEnabled !== false` idiom the estate already uses for a club-level
+ * opt-OUT (design §2, the "Post as GABI" gate), and choosing the affirmative
+ * `=== true` form instead would have **silently switched off every club that
+ * already announces its polls** the moment this deployed: no club doc carries
+ * the key yet, so every one of them would have read as opted out, and the
+ * failure would have looked exactly like the sync tick being broken.
+ *
+ * ⚠️ The two toggles are ORTHOGONAL and both are honoured:
+ *   - `discordPollVoting` decides whether Discord may vote at all (this Worker's
+ *     own opt-in, default OFF, unchanged);
+ *   - `discordPollAnnouncements` decides whether the tick may PUSH a poll into
+ *     the channel. A club that wants Discord voting on a message it posts
+ *     itself sets voting on and announcements off.
+ */
+export function clubPollAnnouncementsEnabled(doc: FsDoc): boolean {
+  return doc.fields?.features?.mapValue?.fields?.discordPollAnnouncements?.booleanValue !== false;
+}
+
 /** The exact fields validPollVote() accepts from a browser — same shape. */
 export function voteDocFields(optionIndex: number, displayName: string) {
   return {
