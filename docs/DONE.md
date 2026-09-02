@@ -8,6 +8,24 @@
 > [`TODO.md`](TODO.md).
 >
 > Newest first, preserving the order the entries had in the original file.
+
+## 2026-09-02 — Slash-command registration ran; the "CORS blocker" premise was wrong
+
+Moved whole from TODO.md, superseding its own diagnosis. The item said the
+admin route needed a CORS allowance before a browser could call it. Measured:
+the route has had `origin: 'https://heygabi.ai'` CORS since 2026-08-17, and
+`/admin`'s CSP gained `discord.heygabi.ai` in connect-src the same day —
+the earlier "Failed to fetch" came from running the call on
+`/status/pipelines/`, whose CSP correctly refuses that connect. Ran from
+`/admin` page context (token never left the browser):
+`POST /admin/commands/register` → 200, **"Published 8 global command(s)"**
+(`link, have, gabi, recent, universe, review, suggest, guessgame`);
+`/timeout`+`/cleanup` held (moderation off) and `/rsvp`+`/progress` held
+(club writes off, per §15.3) — both deliberate. First-time commands can take
+up to an hour to appear in Discord clients. No code change was needed; the
+2026-08-17 provisioning was simply undocumented in the runbook's "how to get
+a token" paragraph, which suggests the console-on-/admin path — that is the
+correct and sufficient recipe.
 > ⚠️ The last entry is a **duplicate**: "Estate API testing suite" was written
 > twice, once as done and once as queued. Both are kept verbatim rather than
 > silently reconciled — which of the two a later reader trusts matters, and
