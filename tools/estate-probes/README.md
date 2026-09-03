@@ -2,8 +2,18 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
 >
-> Last verified: **2026-09-02** — **134/134 passing** against live production
-> on a clean run (`npm run probe:estate`). **+4 for the two handshake-probe
+> Last verified: **2026-09-03** — **137/137 passing** against live production
+> on a clean, single run (`npm run probe:estate`) taken minutes after the
+> audiobook-worker deploy that carried the routes. **+3 for GABI's phrase
+> count** (`ab-worker:AB25`–`AB27`: `GET /api/book/:bookId/count` and `GET
+> /api/books/count` refusing a tokenless caller with the worded 401, and the
+> `AB22` leak assertion carried onto the new pair — a count route answers a
+> yes/no about the household's derived text in about a kilobyte, so it is a
+> cheaper scrape target than a passage route, not a dearer one). ⚠️ The ids
+> were taken by grepping the WHOLE file for the highest `AB` number, per the
+> last row of *Gotchas*.
+>
+> Prior MEASURED figure: **134/134** on 2026-09-02 (below). **+4 for the two handshake-probe
 > routes** (`auth:A40`–`A41`, `ab-worker:AB23`–`AB24`: `/api/estate/app-check`
 > and `/api/books/app-check` refusing a tokenless AND a garbage-bearer caller
 > with the worded 401, and naming no app and no configured secret on the way
@@ -92,13 +102,13 @@ time, by anyone with this repo checked out, with no credentials at all.
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
 | `padhard.heygabi.ai` | `probes/library2-worker.mjs` | **"Sam's library"** — the SECOND library instance (`library_catalog`'s `[env.friend]`: Worker `library-catalog-friend`, own D1 `library-catalog-2nd`, own bucket). Probed because the CODE is shared with `library.heygabi.ai` and the DEPLOY is not — a green main library says nothing about hers. `/api/admin/users` (the surface `heygabi.ai/admin`'s fourth role column drives) tokenless AND garbage-bearer → the worded 401; its `adminCors()` apex-only preflight admitting `https://heygabi.ai` with GET+PATCH and refusing a foreign origin. ⚠️ `PATCH /api/admin/users/:id/role` is deliberately NEVER exercised — it changes what a real person may do on a real catalog; its escalation rules (`canGrantRole`) are unit-tested in that repo. *(sibling repo, read-only reference: `library_catalog/apps/worker/src/routes/admin.ts`, `wrangler.toml [env.friend]`)* |
 | `boardgames.heygabi.ai` | `probes/health.mjs` | `/api/health` only — no other public surface is asked for by design |
-| `audiobook-api.heygabi.ai` | `probes/audiobook-worker.mjs` | The audiobook-worker (deployed 2026-08-16). `/api/health` → 200 with this Worker's OWN envelope `{ ok, service, time, estate_check }` (no `detail`, by design — not the estate health envelope), `estate_check` asserted ∈ {off, shadow, enforce} **and printed on every run** (the shadow flip / an accidental revert shows here without reading wrangler config); `/api/me` tokenless AND garbage-bearer → the WORDED 401 (`error: "unauthenticated"` + a non-empty human `detail` — the ROLES.md §1e contract, asserted, not just the shape); `/api/me` CORS (audiobook site admitted, foreign origin refused); `POST /api/gate/shadow` with `{ action: "probe" }` → 204 + empty body — **the one by-design non-refused POST in this suite, see the note below**; **GABI's four book-knowledge routes** (`AB17`–`AB22`, 2026-09-01) tokenless → the worded 401, `/api/books/available` on a garbage bearer too, and the `passage` refusal asserted to name no pack, bucket or `text/` prefix. ⚠️ **The paths are not symmetric:** `/api/books/available` and `/api/books/presence` are PLURAL, `/api/book/:bookId/search` and `/api/book/:bookId/passage` are SINGULAR (`book-routes.ts:277,311,372,429`) — a wrong guess gets Hono's bare `text/plain` 404, which looks like "not deployed" and is "misspelled" |
+| `audiobook-api.heygabi.ai` | `probes/audiobook-worker.mjs` | The audiobook-worker (deployed 2026-08-16). `/api/health` → 200 with this Worker's OWN envelope `{ ok, service, time, estate_check }` (no `detail`, by design — not the estate health envelope), `estate_check` asserted ∈ {off, shadow, enforce} **and printed on every run** (the shadow flip / an accidental revert shows here without reading wrangler config); `/api/me` tokenless AND garbage-bearer → the WORDED 401 (`error: "unauthenticated"` + a non-empty human `detail` — the ROLES.md §1e contract, asserted, not just the shape); `/api/me` CORS (audiobook site admitted, foreign origin refused); `POST /api/gate/shadow` with `{ action: "probe" }` → 204 + empty body — **the one by-design non-refused POST in this suite, see the note below**; **GABI's four book-knowledge routes** (`AB17`–`AB22`, 2026-09-01) tokenless → the worded 401, `/api/books/available` on a garbage bearer too, and the `passage` refusal asserted to name no pack, bucket or `text/` prefix. **GABI's phrase count** (`AB25`–`AB27`, 2026-09-03) tokenless → the worded 401 on both `GET /api/book/:bookId/count` and `GET /api/books/count`, plus the same names-no-pack-or-bucket assertion on the count refusal. ⚠️ **The paths are not symmetric, and the asymmetry now covers THREE pairs:** `/api/books/available`, `/api/books/presence` and `/api/books/count` are PLURAL; `/api/book/:bookId/search`, `/api/book/:bookId/passage` and `/api/book/:bookId/count` are SINGULAR — a wrong guess gets Hono's bare `text/plain` 404, which looks like "not deployed" and is "misspelled" |
 | `discord.heygabi.ai` | `probes/discord-worker.mjs` | **LIVE — switched on 2026-09-01** (it had printed "not deployed yet (expected)" for weeks after actually deploying; see the header note). `/api/health` → 200, `service === "estate-discord"`, the `{ ok, service, configured }` envelope with config-PRESENCE booleans printed (never values), and **`D5`: `gabi_books_tools` equals the four names in `GABI_BOOKS_TOOL_NAMES`** — the fourth allowlist asserted against the DEPLOY, not just the build. Posture/readiness (`gabi_books_enabled`, `gabi_books_ready`, the caps) are PRINTED but never failed on: `GABI_BOOKS = "off"` is the documented rollback, and a suite that failed on it would fight the lever it exists to keep safe. `POST /interactions` is deliberately NOT probed — Ed25519-gated Discord machinery, covered by the worker's own tests |
 | `audiobooks.heygabi.ai` | `probes/audiobooks.mjs` | `/ebooks.json` parses, has `generated_at` (string) and `count` (number) |
 | Firestore | `probes/firestore.mjs` | `pipeline_status/current`, unauthenticated REST `GET`, parses, has `fields` — the one document `firestore.rules` sets `allow read: if true` on; `shelf_upload_status/current` (2026-08-16) — read permitted (200 or 404, never denied) |
 
-102 assertions as of last verification, all passing. Run the suite for the
-current count and result — this table is not re-derived automatically.
+137 assertions as of last verification (2026-09-03), all passing. Run the suite
+for the current count and result — this table is not re-derived automatically.
 
 ⚠️ **The read-only discipline is now a MECHANICAL GUARD, not just prose**
 (`run.mjs`: `NON_GET_ALLOWLIST` + `auditMethodDiscipline()`, the
