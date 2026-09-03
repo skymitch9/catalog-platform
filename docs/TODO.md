@@ -64,16 +64,30 @@ collapse to the first variant); `/api/books/count` is whole-book only; pure-punc
 phrase → 400 `empty_phrase`; exports `countPhrase, MAX_COUNT_VARIANTS, MAX_COUNT_QUOTES,
 MAX_COUNT_BYTES, CountAnswer…`. NOT verified: an authenticated 200 against live R2
 (session holds no token); R2 pack == local mirror.
-☐ **Dispatch B** launched 11:33 (Opus). Two Opus dispatches (~250–300k):
-  **A** audiobook-worker `countPhrase` + `/api/book/:id/count` (+ `/api/books/count`) +
-  tests; **B** discord-worker `count_phrase` tool, `deriveBound` (own rating ⇒
-  `whole_book`, disclosure sentence), `ENDPOINT_RE`/`BOOKS_WEAK` widening,
-  `pendingScopeAsk` carry-over, regression tests, design doc §4.5/§4.6 + incident.
-  Review when built: *"@GABI how often does Carl say God damn it Donut in Dungeon
-  Crawler Carl book 1"* → 14, ch 28 triple, ≤3 quotes, "transcript" line, NO how-far ask.
-☐ Before dispatch A: check the owner's DCC-1 rating actually exists in `reviews`
-  (§5 of the doc — the read was classifier-blocked this session) and the live
-  `GABI_BOOKS` posture; clean tree; fresh usage read.
+✅ **B LANDED 12:04** (315k Opus, commits `4151f80`→`f4e702c`, deployed `estate-discord`
+`583cc953-5ae6-4dd6-9422-29d6aed6d440`; tests 1199→1246 / 0 fail; `/api/health` 200 with
+`gabi_books_ready: true` and `count_phrase` in the tool list; `GABI_BOOKS = "on"` at
+`wrangler.toml:387`). As built, with the deviations and why in
+[`info/gabi-book-knowledge-design.md`](info/gabi-book-knowledge-design.md) **§4.7/§4.8/§10f**
+(§4.5/§4.6 were taken): row 7 of the ladder resolves per BOOK at tool-call time
+(`tool-exec.ts:734 boundForBook`), the shelf read is lazy + memoised (one Firestore query
+per turn at most), `pendingScopeAsk` is derived from the window text (no store change).
+⚠️ **Two findings while building:** (1) `shelf-exec.ts`'s `num()` read only
+`integerValue`/`doubleValue`, so a STRING rating (`"5"` — the owner's own) never parsed
+at all — fixed; every GABI shelf answer that showed a rating before today skipped those
+docs. (2) Because the book tools are offered as a family and `count_phrase` is not on
+`GROQ_READ_ONLY_TOOL_NAMES`, **the whole book tool loop now stays on Anthropic** — no
+live effect while `GABI_GROQ` ships `off`; reverting is one array entry.
+Horizon: `myReviews` returns the newest 15 rows, so a rating past row 15 falls to
+`unknown` (the safe direction).
+☐ 🧑 **OWNER REVIEW — the one remaining step.** In Discord: *"@GABI how often does Carl
+  say God damn it Donut in Dungeon Crawler Carl book 1"* → expect **14**, chapter 28
+  ×3, ≤3 short quotes, a "transcript" clause, the line *"you rated this one, so I'm
+  treating it as finished — say if that's wrong"*, and **no how-far question**.
+  ⚠️ NOT verified by either dispatch: an authenticated count against live R2 (no
+  session holds `ESTATE_APP_TOKEN_BOOKS`), so the owner's question is the first
+  end-to-end exercise of tool → route → pack → 14. When it passes, move this heading
+  WHOLE to DONE.
 
 ## ☐ 🔴 OWNER/SESSION STEP — verify `CLUB_WRITE_SHAPES` before `GABI_CLUB_WRITES` is ever flipped
 
