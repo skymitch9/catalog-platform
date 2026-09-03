@@ -10,8 +10,10 @@
  *   GET|HEAD /api/audio/:anchor/file  the audiobook byte stream; gated.
  *   GET  /api/books/available          GABI's book knowledge (2026-08-18); gated.
  *   GET  /api/books/presence           one term rolled up across ≤6 books; gated.
+ *   GET  /api/books/count              one phrase counted across ≤6 books; gated.
  *   GET  /api/book/:bookId/search      four modes (§6.2); gated.
  *   GET  /api/book/:bookId/passage     one passage + its ±1 stitch; gated.
+ *   GET  /api/book/:bookId/count       one phrase counted, scoped; gated.
  *
  * ⚠️ The two audio routes and the two ebook ones are gated on the SAME estate
  * grant (`vis_ebooks`) by owner decision, so this suite can only ever see
@@ -303,6 +305,47 @@ export async function probeAudiobookWorker() {
       'GET',
       passageUrl,
       'the refusal names no pack, bucket or prefix — the gate runs before R2',
+      !body.includes('ebooks-gated') && !body.includes('.json.gz') && !body.includes('text/'),
+      body.slice(0, 200),
+    );
+  }
+
+  // --- The PHRASE COUNT pair (2026-09-03) --------------------------------
+  //
+  // `GET /api/book/:bookId/count` and `GET /api/books/count`, built because no
+  // route here could answer "how often does Carl say X": `/presence` counted
+  // WORDS (17), `/search` counted CHUNKS behind a top-6 cap (13), the truth was
+  // 14. Same `vis_ebooks` gate as the four routes above, so the refusal is
+  // again the only half this suite can reach — and again the half that matters,
+  // because a count route is a cheaper scrape target than a passage route: it
+  // answers a yes/no about the household's text in ~1 KB.
+  //
+  // ⚠️ The plural/singular asymmetry now covers THREE pairs. `/api/books/count`
+  // is the corpus-wide one; `/api/book/:bookId/count` is the per-book one. The
+  // wrong guess still gets Hono's bare text/plain 404 that reads as "not
+  // deployed" — see the AB17–AB22 note above, this is the third instance of it.
+  expectWordedUnauthenticated(
+    'AB25',
+    'GET',
+    '/api/book/:bookId/count',
+    await get(`${AUDIOBOOK_API_ORIGIN}/api/book/b-probe000000/count?q=probe%20phrase`),
+  );
+  const countManyUrl = `${AUDIOBOOK_API_ORIGIN}/api/books/count?q=probe%20phrase&books=b-probe000000`;
+  const countMany = await get(countManyUrl);
+  expectWordedUnauthenticated('AB26', 'GET', '/api/books/count', countMany);
+
+  // ⚠️ AND THE REFUSAL LEAKS NOTHING ABOUT THE STORE — the AB22 assertion, on
+  // the new pair. The gate runs before any R2 GET, so an anonymous caller must
+  // not learn from a refusal which books are packed, what the bucket is called,
+  // or that packs live under a `text/` prefix.
+  if (countMany.ok) {
+    const body = JSON.stringify(countMany.json ?? countMany.text ?? '');
+    check(
+      AREA,
+      'AB27',
+      'GET',
+      countManyUrl,
+      'the count refusal names no pack, bucket or prefix — the gate runs before R2',
       !body.includes('ebooks-gated') && !body.includes('.json.gz') && !body.includes('text/'),
       body.slice(0, 200),
     );
