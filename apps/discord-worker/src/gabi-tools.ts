@@ -1008,6 +1008,10 @@ export const GROQ_READ_ONLY_TOOL_NAMES = [
   'search_book_text',
   'read_book_passage',
   'book_presence',
+  // read-only, counts + ≤3 quotes, a strict subset of `search_book_text`; allowlisted
+  // 2026-09-03 after a live `tool_not_allowlisted` line showed it was sinking every
+  // converse loop to Haiku.
+  'count_phrase',
   // Tier 0d — the asker's own shelf.
   'my_tbr',
   'my_reviews',
