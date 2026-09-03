@@ -9,6 +9,63 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-02 21:41 Phoenix — the owner played Skyward from his phone; stream stamp AND saved spot PROVED
+
+**Closure.** Owner: *"ive played music from my phone on the site and it
+works."* `python -m app.tools.fulfill_audio_requests --status` read back at
+21:51: `Skyward.m4b … last stream 2026-09-03T04:41:55Z, last saved spot
+2026-09-03T04:41:56Z` — `Streams : 1`, `Positions : 1`, no 403 on any lane.
+Units correct (no 1970 date). The phase-3 `audio_positions` rules had been
+released 21:47 by the session (owner: "Run the deploy") and smoke-tested
+15/15 live first. **Neither `--evict --commit` was run nor should it be yet:**
+the shield now has data, but eviction needs a real idle candidate, and the
+only book in the bucket was just played. Still unmeasured: the resume-offer
+bar on a second device; prod (this was `/dev/`). The item below is the one
+that asked for this, moved whole.
+
+### ☐ 🔴 OWNER STEP — play Skyward, so the eviction stamp is PROVED rather than deployed
+
+The audiobook player's platform half shipped 2026-09-02 (`e3396c5`, version
+`245ad6a1-408a-41b8-a832-45917a266924`, `deploys.log` 20:58Z): the audio BYTE
+route now stamps `audio_streams/{anchor}` = `{ anchor, lastStreamAt }` —
+**epoch milliseconds** — through the service account, one write per anchor per
+isolate per hour. Without it `evict_candidates()` never learns anything and R2
+grows for ever.
+
+🔴 **NOT ONE BYTE OF AUDIO HAS EVER BEEN STREAMED BY ANYBODY, so NO STAMP HAS
+EVER BEEN WRITTEN.** Every test drives a stubbed `fetch`. Deployed is not
+verified, and the missing half is a human with ears. Two steps, in order:
+
+1. **Play Skyward**, signed in, at
+   <https://audiobooks.heygabi.ai/dev/listen?b=b-4754c8e4548e&t=Skyward>
+   (⚠️ `/dev/` only — the site half rides the next promote). It is the only
+   book in the bucket, so it is the only thing that can be played at all.
+   Thirty seconds is enough; the stamp lands on the first byte served.
+2. **Read the stamp back**, in `audiobook_catalog`:
+
+   ```bash
+   python -m app.tools.fulfill_audio_requests --status
+   ```
+
+   ✅ **What proves it:** the `Skyward` line reads `last stream <a timestamp>`
+   instead of `last stream never measured`. ⚠️ **Two OTHER answers, and they
+   are different findings:** `[WARN] listing audio_streams failed: HTTP Error
+   403` means the owner's 13:30 rules deploy did not take (the reader is
+   locked out, and the stamp may well be there); a clean `Streams : 0` with no
+   warning means the listing works and **the Worker's write is what failed** —
+   check `npx wrangler tail audiobook-worker --format json | jq 'select(.message[0] | tostring | startswith("[stream-stamp]"))'`,
+   which names the status.
+
+⚠️ **A stamp that lands with the wrong UNITS is invisible here and it deletes
+books.** The reader's `_parse_stamp` divides by 1000 only above 1e11, so a
+seconds-valued stamp reads as a date in 1970 and a book somebody is halfway
+through looks two generations idle. If the status line shows a 1970 date, that
+is the bug, and it is one line in `src/stream-stamp.ts`.
+
+⚠️ **Do NOT run `--evict --commit` on the strength of this.** `last_position_at`
+is the mid-book shield and it waits for phase 3; until both land, eviction
+correctly deletes nothing.
+
 ## 2026-09-02 (evening sweep) — five completed/stale TODO blocks moved whole
 
 Swept in the pre-5.1-handoff docs pass on the owner's order ("update all docs").
