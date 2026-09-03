@@ -36,9 +36,29 @@
 >    hybrid: Groq chooses the tools, Haiku speaks.** ⚠️ 🔴 **Half of this is an
 >    OWNER decision — upgrading the Groq plan raises the limit** (§11.2).
 >
-> Last verified: **2026-09-02 (evening)** — the polish batch, [§12](#12--2026-09-02-evening--the-polish-batch-ledger-entry).
-> `test/gabi-groq.test.ts` 82 → **97 tests**, workspace **2452 pass / 0 fail**,
-> typecheck clean. ⚠️ **NOT verified:** **no live Groq TOOL call has ever
+> 8. ✅ **STATUS, CORRECTED 2026-09-03 — this rung is NOT "shipping dark" and
+>    NOT "toolless only", and any line elsewhere still saying so is stale.**
+>    `GABI_GROQ = "first"` is LIVE (`apps/discord-worker/wrangler.toml:588`) and
+>    **phase 2 — tool loops on Groq, allowlist-gated — is live too**. Measured
+>    the same evening, 19:12Z: a `converse_tools` line reading
+>    `outcome:"ineligible"`, `ineligible_reason:"tool_not_allowlisted"`,
+>    `blocked_tools:["count_phrase"]`, `tools_offered:11`. The new
+>    `count_phrase` tool (shipped that morning, `4151f80`) had been left off
+>    `GROQ_READ_ONLY_TOOL_NAMES` on purpose — and because **the gate is
+>    all-or-nothing per LOOP**, that one name was sinking **every** converse
+>    loop to Haiku, not merely the book ones. Allowlisted: it is read-only
+>    (GET; counts + chapter anchors + ≤3 quotes ≤400 chars), a strict subset of
+>    what `search_book_text` already sends. ⚠️ **The general lesson, which is
+>    bigger than this tool: on a per-loop gate, holding ONE tool back is not a
+>    narrow decision — it is a decision about every loop that tool is offered
+>    on.** A new tool's default-deny is still right; noticing what it costs is
+>    the part that needs a live line to see.
+>
+> Last verified: **2026-09-03** — `count_phrase` allowlisted; `apps/discord-worker`
+> **1246 pass / 0 fail**, typecheck clean. Everything below §8 last verified
+> **2026-09-02 (evening)** — the polish batch, [§12](#12--2026-09-02-evening--the-polish-batch-ledger-entry),
+> which measured `test/gabi-groq.test.ts` at **97 tests** and the workspace at
+> **2452 pass / 0 fail**. ⚠️ **NOT verified:** **no live Groq TOOL call has ever
 > SUCCEEDED from this repo** — every attempt so far was refused before the model
 > saw it. Whether an open-weights model calls these tools *accurately* is still
 > the real question, and §5's shadow ladder cannot answer it — see §8 and §12.2.
@@ -352,8 +372,9 @@ and one `outcome: "ineligible"` line says which condition failed.
 The spread reads better and is wrong: it would make a tool added tomorrow
 eligible **by default**, silently, as a side effect of a commit about something
 else. Written out, a new tool defaults to NOT allowlisted. Same default-deny
-shape as `GABI_TOOL_NAMES` and `GABI_DELEGATED_VERB_NAMES`. Thirteen names
-today, every one `mutates: false`; a test fails the build if one is not an
+shape as `GABI_TOOL_NAMES` and `GABI_DELEGATED_VERB_NAMES`. **Fourteen** names
+today (thirteen at phase 2; `count_phrase` added 2026-09-03 — see the header's
+step 8), every one `mutates: false`; a test fails the build if one is not an
 offered tool, and another asserts no delegated or confirm verb can be on it.
 
 ⚠️ **The gate is per LOOP, not per turn.** A loop carrying a mutating tool also

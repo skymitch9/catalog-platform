@@ -720,13 +720,27 @@ from the route and clamped this side too so the model's request and the answer's
 `BOOKS_TURNS_PER_DAY` like every other book tool. ⚠️ **The phrase is never
 logged** (§8), and a test pins that the executor holds no log line at all.
 
-⚠️ **NOT on the Groq rung**, per the design source's §4.3 (*"tools stay on
-Anthropic"*). The consequence is larger than one tool and is stated rather than
-tidied away: the book tools are offered as a family, so a books turn now carries
-a name that is not on `GROQ_READ_ONLY_TOOL_NAMES` and **the whole book loop stays
-on Anthropic**. That is the per-loop gate working as designed
-([`gabi-groq-rung.md`](gabi-groq-rung.md) §8), and `test/gabi-groq.test.ts` names
-the tool rather than dropping the assertion.
+⚠️ **ON the Groq rung since 2026-09-03 (same day), reversing the design
+source's §4.3 (*"tools stay on Anthropic"*).** It shipped that morning held OFF
+`GROQ_READ_ONLY_TOOL_NAMES`, and the live wire measured the cost the same
+evening — 19:12Z, `wrangler tail`:
+
+```
+{"evt":"gabi_groq","purpose":"converse_tools","outcome":"ineligible",
+ "tools_offered":11,"ineligible_reason":"tool_not_allowlisted",
+ "blocked_tools":["count_phrase"]}
+```
+
+⚠️ **The consequence was larger than one tool, exactly as the original note
+predicted — it was just larger than that too.** The gate is per LOOP and the
+book tools are offered as a family, so one unlisted name took **every converse
+loop** off Groq, not merely the book ones: eleven tools offered, every turn
+sunk to Haiku. Allowlisted, because the tool is read-only (GET; counts +
+chapter anchors + at most three quotes of 400 chars) and a strict subset of what
+`search_book_text` — allowlisted since phase 2 — already sends. The assertion in
+`test/gabi-groq.test.ts` is inverted rather than deleted: an empty blocked list
+over every offered tool is now what proves the loop eligible
+([`gabi-groq-rung.md`](gabi-groq-rung.md) §8).
 
 ---
 
