@@ -84,16 +84,47 @@ export function booksOn(env: Pick<Env, 'GABI_BOOKS'>): boolean {
  * | "up to chapter N", "through chapter N", "I'm on chapter N" | `through_chapter` | the reader named their own place |
  * | anything else | **`unknown`** | ⚠️ absence of a stated bound means UNKNOWN, never "unread" and never "finished" (§4.5) — and the route answers with the sentence she has to say |
  */
+/**
+ * ⚠️ WHICH RUNG OF THE LADDER (§3) DECIDED THIS BOUND — and **only the rung that
+ * needs a SENTENCE is recorded**.
+ *
+ * `rating` is the one rung derived from a STORE rather than from what the person
+ * just typed, so it is the only one they might disagree with and the only one
+ * that has to be disclosed (§3.2). A bound that came from their own words needs
+ * no `how`: it is already in the conversation, and adding one would have changed
+ * a shape three regression tests deep-equal against for no gain.
+ */
+export type BoundHow = 'rating';
+
 export type QuestionBound =
-  | { scope: 'whole_book' }
-  | { scope: 'through_chapter'; chapter: number }
+  | { scope: 'whole_book'; how?: BoundHow }
+  | { scope: 'through_chapter'; chapter: number; how?: BoundHow }
   | { scope: 'unknown' };
 
+/**
+ * ⚠️ **WIDENED 2026-09-03 (§3.1) AFTER A LIVE MISS.** The owner said *"I've read
+ * them all"* and it landed on `unknown`, because the old pattern was
+ * `i've (read|finished) (it|the whole)` — **it failed on the OBJECT**. "them
+ * all", "all of them", "the series" are how a person in the middle of a series
+ * actually says they are finished with it, and none of them were here.
+ *
+ * ⚠️ **Tightened at the same time so bare *"I read"* does NOT fire.** "I read
+ * fantasy" and "I read that in book 3" are not endpoint statements, so the
+ * object or the quantifier is REQUIRED — the verb alone never is. And a series
+ * statement is `whole_book` for every book of the series, which is safe only
+ * because it is re-derived per turn from what they just typed and never stored.
+ */
 const ENDPOINT_RE =
-  /\b(at|by|towards?|near)\s+the\s+end\b|\bend\s+of\s+(the\s+)?book\b|\bwhole\s+book\b|\bentire\s+book\b|\bfinished\s+(it|the\s+book)\b|\bi'?ve\s+(read|finished)\s+(it|the\s+whole)\b|\bfinal\s+chapter\b|\bhow\s+does\s+it\s+end\b/i;
+  /\b(at|by|towards?|near)\s+the\s+end\b|\bend\s+of\s+(the\s+)?book\b|\bwhole\s+book\b|\bentire\s+book\b|\bfinished\s+(it|the\s+book|the\s+series|them|them\s+all)\b|\bfinal\s+chapter\b|\bhow\s+does\s+it\s+end\b|\b(?:i'?ve|i\s+have|i)\s+(?:read|finished)\s+(?:it|this|these|them|the\s+whole|the\s+entire|all\s+of\s+(?:it|them)|the\s+series|the\s+lot)\b|\b(?:i'?ve|i\s+have|i)\s+(?:read|finished)\s+(?:it|them|this|these)\s+all\b|\b(?:read|finished)\s+the\s+(?:whole|entire)\s+(?:series|lot|thing|book)\b|\b(?:the\s+)?(?:whole|entire)\s+(?:series|lot|thing)\b|\bcaught\s+up\b/i;
 
+/** ⚠️ `i've read chapter 5` was ADDED 2026-09-03 alongside the endpoint widening,
+ *  and it has to be here rather than there: the two patterns now share the verb,
+ *  and a reader who names a CHAPTER has told you something more specific than a
+ *  reader who says they finished. Chapter outranks endpoint (§3, row 1 over row
+ *  2), so this pattern must claim the sentence FIRST or the widened endpoint
+ *  would swallow "I've read chapter 5" and serve the whole book. */
 const CHAPTER_RE =
-  /\b(?:up\s+to|through|before|by|i'?m\s+(?:on|at|in)|i\s+am\s+(?:on|at|in)|as\s+far\s+as)\s+chapter\s+(\d{1,3})\b/i;
+  /\b(?:up\s+to|through|before|by|i'?m\s+(?:on|at|in)|i\s+am\s+(?:on|at|in)|as\s+far\s+as|i'?ve\s+(?:read|finished)|i\s+(?:have\s+)?(?:read|finished))\s+chapter\s+(\d{1,3})\b/i;
 
 export function boundFromQuestion(text: string): QuestionBound {
   const q = (text ?? '').trim();
@@ -111,7 +142,129 @@ export function boundFromQuestion(text: string): QuestionBound {
   return { scope: 'unknown' };
 }
 
-/** The bound as the route's query parameters. */
+// ---------------------------------------------------------------------------
+// ⚠️ THE READ-STATE LADDER — `deriveBound`, design §3, first hit wins
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE 2026-09-03 DEFECT, IN ONE SENTENCE: the bound was derived from the
+ * QUESTION STRING ONLY, so a person who has RATED a book still read as
+ * `unknown` and got asked how far he had got.** The owner: *"It doesn't know
+ * that I've read the books even though I have it rated and I've linked."*
+ *
+ * The ladder (§3), first hit wins, and **the question always outranks the
+ * store** — a sentence is live, a store is a record:
+ *
+ * | # | Source | → |
+ * |---|---|---|
+ * | 1 | the question names a chapter | `through_chapter`, rounded down |
+ * | 2 | the question states an endpoint | `whole_book` |
+ * | 3–6 | reading positions / club progress | ⚠️ **NOT REACHABLE — see below** |
+ * | 7 | the asker's OWN `reviews` doc for THAT `bookId`, with a valid rating | `whole_book`, `how: 'rating'` |
+ * | 8 | nothing | `unknown` — never "unread" and never "finished" |
+ *
+ * ⚠️ **ROWS 3–6 ARE DELIBERATELY ABSENT, NOT FORGOTTEN.** Row 3/4 need
+ * `readingPositions/{uid}_{bookId}`, which has **no read seam from this Worker
+ * and is an EMPTY collection** (`RECOVERY.md`); rows 5/6 need club progress,
+ * which has no read path and whose `/progress` command is dark (KI-13). Stubbing
+ * a data path for either would be a fake measurement wearing a real one's
+ * clothes. They are TODOs with their design row numbers and nothing else:
+ *
+ *   TODO(§3 row 3) `readingPositions` progress ≥ 0.98 ⇒ `whole_book`.
+ *   TODO(§3 row 4) `readingPositions` progress < 0.98 ⇒ `through_ord`, derived
+ *     THIS turn against this pack's chapter table and sent with `iv=` — the
+ *     route refuses a version mismatch, and that refusal is the whole guard.
+ *   TODO(§3 row 5) club `finished == true` ⇒ `whole_book`.
+ *   TODO(§3 row 6) club `chapterIndex` ⇒ `through_chapter`.
+ *
+ * ⚠️ **A FAILED OR ABSENT SHELF READ FALLS TO `unknown`, NEVER TO
+ * `whole_book`** (§3.2). `unknown` is not "no limit": it is "nobody said", and
+ * the route answers it with the sentence she has to say. Reading the store
+ * wrongly must never be the generous direction.
+ */
+export interface BooksReadState {
+  /** ⚠️ FALSE when the shelf read failed, was never made, or the port is absent.
+   *  A false here can only ever produce `unknown`. */
+  ok: boolean;
+  /** The asker's display name, as `myReviews` matched on. Compared FOLDED. */
+  displayName?: string;
+  /** The asker's own review rows. ⚠️ `rating` is `unknown` on purpose — see
+   *  `validRating`. */
+  reviews?: readonly { bookId?: string; displayName?: string; rating?: unknown }[];
+}
+
+/** ⚠️ **`rating` IS A STRING ON SOME DOCUMENTS AND A NUMBER ON OTHERS** —
+ *  measured 2026-09-03 against the live `reviews` collection: `"5"` on two of
+ *  three documents, `4.5` on the third. `typeof rating === 'number'` would have
+ *  read the owner's own five-star DCC review as "no rating" and asked him how
+ *  far he had got, which is the exact defect this ladder exists to fix.
+ *
+ *  ⚠️ **NO RATING FLOOR** (§3.2). A 0.5 is still a finished book. Only a rating
+ *  that is absent, unparseable or zero is not evidence of having read it. */
+export function validRating(rating: unknown): boolean {
+  if (rating === null || rating === undefined || rating === '') return false;
+  if (typeof rating === 'boolean') return false;
+  const n = Number(rating);
+  return Number.isFinite(n) && n > 0;
+}
+
+/** ⚠️ Folded exactly as the reviews join folds — the store is keyed by display
+ *  name and nothing else (`submitReview` writes no uid and no email), so the
+ *  comparison has to survive a capital letter and a stray space. */
+function foldName(name: unknown): string {
+  return typeof name === 'string' ? name.trim().toLowerCase().replace(/\s+/g, ' ') : '';
+}
+
+/**
+ * ⚠️ **ROW 7, APPLIED TO ONE BOOK.** The ladder's store rung is per-`bookId` and
+ * never per-series, so it can only be resolved once a specific book is being
+ * queried — which is at TOOL-CALL time, not at turn time. This is the function
+ * the executor calls with the id it is about to send.
+ *
+ * ⚠️ The turn's own bound wins whenever it said anything at all: rows 1–6
+ * outrank row 7, which is what makes "I DNF'd it at chapter 12 but rated it"
+ * come out at chapter 12 rather than at the end.
+ */
+export function boundForBook(
+  bound: QuestionBound,
+  readState: BooksReadState | null | undefined,
+  bookId: string,
+): QuestionBound {
+  if (bound.scope !== 'unknown') return bound;
+  if (!readState?.ok || !bookId) return bound;
+  const me = foldName(readState.displayName);
+  if (!me) return bound;
+  const rated = (readState.reviews ?? []).some(
+    (r) =>
+      // ⚠️ THE ASKER'S OWN REVIEW ONLY. The query is already filtered by name;
+      // this is the second check, and it is here because a widening of that
+      // query must not silently become a widening of whose reading counts.
+      foldName(r.displayName) === me &&
+      typeof r.bookId === 'string' &&
+      r.bookId.trim() === bookId.trim() &&
+      validRating(r.rating),
+  );
+  return rated ? { scope: 'whole_book', how: 'rating' } : bound;
+}
+
+/**
+ * The whole ladder. `bookId` is optional because the TURN-level bound is derived
+ * before any book is chosen — pass it and row 7 becomes reachable; leave it out
+ * and this is rows 1, 2 and 8.
+ */
+export function deriveBound(
+  text: string,
+  readState?: BooksReadState | null,
+  bookId?: string,
+): QuestionBound {
+  const fromQuestion = boundFromQuestion(text);
+  if (fromQuestion.scope !== 'unknown') return fromQuestion;
+  return bookId ? boundForBook(fromQuestion, readState, bookId) : fromQuestion;
+}
+
+/** The bound as the route's query parameters. ⚠️ Only the WORD crosses this
+ *  line — never an `ord` — so the 28-chapter re-chunk leak (design §4.3) cannot
+ *  apply to a bound derived from a rating. */
 export function boundParams(bound: QuestionBound): Record<string, string> {
   if (bound.scope === 'whole_book') return { scope: 'whole_book' };
   if (bound.scope === 'through_chapter') {
@@ -210,7 +363,14 @@ const BOOKS_SHELF_SHAPED = [
  *  to a specific book or chapter. */
 const BOOKS_WEAK = [
   /\b(chapter|prologue|epilogue|plot|character|characters|scene|passage|storyline)\b/i,
-  /\b(happens?|happened|said|says|kills?|killed|dies?|died|fights?|meets?|becomes?)\b/i,
+  // ⚠️ **`say` AND the two counting phrases were ADDED 2026-09-03**, and their
+  // absence is measured: *"how often does Carl say God Damnit Donut … in dungeon
+  // crawler Carl book 1"* missed this router entirely. `said|says` were here;
+  // the bare infinitive `say` — the form every "does X ever say Y" question uses
+  // — was not, and neither was any way of asking HOW MANY. The anchors matched;
+  // one missing word decided the lane.
+  /\b(happens?|happened|say|said|says|kills?|killed|dies?|died|fights?|meets?|becomes?)\b/i,
+  /\bhow\s+(?:often|many\s+times)\b/i,
   // ⚠️ The LitRPG nouns, weak on their own and needing an anchor.
   // ⚠️ **`title` is deliberately ABSENT here** while staying in the STRONG
   // possessive pattern above. "Jake's titles" is a LitRPG award; *"what's the
@@ -354,6 +514,21 @@ function contentWords(text: string): Set<string> {
 export function booksFollowUp(
   text: string,
   history: readonly { role: string; text: string }[],
+  opts: {
+    /**
+     * ⚠️ **THE PREDECESSOR SPENT BOOK BUDGET** (§3.3, item 1). The original rule
+     * — *a prior USER turn must itself pass `booksIntent`* — has a hole the
+     * 2026-09-03 incident fell straight through: turn 1 opened a book and turn 1
+     * did NOT pass the detector (`say` was missing from `BOOKS_WEAK`), so the
+     * follow-up had no lane to continue and the whole exchange left the books
+     * path.
+     *
+     * ⚠️ **What a book was actually OPENED for is a fact; what a sentence looked
+     * like to a regex is an opinion.** So a turn that spent book budget counts as
+     * a book-lane turn whatever its text scored — the fuse is the evidence.
+     */
+    priorBookBudget?: boolean;
+  } = {},
 ): boolean {
   const q = (text ?? '').trim();
   if (!q) return false;
@@ -366,9 +541,14 @@ export function booksFollowUp(
   if (q.split(/\s+/).filter(Boolean).length > FOLLOW_UP_MAX_WORDS) return false;
 
   const priorBookLane = (history ?? []).filter((t) => t.role === 'user' && booksIntent(t.text));
-  if (priorBookLane.length === 0) return false;
+  if (priorBookLane.length === 0 && !opts.priorBookBudget) return false;
 
   if (CONTINUATION_OPENER.test(q)) return true;
+  // ⚠️ A budget-proven predecessor with no detector-matching text has no content
+  // words to compare against, so an elliptical reply is taken on the budget
+  // alone. It is still bounded by the two narrowings above — short, and not
+  // shelf-shaped — which is what keeps the lane from capturing people.
+  if (priorBookLane.length === 0) return true;
 
   const mine = contentWords(q);
   return priorBookLane.some((t) => {
@@ -390,6 +570,22 @@ export const BOOKS_SEARCH_HITS = 6;
  *  has to interpret. Each book is one R2 GET on the other end; a fourteen-book
  *  series asked in one call is how a bounded feature becomes an unbounded one. */
 export const BOOKS_PRESENCE_MAX = 6;
+
+/**
+ * ⚠️ **THE COUNT CAPS — mirrored from `book-retrieval.ts`'s own
+ * `MAX_COUNT_VARIANTS` / `MAX_COUNT_QUOTES`, and clamped HERE as well.**
+ *
+ * The route clamps rather than refuses (asking for eight spellings is a caller
+ * being optimistic, not wrong), and this end clamps too so the model is never
+ * handed a silently different answer from the one it asked for. Two ends, same
+ * numbers, and the test pins that they agree.
+ *
+ * Six spellings, because a transcript renders a catchphrase two or three ways
+ * and a printed book a fourth. Three quotes, because a count's job is the
+ * NUMBER — the quotes are evidence it is real, not the answer.
+ */
+export const MAX_COUNT_VARIANTS = 6;
+export const MAX_COUNT_QUOTES = 3;
 
 /** ⚠️ How many books the knowledge-base listing hands a model at once. The
  *  listing is a discovery step, not an answer — a model shown 182 rows spends
@@ -734,6 +930,20 @@ export const BOOKS_MSG = {
   noAnswer:
     'I went looking through the book and could not put an answer together just then — that is a ' +
     'wobble on my side, not a sign the book lacks it. Ask me again, or narrow it down a bit.',
+
+  /**
+   * ⚠️ **THE FUSE ON `rated ⇒ read`** (§3.2). Row 7 is the one rung of the ladder
+   * derived from a STORE rather than from what the person just typed, so it is
+   * the one they might disagree with — a rating left after a DNF, a housemate
+   * sharing a display name, a migrated passphrase-era review. Saying which
+   * evidence was used, once, turns every one of those residuals from a silent
+   * spoiler into a sentence they can correct.
+   *
+   * ⚠️ ONCE per answer, not once per tool call: she may count in three books on
+   * one turn, and three copies of this reads as a malfunction.
+   */
+  ratingBound:
+    "you rated this one, so I'm treating it as finished — say if that's wrong.",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -776,6 +986,15 @@ export interface BooksPort {
   passage(email: string, bookId: string, params: Record<string, string>): Promise<BooksCallResult>;
   /** One term rolled up across several books, in reading order. */
   presence(email: string, params: Record<string, string>): Promise<BooksCallResult>;
+  /** ⚠️ **COUNT a phrase in ONE book — and get the COUNT, never the book.**
+   *  `params` carries `q`, the pipe-joined `variants`, `quotes` and the derived
+   *  bound. Spoiler-bounded, because a count is a per-book question. */
+  count(email: string, bookId: string, params: Record<string, string>): Promise<BooksCallResult>;
+  /** ⚠️ The same phrase across several books — **whole-book scope only**, which
+   *  is the route's own narrowing: there is no honest single ceiling for six
+   *  different chapter tables, and the shapes that would invent one are the
+   *  shapes that leaked twenty-eight chapters (design §4.3). */
+  countAcross(email: string, params: Record<string, string>): Promise<BooksCallResult>;
 }
 
 /** The identity failure, as the sentence she says. */
@@ -808,4 +1027,109 @@ export interface BooksToolContext {
   /** The bound derived from THIS turn's question. ⚠️ Threaded through so the
    *  executor cannot be handed a bound from an earlier turn. */
   bound: QuestionBound;
+  /**
+   * ⚠️ **THE LADDER'S ROW 7, AS A LAZY READ** (§3, `deriveBound`).
+   *
+   * Row 7 is per-`bookId`, so it can only be resolved when a specific book is
+   * being queried — and it costs a Firestore query, so it must not be paid by
+   * every mention. This is therefore a **memoised loader**: called at most once
+   * per turn, only by a book call that reached an `unknown` bound, and never at
+   * all on a turn that opens no book.
+   *
+   * ⚠️ It resolves to `{ ok: false }` on any failure. A read-state that could not
+   * be read is `unknown`, never `whole_book`.
+   */
+  readState?: () => Promise<BooksReadState>;
 }
+
+// ---------------------------------------------------------------------------
+// ⚠️ A CLARIFYING QUESTION IS A PROMISE — carrying the scope ask (§3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE OTHER HALF OF THE 2026-09-03 INCIDENT.** She answered *"how often
+ * does Carl say…"*, then asked how far he was into book 1. He said *"I've read
+ * them all"* — and that message left the book lane entirely and was answered as
+ * a brand new question. **Nothing re-ran the count.**
+ *
+ * ⚠️ That is worse than never asking: an assistant that asks a clarifying
+ * question has promised that the answer will be understood. The same lesson
+ * `suggestFollowUp` learned when she asked "audiobook, ebook or physical?" and
+ * then could not hear "physical please" — so this is deliberately the SAME
+ * mechanism, read off the remembered window rather than stored.
+ *
+ * ⚠️ **NO NEW STORE FIELD, and that is a hard constraint rather than a
+ * preference.** The conversation record's shape is shared with the library
+ * site's chat panel through `packages/gabi-conversation`
+ * (`gabi-conversation-continuity.md` §1.2/§1.3), where *"do not add fields"* is
+ * the standing rule — a field added there is a field the panel silently does not
+ * have. The marker is therefore DERIVED from the window's own text, exactly as
+ * `suggestFollowUp` derives the format answer, and it expires with the window.
+ */
+const SCOPE_ASK_RE =
+  /\bhow\s+far\s+(?:in(?:to)?|are\s+you|have\s+you|you'?ve|you\s+have)|\bdon'?t\s+have\s+a\s+bookmark\s+for\s+you\b|\bhow\s+far\s+you'?ve\s+got\b|\bwhere\s+(?:are\s+you|you\s+are)\s+(?:up\s+to|in|at)\b|\bsay\s+if\s+you'?ve\s+finished\b|\bwhich\s+chapter\s+are\s+you\b/i;
+
+/** What her scope question was ABOUT — the question she was in the middle of
+ *  answering when she asked it. */
+export interface ScopeAskCarry {
+  /** ⚠️ The ORIGINAL question, verbatim from the window, so the resolved bound
+   *  re-issues what was actually asked rather than a paraphrase of it. */
+  question: string;
+}
+
+/**
+ * Did she ask how far they had got, and what was she answering when she did?
+ *
+ * `history` is the remembered window, oldest first. Returns the last such ask
+ * with the book-lane user turn it interrupted, or `null`.
+ */
+export function pendingScopeAsk(
+  history: readonly { role: string; text: string }[],
+): ScopeAskCarry | null {
+  const turns = history ?? [];
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const t = turns[i];
+    if (!t || t.role !== 'assistant' || !SCOPE_ASK_RE.test(t.text ?? '')) continue;
+    // The question she was answering: the nearest earlier USER turn that was
+    // itself a book question. ⚠️ Never a later one — a message after the ask is
+    // the ANSWER to it, not the thing that prompted it.
+    for (let j = i - 1; j >= 0; j--) {
+      const u = turns[j];
+      if (u?.role === 'user' && booksIntent(u.text ?? '')) return { question: u.text };
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * ⚠️ **THE RESUME.** They answered her scope question; the answer resolves the
+ * bound; so the turn is a CONTINUATION of the original question and not a new
+ * one. Returns the question to re-issue, or `null`.
+ *
+ * ⚠️ The bound itself is NOT returned — it is derived from this turn's message
+ * by `booksContextFor` exactly as every other turn's is, and re-deriving it here
+ * would be a second implementation of the one thing design §4.3 insists happens
+ * in one place.
+ */
+export function booksScopeResume(
+  text: string,
+  history: readonly { role: string; text: string }[],
+): ScopeAskCarry | null {
+  const carry = pendingScopeAsk(history);
+  if (!carry) return null;
+  // ⚠️ Only an answer that actually RESOLVES the scope resumes anything. "no
+  // idea" is a real reply and it leaves the bound unknown, which is the state
+  // the ask already handled.
+  return boundFromQuestion(text).scope === 'unknown' ? null : carry;
+}
+
+/** ⚠️ Appended to the grounding when a scope answer re-issues its question, so
+ *  the model answers the ORIGINAL ask instead of the two words that unblocked
+ *  it. */
+export const BOOKS_SCOPE_RESUMED_NOTE =
+  '⚠️ THEY HAVE JUST TOLD YOU HOW FAR THEY HAVE GOT, and this turn is the ANSWER TO YOUR OWN ' +
+  'QUESTION — not a new subject. The question above is the one they actually asked, re-issued now ' +
+  'that the scope is settled. Answer THAT question, with the tools, this turn. ⚠️ Do NOT ask how ' +
+  'far they have got again: they have told you, and asking twice is how a clarifying question stops ' +
+  'being worth answering. Acknowledge what they said in a few words and then give the answer.';

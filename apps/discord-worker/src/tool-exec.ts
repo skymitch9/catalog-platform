@@ -90,10 +90,14 @@ import {
   BOOKS_PASSAGE_RUN_MAX,
   BOOKS_PRESENCE_MAX,
   BOOKS_SEARCH_HITS,
+  MAX_COUNT_QUOTES,
+  MAX_COUNT_VARIANTS,
   booksIdentityMessage,
+  boundForBook,
   boundParams,
   looksLikeStatQuery,
   type BooksToolContext,
+  type QuestionBound,
 } from './book-knowledge.js';
 import {
   bookIdFromTitle,
@@ -708,7 +712,48 @@ async function runBooksTool(
   if (name === 'list_book_knowledge') return await listKnowledge(books, who.email, args);
   if (name === 'book_presence') return await presenceAcross(books, who.email, args);
   if (name === 'read_book_passage') return await readPassage(books, who.email, args);
+  if (name === 'count_phrase') return await countPhrase(books, who.email, args);
   return await searchBook(books, who.email, args);
+}
+
+/**
+ * ⚠️ **THE LADDER'S ROW 7, RESOLVED FOR ONE BOOK, AT THE MOMENT OF THE CALL**
+ * (`book-knowledge.ts`'s `deriveBound`, design §3).
+ *
+ * The turn's own bound is derived from the QUESTION before any book is chosen;
+ * a rating is per-`bookId` and can only be consulted once there is an id. So the
+ * question's answer travels in the context, and this is where the store's answer
+ * is added — for the one book about to be queried, and only when the question
+ * said nothing at all.
+ *
+ * ⚠️ **The shelf read is LAZY AND MEMOISED** (the loader is built once per turn),
+ * so a turn that opens no book pays nothing and a turn that opens four books
+ * pays one query. ⚠️ A failed read resolves to `{ ok: false }` and therefore to
+ * `unknown` — never to `whole_book`.
+ */
+async function bookBound(books: BooksToolContext, bookId: string): Promise<QuestionBound> {
+  if (books.bound.scope !== 'unknown' || !books.readState) return books.bound;
+  try {
+    return boundForBook(books.bound, await books.readState(), bookId);
+  } catch {
+    // ⚠️ Deliberately silent about WHAT was being read: the loader logs its own
+    // failure, and nothing here may name a phrase, a book or a person.
+    return books.bound;
+  }
+}
+
+/** ⚠️ The disclosure sentence, appended to a result whose bound came from the
+ *  asker's own RATING rather than from anything they typed this turn (§3.2).
+ *  She says which evidence she used, once — that sentence is the fuse for every
+ *  residual the rung has: a rating left after a DNF, a shared display name, a
+ *  migrated review with no uid. */
+function ratingBoundNote(bound: QuestionBound): string {
+  if (bound.scope !== 'whole_book' || bound.how !== 'rating') return '';
+  return (
+    '⚠️ NOBODY SAID HOW FAR THEY HAD GOT THIS TURN — the scope came from THEIR OWN RATING of this ' +
+    `book, so nothing was hidden. SAY THIS ONCE, in your own voice, near the top: "${BOOKS_MSG.ratingBound}" ` +
+    'Say it once for the whole answer, not once per book, and do not explain the mechanism.'
+  );
 }
 
 /** ⚠️ The gated call's own failure, relayed. The audiobook Worker's `detail` is
@@ -908,6 +953,10 @@ async function searchBook(
     );
   }
 
+  // ⚠️ The turn's bound, plus the ladder's row 7 for THIS book — the fix for
+  // *"It doesn't know that I've read the books even though I have it rated"*.
+  const bound = await bookBound(books, bookId);
+
   const call = await books.port.search(email, bookId, {
     q: query,
     mode: modeRaw,
@@ -923,7 +972,7 @@ async function searchBook(
     // threaded from the context rather than read from `args`: a model asked to
     // choose its own spoiler scope chooses the generous one, because the
     // generous one answers the question better.
-    ...boundParams(books.bound),
+    ...boundParams(bound),
   });
   if (!call.ok) return callFailure(name, call);
 
@@ -977,7 +1026,9 @@ async function searchBook(
       scope,
       passages,
       bytes,
-      note: searchNote(body, scope, passages.length),
+      note: [searchNote(body, scope, passages.length), ratingBoundNote(bound)]
+        .filter(Boolean)
+        .join(' '),
     },
   };
 }
@@ -1012,10 +1063,14 @@ async function readPassage(
   let body: Record<string, unknown> = {};
   let stopped: string | null = null;
 
+  // ⚠️ Resolved ONCE for the whole run, not per page: the ceiling must not move
+  // between ord N and ord N+1 of the same answer.
+  const bound = await bookBound(books, bookId);
+
   for (let i = 0; i < runs; i++) {
     const call = await books.port.passage(email, bookId, {
       ord: String(start + i),
-      ...boundParams(books.bound),
+      ...boundParams(bound),
     });
     // ⚠️ A failure on a LATER page keeps what already came back rather than
     // discarding the run — the person gets the part that worked, and the reason
@@ -1162,6 +1217,277 @@ async function presenceAcross(
     isError: false,
     result: { mode: 'presence', query, books: body.books, note: PRESENCE_NOTE },
   };
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ COUNT_PHRASE — the tool she said she did not have, 2026-09-03
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE FOUR SENTENCES THIS RELAY EXISTS TO KEEP APART**, each of them a
+ * different fact and each with a different fix. Collapsing any pair produces a
+ * confident false statement about somebody's book:
+ *
+ * | shape | means | and NOT |
+ * |---|---|---|
+ * | `ingested: false` | "I have not read that book" | "it never happens" |
+ * | `total: 0` | "he never says it, in the text I read" | "the book is missing" |
+ * | `hidden_by_scope > 0` | "there are more, past where you are" | "that is all of them" |
+ * | a refusal | "I did not count" | "the count is zero" |
+ *
+ * ⚠️ **`hidden_by_scope` is the one that can spoil a book in reverse** — it makes
+ * "never" a FALSE word, and the note says so in the loudest terms available,
+ * because the same omission has already been measured once on the presence
+ * roll-up (Villy, book 2 chapter 24, reported as "not in books 1 or 2").
+ */
+function countNote(
+  body: Record<string, unknown>,
+  bound: QuestionBound,
+  quotesAsked: number,
+): string {
+  const parts: string[] = [];
+  const total = typeof body.total === 'number' ? body.total : null;
+  const hidden = typeof body.hidden_by_scope === 'number' ? body.hidden_by_scope : 0;
+  const scope = (body.scope ?? {}) as Record<string, unknown>;
+
+  if (hidden > 0) {
+    const where = scope.ceiling_chapter_title
+      ? `“${String(scope.ceiling_chapter_title)}”`
+      : `chapter ${String(scope.ceiling_chapter ?? '?')}`;
+    parts.push(
+      `⚠️ ${hidden} more match(es) sit PAST where this reader has got to and are NOT in the total. ` +
+        'YOU MUST NOT say "never", "not at all" or "absent", and you must not present this number as ' +
+        `the whole book's: say it is the count THROUGH ${where}, and offer to count the rest.`,
+    );
+  } else if (total === 0) {
+    parts.push(
+      '⚠️ ZERO IS A REAL ANSWER HERE and it is worth saying plainly: the book IS in your knowledge ' +
+        'base, it WAS counted, and the phrase is not in it. That is completely different from not ' +
+        'having read the book. ⚠️ Before you conclude it, check the variants you asked for — a ' +
+        'transcript may punctuate or spell a catchphrase differently, and one more spelling is ' +
+        'cheaper than a wrong "never".',
+    );
+  } else if (total !== null) {
+    parts.push(
+      'Give the NUMBER first, then where it lands — the chapters with the most, and the timestamps ' +
+        'if there are any. ⚠️ Quote only the excerpts that came back, and never add one from memory.',
+    );
+  }
+
+  if (body.source === 'transcript') {
+    parts.push(
+      '⚠️ This text is a TRANSCRIPT of the audiobook, not the written book, and for a catchphrase ' +
+        'that matters: say the count is "in the transcript". The printed page may punctuate it ' +
+        'differently — "goddammit" on paper can be "god damn it" in the recording.',
+    );
+  } else if (typeof body.source === 'string' && body.source) {
+    parts.push(`⚠️ Say which text this came from: the ${String(body.source)}.`);
+  }
+
+  if (typeof body.matcher === 'string' && body.matcher) {
+    parts.push(
+      `How the counting matched, in one clause if they ask: ${String(body.matcher)}. Do not recite ` +
+        'it unprompted.',
+    );
+  }
+
+  if (quotesAsked === 0 && (total ?? 0) > 0) {
+    parts.push('No excerpts were asked for. Offer to show one or two rather than inventing any.');
+  }
+
+  if (typeof body.note === 'string' && body.note) parts.push(String(body.note));
+  const rating = ratingBoundNote(bound);
+  if (rating) parts.push(rating);
+  else if (bound.scope === 'unknown' && typeof scope.ask === 'string' && scope.ask) {
+    parts.push(
+      `⚠️ Nobody said how far they have got, so nothing was hidden and this is the whole-book count. ` +
+        `Say so, and ask before going deeper: "${scope.ask}"`,
+    );
+  }
+  return parts.join(' ');
+}
+
+async function countPhrase(
+  books: BooksToolContext,
+  email: string,
+  args: Record<string, unknown>,
+): Promise<ToolOutcome> {
+  const name = 'count_phrase';
+  const phrase = str(args.phrase);
+  const ids = Array.isArray(args.bookIds)
+    ? args.bookIds.map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean)
+    : [];
+  if (!phrase || ids.length === 0) {
+    return booksRefusal(
+      name,
+      'nothing_to_count',
+      'I need the words to count and the book to count them in.',
+      'Call list_book_knowledge for the book id first — ids come from that listing and are refused ' +
+        'if constructed. Nothing was counted.',
+    );
+  }
+  if (ids.length > BOOKS_PRESENCE_MAX) {
+    // ⚠️ Refused rather than quietly counting the first six. A partial count
+    // reported as a whole one is a number nobody can stand behind, which is the
+    // exact failure this tool was built to end.
+    return booksRefusal(
+      name,
+      'too_many_books',
+      `I can count across ${BOOKS_PRESENCE_MAX} books at a time, and I would rather refuse than quietly count the first few.`,
+      'Pick the six that matter, or ask in two goes. Nothing was counted.',
+    );
+  }
+
+  // ⚠️ CLAMPED HERE TOO, not only at the route. The route clamps silently (a
+  // caller asking for eight spellings is optimistic, not wrong); clamping on
+  // this side as well means the model's own request and the answer's `variants`
+  // cannot quietly disagree.
+  const variants = (Array.isArray(args.variants) ? args.variants : [])
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean)
+    // ⚠️ `phrase` itself counts as one of the six on the other end, so this list
+    // may hold at most five more.
+    .slice(0, Math.max(0, MAX_COUNT_VARIANTS - 1));
+  const quotes = Math.min(Math.max(0, Math.floor(num(args.quotes) ?? 0)), MAX_COUNT_QUOTES);
+
+  // ⚠️ SEVERAL BOOKS IS A DIFFERENT ROUTE AND A DIFFERENT ANSWER — totals only,
+  // whole-book only. A ceiling is derived against ONE pack's chapter table, so
+  // there is no honest single ceiling for six of them (design §4.3, the
+  // 28-chapter leak), and the answer says so rather than implying a scope.
+  if (ids.length > 1) {
+    const call = await books.port.countAcross(email, {
+      q: phrase,
+      books: ids.join(','),
+      // ⚠️ PIPE-joined, because a comma is a legal character inside a phrase
+      // ("God damn it, Donut") and the `books=` list already owns the comma.
+      ...(variants.length ? { variants: variants.join('|') } : {}),
+    });
+    if (!call.ok) return countFailure(name, call);
+
+    const body = call.body ?? {};
+    const rows = Array.isArray(body.books) ? body.books : [];
+    const bytes = JSON.stringify(rows).length;
+    if (!books.budget.take(bytes, 0)) {
+      return booksRefusal(
+        name,
+        'books_turn_budget_spent',
+        BOOKS_MSG.turnBudgetSpent,
+        'Nothing was counted — do not state a number. Say so in ordinary words and offer to go ' +
+          'again. ⚠️ NEVER name a budget, a cap or a quota.',
+      );
+    }
+    return {
+      name,
+      isError: false,
+      result: {
+        mode: 'count',
+        phrase,
+        variants: body.variants,
+        scope: 'whole_book',
+        matcher: body.matcher,
+        books: rows,
+        bytes,
+        note:
+          '⚠️ THIS COUNT COVERS THE WHOLE OF EACH BOOK — a multi-book count cannot be bounded by ' +
+          'where the reader has got to, so say that plainly if any of these might be ahead of them. ' +
+          '⚠️ A book marked ingested: false was NOT counted at all; reporting that as zero is the one ' +
+          'mistake this tool exists to prevent. Say which books you actually counted in, and say ' +
+          'which text they came from (source). For chapters, timestamps or quotes, count that book ' +
+          'on its own.',
+      },
+    };
+  }
+
+  const bookId = ids[0] as string;
+  const bound = await bookBound(books, bookId);
+  const call = await books.port.count(email, bookId, {
+    q: phrase,
+    ...(variants.length ? { variants: variants.join('|') } : {}),
+    quotes: String(quotes),
+    ...boundParams(bound),
+  });
+  if (!call.ok) return countFailure(name, call);
+
+  const body = call.body ?? {};
+  if (body.ingested === false) return notIngested(name, body);
+
+  const quoteRows = Array.isArray(body.quotes) ? body.quotes : [];
+  // ⚠️ Charged AFTER the call and BEFORE the model sees it, the same order the
+  // search relay uses: the bytes were spent either way, and a result the turn
+  // has no room for must not be described as though it had been read.
+  const bytes = JSON.stringify(body).length;
+  if (!books.budget.take(bytes, quoteRows.length)) {
+    return booksRefusal(
+      name,
+      'books_turn_budget_spent',
+      BOOKS_MSG.turnBudgetSpent,
+      'That count was NOT read — do not state a number and do not describe the excerpts. Say so in ' +
+        'ordinary words and offer to go again. ⚠️ NEVER name a budget, a cap or a quota: it reads as ' +
+        'a malfunction when nothing is wrong.',
+    );
+  }
+
+  return {
+    name,
+    isError: false,
+    result: {
+      ingested: true,
+      mode: 'count',
+      book_id: body.book_id,
+      title: body.title,
+      // ⚠️ ALWAYS carried, so the answer can say "in the transcript" — for a
+      // catchphrase the difference between the recording and the printed page is
+      // the difference between a right number and a wrong one.
+      source: body.source,
+      phrase,
+      variants: body.variants,
+      total: body.total,
+      by_variant: body.by_variant,
+      by_chapter: body.by_chapter,
+      quotes: quoteRows,
+      hidden_by_scope: body.hidden_by_scope,
+      scope: body.scope,
+      matcher: body.matcher,
+      bytes,
+      note: countNote(body, bound, quotes),
+    },
+  };
+}
+
+/**
+ * ⚠️ **A COUNT'S OWN REFUSALS, WORDED — never a bare status** (ROLES.md §1e).
+ *
+ * Two of them are this route's alone and neither may reach a person as a number:
+ * a phrase of pure punctuation (400 `empty_phrase`) would otherwise compile to
+ * no matcher and answer 0, which reads as *"he never says it"*; and an `iv`
+ * mismatch (409) means a ceiling was derived against a different chunking of the
+ * book, which is the one input that can silently spoil one.
+ */
+function countFailure(name: string, call: { status: number; message?: string; body: Record<string, unknown> | null }): ToolOutcome {
+  const error = typeof call.body?.error === 'string' ? call.body.error : '';
+  if (call.status === 400 && error === 'empty_phrase') {
+    return booksRefusal(
+      name,
+      'empty_phrase',
+      call.message ??
+        'Give me the words to count — punctuation on its own is not a phrase, and I will not guess ' +
+          'which words you meant.',
+      '⚠️ NOTHING WAS COUNTED. Do not say zero: a phrase with no words in it cannot be counted at ' +
+        'all, which is not the same as it never being said. Ask them which words they meant, or ' +
+        'call again with the actual phrase.',
+    );
+  }
+  if (call.status === 409) {
+    return booksRefusal(
+      name,
+      'bound_version_mismatch',
+      call.message ?? BOOKS_MSG.noAnswer,
+      '⚠️ NOTHING WAS COUNTED. The reading position was worked out against a different version of ' +
+        'this book\'s text, and counting under it could reveal something past where they are. Do not ' +
+        'state a number. Say you need to know where they have got to and ask.',
+    );
+  }
+  return callFailure(name, call);
 }
 
 // ---------------------------------------------------------------------------

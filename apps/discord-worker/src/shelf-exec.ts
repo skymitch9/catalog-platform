@@ -256,12 +256,33 @@ export function makeShelfPort(env: Env): ShelfPort | null {
   };
 }
 
+/**
+ * ⚠️ **`rating` IS A STRING ON SOME REVIEW DOCUMENTS AND A NUMBER ON OTHERS** —
+ * measured 2026-09-03 against the live collection: `"5"` on two of three
+ * documents and `4.5` on the third, because the site's review form has written
+ * both shapes over its life.
+ *
+ * `num()` reads `integerValue` and `doubleValue` only, so a `stringValue` rating
+ * came back as **no rating at all** — which is how the owner's own five-star
+ * review of Dungeon Crawler Carl 1 read as "unrated", and why GABI asked him how
+ * far he had got into a book he had finished and rated. A shape difference in a
+ * store became a wrong sentence to a person.
+ */
+function ratingOf(v: FsValue | undefined): number | undefined {
+  const n = num(v);
+  if (n !== undefined) return n;
+  const raw = str(v).trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 /** ⚠️ Newest first, and the TRUE total is kept even when the rows are capped. */
 function shapeReviews(docs: FsDoc[], cap: number): ShelfCallResult<ReviewRow> {
   const rows: ReviewRow[] = docs.map((d) => ({
     bookId: str(d.fields?.bookId),
     displayName: str(d.fields?.displayName),
-    ...(num(d.fields?.rating) !== undefined ? { rating: num(d.fields?.rating) as number } : {}),
+    ...(ratingOf(d.fields?.rating) !== undefined ? { rating: ratingOf(d.fields?.rating) as number } : {}),
     ...(str(d.fields?.text) ? { text: str(d.fields?.text) } : {}),
     ...(ts(d.fields?.updatedAt) ? { updatedAt: ts(d.fields?.updatedAt) as string } : {}),
   }));

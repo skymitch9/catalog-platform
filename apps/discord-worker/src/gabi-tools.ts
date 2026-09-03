@@ -445,11 +445,29 @@ export function gabiDocsToolByName(name: unknown): GabiDocsTool | null {
  * re-chunk, no position write. GABI reads the household's books; she does not
  * keep anybody's bookmark.
  */
+/**
+ * ⚠️ **FIVE TOOLS FROM 2026-09-03 — `count_phrase` is the fifth, and it exists
+ * because she said, truthfully, that she could not do this.**
+ *
+ * > *"how often does Carl say God Damnit Donut … in dungeon crawler Carl book 1"*
+ * > — *"I don't have a tool that counts specific phrases across a book's text."*
+ *
+ * She was right, and the two instruments she had were both wrong in different
+ * directions: `/search` caps at six stitched passages behind a 24 KB ceiling, so
+ * it cannot see a thirteenth hit; `/presence` counts BAG-OF-WORDS chunk hits and
+ * said **17**. The true de-overlapped phrase count is **14**. Neither error was
+ * reported, so a person asking "how often" got a number nobody could stand
+ * behind.
+ *
+ * ⚠️ Counting belongs on the side that HOLDS the text: one HTTP call, zero
+ * subrequests, and the book never crosses the wire.
+ */
 export const GABI_BOOKS_TOOL_NAMES = [
   'list_book_knowledge',
   'search_book_text',
   'read_book_passage',
   'book_presence',
+  'count_phrase',
 ] as const;
 
 export type GabiBooksToolName = (typeof GABI_BOOKS_TOOL_NAMES)[number];
@@ -634,6 +652,64 @@ export const GABI_BOOKS_TOOLS: readonly GabiBooksTool[] = [
         },
       },
       required: ['bookIds', 'query'],
+      additionalProperties: false,
+    },
+    reads: 'gated_book_text',
+    methods: ['GET'],
+    mutates: false,
+  },
+  {
+    name: 'count_phrase',
+    description:
+      'COUNT how many times a phrase is said in a book — and get the count, the chapters it lands ' +
+      'in, and up to three short quotes as evidence. It never returns the book, and it is the only ' +
+      'tool here that can answer "how often", "how many times" and "does X ever say Y". ' +
+      '⚠️ USE THIS INSTEAD OF SEARCHING WHEN THE QUESTION IS A NUMBER. search_book_text returns at ' +
+      'most six passages, so it cannot see a seventh hit, and a presence roll-up counts loose words ' +
+      'rather than the phrase — on a real question those two disagreed by three in opposite ' +
+      'directions. This counts the phrase itself over the whole text. ' +
+      '⚠️ PUT THE OTHER SPELLINGS IN variants. Text from an audiobook is a transcript, so a ' +
+      'catchphrase turns up as "god damn it, Donut", "goddammit Donut" and "goddamn it Donut" — ' +
+      'give the ones you expect and the answer reports each separately AND a combined total that ' +
+      'never double-counts an overlap. Punctuation and capitals are already handled; you do not need ' +
+      'a variant for a comma. ' +
+      '⚠️ Cite what comes back: the number, the chapters, and say whether the text was a transcript ' +
+      'of the audio or the written book — the printed page may punctuate a catchphrase differently ' +
+      'from the way it is spoken. ⚠️ A total of 0 is a REAL answer about a book you have read; it is ' +
+      'not the same as the book not being in your knowledge base, and the result says which.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        bookIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'The books to count in, as ids from list_book_knowledge — never constructed. At most ' +
+            'six. ⚠️ One book gets you chapters, quotes and the reader\'s own scope; several books ' +
+            'get you totals only, counted over the whole of each.',
+        },
+        phrase: {
+          type: 'string',
+          description:
+            'The words to count, as they are said — "God damn it, Donut". Not a search query: this ' +
+            'is a phrase, counted where those words appear in that order.',
+        },
+        variants: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Other spellings of the SAME phrase, at most six including the main one — ' +
+            '"goddammit Donut", "goddamn it Donut". Each is reported separately and overlaps are ' +
+            'counted once.',
+        },
+        quotes: {
+          type: 'number',
+          description:
+            'How many short example excerpts to bring back, 0 to 3. Ask for one or two when the ' +
+            'person will want to see it said; ask for none when they only want the number.',
+        },
+      },
+      required: ['bookIds', 'phrase'],
       additionalProperties: false,
     },
     reads: 'gated_book_text',

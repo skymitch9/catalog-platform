@@ -168,6 +168,29 @@ export function makeBooksPort(env: Env): BooksPort | null {
     presence(email, params) {
       return call(`${base}/api/books/presence?${new URLSearchParams(params)}`, email, token);
     },
+
+    /**
+     * ⚠️ **COUNT ONE PHRASE IN ONE BOOK.** `params` carries `q`, the
+     * PIPE-joined `variants`, `quotes` and the derived bound.
+     *
+     * ⚠️ **`URLSearchParams` does the encoding, and it has to.** The phrase this
+     * feature was built for is *"God damn it, Donut"* — a comma, three spaces
+     * and a capital in one query value. Hand-building the string is how a comma
+     * becomes a list separator on the other end.
+     */
+    count(email, bookId, params) {
+      return call(
+        `${base}/api/book/${encodeURIComponent(bookId)}/count?${new URLSearchParams(params)}`,
+        email,
+        token,
+      );
+    },
+
+    /** ⚠️ Whole-book only, by the route's own design — the `books=` list owns the
+     *  comma, which is exactly why `variants` is pipe-separated. */
+    countAcross(email, params) {
+      return call(`${base}/api/books/count?${new URLSearchParams(params)}`, email, token);
+    },
   };
 }
 

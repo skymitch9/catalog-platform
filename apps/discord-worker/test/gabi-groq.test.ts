@@ -952,8 +952,23 @@ describe('⚠️ THE ELIGIBILITY ALLOWLIST — read-only names, written out, def
     // carries the conversation state that decides whether to call it, so letting
     // its "safe" turns ride Groq would put the cheap model in the seat that
     // PROPOSES the write.
-    assert.deepEqual(groqBlockedTools(everything), [], 'today every offered tool is read-only');
-    assert.deepEqual(groqBlockedTools([...everything, { name: 'fix-field' }]), ['fix-field']);
+    // ⚠️ **`count_phrase` IS DELIBERATELY NOT ON THE ALLOWLIST** (2026-09-03,
+    // design §4.3 of `gabi-phrase-count-and-read-state.md`: *"Groq: out — tools
+    // stay on Anthropic"*). It is read-only like the rest; what keeps it off is
+    // the ANSWER it produces — a single number a person will quote back, over a
+    // spoiler bound, from a text they cannot check. That is the shape least
+    // suited to the cheap rung.
+    //
+    // ⚠️ **The consequence, stated because it is larger than one tool:** the
+    // book tools are offered as a family, so a books turn now carries an
+    // unlisted name and the WHOLE book loop stays on Anthropic. That is the
+    // per-loop gate working as designed, not a side effect to be tidied away —
+    // and it is why this assertion names the tool instead of being deleted.
+    assert.deepEqual(groqBlockedTools(everything), ['count_phrase'], 'the allowlist has drifted');
+    assert.deepEqual(groqBlockedTools([...everything, { name: 'fix-field' }]), [
+      'count_phrase',
+      'fix-field',
+    ]);
     assert.deepEqual(groqBlockedTools([{ name: 'add-isbn' }, { name: 'catalog_lookup' }]), ['add-isbn']);
   });
 });

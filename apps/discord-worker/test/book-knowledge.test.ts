@@ -514,6 +514,9 @@ function port(overrides: Partial<BooksPort> = {}): BooksPort {
     search: async () => OK({ ingested: true, book_id: 'ph-1', mode: 'relevant', passages: [] }),
     passage: async () => OK({ ingested: true, book_id: 'ph-1', passage: { text: 'x' } }),
     presence: async () => OK({ ok: true, books: [] }),
+    count: async () =>
+      OK({ ingested: true, book_id: 'ph-1', total: 0, by_variant: [], by_chapter: [], quotes: [], hidden_by_scope: 0 }),
+    countAcross: async () => OK({ ok: true, mode: 'count', books: [] }),
     ...overrides,
   };
 }

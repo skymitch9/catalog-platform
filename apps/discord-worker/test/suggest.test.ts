@@ -90,6 +90,8 @@ function booksPort(over: Partial<BooksPort> = {}): BooksPort {
     search: async () => ({ ok: true, status: 200, body: {} }),
     passage: async () => ({ ok: true, status: 200, body: {} }),
     presence: async () => ({ ok: true, status: 200, body: {} }),
+    count: async () => ({ ok: true, status: 200, body: {} }),
+    countAcross: async () => ({ ok: true, status: 200, body: {} }),
     ...over,
   };
 }
@@ -445,7 +447,12 @@ describe('⚠️ the suggestion lane is REACHABLE, and in the right place', () =
     const docs = at('if (docsIntent(question))');
     const suggest = at('if (suggestIntent(question) ||');
     const shelf = at('if (shelfLaneIntent(question))');
-    const books = at('if (booksIntent(question) || booksFollowUp(question, history))');
+    // ⚠️ The needle is the CONDITION'S FIRST CLAUSE, not the whole line: the book
+    // router's condition grew a third half on 2026-09-03 (the answer to her own
+    // scope question) and became multi-line. What this test defends is the
+    // ORDER of the four lanes, and pinning it to a formatting accident made it
+    // fail for being right — the same trap the suggestion guard above records.
+    const books = at('booksIntent(question) ||');
     for (const [name, i] of Object.entries({ docs, suggest, shelf, books })) {
       assert.ok(i > 0, `${name} router not found in the flow`);
     }

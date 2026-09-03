@@ -120,14 +120,18 @@ import {
   booksIdentityMessage,
   booksFollowUp,
   booksIntent,
-  boundFromQuestion,
+  booksScopeResume,
+  deriveBound,
+  pendingScopeAsk,
   continuationShape,
   thematicAsk,
   BOOKS_FRESH_ASK_NOTE,
+  BOOKS_SCOPE_RESUMED_NOTE,
   BOOKS_THEMATIC_NOTE,
   makeBooksBudget,
   type BooksCapVerdict,
   type BooksPort,
+  type BooksReadState,
   type BooksToolContext,
 } from './book-knowledge.js';
 import {
@@ -762,6 +766,7 @@ async function booksContextFor(
   cfg: MentionConfig,
   discordUserId: string,
   question: string,
+  shelfCtx?: { port: ShelfPort; discordUserId: string },
 ): Promise<BooksToolContext | undefined> {
   if (!cfg.booksEnabled || !deps.books) return undefined;
   let capped = false;
@@ -778,7 +783,61 @@ async function booksContextFor(
     discordUserId,
     budget: makeBooksBudget(),
     capped,
-    bound: boundFromQuestion(question),
+    // ⚠️ THE LADDER (design §3), rows 1, 2 and 8. Row 7 is per-`bookId` and is
+    // resolved at tool-call time against the loader below — the turn's bound is
+    // derived before any book has been chosen, so it cannot consult a per-book
+    // record here without guessing which book.
+    bound: deriveBound(question),
+    ...(shelfCtx ? { readState: readStateLoader(shelfCtx) } : {}),
+  };
+}
+
+/**
+ * ⚠️ **THE READ-STATE LOADER — one query per turn, at most, and only when a book
+ * is actually opened with an unresolved scope** (§3, row 7).
+ *
+ * ⚠️ **It reuses `ShelfPort.myReviews`, deliberately, rather than adding a
+ * second Firestore read.** That call already exists, is already keyed to the
+ * asker's OWN display name server-side, and is already how *"what have I
+ * reviewed"* is answered. A second reader of the same collection would be a
+ * second place for the rating rule to drift.
+ *
+ * ⚠️ **Every failure resolves to `{ ok: false }`**, which the ladder can only
+ * turn into `unknown`. There is no path from a broken shelf read to
+ * `whole_book`, and that asymmetry is the whole safety property: guessing
+ * "finished" spoils a book, guessing "unknown" costs a question.
+ */
+function readStateLoader(shelfCtx: { port: ShelfPort; discordUserId: string }): () => Promise<BooksReadState> {
+  let memo: Promise<BooksReadState> | null = null;
+  return () => {
+    if (memo) return memo;
+    memo = (async (): Promise<BooksReadState> => {
+      try {
+        const who = await shelfCtx.port.asker(shelfCtx.discordUserId);
+        if (!who.ok) return { ok: false };
+        const call = await shelfCtx.port.myReviews(who.asker);
+        if (!call.ok) return { ok: false };
+        return {
+          ok: true,
+          displayName: who.asker.displayName,
+          // ⚠️ Ratings only — no review TEXT is carried into a bound decision.
+          // The ladder asks one question ("did they rate it?"), so it is handed
+          // one fact per row.
+          reviews: call.rows.map((r) => ({
+            bookId: r.bookId,
+            displayName: r.displayName,
+            rating: r.rating,
+          })),
+        };
+      } catch (err) {
+        console.error(
+          'GABI books: the read state could not be read:',
+          err instanceof Error ? err.message : err,
+        );
+        return { ok: false };
+      }
+    })();
+    return memo;
   };
 }
 
@@ -1372,6 +1431,11 @@ async function booksAnswer(
   overrides: ModelOverrides | undefined,
   memoryBlock?: string,
   shelfCtx?: { port: ShelfPort; discordUserId: string },
+  /** ⚠️ True when `question` is an EARLIER question being re-issued because they
+   *  have just answered her scope ask. The grounding has to say so, or the model
+   *  answers it as though it had been asked afresh and asks the scope question
+   *  again — which is the failure, one turn later. */
+  scopeResumed = false,
 ): Promise<AnsweredQuestion> {
   // ⚠️ Every book answer carries the overflow sentence, so a long one becomes
   // consecutive messages rather than a question about whether to continue. The
@@ -1415,7 +1479,11 @@ async function booksAnswer(
     // model that can see where a list stopped will resume it.
     [
       thematicAsk(question) ? BOOKS_THEMATIC_NOTE : '',
-      !continuationShape(question) && history.some((t) => t.role === 'assistant')
+      // ⚠️ **AND FOR A RESUMED QUESTION** — the 2026-09-03 scope answer. This one
+      // also SUPPRESSES the fresh-ask note below, which would be exactly wrong
+      // here: this turn IS a continuation, and it is one she asked for.
+      scopeResumed ? BOOKS_SCOPE_RESUMED_NOTE : '',
+      !scopeResumed && !continuationShape(question) && history.some((t) => t.role === 'assistant')
         ? BOOKS_FRESH_ASK_NOTE
         : '',
     ]
@@ -2270,9 +2338,42 @@ async function answerQuestion(
   // follow-up is elliptical by construction; judged alone it carries none of
   // what makes it a book question. `history` is the same remembered window in a
   // channel and in a DM.
-  if (booksIntent(question) || booksFollowUp(question, history)) {
+  // ⚠️ **THE THIRD HALF, 2026-09-03: THE ANSWER TO HER OWN SCOPE QUESTION.**
+  // She asked how far he was into book 1; he said "I've read them all"; the
+  // message left this lane entirely and nothing re-ran the count. A clarifying
+  // question is a promise — the same lesson `suggestFollowUp` learned about
+  // "audiobook, ebook or physical?", and deliberately the same mechanism.
+  //
+  // ⚠️ `priorBookBudget` widens the follow-up's other half: her scope ask is a
+  // sentence only a turn that OPENED A BOOK can produce, so its presence is
+  // evidence of a book-lane predecessor even when that turn's TEXT missed the
+  // detector — which is exactly what happened, because `BOOKS_WEAK` had no bare
+  // `say` in it.
+  const scopeCarry = pendingScopeAsk(history);
+  const scopeResume = booksScopeResume(question, history);
+  if (
+    booksIntent(question) ||
+    scopeResume ||
+    booksFollowUp(question, history, { priorBookBudget: scopeCarry !== null })
+  ) {
     cfg.trace?.lane('books');
-    if (books) return await booksAnswer(question, history, who, cfg, books, overrides, extraBlock, shelfCtx);
+    if (books)
+      return await booksAnswer(
+        // ⚠️ THE ORIGINAL QUESTION, re-issued verbatim now that the scope is
+        // settled — not the two words that settled it. The bound travelling in
+        // `books` was derived from THIS message ("I've read them all"), exactly
+        // as every turn's is, so the re-issued question is answered under the
+        // scope they just gave.
+        scopeResume?.question ?? question,
+        history,
+        who,
+        cfg,
+        books,
+        overrides,
+        extraBlock,
+        shelfCtx,
+        scopeResume !== null,
+      );
     if (cfg.booksEnabled === true) {
       cfg.trace?.hid('books_not_configured');
       // The posture is on but no port was built — the book app token or the
@@ -2745,7 +2846,16 @@ export async function handleMention(
       docsContextFor(deps, cfg, trigger.authorId),
       // ⚠️ The BOUND is derived from THIS question, here, and travels with the
       // context — never stored, never carried from an earlier turn (design §4.3).
-      booksContextFor(deps, cfg, trigger.authorId, trigger.question),
+      booksContextFor(
+        deps,
+        cfg,
+        trigger.authorId,
+        trigger.question,
+        // ⚠️ The ladder's row 7 (§3) — the asker's OWN rating, read lazily and at
+        // most once per turn, and only if a book call reaches an unresolved
+        // scope. A turn that opens no book pays nothing for it.
+        cfg.shelfEnabled && deps.shelf ? { port: deps.shelf, discordUserId: trigger.authorId } : undefined,
+      ),
       profileFor(deps, cfg, trigger.authorId),
     ]);
 
@@ -3023,7 +3133,16 @@ export async function handleTypedQuestion(
     // scope outlive the sentence that set it.
     const [docs, books, profile] = await Promise.all([
       docsContextFor(deps, cfg, who.discordUserId),
-      booksContextFor(deps, cfg, who.discordUserId, question),
+      booksContextFor(
+        deps,
+        cfg,
+        who.discordUserId,
+        question,
+        // ⚠️ The ladder's row 7 needs the shelf port, and the typed-follow-up
+        // lane reaches the SAME ladder as a DM — a person who answered in a modal
+        // has the same rating on the same book.
+        cfg.shelfEnabled && deps.shelf ? { port: deps.shelf, discordUserId: who.discordUserId } : undefined,
+      ),
       profileFor(deps, cfg, who.discordUserId),
     ]);
     const answer = await answerQuestion(
