@@ -10,6 +10,30 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ `count_phrase` sank every converse loop to Haiku — allowlist it on Groq (2026-09-03 12:40)
+
+Measured by the Groq Monitor at 19:12Z (the owner's own review question):
+`mode:"first" purpose:"converse_tools" outcome:"ineligible" blocked_tools:["count_phrase"]`.
+🔴 **Corrects the DONE entry above and `gabi-groq-rung.md`:** `GABI_GROQ = "first"` is
+LIVE (`wrangler.toml:588`) and phase 2 tool loops are live — the "shipping dark /
+toolless only" claim was stale, and dispatch B was briefed from it. The gate is
+all-or-nothing per loop, so from the 12:04 deploy until this lands, **every mention's
+converse loop billed Haiku instead of Groq**, not just book questions.
+Fix: one array entry in `GROQ_READ_ONLY_TOOL_NAMES` (`gabi-tools.ts:1007-1010`, Tier 0c)
+— the tool is read-only and returns a strict subset of what `search_book_text` already
+sends Groq; invert the `gabi-groq.test.ts` assertion; correct the three docs; redeploy.
+Conductor's call (restores the owner's configured posture; owner told, may reverse).
+✅ **LANDED 12:47** (117k Opus; `272ac67` code+test, `6bbc39f` docs; deployed
+`estate-discord` `45565653-1456-4a77-8605-17a8d073cae4`; 1246/0 unchanged; `/api/health`
+200 with `gabi_groq_tool_allowlist` 13 → **14** names incl. `count_phrase`;
+`gabi-groq-tools.ts` needed no wire entry — schemas pass by reference and families
+already carried the name). Docs corrected: `gabi-groq-rung.md` step 8 + "Fourteen",
+design §4.8, phrase-count §5b, `info/README.md` row. Regression window: 12:04 → 12:47.
+☐ **PROOF PENDING** — the next `@mention` must produce a `converse_tools` `gabi_groq`
+  line with `outcome` ≠ `ineligible` (the Monitor catches it). `outcome:"fallback"` with
+  `invalid`/`too_large` would be the rung's own §11/§12.2 question, not this fix. When
+  seen, move this heading WHOLE to DONE beneath the phrase-count entry it corrects.
+
 ## ☐ 🔴 OWNER/SESSION STEP — verify `CLUB_WRITE_SHAPES` before `GABI_CLUB_WRITES` is ever flipped
 
 `/rsvp` and `/progress` are built, tested and **dark** (`GABI_CLUB_WRITES =
