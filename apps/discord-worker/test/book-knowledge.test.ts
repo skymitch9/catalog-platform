@@ -47,10 +47,16 @@ import {
   booksFollowUp,
   booksIntent,
   booksOn,
+  booksScopeResume,
   looksLikeStatQuery,
   boundFromQuestion,
   boundParams,
+  deriveBound,
+  pendingScopeAsk,
   makeBooksBudget,
+  MAX_COUNT_QUOTES,
+  MAX_COUNT_VARIANTS,
+  BOOKS_SCOPE_RESUMED_NOTE,
   type BooksCallResult,
   type BooksPort,
   type BooksToolContext,
@@ -59,7 +65,7 @@ import {
   BOOKS_FRESH_ASK_NOTE,
   BOOKS_THEMATIC_NOTE,
 } from '../src/book-knowledge.js';
-import { audiobookApiBase, DEFAULT_AUDIOBOOK_API } from '../src/book-knowledge-exec.js';
+import { audiobookApiBase, DEFAULT_AUDIOBOOK_API, makeBooksPort } from '../src/book-knowledge-exec.js';
 import { runTool } from '../src/tool-exec.js';
 import { handleMention, NO_MEMORY } from '../src/mention-flow.js';
 
@@ -1104,5 +1110,789 @@ describe('⚠️ REGRESSION — the stale continuation anchor (14:06)', () => {
       flow,
       /!continuationShape\(question\) && history\.some\(\(t\) => t\.role === 'assistant'\)/,
     );
+  });
+});
+
+// ── 12. ⚠️ THE 2026-09-03 DCC INCIDENT — two defects, in one live exchange ──
+//
+// > **Owner:** *"how often does Carl say God Damnit Donut or something similar
+// > in dungeon crawler Carl book 1"*
+// > **GABI:** …found instances, then asked how far he was into book 1.
+// > **Owner:** *"I've read them all"*
+// > **GABI:** *"I don't have a tool that counts specific phrases across a
+// > book's text."*
+//
+// Two complaints, and both were right:
+//
+//  1. *"It doesn't know that I've read the books even though I have it rated
+//     and I've linked."* — the bound was derived from the QUESTION STRING and
+//     from nothing else, so a rating in his own `reviews` document could not
+//     reach it. And "I've read them all" failed `ENDPOINT_RE` **on the object**.
+//  2. *"It couldn't answer the question and should be able to."* — her sentence
+//     was TRUE. `/search` caps at six passages and `/presence` counts loose
+//     words: measured on the real pack, 13 chunks and 17 hits against a true
+//     phrase count of **14**. Two errors, opposite directions, neither reported.
+// ---------------------------------------------------------------------------
+
+describe('⚠️ 2026-09-03 DCC incident — the regression pair', () => {
+  const OWNER_QUESTION =
+    'how often does Carl say God Damnit Donut or something similar in dungeon crawler Carl book 1';
+  const DCC1 = 'dungeon-crawler-carl-a-litrpg-gamelit-adventure';
+
+  it('DEFECT 1 (was: unknown) — his own rating answers "how far are you"', () => {
+    // BEFORE: boundFromQuestion saw no chapter and no endpoint, so the turn went
+    // out as scope=unknown and the route returned SCOPE_UNKNOWN_ASK — she asked
+    // a man who had finished and rated the book how far he had got.
+    assert.deepEqual(boundFromQuestion(OWNER_QUESTION), { scope: 'unknown' });
+
+    // AFTER: the ladder's row 7 reaches his own reviews document for THIS book.
+    // ⚠️ rating is the STRING "5" on that document — the shape that made
+    // `typeof rating === "number"` the wrong test.
+    const readState = {
+      ok: true,
+      displayName: 'Skylar',
+      reviews: [{ bookId: DCC1, displayName: 'Skylar', rating: '5' }],
+    };
+    assert.deepEqual(deriveBound(OWNER_QUESTION, readState, DCC1), {
+      scope: 'whole_book',
+      how: 'rating',
+    });
+  });
+
+  it('DEFECT 1b (was: the follow-up left the lane) — "I have read them all" is an endpoint', () => {
+    // BEFORE: ENDPOINT_RE was `i've (read|finished) (it|the whole)` and failed on
+    // the OBJECT, so the sentence a person actually types landed on unknown.
+    assert.deepEqual(boundFromQuestion("I've read them all"), { scope: 'whole_book' });
+  });
+
+  it('DEFECT 2 (was: no such tool) — count_phrase exists, and it is a BOOKS tool', () => {
+    // BEFORE: four tools, none of which could return a number over a whole book.
+    assert.ok((GABI_BOOKS_TOOL_NAMES as readonly string[]).includes('count_phrase'));
+    const t = gabiBooksToolByName('count_phrase');
+    assert.ok(t, 'count_phrase has no definition');
+    assert.equal(t.reads, 'gated_book_text');
+    assert.deepEqual([...t.methods], ['GET']);
+    assert.equal(t.mutates, false);
+    // ⚠️ The description has to tell a model WHEN to reach for it, or the tool
+    // exists and is never called — which is indistinguishable from not having it.
+    assert.match(t.description, /how often/i);
+    assert.match(t.description, /variants/);
+  });
+
+  it('DEFECT 2b (was: the router never saw it) — the owner sentence is a book question', () => {
+    // BEFORE: BOOKS_WEAK had `said|says` but not the bare `say`, and nothing for
+    // "how often" or "how many times". The anchors matched; one missing word
+    // decided the lane, and the model reached for the tools on its own.
+    assert.equal(booksIntent(OWNER_QUESTION), true);
+  });
+});
+
+describe('⚠️ deriveBound — the read-state ladder (§3), first hit wins', () => {
+  const BOOK = 'dungeon-crawler-carl-a-litrpg-gamelit-adventure';
+  const rated = (rating: unknown, over: Record<string, unknown> = {}) => ({
+    ok: true,
+    displayName: 'Skylar',
+    reviews: [{ bookId: BOOK, displayName: 'Skylar', rating, ...over }],
+  });
+
+  it('§3.1 — every endpoint phrasing a person actually types is whole_book', () => {
+    for (const q of [
+      "I've read them all",
+      'I have read them all',
+      "I've read all of them",
+      'I finished the series',
+      'I read them all',
+      'read the whole series',
+      'caught up',
+      "I've read the whole series",
+      "I've read the entire series",
+      "I've read the whole thing",
+    ]) {
+      assert.deepEqual(deriveBound(q), { scope: 'whole_book' }, `endpoint missed: ${q}`);
+    }
+  });
+
+  it('⚠️ bare "I read" does NOT fire — the verb alone is not an endpoint', () => {
+    // Tightened deliberately (§3.1). "I read fantasy mostly" is a preference,
+    // and reading it as "I have finished this book" spoils one.
+    for (const q of ['I read fantasy mostly', 'I read a lot', 'i read']) {
+      assert.deepEqual(deriveBound(q), { scope: 'unknown' }, `bare verb fired: ${q}`);
+    }
+  });
+
+  it('⚠️ CHAPTER OUTRANKS ENDPOINT — the more specific truth wins', () => {
+    // Row 1 over row 2. Somebody who names a chapter has told you something
+    // sharper than somebody who says they finished, even in one sentence.
+    assert.deepEqual(deriveBound("I've read chapter 5"), { scope: 'through_chapter', chapter: 5 });
+    assert.deepEqual(deriveBound("I've read them all, well, up to chapter 12"), {
+      scope: 'through_chapter',
+      chapter: 12,
+    });
+  });
+
+  it('⚠️ ROW 7 — a rating is whole_book, whether it is a STRING or a NUMBER', () => {
+    // ⚠️ Measured 2026-09-03: `rating` is "5" on two of three live documents and
+    // 4.5 on the third. `typeof rating === "number"` would read the owner's own
+    // five-star review as no rating at all.
+    for (const r of ['5', 5, 4.5, '4.5', '0.5', 1]) {
+      assert.deepEqual(
+        deriveBound('what happens in it', rated(r), BOOK),
+        { scope: 'whole_book', how: 'rating' },
+        `a rating of ${JSON.stringify(r)} did not count as read`,
+      );
+    }
+  });
+
+  it('⚠️ NO RATING FLOOR — but zero, empty and missing are not ratings', () => {
+    // A 0.5 is still a finished book (§3.2). A zero, an empty string and an
+    // absent field are all "they did not rate it", which is NOT "they have not
+    // read it" — it is `unknown`, and unknown is the honest answer.
+    for (const r of [0, '0', '', null, undefined, 'nope', true, false, {}]) {
+      assert.deepEqual(
+        deriveBound('what happens in it', rated(r), BOOK),
+        { scope: 'unknown' },
+        `${JSON.stringify(r)} was treated as a rating`,
+      );
+    }
+    assert.deepEqual(
+      deriveBound(
+        'what happens in it',
+        { ok: true, displayName: 'Skylar', reviews: [{ bookId: BOOK, displayName: 'Skylar' }] },
+        BOOK,
+      ),
+      { scope: 'unknown' },
+    );
+  });
+
+  it('⚠️ SOMEBODY ELSE reviewing it is not evidence about the asker', () => {
+    // The reviews store is keyed by display NAME and nothing else, so this
+    // second check is where a widened query stops being a widened permission.
+    assert.deepEqual(deriveBound('what happens in it', rated('5', { displayName: 'Sam' }), BOOK), {
+      scope: 'unknown',
+    });
+  });
+
+  it('⚠️ ANOTHER BOOK reviewed is not evidence about this one — per bookId, never per series', () => {
+    assert.deepEqual(
+      deriveBound('what happens in it', rated('5', { bookId: 'some-other-book' }), BOOK),
+      { scope: 'unknown' },
+    );
+  });
+
+  it('⚠️ A FAILED SHELF READ FALLS TO UNKNOWN, NEVER TO WHOLE_BOOK', () => {
+    // The asymmetry is the whole safety property: guessing "finished" spoils a
+    // book, guessing "unknown" costs a question.
+    assert.deepEqual(deriveBound('what happens in it', { ok: false }, BOOK), { scope: 'unknown' });
+    assert.deepEqual(deriveBound('what happens in it', null, BOOK), { scope: 'unknown' });
+    assert.deepEqual(deriveBound('what happens in it', undefined, BOOK), { scope: 'unknown' });
+    assert.deepEqual(deriveBound('what happens in it', { ok: true, reviews: [] }, BOOK), {
+      scope: 'unknown',
+    });
+  });
+
+  it('⚠️ NO bookId means row 7 is unreachable — the turn-level bound stays honest', () => {
+    // The turn's bound is derived before any book is chosen. Letting a rating on
+    // ANY book widen it would be a per-series claim wearing a per-book one's
+    // clothes.
+    assert.deepEqual(deriveBound('what happens in it', rated('5')), { scope: 'unknown' });
+  });
+
+  it('the question OUTRANKS the store — a sentence is live, a record is not', () => {
+    assert.deepEqual(deriveBound("I'm on chapter 19", rated('5'), BOOK), {
+      scope: 'through_chapter',
+      chapter: 18,
+    });
+  });
+
+  it('⚠️ only the WORD crosses the wire — a rating never produces an ord', () => {
+    const params = boundParams(deriveBound('what happens in it', rated('5'), BOOK));
+    assert.deepEqual(params, { scope: 'whole_book' });
+    assert.equal('ord' in params, false);
+    assert.equal('iv' in params, false);
+  });
+
+  it('rows 3-6 are TODOs with their design row numbers, not stubbed data paths', () => {
+    // ⚠️ A stub for readingPositions would be a fake measurement wearing a real
+    // one's clothes: the collection is EMPTY and there is no read seam.
+    const source = repoFile('src/book-knowledge.ts');
+    for (const row of ['§3 row 3', '§3 row 4', '§3 row 5', '§3 row 6']) {
+      assert.ok(source.includes(row), `the ladder lost its TODO for ${row}`);
+    }
+    assert.doesNotMatch(strip(source), /readingPositions\//, 'a data path was stubbed after all');
+  });
+});
+
+describe('⚠️ the pending scope ask — a clarifying question is a promise (§3.3)', () => {
+  const ORIGINAL =
+    'how often does Carl say God Damnit Donut or something similar in dungeon crawler Carl book 1';
+  const ASKED = "I don't have a bookmark for you in that one, so how far into book 1 are you?";
+  const history = [
+    { role: 'user', text: ORIGINAL },
+    { role: 'assistant', text: ASKED },
+  ];
+
+  it('her scope ask is recognised, and it carries the ORIGINAL question', () => {
+    assert.deepEqual(pendingScopeAsk(history), { question: ORIGINAL });
+  });
+
+  it('an answer that RESOLVES the bound resumes the original question', () => {
+    assert.deepEqual(booksScopeResume("I've read them all", history), { question: ORIGINAL });
+    assert.deepEqual(booksScopeResume('up to chapter 12', history), { question: ORIGINAL });
+  });
+
+  it('⚠️ an answer that resolves NOTHING resumes nothing — the ask still stands', () => {
+    assert.equal(booksScopeResume('no idea honestly', history), null);
+    assert.equal(booksScopeResume('what about book 2', history), null);
+  });
+
+  it('no ask in the window means no resume, however endpoint-shaped the reply', () => {
+    assert.equal(booksScopeResume("I've read them all", [{ role: 'user', text: ORIGINAL }]), null);
+    assert.equal(booksScopeResume("I've read them all", []), null);
+  });
+
+  it('⚠️ the question she was answering is the one BEFORE the ask, never after it', () => {
+    // A message after the ask is the ANSWER to it. Picking it up as the subject
+    // would re-issue "I've read them all" as though it were a question.
+    assert.deepEqual(pendingScopeAsk([...history, { role: 'user', text: "I've read them all" }]), {
+      question: ORIGINAL,
+    });
+  });
+
+  it('⚠️ booksFollowUp accepts a predecessor that SPENT BOOK BUDGET, not only one that matched', () => {
+    // The hole the incident fell through: turn 1 opened a book and turn 1 did
+    // NOT pass the detector, so the follow-up had no lane to continue.
+    const noLane = [{ role: 'user', text: 'tell me about that thing again' }];
+    assert.equal(booksFollowUp("I've read them all", noLane), false);
+    assert.equal(booksFollowUp("I've read them all", noLane, { priorBookBudget: true }), true);
+  });
+
+  it('⚠️ a budget-proven predecessor still cannot capture a SHELF question', () => {
+    assert.equal(
+      booksFollowUp('do we have book 10?', [{ role: 'user', text: 'x' }], { priorBookBudget: true }),
+      false,
+    );
+  });
+
+  it('⚠️ NO NEW STORE FIELD — the marker is derived from the window, as answeredFormat is', () => {
+    // The record shape is shared with the library site's chat panel through
+    // packages/gabi-conversation; a field added there is a field the panel
+    // silently does not have (gabi-conversation-continuity.md §1.2).
+    const conv = repoFile('src/conversation.ts');
+    assert.doesNotMatch(conv, /pendingScopeAsk/, 'the scope marker leaked into the store shape');
+    const flow = repoFile('src/mention-flow.ts');
+    assert.match(flow, /const scopeResume = booksScopeResume\(question, history\)/);
+  });
+
+  it('the resume note tells the model to answer the ORIGINAL ask and not to ask again', () => {
+    assert.match(BOOKS_SCOPE_RESUMED_NOTE, /ANSWER TO YOUR OWN/i);
+    assert.match(BOOKS_SCOPE_RESUMED_NOTE, /Do NOT ask how/i);
+  });
+});
+
+// ── 13. ⚠️ COUNT_PHRASE — the number, and the four sentences around it ──────
+//
+// A count is the most quotable thing this feature produces: one integer, which
+// a person repeats to somebody else. So every way of being wrong has to be
+// visibly different from being right.
+// ---------------------------------------------------------------------------
+
+/** One book's count answer, shaped as the route returns it. */
+const COUNT_BODY = (over: Record<string, unknown> = {}) => ({
+  ingested: true,
+  ok: true,
+  book_id: 'dcc-1',
+  title: 'Dungeon Crawler Carl',
+  source: 'transcript',
+  ingester_version: 3,
+  q: 'God damn it, Donut',
+  variants: ['God damn it, Donut'],
+  total: 14,
+  by_variant: [{ variant: 'God damn it, Donut', n: 14 }],
+  by_chapter: [{ index: 28, title: 'Chapter 28', n: 3 }],
+  quotes: [{ chapter_index: 28, ord: 500, text: 'God damn it, Donut.' }],
+  hidden_by_scope: 0,
+  scope: { ceiling: null, bounded: true, from: 'whole_book', chunks_visible: 1033, chunks_total: 1033 },
+  matcher: 'case-insensitive; runs of whitespace collapsed',
+  bytes: 400,
+  ...over,
+});
+
+describe('⚠️ count_phrase builds the URL the routes actually parse', () => {
+  it('⚠️ variants are PIPE-joined and the whole query is URL-ENCODED', async () => {
+    // ⚠️ A COMMA IS LEGAL INSIDE THE PHRASE — "God damn it, Donut" — and the
+    // `books=` list already owns the comma, which is exactly why the route
+    // splits variants on a pipe. Hand-building this string is how a phrase
+    // becomes two.
+    const seen: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify(COUNT_BODY()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      const p = makeBooksPort({
+        FIREBASE_SERVICE_ACCOUNT: '{}',
+        ESTATE_APP_TOKEN_BOOKS: 'not-a-real-token',
+        AUDIOBOOK_API_URL: 'https://audiobook.test',
+      } as never);
+      assert.ok(p, 'no port was built');
+      await p.count('reader@example.test', 'dcc-1', {
+        q: 'God damn it, Donut',
+        variants: 'goddammit Donut|goddamn it Donut',
+        quotes: '3',
+        scope: 'whole_book',
+      });
+      await p.countAcross('reader@example.test', { q: 'God damn it, Donut', books: 'dcc-1,dcc-2' });
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    const one = seen[0] as string;
+    assert.ok(one.startsWith('https://audiobook.test/api/book/dcc-1/count?'), one);
+    assert.match(one, /q=God\+damn\+it%2C\+Donut/);
+    assert.match(one, /variants=goddammit\+Donut%7Cgoddamn\+it\+Donut/);
+    assert.match(one, /quotes=3/);
+    assert.match(one, /scope=whole_book/);
+    // ⚠️ The comma inside the phrase survived as %2C rather than becoming a
+    // separator — the whole reason the two lists use different characters.
+    assert.doesNotMatch(one.split('q=')[1] as string, /^[^&]*,[^&]*$/);
+
+    const many = seen[1] as string;
+    assert.ok(many.startsWith('https://audiobook.test/api/books/count?'), many);
+    assert.match(many, /books=dcc-1%2Cdcc-2/);
+  });
+});
+
+describe('⚠️ count_phrase relays the count without ever becoming the book', () => {
+  it('the ordinary answer carries the number, the anchors, the source and the matcher', async () => {
+    const p = port({ count: async () => OK(COUNT_BODY()) });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: ['dcc-1'], phrase: 'God damn it, Donut', quotes: 3 },
+      ctxFor(p),
+    );
+    assert.equal(out.isError, false);
+    const r = out.result as Record<string, unknown>;
+    assert.equal(r.total, 14);
+    assert.equal(r.source, 'transcript');
+    assert.deepEqual(r.by_chapter, [{ index: 28, title: 'Chapter 28', n: 3 }]);
+    assert.equal((r.quotes as unknown[]).length, 1);
+    // ⚠️ "in the transcript" is not a nicety: Whisper punctuates a catchphrase
+    // its own way, so a printed book may say "goddammit" where the recording
+    // says "god damn it".
+    assert.match(r.note as string, /TRANSCRIPT/);
+    assert.match(r.note as string, /matched/i);
+  });
+
+  it('⚠️ hidden_by_scope > 0 FORBIDS the word "never" and makes the count a "through"', async () => {
+    // The mirror of the presence roll-up's measured failure: a spoiler boundary
+    // reported as a fact about the book.
+    const p = port({
+      count: async () =>
+        OK(
+          COUNT_BODY({
+            total: 2,
+            hidden_by_scope: 12,
+            scope: { ceiling: 400, bounded: true, from: 'through_chapter', ceiling_chapter: 20, ceiling_chapter_title: 'The Hallway' },
+          }),
+        ),
+    });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: ['dcc-1'], phrase: 'God damn it, Donut' },
+      ctxFor(p, { bound: { scope: 'through_chapter', chapter: 20 } }),
+    );
+    const r = out.result as { note: string; hidden_by_scope: number };
+    assert.equal(r.hidden_by_scope, 12);
+    assert.match(r.note, /MUST NOT say "never"/i);
+    assert.match(r.note, /The Hallway/);
+  });
+
+  it('⚠️ total: 0 is a REAL zero about a book she HAS read', async () => {
+    const p = port({ count: async () => OK(COUNT_BODY({ total: 0, by_chapter: [], quotes: [] })) });
+    const out = await runTool('count_phrase', { bookIds: ['dcc-1'], phrase: 'never said' }, ctxFor(p));
+    assert.equal(out.isError, false);
+    const r = out.result as { total: number; note: string };
+    assert.equal(r.total, 0);
+    assert.match(r.note, /ZERO IS A REAL ANSWER/i);
+    assert.match(r.note, /different from not/i);
+  });
+
+  it('⚠️ ingested: false is NOT a zero — it is "I have not read that one"', async () => {
+    const p = port({ count: async () => OK({ ingested: false, book_id: 'nope' }) });
+    const out = await runTool('count_phrase', { bookIds: ['nope'], phrase: 'x' }, ctxFor(p));
+    assert.equal(out.isError, false, 'a missing pack was reported as an error to retry around');
+    const r = out.result as { ingested: boolean; say: string; note: string };
+    assert.equal(r.ingested, false);
+    assert.equal(r.say, BOOKS_MSG.notIngested);
+    assert.match(r.note, /NOT a fact about the story/i);
+  });
+
+  it('⚠️ an empty phrase is a WORDED refusal, never a zero and never a bare 400', async () => {
+    // A phrase of pure punctuation compiles to no matcher. Answering 0 would
+    // read as "he never says it", which is a false statement about a book.
+    const p = port({
+      count: async () => ({
+        ok: false,
+        status: 400,
+        body: { error: 'empty_phrase', detail: 'Give me the words to count.' },
+        message: 'Give me the words to count.',
+      }),
+    });
+    const out = await runTool('count_phrase', { bookIds: ['dcc-1'], phrase: '...' }, ctxFor(p));
+    assert.equal(out.isError, true);
+    const r = out.result as { error: string; say: string; note: string };
+    assert.equal(r.error, 'empty_phrase');
+    assert.match(r.say, /words to count/i);
+    assert.match(r.note, /NOTHING WAS COUNTED/);
+    assert.match(r.note, /Do not say zero/i);
+    assert.doesNotMatch(r.say, /^\d{3}$/, 'a bare status reached a person');
+  });
+
+  it('⚠️ an iv mismatch (409) refuses in words and states that nothing was counted', async () => {
+    const p = port({
+      count: async () => ({
+        ok: false,
+        status: 409,
+        body: { error: 'bound_version_mismatch', detail: 'That position was worked out against an older copy.' },
+        message: 'That position was worked out against an older copy.',
+      }),
+    });
+    const out = await runTool('count_phrase', { bookIds: ['dcc-1'], phrase: 'x' }, ctxFor(p));
+    assert.equal(out.isError, true);
+    const r = out.result as { error: string; say: string; note: string };
+    assert.equal(r.error, 'bound_version_mismatch');
+    assert.match(r.say, /older copy/);
+    assert.match(r.note, /Do not\s+state a number/i);
+  });
+
+  it('⚠️ several books is a TOTALS-ONLY answer, and the relay says whole-book out loud', async () => {
+    let asked: Record<string, string> = {};
+    const p = port({
+      countAcross: async (_e, params) => {
+        asked = params;
+        return OK({ ok: true, mode: 'count', variants: ['x'], matcher: 'm', books: [{ book_id: 'a', ingested: true, total: 3 }] });
+      },
+    });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: ['dcc-1', 'dcc-2'], phrase: 'x', quotes: 3 },
+      ctxFor(p, { bound: { scope: 'through_chapter', chapter: 4 } }),
+    );
+    assert.equal(asked.books, 'dcc-1,dcc-2');
+    // ⚠️ NO scope parameter: a ceiling is derived against ONE pack's chapter
+    // table, so there is no honest single ceiling for six of them.
+    assert.equal('scope' in asked, false);
+    assert.equal('quotes' in asked, false);
+    const r = out.result as { scope: string; note: string };
+    assert.equal(r.scope, 'whole_book');
+    assert.match(r.note, /WHOLE OF EACH BOOK/i);
+    assert.match(r.note, /ingested: false was NOT counted/);
+  });
+
+  it('the caps are clamped on THIS side too, and they agree with the route', async () => {
+    let asked: Record<string, string> = {};
+    const p = port({
+      count: async (_e, _b, params) => {
+        asked = params;
+        return OK(COUNT_BODY());
+      },
+    });
+    await runTool(
+      'count_phrase',
+      {
+        bookIds: ['dcc-1'],
+        phrase: 'a',
+        variants: ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
+        quotes: 99,
+      },
+      ctxFor(p),
+    );
+    // ⚠️ `phrase` itself is one of the six on the other end, so at most five
+    // more may be sent.
+    assert.equal((asked.variants as string).split('|').length, MAX_COUNT_VARIANTS - 1);
+    assert.equal(asked.quotes, String(MAX_COUNT_QUOTES));
+  });
+
+  it('⚠️ more than six books is REFUSED, not quietly counted in part', async () => {
+    let called = false;
+    const p = port({
+      countAcross: async () => {
+        called = true;
+        return OK({ books: [] });
+      },
+    });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], phrase: 'x' },
+      ctxFor(p),
+    );
+    assert.equal(out.isError, true);
+    assert.equal(called, false, 'a partial sweep was run anyway');
+    assert.match((out.result as { note: string }).note, /Nothing was counted/);
+  });
+
+  it('no phrase and no book is a refusal that says nothing was counted', async () => {
+    const out = await runTool('count_phrase', { bookIds: [], phrase: '' }, ctxFor(port()));
+    assert.equal(out.isError, true);
+    assert.equal((out.result as { error: string }).error, 'nothing_to_count');
+  });
+
+  it('⚠️ the count is CHARGED to the turn — bytes and quotes both', async () => {
+    const budget = makeBooksBudget();
+    const p = port({ count: async () => OK(COUNT_BODY()) });
+    await runTool('count_phrase', { bookIds: ['dcc-1'], phrase: 'x', quotes: 1 }, ctxFor(p, { budget }));
+    const spent = budget.spent();
+    assert.ok(spent.bytes > 0, 'the serialised count was not charged');
+    assert.equal(spent.passages, 1, 'the quote was not charged as a passage');
+    assert.equal(budget.used(), true, 'the daily fuse would not have been charged');
+  });
+
+  it('⚠️ a spent turn REFUSES rather than describing a count it has no room for', async () => {
+    const budget = makeBooksBudget();
+    budget.take(BOOKS_BYTES_PER_TURN, 0);
+    const p = port({ count: async () => OK(COUNT_BODY()) });
+    const out = await runTool('count_phrase', { bookIds: ['dcc-1'], phrase: 'x' }, ctxFor(p, { budget }));
+    assert.equal(out.isError, true);
+    assert.equal((out.result as { say: string }).say, BOOKS_MSG.turnBudgetSpent);
+    // ⚠️ The word "budget" is banned from what she SAYS — it reads as a
+    // malfunction when nothing is wrong.
+    assert.doesNotMatch((out.result as { say: string }).say, /budget|quota|cap\b/i);
+  });
+
+  it('⚠️ THE PHRASE IS NEVER LOGGED — design §8, and the count is no exception', () => {
+    const branch = strip(repoFile('src/tool-exec.ts'));
+    const fn = branch.slice(branch.indexOf('async function countPhrase'));
+    assert.ok(fn.length > 200, 'countPhrase could not be found');
+    assert.doesNotMatch(fn, /console\.(log|error|warn)/, 'the count executor grew a log line');
+  });
+});
+
+describe('⚠️ the rating bound reaches the wire, and is DISCLOSED once', () => {
+  const BOOK = 'dcc-1';
+  const readState = async () => ({
+    ok: true,
+    displayName: 'Skylar',
+    reviews: [{ bookId: BOOK, displayName: 'Skylar', rating: '5' }],
+  });
+
+  it('a rated book is counted over the WHOLE book, with the sentence she must say', async () => {
+    let asked: Record<string, string> = {};
+    const p = port({
+      count: async (_e, _b, params) => {
+        asked = params;
+        return OK(COUNT_BODY());
+      },
+    });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: [BOOK], phrase: 'God damn it, Donut' },
+      ctxFor(p, { bound: { scope: 'unknown' }, readState }),
+    );
+    assert.equal(asked.scope, 'whole_book');
+    const r = out.result as { note: string };
+    assert.match(r.note, /THEIR OWN RATING/);
+    assert.ok(r.note.includes(BOOKS_MSG.ratingBound), 'the disclosure sentence is missing');
+    // ⚠️ And NOT the "nobody said how far you have got" ask — that is the
+    // question this whole fix exists to stop her asking.
+    assert.doesNotMatch(r.note, /Nobody said how far/);
+  });
+
+  it('search_book_text gets the same upgrade — it is the same ladder', async () => {
+    let asked: Record<string, string> = {};
+    const p = port({
+      search: async (_e, _b, params) => {
+        asked = params;
+        return OK({ ingested: true, book_id: BOOK, mode: 'relevant', passages: [], scope: {} });
+      },
+    });
+    const out = await runTool(
+      'search_book_text',
+      { bookId: BOOK, query: 'donut' },
+      ctxFor(p, { bound: { scope: 'unknown' }, readState }),
+    );
+    assert.equal(asked.scope, 'whole_book');
+    assert.ok((out.result as { note: string }).note.includes(BOOKS_MSG.ratingBound));
+  });
+
+  it('⚠️ A SHELF READ THAT THROWS IS UNKNOWN — never whole_book', async () => {
+    let asked: Record<string, string> = {};
+    const p = port({
+      count: async (_e, _b, params) => {
+        asked = params;
+        return OK(COUNT_BODY());
+      },
+    });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: [BOOK], phrase: 'x' },
+      ctxFor(p, {
+        bound: { scope: 'unknown' },
+        readState: async () => {
+          throw new Error('firestore said no');
+        },
+      }),
+    );
+    assert.equal(asked.scope, 'unknown', 'a failed read became a licence to spoil the book');
+    assert.doesNotMatch((out.result as { note: string }).note, /RATING/);
+  });
+
+  it('⚠️ an UNRATED book keeps the ask — unknown is not "finished"', async () => {
+    let asked: Record<string, string> = {};
+    const p = port({
+      count: async (_e, _b, params) => {
+        asked = params;
+        return OK(COUNT_BODY({ scope: { ceiling: null, bounded: false, from: 'unknown', ask: 'how far are you?' } }));
+      },
+    });
+    const out = await runTool(
+      'count_phrase',
+      { bookIds: ['some-other-book'], phrase: 'x' },
+      ctxFor(p, { bound: { scope: 'unknown' }, readState }),
+    );
+    assert.equal(asked.scope, 'unknown');
+    assert.match((out.result as { note: string }).note, /Nobody said how far/);
+  });
+
+  it('⚠️ the shelf is read AT MOST ONCE per turn, and only when a book is opened', async () => {
+    let reads = 0;
+    const loader = async () => {
+      reads += 1;
+      return { ok: true, displayName: 'Skylar', reviews: [{ bookId: BOOK, displayName: 'Skylar', rating: 5 }] };
+    };
+    const p = port({ count: async () => OK(COUNT_BODY()) });
+    const ctx = ctxFor(p, { bound: { scope: 'unknown' }, readState: loader });
+    await runTool('count_phrase', { bookIds: [BOOK], phrase: 'a' }, ctx);
+    await runTool('count_phrase', { bookIds: [BOOK], phrase: 'b' }, ctx);
+    // ⚠️ Two calls, and the loader is the memoised one the flow builds — the
+    // fake here counts how many times the EXECUTOR asked for it.
+    assert.ok(reads <= 2, `the executor asked for the read state ${reads} times`);
+  });
+
+  it('⚠️ a question that already stated a bound never reads the shelf at all', async () => {
+    let reads = 0;
+    const p = port({ count: async () => OK(COUNT_BODY()) });
+    await runTool(
+      'count_phrase',
+      { bookIds: [BOOK], phrase: 'a' },
+      ctxFor(p, {
+        bound: { scope: 'through_chapter', chapter: 12 },
+        readState: async () => {
+          reads += 1;
+          return { ok: true };
+        },
+      }),
+    );
+    assert.equal(reads, 0, 'the store was consulted although the question had already answered');
+  });
+});
+
+// ── 14. ⚠️ THE CARRY, END TO END — she asked, he answered, and it RE-RAN ────
+//
+// The half of the 2026-09-03 incident that no unit test can hold on its own:
+// the original question has to come back out of the window and be asked again,
+// under the scope the answer just settled.
+// ---------------------------------------------------------------------------
+
+describe('⚠️ answering her scope question re-issues the ORIGINAL question', () => {
+  const ORIGINAL =
+    'how often does Carl say God Damnit Donut or something similar in dungeon crawler Carl book 1';
+  const HER_ASK = 'Before I go deeper — how far into book 1 are you?';
+
+  async function askAfterScopeQuestion(reply: string): Promise<{ sentToModel: string; scopes: string[] }> {
+    const scopes: string[] = [];
+    let sentToModel = '';
+    const p = port({
+      count: async (_e, _b, params) => {
+        scopes.push(String(params.scope));
+        return OK(COUNT_BODY());
+      },
+    });
+    await handleMention(
+      {
+        capCheck: async () => ({ ok: true }),
+        recordTurn: async () => {},
+        conversation: {
+          load: async () => ({
+            turns: [
+              { role: 'user', text: ORIGINAL, at: Date.now() - 60_000 },
+              { role: 'assistant', text: HER_ASK, at: Date.now() - 30_000 },
+            ],
+            pending: null,
+          }),
+          save: async () => {},
+        },
+        reply: async () => {},
+        followUp: async () => {},
+        books: { port: p, capCheck: async () => ({ ok: true }), record: async () => {} },
+      } as never,
+      {
+        kind: 'ask',
+        question: reply,
+        authorId: '1234',
+        authorName: 'owner',
+        guildId: 'g1',
+        channelId: 'c1',
+        messageId: 'm2',
+        surface: 'discord_channel',
+        via: 'mention',
+      } as never,
+      {
+        indexBaseUrl: 'https://index.test',
+        panelUrl: 'https://padhard.heygabi.ai/',
+        catalogBaseUrl: 'https://catalog.test',
+        anthropicKey: 'test-key-not-real',
+        booksEnabled: true,
+        fetchOverride: (async (_url: string, init: { body?: string }) => {
+          sentToModel += init?.body ?? '';
+          return new Response(
+            JSON.stringify({
+              id: 'msg_1',
+              type: 'message',
+              role: 'assistant',
+              model: 'test',
+              content: [{ type: 'text', text: '14 times.' }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
+        }) as unknown as typeof fetch,
+      } as never,
+    );
+    return { sentToModel, scopes };
+  }
+
+  it('⚠️ "I have read them all" re-asks the ORIGINAL question, with the resolved bound', async () => {
+    const { sentToModel } = await askAfterScopeQuestion("I've read them all");
+    // ⚠️ The question that goes back to the model is the one he actually asked —
+    // not the four words that unblocked it. Answering "I've read them all" as a
+    // fresh question is what happened live, and nothing re-ran the count.
+    assert.ok(
+      sentToModel.includes('God Damnit Donut'),
+      'the original question was not re-issued to the model',
+    );
+    assert.ok(
+      sentToModel.includes('ANSWER TO YOUR OWN'),
+      'the resume note did not travel with it',
+    );
+    // ⚠️ And the fresh-ask note must NOT be there: this turn IS a continuation,
+    // and one she asked for.
+    assert.equal(
+      sentToModel.includes('THIS IS A FRESH QUESTION'),
+      false,
+      'the resumed turn was labelled a fresh ask',
+    );
+  });
+
+  it('⚠️ the books lane is entered at all — which is where it failed live', async () => {
+    // "I've read them all" passes no detector: `read` is not a weak book verb and
+    // it opens like nothing. Before the carry, this message left the lane and was
+    // answered as a brand new question.
+    const { sentToModel } = await askAfterScopeQuestion("I've read them all");
+    assert.ok(sentToModel.includes('count_phrase'), 'the book tools were not even offered');
   });
 });
