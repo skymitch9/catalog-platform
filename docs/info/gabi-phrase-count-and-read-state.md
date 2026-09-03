@@ -1,7 +1,11 @@
 # GABI — "how often does Carl say…": the read-state bound and the `count_phrase` tool
 
-> **Audience:** Claude sessions, the owner. **Status:** TRACKED — **DESIGN + measured
-> investigation, NOTHING BUILT** (2026-09-03). **Last verified: 2026-09-03** — every
+> **Audience:** Claude sessions, the owner. **Status:** TRACKED — ✅ **BUILT
+> 2026-09-03 — see [`gabi-book-knowledge-design.md`](gabi-book-knowledge-design.md)
+> §4.5/§4.6** (as built: **§4.7** the ladder, **§4.8** `count_phrase`, **§10f** the
+> incident — see "As built" below). This document keeps the INVESTIGATION and the
+> measurements; the as-built record lives there.
+> **Last verified: 2026-09-03** — every
 > `file:line` below was read from source that day; the detector results were
 > *executed* (`npx tsx` against `book-knowledge.ts`), the DCC counts were computed
 > over the LOCAL pack mirror. ⚠️ NOT verified: the owner's `reviews` doc for DCC 1
@@ -175,6 +179,32 @@ Donut in Dungeon Crawler Carl book 1"* → **14**, chapter 28 the triple, ≤3 q
   `discord_links/133003216978837504.displayName` (shape: `shelf-exec.ts:238-248`).
 - Live posture: `GABI_BOOKS` on the deployed discord-worker; deployed commit vs `main`.
 - Pack parity: `npx wrangler r2 object get ebooks-gated/text/dungeon-crawler-carl-a-litrpg-gamelit-adventure.json.gz` vs the local mirror.
+
+## 5b. ✅ As built (2026-09-03) — where it deviated from §3 and §4.3
+
+Built the same day in two dispatches: **A** (audiobook-worker `countPhrase` +
+`/api/book/:id/count` + `/api/books/count`, commits `bbafa5e`…`7a69b41`) and
+**B** (this end: the tool, the ladder, the carry, the docs). ⚠️ **Only the
+deviations are listed — everything not named here was built as §3/§4.3 describe
+it.**
+
+| § | Designed | As built | Why |
+|---|---|---|---|
+| §3 signature | `deriveBound(text, readState)` | `deriveBound(text, readState?, bookId?)`, with `boundForBook(bound, readState, bookId)` doing row 7 | ⚠️ **Row 7 is per-`bookId` and the turn's bound is derived before any book is chosen.** So rows 1/2/8 are settled at turn time (`mention-flow.ts:790`) and row 7 at TOOL-CALL time (`tool-exec.ts:734`), for the id actually being queried. A turn-level rating check would have been a per-series claim wearing a per-book one's clothes |
+| §3 read | *"reuse `myReviews`, do not add a second Firestore read"* | ✅ reused — **lazily and memoised** (`readStateLoader`, `mention-flow.ts:810`) | Eager loading would have cost a Firestore query on EVERY mention, since `booksContextFor` runs before routing. Now: one query per turn at most, only when a book call reaches an unresolved scope, none at all otherwise |
+| §3.2 | rating validity | ✅ `Number(rating)` finite and > 0 — **and `shelf-exec.ts` had to be widened first** (`ratingOf`, `:271`) | ⚠️ `num()` read `integerValue`/`doubleValue` only, so a `stringValue` rating never reached the ladder at all. The `"5"`-vs-`4.5` hazard was TWO bugs deep, not one |
+| §3.2 | *"asker's own review only"* | ✅ — with a **15-row horizon** | `myReviews` returns the newest `SHELF_REVIEW_ROWS` = 15. A rating pushed past row 15 falls to `unknown`, which is the safe direction; raise the constant if it ever bites |
+| §3.3 item 1 | `booksFollowUp` accepts a predecessor that spent book budget | ✅ as `booksFollowUp(text, history, { priorBookBudget })` | The previous turn's budget object does not survive the turn, so the CALLER supplies the fact. In the flow it is supplied by `pendingScopeAsk(history) !== null` — her scope ask is a sentence only a turn that opened a book can produce |
+| §3.3 item 2 | a `pendingScopeAsk` window marker | ✅ **derived from the window's text, not written to it** | ⚠️ The record shape is shared with the site panel via `packages/gabi-conversation`, where *"do not add fields"* is standing (`gabi-conversation-continuity.md` §1.2/§1.3). So it is the `answeredFormat` pattern exactly: read back off the turns, expiring with the window |
+| §4.3 | tool name and shape | ✅ `count_phrase { bookIds, phrase, variants, quotes }` | unchanged |
+| §4.3 | *"Groq: out"* | ✅ not on `GROQ_READ_ONLY_TOOL_NAMES` | ⚠️ **Consequence larger than one tool:** the book tools are offered as a family, so a books turn now keeps the WHOLE tool loop on Anthropic. Stated rather than tidied away, and named in `test/gabi-groq.test.ts` |
+| §4.4 | design §4.5/§4.6 of the design doc | **§4.7/§4.8** | Those numbers were already taken (*what a person hears past their position*, *the tool surface*), and renumbering sections other documents link to costs more than a different digit |
+
+⚠️ **Still NOT reachable, and still not stubbed:** ladder rows 3–6
+(`readingPositions`, club progress). They are TODO comments carrying their row
+numbers in `book-knowledge.ts`, and a test asserts no data path was stubbed for
+them — an empty collection dressed as a signal would be a fake measurement in
+real measurement's clothes.
 
 ## 6. Not verified (2026-09-03)
 The owner's `reviews` doc (blocked); the literal Discord transcript (reconstructed from the

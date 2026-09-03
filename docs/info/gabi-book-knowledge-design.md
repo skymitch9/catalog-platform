@@ -6,7 +6,12 @@
 > no tool, no vector. Two throwaway pilots have now run locally: transcription
 > (§6.4) and **retrieval + chunk tuning (§7.3.1, §6.2, §10)**, both in
 > `.claude/jobs/*/tmp/`, never committed and never uploaded.
-> Last verified: **2026-08-18**. Every figure marked *measured* was taken on
+> ⚠️ **Last verified: 2026-09-03** — §4.7 (`deriveBound`, the read-state ladder)
+> and §4.8 (`count_phrase`) were BUILT that day and every `file:line` in them was
+> read from source; incident §10f is the exchange that caused them. ⚠️ NOT
+> re-checked on 2026-09-03: everything above §4, the corpus figures, and the
+> phase plan — those still carry their 2026-08-18 measurement.
+> Last verified (everything else): **2026-08-18**. Every figure marked *measured* was taken on
 > this machine on 2026-08-18 by extracting text from the estate's own files;
 > figures marked *reasoned* are arithmetic on those measurements or vendor-published
 > rates, and say so.
@@ -574,6 +579,154 @@ resolved the asker's identity passes `{ books: true }`.
 ⚠️ **The per-turn budget REFUSES rather than trims**, and the refusal says *the
 passage was NOT read* — the docs build's rule, and it matters more here: a
 silently truncated passage is a plot point missing the sentence that mattered.
+
+---
+
+### 4.7 ✅ `deriveBound` — the read-state ladder (BUILT 2026-09-03)
+
+> ⚠️ **NUMBERED 4.7, NOT 4.5.** The dispatch brief called this "§4.5"; §4.5 and
+> §4.6 were already taken by *what a person hears past their position* and *the
+> tool surface*, and renumbering a section other documents link to costs more
+> than a different digit. Design source:
+> [`gabi-phrase-count-and-read-state.md`](gabi-phrase-count-and-read-state.md) §3.
+
+**The defect** (incident §10f): the bound was derived from the QUESTION STRING
+and from nothing else, so a person who had **rated** a book still read as
+`unknown` and was asked how far he had got. The owner: *"It doesn't know that
+I've read the books even though I have it rated and I've linked."*
+
+**The ladder**, first hit wins — `deriveBound(text, readState?, bookId?)` in
+[`book-knowledge.ts:129-266`](../../apps/discord-worker/src/book-knowledge.ts):
+
+| # | Source | → | Built? |
+|---|---|---|---|
+| 1 | the question names a chapter (`CHAPTER_RE`, `:126`) | `through_chapter`, rounded down | ✅ unchanged |
+| 2 | the question states an endpoint (`ENDPOINT_RE`, `:117` — widened) | `whole_book` | ✅ widened |
+| 3–4 | `readingPositions` progress | `whole_book` / `through_ord` | ❌ **TODO(§3 row 3/4)** — no read seam, and the collection is EMPTY |
+| 5–6 | club `finished` / `chapterIndex` | `whole_book` / `through_chapter` | ❌ **TODO(§3 row 5/6)** — no read path, `/progress` dark (KI-13) |
+| 7 | the asker's OWN `reviews` doc for THAT `bookId`, valid rating | `whole_book`, `how: 'rating'` | ✅ `boundForBook`, `:228-253` |
+| 8 | nothing | `unknown` | ✅ unchanged |
+
+⚠️ **The question always outranks the store** — a sentence is live, a record is
+not — so a DNF-with-a-rating comes out at the chapter they named.
+
+**Row 7 is resolved per BOOK, at the moment of the call**, not per turn:
+`booksContextFor` derives rows 1/2/8 from the question
+([`mention-flow.ts:790`](../../apps/discord-worker/src/mention-flow.ts)), and
+`bookBound()` adds row 7 for the id about to be queried
+([`tool-exec.ts:734-748`](../../apps/discord-worker/src/tool-exec.ts)). A
+turn-level rating check would be a per-series claim wearing a per-book one's
+clothes.
+
+**Four properties that keep `rated ⇒ read` honest** (§3.2), each pinned by test:
+
+- ⚠️ **`rating` IS A STRING ON SOME DOCUMENTS AND A NUMBER ON OTHERS** — `"5"` on
+  two of three live documents, `4.5` on the third, measured 2026-09-03. Validity
+  is `Number.isFinite(Number(rating)) && Number(rating) > 0`
+  (`validRating`, `book-knowledge.ts:204-210`), **never** `typeof === 'number'`
+  — which is precisely what read the owner's own five-star review as *no
+  rating*. `shelf-exec.ts`'s `ratingOf()` (`:271-278`) was widened in the same
+  commit: `num()` read `integerValue`/`doubleValue` only, so a `stringValue`
+  rating vanished before it ever reached the ladder.
+- **No rating floor.** A 0.5 is still a finished book. Only absent, unparseable
+  or zero is not evidence.
+- **The asker's own review only**, folded display name, checked a second time
+  here even though `myReviews` already filters server-side — so a widened query
+  cannot silently become a widened permission.
+- ⚠️ **A failed or absent shelf read falls to `unknown`, NEVER to `whole_book`.**
+  Guessing "finished" spoils a book; guessing "unknown" costs a question.
+
+**Nothing is stored, and no `ord` is produced.** Only the WORD `whole_book`
+crosses `boundParams`, so the 28-chapter re-chunk leak of §4.3 cannot apply to a
+bound derived from a rating.
+
+**The disclosure.** A rating-derived bound carries one sentence for her to say
+once — *"you rated this one, so I'm treating it as finished — say if that's
+wrong"* (`BOOKS_MSG.ratingBound`, `book-knowledge.ts:945`; relayed by
+`ratingBoundNote`, `tool-exec.ts:750-757`). It is the fuse for the residuals the
+rung cannot see: a rating left after a DNF, a housemate sharing a display name,
+a migrated passphrase-era review with no uid.
+
+**The read costs one query, lazily.** `readStateLoader`
+([`mention-flow.ts:810-846`](../../apps/discord-worker/src/mention-flow.ts))
+memoises `ShelfPort.myReviews()` for the turn and is called only when a book
+call reaches an unresolved scope — a turn that opens no book pays nothing, and a
+turn that opens four books pays once. ⚠️ **As-built limit:** `myReviews` returns
+the newest `SHELF_REVIEW_ROWS` = 15 rows, so a rating that has been pushed past
+row 15 falls to `unknown`. That is the safe direction, and it is a number to
+raise if it ever bites.
+
+**Two detectors widened alongside it:**
+
+- `ENDPOINT_RE` failed on the **object** — *"I've read them all"*, *"all of
+  them"*, *"the series"*, *"caught up"* were all `unknown`. Widened, and
+  tightened so bare *"I read"* does not fire; `CHAPTER_RE` gained *"I've read
+  chapter 5"* so row 1 still claims it first.
+- `BOOKS_WEAK` gained `say`, `how often`, `how many times`. It had `said|says`
+  and not the bare infinitive — one missing word is why the owner's question
+  never reached this lane.
+
+### 4.8 ✅ `count_phrase` — the fifth tool (BUILT 2026-09-03)
+
+> ⚠️ Numbered 4.8 for the reason §4.7 gives. The dispatch brief called it "§4.6".
+
+**The gap**: *"I don't have a tool that counts specific phrases across a book's
+text."* ⚠️ **Her sentence was TRUE**, and the two instruments she had were wrong
+in opposite directions — measured on the real DCC book-1 pack:
+
+| Instrument | Said | Why it is wrong |
+|---|---|---|
+| `/search` | 13 chunks, top **6** returned | `MAX_PASSAGES` = 6 — it cannot see a seventh hit, let alone a thirteenth |
+| `/presence` | **17** | bag-of-words chunk hits, not a phrase |
+| `countPhrase` | **14** | de-overlapped phrase count, chapter-clamped |
+
+**The tool** (`gabi-tools.ts:662`, `GABI_BOOKS_TOOL_NAMES[4]`):
+`count_phrase { bookIds ≤6, phrase, variants ≤6, quotes ≤3 }` → counts, chapter
+anchors, timestamps and at most three short excerpts — **never the book**.
+Executor: `countPhrase()` in
+[`tool-exec.ts:1310-1464`](../../apps/discord-worker/src/tool-exec.ts); port
+methods `count` / `countAcross` in `book-knowledge-exec.ts`, still the only
+module naming `ESTATE_APP_TOKEN_BOOKS`.
+
+| Books | Route | Answer |
+|---|---|---|
+| one | `GET /api/book/:id/count?q&variants&quotes&scope…` | totals, `by_variant`, `by_chapter`, quotes, `hidden_by_scope`, spoiler-bounded |
+| several (≤6) | `GET /api/books/count?books=a,b&q&variants` | totals only, ⚠️ **whole-book scope only**, and the relay says so |
+
+⚠️ **`variants` is PIPE-separated.** A comma is a legal character inside a
+phrase — *"God damn it, Donut"* — and the `books=` list already owns the comma.
+`URLSearchParams` does the encoding; hand-building that string is how one phrase
+becomes two.
+
+**The four sentences the relay keeps apart**, because collapsing any pair
+produces a confident false statement about somebody's book:
+
+| shape | means | and NOT |
+|---|---|---|
+| `ingested: false` | "I have not read that book" | "it never happens" |
+| `total: 0` | "he never says it, in the text I read" | "the book is missing" |
+| `hidden_by_scope > 0` | "there are more, past where you are" | ⚠️ the word **never** is forbidden; the count is "through chapter N" |
+| a refusal | "I did not count" | "the count is zero" |
+
+The `empty_phrase` 400 (a phrase of pure punctuation would compile to no matcher
+and answer 0 — which reads as *"he never says it"*) and the `iv` 409 mismatch
+both get worded sentences and an explicit *nothing was counted*, never a bare
+status.
+
+**Caps and fuses.** `MAX_COUNT_VARIANTS` = 6 and `MAX_COUNT_QUOTES` = 3, mirrored
+from the route and clamped this side too so the model's request and the answer's
+`variants` cannot quietly disagree. The serialised result is charged to
+`books_bytes` and the quotes to `books_passages`; the call counts against
+`BOOKS_TURNS_PER_DAY` like every other book tool. ⚠️ **The phrase is never
+logged** (§8), and a test pins that the executor holds no log line at all.
+
+⚠️ **NOT on the Groq rung**, per the design source's §4.3 (*"tools stay on
+Anthropic"*). The consequence is larger than one tool and is stated rather than
+tidied away: the book tools are offered as a family, so a books turn now carries
+a name that is not on `GROQ_READ_ONLY_TOOL_NAMES` and **the whole book loop stays
+on Anthropic**. That is the per-loop gate working as designed
+([`gabi-groq-rung.md`](gabi-groq-rung.md) §8), and `test/gabi-groq.test.ts` names
+the tool rather than dropping the assertion.
 
 ---
 
@@ -1461,6 +1614,103 @@ the second search silently partial.
 (§4.2) — so a deep link cannot be constructed from this side, and
 `ebooks.heygabi.ai/read` does not exist yet (`ebook-viewer-phase1.md` §565). A
 plausible link that 404s is worse than no link.
+
+---
+
+## 10f. ⚠️ INCIDENT — she asked a man who had finished the book how far he was, and then said she could not count (2026-09-03)
+
+One Discord exchange, two defects, and the owner named both of them himself.
+
+> **Owner:** *"how often does Carl say God Damnit Donut or something similar in
+> dungeon crawler Carl book 1"*
+> **GABI:** …found instances, then asked how far into book 1 he was.
+> **Owner:** *"I've read them all"*
+> **GABI:** *"I don't have a tool that counts specific phrases across a book's
+> text."*
+
+> 1. *"It doesn't know that I've read the books even though I have it rated and
+>    I've linked."*
+> 2. *"It couldn't answer the question and should be able to. Let's add this tool
+>    in."*
+
+Full investigation, with every number executed rather than reasoned:
+[`gabi-phrase-count-and-read-state.md`](gabi-phrase-count-and-read-state.md).
+Built the same day, in two dispatches: A (audiobook-worker `countPhrase` + two
+routes), B (this Worker's tool, the ladder, the carry).
+
+### Defect 1 — the bound consulted the SENTENCE and nothing else
+
+`boundFromQuestion` read the question string: no store, no identity, no rating.
+So a person whose own `reviews` document holds a five-star rating of that exact
+book, linked, asking about that book, read as `unknown` — and `unknown` correctly
+produces `SCOPE_UNKNOWN_ASK`, which is how a working spoiler guard asked a
+finished reader where he had got to.
+
+⚠️ **The policy was not new; it had simply never reached this surface.** The
+owner's own words in `library_catalog`'s read-state module: *"if a book has a
+rating from the audiobook library mark it as read … if its a rating i left mark
+it read for me."* The suggestions rule (*not reviewed ≠ unread*) bans
+`¬rated ⇒ unread`; it never touched `rated ⇒ read`. Owner decision, same day:
+*"Yes let her see it. She should be able to see everything on my GABI account
+except passwords and such."* Fix: §4.7.
+
+### Defect 1b — `ENDPOINT_RE` failed on the OBJECT
+
+*"I've read them all"* was `unknown`, because the pattern was
+`i've (read|finished) (it|the whole)` and the sentence a person actually types
+ends in *them all*. The reply then left the book lane entirely —
+`booksFollowUp` needed a prior user turn passing `booksIntent`, and turn 1 never
+did — so **nothing re-ran the count**. Fix: §4.7's widening, plus the carry
+below.
+
+### Defect 2 — her sentence was TRUE, and both instruments were wrong
+
+⚠️ **This is the part worth remembering: she was not confabulating.** She had no
+counting tool, and the two she had disagreed with the truth in opposite
+directions — 13 chunks behind a top-6 cap, 17 bag-of-words hits, against a true
+de-overlapped phrase count of **14** (chapter 28 holds three). Neither error was
+reported anywhere in the answer, so *any* number she gave would have been one
+nobody could stand behind. Fix: §4.8.
+
+### Defect 3 — a clarifying question is a promise
+
+She asked how far he was; he answered; the answer was treated as a brand new
+question. ⚠️ **That is worse than never asking** — the elliptical message exists
+only because she asked for it. `suggestFollowUp` learned this exact shape when
+she asked *"audiobook, ebook, or a physical copy?"* and could not hear *"physical
+please"* (§10c's family), so the carry is deliberately the SAME mechanism:
+`pendingScopeAsk` / `booksScopeResume`
+([`book-knowledge.ts:1086,1115`](../../apps/discord-worker/src/book-knowledge.ts))
+read her ask off the remembered window and re-issue the ORIGINAL question under
+the bound the reply just resolved
+([`mention-flow.ts:2353`](../../apps/discord-worker/src/mention-flow.ts)).
+
+⚠️ **No new field was added to the conversation record**, and that is a
+constraint rather than a preference: the shape is shared with the library site's
+chat panel through `packages/gabi-conversation`
+([`gabi-conversation-continuity.md`](gabi-conversation-continuity.md) §1.2/§1.3),
+where a field added on one side is a field the other silently does not have. The
+marker is derived from the window's own text and expires with it.
+
+### The shape that generalises all four
+
+⚠️ **Every one of them was a detector or a relay reading a NARROWER world than
+the one the person was living in** — a regex that knew `says` but not `say`, an
+endpoint pattern that knew *"it"* but not *"them all"*, a bound that knew
+sentences but not records, a tool surface that could retrieve but not count.
+None of them was broken; each was simply smaller than the question. The general
+defence is the one this document keeps arriving at: **make the instrument report
+its own limits** — `hidden_by_scope`, `terms_missing`, `ingested: false`,
+`total: 0` as a distinct shape from all three — so a gap in the instrument
+becomes part of the answer instead of something the prose papers over.
+
+### What the owner should now see
+
+*"@GABI how often does Carl say God damn it Donut in Dungeon Crawler Carl book
+1"* → **14**, chapter 28 carrying three of them, up to three short quotes, a
+sentence saying the text was the **transcript**, the one-line disclosure that
+the scope came from his own rating — and **no question about how far he has
+got.**
 
 ---
 

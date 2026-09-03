@@ -2,6 +2,12 @@
 
 > **Audience:** Claude sessions. **Status:** TRACKED (this repo is PUBLIC on
 > GitHub — resource and secret NAMES only, never values).
+> ⚠️ **Updated 2026-09-03** — a FIFTH tool (`count_phrase`) and its two routes
+> shipped that day, with the read-state bound ladder
+> ([design §4.7/§4.8](../info/gabi-book-knowledge-design.md), incident §10f).
+> The tables below were re-read from source that day; ⚠️ **no authenticated live
+> call was made on 2026-09-03 either** — the deploy and the tokenless health
+> read are the only live evidence from this date.
 > Last verified: **2026-09-01** — the UNAUTHENTICATED half re-verified live
 > (all four routes answer the worded 401; `discord.heygabi.ai/api/health` is
 > green with `gabi_books_ready: true` and the four tool names) and pinned by
@@ -22,9 +28,11 @@ This file does not repeat it.
 
 The books the nightly ingester has packed into `ebooks-gated/text/` are
 answerable in conversation: GABI can search a book's actual text, read one
-passage, and roll a term up across several books — bounded by where the asker
-has got to. Four Discord tools (§4), four retrieval routes on the audiobook
-Worker, one `vis_ebooks` gate, and a posture that ships dark.
+passage, roll a term up across several books, and **count how often a phrase is
+said** — bounded by where the asker has got to, which since 2026-09-03 she can
+also work out from their own rating. **Five** Discord tools (§4), **six**
+retrieval routes on the audiobook Worker, one `vis_ebooks` gate, and a posture
+that ships dark.
 
 ⚠️ **The knowledge base is a SUBSET of the shelf and it grows nightly with no
 deploy.** Measured 2026-08-18 16:15Z: **158 packs** against 1,079 catalogued
@@ -39,7 +47,8 @@ a book packed at 03:00 answers at 03:01.
 |---|---|---|
 | Chunk packs | R2 `ebooks-gated`, prefix `text/` | ⚠️ **opaque gzip** — no `Content-Encoding` metadata, every reader gunzips explicitly |
 | Index | `text/_index.json.gz` | a DECORATION; its absence is reported, not hidden |
-| Retrieval routes | `apps/audiobook-worker/src/book-routes.ts` | ⚠️ paths are NOT symmetric — `/api/books/available` (`:277`) and `/api/books/presence` (`:311`) are **plural**; `/api/book/:bookId/search` (`:372`) and `/api/book/:bookId/passage` (`:429`) are **singular** |
+| Retrieval routes | `apps/audiobook-worker/src/book-routes.ts` | ⚠️ paths are NOT symmetric — `/api/books/available` (`:277`), `/api/books/presence` (`:311`) and `/api/books/count` (`:411`) are **plural**; `/api/book/:bookId/search` (`:496`), `/api/book/:bookId/passage` (`:545`) and `/api/book/:bookId/count` (`:643`) are **singular** |
+| The count routes *(2026-09-03)* | `book-routes.ts:411`, `:643` | `GET /api/books/count?books=a,b&q&variants` — totals only, ⚠️ **whole-book scope only** (no honest single ceiling across six chapter tables); `GET /api/book/:bookId/count?q&variants&quotes&scope[&chapter\|ord&iv]` — full answer, spoiler-bounded, ⚠️ `variants` PIPE-separated because a comma is legal inside a phrase. A pure-punctuation phrase is a worded 400 `empty_phrase`, never a 0 |
 | Unauthenticated-edge probes | `tools/estate-probes/probes/audiobook-worker.mjs` (`AB17`–`AB22`), `probes/discord-worker.mjs` (`D5`) | added 2026-09-01; `npm run probe:estate` |
 | Tool definitions | `apps/discord-worker/src/gabi-tools.ts` → `GABI_BOOKS_TOOL_NAMES` | the FOURTH allowlist |
 | The contract | `apps/discord-worker/src/book-knowledge.ts` | holds no credential |
@@ -72,7 +81,7 @@ The port goes null on the next request; every other answer is untouched.
 
 ## 4. What she can actually do
 
-Four tools, all read-only, all GET, none of which can write anything:
+**Five** tools, all read-only, all GET, none of which can write anything:
 
 | Tool | Does |
 |---|---|
@@ -80,6 +89,13 @@ Four tools, all read-only, all GET, none of which can write anything:
 | `search_book_text` | one book, four modes: `relevant` / `latest` / `earliest` / `presence` |
 | `read_book_passage` | one passage by `ord`, stitched with its ±1 neighbours |
 | `book_presence` | one term rolled up across ≤6 books, in reading order |
+| `count_phrase` **(2026-09-03)** | **how many times** a phrase is said — counts, chapter anchors, ≤3 short quotes, ⚠️ never the book. `{bookIds ≤6, phrase, variants ≤6, quotes ≤3}`; several books ⇒ totals only, whole-book scope only |
+
+⚠️ **`count_phrase` is the ONE book tool that is NOT on `GROQ_READ_ONLY_TOOL_NAMES`**
+(design source §4.3: *"tools stay on Anthropic"*). The book tools are offered as
+a family, so **a books turn now keeps the whole tool loop on Anthropic** — the
+per-loop gate ([`gabi-groq-rung.md`](../info/gabi-groq-rung.md) §8) working as
+designed, not a misconfiguration to fix.
 
 Caps (per person), **raised and extended 2026-08-18 by owner decision (option
 C: auto-continue AND a modest raise)**:
@@ -91,6 +107,8 @@ C: auto-continue AND a modest raise)**:
 | Consecutive passages per `read_book_passage` | **4** | how continuing works: `ord`, `ord+1`, … |
 | Discord messages per answer | **4** | auto-continue is bounded, or it is a way to serially dump a book |
 | Book turns per UTC day | 40 | `bcap:user:*` in the gateway DO — its own key namespace, not the docs one |
+| Spellings per count (`MAX_COUNT_VARIANTS`) | **6** *(2026-09-03)* | ⚠️ the phrase itself is one of them; mirrored from the route and clamped on the Discord side too, so the request and the answer's `variants` cannot quietly disagree |
+| Quotes per count (`MAX_COUNT_QUOTES`) | **3** *(2026-09-03)* | a count's job is the NUMBER — the quotes are evidence it is real, not the answer |
 
 ⚠️ **Auto-continue replaced a permission question.** She no longer stops
 mid-answer to ask whether to keep going; the reply is delivered as labelled
