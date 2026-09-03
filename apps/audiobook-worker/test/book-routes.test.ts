@@ -325,6 +325,155 @@ test('a book id that is not a slug never reaches the bucket', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// ⚠️ THE PHRASE COUNT ROUTES
+//
+// `docs/info/gabi-phrase-count-and-read-state.md` §4. The pair exists because
+// no route on this Worker could answer "how often" — `/presence` counted words
+// (17), `/search` counted chunks behind a top-6 cap (13), the truth was 14.
+//
+// The load-bearing one below is `⚠️ 0 is not "not ingested"`. A count is a
+// single number and both facts render as a small integer to anyone who is not
+// looking; keeping them in two DIFFERENT SHAPES is what stops "he never says
+// it" being said about a book nobody has packed.
+// ---------------------------------------------------------------------------
+
+test('a phrase count answers with counts and anchors, never with the book', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const { res, body } = await get(
+      '/api/book/a-test-book/count?q=Zephyr&scope=whole_book&quotes=1',
+      envWith(),
+    );
+    assert.equal(res.status, 200);
+    assert.equal(body?.ingested, true);
+    assert.equal(body?.total, 2);
+    assert.deepEqual(
+      (body?.by_chapter ?? []).map((c: { index: number; n: number }) => [c.index, c.n]),
+      [[0, 1], [1, 1]],
+    );
+    assert.equal(body?.quotes?.length, 1);
+    assert.equal(body?.passages, undefined, 'a count is not a way to read the book');
+    assert.match(body?.matcher ?? '', /case-insensitive/);
+    assert.equal(body?.limits?.max_quotes, 3);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('⚠️ 0 is not "not ingested" — the two facts have two different shapes', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const zero = await get('/api/book/a-test-book/count?q=Miranda&scope=whole_book', envWith());
+    assert.equal(zero.res.status, 200);
+    assert.equal(zero.body?.ingested, true);
+    assert.equal(zero.body?.total, 0, 'a book that WAS read can testify to a zero');
+
+    const absent = await get('/api/book/some-other-book/count?q=Miranda', envWith());
+    assert.equal(absent.res.status, 200);
+    assert.equal(absent.body?.ingested, false);
+    assert.equal(absent.body?.total, undefined, 'no zero to be mistaken for an answer');
+    assert.match(absent.body?.detail ?? '', /haven't read that one yet/);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('⚠️ the count route refuses an ord bound from another ingester_version too', async () => {
+  // It matters MORE here than on /search: a count is one number, and a wrong
+  // ceiling makes it wrong with nothing in the answer looking odd.
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const { res, body } = await get(
+      '/api/book/a-test-book/count?q=Zephyr&scope=through_ord&ord=1&iv=2',
+      envWith(),
+    );
+    assert.equal(res.status, 409);
+    assert.equal(body?.error, 'bound_version_mismatch');
+  } finally {
+    stub.restore();
+  }
+});
+
+test('the count route sits behind the SAME vis_ebooks gate as every other one', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['audiobook'] });
+  try {
+    const one = await get('/api/book/a-test-book/count?q=Zephyr', envWith());
+    assert.equal(one.res.status, 403);
+    assert.equal(one.body?.error, 'no_ebooks_grant');
+    const many = await get('/api/books/count?q=Zephyr&books=a-test-book', envWith());
+    assert.equal(many.res.status, 403);
+    assert.equal(many.body?.error, 'no_ebooks_grant');
+  } finally {
+    stub.restore();
+  }
+});
+
+test('a phrase with no words in it is refused in WORDS, not answered with 0', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const empty = await get('/api/book/a-test-book/count?q=', envWith());
+    assert.equal(empty.res.status, 400);
+    assert.equal(empty.body?.error, 'empty_query');
+    const punctuation = await get('/api/book/a-test-book/count?q=%2C%20.%20!', envWith());
+    assert.equal(punctuation.res.status, 400);
+    assert.equal(punctuation.body?.error, 'empty_phrase');
+    const bad = await get('/api/book/..%2F..%2Fsecret/count?q=x', envWith());
+    assert.equal(bad.res.status, 400);
+    assert.equal(bad.body?.error, 'bad_book_id');
+  } finally {
+    stub.restore();
+  }
+});
+
+test('variants and quotes are clamped at the route, and the answer shows the clamp', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const { body } = await get(
+      '/api/book/a-test-book/count?q=Zephyr&scope=whole_book' +
+        '&variants=one|two|three|four|five|six|seven&quotes=99',
+      envWith(),
+    );
+    assert.equal(body?.variants?.length, 6, 'q counts as one of the six');
+    assert.equal(body?.variants?.[0], 'Zephyr');
+    assert.ok((body?.quotes ?? []).length <= 3, String(body?.quotes?.length));
+  } finally {
+    stub.restore();
+  }
+});
+
+test('the multi-book count keeps reading order and reports a HOLE, never a zero', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const { body } = await get(
+      '/api/books/count?q=Zephyr&books=a-test-book,not-ingested-yet',
+      envWith(),
+    );
+    assert.equal(body?.scope, 'whole_book', 'the roll-up is whole-book only, and says so');
+    assert.equal(body?.books?.[0]?.book_id, 'a-test-book');
+    assert.equal(body?.books?.[0]?.total, 2);
+    assert.equal(body?.books?.[1]?.ingested, false);
+    assert.equal(body?.books?.[1]?.total, undefined);
+    assert.match(body?.books?.[1]?.detail ?? '', /haven't read that one yet/);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('the multi-book count refuses more books than it will honestly count', async () => {
+  const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
+  try {
+    const { res, body } = await get('/api/books/count?q=x&books=a,b,c,d,e,f,g', envWith());
+    assert.equal(res.status, 400);
+    assert.equal(body?.error, 'too_many_books');
+    const none = await get('/api/books/count?q=x', envWith());
+    assert.equal(none.res.status, 400);
+    assert.equal(none.body?.error, 'no_books');
+  } finally {
+    stub.restore();
+  }
+});
+
 test('presence refuses more books than it will honestly check', async () => {
   const stub = stubSeen({ status: 'approved', visibility: ['ebooks'] });
   try {

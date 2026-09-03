@@ -5,9 +5,18 @@
  * ```
  *   GET /api/books/available            what is in the knowledge base RIGHT NOW
  *   GET /api/books/presence             one term, rolled up across up to 6 books
+ *   GET /api/books/count                one phrase, counted across up to 6 books
  *   GET /api/book/:bookId/search        the four modes, scoped, stitched
  *   GET /api/book/:bookId/passage       one passage by ord, stitched
+ *   GET /api/book/:bookId/count         one phrase, counted — never the book
  * ```
+ *
+ * ⚠️ **The plural/singular asymmetry now covers three pairs, not two.**
+ * `/api/books/available`, `/api/books/presence` and `/api/books/count` are
+ * PLURAL (corpus-wide); `/api/book/:bookId/search`, `/…/passage` and
+ * `/…/count` are SINGULAR. A wrong guess gets Hono's bare `text/plain` 404,
+ * which reads as "not deployed" and is in fact "misspelled" — it has cost a
+ * round-trip once already (`access/gabi-book-knowledge.md` §7).
  *
  * ## Why they live on THIS Worker
  *
@@ -70,9 +79,14 @@ import {
 } from './book-packs.js';
 import {
   boundVersionRefusal,
+  COUNT_MATCHER,
+  countPhrase,
   deriveCeiling,
   isRetrievalMode,
+  MAX_COUNT_QUOTES,
+  MAX_COUNT_VARIANTS,
   MAX_PASSAGES,
+  phraseWords,
   presenceInPack,
   searchPack,
   stitchPassage,
@@ -111,6 +125,9 @@ export const BOOK_MSG = {
     'That is not a book id I can look up. Book ids come from the knowledge-base listing; do not ' +
     'construct one.',
   noQuery: 'Ask me something to look for — an empty search has no honest answer.',
+  noPhrase:
+    'Give me the words to count. Punctuation on its own is not a phrase, and I will not guess ' +
+    'which words you meant.',
   noProvenEmail:
     'The caller proved it is the estate but named nobody, so there is no reader to answer for.',
 } as const;
@@ -368,6 +385,113 @@ bookRoutes.get('/api/books/presence', booksGate(), async (c) => {
   return c.json({ ok: true, mode: 'presence', query: q, books });
 });
 
+/** The other spellings of one phrase, pipe-separated. ⚠️ PIPE, not comma — a
+ *  comma is a legal character INSIDE a phrase (*"God damn it, Donut"*) and the
+ *  `books=` list already owns the comma. */
+function parseVariants(c: Ctx): string[] {
+  return (c.req.query('variants') ?? '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * **Count one phrase across up to `MAX_PRESENCE_BOOKS` books.**
+ *
+ * ⚠️ **WHOLE-BOOK SCOPE ONLY, and that is a deliberate narrowing.** A ceiling
+ * is derived against ONE pack's chapter table (`book-retrieval.ts`'s header —
+ * the 28-chapter leak), so there is no honest single ceiling for six different
+ * books, and the shapes that would make one up are exactly the shapes that
+ * leaked. A spoiler-bounded count is a per-book question: use
+ * `/api/book/:bookId/count`, one book at a time.
+ *
+ * Returns totals only — no quotes, no chapters. Six books' worth of evidence is
+ * a different request.
+ */
+bookRoutes.get('/api/books/count', booksGate(), async (c) => {
+  const resolved = resolveBucket(c);
+  if ('response' in resolved) return resolved.response;
+
+  const q = (c.req.query('q') ?? '').trim();
+  if (!q) return c.json({ error: 'empty_query', detail: BOOK_MSG.noQuery }, 400);
+  if (phraseWords(q).length === 0) {
+    return c.json({ error: 'empty_phrase', detail: BOOK_MSG.noPhrase }, 400);
+  }
+
+  const ids = (c.req.query('books') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (ids.length === 0) {
+    return c.json(
+      {
+        error: 'no_books',
+        detail:
+          'Name the books to count in, in reading order, as book ids from the knowledge-base ' +
+          'listing. I will not scan the whole shelf for one phrase.',
+      },
+      400,
+    );
+  }
+  if (ids.length > MAX_PRESENCE_BOOKS) {
+    return c.json(
+      {
+        error: 'too_many_books',
+        detail: `I can count across ${MAX_PRESENCE_BOOKS} books at a time, and I would rather refuse than quietly count the first few.`,
+      },
+      400,
+    );
+  }
+  for (const id of ids) {
+    // ⚠️ Ids come from the listing and are validated to a slug. Nothing here
+    // constructs one, and nothing unvalidated ever reaches a bucket key.
+    if (!isBookId(id)) return c.json({ error: 'bad_book_id', detail: BOOK_MSG.badBookId }, 400);
+  }
+
+  const variants = parseVariants(c);
+
+  // ⚠️ IN THE ORDER ASKED, which is reading order. A roll-up that re-sorted its
+  // rows would make "book 2 is where it starts" unreadable off the answer.
+  const books: unknown[] = [];
+  for (const id of ids) {
+    const result = await loadPack(resolved.bucket, id);
+    if (!result.ok) {
+      // ⚠️ A HOLE, not a zero. `total: 0` on a book nobody has ingested would be
+      // the tool stating a fact about a text it has never seen.
+      books.push({
+        book_id: id,
+        ingested: false,
+        detail: result.reason === 'absent' ? BOOK_MSG.notIngested : BOOK_MSG.storeUnreachable,
+      });
+      continue;
+    }
+    const answer = countPhrase(result.pack, {
+      q,
+      variants,
+      bound: { kind: 'whole_book' },
+      quotes: 0,
+    });
+    books.push({
+      book_id: answer.book_id,
+      ingested: true,
+      title: answer.title,
+      source: answer.source,
+      total: answer.total,
+      by_variant: answer.by_variant,
+    });
+  }
+
+  return c.json({
+    ok: true,
+    mode: 'count',
+    query: q,
+    variants,
+    scope: 'whole_book',
+    matcher: COUNT_MATCHER,
+    books,
+  });
+});
+
 /** **Search one book.** Four modes, the ±1 stitch, the derived ceiling. */
 bookRoutes.get('/api/book/:bookId/search', booksGate(), async (c) => {
   const resolved = resolveBucket(c);
@@ -493,5 +617,66 @@ bookRoutes.get('/api/book/:bookId/passage', booksGate(), async (c) => {
     ingester_version: got.pack.ingester_version,
     scope: { ceiling, ...scope },
     passage,
+  });
+});
+
+/**
+ * **Count a phrase in one book — and return the COUNT, never the book.**
+ *
+ * The gap this closes, measured on the real DCC book-1 pack
+ * (`docs/info/gabi-phrase-count-and-read-state.md` §4): `/presence` said 17
+ * (bag of words), `/search` saw 13 chunks behind a top-6 cap, and the true
+ * de-overlapped phrase count is **14**. Two errors in opposite directions and
+ * neither of them reported, so the person asking *"how often does Carl say God
+ * damn it, Donut"* got a number nobody could stand behind.
+ *
+ * Same gate, same two doors, same scope machinery, same refusals as `/search`
+ * — including the `iv` mismatch, which matters MORE here: a count is a single
+ * number, and a wrong ceiling makes it wrong with nothing in the answer looking
+ * odd.
+ *
+ * ⚠️ **`total: 0` and `ingested: false` are different shapes on purpose.** Zero
+ * is a fact about a book that was read; `ingested: false` is a fact about this
+ * Worker. A caller that could not tell them apart would eventually say "he
+ * never says it" about a book nobody has packed.
+ */
+bookRoutes.get('/api/book/:bookId/count', booksGate(), async (c) => {
+  const resolved = resolveBucket(c);
+  if ('response' in resolved) return resolved.response;
+
+  const bookId = c.req.param('bookId');
+  if (!isBookId(bookId)) return c.json({ error: 'bad_book_id', detail: BOOK_MSG.badBookId }, 400);
+
+  const q = (c.req.query('q') ?? '').trim();
+  if (!q) return c.json({ error: 'empty_query', detail: BOOK_MSG.noQuery }, 400);
+  // ⚠️ A "phrase" of pure punctuation would compile to no matcher and answer 0,
+  // which reads as "he never says it". Refused in words instead.
+  if (phraseWords(q).length === 0) {
+    return c.json({ error: 'empty_phrase', detail: BOOK_MSG.noPhrase }, 400);
+  }
+
+  const parsedBound = parseBound(c);
+  if ('response' in parsedBound) return parsedBound.response;
+
+  const got = await packOrAnswer(c, resolved.bucket, bookId);
+  if ('response' in got) return got.response;
+
+  const refusal = boundVersionRefusal(got.pack, parsedBound.bound);
+  if (refusal) return c.json({ error: 'bound_version_mismatch', detail: refusal }, 409);
+
+  // ⚠️ CLAMPED, not refused. Asking for eight spellings or ten quotes is a
+  // caller being optimistic, not a caller being wrong — and the answer reports
+  // `variants` and `quotes` as they actually were, so the clamp is visible.
+  const quotesRaw = Number(c.req.query('quotes') ?? 0);
+  const answer = countPhrase(got.pack, {
+    q,
+    variants: parseVariants(c),
+    bound: parsedBound.bound,
+    quotes: Number.isFinite(quotesRaw) ? Math.min(quotesRaw, MAX_COUNT_QUOTES) : 0,
+  });
+  return c.json({
+    ingested: true,
+    ...answer,
+    limits: { max_variants: MAX_COUNT_VARIANTS, max_quotes: MAX_COUNT_QUOTES },
   });
 });
