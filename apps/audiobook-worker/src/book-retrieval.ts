@@ -116,6 +116,23 @@ export const MAX_PASSAGE_BYTES = 4 * 1024;
  *  so the route can refuse a single absurd request without a turn context. */
 export const MAX_SEARCH_BYTES = 24 * 1024;
 
+/** Spellings one count may look for, `q` included (design §4.3's
+ *  `MAX_COUNT_VARIANTS`). ⚠️ Six because a transcript renders a catchphrase two
+ *  or three ways at most; a longer list is a different question wearing this
+ *  one's clothes. */
+export const MAX_COUNT_VARIANTS = 6;
+/** Example excerpts a count may carry. ⚠️ A count is not a way to read the book
+ *  three hundred words at a time — three is enough to prove the matcher found
+ *  what the asker meant. */
+export const MAX_COUNT_QUOTES = 3;
+/** One excerpt, in characters. */
+export const MAX_QUOTE_CHARS = 400;
+/** The serialised count answer, in bytes. ⚠️ The same idea as
+ *  `MAX_SEARCH_BYTES` at a tenth the size, because a count is numbers: measured
+ *  shapes are 1–2 KB. Over the cap, EXAMPLES are dropped before COUNTS are —
+ *  the totals are the answer and the quotes are the evidence. */
+export const MAX_COUNT_BYTES = 8 * 1024;
+
 // ---------------------------------------------------------------------------
 // ⚠️ THE SCOPE BOUND — derived per turn, from the QUESTION
 // ---------------------------------------------------------------------------
@@ -854,6 +871,391 @@ function byOrdinal(
   }
   void termCount;
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE PHRASE COUNT — design §4.3 of
+// `docs/info/gabi-phrase-count-and-read-state.md`, built because the three
+// instruments that existed could not answer "how often does Carl say God damn
+// it, Donut".
+//
+// | Instrument | Said | Truth |
+// |---|---|---|
+// | `/api/books/presence` (bag of words `{god,damn,donut}`) | 17 chunk hits | 14 |
+// | `/api/book/:id/search` (literal string, top-6 cap) | 13 chunks, 6 returned | 14 |
+// | this | **14** | 14 |
+//
+// Two errors in opposite directions, neither of them reported. So this counts
+// PHRASES, and it counts them over text that has been de-overlapped.
+//
+// ## ⚠️ COUNT ON DE-OVERLAPPED CHAPTER TEXT, NEVER PER CHUNK
+//
+// The ingester overlaps chunks by ~100 characters (`book-packs.ts`, 800/100).
+// A phrase inside that seam is stored TWICE, so a per-chunk tally reports it
+// twice — and a phrase that straddles a seam with no overlap is stored in
+// neither chunk whole, so a per-chunk tally reports it not at all. Both errors
+// are silent and they do not cancel. `deOverlap` (the same one the stitch uses)
+// rebuilds each chapter's continuous text first, and the count runs on that.
+//
+// ⚠️ The join is CLAMPED TO THE CHAPTER, exactly as the stitch is: a phrase
+// spanning a chapter boundary cannot be cited, cannot be scoped, and is not
+// counted. That is the same trade the stitch already makes.
+//
+// ## ⚠️ ZERO IS AN ANSWER, AND IT IS NOT THE SAME ANSWER AS "NOT INGESTED"
+//
+// `presenceInPack`'s rule, one layer in. `total: 0` on a pack that was read is
+// "he never says it"; `ingested: false` is "I have not read the book". The
+// route keeps them in two different shapes so a caller cannot conflate them.
+//
+// ## ⚠️ AND "ABSENT" IS NOT THE SAME ANSWER AS "PAST WHERE YOU ARE"
+//
+// The ceiling is applied FIRST, and matches beyond it are counted separately
+// into `hidden_by_scope`. A count that said "he never says it" while the rest
+// of the book was hidden would be a spoiler boundary reported as a fact about
+// the book.
+// ---------------------------------------------------------------------------
+
+/** ⚠️ What the matcher does, in words, so the ANSWER can say it. A count is
+ *  only as trustworthy as the normalisation behind it, and a reader who is told
+ *  "14" deserves to know that a comma and a full stop were treated alike. */
+export const COUNT_MATCHER =
+  "case-insensitive; curly quotes read as '; runs of whitespace collapsed; a comma, " +
+  'full stop, exclamation mark, em dash or hyphen allowed between the words; whole ' +
+  'words at both ends; counted over de-overlapped chapter text';
+
+/** ⚠️ Between two words of the phrase: at least one separator, any mixture of
+ *  whitespace and the punctuation a transcriber sprinkles into speech. This is
+ *  what makes *"God damn it, Donut"*, *"God damn it. Donut"* and *"god damn it
+ *  donut"* one phrase rather than three. It never matches the empty string, so
+ *  *"goddamnit"* is NOT this phrase — a different spelling is a `variant`, and
+ *  a variant is declared by the caller and reported back. */
+const PHRASE_GAP = '[\\s,.!\\u2014\\-]+';
+
+/** The words of a phrase: letters, digits and internal apostrophes; every other
+ *  character is separator or noise. ⚠️ A `?` on the end of a spoken question
+ *  must not become a literal the book has to contain. */
+export function phraseWords(phrase: string): string[] {
+  return normaliseForCount(phrase).match(/[\p{L}\p{N}][\p{L}\p{N}']*/gu) ?? [];
+}
+
+/** ⚠️ Length-preserving except for whitespace runs, and deliberately NOT
+ *  lowercased: the offsets of a match have to survive into a quote, and the
+ *  quote has to read like the book. Case is handled by the regex's `i` flag. */
+function normaliseForCount(text: string): string {
+  return text.replace(/[‘’‛]/g, "'").replace(/\s+/g, ' ');
+}
+
+/** The phrase as a regex, or `null` when there is nothing to count. ⚠️ The
+ *  boundaries reject an adjacent LETTER OR DIGIT only, so *"donuts"* does not
+ *  match *"donut"* while *"Donut's"* does — the possessive is the same word
+ *  being spoken to, and `tokenise()` above already takes that view. */
+export function phraseRegex(phrase: string): RegExp | null {
+  const words = phraseWords(phrase);
+  if (words.length === 0) return null;
+  const body = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(PHRASE_GAP);
+  return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'giu');
+}
+
+/** One chapter's de-overlapped text, plus where each chunk's own text starts in
+ *  it — the map that turns a match offset back into a citable `ord`. */
+interface ChapterSegment {
+  index: number;
+  title: string;
+  text: string;
+  marks: { at: number; chunk: PackChunk }[];
+}
+
+/**
+ * Rebuild each chapter's continuous text from the chunks given.
+ *
+ * ⚠️ After `deOverlap`, the appended chunk's own text always ends flush with the
+ * end of the join — whether an overlap was found (`a + b.slice(k)`) or not
+ * (`a + ' ' + b`). So `text.length - piece.length` is the offset where that
+ * chunk begins, in both branches, and that is the whole of the bookkeeping.
+ */
+function chapterSegments(pack: BookPack, chunks: PackChunk[]): ChapterSegment[] {
+  const titles = new Map(pack.chapters.map((ch) => [ch.index, ch.title]));
+  const groups = new Map<number, PackChunk[]>();
+  for (const c of chunks) {
+    const list = groups.get(c.chapter_index);
+    if (list) list.push(c);
+    else groups.set(c.chapter_index, [c]);
+  }
+  const out: ChapterSegment[] = [];
+  for (const index of [...groups.keys()].sort((a, b) => a - b)) {
+    const list = [...(groups.get(index) ?? [])].sort((a, b) => a.ord - b.ord);
+    let text = '';
+    const marks: { at: number; chunk: PackChunk }[] = [];
+    for (const c of list) {
+      const piece = normaliseForCount(c.text);
+      text = text ? deOverlap(text, piece) : piece;
+      marks.push({ at: Math.max(0, text.length - piece.length), chunk: c });
+    }
+    out.push({ index, title: titles.get(index) ?? '', text, marks });
+  }
+  return out;
+}
+
+interface RawMatch {
+  start: number;
+  end: number;
+  variant: number;
+}
+
+function matchesIn(text: string, regexes: (RegExp | null)[]): RawMatch[] {
+  const out: RawMatch[] = [];
+  for (let v = 0; v < regexes.length; v++) {
+    const re = regexes[v];
+    if (!re) continue;
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) {
+        re.lastIndex += 1;
+        continue;
+      }
+      out.push({ start: m.index, end: m.index + m[0].length, variant: v });
+    }
+  }
+  return out;
+}
+
+/**
+ * ⚠️ ONE OCCURRENCE IS ONE OCCURRENCE, however many variants matched it.
+ *
+ * Two spellings in the same list will sometimes cover the same words, and
+ * adding their counts together is precisely the 17-versus-14 error this module
+ * exists to stop. Overlapping spans collapse to one, credited to the FIRST
+ * variant that matched it — which is why `by_variant` always sums to `total`.
+ */
+function distinctMatches(matches: RawMatch[]): RawMatch[] {
+  const sorted = [...matches].sort(
+    (a, b) => a.start - b.start || b.end - a.end || a.variant - b.variant,
+  );
+  const out: RawMatch[] = [];
+  let lastEnd = -1;
+  for (const m of sorted) {
+    if (m.start >= lastEnd) {
+      out.push(m);
+      lastEnd = m.end;
+    }
+  }
+  return out;
+}
+
+/** The chunk a match offset falls in — the last one that starts at or before
+ *  it, so a match inside a seam is cited to the LATER of the two chunks that
+ *  hold it. Deterministic, and either is a truthful citation. */
+function chunkAtOffset(seg: ChapterSegment, offset: number): PackChunk | null {
+  let found: PackChunk | null = null;
+  for (const mark of seg.marks) {
+    if (mark.at <= offset) found = mark.chunk;
+    else break;
+  }
+  return found;
+}
+
+export interface CountQuote {
+  chapter_index: number;
+  /** The `ord` of the chunk the match sits in — a citation coordinate, and the
+   *  argument to `/passage` for anyone who wants the surrounding scene. */
+  ord: number;
+  start_sec?: number;
+  text: string;
+}
+
+export interface CountChapter {
+  index: number;
+  title: string;
+  n: number;
+  first_start_sec?: number;
+}
+
+export interface CountOptions {
+  q: string;
+  /** Other spellings that count as the same phrase. ⚠️ `q` counts as one of the
+   *  `MAX_COUNT_VARIANTS`; the rest are clamped away rather than refused. */
+  variants?: string[];
+  bound: ScopeBound;
+  quotes?: number;
+}
+
+export interface CountAnswer {
+  ok: true;
+  book_id: string;
+  title: string;
+  /** ⚠️ `transcript` means Whisper's punctuation, not the printed book's. The
+   *  answer has to be able to say so — *"goddammit"* on the page can be
+   *  *"god damn it"* in the recording. */
+  source: string;
+  ingester_version: number;
+  q: string;
+  /** The spellings actually counted, `q` first, after the clamp. */
+  variants: string[];
+  /** ⚠️ A PHRASE count over de-overlapped text — not chunks, not words. */
+  total: number;
+  by_variant: { variant: string; n: number }[];
+  /** Only the chapters with a hit, in reading order. */
+  by_chapter: CountChapter[];
+  quotes: CountQuote[];
+  /** ⚠️ Matches PAST the ceiling. Non-zero forbids the word "never". */
+  hidden_by_scope: number;
+  scope: DerivedScope & { chunks_visible: number; chunks_total: number };
+  /** What the normalisation did, in words — `COUNT_MATCHER`. */
+  matcher: string;
+  /** This object serialised, in bytes, against `MAX_COUNT_BYTES`. ⚠️ It does
+   *  NOT include the route's own envelope (`ingested`, `limits`) — a few dozen
+   *  bytes, and the cap has an order of magnitude of headroom over the measured
+   *  1–3 KB shape. */
+  bytes: number;
+  note?: string;
+}
+
+/** ⚠️ Dropped rows are ANNOUNCED. A silently shortened list is a count that
+ *  quietly stopped being a count. */
+export const COUNT_TRIMMED_NOTE =
+  'Some example excerpts and per-chapter rows were left out to keep this answer small. The ' +
+  'totals are complete; the examples are not all of them.';
+
+/** `q` plus its variants, de-duplicated case-insensitively, clamped. */
+function countVariants(q: string, extra: string[] | undefined): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [q, ...(extra ?? [])]) {
+    const v = raw.trim();
+    if (!v) continue;
+    const key = phraseWords(v).join(' ').toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+    if (out.length >= MAX_COUNT_VARIANTS) break;
+  }
+  return out;
+}
+
+function excerptAround(text: string, start: number, end: number): string {
+  const mid = Math.floor((start + end) / 2);
+  let from = Math.max(0, mid - Math.floor(MAX_QUOTE_CHARS / 2));
+  const to = Math.min(text.length, from + MAX_QUOTE_CHARS);
+  from = Math.max(0, to - MAX_QUOTE_CHARS);
+  let out = text.slice(from, to);
+  // ⚠️ The ellipsis REPLACES a character rather than being added to one, so the
+  // excerpt is never longer than MAX_QUOTE_CHARS. A cap that the marker itself
+  // can push past is not a cap.
+  if (from > 0) out = `…${out.slice(1)}`;
+  if (to < text.length) out = `${out.slice(0, -1)}…`;
+  return out;
+}
+
+/**
+ * **Count a phrase over one book, without returning the book.**
+ *
+ * Counts and anchors: how many times, in which chapters, at what timestamps, and
+ * at most `MAX_COUNT_QUOTES` short excerpts as evidence. Never passages, never
+ * prose to be tallied by something else.
+ */
+export function countPhrase(pack: BookPack, opts: CountOptions): CountAnswer {
+  const scope = deriveCeiling(pack, opts.bound);
+  const ceiling = scope.ceiling;
+  const visible = visibleChunks(pack, ceiling);
+  const hidden = ceiling === null ? [] : pack.chunks.filter((c) => c.ord > ceiling);
+
+  const variants = countVariants(opts.q, opts.variants);
+  const regexes = variants.map((v) => phraseRegex(v));
+  const quotesWanted = Math.min(
+    Math.max(0, Math.floor(opts.quotes ?? 0) || 0),
+    MAX_COUNT_QUOTES,
+  );
+
+  const byVariant = variants.map((variant) => ({ variant, n: 0 }));
+  const byChapter: CountChapter[] = [];
+  const perChapter: { seg: ChapterSegment; hits: RawMatch[] }[] = [];
+  let total = 0;
+
+  for (const seg of chapterSegments(pack, visible)) {
+    const hits = distinctMatches(matchesIn(seg.text, regexes));
+    if (hits.length === 0) continue;
+    total += hits.length;
+    for (const h of hits) {
+      const row = byVariant[h.variant];
+      if (row) row.n += 1;
+    }
+    const first = hits[0];
+    const firstChunk = first ? chunkAtOffset(seg, first.start) : null;
+    byChapter.push({
+      index: seg.index,
+      title: seg.title,
+      n: hits.length,
+      ...(firstChunk?.start_sec !== undefined ? { first_start_sec: firstChunk.start_sec } : {}),
+    });
+    perChapter.push({ seg, hits });
+  }
+
+  // ⚠️ The hidden tail is counted the same way and reported separately. It is
+  // never folded into `total` — the asker asked about the part they have read.
+  let hiddenByScope = 0;
+  for (const seg of chapterSegments(pack, hidden)) {
+    hiddenByScope += distinctMatches(matchesIn(seg.text, regexes)).length;
+  }
+
+  // ⚠️ Examples come from VISIBLE chunks only, and are spread one-per-chapter
+  // before a second is taken from any chapter — three quotes from one scene
+  // prove less than three quotes from three.
+  const quotes: CountQuote[] = [];
+  for (let round = 0; quotes.length < quotesWanted; round++) {
+    let any = false;
+    for (const { seg, hits } of perChapter) {
+      const h = hits[round];
+      if (!h) continue;
+      any = true;
+      const chunk = chunkAtOffset(seg, h.start);
+      quotes.push({
+        chapter_index: seg.index,
+        ord: chunk?.ord ?? -1,
+        ...(chunk?.start_sec !== undefined ? { start_sec: chunk.start_sec } : {}),
+        text: excerptAround(seg.text, h.start, h.end),
+      });
+      if (quotes.length >= quotesWanted) break;
+    }
+    if (!any) break;
+  }
+
+  const answer: CountAnswer = {
+    ok: true,
+    book_id: pack.book_id,
+    title: pack.title,
+    source: pack.source,
+    ingester_version: pack.ingester_version,
+    q: opts.q,
+    variants,
+    total,
+    by_variant: byVariant,
+    by_chapter: byChapter,
+    quotes,
+    hidden_by_scope: hiddenByScope,
+    scope: { ...scope, chunks_visible: visible.length, chunks_total: pack.chunks.length },
+    matcher: COUNT_MATCHER,
+    bytes: 0,
+  };
+  answer.bytes = byteLength(JSON.stringify(answer));
+
+  // ⚠️ Evidence goes before arithmetic. Over the cap, quotes are dropped first,
+  // then the THINNEST chapter rows — never a digit of `total`.
+  while (answer.bytes > MAX_COUNT_BYTES && answer.quotes.length > 0) {
+    answer.quotes.pop();
+    answer.note = COUNT_TRIMMED_NOTE;
+    answer.bytes = byteLength(JSON.stringify(answer));
+  }
+  while (answer.bytes > MAX_COUNT_BYTES && answer.by_chapter.length > 1) {
+    let thinnest = 0;
+    for (let i = 1; i < answer.by_chapter.length; i++) {
+      if ((answer.by_chapter[i]?.n ?? 0) < (answer.by_chapter[thinnest]?.n ?? 0)) thinnest = i;
+    }
+    answer.by_chapter.splice(thinnest, 1);
+    answer.note = COUNT_TRIMMED_NOTE;
+    answer.bytes = byteLength(JSON.stringify(answer));
+  }
+  return answer;
 }
 
 /** A quoted phrase, or the whole query when it is short enough to be one. */

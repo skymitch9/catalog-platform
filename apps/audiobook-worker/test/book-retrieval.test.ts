@@ -15,8 +15,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   boundVersionRefusal,
+  countPhrase,
   deOverlap,
   deriveCeiling,
+  MAX_COUNT_QUOTES,
+  MAX_COUNT_VARIANTS,
+  MAX_QUOTE_CHARS,
+  phraseWords,
   presenceInPack,
   queryTerms,
   searchPack,
@@ -256,6 +261,224 @@ test('⚠️ the answer says which query terms were NOT found anywhere in scope'
 
 test('the possessive is one term with the plain name, not a second rare one', () => {
   assert.deepEqual(queryTerms("Jake's stat sheet"), ['jake', 'stat', 'sheet']);
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE PHRASE COUNT (`docs/info/gabi-phrase-count-and-read-state.md` §4)
+//
+// The live failure: *"how often does Carl say God damn it, Donut"*. `/presence`
+// answered 17 (bag of words), `/search` saw 13 chunks behind a top-6 cap, and
+// the truth was 14. Every test below fails against one of the two errors that
+// produced those numbers — counting per CHUNK, or counting WORDS.
+//
+// ⚠️ THE FIXTURE IS BUILT AROUND THE SEAM, because that is where both de-overlap
+// bugs live and neither is visible in ordinary prose:
+//
+//   ch0 (chunks 0–1) the phrase sits INSIDE a real 56-char overlap — stored
+//                    twice, and a per-chunk tally says 2
+//   ch1 (chunks 2–3) the phrase is CUT IN HALF by a seam with no overlap —
+//                    stored whole in neither, and a per-chunk tally says 0
+//   ch2 (chunk 4)    the three punctuation/case renderings, plus the words that
+//                    must NOT match
+//   ch3 (chunk 5)    a curly apostrophe
+// ---------------------------------------------------------------------------
+
+/** The phrase from the incident, as the transcript renders it. */
+const DCC = 'God damn it, Donut';
+
+/** ⚠️ Chunk 1 opens with chunk 0's last 56 characters, exactly as the ingester's
+ *  100-character overlap does. Change one character of either and the seam test
+ *  stops testing a seam. */
+const SEAM = 'Carl sighed and said, God damn it, Donut, put that down.';
+
+function countPack(over: Partial<BookPack> = {}): BookPack {
+  const texts = [
+    `The stairs went down forever and the stairwell smelled of ozone. ${SEAM}`,
+    `${SEAM} Then the mongoliod screamed and the whole floor shook.`,
+    'A door opened onto a corridor of screens. Carl looked at the ceiling and muttered, God damn it,',
+    'Donut, we are not doing that again. The corridor lights flickered twice.',
+    'God damn it. Donut! he shouted. Later he said god damn it donut again, and then GOD DAMN IT, ' +
+      'DONUT one last time. He also mentioned donuts and a doughnut, which are not the same thing.',
+    'Carl said, that’s enough, Donut. The stairs kept going down and down.',
+  ];
+  const chapterOfChunk = [0, 0, 1, 1, 2, 3];
+  return {
+    book_id: 'count-book',
+    title: 'A Book To Count In',
+    source: 'transcript',
+    ingester_version: 1,
+    chapters: [
+      { index: 0, title: 'One', first_chunk: 0, last_chunk: 1 },
+      { index: 1, title: 'Two', first_chunk: 2, last_chunk: 3 },
+      { index: 2, title: 'Three', first_chunk: 4, last_chunk: 4 },
+      { index: 3, title: 'Four', first_chunk: 5, last_chunk: 5 },
+    ],
+    chunks: texts.map((text, i) => ({
+      ord: i,
+      chapter_index: chapterOfChunk[i] ?? 0,
+      text,
+      start_sec: i * 10,
+      end_sec: i * 10 + 9,
+    })),
+    ...over,
+  };
+}
+
+test('🔴 the seam is real — chunk 1 opens with chunk 0’s tail, as the ingester writes it', () => {
+  // A guard on the FIXTURE, not on the code. If this ever fails, the two
+  // de-overlap tests below are silently testing nothing.
+  const p = countPack();
+  assert.ok(p.chunks[0]?.text.endsWith(SEAM));
+  assert.ok(p.chunks[1]?.text.startsWith(SEAM));
+  assert.equal(deOverlap(p.chunks[0]!.text, p.chunks[1]!.text).split('God damn it').length - 1, 1);
+});
+
+test('⚠️ a phrase inside the chunk OVERLAP counts ONCE, not twice', () => {
+  // The 100-character overlap stores the seam text in both chunks. Counting per
+  // chunk reports every catchphrase near a boundary twice, silently.
+  const a = countPhrase(countPack(), { q: DCC, bound: { kind: 'through_chapter', chapter: 0 } });
+  assert.equal(a.total, 1);
+  // ⚠️ Cited to chunk 1, the LATER of the two that hold the seam text — both do,
+  // so both are truthful, and picking the later one deterministically is what
+  // stops the citation wobbling with the overlap length.
+  assert.deepEqual(a.by_chapter, [{ index: 0, title: 'One', n: 1, first_start_sec: 10 }]);
+});
+
+test('⚠️ a phrase CUT IN HALF by a chunk boundary counts ONCE, not zero', () => {
+  // The opposite error, same cause: "God damn it," ends chunk 2 and "Donut,"
+  // opens chunk 3, so neither chunk contains the phrase and a per-chunk tally
+  // reports it missing. De-overlapped chapter text has it exactly once.
+  const p = countPack();
+  assert.ok(!p.chunks[2]!.text.toLowerCase().includes('donut'));
+  const a = countPhrase(p, {
+    q: DCC,
+    bound: { kind: 'through_chapter', chapter: 1 },
+  });
+  assert.equal(a.by_chapter.find((c) => c.index === 1)?.n, 1);
+});
+
+test('⚠️ the matcher tolerates punctuation, case and collapsed whitespace', () => {
+  // "God damn it. Donut!", "god damn it donut" and "GOD DAMN IT, DONUT" are one
+  // phrase said three times, not three phrases.
+  const a = countPhrase(countPack(), { q: DCC, bound: { kind: 'through_chapter', chapter: 2 } });
+  assert.equal(a.by_chapter.find((c) => c.index === 2)?.n, 3);
+  assert.match(a.matcher, /case-insensitive/);
+});
+
+test('⚠️ a curly apostrophe in the book matches a straight one in the question', () => {
+  // Whisper writes ’. Nobody types it.
+  const a = countPhrase(countPack(), { q: "that's enough, Donut", bound: { kind: 'whole_book' } });
+  assert.equal(a.total, 1);
+  assert.equal(a.by_chapter[0]?.index, 3);
+});
+
+test('⚠️ word boundaries hold at BOTH ends — "donuts" is not "donut"', () => {
+  // Chunk 4 says "Donut" three times, and also says "donuts" and "doughnut".
+  // A substring count would answer 4 or 5 and look just as confident.
+  const a = countPhrase(countPack(), { q: 'donut', bound: { kind: 'whole_book' } });
+  assert.equal(a.by_chapter.find((c) => c.index === 2)?.n, 3);
+  const damn = countPhrase(countPack(), { q: 'damn', bound: { kind: 'whole_book' } });
+  assert.equal(damn.by_chapter.find((c) => c.index === 2)?.n, 3);
+  assert.equal(phraseWords('God damn it, Donut?').join('|'), 'God|damn|it|Donut');
+});
+
+test('⚠️ a different SPELLING is not a punctuation variant — "goddamnit" is its own word', () => {
+  // The gap that makes `variants` necessary: the separator never matches the
+  // empty string, so a run-together spelling is a variant the caller declares
+  // and the answer reports — never a silent widening of the phrase.
+  const p = countPack({
+    chunks: [{ ord: 0, chapter_index: 0, text: 'He said goddamnit Donut and meant it.' }],
+    chapters: [{ index: 0, title: 'One', first_chunk: 0, last_chunk: 0 }],
+  });
+  assert.equal(countPhrase(p, { q: DCC, bound: { kind: 'whole_book' } }).total, 0);
+  const withVariant = countPhrase(p, {
+    q: DCC,
+    variants: ['goddamnit Donut'],
+    bound: { kind: 'whole_book' },
+  });
+  assert.equal(withVariant.total, 1);
+  assert.deepEqual(withVariant.by_variant.map((v) => v.n), [0, 1]);
+});
+
+test('⚠️ by_chapter is reading order, hit chapters only, with a first timestamp', () => {
+  const a = countPhrase(countPack(), { q: DCC, bound: { kind: 'whole_book' } });
+  assert.equal(a.total, 5);
+  assert.deepEqual(a.by_chapter.map((c) => [c.index, c.n]), [[0, 1], [1, 1], [2, 3]]);
+  assert.equal(a.by_chapter[0]?.first_start_sec, 10);
+  assert.equal(a.by_chapter[1]?.first_start_sec, 20);
+});
+
+test('⚠️ two variants over the same words count ONCE — by_variant always sums to total', () => {
+  // This IS the 17-versus-14 error, one layer down: adding per-spelling counts
+  // together double-counts every occurrence both spellings cover.
+  const a = countPhrase(countPack(), {
+    q: DCC,
+    variants: ['damn it, Donut'],
+    bound: { kind: 'whole_book' },
+  });
+  assert.equal(a.total, 5);
+  assert.equal(a.by_variant.reduce((n, v) => n + v.n, 0), a.total);
+  assert.deepEqual(a.by_variant.map((v) => v.n), [5, 0]);
+});
+
+test('⚠️ the ceiling hides matches, and hiding them is REPORTED not silent', () => {
+  // "He never says it" and "the rest of the book is hidden from me" are
+  // different facts, and one of them is a spoiler boundary (§6.3 criterion 6).
+  const a = countPhrase(countPack(), { q: DCC, bound: { kind: 'through_chapter', chapter: 0 } });
+  assert.equal(a.total, 1);
+  assert.equal(a.hidden_by_scope, 4, 'the four later sayings are hidden, not absent');
+  assert.equal(a.scope.chunks_visible, 2);
+  assert.equal(a.scope.chunks_total, 6);
+});
+
+test('⚠️ 0 is a real answer, and it still says what the scope was', () => {
+  const a = countPhrase(countPack(), { q: 'banana split', bound: { kind: 'unknown' } });
+  assert.equal(a.total, 0);
+  assert.deepEqual(a.by_chapter, []);
+  assert.equal(a.hidden_by_scope, 0);
+  assert.equal(a.scope.bounded, false);
+  assert.equal(a.scope.ask, SCOPE_UNKNOWN_ASK);
+});
+
+test('variants and quotes are CLAMPED rather than refused, and the clamp is visible', () => {
+  const a = countPhrase(countPack(), {
+    q: DCC,
+    variants: ['a one', 'a two', 'a three', 'a four', 'a five', 'a six', 'a seven'],
+    quotes: 99,
+  bound: { kind: 'whole_book' },
+  });
+  assert.equal(a.variants.length, MAX_COUNT_VARIANTS);
+  assert.equal(a.variants[0], DCC, 'q counts as one of them, and it is the first');
+  assert.equal(a.quotes.length, MAX_COUNT_QUOTES);
+});
+
+test('⚠️ quotes come from VISIBLE chunks only and are spread across chapters', () => {
+  const a = countPhrase(countPack(), { q: DCC, bound: { kind: 'whole_book' }, quotes: 3 });
+  assert.deepEqual(a.quotes.map((q) => q.chapter_index), [0, 1, 2]);
+  for (const q of a.quotes) {
+    assert.ok(q.text.length <= MAX_QUOTE_CHARS, `${q.text.length} chars`);
+    assert.ok(/god damn it/i.test(q.text));
+    assert.ok(typeof q.ord === 'number' && q.ord >= 0);
+  }
+  const bounded = countPhrase(countPack(), {
+    q: DCC,
+    bound: { kind: 'through_chapter', chapter: 0 },
+    quotes: 3,
+  });
+  assert.equal(bounded.quotes.length, 1, 'nothing past the ceiling may be quoted');
+});
+
+test('a quote is centred on its match and never longer than the cap', () => {
+  const filler = 'The corridor stretched on and the lights hummed overhead. '.repeat(20);
+  const p = countPack({
+    chapters: [{ index: 0, title: 'One', first_chunk: 0, last_chunk: 0 }],
+    chunks: [{ ord: 0, chapter_index: 0, text: `${filler}God damn it, Donut! ${filler}` }],
+  });
+  const a = countPhrase(p, { q: DCC, bound: { kind: 'whole_book' }, quotes: 1 });
+  const quote = a.quotes[0]?.text ?? '';
+  assert.equal(quote.length, MAX_QUOTE_CHARS);
+  assert.ok(quote.startsWith('…') && quote.endsWith('…'), quote.slice(0, 40));
+  assert.ok(quote.includes('God damn it, Donut'));
 });
 
 test('⚠️ alias expansion is REPORTED, never a silent rewrite', () => {
