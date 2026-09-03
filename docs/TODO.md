@@ -10,6 +10,57 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ GABI — two defects from a live Discord exchange (owner, 2026-09-03 ~11:00)
+
+Owner pasted a DCC book-1 exchange (*"how often does Carl say God Damnit
+Donut or something similar"*) and named two faults:
+
+1. ☐ **GABI does not know he has read the books** — *"even though I have it
+   rated and I've linked."* She asked how far he was into book 1 (spoiler
+   guard) when his rating + linked account already answer that. Find which
+   read-state signal the spoiler guard consults, why a rated + linked owner
+   reads as unknown, and fix so a rating (or finished progress) counts as
+   read — without breaking `gabi-suggestions-design.md`'s *not reviewed ≠
+   unread* rule (that rule says an UNrated book is not proof of unread; the
+   reverse direction, rated ⇒ read, is what's missing).
+2. ☐ **"I don't have a tool that counts specific phrases across a book's
+   text"** — *"It couldn't answer the question and should be able to. Let's
+   add this tool in."* A phrase-search/count tool over a book's text, scoped
+   to books whose text the estate actually holds (ebooks on the shelf /
+   `ebooks-door`); needs a grounding answer to "which books have text",
+   spoiler scope by read-state (item 1), and the same permission model as
+   the ebook suggestions (`vis_ebooks`, asked never copied).
+
+✅ **OWNER DECISION 2026-09-03 ~11:05, on item 1** — *"Yes let her see it.
+She should be able to see everything on my GABI account except passwords and
+such."* Standing rule for GABI's read-state: **a linked person's own account
+data (ratings, reviews, progress, listening position, shelves, read flags) is
+visible to GABI when she acts for THAT person** — derived per turn, never
+stored as a spoiler ceiling (the §4.5 re-chunk hazard stays honoured that
+way). Excluded: secrets, tokens, passwords, anything under `vis_*` grants
+that belong to OTHER people. This is the person's own data relayed under the
+person's own identity — not a widening of who may see what.
+
+✅ **Investigated 2026-09-03 11:07** (Opus, read-only, 230k) — findings + design in
+[`info/gabi-phrase-count-and-read-state.md`](info/gabi-phrase-count-and-read-state.md).
+The short version: **her sentence was true** (`/search` caps at 6 passages, `/presence`
+counts bag-of-words — 17 vs the true 14), and the bound is derived from the QUESTION
+STRING only, where *"I've read them all"* fails `ENDPOINT_RE` on the object. The one
+read-state signal reachable today is his own `reviews` doc (display-name matched,
+`bookId` == pack id). **Measured answer: "God damn it, Donut" 14× in book 1, chapter 28
+×3** — transcript punctuation, so the printed book may differ.
+
+☐ 🧑 **OWNER DECIDES: build it?** — proposed as two Opus dispatches (~250–300k):
+  **A** audiobook-worker `countPhrase` + `/api/book/:id/count` (+ `/api/books/count`) +
+  tests; **B** discord-worker `count_phrase` tool, `deriveBound` (own rating ⇒
+  `whole_book`, disclosure sentence), `ENDPOINT_RE`/`BOOKS_WEAK` widening,
+  `pendingScopeAsk` carry-over, regression tests, design doc §4.5/§4.6 + incident.
+  Review when built: *"@GABI how often does Carl say God damn it Donut in Dungeon
+  Crawler Carl book 1"* → 14, ch 28 triple, ≤3 quotes, "transcript" line, NO how-far ask.
+☐ Before dispatch A: check the owner's DCC-1 rating actually exists in `reviews`
+  (§5 of the doc — the read was classifier-blocked this session) and the live
+  `GABI_BOOKS` posture; clean tree; fresh usage read.
+
 ## ☐ 🔴 OWNER/SESSION STEP — verify `CLUB_WRITE_SHAPES` before `GABI_CLUB_WRITES` is ever flipped
 
 `/rsvp` and `/progress` are built, tested and **dark** (`GABI_CLUB_WRITES =
