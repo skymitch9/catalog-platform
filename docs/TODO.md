@@ -50,7 +50,21 @@ read-state signal reachable today is his own `reviews` doc (display-name matched
 `bookId` == pack id). **Measured answer: "God damn it, Donut" 14× in book 1, chapter 28
 ×3** — transcript punctuation, so the printed book may differ.
 
-☐ 🧑 **OWNER DECIDES: build it?** — proposed as two Opus dispatches (~250–300k):
+✅ **OWNER: "Go" (2026-09-03 11:12).** Dispatch A (audiobook-worker, Opus) launched
+11:15 from a clean tree at `64b00db`; usage at dispatch session 12 / weekly 52 / Fable 54.
+✅ **DCC-1 rating VERIFIED 11:17** (owner asked, PowerShell run): `reviews` holds
+displayName `Skylar`, rating `"5"`, 2026-06-24; `reviews_dev` empty. ⚠️ **`rating` is a
+STRING on two of three docs (`"5"`) and a number on the third (`4.5`)** — B's validity
+check must be `Number(rating)` finite and > 0, never `typeof === 'number'`.
+✅ **A LANDED 11:31** (223k Opus, 4 commits `bbafa5e`→`7a69b41`, deployed
+`7f1bb01c-17ae-4d1f-8105-3d1290a9e353`; tests 271→293 / 0 fail; probes 134→137 green;
+live no-bearer refusal 401 worded; **counter hits 14 / ch 28 ×3 on the local pack**).
+Contract for B: `variants` is PIPE-separated; `by_variant` sums to `total` (overlaps
+collapse to the first variant); `/api/books/count` is whole-book only; pure-punctuation
+phrase → 400 `empty_phrase`; exports `countPhrase, MAX_COUNT_VARIANTS, MAX_COUNT_QUOTES,
+MAX_COUNT_BYTES, CountAnswer…`. NOT verified: an authenticated 200 against live R2
+(session holds no token); R2 pack == local mirror.
+☐ **Dispatch B** launched 11:33 (Opus). Two Opus dispatches (~250–300k):
   **A** audiobook-worker `countPhrase` + `/api/book/:id/count` (+ `/api/books/count`) +
   tests; **B** discord-worker `count_phrase` tool, `deriveBound` (own rating ⇒
   `whole_book`, disclosure sentence), `ENDPOINT_RE`/`BOOKS_WEAK` widening,
