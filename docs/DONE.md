@@ -9,6 +9,91 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-03 12:18 Phoenix — GABI counts phrases and knows what the owner has rated (DCC "God damn it, Donut" = 14)
+
+Owner pasted a DCC book-1 exchange (*"how often does Carl say God Damnit
+Donut or something similar"*) and named two faults:
+
+1. ☐ **GABI does not know he has read the books** — *"even though I have it
+   rated and I've linked."* She asked how far he was into book 1 (spoiler
+   guard) when his rating + linked account already answer that. Find which
+   read-state signal the spoiler guard consults, why a rated + linked owner
+   reads as unknown, and fix so a rating (or finished progress) counts as
+   read — without breaking `gabi-suggestions-design.md`'s *not reviewed ≠
+   unread* rule (that rule says an UNrated book is not proof of unread; the
+   reverse direction, rated ⇒ read, is what's missing).
+2. ☐ **"I don't have a tool that counts specific phrases across a book's
+   text"** — *"It couldn't answer the question and should be able to. Let's
+   add this tool in."* A phrase-search/count tool over a book's text, scoped
+   to books whose text the estate actually holds (ebooks on the shelf /
+   `ebooks-door`); needs a grounding answer to "which books have text",
+   spoiler scope by read-state (item 1), and the same permission model as
+   the ebook suggestions (`vis_ebooks`, asked never copied).
+
+✅ **OWNER DECISION 2026-09-03 ~11:05, on item 1** — *"Yes let her see it.
+She should be able to see everything on my GABI account except passwords and
+such."* Standing rule for GABI's read-state: **a linked person's own account
+data (ratings, reviews, progress, listening position, shelves, read flags) is
+visible to GABI when she acts for THAT person** — derived per turn, never
+stored as a spoiler ceiling (the §4.5 re-chunk hazard stays honoured that
+way). Excluded: secrets, tokens, passwords, anything under `vis_*` grants
+that belong to OTHER people. This is the person's own data relayed under the
+person's own identity — not a widening of who may see what.
+
+✅ **Investigated 2026-09-03 11:07** (Opus, read-only, 230k) — findings + design in
+[`info/gabi-phrase-count-and-read-state.md`](info/gabi-phrase-count-and-read-state.md).
+The short version: **her sentence was true** (`/search` caps at 6 passages, `/presence`
+counts bag-of-words — 17 vs the true 14), and the bound is derived from the QUESTION
+STRING only, where *"I've read them all"* fails `ENDPOINT_RE` on the object. The one
+read-state signal reachable today is his own `reviews` doc (display-name matched,
+`bookId` == pack id). **Measured answer: "God damn it, Donut" 14× in book 1, chapter 28
+×3** — transcript punctuation, so the printed book may differ.
+
+✅ **OWNER: "Go" (2026-09-03 11:12).** Dispatch A (audiobook-worker, Opus) launched
+11:15 from a clean tree at `64b00db`; usage at dispatch session 12 / weekly 52 / Fable 54.
+✅ **DCC-1 rating VERIFIED 11:17** (owner asked, PowerShell run): `reviews` holds
+displayName `Skylar`, rating `"5"`, 2026-06-24; `reviews_dev` empty. ⚠️ **`rating` is a
+STRING on two of three docs (`"5"`) and a number on the third (`4.5`)** — B's validity
+check must be `Number(rating)` finite and > 0, never `typeof === 'number'`.
+✅ **A LANDED 11:31** (223k Opus, 4 commits `bbafa5e`→`7a69b41`, deployed
+`7f1bb01c-17ae-4d1f-8105-3d1290a9e353`; tests 271→293 / 0 fail; probes 134→137 green;
+live no-bearer refusal 401 worded; **counter hits 14 / ch 28 ×3 on the local pack**).
+Contract for B: `variants` is PIPE-separated; `by_variant` sums to `total` (overlaps
+collapse to the first variant); `/api/books/count` is whole-book only; pure-punctuation
+phrase → 400 `empty_phrase`; exports `countPhrase, MAX_COUNT_VARIANTS, MAX_COUNT_QUOTES,
+MAX_COUNT_BYTES, CountAnswer…`. NOT verified: an authenticated 200 against live R2
+(session holds no token); R2 pack == local mirror.
+✅ **B LANDED 12:04** (315k Opus, commits `4151f80`→`f4e702c`, deployed `estate-discord`
+`583cc953-5ae6-4dd6-9422-29d6aed6d440`; tests 1199→1246 / 0 fail; `/api/health` 200 with
+`gabi_books_ready: true` and `count_phrase` in the tool list; `GABI_BOOKS = "on"` at
+`wrangler.toml:387`). As built, with the deviations and why in
+[`info/gabi-book-knowledge-design.md`](info/gabi-book-knowledge-design.md) **§4.7/§4.8/§10f**
+(§4.5/§4.6 were taken): row 7 of the ladder resolves per BOOK at tool-call time
+(`tool-exec.ts:734 boundForBook`), the shelf read is lazy + memoised (one Firestore query
+per turn at most), `pendingScopeAsk` is derived from the window text (no store change).
+⚠️ **Two findings while building:** (1) `shelf-exec.ts`'s `num()` read only
+`integerValue`/`doubleValue`, so a STRING rating (`"5"` — the owner's own) never parsed
+at all — fixed; every GABI shelf answer that showed a rating before today skipped those
+docs. (2) Because the book tools are offered as a family and `count_phrase` is not on
+`GROQ_READ_ONLY_TOOL_NAMES`, **the whole book tool loop now stays on Anthropic** — no
+live effect while `GABI_GROQ` ships `off`; reverting is one array entry.
+Horizon: `myReviews` returns the newest 15 rows, so a rating past row 15 falls to
+`unknown` (the safe direction).
+✅ **OWNER REVIEW PASSED 12:18** (*"It worked"*). In Discord: *"@GABI how often does Carl
+  say God damn it Donut in Dungeon Crawler Carl book 1"* → expect **14**, chapter 28
+  ×3, ≤3 short quotes, a "transcript" clause, the line *"you rated this one, so I'm
+  treating it as finished — say if that's wrong"*, and **no how-far question**.
+  ⚠️ NOT verified by either dispatch: an authenticated count against live R2 (no
+  session holds `ESTATE_APP_TOKEN_BOOKS`), so the owner's question is the first
+  end-to-end exercise of tool → route → pack → 14. When it passes, move this heading
+  WHOLE to DONE.
+
+✅ **VERIFIED END-TO-END 2026-09-03 12:18 Phoenix** — the owner ran the review line in Discord
+and reported *"It worked"*: the first authenticated exercise of tool → `/count` route → R2
+pack → answer. Not captured: the literal reply text (the owner did not paste it), so the
+"14 / ch 28 ×3 / disclosure sentence" expectations are confirmed only by his one word.
+Item 1 and item 2 above are both closed by this.
+
 ## 2026-09-02 21:41 Phoenix — the owner played Skyward from his phone; stream stamp AND saved spot PROVED
 
 **Closure.** Owner: *"ive played music from my phone on the site and it
