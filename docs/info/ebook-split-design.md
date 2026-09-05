@@ -1,10 +1,22 @@
 # Ebook Split — Information Reference (design)
 
 > **Audience:** Claude sessions. **Status:** TRACKED.
-> Last verified: **2026-08-16** — every number in §1 was measured that day
+> Last verified: **2026-09-05 ~23:10 UTC** — ⚠️ **only §6's phase-5 row and
+> §7's friend bullet were re-measured and CORRECTED** (both were wrong; see the
+> 🔴 note under §6's table). Everything else on this page still carries its
+> **2026-08-16** age.
+>
+> ✅ **Phases 1–5 have all SHIPPED. This is no longer an unbuilt design** —
+> ~~nothing below is built~~. Phase 5 was applied to production
+> `library-catalog` on 2026-09-05 at the owner's GO. 🔴 **The runbook of record
+> for phase 5 is `library_catalog/docs/access/ebook-retirement.md`, NOT §6's row
+> below**, which named the wrong instrument and the wrong figures; the record of
+> what actually ran is `library_catalog/docs/DONE.md`.
+>
+> Previously **2026-08-16** — every number in §1 was measured that day
 > (remote D1 SELECTs, a read-only Firestore REST sweep of the live `reviews`
 > collection, and file reads of both repos). §"Not verified" lists what was
-> not. This is a DESIGN DOC: nothing below is built, and no code, data, or
+> not. It was a DESIGN DOC: nothing was built at the time, and no code, data, or
 > other doc was changed alongside it.
 >
 > **The decision it designs** (owner, 2026-08-16, recorded in
@@ -210,8 +222,32 @@ independent of 3–5.
 | 2 | **Promote to prod** after owner review (explicit "prod" ask — the standing rule) | promote.yml | live URL renders; count matches; `/status` unchanged | `prod-*` tag rollback, the existing lane mechanism |
 | 3 | **Index learns ebooks** — `app/index_push.py` appends rows projected from `ebooks.json` to the audiobook snapshot: `format:'ebook'`, `source_id` path-derived, `detail_url` → the ebooks page; `filename`-sourced rows either withheld or pushed title-only (the index's empty-fold guard already refuses degenerate keys honestly) | pipeline change only | `/api/health` audiobook rows ≈ 1077 + pushed ebook count; `/api/lookup` on an ebook-only title returns an `ebook` row; dry-run flag first (`--dry-run` exists) | revert the pusher — snapshot-replace heals wholesale on the next push |
 | 4 | **Library holdings (shadow)** — migration (widen `audiobook_holding.source` CHECK or sibling table) + backfill script reading `ebooks.json`; UI grows the "household has this as ebook" chip beside the audio chip. Editions still present: **both representations live side by side** | migrate → deploy, the standing order | holding rows == 126 works; chip agrees with today's edition-derived display for every work (that agreement is the shadow verification); zero writes anywhere else | drop the rows (cache — one script rebuilds), hide the chip |
-| 5 | **Retire ingest + prune** — stop running `import-ebooks.mjs`; unset `EBOOK_INGEST_TOKEN` (route 404s); export the 94 ebook-only works + all 127 ebook editions to a dated JSON committed to `library_catalog`; prune `source='file'` ebook editions via the existing `--prune` (⚠️ deleting all of them exceeds its 20% guard **by design** — `--force-prune` after a person reads the list, which is exactly the ceremony the guard exists to force); delete the 94 works | scripts + one secret unset | works 351 → 257; ebook editions 0; Firestore doc count unchanged (878 at design time — **never touched**); audiobook-site reviews render as before; the 5 formerly-reviewed titles still show reviews on the audiobook site; re-measure `user_book` for `'human'` rows before deleting (must be 0) | re-set the token; re-import the exported JSON through the same ingest route (idempotent on work and edition by construction) |
+| 5 | ✅ **DONE 2026-09-05 — Retire ingest + prune.** ⚠️ **This row as written was WRONG on the instrument, the figures and the reversal — see the 🔴 note below the table.** What actually ran: `npm run ebooks:export` / `npm run ebooks:plan` in `library_catalog`, keyed on **`source_url`**, not `source='file'`; ~~prune via the existing `--prune` / `--force-prune`~~ | ✅ the two new scripts + one secret unset on **both** instances | ✅ measured: `work` 497 → **411**, `edition` 568 → **445**, ebook editions 126 → **3**, `ebook_holding` 126 → **40**, `copy` and `change_log` **untouched**; both hosts **401 → 404 `ingest_disabled`**; Firestore never touched | ✅ **`npm run ebooks:export -- --restore … --commit --remote`**, which re-inserts every row **with its ORIGINAL id** — ~~re-import through the ingest route~~, which would mint NEW ids that fifteen joining tables would not recognise |
 | 6 | **(Deferred, out of scope)** reviews/TBR on the ebooks surface — requires computing `workKey` on the shared-pool side (a JS port of the `normaliseTitle`/`workKeyFor` fold, which is a persisted-key implementation and therefore a migration-grade decision, not an edit) | — | — | — |
+
+### 🔴 Four things phase 5's row above got wrong, all measured 2026-09-05
+
+Kept rather than quietly rewritten, because the row was followed and each error
+would have caused real damage. The runbook that replaced it is
+`library_catalog/docs/access/ebook-retirement.md`.
+
+| # | The row said | Measured 2026-09-05 |
+|---|---|---|
+| 1 | prune the `source='file'` ebook editions with `--prune --force-prune` | ⚠️ **That predicate matched 126 of 127 at design time and 26 today.** The 2026-08-20 details/ISBN sweep rewrote `edition.source` on **101** of the importer's own rows (`openlibrary` 34, `research` 55, `googlebooks` 11) while leaving the manifest-relative path in `source_url`. **Running `--force-prune` would have removed 26 of 127 and reported success.** The new tooling keys on `source_url`, which nothing rewrote, and `import-ebooks.mjs` is left exactly as it is for the job it is actually for |
+| 2 | the 20% guard's ceremony is the right ceremony | ⚠️ Its *meaning* is *"the manifest looks short"*. Phase 5 removes these rows because **the catalog no longer holds ebooks at all**, which the manifest cannot tell you. Borrowing the guard would have been abusing it even had the number been right |
+| 3 | **94 works / 127 editions**; works 351 → 257; ebook editions → **0** | ⚠️ Stale on every figure. At execution: **89** ebook-only works, of which **86** were retired (the owner KEPT 358/359/360 — see below); **123** editions retired of 126. `work` 497 → **411**, ebook editions 126 → **3**, not 0 |
+| 4 | reverse by **re-importing the JSON through the ingest route** ("idempotent by construction") | 🔴 **It is not.** Re-importing mints **new ids**, and fifteen tables join on the old ones — `ebook_holding`, `user_book`, `research_finding`, `gap_verdict`, `audiobook_edition_holding` and the rest would come back pointing at works that no longer wear those numbers. The real reversal re-inserts every row **with its original id** and was drilled end to end |
+
+⚠️ **And the precondition the row named as a footnote turned out to be the only
+real decision on the page.** *"re-measure `user_book` for `'human'` rows before
+deleting (must be 0)"* — **it was 3**, not 0: works **358 / 359 / 360**, typed by
+the owner on 2026-08-18 at 04:40 UTC, **fifteen minutes before** the 04:55Z run
+whose figures every doc then quoted. The reading was correct about the works it
+counted and stale about these three within the hour. The owner chose (a) on
+2026-09-05: **keep those three works whole**, with their editions and holdings,
+which is why ebook editions land on 3 rather than 0. A read state saying *"I read
+this"* about a work with no edition left is a worse record than an ebook edition
+nothing serves.
 
 ## 7. Q6 — What explicitly does NOT change
 
@@ -225,10 +261,19 @@ independent of 3–5.
 - **Firestore** — no rules deploy, no document writes, no schema change.
   `reviews` remains the one shared store; `bookIdFromTitle` and `workKeyFor`
   remain the one implementation each, unchanged.
-- **The friend's catalog** — physical-only "sort her books". Her instance
+- **The friend's catalog** — physical-only "sort her books". ~~Her instance
   never sets `EBOOK_INGEST_TOKEN`, so her ingest surface is a 404 today and
-  stays one; no phase touches her ingest story, and phase 5 makes the
-  shared codebase's ebook lane strictly smaller, not larger.
+  stays one~~ 🔴 **FALSE as of 2026-08-25, and it made phase 5 a two-instance
+  job.** The owner set `EBOOK_INGEST_TOKEN` on padhard **by hand** that day (it
+  is `SHARED_OPT_IN` in `push-secrets.mjs` — one value, two holders). Measured
+  2026-09-05 22:27 UTC, before any unset: **both hosts answered 401**, so her
+  `/api/ingest/ebook` was a live door even though she held **0** ebook rows.
+  ✅ Phase 5 therefore unset the secret on **both** instances and both now answer
+  **404 `ingest_disabled`**. ⚠️ **The lesson is the general one: a doc's claim
+  that something "is never set" ages badly the first time a person sets it by
+  hand.** Her DATA half was still a genuine no-op — her plan step was run
+  read-only and printed *"0 rows matched"* — and phase 5 makes the shared
+  codebase's ebook lane strictly smaller, not larger.
 - **OpenAudible acquisition** and `catalog.csv` — untouched.
 
 ## 8. The TBR seam (how it would key — not designed here)
