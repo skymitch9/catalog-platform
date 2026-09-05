@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import type { EstateUserRow } from '../src/env.js';
 import { meAnswer } from '../src/me.js';
+import { estateRoutes } from '../src/estate.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../..');
@@ -106,4 +107,35 @@ test('meAnswer() provides EVERY field its browser consumers read — on every br
       );
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// The 401, which is a response contract too (fixed 2026-09-05)
+// ---------------------------------------------------------------------------
+
+test('🔴 a signed-OUT /me answers a SENTENCE, never a bare status', async () => {
+  // Found by agent A during the request-a-catalog build: this route — the
+  // most-read one on the estate, asked first by the front door, /admin, the "+"
+  // on both cards and every status page — answered `{"error":"unauthenticated"}`
+  // and nothing else. The global rule is that a person never meets a bare
+  // status: a refusal says what happened, what it needs, and how to get it.
+  //
+  // ⚠️ The `error` CODE must stay exactly `unauthenticated`: tools/estate-probes
+  // asserts it across this Worker's whole unauthenticated edge (A1–A38) and
+  // every page's failure wording branches on it. Only the `detail` is new.
+  const res = await estateRoutes.request(
+    '/estate/me',
+    undefined as never,
+    { DB: {} as D1Database, OWNER_EMAILS: '', FIREBASE_PROJECT_ID: 'test-project' } as never,
+  );
+  assert.equal(res.status, 401);
+  const body = (await res.json()) as { error: string; detail?: string };
+  assert.equal(body.error, 'unauthenticated');
+  assert.equal(typeof body.detail, 'string', 'a bare {error} is what this test exists to prevent');
+  assert.match(body.detail!, /Sign in/);
+  // ⚠️ And it must stay the "not signed in" cause, distinct from the other
+  // three (awaiting approval / revoked / insufficient role) — they have four
+  // different fixes, and one sentence for all of them sends three of the four
+  // people to the wrong place.
+  assert.equal(/approval|revoked|admin/i.test(body.detail!), false);
 });

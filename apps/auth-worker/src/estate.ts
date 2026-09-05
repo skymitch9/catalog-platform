@@ -413,7 +413,26 @@ estateRoutes.get('/estate/me', async (c) => {
   } catch (err) {
     return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
   }
-  if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+  // ⚠️ A WORDED REFUSAL, NOT A BARE STATUS — fixed 2026-09-05, and this route
+  // is where it mattered most: /me is the most-read route on the estate (the
+  // front door, /admin, the "+" on both cards and every status page ask it
+  // first), and it answered `{"error":"unauthenticated"}` with nothing a page
+  // could render as a sentence. The `error` CODE is unchanged, because
+  // tools/estate-probes asserts it across this Worker's whole unauthenticated
+  // edge and every page's failure wording branches on it; the `detail` is
+  // ADDITIVE, in the exact shape middleware/auth.ts:141–148 already uses. The
+  // four causes stay distinct: this is "not signed in", which is neither
+  // "awaiting approval" (403 estate_pending), "revoked" (403 estate_revoked)
+  // nor a network failure — an outage must never be dressed as a permission
+  // problem.
+  if (!identity)
+    return c.json(
+      {
+        error: 'unauthenticated',
+        detail: 'You are not signed in. Sign in with your estate account and try again.',
+      },
+      401,
+    );
 
   const email = identity.email.trim().toLowerCase();
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
