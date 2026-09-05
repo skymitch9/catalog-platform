@@ -538,23 +538,37 @@ GABI_SUGGEST = "on"
 # GABI_DELEGATED_WRITES and GABI_CONFIRM_T2 above: "on" and nothing else;
 # "true", "1", "yes" and every typo mean OFF.
 #
-# ⚠️ IT SHIPS OFF, AND THE REASON IS A MISSING MEASUREMENT RATHER THAN CAUTION.
-# The collection paths and the member-slug doc id are MEASURED (enforce-routes.ts
-# sweeps clubs/{id}/reads/{readId}/progress; poll-vote writes votes/{slug}); the
-# FIELD NAMES inside an RSVP and a progress document are NOT — they live in
-# audiobook_catalog/site/, which the build that wrote this was directed not to
-# read. This Worker's service account BYPASSES firestore.rules, so a wrongly
-# shaped write is not refused, it SUCCEEDS — and the club page then shows
-# nothing, with no error anywhere, on somebody else's surface.
+# ⚠️ IT SHIPPED OFF BECAUSE OF A MISSING MEASUREMENT RATHER THAN CAUTION, AND IT
+# WAS FLIPPED TO "on" ON 2026-09-05 — after BOTH halves it was protecting against
+# were closed. Keep the reasoning: it is also the BACKOUT (set "off", deploy).
 #
-# ⚠️ SO THE FLIP HAS A STEP BEFORE THE DEPLOY: verify CLUB_WRITE_SHAPES in
-# src/club-write.ts against the site's own writers, correct anything wrong, and
-# only then set "on". Never a side effect of a deploy; never done by an agent.
+# The collection paths and the member-slug doc id were always MEASURED
+# (enforce-routes.ts sweeps clubs/{id}/reads/{readId}/progress; poll-vote writes
+# votes/{slug}); the FIELD NAMES inside an RSVP and a progress document were NOT
+# — they live in audiobook_catalog/site/, which the build that wrote this was
+# directed not to read. This Worker's service account BYPASSES firestore.rules,
+# so a wrongly shaped write is not refused, it SUCCEEDS — and the club page then
+# shows nothing, with no error anywhere, on somebody else's surface.
+#
+#   1. ✅ MEASURED 2026-09-02 (commit ee688ad) against site/club-reads.js,
+#      site/clubs.js and firestore.rules, read-only. FOUR of the seven inferred
+#      names were WRONG; CLUB_WRITE_SHAPES carries the corrections with per-line
+#      evidence, and CLUB_WRITE_SHAPES_MEASUREMENT freezes what was read.
+#   2. ✅ OWNER DECISION 2026-09-05, option (a): /progress DROPS `percent` and
+#      takes a CHAPTER only. That was the second half — a percentage had no
+#      destination field at all, so the command could not be coherent while it
+#      offered one, and /api/health's club_write_shapes_verified said so.
+#
+# ⚠️ THERE IS NO SHADOW RUNG, deliberately: clubWritesOn is affirmative-only,
+# there is no third value, and a "shadow" club write would have to perform the
+# very write that is the whole risk. Off → on, with both steps above closed.
 #
 # ⚠️ OFF also HIDES both commands from Discord (commandsFor()), the moderation
 # pair's precedent — but the ROUTER still answers them, so a stale global
 # command gets the worded "switched off" rather than "This interaction failed".
-GABI_CLUB_WRITES = "off"
+# ⚠️ AND FLIPPING THIS IS ONLY HALF A STEP: the commands appear in Discord only
+# after the registration route is re-run (docs/access/discord-bot.md §15.2).
+GABI_CLUB_WRITES = "on"
 
 # ⚠️ THE GROQ FIRST-LINE POSTURE — the ONLY three-state switch on this Worker
 # (owner ask 2026-09-01: "we just used groq in a different project, lets

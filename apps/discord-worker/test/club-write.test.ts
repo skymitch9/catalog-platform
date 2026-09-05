@@ -119,10 +119,17 @@ test('⚠️ the posture is affirmative-only: "on" and nothing else', () => {
   }
 });
 
-test('⚠️ it SHIPS OFF — the committed wrangler posture, not a default in code', async () => {
+// ⚠️ IT SHIPPED OFF, AND ON 2026-09-05 IT WAS FLIPPED — after the owner's
+// decision closed the last blocker (`/progress percent` had no destination
+// field). The committed value stays PINNED for the same reason it was pinned
+// while it read "off": this posture is the thing standing between a wrongly
+// shaped write and somebody else's live club page, so it moves as a DECISION
+// with a test change beside it, never as a side effect of an unrelated edit.
+// ⚠️ Backing out is this one line and a deploy — docs/access/discord-bot.md §15.3.
+test('⚠️ the COMMITTED wrangler posture is pinned — "on" since 2026-09-05', async () => {
   const { readFile } = await import('node:fs/promises');
   const toml = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
-  assert.match(toml, /^GABI_CLUB_WRITES = "off"$/m);
+  assert.match(toml, /^GABI_CLUB_WRITES = "on"$/m);
 });
 
 test('⚠️ while the posture is off, NOTHING is written and NO Firestore call is made', async () => {
