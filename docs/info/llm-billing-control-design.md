@@ -727,7 +727,7 @@ as a named person (`gabi-delegated.ts:383`).
 > feature off for the whole household, which is not what a per-person rule
 > means.
 
-### Q5 Should the CLI scripts (L9–L13) be gated at all?
+### Q5 Should the CLI scripts (L9–L13) be gated at all? — ✅ **BUILT 2026-09-05**
 
 They run on the owner's machine, from his shell, with his key. Five of the
 thirteen library paths have no gate but a command-line flag, and one
@@ -740,6 +740,43 @@ thirteen library paths have no gate but a command-line flag, and one
 > that matters gets promoted from prose to a script with a deliberate escape
 > hatch — and a warning that says *"cover search is switched off for library;
 > re-run with --ignore-policy"* is exactly that.
+
+✅ **BUILT 2026-09-05** (agent W2-LIBCLI, `library_catalog` commit `bbc693b`).
+One helper, `library_catalog/scripts/lib/billing-cli.mjs`, called by all five —
+the FOURTH consumer of the one resolver, presenting this instance's
+`ESTATE_APP_TOKEN_*` at the system door of §3.4. Modelled on
+`apps/worker/src/lib/billing-system.ts`; `lib/billing-gate.ts` could not be
+reused because it reads a Hono request context a script does not have. Full
+record: `library_catalog/docs/DONE.md`, 2026-09-05.
+
+⚠️ **The recommendation's two halves pull in opposite directions, and the
+banner settles it.** *"never a hard refusal"* and *"re-run with
+--ignore-policy"* cannot both be read loosely: you do not "re-run" something
+that already ran. So the build **stops the run before the first paid call** and
+`--ignore-policy` always goes through, on every posture including `enforce` —
+a guard with a deliberate escape hatch, never a wall. ⚠️ And only a run that
+would actually SPEND is gated: a dry run, an estimate and a `--plan` bill
+nothing and are not the subject of a spending policy.
+
+🔴 **The gap the build found, which Q5 did not anticipate: the panel's own cell
+cannot reach these scripts.** The system door resolves for
+`principal_kind='system'` only (§11.2 departure 1, in both directions), but
+§3.2 registers `cli.backfill`, `research.covers` and `research.isbn` with
+`principals: ['person']` — so `admin.js` writes an `everyone` rule for them,
+which that door will never return. A `system` rule written through
+`POST /api/estate/billing/rules` **does** trip the gate today (the write door
+validates the feature id and the principal coherence, not the declared
+principals), so the switch exists; it is just not the one on the panel. ⚠️ The
+one-line fix is `principals: ['person', 'system']` on those three registry rows
+in `apps/auth-worker/src/billing-registry.ts`, behind the pin test — **not
+made**, because it changes what the matrix draws (a clock-icon row appears) and
+that is the owner's call, not a build agent's.
+
+⚠️ **Also not closed: no bearer is readable on the owner's machine.**
+`ESTATE_APP_TOKEN_LIBRARY` and `_LIBRARY2` are set on the Workers and absent
+from `library_catalog/apps/worker/.dev.vars.tpl` (measured 2026-09-05); until
+one is exported or re-minted the CLI gate prints *"policy UNKNOWN … proceeding"*
+— §3.5 row 3's fail-open direction, said out loud.
 
 ### Q6 Who may see the Spending panel — approvers, or devops?
 
