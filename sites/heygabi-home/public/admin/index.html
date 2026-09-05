@@ -422,6 +422,83 @@ ul.users-list { list-style: none; margin: .55rem 0 0; padding: 0; display: grid;
 .verse-why { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
 .verse-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .5rem; }
 .verse-why-input { flex: 1 1 18rem; min-width: 12rem; }
+
+/* ---- catalog requests (design docs/info/request-a-catalog-design.md §5) ----
+   Deliberately the SAME visual vocabulary as the verse queue above — cards, a
+   pill chip, the shared token set. Two different queues that look like two
+   different products would teach the owner two grammars for one job, which is
+   the exact complaint that produced the two-gesture rule in the first place. */
+.cat-banner {
+  margin: var(--et-space-2) 0 0;
+  padding: .7em 1em;
+  border: 1px solid var(--et-warn);
+  border-radius: var(--et-radius);
+  color: var(--et-fg);
+  font-size: var(--et-text-small);
+  text-wrap: pretty;
+}
+.cat-list { display: grid; gap: .6rem; margin-top: .5rem; }
+.cat-row {
+  display: grid;
+  gap: .25rem;
+  padding: .7em .9em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+}
+/* A DECIDED ROW IS DIMMED, NEVER HIDDEN — the history is why a second request
+   for the same address is not a surprise. ⚠️ `accepted` is deliberately NOT
+   dimmed: it is the state where a person has been told yes and nothing exists
+   yet, which is the one this panel most needs to keep visible. */
+.cat-row[data-status="declined"], .cat-row[data-status="cancelled"], .cat-row[data-status="live"] { opacity: .72; }
+.cat-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; justify-content: space-between; }
+.cat-names { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; }
+.cat-chip, .cat-kind {
+  flex: none;
+  padding: .1em .6em;
+  border: 1px solid var(--et-hairline);
+  border-radius: 999px;
+  color: var(--et-muted);
+  font-size: var(--et-text-micro);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.cat-chip[data-status="pending"] { border-color: var(--et-warn); color: var(--et-warn); }
+/* The kind badge carries a real cost difference, so games is tinted and says
+   why in words beneath — see the games note in renderCatalogQueue(). */
+.cat-kind[data-kind="games"] { border-color: var(--et-warn); color: var(--et-warn); }
+.cat-addr { font-family: var(--et-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.cat-note { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
+.cat-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .5rem; }
+.cat-reason-input { flex: 1 1 18rem; min-width: 12rem; }
+/* The Accept panel: a staging area, not a dialog. It restates, it lets the two
+   fields be edited, and its own button is the write. */
+.cat-panel {
+  margin-top: .6rem;
+  padding: .7em .9em;
+  border: 1px solid var(--et-accent, var(--et-hairline));
+  border-radius: var(--et-radius);
+  display: grid;
+  gap: .5rem;
+}
+.cat-field { display: grid; gap: .2rem; }
+.cat-avail { font-size: var(--et-text-small); color: var(--et-muted); text-wrap: pretty; }
+.cat-avail[data-ok="false"] { color: var(--et-warn); }
+/* The runbook block. A command the owner copies, so it must not be re-wrapped
+   into something that does not paste back. */
+.cat-cmd {
+  margin: .3rem 0 0;
+  padding: .5em .7em;
+  border: 1px solid var(--et-hairline);
+  border-radius: var(--et-radius);
+  overflow-x: auto;
+  font-family: var(--et-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--et-text-micro);
+  white-space: pre;
+}
+.cat-decided { margin-top: .8rem; }
+.cat-decided > summary { cursor: pointer; font-size: var(--et-text-small); color: var(--et-muted); }
+
 .spend-warn { margin: .6rem 0 0; color: var(--et-warn); font-size: var(--et-text-small); text-wrap: pretty; }
 .spend-staging {
   margin-top: .9rem;
@@ -694,6 +771,43 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
   </div>
 
   <p id="status" hidden></p>
+
+  <!-- THE CATALOG-REQUEST BANNER (design docs/info/request-a-catalog-design.md
+       §5.2). A RENDER OF THE DATA, NEVER A TOAST: it is rebuilt from the queue
+       on every load, so it survives a reload and disappears on its own when the
+       last `pending` row is decided. A worded notice, never a bare number —
+       admin.js: renderCatalogQueue() fills it. -->
+  <p id="catalog-banner" class="cat-banner" hidden></p>
+
+  <!-- CATALOG REQUESTS (design docs/info/request-a-catalog-design.md §5.3).
+       FIRST among the top-level panels, deliberately: it is the only one of the
+       four that is waiting on a decision. Same shape as #verse-queue below —
+       a collapsed <details> with a live count — because the estate's rule is
+       one surface per question and "what is waiting on my decision" is that
+       question.
+
+       🔴 ACCEPT NEVER DEPLOYS. Standing up a catalog is ~10 manual steps across
+       three consoles (design §7); Accept records a decision and hands the owner
+       a pre-filled runbook. The panel says so in words, on the Accept panel and
+       again on every accepted row, because a green button that looks like it did
+       the whole job is how an owner ends up believing a catalog exists.
+
+       ⚠️ ONE SECTION HOLDING BOTH KINDS, BADGED — not two sections. The Books /
+       Games badge is a FACT about the row, not a filter chip and not a control,
+       and on a Games row it carries a real cost difference: the second-instance
+       machinery that games provisioning needs is not built yet (design §8).
+
+       Collapsed by default; hidden entirely for a non-approver, and for an
+       approver whose directory answered but whose queue route did not, it
+       renders the reason in words rather than vanishing (design §5.6 — a
+       network failure is never rendered as a refusal). -->
+  <details id="catalog-queue" class="adv" hidden>
+    <summary class="adv-summary">
+      <span class="ctl-label">Catalog requests — what is waiting on your decision</span>
+      <span id="catalog-queue-count" class="adv-count" hidden></span>
+    </summary>
+    <div id="catalog-queue-body"></div>
+  </details>
 
   <!-- THE PERMISSION MAP — admin.js: renderPermissionMap().
        ⚠️ EVERY SITE SINCE 2026-08-17, owner verbatim: "at the top we have a

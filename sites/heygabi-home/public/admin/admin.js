@@ -494,6 +494,36 @@ const billingStaged = new Map();
  */
 let verseQueue = null;
 
+/**
+ * THE CATALOG-REQUEST QUEUE — GET /api/estate/catalogs/requests (design
+ * docs/info/request-a-catalog-design.md §5, route contract §3.6).
+ *
+ * 🔴 NOTHING IN THIS PANEL CREATES A CATALOG. Accepting sets a status. A
+ * catalog exists when a wrangler env block, a D1, a bucket, a hostname and a
+ * deploy exist — about ten manual steps across three consoles (§7) — so the
+ * chain from "accepted" to "live" runs through the owner at a dev machine.
+ * That is why the lifecycle has five statuses and `accepted` is not `live`:
+ * between them somebody has been told yes and nothing exists.
+ *
+ * ⚠️ SHAPED BY THE FETCHER BELOW, NOT BY THE ROUTE DIRECTLY, because the four
+ * causes of an empty panel must stay distinguishable (§5.6): not an approver /
+ * the table is not migrated yet / the Worker is unreachable / there is genuinely
+ * nothing waiting. `api()` collapses the last three into one null.
+ *   null | { ok:false, cause } | { ok:true, requests, scope, is_approver, notice? }
+ */
+let catalogQueue = null;
+
+/**
+ * Did GET /api/estate/users answer on the last load?
+ *
+ * ⚠️ It is APPROVER-GATED, so its answering at all is this page's own proof of
+ * who is reading — which the catalog panel needs when its OWN route could not
+ * answer and therefore carried no `is_approver` field. Without it the panel
+ * would have to choose between explaining itself to a member who should not
+ * know the queue exists, and staying silent for the owner who needs the reason.
+ */
+let directoryAnswered = false;
+
 /** The full directory as last loaded — filters/sort run over this, it is never re-fetched for a view change. */
 let allEstateUsers = [];
 
@@ -509,7 +539,17 @@ function setStatus(text, tone) {
 // API calls — the auth Worker (directory + visibility)
 // ---------------------------------------------------------------------------
 
-async function api(path, init) {
+/**
+ * @param {string} path
+ * @param {RequestInit} [init]
+ * @param {{ forbidden?: string }} [refusals] — an override for the 403 sentence.
+ *   ⚠️ Added 2026-09-05 for the catalog-request routes, whose 403 can mean
+ *   "you are not a DEVOPS holder" rather than "you are not an approver". The
+ *   page's standing 403 line names the approver ladder, and telling a devops-
+ *   gated refusal in approver words sends somebody asking for a power they
+ *   already hold. The four causes stay distinct (global §1e).
+ */
+async function api(path, init, refusals) {
   const token = await idToken();
   if (!token) {
     setStatus('Sign-in lapsed — sign in again.', 'warn');
@@ -552,6 +592,7 @@ async function api(path, init) {
       break;
     case 403:
       setStatus(
+        refusals?.forbidden ||
         'This page needs an approver account. You are signed in, but approving members is itself an ' +
         'approver-only power — an existing approver (or an owner email) can grant it from this page.',
         'warn',
@@ -727,6 +768,104 @@ async function fetchRoleTree() {
   return { ok: true, ladder: data.ladder, grantFloor: data.grantFloor, capabilities: data.capabilities };
 }
 
+/**
+ * The catalog-request queue, or the REASON it is not showing — design
+ * request-a-catalog-design.md §5.6, whose whole point is that the causes of an
+ * empty panel are four different things with four different fixes:
+ *
+ *   `forbidden`  — not an approver. The section is not rendered at all (a
+ *                  member has no business seeing who else asked for what).
+ *   `no_table`   — the Worker shipped ahead of migration 0018. Nothing is
+ *                  broken and nothing was lost; the panel says so and names the
+ *                  fix, because a vanished panel reads as "nobody has asked".
+ *   `signin`     — the token lapsed.
+ *   `network` /  — an OUTAGE. ⚠️ Never rendered as a refusal: "couldn't reach"
+ *   `server`       and "you may not" are different sentences with different
+ *                  next actions, and conflating them sends somebody asking for
+ *                  access they already have.
+ *
+ * ⚠️ This is why the panel does not go through api(): api() answers null for
+ * all five and puts one sentence on the shared status line, which is right for
+ * a mutation and wrong for a panel that has to explain its own emptiness.
+ * Never throws — a broken route costs this panel and nothing else, the same
+ * degrade-alone rule every other federation on this page follows.
+ */
+async function fetchCatalogQueue() {
+  const token = await idToken();
+  if (!token) return { ok: false, cause: 'signin' };
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/catalogs/requests`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return { ok: false, cause: 'network' };
+  }
+
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (e) { /* the status still speaks, and the caller words it */ }
+
+  if (res.status === 401) return { ok: false, cause: 'signin' };
+  if (res.status === 403) return { ok: false, cause: 'forbidden' };
+  // ⚠️ TWO SHAPES ON PURPOSE. The 0017 queue answers a missing table as 200
+  // with {error, detail, fix} so the panel can render its own explanation; the
+  // pinned §3.6 contract says 503 with the same body. Both are handled rather
+  // than one being assumed, because guessing wrong here turns "run the
+  // migration" into "something went wrong on the server".
+  if (res.status === 503 || (res.ok && body && body.error)) {
+    return {
+      ok: false,
+      cause: 'no_table',
+      detail: typeof body?.detail === 'string' ? body.detail : null,
+      fix: typeof body?.fix === 'string' ? body.fix : null,
+    };
+  }
+  if (!res.ok) return { ok: false, cause: 'server' };
+  if (!body || !Array.isArray(body.requests)) return { ok: false, cause: 'server' };
+  return {
+    ok: true,
+    requests: body.requests,
+    scope: body.scope === 'all' ? 'all' : 'mine',
+    // ⚠️ The SERVER decides who is an approver. Inferring it from `scope` or
+    // from the presence of a requester email would be a second copy of an
+    // authorization decision, one layer up and with nothing testing it.
+    is_approver: body.is_approver === true,
+  };
+}
+
+/**
+ * Is this address free? GET /api/estate/catalogs/availability?name= (§3.6).
+ * Used live in the Accept panel while the owner edits the address; never a
+ * substitute for the server's own re-validation at decide time.
+ */
+async function fetchCatalogAvailability(name) {
+  const token = await idToken();
+  if (!token) return { ok: false, cause: 'signin' };
+  let res;
+  try {
+    res = await fetch(`${AUTH_ORIGIN}/api/estate/catalogs/availability?name=${encodeURIComponent(name)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return { ok: false, cause: 'network' };
+  }
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (e) { /* worded by the caller */ }
+  if (res.status === 401) return { ok: false, cause: 'signin' };
+  if (res.status === 403) return { ok: false, cause: 'forbidden' };
+  if (!res.ok || !body) return { ok: false, cause: 'server' };
+  return {
+    ok: true,
+    available: body.available === true,
+    reason: typeof body.reason === 'string' ? body.reason : null,
+    detail: typeof body.detail === 'string' ? body.detail : null,
+  };
+}
+
 /** POST one grant/revoke. role null = revoke. True on success; failures explain themselves. */
 async function postSiteRole(email, role) {
   const token = await idToken();
@@ -773,7 +912,7 @@ async function loadDirectory() {
   // One fetch per app Worker, driven by APPS rather than positional
   // destructuring — adding a fourth managed site is a row in APPS and
   // nothing else. A failed app fetch degrades that column only.
-  const [estate, appResults, sroles, rtree, billing, verses] = await Promise.all([
+  const [estate, appResults, sroles, rtree, billing, verses, catalogs] = await Promise.all([
     api('/api/estate/users'),
     Promise.all(APPS.map((app) => fetchAppDirectory(app))),
     fetchSiteRoles(),
@@ -787,15 +926,25 @@ async function loadDirectory() {
     // than an error, so this panel renders and says why it is empty instead of
     // vanishing and looking like there is nothing to decide.
     api('/api/estate/universes/requests'),
+    // The catalog-request queue. ⚠️ Its own fetcher rather than api(), because
+    // this panel has to tell four causes of emptiness apart and api() answers
+    // null for all of them — see fetchCatalogQueue(). Same degrade-alone rule:
+    // it never throws, so a missing route costs this panel and nothing else.
+    fetchCatalogQueue(),
   ]);
   appDirs = Object.fromEntries(APPS.map((app, i) => [app.key, appResults[i]]));
   siteRolesDir = sroles;
   roleTreeDir = rtree;
   billingDir = billing;
   verseQueue = verses;
+  catalogQueue = catalogs;
+  // Set BEFORE the panel renders — it is what the catalog panel reads to decide
+  // whether an unexplained empty panel is owed an explanation.
+  directoryAnswered = Boolean(estate);
   renderPermissionMap();
   renderSpendingPanel();
   renderVerseQueue();
+  renderCatalogQueue();
   // Owner: "just always auto fill and write the max role possible for each
   // site." Fire-and-forget — the render below must not wait on it.
   void reconcileOwnerRoles();
@@ -2594,15 +2743,25 @@ async function saveSpending(why, saveBtn) {
  *  then the verse is in the catalogs and this queue has nothing to say. */
 const VERSE_OPEN = new Set(['pending', 'approved']);
 
-function verseAge(iso) {
+/**
+ * Age in whole days of a D1 timestamp, or null when it is unreadable.
+ *
+ * ⚠️ SHARED BY BOTH QUEUES (verse requests and catalog requests), renamed off
+ * `verseAge`/`verseWhen` on 2026-09-05 rather than copied. D1's
+ * `datetime('now')` writes `YYYY-MM-DD HH:MM:SS` with no `T` and no zone, which
+ * Safari parses as a local time and Chrome refuses outright — the normalisation
+ * below is the whole reason this is a function and not `new Date(iso)`, and a
+ * second copy of it is a second chance to get that wrong.
+ */
+function queueAge(iso) {
   if (!iso) return null;
   const t = Date.parse(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
   if (Number.isNaN(t)) return null;
   return Math.floor((Date.now() - t) / 86400000);
 }
 
-function verseWhen(iso) {
-  const days = verseAge(iso);
+function queueWhen(iso) {
+  const days = queueAge(iso);
   if (days === null) return '';
   if (days <= 0) return 'today';
   if (days === 1) return 'yesterday';
@@ -2693,7 +2852,7 @@ function verseRow(row) {
 
   const meta = document.createElement('span');
   meta.className = 'spend-detail';
-  const bits = [row.requested_by ? `asked by ${row.requested_by}` : 'asked by you', verseWhen(row.requested_at)];
+  const bits = [row.requested_by ? `asked by ${row.requested_by}` : 'asked by you', queueWhen(row.requested_at)];
   meta.textContent = bits.filter(Boolean).join(' · ');
   wrap.appendChild(meta);
 
@@ -2818,6 +2977,718 @@ function verseQueueFooter() {
   a.href = '/universes/';
   a.textContent = 'the universes page';
   links.append(a, '.');
+  wrap.appendChild(links);
+
+  return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// THE CATALOG REQUEST QUEUE — "+ Request a catalog" on the heygabi.ai Books and
+// Games cards (design docs/info/request-a-catalog-design.md §5; route contract
+// §3.6, pinned 2026-09-05).
+//
+// 🔴 ACCEPT NEVER DEPLOYS. It sets a status. Standing up a catalog is roughly
+// ten manual steps across three consoles, a wrangler.toml edit, an auth-worker
+// CONSUMER_APPS + vis_ code AND migration change, two secret ceremonies and a
+// guarded deploy (§7) — none of which a browser can do and none of which this
+// page pretends to. The Accept panel and every accepted row say so in words,
+// for the same reason the verse queue's footer does: a green button that looks
+// like it did the whole job is how an owner ends up believing a catalog exists.
+//
+// ⚠️ ONE SECTION, TWO KINDS, BADGED. "What is waiting on my decision" is one
+// question, and two panels would be two places to forget to look. The badge is
+// a fact about the row, never a filter chip and never a control — and on a
+// games row it carries a real cost difference (§8): the second-instance
+// machinery games provisioning needs does not exist yet, so a games accept
+// commits the owner to a build in another repo before step one of §7 can run.
+// Two rows that looked identically cheap would be a lie told by omission.
+//
+// ⚠️ A DECLINE NEEDS A WORDED REASON AND THE ROUTE ENFORCES IT (§3.6). The
+// requester is shown it, so this panel asks inline rather than sending a bare
+// no and letting the server refuse.
+//
+// ⚠️ THE KEY: v1 provisions with the OWNER'S OWN Claude key — his standing
+// decision of 2026-09-05 (§6.4 row 3, §9 row 3), superseding the drafts' "never
+// silently reuse the owner's key" because it is no longer silent. There is
+// deliberately NO key field on this panel in this phase; the sealed requester
+// key is the last phase of the build. The hook is marked below.
+// ---------------------------------------------------------------------------
+
+/** The closed `kind` vocabulary, rendered. An unknown kind is shown VERBATIM
+ *  rather than defaulted — the schema constrains it, so anything else on the
+ *  wire is news, and quietly drawing it as "Books" would hide that. */
+const CATALOG_KIND_LABEL = { books: 'Books', games: 'Games' };
+
+/** Order inside the decided list. `accepted` leads because it is the only one
+ *  of the four that is still waiting on a person. */
+const CATALOG_DECIDED_ORDER = ['accepted', 'live', 'declined', 'cancelled'];
+
+function catalogKindLabel(kind) {
+  return CATALOG_KIND_LABEL[kind] || String(kind || 'unknown kind');
+}
+
+function catalogHost(name) {
+  return `${String(name || '').trim()}.heygabi.ai`;
+}
+
+/** `extra` is JSON stored whole and unparsed (§3.4) and is read TOLERANTLY: a
+ *  missing key is a default, never an error. It arrives already parsed on the
+ *  wire, but a string is accepted too rather than crashing the panel over the
+ *  shape of a blob whose whole purpose is to grow. */
+function catalogExtra(row) {
+  const raw = row?.extra;
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function renderCatalogQueue() {
+  const details = document.getElementById('catalog-queue');
+  const body = document.getElementById('catalog-queue-body');
+  const countEl = document.getElementById('catalog-queue-count');
+  const banner = document.getElementById('catalog-banner');
+  if (!details || !body) return;
+
+  const hideAll = () => {
+    details.hidden = true;
+    if (banner) banner.hidden = true;
+  };
+
+  if (!catalogQueue) return hideAll();
+
+  if (!catalogQueue.ok) {
+    // ⚠️ NOT AN APPROVER — and not a sign-in that lapsed — means the section is
+    // not drawn at all. §9's third class: what is not a control is WORDED, but
+    // there is nothing to word here, because a member has no business knowing
+    // this queue exists or who is in it.
+    if (catalogQueue.cause === 'forbidden' || catalogQueue.cause === 'signin') return hideAll();
+    // Everything below is an approver being told why their own panel is empty.
+    // ⚠️ /api/estate/users is itself approver-gated, so its having answered is
+    // this page's own proof of who is reading. Without it we do not explain.
+    if (!directoryAnswered) return hideAll();
+
+    details.hidden = false;
+    body.innerHTML = '';
+    if (countEl) countEl.hidden = true;
+    if (banner) banner.hidden = true;
+
+    const p = document.createElement('p');
+    p.className = 'perm-warn';
+    if (catalogQueue.cause === 'no_table') {
+      // The Worker is ahead of its migration. Nothing is broken and nothing was
+      // lost — no request has been recorded — and saying so is the difference
+      // between a five-minute fix and an afternoon of debugging a route.
+      p.textContent =
+        catalogQueue.detail ||
+        'The estate directory has no catalog_request table yet — the auth Worker shipped ahead of its ' +
+        'migration. Nothing is broken and nothing was lost; no request has been recorded.';
+      body.appendChild(p);
+      const fix = document.createElement('p');
+      fix.className = 'role-tree-note';
+      fix.textContent = `Fix: ${catalogQueue.fix || 'npm run db:migrate (from apps/auth-worker) applies 0018_catalog_requests.sql remotely'}`;
+      body.appendChild(fix);
+    } else {
+      // ⚠️ §5.6: a network or server failure is NEVER rendered as a refusal.
+      // "Couldn't reach it" and "you may not" have different next actions, and
+      // mislabelling an outage sends somebody asking for access they hold.
+      p.textContent =
+        'Couldn’t reach the estate directory — that’s an outage, not a permissions problem. ' +
+        'Nothing has been decided and nothing was lost; press Refresh in a minute.';
+      body.appendChild(p);
+    }
+    return;
+  }
+
+  // An approved member reaching this page sees no section; the queue is the
+  // owner's. The server decides — never inferred from `scope` here.
+  if (!catalogQueue.is_approver) return hideAll();
+
+  details.hidden = false;
+  body.innerHTML = '';
+
+  const rows = Array.isArray(catalogQueue.requests) ? catalogQueue.requests : [];
+  const pending = rows.filter((r) => r.status === 'pending');
+  const decided = CATALOG_DECIDED_ORDER.flatMap((s) => rows.filter((r) => r.status === s));
+  // Anything with a status the page has not heard of is kept, at the end,
+  // rather than silently dropped — a row that exists and renders nowhere is
+  // the failure this panel is least able to notice.
+  const unknown = rows.filter((r) => r.status !== 'pending' && !CATALOG_DECIDED_ORDER.includes(r.status));
+
+  if (countEl) {
+    countEl.hidden = pending.length === 0;
+    countEl.textContent = `${pending.length} waiting`;
+  }
+  renderCatalogBanner(banner, details, pending);
+
+  if (!rows.length) {
+    const p = document.createElement('p');
+    p.className = 'role-tree-note';
+    p.textContent =
+      'Nobody has asked for a catalog. Members ask from the “+” on the Books and Board games cards at heygabi.ai — ' +
+      'and only members the estate has already approved see it.';
+    body.appendChild(p);
+    body.appendChild(catalogQueueFooter());
+    return;
+  }
+
+  if (pending.length) {
+    const list = document.createElement('div');
+    list.className = 'cat-list';
+    for (const row of pending) list.appendChild(catalogRow(row));
+    body.appendChild(list);
+  } else {
+    const p = document.createElement('p');
+    p.className = 'role-tree-note';
+    p.textContent = 'Nothing is waiting on your decision. The decided requests are below.';
+    body.appendChild(p);
+  }
+
+  const rest = [...decided, ...unknown];
+  if (rest.length) {
+    const box = document.createElement('details');
+    box.className = 'cat-decided';
+    // ⚠️ OPEN WHEN SOMETHING IS ACCEPTED-BUT-NOT-LIVE. A decided list is
+    // history, except for that one state: the requester has been told yes and
+    // nothing exists, and it is waiting on the person reading this page to run
+    // the provisioner. A live control behind a closed disclosure is the
+    // invisible control this estate's surfaces already ban.
+    const waitingToProvision = rest.filter((r) => r.status === 'accepted').length;
+    box.open = waitingToProvision > 0;
+    const summary = document.createElement('summary');
+    summary.textContent = waitingToProvision
+      ? `Decided — ${rest.length} · ${waitingToProvision} accepted and waiting to be provisioned`
+      : `Decided — ${rest.length}`;
+    box.appendChild(summary);
+    const list = document.createElement('div');
+    list.className = 'cat-list';
+    for (const row of rest) list.appendChild(catalogRow(row));
+    box.appendChild(list);
+    body.appendChild(box);
+  }
+
+  body.appendChild(catalogQueueFooter());
+}
+
+/**
+ * §5.2 — the banner. A RENDER OF THE DATA, never a toast: rebuilt from the
+ * queue on every load, so it survives a reload and vanishes on its own when the
+ * last pending row is decided. Worded, never a bare number.
+ */
+function renderCatalogBanner(banner, details, pending) {
+  if (!banner) return;
+  banner.textContent = '';
+  if (!pending.length) {
+    banner.hidden = true;
+    return;
+  }
+  const books = pending.filter((r) => r.kind === 'books').length;
+  const games = pending.filter((r) => r.kind === 'games').length;
+  const other = pending.length - books - games;
+
+  let sentence;
+  if (pending.length === 1) {
+    const one = pending[0];
+    const what = one.kind === 'games' ? 'a board-game catalog' : one.kind === 'books' ? 'a book catalog' : 'a catalog';
+    sentence = `1 estate member has asked for ${what} of their own. `;
+  } else {
+    const parts = [];
+    if (books) parts.push(`${books} book`);
+    if (games) parts.push(`${games} board-game`);
+    if (other) parts.push(`${other} of another kind`);
+    sentence = `${pending.length} catalog requests are waiting on your decision — ${parts.join(', ')}. `;
+  }
+  banner.append(sentence);
+
+  const link = document.createElement('a');
+  link.href = '#catalog-queue';
+  link.textContent = 'Review →';
+  link.addEventListener('click', (e) => {
+    // The section is collapsed by default; a bare fragment jump would land on a
+    // closed box and read as a dead link.
+    e.preventDefault();
+    if (details) {
+      details.open = true;
+      details.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  });
+  banner.appendChild(link);
+  banner.hidden = false;
+}
+
+function catalogRow(row) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cat-row';
+  wrap.dataset.status = row.status;
+
+  const head = document.createElement('div');
+  head.className = 'cat-head';
+  const names = document.createElement('span');
+  names.className = 'cat-names';
+
+  const kind = document.createElement('span');
+  kind.className = 'cat-kind';
+  kind.dataset.kind = row.kind || '';
+  kind.textContent = catalogKindLabel(row.kind);
+  const name = document.createElement('strong');
+  name.textContent = row.display_name || '(no display name)';
+  const addr = document.createElement('span');
+  addr.className = 'cat-addr spend-detail';
+  addr.textContent = catalogHost(row.desired_subdomain);
+  names.append(kind, name, addr);
+
+  const chip = document.createElement('span');
+  chip.className = 'cat-chip';
+  chip.dataset.status = row.status;
+  // ⚠️ `accepted` is spelled out. "Accepted" alone reads as done, and it is the
+  // one status where a person has been told yes and nothing exists yet.
+  chip.textContent = row.status === 'accepted' ? 'accepted — not built yet' : row.status;
+  head.append(names, chip);
+  wrap.appendChild(head);
+
+  const meta = document.createElement('span');
+  meta.className = 'spend-detail';
+  // The requester's identity comes from the server and only reaches an
+  // approver's copy of the answer (§3.6). A missing name is said plainly.
+  const who = row.requester_display_name || row.requester_email || 'an estate member';
+  const email = row.requester_email && row.requester_display_name ? ` (${row.requester_email})` : '';
+  meta.textContent = [`asked by ${who}${email}`, queueWhen(row.created_at)].filter(Boolean).join(' · ');
+  wrap.appendChild(meta);
+
+  const extra = catalogExtra(row);
+  if (typeof extra.note === 'string' && extra.note.trim()) {
+    const note = document.createElement('p');
+    note.className = 'cat-note';
+    note.textContent = `“${extra.note.trim()}”`;
+    wrap.appendChild(note);
+  }
+
+  // ⚠️ THE GAMES COST, ON THE ROW ITSELF. Not a footnote: accepting a games
+  // request commits the owner to work in another repo that has not been done.
+  if (row.kind === 'games' && (row.status === 'pending' || row.status === 'accepted')) {
+    const warn = document.createElement('p');
+    warn.className = 'perm-warn cat-note';
+    warn.textContent =
+      'Provisioning a board-game catalog needs the second-instance machinery built first — Board_Game_Catalog ' +
+      'has no [env.*] blocks and a hard-coded estate identity, so a second instance would assert the first’s. ' +
+      'Design §8 in docs/info/request-a-catalog-design.md is that work. Accepting records the decision; it does ' +
+      'not shorten that list.';
+    wrap.appendChild(warn);
+  }
+
+  if (row.status !== 'pending') {
+    const decided = document.createElement('span');
+    decided.className = 'spend-detail';
+    // `decided_by` is not in the pinned wire shape; it is read tolerantly, so a
+    // route that adds it is rendered and one that does not says nothing rather
+    // than "decided by undefined".
+    const by = row.decided_by || row.decided_by_name || null;
+    decided.textContent = [
+      `${row.status}${by ? ` by ${by}` : ''}`,
+      row.decided_at ? queueWhen(row.decided_at) : null,
+    ].filter(Boolean).join(' · ');
+    wrap.appendChild(decided);
+  }
+
+  if (row.decline_reason) {
+    const why = document.createElement('p');
+    why.className = 'cat-note';
+    why.textContent = `↳ ${row.decline_reason}`;
+    wrap.appendChild(why);
+  }
+
+  if (row.provisioned_host) {
+    const host = document.createElement('span');
+    host.className = 'spend-detail';
+    host.textContent = `live at ${row.provisioned_host}`;
+    wrap.appendChild(host);
+  }
+
+  if (row.status === 'pending') wrap.appendChild(catalogDecisionControls(row, wrap));
+  if (row.status === 'accepted') {
+    wrap.appendChild(catalogRunbook(row));
+    wrap.appendChild(catalogMarkLiveControls(row));
+  }
+  return wrap;
+}
+
+/**
+ * The two STATUS-class controls (§5.3), plus the reason the route requires.
+ *
+ * ⚠️ HOW THIS RECONCILES §5.4 WITH THE PAGE'S TWO-GESTURE GRAMMAR
+ * (docs/access/estate-auth.md §9), because it is not obvious and a later build
+ * must not "tidy" it: **Decline** is pure STATUS class — two taps, the second
+ * writes. **Accept** cannot be, because §5.4 requires the owner to be able to
+ * EDIT the address and display name before granting, and a two-tap button has
+ * nowhere to put two text fields. So Accept's two taps open the Accept PANEL
+ * and write nothing (§5.4's own words), and the panel is GRANT class: it
+ * stages, and one Save commits everything staged in it. Both gestures are the
+ * page's existing two. No third was invented.
+ */
+function catalogDecisionControls(row, wrap) {
+  const box = document.createElement('div');
+  box.className = 'cat-actions';
+
+  const reason = document.createElement('input');
+  reason.type = 'text';
+  reason.className = 'ctl-input cat-reason-input';
+  reason.placeholder = 'Reason — required to decline, and the requester is shown it';
+  reason.autocomplete = 'off';
+
+  const accept = confirmBtn('Accept', '', () => {
+    // Opens the panel. Writes nothing — that is the point of §5.4.
+    if (wrap.querySelector('.cat-panel')) return;
+    wrap.appendChild(catalogAcceptPanel(row));
+  });
+
+  const decline = confirmBtn('Decline', 'quiet', async () => {
+    const why = reason.value.trim();
+    // ⚠️ Checked here as well as at the route — not because the route might
+    // forget, but because a person should be told before the round trip rather
+    // than after it, in the same sentence either way.
+    if (why.length < 10) {
+      setStatus(
+        'A decline needs a reason of at least ten characters — the person who asked is shown it word for word. ' +
+        '“We already run a books catalog for the house” answers the question; a bare no starts an argument.',
+        'warn',
+      );
+      reason.focus();
+      return;
+    }
+    const data = await api(`/api/estate/catalogs/requests/${row.id}/decide`, {
+      method: 'POST',
+      body: JSON.stringify({ decision: 'decline', reason: why }),
+    });
+    if (!data) return; // api() has already said why
+    await loadDirectory();
+    setStatus(data.detail || `Request #${row.id} is declined. They can ask again — the “+” comes back for them.`, '');
+  });
+
+  box.append(reason, accept, decline);
+  return box;
+}
+
+/**
+ * §5.4 — the Accept panel. Restates, lets the two fields be edited, states
+ * plainly that Accept never deploys, and shows the exact next step the owner
+ * runs by hand.
+ */
+function catalogAcceptPanel(row) {
+  const panel = document.createElement('div');
+  panel.className = 'cat-panel';
+
+  const intro = document.createElement('p');
+  intro.className = 'cat-note';
+  intro.textContent =
+    `You’re about to accept ${row.requester_display_name || row.requester_email || 'this member'}’s request for a ` +
+    `${catalogKindLabel(row.kind).toLowerCase()} catalog. You are not locked to what they typed — edit either field ` +
+    'below and it is re-validated exactly as their own submission was.';
+  panel.appendChild(intro);
+
+  // --- the two editable fields (§5.4 item 2, owner decision 2026-08-24 23:48Z)
+  const addrField = document.createElement('label');
+  addrField.className = 'cat-field';
+  const addrLabel = document.createElement('span');
+  addrLabel.className = 'ctl-label';
+  addrLabel.textContent = 'Address';
+  const addr = document.createElement('input');
+  addr.type = 'text';
+  addr.className = 'ctl-input';
+  addr.value = row.desired_subdomain || '';
+  addr.autocomplete = 'off';
+  addr.spellcheck = false;
+  const addrSuffix = document.createElement('span');
+  addrSuffix.className = 'spend-detail';
+  addrSuffix.textContent = '….heygabi.ai — lowercase letters, digits and hyphens, 3–40 characters.';
+  addrField.append(addrLabel, addr, addrSuffix);
+  panel.appendChild(addrField);
+
+  const avail = document.createElement('p');
+  avail.className = 'cat-avail';
+  panel.appendChild(avail);
+
+  const nameField = document.createElement('label');
+  nameField.className = 'cat-field';
+  const nameLabel = document.createElement('span');
+  nameLabel.className = 'ctl-label';
+  nameLabel.textContent = 'Display name';
+  const dname = document.createElement('input');
+  dname.type = 'text';
+  dname.className = 'ctl-input';
+  dname.value = row.display_name || '';
+  dname.autocomplete = 'off';
+  nameField.append(nameLabel, dname);
+  panel.appendChild(nameField);
+
+  // --- live availability, debounced, with a race guard -----------------------
+  const original = String(row.desired_subdomain || '').trim().toLowerCase();
+  let timer = null;
+  let seq = 0;
+  async function check() {
+    const name = addr.value.trim().toLowerCase();
+    const mine = ++seq;
+    if (!name) {
+      avail.dataset.ok = 'false';
+      avail.textContent = 'An address is required — this is the hostname the catalog will live at.';
+      return;
+    }
+    if (name === original) {
+      // ⚠️ THE ROW HOLDS ITS OWN NAME. §3.6 counts an open pending row as
+      // `taken`, so asking the route about the address this very request asked
+      // for answers "taken" — by itself. Saying that would read as a refusal
+      // of the thing the owner is in the middle of accepting.
+      avail.dataset.ok = 'true';
+      avail.textContent = `Unchanged — ${catalogHost(original)} is the address they asked for.`;
+      return;
+    }
+    avail.dataset.ok = 'true';
+    avail.textContent = 'Checking…';
+    const r = await fetchCatalogAvailability(name);
+    if (mine !== seq) return; // a newer keystroke already owns this line
+    if (!r.ok) {
+      avail.dataset.ok = 'false';
+      avail.textContent =
+        r.cause === 'network' || r.cause === 'server'
+          ? 'Couldn’t reach the estate directory to check that address — that’s an outage, not a refusal. ' +
+            'The route re-checks it when you accept.'
+          : 'Sign-in lapsed — sign in again before accepting.';
+      return;
+    }
+    avail.dataset.ok = r.available ? 'true' : 'false';
+    avail.textContent =
+      r.detail ||
+      (r.available
+        ? `${catalogHost(name)} is free.`
+        : `${catalogHost(name)} is already in use — pick another.`);
+  }
+  addr.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(check, 400);
+  });
+  void check();
+
+  // --- 🔴 what Accept does NOT do, and the exact next step -------------------
+  const never = document.createElement('p');
+  never.className = 'perm-warn cat-note';
+  never.textContent =
+    'Accepting records a decision — it does not create the catalog, does not deploy and does not touch a console. ' +
+    'The requester sees “being set up”, which is the truth. Everything below is yours to run by hand.';
+  panel.appendChild(never);
+  panel.appendChild(catalogNextStep(row));
+
+  // --- the key sentence (§6.4 row 3, owner decision 2026-09-05) -------------
+  // ⚠️ MARKED HOOK — THE SEALED REQUESTER KEY IS THE LAST PHASE OF THIS BUILD
+  // (owner, 2026-09-05: "Have it fall back to my Claude key for now. Defer it
+  // until everything else is built then build it… the defer is until after the
+  // other bits build but not forever"). When that phase lands, THIS is where
+  // §5.4 items 3 and 4 go: a sealed-key indicator with NO reveal control
+  // anywhere, and an optional owner-key field used only if the reader attached
+  // none. Until then there is deliberately no key input on this panel, and the
+  // sentence below is the honest description of what the provisioner will do.
+  const key = document.createElement('p');
+  key.className = 'cat-note';
+  key.textContent =
+    'AI lookups: this catalog will be provisioned with YOUR Anthropic key (your standing decision, 2026-09-05). ' +
+    'The requester was not asked for one — the sealed-key path is the last phase of this build — and the ' +
+    'provisioner logs which instances spend your key.';
+  panel.appendChild(key);
+
+  // --- the commit. GRANT class: the panel stages, this Save commits it. ------
+  const actions = document.createElement('div');
+  actions.className = 'cat-actions';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'btn small';
+  save.textContent = 'Accept request';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn small quiet';
+  cancel.textContent = 'Not now';
+  cancel.addEventListener('click', () => panel.remove());
+
+  save.addEventListener('click', async () => {
+    const nextAddr = addr.value.trim().toLowerCase();
+    const nextName = dname.value.trim();
+    if (!nextAddr || !nextName) {
+      setStatus('An address and a display name are both required — the catalog needs a hostname and a name to show.', 'warn');
+      return;
+    }
+    save.disabled = true;
+    cancel.disabled = true;
+    // ⚠️ Both edited values are sent every time, and the ROUTE re-validates
+    // and re-checks availability (§3.6). The browser's copy of that check is a
+    // convenience; the row that lands in D1 is the one that matters.
+    const data = await api(`/api/estate/catalogs/requests/${row.id}/decide`, {
+      method: 'POST',
+      body: JSON.stringify({ decision: 'accept', desired_subdomain: nextAddr, display_name: nextName }),
+    });
+    save.disabled = false;
+    cancel.disabled = false;
+    if (!data) return; // api() has already said why
+    await loadDirectory();
+    setStatus(
+      data.detail ||
+      `Request #${row.id} is accepted at ${catalogHost(nextAddr)}. Nothing is built yet — the next step is yours, ` +
+      'and it is written out on the row.',
+      '',
+    );
+  });
+
+  actions.append(save, cancel);
+  panel.appendChild(actions);
+  return panel;
+}
+
+/**
+ * The pre-filled next step (§5.4 item 5, §7.4). Per KIND, because the two are
+ * not the same job: books has a provisioner to run, games has prerequisites in
+ * another repo that nobody has built.
+ */
+function catalogNextStep(row) {
+  const box = document.createElement('div');
+
+  const lead = document.createElement('p');
+  lead.className = 'cat-note';
+  box.appendChild(lead);
+
+  if (row.kind === 'books') {
+    lead.textContent = 'Your next step, from a dev machine, in bookbuddy/library_catalog:';
+    const cmd = document.createElement('pre');
+    cmd.className = 'cat-cmd';
+    // --dry first, always: the provisioner is step-numbered and resumable, and
+    // the rehearsal is what makes the real run's pauses predictable (§7.4).
+    cmd.textContent = `node scripts/provision-catalog.mjs --request ${row.id} --dry`;
+    box.appendChild(cmd);
+    const after = document.createElement('p');
+    after.className = 'role-tree-note';
+    after.textContent =
+      'That prints all ten steps and changes nothing. Drop --dry to run it; it pauses at the two steps no script ' +
+      'can do — Firebase authorised domains (which has no CLI at all) and the auth-worker consumer registration. ' +
+      'When the instance answers /api/health, come back and mark this request live.';
+    box.appendChild(after);
+    return box;
+  }
+
+  if (row.kind === 'games') {
+    lead.textContent = 'There is no next step to run yet — the games provisioning path is not built.';
+    const after = document.createElement('p');
+    after.className = 'role-tree-note';
+    after.append(
+      'Board_Game_Catalog has no [env.*] blocks, a hard-coded estate identity and no donor machinery, so the ' +
+      'prerequisites come first: docs/info/request-a-catalog-design.md §8 lists them, and §7.6 is the ledger. ' +
+      'Accepting this row is a promise to that person; nothing on this page shortens it. The docs are searchable at ',
+    );
+    const a = document.createElement('a');
+    a.href = '/docs/';
+    a.textContent = 'heygabi.ai/docs';
+    after.append(a, '.');
+    box.appendChild(after);
+    return box;
+  }
+
+  lead.textContent =
+    `This request has an unrecognised kind (${String(row.kind)}), so there is no provisioning path to name. ` +
+    'That is news — the schema constrains kind to books or games.';
+  return box;
+}
+
+/** An accepted row keeps its runbook, so the owner can find it again after a
+ *  reload rather than only in the moment they pressed Accept. */
+function catalogRunbook(row) {
+  const box = document.createElement('div');
+  const head = document.createElement('p');
+  head.className = 'perm-warn cat-note';
+  head.textContent = 'Accepted, and nothing has been built. This person has been told yes.';
+  box.append(head, catalogNextStep(row));
+  return box;
+}
+
+/**
+ * "Mark live" (§5.4) — STATUS class, two taps. ⚠️ `POST …/live` is
+ * requireDevops(), NOT requireApprover(), so its 403 is a different sentence
+ * from the page's standing one. Telling a devops refusal in approver words
+ * sends somebody asking for a power they already hold.
+ */
+function catalogMarkLiveControls(row) {
+  const box = document.createElement('div');
+  box.className = 'cat-actions';
+
+  const instance = document.createElement('input');
+  instance.type = 'text';
+  instance.className = 'ctl-input';
+  instance.placeholder = 'wrangler env actually created, e.g. third';
+  instance.autocomplete = 'off';
+
+  const host = document.createElement('input');
+  host.type = 'text';
+  host.className = 'ctl-input';
+  host.placeholder = `real hostname, e.g. ${catalogHost(row.desired_subdomain)}`;
+  host.autocomplete = 'off';
+
+  const mark = confirmBtn('Mark live', '', async () => {
+    const env = instance.value.trim();
+    const hostname = host.value.trim();
+    if (!env || !hostname) {
+      setStatus(
+        'Marking a request live records the REAL instance and the REAL hostname — both are required, because this ' +
+        'row is what the estate reads to answer “who owns which catalog”.',
+        'warn',
+      );
+      (env ? host : instance).focus();
+      return;
+    }
+    const data = await api(
+      `/api/estate/catalogs/requests/${row.id}/live`,
+      {
+        method: 'POST',
+        // owner_key_set reflects §6.4 row 3: v1 provisions with the owner's own
+        // key, so the boolean is true whenever the provisioner set one. It is
+        // sent explicitly rather than left to a default — D1 holds booleans
+        // only, and a boolean nobody set is a boolean nobody can trust.
+        body: JSON.stringify({ provisioned_instance: env, provisioned_host: hostname, owner_key_set: true }),
+      },
+      {
+        forbidden:
+          'Marking a catalog live is a devops-only action — it records what was actually built. You are signed in ' +
+          'and you may accept requests; this one step needs the devops flag, which an existing devops holder can ' +
+          'give from this page.',
+      },
+    );
+    if (!data) return;
+    await loadDirectory();
+    setStatus(data.detail || `Request #${row.id} is live at ${hostname}.`, '');
+  });
+
+  box.append(instance, host, mark);
+  return box;
+}
+
+function catalogQueueFooter() {
+  const wrap = document.createElement('div');
+  wrap.className = 'spend-footer';
+
+  const note = document.createElement('p');
+  note.className = 'role-tree-note';
+  // 🔴 THE SENTENCE THIS PANEL EXISTS TO SAY, in the same place and for the
+  // same reason the verse queue says its own.
+  note.textContent =
+    'Accepting records a decision — it does not create the catalog. A catalog exists when a wrangler env block, a ' +
+    'D1, a bucket, a hostname and a deploy exist: about ten steps across three consoles, two of which have no CLI ' +
+    'at all. Until you run them the requester sees “being set up”, which is the truth, and this row stays accepted ' +
+    'rather than live.';
+  wrap.appendChild(note);
+
+  const links = document.createElement('p');
+  links.className = 'role-tree-note';
+  links.append('Where members ask: the “+” on the ');
+  const a = document.createElement('a');
+  a.href = '/';
+  a.textContent = 'Books and Board games cards';
+  links.append(a, ' — shown only to members the estate has already approved, and only to those who own no catalog of that kind.');
   wrap.appendChild(links);
 
   return wrap;
@@ -3094,9 +3965,19 @@ function clearSignedInState() {
   // who just signed out must not be handed to whoever signs in next.
   billingDir = null;
   billingStaged.clear();
+  // ⚠️ THE TWO QUEUES GO TOO — added 2026-09-05 with the catalog queue, and the
+  // verse queue was ALREADY leaking this way: it holds other members' names,
+  // emails and the reasons they gave, and it was left on screen after sign-out
+  // because nothing here cleared it. Same reasoning as the three lines above;
+  // it just had not been applied to a panel that arrived later.
+  verseQueue = null;
+  catalogQueue = null;
+  directoryAnswered = false;
   updateCountLine(0, 0);
   renderPermissionMap();
   renderSpendingPanel();
+  renderVerseQueue();
+  renderCatalogQueue();
 }
 
 function renderAuthState() {
