@@ -10,6 +10,41 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🔴 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ❓ go/no-go on federating padhard into the index
+
+> **Owner, verbatim:** *"let's put this on hold for now, in the universe and
+> series tab it's not pulling Padhard library"* — "this" = the estate-auth
+> deploy (manifest section below), now ON HOLD at his word.
+
+**Diagnosis, measured 2026-09-05 15:28 Phoenix (code read, not a live probe):**
+both tabs read the index Worker (`sites/heygabi-home/public/universes/universes.js:472`,
+`series/series.js:574`), and **padhard has never pushed one row into the index**:
+
+| Layer | Fact | Where |
+|---|---|---|
+| index Worker push door | knows sources `game`/`library`/`audiobook` only — `library2` is 404 `unknown_source` | `apps/index-worker/src/push.ts:32`, `pushTokenFor` `env.ts:167` |
+| index Worker scope | `library2` IS a scope value (`search-route.ts:54`) and the tests pin *"no federated rows … matches nothing"* | `test/scope.test.ts:265` |
+| library Worker | pushes to a hard-coded `/api/push/library` — would label her rows `library` | `apps/worker/src/lib/index-push.ts:109` |
+| `[env.friend]` | `INDEX_URL` is top-level only (the Wrangler nag in `second-instance.md:376`); `INDEX_PUSH_TOKEN` **deliberately unset** — *"federation is phase 2"* | `second-instance.md:202`, `push-secrets.mjs:640` |
+| apex | `series.js:73` already labels `library2: "Samantha's library"`; `universes.js:358` filters `source === 'library' \|\| 'audiobook'` — `library2` would be dropped even once rows exist | |
+
+This is the library repo's **⏸ DEFERRED BY OWNER 2026-08-16 — second
+household federation** item (`library_catalog/docs/TODO.md:1961`), surfacing as
+a bug. ⚠️ It is **access-increasing** (a new write credential into the shared
+index; her rows become visible to whoever holds `vis_library2` — owner only,
+`DEFAULT 0`), so it is a ❓ decision, not a silent build.
+
+**The build if he says go (two Opus dispatches, ~150k each, index side first):**
+1. index Worker: `library2` as a push source + `INDEX_PUSH_TOKEN_LIBRARY2` +
+   universes/series carry it; tests; deploy.
+2. library Worker: push source from `ESTATE_APP`, `INDEX_URL` on
+   `[env.friend.vars]`; deploy PAIR; apex `universes.js` source filter.
+3. Mint the pair via `op-rotate-pair.mjs` (needs a no-write probe — the
+   push door's 401-vs-400 answers that); first push via `POST /api/admin/index-push`
+   on padhard; verify `library2` rows in `/api/health`, then the two tabs.
+
+☐ Owner go/no-go (asked 15:3x Phoenix, notification pushed).
+
 ## ☐ 🔴 OWNER ASK 2026-09-05 12:58 Phoenix — "build it all … check first then build. Also make sure all docs aren't stale" (ALL FOUR REPOS)
 
 Owner, verbatim, after a build-queue summary that listed four items as unbuilt:
