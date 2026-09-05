@@ -29,6 +29,17 @@
  * name, enforced in code and never as a UNIQUE index" (0018's header says why),
  * same "a decision is never un-made and a row is never deleted".
  *
+ * ⚠️ THE SEALED KEY (§6, added 2026-09-05) PASSES THROUGH THIS FILE AND IS
+ * NEVER READ BY IT. Submit may carry one, accept may carry one, and both go
+ * straight into the private `estate-catalog-keys` bucket as an opaque envelope
+ * (`catalog-keys.ts`); D1 gets a BOOLEAN and nothing else, and no route in this
+ * Worker can hand an envelope back. The order everywhere is row → object →
+ * boolean, because each step is only truthful once the one before it landed and
+ * there is no transaction spanning D1 and R2 — so the intermediate state is
+ * always "a request with no key", never "a boolean with no key". Decline and
+ * withdraw delete both objects and clear both booleans; `/live` leaves them
+ * alone, because the PROVISIONER deletes each one as it injects it.
+ *
  * ⚠️ UNIQUENESS IS CHECKED ACROSS BOTH KINDS, NEVER PER KIND. There is one
  * heygabi.ai DNS namespace: a books catalog at `amber.` and a games catalog at
  * `amber.` are the same hostname and cannot both exist. The per-KIND question
@@ -43,6 +54,14 @@ import { parseOwnerEmails } from './env.js';
 import { approverAllows, requireApprovedMember, requireApprover, requireDevops } from './middleware/auth.js';
 import type { CatalogKind } from './catalog-names.js';
 import { CATALOG_KINDS, checkSubdomain, isCatalogKind, normaliseSubdomain } from './catalog-names.js';
+import type { SealedEnvelope } from './catalog-keys.js';
+import {
+  KEY_NOT_STORED_WARNING,
+  KEY_STORE_MISSING,
+  deleteEnvelopes,
+  parseSealedEnvelope,
+  putEnvelope,
+} from './catalog-keys.js';
 import type { MeCatalog } from './me.js';
 
 /* ------------------------------------------------------------------ *
@@ -231,12 +250,18 @@ export interface ParsedSubmit {
   desired_subdomain: string;
   display_name: string;
   extra: Record<string, unknown> | null;
+  /**
+   * The OPTIONAL sealed Claude key (§6). Validated here so a bad envelope is a
+   * 400 before a row exists — an envelope that could never decrypt must not
+   * leave a request behind claiming somebody attached a key.
+   */
+  sealed_key: SealedEnvelope | null;
 }
 
 export type ParseError = { error: string; detail: string };
 
 /** ⚠️ REFUSES, NEVER STRIPS — the estate's standing rule for every write door. */
-const SUBMIT_KEYS = new Set(['kind', 'desired_subdomain', 'display_name', 'extra']);
+const SUBMIT_KEYS = new Set(['kind', 'desired_subdomain', 'display_name', 'extra', 'sealed_key']);
 
 export function parseSubmitBody(body: unknown): ParsedSubmit | ParseError {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
@@ -301,7 +326,18 @@ export function parseSubmitBody(body: unknown): ParsedSubmit | ParseError {
     extra = obj.extra as Record<string, unknown>;
   }
 
-  return { kind: obj.kind, desired_subdomain: verdict.name, display_name: displayName, extra };
+  // ⚠️ THE ENVELOPE IS VALIDATED BEFORE ANYTHING IS WRITTEN, and `null` and
+  // "absent" are the same thing here on purpose — a form that sends
+  // `sealed_key: null` when the field was left blank is the normal shape of a
+  // browser form, not an attempt to attach an empty key.
+  let sealed: SealedEnvelope | null = null;
+  if (obj.sealed_key !== undefined && obj.sealed_key !== null) {
+    const envelope = parseSealedEnvelope(obj.sealed_key);
+    if ('error' in envelope) return envelope;
+    sealed = envelope;
+  }
+
+  return { kind: obj.kind, desired_subdomain: verdict.name, display_name: displayName, extra, sealed_key: sealed };
 }
 
 /* ------------------------------------------------------------------ *
@@ -410,6 +446,15 @@ catalogRequestRoutes.post('/estate/catalogs/requests', requireApprovedMember(), 
   const parsed = parseSubmitBody(body);
   if ('error' in parsed) return c.json(parsed, 400);
 
+  // 🔴 A KEY WITH NOWHERE TO GO IS A REFUSAL, AND IT HAPPENS BEFORE THE INSERT.
+  // The alternative — file the row and drop the key — leaves somebody believing
+  // their own key is in use while the catalog gets provisioned on the owner's
+  // (§6.4 row 3, which he pays for). Refusing before the write also means they
+  // can simply submit again, rather than owning a request they must withdraw.
+  if (parsed.sealed_key && !c.env.CATALOG_KEYS) {
+    return c.json(KEY_STORE_MISSING, 503);
+  }
+
   // ⚠️ IDENTITY IS SNAPSHOTTED FROM THE ACTOR, NEVER TAKEN FROM THE BODY. There
   // is no email field on the wire (parseSubmitBody refuses one), so a request
   // cannot be filed on somebody else's behalf. The uid and display name are
@@ -470,6 +515,35 @@ catalogRequestRoutes.post('/estate/catalogs/requests', requireApprovedMember(), 
       )
       .first<{ id: number }>();
 
+    // ⚠️ THE ENVELOPE IS WRITTEN AFTER THE ROW, AND THE BOOLEAN AFTER THE
+    // ENVELOPE — in that order, because each step is only truthful once the one
+    // before it landed. The object is keyed by request id, so it cannot be
+    // written before the id exists; and `reader_key_set = 1` is a claim about
+    // the OBJECT, so it must never be set on the way in "and corrected later".
+    // There is no transaction across D1 and R2, so the ordering IS the
+    // guarantee: every intermediate state is one a reader can survive — a row
+    // with no key (the ordinary case), never a boolean with no key.
+    let readerKeySet = false;
+    const warnings: string[] = [];
+    if (parsed.sealed_key && row?.id && c.env.CATALOG_KEYS) {
+      const stored = await putEnvelope(c.env.CATALOG_KEYS, 'reader', row.id, parsed.sealed_key);
+      if (stored) {
+        try {
+          await c.env.DB.prepare('UPDATE catalog_request SET reader_key_set = 1 WHERE id = ?1').bind(row.id).run();
+          readerKeySet = true;
+        } catch {
+          // The object is there and the boolean is not — so the boolean is what
+          // this answer reports, and the warning is what the person is shown.
+          // The provisioner looks for the OBJECT, not the flag, so the key is
+          // still usable; the flag is the estate's record, and a record that
+          // over-claims is the one failure mode worth protecting.
+          warnings.push(KEY_NOT_STORED_WARNING);
+        }
+      } else {
+        warnings.push(KEY_NOT_STORED_WARNING);
+      }
+    }
+
     return c.json(
       {
         ok: true,
@@ -478,6 +552,13 @@ catalogRequestRoutes.post('/estate/catalogs/requests', requireApprovedMember(), 
         desired_subdomain: parsed.desired_subdomain,
         display_name: parsed.display_name,
         status: 'pending',
+        // 🔴 THE CLIENT READS THESE BACK AND MUST SAY SO IF THEY ARE FALSE. An
+        // older server that had never heard of `sealed_key` would answer without
+        // them, which is exactly why they are here and why the page checks
+        // rather than assumes (§6, the pinned contract's client rule).
+        reader_key_set: readerKeySet,
+        owner_key_set: false,
+        ...(warnings.length ? { warnings } : {}),
         // ⚠️ SAID AT THE MOMENT OF ASKING, not discovered later. The requester
         // must not walk away believing a catalog now exists, or is minutes away.
         detail:
@@ -567,6 +648,33 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/decide', requireApprove
   if (decision !== 'accept' && decision !== 'decline') {
     return c.json({ error: 'bad_decision', detail: 'A decision is either “accept” or “decline”.' }, 400);
   }
+
+  // ⚠️ THE OWNER'S OWN SEALED KEY (§6.4 row 2) TRAVELS ON THE ACCEPT, and it is
+  // validated here — before the status moves — for the same reason submit
+  // validates before the insert: an accepted request carrying a key that could
+  // never decrypt is worse than an accepted request carrying none, because the
+  // provisioner will find an object and stop looking.
+  let ownerEnvelope: SealedEnvelope | null = null;
+  if (obj.sealed_key !== undefined && obj.sealed_key !== null) {
+    // A decline deletes envelopes; it cannot also be handed one. This is a
+    // contradiction in the caller, not a field to ignore.
+    if (decision !== 'accept') {
+      return c.json(
+        {
+          error: 'sealed_key_on_decline',
+          detail:
+            'A decline cannot carry a key — declining a request throws away any key attached to it. ' +
+            'Nothing changed. Decide it without the key, or accept it.',
+        },
+        400,
+      );
+    }
+    const envelope = parseSealedEnvelope(obj.sealed_key);
+    if ('error' in envelope) return c.json(envelope, 400);
+    if (!c.env.CATALOG_KEYS) return c.json(KEY_STORE_MISSING, 503);
+    ownerEnvelope = envelope;
+  }
+
   const reason = typeof obj.reason === 'string' ? obj.reason.trim() : '';
   if (decision === 'decline' && reason.length < REASON_MIN) {
     return c.json(
@@ -640,11 +748,54 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/decide', requireApprove
       .bind(status, subdomain, displayName, actor.id, now, decision === 'decline' ? reason : null, id)
       .run();
 
+    // The key half of the decision, in the same order submit uses: object
+    // first, boolean second, and the answer reports the boolean.
+    let ownerKeySet = existing.owner_key_set === 1;
+    const warnings: string[] = [];
+    if (ownerEnvelope && c.env.CATALOG_KEYS) {
+      const stored = await putEnvelope(c.env.CATALOG_KEYS, 'owner', id, ownerEnvelope);
+      if (stored) {
+        try {
+          await c.env.DB.prepare('UPDATE catalog_request SET owner_key_set = 1 WHERE id = ?1').bind(id).run();
+          ownerKeySet = true;
+        } catch {
+          warnings.push(KEY_NOT_STORED_WARNING);
+        }
+      } else {
+        warnings.push(KEY_NOT_STORED_WARNING);
+      }
+    }
+
+    // 🔴 A DECLINE THROWS THE ENVELOPES AWAY — both of them, and immediately.
+    // The request will never be provisioned, so the only thing keeping a
+    // stranger's credential in a bucket would be inertia. §6.2 step 5's rule
+    // ("delete once it can serve no purpose") applied to the path where it never
+    // could. Failures here are swallowed inside deleteEnvelopes(): the decline
+    // is the person's answer and must not fail on housekeeping.
+    //
+    // ⚠️ AND THE BOOLEANS GO WITH THEM. Before provisioning, `reader_key_set`
+    // means "an envelope is held for this request"; after a decline none is, so
+    // a 1 left standing would tell the /admin queue and the requester's own row
+    // that a key is on file that nobody can produce. (At `/live` the same two
+    // columns are re-stated by the provisioner as a fact about the INSTANCE —
+    // that is a different claim, made by a different caller, and phase 6's
+    // back-seeded rows are exactly that shape.)
+    if (decision === 'decline') {
+      await deleteEnvelopes(c.env.CATALOG_KEYS, id);
+      await c.env.DB.prepare('UPDATE catalog_request SET reader_key_set = 0, owner_key_set = 0 WHERE id = ?1')
+        .bind(id)
+        .run();
+    }
+
     return c.json({
       ok: true,
       id,
       status,
       kind: existing.kind,
+      // The client reads these back rather than assuming the write happened.
+      reader_key_set: decision === 'decline' ? false : existing.reader_key_set === 1,
+      owner_key_set: decision === 'decline' ? false : ownerKeySet,
+      ...(warnings.length ? { warnings } : {}),
       // ⚠️ THE ANSWER ECHOES THE FINAL VALUES, not the submitted ones. The owner
       // may have changed them a line ago, and every surface downstream — the
       // panel, the runbook, the requester's own row — must agree on which
@@ -760,7 +911,28 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
     )
       .bind(instance, host, readerKey, ownerKey, id)
       .run();
-    return c.json({ ok: true, id, status: 'live', provisioned_instance: instance, provisioned_host: host });
+
+    // ⚠️ MARKING LIVE DOES NOT TOUCH THE ENVELOPES BY DEFAULT, and that is
+    // deliberate: the provisioner deletes each object ITSELF, the moment
+    // `wrangler secret put` has taken the plaintext, because that is the only
+    // place that knows the secret actually landed. A route that deleted here
+    // would throw the key away on the say-so of whoever called it — including
+    // when the inject failed and the key is the only copy.
+    //
+    // `purge_keys: true` is the escape hatch for the one case the paragraph
+    // above does not cover: a provisioner run that never had the sealed-key
+    // library (or ran with --dry and then by hand), leaving envelopes behind for
+    // a catalog that is now live and has its key by another route.
+    if (obj.purge_keys === true) await deleteEnvelopes(c.env.CATALOG_KEYS, id);
+
+    return c.json({
+      ok: true,
+      id,
+      status: 'live',
+      provisioned_instance: instance,
+      provisioned_host: host,
+      keys_purged: obj.purge_keys === true,
+    });
   } catch (err) {
     if (tableMissing(err)) return c.json(TABLE_MISSING, 503);
     return c.json({ error: 'live_failed', detail: 'The estate directory refused the write — nothing changed.' }, 502);
@@ -819,7 +991,18 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/withdraw', requireAppro
     )
       .bind(now, id)
       .run();
-    return c.json({ ok: true, id, status: 'cancelled' });
+
+    // 🔴 WITHDRAWING TAKES THE KEY BACK, and that is half the point of having a
+    // withdraw at all. Somebody who attached a Claude key and changed their mind
+    // must not have to ask the owner to delete it — pressing the button they
+    // already have is the whole remedy. Both sides go, and the booleans with
+    // them, for the same reason the decline path states.
+    await deleteEnvelopes(c.env.CATALOG_KEYS, id);
+    await c.env.DB.prepare('UPDATE catalog_request SET reader_key_set = 0, owner_key_set = 0 WHERE id = ?1')
+      .bind(id)
+      .run();
+
+    return c.json({ ok: true, id, status: 'cancelled', reader_key_set: false, owner_key_set: false });
   } catch (err) {
     if (tableMissing(err)) return c.json(TABLE_MISSING, 503);
     return c.json({ error: 'withdraw_failed', detail: 'The estate directory refused the write — nothing changed.' }, 502);
