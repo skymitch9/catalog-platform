@@ -56,6 +56,15 @@ section + home-card "+") → provisioning runbook/script → dev-lane test → l
 A auth-worker (phases 1+2), B home "+" (3a+3b), C `/admin` (4), D books
 provisioner (7, `library_catalog`), E games prerequisites (8, `Board_Game_Catalog`).
 Then by hand: phase 6 back-seed; then phase 9 games path; then phase 5 sealed key LAST.
+**Wave 2, 2026-09-05 ~07:55 Phoenix — three Opus agents in parallel:** S1 sealed key
+SERVER half (auth-worker: `sealed_key` on submit/accept, private R2 `estate-catalog-keys`,
+booleans, deploy), S2 sealed key CLIENT + PROVISIONER half (keypair mint, `catalog-seal.js`,
+form + Accept-panel fields, `scripts/lib/catalog-seal.mjs`, books provisioner decrypt step),
+G phase 9 games provisioner in `Board_Game_Catalog` (+ `BILLING_SITE` lift). ⚠️ Deviation
+from "sealed key LAST", named on purpose: phase 9 is the only "other bit" left and the two
+touch different files, so they run side by side rather than the key waiting idle; the
+provisioner's decrypt step still lands after the games script exists. Conductor does the
+ONE `deploy:home` at the end (plus the `admin.js` games next-step wording).
 
 ### ✅ Phase 6 — back-seed DONE by hand (main loop, 2026-09-05 07:31 Phoenix)
 
