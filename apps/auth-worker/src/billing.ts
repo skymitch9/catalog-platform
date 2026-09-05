@@ -161,6 +161,39 @@ billingRoutes.post('/estate/billing/rules', requireApprover(), async (c) => {
     );
   }
 
+  // 🔴 A RULE FOR A FEATURE THAT DOES NOT RUN ON THAT SITE DENIES NOBODY, EVER.
+  // The registry's `sites` field is the whole answer to "does this money path
+  // exist here", and the matrix already draws such a cell as `n/a` for exactly
+  // that reason (§7.1: a cell nobody can click that looks clickable invites a
+  // click that does nothing). But `n/a` is a UI rule, and a UI rule is one
+  // fetch away from being bypassed — the same argument §11.2 row 5 made about
+  // the owner's row and the block below makes about unattended paths. Written
+  // by hand, `{feature:'cli.backfill', site:'games'}` stores cleanly and sits in
+  // `billing_policy` looking exactly like a switch that works, while the games
+  // catalogue has no command-line backfill for it to switch off: nothing there
+  // ever asks about `cli.backfill`, so nothing is ever denied. Same silent
+  // class as the typo'd id two checks above, refused at the door for the same
+  // reason.
+  //
+  // ⚠️ `*` on EITHER side is deliberately exempt, and both readings are
+  // meaningful: `feature = '*'` is "every money path on this site", `site = '*'`
+  // is "everywhere this feature runs". Neither can name a pair that exists
+  // nowhere, and both resolve correctly.
+  if (feature !== '*' && site !== '*') {
+    const f = billingFeature(feature);
+    if (f && !(f.sites as readonly string[]).includes(site)) {
+      return c.json(
+        {
+          error: 'feature_not_on_site',
+          detail:
+            `“${f.label}” does not run on ${site}, so a rule naming that pair would switch nothing off. ` +
+            `It runs on: ${f.sites.join(', ')}. Pick one of those, or use * for the site to cover every site it runs on.`,
+        },
+        400,
+      );
+    }
+  }
+
   // Principal coherence. `everyone` and `system` resolve alone and carry no
   // value; `role` and `user` are meaningless without one.
   if ((principal_kind === 'everyone' || principal_kind === 'system') && principal_value !== null) {

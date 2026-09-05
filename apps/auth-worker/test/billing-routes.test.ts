@@ -437,6 +437,81 @@ test('🔴 a per-PERSON rule on an UNATTENDED path is refused — it would deny 
   assert.equal(db.rules.length, 2);
 });
 
+test('🔴 a rule for a feature that does not RUN on that site is refused — it would deny nobody', async () => {
+  // The registry's `sites` field says where a money path exists at all, and the
+  // matrix draws `n/a` for a pair that is not on it. That is a UI rule and a UI
+  // rule is one fetch away from being bypassed: written by hand,
+  // {feature:'cli.backfill', site:'games'} stored cleanly and denied nothing,
+  // forever — the games catalogue has no command-line backfill, so nothing there
+  // ever asks about that id. Same silent class as a typo'd feature id.
+  const db = new FakeDB();
+
+  const res = await post(db, {
+    feature: 'cli.backfill', // sites: library, library2
+    site: 'games',
+    principal_kind: 'everyone',
+    allow: false,
+    why: 'trying to stop the games catalogue running library backfills',
+  });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as any;
+  assert.equal(body.error, 'feature_not_on_site');
+  // Not a bare status: it names the feature, the site it cannot be on, and the
+  // sites it IS on — so the next attempt is a correct one.
+  assert.match(body.detail, /Command-line backfills/);
+  assert.match(body.detail, /games/);
+  assert.match(body.detail, /library, library2/);
+
+  // The other direction of the same mistake: a games-only path on a library.
+  const other = await post(db, {
+    feature: 'research.tier', // sites: games
+    site: 'library',
+    principal_kind: 'everyone',
+    allow: false,
+    why: 'the deep research run is the priciest call in the estate',
+  });
+  assert.equal(other.status, 400);
+  assert.equal(((await other.json()) as any).error, 'feature_not_on_site');
+
+  assert.equal(db.rules.length, 0);
+});
+
+test('⚠️ `*` on EITHER side still passes — a wildcard cannot name a pair that exists nowhere', async () => {
+  // `feature = '*'` is "every money path on this site"; `site = '*'` is
+  // "everywhere this feature runs". Both resolve correctly, so the check above
+  // must not reach them — and the pair that IS on the site must still store.
+  const db = new FakeDB();
+
+  const everyFeature = await post(db, {
+    feature: '*',
+    site: 'games',
+    principal_kind: 'everyone',
+    allow: false,
+    why: 'switching the whole games catalogue off for the weekend',
+  });
+  assert.equal(everyFeature.status, 200);
+
+  const everySite = await post(db, {
+    feature: 'cli.backfill',
+    site: '*',
+    principal_kind: 'everyone',
+    allow: false,
+    why: 'no batch script may bill anywhere until the soak is read',
+  });
+  assert.equal(everySite.status, 200);
+
+  const real = await post(db, {
+    feature: 'cli.backfill',
+    site: 'library',
+    principal_kind: 'everyone',
+    allow: false,
+    why: 'the pair that genuinely exists still stores',
+  });
+  assert.equal(real.status, 200);
+
+  assert.equal(db.rules.length, 3);
+});
+
 test('⚠️ a feature BOTH a person and a cron trigger stays per-person switchable', async () => {
   // `warnings.web`, `chapters.llm` and `pipeline.run` carry both principals.
   // Denying the person half is meaningful (it is A3's button); the cron half
