@@ -27,13 +27,27 @@
  * server-side (§9 Q2, owner: "only approved people"), so hiding the control
  * costs a curtain and never a lock.
  *
- * ── WHAT IS DELIBERATELY NOT HERE ─────────────────────────────────────────
- * The optional sealed Claude key (design §6). Owner, 2026-09-05 ~07:03
- * Phoenix: "Have it fall back to my Claude key for now. Defer it until
- * everything else is built then build it." So v1 has NO key field; the hook
- * where it goes is marked below in buildForm(), one place, so the last phase
- * of the build is an insertion and not an archaeology exercise.
+ * ── THE OPTIONAL SEALED CLAUDE KEY (design §6) — LANDED 2026-09-05 ────────
+ * The last phase of this build, and the deferral is over (owner, ~07:03
+ * Phoenix: "Defer it until everything else is built then build it … not
+ * forever"). The field is OPTIONAL and the honest sentence beside it says
+ * what happens either way: the key is sealed in this browser with WebCrypto
+ * (assets/catalog-seal.js), only ciphertext leaves the page, the owner can
+ * never read it, and leaving it blank means the catalog runs on HIS key —
+ * his standing decision, not a silent default.
+ *
+ * ⚠️ THREE RULES THIS FILE HOLDS, EACH FOR A REASON THAT COST SOMETHING:
+ *  1. The plaintext is cleared from the field the instant it is sealed, and
+ *     never lands in `draft` — the object that survives Back/Review.
+ *  2. The UI claims the key was attached ONLY when the row comes back with
+ *     `reader_key_set === 1`. An older Worker ignores an unknown body field
+ *     and answers a cheerful 201; believing the request instead of the ROW is
+ *     how a person is told their key is safe when it was dropped on the floor.
+ *  3. If this browser cannot seal, the field is not rendered and nothing is
+ *     said. Fail-quiet, exactly as the "+" itself is (§4.3's last row).
  */
+
+import { SealError, sealSecret, sealSupported } from './catalog-seal.js';
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 
@@ -232,6 +246,22 @@ function pendingPill(kind, row) {
   }
   wrap.appendChild(text);
 
+  // ⚠️ "key provided" ONLY when the ROW says 1 — never when the page merely
+  // remembers sending one. `/api/estate/me`'s `catalogs` entries do not carry
+  // this boolean (§3.6), so on a fresh page load it is `undefined` and the note
+  // is correctly absent: "we don't know" renders as nothing, never as a claim.
+  if (row && Number(row.reader_key_set) === 1) {
+    // ⚠️ Styled by an EXISTING rule (`.card-add-note`, index.html:439 — the
+    // full-width muted line the withdraw failure already uses inside this same
+    // pill). This module ships no stylesheet, the apex-admin-link.js precedent;
+    // inventing a class with no rule would render as unstyled body text.
+    const note = document.createElement('p');
+    note.className = 'card-add-note card-pending-key';
+    note.textContent = 'key provided';
+    note.title = 'Your Anthropic key is attached to this request, sealed. Nobody can read it.';
+    wrap.appendChild(note);
+  }
+
   if (row && row.status === 'pending' && row.id != null) {
     wrap.appendChild(withdrawButton(kind, row));
   }
@@ -300,7 +330,15 @@ function withdrawButton(kind, row) {
  * ------------------------------------------------------------------------ */
 
 let dialog = null;
-/** { kind, subdomain, displayName, note, available, checkSeq } */
+/**
+ * { kind, subdomain, displayName, note, available, checkSeq, sealed }
+ *
+ * ⚠️ `sealed` HOLDS THE ENVELOPE AND NEVER THE KEY. It is the only field here
+ * that could conceivably carry a secret, and by construction it carries
+ * ciphertext — see the seal step in buildForm()'s Review handler. The dialog's
+ * `close` listener drops the whole object, so closing the modal is also how the
+ * envelope stops existing.
+ */
 let draft = null;
 
 function ensureDialog() {
@@ -316,7 +354,15 @@ function ensureDialog() {
 }
 
 function openModal(kind) {
-  draft = { kind, subdomain: '', displayName: suggestedName(), note: '', available: null, checkSeq: 0 };
+  draft = {
+    kind,
+    subdomain: '',
+    displayName: suggestedName(),
+    note: '',
+    available: null,
+    checkSeq: 0,
+    sealed: null,
+  };
   const d = ensureDialog();
   buildForm();
   if (!d.open) d.showModal();
@@ -436,19 +482,61 @@ function buildForm() {
   // (§3.4), read tolerantly by the admin queue: a missing key is a default,
   // never an error.
 
-  /* --- 🔴 THE KEY FIELD GOES HERE, AND ONLY HERE --------------------------
-   * Design §6 — the requester's optional Claude key, WebCrypto-sealed in the
-   * browser to a provisioning public key and POSTed as ciphertext only.
-   * DELIBERATELY ABSENT IN THIS PHASE (owner, 2026-09-05 ~07:03 Phoenix:
-   * "Have it fall back to my Claude key for now. Defer it until everything
-   * else is built then build it … not forever"). Until it lands, no key field
-   * exists, `reader_key_set` stays 0, and a new catalog is provisioned with
-   * the OWNER's key with `owner_key_set = 1` recorded.
-   *
-   * When it does land, this is the one place it is inserted: a field here, the
-   * seal before the POST in submit(), and the sealed envelope on the body.
-   * Nothing else in this file needs to change, and nothing anywhere prints it.
+  /* --- the optional sealed Claude key (design §6) -------------------------
+   * ⚠️ FAIL-QUIET, NOT FAIL-EXPLAINED. A browser without WebCrypto or a page
+   * that is not a secure context gets NO field and NO sentence: the request
+   * still works, and explaining a browser to somebody who cannot change it is
+   * noise dressed as help. `sealSupported()` is the one gate.
    * ---------------------------------------------------------------------- */
+  let keyInput = null;
+  let keyState = null;
+  if (sealSupported()) {
+    const keyField = document.createElement('label');
+    keyField.className = 'rc-field';
+    const keyLabel = document.createElement('span');
+    keyLabel.className = 'rc-label';
+    keyLabel.textContent = 'Your Anthropic API key (optional)';
+    keyInput = document.createElement('input');
+    // `password` so a shoulder, a screen share or a screenshot does not carry
+    // it; `autocomplete="off"` so no browser offers to remember it later.
+    keyInput.type = 'password';
+    keyInput.className = 'rc-input';
+    keyInput.autocomplete = 'off';
+    keyInput.spellcheck = false;
+    keyInput.placeholder = 'sk-ant-…';
+    keyField.append(keyLabel, keyInput);
+    keyField.appendChild(
+      para(
+        'It is sealed in your browser before it is sent, so the owner can never read it — it becomes your ' +
+          'catalog’s own key and only your catalog spends it. Leave it blank and your catalog runs on the ' +
+          'owner’s key instead, which is his standing decision and costs you nothing.',
+        'rc-hint',
+      ),
+    );
+    // Shown only when a key has ALREADY been sealed on this draft — after a
+    // Back from the review step. ⚠️ The plaintext is gone by then, so the only
+    // honest offers are "replace it" and "remove it"; there is nothing to show.
+    keyState = para('', 'rc-hint');
+    keyState.hidden = true;
+    keyField.appendChild(keyState);
+    panel.appendChild(keyField);
+
+    if (draft.sealed) {
+      keyState.hidden = false;
+      keyState.textContent =
+        'A key is attached and already sealed — it cannot be shown, here or anywhere. Type a new one to replace it.';
+      const drop = document.createElement('button');
+      drop.type = 'button';
+      drop.className = 'rc-btn rc-btn-quiet';
+      drop.textContent = 'Remove the attached key';
+      drop.addEventListener('click', () => {
+        draft.sealed = null;
+        keyState.textContent = 'Removed. Your catalog will run on the owner’s key.';
+        drop.remove();
+      });
+      keyField.appendChild(drop);
+    }
+  }
 
   if (k.wait) panel.appendChild(para(k.wait, 'rc-warn'));
 
@@ -539,7 +627,7 @@ function buildForm() {
     draft.note = noteInput.value;
   });
 
-  next.addEventListener('click', () => {
+  next.addEventListener('click', async () => {
     draft.subdomain = addrInput.value.trim().toLowerCase();
     draft.displayName = nameInput.value.trim();
     draft.note = noteInput.value.trim();
@@ -551,6 +639,38 @@ function buildForm() {
     }
     if (draft.available === false) return say(check.textContent);
     if (!draft.displayName) return say('Give the catalog a display name — it is what shows on this page.');
+
+    /* 🔴 SEAL HERE, AT THE STEP THAT LEAVES THE FORM — not at submit.
+     *
+     * The plaintext then exists for exactly the length of this handler. What
+     * survives onto `draft` is the ENVELOPE, which is ciphertext and safe to
+     * carry across Back/Review; the input is emptied in the same breath, so a
+     * Back never repopulates a field with somebody's key and no later reader
+     * of `draft` can find one. Sealing at submit instead would leave the
+     * plaintext sitting in a DOM node for as long as the review step is open. */
+    if (keyInput) {
+      const typed = keyInput.value.trim();
+      if (typed) {
+        try {
+          const envelope = await sealSecret(typed);
+          draft.sealed = envelope;
+        } catch (err) {
+          // The typed error already carries a sentence a person can read, and
+          // it never contains any part of what was being sealed.
+          return say(err instanceof SealError
+            ? err.message
+            : 'That key could not be sealed in this browser, so it was not sent. Nothing else is affected.');
+        } finally {
+          // Cleared whether the seal worked or not: a failed seal is still a
+          // reason not to leave a key lying in the page.
+          keyInput.value = '';
+        }
+        if (keyState) {
+          keyState.hidden = false;
+          keyState.textContent = 'Sealed. It is ciphertext from here on and cannot be shown again.';
+        }
+      }
+    }
     buildReview();
   });
 
@@ -579,6 +699,15 @@ function buildReview() {
   row('Address', `${draft.subdomain}.heygabi.ai`);
   row('Display name', draft.displayName);
   if (draft.note) row('Note to the owner', draft.note);
+  // ⚠️ The review restates that a key is attached and NEVER any part of it.
+  // "Sealed" is the whole fact available at this point — the plaintext stopped
+  // existing one step ago, which is the property being restated.
+  row(
+    'Anthropic key',
+    draft.sealed
+      ? 'Attached and sealed in this browser — nobody, including the owner, can read it.'
+      : 'None — your catalog will run on the owner’s key.',
+  );
   const who = currentUser && (currentUser.email || currentUser.displayName);
   if (who) row('Admin', who);
   panel.appendChild(dl);
@@ -626,6 +755,11 @@ function buildReview() {
       display_name: draft.displayName,
     };
     if (draft.note) body.extra = { note: draft.note };
+    // The envelope, or nothing at all. An EMPTY field must not put a key on the
+    // wire in any form — `sealed_key: null` would still be a field an older
+    // server could mis-handle, and the contract says OPTIONAL, not nullable.
+    const sentKey = Boolean(draft.sealed);
+    if (sentKey) body.sealed_key = draft.sealed;
 
     const answer = await authedJson('/api/estate/catalogs/requests', {
       method: 'POST',
@@ -650,15 +784,28 @@ function buildReview() {
       status: answer.body.status || 'pending',
       desired_subdomain: answer.body.desired_subdomain || draft.subdomain,
       display_name: answer.body.display_name || draft.displayName,
+      // ⚠️ THE ROW'S BOOLEAN, NOT OUR INTENTION. Read back from the answer so
+      // every downstream surface is describing what the SERVER stored.
+      reader_key_set: answer.body.reader_key_set,
     };
+    // 🔴 THE KEY-DROPPED CHECK. A Worker deployed before the sealed-key routes
+    // ignores an unknown body field and answers a perfectly cheerful 201; so
+    // does one whose R2 write failed and which chose to file the request
+    // anyway. Both look identical from here EXCEPT for this boolean, and
+    // believing our own POST instead of the row is how somebody is told their
+    // key is safe when it was dropped on the floor.
+    const keyDropped = sentKey && Number(answer.body.reader_key_set) !== 1;
+    const warnings = Array.isArray(answer.body.warnings)
+      ? answer.body.warnings.filter((w) => typeof w === 'string' && w.trim())
+      : [];
     // The "+" is replaced IN PLACE (§2.1 step 7) before the modal closes, so
     // the card behind it is already correct when it does.
     setSlot(kind, { state: 'pending', row: row2 });
-    buildDone(answer, row2);
+    buildDone(answer, row2, { sentKey, keyDropped, warnings });
   });
 }
 
-function buildDone(answer, row) {
+function buildDone(answer, row, key) {
   const panel = shell('Asked');
   panel.appendChild(
     para(
@@ -668,6 +815,31 @@ function buildDone(answer, row) {
       ),
     ),
   );
+
+  // The key, said in the shape the row actually holds — three distinct
+  // sentences, because "attached", "not attached" and "you tried and it did
+  // not land" are three different things to a person and only the last one
+  // needs them to do something.
+  if (key && key.keyDropped) {
+    panel.appendChild(
+      para(
+        'Your request was filed, but the key was not stored — the estate directory did not record it. ' +
+          'Nothing was lost from your side and your key was not exposed; this catalog will run on the ' +
+          'owner’s key unless you tell him. Mention it when he reviews the request.',
+        'rc-warn',
+      ),
+    );
+  } else if (key && key.sentKey) {
+    panel.appendChild(
+      para(
+        'Your key is attached, sealed. It stays sealed until the catalog is built, and then it becomes ' +
+          'that catalog’s own key. Nobody reads it on the way, including the owner.',
+        'rc-hint',
+      ),
+    );
+  }
+  for (const w of (key && key.warnings) || []) panel.appendChild(para(w, 'rc-warn'));
+
   panel.appendChild(
     para('The card now reads “Requested — pending review”, and you can withdraw it from there.', 'rc-hint'),
   );
