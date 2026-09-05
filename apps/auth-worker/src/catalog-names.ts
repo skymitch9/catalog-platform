@@ -100,6 +100,11 @@ export function isCatalogKind(v: unknown): v is CatalogKind {
  * ⚠️ THIS LIST IS A MEASUREMENT WITH A DATE, NOT A STANDING TRUTH. Every new
  * estate hostname must be added here in the same commit that routes it, or the
  * first person to ask for that name gets told it is free.
+ *
+ * ⚠️ A THIRD SOURCE WAS ADDED 2026-09-05: THE HOSTNAMES NOTHING ROUTES YET
+ * BECAUSE A PROVISIONER WILL MINT THEM. See RESERVED_PATTERNS below — the
+ * literal list above cannot express them, because the name does not exist until
+ * somebody asks for a catalog and it is the ASKING that creates it.
  */
 export const RESERVED_SUBDOMAINS: readonly string[] = [
   // §3.3, verbatim
@@ -129,8 +134,123 @@ export const RESERVED_SUBDOMAINS: readonly string[] = [
 
 const RESERVED = new Set(RESERVED_SUBDOMAINS);
 
+/* ------------------------------------------------------------------ *
+ * The reserved SHAPES — names a provisioner will mint on its own
+ * ------------------------------------------------------------------ */
+
+/**
+ * 🔴 THE HOLE A LITERAL LIST CANNOT PLUG, and it is the one that bites.
+ *
+ * The array above is every hostname that exists TODAY. But provisioning a
+ * catalog CREATES hostnames — and one of them is not the subdomain the person
+ * asked for. Design §7.1, the owner's decision (a) of 2026-09-05: a name follows
+ * the requested subdomain only if it is cheap to rename, and **the games covers
+ * hostname is not**, because `cover-storage.ts` writes `COVERS_BASE_URL` into
+ * every `thumbnail_url` row. So it is ORDINAL — `gamecovers2.heygabi.ai`,
+ * `gamecovers3.heygabi.ai`, … — and the second games instance takes it whether
+ * or not anybody has been asked.
+ *
+ * Without this, the first person to type `gamecovers2` is told it is free, the
+ * row lands, the owner accepts it, and the provisioner then tries to attach a
+ * custom domain that belongs to somebody else's catalog. ⚠️ **A custom domain
+ * belongs to exactly ONE bucket** (§7.2 step 2), so the collision is not a
+ * cosmetic clash — it is the point at which one of the two catalogs cannot
+ * serve its covers at all.
+ *
+ * MEASURED 2026-09-05 by reading both provisioners' `deriveNames()` READ-ONLY
+ * and grepping each for every `*.heygabi.ai` it can construct
+ * (`grep -n 'heygabi\.ai\|APEX\|coversHost\|coversBaseUrl\|r2\.dev'`):
+ *
+ *  - `boardbuddy/Board_Game_Catalog/scripts/provision-catalog.mjs` mints TWO
+ *    hostnames: `<desired_subdomain>.heygabi.ai` (`deriveNames():529`, the
+ *    availability check already covers it) and
+ *    **`gamecovers<N>.heygabi.ai`** (`:539–540`, and `:1367/:1377` really run
+ *    `wrangler r2 bucket domain add`). `N` comes from `nextEstateApp()`
+ *    (`:386–408`), which counts from **2 to 99** — instance 1 is the digitless
+ *    `games`/`gamecovers` pair already in the literal list.
+ *  - `bookbuddy/library_catalog/scripts/provision-catalog.mjs` mints exactly
+ *    **ONE** hostname: `<desired_subdomain>.heygabi.ai` (`deriveNames():404`).
+ *    ⚠️ Its covers URL is the managed **`r2.dev` launch tier**
+ *    (`:1156–1181` — `https://pub-<id>.r2.dev`), which is not on this apex at
+ *    all, so **no `bookcovers<N>` is minted today**.
+ *
+ * ⚠️ `bookcovers<N>` IS RESERVED ANYWAY, AND THE REASON IS DIFFERENT FROM
+ * `gamecovers<N>`'s — say so rather than letting a later reader assume both were
+ * measured the same way. §7.2 step 2 names the r2.dev tier as the LAUNCH tier
+ * and a bucket custom domain plus a Cache Rule as the tier the main library
+ * actually runs on, "and a third catalog needs a third name, checked free
+ * first". The moment any library instance is promoted off the launch tier, the
+ * name it needs is `bookcovers2` — and a reservation is worth nothing if it
+ * arrives in the same commit as the collision. This one is ANTICIPATION with a
+ * citation, not a measurement, and it is cheap: it costs one shape nobody would
+ * pick for a catalog of their own.
+ *
+ * ⚠️ WHAT WAS DELIBERATELY *NOT* ADDED HERE, in the same spirit as the literal
+ * list's note:
+ *
+ *   - `covers<N>` — `covers.heygabi.ai` is the AUDIOBOOK bucket's, and the
+ *     audiobook catalog has no provisioner, no `[env.*]` second instance and no
+ *     ordinal plan of any kind. There is nothing that would mint it.
+ *   - `library<N>`, `boardgames<N>`, `audiobooks<N>` — no provisioner derives a
+ *     SITE hostname from the catalog kind. The site host is always the person's
+ *     requested subdomain (§7.1: "the hostname stays the only identity-bearing
+ *     name"), so an ordinal form of a kind name is not a name anything creates.
+ *     Reserving it would be inventing policy, which the literal list's header
+ *     already says is the owner's call and not a build's.
+ *
+ * ⚠️ SHAPES, NOT PREFIXES. `gamecoversx` and `gamecover` are NOT reserved and
+ * must stay free — a prefix match would swallow both, and swallow every future
+ * word that happens to start the same way. The digits are mandatory.
+ */
+export interface ReservedShape {
+  /** Anchored — a shape, never a prefix. */
+  readonly re: RegExp;
+  /** What a person is told, in words: why this name is not theirs to take. */
+  readonly detail: string;
+  /** The measurement or citation behind it, for the header and the tests. */
+  readonly source: string;
+}
+
+export const RESERVED_PATTERNS: readonly ReservedShape[] = [
+  {
+    re: /^gamecovers[0-9]+$/,
+    detail:
+      'is the image address a new board-game catalog is given when it is set up, so it is ' +
+      'already spoken for — pick another.',
+    source:
+      'MEASURED 2026-09-05: Board_Game_Catalog/scripts/provision-catalog.mjs deriveNames():539 ' +
+      'mints gamecovers<N>.heygabi.ai and :1367 attaches it as a bucket custom domain; N runs 2–99 ' +
+      'via nextEstateApp():386.',
+  },
+  {
+    re: /^bookcovers[0-9]+$/,
+    detail:
+      'is the image address a new library catalog will be given when it outgrows its starter ' +
+      'storage, so it is already spoken for — pick another.',
+    source:
+      'ANTICIPATED, not measured: library_catalog/scripts/provision-catalog.mjs mints NO covers ' +
+      'hostname today (it uses the r2.dev launch tier, :1156–1181). Reserved on design §7.2 ' +
+      'step 2 — the custom-domain tier "needs a third name, checked free first".',
+  },
+];
+
+/**
+ * The reserved answer, or null. ⚠️ ONE function, checked by BOTH the literal
+ * list and the shapes, so there is no door that consults only half of it — the
+ * §3.3 argument for one list is the same argument for one lookup.
+ */
+export function reservedDetail(name: string): string | null {
+  if (RESERVED.has(name)) {
+    return `${name}.heygabi.ai is part of the estate itself, so it is not available — pick another.`;
+  }
+  for (const shape of RESERVED_PATTERNS) {
+    if (shape.re.test(name)) return `${name}.heygabi.ai ${shape.detail}`;
+  }
+  return null;
+}
+
 export function isReservedSubdomain(name: string): boolean {
-  return RESERVED.has(name);
+  return reservedDetail(name) !== null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -192,13 +312,14 @@ export function checkSubdomain(input: unknown): SubdomainVerdict {
         'numbers and hyphens, starting and ending with a letter or a number.',
     };
   }
-  if (isReservedSubdomain(name)) {
-    return {
-      ok: false,
-      reason: 'reserved',
-      name,
-      detail: `${name}.heygabi.ai is part of the estate itself, so it is not available — pick another.`,
-    };
+  // ⚠️ SHAPE IS CHECKED FIRST AND STAYS FIRST. A reserved shape is a subset of
+  // the legal shapes, so a name that is not a legal subdomain at all must hear
+  // "that cannot be a web address", never "that one is taken" — the second
+  // sentence would send someone off inventing a different name when the real
+  // problem was the space they typed.
+  const reserved = reservedDetail(name);
+  if (reserved) {
+    return { ok: false, reason: 'reserved', name, detail: reserved };
   }
   return { ok: true, name };
 }

@@ -33,10 +33,13 @@ import {
   type CatalogRequestRow,
 } from '../src/catalog-requests.js';
 import {
+  RESERVED_PATTERNS,
   RESERVED_SUBDOMAINS,
   checkSubdomain,
   isCatalogKind,
+  isReservedSubdomain,
   normaliseSubdomain,
+  reservedDetail,
 } from '../src/catalog-names.js';
 import { SEALED_ALG, SEALED_MAX_BYTES, parseSealedEnvelope } from '../src/catalog-keys.js';
 
@@ -463,6 +466,76 @@ test('⚠️ the reserved list also holds the hostnames §3.3 did not name, each
   // third instance, not a host anything routes. Reserving example values would
   // grow the list without bound, and this is the name every test here uses.
   assert.equal(checkSubdomain('amber').ok, true);
+});
+
+test('🔴 the ORDINAL names a provisioner will mint are reserved before anyone can take them', () => {
+  // Added 2026-09-05 after reading both provisioners' deriveNames() read-only.
+  // The literal list is every hostname that exists TODAY; provisioning CREATES
+  // hostnames, and the games covers host is ordinal (design §7.1(a)) because
+  // cover-storage.ts writes COVERS_BASE_URL into thumbnail_url rows. So
+  // `gamecovers2` is the second games instance's image host whether or not
+  // anybody has asked for it yet — and ⚠️ a custom domain belongs to exactly ONE
+  // bucket, so a collision is not cosmetic: one of the two catalogs cannot serve
+  // its covers at all.
+  for (const name of ['gamecovers2', 'gamecovers3', 'gamecovers99', 'bookcovers2', 'bookcovers10']) {
+    const v = checkSubdomain(name);
+    assert.equal(v.ok, false, `${name} is a name a provisioner mints — reserve it`);
+    assert.equal((v as { reason: string }).reason, 'reserved');
+    // The refusal names the address and says why, never a bare "taken".
+    assert.match((v as { detail: string }).detail, new RegExp(`^${name}\\.heygabi\\.ai `));
+    assert.match((v as { detail: string }).detail, /pick another/);
+  }
+});
+
+test('⚠️ the ordinal reservation is a SHAPE, not a prefix — the near misses stay free', () => {
+  // A prefix match would swallow these, and every future word that happens to
+  // start the same way. The digits are mandatory, so each of these falls back to
+  // the ordinary shape check exactly as it did before the patterns existed.
+  assert.equal(checkSubdomain('gamecoversx').ok, true, 'no digits — not a name anything mints');
+  assert.equal(checkSubdomain('gamecover').ok, true, 'singular — a different word entirely');
+  assert.equal(checkSubdomain('bookcover').ok, true);
+  assert.equal(checkSubdomain('gamecovers2x').ok, true, 'digits must END the name');
+  assert.equal(checkSubdomain('mygamecovers2').ok, true, 'anchored at the start too');
+  // ⚠️ And the digitless originals are still refused — by the LITERAL list, not
+  // by the shapes. Both halves must hold; deleting either is a live hole.
+  assert.equal(checkSubdomain('gamecovers').ok, false);
+  assert.equal(checkSubdomain('bookcovers').ok, false);
+});
+
+test('a name that is not a legal shape hears about its SHAPE, never that it is taken', () => {
+  // Ordering, pinned: a reserved shape is a subset of the legal shapes, so a
+  // reserved-first check would tell somebody who typed a space that the name was
+  // taken — and send them off inventing a different one.
+  const v = checkSubdomain('gamecovers 2');
+  assert.equal(v.ok, false);
+  assert.equal((v as { reason: string }).reason, 'shape');
+});
+
+test('every reserved shape carries its own source, and it says which were MEASURED', () => {
+  // ⚠️ The two patterns were established differently and the file must keep
+  // saying so: gamecovers<N> is measured off a provisioner that really runs
+  // `wrangler r2 bucket domain add`; bookcovers<N> is anticipation with a design
+  // citation, because the books provisioner mints no covers host at all today.
+  // Collapsing the two into "reserved" would let a later session read the
+  // guessed one as a measurement.
+  assert.equal(RESERVED_PATTERNS.length, 2);
+  for (const shape of RESERVED_PATTERNS) {
+    assert.ok(shape.source.length > 0, 'a reservation with no stated reason is dead weight');
+    assert.equal(shape.re.source.startsWith('^'), true, 'a pattern must be anchored, not a prefix');
+    assert.equal(shape.re.source.endsWith('$'), true);
+  }
+  assert.match(RESERVED_PATTERNS[0]!.source, /^MEASURED/);
+  assert.match(RESERVED_PATTERNS[1]!.source, /^ANTICIPATED, not measured/);
+});
+
+test('reservedDetail is the ONE lookup — the literal list and the shapes share it', () => {
+  // §3.3's argument for one list is the same argument for one lookup: a door
+  // that consulted only half of it is the drifted copy in another shape.
+  assert.equal(reservedDetail('amber'), null);
+  assert.equal(typeof reservedDetail('auth'), 'string');
+  assert.equal(typeof reservedDetail('gamecovers2'), 'string');
+  assert.equal(isReservedSubdomain('gamecovers2'), true);
+  assert.equal(isReservedSubdomain('gamecoversx'), false);
 });
 
 test('every entry in the reserved list is itself a legal subdomain shape', () => {
