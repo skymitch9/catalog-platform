@@ -692,7 +692,7 @@ still cannot read padhard the **shelf**.
 |---|---|
 | **Built** | ✅ `rows.ts` SOURCES · `env.ts` token + `pushTokenFor` · `push.ts` (`known` read from SOURCES; worded CHECK refusal) · `search-route.ts` preset · `read.ts` fence · migration 0006 |
 | **Health** | ✅ needed no code — `SOURCES` drives it, so `library2` lists as `{rows: 0, pushed_at: null}` (the "never pushed" idiom) and cannot turn the route red: `ok` is a constant and the figures are reported, not judged |
-| **Tested** | ✅ index-worker **175/175** (was 162); typecheck clean; root `npm test` **2,964** across the workspaces, 0 fail. `machine-read.test.ts` deliberately unchanged and green |
+| **Tested** | ✅ index-worker **175/175** (was 162); typecheck clean; root `npm test` **2,866** across the nine workspaces, 0 fail (348 + 293 + 723 + 1,246 + 175 + 42 + 0 + 5 + 34 — re-run and re-added at the final state, because the first figure written here was a bad sum, not a bad run). `machine-read.test.ts` deliberately unchanged and green |
 | **Apex** | ✅ `universes.js` (games-vs-complement, so a future source can land in the wrong GROUP but never in no group) · `series.js` already named it · `estate-search.js` label |
 | **Secret set** | ❌ owner only — `INDEX_PUSH_TOKEN_LIBRARY2` here, `INDEX_PUSH_TOKEN` on padhard's `[env.friend]`: one value, both holders, one sitting |
 | **Consumer wired** | ❌ the library Worker's push source comes from `ESTATE_APP` — a sibling agent's work, in `library_catalog` |
