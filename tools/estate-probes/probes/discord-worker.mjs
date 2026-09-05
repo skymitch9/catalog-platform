@@ -76,18 +76,25 @@ export async function probeDiscordWorker() {
     // the catalogue instead. Nothing looks broken.
     //
     // ⚠️ Asserted as a SET, not a count. The whole point of the fourth
-    // allowlist is that these four names travel together and no fifth tool
+    // allowlist is that these names travel together and no further tool
     // joins them without a decision; the discord-worker's own
     // `book-knowledge.test.ts` pins that structurally at build time, and
     // this pins the same claim against what is actually deployed.
-    const BOOKS_TOOLS = ['book_presence', 'list_book_knowledge', 'read_book_passage', 'search_book_text'];
+    //
+    // ⚠️ `count_phrase` became the fifth on 2026-09-03 (`272ac67`, deployed
+    // `estate-discord` the same day) and this array was not updated with it,
+    // so D5 failed on every run from then until 2026-09-05 — a standing false
+    // failure, which is the kind that makes people stop reading a suite. The
+    // fix is the array, NOT the assertion: keep it a SET (a length check would
+    // silently accept a swap) and do not relax it to a subset test.
+    const BOOKS_TOOLS = ['book_presence', 'count_phrase', 'list_book_knowledge', 'read_book_passage', 'search_book_text'];
     const got = Array.isArray(body.gabi_books_tools) ? [...body.gabi_books_tools].sort() : null;
     check(
       AREA,
       'D5',
       'GET',
       healthUrl,
-      `gabi_books_tools === the four names in GABI_BOOKS_TOOL_NAMES (${BOOKS_TOOLS.join(', ')})`,
+      `gabi_books_tools === the five names in GABI_BOOKS_TOOL_NAMES (${BOOKS_TOOLS.join(', ')})`,
       got !== null && got.length === BOOKS_TOOLS.length && got.every((n, i) => n === BOOKS_TOOLS[i]),
       `gabi_books_tools=${JSON.stringify(body.gabi_books_tools)}`,
     );
