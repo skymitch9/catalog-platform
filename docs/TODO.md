@@ -57,6 +57,80 @@ A auth-worker (phases 1+2), B home "+" (3a+3b), C `/admin` (4), D books
 provisioner (7, `library_catalog`), E games prerequisites (8, `Board_Game_Catalog`).
 Then by hand: phase 6 back-seed; then phase 9 games path; then phase 5 sealed key LAST.
 
+### ✅ Phase 4 — the `/admin` queue — BUILT + PUSHED, `7acc497` (agent C, 2026-09-05)
+
+`sites/heygabi-home/public/admin/admin.js` + `admin/index.html`. Banner (§5.2),
+"Catalog requests" section first among the panels (§5.3), Accept panel with
+owner-editable address + live availability (§5.4), two-tap Decline with the
+required reason, Mark live, the collapsed decided list, and the §5.6 refusal set
+with the four causes kept distinct. As-built record, including the two gesture
+rulings and the two defects fixed in passing:
+[`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) §10.1;
+the `/admin` page map is now [`access/estate-auth.md`](access/estate-auth.md) §9.3.
+Green: `check:home` (30 JS, 26 module graphs, 14 HTML) and the full workspace
+suite.
+
+What is left on this phase, in the order it can be done:
+
+1. 🔴 **THE DEPLOY IS BLOCKED ON PHASE 1's CORS COMMIT — not on a defect here.**
+   `apps/auth-worker/test/cors-coverage.test.ts` fails while the frontend names
+   `/api/estate/catalogs/*` and `apps/auth-worker/src/index.ts` has no
+   `app.use(…, cors())` for them, and `npm run deploy:home` runs the whole
+   workspace suite. Agent A has the three mounts written (`index.ts:208–210`)
+   and **uncommitted**; the moment they land, re-run the deploy from a worktree
+   of HEAD. ⚠️ **The guard was NOT bypassed** — it is right: a missing preflight
+   makes the page report a network error, which reads as an outage rather than a
+   missing route. Ordering rule for the next parallel build: **the route repo's
+   CORS registration is a phase-1 deliverable, not a phase-1 detail.**
+2. 🔴 **NOBODY HAS RENDERED THE SECTION SIGNED IN**, and this is the debt §10's
+   own row 4 said not to repeat. There is no browser harness for `admin.js`;
+   `check:home` proves it parses and nothing more. Sign in at
+   <https://heygabi.ai/admin/>, file one request of each kind from the front
+   door, and check: the banner appears above the panels and names the kinds; the
+   section is first and collapsed with a live count; a Games row carries the §8
+   cost in words; Accept's two taps open the panel and write nothing; editing
+   the address live-checks and the *unchanged* address does **not** read as
+   taken; Accept then shows the `--dry` provisioner line; Decline refuses
+   without a reason.
+3. ☐ **The sealed-key hook** (phase 5, LAST): `catalogAcceptPanel()` carries a
+   marked comment where §5.4 items 3 and 4 go. Until then the panel states that
+   the catalog is provisioned with the **owner's own** key, per §6.4 row 3.
+
+### Dispatch B — the home-card "+" (phases 3a + 3b)
+
+- ✅ **3a LANDED `d475682`** — the Games card is `.card.multi`; the host row is
+  now the link (full-width, one tab stop, `.sr-only` new-tab note inside it, its
+  own `--hue` focus outline). Cost paid knowingly and on the precedent of
+  `index.html:653–663`: no whole-card tap target, no hover lift, no sheen.
+- ✅ **3b BUILT `1bfb5ac`** — `sites/heygabi-home/public/assets/apex-request-catalog.js`
+  (the "+", the modal, the **required** review step, the pending pill with a
+  two-tap Withdraw, per-kind show/hide, fail-hidden), styles in `index.html`'s
+  own `<style>` per the `apex-admin-link.js` precedent, one `data-catalog-kind`
+  hook per card, and two new live pins in `predeploy.checks.json` (the hooks as
+  a **pair**, plus the module itself — partly closing audit finding **F25**,
+  which is that no front-door asset was pinned at all).
+  **Exercised** with a stub-DOM harness: all nine §4.3 rows correct, the review
+  gate refusing in words with zero fetches, the exact POST body, a 409 shown as
+  the route's own sentence, a thrown fetch shown as an **outage**, the debounce
+  firing once, withdraw arming → POSTing → restoring the "+".
+  🔴 **NOT verified: anything signed in, and anything live.**
+- 🔴 **BLOCKED on the same CORS commit as phase 4 above — see that section's
+  item 1 for the mechanism.** The refusal named seven paths, three of them
+  `apex-request-catalog.js`'s. Not bypassed. ⚠️ **One deploy covers both
+  surfaces**, so the front door and `/admin` should go out together rather than
+  racing each other from two worktrees. Now written down where a future deployer
+  will look: [`info/worktree-deploys.md`](info/worktree-deploys.md) §5 owns the
+  general rule, and the incident with its full refusal text sits beside the
+  build order it corrects in
+  [`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) §10.
+  ⚠️ The front end fails **safe** while it waits — `/me` carries no `catalogs`
+  field yet and §4.3's last row hides on exactly that — but `admin.js` has no
+  such hiding rule, which is why neither ships early.
+- ☐ **THE OWNER'S VERIFICATION, and nothing substitutes for it:** signed in at
+  <https://heygabi.ai>, press the "+" bottom-right of **both** the Books and the
+  Games card and file one real request of each kind. There is no browser harness
+  for this page; `check:home` proves it parses and nothing more.
+
 ## ☐ `count_phrase` sank every converse loop to Haiku — allowlist it on Groq (2026-09-03 12:40)
 
 Measured by the Groq Monitor at 19:12Z (the owner's own review question):

@@ -411,6 +411,12 @@ cards (`admin.js:141–149`, `:328`), but above `#controls` (`index.html:781`) a
 | `#spending-panel` | 740–744 | `renderSpendingPanel()`, `admin.js:2261` |
 | `#verse-queue` | 767–772 (with `#verse-queue-count`) | `renderVerseQueue()`, `admin.js:2614` |
 
+✅ **A FOURTH panel landed 2026-09-05 (`7acc497`) — this feature's own**, placed
+**first** among them per §5.3, with `#catalog-banner` above the four:
+`#catalog-queue` / `#catalog-queue-count` / `#catalog-queue-body`, rendered by
+`renderCatalogQueue()`. The line numbers in the table above shift by that
+insertion; §10.1 is the as-built record.
+
 🔴 **`#verse-queue` is the precedent to copy, not to re-invent.** It is the
 same shape this feature needs — a collapsed `<details>` with a live count,
 holding rows the owner decides on, fetched in the same `Promise.all` as
@@ -1030,9 +1036,9 @@ owns.
 | **0** | This doc + the §9 answers (Q1–Q3 answered 2026-09-05; Q4 back-seed still open) | `catalog-platform/docs/` | done / owner | The questions are answered on the record and this file says so |
 | **1** | Migration `0018` + `catalog_request` **including `kind`**; submit / list / decide / mark-live routes; the reserved-list module; server-side validation incl. the closed `kind` vocabulary | `catalog-platform` `apps/auth-worker` | ~1 day | `node --test` exercises every route incl. refusals **and a bad `kind` returning 400, not a default**; the migration applied to **remote** `estate_auth`; a real row read back out of D1 — **a green deploy is not verification** |
 | **2** | `/api/estate/me` gains `catalogs`, **each entry carrying its `kind`** | same | ~½ day | A signed-in `curl` returns the caller's own array with kinds; an owner's answer is not special-cased into a lie |
-| **3a** | ⚠️ **Convert the Games card to `.card.multi`** — no button yet | `catalog-platform` `sites/heygabi-home` | ~1 h | The `boardgames.heygabi.ai` link still works, from a keyboard as well as a tap. **Its own commit**, so a link regression is separable from a button regression |
-| **3b** | The "+" bottom-right on **both** cards, the modal, the required review step, the pending pill, fail-hidden, per-kind show/hide | same | ~1 day | ⚠️ **A HUMAN, SIGNED IN, PRESSES BOTH** at <https://heygabi.ai> and files one real request of each kind. There is no browser harness for this page; `check:home` proves it parses and nothing more |
-| **4** | The `/admin` banner + "Catalog requests" section with **kind badges** + two-tap Accept/Decline + the Accept panel with owner-editable fields | `catalog-platform` `sites/heygabi-home/public/admin/` | ~1 day | The owner **renders the section signed in**, sees one row of each kind, edits an address in the panel, and accepts one real request. ⚠️ The verse queue carries the same unrendered-by-a-human debt today — do not repeat it |
+| **3a** | ✅ **LANDED `d475682`** — the Games card is `.card.multi`, no button | `catalog-platform` `sites/heygabi-home` | ~1 h | ⚠️ **What actually changed is where the LINK lives:** the cell is a `div` and the **host row** is now the anchor, laid out full-width so the tap target is the whole line rather than the words. One tab stop, Enter follows it, `.sr-only` "(opens in a new tab)" moved inside the link, and `focus-visible` got its own `--hue` outline because `a.card:focus-visible` no longer matches. Cost paid knowingly, as at `index.html:653–663`: no whole-card tap target, no hover lift, no sheen. `check:home` green. **NOT verified: nothing live** — 3a was never deployed alone |
+| **3b** | ✅ **BUILT `1bfb5ac`** — the "+" bottom-right on **both** cards, the modal, the required review step, the pending pill, fail-hidden, per-kind show/hide. New `sites/heygabi-home/public/assets/apex-request-catalog.js`; styles in `index.html`'s own `<style>` (the `apex-admin-link.js` precedent — that module has no stylesheet either); one `data-catalog-kind` hook per card. ⏳ **NOT DEPLOYED — see the blocker below** | same | ~1 day | **EXERCISED, not reasoned about:** a stub-DOM harness drove the real module through all nine §4.3 rows (signed out · probe 500 · not approved · **`catalogs` field absent** · approved/none · books-live · games-pending · books-accepted · probe-throws) — nine of nine correct; the review gate refusing an empty and a malformed address **in words with zero fetches**; the POST body exactly `{kind, desired_subdomain, display_name, extra:{note}}`; a 409 rendering the route's own sentence verbatim; a thrown fetch rendering the **outage** sentence; the availability debounce firing 0 fetches mid-keystroke and one afterwards with the reserved wording; withdraw arming, POSTing `…/requests/42/withdraw`, restoring the "+". `check:home` green (30 JS · 26 graphs · 14 HTML). ⚠️ **STILL THE BAR: A HUMAN, SIGNED IN, PRESSES BOTH** at <https://heygabi.ai> and files one real request of each kind. Nothing here has ever spoken to a real route |
+| **4** | ✅ **BUILT 2026-09-05 — `7acc497`.** The `/admin` banner + "Catalog requests" section with **kind badges** + two-tap Accept/Decline + the Accept panel with owner-editable fields | `catalog-platform` `sites/heygabi-home/public/admin/` | ~1 day | The owner **renders the section signed in**, sees one row of each kind, edits an address in the panel, and accepts one real request. ⚠️ The verse queue carries the same unrendered-by-a-human debt today — do not repeat it. **See §10.1 below for what was and was not verified** |
 | **6** | Back-seed the existing owners as `live` rows *(if §9 Q4 is yes)* — `library`, `padhard`, **and `boardgames`** | D1 data | ~1 h | Each owner's "+" is confirmed hidden **for the right kind only**, signed in as each |
 | **7** | `scripts/provision-catalog.mjs` (§7.4) — the BOOKS path; **v1 sets the OWNER's `ANTHROPIC_API_KEY`** (§6.4 row 3, owner decision 2026-09-05) | `library_catalog` | ~2 days | `--dry` prints all ten steps; a **real third instance answers `/api/health?cb=`** and its first sign-in logs `src:"seen"` under the new app id |
 | **8** | 🔴 **The GAMES platform prerequisites** — §8 items 1–3: instance-aware deploy guards, `ESTATE_APP` lifted out of source with a same-id build guard, then the first `[env.*]` block | `Board_Game_Catalog` | §8 — the largest single piece, and **not** costed here | The build guard **fails** when two instances are made to assert the same id (a guard never seen to refuse is a guard never tested); then a real second games instance answers `/api/health?cb=` under its own app id |
@@ -1061,9 +1067,117 @@ and 4 touch `sites/heygabi-home/public/`, which deploys by **directory upload** 
 `worktree-deploys.md`'s rule applies: a directory deploy ships the WORKING TREE,
 so it runs from a clean tree or a throwaway worktree of HEAD only.
 
+### 🔴 The ordering constraint nobody wrote down — MEASURED 2026-09-05
+
+**Phases 3b and 4 CANNOT DEPLOY until phase 1's CORS mounts are committed**, and
+the coupling is mechanical rather than a matter of taste. `npm run deploy:home`
+begins with `npm test`, which runs the **auth Worker's** suite, which contains
+`apps/auth-worker/test/cors-coverage.test.ts` — a scanner that reads every
+`/api/estate/*` path named in `sites/heygabi-home/public/**` and fails if
+`apps/auth-worker/src/index.ts` has no `app.use(..., cors())` covering it. It
+refused exactly as designed on the first attempt, naming all seven new paths:
+
+```
+Called by the browser but with no app.use(..., cors()) in index.ts, so the
+preflight is refused and the page reports a NETWORK error:
+  /api/estate/catalogs/requests            (admin\admin.js)
+  /api/estate/catalogs/availability        (admin\admin.js)
+  /api/estate/catalogs/requests/:x/decide  (admin\admin.js)
+  /api/estate/catalogs/requests/:x/live    (admin\admin.js)
+  /api/estate/catalogs/requests/:x/withdraw (assets\apex-request-catalog.js)
+  /api/estate/catalogs/availability        (assets\apex-request-catalog.js)
+  /api/estate/catalogs/requests            (assets\apex-request-catalog.js)
+```
+
+⚠️ **The refusal is CORRECT and must not be bypassed.** The failure it prevents
+is the estate's own recorded one (`_headers`' CSP note, `estate-auth-design.md`
+§1.2): a rejected preflight surfaces to JS as a **network error**, which is
+indistinguishable from the Worker being down — so a front end shipped ahead of
+its CORS mount looks exactly like an outage on a page that is working perfectly.
+
+So the build order is **1 → (3b, 4) deploy**, not 1 ∥ 3b ∥ 4. The *code* for
+3b and 4 can and did land in parallel; the *deploy* of the front door is gated
+on the Worker's mounts existing in a commit. The front end fails safe while it
+waits — `/me` carries no `catalogs` field yet, and §4.3's last row hides the
+affordance on exactly that — so a home deploy that went out early would ship a
+button nobody can see rather than a broken one. It still must not go out early,
+because `admin.js` has no such hiding rule.
+
 **Review links once each phase lands** (the estate's rule for anything visible):
 the "+" at <https://heygabi.ai> (signed in), the queue at
 <https://heygabi.ai/admin/>.
+
+### 10.1 Phase 4 as built — 2026-09-05, commit `7acc497`
+
+`sites/heygabi-home/public/admin/admin.js` + `admin/index.html`. Built against
+the §3.6 contract pinned the same day; **nothing is mocked** — the panel calls
+the real routes, so until they are deployed it renders its own worded "outage"
+or "no table yet" sentence, which is the behaviour under test.
+
+**What is there.** The §5.2 banner (a render of the data, worded, naming the
+kinds when there is more than one). A fourth top-level `<details>` placed first
+among the panels, copying `#verse-queue`'s markup and render path. One section,
+both kinds, badged — with the §8 games cost stated **on the row**, not in a
+footnote. Two-tap Decline with the ten-character reason checked before the round
+trip. The §5.4 Accept panel with both fields editable and the address
+live-checked (debounced 400 ms, sequence-guarded). The §5.6 refusal set with the
+four causes kept distinct. A collapsed decided list that **opens itself** when
+anything is `accepted`-and-not-yet-`live`. Mark live (`requireDevops`, §5.4).
+
+⚠️ **How Accept reconciles §5.4 with the two-gesture grammar**
+([`../access/estate-auth.md`](../access/estate-auth.md) §9), written down because
+it is not obvious and a later build must not "tidy" it. Decline is pure STATUS
+class: two taps, the second writes. Accept **cannot be** — §5.4 requires the
+address and display name to be editable before granting, and a two-tap button
+has nowhere to put two text fields. So Accept's two taps **open the panel and
+write nothing** (§5.4's own words), and the panel is GRANT class: it stages, one
+Save commits it. Both gestures are the page's existing two; no third was
+invented.
+
+⚠️ **The row holds its own address.** §3.6 counts an open `pending` row as
+`taken`, so asking the availability route about the address *this* request asked
+for answers "taken" — by itself. The panel special-cases the unchanged value to
+*"unchanged — this is the address they asked for"* rather than rendering a
+refusal of the thing being accepted. Any other surface calling that route needs
+the same guard.
+
+⚠️ **Both table-missing shapes are handled, not one.** 0017's queue answers a
+missing table as **200** with `{error, detail, fix}`; this contract's §3.6 says
+**503** with the same body. Guessing wrong turns *"run the migration"* into
+*"something went wrong on the server"*.
+
+**The key, per §6.4 row 3.** No key field exists on the panel in this phase; it
+states plainly that the catalog will be provisioned with the **owner's own**
+Anthropic key (his standing decision of 2026-09-05) and that the provisioner logs
+which instances spend it. The place §5.4 items 3 and 4 will occupy is marked with
+a hook comment in `catalogAcceptPanel()`.
+
+**Two defects fixed in passing**, both the same class: `clearSignedInState()` did
+not clear the **verse** queue, so other members' names, emails and stated reasons
+stayed on screen after sign-out (both queues are cleared now); and
+`verseAge`/`verseWhen` are renamed `queueAge`/`queueWhen` and **shared** rather
+than copied — D1's `datetime('now')` has no `T` and no zone, which Safari parses
+as local time and Chrome refuses, and a second copy is a second chance to get
+that wrong.
+
+🔴 **THE ORDERING CONSTRAINT §10's parallel-dispatch note does not name, and it
+bit this phase.** `apps/auth-worker/test/cors-coverage.test.ts` scans the
+frontend for auth-API paths and **fails** when one has no `app.use(…, cors())`
+in `index.ts`. Phases 3b and 4 name four new `/api/estate/catalogs/*` paths, so
+**the home site cannot be deployed until the auth Worker's CORS mounts are
+committed** — `npm run deploy:home` runs the whole workspace test suite and
+refuses. The guard is right (a missing preflight makes the page report a network
+error), and it was not bypassed. Practical rule for the next parallel build:
+**the route repo's CORS registration is a phase-1 deliverable, not a phase-1
+detail.**
+
+**Verified:** `node --check`; `npm run check:home` (30 JS parsed, 26 module
+graphs resolved, 14 HTML structurally checked); the full workspace suite green in
+the shared tree. **NOT verified:** nobody has rendered the section signed in.
+There is no browser test harness for `admin.js` — `check:home` proves it parses
+and nothing more — and every control here is injected after Firebase sign-in
+against routes that did not exist when it was written. It carries the same debt
+the verse queue does, which §10's own row 4 said not to repeat.
 
 ---
 

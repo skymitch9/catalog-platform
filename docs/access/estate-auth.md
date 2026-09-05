@@ -3,7 +3,12 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values — this repo is public on GitHub, so this
 > discipline is load-bearing here, not just habit).
-> Last verified: **2026-08-26** — §3.3, §6 and §7's first gotcha were
+> Last verified: **2026-09-05** for §9 only — §9.3 gained the `/admin` page map
+> (four top-level panels, the catalog queue first) and three rules the catalog
+> build settled, each read straight out of `admin/index.html` and `admin.js`
+> that day. ⚠️ **Nothing in §9 has been rendered signed in**, by this build or
+> the two before it. Everything outside §9 keeps the date below.
+> Last verified (the rest): **2026-08-26** — §3.3, §6 and §7's first gotcha were
 > re-measured that day with `wrangler secret list` on `estate-auth` (names
 > only): `TOKEN_SIGNER_KEY` **IS SET**, correcting three places that said it
 > did not exist yet or that the session routes were idle. ⚠️ **Nothing else in
@@ -363,6 +368,55 @@ and, on the little tag that used to hang off the Audiobooks/Ebooks row:
   site's vocabulary is rendered in that site's own words and never translated.
 
 ### 9.3 The anatomy (what a future build must not quietly re-shape)
+
+**The page map — everything above the member directory**, in render order. Each
+is a collapsed `<details class="adv">` with a live count, each degrades on its
+own, and each is hidden entirely when its route does not answer *for a reason
+the reader is not owed* (see the catalog row's exception):
+
+| Element | `admin/index.html` | Rendered by | Owns the question |
+|---|---|---|---|
+| `#catalog-banner` | above the panels | `renderCatalogBanner()` | *"is anything waiting on me right now?"* — a render of the data, never a toast |
+| `#catalog-queue` | first panel | `renderCatalogQueue()` | *"who has asked for a catalog of their own?"* (added 2026-09-05, `7acc497`; design [`../info/request-a-catalog-design.md`](../info/request-a-catalog-design.md) §5) |
+| `#permission-map` | second | `renderPermissionMap()` | *"what does each rung mean, on every site?"* |
+| `#spending-panel` | third | `renderSpendingPanel()` | *"what may bill the model, and where?"* |
+| `#verse-queue` | fourth | `renderVerseQueue()` | *"who has asked for a universe?"* |
+
+⚠️ **`#catalog-queue` is FIRST on purpose** — it is the only one of the four
+that is waiting on a decision. A new panel picks its place by that test, not by
+arrival order.
+
+⚠️ **The catalog panel does NOT read through `api()`, and that is deliberate.**
+`api()` answers `null` for every failure and puts one sentence on the shared
+status line, which is right for a mutation and wrong for a panel that has to
+explain its own emptiness. Its own fetcher keeps the four causes distinct: not
+an approver (**the section is not drawn at all** — a member has no business
+knowing the queue exists), the table is not migrated yet (say so and name the
+fix), a lapsed sign-in, or an **outage** — worded as an outage, because
+*"couldn't reach it"* and *"you may not"* have different next actions.
+
+⚠️ **`api()` takes an optional third argument, `{ forbidden }`, since
+2026-09-05.** The page's standing 403 sentence names the *approver* ladder, and
+one route on this page (`POST /api/estate/catalogs/requests/:id/live`) is
+**devops**-gated. Telling a devops refusal in approver words sends somebody
+asking for a power they already hold. Any future devops-gated control here uses
+the override rather than adding a fifth cause to the shared line.
+
+⚠️ **The GRANT class covers a staging PANEL, not only a checkbox** — settled by
+the catalog queue's Accept, 2026-09-05, and written down so a later build does
+not "fix" it into a third gesture. Accept could not be pure STATUS class,
+because the owner must be able to edit two text fields before granting and a
+two-tap button has nowhere to put them. So Accept's **two taps open a panel and
+write nothing**, and the panel behaves exactly like a member card: it stages,
+and one Save commits everything staged in it. Decline, which needs no fields,
+stays pure STATUS class.
+
+⚠️ **`clearSignedInState()` must clear every queue as well as every ladder.**
+Both request queues hold other members' names, emails and the reasons they gave.
+The verse queue was left on screen after sign-out from the day it shipped until
+2026-09-05 — not because the rule was wrong but because it had never been
+applied to a panel that arrived after the rule was written. A new panel holding
+anyone's data is a line in that function, in the same commit.
 
 - `SITE_ROWS` in `admin.js` is the **one** row list: it drives each member's
   grid, the top **Permission map** disclosure, and the order the filter chips
