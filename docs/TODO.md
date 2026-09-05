@@ -717,7 +717,7 @@ reads **14 names with `count_phrase` among them**, `gabi_groq` `"first"`,
 array entry. So the fix is still deployed and still configured; **only the wire
 observation is outstanding**, and nothing about it is a build.
 
-## ☐ Flip `GABI_CLUB_WRITES` — 5 of 7 steps left, and step 3 is BLOCKED on the `/progress percent` decision below
+## ☐ `GABI_CLUB_WRITES` IS FLIPPED AND LIVE — 5 of 7 steps done 2026-09-05; the last two are the OWNER's
 
 ⚠️ **Corrected 2026-09-05 (docs audit). This section's premise was STALE by
 three days: it said the blocker was an unmade MEASUREMENT, and that measurement
@@ -726,10 +726,12 @@ was made on 2026-09-02.** Verified: commit `ee688ad`
 it STAYS DARK"*, 2026-09-02 11:33 -0700) read `audiobook_catalog/site/club-reads.js`,
 `site/clubs.js` and `firestore.rules` read-only and rewrote the block;
 `apps/discord-worker/src/club-write.ts:108` now carries `CLUB_WRITE_SHAPES` with
-per-line evidence beside each field. **The real remaining blocker is an OWNER
-DECISION** — `/progress percent` has no destination field — which is its own
-section further down, and which `KNOWN_ISSUES.md` KI-13 already states
-correctly. The original text, struck rather than deleted:
+per-line evidence beside each field. **The real remaining blocker was an OWNER
+DECISION** — `/progress percent` had no destination field — ⚠️ **which he
+answered on 2026-09-05 (option (a)); that section has moved WHOLE to
+[`DONE.md`](DONE.md)**, and KI-13 was REWRITTEN the same day — it no longer
+describes a dark pair, it describes the two owner gates that still stand between
+"switched on" and "usable". The original text, struck rather than deleted:
 
 > ~~The blocker is a **measurement, not caution**: the field names inside an RSVP
 > and a progress document live in `audiobook_catalog/site/`, which the build was
@@ -739,10 +741,22 @@ correctly. The original text, struck rather than deleted:
 > is still true and is the whole reason the posture, not the code, is what
 > protects a live club page.)*
 
-`/rsvp` and `/progress` are built, tested and **dark** — re-measured 2026-09-05:
-`apps/discord-worker/wrangler.toml:557` `GABI_CLUB_WRITES = "off"`, and
-`GET https://discord.heygabi.ai/api/health` answers `gabi_club_writes_enabled:false`,
-`gabi_club_writes_ready:false`, `club_write_shapes_verified:false`.
+✅ **THE OWNER ANSWERED, AND THE FLIP LANDED THE SAME DAY (2026-09-05).** His
+answer was **option (a)** — `/progress` drops `percent` and takes a **chapter**
+only. The decision section moved WHOLE to [`DONE.md`](DONE.md); the build,
+the flip and the live verification are in its closing note.
+
+`/rsvp` and `/progress` are built, tested and **LIT** — measured 2026-09-05
+23:28:16Z, after the deploy: `apps/discord-worker/wrangler.toml`
+`GABI_CLUB_WRITES = "on"`, and `GET https://discord.heygabi.ai/api/health`
+answers `gabi_club_writes_enabled:true`, `gabi_club_writes_ready:true`,
+`club_write_shapes_verified:true`, `club_write_shapes_measured_on:"2026-09-02"`.
+*(Before the deploy, same day 23:19:05Z, all three read `false`.)*
+
+🔴 **BUT NOBODY CAN USE THEM YET, AND THAT IS THE POINT OF THE TWO OPEN STEPS.**
+The commands are **still invisible in Discord** — the registry is a function of
+the switch, and it is only re-read when the registration route is re-run. And
+nothing has ever been written to a real club.
 
 The checklist is [`access/discord-bot.md`](access/discord-bot.md) §15.3, with
 today's state marked:
@@ -753,12 +767,55 @@ today's state marked:
 2. ☑ **DONE 2026-09-02 (`ee688ad`)** — `CLUB_WRITE_SHAPES` corrected in
    `apps/discord-worker/src/club-write.ts` (one block, `deepEqual`-pinned by
    `test/club-write.test.ts`, pin updated in the same commit).
-3. ☐ 🔴 **BLOCKED ON THE OWNER** — flip `club_write_shapes_verified` in
-   `/api/health` (`src/index.ts:578`, hard-coded `false` today). It should not
-   flip while `/progress percent` still has nowhere to land.
-4. ☐ flip the posture and deploy · 5. ☐ re-run registration · 6. ☐ opt a club in
-   with `features.meetingRsvp = true` · 7. ☐ **exercise it and then look at the
-   club PAGE**, because the Discord side saying "recorded" is not the evidence.
+   ☑ **AND ITS SECOND HALF, 2026-09-05 (`9330234`)** — the owner's decision (a)
+   landed: `/progress` publishes no `percent` option and `chapter` is required.
+   ⚠️ The percentage refusal path SURVIVES the option on purpose (a stale global
+   command, a hand-crafted interaction) — worded, never a bare error.
+3. ☑ **DONE 2026-09-05 (`9330234`)** — `club_write_shapes_verified` is no longer
+   a hard-coded `false` at `src/index.ts:578`. It is **derived**: true only
+   while the live `CLUB_WRITE_SHAPES` still matches the frozen
+   `CLUB_WRITE_SHAPES_MEASUREMENT` **and** every option `/progress` publishes
+   has one of those measured fields to land in. Editing either turns it back to
+   `false` in the deployed Worker, not merely in CI.
+4. ☑ **DONE 2026-09-05 (`a063eea`, deployment `613a4363-1c64-44b6-a648-2a8918cbfd2f`)**
+   — posture flipped and the Worker deployed; `deploys.log` carries the line.
+   ⚠️ **No shadow rung exists and its absence is deliberate**: §15.3 goes off →
+   on, `clubWritesOn` is affirmative-only, and a "shadow" club write would have
+   to perform the very write that is the whole risk.
+5. ☐ 🧑 **RE-RUN THE REGISTRATION ROUTE — nothing is visible in Discord until
+   this happens.** It needs a Firebase ID token from an estate **admin**
+   account, which no session holds, so it is the owner's:
+
+   1. Sign in on any estate page (e.g. <https://heygabi.ai/>) and run
+      `await (await import('/assets/estate-auth.js')).idToken()` in the browser
+      console; copy the string it prints.
+   2. In PowerShell:
+
+      ```powershell
+      curl.exe -s -D - -X POST https://discord.heygabi.ai/admin/commands/register -H "Authorization: Bearer <that token>"
+      ```
+
+   3. **What good looks like:** the JSON answer states both switches and lists
+      what it published — expect `club_writes_enabled: true` and `rsvp` +
+      `progress` among the commands. Global command UPDATES show up in Discord
+      almost immediately (it is the first-ever publish that can take an hour).
+6. ☐ 🧑 **Opt one club in:** set `features.meetingRsvp = true` on that club's
+   document (the club page's own Edit Club settings, or the Firestore console).
+   ⚠️ Default OFF is deliberate — the same posture `discordPollVoting` keeps —
+   so **no club can RSVP until you do this**, and `/rsvp` answers the worded
+   "not switched on for this club" until then.
+7. ☐ 🧑 **Exercise it, then LOOK AT THE CLUB PAGE — the Discord reply is not the
+   evidence.** In the opted-in club's server: run `/rsvp club:<name>`, press
+   **Coming**, then run `/progress club:<name> chapter:ch. 14`. Then open that
+   club's page on the site and check **both**:
+   - your RSVP appears **in the TALLY**, not merely that a document exists —
+     ⚠️ every reader filters `rsvp.meetingAt === club.nextMeetingAt`, and that
+     trap is invisible from the document side, which is exactly the failure the
+     2026-09-02 measurement caught;
+   - your **chapter** shows on the read's progress, beside everybody else's.
+
+   If either is missing, set `GABI_CLUB_WRITES = "off"` and redeploy — backing
+   out is one line — and say which half was wrong.
 
 ⚠️ A concurrent agent was working in `audiobook_catalog` on 2026-09-02, which is
 the second reason it was left alone.
@@ -789,33 +846,6 @@ Nothing breaks if he does not — the ladder falls back to Haiku invisibly, whic
 is what it did all through the live test. Measurement + arithmetic:
 [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
 
-## ❓ OWNER DECISION — should `/progress` drop `percent`, or learn `milestonePosition`? (2026-09-02)
-
-**The options: (a) drop `percent` and take a CHAPTER only** — smallest change,
-lands on `chapterIndex`, which the club page already reads; **(b) also learn
-`milestonePosition`** — needs the read's milestone list to mean anything, so it
-is the larger build. Doing neither leaves `/rsvp` and `/progress` dark for ever.
-⚠️ This is the ONLY thing now blocking the `GABI_CLUB_WRITES` flip above.
-
-The club-write shapes were finally MEASURED against `audiobook_catalog/site`
-(read-only) and **four of the seven inferred names were wrong** — corrected in
-commit `ee688ad`, with the evidence table in `src/club-write.ts`.
-
-⚠️ **`GABI_CLUB_WRITES` stays `off`, and the remaining blocker is a design
-question rather than a constant.** The club page tracks a **milestone position**
-or a **chapter index**, both numbers; there is no percentage field anywhere in
-it. A percentage is not a milestone index and not a chapter number, so
-converting one to the other would be inventing a value. `/progress percent` is
-now refused in words instead of written into a document nothing reads.
-
-**The question:** should `/progress` drop `percent` and take a chapter only, or
-also learn `milestonePosition` (which needs the read's milestone list to mean
-anything)? Answer that, then the flip checklist in
-[`access/discord-bot.md`](access/discord-bot.md) §15 is the rest.
-
-⚠️ Flipping it is **access-increasing on somebody else's live page** — this
-Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
-silently. It gets confirmed, never assumed.
 ## ⏸ DEFERRED BY OWNER 2026-09-02 — anything needing the other computer
 
 Owner, verbatim, 2026-09-02: *"Anything needing the other computer is on

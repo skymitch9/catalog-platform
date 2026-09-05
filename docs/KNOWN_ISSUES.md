@@ -342,29 +342,51 @@ instrument pointed at it, not a fix.
 
 ---
 
-## KI-13 · `/rsvp` and `/progress` ship dark, and now for a NAMED reason — `BLOCKED` (owner)
+## KI-13 · `/rsvp` and `/progress` are switched ON but still not usable — `BLOCKED` (owner)
 
-**Symptom.** The two club-write commands are not published and answer
-"not switched on" if reached through a stale global command. `GABI_CLUB_WRITES`
-is `"off"` in `wrangler.toml`.
+⚠️ **REWRITTEN 2026-09-05, because the OLD entry described a state that no
+longer exists.** It read *"they ship dark, `GABI_CLUB_WRITES` is `"off"`,
+blocked on an owner decision"*. He made the decision (option (a): `/progress`
+drops `percent` and takes a chapter only), the posture was flipped to `"on"`
+and the Worker deployed (`a063eea`, deployment
+`613a4363-1c64-44b6-a648-2a8918cbfd2f`). Measured live the same day 23:28:16Z:
+`gabi_club_writes_enabled:true`, `gabi_club_writes_ready:true`,
+`club_write_shapes_verified:true`. That half is in [`DONE.md`](DONE.md).
+**What follows is what is wrong TODAY.**
 
-**Why tolerated.** They shipped dark because the Firestore document shapes were
-INFERRED. They were measured on **2026-09-02** against
-`audiobook_catalog/site/club-reads.js`, `site/clubs.js` and `firestore.rules`
-(read-only), and **four of the seven guesses were wrong** — the RSVP field
-(`response`, not `status`), its vocabulary (`going`/`maybe`/`cant`), the
-instant's TYPE (a number, compared with `===`, so a string would have stored
-fine and been counted by nothing) and the club's own field (`nextMeetingAt`).
-All four are corrected in commit `ee688ad`. ⚠️ **Every one of them would have
-SUCCEEDED**, because this Worker's service account bypasses `firestore.rules` —
-which is exactly why the posture, not the code, was the thing protecting a live
-club page.
+**Symptom.** You type `/rsvp` or `/progress` in Discord and **Discord does not
+offer them** — as if the bot had never had them. If you reach one anyway through
+some other route, it may answer *"RSVPs from Discord aren't switched on for this
+club"*. Meanwhile `/api/health` cheerfully says
+`gabi_club_writes_enabled: true`, which reads like a contradiction.
 
-**What would change it.** One owner decision, tracked in [`TODO.md`](TODO.md):
-`/progress percent` has **no destination field** — the page tracks
-`milestonePosition` or `chapterIndex`, both numbers, and a percentage is neither.
-It is now refused in words rather than written into a void. Decide whether
-`/progress` drops `percent` or learns `milestonePosition`, then run the flip
-checklist in [`access/discord-bot.md`](access/discord-bot.md) §15. ⚠️ The flip is
-**access-increasing on somebody else's live page**, so it is confirmed, never
-assumed.
+**Why tolerated.** Neither is a fault; each is a gate that only the owner can
+open, and both are deliberate:
+
+1. **The registry is a function of the switch, and Discord only learns it when
+   the registration route is re-run.** Flipping the posture does not push
+   anything to Discord — `POST /admin/commands/register` does, and it needs a
+   Firebase ID token from an estate **admin** account, which no agent session
+   holds. Until it runs, the commands genuinely do not exist for any client.
+2. **A club must opt in with `features.meetingRsvp = true`.** Default OFF, the
+   same posture `discordPollVoting` keeps: a per-club switch that defaults on
+   would enrol every club in a feature nobody asked for.
+
+⚠️ **And the thing nobody should read past: NOTHING HAS EVER BEEN WRITTEN TO A
+REAL CLUB PAGE.** `club_write_shapes_verified: true` says the live constants
+still match a measurement taken on 2026-09-02 and that every published
+`/progress` option has a field to land in. It does **not** say a club page has
+rendered a write. This Worker's service account bypasses `firestore.rules`, so a
+wrong shape SUCCEEDS silently — which is why the 2026-09-02 measurement mattered
+(four of seven inferred names were wrong: `response` not `status`;
+`going`/`maybe`/`cant`; `meetingAt` a NUMBER; the club's own `nextMeetingAt`)
+and why the last check is an eyeball on the page, not a tick in Discord.
+
+**What would change it.** The two remaining steps of
+[`access/discord-bot.md`](access/discord-bot.md) §15.3 — **5 of 7 done** — both
+the owner's, both written out with their exact commands in
+[`TODO.md`](TODO.md): re-run the registration route (expect its JSON answer to
+list `rsvp` and `progress` with `club_writes_enabled: true`), then opt one club
+in and **look at the club page**: the RSVP must appear **in the tally**, not
+merely as a document, and the chapter must show on the read. ⚠️ If either half
+is wrong, the backout is one line — `GABI_CLUB_WRITES = "off"` and deploy.

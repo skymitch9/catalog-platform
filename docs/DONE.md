@@ -9,6 +9,87 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ ANSWERED + BUILT + DEPLOYED 2026-09-05 — OWNER DECISION: `/progress` drops `percent` and takes a CHAPTER only — moved WHOLE from TODO.md
+
+> **The owner's answer, 2026-09-05 16:14 Phoenix: option (a)** — `/progress`
+> **drops `percent`** and takes a **chapter** only, landing on `chapterIndex`,
+> the field the club page already reads. Option (b) — also learning
+> `milestonePosition` — was the larger build (it needs the read's milestone list
+> to mean anything) and was **not** taken. ⚠️ **This was the ONLY thing blocking
+> the `GABI_CLUB_WRITES` flip**, and the flip followed the same day.
+>
+> **How it was built** (agent W5-PROGRESS, commit `9330234`):
+>
+> - `src/commands.ts` no longer declares a `percent` option, and `chapter` is
+>   now **required** — with `percent` gone it is the only thing the command
+>   records, so Discord can refuse an empty `/progress` before it is ever sent;
+>   the runtime `CLUB_MSG.progressNothing` check stays as the second rail.
+> - ⚠️ **The percentage REFUSAL PATH deliberately survives the option.**
+>   Dropping an option is a command **re-registration**, and a global command's
+>   old form can sit in a Discord client for up to an hour afterwards — a
+>   hand-crafted interaction can carry one for ever. So `interactions.ts` still
+>   reads the value (renamed `legacyPercent`, so nobody mistakes it for an
+>   input) and `club-write.ts` still answers `PROGRESS_PERCENT_UNSUPPORTED` in
+>   words. Never a bare error; never a write into a document nothing reads.
+> - ⚠️ **The RANGE check on it was removed**, and that is the interesting half.
+>   While the option existed, *"40.5 is not a whole number"* and *"percentages
+>   have nowhere to go"* were two different fixes and earned two different
+>   sentences. Now that the option is gone, every percentage has one answer, and
+>   complaining about a range would imply an in-range number would have worked.
+>   `CLUB_MSG.progressPercent` is deleted.
+>
+> **Also closed here — checklist step 3, `club_write_shapes_verified`.** It was
+> a hard-coded `false` at `src/index.ts:578`; it is now **derived**, and true
+> only while BOTH halves hold: (1) the live `CLUB_WRITE_SHAPES` still matches
+> `CLUB_WRITE_SHAPES_MEASUREMENT`, a new frozen record of what was read on
+> 2026-09-02, so an edited constant turns the row off **in the deployed Worker**
+> and not only in CI; and (2) every option `/progress` publishes has one of
+> those measured fields to land in, read off `CLUB_WRITE_COMMANDS` rather than
+> restated. ⚠️ **Half (2) is the honest reason the row stayed `false` for three
+> days while the shapes were already right** — `percent` had nowhere to go, and
+> one flag claiming both would have been a half-truth.
+>
+> **Verified live** (`curl -s -D -`, deployment `613a4363-1c64-44b6-a648-2a8918cbfd2f`,
+> commit `a063eea`): **before** 23:19:05Z `gabi_club_writes_enabled:false`,
+> `gabi_club_writes_ready:false`, `club_write_shapes_verified:false`; **after**
+> 23:28:16Z **all three `true`**, plus a new `club_write_shapes_measured_on:
+> "2026-09-02"`. ⚠️ **NOT verified, and it is not a small gap:** nothing has ever
+> been written to a real club — the registration route has not been re-run, so
+> `/rsvp` and `/progress` are still invisible in Discord. Those are the owner's
+> steps and they live in [`TODO.md`](TODO.md)'s flip section.
+
+<details><summary>The section as it stood in TODO.md at the move</summary>
+
+## ❓ OWNER DECISION — should `/progress` drop `percent`, or learn `milestonePosition`? (2026-09-02)
+
+**The options: (a) drop `percent` and take a CHAPTER only** — smallest change,
+lands on `chapterIndex`, which the club page already reads; **(b) also learn
+`milestonePosition`** — needs the read's milestone list to mean anything, so it
+is the larger build. Doing neither leaves `/rsvp` and `/progress` dark for ever.
+⚠️ This is the ONLY thing now blocking the `GABI_CLUB_WRITES` flip above.
+
+The club-write shapes were finally MEASURED against `audiobook_catalog/site`
+(read-only) and **four of the seven inferred names were wrong** — corrected in
+commit `ee688ad`, with the evidence table in `src/club-write.ts`.
+
+⚠️ **`GABI_CLUB_WRITES` stays `off`, and the remaining blocker is a design
+question rather than a constant.** The club page tracks a **milestone position**
+or a **chapter index**, both numbers; there is no percentage field anywhere in
+it. A percentage is not a milestone index and not a chapter number, so
+converting one to the other would be inventing a value. `/progress percent` is
+now refused in words instead of written into a document nothing reads.
+
+**The question:** should `/progress` drop `percent` and take a chapter only, or
+also learn `milestonePosition` (which needs the read's milestone list to mean
+anything)? Answer that, then the flip checklist in
+[`access/discord-bot.md`](access/discord-bot.md) §15 is the rest.
+
+⚠️ Flipping it is **access-increasing on somebody else's live page** — this
+Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
+silently. It gets confirmed, never assumed.
+
+</details>
+
 ## ✅ DEPLOYED + VERIFIED 2026-09-05 15:45 Phoenix — the estate-auth deploy manifest (RES 401s · W2-VERSE4 notifications · W2-PLAT 4th 401 · W2-BILL2B 2b server · W3-PLATSMALL door) — moved WHOLE from TODO.md
 
 > **How it closed (conductor, measured):** the owner typed the deploy from his

@@ -3,14 +3,27 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
 >
-> ⚠️ **ADDED 2026-09-02 — §15, THE FUN MENU** (`/recent`, `/universe`,
-> `/review`, `/suggest`, `/guessgame` live; `/rsvp` and `/progress` DARK behind
-> `GABI_CLUB_WRITES`). ⚠️ **§4's registration ritual now has a second switch —
-> see §15.2**, and **nothing in §15 has been typed in Discord yet**: the
-> registration route has not been re-run, so the five new commands are not
-> visible in any server. The verification below was NOT re-taken.
+> ⚠️ **UPDATED 2026-09-05 — `GABI_CLUB_WRITES` IS `"on"`.** `/rsvp` and
+> `/progress` are no longer dark: the owner answered the one blocking question
+> (option (a) — `/progress` drops `percent`, takes a CHAPTER only), the posture
+> was flipped and the Worker deployed (`a063eea`, deployment
+> `613a4363-1c64-44b6-a648-2a8918cbfd2f`). Measured live **2026-09-05
+> 23:28:16Z**: `gabi_club_writes_enabled:true`, `gabi_club_writes_ready:true`,
+> `club_write_shapes_verified:true` (derived, not asserted — §15.3 step 3),
+> `club_write_shapes_measured_on:"2026-09-02"`; all three read `false` at
+> 23:19:05Z before the deploy. 🔴 **Only those four rows were re-measured that
+> day** — every other figure in this header still carries its 2026-08-18 date.
 >
-> Last verified: **2026-08-18** — LIVE at `discord.heygabi.ai`, version
+> ⚠️ **ADDED 2026-09-02 — §15, THE FUN MENU** (`/recent`, `/universe`,
+> `/review`, `/suggest`, `/guessgame` live; `/rsvp` and `/progress` were DARK
+> behind `GABI_CLUB_WRITES` — see the update above). ⚠️ **§4's registration
+> ritual now has a second switch — see §15.2**, and **nothing in §15 has been
+> typed in Discord yet**: the registration route has not been re-run, so none of
+> the seven new commands is visible in any server — including the two the
+> 2026-09-05 flip switched on.
+>
+> Last verified (the rest of this header): **2026-08-18** — LIVE at
+> `discord.heygabi.ai`, version
 > **`c9af75f0-f8e3-4de6-b6ac-81a02c98ce9f`** (the **asker-aware, prefilled deep
 > link**, §10.3). Measured live this deploy: `/api/health` `ok: true`, 12
 > features, all rows intact including `gabi_docs_ready: true`,
@@ -249,8 +262,9 @@ list and Discord shows exactly that. GABI's registry is
 **only when `MODERATION_ENABLED` is `"on"`** — see §9.5 for why hiding them was
 chosen over showing a control that answers "switched off" — **plus**
 `CLUB_WRITE_COMMANDS` (`/rsvp`, `/progress`) **only when `GABI_CLUB_WRITES` is
-`"on"`**, which it is not: ⚠️ **see §15.3 before flipping it.** It is published
-by calling the Worker:
+`"on"`** — ⚠️ **which it now IS, since 2026-09-05 (§15.3), but the route below
+has NOT been re-run since the flip, so neither command is visible in Discord
+yet.** It is published by calling the Worker:
 
 ```
 POST https://discord.heygabi.ai/admin/commands/register
@@ -1728,8 +1742,12 @@ Design of record: [`../info/discord-bot-design.md`](../info/discord-bot-design.m
 | `/review book:<title>` | What the house thought of a book, with the average rating; and a link to add your own | anybody | the `reviews` collection, via the shelf port |
 | `/suggest [format] [mood]` | A few picks built on your own ratings and reading list | anybody (personalised once linked) | the catalogue + your own shelf |
 | `/guessgame` | Guess the book from its facts — four titles, one right | anybody | `catalog.csv` |
-| `/rsvp club:<name>` | 🔴 **DARK.** Offers Coming / Not coming / Maybe for the club's next meeting | linked members | `clubs/{id}` + `rsvps/{slug}` |
-| `/progress club:<name> [percent] [chapter]` | 🔴 **DARK.** Records where you are in the club's current read | linked members | `clubs/{id}/reads/{readId}/progress/{slug}` |
+| `/rsvp club:<name>` | ✅ **SWITCHED ON 2026-09-05** — offers Coming / Not coming / Maybe for the club's next meeting. ⚠️ Needs the club's own `features.meetingRsvp` | linked members | `clubs/{id}` + `rsvps/{slug}` |
+| `/progress club:<name> chapter:<ch>` | ✅ **SWITCHED ON 2026-09-05** — records which chapter you are on in the club's current read. ⚠️ `chapter` is REQUIRED and must contain a NUMBER; there is **no `percent` option** (owner decision (a), §15.3) | linked members | `clubs/{id}/reads/{readId}/progress/{slug}` |
+
+🔴 **"Switched on" is not "visible".** Both are published to Discord only by the
+registration route (§15.2), and that has **not been re-run** since the flip — so
+today neither appears in any server. §15.3 steps 5–7 are what close it.
 
 **Answer shapes, so nothing surprises a channel:**
 
@@ -1768,10 +1786,27 @@ curl -s https://discord.heygabi.ai/api/health \
   | jq '.fun_menu_commands, .gabi_club_writes_enabled, .club_write_shapes_verified'
 ```
 
-### 15.3 🔴 THE CHECKLIST BEFORE `GABI_CLUB_WRITES` IS EVER FLIPPED
+### 15.3 ✅ THE CHECKLIST — FLIPPED 2026-09-05, 5 of 7 done, the last two are the OWNER's
 
-⚠️ **`/rsvp` and `/progress` ship OFF, and the reason is a MISSING MEASUREMENT
-rather than caution.** Read this before touching the switch.
+⚠️ **`/rsvp` and `/progress` shipped OFF, and the reason was a MISSING
+MEASUREMENT rather than caution.** Read this before touching the switch — the
+reasoning below is also the reason it was safe to move, and the switch is still
+the **backout** (`GABI_CLUB_WRITES = "off"`, deploy).
+
+| | |
+|---|---|
+| **Posture today** | `GABI_CLUB_WRITES = "on"` (`apps/discord-worker/wrangler.toml`), flipped 2026-09-05 |
+| **Commit / deployment** | `a063eea` · `613a4363-1c64-44b6-a648-2a8918cbfd2f` (`../deploys.log`) |
+| **Live, 2026-09-05 23:28:16Z** | `gabi_club_writes_enabled:true` · `gabi_club_writes_ready:true` · `club_write_shapes_verified:true` · `club_write_shapes_measured_on:"2026-09-02"` |
+| **Before the deploy, 23:19:05Z** | all three `false` |
+| 🔴 **Still not usable** | the registration route has not been re-run (step 5) and no club is opted in (step 6) |
+
+⚠️ **THERE IS NO SHADOW RUNG HERE, and that is deliberate rather than an
+oversight.** The estate's shadow-first rule is for **enforcement** changes,
+which can log a would-deny while acting on nothing. A club write has no such
+form: `clubWritesOn` is affirmative-only (`"on"` and nothing else, no third
+value), and a "shadow" write would have to perform the very write that is the
+whole risk. Off → on, with both halves below closed first.
 
 **What is measured** (from this repo, 2026-09-02):
 
@@ -1814,36 +1849,72 @@ shows a member who has not RSVP'd, or a progress bar that never moves, with no
 error anywhere. It fails silently, on somebody else's surface, and it looks
 exactly like a bug in their code.
 
-### 🔴 THE ONE THING STILL BLOCKING THE FLIP — an OWNER decision
+### ✅ THE THING THAT BLOCKED THE FLIP — an OWNER decision, answered 2026-09-05
 
-⚠️ **`/progress percent` has NO DESTINATION FIELD, and correcting a constant
-cannot fix that.** The club page tracks a milestone POSITION or a chapter INDEX,
-both numbers; there is no percentage anywhere in it, and a percentage is neither
-of those, so converting one into the other would be **inventing a value**. Since
-`ee688ad` the percentage input is REFUSED in words rather than written into a
-document nothing reads, and a chapter LABEL becomes a `chapterIndex` (`"ch. 14"`
-→ `14`); a label with no number in it is refused too.
+⚠️ **`/progress percent` had NO DESTINATION FIELD, and correcting a constant
+could not fix that.** The club page tracks a milestone POSITION or a chapter
+INDEX, both numbers; there is no percentage anywhere in it, and a percentage is
+neither of those, so converting one into the other would be **inventing a
+value**.
 
-**The question, and it is the owner's rather than a coder's:** should
-`/progress` drop `percent` and take a chapter only, or should it also learn
-`milestonePosition` — which needs the read's milestone list to mean anything?
-Tracked in [`../TODO.md`](../TODO.md).
+✅ **Owner's answer, 2026-09-05 16:14 Phoenix: option (a) — `/progress` DROPS
+`percent` and takes a CHAPTER only.** (Option (b), also learning
+`milestonePosition`, needs the read's milestone list to mean anything and was
+the larger build; it was not taken.) Landed in `9330234`:
 
-**The flip, once that is answered, in order:**
+- `commands.ts` publishes no `percent` option, and **`chapter` is now
+  REQUIRED** — with `percent` gone it is the only thing the command records, so
+  Discord refuses an empty `/progress` before it is sent; the runtime
+  `progressNothing` check stays as the second rail.
+- A chapter LABEL becomes a `chapterIndex` (`"ch. 14"` → `14`); a label with no
+  number in it is refused in words.
+- ⚠️ **The percentage REFUSAL PATH survives the option deliberately.** Dropping
+  an option is a **re-registration**, and a global command's old form can sit in
+  a client for up to an hour; a hand-crafted interaction can carry one for ever.
+  `interactions.ts` still reads the value (as `legacyPercent`) and answers
+  `PROGRESS_PERCENT_UNSUPPORTED`. Never a bare error.
+- ⚠️ The **range** check on it was removed: with the option gone, every
+  percentage has one answer, and complaining about a range would imply an
+  in-range number would have worked.
 
-1. ✅ **DONE 2026-09-02** — the shapes are measured and `CLUB_WRITE_SHAPES` is
-   corrected (see the table above). Nothing to repeat here.
-2. Answer the `/progress percent` question above and land whatever it implies
-   (dropping the option is a command **re-registration**, not just an edit).
-3. Flip `club_write_shapes_verified` in `/api/health` to `true`, saying in the
-   commit who checked and against what. ⚠️ It is still `false` today **on
-   purpose**: the shapes are verified but the command is not yet coherent, and
-   one flag claiming both would be a half-truth.
-4. `GABI_CLUB_WRITES = "on"` in `wrangler.toml`, `npx wrangler deploy`.
-5. Re-run the registration route (§15.2) so `/rsvp` and `/progress` appear.
-6. Opt a club in: `features.meetingRsvp = true` on its club doc. Default OFF —
-   the same posture `discordPollVoting` keeps.
-7. **Exercise it against a real club and then look at the club PAGE.** The
+**The flip, in order — where it actually stands:**
+
+1. ✅ **DONE 2026-09-02 (`ee688ad`)** — the shapes are measured and
+   `CLUB_WRITE_SHAPES` is corrected (see the table above). Nothing to repeat.
+2. ✅ **DONE 2026-09-05 (`9330234`)** — the `/progress percent` question is
+   answered and landed (above). It was a command **re-registration**, not just
+   an edit, which is why step 5 exists.
+3. ✅ **DONE 2026-09-05 (`9330234`)** — `club_write_shapes_verified` in
+   `/api/health` is no longer a hard-coded `false`. ⚠️ **It was not simply set
+   to `true`; it is DERIVED**, and it is `false` unless BOTH hold: the live
+   `CLUB_WRITE_SHAPES` still matches `CLUB_WRITE_SHAPES_MEASUREMENT` (a frozen
+   record of the 2026-09-02 read, so an edited constant turns the row off in the
+   **deployed Worker**, not just in CI), **and** every option `/progress`
+   publishes has one of those measured fields to land in — the half that was
+   missing, and the honest reason this row stayed `false` for three days while
+   the shapes were already right. `club_write_shapes_measured_on` is published
+   beside it, because a verification with no age is not evidence.
+4. ✅ **DONE 2026-09-05 (`a063eea`)** — `GABI_CLUB_WRITES = "on"` in
+   `wrangler.toml`, `npx wrangler deploy` from `apps/discord-worker/`;
+   deployment `613a4363-1c64-44b6-a648-2a8918cbfd2f`, live figures in the table
+   at the top of this section.
+5. ☐ 🧑 **Re-run the registration route (§15.2) so `/rsvp` and `/progress`
+   appear — nothing is visible in Discord until this happens.** It needs a
+   Firebase ID token from an estate **admin** account, which no agent session
+   holds. Sign in on an estate page, run
+   `await (await import('/assets/estate-auth.js')).idToken()` in the console,
+   then:
+
+   ```powershell
+   curl.exe -s -D - -X POST https://discord.heygabi.ai/admin/commands/register -H "Authorization: Bearer <token>"
+   ```
+
+   Expect the answer to say `club_writes_enabled: true` and to list `rsvp` and
+   `progress`. Updates to an existing global command show almost immediately.
+6. ☐ 🧑 **Opt a club in:** `features.meetingRsvp = true` on its club doc.
+   Default OFF — the same posture `discordPollVoting` keeps — so until then
+   `/rsvp` answers the worded "not switched on for this club".
+7. ☐ 🧑 **Exercise it against a real club and then look at the club PAGE.** The
    Discord side saying "recorded" is not the evidence; the page rendering it is.
    ⚠️ Check an RSVP actually appears in the TALLY, not merely that a document
    exists — the `meetingAt` trap above is invisible from the document side.
@@ -1905,8 +1976,10 @@ modal).
 
 - **No command in this section has been typed in Discord.** Every test drives
   an injected `fetch` or a signed synthetic interaction. Registration has not
-  been re-run, so **none of the five is visible in any server yet** — that is
-  §15.2, and it needs an admin Firebase ID token no session holds.
+  been re-run, so **none of the seven is visible in any server yet** — that is
+  §15.2, and it needs an admin Firebase ID token no session holds. ⚠️ Since the
+  2026-09-05 flip this covers `/rsvp` and `/progress` too: switched on, deployed,
+  and still unpublished.
 - **`additions_log.json` was fetched live and its shape measured; `/recent`'s
   rendering of it was not** — the flow was exercised against a fixture.
 - **The `reviews` join is unproven against real data.** Reviews are filed under
@@ -1915,6 +1988,12 @@ modal).
 - **`/suggest`'s picks have still never been judged by a person** — unchanged
   from `gabi-suggestions-design.md` §10, and this surface does not change the
   ladder, only the door to it.
-- **Nothing has been written to Firestore by `/rsvp` or `/progress`**, by
-  construction: the posture is off, and the tests assert no call is even
-  attempted while it is.
+- 🔴 **Nothing has been written to Firestore by `/rsvp` or `/progress` — and
+  since 2026-09-05 that is no longer true "by construction".** Until the flip it
+  was structural: the posture was off and the tests assert no call is even
+  attempted while it is (that test is still there, and is still the hardest one
+  in the file, because the switch is now the BACKOUT). Today it holds only
+  because the commands are unpublished and no club is opted in. ⚠️ The first
+  real write is §15.3 step 7, and the thing to look at is the club **page** —
+  `club_write_shapes_verified: true` says the constants match a measurement,
+  not that a page has rendered anything.

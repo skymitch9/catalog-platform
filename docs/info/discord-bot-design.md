@@ -1137,16 +1137,26 @@ collection to write, expire and back up), and neither is worth spending on a
 party game. **If the game ever gains a leaderboard, this is the first thing that
 has to change.**
 
-### 9.5 🔴 (d) and (e) ship DARK — a missing measurement, not caution
+### 9.5 (d) and (e) SHIPPED DARK — a missing measurement, not caution — ✅ lit 2026-09-05
 
-Both were built to `poll-vote.ts`'s shape exactly, and both are behind
+Both were built to `poll-vote.ts`'s shape exactly, and both shipped behind
 `GABI_CLUB_WRITES = "off"`. The reason, in one line: **the collection paths and
-the member-slug doc id are measured; the FIELD NAMES inside an RSVP and a
-progress document are not**, they live in `audiobook_catalog/site/`, and this
+the member-slug doc id were measured; the FIELD NAMES inside an RSVP and a
+progress document were not**, they live in `audiobook_catalog/site/`, and this
 Worker's service account bypasses `firestore.rules` — so a wrongly shaped write
 is not refused, it succeeds, and the club page then shows nothing with no error
 anywhere. The full evidence table and the flip checklist are
 [`../access/discord-bot.md`](../access/discord-bot.md) §15.3.
+
+✅ **Both halves were closed and the posture is `"on"` since 2026-09-05:** the
+names were read on 2026-09-02 (four of seven were wrong), and the owner then
+answered the design question the measurement exposed — **(a): `/progress` drops
+`percent` and takes a CHAPTER only**, because the club page has no percentage
+field and converting one to a chapter index would be inventing a value.
+⚠️ **Note what that means for (e)'s shape as designed here:** the command now
+takes `club` + a REQUIRED `chapter`, and nothing else. 🔴 Still not usable by
+anybody — the commands are unpublished until the registration route is re-run,
+and nothing has ever been written to a real club page (§15.3 steps 5–7).
 
 Two design choices inside them worth recording:
 
