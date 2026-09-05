@@ -1,10 +1,14 @@
 # catalog-platform — Known Issues, Waivers & Exceptions
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-09-02** — KI-11, KI-12 and KI-13 were opened that day
-> from the owner GABI live test and its measurements. ⚠️ **KI-1 through KI-10
-> were NOT re-checked**; KI-8 needs the Cloudflare dashboard, which only the
-> owner can open.
+> Last verified: **2026-09-05** for **two things only** — **KI-6**, whose CSP
+> asymmetry was re-read off the live `Content-Security-Policy` header on all
+> five pages and is unchanged (table inside the entry), and the dangling
+> `info/gotchas.md` pointer below, which was measured non-existent and
+> corrected. ⚠️ **KI-1 through KI-5 and KI-7 through KI-13 were NOT re-checked
+> on that date** and still carry their own dates; KI-11/KI-12/KI-13 were opened
+> **2026-09-02** from the owner's GABI live test, and KI-8 needs the Cloudflare
+> dashboard, which only the owner can open.
 >
 > **This file exists to stop the same non-bug being re-reported every month.**
 > It holds things that ARE wrong, or look wrong, and are deliberately tolerated.
@@ -132,6 +136,20 @@ sees it from inside the archive. Where transcripts actually come back from:
 `frame-src`; `/universes` and `/status` do not.
 
 **Why tolerated.** ⚠️ **Nothing has been measured to break.** It may be a no-op.
+
+✅ **RE-MEASURED LIVE 2026-09-05 (docs audit) — the asymmetry is EXACTLY as
+described and has not drifted.** Read off the served `Content-Security-Policy`
+header with `curl -s -D - -o /dev/null` on all five pages:
+
+| Page | `frame-src` |
+|---|---|
+| `/`, `/admin/`, `/series/` | `audiobook-catalog.firebaseapp.com` **`auth.heygabi.ai`** `accounts.google.com` |
+| `/universes/`, `/status/` | `audiobook-catalog.firebaseapp.com` `accounts.google.com` |
+
+⚠️ **This measurement says the asymmetry EXISTS; it still does not say it
+HARMS.** Both pages sign people in today with the auth origin absent, which is
+evidence the flow they use does not need the iframe — but no flow was exercised
+signed in, so it remains an open question with an instrument, not a closed one.
 
 **What would change it.** Measure first — find a flow on those two pages that
 actually needs an auth iframe. Fixing an asymmetry that harms nothing, by
