@@ -57,7 +57,44 @@ read-only SURVEY agent (Opus, ~180k) inventories every single-library
 assumption across the four repos → ③ registry + consumer builds, per repo,
 Opus → ④ eyeball. ☐ ① W4-FED-LIB landed 15:54 (library side deployed both
 instances; index side still building) · ☐ ② SURVEY dispatched 16:00 as
-W4-MULTILIB-SURVEY (read-only; runs beside ①, does not wait on it) · ☐ ③ · ☐ ④.
+W4-MULTILIB-SURVEY (read-only; runs beside ①, does not wait on it) ·
+☑ ③ **registry BUILT `40bdd60` (auth) + `97ce067` (index)** · ☐ ③b–③d (the
+three consumer dispatches) · ☐ ④.
+
+☑ ③ **THE REGISTRY IS BUILT AND DEPLOYED — dispatch 1 of the survey's §10
+split, agent W5-REGISTRY, 2026-09-05.** As-built:
+[`info/catalog-registry.md`](info/catalog-registry.md); deploys in
+[`deploys.log`](deploys.log). The estate now holds the ownership signal §4 of
+the survey measured as entirely absent — `estate_catalog` (auth-worker
+migration **0020**, a new table plus a back-seed of the five catalogs that
+predate the request queue), served to the index Worker on the existing
+`ESTATE_APP_TOKEN_INDEX` pair (**no new secret**), and published at
+<https://index.heygabi.ai/api/catalogs>.
+
+☑ ❓ **Owner decision (16:14 Phoenix): "yes name only"** — an anonymous caller
+gets every catalog's NAME, OWNER, holding and host, and **not one count,
+title or freshness stamp**. Built that way and enforced by control flow: the
+anonymous branch never opens the database, and a test asserts the count query
+ran zero times. A member gets counts only for the catalogs their own
+visibility admits, so **Samantha's shelf is NAMED to the signed-out internet
+and never COUNTED without `vis_library2`**. Nothing about her rows moved.
+
+🔴 **NOTHING A PERSON SEES HAS CHANGED YET, and that is the point of the
+order.** The seven disagreeing label maps (F2), `FULL_SCOPE_SIZE = 3` (F1),
+`game` designated nobody's (F3), `/status` blind to `library2` (F4) and the
+apex's `!Sky` (F5) are all still exactly as the survey found them. Dispatch 2
+(the apex) is what deletes them, and it is the next one.
+
+⚠️ **Two things dispatch 2 must check before it ships**, both measured
+2026-09-05 and written up in `catalog-registry.md` §10:
+- the index Worker's `READ_ORIGINS` does **not** include
+  `padhard.heygabi.ai` or `ebooks.heygabi.ai`, so a browser on either cannot
+  read `/api/catalogs` cross-origin. Widening a CORS list is
+  access-increasing — the owner's line, not a build's.
+- `/api/health` **still** reports `library2`'s row count to anybody. It
+  predates the rule, the Health page reads it, and narrowing it is an owner
+  decision about a different surface. ❓ **Worth an owner line eventually:**
+  is a row count itself private? (`library2` sat at 677 rows at 16:03.)
 
 ☑ ❓ **Owner confirm (asked 15:54 Phoenix):** is the ownership table above
 right — in particular `game` = Skylar's physical, and BOTH audiobooks and

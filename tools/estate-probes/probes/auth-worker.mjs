@@ -459,4 +459,57 @@ export async function probeAuthWorker() {
       `status=${r.status} body=${body.slice(0, 240)}`,
     );
   }
+
+  // --- GET /api/estate/catalogs — THE CATALOG REGISTRY (0020, 2026-09-05) --
+  //
+  // 🔴 THE REGISTRY'S CONTENTS ARE PUBLIC — but through the INDEX Worker
+  // (index.heygabi.ai/api/catalogs), which caches, and which is the one place
+  // that decides what an anonymous caller versus a member sees. THIS door is
+  // the machine read behind it, on the existing `identifyApp` app-token check,
+  // and it must stay shut to a caller with no token. A regression to 200 here
+  // would not leak anything the index Worker does not already publish — but it
+  // would make a SECOND public copy of the same fact, which is exactly the
+  // drift (seven disagreeing label maps) the registry exists to end.
+  const registryUrl = `${AUTH_ORIGIN}/api/estate/catalogs`;
+  for (const [id, label, init] of [
+    ['A42', 'no bearer', {}],
+    ['A43', 'a garbage bearer', { headers: { Authorization: GARBAGE_BEARER } }],
+  ]) {
+    const r = await get(registryUrl, init);
+    if (!r.ok) {
+      check(AREA, id, 'GET', registryUrl, `${label} → 401, worded, and no catalog listing`, false, `request failed: ${r.error}`);
+      continue;
+    }
+    const body = JSON.stringify(r.json ?? r.text ?? '');
+    check(
+      AREA,
+      id,
+      'GET',
+      registryUrl,
+      `${label} → 401 { error: "unauthorized", detail: <worded> } and NO catalogs array`,
+      r.status === 401 &&
+        r.json?.error === 'unauthorized' &&
+        typeof r.json?.detail === 'string' &&
+        r.json.detail.length > 0 &&
+        // ⚠️ NOT ONE ROW OF THE REGISTRY on a refusal — this door is not a
+        // second public copy, and the refusal points at the one that is.
+        r.json?.catalogs === undefined,
+      `status=${r.status} body=${body.slice(0, 240)}`,
+    );
+  }
+
+  // ⚠️ NO CORS on the registry door, deliberately — nothing in a browser calls
+  // it, and a mount here would be that second browser-reachable copy. Same
+  // assertion shape as the index Worker's /api/machine check (I11), and the
+  // same regression it guards against: a well-meaning "add CORS to the new
+  // route" edit.
+  const registryApex = await options(registryUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET' },
+  });
+  if (!registryApex.ok) {
+    check(AREA, 'A44', 'OPTIONS', registryUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN}`, false, `request failed: ${registryApex.error}`);
+  } else {
+    const acao = header(registryApex, 'access-control-allow-origin');
+    check(AREA, 'A44', 'OPTIONS', registryUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (the public copy is on index.heygabi.ai)`, acao === null, `ACAO=${acao}`);
+  }
 }

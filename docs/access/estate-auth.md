@@ -70,6 +70,24 @@ and **the "Request a catalog" queue (0018, live 2026-09-05) in
 §3.6** — six routes under `/api/estate/catalogs/*`, guarded by the same three
 predicates in `src/middleware/auth.ts` that everything above uses.
 
+⚠️ **And the CATALOG REGISTRY —
+`migrations/0020_estate_catalog.sql`, applied 2026-09-05** (the migration name
+is here because that is what a `wrangler d1 migrations list` reader needs;
+everything else about it is in
+[`../info/catalog-registry.md`](../info/catalog-registry.md)). It is a **new
+table plus a back-seed of the five catalogs that exist**, purely additive, and
+it carries the estate's first ownership signal — which catalog belongs to whom,
+and which is a shared digital pool. One route joins the table above:
+
+| Route | Auth | Notes |
+|---|---|---|
+| `GET /api/estate/catalogs` | app-token (`identifyApp`, the `/seen` door's own check) | ⚠️ **No CORS mount, deliberately** — nothing in a browser calls it. The PUBLIC copy is `index.heygabi.ai/api/catalogs`, which caches this one, and a second browser-reachable copy is the drift the registry exists to end. Probes `A42`–`A44` pin the refusal and the CORS absence. **No new secret**: the index Worker's existing `ESTATE_APP_TOKEN_INDEX`. |
+
+⚠️ **`POST /api/estate/catalogs/requests/:id/live` now also writes a registry
+row**, when the caller supplies `catalog_id`. Omitting it is safe and says so;
+the write can never fail the `/live` answer. It grants nothing — `vis_<id>` is
+still its own migration.
+
 ## 3. `TOKEN_SIGNER_KEY` — what it is, what it can do, and how to rotate it
 
 ### 3.1 What it is

@@ -139,6 +139,62 @@ export async function probeIndexWorker() {
     check(AREA, 'I11', 'OPTIONS', `${INDEX_ORIGIN}/api/machine/lookup`, `no access-control-allow-origin, even for ${APEX_ORIGIN} (machine routes are not browser-callable)`, acao === null, `ACAO=${acao}`);
   }
 
+  // --- /api/catalogs: the catalog REGISTRY, republished (2026-09-05) -----
+  //
+  // 🔴 THE PROBE THAT MATTERS HERE IS THE NEGATIVE ONE (I14). Owner decision
+  // 2026-09-05 16:14, "yes name only": a signed-out caller gets every catalog's
+  // NAME and OWNER — the apex search box needs labels before sign-in — and
+  // NOTHING derived from a row on anybody's shelf. This suite calls with no
+  // credential of any kind, which is exactly the caller that rule is about, so
+  // it is the one place the rule can be measured against the LIVE Worker rather
+  // than against a fake.
+  const catalogsUrl = `${INDEX_ORIGIN}/api/catalogs`;
+  const catalogs = await get(catalogsUrl);
+  if (!catalogs.ok) {
+    check(AREA, 'I12', 'GET', catalogsUrl, 'answers 200 (names are readable signed-out)', false, `request failed: ${catalogs.error}`);
+  } else {
+    check(AREA, 'I12', 'GET', catalogsUrl, 'answers 200 (names are readable signed-out, never 401)', catalogs.status === 200, `status=${catalogs.status} body=${JSON.stringify(catalogs.json)?.slice(0, 200)}`);
+    const body = catalogs.json;
+    const list = Array.isArray(body?.catalogs) ? body.catalogs : null;
+    const shapeOk =
+      list !== null &&
+      list.length > 0 &&
+      body.counts === 'none' &&
+      list.every(
+        (c) =>
+          typeof c?.id === 'string' &&
+          typeof c?.label === 'string' &&
+          typeof c?.host === 'string' &&
+          (c.holding === 'physical' || c.holding === 'digital') &&
+          typeof c?.shared === 'boolean' &&
+          (c.owner === null || typeof c.owner === 'string'),
+      );
+    check(AREA, 'I13', 'GET', catalogsUrl, 'body shape { catalogs[{id,label,owner,holding,shared,host}], counts:"none" }', shapeOk, JSON.stringify(body)?.slice(0, 400));
+
+    // 🔴 name only — not one count, not one freshness stamp, for anybody
+    // signed out. A regression here is a live disclosure, not a cosmetic one.
+    const nameOnly = list !== null && list.every((c) => !('rows' in c) && !('pushed_at' in c));
+    check(AREA, 'I14', 'GET', catalogsUrl, '🔴 NAME ONLY signed out — no `rows`, no `pushed_at` on any catalog', nameOnly, JSON.stringify(list)?.slice(0, 400));
+
+    // Every physical catalog names its owner, and every shared one names
+    // nobody. This is the owner's rule itself, measured on the live wire.
+    const designated =
+      list !== null &&
+      list.every((c) => (c.holding === 'physical' ? typeof c.owner === 'string' && c.owner.length > 0 : true)) &&
+      list.every((c) => (c.shared === true ? c.owner === null : true));
+    check(AREA, 'I15', 'GET', catalogsUrl, 'every physical catalog designates an owner; every shared one designates nobody', designated, JSON.stringify(list)?.slice(0, 400));
+  }
+
+  // CORS: the registry IS browser-callable from the apex (unlike /api/machine),
+  // because rendering a label is the whole point of it.
+  const catalogsApex = await options(catalogsUrl, { headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET' } });
+  if (!catalogsApex.ok) {
+    check(AREA, 'I16', 'OPTIONS', catalogsUrl, `access-control-allow-origin === ${APEX_ORIGIN}`, false, `request failed: ${catalogsApex.error}`);
+  } else {
+    const acao = header(catalogsApex, 'access-control-allow-origin');
+    check(AREA, 'I16', 'OPTIONS', catalogsUrl, `access-control-allow-origin === ${APEX_ORIGIN} (readCors)`, acao === APEX_ORIGIN, `ACAO=${acao}`);
+  }
+
   // --- CORS on /api/search (readCors(), mounted before the route) --------
   const searchApex = await options(searchUrl, { headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET' } });
   if (!searchApex.ok) {
