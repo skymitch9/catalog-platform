@@ -7,6 +7,12 @@
 > moves it from design-only to **being built**; the work log is
 > [`../TODO.md`](../TODO.md)'s top item.
 >
+> ✅ **AMENDED the same day, 2026-09-05 ~06:50 Phoenix.** The owner answered the
+> first open question — *"Both"* — so the **Games** card gets the same "+" and
+> the same flow as Books. §4.6, §7.6 and §8 are now DECIDED rather than
+> conditional, the request row gains a **`kind`** column (§3.2), and three open
+> questions remain in §9.
+>
 > 🔴 **THIS FILE IS THE ONLY RECORD OF THE DESIGN.** It was recovered on
 > 2026-09-05 from three places, none of them a repo: the private mockup
 > artifact **"Request a Catalog"** —
@@ -41,12 +47,22 @@
 
 ## 1. Purpose
 
-A signed-in estate member presses a **"+"** on the **Books** card of
-<https://heygabi.ai> and asks for a catalog of their own —
-`<them>.heygabi.ai`, a full second (third, fourth) instance of the library app
-with its own database, its own covers bucket and its own shelf. The owner sees
-the request on `/admin`, can **edit the address and display name before
-granting**, accepts, and is handed a pre-filled provisioning runbook.
+A signed-in estate member presses a **"+"** on the **Books** card *or* the
+**Games** card of <https://heygabi.ai> and asks for a catalog of their own —
+`<them>.heygabi.ai`, a full second (third, fourth) instance of that app with
+its own database, its own covers bucket and its own shelf. The owner sees the
+request on `/admin`, can **edit the address and display name before granting**,
+accepts, and is handed a pre-filled provisioning runbook.
+
+✅ **BOTH CARDS — decided by the owner 2026-09-05 ~06:50 Phoenix ("Both").**
+This was open question #1 until that morning; it is now settled, and §8 is a
+build section rather than a conditional one. One request table, one form, one
+admin queue, one "+" component — separated by a **`kind`** column
+(`books` | `games`) and nothing else. ⚠️ **The two halves are NOT the same
+size**, and the difference is entirely in provisioning, never in the product:
+`library_catalog` has a working second-instance pattern to copy;
+`Board_Game_Catalog` has **none of that machinery** and must grow it first
+(§7.6, §8).
 
 **The one honest headline, and the whole reason this doc is long:** standing up
 a catalog today is a **~10-step operation across three consoles, a
@@ -66,8 +82,8 @@ catalog's worth of blast radius behind it.
 
 | # | Step | Detail |
 |---|---|---|
-| 1 | **The "+"** | Bottom-right of the Books card. Shown only when signed in **and** owning **zero** catalogs (§4) |
-| 2 | **Modal opens** | *"Request a book catalog"*, anchored to the card |
+| 1 | **The "+"** | Bottom-right of the **Books** card and of the **Games** card. Shown only when signed in **and** owning **zero** catalogs *of that kind* (§4) |
+| 2 | **Modal opens** | *"Request a book catalog"* / *"Request a board-game catalog"*, anchored to the card that was pressed. The `kind` comes from which card was pressed. ⚠️ **It IS browser-supplied — there is no server-side provenance for a button press — so it is validated against the closed list `('books','games')` at the route and pinned by the `CHECK` constraint. Anything else is a 400, never a default** |
 | 3 | **Identity is pre-filled, never typed** | The SSO display name + email already in hand: *"You'll be the admin of this catalog — signed in as … "*. ⚠️ **No email field exists.** The identity is the session's, so it cannot be claimed |
 | 4 | **Two fields** | **Address** — `[______].heygabi.ai`, live-validated for shape and availability (§3.3). **Display name** — what shows on heygabi.ai, seeded from their first name, fully editable |
 | 5 | **Optional Claude key** | *"…so your catalog runs its own AI lookups."* **Sealed on submit** — encrypted before it leaves the browser, rendered to nobody, logged nowhere (§6) |
@@ -140,6 +156,8 @@ write protocol is not bulk-replace, and the one `/admin` already talks to.
 -- hostname and a deploy exist — see §7.
 CREATE TABLE IF NOT EXISTS catalog_request (
   id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind                   TEXT    NOT NULL DEFAULT 'books'
+                                 CHECK (kind IN ('books','games')),
   requester_email        TEXT    NOT NULL,   -- lowercased; the estate join key
   requester_uid          TEXT,               -- Firebase uid at submit; recorded, never joined on
   requester_display_name TEXT,               -- SSO display-name snapshot at submit
@@ -158,12 +176,24 @@ CREATE TABLE IF NOT EXISTS catalog_request (
   created_at             TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS ix_catalog_request_status ON catalog_request(status);
+CREATE INDEX IF NOT EXISTS ix_catalog_request_kind   ON catalog_request(kind, status);
 ```
+
+⚠️ **`kind` is a COLUMN, not a second table, and not a value in `extra`.**
+It is a closed vocabulary the schema itself enforces, it decides which
+provisioning ledger applies (§7.6), and §4.3's show/hide logic queries it — so
+it must be indexed and constrained, not buried in a JSON blob the renderer reads
+tolerantly. ⚠️ **`DEFAULT 'books'` is for the migration's own safety only** (an
+insert that forgets the column lands as the kind that has a working provisioning
+path, not as one that does not); the **route always sends it explicitly** and a
+missing `kind` on the wire is a 400.
 
 ⚠️ **`desired_subdomain` is deliberately NOT `UNIQUE` in the schema.** Uniqueness
 is enforced at submit against live catalogs **and open pendings**, so a decline
 frees the name. A DB constraint would hold a declined request's address hostage
-forever.
+forever. ⚠️ **And uniqueness is checked ACROSS both kinds, never per kind** —
+there is one `heygabi.ai` DNS namespace, so a books catalog at `amber.` and a
+games catalog at `amber.` are the same hostname and cannot both exist.
 
 ⚠️ **The two key columns are BOOLEANS and can never be anything else.** No
 ciphertext, no value, no hint. §6 is why.
@@ -176,9 +206,13 @@ ciphertext, no value, no hint. §6 is why.
   gamecovers`, plus every existing estate route.
 - **Not taken:** no `live` row and no open `pending` holds the name.
 
-⚠️ **Centralise the reserved list in ONE module** that both the validator and
-the availability check import. Two copies of a hostname list is two copies that
-drift, and the drifted one is always the check that mattered.
+⚠️ **ONE reserved list, ONE validator, covering BOTH cards.** The list is a
+property of the `heygabi.ai` namespace, not of a catalog kind — a per-kind copy
+would let a games request take `bookcovers.` because the games validator had
+never heard of it. Centralise it in one module that the shape check, the
+availability check and both cards' live form checks all import. Two copies of a
+hostname list is two copies that drift, and the drifted one is always the check
+that mattered.
 
 ⚠️ **The check runs SERVER-side on submit as well as live in the form.** The
 browser's copy is a convenience; the row that lands in D1 is the one that
@@ -208,10 +242,11 @@ renderer.
 
 ## 4. The "+" on the home cards
 
-### 4.1 Placement — bottom-right
+### 4.1 Placement — bottom-right, on both cards
 
-**Bottom-right of the Books card** (owner, 2026-08-24 23:26Z — this **supersedes**
-the phase-1 draft's *top-right*, and the mockup renders it bottom-right).
+**Bottom-right** (owner, 2026-08-24 23:26Z — this **supersedes** the phase-1
+draft's *top-right*, and the mockup renders it bottom-right), on the **Books**
+card and the **Games** card (owner, 2026-09-05 ~06:50 Phoenix: *"Both"*).
 
 The Books card is `div.card.multi` at
 `sites/heygabi-home/public/index.html:714`, inside the `<li>` at 710–725, with
@@ -219,7 +254,25 @@ its two hardcoded destinations at 721–722 (`!Sky` → `library.heygabi.ai`,
 `Samantha` → `padhard.heygabi.ai`). ⚠️ **It is a `div`, not an `<a>`** — because
 it already holds two links rather than one — so a small circular `.card-add`
 button in the corner is a legal, distinct tap target that leaves both links
-working. **This is not true of every card; see §8.**
+working.
+
+🔴 **The Games card is NOT in that shape, and this is the one piece of the
+front-end work that is not a copy-paste.** `sites/heygabi-home/public/index.html:728–737`
+is an `<a class="card">` wrapping the **whole cell** — and **a `<button>` cannot
+be nested inside an `<a>`**: it is invalid HTML and the click target is ambiguous
+in every browser. So the Games card must first be converted to the
+`.card.multi` shape (a `div` holding the `boardgames.heygabi.ai` link plus the
+button), which is a real, deliberate change: the card stops being a single
+whole-card tap target.
+
+⚠️ **The estate has already paid that exact cost once, on purpose, and wrote
+down why** — `index.html:653–663`, when Universes & series became a two-destination
+cell: *"Cost, stated because it is a real one: this card is no longer a single
+whole-card tap target."* The CSS comment there names `.card.multi` as **the
+generalised pattern for exactly this**, so the conversion follows an existing
+decision rather than making a new one. Do it as its own commit, before the "+"
+lands, so a regression in the Games link is separable from a regression in the
+button.
 
 ### 4.2 The signal it needs — and it does not exist yet
 
@@ -245,17 +298,26 @@ returns the full shape.
 **So this feature introduces the ownership signal**, sourced from
 `catalog_request`: extend `/api/estate/me` with a `catalogs` array (or ship a
 sibling `GET /api/estate/me/catalogs`), answering the caller's own `live` rows
-plus any open `pending`/`accepted`.
+plus any open `pending`/`accepted`. ⚠️ **Every entry carries its `kind`** —
+§4.3's show/hide is a per-card question, so a flat list of hostnames is not a
+usable answer.
 
 ### 4.3 Show / hide
 
-| Caller state | The "+" |
+⚠️ **The rule is PER KIND, evaluated separately for each card.** A person who
+owns a books catalog may still ask for a games catalog — their Books "+" is gone
+and their Games "+" is not.
+
+| Caller state, *for that card's kind* | That card's "+" |
 |---|---|
-| Signed out | **not rendered** |
-| Signed in, no catalog, no open request | **shown** |
-| Signed in, request `pending` or `accepted` | replaced by a **"Requested — pending review"** pill |
-| Signed in, owns a `live` catalog | **hidden, permanently** |
-| The probe failed | ⚠️ **hidden — fail-quiet** |
+| Signed out | **not rendered** (on either card) |
+| Signed in, no catalog of this kind, no open request of this kind | **shown** |
+| Signed in, a `pending` or `accepted` request of this kind | replaced by a **"Requested — pending review"** pill |
+| Signed in, owns a `live` catalog of this kind | **hidden, permanently** |
+| The probe failed | ⚠️ **hidden — fail-quiet** (both cards) |
+
+So the `catalogs` array of §4.2 carries the **kind** on every entry; a flat list
+of hostnames cannot answer this question.
 
 ### 4.4 The auth seam it reuses
 
@@ -284,21 +346,25 @@ The modal cannot POST from its fields (§2.1 step 6). This mirrors the estate's
 confirm-lane grammar — propose → restate → confirm → apply — argued in
 [`gabi-confirm-lanes-design.md`](gabi-confirm-lanes-design.md).
 
-### 4.6 ⏳ The Games-card variant — PENDING owner answer #1
+### 4.6 ✅ Both cards — what is shared and what is not
 
-The owner's words were *"a board game or book site"*; the mockup shows Books
-only. **If the Games card gets a "+" too**, one mechanical fact decides how:
+The owner's words on 2026-08-24 were *"a board game or book site"*; the mockup
+showed Books only, and the question was left open until **2026-09-05 ~06:50
+Phoenix: "Both."**
 
-🔴 **The Games card is an `<a class="card">` wrapping the WHOLE cell**
-(`index.html:728–737`), unlike Books' `div.card.multi`. **A `<button>` cannot be
-nested inside an `<a>`** — it is invalid HTML and the click target is ambiguous
-in every browser. So a Games "+" needs the card converted to the
-`.card.multi` shape first (a `div` holding a link plus the button), which is a
-real change to a card that is currently a single whole-card tap target, and
-`index.html:653–663` records that the estate has already paid that cost once
-deliberately for Universes & series. **This is a design decision, not a
-copy-paste.** See §8 for what provisioning a second board-game catalog actually
-costs.
+| Piece | Books | Games |
+|---|---|---|
+| The "+" component, the modal, the review step, the pending pill | one implementation | **the same one**, parameterised by `kind` |
+| The card markup it attaches to | `div.card.multi` — ready today | 🔴 **must be converted first** (§4.1) |
+| Submit / list / decide / mark-live routes | one set | **the same set** |
+| Reserved list + subdomain validator | one module | **the same module** (§3.3) |
+| The `/admin` queue | one section | **the same section**, rows badged by kind (§5.3) |
+| Provisioning | `library_catalog`'s `[env.friend]` pattern | 🔴 **different, and larger** — §7.6 and §8 |
+
+⚠️ **The split is: the PRODUCT is shared, the PROVISIONING is not.** Building
+two of anything above the provisioning line would be the duplicate-surface
+failure the estate's own rules name — one fact, one home, and that applies to
+surfaces as much as to documents.
 
 ---
 
@@ -342,8 +408,21 @@ A fourth top-level `<details>`, placed **first** among them — it is the one
 thing needing action — with a live count in the `.adv-count` span, following
 `#verse-queue`'s markup and render path exactly.
 
-Each pending card shows: requester name + email, requested subdomain, display
-name, submitted-at, any tolerant `extra` fields, and two controls.
+Each pending card shows: requester name + email, **a kind badge (Books /
+Games)**, requested subdomain, display name, submitted-at, any tolerant `extra`
+fields, and two controls.
+
+⚠️ **ONE section holding both kinds, badged — not two sections.** *"What is
+waiting on my decision"* is one question, and the estate's own rule is one
+surface per question; two panels would be two places to forget to look. The
+badge is a **fact about the row**, not a filter chip and not a control.
+
+⚠️ **The badge must be the visible carrier of a real cost difference.** A Games
+accept commits the owner to §8's prerequisite work before a single provisioning
+step from §7 can run. The panel should say so in words on a games row —
+*"provisioning a board-game catalog needs the second-instance machinery built
+first (design §8)"* — rather than presenting two rows that look identically
+cheap.
 
 ⚠️ **The two controls must obey the `/admin` interaction grammar
 ([`../access/estate-auth.md`](../access/estate-auth.md) §9), which allows exactly
@@ -525,7 +604,12 @@ Resource names are **identity-neutral on purpose** — env `friend`, D1
 allowed to carry identity, and it has already survived one rename
 (`sam.heygabi.ai` → `padhard.heygabi.ai`) with zero other files touched.
 
-### 7.2 The ten steps, worked as a third library instance
+### 7.2 The ten steps — `kind = 'books'`, worked as a third library instance
+
+⚠️ **§7.2 to §7.5 are the BOOKS path.** They are complete because
+`library_catalog` already runs two instances. The GAMES path reuses their
+*shape* and adds a prerequisite phase; it has its own ledger at **§7.6** and its
+own gap analysis at **§8**. Do not read the ten steps below as costed for games.
 
 Derived from the request row, never asked:
 
@@ -680,7 +764,7 @@ first-ever deploy skips the ancestry check), and **`deploy-done.mjs
 into the same `apps/web/dist`. ⚠️ **A rollback does not undo a migration.**
 ⚠️ **Verify with a cache-busting query string** — `/api/health` is edge-cached.
 
-### 7.3 The automatable-vs-manual ledger
+### 7.3 The automatable-vs-manual ledger — BOOKS
 
 | Step | Task | Verdict |
 |---|---|---|
@@ -749,14 +833,56 @@ a handful of household catalogs and **does not scale to many self-serve
 catalogs**. True one-click self-serve needs a multi-tenancy redesign — one
 Worker serving N catalogs by hostname, with a `catalog` registry replacing the
 per-instance env blocks. **That is a separate, large project and is explicitly
-out of scope here.**
+out of scope here.** ⚠️ It is the ceiling for **both** kinds, and games hits it
+from further back.
+
+### 7.6 The GAMES sub-ledger — `kind = 'games'`
+
+The ten steps of §7.2 apply in the same order with the same reasoning. What
+changes is that **five of them have no machinery to run against yet**, because
+`Board_Game_Catalog` is zero-instance-aware (§8 is the measured gap analysis).
+
+| Step | Books | Games | Why it differs |
+|---|---|---|---|
+| **0 · PREREQUISITE** | none | 🔴 **Build the second-instance machinery** — §8's items 1–3 | There is no `[env.*]` block, no script twin, no `d1.mjs`, and the estate identity is hard-coded. **This is not configuration; it is a build** |
+| 1 · D1 create + migrate | AUTO | **AUTO once `db:migrate:<name>` exists** | The script twin does not exist today |
+| 2 · R2 bucket | AUTO | AUTO — ⚠️ needs its **own third covers hostname**; `gamecovers.heygabi.ai` is taken | A custom domain belongs to exactly one bucket |
+| 3 · Route + DNS + cert | AUTO | **AUTO** — identical, `custom_domain = true` in the new block | no difference |
+| 4 · Firebase authorised domain | 🔴 MANUAL | 🔴 **MANUAL — identical.** Same `audiobook-catalog` project, same absent CLI | no difference; ⚠️ **never a second Firebase project** |
+| 5 · auth-worker `CONSUMER_APPS` + `vis_` | 🔴 MANUAL | 🔴 **MANUAL — identical in this repo**, adding e.g. `games2` + `vis_games2` | ⚠️ but see the row below — the *other* side is not ready |
+| 5b · the app asserting that identity | reads `ESTATE_APP` from its env block | 🔴 **CANNOT — the id is hard-coded** (`env.ts:141`, fixed `ESTATE_APP_TOKEN_GAMES`) | 🔴 **A second games instance would silently assert the FIRST one's identity.** This is not hypothetical: `library_catalog` shipped exactly this bug and ran with it for months |
+| 6 · Paired token | AUTO | **AUTO only after 5b** — the secret NAME is chosen by an app id that is currently a constant | blocked by 5b |
+| 7 · Per-instance secrets | AUTO | AUTO — a different set (`BGG_API_TOKEN`, `GAMEUPC_API_KEY`), and that repo's `push-secrets.mjs` already has a real allowlist | ⚠️ **port the REFUSAL, not a working bulk path** (§6.4) |
+| 7 · `ANTHROPIC_API_KEY` custody | SPECIAL (§6) | **SPECIAL — identical.** The sealed flow is transport-agnostic | ⚠️ but see the sweep note below |
+| 8 · The env block | AUTO by templating | **AUTO once a block exists to template from** | there is no `[env.friend]` here to copy |
+| 9 · Admin seed | AUTO (`OWNER_EMAILS`) | **AUTO** — same lever | no difference |
+| 10 · Guarded deploy | AUTO, owner-run | **AUTO, owner-run** — ✅ `deploy-guard.mjs` + `deploy-done.mjs` **now exist** in that repo; they need the `--instance=` parameter | ⚠️ land the guards' instance-awareness as **one change to working code**, not two new pieces at once |
+| — | donor-first sweep heals for free | 🔴 **NO donor, no peers, nothing** | §8 item 4 |
+| — | `RATE_LIMITER` — n/a | ⚠️ **OPEN QUESTION** — per-Worker or per-account counters? | §8 item 3, **must be measured** |
+
+**Two consequences worth stating plainly:**
+
+1. 🔴 **Step 5b is a hard blocker and it is in the OTHER repo.** Lifting
+   `"games"` into an `ESTATE_APP` var — with a build guard in the shape of
+   `library_catalog`'s `instance-estate-app.test.ts`, which fails the build if
+   two instances assert the same id — is a **prerequisite**, not a nicety.
+   Without it a second games instance is not merely unconfigured, it is
+   *misidentified*, and misidentification fails **silently**.
+2. ⚠️ **The §6 key precedence has a weaker fallback on the games side.** For
+   books, "no key from either party" still leaves a **donor-only sweep** healing
+   for free against the main library. For games there is no `DONOR_URL` and no
+   donor route, so *no key means no self-healing at all*. **The Accept panel
+   must say that on a games row** rather than reusing the books sentence — the
+   mockup's *"the free donor sweep still runs"* is **true for books and false
+   for games**.
 
 ---
 
-## 8. If the Games card is included ⏳ CONDITIONAL ON OWNER QUESTION #1
+## 8. The Games half — ✅ DECIDED, and what it actually costs
 
-Everything in this section is conditional. It exists so answer #1 is a decision
-rather than a spelunk.
+✅ **Owner, 2026-09-05 ~06:50 Phoenix: "Both."** This section was written as a
+conditional and is now a build section. It is kept in full because the *costs*
+below did not change when the answer did — they are what the answer commits to.
 
 **The board-game repo is `boardbuddy/Board_Game_Catalog`, and it is
 single-instance today.** Its own
@@ -805,8 +931,9 @@ Everything else in it that matters was re-confirmed today:
    and already-built. For games it would be **new product surface** (a
    migration, a route pair, a cron change), and `library_catalog` built its peer
    features about a day *after* its second instance existed, not simultaneously.
-5. ⚠️ **The card itself is not a copy-paste** — §4.6: the Games card is an
-   `<a>` wrapping the whole cell, and a button cannot live inside it.
+5. ⚠️ **The card itself is not a copy-paste** — §4.1: the Games card is an
+   `<a>` wrapping the whole cell, and a button cannot live inside it. Convert it
+   to `.card.multi` in **its own commit**, before the "+" lands.
 6. ✅ **What does NOT differ:** the data model needs nothing new (`game`,
    `edition`, `copy` are already instance-agnostic tables that just need to
    exist once per D1), `FIREBASE_PROJECT_ID` stays shared, and the migration
@@ -815,11 +942,21 @@ Everything else in it that matters was re-confirmed today:
    top-level vars in that repo. A new env block must **not** restate them — they
    are being removed, not extended.
 
-**Net:** a Games "+" is a *product* change of roughly the same size as the Books
-one, sitting on top of a *platform* gap the Books path does not have. The
-request/accept half is shared code; the provisioning half is a different and
-larger job. **Which is exactly why question #1 is a question and not an
-assumption.**
+**Net:** a Games "+" is a *product* change of the same size as the Books one —
+the same component, the same routes, the same queue — sitting on top of a
+*platform* gap the Books path does not have. 🔴 **The request/accept half is
+shared code and costs nothing extra. The provisioning half is a different and
+larger job, and it lives in another repo.** Sequence the build so the shared
+half lands first (§10 phases 1–5) and the games platform work is its own phase
+against its own repo, rather than one build straddling both.
+
+⚠️ **The decision is made, so the honest thing this section now buys is a
+WARNING, not a veto:** a games request can be *filed and accepted* the day the
+shared half ships, and it cannot be *provisioned* until §8's items 1–3 land. If
+those two moments are far apart, the estate reproduces its own `approved` ≠
+`landed` gap on a person who has been told yes. **Either land the games platform
+work before the Games "+" is switched on, or make the Games card's own copy say
+plainly that a games catalog takes longer to stand up.**
 
 ---
 
@@ -827,16 +964,26 @@ assumption.**
 
 **These are NOT decided here.** Present them one per message and wait.
 
-1. **Does the GAMES card get the same "+" and flow?** His words say *"board game
-   or book site"*; the mockup shows Books only. §8 is the honest cost.
-2. **Who may request** — approved estate members only, or `pending` members too?
-3. **Lock in the sealed-box key design for v1, or ship v1 without the key field
+1. **Who may request** — approved estate members only, or `pending` members too?
+2. **Lock in the sealed-box key design for v1, or ship v1 without the key field
    and add it after?**
-4. **Back-seed the two existing library owners** (`library` and `padhard`) as
+3. **Back-seed the two existing library owners** (`library` and `padhard`) as
    `live` rows, so their "+" hides and the table becomes the single source of
    truth for *"who owns a catalog"*?
 
-*(Decisions already on record, for contrast, are in §10's header and §5.4.)*
+### ✅ Answered, kept with its date
+
+| # | Question | Answer | When |
+|---|---|---|---|
+| ~~1~~ | Does the **Games** card get the same "+" and flow? | ✅ **"Both."** Both cards, one `kind` column, one shared product path — §4.6, §7.6, §8 | **2026-09-05 ~06:50 Phoenix** |
+
+⚠️ **Note what the answer did NOT settle.** It settled *whether*, not *when* —
+the games provisioning prerequisites (§8 items 1–3) are unbuilt, unscheduled and
+in another repo, and §3's back-seeding question (#3 above) now covers a games
+instance too, since `boardgames.heygabi.ai` is itself a `live` catalog somebody
+owns.
+
+*(The other decisions on record are in §10's header and §5.4.)*
 
 ---
 
@@ -847,26 +994,36 @@ assumption.**
 > **Decided, and baked into the phases below:** the owner may edit address and
 > display name at Accept; the form carries an optional sealed LLM key; the owner
 > may also set one; precedence is requester → owner → none (2026-08-24 23:48Z).
-> The "+" sits bottom-right (2026-08-24 23:26Z). The **2026-08-24 constraint
-> *"ships only after dev lanes + more testing"* is SUPERSEDED** by the owner's
-> 2026-09-05 06:26 Phoenix *"Time to build that."* — both dates recorded, because
-> the older one explains why the drafts are shaped defensively.
+> The "+" sits bottom-right (2026-08-24 23:26Z). **BOTH cards get it**
+> (2026-09-05 ~06:50 Phoenix, *"Both"*). The **2026-08-24 constraint *"ships only
+> after dev lanes + more testing"* is SUPERSEDED** by the owner's 2026-09-05
+> 06:26 Phoenix *"Time to build that."* — both dates recorded, because the older
+> one explains why the drafts are shaped defensively.
 
 | Phase | What lands | Repo / layer | Rough effort | "Verified" means |
 |---|---|---|---|---|
-| **0** | This doc + the four answers from §9 | `catalog-platform/docs/` | done / owner | The four questions are answered on the record and this file says so |
-| **1** | Migration `0018` + `catalog_request`; submit / list / decide / mark-live routes; the reserved-list module; server-side validation | `catalog-platform` `apps/auth-worker` | ~1 day | `node --test` exercises every route incl. refusals; the migration applied to **remote** `estate_auth`; a real row read back out of D1 — **a green deploy is not verification** |
-| **2** | `/api/estate/me` gains `catalogs` (or the sibling route) | same | ~½ day | A signed-in `curl` returns the caller's own array; an owner's answer is not special-cased into a lie |
-| **3** | The "+" bottom-right on the Books card, the modal, the required review step, the pending pill, fail-hidden | `catalog-platform` `sites/heygabi-home` | ~1 day | ⚠️ **A HUMAN, SIGNED IN, PRESSES IT** at <https://heygabi.ai> and files one real request. There is no browser harness for this page; `check:home` proves it parses and nothing more |
-| **4** | The `/admin` banner + "Catalog requests" section + two-tap Accept/Decline + the Accept panel with owner-editable fields | `catalog-platform` `sites/heygabi-home/public/admin/` | ~1 day | The owner **renders the section signed in**, edits an address in the panel, and accepts one real request. ⚠️ The verse queue carries the same open debt today — do not repeat it |
-| **5** | The sealed key: keypair, the browser seal, the private-R2 envelope, the booleans | both halves | ~1 day | A round trip: seal in a browser, decrypt in a script, and confirm the decrypted bytes equal the input — **and confirm no code path prints it** |
-| **6** | Back-seed `library` + `padhard` as `live` rows *(if §9 Q4 is yes)* | D1 data | ~1 h | Both owners' "+" is confirmed hidden while signed in as each |
-| **7** | `scripts/provision-catalog.mjs` (§7.4) | `library_catalog` | ~2 days | `--dry` prints all ten steps; a **real third instance answers `/api/health?cb=`** and its first sign-in logs `src:"seen"` under the new app id |
-| **8** | ⏳ The Games variant *(only if §9 Q1 is yes)* | `Board_Game_Catalog` first, then the card | §8 — larger | The §8 prerequisites land **before** any card change |
+| **0** | This doc + the three remaining answers from §9 | `catalog-platform/docs/` | done / owner | The questions are answered on the record and this file says so |
+| **1** | Migration `0018` + `catalog_request` **including `kind`**; submit / list / decide / mark-live routes; the reserved-list module; server-side validation incl. the closed `kind` vocabulary | `catalog-platform` `apps/auth-worker` | ~1 day | `node --test` exercises every route incl. refusals **and a bad `kind` returning 400, not a default**; the migration applied to **remote** `estate_auth`; a real row read back out of D1 — **a green deploy is not verification** |
+| **2** | `/api/estate/me` gains `catalogs`, **each entry carrying its `kind`** | same | ~½ day | A signed-in `curl` returns the caller's own array with kinds; an owner's answer is not special-cased into a lie |
+| **3a** | ⚠️ **Convert the Games card to `.card.multi`** — no button yet | `catalog-platform` `sites/heygabi-home` | ~1 h | The `boardgames.heygabi.ai` link still works, from a keyboard as well as a tap. **Its own commit**, so a link regression is separable from a button regression |
+| **3b** | The "+" bottom-right on **both** cards, the modal, the required review step, the pending pill, fail-hidden, per-kind show/hide | same | ~1 day | ⚠️ **A HUMAN, SIGNED IN, PRESSES BOTH** at <https://heygabi.ai> and files one real request of each kind. There is no browser harness for this page; `check:home` proves it parses and nothing more |
+| **4** | The `/admin` banner + "Catalog requests" section with **kind badges** + two-tap Accept/Decline + the Accept panel with owner-editable fields | `catalog-platform` `sites/heygabi-home/public/admin/` | ~1 day | The owner **renders the section signed in**, sees one row of each kind, edits an address in the panel, and accepts one real request. ⚠️ The verse queue carries the same unrendered-by-a-human debt today — do not repeat it |
+| **5** | The sealed key: keypair, the browser seal, the private-R2 envelope, the booleans | both halves | ~1 day | A round trip: seal in a browser, decrypt in a script, confirm the decrypted bytes equal the input — **and confirm no code path prints it** |
+| **6** | Back-seed the existing owners as `live` rows *(if §9 Q3 is yes)* — `library`, `padhard`, **and `boardgames`** | D1 data | ~1 h | Each owner's "+" is confirmed hidden **for the right kind only**, signed in as each |
+| **7** | `scripts/provision-catalog.mjs` (§7.4) — the BOOKS path | `library_catalog` | ~2 days | `--dry` prints all ten steps; a **real third instance answers `/api/health?cb=`** and its first sign-in logs `src:"seen"` under the new app id |
+| **8** | 🔴 **The GAMES platform prerequisites** — §8 items 1–3: instance-aware deploy guards, `ESTATE_APP` lifted out of source with a same-id build guard, then the first `[env.*]` block | `Board_Game_Catalog` | §8 — the largest single piece, and **not** costed here | The build guard **fails** when two instances are made to assert the same id (a guard never seen to refuse is a guard never tested); then a real second games instance answers `/api/health?cb=` under its own app id |
+| **9** | The GAMES provisioning path in the provisioner (§7.6) | `Board_Game_Catalog` | after 8 | `--dry` prints the games ledger; ⚠️ the `RATE_LIMITER` namespace question is **measured** before two instances share traffic |
 
 ⚠️ **Phases 1–2 are worth landing even if the "+" is deferred**, because the
 ownership signal is the thing the estate genuinely lacks and several other
 surfaces would use it.
+
+🔴 **Phase 8 is where the games answer's real cost sits, and it must not be
+folded into phases 3–5.** They are different repos, different layers and
+different risk: a multi-layer build is the expensive shape, and splitting it is
+the difference between two dispatches that land and one that dies at 90%. It is
+also the phase that decides whether a games request can be *honoured* rather
+than merely *accepted* — see §8's closing warning.
 
 ⚠️ **Commit at clean boundaries and finish fewer things completely.** Phases 3
 and 4 touch `sites/heygabi-home/public/`, which deploys by **directory upload** —
@@ -959,6 +1116,7 @@ the "+" at <https://heygabi.ai> (signed in), the queue at
 | stdin technique at `push-secrets.mjs:205–227` | **`~:655–673`** |
 | *"No bulk `.dev.vars.<env>` path for a non-main instance, by design"* | 🔴 **No longer true as written.** `secrets:push:friend` is a real script (`package.json:28`) pushing **shared** keys. The surviving — and stronger — guarantee is `PER_INSTANCE_SECRETS` (`:314`) + `PER_INSTANCE_PREFIXES` (`:317`), which refuse `ANTHROPIC_API_KEY` and every `ESTATE_APP_TOKEN_*` for a non-main instance, always |
 | The "+" sits **top-right** of the Books card | **Bottom-right** — the owner's later instruction (2026-08-24 23:26Z) wins, and the mockup agrees |
+| Books only; the Games card was an open question | **Both cards** — owner, 2026-09-05 ~06:50 Phoenix. The drafts and the mockup predate the answer and show Books alone |
 | *"Ships only after dev lanes + more testing"* | **Superseded** 2026-09-05 06:26 Phoenix |
 | `Board_Game_Catalog` has no `deploy-guard.mjs`/`deploy-done.mjs` on `main` | **Both exist today** |
 | `Board_Game_Catalog` has 28 migrations | **30** |
