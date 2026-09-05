@@ -256,7 +256,25 @@ export function requireApprover(): MiddlewareHandler<AppBindings> {
     } catch (err) {
       return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
     }
-    if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+    // ⚠️ The `error` CODE stays exactly `unauthenticated` (same reasoning as
+    // requireDevops() above: tools/estate-probes asserts it across this
+    // Worker's whole unauthenticated edge and every page's failure wording
+    // branches on it). The `detail` is ADDITIVE (2026-09-05) and exists because
+    // a PERSON meets this one, on /admin: a bare status told them nothing.
+    // Three clauses — what happened, what it needs, how to get it — and it
+    // stays the "not signed in" cause, distinct from the `forbidden` sentence
+    // below that a signed-in non-approver gets.
+    if (!identity)
+      return c.json(
+        {
+          error: 'unauthenticated',
+          detail:
+            'You are not signed in, and this is an approver-only surface. Sign in with your ' +
+            'estate account at https://heygabi.ai — and if approving is still not open to you ' +
+            'afterwards, ask the owner to make you an approver on https://heygabi.ai/admin/.',
+        },
+        401,
+      );
 
     const email = identity.email.trim().toLowerCase();
     const ownerEmails = parseOwnerEmails(c.env.OWNER_EMAILS);

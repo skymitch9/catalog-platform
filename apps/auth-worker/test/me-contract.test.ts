@@ -139,3 +139,32 @@ test('🔴 a signed-OUT /me answers a SENTENCE, never a bare status', async () =
   // people to the wrong place.
   assert.equal(/approval|revoked|admin/i.test(body.detail!), false);
 });
+
+test('🔴 a signed-OUT POST /estate/hello answers a SENTENCE too', async () => {
+  // The second of the three bare-401 siblings, fixed 2026-09-05. ⚠️ The TODO
+  // entry that sent the fix called this route `POST /estate/seen` and called it
+  // machine-facing; it is neither. `/estate/seen` is the app-token door
+  // (estate.ts, `identifyApp`, answering `unauthorized`). THIS is `/estate/hello`
+  // — the BROWSER self-enrollment pipe the static audiobook site calls with the
+  // person's OWN Firebase ID token — so its refusal is written for a person and
+  // names no header and no secret.
+  //
+  // ⚠️ The `error` CODE stays exactly `unauthenticated` for the same
+  // estate-probes reason as the /me test above.
+  const res = await estateRoutes.request(
+    '/estate/hello',
+    { method: 'POST' } as never,
+    { DB: {} as D1Database, OWNER_EMAILS: '', FIREBASE_PROJECT_ID: 'test-project' } as never,
+  );
+  assert.equal(res.status, 401);
+  const body = (await res.json()) as { error: string; detail?: string };
+  assert.equal(body.error, 'unauthenticated');
+  assert.equal(typeof body.detail, 'string', 'a bare {error} is what this test exists to prevent');
+  assert.ok(body.detail!.length > 0, 'an empty detail is a bare status wearing a field name');
+  assert.match(body.detail!, /not signed in/i);
+  assert.match(body.detail!, /heygabi\.ai/);
+  // ⚠️ It must not leak the machine vocabulary of its app-token neighbour —
+  // a person reading "bearer" or a secret NAME here would go looking for a
+  // credential they are not supposed to have.
+  assert.equal(/bearer|ESTATE_APP_TOKEN|authorization/i.test(body.detail!), false);
+});

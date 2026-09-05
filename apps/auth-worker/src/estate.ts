@@ -369,7 +369,27 @@ estateRoutes.post('/estate/hello', async (c) => {
   } catch (err) {
     return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
   }
-  if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+  // ⚠️ The `error` CODE stays exactly `unauthenticated` — tools/estate-probes
+  // asserts it across this Worker's whole unauthenticated edge and every page's
+  // failure wording branches on it. The `detail` is ADDITIVE (2026-09-05).
+  //
+  // ⚠️ AND THE AUDIENCE HERE IS A PERSON, NOT A MACHINE — corrected from the
+  // TODO entry that sent this fix, which named line 372 as `POST /estate/seen`.
+  // It is not: `/estate/seen` is the app-token door (line 232, `identifyApp`,
+  // and it answers `unauthorized`). This is `POST /estate/hello`, BROWSER
+  // self-enrollment carrying the caller's OWN Firebase ID token — so the
+  // sentence names no header and no secret, it tells a person what to do.
+  if (!identity)
+    return c.json(
+      {
+        error: 'unauthenticated',
+        detail:
+          'You are not signed in, so there is no account to add to the estate directory. ' +
+          'Sign in with your Google account at https://heygabi.ai — enrolling happens by ' +
+          'itself once the sign-in finishes, and there is nothing to do by hand.',
+      },
+      401,
+    );
 
   const email = identity.email.trim().toLowerCase();
   const originHost = (() => {

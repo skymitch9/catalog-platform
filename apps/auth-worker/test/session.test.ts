@@ -142,6 +142,27 @@ test('POST /session: tokenless in real-auth mode → 401 unauthenticated, no row
   assert.equal(db.rows.size, 0);
 });
 
+test('🔴 POST /session: the 401 carries a SENTENCE, never a bare status', async () => {
+  // The first of the three bare-401 siblings fixed 2026-09-05 (the others are
+  // pinned in me-contract.test.ts and catalog-requests.test.ts). Whoever meets
+  // this one is a BROWSER MID-SIGN-IN — the ID-token → cookie exchange is the
+  // step right after Google hands the page an identity — so the sentence has to
+  // say where to start the sign-in again, not name a header they cannot set.
+  //
+  // ⚠️ The `error` CODE must stay exactly `unauthenticated`: tools/estate-probes
+  // asserts it across this Worker's whole unauthenticated edge and every page's
+  // failure wording branches on it. Only the `detail` is new — which is why the
+  // test above is left standing rather than folded into this one.
+  const db = new FakeSessionDB();
+  const res = await sessionRoutes.request('/session', { method: 'POST' }, baseEnv(db));
+  const body = (await res.json()) as { error: string; detail?: string };
+  assert.equal(body.error, 'unauthenticated');
+  assert.equal(typeof body.detail, 'string', 'a bare {error} is what this test exists to prevent');
+  assert.ok(body.detail!.length > 0, 'an empty detail is a bare status wearing a field name');
+  assert.match(body.detail!, /sign in again/i);
+  assert.match(body.detail!, /heygabi\.ai/);
+});
+
 test('POST /session: dev-bypass identity → 200, creates a row, sets the cookie with the §4.3 attributes', async () => {
   const db = new FakeSessionDB();
   const res = await sessionRoutes.request('/session', { method: 'POST' }, devEnv(db, 'Member@Example.COM'));

@@ -813,6 +813,32 @@ test('🔴 the key columns cross the wire as BOOLEANS and nothing else', () => {
 // Deciding
 // ---------------------------------------------------------------------------
 
+test('🔴 signed OUT at an approver door: a SENTENCE, never a bare status', async () => {
+  // The third of the three bare-401 siblings found 2026-09-05 (the /me one is
+  // pinned in me-contract.test.ts, the /session one in session.test.ts).
+  // `requireApprover()` answered `{"error":"unauthenticated"}` and nothing
+  // else, and a PERSON meets this one — every /admin approver control and
+  // every decide button lands on it when a session has quietly expired.
+  //
+  // ⚠️ The `error` CODE must stay exactly `unauthenticated`: tools/estate-probes
+  // asserts it across this Worker's whole unauthenticated edge, and every
+  // page's failure wording branches on it. Only the `detail` is new.
+  const db = new FakeDB();
+  const id = await file(db, MEMBER);
+  const res = await post(db, null, `/estate/catalogs/requests/${id}/decide`, { decision: 'accept' });
+  assert.equal(res.status, 401);
+  const body = (await res.json()) as { error: string; detail?: string };
+  assert.equal(body.error, 'unauthenticated');
+  assert.equal(typeof body.detail, 'string', 'a bare {error} is what this test exists to prevent');
+  assert.ok(body.detail!.length > 0, 'an empty detail is a bare status wearing a field name');
+  // Three clauses, per the estate rule: what happened (not signed in), what it
+  // needs (an approver account), how to get it (sign in / ask the owner).
+  assert.match(body.detail!, /not signed in/i);
+  assert.match(body.detail!, /approver/i);
+  assert.match(body.detail!, /heygabi\.ai/);
+  assert.equal(db.requests[0]?.status, 'pending', 'nothing was decided');
+});
+
 test('a plain member cannot decide, and is told whose call it is', async () => {
   const db = new FakeDB();
   const id = await file(db, MEMBER);

@@ -61,7 +61,23 @@ sessionRoutes.post('/session', async (c) => {
   } catch (err) {
     return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
   }
-  if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+  // ⚠️ The `error` CODE stays exactly `unauthenticated` — tools/estate-probes
+  // asserts it across this Worker's whole unauthenticated edge and every page's
+  // failure wording branches on it. The `detail` is ADDITIVE (2026-09-05), and
+  // the audience is a BROWSER MID-SIGN-IN: whoever meets this has a half-
+  // finished sign-in, so the sentence says where to start it again rather than
+  // naming a header they cannot set.
+  if (!identity)
+    return c.json(
+      {
+        error: 'unauthenticated',
+        detail:
+          'Your sign-in did not carry a verified Google identity, so no estate session was ' +
+          'created. Sign in again from the front door at https://heygabi.ai and let it finish; ' +
+          'if it keeps stopping here, sign out of Google in this browser and sign in once more.',
+      },
+      401,
+    );
   // A token verified by the canonical module always carries a `sub` (uid) —
   // guarded here anyway because a session that could name no uid could mint
   // nothing later (session-db.ts's NOT NULL), so failing loudly now beats a
