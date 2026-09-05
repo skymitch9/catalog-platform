@@ -66,6 +66,30 @@ export interface Env {
    */
   ESTATE_DOCS?: R2Bucket;
 
+  /**
+   * The PRIVATE `estate-catalog-keys` R2 bucket — the sealed Claude keys a
+   * catalog request may carry (design docs/info/request-a-catalog-design.md §6;
+   * bucket created 2026-09-05, public access verified disabled the same day).
+   *
+   * Object layout, one JSON envelope per request id:
+   *   `reader/<id>.json` — written by POST /api/estate/catalogs/requests
+   *   `owner/<id>.json`  — written by POST …/:id/decide with decision "accept"
+   *
+   * ⚠️ WRITE-AND-DELETE ONLY IN INTENT. `catalog-requests.ts` calls `.put()` and
+   * `.delete()` and NEVER `.get()`/`.list()`: there is no decrypt-to-read path
+   * anywhere in this Worker, and that ABSENCE — not a policy — is what makes
+   * "the owner can never see the requester's key" mechanical. The single reader
+   * is the owner-run provisioner on his own machine, which holds the private
+   * key and deletes the object once `wrangler secret put` has taken it.
+   *
+   * ⚠️ OPTIONAL ON PURPOSE, and the handlers must stay tolerant of its absence.
+   * Tests and any deployment without the binding must still accept a request —
+   * but a submit that CARRIES a `sealed_key` with no store to put it in is
+   * refused in words, never accepted with the key silently dropped, and never
+   * with the envelope written to D1 (§6.1: D1 holds booleans and nothing else).
+   */
+  CATALOG_KEYS?: R2Bucket;
+
   /** Set to "production" explicitly in wrangler.toml (conformance §8.2 #8). */
   ENVIRONMENT?: string;
   /** Dev bypass identity — only honoured when ENVIRONMENT === 'development'. */

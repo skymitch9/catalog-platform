@@ -89,6 +89,25 @@ bucket_name = "estate-backups"
 binding = "ESTATE_DOCS"
 bucket_name = "estate-docs-gated"
 
+# The PRIVATE estate-catalog-keys R2 bucket — the sealed Claude keys attached to
+# a catalog request (design docs/info/request-a-catalog-design.md §6). Created
+# 2026-09-05; public access verified DISABLED the same day (`wrangler r2 bucket
+# dev-url get estate-catalog-keys` -> "Public access via the r2.dev URL is
+# disabled"). ⚠️ NEVER enable a dev URL or attach a custom domain.
+# It holds ONLY sealed envelopes, one JSON object per request id:
+#   reader/<id>.json  written at submit   owner/<id>.json  written at accept
+# Nothing decrypts here: this Worker only PUTs and DELETEs. The one reader is
+# the owner-run provisioner on his own machine, which holds the private key
+# (catalog-platform/docs/access/keys/, gitignored) and deletes the object after
+# `wrangler secret put`. Decline and withdraw delete both objects too.
+# ⚠️ DELIBERATELY NOT IN THE BACKUP SET (`backup.yml`, RECOVERY.md §1b): an
+# envelope is transient and re-mintable — if it is lost, the requester is asked
+# for their key again. Backing it up would multiply copies of somebody else's
+# credential for no recovery value.
+[[r2_buckets]]
+binding = "CATALOG_KEYS"
+bucket_name = "estate-catalog-keys"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "estate_auth"
