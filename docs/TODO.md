@@ -163,18 +163,29 @@ What is left on this phase, in the order it can be done:
   the route's own sentence, a thrown fetch shown as an **outage**, the debounce
   firing once, withdraw arming → POSTing → restoring the "+".
   🔴 **NOT verified: anything signed in, and anything live.**
-- 🔴 **BLOCKED on the same CORS commit as phase 4 above — see that section's
-  item 1 for the mechanism.** The refusal named seven paths, three of them
-  `apex-request-catalog.js`'s. Not bypassed. ⚠️ **One deploy covers both
-  surfaces**, so the front door and `/admin` should go out together rather than
-  racing each other from two worktrees. Now written down where a future deployer
-  will look: [`info/worktree-deploys.md`](info/worktree-deploys.md) §5 owns the
-  general rule, and the incident with its full refusal text sits beside the
-  build order it corrects in
+- ✅ **DEPLOYED `4875d1dd`** from a worktree of `597e40d`, after the block
+  cleared. It **was** blocked on the same CORS commit as phase 4 above (see that
+  section's item 1 for the mechanism); the refusal named seven paths, three of
+  them `apex-request-catalog.js`'s, and it was **not bypassed**. ⚠️ Uploaded
+  **0 new files of 57** — byte-identical `public/` to agent C's deploy
+  `3bb3bff7` four minutes earlier, which had already shipped this commit's
+  public tree; this deploy exists so the shipped commit and the record agree.
+  **One deploy covers both surfaces**, which is worth knowing before the next
+  parallel build sends two agents at the same Pages project.
+  Now written down where a future deployer will look:
+  [`info/worktree-deploys.md`](info/worktree-deploys.md) §5 owns the general
+  rule, and the incident with its full refusal text sits beside the build order
+  it corrects in
   [`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) §10.
-  ⚠️ The front end fails **safe** while it waits — `/me` carries no `catalogs`
-  field yet and §4.3's last row hides on exactly that — but `admin.js` has no
-  such hiding rule, which is why neither ships early.
+- ✅ **VERIFIED LIVE with the right instrument** (`curl -s -D -`, cache-busted):
+  `GET /` **200** serving `div class="card multi" data-catalog-kind="games"` at
+  line 933 with the `boardgames.heygabi.ai` host **link** at 940, the books
+  hook, and the script tag at 1008; `GET /assets/apex-request-catalog.js`
+  **200**, `application/javascript`, **27,939 bytes**, carrying all six pinned
+  strings. ⚠️ **No `class="card-add"` and no `class="card-pending"` appear
+  anywhere in the served HTML** — the signed-out page carries the hooks and
+  nothing else, which is the gate working rather than a missing feature.
+  `npm run verify:home`: 29 pages fetched, all checks passed.
 - ☐ **THE OWNER'S VERIFICATION, and nothing substitutes for it:** signed in at
   <https://heygabi.ai>, press the "+" bottom-right of **both** the Books and the
   Games card and file one real request of each kind. There is no browser harness
