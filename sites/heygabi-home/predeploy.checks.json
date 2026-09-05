@@ -46,7 +46,32 @@
         "buildReview",
         "Requested — pending review",
         "that’s an outage, not a permissions problem",
-        "me?.status !== 'approved'"
+        "me?.status !== 'approved'",
+        "./catalog-seal.js",
+        "sealed_key"
+      ]
+    },
+    {
+      "_why": [
+        "The sealed Claude key's browser half (design §6). Imported by BOTH surfaces that can supply a key —",
+        "assets/apex-request-catalog.js and admin/admin.js — so it is one asset with two callers and a deploy",
+        "that dropped it would break both at once, silently, at the moment somebody typed a key.",
+        "🔴 THE `kid` IS THE LOAD-BEARING MARKER. It is derived from the provisioning public key, so shipping a",
+        "STALE bundle — the one failure a 200 cannot see — changes it. An envelope sealed to a public key whose",
+        "private half nobody holds is unopenable forever: the provisioner refuses it by kid and the requester's",
+        "key is simply gone. Pinning the kid turns that into a failed deploy instead of a silent loss.",
+        "The alg string and both exported function names are pinned as the contract the auth Worker validates."
+      ],
+      "path": "/assets/catalog-seal.js",
+      "mustContain": [
+        "fb6eb908ead63ce7",
+        "RSA-OAEP-256+A256GCM",
+        "CATALOG_PROVISIONING_PUBLIC_JWK",
+        "export async function sealSecret",
+        "export function sealSupported"
+      ],
+      "mustNotContain": [
+        "PLACEHOLDER-not-a-key"
       ]
     },
     {
@@ -595,7 +620,9 @@
         "openGroups",
         "Current members",
         "Nobody is waiting.",
-        "hidden by the current search or filters"
+        "hidden by the current search or filters",
+        "../assets/catalog-seal.js",
+        "a reader key was provided"
       ],
       "mustNotContain": [
         "download-ebooks",

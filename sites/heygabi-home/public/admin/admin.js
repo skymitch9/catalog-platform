@@ -167,6 +167,11 @@
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
 import { confirmBtn } from '../assets/estate-controls.js';
+// The sealed Claude key (design §6). ⚠️ THE SAME MODULE the "+" form uses —
+// one sealing routine, one public key, one home. Two copies would be two
+// chances to get the envelope wrong and the drifted one would be this page,
+// which is exercised least.
+import { SealError, sealSecret, sealSupported } from '../assets/catalog-seal.js';
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
@@ -3480,22 +3485,88 @@ function catalogAcceptPanel(row) {
   panel.appendChild(never);
   panel.appendChild(catalogNextStep(row));
 
-  // --- the key sentence (§6.4 row 3, owner decision 2026-09-05) -------------
-  // ⚠️ MARKED HOOK — THE SEALED REQUESTER KEY IS THE LAST PHASE OF THIS BUILD
-  // (owner, 2026-09-05: "Have it fall back to my Claude key for now. Defer it
-  // until everything else is built then build it… the defer is until after the
-  // other bits build but not forever"). When that phase lands, THIS is where
-  // §5.4 items 3 and 4 go: a sealed-key indicator with NO reveal control
-  // anywhere, and an optional owner-key field used only if the reader attached
-  // none. Until then there is deliberately no key input on this panel, and the
-  // sentence below is the honest description of what the provisioner will do.
+  // --- the key, §5.4 items 3 and 4 (landed 2026-09-05) ----------------------
+  //
+  // 🔴 ITEM 3 — a reader-attached key is shown as SEALED, WITH NO REVEAL
+  // CONTROL ANYWHERE. There is no button here to write, because there is no
+  // route to call and no decrypt path in the browser bundle: design §6.2's
+  // "the owner never decrypts to READ — only to INJECT" is enforced by that
+  // absence, not by a policy this panel could quietly relax. D1 holds a
+  // BOOLEAN; the ciphertext is in a private R2 bucket nothing serves.
+  const readerKey = Number(row.reader_key_set) === 1;
+  if (readerKey) {
+    const sealed = document.createElement('p');
+    sealed.className = 'cat-note';
+    // ⚠️ THE EXACT SENTENCE design §6.1 pins for this surface — "the owner sees
+    // only 'a reader key was provided'". It is also pinned as a live marker in
+    // predeploy.checks.json, so a bundle that loses this half of the panel
+    // fails the deploy instead of silently dropping the one indicator.
+    sealed.textContent =
+      'AI lookups: a reader key was provided. It is sealed — you can’t see it, here or anywhere, and it ' +
+      'can’t leak; the provisioner injects it straight into the new catalog’s secret without printing it. ' +
+      'It wins over anything you set below (design §6.4 row 1).';
+    panel.appendChild(sealed);
+  }
+
+  // ⚠️ ITEM 4 — an optional OWNER key, used only if the reader attached none.
+  // Fail-quiet: a browser that cannot seal gets no field and no explanation,
+  // exactly as the "+" form does. The accept still works; the catalog then
+  // falls to §6.4 row 3, which is what would have happened anyway.
+  let ownerKeyInput = null;
+  if (sealSupported()) {
+    const keyField = document.createElement('label');
+    keyField.className = 'cat-field';
+    const keyLabel = document.createElement('span');
+    keyLabel.className = 'ctl-label';
+    keyLabel.textContent = 'Set an Anthropic key for this catalog (optional)';
+    ownerKeyInput = document.createElement('input');
+    // `password`, so a screen share or a screenshot of this panel carries
+    // nothing. There is no reveal toggle on purpose.
+    ownerKeyInput.type = 'password';
+    ownerKeyInput.className = 'ctl-input';
+    ownerKeyInput.autocomplete = 'off';
+    ownerKeyInput.spellcheck = false;
+    ownerKeyInput.placeholder = 'sk-ant-…';
+    const keyHint = document.createElement('span');
+    keyHint.className = 'spend-detail';
+    keyHint.textContent = readerKey
+      ? 'Only used if the reader’s key turns out to be unusable — theirs wins. Sealed in your browser; ' +
+        'once you save it, nothing can show it to you again.'
+      : 'Only used if the reader didn’t attach one — they didn’t. Sealed in your browser; once you save it, ' +
+        'nothing can show it to you again. Leave it blank to fall back to your own key below.';
+    keyField.append(keyLabel, ownerKeyInput, keyHint);
+    panel.appendChild(keyField);
+  }
+
+  // The three-way precedence, in words — §6.4, resolved at PROVISIONING time.
+  // ⚠️ Row 3 is a MONEY decision and it says so: the owner's own key, hourly,
+  // on somebody else's catalog. It is his standing choice, not a default the
+  // code arrived at, and the provisioner logs every instance that spends it.
   const key = document.createElement('p');
   key.className = 'cat-note';
   key.textContent =
-    'AI lookups: this catalog will be provisioned with YOUR Anthropic key (your standing decision, 2026-09-05). ' +
-    'The requester was not asked for one — the sealed-key path is the last phase of this build — and the ' +
-    'provisioner logs which instances spend your key.';
+    'AI lookups, in this order: the requester’s sealed key if they attached one; else the key you set above; ' +
+    `else YOUR own Anthropic key (your standing decision, 2026-09-05). ${
+      readerKey
+        ? 'They attached one, so this catalog spends theirs.'
+        : 'They attached none, so unless you set one above this catalog spends yours'
+    }` +
+    (readerKey ? '' : ', hourly, on its details sweep — and the provisioner logs that it did.');
   panel.appendChild(key);
+
+  // ⚠️ §7.6's closing warning, and it is NOT the books sentence. For books,
+  // "no key from either party" still leaves a donor-only sweep healing for
+  // free against the main library. Board_Game_Catalog has no DONOR_URL and no
+  // donor route, so on a games row no key means NO self-healing at all.
+  if (row.kind === 'games' && !readerKey) {
+    const gamesKey = document.createElement('p');
+    gamesKey.className = 'perm-warn cat-note';
+    gamesKey.textContent =
+      'On a games catalog there is no donor to fall back on — Board_Game_Catalog has no donor route at all — ' +
+      'so a catalog with no key does not heal itself the way a book one does. Whichever key ends up here is ' +
+      'the only thing filling in details.';
+    panel.appendChild(gamesKey);
+  }
 
   // --- the commit. GRANT class: the panel stages, this Save commits it. ------
   const actions = document.createElement('div');
@@ -3519,22 +3590,68 @@ function catalogAcceptPanel(row) {
     }
     save.disabled = true;
     cancel.disabled = true;
+
     // ⚠️ Both edited values are sent every time, and the ROUTE re-validates
     // and re-checks availability (§3.6). The browser's copy of that check is a
     // convenience; the row that lands in D1 is the one that matters.
+    const payload = { decision: 'accept', desired_subdomain: nextAddr, display_name: nextName };
+
+    /* The owner's optional key, sealed HERE and nowhere else. The plaintext
+     * exists for the length of this handler; the field is emptied whether the
+     * seal worked or not, and only the envelope goes on the body. ⚠️ A refused
+     * seal ABORTS the accept rather than quietly accepting without the key —
+     * the opposite of the "+" form's posture, and deliberately so: a requester
+     * who loses a key can be asked again, but an owner who thinks he set one
+     * and did not will find out months later on a bill. */
+    let sentKey = false;
+    if (ownerKeyInput) {
+      const typed = ownerKeyInput.value.trim();
+      if (typed) {
+        try {
+          payload.sealed_key = await sealSecret(typed);
+          sentKey = true;
+        } catch (err) {
+          setStatus(
+            err instanceof SealError
+              ? `${err.message} Nothing was accepted — fix that and press Accept again.`
+              : 'That key could not be sealed in this browser, so nothing was accepted. Try again, or leave the field blank.',
+            'warn',
+          );
+          save.disabled = false;
+          cancel.disabled = false;
+          return;
+        } finally {
+          ownerKeyInput.value = '';
+        }
+      }
+    }
+
     const data = await api(`/api/estate/catalogs/requests/${row.id}/decide`, {
       method: 'POST',
-      body: JSON.stringify({ decision: 'accept', desired_subdomain: nextAddr, display_name: nextName }),
+      body: JSON.stringify(payload),
     });
     save.disabled = false;
     cancel.disabled = false;
     if (!data) return; // api() has already said why
+
+    // 🔴 THE ROW'S BOOLEAN, NOT OUR INTENTION — the same rule the "+" form
+    // follows. A Worker deployed before the sealed-key routes ignores an
+    // unknown body field and answers a perfectly cheerful 200, and believing
+    // the POST instead of the row is how the owner is told a key is set when
+    // it was dropped. The four causes stay distinct: this is neither a refusal
+    // nor an outage, it is "the decision landed and the key did not".
+    const keyDropped = sentKey && Number(data.owner_key_set) !== 1;
     await loadDirectory();
     setStatus(
-      data.detail ||
-      `Request #${row.id} is accepted at ${catalogHost(nextAddr)}. Nothing is built yet — the next step is yours, ` +
-      'and it is written out on the row.',
-      '',
+      keyDropped
+        ? `Request #${row.id} is accepted at ${catalogHost(nextAddr)}, but the key you set was NOT stored — ` +
+          'the directory did not record it. Nothing leaked and nothing is broken; the catalog will fall back ' +
+          'to your own key unless you set one again once the key routes are live.'
+        : data.detail ||
+          `Request #${row.id} is accepted at ${catalogHost(nextAddr)}.${
+            sentKey ? ' Your key is stored, sealed — nothing can show it to you again.' : ''
+          } Nothing is built yet — the next step is yours, and it is written out on the row.`,
+      keyDropped ? 'warn' : '',
     );
   });
 
