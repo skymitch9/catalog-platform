@@ -238,6 +238,30 @@ renderer.
 - A `live` row records the **real** instance and host, and is the source of
   truth for *"who owns which catalog"* — §4 depends on it existing.
 
+### 3.6 Route contract — pinned 2026-09-05 so parallel builds agree
+
+Mirrors `apps/auth-worker/src/universe-requests.ts` (0017's routes) in shape,
+guards, error grammar (`{error, detail}` worded for a person, never a bare
+status) and CORS registration (`index.ts:192–194` idiom). New module
+`apps/auth-worker/src/catalog-requests.ts`; reserved list + shape check in
+`apps/auth-worker/src/catalog-names.ts` (the ONE module of §3.3 — the home site
+fetches the same list via the availability route rather than keeping a copy).
+
+| Route | Guard | Body / query | Answer |
+|---|---|---|---|
+| `GET /api/estate/catalogs/availability?name=` | `requireApprovedMember()` | `name` | `{ok:true, name, available:bool, reason:'shape'\|'reserved'\|'taken'\|null, detail}` — `taken` = a `live` row OR an open `pending`/`accepted` row of EITHER kind |
+| `POST /api/estate/catalogs/requests` | `requireApprovedMember()` — status must be `approved`; anything else is 403 with the four-cause wording | `{kind:'books'\|'games', desired_subdomain, display_name, extra?}` — missing/unknown `kind` → 400 `bad_kind` | 201 `{ok:true, id, kind, desired_subdomain, display_name, status:'pending', detail}`; 409 `already_requested` / `taken`; 400 `bad_subdomain` / `reserved` |
+| `GET /api/estate/catalogs/requests` | `requireApprovedMember()` | — | `{requests:[…], scope:'mine'\|'all', is_approver}` — approver sees every row **with** requester identity; a member sees only own rows |
+| `POST /api/estate/catalogs/requests/:id/decide` | `requireApprover()` | `{decision:'accept'\|'decline', desired_subdomain?, display_name?, reason?}` — accept may edit the two fields (re-validated, availability re-checked); decline **requires** `reason` | `{ok:true, id, status, …}`; 409 `not_pending` |
+| `POST /api/estate/catalogs/requests/:id/live` | `requireDevops()` | `{provisioned_instance, provisioned_host, owner_key_set?, reader_key_set?}` | `{ok:true, id, status:'live'}`; only from `accepted` |
+| `POST /api/estate/catalogs/requests/:id/withdraw` | `requireApprovedMember()`, own row only | — | `{ok:true, id, status:'cancelled'}`; only from `pending` |
+| `GET /api/estate/me` | existing | — | **adds** `catalogs: [{id, kind, status, desired_subdomain, display_name, provisioned_host}]` — the caller's rows with status in `pending`,`accepted`,`live`, newest first; `[]` when none; the field is **absent** (not `[]`) when the table is missing, so the home site's fail-hidden path fires |
+
+Wire row shape (both list routes): `{id, kind, status, desired_subdomain,
+display_name, extra (parsed, tolerant), created_at, decided_at, decline_reason,
+provisioned_host, reader_key_set, owner_key_set}` plus, for approvers only,
+`{requester_email, requester_display_name}`.
+
 ---
 
 ## 4. The "+" on the home cards
