@@ -128,6 +128,54 @@ written up in §11:
   measured, and the row would sit amber/red until her first push. Left as its
   own decision.
 
+☑ **16:03 Phoenix — token pair SET and padhard's FIRST PUSH LANDED (677 rows),
+step 3 of the three-step plan done** (agent W4-FED-TOKEN). One value minted
+locally (`randomBytes(32).base64url`, never printed, file deleted) and piped
+into both holders — `INDEX_PUSH_TOKEN_LIBRARY2` on `catalog-index` and the
+un-suffixed `INDEX_PUSH_TOKEN` on `library-catalog-friend` (`--env friend`).
+Names only; no value in any file or log. Custody is **re-mint the pair, there is
+no readable master** (1Password deferred) — the row is now in
+[`access/RECOVERY.md`](access/RECOVERY.md)'s secrets table, and that table's old
+*"`_LIBRARY2` is deliberately absent on both sides"* line is marked superseded.
+
+`index.heygabi.ai/api/health` → `sources.library2`, measured either side of it:
+
+| | rows | pushed_at |
+|---|---|---|
+| **before** (23:01:29Z / 16:01 Phoenix) | `0` | `null` |
+| **after** (23:03:2xZ / 16:03 Phoenix) | **`677`** | `2026-09-05T23:03:19.602Z` |
+
+⚠️ **No admin call and no owner action were needed for the first push, and the
+plan above was wrong about that.** `POST /api/admin/index-push` needs a Firebase
+bearer with `manageUsers` on padhard; it was never used. `lib/index-push.ts`'s
+staleness backstop rides ordinary `/api/*` traffic and is mounted BEFORE
+`requireAuth` (`apps/worker/src/index.ts:76` vs `:143`), and a `secret put`
+recycles the isolates that hold its once-an-hour throttle — so one ordinary
+unauthenticated `GET padhard.heygabi.ai/api/works` (a plain 401, nothing
+privileged) fired it, and `decidePushForStaleness`'s *"index reports zero rows
+for this source"* branch pushed the whole snapshot in the same second. There is
+no cron for it: padhard's only trigger is `7 * * * *`, which dispatches the
+details sweep and nothing else.
+
+🔴 **BUT THE UNIVERSES TAB IS STILL BROKEN, AND IT IS A DEPLOY, NOT A BUILD.**
+Measured 16:04 Phoenix, cache-busted (`cf-cache-status: MISS`, so not an edge
+copy): the LIVE `https://heygabi.ai/universes/universes.js` contains **zero**
+occurrences of `library2` and still carries the pre-federation
+`m.source === 'library' || m.source === 'audiobook'` filter at its line 358 —
+the exact line the diagnosis table above named. The repo's copy HAS the fix
+(`HOLDER_LABELS` at :111, the complement filter at :394), so the apex Pages site
+simply has not been redeployed since W4-FED-INDEX landed it. `series/series.js`
+IS live-current (4 × `library2`), which is why the two tabs will disagree.
+☐ 🧑 **Next action: redeploy the apex site** (`sites/heygabi-home`) — ⚠️ a
+directory deploy ships the WORKING TREE, so from a committed-clean tree or a
+`git worktree add <tmp> HEAD` checkout. This agent was briefed no-deploys.
+
+**Not verified by this agent:** that either tab RENDERS her books (no browser,
+and `vis_library2` is owner-only `DEFAULT 0`); the 677 figure against padhard's
+own D1 count; that a WRONG push token answers the worded 401 (that would need a
+second value and a write attempt); anything about `/status`, which still keeps
+its own `INDEX_SOURCE_ORDER` per the note above.
+
 ## ☐ 🔴 OWNER ASK 2026-09-05 12:58 Phoenix — "build it all … check first then build. Also make sure all docs aren't stale" (ALL FOUR REPOS)
 
 Owner, verbatim, after a build-queue summary that listed four items as unbuilt:
