@@ -3,7 +3,13 @@
 > **Audience:** Claude sessions first, the owner second.
 > **Status:** TRACKED — 🔄 **PHASES 0, 1 AND 2 ARE BUILT, MIGRATED AND
 > DEPLOYED (2026-09-02)**, plus phase 3 for this repo's own money path (E6).
-> Phases 3 (other repos), 4 (the soak) and 5 (audiobook Python) are NOT.
+> ✅ **PHASE 2b — §7.2's per-member drawer — BUILT 2026-09-05** as the Spending
+> COLUMN on the member grid (`52ab54c` + `44492c8`; no migration, no new
+> route). 🔴 **It is NOT DEPLOYED**: `heygabi-home` needs `npm run deploy:home`
+> and the auth-worker half rides the pending `estate-auth` deploy.
+> Phase 3 is now built for `library`, `library2` and `games` too (measured
+> 2026-09-05 in their own repos, all shipping `BILLING_POLICY="off"`); phases 4
+> (the soak) and 5 (audiobook Python) are NOT.
 > ⚠️ **This header said "DESIGN ONLY, nothing built" until 2026-09-02** and is
 > corrected in place rather than deleted, because a retired claim that does not
 > say it is retired keeps answering questions with stale facts. The as-built
@@ -13,11 +19,17 @@
 > dead rows, but several LINE anchors have drifted (L4/L5, L8, A4, A9, E1–E3,
 > E7) and were re-found by symbol. The line numbers below are therefore
 > **approximate**; the entry points are real.
-> ⚠️ **NOT verified:** no policy rule has ever been written, so no resolution
-> has run against a non-empty table in production; `billing_denied` has never
-> been seen on a real `/seen` or `/me` answer; and **nobody has rendered the
-> Spending panel signed in**. Cost figures are the constants the code itself
-> declares, not invoices. Effort figures are **labelled guesses**.
+> ⚠️ **Re-verified 2026-09-05 for FOUR claims only** (agent W2-BILL2B), each
+> named because the rest of this document was NOT re-measured that day: (1)
+> §7.2 is built and its departures are §11.2 rows 8–11; (2) phase 3's state in
+> the library and games repos, off their own commits and `wrangler.toml`s; (3)
+> ~~"no policy rule has ever been written"~~ — **false since 2026-09-02**, one
+> row exists and §11.3 now says which; (4) the phase table's rows 2 and 3.
+> ⚠️ **STILL NOT verified:** `billing_denied` has never been seen on a real
+> `/seen` or `/me` answer; **nobody has rendered the Spending panel or its new
+> column signed in**; and no per-person rule has ever been written from a
+> browser. Cost figures are the constants the code itself declares, not
+> invoices. Effort figures are **labelled guesses**.
 
 The owner's ask, 2026-08-24, verbatim:
 
@@ -535,7 +547,17 @@ is the `system` principal. Switching it off is the only control in the estate
 that stops an unattended hourly biller without a deploy, and the panel says so
 in one line.
 
-### 7.2 The per-member drawer
+### 7.2 The per-member drawer — ✅ BUILT 2026-09-05, ☐ NOT DEPLOYED
+
+> ✅ **BUILT 2026-09-05** (agent W2-BILL2B) — `52ab54c` (the column and its
+> drawer, `sites/heygabi-home/public/admin/{admin.js,index.html}` +
+> `predeploy.checks.json`) and `44492c8` (the door's new refusal,
+> `apps/auth-worker/src/billing.ts`). **No migration and no new route.**
+> 🔴 **NEITHER IS DEPLOYED** — `heygabi-home` needs `npm run deploy:home` and
+> the auth-worker half rides the pending `estate-auth` deploy; there is no
+> ordering constraint between them, because the write door has accepted `user`
+> principals since phase 1. What the build does differently from the text
+> below is §11.2 rows 8–11; what is still unverified is in §11.3.
 
 On the **existing member card**, in the **existing** `perm-grid`
 (`admin/admin.js:1737`), a new column: **Spending**. It follows that page's
@@ -583,8 +605,8 @@ states and the refusal wording, in the estate cyberpunk theme, light and dark.
 |---|---|---|---|
 | ~~**0**~~ | ✅ **DONE 2026-09-02.** `apps/auth-worker/src/billing-registry.ts` + its literal pin test. (The three §6.1 refusal defects landed 2026-08-26, in the other two repos) | landed | §11 |
 | ~~**1**~~ | ✅ **DONE 2026-09-02.** All of it: 0016 applied to remote `estate_auth`, the resolver, `/seen`'s two new fields, `/me`, the system door, the approver-gated write routes, 39 tests | landed | §11 |
-| 🔄 **2** | The Spending panel: ✅ **DONE 2026-09-02** (the §7.1 matrix, live on `/admin`). ⚠️ The §7.2 per-member DRAWER is **not built** — the resolver and write door already take `user`/`role` principals, only the UI is missing | half landed | §11 |
-| 🔄 **3** | ✅ `index-worker` reads the answer 2026-09-02 and ships `BILLING_POLICY = "off"`. ☐ library, library2, games still to do. 🔴 `discord-worker` is BLOCKED on an owner step — `estate-auth` holds no Discord token, so `identifyApp` cannot identify it, and adding one to `CONSUMER_APPS` would also make that bearer a valid `/seen` bearer (guarded against by `test/dev-access.test.ts`). Access-increasing ⇒ confirmed, never assumed | ~1 day | ⚠️ `off` in the committed file; shadow flipped per site |
+| ~~**2**~~ | ✅ **DONE.** The §7.1 matrix 2026-09-02 (live on `/admin`); the §7.2 per-member DRAWER 2026-09-05 as a **Spending column** on the existing `perm-grid` — `52ab54c` + `44492c8`, no migration, no new route. 🔴 **NOT DEPLOYED** (`npm run deploy:home`, plus the auth half riding the pending `estate-auth` deploy) | landed | §11.2 rows 8–11 |
+| 🔄 **3** | ✅ `index-worker` reads the answer 2026-09-02 and ships `BILLING_POLICY = "off"`. ✅ **library, library2 and games too** — measured 2026-09-05: `e7b3f6b` in `library_catalog` (live `77a9f67c` / `37b83f8b`) and `5150269f` in `Board_Game_Catalog` (live `2e598a9e`), all three shipping `BILLING_POLICY = "off"`. 🔴 `discord-worker` is BLOCKED on an owner step — `estate-auth` holds no Discord token, so `identifyApp` cannot identify it, and adding one to `CONSUMER_APPS` would also make that bearer a valid `/seen` bearer (guarded against by `test/dev-access.test.ts`). Access-increasing ⇒ confirmed, never assumed | ~1 day | ⚠️ `off` in the committed file; shadow flipped per site |
 | **4** | ⏳ **Soak ≥ 7 days**, then `enforce` one site at a time against §4.2 | ~½ day work, 7+ days elapsed | Not a build task — a measurement |
 | **5** | 🔴 The audiobook Python paths (A1–A9): a small policy client (one HTTPS GET on the app token, cached to a file, 10-min TTL) + the `--no-llm` wiring | ~1 day | The hard one — no estate client exists on that side today |
 | ~~**6**~~ | ✅ **DONE 2026-08-26, ahead of the plan** — A3's public button requires sign-in on `create`/`update`, `delete` **and** `read` kept open. ⚠️ In Firestore `write` COVERS delete, so this row's own wording would have broken the fulfiller | landed | §9 Q3 |
@@ -786,7 +808,9 @@ against it. **This section is where the two differ.**
 | The four doors | `apps/auth-worker/src/billing.ts` · `test/billing-routes.test.ts` | same |
 | `/seen` + `/me` + `/hello` | `apps/auth-worker/src/estate.ts`, `me.ts` | same |
 | The shared client | `packages/estate-auth/src/seen.ts` | — |
-| The Spending panel | `sites/heygabi-home/public/admin/{admin.js,index.html}` | `heygabi-home` `a52a8b81` |
+| The Spending panel (§7.1 matrix) | `sites/heygabi-home/public/admin/{admin.js,index.html}` | `heygabi-home` `a52a8b81` |
+| The Spending COLUMN (§7.2, phase 2b) — `spendCell` / `spendLine` / the `spend` bag in `pendingEdits` / the third block of `savePermissions` | same two files, + `sites/heygabi-home/predeploy.checks.json` (six pins) | 🔴 **NOT DEPLOYED** — `52ab54c` |
+| The door's unattended-principal refusal (phase 2b's server half) | `apps/auth-worker/src/billing.ts` · `test/billing-routes.test.ts` | 🔴 **NOT DEPLOYED** — `44492c8` |
 | E6's call-site gate | `apps/index-worker/src/billing-gate.ts` · `test/billing-gate.test.ts` | `catalog-index` `4804dbb6`, `BILLING_POLICY = "off"` |
 | E6's cache column | `apps/index-worker/migrations/0005_billing_cache.sql` | applied to remote `index_catalog` **before** the deploy |
 
@@ -806,13 +830,33 @@ differently, so each is written down rather than left to be re-derived.
 | 4 | §3.2 double-covers L9 and L10 | **reproduced verbatim, and pinned by a test** | Policy can only deny, so a path under two switches is refused if EITHER denies. Tidying it would have been a change to the spec dressed as a cleanup; a test now pins the list so a NEW double cover has to be argued for |
 | 5 | §7.1/§7.2 do not say what a WRITE door refuses | **an `OWNER_EMAILS` row cannot be denied** (worded 409) | §7.2's *"the owner's row shows every control disabled"* is a UI rule, and a UI rule is one fetch away from being bypassed. The break-glass must not be narrowable into a lockout, and a spend switch is not the place to start |
 | 6 | §2 registers 36 paths | **35 registered; A6 deliberately left out** | A6 is keyed on a secret absent from `.env` ON PURPOSE and bills zero. A switch that does nothing is worse than no switch — the design's own dead-row warning |
-| 7 | §7.2's per-member drawer ships with the panel | **not built** | The owner's decision of record was *"on/off per registered money path"* — the per-SITE axis. The per-PERSON axis is tracked in `TODO.md`; the resolver and the write door already take `user` and `role` principals, so only the UI is missing |
+| 7 | §7.2's per-member drawer ships with the panel | ~~**not built**~~ → **BUILT 2026-09-05**, three days later, in `52ab54c` + `44492c8` | The owner's decision of record was *"on/off per registered money path"* — the per-SITE axis, which shipped first. Rows 8–11 below are where phase 2b's build then departed from §7.2's own text |
+| 8 | §7.2: *"clicking the Spending cell opens a checklist … each with a Why box"* | **the checklist is a full-width row UNDER the grid row, not content inside the cell**, and the Why box appears only on a path being switched OFF | The cell is one column of a five-column grid: a checklist rendered inside it is a paragraph three words wide. A Why box on every line would ask for a reason on rows nobody touched, and the required field is *the reason for a deny* |
+| 9 | §7.2 shows four rows and says nothing about `estate` | **`estate` has NO row, and the grid says so in words** | This grid is one row per CATALOG — a place somebody is granted, with a rung and a visibility box. `estate` (GABI, the apex scanner) bills without being a catalog anyone is granted, so three of its four other cells would be worded refusals. Its paths stay switchable for everyone on §7.1's matrix |
+| 10 | §7.2 draws every site's features for the person | **a `system`-only path draws a worded ⏱ FACT, never a control**, and the write door refuses to store one (`principal_not_applicable`) | `system` resolves alone (row 1), so a `user` row against the hourly sweep matches nothing at all — it would be a switch the owner believes he pressed. Refusing it at the door as well as in the UI is row 5's lesson applied a second time |
+| 11 | §7.2's cell states are `all on` / `⊘ N off` / `n/a` | **a fourth state: `· N off by a wider rule`**, and `n/a` also covers *"no rung here yet"* | A deny reaching this person through an `everyone` row, a `system` row, their RUNG or a wildcard is not this column's to change — but drawing `all on` over it is the same lie as a green light on a dead wire. It is counted in the cell and named on the line, and nothing about it is editable here |
 
 ### 11.3 What is NOT verified
 
-- **No rule has ever been written.** The `billing_policy` table is empty, so
+- ~~**No rule has ever been written.** The `billing_policy` table is empty, so
   the resolver has never run against a non-empty table in production. Every
-  resolution assertion is a unit test.
+  resolution assertion is a unit test.~~
+  ⚠️ **Corrected 2026-09-05 (docs audit, re-stated here by W2-BILL2B): the
+  table is NOT empty.** One row, written from the panel by the owner himself on
+  2026-09-02 22:45:48Z — `sweep.details` / `games` / `system` / `allow 0`,
+  stamped `nbaslamking@gmail.com`, with a `why` that calls it a throwaway soak
+  rule. 🔴 **It must be DELETED before any site flips to `enforce`** or it
+  becomes a real denial of the unattended games sweep. Details and the exact
+  read command: `TODO.md`, item 1.
+- 🔴 **NO PER-PERSON RULE HAS EVER BEEN WRITTEN.** Phase 2b's column has never
+  been rendered signed in: no drawer has been opened in a browser, and the
+  `user` principal has never travelled from a real form to the door. It was
+  EXERCISED instead — a throwaway stub-DOM harness (2026-09-05, not committed)
+  drove the real `permGrid`/`spendCell`/`spendLine`/`savePermissions` through
+  16 rows including the staged-writes-nothing rule, the
+  no-why-writes-nothing-at-all guard, the exact POST body, the
+  DELETE-rather-than-allow, the owner's fact and the wildcard refusal. That is
+  evidence about the module, not about the page.
 - **`billing_denied` has never been seen on a real `/seen` or `/me` answer** —
   both need a credential a session must not use.
 - 🔴 **Nobody has rendered the Spending panel signed in.** No cell has been

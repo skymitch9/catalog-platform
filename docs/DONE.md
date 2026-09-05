@@ -9,6 +9,86 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ☑ CODE LANDED 2026-09-05 (agent W2-BILL2B, `52ab54c` + `44492c8`) — LLM billing control, phase 2b: the per-member Spending column — 🔴 ☐ NOT DEPLOYED (two projects)
+
+Design of record: [`info/llm-billing-control-design.md`](info/llm-billing-control-design.md)
+§7.2, now marked built there with its four departures written down as §11.2 rows
+8–11. This is **item 2 of §"WHAT IS LEFT"** inside `TODO.md`'s
+*"1. Toggle what can bill the LLM"*, which stays in `TODO.md` because four of
+its six items are still open. **No migration and no new route** — the table, the
+resolver and the write door have taken `user` and `role` principals since phase
+1, and that is a measurement, not an assumption. Tests: auth Worker 682 → 685
+(three new in `test/billing-routes.test.ts`), 721/721 for that Worker at HEAD,
+whole workspace green, `check:home` green (31 JS parsed / 28 module graphs / 14
+HTML). 🔴 **Neither commit is deployed and they are two different projects:**
+`44492c8` rides the pending `estate-auth` deploy, `52ab54c` needs
+`npm run deploy:home` for the `heygabi-home` Pages project — both listed in
+`TODO.md`'s deploy manifest section. 🔴 **NOT VERIFIED: nobody has rendered the
+column signed in.** Review link once deployed: <https://heygabi.ai/admin/> → a
+member card → **Permissions** → the **Spending** cell on any row.
+
+**What it is.** The matrix that shipped 2026-09-02 answers *"what is switched on
+where"*; this answers *"may THIS person spend it"*. Same table, same resolver,
+same door, same ten-minute delay — only the `principal_kind` differs. The
+member grid is five columns now (site · visible · role · what that role can do ·
+**spending**) and the column stages into the card's ONE Save beside the
+visibility boxes and the role dropdowns. The cell is a summary (`all on` /
+`⊘ 2 off`) reusing `.spend-toggle`, so a spending switch looks the same
+everywhere on the page; the drawer it opens is a full-width sibling of the row,
+because a checklist rendered inside a one-column cell is a paragraph three words
+wide.
+
+**Four things it refuses to draw as a control**, each because the control would
+be a lie: a `system`-only money path (the hourly sweep — `system` resolves
+alone, so a per-person rule there denies nobody; `44492c8` makes the door refuse
+to store one, worded, naming the site-wide switch as the fix); the OWNER (a
+worded fact matching the door's 409 — the break-glass is not narrowable into a
+lockout); a site the person holds no rung on (`n/a`, unless a rule already names
+them there, in which case `n/a` would hide a deny that exists); and an
+unanswered billing route (`not loaded`, never *"spends nothing"*).
+
+**And it never says `all on` over a deny it does not own.** A deny arriving
+through an `everyone` row, a `system` row, this person's RUNG or a wildcard is
+counted in the cell (`· N off by a wider rule`) and named on the line. Those
+rules cover people this column never names, so it reports them and changes none.
+
+**`why` is required per money path and checked BEFORE the first write of any
+kind** — the card saves three systems in one gesture, and a batch that posted
+the visibility array and then stopped on an empty box would be half-applied for
+a reason the person could have been told first. Turning a path back on DELETES
+the row rather than writing an `allow` one; *"no rule"* IS the default state.
+
+**One defect fixed in the matrix above while building this.** `saveSpending()`
+reported SUCCESS for a cell it had not changed: turning a cell on looked for an
+EXACT `(feature, site, kind)` row to delete and skipped when there was none —
+but a deny can reach a cell through a wildcard row (`feature = '*'` or
+`site = '*'`) that a per-cell switch must not delete, because it also covers
+cells nobody clicked. It now names the rule holding the cell and changes
+nothing, instead of redrawing `On` over a rule that is still denying.
+
+**Exercised, not reasoned about.** There is no browser harness for `admin.js`,
+so a throwaway stub-DOM harness (scratchpad, not committed — it rewrites the
+module's three imports) drove the REAL
+`permGrid`/`spendCell`/`spendLine`/`savePermissions` through sixteen rows: the
+five-column header; all-on with the drawer closed; a live deny in the cell, in
+the drawer with its `why` and its author, and on the collapsed one-liner; the
+same rule reaching nobody else; the owner's fact; the no-rung `n/a`; ticking a
+box making ZERO fetches while the count moves and the Why box appears; Save
+refusing with no Why and writing **nothing at all** (not even the visibility
+POST) while focusing the empty box; Save posting exactly
+`{feature, site, principal_kind:'user', principal_value, allow:false, why}`;
+ticking back on issuing `DELETE .../rules/<id>` and never an allow row; a
+site-wide off surfacing on the person's row; a role rule named by its rung; a
+both-principals path saying the switch covers the person half only; the
+`estate` gap stated; a null `billingDir` degrading to a worded cell; and the
+wildcard fix refusing to claim a cell it cannot turn on alone.
+
+**Two corrections made to `TODO.md` in the same sitting**, both measured:
+item 4 (*"Phase 3 for the other three repos"*) was already BUILT for `library`
+and `library2` (`e7b3f6b`, live `77a9f67c` / `37b83f8b`) and for `games`
+(`5150269f`, live `2e598a9e`), all three shipping `BILLING_POLICY="off"`; and
+the parent section's *"8 sub-steps left"* count is corrected in place for item 1.
+
 ## 2026-09-05 — the apex CSP would have blanked a provisioned catalog's covers — fixed, deployed and verified as SERVED
 
 Moved whole from `TODO.md` by agent W2-PLAT. Commit `79d92da`; **deployed**

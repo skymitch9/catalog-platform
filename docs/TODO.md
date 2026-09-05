@@ -555,6 +555,31 @@ this section WHOLE to [`DONE.md`](DONE.md).
   migration of its own. There is no curl that reaches it, so it cannot join the
   three verification commands below — that is a gap, not an omission.
 
+- **ALSO RIDING ALONG — the LLM-billing phase 2b server half.** Added
+  2026-09-05 by agent W2-BILL2B, landed in `44492c8`, **NOT DEPLOYED** with the
+  rest. `POST /api/estate/billing/rules` now refuses a `user`/`role` rule
+  naming a money path only a cron triggers (400 `principal_not_applicable`,
+  worded, naming the site-wide switch as the fix) — `system` resolves alone, so
+  such a row could never deny anybody and would sit in `billing_policy` looking
+  exactly like a switch that works. ⚠️ **No migration of its own**, and no
+  ordering constraint against the page below: the write door has accepted
+  `user` principals since phase 1, so the new column works against the Worker
+  that is live *today* and this refusal only narrows what it will store.
+  Tests 682 → 685 at the time it landed; 721/721 for the Worker at HEAD.
+  ⚠️ It adds no unauthenticated route, so it cannot join the three curls below.
+
+- 🔴 **A SECOND DEPLOY, A DIFFERENT PROJECT — `heygabi-home` (Pages).** Agent
+  W2-BILL2B's phase 2b UI landed in `52ab54c` (the Spending column on every
+  member's permission grid) and is **NOT DEPLOYED**. It is not part of the
+  `estate-auth` deploy above and must not be confused with it. Owner step, from
+  the repo root: `npm run deploy:home` (it runs `npm test` and `check:home`
+  first — both green at `52ab54c`: whole workspace 0 fail, 31 JS parsed / 28
+  module graphs / 14 HTML). ⚠️ **A Pages deploy ships the WORKING TREE**, so it
+  runs from a committed-clean tree or from `git worktree add <tmp> HEAD` if
+  another agent is mid-edit. Review link afterwards:
+  <https://heygabi.ai/admin/> → a member card → **Permissions** → the
+  **Spending** cell on any row.
+
 ☐ **Verify after deploying** (⚠️ `-I` and `-o NUL` misreport on these hosts —
 use `-D -` and pipe to `head`):
 
@@ -991,6 +1016,12 @@ inventory (names only; the file was **not** opened by this work):
 
 ## ☐ The three formerly-DESIGNED items — all three now have code SHIPPED; 8 sub-steps left, listed per item
 
+⚠️ **Count corrected 2026-09-05 by agent W2-BILL2B, for item 1 only** (the other
+two items were not re-measured): of the eight, **item 1's phase 2b is now
+CODE-LANDED** (`52ab54c` + `44492c8`, ☐ two deploys) and **item 1's phase 3 was
+already BUILT** in the library and games repos when the eight were counted. The
+paragraph below is left as written; these two lines are the correction.
+
 ⚠️ **Corrected 2026-09-05 (docs audit). The old heading read `DESIGNED — one
 still unbuilt, two BUILT`, and by then NONE of the three was design-only** —
 item 2 ("+ Add a verse") was deployed on 2026-09-02, which the old subheading
@@ -1027,7 +1058,7 @@ for itself:
   the game ran (2026-09-01); the classic-client name was not. If he plays
   Classic, check the real image name before trusting the suggestion.
 
-### 1. Toggle what can bill the LLM — 🔄 PHASES 0–2 BUILT + DEPLOYED 2026-09-02
+### 1. Toggle what can bill the LLM — 🔄 PHASES 0–3 BUILT; 2b CODE-LANDED 2026-09-05, ☐ NOT DEPLOYED
 Design of record: [`info/llm-billing-control-design.md`](info/llm-billing-control-design.md).
 What landed moved WHOLE to [`DONE.md`](DONE.md) (*"LLM billing control — phases
 0, 1, 2 and (this repo's half of) 3"*). Panel:
@@ -1083,6 +1114,12 @@ designed to catch and would instead be caused by. It is also, until then, the
 
 ### 🔴 WHAT IS LEFT, in the order it can be done
 
+⚠️ **Re-counted 2026-09-05 (agent W2-BILL2B): 2 of these 6 are now ☑.** Item 2
+(phase 2b) is code-landed and waiting only on the two deploys; item 4 (phase 3
+for `library`/`library2`/`games`) was measured BUILT in those repos and its old
+☐ text is struck below. What is genuinely open: the owner's read-back (1), the
+Discord secret (3), the soak (5) and the audiobook Python client (6).
+
 1. ☑ **DONE 2026-09-02 22:45:48Z — the panel WAS rendered signed in and a rule
    WAS written.** ⚠️ **Corrected 2026-09-05 (docs audit); this item read
    `🔴 NOBODY HAS RENDERED THE PANEL SIGNED IN. No cell has been clicked, no
@@ -1098,10 +1135,48 @@ designed to catch and would instead be caused by. It is also, until then, the
    🔴 **And do not switch `sweep.details` / `games` back on casually** — the
    owner's own `why` says the row is wanted until enforce; see the delete-before-
    enforce note above.
-2. ☐ **Phase 2b — the per-member drawer** (§7.2): a **Spending** column on the
-   existing `perm-grid`, staged into the card's one Save. The matrix is the
-   per-SITE axis; this is the per-PERSON one. The resolver and the write door
-   already take `user` and `role` principals — only the UI is missing.
+2. ☑ **CODE LANDED 2026-09-05 (agent W2-BILL2B, `52ab54c` + `44492c8`) —
+   Phase 2b, the per-member drawer (§7.2) — 🔴 ☐ deploy (owner).** The
+   **Spending** column is the grid's fifth cell on every member card, staged
+   into the card's ONE Save beside the visibility boxes and the role dropdowns.
+   It writes through the matrix's OWN door with `principal_kind: 'user'` —
+   no new route and **no migration**, because the table, the resolver and the
+   write door have taken `user` and `role` principals since phase 1.
+   - **Four things it refuses to draw as a control**, each because the control
+     would be a lie: a `system`-only path (the hourly sweep — a per-person rule
+     there denies nobody, and `44492c8` makes the Worker refuse to store one);
+     the OWNER (worded fact, matching the door's 409 — the break-glass is not
+     narrowable into a lockout); a site the person holds no rung on (`n/a`,
+     unless a rule already names them there); and an unanswered billing route
+     (`not loaded`, never "spends nothing").
+   - **It never says "all on" over a deny it does not own.** An `everyone`
+     row, a `system` row, this person's RUNG or a wildcard is counted in the
+     cell (`· N off by a wider rule`) and named on the line. Those rules cover
+     people this column never names, so it reports them and changes none.
+   - **`why` is required per money path and checked BEFORE the first write of
+     any kind** — a card saves three systems in one gesture, and stopping on an
+     empty box halfway would be half-applied for a reason the person could have
+     been told first. Turning a path back on DELETES the row; "no rule" IS the
+     default state.
+   - **One defect fixed in the matrix above while building it:**
+     `saveSpending()` reported SUCCESS for a cell it had not changed, when the
+     deny arrived through a wildcard row it must not delete. It now says which
+     rule is holding the cell and changes nothing.
+   - ☐ **DEPLOY — TWO PROJECTS, and they are listed in the deploy manifest
+     section above** (`## ☑ CODE LANDED 2026-09-05 (agent RES …)`): `44492c8`
+     rides the `estate-auth` deploy; `52ab54c` needs `npm run deploy:home` for
+     the `heygabi-home` Pages project. There is no ordering constraint between
+     them — the column works against the Worker that is live today.
+   - ☐ 🔴 **NOT VERIFIED: nobody has rendered it signed in.** No drawer has
+     been opened in a browser and no per-person rule has ever been written from
+     one. It was exercised instead by a throwaway stub-DOM harness driving the
+     real `permGrid`/`spendCell`/`spendLine`/`savePermissions` through 16 rows
+     (staging writes nothing; Save-without-a-why writes *nothing at all*, not
+     even the visibility POST; the POST body; the DELETE-not-allow;
+     the owner's fact; the wildcard refusal), plus `check:home`, which proves
+     the module parses and is pinned. The bar is the owner at
+     <https://heygabi.ai/admin/> → a member card → **Permissions** → the
+     **Spending** cell on any row.
 3. ☐ 🔴 **OWNER STEP — the Discord Worker cannot be wired without a secret.**
    E1–E5 and E7 are on the design's call-site list, but `estate-auth`
    **cannot identify** that Worker: `identifyApp` resolves a caller by token
@@ -1111,10 +1186,25 @@ designed to catch and would instead be caused by. It is also, until then, the
    which `test/dev-access.test.ts` explicitly guards against as *"a capability
    nobody granted it"*. Access-increasing, so it is confirmed, never assumed.
    Until then GABI's spend has no switch.
-4. ☐ **Phase 3 for the other three repos** — `library`, `library2` and `games`
-   read `billing_denied` off `/seen` (the shared client already sends
+4. ☑ **Phase 3 for `library`, `library2` and `games` — BUILT, and it was
+   already built when this line was written.**
+   ⚠️ **Corrected 2026-09-05 (agent W2-BILL2B, from the two repo audits run the
+   same day).** This item read:
+   ~~"☐ **Phase 3 for the other three repos** — `library`, `library2` and
+   `games` read `billing_denied` off `/seen` (the shared client already sends
    `local_role` and parses the field); the audiobook Python paths need the
-   phase-5 client. Each is a separate repo and a separate deploy.
+   phase-5 client. Each is a separate repo and a separate deploy."~~
+   Measured in the repos themselves:
+
+   | Site | Built at | Live version | Posture |
+   |---|---|---|---|
+   | `library` + `library2` | `e7b3f6b` (`bookbuddy/library_catalog`) | `77a9f67c` / `37b83f8b` | `BILLING_POLICY="off"` — `apps/worker/wrangler.toml:288,550` |
+   | `games` | `5150269f` (`boardbuddy/Board_Game_Catalog`) | `2e598a9e` | `BILLING_POLICY="off"` — `apps/worker/wrangler.toml:222` |
+
+   So the only phase-3/5 work left is the **audiobook Python client**, which is
+   item 6 below and always was. ⚠️ **Everything ships `"off"`**, so nothing is
+   denied anywhere yet — built is not switched on, and the soak in item 5 is
+   still the next real step.
 5. ☐ **Phase 4 — the soak, then `enforce` ONE SITE AT A TIME.** Flip
    `BILLING_POLICY = "shadow"` first and read the lines:
    `npx wrangler tail catalog-index --format json | jq 'select(.evt=="billing_policy")'`.
