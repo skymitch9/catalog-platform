@@ -10,13 +10,15 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ 🔴 OWNER ASK 2026-09-05 15:50 Phoenix — "everything in the estate connects to MULTIPLE libraries; libraries designated by who OWNS the physical, or SHARED for digital works"
+## ☐ 🔴 OWNER ASK 2026-09-05 15:50 Phoenix — "everything in the estate connects to MULTIPLE libraries; libraries designated by who OWNS the physical, or SHARED for digital works" — ☑ table CONFIRMED by the owner 15:58
 
 > **Owner, verbatim:** *"Make sure everything we have that's in the estate
 > connects to multiple libraries and make sure that the libraries are
 > designated by who owns the physical or shared with digital works."*
+> Asked whether the table below was right; **owner 15:58: "Yes that is
+> correct."** The table is now the settled ownership model.
 
-**What it means, as read by the conductor (❓ confirm — one question, below):**
+**What it means, as read by the conductor (confirmed):**
 every estate surface stops assuming ONE library, and every row/holding is
 labelled by its **ownership model**, which has two kinds:
 
@@ -53,11 +55,13 @@ component synced by script (owner rule 2026-09-03: shared global components).
 **Sequence:** ① W4-FED-INDEX + W4-FED-LIB land (padhard rows exist) → ② one
 read-only SURVEY agent (Opus, ~180k) inventories every single-library
 assumption across the four repos → ③ registry + consumer builds, per repo,
-Opus → ④ eyeball. ☐ ① in flight · ☐ ② · ☐ ③ · ☐ ④.
+Opus → ④ eyeball. ☐ ① W4-FED-LIB landed 15:54 (library side deployed both
+instances; index side still building) · ☐ ② SURVEY dispatched 16:00 as
+W4-MULTILIB-SURVEY (read-only; runs beside ①, does not wait on it) · ☐ ③ · ☐ ④.
 
-☐ ❓ **Owner confirm (asked 15:5x Phoenix):** is the ownership table above
+☑ ❓ **Owner confirm (asked 15:54 Phoenix):** is the ownership table above
 right — in particular `game` = Skylar's physical, and BOTH audiobooks and
-ebooks = shared digital?
+ebooks = shared digital? — **☑ 15:58 "Yes that is correct."**
 
 ## ☐ 🔴 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ☑ GO ("A build now", 15:37) — W4-FED-INDEX + W4-FED-LIB in flight
 
