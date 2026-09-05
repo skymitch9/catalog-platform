@@ -3,7 +3,11 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values — this repo is public on GitHub, so this
 > discipline is load-bearing here, not just habit).
-> Last verified: **2026-09-05** for §9 only — §9.3 gained the `/admin` page map
+> Last verified: **2026-09-05** for §9 **and §11** — §11 is new that day (the
+> private `estate-catalog-keys` bucket the sealed Claude key lands in), measured
+> by creating the bucket, reading its public-access setting back and deploying
+> the binding; ⚠️ no real envelope has ever been written by a signed-in person.
+> §9.3 gained the `/admin` page map
 > (four top-level panels, the catalog queue first) and three rules the catalog
 > build settled, each read straight out of `admin/index.html` and `admin.js`
 > that day. ⚠️ **Nothing in §9 has been rendered signed in**, by this build or
@@ -510,3 +514,55 @@ The `/dev/` lane's own curtain lives in **`audiobook_catalog`**, queued in that
 repo — this half only publishes the answer. Nothing consumes `dev_access` yet,
 so the field's *end use* is unexercised; what is exercised is the flag, the OR,
 the route's authorization and the button (`test/dev-access.test.ts`).
+
+## 11. 🔐 `estate-catalog-keys` — where a requester's sealed Claude key waits
+
+> Added 2026-09-05 (design
+> [`../info/request-a-catalog-design.md`](../info/request-a-catalog-design.md)
+> §6, which owns the mechanism and the threat table — this section is the
+> OPERATING facts only). **Last verified: 2026-09-05**, by creating the bucket,
+> reading its public-access setting back, and deploying the binding.
+> ⚠️ NOT verified: no real envelope has ever been written by a signed-in person.
+
+| Fact | Value |
+|---|---|
+| Bucket | `estate-catalog-keys` (created 2026-09-05 14:47:18Z) |
+| Binding | `CATALOG_KEYS`, on `estate-auth` only |
+| Public access | **disabled** — `wrangler r2 bucket dev-url get estate-catalog-keys` → *"Public access via the r2.dev URL is disabled"*. No custom domain, and it must never get one |
+| Object keys | `reader/<request id>.json` (written at submit) · `owner/<request id>.json` (written at accept) |
+| Contents | one sealed envelope per object — `{v, kid, alg, ek, iv, ct}`, `application/json`. **Never a plaintext key, and never anything in D1 but the `reader_key_set` / `owner_key_set` booleans** |
+| Backed up | 🔴 **NO, by design.** See [`RECOVERY.md`](RECOVERY.md) §1b |
+
+**Who writes, and who deletes — the whole lifecycle in one table.** ⚠️ The
+Worker is **write-and-delete only**: it calls `.put()` and `.delete()` and there
+is no `.get()` or `.list()` on this binding anywhere in it. That ABSENCE is the
+guarantee that the owner can never read a requester's key; a test counts reads
+against a stub and requires zero.
+
+| Event | What happens to the objects |
+|---|---|
+| Submit with a key | `reader/<id>.json` written **after** the row, then `reader_key_set = 1` |
+| Accept with a key | `owner/<id>.json` written, then `owner_key_set = 1`. The reader's object is untouched |
+| Decline | **both** objects deleted, **both** booleans cleared |
+| Withdraw | **both** objects deleted, **both** booleans cleared — the requester's own way to take a key back without asking anyone |
+| Provisioner injects | **the provisioner deletes the object itself**, the moment `wrangler secret put` has taken the plaintext. `POST …/:id/live` deliberately deletes nothing |
+| `POST …/:id/live` with `{"purge_keys": true}` | both deleted — the hatch for a provisioning run that never had the sealed-key library |
+
+⚠️ **The two booleans mean different things before and after provisioning, and
+that is deliberate.** Before: *"an envelope is held for this request"* — so a
+decline or withdrawal clears them along with the objects, or the queue would
+claim a key nobody can produce. At `/live`: *"this catalog has a key"*, restated
+by whoever ran the provisioning; phase 6's back-seeded rows carry
+`owner_key_set = 1` with no envelope that ever existed, and that is correct.
+
+⚠️ **If `CATALOG_KEYS` is ever unbound, a submit carrying a key is refused in
+words (503) and files no row.** It does not quietly drop the key: that would
+leave somebody believing their own key is in use while the catalog is
+provisioned with the OWNER's, which he pays for (§6.4 row 3).
+
+**Rotation / recovery:** there is nothing to rotate here — the bucket holds no
+credential of ours. The keypair it is sealed to is the provisioning keypair,
+whose custody is `docs/access/keys/` (gitignored). Re-minting that keypair makes
+every stored envelope undecryptable, which is a **feature**: the recovery for a
+lost or unreadable envelope is *ask the requester for their key again*, never a
+restore.

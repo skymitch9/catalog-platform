@@ -9,6 +9,44 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 — `GET /api/estate/me` answered a BARE status; it now says a sentence
+
+Moved whole from `TODO.md` (agent S1), where it read:
+
+> ☐ **Pre-existing, found by agent A:** `GET /api/estate/me` answers unauthenticated
+> with a bare `{"error":"unauthenticated"}` and no `detail` (`apps/auth-worker/src/estate.ts:409`)
+> — the "never a bare status" rule broken on the most-read route. One-line fix; do it
+> after today's build lands (the home page and `/admin` both read this route).
+
+✅ **FIXED, DEPLOYED AND VERIFIED LIVE 2026-09-05** — commit `9e0922f`,
+`estate-auth` version `d87235f8-c2a1-4756-bacf-ac2a23da880e` (the same deploy as
+phase 5's server half). The line was `src/estate.ts:416` by the time it was
+fixed — agent A's own `catalogs` edit had moved it seven lines, which is why the
+route line (`:409`) rather than the defect line was quoted above.
+
+`GET https://auth.heygabi.ai/api/estate/me` signed out now answers, measured
+with `curl -s` at 15:00Z:
+
+```
+{"error":"unauthenticated","detail":"You are not signed in. Sign in with your estate account and try again."}
+```
+
+⚠️ **The `error` CODE is unchanged, deliberately.** `tools/estate-probes`
+asserts `error === 'unauthenticated'` across this Worker's whole
+unauthenticated edge and every page's failure wording branches on it; only the
+`detail` is additive, in the shape `middleware/auth.ts:141–148` has used since
+2026-08-18. A test in `test/me-contract.test.ts` pins both — the sentence, and
+that it stays the *"not signed in"* cause rather than merging with the other
+three (awaiting approval / revoked / insufficient role), which have four
+different fixes.
+
+⚠️ **THREE SIBLINGS OF THE SAME DEFECT ARE STILL OPEN** and were deliberately
+not fixed in that commit (out of the agent's brief — reported, not silently
+widened). They are back on [`TODO.md`](TODO.md) as their own item:
+`src/middleware/auth.ts:259` (`requireApprover()`, person-facing on `/admin`),
+`src/estate.ts:372` (`POST /estate/seen`, app-facing) and `src/session.ts:64`
+(`POST /session`, browser-facing).
+
 ## 2026-09-03 12:18 Phoenix — GABI counts phrases and knows what the owner has rated (DCC "God damn it, Donut" = 14)
 
 Owner pasted a DCC book-1 exchange (*"how often does Carl say God Damnit

@@ -93,11 +93,6 @@ because those can never be renamed and the app id is a contract with the
 auth-worker. Design §7.1 wanted everything identity-neutral; `--instance third`
 gives that. Which? (a) split as built (b) all ordinal (c) all follow the person.
 
-☐ **Pre-existing, found by agent A:** `GET /api/estate/me` answers unauthenticated
-with a bare `{"error":"unauthenticated"}` and no `detail` (`apps/auth-worker/src/estate.ts:409`)
-— the "never a bare status" rule broken on the most-read route. One-line fix; do it
-after today's build lands (the home page and `/admin` both read this route).
-
 ### ✅ Phase 8 — games platform prerequisites LANDED + DEPLOYED (agent E, 2026-09-05 ~07:40 Phoenix)
 
 `Board_Game_Catalog` `fc17ea3` `ESTATE_APP` wrangler var (default `games`) ·
@@ -248,6 +243,69 @@ What is left on this phase, in the order it can be done:
   <https://heygabi.ai>, press the "+" bottom-right of **both** the Books and the
   Games card and file one real request of each kind. There is no browser harness
   for this page; `check:home` proves it parses and nothing more.
+
+### ✅ Phase 5 — SERVER half of the sealed key: BUILT, DEPLOYED, LIVE-CHECKED (agent S1, 2026-09-05 15:00Z)
+
+`estate-auth` **`d87235f8-c2a1-4756-bacf-ac2a23da880e`** at commit `9e0922f`.
+Four commits: `f3b40b6` the bucket + binding + `Env` field · `e722d01`
+`src/catalog-keys.ts` + the four route changes · `e8254db` 22 tests ·
+`9e0922f` the `/me` bare-status fix (its own commit; the item moved WHOLE to
+[`DONE.md`](DONE.md)). Deploy line and the full verification list:
+[`deploys.log`](deploys.log). As-built cell: design §10 phase-5 row, SERVER
+bullet. Operating facts (bucket, binding, key layout, who deletes what):
+[`access/estate-auth.md`](access/estate-auth.md) §11.
+
+**Created:** private R2 **`estate-catalog-keys`**, binding **`CATALOG_KEYS`**,
+2026-09-05 14:47:18Z — ⚠️ it did **not** already exist. Public access verified
+**disabled** the same minute; no custom domain, and it must never get one.
+
+**MEASURED:** migrate-before-deploy ran in that order and answered **"No
+migrations to apply!"** — `reader_key_set`/`owner_key_set` have existed since
+`0018`, so **no new migration was needed**, which is a measurement rather than an
+assumption. Suite **651 → 674 pass / 0 fail**; `tsc` clean on both projects;
+`cors-coverage.test.ts` green — this phase adds **no new PATHS**, only fields on
+three existing ones.
+
+**Live** (`curl -s -D - … -o /dev/null`; ⚠️ `-I` and `-o NUL` misreport on this
+host): `/api/health` **200** · unauthenticated `POST …/requests` **carrying a
+`sealed_key`** → **401** with the worded refusal (auth gates before the envelope
+is ever looked at) · `OPTIONS` preflight from `https://heygabi.ai` → **204** on
+the bare mount and the wildcard · `GET /api/estate/me` signed out → **401 with
+the new `detail`**.
+
+🔴 **NOT VERIFIED, and it is the whole 200 side again:** no signed-in request
+with a real envelope has ever been filed. A session cannot sign in as a person,
+so every success path is proven **only** against an in-memory D1 plus an R2
+stub. **The owner's browser test with S2's form is the live proof** — file one
+request at <https://heygabi.ai> with a key attached, and check the answer says a
+key was stored (the page reads the `reader_key_set` boolean back and must say so
+in words if it is not `1`).
+
+☐ **Left for whoever runs the first real provisioning:** confirm the envelope is
+actually readable by `scripts/lib/catalog-seal.mjs` (S2's half) and that the
+object is **gone** from `estate-catalog-keys` afterwards. Nothing has round-tripped
+a real key end to end yet; the two halves have only been tested against the same
+written contract.
+
+## ☐ Three more BARE-STATUS 401s in the auth Worker (found 2026-09-05 by agent S1)
+
+The `/api/estate/me` one is fixed and archived in [`DONE.md`](DONE.md). Its three
+siblings answer a bare `{"error":"unauthenticated"}` with no `detail`, which the
+estate-wide rule forbids — a person never meets a bare status; a refusal says what
+happened, what it needs and how to get it.
+
+| Where | Who meets it |
+|---|---|
+| `apps/auth-worker/src/middleware/auth.ts:259` — `requireApprover()` | a PERSON, on `/admin` |
+| `apps/auth-worker/src/estate.ts:372` — `POST /estate/seen` | a consumer Worker’s bearer (machine-facing) |
+| `apps/auth-worker/src/session.ts:64` — `POST /session` | a browser mid-sign-in |
+
+The fix is the same three lines each, copied from `middleware/auth.ts:141–148`:
+add a worded `detail`, ⚠️ **leave the `error` CODE exactly `unauthenticated`** —
+`tools/estate-probes` asserts it across this Worker’s whole unauthenticated edge
+and every page’s failure wording branches on it. S1 did not fix these: they were
+outside its brief, and widening scope mid-task is what the estate’s multi-agent
+rules say not to do.
 
 ## ☐ `count_phrase` sank every converse loop to Haiku — allowlist it on Groq (2026-09-03 12:40)
 

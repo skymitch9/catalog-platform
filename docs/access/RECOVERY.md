@@ -8,6 +8,11 @@
 > (`docs/info/secrets-review-2026-08-26.md`). **Nothing else on this page was
 > re-checked that day** — the drill counts, the restore recipes and §12's status
 > table all still carry their 2026-08-17/18 dates.
+> ⚠️ **AND ONE STORE JOINED THE INVENTORY ON 2026-09-05** — R2
+> `estate-catalog-keys` (the sealed Claude keys of §6 of
+> [`../info/request-a-catalog-design.md`](../info/request-a-catalog-design.md)),
+> recorded in §1b, §11.1 and §11.2 step 5 as **deliberately NOT backed up**.
+> That is the only edit of that date; nothing else was re-measured.
 >
 > **Every command in §§1–10 was executed in a SANDBOX on the drill date.**
 > Drill date: **2026-08-17/18** (restore drill, `target=all` snapshot of
@@ -169,6 +174,12 @@ Ranked by blast radius. These are not "stale" — no copy exists anywhere.
 **Not a hole, confirmed:** the four git repos (distributed by git), and the
 OpenAudible `.m4b` library (Google Drive sync, `sync_to_drive.py`). Both are
 argued in `backup-restore.md` §8 and nothing in this drill contradicts them.
+
+**Added since the drill — and NOT a hole either (2026-09-05):**
+
+| Store | Backed up? | Why not, and what recovery actually is |
+|---|---|---|
+| **R2 `estate-catalog-keys`** (created 2026-09-05, bound `CATALOG_KEYS` on `estate-auth`) | 🔴 **no, by design** | It holds nothing but **sealed envelopes** — a would-be catalog owner's Claude API key, encrypted to the provisioning keypair, one object per open request (`reader/<id>.json`, `owner/<id>.json`). Every object is **transient**: the provisioner deletes it as it injects the key, and a decline or a withdrawal deletes it too. **Recovery is to ask the requester for their key again**, which costs one message. Backing it up would instead multiply copies of somebody else's credential across eight generations — and they would be undecryptable anyway to anyone without the private key in `docs/access/keys/`, whose loss is already §11.4's problem. `docs/access/estate-auth.md` §11 owns the operating detail |
 
 ### 1c. Drift measured between the newest backup and live
 
@@ -1308,7 +1319,7 @@ those counts go stale within days.
 
 | Worker (`name =`) | Hostname | Durable state it binds |
 |---|---|---|
-| `estate-auth` | `auth.heygabi.ai` | D1 `estate_auth`, R2 `estate-backups`, R2 `estate-docs-gated`, KV `estate_docs` |
+| `estate-auth` | `auth.heygabi.ai` | D1 `estate_auth`, R2 `estate-backups`, R2 `estate-docs-gated`, R2 `estate-catalog-keys` (⚠️ not backed up, by design — §1b), KV `estate_docs` |
 | `catalog-index` | `index.heygabi.ai` | D1 `index_catalog` |
 | `audiobook-worker` | `audiobook-api.heygabi.ai` | R2 `ebooks-gated`, R2 `estate-ebooks`, R2 `estate-audio` |
 | `estate-discord` | `discord.heygabi.ai` | Firestore (via SA); cron `*/2 * * * *` |
@@ -1341,6 +1352,10 @@ the other three**, because it is the repo that can read their backups.
    and `estate-ebooks` are **not** in the backup set on purpose — they are
    re-uploaded from the owner's local disk (`archive_audio_r2.py`,
    `upload_ebooks_r2.py`), which is slow (~685 GB) but authoritative.
+   ⚠️ `estate-catalog-keys` is not in it either, for the opposite reason: create
+   the bucket **empty** and move on. Its contents are transient sealed
+   envelopes; anything a rebuild would have restored is re-supplied by asking
+   the requester (§1b).
 6. **Restore Firestore** (§4.3) — the credential is on this machine (§7a).
 7. **Re-create every Worker secret** (§11.3). ⚠️ Worker secrets are
    **write-only**; none of them can be read out of the old estate, so all are
