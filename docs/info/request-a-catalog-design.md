@@ -964,10 +964,9 @@ plainly that a games catalog takes longer to stand up.**
 
 **These are NOT decided here.** Present them one per message and wait.
 
-1. **Who may request** — approved estate members only, or `pending` members too?
-2. **Lock in the sealed-box key design for v1, or ship v1 without the key field
+1. **Lock in the sealed-box key design for v1, or ship v1 without the key field
    and add it after?**
-3. **Back-seed the two existing library owners** (`library` and `padhard`) as
+2. **Back-seed the two existing library owners** (`library` and `padhard`) as
    `live` rows, so their "+" hides and the table becomes the single source of
    truth for *"who owns a catalog"*?
 
@@ -976,6 +975,7 @@ plainly that a games catalog takes longer to stand up.**
 | # | Question | Answer | When |
 |---|---|---|---|
 | ~~1~~ | Does the **Games** card get the same "+" and flow? | ✅ **"Both."** Both cards, one `kind` column, one shared product path — §4.6, §7.6, §8 | **2026-09-05 ~06:50 Phoenix** |
+| ~~2~~ | Who may request — approved only, or `pending` too? | ✅ **"Only approved people."** The "+" renders only for estate `status='approved'` (a `pending` or `revoked` member sees no button — and never a bare refusal), AND the submit route refuses anything but `approved` server-side, since the button is a curtain (§4.4). The refusal for a pending member who reaches the route anyway says *what* (not yet approved), *what it needs* (estate approval), *how* (the owner approves in `/admin`). | **2026-09-05 ~06:58 Phoenix** |
 
 ⚠️ **Note what the answer did NOT settle.** It settled *whether*, not *when* —
 the games provisioning prerequisites (§8 items 1–3) are unbuilt, unscheduled and
