@@ -8,6 +8,21 @@
  * this route's own pre-existing shape verbatim. `sources` stays at the top
  * level too — additive only, nothing removed this pass; see
  * docs/info/health-envelope.md for the transition plan and its removal step.
+ *
+ * ⚠️ THIS IS NOT THE CATALOG REGISTRY, AND IT DELIBERATELY STAYS THIN.
+ * `GET /api/catalogs` (catalogs-route.ts, 2026-09-05) is where a catalog's
+ * LABEL, OWNER, HOLDING and HOST live — the survey's §3.3 named this file as
+ * the place they belonged, and the build put them next door instead, because
+ * the two routes have different access rules and merging them would give one of
+ * them the other's. This route is OPEN and reports per-source counts to anyone,
+ * including `library2`'s; `/api/catalogs` gives an anonymous caller NAMES ONLY
+ * (owner, 2026-09-05 16:14) and scopes counts to the caller's own grants.
+ *
+ * ⚠️ So the two surfaces disagree about how coy they are, and that is a known
+ * standing state rather than an oversight: this route predates the rule, the
+ * estate Health page reads it, and narrowing it is an owner decision about a
+ * different surface. It is written up in docs/info/catalog-registry.md §6
+ * rather than changed as a side effect of an unrelated build.
  */
 
 import { Hono } from 'hono';

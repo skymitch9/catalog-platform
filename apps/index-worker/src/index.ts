@@ -36,6 +36,7 @@ import { pushRoutes } from './push.js';
 import { readRoutes } from './read.js';
 import { scanRoutes } from './scan.js';
 import { searchRoutes } from './search-route.js';
+import { catalogsRoutes } from './catalogs-route.js';
 import { seriesRoutes } from './series-route.js';
 import { healthRoutes } from './health.js';
 import { requireEstateMember } from './middleware/auth.js';
@@ -91,6 +92,20 @@ app.use('/api/*', readCors());
 // 401; the visibility set IS the answer. Lookup and universe stay below the
 // blanket, members-only.
 app.route('/api/search', searchRoutes);
+
+// THE CATALOG REGISTRY, republished (2026-09-05, the owner's multi-library
+// rule). Scoped-not-gated, BEFORE the blanket by name, for exactly /api/search's
+// reason: the apex search box needs the catalogs' LABELS before anybody signs
+// in, so a 401 here would leave the estate's front door unable to name its own
+// shelves. Owner decision 16:14, "yes name only" — an anonymous caller gets
+// names and never a count, which catalogs-route.ts enforces by control flow
+// (the anonymous branch does not open the database at all).
+//
+// ⚠️ It is a READ-THROUGH of the auth Worker's table, not a second copy of it.
+// One fact, one home: `estate-auth` owns the registry, this Worker caches and
+// publishes, and nothing here holds a hard-coded list of catalogs to fall back
+// on — see catalogs-route.ts for why a fallback would be worse than an outage.
+app.route('/api/catalogs', catalogsRoutes);
 
 // The blanket. Every /api route below this line is estate-members-only.
 app.use('/api/*', requireEstateMember());
