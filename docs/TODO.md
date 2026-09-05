@@ -614,29 +614,6 @@ reads **14 names with `count_phrase` among them**, `gabi_groq` `"first"`,
 array entry. So the fix is still deployed and still configured; **only the wire
 observation is outstanding**, and nothing about it is a build.
 
-## ☐ 🔴 The `discord:D5` estate probe has FAILED on every run since 2026-09-03 — and it is the probe that is wrong (found 2026-09-05 by the docs audit)
-
-**One-line fix, and it is worth doing fast because a suite with a standing
-false failure is a suite people stop reading.** `tools/estate-probes/probes/discord-worker.mjs:83`
-pins `BOOKS_TOOLS = ['book_presence','list_book_knowledge','read_book_passage','search_book_text']`
-— **four** names — and asserts `gabi_books_tools` equals that set exactly.
-`count_phrase` became the fifth on 2026-09-03 (deploy `7d61418`, then `272ac67`),
-so D5 has failed ever since.
-
-**MEASURED 2026-09-05 ~13:20 Phoenix:** `GET https://discord.heygabi.ai/api/health`
-returns `gabi_books_tools` = `["list_book_knowledge","search_book_text","read_book_passage","book_presence","count_phrase"]`
-— **five**. Two independent `deploys.log` lines already name this as
-*"the PRE-EXISTING stale `discord:D5`"* and neither opened an item for it, which
-is why it is one here.
-
-**The fix:** add `'count_phrase'` to that array and update the two wordings that
-say "four" — `:90`'s check description and `tools/estate-probes/README.md:38`
-and `:106`. ⚠️ **Keep it asserted as a SET, not a count** — the comment at
-`:78–82` is explicit that the point of the fourth allowlist is that these names
-travel together and no new tool joins them without a decision, and a length
-check would silently accept a swap. ⚠️ Do NOT relax it to a subset test for the
-same reason.
-
 ## ☐ The home site's CSP would BLOCK a provisioned games instance's covers (found 2026-09-05 by agent RES)
 
 `sites/heygabi-home/public/_headers` names `gamecovers.heygabi.ai` explicitly in

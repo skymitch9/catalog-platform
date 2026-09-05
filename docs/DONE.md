@@ -9,6 +9,51 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 — the `discord:D5` estate probe, fixed: the suite is 137/137 again
+
+Moved whole from `TODO.md` by agent W2-PLAT. Commit `d7b8465`
+(`tools/estate-probes/probes/discord-worker.mjs` + its `README.md`). **No
+deploy is involved** — the probe suite is plain Node run from a checkout, so
+there is nothing to ship and nothing to migrate. **How it was verified:**
+`npm run probe:estate` against live production, one clean run — **137 passed,
+0 failed**, with `D5` reading *"gabi_books_tools === the five names in
+GABI_BOOKS_TOOL_NAMES"*. The baseline immediately before the change was **136
+passed, 1 failed**, the one failure being D5 itself, so nothing else changed
+colour. ⚠️ **NOT verified:** nothing about the Worker was touched or re-tested
+— the fix was always to the assertion's data, and the deployed allowlist was
+already correct.
+
+⚠️ **The durable lesson, written into the suite's own *Gotchas* table rather
+than left here:** a probe that pins a DEPLOYED allowlist goes stale the day
+the allowlist grows, and nothing mechanically links the two. Adding a name to
+an allowlist a probe pins means editing the probe **in the same commit**, the
+same rule as *"new endpoints get a probe"*.
+
+The original text, verbatim:
+
+> ## ☐ 🔴 The `discord:D5` estate probe has FAILED on every run since 2026-09-03 — and it is the probe that is wrong (found 2026-09-05 by the docs audit)
+>
+> **One-line fix, and it is worth doing fast because a suite with a standing
+> false failure is a suite people stop reading.** `tools/estate-probes/probes/discord-worker.mjs:83`
+> pins `BOOKS_TOOLS = ['book_presence','list_book_knowledge','read_book_passage','search_book_text']`
+> — **four** names — and asserts `gabi_books_tools` equals that set exactly.
+> `count_phrase` became the fifth on 2026-09-03 (deploy `7d61418`, then `272ac67`),
+> so D5 has failed ever since.
+>
+> **MEASURED 2026-09-05 ~13:20 Phoenix:** `GET https://discord.heygabi.ai/api/health`
+> returns `gabi_books_tools` = `["list_book_knowledge","search_book_text","read_book_passage","book_presence","count_phrase"]`
+> — **five**. Two independent `deploys.log` lines already name this as
+> *"the PRE-EXISTING stale `discord:D5`"* and neither opened an item for it, which
+> is why it is one here.
+>
+> **The fix:** add `'count_phrase'` to that array and update the two wordings that
+> say "four" — `:90`'s check description and `tools/estate-probes/README.md:38`
+> and `:106`. ⚠️ **Keep it asserted as a SET, not a count** — the comment at
+> `:78–82` is explicit that the point of the fourth allowlist is that these names
+> travel together and no new tool joins them without a decision, and a length
+> check would silently accept a swap. ⚠️ Do NOT relax it to a subset test for the
+> same reason.
+
 ## 2026-09-05 — design §7.6 / §7.2 step 5 understated the auth-worker manual step: nine hand edits, four of them silent
 
 Agent RES, commit `a257366`. **Not moved from `TODO.md`** — this correction was
