@@ -422,6 +422,20 @@ one route on this page (`POST /api/estate/catalogs/requests/:id/live`) is
 asking for a power they already hold. Any future devops-gated control here uses
 the override rather than adding a fifth cause to the shared line.
 
+⚠️ **The Accept panel's key field seals in the BROWSER and there is no reveal
+control anywhere** (2026-09-05). Both the `/admin` panel and the front door's
+"+" import the one module `sites/heygabi-home/public/assets/catalog-seal.js`;
+only ciphertext ever reaches `POST …/decide` or `POST …/requests`, D1 holds the
+`reader_key_set` / `owner_key_set` booleans and nothing else, and the private
+half lives on the owner's machine at
+`docs/access/keys/catalog-provisioning.private.jwk` — custody row in
+[`RECOVERY.md`](RECOVERY.md) §11.3, mechanism in
+[`../info/request-a-catalog-design.md`](../info/request-a-catalog-design.md) §6.
+⚠️ Both surfaces read the boolean back off the row and say so in words when it
+is not `1`: an older Worker ignores an unknown body field and answers a cheerful
+201, and believing the POST instead of the row tells somebody their key is safe
+when it was dropped.
+
 ⚠️ **The GRANT class covers a staging PANEL, not only a checkbox** — settled by
 the catalog queue's Accept, 2026-09-05, and written down so a later build does
 not "fix" it into a third gesture. Accept could not be pure STATUS class,

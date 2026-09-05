@@ -287,6 +287,60 @@ object is **gone** from `estate-catalog-keys` afterwards. Nothing has round-trip
 a real key end to end yet; the two halves have only been tested against the same
 written contract.
 
+### ☐ Phase 5 — CLIENT + PROVISIONER half of the sealed key: BUILT, **NOT DEPLOYED** (agent S2, 2026-09-05)
+
+🔴 **NOTHING HERE IS LIVE.** The home site deploys by directory upload and has
+one deployer; the conductor's single `deploy:home` at the end of the wave is
+what ships this. Review it there, not before:
+<https://heygabi.ai> (signed in, "+" → the form) and
+<https://heygabi.ai/admin/> (the Accept panel).
+
+**Commits.** `catalog-platform`: `c53d361` the mint script + `assets/catalog-seal.js` ·
+`342d7be` `scripts/lib/catalog-seal.mjs` + 34 tests · `d687264` the "+" form's
+optional field + a committed stub-DOM harness + 10 scenarios · `6cbb452` the
+Accept panel's §5.4 items 3–4 + the `predeploy.checks.json` pins · `e63ccbe` the
+absent-envelope fix. `library_catalog`: `acb4c44` step 10's §6.4 ladder.
+As-built cell: design §10 phase-5 row, CLIENT + PROVISIONER bullet.
+
+**The keypair was minted for real** — RSA-OAEP-4096/SHA-256, **kid
+`fb6eb908ead63ce7`**, public half in the bundle, private JWK at
+`docs/access/keys/catalog-provisioning.private.jwk`. `git check-ignore -v`
+confirms `.gitignore:67` excludes it; it never appeared in `git status`. Custody
+row: [`access/RECOVERY.md`](access/RECOVERY.md) §11.3.
+
+**MEASURED — a fact that was asked for and is worth stating plainly:**
+`scripts/lib/backup-keys.mjs` is **NOT** about `docs/access/keys/` despite its
+name; it is the backup GENERATION-key grammar. The file that backs that folder
+up is `scripts/backup-docs.mjs`, which applies **no extension filter and no
+denylist** (`:108–117`) — its dry-run inventoried **82 files, exactly the 82 on
+disk**, and `docs/access/keys/` holds 5. So the private JWK **is** covered, from
+tonight, by the 3am `EstateDocsBackupR2` scheduled task. ⚠️ That is the same
+machine's job writing to R2 — a second copy, not a second custodian.
+
+**Verified, by exercising it.** Round trip proven **Node-to-Node**: the real
+browser module seals, the real provisioner lib opens, bytes equal, with a
+throwaway keypair. The "+" form driven through a stub DOM in 10 scenarios,
+including a CANARY plaintext appearing in none of the request body, the dialog,
+the page body or the console. Suites: platform scripts **277 → 324**,
+`library_catalog` **2418 → 2428**, both 0 fail. `check:home` green.
+
+🔴 **NOT VERIFIED — say it plainly: no human has sealed a key in a real
+browser.** No envelope has ever been written to `estate-catalog-keys` or read
+out of it, so §6.4 rows 1 and 2 are proven only against a keypair that exists
+nowhere but a test. Nobody has rendered the Accept panel signed in.
+
+☐ **The owner's step, and it is the only proof that counts.** After the home
+deploy: sign in at <https://heygabi.ai> as the second approved account (his
+primary owns all three back-seeded catalogs and sees no "+"), file one request
+with a key attached, and check the answer says the key was **stored** — the page
+reads `reader_key_set` back and must say so in words if it is not `1`. Then run
+`node scripts/provision-catalog.mjs --request <id> --dry` in `library_catalog`
+and confirm step 10 reports the reader envelope **PRESENT**.
+
+☐ **Put a copy of `catalog-provisioning.private.jwk` in 1Password `Estate`.**
+Losing it does not lose a secret that can be re-minted — it makes every pending
+envelope permanently unopenable, and every requester has to be asked again.
+
 ## ☐ Three more BARE-STATUS 401s in the auth Worker (found 2026-09-05 by agent S1)
 
 The `/api/estate/me` one is fixed and archived in [`DONE.md`](DONE.md). Its three
