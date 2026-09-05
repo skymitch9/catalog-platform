@@ -32,6 +32,21 @@ reserved names, design §7.6's manual step).
 **Wave 2:** build what the audits name as genuinely unbuilt.
 Status of the wave is recorded under each repo's own TODO by its agent.
 
+**Wave 1 · `catalog-platform` audit — RAN 2026-09-05 ~13:15–14:0x Phoenix (agent
+AUD-platform).** Every `##` section verified against code, `deploys.log`, the
+live edge (`curl -s -D -`) and a read-only remote `estate_auth` query. Headings
+corrected to their bodies' truth; one finished item moved WHOLE to
+[`DONE.md`](DONE.md); index and link repairs made in `access/README.md`,
+`info/README.md`, `README.md` and `KNOWN_ISSUES.md`. **Four STALE-WRONG claims
+were corrected in place, each marked `⚠️ Corrected 2026-09-05`** — the largest
+being that `billing_policy` was called EMPTY and the Spending panel "never
+rendered signed in" when the owner had in fact written a rule through it on
+2026-09-02 (see the LLM-billing item). ⚠️ **Not audited by this agent, by
+design:** the *"Three more BARE-STATUS 401s"* section, `catalog-names.ts` and
+design §7.6 (agent RES held them), and the *"Request a catalog"* block's
+structure (waiting on a human browser test — its wrong claims were corrected,
+its shape left alone).
+
 **Owner, 13:11 Phoenix, three more messages (verbatim), which set the END
 CONDITION of the whole run:**
 1. *"Build it all and keep it going. If something needs me notify me while
@@ -109,6 +124,10 @@ ONE `deploy:home` at the end (plus the `admin.js` games next-step wording).
 Three `live` rows in remote `estate_auth.catalog_request` — #1 `library` (books,
 owner), #2 `padhard` (books, Samantha Hardman, instance `friend`), #3
 `boardgames` (games, owner) — full shape in design §10 row 6. Read back: 3 rows.
+✅ **RE-MEASURED 2026-09-05 ~13:20 Phoenix (docs audit)**, read-only against the
+live remote D1: `catalog_request` still holds **3 rows, all three `live`**, and
+no fourth row has appeared — which also confirms the standing "no signed-in
+request has ever been filed" claim below is still true as of this reading.
 ⚠️ **The owner's primary account now sees NO "+" on either card** (he owns both
 kinds). **To test the "+" he signs in as his second approved account** (`estate_user`
 #87 `mitchlandtv@gmail.com`), which owns nothing and should see both.
@@ -278,8 +297,17 @@ suite.
 
 What is left on this phase, in the order it can be done:
 
-1. 🔴 **THE DEPLOY IS BLOCKED ON PHASE 1's CORS COMMIT — not on a defect here.**
-   `apps/auth-worker/test/cors-coverage.test.ts` fails while the frontend names
+1. ~~🔴 **THE DEPLOY IS BLOCKED ON PHASE 1's CORS COMMIT — not on a defect
+   here.**~~ ⚠️ **Corrected 2026-09-05 (docs audit): the block CLEARED the same
+   afternoon and this phase IS DEPLOYED.** Measured: `deploys.log` line
+   `2026-09-05T14:27:55Z heygabi-home 2a6ecb1 … 3bb3bff7`, which shipped
+   `admin/admin.js` + `admin/index.html` after agent A's mounts landed in
+   `9df0b51`; a cache-busted `GET /admin/admin.js` answered 200 carrying
+   `renderCatalogQueue`, and the later wave-2 deploy `3abf9d01` (15:23Z) shipped
+   the Accept panel's sealed-key half on top. The refusal text and the ordering
+   rule it bought are kept below because they are the durable half. The original
+   claim, for the record:
+   `apps/auth-worker/test/cors-coverage.test.ts` failed while the frontend named
    `/api/estate/catalogs/*` and `apps/auth-worker/src/index.ts` has no
    `app.use(…, cors())` for them, and `npm run deploy:home` runs the whole
    workspace suite. Agent A has the three mounts written (`index.ts:208–210`)
@@ -338,7 +366,13 @@ What is left on this phase, in the order it can be done:
   `GET /` **200** serving `div class="card multi" data-catalog-kind="games"` at
   line 933 with the `boardgames.heygabi.ai` host **link** at 940, the books
   hook, and the script tag at 1008; `GET /assets/apex-request-catalog.js`
-  **200**, `application/javascript`, **27,939 bytes**, carrying all six pinned
+  **200**, `application/javascript`, ~~**27,939 bytes**~~ — ⚠️ **Corrected
+  2026-09-05 (docs audit): that byte count is a point-in-time measurement and is
+  now SUPERSEDED.** Phase 5's client half (deploy `3abf9d01`, 15:23Z) added the
+  optional sealed-key field; the same `curl -s … | wc -c` re-run at ~13:20
+  Phoenix reads **36,012 bytes**, and `/assets/catalog-seal.js` answers **200**
+  beside it. A session that re-runs this check and does not find 27,939 is
+  looking at a stale figure, not a regression — carrying all six pinned
   strings. ⚠️ **No `class="card-add"` and no `class="card-pending"` appear
   anywhere in the served HTML** — the signed-out page carries the hooks and
   nothing else, which is the gate working rather than a missing feature.
@@ -470,7 +504,7 @@ and every page’s failure wording branches on it. S1 did not fix these: they we
 outside its brief, and widening scope mid-task is what the estate’s multi-agent
 rules say not to do.
 
-## ☐ `count_phrase` sank every converse loop to Haiku — allowlist it on Groq (2026-09-03 12:40)
+## ☑ BUILT + DEPLOYED 2026-09-03 — `count_phrase` allowlisted on Groq — ☐ owner review (one live `@mention`)
 
 Measured by the Groq Monitor at 19:12Z (the owner's own review question):
 `mode:"first" purpose:"converse_tools" outcome:"ineligible" blocked_tools:["count_phrase"]`.
@@ -489,33 +523,99 @@ Conductor's call (restores the owner's configured posture; owner told, may rever
 `gabi-groq-tools.ts` needed no wire entry — schemas pass by reference and families
 already carried the name). Docs corrected: `gabi-groq-rung.md` step 8 + "Fourteen",
 design §4.8, phrase-count §5b, `info/README.md` row. Regression window: 12:04 → 12:47.
-☐ **PROOF PENDING** — the next `@mention` must produce a `converse_tools` `gabi_groq`
-  line with `outcome` ≠ `ineligible` (the Monitor catches it). `outcome:"fallback"` with
+☐ **PROOF PENDING — and it is the OWNER's step, because a session cannot post to
+  Discord.** The next `@mention` must produce a `converse_tools` `gabi_groq` line
+  with `outcome` ≠ `ineligible` (the Monitor catches it). `outcome:"fallback"` with
   `invalid`/`too_large` would be the rung's own §11/§12.2 question, not this fix. When
   seen, move this heading WHOLE to DONE beneath the phrase-count entry it corrects.
+  **What to do:** `@mention` GABI in Discord with any book question, then read one
+  line off `npx wrangler tail estate-discord --format json | jq 'select(.evt=="gabi_groq" and .purpose=="converse_tools")'`.
+  The deployed side is already re-confirmed — see the measurement directly below.
 
-## ☐ 🔴 OWNER/SESSION STEP — verify `CLUB_WRITE_SHAPES` before `GABI_CLUB_WRITES` is ever flipped
+✅ **RE-VERIFIED LIVE 2026-09-05 ~13:20 Phoenix (docs audit), the code half only.**
+`GET https://discord.heygabi.ai/api/health` **200**; `gabi_groq_tool_allowlist`
+reads **14 names with `count_phrase` among them**, `gabi_groq` `"first"`,
+`gabi_groq_ready` `true`, `groq_key_gabi` `true`. `gabi-tools.ts:1014` carries the
+array entry. So the fix is still deployed and still configured; **only the wire
+observation is outstanding**, and nothing about it is a build.
 
-`/rsvp` and `/progress` are built, tested and **dark** (`GABI_CLUB_WRITES =
-"off"`). The blocker is a **measurement, not caution**: the field names inside
-an RSVP and a progress document live in `audiobook_catalog/site/`, which the
-build was directed not to read, and this Worker's service account **bypasses
-`firestore.rules`** — so a wrongly shaped write is not refused, it **succeeds**,
-and the club page then shows nothing with no error anywhere.
+## ☐ 🔴 The `discord:D5` estate probe has FAILED on every run since 2026-09-03 — and it is the probe that is wrong (found 2026-09-05 by the docs audit)
 
-The checklist is [`access/discord-bot.md`](access/discord-bot.md) §15.3, in
-order: read `site/club-meetings.js` / `site/club-reads.js` + `firestore.rules`
-→ correct `CLUB_WRITE_SHAPES` in `apps/discord-worker/src/club-write.ts` (one
-block, `deepEqual`-pinned by `test/club-write.test.ts`, so update the pin in the
-same commit) → flip `club_write_shapes_verified` in `/api/health` → flip the
-posture and deploy → re-run registration → opt a club in with
-`features.meetingRsvp = true` → **exercise it and then look at the club PAGE**,
-because the Discord side saying "recorded" is not the evidence.
+**One-line fix, and it is worth doing fast because a suite with a standing
+false failure is a suite people stop reading.** `tools/estate-probes/probes/discord-worker.mjs:83`
+pins `BOOKS_TOOLS = ['book_presence','list_book_knowledge','read_book_passage','search_book_text']`
+— **four** names — and asserts `gabi_books_tools` equals that set exactly.
+`count_phrase` became the fifth on 2026-09-03 (deploy `7d61418`, then `272ac67`),
+so D5 has failed ever since.
+
+**MEASURED 2026-09-05 ~13:20 Phoenix:** `GET https://discord.heygabi.ai/api/health`
+returns `gabi_books_tools` = `["list_book_knowledge","search_book_text","read_book_passage","book_presence","count_phrase"]`
+— **five**. Two independent `deploys.log` lines already name this as
+*"the PRE-EXISTING stale `discord:D5`"* and neither opened an item for it, which
+is why it is one here.
+
+**The fix:** add `'count_phrase'` to that array and update the two wordings that
+say "four" — `:90`'s check description and `tools/estate-probes/README.md:38`
+and `:106`. ⚠️ **Keep it asserted as a SET, not a count** — the comment at
+`:78–82` is explicit that the point of the fourth allowlist is that these names
+travel together and no new tool joins them without a decision, and a length
+check would silently accept a swap. ⚠️ Do NOT relax it to a subset test for the
+same reason.
+
+## ☐ Flip `GABI_CLUB_WRITES` — 5 of 7 steps left, and step 3 is BLOCKED on the `/progress percent` decision below
+
+⚠️ **Corrected 2026-09-05 (docs audit). This section's premise was STALE by
+three days: it said the blocker was an unmade MEASUREMENT, and that measurement
+was made on 2026-09-02.** Verified: commit `ee688ad`
+(*"CLUB_WRITE_SHAPES measured at last -- four of seven guesses were wrong, and
+it STAYS DARK"*, 2026-09-02 11:33 -0700) read `audiobook_catalog/site/club-reads.js`,
+`site/clubs.js` and `firestore.rules` read-only and rewrote the block;
+`apps/discord-worker/src/club-write.ts:108` now carries `CLUB_WRITE_SHAPES` with
+per-line evidence beside each field. **The real remaining blocker is an OWNER
+DECISION** — `/progress percent` has no destination field — which is its own
+section further down, and which `KNOWN_ISSUES.md` KI-13 already states
+correctly. The original text, struck rather than deleted:
+
+> ~~The blocker is a **measurement, not caution**: the field names inside an RSVP
+> and a progress document live in `audiobook_catalog/site/`, which the build was
+> directed not to read~~ … and this Worker's service account **bypasses
+> `firestore.rules`** — so a wrongly shaped write is not refused, it **succeeds**,
+> and the club page then shows nothing with no error anywhere. *(That second half
+> is still true and is the whole reason the posture, not the code, is what
+> protects a live club page.)*
+
+`/rsvp` and `/progress` are built, tested and **dark** — re-measured 2026-09-05:
+`apps/discord-worker/wrangler.toml:557` `GABI_CLUB_WRITES = "off"`, and
+`GET https://discord.heygabi.ai/api/health` answers `gabi_club_writes_enabled:false`,
+`gabi_club_writes_ready:false`, `club_write_shapes_verified:false`.
+
+The checklist is [`access/discord-bot.md`](access/discord-bot.md) §15.3, with
+today's state marked:
+
+1. ☑ **DONE 2026-09-02 (`ee688ad`)** — read `site/club-reads.js` / `site/clubs.js`
+   + `firestore.rules`. ⚠️ The old text named `site/club-meetings.js`; the commit
+   read `site/clubs.js`.
+2. ☑ **DONE 2026-09-02 (`ee688ad`)** — `CLUB_WRITE_SHAPES` corrected in
+   `apps/discord-worker/src/club-write.ts` (one block, `deepEqual`-pinned by
+   `test/club-write.test.ts`, pin updated in the same commit).
+3. ☐ 🔴 **BLOCKED ON THE OWNER** — flip `club_write_shapes_verified` in
+   `/api/health` (`src/index.ts:578`, hard-coded `false` today). It should not
+   flip while `/progress percent` still has nowhere to land.
+4. ☐ flip the posture and deploy · 5. ☐ re-run registration · 6. ☐ opt a club in
+   with `features.meetingRsvp = true` · 7. ☐ **exercise it and then look at the
+   club PAGE**, because the Discord side saying "recorded" is not the evidence.
 
 ⚠️ A concurrent agent was working in `audiobook_catalog` on 2026-09-02, which is
 the second reason it was left alone.
 
-## ☐ OWNER DECISION — upgrade the Groq plan? (2026-09-02)
+## ❓ OWNER DECISION — pay for Groq's Developer plan, or stay free? (2026-09-02)
+
+**The options: (a) upgrade to Groq's Developer plan** — every mitigation already
+built turns into headroom, `reason:"too_large"` should vanish from the stream,
+and `gabi_groq_tpm_limit` (8,000 today, confirmed live 2026-09-05) needs
+updating; **(b) stay on the free tier** — nothing breaks, busy turns fall back
+to Haiku invisibly, and the person cannot tell. Nothing is blocked either way;
+this is a money question, not a build.
 
 🔴 **The 413 wall the owner met is the FREE TIER, not a bug.** Groq allows
 `openai/gpt-oss-120b` **8,000 tokens per minute** on the free plan and refuses a
@@ -534,7 +634,13 @@ Nothing breaks if he does not — the ladder falls back to Haiku invisibly, whic
 is what it did all through the live test. Measurement + arithmetic:
 [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
 
-## ☐ OWNER DECISION — `/progress percent` has no destination field (2026-09-02)
+## ❓ OWNER DECISION — should `/progress` drop `percent`, or learn `milestonePosition`? (2026-09-02)
+
+**The options: (a) drop `percent` and take a CHAPTER only** — smallest change,
+lands on `chapterIndex`, which the club page already reads; **(b) also learn
+`milestonePosition`** — needs the read's milestone list to mean anything, so it
+is the larger build. Doing neither leaves `/rsvp` and `/progress` dark for ever.
+⚠️ This is the ONLY thing now blocking the `GABI_CLUB_WRITES` flip above.
 
 The club-write shapes were finally MEASURED against `audiobook_catalog/site`
 (read-only) and **four of the seven inferred names were wrong** — corrected in
@@ -555,7 +661,10 @@ anything)? Answer that, then the flip checklist in
 ⚠️ Flipping it is **access-increasing on somebody else's live page** — this
 Worker's service account bypasses `firestore.rules`, so a wrong shape SUCCEEDS
 silently. It gets confirmed, never assumed.
-## ⏸ ON PAUSE by owner order 2026-09-02: "Anything needing the other computer is on pause"
+## ⏸ DEFERRED BY OWNER 2026-09-02 — anything needing the other computer
+
+Owner, verbatim, 2026-09-02: *"Anything needing the other computer is on
+pause."* Resumes only on his word — a session must not restart it.
 
 The ABS box steps for the ebooks shelf library
 (`audiobook_catalog/docs/access/SHELF_EBOOKS_LIBRARY.md` §3–§5) and anything
@@ -570,23 +679,28 @@ audiobook_catalog's own DONE files.)
 
 ## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
 
-~15 worktrees from the night's branches. The merged ones can go at leisure;
-check `git worktree list` from each repo before deleting anything unmerged.
+~~About 15 worktrees from the night's branches.~~ ⚠️ **Corrected 2026-09-05 (docs
+audit) — MEASURED, and it is nearly double:** `C:/lcw/` holds **27
+directories**, of which **5 are worktrees still registered to THIS repo**
+(`git worktree list`: `f2fix`, `gabicp`, `index-read`, `pause`,
+`platformhighs`). The other 22 belong to the sibling repos or are orphaned
+directories git no longer tracks. The merged ones can go at leisure; check
+`git worktree list` from EACH repo before deleting anything unmerged, and
+⚠️ prefer `git worktree remove` over `rm -rf` so the registration goes too —
+an `rm -rf`'d worktree leaves a stale entry that makes the next `worktree add`
+of the same path fail.
 
-## ☐ OWNER DECISION — details-sweep cron cadence (standing offer, 2026-08-24)
+## ❓ OWNER DECISION — raise the details-sweep cron frequency? (standing offer, 2026-08-24)
+
+**The options: (a) leave it** — 1 book/tick, honest and slower; **(b) raise the
+cron FREQUENCY** to get the old rate back. ⚠️ **Not an option: raising the
+per-tick budget** — it must stay under the 50-subrequest ceiling, which is what
+made it die mid-second-book before.
 
 The library details-sweep now honestly heals **1 book/tick** (was silently
 over-budget at 2 and dying mid-second-book). Raise the cron frequency if you
 want the old rate; do NOT raise the per-tick budget (it must stay under the
 50-subrequest ceiling).
-
-## ☐ Follow-up (unverified since 2026-08-24): `library_catalog/scripts/research-queue.mjs` schema drift
-
-Carried out of the retired morning summary because nothing else tracks it: its
-in-memory mirror omits `work_alias` (0410) + `change_log`, and `makeShim.batch`
-is non-atomic (a partial write occurred). Add both tables to MIRRORED + make
-batch atomic before using the script again. ⚠️ **Not re-verified on
-2026-08-31** — if it was fixed since, close this against the commit.
 
 ---
 
@@ -599,7 +713,7 @@ batch atomic before using the script again. ⚠️ **Not re-verified on
 > 4 below, plus the two master-less secrets tracked in
 > `library_catalog/docs/TODO.md` (*"Custody gaps"*).
 
-## ☐ STEP 3 of the 1Password adoption — 1 of 4 pairs ROTATED, and all 4 now RUNNABLE
+## ☐ STEP 3 of the 1Password adoption — 3 of 4 pairs left, and all three are the OWNER'S ceremony (tooling ☑ BUILT, probes ☑ LIVE 2026-09-02)
 
 `scripts/op-rotate-pair.mjs` mints a fresh value into the vault and sets it on
 BOTH holders in one run, verifier first, stopping at the first failure.
@@ -759,9 +873,12 @@ because each is a console he holds and a session should not:**
 ⚠️ the last is **RETIRE, not rotate** (superseded by the KV-hashed self-service
 key since 2026-08-20).
 
-## ☐ 🔴 STEP 4 of the 1Password adoption — `audiobook_catalog/.env` — NOT DONE, estimate only (2026-08-26)
+## ☐ 🔴 STEP 4 of the 1Password adoption — `audiobook_catalog/.env` — GENUINELY UNBUILT, estimate only (owner ask 2026-08-26)
 
-Deliberately not attempted. The estimate, from the secrets review's own §2.6
+⚠️ **This is the one item in this file that is UNBUILT in the plain sense** —
+no code, no vault items, nothing attempted. Re-confirmed 2026-09-05 (docs
+audit) by reading this section only; the `.env` file was **not** opened, then
+or now. Deliberately not attempted. The estimate, from the secrets review's own §2.6
 inventory (names only; the file was **not** opened by this work):
 
 - **~30 keys**, split **14 credentials / 16 config-and-identifiers**. Each one
@@ -786,14 +903,23 @@ inventory (names only; the file was **not** opened by this work):
 - **Rough size:** the 30 `NAME=` keys are a short sitting once the config/credential
   sort is made; the four JSON documents are the real work.
 
-## ☐ DESIGNED — one still unbuilt, two BUILT (0 on 2026-09-01, 1 on 2026-09-02)
+## ☐ The three formerly-DESIGNED items — all three now have code SHIPPED; 8 sub-steps left, listed per item
 
-⚠️ **Item 1 is NO LONGER design-only, and this heading said it was until
-2026-09-02.** Its phases 0–2 are built, migrated and deployed; only **item 2**
-still has no route and no migration. Each doc carries its own phases, effort
-guesses and open questions. Item 0 was built on 2026-09-01 and has moved to
-[`DONE.md`](DONE.md); only its live round trip remains — and item 1 is in
-exactly the same shape, waiting on a human to press its switch once.
+⚠️ **Corrected 2026-09-05 (docs audit). The old heading read `DESIGNED — one
+still unbuilt, two BUILT`, and by then NONE of the three was design-only** —
+item 2 ("+ Add a verse") was deployed on 2026-09-02, which the old subheading
+correction itself never propagated up. What is left across all three is eight
+☐ sub-steps: two human eyeballs (item 0's round trip, item 1's matrix read-back),
+five genuinely unbuilt phases (item 1's phases 2b/3/4/5 and item 2's phase 4),
+and one first-real-use (item 2's `landed` flip). ⚠️ Nothing here is a DESIGN
+gap any more; each doc carries its own phases, effort guesses and open questions.
+
+~~Item 1 is NO LONGER design-only, and this heading said it was until
+2026-09-02. Its phases 0–2 are built, migrated and deployed; only **item 2**
+still has no route and no migration.~~ *(that last clause was already stale when
+written — item 2's migration `0017` was applied and its routes deployed the same
+day)*. Item 0 was built on 2026-09-01 and has moved to [`DONE.md`](DONE.md);
+only its live round trip remains.
 
 ### 0. ✅ BUILT 2026-09-01 — soft pauses + recurring blockers + do-not-disturb
 The whole item moved to [`DONE.md`](DONE.md) (*"2026-09-01 — soft pauses,
@@ -822,10 +948,43 @@ What landed moved WHOLE to [`DONE.md`](DONE.md) (*"LLM billing control — phase
 <https://heygabi.ai/admin/> → **"Spending — what may bill the model, and where"**.
 Mockup (private artifact): https://claude.ai/code/artifact/2f288c59-d6ca-4fdf-b3e0-da732f0e78d1
 
-🔴 **NOTHING IS SWITCHED OFF TODAY, and nothing can be until somebody presses
-a switch.** The `billing_policy` table is EMPTY (an empty table is exactly
-today's behaviour), and `BILLING_POLICY` ships `"off"` on the one consumer
-that reads the answer. Both were deployed that way on purpose.
+🔴 **NOTHING IS SWITCHED OFF TODAY** — `BILLING_POLICY` ships `"off"` on the one
+consumer that reads the answer (re-measured 2026-09-05:
+`apps/index-worker/wrangler.toml:45`, and it is the only `BILLING_POLICY` in the
+tree), so no policy row can deny anything. ~~The `billing_policy` table is EMPTY
+(an empty table is exactly today's behaviour)~~ … ~~and nothing can be until
+somebody presses a switch.~~
+
+⚠️ **Corrected 2026-09-05 (docs audit) — THE TABLE IS NOT EMPTY, AND THE SWITCH
+WAS PRESSED THREE DAYS AGO.** Measured read-only against the live remote
+`estate_auth` D1 (`wrangler d1 execute estate_auth --remote --command "SELECT *
+FROM billing_policy"`): **one row**, and it was written from the panel by the
+owner himself —
+
+```
+id 1 · feature sweep.details · site games · principal_kind system · allow 0
+updated_by nbaslamking@gmail.com · updated_at 2026-09-02T22:45:48.138Z
+why "throwaway soak rule: shadow-mode falsifiability evidence for the billing
+     gate (would-deny lines hourly). BILLING_POLICY is off everywhere, so
+     nothing is blocked. Delete this rule before any site flips to enforce."
+```
+
+**What that row proves, and it is exactly what item 1 below was waiting for:**
+the panel HAS been rendered signed in, a cell HAS been clicked, a rule HAS been
+written with a `why`, and the write door HAS accepted an approver's identity and
+stamped it. The round trip that "turns deployed into works" happened on
+2026-09-02 22:45:48Z. ⚠️ **What it does NOT prove:** that the matrix DREW
+correctly afterwards (nobody recorded a reload), and it says nothing about the
+per-member drawer, which does not exist.
+
+🔴 **A NEW ACTION FALLS OUT OF THE ROW'S OWN `why`, and it is a trap if
+forgotten: DELETE RULE `id 1` BEFORE ANY SITE FLIPS TO `enforce`.** It is a
+deliberately throwaway soak rule. Left in place at the enforce flip it becomes a
+real denial of `sweep.details` on `games` for the `system` principal — the
+unattended cron — which is precisely the failure shape phase 4's criterion is
+designed to catch and would instead be caused by. It is also, until then, the
+*second half* of §4.2's flip criterion sitting pre-staged: the "at least one
+`would_deny:true` on something he DID switch off".
 
 - ✅ **OWNER DECISION Q1 — deny-only. BUILT.** Not a convention: the resolver's
   only output is a set of DENIED ids and every call site ANDs it with the gate
@@ -838,14 +997,21 @@ that reads the answer. Both were deployed that way on purpose.
 
 ### 🔴 WHAT IS LEFT, in the order it can be done
 
-1. 🔴 **NOBODY HAS RENDERED THE PANEL SIGNED IN.** No cell has been clicked, no
-   rule has ever been written, and the matrix has never been drawn against a
-   real `/api/estate/billing/rules` answer. There is no browser test harness
-   for `admin.js`; `check:home` proves it parses and nothing more. ⚠️ **This is
-   the first step and it needs the owner** — an approver token no session
-   holds. Sign in at <https://heygabi.ai/admin/>, open **Spending**, switch one
-   cheap cell off with a `why`, save, reload, and switch it back on. That one
-   round trip is what turns "deployed" into "works".
+1. ☑ **DONE 2026-09-02 22:45:48Z — the panel WAS rendered signed in and a rule
+   WAS written.** ⚠️ **Corrected 2026-09-05 (docs audit); this item read
+   `🔴 NOBODY HAS RENDERED THE PANEL SIGNED IN. No cell has been clicked, no
+   rule has ever been written` for three days after it stopped being true.**
+   The evidence is `billing_policy` row `id 1` above, stamped
+   `updated_by nbaslamking@gmail.com` — a row can only reach that table through
+   the approver-gated write door, so its existence is proof the sign-in, the
+   click, the `why` and the Save all worked. ☐ **What is genuinely still
+   unwitnessed is the READ-BACK:** nobody has recorded reloading
+   <https://heygabi.ai/admin/> → **Spending** and seeing the matrix DRAW that
+   row, nor switched it back on. That is a one-minute owner eyeball, not a
+   build, and it is the same page linked below.
+   🔴 **And do not switch `sweep.details` / `games` back on casually** — the
+   owner's own `why` says the row is wanted until enforce; see the delete-before-
+   enforce note above.
 2. ☐ **Phase 2b — the per-member drawer** (§7.2): a **Spending** column on the
    existing `perm-grid`, staged into the card's one Save. The matrix is the
    per-SITE axis; this is the per-PERSON one. The resolver and the write door
@@ -896,6 +1062,12 @@ the byte-comparing parity test correctly refused the deploy. Live verify:
 <https://heygabi.ai/universes/>. NOT verified: no request has ever been FILED
 (the first real request → /admin approve → CLI create round-trip is untried),
 and /admin's Verse-requests section is unrendered by human eyes.
+✅ **RE-MEASURED 2026-09-05 (docs audit), read-only against the live remote D1:
+`SELECT COUNT(*) FROM universe_request` = **0**.** So the "no request has ever
+been FILED" claim is not an assumption carried forward — it is true as of this
+reading, and the whole 200 side of this feature remains unexercised. Review
+link for the human step: <https://heygabi.ai/universes/> to file one, then
+<https://heygabi.ai/admin/> → **Verse requests** to approve it.
 
 Remaining, unchanged:
 

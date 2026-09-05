@@ -9,6 +9,34 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 — `research-queue.mjs` schema drift: CLOSED against the commit it asked to be closed against
+
+Moved whole from `TODO.md` by the 2026-09-05 docs audit (agent AUD-platform).
+**How completion was verified:** the item's own closing instruction was *"if it
+was fixed since, close this against the commit"*, so the commit was looked for.
+`library_catalog` `cfea2b9` — *"Fix research-queue.mjs: mirror schema drift +
+non-atomic batch"*, **2026-08-24 07:34:27 -0700** — closes BOTH halves, and both
+were re-read in the file itself rather than trusted from the subject line:
+`scripts/research-queue.mjs:123–129` lists `MIRRORED` with **`work_alias` and
+`change_log` both present** (a comment at `:104` dates their addition to
+2026-08-24 and names migration 0410 / 0120 as the reason), and `makeShim.batch`
+at `:336–351` now carries the explicit *"Atomic: every statement in a batch
+commits together or none does"* transaction, with `:484–491` recording that the
+pre-fix code split statements into blocks of 40 and could leave `work.series`
+written with no audit row. ⚠️ **NOT verified:** the script was not RUN, and no
+research queue was processed — this is a source-level close, which is exactly
+what the item asked for. ⚠️ The fix landed the *same day* the item was written,
+so it was never open for more than a few hours; it survived on the TODO for
+twelve days purely because nobody looked. Original item:
+
+☐ **Follow-up (unverified since 2026-08-24): `library_catalog/scripts/research-queue.mjs` schema drift**
+
+Carried out of the retired morning summary because nothing else tracks it: its
+in-memory mirror omits `work_alias` (0410) + `change_log`, and `makeShim.batch`
+is non-atomic (a partial write occurred). Add both tables to MIRRORED + make
+batch atomic before using the script again. ⚠️ **Not re-verified on
+2026-08-31** — if it was fixed since, close this against the commit.
+
 ## 2026-09-05 09:15 Phoenix — the provisioning private key has a second custodian: 1Password `Estate`
 
 Moved whole from `TODO.md`. Done from the owner's phone: he connected by Chrome
