@@ -236,7 +236,21 @@ class FakeDB {
     return { bind: (...args: unknown[]) => make(args), ...make([]) };
   }
 
+  /**
+   * Set to a message to make the NEXT batch throw it — the only way to
+   * exercise a D1-level failure (a CHECK constraint on `entry.source`, say)
+   * against the real route. Cleared as it fires, so one test cannot poison
+   * another, and nothing is written when it does: the real batch is
+   * transactional, and this fake refuses before it applies a statement.
+   */
+  failNextBatchWith: string | null = null;
+
   async batch(statements: { run(): Promise<unknown> }[]) {
+    if (this.failNextBatchWith !== null) {
+      const message = this.failNextBatchWith;
+      this.failNextBatchWith = null;
+      throw new Error(message);
+    }
     const out = [];
     for (const s of statements) out.push(await s.run());
     return out as never;
@@ -560,6 +574,34 @@ test('🔴 FEDERATION: a library2 push does NOT replace library’s rows — one
   await push(env, 'library', 'library-token', [book('Oathbringer', 'The Stormlight Archive', { format: 'book' })]);
   assert.deepEqual([...new Set(db.entries.map((e) => e.source))].sort(), ['library', 'library2']);
   assert.equal(db.entries.length, 2);
+});
+
+test('🔴 FEDERATION: a Worker deployed AHEAD of its migration says so, and does not answer a bare 500', async () => {
+  // The exact half-applied state: the code knows `library2`, the database's
+  // `entry.source` CHECK constraint (0001, widened by 0006) does not.
+  const db = new FakeDB();
+  db.failNextBatchWith = 'D1_ERROR: CHECK constraint failed: entry';
+  const res = await push(prodEnv(db), 'library2', 'padhard-token', [
+    book('Words of Radiance', 'The Stormlight Archive', { format: 'paperback' }),
+  ]);
+  assert.equal(res.status, 503);
+  const body = (await res.json()) as any;
+  assert.equal(body.error, 'source_not_in_schema');
+  assert.equal(body.source, 'library2');
+  assert.match(body.fix, /db:migrate/, 'the refusal carries the command that fixes it');
+  assert.match(body.detail, /Nothing was written/);
+});
+
+test('an UNRECOGNISED database failure is not relabelled as a migration problem', async () => {
+  // The catch above must narrow, not swallow: a different fault keeps its own
+  // words rather than sending someone to run a migration that is already applied.
+  const db = new FakeDB();
+  db.failNextBatchWith = 'D1_ERROR: network something else entirely';
+  await assert.rejects(() =>
+    push(prodEnv(db), 'library2', 'padhard-token', [
+      book('Words of Radiance', 'The Stormlight Archive', { format: 'paperback' }),
+    ]),
+  );
 });
 
 test('FEDERATION: library2 is a BOOK source — it folds a work key and shares the series registry', async () => {

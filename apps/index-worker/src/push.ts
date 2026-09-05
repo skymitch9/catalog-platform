@@ -81,7 +81,36 @@ pushRoutes.put('/:source', async (c) => {
   const plan = planSeries(registry, entries, seriesCanonIndex);
   const universe = applySeriesPlan(entries, plan, universeIndex);
 
-  await replaceSource(c.env.DB, source, entries, plan, pushedAt);
+  // ⚠️ THE ONE FAILURE THAT REACHED THE PUSHER AS A BARE 500, and the reason
+  // this catch exists (found 2026-09-05 federating `library2`): `entry.source`
+  // carries a CHECK constraint listing the known sources (0001, widened by
+  // 0006). A Worker deployed AHEAD of its migration therefore passes every
+  // check in this file — the source is known, the token matches, the snapshot
+  // is valid — and then dies inside `db.batch` with a constraint failure the
+  // caller sees as an unexplained 500. That is the estate's bare-status rule
+  // broken by an ordering mistake rather than by a missing message, so the
+  // refusal now NAMES the likely cause and the command that fixes it.
+  //
+  // The batch is transactional, so nothing is half-written either way; this
+  // only changes what the pusher is told. Everything else still propagates —
+  // an unrecognised failure keeps its own words rather than being relabelled.
+  try {
+    await replaceSource(c.env.DB, source, entries, plan, pushedAt);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    if (/CHECK constraint/i.test(detail)) {
+      return c.json(
+        {
+          error: 'source_not_in_schema',
+          source,
+          detail: `the database refused rows for '${source}': its \`entry.source\` CHECK constraint does not list this source yet. Nothing was written.`,
+          fix: 'apply the pending D1 migrations first — `npm run db:migrate` in apps/index-worker — then push again. Migrate BEFORE deploy.',
+        },
+        503,
+      );
+    }
+    throw err;
+  }
 
   return c.json({
     ok: true,
