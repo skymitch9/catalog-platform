@@ -357,12 +357,17 @@ object is **gone** from `estate-catalog-keys` afterwards. Nothing has round-trip
 a real key end to end yet; the two halves have only been tested against the same
 written contract.
 
-### ☐ Phase 5 — CLIENT + PROVISIONER half of the sealed key: BUILT, **NOT DEPLOYED** (agent S2, 2026-09-05)
+### ✅ Phase 5 — CLIENT + PROVISIONER half of the sealed key: BUILT, DEPLOYED `3abf9d01` (agent S2; conductor deploy 2026-09-05 15:23Z)
 
-🔴 **NOTHING HERE IS LIVE.** The home site deploys by directory upload and has
-one deployer; the conductor's single `deploy:home` at the end of the wave is
-what ships this. Review it there, not before:
-<https://heygabi.ai> (signed in, "+" → the form) and
+**LIVE since 2026-09-05 15:23Z** — the conductor's single `deploy:home` from a
+clean tree at `5d33b14` (heygabi-home deploy `3abf9d01`, 3 files uploaded, 55
+unchanged; `deploys.log` has the line). The first `verify:home` hit the
+propagation race recorded for 2026-09-01 — seven markers in
+`assets/catalog-seal.js` and `assets/apex-request-catalog.js` "served 200 but
+MISSING" — and the re-run at 15:31Z fetched 30 pages, all checks passed. Also
+in that deploy: the games Accept row's next-step text now names the
+`Board_Game_Catalog` provisioner (phase 9) instead of "no step to run yet".
+Review: <https://heygabi.ai> (signed in, "+" → the form) and
 <https://heygabi.ai/admin/> (the Accept panel).
 
 **Commits.** `catalog-platform`: `c53d361` the mint script + `assets/catalog-seal.js` ·
