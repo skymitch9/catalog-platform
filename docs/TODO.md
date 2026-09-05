@@ -169,9 +169,29 @@ the exact line the diagnosis table above named. The repo's copy HAS the fix
 (`HOLDER_LABELS` at :111, the complement filter at :394), so the apex Pages site
 simply has not been redeployed since W4-FED-INDEX landed it. `series/series.js`
 IS live-current (4 × `library2`), which is why the two tabs will disagree.
-☐ 🧑 **Next action: redeploy the apex site** (`sites/heygabi-home`) — ⚠️ a
-directory deploy ships the WORKING TREE, so from a committed-clean tree or a
-`git worktree add <tmp> HEAD` checkout. This agent was briefed no-deploys.
+☑ **16:08 Phoenix — deployed `910d6efe`** (agent W4-APEX-DEPLOY). `npm run
+deploy:home` from a committed-clean tree at `977dba3` (`git status --short`
+empty, so no worktree was needed and `--commit-dirty=false` passed on its own
+merit): root tests green → `check:home` green (32 JS parsed, 29 module graphs,
+14 HTML, 5 themes, 3 surface owners) → 3 files uploaded of 60 → `verify:home`
+green (32 live pages). Measured live afterwards, cache-busted, both
+`cf-cache-status: MISS`:
+
+| file | `library2` | `HOLDER_LABELS` | old `'library' \|\| 'audiobook'` filter | bytes |
+|---|---|---|---|---|
+| `universes/universes.js` | **4** (was 0) | **3** (was 0) | **0** (was 1) | 46,175 |
+| `series/series.js` | 4 | 0 | 0 | 36,839 |
+
+Every count matches the repo's copy exactly, so live and `HEAD` now agree.
+⚠️ `series.js` having **0** `HOLDER_LABELS` is not a missing fix — the repo's
+copy has none either; that file carries its own `library2: "Samantha's library"`
+label at `:73`, which is what the diagnosis table above named.
+⚠️ **NOT verified by this agent:** the rendered pages (no browser), and nobody
+but the owner can see the difference anyway — `vis_library2` is owner-only
+(`DEFAULT 0`), so a signed-out or non-owner visitor to
+[/universes/](https://heygabi.ai/universes/) and [/series/](https://heygabi.ai/series/)
+sees exactly what they saw before. ☐ 🧑 **Owner: sign in and confirm Padhard's
+rows now appear in both tabs** — that is the only remaining check on this ask.
 
 **Not verified by this agent:** that either tab RENDERS her books (no browser,
 and `vis_library2` is owner-only `DEFAULT 0`); the 677 figure against padhard's
