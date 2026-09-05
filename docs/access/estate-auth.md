@@ -313,6 +313,40 @@ reachable.
 | `credentials: 'include'` is required in BOTH directions | Omitting it is the nastiest failure in this feature: the browser silently drops the `Set-Cookie` on the way back **while every status code still reads 200**. If sign-in seems not to travel and the network tab looks clean, check this first. |
 | The real end-to-end exchange is NOT verified by this build | `signInWithCustomToken(token)` actually succeeding against Google's real `identitytoolkit` endpoint needs the owner's real `TOKEN_SIGNER_KEY` — the test suite proves the JWT this Worker produces is a correctly-shaped, correctly-signed RS256 token (verified cryptographically against a throwaway keypair in `test/token-signer.test.ts`), which is everything provable without that key. `sso-design.md` §10 names this as the standing not-verified item; Phase 3 (adoption) is where it gets exercised for real. |
 
+## 7a. Deploying this Worker — `npm run deploy:auth` (added 2026-09-05)
+
+One command from the **repo root**, not from `apps/auth-worker`:
+
+```powershell
+$env:DEPLOY_HOLDER='<you>'; npm run deploy:auth
+```
+
+`scripts/deploy-auth.mjs` runs, in order: **refuse a dirty tree** (escape
+hatch `ESTATE_AUTH_ALLOW_DIRTY=1`, deliberately long) → `typecheck` → `test`
+→ **`wrangler d1 migrations apply estate_auth --remote`** (only if
+`migrations list` shows something pending — measured, not assumed) →
+`wrangler deploy` → one six-field line appended to `docs/deploys.log`
+(`ISO · estate-auth · commit · holder · version id · note`), **not committed**
+— the run that deployed commits it, with the live checks in the message.
+`DEPLOY_NOTE` sets the sixth field; otherwise it records which migrations
+applied.
+
+Why it exists: the owner drives this estate from his phone through Remote
+Control, where `!` shell lines **do not reach this machine** (measured
+2026-09-05: four such commands, zero effect on disk or live), and the
+permission classifier refused a session the bare `npm run db:migrate` /
+`npx wrangler deploy` pair *and* the `.claude/settings.local.json` write that
+would have allowed them. A named pipeline is the thing a permission rule can
+name: `Bash(npm run deploy:auth)` / `PowerShell(npm run deploy:auth)` in
+`~/.claude/settings.json` → `permissions.allow` (the owner's edit, at a
+keyboard — an agent must not widen its own permissions). ⚠️ Until that rule
+exists the classifier refuses the script too — it was refused on its very
+first run, which was only ever going to exercise the clean-tree guard.
+
+**After it runs:** `git add docs/deploys.log && git commit`, then curl the
+routes the deploy changed with `curl -s -D - <url> | head` (⚠️ `-I` and
+`-o NUL` misreport on this host).
+
 ## 8. Rollback
 
 Each phase reverts independently and cheaply:
