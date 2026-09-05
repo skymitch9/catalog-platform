@@ -23,6 +23,29 @@ import { devAccessAllows } from './middleware/auth.js';
 import type { Catalog } from './visibility.js';
 import { CATALOGS, PUBLIC_CATALOGS, effectiveVisibility } from './visibility.js';
 
+/**
+ * ONE CATALOG THE CALLER OWNS OR HAS ASKED FOR (0018, 2026-09-05 — design
+ * docs/info/request-a-catalog-design.md §3.6, §4.2).
+ *
+ * ⚠️ `kind` IS ON EVERY ENTRY AND THAT IS THE POINT. The home page's show/hide
+ * is a PER-CARD question — a person who owns a books catalog may still ask for
+ * a games one, so their Books "+" is gone and their Games "+" is not. A flat
+ * list of hostnames cannot answer that, which is why this is a list of objects.
+ *
+ * ⚠️ `status` IS NOT COLLAPSED TO A BOOLEAN. `pending` draws a "Requested —
+ * pending review" pill, `accepted` reads "being set up" and NEVER "live", and
+ * `live` hides the "+" for good. Three different renderings; one boolean would
+ * force the page to guess which.
+ */
+export interface MeCatalog {
+  id: number;
+  kind: string;
+  status: string;
+  desired_subdomain: string;
+  display_name: string;
+  provisioned_host: string | null;
+}
+
 export interface MeAnswer {
   status: 'pending' | 'approved' | 'revoked' | null;
   is_approver: boolean;
@@ -73,6 +96,27 @@ export interface MeAnswer {
    * break-glass rule `status` and `visibility` follow.
    */
   billing_denied: Record<string, string[]>;
+  /**
+   * THE OWNERSHIP SIGNAL (0018, 2026-09-05) — the caller's own catalog rows
+   * with status `pending`, `accepted` or `live`, newest first.
+   *
+   * 🔴 THE ESTATE HAD NO "OWNS A CATALOG" FACT BEFORE THIS. `visibility` above
+   * is which catalogs you may SEE, never which you OWN — measured 2026-09-05,
+   * nothing in the estate answered the second question — and the "+" on the
+   * home cards is the first surface that needs it.
+   *
+   * ⚠️ ABSENT AND `[]` MEAN OPPOSITE THINGS, AND THE PAGE MUST TREAT THEM SO.
+   * `[]` is "you own nothing and have asked for nothing", which DRAWS the "+".
+   * The field being ABSENT is "this Worker cannot answer" — the table is
+   * missing, or the read failed — and the affordance stays HIDDEN, the
+   * fail-quiet posture apex-admin-link.js already models for every probe. A
+   * consumer that read a missing field as an empty array would draw a button
+   * whose route answers 503.
+   *
+   * The route supplies it; `null` at this boundary is the "cannot answer"
+   * signal and omits the key, which is deliberately NOT the same as `[]`.
+   */
+  catalogs?: MeCatalog[];
   /*
    * ⚠️ NO `download_ebooks` FIELD, and no `downloadEbooks()` function beneath
    * this interface. Both existed for one day (2026-08-17) and were removed the
@@ -106,7 +150,18 @@ export function meAnswer(
   row: EstateUserRow | null,
   isOwner: boolean,
   billingDenied: Record<string, string[]> = NO_DENIALS,
+  /**
+   * ⚠️ `null` MEANS "CANNOT ANSWER" AND OMITS THE KEY; `[]` MEANS "OWNS
+   * NOTHING" AND SENDS AN EMPTY ARRAY. They are different answers and the page
+   * renders them differently (hidden vs a drawn "+"), so they are not allowed
+   * to collapse into one another anywhere along the path. The default is `[]`
+   * rather than `null` because every branch below is reachable by a caller that
+   * never asked about catalogs, and a silently absent field is exactly what
+   * me-contract.test.ts exists to catch.
+   */
+  catalogs: MeCatalog[] | null = [],
 ): MeAnswer {
+  const own = catalogs === null ? {} : { catalogs };
   if (isOwner) {
     // §4.3: OWNER_EMAILS is approved + approver REGARDLESS of table state,
     // and sees every catalog (`library2`'s and `ebooks`' DEFAULT 0 included —
@@ -124,6 +179,12 @@ export function meAnswer(
       // The break-glass cannot be narrowed into a lockout — not by visibility
       // (above) and not by a spending switch either.
       billing_denied: { ...NO_DENIALS },
+      // ⚠️ NOT special-cased. `status`, `is_approver` and `visibility` above are
+      // computed for the owner regardless of the table because they are
+      // CAPABILITIES the break-glass grants; `catalogs` is a FACT about rows he
+      // filed, and inventing one would make his own page lie about what exists.
+      // Design §10 phase 2 states the verification bar in those words.
+      ...own,
     };
   }
   if (!row) {
@@ -137,6 +198,7 @@ export function meAnswer(
       // `role` rule is resolvable. `everyone` rules still reach them, which is
       // what the caller passed in.
       billing_denied: billingDenied,
+      ...own,
     };
   }
   return {
@@ -148,5 +210,6 @@ export function meAnswer(
     dev_access: devAccessAllows(row, false),
     visibility: effectiveVisibility(row.status, row),
     billing_denied: billingDenied,
+    ...own,
   };
 }

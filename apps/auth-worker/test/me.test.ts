@@ -54,6 +54,12 @@ test('meAnswer: not in the directory → status null, never an error shape', () 
     // 0016: nothing is switched off, because the default answer is the empty
     // one — an empty policy table is exactly today's behaviour (§3.3 rank 17).
     billing_denied: NO_DENIALS,
+    // 0018 (2026-09-05): the OWNERSHIP signal. `[]` is the default because
+    // these calls pass no fourth argument — and `[]` is a real answer ("owns
+    // nothing, has asked for nothing"), distinct from the field being ABSENT,
+    // which is the producer saying it cannot answer. See the block at the
+    // bottom of this file, where that distinction is pinned on its own.
+    catalogs: [],
   });
 });
 
@@ -65,6 +71,12 @@ test('meAnswer: pending → the public slice, whatever the stored flags say', ()
     dev_access: false,
     visibility: ['audiobook'],
     billing_denied: NO_DENIALS,
+    // 0018 (2026-09-05): the OWNERSHIP signal. `[]` is the default because
+    // these calls pass no fourth argument — and `[]` is a real answer ("owns
+    // nothing, has asked for nothing"), distinct from the field being ABSENT,
+    // which is the producer saying it cannot answer. See the block at the
+    // bottom of this file, where that distinction is pinned on its own.
+    catalogs: [],
   });
 });
 
@@ -76,6 +88,12 @@ test('meAnswer: approved → the stored set, narrowing included', () => {
     dev_access: false,
     visibility: ['audiobook', 'library', 'games'],
     billing_denied: NO_DENIALS,
+    // 0018 (2026-09-05): the OWNERSHIP signal. `[]` is the default because
+    // these calls pass no fourth argument — and `[]` is a real answer ("owns
+    // nothing, has asked for nothing"), distinct from the field being ABSENT,
+    // which is the producer saying it cannot answer. See the block at the
+    // bottom of this file, where that distinction is pinned on its own.
+    catalogs: [],
   });
   assert.deepEqual(
     meAnswer(row({ status: 'approved', vis_library: 0, vis_games: 0 }), false).visibility,
@@ -122,6 +140,12 @@ test('meAnswer: revoked → {} — revocation beats the public slice', () => {
     dev_access: false,
     visibility: [],
     billing_denied: NO_DENIALS,
+    // 0018 (2026-09-05): the OWNERSHIP signal. `[]` is the default because
+    // these calls pass no fourth argument — and `[]` is a real answer ("owns
+    // nothing, has asked for nothing"), distinct from the field being ABSENT,
+    // which is the producer saying it cannot answer. See the block at the
+    // bottom of this file, where that distinction is pinned on its own.
+    catalogs: [],
   });
 });
 
@@ -149,6 +173,12 @@ test('meAnswer: OWNER_EMAILS break-glass wins over every table state (§4.3)', (
     // 0016 rides the break-glass too: an owner cannot have his spending
     // switched off, for the same reason his visibility cannot be narrowed.
     billing_denied: NO_DENIALS,
+    // 0018 (2026-09-05): the OWNERSHIP signal. `[]` is the default because
+    // these calls pass no fourth argument — and `[]` is a real answer ("owns
+    // nothing, has asked for nothing"), distinct from the field being ABSENT,
+    // which is the producer saying it cannot answer. See the block at the
+    // bottom of this file, where that distinction is pinned on its own.
+    catalogs: [],
   };
   // No row at all — the empty-directory bootstrap.
   assert.deepEqual(meAnswer(null, true), want);
@@ -215,7 +245,14 @@ test('⚠️ /me answers NOTHING about downloads — that is the ladder’s ques
       // pins the absence of any download field on every branch.
       // `billing_denied` (0016) joined 2026-09-02 and is not a download key
       // either — it is the SPENDING curtain, per site, and it opens nothing.
-      ['billing_denied', 'dev_access', 'is_approver', 'is_devops', 'status', 'visibility'],
+      // `catalogs` (0018) joined 2026-09-05 and is not a download key either —
+      // it is the OWNERSHIP signal the "+" on the home cards reads, a list of
+      // rows this person filed, and it opens nothing anywhere. ⚠️ It is present
+      // here as `[]` because these calls pass no fourth argument and the
+      // default is the empty array; the field is ABSENT only when the producer
+      // says it cannot answer (`null`), which is a different answer and is
+      // pinned separately below.
+      ['billing_denied', 'catalogs', 'dev_access', 'is_approver', 'is_devops', 'status', 'visibility'],
       'no download key on any branch, including the owner break-glass',
     );
   }
@@ -227,4 +264,74 @@ test('the ebook shelf stays a VIEW grant, and revocation still closes it', () =>
   // inert off approval — the download rework touched none of this.
   assert.equal(meAnswer(row({ status: 'approved', vis_ebooks: 1 }), false).visibility.includes('ebooks'), true);
   assert.deepEqual(meAnswer(row({ status: 'revoked', vis_ebooks: 1 }), false).visibility, []);
+});
+
+// ---------------------------------------------------------------------------
+// `catalogs` — the ownership signal (0018, 2026-09-05)
+// ---------------------------------------------------------------------------
+
+test('🔴 ABSENT and [] are different answers, and the page renders them differently', () => {
+  // This is the whole of what the field is for. `[]` means "you own nothing and
+  // have asked for nothing", which DRAWS the "+"; the key being absent means
+  // "this Worker cannot answer" — the table is missing, or the read failed —
+  // and the affordance stays HIDDEN, the fail-quiet posture apex-admin-link.js
+  // models for every probe. A consumer that read a missing field as an empty
+  // array would draw a button whose route answers 503.
+  const cannotAnswer = meAnswer(row({ status: 'approved' }), false, undefined, null);
+  assert.equal(Object.hasOwn(cannotAnswer, 'catalogs'), false, 'null must OMIT the key, not send []');
+
+  const ownsNothing = meAnswer(row({ status: 'approved' }), false, undefined, []);
+  assert.deepEqual(ownsNothing.catalogs, []);
+});
+
+test('every branch carries catalogs, including the owner break-glass — and the owner is not special-cased', () => {
+  // ⚠️ `status`, `is_approver` and `visibility` ARE computed for the owner
+  // regardless of the table, because they are CAPABILITIES the break-glass
+  // grants. `catalogs` is a FACT about rows he filed. Inventing one would make
+  // his own page lie about what exists — design §10 phase 2 states the bar in
+  // those words: "an owner's answer is not special-cased into a lie".
+  const mine = [
+    { id: 7, kind: 'books', status: 'live', desired_subdomain: 'amber', display_name: 'Amber', provisioned_host: 'amber.heygabi.ai' },
+  ];
+  for (const [label, answer] of [
+    ['owner break-glass', meAnswer(null, true, undefined, mine)],
+    ['not in directory', meAnswer(null, false, undefined, mine)],
+    ['approved plain', meAnswer(row({ status: 'approved' }), false, undefined, mine)],
+    ['revoked', meAnswer(row({ status: 'revoked' }), false, undefined, mine)],
+  ] as const) {
+    assert.deepEqual(answer.catalogs, mine, `${label} must report the rows verbatim`);
+  }
+  // And the owner gets no invented row when he has none.
+  assert.deepEqual(meAnswer(null, true, undefined, []).catalogs, []);
+});
+
+test('⚠️ every entry carries its KIND — the show/hide is a per-card question', () => {
+  // A person who owns a books catalog may still ask for a games one, so their
+  // Books "+" is gone and their Games "+" is not. A flat list of hostnames
+  // cannot answer that, which is why this is a list of objects. (§4.3)
+  const answer = meAnswer(row({ status: 'approved' }), false, undefined, [
+    { id: 1, kind: 'books', status: 'live', desired_subdomain: 'amber', display_name: 'Amber', provisioned_host: 'amber.heygabi.ai' },
+  ]);
+  assert.equal(answer.catalogs?.[0]?.kind, 'books');
+  // Nothing here says anything about games, which is what lets the Games card
+  // still draw its "+".
+  assert.equal(answer.catalogs?.some((cat) => cat.kind === 'games'), false);
+});
+
+test('the six pre-existing fields are untouched by the addition', () => {
+  // The failure this pins is the one the estate keeps hitting: a producer
+  // quietly changes a field a consumer reads while every test on both sides
+  // stays green. Adding `catalogs` must change nothing else.
+  const before = meAnswer(row({ status: 'approved', is_approver: 1 }), false, undefined, null);
+  const after = meAnswer(row({ status: 'approved', is_approver: 1 }), false, undefined, []);
+  const { catalogs: _dropped, ...rest } = after;
+  assert.deepEqual(rest, before);
+  assert.deepEqual(Object.keys(before).sort(), [
+    'billing_denied',
+    'dev_access',
+    'is_approver',
+    'is_devops',
+    'status',
+    'visibility',
+  ]);
 });

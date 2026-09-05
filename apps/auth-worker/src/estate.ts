@@ -39,6 +39,7 @@ import {
   statusCounts,
 } from './estate-db.js';
 import { meAnswer } from './me.js';
+import { catalogsForMe } from './catalog-requests.js';
 import type { BillingSite } from './billing-registry.js';
 import { resolveDenied, resolveDeniedBySite } from './billing-policy.js';
 import { listPolicyRules } from './billing-db.js';
@@ -387,7 +388,13 @@ estateRoutes.post('/estate/hello', async (c) => {
   });
 
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
-  return c.json(meAnswer(row, owners.includes(email), await meBillingDenied(c.env.DB, row)));
+  // ⚠️ `null` FOR CATALOGS, DELIBERATELY — /seen did not ask, so it must not
+  // answer. This is the app-facing door (a consumer Worker's bearer, answering
+  // "is this person in and what may they see"); catalog OWNERSHIP is a browser
+  // question the "+" asks on /me, and adding it here would put a per-person
+  // fact on every app's cached check for nobody to read. `null` omits the key
+  // and leaves /seen's shape exactly as it was.
+  return c.json(meAnswer(row, owners.includes(email), await meBillingDenied(c.env.DB, row), null));
 });
 
 // ---------------------------------------------------------------------------
@@ -411,7 +418,17 @@ estateRoutes.get('/estate/me', async (c) => {
   const email = identity.email.trim().toLowerCase();
   const owners = parseOwnerEmails(c.env.OWNER_EMAILS);
   const row = await getUserByEmail(c.env.DB, email);
-  return c.json(meAnswer(row, owners.includes(email), await meBillingDenied(c.env.DB, row)));
+  // THE OWNERSHIP SIGNAL (0018, 2026-09-05 — request-a-catalog-design.md §3.6,
+  // §4.2). ⚠️ `catalogsForMe()` answers `undefined` when it cannot answer at
+  // all (the table is missing, or the read failed) and `[]` when the person
+  // simply owns nothing; `?? null` carries the first case through to meAnswer
+  // as "omit the key", because the home page's fail-quiet rule needs those two
+  // to stay distinguishable. It never throws — a catalog-table hiccup must not
+  // take down the answer every sign-in path on the estate depends on.
+  const catalogs = await catalogsForMe(c.env.DB, email);
+  return c.json(
+    meAnswer(row, owners.includes(email), await meBillingDenied(c.env.DB, row), catalogs ?? null),
+  );
 });
 
 /**
