@@ -76,6 +76,12 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
 
 <link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- The notices bell in the signed-in line (design
+     docs/info/universe-add-verse-design.md §8.9). A SHARED stylesheet rather
+     than a block in this file's <style>, because the module it dresses runs on
+     this page AND /universes/ — assets/status-shell.css is the same shape.
+     Nothing here renders for a signed-out visitor. -->
+<link rel="stylesheet" href="/assets/apex-notices.css">
 <!-- Classic script ON PURPOSE (not a module): it must stamp the persisted
      theme/mode on <html> before first paint, and modules are deferred. -->
 <script src="/assets/theme.js"></script>
@@ -1006,5 +1012,12 @@ footer a.more:hover svg { transform: translateX(3px); }
      fail-hidden posture: any probe that does not clearly say "approved, and
      you own none of this kind" leaves the card exactly as it is now. -->
 <script type="module" src="/assets/apex-request-catalog.js"></script>
+<!-- The notices bell (phase 4 of docs/info/universe-add-verse-design.md, the
+     front end in §8.9). Third user of the same seam, and the ONE module that
+     draws a notice anywhere on this site — /universes/ loads this exact file.
+     ⚠️ Fail-hidden like its two neighbours, and more so: a 404 from the Worker
+     (which is what today's undeployed routes answer) draws no bell and changes
+     nothing else on the page. -->
+<script type="module" src="/assets/apex-notices.js"></script>
 </body>
 </html>

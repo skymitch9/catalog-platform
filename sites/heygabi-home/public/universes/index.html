@@ -70,6 +70,10 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%233a5a40'/%3E%3Crect%20x='7'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%23fbfaf7'/%3E%3Crect%20x='13.5'%20y='7'%20width='4.5'%20height='18'%20rx='1.2'%20fill='%238fbc8f'/%3E%3Crect%20x='20'%20y='10'%20width='4.5'%20height='15'%20rx='1.2'%20fill='%23d9a441'/%3E%3C/svg%3E">
 
 <link rel="stylesheet" href="/assets/estate-theme.css">
+<!-- The notices bell in the signed-in line (design
+     docs/info/universe-add-verse-design.md §8.9). ⚠️ The SAME file the front
+     door links, not a copy: one bell, one unread count, one stylesheet. -->
+<link rel="stylesheet" href="/assets/apex-notices.css">
 <!-- Classic script on purpose: stamps theme/mode before first paint. -->
 <script src="/assets/theme.js"></script>
 
@@ -583,6 +587,14 @@ footer a { color: var(--et-accent); }
      customElements.define is idempotent-safe here — but this is the same
      load order the front door uses, kept for consistency). -->
 <script type="module" src="/assets/estate-search.js"></script>
+<!-- The notices bell (phase 4 of docs/info/universe-add-verse-design.md, the
+     front end in §8.9), hung on <estate-search>'s slot="who-extra" seam — the
+     SAME module the front door loads, because a second bell would be a second
+     unread count. ⚠️ This is the page the requester is on, and the notice is
+     for the moment they are NOT: it tells them on whichever of the two pages
+     they land on next. Fail-hidden — a 404 from the Worker draws nothing and
+     leaves "Missing a verse?" below entirely alone. -->
+<script type="module" src="/assets/apex-notices.js"></script>
 <script type="module" src="/universes/universes.js"></script>
 </body>
 </html>

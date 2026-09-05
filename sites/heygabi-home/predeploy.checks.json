@@ -29,7 +29,47 @@
         "padhard.heygabi.ai",
         "data-catalog-kind=\"books\"",
         "data-catalog-kind=\"games\"",
-        "/assets/apex-request-catalog.js"
+        "/assets/apex-request-catalog.js",
+        "/assets/apex-notices.js",
+        "/assets/apex-notices.css"
+      ]
+    },
+    {
+      "_why": [
+        "The notices bell (docs/info/universe-add-verse-design.md §8.9). Like the '+' above it, NOTHING it draws",
+        "can be asserted from here: the bell is appended only after a signed-in probe of GET /api/estate/notifications,",
+        "so an unauthenticated fetch sees the <script> and the <link> and nothing else. Both are pinned on / and on",
+        "/universes/ as a PAIR because the module and its stylesheet are separate files: a deploy that shipped the",
+        "script without the sheet would draw an unstyled bell in the middle of the signed-in line, which is exactly",
+        "the shape of failure a cheerful 200 hides.",
+        "The route strings are the contract this file is built against (§8.7); the outage sentence is pinned because",
+        "a network failure worded as a permissions problem is the defect this whole file exists to catch; and the",
+        "opt-out's honesty sentence is pinned because §8.5's second refusal — an opt-out means the notice is never",
+        "WRITTEN, not stored-and-hidden — is a promise to a person and is only visible in that one string."
+      ],
+      "path": "/assets/apex-notices.js",
+      "mustContain": [
+        "/api/estate/notifications",
+        "/api/estate/notifications/read-all",
+        "who-extra",
+        "estate-search:auth",
+        "outage, not a permissions problem",
+        "stops writing that notice at all",
+        "export function probeVerdict"
+      ]
+    },
+    {
+      "_why": [
+        "The bell's stylesheet, shared by / and /universes/ (§8.9.1). CSS cannot white-screen a page, so this pins",
+        "the classes the module actually builds: a sheet that shipped without them renders the panel as unstyled",
+        "body text over the page, which serves 200 and looks like a broken site rather than a missing file."
+      ],
+      "path": "/assets/apex-notices.css",
+      "mustContain": [
+        ".nx-bell",
+        ".nx-badge",
+        ".nx-dialog",
+        ".nx-unread .nx-subject"
       ]
     },
     {
@@ -717,10 +757,19 @@
       ]
     },
     {
+      "_why": [
+        "The notices bell's SECOND home (docs/info/universe-add-verse-design.md §8.9.1) — the same module and the",
+        "same stylesheet the front door links, never a copy, because a second bell would be a second unread count.",
+        "Pinned here as well as on / precisely so the two pages cannot drift apart: a deploy that dropped the pair",
+        "from this page alone would leave the requester — the one person the notice is FOR — with no bell on the",
+        "page they were already on, and every marker on / would still be green."
+      ],
       "path": "/universes/",
       "mustContain": [
         "Universes",
-        "class=\"back\""
+        "class=\"back\"",
+        "/assets/apex-notices.js",
+        "/assets/apex-notices.css"
       ]
     },
     {
@@ -806,6 +855,19 @@
       "ownedBy": [
         "status/api/index.html",
         "status/api/api.js"
+      ]
+    },
+    {
+      "what": "Per-person notices (the bell, its unread count, and the opt-out)",
+      "why": "docs/info/universe-add-verse-design.md §8.9.1 — assets/apex-notices.js is the ONE module that draws a notice, hung on <estate-search>'s slot=\"who-extra\" seam, so a page opts in with a <link> and a <script> and no new code. A bell drawn per page is N copies of one unread count, and the day two of them disagree is the day nobody trusts either",
+      "markers": [
+        "nx-bell",
+        "nx-badge",
+        "/api/estate/notifications",
+        "estate_notification"
+      ],
+      "ownedBy": [
+        "assets/apex-notices.js"
       ]
     }
   ]

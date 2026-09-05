@@ -183,8 +183,13 @@ class StubNode {
  */
 export function installStubDom({ kinds = ['books', 'games'] } = {}) {
   const body = new StubNode('body');
-  const search = new StubNode('div');
+  // ⚠️ The real element is <estate-search>, and one module finds it by TAG
+  // rather than by id (assets/apex-notices.js runs on two pages that name it
+  // two different things). A stub that called it a DIV would let that module
+  // pass here and find nothing in a browser.
+  const search = new StubNode('estate-search');
   search.id = 'find-search';
+  search.setAttribute('auth', 'authed');
 
   const cards = new Map();
   for (const kind of kinds) {
@@ -197,11 +202,15 @@ export function installStubDom({ kinds = ['books', 'games'] } = {}) {
   const document = {
     body,
     createElement: (tag) => new StubNode(tag),
+    /** SVG lives in its own namespace; the stub does not care which. */
+    createElementNS: (_ns, tag) => new StubNode(tag),
     getElementById: (id) => (id === 'find-search' ? search : null),
     querySelectorAll: (sel) => {
       if (sel === '[data-catalog-kind]') return [...cards.values()];
+      if (sel === 'estate-search') return [search];
       throw new Error(`stub-dom: unsupported selector ${sel} — add it deliberately, do not widen this blindly`);
     },
+    querySelector: (sel) => document.querySelectorAll(sel)[0] || null,
   };
 
   const prev = {

@@ -579,6 +579,126 @@ migration look identical to a person and only one of them is worth a word.
 - ☐ **A real notice has never been written**, because no request has ever been
   filed.
 
+### 8.9 The front end, as built — 2026-09-05 (agent `W3-NOTICES-UI`)
+
+> **Last verified: 2026-09-05** for **this section only** — `npm test` at the
+> repo root, `npm run check:home` and `npm run verify:home` were run, and the
+> deployed bundle was fetched cache-busted. ⚠️ **NOT verified: nobody has seen
+> the bell signed in.** A session cannot sign in as a person; every claim below
+> about what a *member* sees is proven against the stub-DOM harness and the
+> Worker's source contract, never against a browser. §§1–8.8 were not
+> re-measured.
+
+**The second ☐ of §8.8 is closed in code.** `assets/apex-notices.js` +
+`assets/apex-notices.css`, linked from `/` and `/universes/`.
+
+#### 8.9.1 Where it lives, and why there is only one of it
+
+The bell hangs off **`<estate-search>`'s one extension point — the light-DOM
+child carrying `slot="who-extra"`**, which renders inside the component's own
+signed-in "who" line (`assets/estate-search.js`, `.es-who`: *"Signed in as
+Amber · sign out"*). That line is the estate's single canonical rendering of
+"the front door learnt who you are", and the seam already exists precisely so a
+host page can hang something on it without the component learning what it is —
+`apex-admin-link.js` used it for the Admin chip until 2026-08-16.
+
+⚠️ **This is a one-fact-one-home decision, not a convenience.** A bell drawn
+per page would be N copies of an unread count, and the estate has already been
+bitten by two surfaces answering one question with different numbers. So: one
+module, one stylesheet, and a page opts in with a `<link>` and a `<script>` and
+no new code.
+
+| Page | Draws the bell? | Why |
+|---|---|---|
+| `/` | ✅ | embeds `<estate-search auth="authed">` (`#find-search`) |
+| `/universes/` | ✅ | embeds `<estate-search auth="authed">` (`#uni-search`) — ⚠️ and it is the page the requester is on |
+| `/series/` | ❌ | deliberately embeds **no** `<estate-search>` (that page's own head comment: it keeps the page's CSP tighter) |
+| `/admin/`, `/status/*`, `/todo`, `/docs` | ❌ | gated operator surfaces with their own sign-in; a member's addressed mail is not an ops surface |
+
+The module finds the component with `document.querySelector('estate-search')`
+rather than by id, because the two pages give it two different ids
+(`find-search`, `uni-search`) and a module that hardcoded one would be silently
+dead on the other — the failure being avoided is *"it works on the front door,
+so it must work everywhere"*.
+
+#### 8.9.2 The refusal table — ⚠️ and NONE of it is visible
+
+Every row here ends in *nothing rendered*, which is the opposite of this
+estate's usual rule and is deliberate: **the bell is a courtesy, and a courtesy
+that cannot be delivered must not become an error message about itself.** A
+page whose Worker has not been deployed yet would otherwise shout at every
+signed-in visitor about a feature they never asked for.
+
+| What happened | What the page does |
+|---|---|
+| Signed out | No bell — and the slot is not even filled |
+| `401` / `403` (lapsed, or not an approved member) | Treated as signed-out. No bell |
+| `404` (the routes are not deployed — ⚠️ **this is today**) | No bell. Nothing else on the page changes |
+| `5xx` | No bell |
+| `fetch` threw (network, or a rejected CORS preflight) | No bell |
+
+⚠️ **The four causes stay distinct in code even though the UI hides all of
+them** — `signedOut` / `lapsed` / `refused` / `network` / `unavailable` are
+separate outcomes of one `authedJson()` helper, because *"a network or server
+failure is NOT a permission failure"* is a rule about diagnosis, and the day
+somebody debugs a missing bell the distinction is the whole answer.
+
+**Once the bell IS drawn, the estate's ordinary rule resumes:** every action
+inside the panel — mark read, mark all read, the opt-out — that fails says in
+words what happened, and the **server's own `detail` sentence wins** whenever
+it sent one. No bare status ever reaches a person.
+
+#### 8.9.3 The panel
+
+A `<dialog>` on `document.body` (`apex-request-catalog.js`'s `rc-dialog`
+precedent), **not** a popover inside the who line: that line is a `<p>` living
+inside another element's shadow DOM, and hanging a positioned panel off slotted
+content is a layout fight with no upside.
+
+- Notices **newest first**, straight from the route's own order.
+- 🔴 **The words are the Worker's.** `subject` and `body` are rendered verbatim
+  — `textContent`, never markup, never re-wrapped, never summarised. §8.6's
+  guarantee that *`approved` never reads as done* lives in `verseNotice()`, and
+  a page that paraphrased would be free to break it. The one sentence this page
+  composes about a decision is **none**.
+- Each notice carries its own age (`Intl.RelativeTimeFormat` — ⚠️ the platform's
+  formatter, deliberately **not** a third estate copy beside `core.js`'s
+  `formatAge` and `storage-view.js`'s `formatAgeShort`) with the exact instant
+  on hover.
+- `link` is followed only when it is `https://` — a link field is data, and
+  data from a database is not a URL you hand to `href` unchecked.
+- **Mark read** per notice, **Mark all read** for the badge. An unread notice
+  is marked by a dot and a bold subject, so "unread" is never carried by colour
+  alone.
+- The **opt-out** toggle, read from `GET …/prefs` **when the panel opens** and
+  not before — a switch nobody looks at should not cost a request on every page
+  load. Its wording carries §8.5's second refusal out loud: switching it off
+  means the estate **stops writing** these notices, and does not hide the ones
+  already here.
+
+⚠️ **The bell is drawn even at zero unread**, once the route has answered. Two
+reasons: the opt-out has to live somewhere a person can find it, and a control
+that only exists when there is news is a control nobody knows exists.
+
+#### 8.9.4 What a Worker ahead of its migration shows
+
+`GET /api/estate/notifications` answers **200 with an empty list, plus a `fix`
+naming `npm run db:migrate`** (§8.7). The page renders that as **the empty
+state and nothing else** — the `fix` sentence is an operator's line and is not
+put in front of a member, which is the same judgement the route made when it
+chose 200-over-500. It is visible in the network response for whoever is
+debugging.
+
+#### 8.9.5 Guards
+
+- `scripts/test/apex-notices.test.mjs` drives the **real module** through the
+  stub DOM (`scripts/test/helpers/stub-dom.mjs`): signed out, `404`, `5xx`, a
+  thrown fetch, `403`, the unread badge, the empty list, verbatim rendering,
+  mark-read, mark-all-read, and the prefs POST body.
+- `predeploy.checks.json` pins the module's route strings and both pages'
+  `<script>`/`<link>` tags, and adds a **surface owner** entry so a second
+  notices UI anywhere under `public/` fails `check:home` by name.
+
 ---
 
 **Mockup:** https://claude.ai/code/artifact/d1cfd9d1-2b7c-458a-8c66-5b5dc7e78384
