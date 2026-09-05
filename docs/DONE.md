@@ -9,6 +9,177 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 — the apex CSP would have blanked a provisioned catalog's covers — fixed, deployed and verified as SERVED
+
+Moved whole from `TODO.md` by agent W2-PLAT. Commit `79d92da`; **deployed**
+`heygabi-home` `ce97408a` (from a throwaway worktree of HEAD — two other agents
+had uncommitted files in the shared tree). No migration is involved, and that is
+a measurement: this ships one edge-headers file and no schema anywhere.
+**Verified live** with `curl -s -D -` and a cache-buster: `/`, `/universes/` and
+`/series/` serve `img-src 'self' data: https://*.heygabi.ai https://covers.heygabi.ai
+https://bookcovers.heygabi.ai https://library.heygabi.ai https://covers.openlibrary.org
+https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com`,
+and `/admin/` the same minus `library.heygabi.ai`. `verify:home` passed first
+run, 30 pages. Review link: <https://heygabi.ai/> (the covers on the search
+results are what the directive gates).
+
+🔴 **THE ITEM'S OWN PROPOSED FIX COULD NOT BE WRITTEN, and this is the finding
+worth keeping.** It asked for `gamecovers*.heygabi.ai`. CSP3's grammar —
+`host-part = "*" / [ "*." ] 1*host-char *( "." 1*host-char )` — allows a
+wildcard **only as the whole leftmost label**, so a partial one is not a
+narrower rule: it is an **invalid source expression** browsers drop with a
+console warning, i.e. the same silent blank with extra confidence. The real
+choice was `https://*.heygabi.ai` or a hand edit per instance. The wildcard was
+taken because the zone is entirely owner-controlled, `img-src` grants no
+execution, and `Referrer-Policy: no-referrer` is already on `/*` — and it is
+**not** the `https:` wildcard `_headers`' own 2026-08-15 note rejects, which
+re-admits the whole internet. The four named cover hosts stay as documentation
+of what production serves. ⚠️ **NOT verified:** no `gamecovers2.heygabi.ai` or
+`bookcovers2.heygabi.ai` exists yet, so no browser has ever been asked to load
+an image from one — the header is proved as SERVED, not as EXERCISED. The
+grammar claim is read off the specification, not measured in Chrome.
+
+⚠️ **Two claims in the original text were wrong and are corrected here rather
+than silently:** (1) *"verify with `verify:home`'s header check"* — `verify:home`
+(`scripts/predeploy-check.mjs --live`) asserts **body markers only** and reads no
+response header at all (`grep -n "header" scripts/predeploy-check.mjs` → one hit,
+an outbound request header). The live proof is the `curl` above. (2) `session.ts`'s
+second 401 was at **`:85`**, not `:69` — agent RES's bare-401 fix shifted it the
+same day.
+
+The session.ts half of this item is code-landed and **NOT deployed** — see the
+`estate-auth` section still open in [`TODO.md`](TODO.md); it rides the owner's
+one batched deploy.
+
+The original text, verbatim:
+
+> ## ☐ The home site's CSP would BLOCK a provisioned games instance's covers (found 2026-09-05 by agent RES)
+>
+> `sites/heygabi-home/public/_headers` names `gamecovers.heygabi.ai` explicitly in
+> every CSP `img-src`. A games instance provisioned under naming rule (a) serves
+> its covers from `gamecovers<N>.heygabi.ai` (design §7.1; ordinal because
+> `COVERS_BASE_URL` is written into `thumbnail_url` rows), so the first
+> `gamecovers2` catalog's images would be blocked on the apex with nothing in
+> the provisioner's runbook saying so. **Fix:** widen the `img-src` entry to the
+> pattern the reserved list now guards (`gamecovers*.heygabi.ai`, and
+> `bookcovers*.heygabi.ai` for the custom-domain tier of §7.2 step 2 while
+> there), verify with `verify:home`'s header check, and add the line to design
+> §7.6a step 2 so the next provisioner run reads it. Size: one-file fix, ~40k.
+> Also from RES, smaller: `session.ts:69` has a second 401 whose `detail` is the
+> technical `'token carries no uid'` — reword for a person in the same pass.
+
+## ☑ CODE LANDED 2026-09-05 (agent W2-VERSE4, `f2e7543`) — "+ Add a verse" PHASE 4, notify the requester on a decision — 🔴 ☐ NOT DEPLOYED, ☐ NOT MIGRATED
+
+> ⚠️ **A PHASE, not the whole item** — the same shape as the *"phases 0–3
+> BUILT"* entry further down this file. `TODO.md`'s *"+ Add a verse"* section
+> stays open for item 6 (the first real `landed` call) and for the page that
+> would draw a notice. Design of record and the full as-built:
+> [`info/universe-add-verse-design.md`](info/universe-add-verse-design.md) **§8**.
+>
+> **Commit** `f2e7543` — `apps/auth-worker/src/notifications.ts` (new),
+> `migrations/0019_estate_notification.sql` (new, purely additive),
+> `src/universe-requests.ts` (the decide/landed wiring), `src/index.ts` (two
+> CORS mounts + the route mount), `test/notifications.test.ts` (new, 29 tests)
+> and six wiring tests in `test/universe-requests.test.ts`.
+> **Deploy:** 🔴 **none.** `npx wrangler deploy` for `estate-auth` is refused by
+> the permission system for agents (twice today, both shells), so this rides in
+> the batched owner deploy that `TODO.md`'s *"Three BARE-STATUS 401s"* section
+> holds. ⚠️ **THE OWNER'S TWO COMMANDS, IN THIS ORDER — this deploy is now a
+> migrate-first one:**
+> `cd apps/auth-worker && npm run db:migrate` (applies `0019` to remote
+> `estate_auth`), **then** `npx wrangler deploy`.
+> **Verified:** the suite, `682 → 721 pass / 0 fail`, and `tsc` clean on both
+> projects. **NOT verified — and it is the whole feature's standing debt:**
+> nothing live. Migration not applied, Worker not deployed, and 🔴 **no notice
+> has ever been written, because no verse request has ever been FILED**
+> (`SELECT COUNT(*) FROM universe_request` = 0, read remote read-only earlier
+> the same day). Every 200-side path is proven against an in-memory D1 only.
+> **Review link, after the deploy:** file a request at
+> <https://heygabi.ai/universes/>, approve it at <https://heygabi.ai/admin/> →
+> **Verse requests**, then read the notice back with the requester's own
+> session — ⚠️ **there is no page for that yet**, so today that read is a
+> `GET https://auth.heygabi.ai/api/estate/notifications` with a signed-in
+> token, which is exactly the gap the front-end step names.
+
+**What landed, and the two places it departs from the design it implements.**
+
+§4's phase table says only *"Notification when a request is decided (reuse
+`estate_prefs`/`notify-prefs.ts`)"*. Half of that was honoured exactly:
+
+- ✅ **The opt-out reuses `estate_prefs` (0014)**, one row per person under
+  `notify:user:<id>`, parsed with `notify-prefs.ts`'s own idioms — defaults
+  filled in, ⚠️ refuses-never-strips on write, and ⚠️ an unreadable row falls
+  back to the **defaults**, never to silence.
+- 🔴 **The messages could not.** `estate_prefs` is one row per KEY of owner-set
+  settings that the CONDUCTOR reads; a stream of dated messages addressed to
+  people is not a settings row. Hence `0019_estate_notification.sql`, **a
+  migration the design never named** — said loudly in the migration's own
+  header, the module header, and the design's new §8, rather than left for a
+  reader who trusted the phase table to discover.
+
+🔴 **WHAT THIS IS: IN-APP DELIVERY. NOTHING HERE SENDS ANYTHING.** No phone
+buzzes, no email leaves, nobody is DM'd — because **this Worker holds no
+outbound channel to a member.** `notify-prefs.ts` is the OWNER's phone,
+delivered by the conductor over its own bearer; there is no equivalent for
+anybody else. Email needs a mail credential; a GABI DM needs `estate-auth` to
+hold a Discord bearer **and** `CONSUMER_APPS` to accept one, which
+`test/dev-access.test.ts` guards against by name as *"a capability nobody
+granted it"*. ⚠️ **Both are access-INCREASING, so they are the owner's to mint
+and not an agent's to assume.** The queue is built, the channel is **named**,
+and the estate stays honest that a notice **waits to be read** rather than
+claiming it was **sent**.
+
+**Why it is not a second copy of the /universes queue** (the one-fact-one-home
+rule for surfaces would otherwise refuse it): that queue answers *"what is the
+state of my requests"*, always current; a notice answers *"what changed since I
+last looked"* — dated, quoting the decider's words **as they stood then**,
+markable read. The status is the fact; the notice is the event. ⚠️ Rendering it
+by re-reading the row would make a message about the past change when the past
+changes, which is how *"you were declined because X"* becomes a sentence nobody
+ever wrote.
+
+**Why it is not the event ring**, which is this Worker's other notifier:
+`worker-events.ts`'s own header forbids it (*"a noticeboard, not a log … Not
+requests"*), it is per-WORKER, and it is read behind `requireDevops()`, so a
+member could never see a line addressed to them. ⚠️ **The ring IS used for
+exactly one thing, which is the thing it is for:** when writing a notice FAILS,
+one `warn` line goes to it. A notifier that fails silently is worse than none,
+because the silence is then trusted.
+
+**The three refusals, each pinned by a test:**
+
+1. 🔴 **Nothing is written when there is no requester** — a seed, a script or a
+   `system` principal has nobody to tell, and inventing a recipient writes a
+   message nobody is owed into somebody's inbox.
+2. 🔴 **An opt-out means the notice does not EXIST**, not that it is stored and
+   hidden. The switch is read by the *writer*, in the one place a notice is
+   written, so no later caller can route around it.
+3. 🔴 **A FAILED NOTICE NEVER FAILS THE DECISION.** `notify()` is the last
+   statement in the handler, hands its work to `waitUntil` and swallows every
+   path: the decision is already durable in D1, and throwing would turn a
+   completed approval into a 502 the approver would reasonably retry — ⚠️ **and
+   the retry would meet `already_decided`.**
+
+⚠️ **`landed` is notified too, and the design did not ask for it.** The clause
+says *"when a request is decided"* and is silent about `landed`; §3.6 is the
+argument for the extension — *"landed rows disappear from this section"* — so
+without it the last thing that ever happens to a request, from the requester's
+side, is that it **silently vanishes**, and the one moment the verse actually
+exists is the one moment nobody tells them. ⚠️ **`approved` still never reads as
+done** in any of the three notices, and a test refuses any sentence claiming the
+verse now exists.
+
+**Two smaller findings, kept because they cost a reader time:**
+
+1. **The design doc had two stray XML tags at the bottom** (`</content>`,
+   `</invoke>`) rendering as literal text since 2026-08-26 — a tool artifact.
+   Removed.
+2. **The doc's own header was stale in both directions** — it said phases 0–3
+   were NOT deployed and `0017` NOT applied, three days after both happened.
+   Corrected in place with the deploy ids, struck rather than deleted.
+
+---
+
 ## 2026-09-05 — the `discord:D5` estate probe, fixed: the suite is 137/137 again
 
 Moved whole from `TODO.md` by agent W2-PLAT. Commit `d7b8465`

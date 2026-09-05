@@ -521,6 +521,40 @@ still `0018_catalog_requests.sql`, so migrate-before-deploy has nothing to do
 here. Then append the `deploys.log` line, re-run the three curls below, and move
 this section WHOLE to [`DONE.md`](DONE.md).
 
+- 🔴 **RIDING ALONG — AND IT MAKES THIS DEPLOY A MIGRATE-FIRST ONE.** Added
+  2026-09-05 by agent W2-VERSE4: *"+ Add a verse"* **phase 4** landed in
+  `f2e7543` (`apps/auth-worker/src/notifications.ts` + the decide/landed wiring
+  + `migrations/0019_estate_notification.sql`), and phase 5 of *"request a
+  catalog"* landed before it. ⚠️ **So the sentence above — *"No migration is
+  involved … the highest in the tree is still `0018`"* — is true of RES's own
+  change and NO LONGER TRUE OF THE DEPLOY**, because a deploy ships the tree,
+  not one commit. The order is not optional: **`npm run db:migrate` (from
+  `apps/auth-worker`, applies `0019` to remote `estate_auth`) BEFORE
+  `npx wrangler deploy`.** `0019` is purely additive — one
+  `CREATE TABLE IF NOT EXISTS` plus one index, no `ALTER`, no `DROP` — and the
+  Worker survives arriving first anyway (it answers 200 with the fix and writes
+  no notice), but the reverse order costs every decision made in the gap.
+
+- 🔴 **ALSO RIDING ALONG — a FOURTH bare-ish 401 on the same route.** Added
+  2026-09-05 by agent W2-PLAT, landed in `79d92da`, **NOT DEPLOYED** with the
+  rest. `POST /api/session` has a *second* refusal — `if (!identity.uid)` — that
+  RES's sweep did not reach because it was not on the list of three. Its
+  `detail` read the technical `'token carries no uid'`; it is now three clauses
+  written for the browser mid-sign-in that meets it, and deliberately **not** the
+  same sentence as the branch above it (that one says "sign in again"; this one
+  survived verification and still cannot be used, so it escalates to the owner
+  after a second attempt instead of looping the person). ⚠️ The `error` code
+  stays exactly `unauthenticated`. ⚠️ **It was at `session.ts:85`, not `:69`** —
+  RES's own fix shifted the line the same day. ⚠️ **The branch is UNEXERCISED and
+  the test says so:** reaching it needs a Firebase ID token that verifies against
+  a real JWKS and yet carries no `sub`, which no suite here holds or will mint,
+  so the wording is a named export (`SESSION_NO_UID_DETAIL`) and
+  `test/session.test.ts` pins the three clauses and the absent jargon instead —
+  19/19 on that file, 686/686 for the Worker at HEAD. **Nothing extra to run at
+  deploy time**; it ships with the same `wrangler deploy` above and adds no
+  migration of its own. There is no curl that reaches it, so it cannot join the
+  three verification commands below — that is a gap, not an omission.
+
 ☐ **Verify after deploying** (⚠️ `-I` and `-o NUL` misreport on these hosts —
 use `-D -` and pipe to `head`):
 
@@ -613,21 +647,6 @@ reads **14 names with `count_phrase` among them**, `gabi_groq` `"first"`,
 `gabi_groq_ready` `true`, `groq_key_gabi` `true`. `gabi-tools.ts:1014` carries the
 array entry. So the fix is still deployed and still configured; **only the wire
 observation is outstanding**, and nothing about it is a build.
-
-## ☐ The home site's CSP would BLOCK a provisioned games instance's covers (found 2026-09-05 by agent RES)
-
-`sites/heygabi-home/public/_headers` names `gamecovers.heygabi.ai` explicitly in
-every CSP `img-src`. A games instance provisioned under naming rule (a) serves
-its covers from `gamecovers<N>.heygabi.ai` (design §7.1; ordinal because
-`COVERS_BASE_URL` is written into `thumbnail_url` rows), so the first
-`gamecovers2` catalog's images would be blocked on the apex with nothing in
-the provisioner's runbook saying so. **Fix:** widen the `img-src` entry to the
-pattern the reserved list now guards (`gamecovers*.heygabi.ai`, and
-`bookcovers*.heygabi.ai` for the custom-domain tier of §7.2 step 2 while
-there), verify with `verify:home`'s header check, and add the line to design
-§7.6a step 2 so the next provisioner run reads it. Size: one-file fix, ~40k.
-Also from RES, smaller: `session.ts:69` has a second 401 whose `detail` is the
-technical `'token carries no uid'` — reword for a person in the same pass.
 
 ## ☐ Flip `GABI_CLUB_WRITES` — 5 of 7 steps left, and step 3 is BLOCKED on the `/progress percent` decision below
 
@@ -1115,7 +1134,7 @@ policy can only deny, so a path under two switches is refused if either
 denies, which fails safe. A test pins the list of double covers so a NEW one
 has to be argued for.
 
-### 2. "+ Add a verse" — ✅ DEPLOYED 2026-09-02 ~15:00 on the owner's "Run it"; two open remnants
+### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`) — 🔴 ☐ migrate + deploy (owner), ☐ first real use
 
 Phases 0–3 archived whole in [`DONE.md`](DONE.md). The fixed-order deploy RAN:
 migration `0017` applied to remote `estate_auth` first (`npm run db:migrate`,
@@ -1138,9 +1157,41 @@ link for the human step: <https://heygabi.ai/universes/> to file one, then
 
 Remaining, unchanged:
 
-5. ☐ **Phase 4 — notify on a decision** (~½ day, a labelled guess). Reuse
-   `estate_prefs` / `notify-prefs.ts`. Unbuilt; it was never a recommendation,
-   just a later phase.
+5. ☑ **CODE LANDED 2026-09-05 (agent W2-VERSE4, `f2e7543`) — Phase 4, notify on
+   a decision** — 🔴 **☐ deploy + migrate (owner).** ~~Unbuilt; it was never a
+   recommendation, just a later phase.~~ The as-built, its two departures from
+   the design and what is still open are
+   [`info/universe-add-verse-design.md`](info/universe-add-verse-design.md) §8.
+   In short: the **opt-out** reuses `estate_prefs` as §4 asked
+   (`notify:user:<id>`, `notify-prefs.ts`'s own parse idioms); the **messages**
+   could not, so there is a migration the design never named —
+   `0019_estate_notification.sql`, purely additive. `POST …/decide` and
+   `POST …/landed` now write one notice to the **requester** (never the
+   approver), quoting the decider's words verbatim; ⚠️ `approved` still never
+   reads as done. Nothing is sent when there is no requester, an opt-out means
+   the notice does not exist, and 🔴 **a failed notice never fails the
+   decision** — three refusals, three tests. Doors:
+   `GET /api/estate/notifications`, `POST …/:id/read`, `POST …/read-all`,
+   `GET|POST …/prefs`, all `requireApprovedMember()` and apex-CORS-mounted.
+   Suite 682 → 721 pass / 0 fail; `tsc` clean.
+   - 🔴 **IN-APP ONLY — nothing buzzes a phone, sends mail or DMs anybody**,
+     because this Worker holds no outbound channel to a member (§8.2). Email
+     needs a mail credential; a GABI DM needs `estate-auth` to hold a Discord
+     bearer and `CONSUMER_APPS` to accept one, which `test/dev-access.test.ts`
+     guards against by name — ⚠️ **access-INCREASING, so the owner's to mint,
+     not an agent's to assume.** The queue is built and the channel is named.
+   - ☐ **The owner's two steps, in this order:** `cd apps/auth-worker &&
+     npm run db:migrate` (applies `0019` remotely), then `npx wrangler deploy`.
+     Batched into the one estate-auth deploy manifest above — the section that
+     also carries RES's bare-401 fix and S1's sealed-key phase.
+   - ☐ **No page draws a notice yet.** The routes exist; the front end that
+     renders them is not built, and until it is a requester still learns their
+     answer by visiting <https://heygabi.ai/universes/> and reading the row —
+     ⚠️ which is exactly the person the notice was for: the one who is *not*
+     already looking.
+   - ☐ **Never exercised.** No notice has ever been written, because no request
+     has ever been filed (`SELECT COUNT(*) FROM universe_request` = 0, measured
+     2026-09-05). The whole 200 side is proven against an in-memory D1 only.
 6. ☐ **First real use closes its own loop:** after the JSON edit and both
    catalog rebuilds, `POST /api/estate/universes/requests/:id/landed { commit }`
    flips the row from `approved` to `landed`. Until somebody does that once, the
