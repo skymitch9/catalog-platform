@@ -454,6 +454,20 @@
 # estate-admin action performed from this page with the admin's own bearer.
 # The federation lesson applies here too: a fetch origin missing from this
 # list fails as if the host were down.
+#
+# ⚠️ /admin's img-src OMITS https://library.heygabi.ai ON PURPOSE, and the
+# omission was MEASURED, not inherited — 2026-09-05, after W2-PLAT reported the
+# asymmetry against /, /universes* and /series*. `admin/admin.js` and
+# `admin/index.html` contain ZERO <img> tags, no `new Image()`, no image `.src`
+# assignment and no remote `url(...)`: the page's one background-image is
+# `var(--et-bg-texture)`, which estate-theme.css resolves to `none` or a
+# `data:` SVG. THE ADMIN PAGE RENDERS NO COVERS AT ALL, so naming a cover host
+# here would widen a policy for a request that is never made — and the named
+# hosts in this file are documentation of what a page actually serves, not
+# symmetry for its own sake. ⚠️ Nothing is blocked today either way:
+# https://*.heygabi.ai has been on every img-src since ce97408a (2026-09-05),
+# so library.heygabi.ai is already covered on this rule and every other. If a
+# member card ever grows a cover thumbnail, this line is the one to revisit.
 /admin
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://discord.heygabi.ai https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: https://*.heygabi.ai https://covers.heygabi.ai https://bookcovers.heygabi.ai https://covers.openlibrary.org https://books.google.com https://gamecovers.heygabi.ai https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://auth.heygabi.ai https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

@@ -584,6 +584,24 @@ section WHOLE to [`DONE.md`](DONE.md).
   Tests 682 → 685 at the time it landed; 721/721 for the Worker at HEAD.
   ⚠️ It adds no unauthenticated route, so it cannot join the three curls below.
 
+- **ALSO RIDING ALONG — a SECOND door refusal on the same route.** Added
+  2026-09-05 by agent W3-PLATSMALL, landed in `5714993`, **NOT DEPLOYED** with
+  the rest. `POST /api/estate/billing/rules` now also refuses a `feature` whose
+  registry row does not list the `site` named (400 `feature_not_on_site`,
+  worded, naming the feature's label, the site, and the sites it IS on).
+  `{feature:'cli.backfill', site:'games'}` stored cleanly until this landed and
+  denied nobody, ever — the games catalogue has no command-line backfill, so
+  nothing there asks about that id, and the row sat in `billing_policy` looking
+  exactly like a switch that works. ⚠️ The matrix already drew such a cell
+  `n/a`, but that is a UI rule and a UI rule is one fetch away from being
+  bypassed — the same argument as `44492c8` above and the owner's 409.
+  `*` on either side is exempt and stays exempt (a test pins it). ⚠️ **No
+  migration of its own**, no new route, and it only NARROWS what the door will
+  store, so it has no ordering constraint against anything else in this
+  manifest. Suite 721 → 723 pass / 0 fail; `tsc` clean both projects.
+  ⚠️ It adds no unauthenticated route, so it cannot join the three curls below.
+  As-built line: [`info/llm-billing-control-design.md`](info/llm-billing-control-design.md) §11.2 row 12.
+
 - ☑ **A SECOND DEPLOY, A DIFFERENT PROJECT — `heygabi-home` (Pages) — DEPLOYED
   2026-09-05 21:06 UTC by the conductor.** Agent W2-BILL2B's phase 2b UI landed
   in `52ab54c` (the Spending column on every member's permission grid) and went
@@ -598,6 +616,33 @@ section WHOLE to [`DONE.md`](DONE.md).
   **Spending** cell on any row. ⚠️ Until the `estate-auth` deploy above lands,
   the server half (`44492c8`) is not live and the column's refusal to draw a
   control for a system-only path is client-side only.
+
+- ✅ **CLOSED 2026-09-05, NO DEPLOY NEEDED — the `/admin` `img-src` asymmetry
+  W2-PLAT reported against `ce97408a` is DELIBERATE, and it was MEASURED, not
+  assumed** (agent W3-PLATSMALL, `_headers` comment only). The two `/admin`
+  rules omit `https://library.heygabi.ai` while `/`, `/universes*` and
+  `/series*` carry it. Measured in the page itself: `admin/admin.js` and
+  `admin/index.html` hold **zero** `<img>` tags, no `new Image()`, no image
+  `.src` assignment and no remote `url(...)` — the one `background-image` is
+  `var(--et-bg-texture)`, which `assets/estate-theme.css` resolves to `none` or
+  a `data:` SVG. **The admin page renders no covers at all**, so adding the host
+  would widen a policy for a request that is never made; the named hosts in
+  `_headers` are documentation of what a page actually serves, and `_headers`
+  says so itself. ⚠️ **And nothing is blocked today either way:**
+  `https://*.heygabi.ai` has been on every `img-src` since `ce97408a`, so
+  `library.heygabi.ai` is already covered on `/admin` and everywhere else — the
+  named host is redundant as ENFORCEMENT on all seven rules and kept only as
+  documentation. So this was a docs finding, not a header defect. Live re-read
+  2026-09-05 (`curl -s -D -` with a cache-buster on
+  <https://heygabi.ai/admin/>): `img-src 'self' data: https://*.heygabi.ai
+  https://covers.heygabi.ai https://bookcovers.heygabi.ai
+  https://covers.openlibrary.org https://books.google.com
+  https://gamecovers.heygabi.ai https://lh3.googleusercontent.com` — unchanged.
+  The only edit is a comment beside the `/admin` rule recording the measurement
+  so the next reader does not re-report it; comments change no served header, so
+  it needs no deploy of its own and rides the next `heygabi-home` deploy
+  harmlessly. ⚠️ **What would reopen it:** a member card growing a cover
+  thumbnail.
 
 ☐ **Verify after deploying** (⚠️ `-I` and `-o NUL` misreport on these hosts —
 use `-D -` and pipe to `head`):
