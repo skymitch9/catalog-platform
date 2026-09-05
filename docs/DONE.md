@@ -9,6 +9,38 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 09:15 Phoenix — the provisioning private key has a second custodian: 1Password `Estate`
+
+Moved whole from `TODO.md`. Done from the owner's phone: he connected by Chrome
+Remote Desktop, the session ran `op document create` (the CLI reads the file
+itself — the value never entered the session), and he approved the 1Password
+authorise prompts with Windows Hello. **Gotcha measured on the way:** with the
+desktop-app integration on, EVERY `op` call in a fresh process raises its own
+authorise prompt and times out in ~60 s if nobody is watching the screen —
+the first `op item list` timed out, the `op document create` right after it was
+approved, the verification read timed out once more and passed on the retry.
+So batch the calls into one job and have the approver ready BEFORE running it.
+Verified by name and size only: 1 matching item, DOCUMENT
+`catalog-provisioning.private.jwk` id `wjsfpbl4hw3zujxdctiaoonvyu`, created
+2026-09-05T16:15:54Z, attached file 3,333 B = the file on disk. Custody row:
+`access/RECOVERY.md` §11.3, with the `op document get … --out-file` restore.
+NOT verified: a restore round-trip (the file was not fetched back and compared).
+Original item:
+
+☐ **Put a copy of `catalog-provisioning.private.jwk` in 1Password `Estate`.**
+Losing it does not lose a secret that can be re-minted — it makes every pending
+envelope permanently unopenable, and every requester has to be asked again.
+**Owner, 2026-09-05 09:09 (on his phone): "Is there any way you can do it, or
+at least set it up for an easy remote in and windows hello."** Measured the
+same minute: `op` CLI 2.34.1 is installed and knows the account; the 1Password
+app is running with CLI integration on (`op vault list` waits on the app's
+authorise prompt and times out, it does not ask for a password); Chrome Remote
+Desktop host is installed and its `chromoting` service is Running. So the path
+is: he remotes in with CRD, the session runs `op document create <file>
+--vault Estate` (the CLI reads the file itself — the value never passes through
+the session), and he approves the one Windows Hello prompt with his PIN. Never
+`cat`/paste the file.
+
 ## 2026-09-05 08:35 Phoenix — OWNER DECISION: instance naming is (a), the split as built
 
 Moved whole from `TODO.md` ("Request a catalog" → phase 7 residue). The owner's

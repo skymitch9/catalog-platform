@@ -408,9 +408,9 @@ reads `reader_key_set` back and must say so in words if it is not `1`. Then run
 `node scripts/provision-catalog.mjs --request <id> --dry` in `library_catalog`
 and confirm step 10 reports the reader envelope **PRESENT**.
 
-☐ **Put a copy of `catalog-provisioning.private.jwk` in 1Password `Estate`.**
-Losing it does not lose a secret that can be re-minted — it makes every pending
-envelope permanently unopenable, and every requester has to be asked again.
+(The 1Password copy of `catalog-provisioning.private.jwk` landed 2026-09-05
+09:15 Phoenix — moved whole to [`DONE.md`](DONE.md); custody row in
+[`access/RECOVERY.md`](access/RECOVERY.md) §11.3.)
 
 ## ☐ Three more BARE-STATUS 401s in the auth Worker (found 2026-09-05 by agent S1)
 
