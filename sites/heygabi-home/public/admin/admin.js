@@ -3661,9 +3661,9 @@ function catalogAcceptPanel(row) {
 }
 
 /**
- * The pre-filled next step (§5.4 item 5, §7.4). Per KIND, because the two are
- * not the same job: books has a provisioner to run, games has prerequisites in
- * another repo that nobody has built.
+ * The pre-filled next step (§5.4 item 5, §7.4 / §7.6). Per KIND, because the
+ * two provisioners live in different repos with different ledgers and are
+ * deliberately NOT interchangeable (phase 9, 2026-09-05).
  */
 function catalogNextStep(row) {
   const box = document.createElement('div');
@@ -3691,18 +3691,22 @@ function catalogNextStep(row) {
   }
 
   if (row.kind === 'games') {
-    lead.textContent = 'There is no next step to run yet — the games provisioning path is not built.';
+    lead.textContent = 'Your next step, from a dev machine, in boardbuddy/Board_Game_Catalog:';
+    const cmd = document.createElement('pre');
+    cmd.className = 'cat-cmd';
+    // --dry first, always — same rule as books; the games script never deploys,
+    // it prints the guarded deploy command for the owner to run (§7.6 step 10).
+    cmd.textContent = `npm run provision:catalog -- --request ${row.id} --dry`;
+    box.appendChild(cmd);
     const after = document.createElement('p');
     after.className = 'role-tree-note';
-    after.append(
-      'Board_Game_Catalog has no [env.*] blocks, a hard-coded estate identity and no donor machinery, so the ' +
-      'prerequisites come first: docs/info/request-a-catalog-design.md §8 lists them, and §7.6 is the ledger. ' +
-      'Accepting this row is a promise to that person; nothing on this page shortens it. The docs are searchable at ',
-    );
-    const a = document.createElement('a');
-    a.href = '/docs/';
-    a.textContent = 'heygabi.ai/docs';
-    after.append(a, '.');
+    after.textContent =
+      'That prints all twelve steps and changes nothing; run it again without --dry. It stops twice for you: once ' +
+      'to add the new hostname to Firebase’s authorised domains, and once to register the catalog as an estate ' +
+      'consumer in the auth Worker (CONSUMER_APPS, appTokenFor(), siteForApp(), BILLING_SITES and a vis_ migration) ' +
+      '— no CLI can do either, and it prints the exact edits. A games catalog has no donor and no peers, so with ' +
+      'no Claude key attached there are NO AI lookups at all on it and nothing self-heals — unlike a library, ' +
+      'which still gets a free donor sweep. When the instance answers /api/health, come back and mark this request live.';
     box.appendChild(after);
     return box;
   }
