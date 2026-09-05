@@ -348,6 +348,26 @@ ul.catalogues {
 .card-links { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: .4rem 0 0; }
 .card-links a { color: var(--card-fg); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
 
+/* Games joined .card.multi on 2026-09-05 (request-a-catalog-design.md §4.1 /
+   §10 phase 3a): a <button> cannot legally sit inside an <a>, so the cell that
+   was one whole-card link became a div — and its HOST ROW became the link
+   instead. Laid out as a full-width flex row on purpose: the tap target is the
+   whole line, not the words, which is the closest thing to the whole-card
+   target it replaced. The arrow keeps `margin-left: auto` from .card .host
+   .arrow above because it is still a flex child — of the <a> now rather than
+   of the <p>. */
+.card.multi .host a {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+.card.multi .host a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.card.multi .host a:focus-visible { outline: 2px solid var(--hue); outline-offset: 3px; border-radius: 6px; }
+.card.multi .host a:hover .arrow { transform: translateX(3px); }
+
 /*
  * The whole card is the tap target — a small link inside a big card is a miss
  * on a phone. Same reasoning as button.row-open in the library app.
@@ -725,16 +745,38 @@ footer a.more:hover svg { transform: translateX(3px); }
       </li>
 
       <li>
-        <a class="card" style="--hue: var(--et-hue-3); --card-bg: var(--et-card-3-bg); --card-fg: var(--et-card-3-fg); --card-muted: var(--et-card-3-muted)" href="https://boardgames.heygabi.ai" target="_blank" rel="noopener">
+        <!-- ⚠️ CONVERTED to .card.multi on 2026-09-05 — its own commit, ahead of
+             the "request a catalog" + button (docs/info/request-a-catalog-design.md
+             §4.1, §10 phase 3a), so a regression in this link is separable from
+             a regression in that button.
+
+             It was an <a class="card"> wrapping the whole cell, and a <button>
+             CANNOT be nested inside an <a>: invalid HTML, and an ambiguous
+             click target in every browser. So the cell takes the same
+             .card.multi shape Universes (above) and Books (below) already
+             wear — the CSS above names it as the generalised pattern for
+             exactly this.
+
+             Cost, stated because it is a real one and the estate has paid it
+             twice before on purpose: this card is no longer a single
+             whole-card tap target, and it loses a.card's hover lift and
+             sheen. What it keeps is the destination — the host row is now
+             itself the link, laid out full-width, so the tap area is close to
+             what it was and the keyboard path is unchanged: one tab stop,
+             Enter follows it, and the new-tab announcement rides along in the
+             same .sr-only span it always did. -->
+        <div class="card multi" style="--hue: var(--et-hue-3); --card-bg: var(--et-card-3-bg); --card-fg: var(--et-card-3-fg); --card-muted: var(--et-card-3-muted)">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
           </span>
           <span class="name">Games</span>
           <p class="what">The game shelf — player counts, weights and who has played what.</p>
-          <p class="host">boardgames.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
-            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+          <p class="host">
+            <a href="https://boardgames.heygabi.ai" target="_blank" rel="noopener">boardgames.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
+              <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
           </p>
-        </a>
+        </div>
       </li>
 
       <li id="admin-card-li" hidden>
