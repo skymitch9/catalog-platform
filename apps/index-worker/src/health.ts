@@ -40,6 +40,14 @@ export const healthRoutes = new Hono<{ Bindings: Env }>();
  * that has never pushed shows rows 0 / pushed_at null instead of being
  * absent, so staleness is visible rather than silent — "zero rows from a
  * source means the push failed, never that the collection is empty" (§1).
+ *
+ * ⚠️ A NEVER-PUSHED SOURCE DOES NOT MAKE THIS ROUTE UNHEALTHY, and that is
+ * what let `library2` be listed here on federation day (2026-09-05) BEFORE
+ * padhard had pushed anything: `ok` is a constant, and the per-source figures
+ * are reported rather than judged. `{rows: 0, pushed_at: null}` is exactly the
+ * "never pushed" idiom the three original sources shipped with — visible,
+ * honest, and nobody's red light. Whoever reads these figures decides what
+ * counts as stale; this route only refuses to hide the numbers.
  */
 healthRoutes.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(

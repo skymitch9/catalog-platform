@@ -6,12 +6,32 @@ export interface Env {
   /**
    * Per-source push tokens, one secret each (`wrangler secret put
    * INDEX_PUSH_TOKEN_GAME`, etc.; `.dev.vars` locally). Per-source rather than
-   * shared so one leaked token revokes one source's write access, not all
-   * three, and so a source cannot overwrite a sibling's rows by accident.
+   * shared so one leaked token revokes one source's write access, not every
+   * source's, and so a source cannot overwrite a sibling's rows by accident.
+   *
+   * Four since 2026-09-05 — see `INDEX_PUSH_TOKEN_LIBRARY2` below.
    */
   INDEX_PUSH_TOKEN_GAME?: string;
   INDEX_PUSH_TOKEN_LIBRARY?: string;
   INDEX_PUSH_TOKEN_AUDIOBOOK?: string;
+  /**
+   * padhard's push token (federation day, 2026-09-05). ⚠️ **A DIFFERENT VALUE
+   * from `INDEX_PUSH_TOKEN_LIBRARY`**, exactly as `INDEX_READ_TOKEN_LIBRARY2`
+   * is a different value from `INDEX_READ_TOKEN_LIBRARY` — the two library
+   * instances are two callers, so one leaked value revokes one instance's
+   * write access. The pairing note below applies here too: the INDEX Worker
+   * holds the SUFFIXED name, padhard's Worker holds it un-suffixed as
+   * `INDEX_PUSH_TOKEN` on `[env.friend]`.
+   *
+   * ⚠️ It is also what makes the snapshot replace safe: it authorises
+   * `PUT /api/push/library2` and nothing else, so no value padhard holds can
+   * replace `library`'s rows even if the route were called with the wrong
+   * source in the path.
+   *
+   * Unset is a worded 503 naming this secret, never a 404 — "nobody has minted
+   * it yet" and "this was never built" are different facts (`push.ts`).
+   */
+  INDEX_PUSH_TOKEN_LIBRARY2?: string;
 
   /**
    * Per-app MACHINE READ tokens — the named machine exception on the read
@@ -172,5 +192,7 @@ export function pushTokenFor(env: Env, source: Source): string | undefined {
       return env.INDEX_PUSH_TOKEN_LIBRARY;
     case 'audiobook':
       return env.INDEX_PUSH_TOKEN_AUDIOBOOK;
+    case 'library2':
+      return env.INDEX_PUSH_TOKEN_LIBRARY2;
   }
 }

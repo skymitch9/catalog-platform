@@ -392,6 +392,11 @@ function prodEnv(db: FakeDB, over: Record<string, unknown> = {}) {
     ESTATE_APP_TOKEN_INDEX: 'test-index-token',
     INDEX_PUSH_TOKEN_AUDIOBOOK: 'audio-token',
     INDEX_PUSH_TOKEN_LIBRARY: 'library-token',
+    // ⚠️ A DIFFERENT VALUE from the library token, in the fixture as in
+    // production — the point of a fourth name is that one leaked value revokes
+    // one instance. A test env that reused 'library-token' here would pass
+    // while proving the opposite of what the design says.
+    INDEX_PUSH_TOKEN_LIBRARY2: 'padhard-token',
     ...over,
   };
 }
@@ -481,6 +486,101 @@ test('an unfoldable series survives the push with its spelling and NO key', asyn
   assert.equal(res.status, 200);
   assert.equal(db.entries[0]?.series, '하츄핑 마음 동화', 'the display is never destroyed');
   assert.equal(db.entries[0]?.series_slug, null, 'and it joins no registry entry');
+});
+
+// ---------------------------------------------------------------------------
+// 3b. FEDERATION — `library2` (padhard) as a fourth push source, 2026-09-05.
+//
+// The owner's bug was "in the universe and series tab it's not pulling Padhard
+// library", and the root cause was that the push DOOR did not know the source
+// at all: `PUT /api/push/library2` answered 404 `unknown_source`. These tests
+// exercise the real route end to end — the door, the credential, and the two
+// properties that make a fourth source safe rather than merely present.
+// ---------------------------------------------------------------------------
+
+test('FEDERATION: the right token lands padhard rows under source `library2`', async () => {
+  const db = new FakeDB();
+  const res = await push(prodEnv(db), 'library2', 'padhard-token', [
+    book('Words of Radiance', 'The Stormlight Archive', { format: 'paperback' }),
+  ]);
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assert.equal(body.source, 'library2');
+  assert.equal(body.rows, 1);
+  assert.deepEqual([...new Set(db.entries.map((e) => e.source))], ['library2']);
+});
+
+test('FEDERATION: the WRONG value is refused 401 — the library token is not padhard’s token', async () => {
+  const db = new FakeDB();
+  // The sibling instance's own live credential, presented at padhard's door.
+  const res = await push(prodEnv(db), 'library2', 'library-token', [
+    book('Words of Radiance', 'The Stormlight Archive', { format: 'paperback' }),
+  ]);
+  assert.equal(res.status, 401);
+  assert.equal((await res.json() as any).error, 'unauthorized');
+  assert.equal(db.entries.length, 0, 'a refused push writes nothing');
+});
+
+test('FEDERATION: an UNSET secret is a worded 503 NAMING it, never a 401 and never a 404', async () => {
+  // The three refusals must stay distinguishable: "nobody minted it yet" is a
+  // configuration fact with a different fix from "your token is wrong".
+  const db = new FakeDB();
+  const res = await push(prodEnv(db, { INDEX_PUSH_TOKEN_LIBRARY2: undefined }), 'library2', 'padhard-token', [
+    book('Words of Radiance', 'The Stormlight Archive', { format: 'paperback' }),
+  ]);
+  assert.equal(res.status, 503);
+  const body = (await res.json()) as any;
+  assert.equal(body.error, 'push_token_unset');
+  assert.equal(body.source, 'library2');
+  assert.match(body.fix, /INDEX_PUSH_TOKEN_LIBRARY2/, 'the refusal names the secret, so nobody has to guess it');
+  // ⚠️ Names only, never values — the fix line must not echo the credential.
+  assert.equal(body.fix.includes('padhard-token'), false);
+});
+
+test('FEDERATION: an unknown source still 404s, and `known` now TEACHES library2', async () => {
+  const res = await push(prodEnv(new FakeDB()), 'library3', 'padhard-token', []);
+  assert.equal(res.status, 404);
+  const body = (await res.json()) as any;
+  assert.equal(body.error, 'unknown_source');
+  assert.deepEqual(body.known, ['game', 'library', 'audiobook', 'library2'],
+    'the list is read from SOURCES — a hand-kept copy is what went stale on federation day');
+});
+
+test('🔴 FEDERATION: a library2 push does NOT replace library’s rows — one snapshot per instance', async () => {
+  // The whole reason padhard gets its own source id rather than sharing
+  // `library`: the write is a SNAPSHOT REPLACE keyed on that value, so a
+  // shared id would make either instance's push delete the other's catalog.
+  const db = new FakeDB();
+  const env = prodEnv(db);
+  await push(env, 'library', 'library-token', [book('Oathbringer', 'The Stormlight Archive', { format: 'book' })]);
+  await push(env, 'library2', 'padhard-token', [book('Words of Radiance', 'The Stormlight Archive', { format: 'paperback' })]);
+
+  assert.deepEqual([...new Set(db.entries.map((e) => e.source))].sort(), ['library', 'library2']);
+  // …and again, in the other order: neither push is the one that survives.
+  await push(env, 'library', 'library-token', [book('Oathbringer', 'The Stormlight Archive', { format: 'book' })]);
+  assert.deepEqual([...new Set(db.entries.map((e) => e.source))].sort(), ['library', 'library2']);
+  assert.equal(db.entries.length, 2);
+});
+
+test('FEDERATION: library2 is a BOOK source — it folds a work key and shares the series registry', async () => {
+  const db = new FakeDB();
+  const env = prodEnv(db);
+  await push(env, 'audiobook', 'audio-token', [book('Words of Radiance', 'The Stormlight Archive')]);
+  const res = await push(env, 'library2', 'padhard-token', [
+    book('Words of Radiance', 'Stormlight Archive', { format: 'paperback' }),
+  ]);
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  // No second series was invented: her spelling merged into the existing one,
+  // which is what puts her copy on the same Series page as the household's.
+  assert.equal(body.series.registered, 0);
+  assert.equal(body.series.merged_spellings, 1);
+  assert.deepEqual([...new Set(db.entries.map((e) => e.series_slug))], ['stormlight-archive']);
+  // work_fold is the book-tier key; only games carry NULL there.
+  const hers = db.entries.find((e) => e.source === 'library2');
+  assert.ok(hers?.work_fold, 'a library2 row must join the work tier exactly as a library row does');
+  assert.equal(hers?.work_fold, db.entries.find((e) => e.source === 'audiobook')?.work_fold,
+    'same work, same key — that is the whole cross-catalog join');
 });
 
 // ---------------------------------------------------------------------------

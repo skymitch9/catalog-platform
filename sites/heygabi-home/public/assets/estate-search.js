@@ -226,7 +226,17 @@ export function groupBySeries(rows) {
   const AUTH_BACKSTOP_MS = 8000;
   const FULL_SCOPE_SIZE = 3;
 
-  const SOURCE_LABELS = { game: 'board games', library: 'library', audiobook: 'audiobooks' };
+  // ⚠️ `library2` added 2026-09-05 with the federation. `_sourceLabel` falls
+  // back to the RAW value, so without this line a search hit on Samantha's
+  // shelf would have shown a person the string "library2" — database
+  // vocabulary on a page, which the estate does not do. Naming it costs
+  // nothing and is dark until she is granted `vis_library2`.
+  const SOURCE_LABELS = {
+    game: 'board games',
+    library: 'library',
+    library2: "Samantha's library",
+    audiobook: 'audiobooks',
+  };
   /** The server's scope vocabulary (§4.5 catalogs), spoken like a person. */
   const SCOPE_LABELS = { audiobook: 'audiobooks', library: 'the library', games: 'board games' };
 

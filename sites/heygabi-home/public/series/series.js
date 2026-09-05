@@ -56,11 +56,12 @@ const INDEX_ORIGIN = 'https://index.heygabi.ai';
  * for that shelf. The owner's own sentence supplied these; index-worker's
  * SOURCE_FOR_CATALOG (search-route.ts) supplies the keys.
  *
- * ⚠️ `library2` and `ebook` are here AHEAD of any rows. Measured on the live
- * index 2026-08-17, GET /api/health reports exactly three sources with rows:
- * game 837, library 351, audiobook 1246. `library2` is a real scope value
- * whose federation has not minted a push token yet (search-route.ts says so),
- * and `ebook` is not an index source at all today — the estate's ebooks
+ * ⚠️ `library2` and `ebook` were BOTH named here ahead of any rows (measured
+ * on the live index 2026-08-17: game 837, library 351, audiobook 1246, and
+ * nothing else). ✅ `library2` stopped being speculative on **2026-09-05**,
+ * when the index gained it as a fourth push source — this line needed no
+ * change on federation day, which is the whole argument for naming a source
+ * before its rows arrive. `ebook` is still not an index source at all — the estate's ebooks
  * arrive as `format: 'ebook'` rows under a library source, which
  * holdingLabel() renders as "Skylar's library (ebook)". Naming both here
  * costs nothing and means the first pushed row reads in words instead of in

@@ -63,6 +63,16 @@ class FakeDB {
           rows = rows.filter((r) => r.universe === String(args[0]));
           scopeArgs = args.slice(1);
         }
+        // ⚠️ The UNSCOPED lookup lane's one subtraction (read.ts's
+        // UNSCOPED_LOOKUP_EXCLUDED). Honoured here for exactly the reason the
+        // scope clause below is: it is a rule expressed in SQL, and a fake
+        // that ignored it would pass while padhard's shelf was enumerable by
+        // every member. Checked FIRST because `source NOT IN` does not contain
+        // the substring `source IN`, so the two branches are disjoint.
+        if (sql.includes('source NOT IN')) {
+          const excluded = scopeArgs.map(String);
+          rows = rows.filter((r) => !excluded.includes(r.source));
+        }
         if (sql.includes('source IN')) {
           // The trailing `AND (format IS NULL OR format != ?)` binds ONE more
           // arg after the sources — honoured here for the same reason the
@@ -127,6 +137,12 @@ function estateRows(): SearchRow[] {
     // household's shared pool, and `format` carries the medium"). That is
     // why ebook visibility cannot be a source question.
     row({ title: 'Cosmere Chronicles', source: 'audiobook', format: 'ebook', universe: UNIVERSE }),
+    // ⚠️ FEDERATED 2026-09-05 — padhard is a real push source now, so this
+    // fixture holds a `library2` row where it used to hold none. The tests
+    // below turn on it: before federation the only thing that could be pinned
+    // was "the scope value matches nothing", which is indistinguishable from
+    // a scope that is wired up wrong.
+    row({ title: 'Cosmere Chronicles', source: 'library2', format: 'paperback', universe: UNIVERSE }),
   ];
 }
 
@@ -262,17 +278,60 @@ test('a full-visibility member sees every catalog; the owner needs no directory 
   }
 });
 
-test('a member granted library2 carries it in scope; with no federated rows it matches nothing', async () => {
+// ---------------------------------------------------------------------------
+// FEDERATION, 2026-09-05 — `library2` is a real push source, so the grant is
+// now the whole difference between seeing padhard's shelf and not. Before
+// federation the only pinnable fact was "it matches nothing", which passes
+// just as happily on a scope that is wired up WRONG; these three tests are the
+// pair of that one, and they fail on the pre-federation code.
+// ---------------------------------------------------------------------------
+
+test('FEDERATION: a member granted library2 MATCHES padhard rows — the grant is the whole difference', async () => {
   const f = stubSeen({ status: 'approved', visibility: ['audiobook', 'library2'] });
   try {
     const body = await search(memberEnv(new FakeDB(estateRows()), 'member@example.com'));
     // The scope is the /seen answer verbatim — library2 rides it…
     assert.deepEqual(body.scope, ['audiobook', 'library2']);
-    // …but the index holds no `library2` rows (INDEX_URL/push token
-    // deliberately unset until federation), so only audiobook entries match.
-    assert.deepEqual(sourcesIn(body), ['audiobook']);
+    // …and now it MATCHES: padhard's row is in the answer beside the pool's.
+    assert.deepEqual(sourcesIn(body), ['audiobook', 'library2']);
+    // Skylar's own shelf is NOT in it — one library grant does not imply the other.
+    assert.equal(sourcesIn(body).includes('library'), false);
   } finally {
     f.restore();
+  }
+});
+
+test('FEDERATION: a member WITHOUT library2 never sees a padhard row, even with every other catalog', async () => {
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook', 'library', 'games'] });
+  try {
+    const body = await search(memberEnv(new FakeDB(estateRows()), 'member@example.com'));
+    assert.equal(body.scope.includes('library2'), false);
+    assert.equal(sourcesIn(body).includes('library2'), false,
+      'vis_library2 is DEFAULT 0 and hand-granted — federating the SOURCE must not widen anyone');
+    // And the universe count is honest about it: four of the five rows.
+    assert.deepEqual(body.universes, [{ name: UNIVERSE, count: 4 }]);
+  } finally {
+    f.restore();
+  }
+});
+
+test('FEDERATION: an ANONYMOUS caller sees no padhard row — federation did not touch the public slice', async () => {
+  const body = await search(prodEnv(new FakeDB(estateRows())));
+  assert.deepEqual(body.scope, ['audiobook']);
+  assert.deepEqual(sourcesIn(body), ['audiobook']);
+});
+
+test('FEDERATION: the OWNER sees padhard rows — break-glass computes every catalog, library2 included', async () => {
+  const down = stubSeen('unreachable');
+  try {
+    const body = await search(memberEnv(new FakeDB(estateRows()), OWNER));
+    assert.ok(body.scope.includes('library2'));
+    assert.ok(sourcesIn(body).includes('library2'), 'the owner is who vis_library2 is granted to today');
+    // Every row in the fixture — six, counting the ebook the owner's `ebooks`
+    // grant admits and padhard's paperback the `library2` grant admits.
+    assert.deepEqual(body.universes, [{ name: UNIVERSE, count: 6 }]);
+  } finally {
+    down.restore();
   }
 });
 
@@ -424,6 +483,49 @@ test('/api/lookup stays members-only AND unscoped: tokenless 401; a games-only m
       'lookup is membership-gated but deliberately unscoped — owner call, untouched');
   } finally {
     f.restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 🔴 The hole federation would have opened, and the fence that closes it.
+// `/api/lookup` is UNSCOPED by an owner call that was safe while every source
+// belonged to the owner's own household. `library2` is padhard — somebody
+// else's collection, `DEFAULT 0`, hand-granted to the owner alone — so without
+// read.ts's UNSCOPED_LOOKUP_EXCLUDED, making it a push source would have let
+// every approved member (and every machine token, via /api/machine/lookup)
+// enumerate her shelf by title while holding no `library2` grant at all.
+// These tests fail on a federation that skipped that fence.
+// ---------------------------------------------------------------------------
+
+test('🔴 /api/lookup returns NO library2 row to a member without the grant — the unscoped lane fails closed', async () => {
+  const db = new FakeDB(estateRows());
+  const f = stubSeen({ status: 'approved', visibility: ['games'] });
+  try {
+    const res = await app.request('/api/lookup?title=Cosmere%20Chronicles', {}, memberEnv(db, 'gamer@example.com'));
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    // The fixture HAS a matching library2 row; the lane refuses to fetch it.
+    assert.equal(body.matches.some((m: any) => m.source === 'library2'), false);
+    // …while the three original sources answer exactly as they always did.
+    assert.ok(body.matches.some((m: any) => m.source === 'library'));
+    assert.ok(body.matches.some((m: any) => m.source === 'audiobook'));
+  } finally {
+    f.restore();
+  }
+});
+
+test('🔴 not even the OWNER gets library2 from /api/lookup — the fence is the LANE, not the caller', async () => {
+  // Deliberate: a per-caller exception here would be a second visibility
+  // implementation living in the one route that has none. The owner sees
+  // padhard's rows on the SCOPED surfaces, which is where scoping lives.
+  const down = stubSeen('unreachable');
+  try {
+    const res = await app.request('/api/lookup?title=Cosmere%20Chronicles', {}, memberEnv(new FakeDB(estateRows()), OWNER));
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.matches.some((m: any) => m.source === 'library2'), false);
+  } finally {
+    down.restore();
   }
 });
 

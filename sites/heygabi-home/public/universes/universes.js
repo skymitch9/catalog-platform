@@ -79,6 +79,37 @@ import { groupBySeries } from '../assets/estate-search.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
+/**
+ * Which index sources are GAMES. Everything else is bookish.
+ *
+ * ⚠️ THE BOOK SIDE IS A COMPLEMENT, NOT A SECOND ALLOW-LIST, and that is the
+ * fix rather than the tidy-up. Until 2026-09-05 this page asked
+ * `source === 'library' || source === 'audiobook'`, so `library2` — a real
+ * index source since federation day, and the owner's actual bug report ("in
+ * the universe and series tab it's not pulling Padhard library") — fell out of
+ * BOTH groups and was rendered nowhere at all: no row, no note, no count, and
+ * no way for a reader to tell "not in this universe" from "dropped by a filter
+ * nobody updated". Two allow-lists mean the next source repeats it. One
+ * allow-list plus its complement means a source can only ever land in the
+ * wrong GROUP, never in no group. `series/series.js`'s `bookish()` already
+ * worked this way; this is that rule, kept in both places.
+ */
+const GAME_SOURCES = new Set(['game']);
+const isGameRow = (m) => GAME_SOURCES.has(m.source);
+
+/**
+ * entry.source → the words the household uses, matching `series/series.js`'s
+ * SOURCE_LABELS (one fact, two pages — the sibling owns the long note).
+ *
+ * ⚠️ Used ONLY to say WHOSE shelf a row is on when that is not already
+ * obvious. The two library instances are the case that needs it: both push
+ * print formats ("hardcover", "paperback"), so without a holder the reader
+ * cannot tell Skylar's copy from Samantha's. `library` and `audiobook` are
+ * deliberately absent — this is the owner's own page, his shelf is the
+ * default, and the audiobook pool already says "audiobook" in its format.
+ */
+const HOLDER_LABELS = { library2: "Samantha's library" };
+
 // ⚠️ Keep in sync with data/universes.json `universes[].name` — see header.
 // 🔴 THIS IS NOW MECHANICALLY ENFORCED. `scripts/test/universe-names-parity.test.mjs`
 // reads this array out of this file and diffs it against data/universes.json;
@@ -211,6 +242,10 @@ function metaBits(row) {
   const bits = [];
   if (row.creator) bits.push(row.creator);
   bits.push(row.format);
+  // WHOSE shelf, but only when the format cannot say it — see HOLDER_LABELS.
+  // Without this a `library2` row reads "Brandon Sanderson · hardcover", which
+  // is indistinguishable from the owner's own copy on his own page.
+  if (HOLDER_LABELS[row.source]) bits.push(HOLDER_LABELS[row.source]);
   if (row.kind && row.kind !== 'base') bits.push(row.kind);
   if (row.parent_source_id) bits.push('belongs with a base game');
   if (row.series) bits.push(row.series_index != null ? `${row.series} #${row.series_index}` : row.series);
@@ -355,8 +390,10 @@ function renderUniverseBody(body, data) {
     'Tap through to the owning catalog for owned-versus-wanted.';
   body.appendChild(caveat);
 
-  const bookRows = data.matches.filter((m) => m.source === 'library' || m.source === 'audiobook');
-  const gameRows = data.matches.filter((m) => m.source === 'game');
+  // Games vs everything-else — see GAME_SOURCES for why the book side is a
+  // complement rather than a second allow-list (`library2`, 2026-09-05).
+  const gameRows = data.matches.filter(isGameRow);
+  const bookRows = data.matches.filter((m) => !isGameRow(m));
   const games = gameRows.filter((m) => !isAccessoryOrPromo(m));
   const accessories = gameRows.filter(isAccessoryOrPromo);
 

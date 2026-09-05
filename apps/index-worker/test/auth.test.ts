@@ -160,7 +160,17 @@ test('GET /api/health answers the estate envelope with `sources` kept at the top
   // back to the flat body.
   assert.equal(body.version, WORKER_VERSION);
   assert.deepEqual(body.detail, { ok: true, version: WORKER_VERSION, sources: body.sources });
-  assert.deepEqual(body.sources, { game: { rows: 0, pushed_at: null }, library: { rows: 0, pushed_at: null }, audiobook: { rows: 0, pushed_at: null } });
+  // ⚠️ FOUR sources since 2026-09-05 (`library2`, the padhard federation), and
+  // a source that has NEVER pushed is listed with `{rows: 0, pushed_at: null}`
+  // rather than being absent — the health route reports figures, it does not
+  // judge them, so adding a source cannot turn this route red for everyone.
+  assert.deepEqual(body.sources, {
+    game: { rows: 0, pushed_at: null },
+    library: { rows: 0, pushed_at: null },
+    audiobook: { rows: 0, pushed_at: null },
+    library2: { rows: 0, pushed_at: null },
+  });
+  assert.equal(body.ok, true, 'a never-pushed source is not an unhealthy index');
 });
 
 test('PUT /api/push/:source keeps its OWN bearer auth — wrong token answers push.ts 401, not the blanket', async () => {

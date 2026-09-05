@@ -18,7 +18,7 @@
  * still finds the Korean rows, §3.1's own path).
  *
  * ⚠️ `source` (added for the search-normalization component, 2026-08-15):
- * an optional NARROWING query param — `library`|`game`|`audiobook`|`all` —
+ * an optional NARROWING query param — `library`|`library2`|`game`|`audiobook`|`all` —
  * for a per-site scope preset (e.g. the library app only ever wants its own
  * shelf). It can only ever narrow the caller's own visibility, never widen
  * it: the requested source is intersected with `scope` from searchScope(),
@@ -47,10 +47,14 @@ const SOURCE_FOR_CATALOG: Record<Catalog, string> = {
   audiobook: 'audiobook',
   library: 'library',
   games: 'game',
-  // The second library instance (0007). NOT federated yet — its INDEX_URL /
-  // INDEX_PUSH_TOKEN are deliberately unset (friend-ingest design §7), so no
-  // `library2` rows exist and this scope entry matches nothing: fail-closed
-  // by construction until federation day mints the push token.
+  // The second library instance (0007) — padhard, `library_catalog`'s
+  // `[env.friend]`. ⚠️ FEDERATED 2026-09-05: `library2` is now a real push
+  // source (`rows.ts` SOURCES, `INDEX_PUSH_TOKEN_LIBRARY2`), so this entry
+  // stopped being a fail-closed placeholder and started matching rows the
+  // moment padhard's first snapshot landed. Nothing else about it changed:
+  // `vis_library2` is still `DEFAULT 0` and hand-granted (auth-worker
+  // migration 0007), so the SQL below still admits her shelf only to callers
+  // who actually hold the grant.
   library2: 'library2',
   // ⚠️ `ebooks` (0008) is the ONE catalog with no source of its own, and that
   // is why sourcesForScope() filters. Ebook rows are pushed by the audiobook
@@ -97,7 +101,15 @@ const CATALOG_FOR_SOURCE: Record<string, Catalog> = Object.fromEntries(
     .map(([catalog, source]) => [source, catalog]),
 );
 
-const VALID_SOURCE_PARAMS = new Set(['audiobook', 'library', 'game', 'all']);
+/**
+ * The `source=` presets. ⚠️ `library2` joined 2026-09-05 with the federation:
+ * padhard runs the SAME build as the main library Worker, so it sends the same
+ * per-site preset, and a preset the route rejects is a 400 on a request the
+ * caller was told to make. It can still only NARROW — the requested source is
+ * intersected with the caller's own visibility below — so naming it here
+ * grants nobody anything.
+ */
+const VALID_SOURCE_PARAMS = new Set(['audiobook', 'library', 'library2', 'game', 'all']);
 
 export const searchRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 
@@ -152,7 +164,7 @@ export const searchHandler: Handler<{ Bindings: Env; Variables: ScopeVariables }
     const requested = sourceParam.trim().toLowerCase();
     if (!VALID_SOURCE_PARAMS.has(requested)) {
       return c.json(
-        { error: 'invalid_source', detail: 'source must be one of audiobook, library, game, or "all"' },
+        { error: 'invalid_source', detail: 'source must be one of audiobook, library, library2, game, or "all"' },
         400,
       );
     }

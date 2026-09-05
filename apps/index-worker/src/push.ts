@@ -14,7 +14,7 @@ import { tokenMatches } from './bearer.js';
 import type { Env } from './env.js';
 import { pushTokenFor } from './env.js';
 import type { EntryRow } from './rows.js';
-import { entryFor, isSource, pushBodySchema, snapshotProblems } from './rows.js';
+import { entryFor, isSource, pushBodySchema, snapshotProblems, SOURCES } from './rows.js';
 import { universeIndex } from './universes-data.js';
 import { universeFor, type UniverseIndex } from './universes.js';
 import { seriesCanonIndex } from './series-canon-data.js';
@@ -29,7 +29,12 @@ export const pushRoutes = new Hono<{ Bindings: Env }>();
 pushRoutes.put('/:source', async (c) => {
   const sourceParam = c.req.param('source');
   if (!isSource(sourceParam)) {
-    return c.json({ error: 'unknown_source', source: sourceParam, known: ['game', 'library', 'audiobook'] }, 404);
+    // ⚠️ `known` is READ FROM `SOURCES`, not re-listed. It was a hand-kept
+    // copy until 2026-09-05, and the copy is exactly what a fourth source
+    // makes wrong: a pusher told "known: game, library, audiobook" while the
+    // route happily accepts `library2` learns the wrong thing from the one
+    // message that exists to teach it. One list, one home.
+    return c.json({ error: 'unknown_source', source: sourceParam, known: [...SOURCES] }, 404);
   }
   const source = sourceParam;
 

@@ -12,7 +12,25 @@ import { creatorFoldOrNull, titleFoldOrNull, workFoldOrNull } from './fold.js';
 import type { UniverseIndex } from './universes.js';
 import { universeFor } from './universes.js';
 
-export const SOURCES = ['game', 'library', 'audiobook'] as const;
+/**
+ * The push vocabulary — one id per pushing catalog.
+ *
+ * ⚠️ `library2` (added 2026-09-05, the federation of padhard —
+ * `library_catalog`'s `[env.friend]`, Samantha's instance) is a FOURTH SOURCE,
+ * not a flavour of `library`, and that is the whole design: the two instances
+ * run one build but hold two different collections, so a shared source id
+ * would make `PUT /api/push/library` from either instance delete the other's
+ * rows (`replaceSource` is a snapshot replace keyed on this value). One id per
+ * pushing instance is what keeps that structurally impossible.
+ *
+ * It is a BOOK source like `library` — the only branch below that reads this
+ * value is `source === 'game'` (games carry no creator and no work_fold), so
+ * `library2` inherits the book rules with no extra case.
+ *
+ * ⚠️ APPENDED, not inserted: `/api/health` renders one key per entry here in
+ * this order, and the estate's Health page reads that object.
+ */
+export const SOURCES = ['game', 'library', 'audiobook', 'library2'] as const;
 export type Source = (typeof SOURCES)[number];
 
 export function isSource(s: string): s is Source {

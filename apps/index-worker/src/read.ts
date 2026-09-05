@@ -35,6 +35,39 @@ import { universeIndex } from './universes-data.js';
 
 export const readRoutes = new Hono<{ Bindings: Env; Variables: ScopeVariables }>();
 
+/**
+ * 🔴 Sources that the UNSCOPED lookup lane must not return.
+ *
+ * ⚠️ THIS EXISTS BECAUSE FEDERATION TURNED AN ACCEPTED CALL INTO A LEAK, and
+ * the leak was a side effect of an unrelated change rather than a decision
+ * anybody made. Found and closed 2026-09-05 while making `library2` a real
+ * push source.
+ *
+ * `/api/lookup` is membership-gated and deliberately NOT visibility-scoped —
+ * an owner call, and a defensible one while every source it could return
+ * belonged to the owner's own household. `library2` is padhard: SOMEBODY
+ * ELSE'S collection, whose catalog `vis_library2` is `DEFAULT 0` and
+ * hand-granted to the owner alone (auth-worker migration 0007). Without this
+ * list, the moment padhard pushed its first snapshot:
+ *
+ *   - every APPROVED estate member could enumerate her shelf by title through
+ *     `/api/lookup`, holding no `library2` grant at all; and
+ *   - every MACHINE token could do the same through `/api/machine/lookup`,
+ *     which mounts this exact handler — straight past `MACHINE_VISIBILITY`,
+ *     which excludes `library2` on purpose (`machine-route.ts`, pinned by
+ *     `test/machine-read.test.ts`).
+ *
+ * So the scoped surfaces (`/api/search`, `/api/universe`, `/api/series`) are
+ * where her rows appear, to the people actually granted them, and this lane
+ * fails closed. That is the conservative half of an access question, taken
+ * without waiting: widening it later is one line and an owner's decision,
+ * whereas a shelf enumerated by everyone cannot be un-enumerated.
+ *
+ * ⚠️ NOTHING ELSE CHANGED. The three original sources answer here exactly as
+ * they did — this subtracts, and only from the source federation added.
+ */
+export const UNSCOPED_LOOKUP_EXCLUDED: readonly string[] = ['library2'];
+
 /** The columns a reader gets back — everything in `entry`; it is all display data. */
 const ENTRY_COLS =
   'source, source_id, title, creator, title_fold, work_fold, universe, series, series_slug, series_index, year, publisher, format, kind, parent_source_id, cover_url, detail_url, pushed_at';
@@ -70,10 +103,15 @@ export const lookupHandler: Handler<{ Bindings: Env; Variables: ScopeVariables }
     );
   }
 
+  // The unscoped lane's one subtraction — see UNSCOPED_LOOKUP_EXCLUDED. In the
+  // SQL rather than in a post-filter, for the same reason the scoped routes put
+  // their scope there: a row that must not be returned is a row that is never
+  // fetched, so no later refactor can leak it back by forgetting a filter.
+  const excludePlaceholders = UNSCOPED_LOOKUP_EXCLUDED.map(() => '?').join(', ');
   const { results } = await c.env.DB.prepare(
-    `SELECT ${ENTRY_COLS} FROM entry WHERE title_fold = ? ORDER BY source, format, title`,
+    `SELECT ${ENTRY_COLS} FROM entry WHERE title_fold = ? AND source NOT IN (${excludePlaceholders}) ORDER BY source, format, title`,
   )
-    .bind(fold)
+    .bind(fold, ...UNSCOPED_LOOKUP_EXCLUDED)
     .all();
 
   return c.json({ query: title, title_fold: fold, matches: results });
