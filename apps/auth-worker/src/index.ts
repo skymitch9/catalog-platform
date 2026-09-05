@@ -35,6 +35,7 @@ import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
 import { billingRoutes } from './billing.js';
 import { universeRequestRoutes } from './universe-requests.js';
+import { catalogRequestRoutes } from './catalog-requests.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
@@ -192,6 +193,21 @@ app.use('/api/estate/billing/*', billingCors());
 app.use('/api/estate/universes/names', adminCors());
 app.use('/api/estate/universes/requests', adminCors());
 app.use('/api/estate/universes/requests/*', adminCors());
+// Catalog requests (the "+" on the Books and Games cards, 0018 — 2026-09-05).
+// Apex-only, and for the same reason as the three lines above: both callers are
+// on the apex — the home page for the member half and /admin for the
+// accept/decline half. ⚠️ It borrows adminCors() for its ORIGIN LIST, not for
+// its meaning: the routes behind it are member-wide, gated in the handler by
+// requireApprovedMember(). Reading the mount's name as the gate is exactly
+// backwards.
+// ⚠️ A CORS MOUNT IS NOT IMPLIED BY A ROUTE — without these three lines the "+"
+// reports "could not reach the estate", which looks precisely like a Worker
+// that is down. The wildcard covers /requests/:id/decide|live|withdraw (Hono
+// mounts are exact-or-wildcard, never prefix-implicit); the bare mounts cover
+// /availability and the /requests collection itself.
+app.use('/api/estate/catalogs/availability', adminCors());
+app.use('/api/estate/catalogs/requests', adminCors());
+app.use('/api/estate/catalogs/requests/*', adminCors());
 // Backup metadata (owner ask 2026-08-16) — apex-only like the surfaces
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
@@ -268,6 +284,11 @@ app.route('/api', billingRoutes);
 // "+ add a verse" — a member asks, an approver decides, a devops session says
 // it landed. ⚠️ Nothing here creates a universe; see universe-requests.ts.
 app.route('/api', universeRequestRoutes);
+// "Request a catalog" — a member asks for <them>.heygabi.ai, an approver
+// decides, a devops session records the real instance once it exists.
+// ⚠️ Nothing here creates a catalog; see catalog-requests.ts. Accept sets a
+// status and hands over a runbook.
+app.route('/api', catalogRequestRoutes);
 app.route('/api', sessionRoutes);
 
 function adminCors() {
