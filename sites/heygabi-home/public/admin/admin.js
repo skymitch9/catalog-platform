@@ -330,6 +330,16 @@ const pendingEdits = new Map();
 const expandedMembers = new Set();
 
 /**
+ * Which per-member Spending drawers are open, keyed `${userId}|${rowId}`.
+ *
+ * ⚠️ Same reasoning as the two Sets above, and it matters more here: a drawer
+ * holds typed `Why` text staged in `pendingEdits`, and renderFilteredList()
+ * rebuilds every card on every search keystroke. A drawer that closed itself on
+ * a re-render would look exactly like the staged deny had been discarded.
+ */
+const openSpendDrawers = new Set();
+
+/**
  * ⚠️ THE DIRECTORY IS THREE SECTIONS, NOT ONE LIST (owner order 2026-08-17,
  * verbatim: *"i revoked access to an account on /admin, its still in the list,
  * lets move these to a revoked section, lets also make the effort to have a
@@ -1466,20 +1476,36 @@ function wireControls() {
 // rather than one per row.
 // ---------------------------------------------------------------------------
 
-/** The staged bag for one member, created on demand. */
+/**
+ * The staged bag for one member, created on demand.
+ *
+ * ⚠️ `spend` (phase 2b) holds `${featureId}|${site}` → `{ off, why }` — the
+ * per-PERSON spending axis. It rides in the SAME bag as the visibility boxes
+ * and the role dropdowns on purpose: the card has ONE Save, and a second bag
+ * would be a second thing to drain, forget and leave staged.
+ */
 function editsFor(u) {
   let e = pendingEdits.get(u.id);
   if (!e) {
-    e = { vis: {}, roles: {} };
+    e = { vis: {}, roles: {}, spend: {} };
     pendingEdits.set(u.id, e);
   }
+  // A bag made before this field existed (or by a future caller) still answers.
+  e.spend ||= {};
   return e;
 }
 
 /** Drop a member's bag once it holds nothing — so `pendingEdits.has` means something. */
 function pruneEmpty(u) {
   const e = pendingEdits.get(u.id);
-  if (e && !Object.keys(e.vis).length && !Object.keys(e.roles).length) pendingEdits.delete(u.id);
+  if (
+    e &&
+    !Object.keys(e.vis).length &&
+    !Object.keys(e.roles).length &&
+    !Object.keys(e.spend ?? {}).length
+  ) {
+    pendingEdits.delete(u.id);
+  }
 }
 
 /** What the estate directory says right now about one visibility grant. */
@@ -1565,11 +1591,170 @@ function effectiveRole(u, row) {
   return truth.state === 'role' ? truth.role : null;
 }
 
+// ---------------------------------------------------------------------------
+// THE SPENDING COLUMN — the per-PERSON axis
+// (docs/info/llm-billing-control-design.md §7.2, phase 2b)
+//
+// ⚠️ THE PANEL ABOVE IS THE PER-SITE AXIS; THIS IS THE PER-PERSON ONE, and they
+// are two questions about one table. "Is paid cover search switched on for the
+// library at all" is answered by the matrix; "may THIS person spend it" is
+// answered here. Same rules table, same write door, same ten-minute delay — the
+// only thing that differs is which `principal_kind` a row carries.
+//
+// 🔴 DENY-ONLY, exactly as the matrix is. Unticking a box stages a `user` deny
+// row; ticking it back stages the DELETION of that row, because "no rule" IS
+// the default state (§3.3 rank 17). Nothing here can hand anybody a capability
+// their site's own ladder does not already give them.
+//
+// ⚠️ A system-only money path gets a WORDED FACT, never a control. `system`
+// resolves alone, so a `user` row against the hourly sweep matches nothing at
+// all — it would be a switch the owner believes he pressed. The auth Worker
+// refuses one at the door too (`principal_not_applicable`), because a UI rule
+// is one fetch away from being bypassed.
+// ---------------------------------------------------------------------------
+
+/** The billing site id for a grid row, or null when that site cannot bill. */
+function billingSiteFor(row) {
+  return billingDir?.sites?.includes(row.id) ? row.id : null;
+}
+
+/** The money paths that exist on one site, in registry order. */
+function spendFeaturesFor(site) {
+  return (billingDir?.features ?? []).filter((f) => f.sites.includes(site));
+}
+
+/**
+ * `feature|site` in words — "Paid cover search on Library".
+ *
+ * ⚠️ ONE WORDING, used by the matrix's staged summary AND by the per-member
+ * column's status line, because those two sentences describe the same cell of
+ * the same table and a person reads both on one page. It replaced an inline
+ * copy inside spendingFooter().
+ */
+function describeSpendKey(key) {
+  const [featureId, site] = key.split('|');
+  const f = (billingDir?.features ?? []).find((x) => x.id === featureId);
+  return `${f ? f.label : featureId} on ${CATALOG_LABELS[site] || site}`;
+}
+
+/**
+ * Every stored rule that reaches ONE person on ONE money path, split by who it
+ * names — because only the first is this column's to change.
+ *
+ *   exact   the `user` row for this person, this feature, this site (editable)
+ *   broader anything else that denies them here: an `everyone` row, a `system`
+ *           row, a rule for their rung, or a WILDCARD `user` row
+ *
+ * ⚠️ The wildcard split is the load-bearing half. A deny that arrives through
+ * `feature = '*'` or `site = '*'` covers cells nobody clicked, so this column
+ * must not delete it — it says so instead. Silently doing nothing while
+ * reporting a saved change is the failure this shape exists to prevent.
+ */
+function spendReach(u, feature, site, row) {
+  const rules = billingDir?.rules ?? [];
+  const id = String(u.id);
+  const reaches = (r) =>
+    (r.feature === feature.id || r.feature === '*') && (r.site === site || r.site === '*');
+
+  const exact =
+    rules.find(
+      (r) =>
+        r.principal_kind === 'user' &&
+        r.principal_value === id &&
+        r.feature === feature.id &&
+        r.site === site,
+    ) ?? null;
+
+  // The person's rung as the SERVER currently has it — never the staged one. A
+  // role a nobody has saved yet cannot already be carrying a deny.
+  const truth = row ? roleTruth(u, row) : null;
+  const liveRole = truth && truth.state === 'role' ? truth.role : null;
+
+  const broader = rules.filter(
+    (r) =>
+      r !== exact &&
+      r.allow === false &&
+      reaches(r) &&
+      ((r.principal_kind === 'everyone' && feature.principals.includes('person')) ||
+        (r.principal_kind === 'system' && feature.principals.includes('system')) ||
+        (r.principal_kind === 'role' && liveRole !== null && r.principal_value === liveRole) ||
+        (r.principal_kind === 'user' && r.principal_value === id)),
+  );
+
+  return { exact, broader };
+}
+
+/** Is this person denied this money path on this site RIGHT NOW, by their own row? */
+function truthSpend(u, feature, site, row) {
+  return spendReach(u, feature, site, row).exact?.allow === false;
+}
+
+/**
+ * The staged spending edit for one cell, or undefined. Self-pruning against
+ * fresh server truth, exactly like stagedVis/stagedRole — an edit the table has
+ * since agreed with simply stops being an edit, which is what keeps the unsaved
+ * counter honest across a save and a reload.
+ */
+function stagedSpend(u, feature, site, row) {
+  const e = pendingEdits.get(u.id);
+  const key = billingKey(feature.id, site);
+  if (!e?.spend || !(key in e.spend)) return undefined;
+  if (e.spend[key].off === truthSpend(u, feature, site, row)) {
+    delete e.spend[key];
+    pruneEmpty(u);
+    return undefined;
+  }
+  return e.spend[key];
+}
+
+/** Denied or not, staged if staged, else what the table says. */
+function effectiveSpend(u, feature, site, row) {
+  const staged = stagedSpend(u, feature, site, row);
+  return staged === undefined ? truthSpend(u, feature, site, row) : staged.off;
+}
+
+/**
+ * Can this person's spending be edited on this row at all, and if not, why?
+ * Returns null when it can.
+ *
+ * ⚠️ THE OWNER IS THE ONE THAT MATTERS. §7.2: the owner's row shows every
+ * feature on and every control disabled, and the write door backs it with a
+ * worded 409 — the break-glass must never be narrowable into a lockout.
+ */
+function spendBlocked(u, row, site) {
+  if (isOwnerEmail(u)) {
+    return {
+      cls: 'perm-owner',
+      text: 'owner · every money path on',
+      title:
+        'An estate owner’s spending cannot be switched off — the break-glass must never be narrowable into a lockout. The auth Worker refuses it too, not just this page. Switch the money path off for the whole site instead, on the Spending panel above.',
+    };
+  }
+  const truth = roleTruth(u, row);
+  const noPresence = truth.state === 'noaccount' || (truth.state === 'role' && truth.role === 'none');
+  if (!noPresence) return null;
+  // A person with no rung there cannot spend anything anyway — but if a row
+  // ALREADY names them, saying "n/a" would hide a deny that exists.
+  const anyRule = spendFeaturesFor(site).some((f) => spendReach(u, f, site, row).exact);
+  if (anyRule) return null;
+  return {
+    cls: 'perm-note',
+    text: 'n/a — no role here yet',
+    title:
+      'Nothing can bill on this person’s behalf on this site until they hold a rung on it, so there is nothing to switch off. Give them a role first.',
+  };
+}
+
 /** How many unsaved grants this member is carrying. Prunes as it counts. */
 function countStaged(u) {
   let n = 0;
   for (const cat of CATALOGS) if (stagedVis(u, cat) !== undefined) n++;
   for (const row of SITE_ROWS) if (stagedRole(u, row) !== undefined) n++;
+  for (const row of SITE_ROWS) {
+    const site = billingSiteFor(row);
+    if (!site) continue;
+    for (const f of spendFeaturesFor(site)) if (stagedSpend(u, f, site, row) !== undefined) n++;
+  }
   return n;
 }
 
@@ -1591,6 +1776,27 @@ function countStaged(u) {
 async function savePermissions(u, saveBtn) {
   const e = pendingEdits.get(u.id);
   if (!e) return;
+
+  // ⚠️ THE `why` IS CHECKED BEFORE THE FIRST WRITE OF ANY KIND, not when the
+  // spending block is reached. The card saves three systems in one gesture, and
+  // a batch that posted the visibility array and then stopped on an empty Why
+  // box would be half-applied for a reason the person could have been told
+  // before anything moved. The server refuses an empty `why` too (three
+  // characters after trimming) — this is the sentence they can act on.
+  const missingWhy = Object.entries(e.spend ?? {})
+    .filter(([, v]) => v.off && (v.why || '').trim().length < 3)
+    .map(([key]) => key);
+  if (missingWhy.length) {
+    setStatus(
+      `Say why first for ${missingWhy.map(describeSpendKey).join(', ')} — a switched-off money path is invisible, and that note is the only record of the reason. Nothing was saved.`,
+      'warn',
+    );
+    // Focus the FIRST box that is actually empty, not merely the first box —
+    // "it says say why and I did" is what a lazier selector produces.
+    document.querySelector(`[data-spend-why="${u.id}|${missingWhy[0]}"]`)?.focus();
+    return;
+  }
+
   saveBtn.disabled = true;
   setStatus('Saving…');
 
@@ -1649,6 +1855,60 @@ async function savePermissions(u, saveBtn) {
     } else {
       serverWords ||= statusEl.textContent;
       refused.push(`the ${row.label} role`);
+    }
+  }
+
+  // ── SPENDING (§7.2, phase 2b) — the per-PERSON axis, written LAST because it
+  //    is the only one of the three that cannot lock anybody out of anything:
+  //    policy can only deny, and a failure here leaves the visibility and role
+  //    changes already landed rather than holding them hostage.
+  //
+  // ⚠️ ONE DOOR. These are the same two calls the matrix above makes, with
+  // `principal_kind: 'user'` instead of `everyone`/`system`. There is no second
+  // write path, and a per-person rule that skipped the door's checks (the
+  // owner's 409, the unattended-path refusal) would be the interesting one.
+  for (const key of Object.keys(e.spend ?? {})) {
+    const { off, why } = e.spend[key];
+    const [featureId, site] = key.split('|');
+    const label = describeSpendKey(key);
+    let ok;
+    if (off) {
+      ok = Boolean(
+        await api('/api/estate/billing/rules', {
+          method: 'POST',
+          body: JSON.stringify({
+            feature: featureId,
+            site,
+            principal_kind: 'user',
+            principal_value: String(u.id),
+            allow: false,
+            why: (why || '').trim(),
+          }),
+        }),
+      );
+    } else {
+      // ⚠️ TURNING IT BACK ON DELETES THE ROW rather than writing an `allow`
+      // one. "No rule" IS the default state, and a table filling up with rows
+      // that mean "the same as nothing" stops answering the only question it
+      // exists to answer: what has been switched off here?
+      const existing = (billingDir?.rules ?? []).find(
+        (r) =>
+          r.principal_kind === 'user' &&
+          r.principal_value === String(u.id) &&
+          r.feature === featureId &&
+          r.site === site,
+      );
+      ok = existing
+        ? Boolean(await api(`/api/estate/billing/rules/${existing.id}`, { method: 'DELETE' }))
+        : true; // already on — nothing to remove, and that is a success
+    }
+
+    if (ok) {
+      saved.push(`${label} ${off ? 'switched off' : 'back on'}`);
+      delete e.spend[key];
+    } else {
+      serverWords ||= statusEl.textContent;
+      refused.push(`spending for ${label}`);
     }
   }
 
@@ -1908,6 +2168,253 @@ function capabilityText(u, row) {
   return text;
 }
 
+/**
+ * THE SPENDING CELL AND ITS DRAWER — one site row of one member's card (§7.2).
+ *
+ * Returns `{ cell, drawer, refresh }`. The drawer is a FULL-WIDTH sibling
+ * appended after the row rather than content inside the cell: the cell is one
+ * column of a five-column grid, and a checklist rendered inside it would be a
+ * paragraph three words wide.
+ *
+ * ⚠️ GRANT-CLASS, like every other control on this page. Ticking a box changes
+ * nothing — it stages, the cell is outlined, the card's ONE Save writes it
+ * beside the visibility boxes and the role dropdowns. There is no second Save
+ * button here and there must never be one.
+ */
+function spendCell(u, row, onStage) {
+  const cell = permCell('perm-spend', 'Spending');
+  const worded = (className, text, title) => {
+    const note = document.createElement('span');
+    note.className = className;
+    note.textContent = text;
+    if (title) note.title = title;
+    cell.appendChild(note);
+    return { cell, drawer: null, refresh: () => {} };
+  };
+
+  // ⚠️ The four causes of "no answer" stay distinct. An unreachable or
+  // approver-refused billing route is not "this person spends nothing".
+  if (!billingDir) {
+    return worded(
+      'perm-note',
+      'not loaded',
+      'The spending rules did not answer on this load, so what this person may spend cannot be shown or changed. It is approver-gated, like the Spending panel above. Try Refresh.',
+    );
+  }
+  const site = billingSiteFor(row);
+  if (!site) {
+    return worded('perm-note', 'n/a', 'Nothing on this site can bill the model.');
+  }
+  const features = spendFeaturesFor(site);
+  if (!features.length) {
+    return worded('perm-note', 'n/a', 'No registered money path exists on this site.');
+  }
+  const blocked = spendBlocked(u, row, site);
+  if (blocked) return worded(blocked.cls, blocked.text, blocked.title);
+
+  const drawer = document.createElement('div');
+  drawer.className = 'perm-drawer';
+  const drawerKey = `${u.id}|${row.id}`;
+  drawer.hidden = !openSpendDrawers.has(drawerKey);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'spend-toggle';
+  btn.setAttribute('aria-expanded', String(!drawer.hidden));
+  const broadNote = document.createElement('span');
+  broadNote.className = 'perm-note spend-some';
+  cell.append(btn, broadNote);
+
+  const lineRefreshers = [];
+
+  const refresh = () => {
+    const offNow = features.filter((f) => effectiveSpend(u, f, site, row));
+    const stagedHere = features.some((f) => stagedSpend(u, f, site, row) !== undefined);
+    btn.textContent = offNow.length ? `⊘ ${offNow.length} off` : 'all on';
+    btn.dataset.on = String(offNow.length === 0);
+    if (stagedHere) btn.dataset.staged = 'true';
+    else delete btn.dataset.staged;
+    btn.title = offNow.length
+      ? `${offNow.length} money path${offNow.length === 1 ? '' : 's'} switched off for this person here. Open to change it.`
+      : 'No money path on this site is switched off for this person by a rule naming them. Open to switch one off.';
+
+    // Denies this column does NOT own — an everyone/system row, a rule for
+    // their rung, or a wildcard. Stated, because "all on" over the top of a
+    // site-wide off is the same lie as a green light on a dead wire.
+    const broadOff = features.filter((f) => spendReach(u, f, site, row).broader.length > 0);
+    broadNote.hidden = broadOff.length === 0;
+    broadNote.textContent = broadOff.length ? `· ${broadOff.length} off by a wider rule` : '';
+    broadNote.title = broadOff.length
+      ? `Also switched off here for everyone, for an unattended cron, or for this person's rung: ${broadOff
+          .map((f) => f.label)
+          .join(', ')}. Those rules are the Spending panel's, not this column's — this column only ever names one person.`
+      : '';
+
+    for (const fn of lineRefreshers) fn();
+  };
+
+  btn.addEventListener('click', () => {
+    drawer.hidden = !drawer.hidden;
+    btn.setAttribute('aria-expanded', String(!drawer.hidden));
+    if (drawer.hidden) openSpendDrawers.delete(drawerKey);
+    else openSpendDrawers.add(drawerKey);
+  });
+
+  const head = document.createElement('p');
+  head.className = 'perm-drawer-head';
+  head.textContent =
+    `What ${u.display_name || u.email} may spend on ${CATALOG_LABELS[site] || site}. ` +
+    'Unticking one switches it off for this person only; ticking it back removes the rule. ' +
+    'Nothing is written until you Save this card, and a change takes effect within 10 minutes — the same delay as a revocation.';
+  drawer.appendChild(head);
+
+  const list = document.createElement('ul');
+  list.className = 'spend-list';
+  for (const feature of features) {
+    const { li, refresh: lineRefresh } = spendLine(u, row, site, feature, onStage);
+    lineRefreshers.push(lineRefresh);
+    list.appendChild(li);
+  }
+  drawer.appendChild(list);
+
+  const foot = document.createElement('p');
+  foot.className = 'perm-drawer-head';
+  foot.textContent =
+    'Switching a money path off only ever stops spending: the site’s own gate — a rung’s capability, a missing key, an env posture — still applies in front of this, and ticking one back on grants nobody anything they could not already do.';
+  drawer.appendChild(foot);
+
+  refresh();
+  return { cell, drawer, refresh };
+}
+
+/**
+ * One money path on one person's drawer.
+ *
+ * ⚠️ A `system`-ONLY PATH GETS A FACT, NOT A CONTROL — never a disabled
+ * checkbox, following this page's standing rule that a greyed control reads as
+ * "something you could enable". `system` resolves alone, so a per-person row
+ * against the hourly sweep would match nothing at all; the auth Worker refuses
+ * to store one (`principal_not_applicable`) and this says the same thing before
+ * anybody clicks.
+ */
+function spendLine(u, row, site, feature, onStage) {
+  const li = document.createElement('li');
+  li.className = 'spend-line';
+
+  const head = document.createElement('div');
+  const strong = document.createElement('strong');
+  strong.textContent = feature.label;
+  const cost = document.createElement('span');
+  cost.className = 'spend-cost';
+  // ⚠️ "the code's own estimate", never "spend" — the measured number is the
+  // usage meter's question and this surface must not answer it.
+  cost.textContent = ` · ${feature.cost}`;
+  head.append(strong, cost);
+
+  const notes = document.createElement('span');
+  notes.className = 'perm-note spend-detail';
+
+  const personCan = feature.principals.includes('person');
+  const alsoSystem = feature.principals.includes('system');
+
+  if (!personCan) {
+    const fact = document.createElement('span');
+    fact.className = 'perm-note';
+    fact.textContent = '⏱ unattended — nobody triggers it, so there is nothing per-person to switch';
+    fact.title =
+      'This money path runs on a cron with no user. A per-person rule could never match it, so the only switch that works is the site-wide one on the Spending panel above.';
+    li.append(head, fact);
+    return { li, refresh: () => {} };
+  }
+
+  const key = billingKey(feature.id, site);
+  const label = document.createElement('label');
+  label.className = 'perm-box';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.setAttribute('aria-label', `${feature.label} on ${CATALOG_LABELS[site] || site} for ${u.email}`);
+  label.append(box, ' may spend');
+
+  const whyLabel = document.createElement('label');
+  whyLabel.className = 'ctl spend-line-why';
+  const whySpan = document.createElement('span');
+  whySpan.className = 'ctl-label';
+  // ⚠️ REQUIRED, and the label says WHY it is required rather than marking it
+  // with an asterisk. A switched-off money path is invisible: in six months
+  // "why can she not run cover search?" has exactly one cheap answer, and it is
+  // this box.
+  whySpan.textContent = 'Why (required — a switched-off money path is invisible, and this is the only record of the reason)';
+  const why = document.createElement('input');
+  why.type = 'text';
+  why.className = 'ctl-input';
+  why.maxLength = 500;
+  why.dataset.spendWhy = `${u.id}|${key}`;
+  why.placeholder = 'e.g. forty research runs in one weekend';
+  whyLabel.append(whySpan, why);
+
+  const refresh = () => {
+    const off = effectiveSpend(u, feature, site, row);
+    const staged = stagedSpend(u, feature, site, row);
+    box.checked = !off;
+    box.classList.toggle('perm-staged', staged !== undefined);
+
+    const { exact, broader } = spendReach(u, feature, site, row);
+    const bits = [];
+    if (alsoSystem) {
+      bits.push(
+        'also runs unattended — this switch covers the person half only; the cron needs the site-wide switch',
+      );
+    }
+    if (broader.length) {
+      const r = broader[0];
+      bits.push(
+        r.principal_kind === 'role'
+          ? `already off for the ${r.principal_value} rung here`
+          : r.principal_kind === 'system'
+            ? 'already off for the unattended run here'
+            : r.feature === '*' || r.site === '*'
+              ? `already off by a wider rule (${r.feature} on ${r.site})`
+              : 'already off for everyone on this site',
+      );
+    }
+    if (exact && exact.allow === false && staged === undefined) {
+      bits.push(`switched off by ${exact.updated_by} — “${exact.why}”`);
+    }
+    notes.textContent = bits.join(' · ');
+    notes.hidden = bits.length === 0;
+
+    // The Why box exists only while there is a deny to explain, and only for a
+    // NEW one — an existing rule already carries its reason, shown above.
+    const needsWhy = staged !== undefined && staged.off;
+    whyLabel.hidden = !needsWhy;
+    if (needsWhy && why.value !== staged.why) why.value = staged.why;
+  };
+
+  box.addEventListener('change', () => {
+    // STAGE ONLY. The card's Save owns the network (see the grammar).
+    const e = editsFor(u);
+    const wasOff = truthSpend(u, feature, site, row);
+    const off = !box.checked;
+    if (off === wasOff) delete e.spend[key];
+    else e.spend[key] = { off, why: e.spend[key]?.why ?? '' };
+    pruneEmpty(u);
+    onStage();
+    if (!whyLabel.hidden) why.focus();
+  });
+
+  why.addEventListener('input', () => {
+    const e = pendingEdits.get(u.id);
+    if (e?.spend?.[key]) e.spend[key].why = why.value;
+    // ⚠️ Deliberately does NOT call onStage(): a full refresh mid-typing would
+    // rewrite this input's value from the bag and fight the caret. The count is
+    // already right — the edit was staged when the box was ticked.
+  });
+
+  li.append(head, label, notes, whyLabel);
+  refresh();
+  return { li, refresh };
+}
+
 /** One grid cell, carrying the column name so the phone layout can print it. */
 function permCell(className, column) {
   const el = document.createElement('span');
@@ -1922,9 +2429,17 @@ function permCell(className, column) {
  * everything").
  *
  * One row per site — the SAME rows, in the SAME order, as the "Permission map"
- * disclosure at the top — and the SAME four cells on every one of them:
+ * disclosure at the top — and the SAME five cells on every one of them:
  *
- *   site │ visible │ role │ what that role can do
+ *   site │ visible │ role │ what that role can do │ spending
+ *
+ * ⚠️ THE FIFTH COLUMN ARRIVED 2026-09-05 (design §7.2, phase 2b) and it is the
+ * per-PERSON axis of the Spending panel above, which is the per-SITE one. It
+ * fills the existing shape rather than inventing a layout: one cell, one
+ * summary, and a drawer that opens under the row. It writes through the SAME
+ * door the matrix uses, with `principal_kind: 'user'`, and it stages into the
+ * SAME per-card Save as the boxes and the dropdowns — there is no second Save
+ * button on this page and there must never be one.
  *
  * which is deliberately the shape of docs/info/role-capability-map.md, the map
  * the owner approved, rendered live for this person. The old block drew a line
@@ -1947,7 +2462,7 @@ function permGrid(u, afterStage) {
 
   const header = document.createElement('div');
   header.className = 'perm-row perm-head';
-  for (const [label, cls] of [['Site', 'perm-name'], ['Visible', ''], ['Role', ''], ['What that role can do', '']]) {
+  for (const [label, cls] of [['Site', 'perm-name'], ['Visible', ''], ['Role', ''], ['What that role can do', ''], ['Spending', '']]) {
     const h = permCell(cls);
     h.textContent = label;
     header.appendChild(h);
@@ -1955,6 +2470,7 @@ function permGrid(u, afterStage) {
   grid.appendChild(header);
 
   const capCells = new Map();
+  const spendRefreshers = [];
   let refreshFoot = () => {};
   const onStage = () => {
     // The derived column previews the STAGED rung — that is the point of
@@ -1963,6 +2479,13 @@ function permGrid(u, afterStage) {
       const row = SITE_ROWS.find((r) => r.id === rowId);
       cell.firstChild.textContent = capabilityText(u, row);
     }
+    // Every spending cell repaints, not only the one that changed — the same
+    // stance the derived column takes above. Four cells is cheap, and a
+    // per-cell refresh path would be a second place for "⊘ 2 off" to go stale.
+    // ⚠️ It repaints from the LIVE rules and the staged bag, never from the
+    // staged ROLE: a rung nobody has saved yet cannot already carry a deny, and
+    // claiming otherwise would preview a rule that does not exist.
+    for (const fn of spendRefreshers) fn();
     refreshFoot();
     afterStage?.();
   };
@@ -2018,7 +2541,30 @@ function permGrid(u, afterStage) {
     capCells.set(row.id, cap);
     line.appendChild(cap);
 
+    // ⚠️ THE FIFTH COLUMN (§7.2). Its drawer is a full-width sibling of the
+    // row, not a child of the cell — see spendCell().
+    const spend = spendCell(u, row, onStage);
+    line.appendChild(spend.cell);
+    spendRefreshers.push(spend.refresh);
+
     grid.appendChild(line);
+    if (spend.drawer) grid.appendChild(spend.drawer);
+  }
+
+  // ⚠️ THE `estate` SITE HAS NO ROW HERE, AND THE PAGE SAYS SO RATHER THAN
+  // LOOKING COMPLETE. This grid is one row per CATALOG — a place somebody is
+  // granted, with a rung and a visibility box. `estate` (GABI in Discord, the
+  // apex shelf scanner) is a place that BILLS but is not a catalog anyone is
+  // granted, so it has no rung, no box and no row to hang a fifth cell on.
+  // Inventing one would mean three of its four cells were worded refusals.
+  // Its money paths are switchable for everyone on the Spending panel above.
+  if (billingDir?.sites?.includes('estate') && spendFeaturesFor('estate').length) {
+    const gap = document.createElement('p');
+    gap.className = 'perm-drawer-head';
+    gap.textContent =
+      `GABI and the apex scanner are not rows here — they are not catalogues anybody is granted, so there is no rung to switch off against. ` +
+      `Their ${spendFeaturesFor('estate').length} money paths are switchable for everyone on the Spending panel above.`;
+    grid.appendChild(gap);
   }
 
   // ── The one Save. See the header comment for why it is per member. ────────
@@ -2072,6 +2618,16 @@ function permScanLine(u) {
   }
   const bits = [sees.length ? `sees ${sees.join(', ')}` : 'sees nothing yet'];
   if (roles.length) bits.push(roles.join(' · '));
+  // ⚠️ A per-person spending deny is otherwise INVISIBLE until somebody opens
+  // the card and then opens the drawer, which is two gestures too many for a
+  // fact that answers "why can she not run cover search?".
+  let off = 0;
+  for (const row of SITE_ROWS) {
+    const site = billingSiteFor(row);
+    if (!site) continue;
+    for (const f of spendFeaturesFor(site)) if (truthSpend(u, f, site, row)) off++;
+  }
+  if (off) bits.push(`⊘ ${off} money path${off === 1 ? '' : 's'} off`);
   const n = countStaged(u);
   if (n) bits.push(`${n} unsaved`);
   return bits.join(' · ');
@@ -2600,14 +3156,9 @@ function spendingFooter() {
   summary.className = 'spend-summary';
   const off = [...billingStaged.entries()].filter(([, v]) => v === false);
   const on = [...billingStaged.entries()].filter(([, v]) => v === true);
-  const describe = (k) => {
-    const [featureId, site] = k.split('|');
-    const f = billingDir.features.find((x) => x.id === featureId);
-    return `${f ? f.label : featureId} on ${CATALOG_LABELS[site] || site}`;
-  };
   const parts = [];
-  if (off.length) parts.push(`switch OFF — ${off.map(([k]) => describe(k)).join('; ')}`);
-  if (on.length) parts.push(`switch back ON — ${on.map(([k]) => describe(k)).join('; ')}`);
+  if (off.length) parts.push(`switch OFF — ${off.map(([k]) => describeSpendKey(k)).join('; ')}`);
+  if (on.length) parts.push(`switch back ON — ${on.map(([k]) => describeSpendKey(k)).join('; ')}`);
   summary.textContent = `Staged (nothing is saved yet): ${parts.join(' · ')}.`;
   staging.appendChild(summary);
 
@@ -2684,7 +3235,32 @@ async function saveSpending(why, saveBtn) {
         const existing = (billingDir.rules ?? []).find(
           (r) => r.feature === featureId && r.site === site && r.principal_kind === kind,
         );
-        if (!existing) continue;
+        if (!existing) {
+          // ⚠️ "NOTHING TO DELETE" IS NOT ALWAYS "ALREADY ON", and reporting a
+          // saved change that did not happen is the worse of the two failures.
+          // A deny can reach this cell through a BROADER row (`feature = '*'`
+          // or `site = '*'`), which this per-cell switch must not delete —
+          // that row also covers cells nobody clicked. Say which row is holding
+          // it instead of returning a cheerful success and redrawing Off.
+          const broader = (billingDir.rules ?? []).find(
+            (r) =>
+              r.principal_kind === kind &&
+              r.allow === false &&
+              (r.feature === featureId || r.feature === '*') &&
+              (r.site === site || r.site === '*'),
+          );
+          if (broader) {
+            ok = false;
+            setStatus(
+              `${describeSpendKey(key)} is switched off by a wider rule (${broader.feature} on ${broader.site}), not by this cell. ` +
+              'Removing it here would also turn it back on everywhere else that rule covers, so nothing was changed. ' +
+              'Remove that rule instead.',
+              'warn',
+            );
+            break;
+          }
+          continue;
+        }
         const res = await api(`/api/estate/billing/rules/${existing.id}`, { method: 'DELETE' });
         if (!res) ok = false;
       } else {
@@ -4074,6 +4650,9 @@ function clearSignedInState() {
   allEstateUsers = [];
   pendingEdits.clear();
   expandedMembers.clear();
+  // Which Spending drawers stood open is this reader's choice too, and one of
+  // them may be sitting under a card the next reader is not owed.
+  openSpendDrawers.clear();
   // Which directory sections were opened is this reader's choice, not the next
   // one's — the same reasoning that clears the expanded cards and the staged
   // edits directly above.

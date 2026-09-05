@@ -595,9 +595,18 @@
         "current search or filters' is the OTHER empty state \u2014 the one that must never be confused with the",
         "first, since printing 'nobody is waiting' while a filter hides a pending person says the opposite of",
         "the truth. A bundle missing any of these renders a flat list again and returns a cheerful 200.",
+        "\u26a0\ufe0f THE SPENDING COLUMN (2026-09-05, llm-billing-control-design.md \u00a77.2 phase 2b) is the grid's",
+        "FIFTH column and the per-PERSON axis of the Spending panel above. spendCell and spendLine are the",
+        "cell and its drawer; openSpendDrawers is what stops a search keystroke closing a drawer holding a",
+        "typed Why; \"principal_kind: 'user'\" is proof it writes through the matrix's OWN door rather than a",
+        "second one; 'unattended \u2014 nobody triggers it' is the worded fact that stands where a control would",
+        "be on a cron-only money path (a per-person rule there would deny nobody, and the auth Worker refuses",
+        "to store one); 'Say why first for' is the refusal that fires BEFORE any of the three systems is",
+        "written, so an empty Why box cannot leave a card half-saved. A bundle missing any of these ships a",
+        "four-column grid that looks finished.",
         "NOTE (unchanged, and the reason this file's checks can never be enough): the signed-in rendered",
-        "table \u2014 the grid, the Save, the ladders with real data, and now the three sections themselves \u2014 is",
-        "invisible to an unauthenticated fetch and still has to be checked by signing in."
+        "table \u2014 the grid, the Save, the ladders with real data, the three sections and now the Spending",
+        "column \u2014 is invisible to an unauthenticated fetch and still has to be checked by signing in."
       ],
       "path": "/admin/admin.js",
       "mustContain": [
@@ -622,7 +631,13 @@
         "Nobody is waiting.",
         "hidden by the current search or filters",
         "../assets/catalog-seal.js",
-        "a reader key was provided"
+        "a reader key was provided",
+        "spendCell",
+        "spendLine",
+        "openSpendDrawers",
+        "principal_kind: 'user'",
+        "unattended — nobody triggers it",
+        "Say why first for"
       ],
       "mustNotContain": [
         "download-ebooks",

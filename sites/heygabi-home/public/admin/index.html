@@ -218,11 +218,19 @@ ul.users-list { list-style: none; margin: .55rem 0 0; padding: 0; display: grid;
 
 /* ═══ THE PERMISSION GRID ═══════════════════════════════════════════════
    One member's whole permission map, rendered by admin.js (permGrid) inside
-   a per-card disclosure. FOUR COLUMNS, THE SAME FOUR FOR EVERY SITE:
+   a per-card disclosure. FIVE COLUMNS, THE SAME FIVE FOR EVERY SITE:
 
-     site · visible · role · what that role can do
+     site · visible · role · what that role can do · spending
 
-   which is deliberately the same anatomy as docs/info/role-capability-map.md
+   ⚠️ SPENDING ARRIVED 2026-09-05 (llm-billing-control-design.md §7.2). It is
+   the per-PERSON axis of the Spending panel above — same table, same write
+   door, `principal_kind: 'user'` instead of `everyone`. Its cell is a summary
+   ("all on" / "⊘ 2 off") reusing .spend-toggle, so there is ONE visual
+   language for a spending switch on this page; the checklist it opens is
+   .perm-drawer, a FULL-WIDTH sibling of the row rather than content inside a
+   one-column cell.
+
+   The first four are deliberately the same anatomy as docs/info/role-capability-map.md
    (the owner-approved map) and the same anatomy as the "Permission map"
    disclosure at the top of the page — the map, but live and per person.
 
@@ -242,7 +250,7 @@ ul.users-list { list-style: none; margin: .55rem 0 0; padding: 0; display: grid;
 .perm-grid { display: grid; gap: 0; margin-top: .45rem; font-size: var(--et-text-small); }
 .perm-row {
   display: grid;
-  grid-template-columns: 8.6rem minmax(8rem, auto) minmax(9rem, auto) 1fr;
+  grid-template-columns: 8.6rem minmax(8rem, auto) minmax(9rem, auto) 1fr minmax(7.5rem, auto);
   gap: .3rem .8rem;
   align-items: center;
   padding: .38rem 0;
@@ -285,6 +293,21 @@ ul.users-list { list-style: none; margin: .55rem 0 0; padding: 0; display: grid;
 .perm-staged { outline: 2px solid var(--et-warn); outline-offset: 2px; border-radius: 4px; }
 .perm-foot { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding-top: .55rem; }
 .perm-unsaved { color: var(--et-warn); font-size: var(--et-text-small); }
+
+/* ---- the Spending column and its drawer (§7.2, phase 2b) ----------------
+   The cell reuses .spend-toggle from the matrix above — one look for "a
+   spending switch", never a second one invented here. The DRAWER is a
+   full-width sibling of .perm-row inside the same .perm-grid, which is why it
+   is styled as a block and not as a grid cell: a checklist rendered inside the
+   fifth column would be a paragraph three words wide. */
+.perm-spend { display: inline-flex; align-items: baseline; gap: .3rem; flex-wrap: wrap; }
+.perm-drawer { padding: .5rem 0 .7rem 1rem; border-bottom: 1px solid var(--et-hairline); }
+.perm-drawer-head { margin: 0 0 .5rem; color: var(--et-muted); font-size: var(--et-text-micro); text-wrap: pretty; }
+.perm-drawer .perm-drawer-head:last-child { margin: .6rem 0 0; }
+.spend-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.spend-line { display: grid; gap: .12rem; }
+.spend-line .perm-box { align-items: baseline; min-height: 0; }
+.spend-line-why { margin-top: .25rem; max-width: 34rem; }
 
 /* Phone: the four columns stack, and each cell names its own column so a
    stacked row is still readable as the same grid. */
