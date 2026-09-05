@@ -511,15 +511,31 @@ HTTP/1.1 401 Unauthorized …  Content-Length: 27
 🔴 **OWNER STEP — the conductor was refused too** (13:36 Phoenix, same
 classifier, both shells; a conductor deploy of this Worker had gone through
 earlier in the day for another agent, so the refusal is per-invocation, not
-policy). Owner: from the repo root type `! cd apps/auth-worker && npx wrangler
-deploy` — the `!` prefix runs it in the session and the output lands here, and
-the conductor does the log line, curls and DONE move.
+policy). ⚠️ **Updated 14:1x Phoenix: the migrate is refused for the conductor
+as well** (`npm run db:migrate` = `wrangler d1 migrations apply estate_auth
+--remote`, same classifier), so BOTH commands are the owner's, in this order,
+from the repo root:
 
-☐ **The step:** `cd apps/auth-worker && npx wrangler deploy`. ⚠️ **No migration
-is involved** — this change adds no migration and the highest in the tree is
-still `0018_catalog_requests.sql`, so migrate-before-deploy has nothing to do
-here. Then append the `deploys.log` line, re-run the three curls below, and move
-this section WHOLE to [`DONE.md`](DONE.md).
+```
+! cd apps/auth-worker && npm run db:migrate && npx wrangler deploy
+```
+
+The `!` prefix runs it in the session and the output lands here; the conductor
+does the log line, curls and DONE move. ⚠️ The owner typed the deploy half alone
+once at ~13:50 Phoenix and it did NOT land (the newest deployment stayed the
+15:00Z one) — and it must not be retried until the tree is clean of every
+auth-worker agent (W2-PLAT was still in it at 14:10), because a deploy ships the
+tree.
+
+☐ **The step:** `cd apps/auth-worker && npm run db:migrate && npx wrangler
+deploy`. ~~⚠️ **No migration is involved** — this change adds no migration and
+the highest in the tree is still `0018_catalog_requests.sql`, so
+migrate-before-deploy has nothing to do here.~~ ⚠️ **Corrected 2026-09-05:**
+`0019_estate_notification.sql` rides along (next bullet) — migrate FIRST. Then
+append the `deploys.log` line, re-run the three curls below plus
+`curl -s -D - https://auth.heygabi.ai/api/estate/notifications | head -20`
+(expect 401 with a worded `detail`, not the 404 it returns today), and move this
+section WHOLE to [`DONE.md`](DONE.md).
 
 - 🔴 **RIDING ALONG — AND IT MAKES THIS DEPLOY A MIGRATE-FIRST ONE.** Added
   2026-09-05 by agent W2-VERSE4: *"+ Add a verse"* **phase 4** landed in
@@ -568,17 +584,20 @@ this section WHOLE to [`DONE.md`](DONE.md).
   Tests 682 → 685 at the time it landed; 721/721 for the Worker at HEAD.
   ⚠️ It adds no unauthenticated route, so it cannot join the three curls below.
 
-- 🔴 **A SECOND DEPLOY, A DIFFERENT PROJECT — `heygabi-home` (Pages).** Agent
-  W2-BILL2B's phase 2b UI landed in `52ab54c` (the Spending column on every
-  member's permission grid) and is **NOT DEPLOYED**. It is not part of the
-  `estate-auth` deploy above and must not be confused with it. Owner step, from
-  the repo root: `npm run deploy:home` (it runs `npm test` and `check:home`
-  first — both green at `52ab54c`: whole workspace 0 fail, 31 JS parsed / 28
-  module graphs / 14 HTML). ⚠️ **A Pages deploy ships the WORKING TREE**, so it
-  runs from a committed-clean tree or from `git worktree add <tmp> HEAD` if
-  another agent is mid-edit. Review link afterwards:
-  <https://heygabi.ai/admin/> → a member card → **Permissions** → the
-  **Spending** cell on any row.
+- ☑ **A SECOND DEPLOY, A DIFFERENT PROJECT — `heygabi-home` (Pages) — DEPLOYED
+  2026-09-05 21:06 UTC by the conductor.** Agent W2-BILL2B's phase 2b UI landed
+  in `52ab54c` (the Spending column on every member's permission grid) and went
+  out as Pages deployment `1372ad9b` at `18f5483`, from a throwaway worktree of
+  HEAD (`wt-home-1404`) because W2-PLAT was mid-run in the shared tree. `npm
+  test` green (721/721 in the Worker), `check:home` 31 JS / 28 module graphs /
+  14 HTML, `verify:home` 30 pages passed first run; the cache-busted live
+  `/admin/admin.js` carries `spendCell` ×3 (it carried 0 before). Full line in
+  [`deploys.log`](deploys.log). ⚠️ **NOT VERIFIED signed in** — nobody has
+  rendered the column in a browser, so it is a 🧑 human-eyeball item, not
+  finished: <https://heygabi.ai/admin/> → a member card → **Permissions** → the
+  **Spending** cell on any row. ⚠️ Until the `estate-auth` deploy above lands,
+  the server half (`44492c8`) is not live and the column's refusal to draw a
+  control for a system-only path is client-side only.
 
 ☐ **Verify after deploying** (⚠️ `-I` and `-o NUL` misreport on these hosts —
 use `-D -` and pipe to `head`):
@@ -1021,6 +1040,11 @@ two items were not re-measured): of the eight, **item 1's phase 2b is now
 CODE-LANDED** (`52ab54c` + `44492c8`, ☐ two deploys) and **item 1's phase 3 was
 already BUILT** in the library and games repos when the eight were counted. The
 paragraph below is left as written; these two lines are the correction.
+⚠️ **Count corrected again 2026-09-05 14:1x Phoenix by the conductor:** item 2's
+phase 4 is now CODE-LANDED too (`f2e7543`, agent W2-VERSE4, rides the pending
+`estate-auth` migrate+deploy above), and item 1's phase 2b home half is DEPLOYED
+(`1372ad9b`). So of the "five genuinely unbuilt phases" only **item 1's phases 4
+and 5** remain unbuilt; the rest of the eight are deploys and eyeballs.
 
 ⚠️ **Corrected 2026-09-05 (docs audit). The old heading read `DESIGNED — one
 still unbuilt, two BUILT`, and by then NONE of the three was design-only** —
