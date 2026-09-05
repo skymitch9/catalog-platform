@@ -2,9 +2,30 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED.
 >
-> Last verified: **2026-09-03** — **137/137 passing** against live production
-> on a clean, single run (`npm run probe:estate`) taken minutes after the
-> audiobook-worker deploy that carried the routes. **+3 for GABI's phrase
+> Last verified: **2026-09-05** — **145/145 passing** against live production on
+> a clean, single run (`npm run probe:estate`) taken minutes after the
+> `estate-auth` + `catalog-index` deploys that carried the routes. **+8 for the
+> CATALOG REGISTRY** (`index:I12`–`I16` and `auth:A42`–`A44`, dispatch 1 of
+> `docs/info/multi-library-survey-2026-09-05.md` §10; as-built
+> `docs/info/catalog-registry.md`).
+>
+> 🔴 **`I14` is the reason those probes exist and the one to keep.** This suite
+> holds no credential of any kind, which is EXACTLY the caller the owner's rule
+> is about (2026-09-05 16:14, *"yes name only"*), so it is the one place that
+> rule can be measured against the live Worker rather than against a fake: it
+> asserts no catalog on `index.heygabi.ai/api/catalogs` carries `rows` or
+> `pushed_at` for a signed-out reader. `I15` asserts the ownership rule itself
+> on the wire — every physical catalog designates an owner, every shared one
+> designates nobody. `A42`–`A44` pin the auth-side door SHUT and its CORS
+> ABSENT, because the registry's one public copy is the index Worker's and a
+> second browser-reachable copy is the drift the registry exists to end.
+>
+> ⚠️ **A SECOND, BACK-TO-BACK RUN that day showed `A43` FAILING with a 429**,
+> and it is the rate limiter, not the route — see *Gotchas*. Measured directly
+> afterwards with curl: `429 {"error":"rate_limited"}`. The 145/145 above is the
+> first, clean run.
+>
+> Prior MEASURED figure: **137/137** on 2026-09-03. **+3 for GABI's phrase
 > count** (`ab-worker:AB25`–`AB27`: `GET /api/book/:bookId/count` and `GET
 > /api/books/count` refusing a tokenless caller with the worded 401, and the
 > `AB22` leak assertion carried onto the new pair — a count route answers a
@@ -101,6 +122,8 @@ time, by anyone with this repo checked out, with no credentials at all.
 |---|---|---|
 | All five `/api/health` | `probes/health.mjs` | The `{ ok, service, version?, time, detail }` envelope (`docs/info/health-envelope.md`) on auth, index, library, games, **library2** (`padhard.heygabi.ai`). ⚠️ `library2-health` asserts `service === "library-catalog"` — the SAME string the main library answers, correctly: `[env.friend]` is the same Worker code at another hostname, and the health route names the software, not the deploy. The origin is what separates the rows |
 | `auth.heygabi.ai` | `probes/auth-worker.mjs` | `/me`, `/hello` tokenless → 401; `/docs/:slug` tokenless → 401; `/backups` tokenless → 401 (0006, the /status "last backup age" row) plus its apex-only CORS admit/refuse; `/facts/:slug` tokenless → 401 on GET AND POST (0007, the self-service shelf-facts form) plus its apex-only CORS admit/refuse; `/ops/pipeline/step` and `/ops/pipeline/force-upload` tokenless → 401 (0008, the fine-grained pipeline step controls — owner ask 2026-08-16) plus apex-only CORS admit/refuse for both — **never a live trigger, see the note below**; admin API (`/users`) tokenless AND garbage-bearer → 401; `/hello` CORS (audiobook site admitted, foreign origin refused, POST allowed); admin API CORS (apex admitted, foreign origin refused); `/__/auth/*` proxy is live (not this Worker's 404 shape — sso-design.md §4.1 Phase 1); `/api/session` tokenless → 401, `/api/session/token` no-cookie / unknown-cookie → 401 `no_session`, `DELETE /api/session` no-cookie → 200 idempotent (§4.3 Phase 2); session-routes CORS is CREDENTIALED and admits `library.heygabi.ai` (proving it uses its own SESSION_ORIGINS list, not ADMIN_ORIGINS/ME_ORIGINS), foreign origin refused |
+| `index.heygabi.ai` — the catalog REGISTRY | `probes/index-worker.mjs` `I12`–`I16` | `/api/catalogs` signed-out → **200** (never a 401: the apex search box needs the labels before sign-in) with `{catalogs[{id,label,owner,holding,shared,host}], counts:"none"}`; 🔴 **`I14` — NAME ONLY: not one `rows` and not one `pushed_at` on any catalog for a signed-out reader**, which is the owner's 2026-09-05 16:14 decision measured on the live wire; `I15` — every physical catalog designates an owner and every shared one designates nobody, which is the ownership rule itself; `I16` — apex CORS admitted (unlike `/api/machine`, this one IS browser-callable, because rendering a label is the whole point). ⚠️ The member half — counts scoped to the caller's own grants — is **NOT** probed here and cannot be: this suite signs in as nobody. As-built: [`../../docs/info/catalog-registry.md`](../../docs/info/catalog-registry.md) |
+| `auth.heygabi.ai` — the registry's machine door | `probes/auth-worker.mjs` `A42`–`A44` | `/api/estate/catalogs` tokenless AND garbage-bearer → 401 `unauthorized`, worded, **and no `catalogs` array**; `A44` — **no `access-control-allow-origin`, even for the apex**. ⚠️ Both assertions guard the same regression, and it is not a leak: the registry's contents are already public through the index Worker. It is that a CORS mount or an open door here would make a SECOND public copy of one fact, which is the seven-disagreeing-label-maps drift the registry was built to end |
 | `index.heygabi.ai` | `probes/index-worker.mjs` | `/api/search` anonymous → 200 with the public-slice shape (`scope === ["audiobook"]`); `/api/universe/:name`, `/api/lookup`, `/api/scan/shelf` tokenless → 401; `/api/search` CORS (apex admitted, foreign origin refused); **`/api/machine/lookup` and `/api/machine/search` unauthenticated → a WORDED refusal that is never 404 (which would read as "not built") and never 500** — ⚠️ both `401 machine_token_missing` and `503 machine_read_unconfigured` are accepted and the one seen is printed, because the Worker ships before the owner mints `INDEX_READ_TOKEN_LIBRARY` and the 503 is the answer that NAMES the missing secret; plus `/api/machine` CORS **absent even for the apex**, which `/api/search` admits — these routes are machine-to-machine and must never be browser-callable |
 | `library.heygabi.ai` | `probes/library-worker.mjs` | `/api/scan-jobs/barcode` and `/api/scan-jobs` tokenless → 401; barcode-route CORS (apex admitted, POST allowed, foreign origin refused) — *(sibling repo, read-only reference for expected shapes: `library_catalog/apps/worker/src/routes/scan-jobs.ts`, `middleware/auth.ts`; nothing in that repo is touched)* |
 | `padhard.heygabi.ai` | `probes/library2-worker.mjs` | **"Sam's library"** — the SECOND library instance (`library_catalog`'s `[env.friend]`: Worker `library-catalog-friend`, own D1 `library-catalog-2nd`, own bucket). Probed because the CODE is shared with `library.heygabi.ai` and the DEPLOY is not — a green main library says nothing about hers. `/api/admin/users` (the surface `heygabi.ai/admin`'s fourth role column drives) tokenless AND garbage-bearer → the worded 401; its `adminCors()` apex-only preflight admitting `https://heygabi.ai` with GET+PATCH and refusing a foreign origin. ⚠️ `PATCH /api/admin/users/:id/role` is deliberately NEVER exercised — it changes what a real person may do on a real catalog; its escalation rules (`canGrantRole`) are unit-tested in that repo. *(sibling repo, read-only reference: `library_catalog/apps/worker/src/routes/admin.ts`, `wrangler.toml [env.friend]`)* |
