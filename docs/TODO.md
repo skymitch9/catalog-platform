@@ -57,6 +57,21 @@ A auth-worker (phases 1+2), B home "+" (3a+3b), C `/admin` (4), D books
 provisioner (7, `library_catalog`), E games prerequisites (8, `Board_Game_Catalog`).
 Then by hand: phase 6 back-seed; then phase 9 games path; then phase 5 sealed key LAST.
 
+### ✅ Phase 6 — back-seed DONE by hand (main loop, 2026-09-05 07:31 Phoenix)
+
+Three `live` rows in remote `estate_auth.catalog_request` — #1 `library` (books,
+owner), #2 `padhard` (books, Samantha Hardman, instance `friend`), #3
+`boardgames` (games, owner) — full shape in design §10 row 6. Read back: 3 rows.
+⚠️ **The owner's primary account now sees NO "+" on either card** (he owns both
+kinds). **To test the "+" he signs in as his second approved account** (`estate_user`
+#87 `mitchlandtv@gmail.com`), which owns nothing and should see both.
+NOT verified: the hide/show in a browser, signed in as each.
+
+☐ **Pre-existing, found by agent A:** `GET /api/estate/me` answers unauthenticated
+with a bare `{"error":"unauthenticated"}` and no `detail` (`apps/auth-worker/src/estate.ts:409`)
+— the "never a bare status" rule broken on the most-read route. One-line fix; do it
+after today's build lands (the home page and `/admin` both read this route).
+
 ### ✅ Phases 1 + 2 — the auth-worker half — BUILT, MIGRATED AND DEPLOYED (agent A, 2026-09-05 14:24Z)
 
 `6b1f686` migration `0018_catalog_requests.sql` + `apps/auth-worker/src/catalog-names.ts`
