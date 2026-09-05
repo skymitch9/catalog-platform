@@ -807,7 +807,12 @@ WHOLE to [`DONE.md`](DONE.md) entry "2026-09-02 — the ~14:00 owner decision
 batch, executed"; per-repo detail lives in library_catalog's and
 audiobook_catalog's own DONE files.)
 
-## ☐ Prune the `C:/lcw/` worktrees (leftover from the 2026-08-23→24 overnight run)
+## ☐ Prune the `C:/lcw/` worktrees — 18 of 27 removed 2026-09-05; the 9 left each have a REASON
+
+✅ **18 removed by agent W2-PLAT, 2026-09-05.** ⚠️ **Nothing is lost and that is
+measurable:** `git worktree remove` deletes a checkout, never a branch — every
+one of the 18 branches is still listed by `git branch` in its own repo and can
+be checked out again in one command.
 
 ~~About 15 worktrees from the night's branches.~~ ⚠️ **Corrected 2026-09-05 (docs
 audit) — MEASURED, and it is nearly double:** `C:/lcw/` holds **27
@@ -819,6 +824,54 @@ directories git no longer tracks. The merged ones can go at leisure; check
 ⚠️ prefer `git worktree remove` over `rm -rf` so the registration goes too —
 an `rm -rf`'d worktree leaves a stale entry that makes the next `worktree add`
 of the same path fail.
+
+⚠️ **Corrected again 2026-09-05 by the removal pass: "orphaned directories git
+no longer tracks" was WRONG. Every one of the 23 git checkouts was a REGISTERED
+worktree** — 5 to `catalog-platform`, 14 to `library_catalog`, 4 to
+`audiobook_catalog` — so `rm -rf` was never needed and `git worktree prune` was
+never called. The other 4 directories are not checkouts at all.
+
+**The three checks each directory had to pass**, all measured before anything
+was deleted: it is a git checkout (`rev-parse --show-toplevel` + `remote -v`);
+`git status --porcelain` is **empty**; and its HEAD is an **ancestor of
+`origin/main`** in its own repo (`merge-base --is-ancestor`, after `git fetch
+origin main`). Plus: nothing inside modified since 2026-09-04.
+
+### 🔴 The 9 that STAYED, and why
+
+| Directory | Repo | Why it was NOT removed |
+|---|---|---|
+| `abfix` | `audiobook_catalog` | 🔴 **6 unmerged commits** on `feature/audit-fixes-audiobook` — HEAD `6b75fe2` is not an ancestor of `origin/main`. ⚠️ **Three of them are stored-XSS fixes** (`community.html` profile fields, inline `renderReviewSection`, generated community-stats `displayName`) plus a `reclaim_drive_files` trash-instead-of-delete fix and a CI gate. **This is unlanded security work, not leftovers** |
+| `ebookcount` | `audiobook_catalog` | 🔴 **2 unmerged commits** on `feature/ebook-audio-count` (`5d49e90`) — the ebook manifest counting audio editions instead of refusing them |
+| `gabicp` | `catalog-platform` | 🔴 **3 unmerged commits** on `feature/gabi-t2-confirm` (`177ae91`) — the T2 catalog-fix confirm lane, shipped DARK |
+| `index-read` | `catalog-platform` | 🔴 **3 unmerged commits** on `feature/index-machine-read` (`a751349`) — the named MACHINE READ exception + its estate probe |
+| `pause` | `catalog-platform` | 🔴 **1 unmerged commit** on `feature/pause-asks` (`9471961`) — *"Pausing ingestion is a QUESTION now"* |
+| `onedrive-excluded` | — | **Not a git checkout.** Eight directories named after repos and side projects (`boardbuddy`, `bookbuddy`, `catalog-platform`, `flight-info`, `scraping-tool`, `Sundance`, `tome-of-lore`, `wow-recorder`), created 2026-08-25 — it looks deliberate (a OneDrive-exclusion staging area), so it was left alone rather than guessed at |
+| `tbr-audit` | — | **Not a git checkout.** A 2026-08-26 scratch dump — `audit.mts`, `audit-report.txt` and ~40 MB of `.tmp` files |
+| `v3` | — | **Not a git checkout.** `cache/ d1/ observability/ r2/ workflows/`, untouched since 2026-08-11 |
+| `worktrees` | — | **Not a git checkout.** An **empty directory** |
+
+☐ **What is left to decide, and it is the owner's call, not a session's.** The
+five unmerged branches are the only real question: **land them, or delete the
+branch and the worktree together.** Removing the directory alone would not lose
+the commits (the branch holds them) but would lose the built `node_modules` and
+any local state. ⚠️ **Start with `abfix`** — unlanded XSS fixes are worth more
+than the other four combined. The other four directories can be deleted with
+`rm -rf` whenever their content is judged uninteresting; none is a worktree, so
+no registration goes with them.
+
+☐ **Also left, and out of this item's scope:** ~40 loose files at the top of
+`C:/lcw/` (commit-message drafts, `covers2-*.mjs/.sql/.log`, and two ~300 KB
+`deploy-home-rq*.log` from **2026-09-05 07:2x** — ⚠️ so `C:/lcw/` is still a
+LIVE scratch area, not purely a graveyard, which is one more reason nothing
+there gets a blanket `rm -rf`).
+
+☐ **Three stale worktree ADMIN directories were found and deliberately left**
+(they are inside the repos, not under `C:/lcw/`, and predate this pass):
+`catalog-platform/.git/worktrees/agent-a37b9d469f37af097` (2026-08-24),
+`library_catalog/.git/worktrees/wave3` and `wave4` (2026-08-10). Each is a husk
+with no `gitdir` file, so `git worktree list` already ignores them; harmless,
+and `git worktree prune` is the one-command clean-up if anyone wants it.
 
 ## ❓ OWNER DECISION — raise the details-sweep cron frequency? (standing offer, 2026-08-24)
 
