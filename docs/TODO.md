@@ -575,6 +575,27 @@ owner typed the deploy half alone once at ~13:50 Phoenix and it did NOT land
 (the newest deployment stayed the 15:00Z one) — now explained by the `!`
 finding above, not by the dirty tree (which is clean since 15f4641).
 
+⚠️ **Corrected AGAIN 2026-09-05 15:40 Phoenix — the paragraph above is WRONG
+on its central claim.** `!` lines typed through Remote Control DO reach this
+machine when written as absolute-path Windows PowerShell 5.1 (no `&&`, which
+is a parser error there; no relative `cd` from an unknown cwd). Measured:
+`! cd C:\…\catalog-platform\apps\auth-worker; npx wrangler deploy` produced
+the deployment `2026-09-05T22:31:54Z` (15:31 Phoenix), and
+`/api/estate/notifications` now answers a worded 401. The four "zero effect"
+lines were the `&&` and relative-`cd` forms. **Status of the two halves:**
+- ☑ **Worker DEPLOYED 22:31:54Z** by the owner's `!` line.
+- 🔴 ☐ **Migration `0019` NOT applied** — remote `d1_migrations` ends at
+  `0018` (2026-09-05 14:24:43), `migrations list --remote` still lists `0019`,
+  no notification table exists. ⚠️ The conductor's earlier "APPLIED at
+  15:12:38" was a wrong reading from a poll that measured the wrong thing.
+  Live is safe (the Worker answers 200-empty + `fix` for the missing table)
+  but no notice is written until it lands. Owner re-runs
+  `! cd C:\Users\nbasl\OneDrive\Documents\vs-code-repos\catalog-platform\apps\auth-worker; npm run db:migrate`
+  and pastes the output; the conductor then verifies the ledger, appends the
+  `deploys.log` line, does the curls and the DONE move. `npm run deploy:auth`
+  remains the right pipeline for the NEXT deploy; the permission-rule note
+  stands for the conductor, not for the owner's `!` lines.
+
 ☐ **The step:** `npm run deploy:auth` from the repo root (which IS
 `cd apps/auth-worker && npm run db:migrate && npx wrangler deploy` with the
 guards and the log line around it). ~~⚠️ **No migration is involved** — this change adds no migration and

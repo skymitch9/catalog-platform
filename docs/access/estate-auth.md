@@ -332,9 +332,15 @@ hatch `ESTATE_AUTH_ALLOW_DIRTY=1`, deliberately long) → `typecheck` → `test`
 applied.
 
 Why it exists: the owner drives this estate from his phone through Remote
-Control, where `!` shell lines **do not reach this machine** (measured
-2026-09-05: four such commands, zero effect on disk or live), and the
-permission classifier refused a session the bare `npm run db:migrate` /
+Control, where `!` shell lines ~~**do not reach this machine** (measured
+2026-09-05: four such commands, zero effect on disk or live)~~ ⚠️ **Corrected
+2026-09-05 15:40 Phoenix: they DO reach it** — `!` runs Windows PowerShell
+5.1, so `&&` is a parser error and a relative `cd` starts from an unknown
+cwd; written as `! cd C:\…\apps\auth-worker; npx wrangler deploy` the
+owner's line produced deployment `2026-09-05T22:31:54Z`. The four failures
+were the `&&`/relative forms. What still holds: `!` gives no guards, no
+`deploys.log` line and no migrate-first ordering, which is what this script
+adds — and the permission classifier refused a session the bare `npm run db:migrate` /
 `npx wrangler deploy` pair *and* the `.claude/settings.local.json` write that
 would have allowed them. A named pipeline is the thing a permission rule can
 name: `Bash(npm run deploy:auth)` / `PowerShell(npm run deploy:auth)` in
