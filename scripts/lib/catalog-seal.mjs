@@ -95,9 +95,20 @@ export function envelopeCandidates(requestId) {
   ];
 }
 
-/** Anything wrangler says when the object simply is not there. */
-function looksAbsent(text) {
-  return /does not exist|NoSuchKey|not found|no such (object|key)|10007|404/i.test(String(text || ''));
+/**
+ * Anything wrangler says when the object simply is not there.
+ *
+ * MEASURED 2026-09-05 against wrangler 4.123.0, not guessed — the exact stderr
+ * for a missing object is `The specified key does not exist.`, and for a
+ * missing bucket `The specified bucket does not exist.`
+ */
+export function looksAbsent(text) {
+  return /does not exist|NoSuchKey|not found|no such (object|key)|10007/i.test(String(text || ''));
+}
+
+/** The bucket itself is missing — absent, but for a different reason worth saying. */
+export function looksBucketMissing(text) {
+  return /bucket.{0,20}does not exist|NoSuchBucket/i.test(String(text || ''));
 }
 
 /**
@@ -111,23 +122,50 @@ export function defaultRunner({
   wranglerBin = join(PLATFORM_ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js'),
 } = {}) {
   return {
-    /** @returns {{found: boolean, bytes: Buffer|null}} */
+    /**
+     * @returns {{found: boolean, bytes: Buffer|null, note?: string}}
+     *
+     * 🔴 STDERR IS READ FIRST, AND THE BODY MUST BE SUBSTANTIAL — MEASURED
+     * 2026-09-05, and the first version of this function was wrong.
+     *
+     * The Windows teardown tolerance ("a usable body plus a non-zero exit is a
+     * success", inherited from `library_catalog/scripts/lib/d1.mjs`) reads as
+     * "any stdout means a hit". A MISSING object on wrangler 4.123.0 exits
+     * **127** with `The specified key does not exist.` on stderr **and a single
+     * newline on stdout** — so that rule reported every absent envelope as
+     * PRESENT. It was caught in a `--dry` rehearsal, which is what rehearsals
+     * are for; in a real run it would have thrown "is not JSON" one step later,
+     * which is loud but wrong about the cause.
+     */
     get(objectKey) {
+      let out = null;
+      let err = null;
       try {
-        const bytes = execFileSync(
+        out = execFileSync(
           process.execPath,
           [wranglerBin, 'r2', 'object', 'get', `${BUCKET}/${objectKey}`, '--pipe', '--remote'],
           { cwd: authWorkerDir, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] },
         );
-        return { found: bytes && bytes.length > 0, bytes };
-      } catch (err) {
-        const out = err?.stdout;
-        // The teardown quirk: a usable body plus a non-zero exit is a success.
-        if (out && out.length > 0) return { found: true, bytes: out };
-        const why = String(err?.stderr || err?.message || '');
-        if (looksAbsent(why)) return { found: false, bytes: null };
-        throw new Error(`Could not read ${BUCKET}/${objectKey} — ${why.trim()}`);
+      } catch (e) {
+        err = e;
+        out = e?.stdout ?? null;
       }
+      const why = err ? String(err.stderr || err.message || '') : '';
+      if (why && looksAbsent(why)) {
+        // ⚠️ A missing BUCKET is also "absent" — correctly, because there is no
+        // envelope either way — but it is a different situation and the caller
+        // is told which, so "the feature is not deployed yet" is never mistaken
+        // for "this person attached no key".
+        return {
+          found: false,
+          bytes: null,
+          note: looksBucketMissing(why) ? `the ${BUCKET} bucket does not exist yet` : undefined,
+        };
+      }
+      const body = out && out.length ? Buffer.from(out) : null;
+      if (body && body.toString('utf8').trim().length > 0) return { found: true, bytes: body };
+      if (err) throw new Error(`Could not read ${BUCKET}/${objectKey} — ${why.trim()}`);
+      return { found: false, bytes: null };
     },
     /** @returns {{ok: boolean, detail: string}} */
     del(objectKey) {
@@ -268,15 +306,18 @@ export async function injectSealedKey({
     // rehearse with; the plaintext is not part of any rehearsal.
     let found = 'none';
     for (const c of candidates) {
-      let present = false;
+      let got;
       try {
-        present = wr.get(c.key).found === true;
+        got = wr.get(c.key);
       } catch (err) {
         log(`  sealed key       could not check ${BUCKET}/${c.key} — ${String(err.message).split('\n')[0]}`);
         continue;
       }
-      log(`  sealed key       ${present ? 'PRESENT' : 'absent '}  ${BUCKET}/${c.key}   (${c.source})`);
-      if (present && found === 'none') found = c.source;
+      log(
+        `  sealed key       ${got.found ? 'PRESENT' : 'absent '}  ${BUCKET}/${c.key}   (${c.source})` +
+          (got.note ? ` — ${got.note}` : ''),
+      );
+      if (got.found && found === 'none') found = c.source;
     }
     if (found === 'none') {
       log('  sealed key       none attached — the owner’s key is used (design §6.4 row 3, standing decision 2026-09-05)');

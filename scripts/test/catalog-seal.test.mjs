@@ -40,6 +40,8 @@ import {
   decryptEnvelope,
   envelopeCandidates,
   injectSealedKey,
+  looksAbsent,
+  looksBucketMissing,
 } from '../lib/catalog-seal.mjs';
 
 /** One throwaway keypair for the whole file — minting 4096 bits is not free. */
@@ -504,3 +506,34 @@ function writeTempJwk() {
   writeFileSync(tempJwkPath, JSON.stringify(PRIVATE), 'utf8');
   return tempJwkPath;
 }
+
+describe('🔴 what wrangler ACTUALLY says when an envelope is not there', () => {
+  // MEASURED 2026-09-05, wrangler 4.123.0, against the real (not yet created)
+  // bucket. Pinned as fixtures because the first version of defaultRunner().get
+  // read "any stdout means a hit" — and a missing object exits 127 with a
+  // SINGLE NEWLINE on stdout, so every absent envelope reported PRESENT.
+  const MISSING_KEY = 'X [ERROR] The specified key does not exist.';
+  const MISSING_BUCKET = 'X [ERROR] The specified bucket does not exist.';
+
+  it('a missing key and a missing bucket both read as absent', () => {
+    assert.equal(looksAbsent(MISSING_KEY), true);
+    assert.equal(looksAbsent(MISSING_BUCKET), true);
+    assert.equal(looksAbsent('NoSuchKey'), true);
+  });
+
+  it('a missing BUCKET is distinguished, so "not deployed yet" is not read as "no key attached"', () => {
+    assert.equal(looksBucketMissing(MISSING_BUCKET), true);
+    assert.equal(looksBucketMissing(MISSING_KEY), false);
+  });
+
+  it('a real failure is NOT absent — an auth or network error must surface', () => {
+    for (const real of [
+      'Authentication error [code: 10000]',
+      'A request to the Cloudflare API failed.',
+      'fetch failed',
+      '',
+    ]) {
+      assert.equal(looksAbsent(real), false, `"${real}" was misread as an absent object`);
+    }
+  });
+});
