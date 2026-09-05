@@ -35,6 +35,7 @@ import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
 import { billingRoutes } from './billing.js';
 import { universeRequestRoutes } from './universe-requests.js';
+import { notificationRoutes } from './notifications.js';
 import { catalogRequestRoutes } from './catalog-requests.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
@@ -193,6 +194,15 @@ app.use('/api/estate/billing/*', billingCors());
 app.use('/api/estate/universes/names', adminCors());
 app.use('/api/estate/universes/requests', adminCors());
 app.use('/api/estate/universes/requests/*', adminCors());
+// Per-person notices (phase 4 of the same design, 0019 — 2026-09-05): the
+// answer to a request, addressed to the person who asked. Apex-only for the
+// same reason as the three lines above, and gated in the handler by
+// requireApprovedMember() — the mount lends its ORIGIN LIST, never its meaning.
+// ⚠️ Both halves carry an Authorization header, so every call from the apex is
+// a PREFLIGHTED cross-origin request; without these lines a notice badge would
+// report "could not reach the estate", which looks exactly like an outage.
+app.use('/api/estate/notifications', adminCors());
+app.use('/api/estate/notifications/*', adminCors());
 // Catalog requests (the "+" on the Books and Games cards, 0018 — 2026-09-05).
 // Apex-only, and for the same reason as the three lines above: both callers are
 // on the apex — the home page for the member half and /admin for the
@@ -284,6 +294,9 @@ app.route('/api', billingRoutes);
 // "+ add a verse" — a member asks, an approver decides, a devops session says
 // it landed. ⚠️ Nothing here creates a universe; see universe-requests.ts.
 app.route('/api', universeRequestRoutes);
+// The notices those decisions write — a person reads their own, and nobody
+// reads anybody else's. ⚠️ In-app only: nothing here sends mail or DMs.
+app.route('/api', notificationRoutes);
 // "Request a catalog" — a member asks for <them>.heygabi.ai, an approver
 // decides, a devops session records the real instance once it exists.
 // ⚠️ Nothing here creates a catalog; see catalog-requests.ts. Accept sets a

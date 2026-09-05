@@ -116,6 +116,11 @@ class FakeDB {
   requests: ReqRow[] = [];
   nextId = 1;
   missingTable = false;
+  /** Phase 4: what the notifier wrote, and the opt-out rows it read. */
+  notices: { user_id: number; kind: string; subject: string; body: string }[] = [];
+  prefs = new Map<string, string>();
+  /** Set to make the notice INSERT fail, exercising "a notice must not fail a decision". */
+  noticeWritesFail = false;
 
   prepare(sql: string) {
     const db = this;
@@ -158,6 +163,10 @@ class FakeDB {
         if (/FROM estate_user WHERE id/.test(sql)) {
           return db.users.find((u) => u.id === Number(args[0])) ?? null;
         }
+        if (/FROM estate_prefs WHERE key/.test(sql)) {
+          const value = db.prefs.get(String(args[0]));
+          return value === undefined ? null : { value };
+        }
         guard();
         if (/INSERT INTO universe_request/.test(sql)) {
           const [name, nameKey, payload, why, by, at] = args as [string, string, string, string, number, string];
@@ -187,12 +196,26 @@ class FakeDB {
         if (/SELECT id, status, requested_by FROM universe_request WHERE id/.test(sql)) {
           return db.requests.find((r) => r.id === Number(args[0])) ?? null;
         }
+        // ⚠️ `name` and `requested_by` joined the decide/landed SELECT with phase
+        // 4 (the notice has to know who asked and what for). The old
+        // `SELECT id, status` matcher is kept below it so a stray caller does
+        // not silently 404.
+        if (/SELECT id, name, status, requested_by FROM universe_request WHERE id/.test(sql)) {
+          return db.requests.find((r) => r.id === Number(args[0])) ?? null;
+        }
         if (/SELECT id, status FROM universe_request WHERE id/.test(sql)) {
           return db.requests.find((r) => r.id === Number(args[0])) ?? null;
         }
         return null;
       },
       async run() {
+        if (/INSERT INTO estate_notification/.test(sql)) {
+          if (db.noticeWritesFail) throw new Error('D1_ERROR: no such table: estate_notification');
+          const [user_id, kind, subject, body] = args as [number, string, string, string];
+          db.notices.push({ user_id, kind, subject, body });
+          return { success: true };
+        }
+        if (/DELETE FROM estate_notification/.test(sql)) return { success: true };
         guard();
         if (/UPDATE universe_request SET status = \?1, decided_by/.test(sql)) {
           const [status, by, at, why, id] = args as [string, number, string, string | null, number];
@@ -665,4 +688,81 @@ test('⚠️ a Worker ahead of its migration SAYS SO, and the read still renders
   const write = await post(db, MEMBER, '/estate/universes/requests', GOOD);
   assert.equal(write.status, 503, 'a write must NOT look like it succeeded');
   assert.match(((await write.json()) as { detail: string }).detail, /no request has been recorded/);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 — the requester is TOLD (notifications.ts holds the notifier's own
+// tests; these pin the WIRING, which is the half that silently rots)
+// ---------------------------------------------------------------------------
+
+/** notify() is fire-and-forget — there is no execution context in a test, so let its promise settle. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+test('an APPROVAL writes one notice, to the requester, saying it is not live yet', async () => {
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  await post(db, OWNER, '/estate/universes/requests/1/decide', { decision: 'approved' });
+  await flush();
+  assert.equal(db.notices.length, 1);
+  assert.equal(db.notices[0]?.user_id, 2, 'the requester, not the approver');
+  assert.equal(db.notices[0]?.kind, 'verse_approved');
+  assert.match(db.notices[0]?.subject ?? '', /Discworld/);
+  assert.match(db.notices[0]?.body ?? '', /not live yet/);
+});
+
+test("a DECLINE carries the approver's reason verbatim into the notice", async () => {
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  await post(db, OWNER, '/estate/universes/requests/1/decide', {
+    decision: 'declined',
+    why: "That's The Cosmere under another name.",
+  });
+  await flush();
+  assert.equal(db.notices[0]?.kind, 'verse_declined');
+  assert.match(db.notices[0]?.body ?? '', /“That's The Cosmere under another name\.”/);
+});
+
+test('LANDING tells the requester too — otherwise their row just vanishes (§3.6)', async () => {
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  await post(db, OWNER, '/estate/universes/requests/1/decide', { decision: 'approved' });
+  await post(db, DEVOPS, '/estate/universes/requests/1/landed', { commit: 'abc1234' });
+  await flush();
+  assert.equal(db.notices.length, 2);
+  assert.equal(db.notices[1]?.kind, 'verse_landed');
+  assert.match(db.notices[1]?.body ?? '', /commit abc1234/);
+});
+
+test('a WITHDRAWAL notifies nobody — the requester did it themselves', async () => {
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  await post(db, MEMBER, '/estate/universes/requests/1/withdraw', {});
+  await flush();
+  assert.equal(db.notices.length, 0);
+});
+
+test('🔴 an opted-out requester is not written to, and the decision lands anyway', async () => {
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  db.prefs.set('notify:user:2', JSON.stringify({ verse_decided: false }));
+  const res = await post(db, OWNER, '/estate/universes/requests/1/decide', { decision: 'approved' });
+  await flush();
+  assert.equal(res.status, 200);
+  assert.equal(db.requests[0]?.status, 'approved');
+  assert.equal(db.notices.length, 0);
+});
+
+test('🔴 A FAILED NOTICE MUST NOT FAIL THE DECISION — the durable fact is the status', async () => {
+  const db = new FakeDB();
+  await post(db, MEMBER, '/estate/universes/requests', GOOD);
+  // e.g. the Worker is ahead of 0019. The approval is already written; a
+  // courtesy message failing must not turn it into a 502 the approver retries,
+  // because the retry meets `already_decided`.
+  db.noticeWritesFail = true;
+  const res = await post(db, OWNER, '/estate/universes/requests/1/decide', { decision: 'approved' });
+  await flush();
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { status: string }).status, 'approved');
+  assert.equal(db.requests[0]?.status, 'approved');
+  assert.equal(db.notices.length, 0);
 });

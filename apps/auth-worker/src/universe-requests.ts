@@ -36,6 +36,7 @@ import type { Context } from 'hono';
 import type { AppBindings, EstateUserRow } from './env.js';
 import { parseOwnerEmails } from './env.js';
 import { approverAllows, requireApprovedMember, requireApprover, requireDevops } from './middleware/auth.js';
+import { notify, verseNotice } from './notifications.js';
 import { CANONICAL_NAMES, UNIVERSE_NAMES } from './universe-names.generated.js';
 
 /* ------------------------------------------------------------------ *
@@ -539,9 +540,11 @@ universeRequestRoutes.post('/estate/universes/requests/:id/decide', requireAppro
 
   const actor = c.get('actor');
   try {
-    const existing = await c.env.DB.prepare('SELECT id, status FROM universe_request WHERE id = ?1')
+    const existing = await c.env.DB.prepare(
+      'SELECT id, name, status, requested_by FROM universe_request WHERE id = ?1',
+    )
       .bind(id)
-      .first<{ id: number; status: string }>();
+      .first<{ id: number; name: string; status: string; requested_by: number }>();
     if (!existing) return c.json({ error: 'not_found', detail: `There is no request #${id}.` }, 404);
     if (existing.status !== 'pending') {
       return c.json(
@@ -561,6 +564,22 @@ universeRequestRoutes.post('/estate/universes/requests/:id/decide', requireAppro
     )
       .bind(decision, actor.id, now, why || null, id)
       .run();
+
+    // ⚠️ PHASE 4, AND IT IS DELIBERATELY THE LAST THING THIS HANDLER DOES.
+    // The decision is already durable in D1; `notify()` never throws, never
+    // awaits on the hot path, and honours the requester's opt-out. A courtesy
+    // message failing must not turn a completed approval into a 502 the
+    // approver would retry — and the retry would meet `already_decided`.
+    notify(
+      c,
+      existing.requested_by,
+      verseNotice({
+        kind: decision === 'approved' ? 'verse_approved' : 'verse_declined',
+        requestId: id,
+        name: existing.name,
+        note: why || null,
+      }),
+    );
 
     return c.json({
       ok: true,
@@ -615,9 +634,11 @@ universeRequestRoutes.post('/estate/universes/requests/:id/landed', requireDevop
   }
 
   try {
-    const existing = await c.env.DB.prepare('SELECT id, status FROM universe_request WHERE id = ?1')
+    const existing = await c.env.DB.prepare(
+      'SELECT id, name, status, requested_by FROM universe_request WHERE id = ?1',
+    )
       .bind(id)
-      .first<{ id: number; status: string }>();
+      .first<{ id: number; name: string; status: string; requested_by: number }>();
     if (!existing) return c.json({ error: 'not_found', detail: `There is no request #${id}.` }, 404);
     if (existing.status !== 'approved') {
       return c.json(
@@ -636,6 +657,25 @@ universeRequestRoutes.post('/estate/universes/requests/:id/landed', requireDevop
     )
       .bind(commit.toLowerCase(), id)
       .run();
+
+    // ⚠️ THE DESIGN'S PHASE-4 CLAUSE SAYS "when a request is DECIDED" and is
+    // silent about `landed`; this notice is a deliberate extension, and §3.6 is
+    // the argument for it: a landed row DISAPPEARS from the requester's pending
+    // section, because by then the universe is a real row in the list below. So
+    // without this line the last thing that ever happens to a request, from the
+    // requester's side, is that it silently vanishes — and the one moment the
+    // verse actually exists is the one moment nobody tells them.
+    notify(
+      c,
+      existing.requested_by,
+      verseNotice({
+        kind: 'verse_landed',
+        requestId: id,
+        name: existing.name,
+        commit: commit.toLowerCase(),
+      }),
+    );
+
     return c.json({ ok: true, id, status: 'landed', landed_commit: commit.toLowerCase() });
   } catch (err) {
     if (tableMissing(err)) return c.json(TABLE_MISSING, 503);
