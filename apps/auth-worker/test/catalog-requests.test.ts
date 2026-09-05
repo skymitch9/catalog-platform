@@ -38,6 +38,7 @@ import {
   isCatalogKind,
   normaliseSubdomain,
 } from '../src/catalog-names.js';
+import { SEALED_ALG, SEALED_MAX_BYTES, parseSealedEnvelope } from '../src/catalog-keys.js';
 
 const OWNER = 'owner@example.com';
 const MEMBER = 'member@example.com';
@@ -115,6 +116,8 @@ class FakeDB {
   requests: CatalogRequestRow[] = [];
   nextId = 1;
   missingTable = false;
+  /** Make the boolean write fail while the R2 put succeeds — see run(). */
+  failKeyFlag = false;
 
   prepare(sql: string) {
     const db = this;
@@ -254,6 +257,27 @@ class FakeDB {
           if (row) Object.assign(row, { status: 'cancelled', decided_at: at });
           return { success: true };
         }
+        // The three sealed-key flag writes (§6). ⚠️ `failKeyFlag` exists to
+        // exercise the one ordering the design cares about: the OBJECT landed
+        // and the BOOLEAN did not. The answer must then report the boolean it
+        // actually has (false) plus a warning — never the boolean it hoped for.
+        if (/SET reader_key_set = 1/.test(sql)) {
+          if (db.failKeyFlag) throw new Error('D1_ERROR: flag write refused');
+          const row = db.requests.find((r) => r.id === Number(args[0]));
+          if (row) row.reader_key_set = 1;
+          return { success: true };
+        }
+        if (/SET owner_key_set = 1/.test(sql)) {
+          if (db.failKeyFlag) throw new Error('D1_ERROR: flag write refused');
+          const row = db.requests.find((r) => r.id === Number(args[0]));
+          if (row) row.owner_key_set = 1;
+          return { success: true };
+        }
+        if (/SET reader_key_set = 0, owner_key_set = 0/.test(sql)) {
+          const row = db.requests.find((r) => r.id === Number(args[0]));
+          if (row) Object.assign(row, { reader_key_set: 0, owner_key_set: 0 });
+          return { success: true };
+        }
         return { success: true };
       },
     };
@@ -262,6 +286,66 @@ class FakeDB {
   async batch() {
     return [];
   }
+}
+
+/**
+ * The `estate-catalog-keys` bucket, in memory (§6).
+ *
+ * ⚠️ IT IMPLEMENTS `get` AND `list` EVEN THOUGH THE WORKER MUST NEVER CALL
+ * THEM — so that the tests can look inside the store and prove what landed
+ * there. A stub with no read would leave "the envelope was stored" unverifiable
+ * except by trusting the code under test. `reads` counts every such call, and
+ * one test asserts the count is still zero after every route has run: that is
+ * the mechanical version of "no decrypt-to-read path exists".
+ */
+class FakeR2 {
+  objects = new Map<string, { body: string; contentType?: string }>();
+  reads = 0;
+  failPut = false;
+  failDelete = false;
+  puts: string[] = [];
+  deletes: string[] = [];
+
+  async put(key: string, body: string, opts?: { httpMetadata?: { contentType?: string } }) {
+    if (this.failPut) throw new Error('R2 refused the write');
+    this.puts.push(key);
+    this.objects.set(key, { body, contentType: opts?.httpMetadata?.contentType });
+    return { key };
+  }
+  async get(key: string) {
+    this.reads++;
+    const found = this.objects.get(key);
+    return found ? { text: async () => found.body } : null;
+  }
+  async list() {
+    this.reads++;
+    return { objects: [...this.objects.keys()].map((key) => ({ key })) };
+  }
+  async delete(key: string) {
+    this.deletes.push(key);
+    if (this.failDelete) throw new Error('R2 refused the delete');
+    this.objects.delete(key);
+  }
+}
+
+/**
+ * A valid envelope, built the way the browser half builds one.
+ *
+ * ⚠️ THE PAYLOAD IS NONSENSE ON PURPOSE — nothing here encrypts anything, and
+ * no real provisioning key is anywhere near this file. The server's whole job is
+ * to move an opaque blob without understanding it, so a blob that is only
+ * SHAPED like an envelope tests exactly what the server does.
+ */
+function envelope(over: Record<string, unknown> = {}) {
+  return {
+    v: 1,
+    kid: '0123456789abcdef',
+    alg: 'RSA-OAEP-256+A256GCM',
+    ek: btoa('a'.repeat(512)),
+    iv: btoa('b'.repeat(12)),
+    ct: btoa('not-a-real-ciphertext'),
+    ...over,
+  };
 }
 
 function env(db: FakeDB, as: string | null, over: Record<string, unknown> = {}) {
@@ -285,6 +369,30 @@ function post(db: FakeDB, as: string | null, path: string, body: unknown) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** POST with the key store bound — every sealed-key test goes through here. */
+function postKeyed(db: FakeDB, r2: FakeR2 | null, as: string | null, path: string, body: unknown) {
+  return catalogRequestRoutes.request(
+    path,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    } as never,
+    env(db, as, r2 ? { CATALOG_KEYS: r2 } : {}),
+  );
+}
+
+/** File a request that CARRIES a key, and hand back the parsed answer. */
+async function fileWithKey(
+  db: FakeDB,
+  r2: FakeR2 | null,
+  as: string,
+  body: unknown = { ...GOOD, sealed_key: envelope() },
+) {
+  const res = await postKeyed(db, r2, as, '/estate/catalogs/requests', body);
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 
 const GOOD = { kind: 'books', desired_subdomain: 'amber', display_name: 'Amber’s books' };
@@ -1019,4 +1127,447 @@ test('every route answers the migration-lag case rather than a bare 500', async 
     assert.equal(res.status, 503, `${path} must say the table is missing, not 500`);
     assert.match(((await res.json()) as { fix: string }).fix, /db:migrate/);
   }
+});
+
+// ---------------------------------------------------------------------------
+// THE SEALED CLAUDE KEY (§6) — the server half
+//
+// 🔴 THE PROPERTY UNDER TEST IS NOT "the key is stored". It is that D1 and the
+// answers NEVER carry anything but a boolean, that a claim of storage is only
+// made when storage happened, and that every path which ends a request takes
+// the envelope with it. A feature that stored keys perfectly and over-claimed
+// once would be the failure worth having tests for.
+// ---------------------------------------------------------------------------
+
+test('the envelope contract is checked exactly, and every refusal is a sentence', () => {
+  assert.equal('error' in parseSealedEnvelope(envelope()), false, 'a valid envelope passes');
+
+  // ⚠️ THE NUMBER 1, NOT THE STRING. A version read tolerantly stops meaning
+  // anything the day there is a second one.
+  for (const bad of [{ v: '1' }, { v: 2 }, { v: null }]) {
+    const r = parseSealedEnvelope(envelope(bad));
+    assert.equal((r as { error: string }).error, 'bad_sealed_key', `v=${JSON.stringify(bad)} must refuse`);
+    assert.match((r as { detail: string }).detail, /version/);
+  }
+
+  // The algorithm is matched literally — there is no fallback and no "close
+  // enough". A key sealed with something else cannot be unsealed by the
+  // provisioner, so accepting it would store a key nobody can ever use.
+  const alg = parseSealedEnvelope(envelope({ alg: 'RSA-OAEP-256+A128GCM' }));
+  assert.equal((alg as { error: string }).error, 'bad_sealed_key');
+  assert.match((alg as { detail: string }).detail, new RegExp(SEALED_ALG.replace(/\+/g, '\\+')));
+
+  // Every string field is required and must be text.
+  for (const field of ['kid', 'alg', 'ek', 'iv', 'ct']) {
+    const missing = envelope() as Record<string, unknown>;
+    delete missing[field];
+    assert.equal((parseSealedEnvelope(missing) as { error: string }).error, 'bad_sealed_key', `${field} is required`);
+    assert.equal(
+      (parseSealedEnvelope(envelope({ [field]: 42 })) as { error: string }).error,
+      'bad_sealed_key',
+      `${field} must be text`,
+    );
+    assert.equal(
+      (parseSealedEnvelope(envelope({ [field]: '' })) as { error: string }).error,
+      'bad_sealed_key',
+      `${field} must be non-empty`,
+    );
+  }
+
+  // ⚠️ REFUSES, NEVER STRIPS — the standing rule for every write door.
+  const extraField = parseSealedEnvelope(envelope({ note: 'hello' }));
+  assert.equal((extraField as { error: string }).error, 'bad_sealed_key');
+  assert.match((extraField as { detail: string }).detail, /not part of a sealed key envelope/);
+
+  // Not an object at all.
+  for (const bad of [null, 'sk-ant-oops', 42, ['ek']]) {
+    assert.equal((parseSealedEnvelope(bad) as { error: string }).error, 'bad_sealed_key');
+  }
+});
+
+test('🔴 base64 is checked by SHAPE AND DECODE — atob alone is too lenient', () => {
+  // atob accepts plenty a strict decoder would not; the regex catches the
+  // sloppy encoder and the decode catches the truncation. Either alone lets a
+  // string through that could never be a wrapped key.
+  for (const bad of ['not base64!!', 'AAAA=AAA', 'A', 'AAA-AAA_', '你好世界']) {
+    const r = parseSealedEnvelope(envelope({ ct: bad }));
+    assert.equal((r as { error: string }).error, 'bad_sealed_key', `ct=${bad} must refuse`);
+    assert.match((r as { detail: string }).detail, /base64/);
+  }
+  // And it says WHICH field, because "invalid" sends a person to the owner
+  // with nothing to act on.
+  assert.match((parseSealedEnvelope(envelope({ iv: '!!' })) as { detail: string }).detail, /iv/);
+});
+
+test('an oversize envelope is refused with the measured size, not a bare 400', () => {
+  const huge = envelope({ ct: 'A'.repeat(SEALED_MAX_BYTES + 4) });
+  const r = parseSealedEnvelope(huge);
+  assert.equal((r as { error: string }).error, 'sealed_key_too_big');
+  assert.match((r as { detail: string }).detail, new RegExp(String(SEALED_MAX_BYTES)));
+});
+
+test('a valid envelope is stored as reader/<id>.json and the boolean follows it', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { status, body } = await fileWithKey(db, r2, MEMBER);
+  assert.equal(status, 201);
+  assert.equal(body.reader_key_set, true, 'the answer must report the boolean it actually set');
+  assert.equal(body.owner_key_set, false);
+  assert.equal(body.warnings, undefined, 'a clean store carries no warning');
+
+  const id = body.id as number;
+  assert.deepEqual(r2.puts, [`reader/${id}.json`], 'one object, keyed by request id, on the reader side');
+  const stored = r2.objects.get(`reader/${id}.json`);
+  assert.equal(stored?.contentType, 'application/json');
+  assert.deepEqual(JSON.parse(stored?.body ?? '{}'), envelope(), 'the envelope is stored verbatim, not re-shaped');
+
+  // 🔴 D1 HOLDS A BOOLEAN AND NOTHING ELSE. Not the ciphertext, not a prefix,
+  // not a hint — §6.1's table has one 🔴 NEVER against this row.
+  const row = db.requests[0]!;
+  assert.equal(row.reader_key_set, 1);
+  assert.equal(JSON.stringify(row).includes(envelope().ct), false, 'no envelope field reached the row');
+  assert.equal(JSON.stringify(row).includes(envelope().ek), false);
+});
+
+test('🔴 a malformed envelope files NO REQUEST and stores NOTHING', async () => {
+  // The order matters: the envelope is validated before the insert, so a key
+  // that could never decrypt does not leave a request behind claiming somebody
+  // attached one — and the person can simply submit again.
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { status, body } = await fileWithKey(db, r2, MEMBER, { ...GOOD, sealed_key: envelope({ alg: 'nope' }) });
+  assert.equal(status, 400);
+  assert.equal((body as { error: string }).error, 'bad_sealed_key');
+  assert.match((body as { detail: string }).detail, /Nothing was stored/);
+  assert.equal(db.requests.length, 0, 'no row');
+  assert.equal(r2.puts.length, 0, 'no object');
+});
+
+test('🔴 an oversize envelope files NO REQUEST either', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { status, body } = await fileWithKey(db, r2, MEMBER, {
+    ...GOOD,
+    sealed_key: envelope({ ct: 'A'.repeat(SEALED_MAX_BYTES + 4) }),
+  });
+  assert.equal(status, 400);
+  assert.equal((body as { error: string }).error, 'sealed_key_too_big');
+  assert.equal(db.requests.length, 0);
+  assert.equal(r2.puts.length, 0);
+});
+
+test('🔴 NO KEY STORE + A KEY = A REFUSAL IN WORDS, and no row at all', async () => {
+  // Dropping the key and filing the request anyway would leave somebody
+  // believing their own key is in use while the catalog is provisioned on the
+  // OWNER's, which he pays for (§6.4 row 3). A money decision must never be
+  // made by an accidental default.
+  const db = new FakeDB();
+  const { status, body } = await fileWithKey(db, null, MEMBER);
+  assert.equal(status, 503);
+  assert.equal((body as { error: string }).error, 'key_store_unconfigured');
+  assert.match((body as { detail: string }).detail, /was NOT stored/);
+  assert.match((body as { detail: string }).detail, /Submit again without a key/);
+  assert.match((body as { detail: string }).detail, /CATALOG_KEYS/, 'it names what the owner has to fix');
+  assert.equal(db.requests.length, 0, 'nothing was filed — try again, do not withdraw');
+});
+
+test('⚠️ with no key store and NO key, a request still files normally', async () => {
+  // The binding is optional on purpose: a dev run or a test without it must not
+  // take the whole feature down, only the key half of it.
+  const db = new FakeDB();
+  const { status, body } = await fileWithKey(db, null, MEMBER, GOOD);
+  assert.equal(status, 201);
+  assert.equal(body.reader_key_set, false);
+  assert.equal(db.requests.length, 1);
+});
+
+test('🔴 an R2 put that FAILS keeps the row, leaves the boolean 0, and SAYS SO', async () => {
+  // There is no transaction across D1 and R2. Losing somebody's request over a
+  // bucket hiccup is strictly worse than a request with no key — but the
+  // boolean must not over-claim, so it stays 0 and the answer carries words the
+  // client can show.
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  r2.failPut = true;
+  const { status, body } = await fileWithKey(db, r2, MEMBER);
+  assert.equal(status, 201, 'the request itself survived');
+  assert.equal(body.reader_key_set, false, 'the boolean reports the storage that actually happened');
+  assert.equal(db.requests[0]!.reader_key_set, 0);
+  assert.equal(r2.objects.size, 0);
+  const warnings = body.warnings as string[];
+  assert.equal(Array.isArray(warnings), true, 'the client is given a sentence, not a silence');
+  assert.match(warnings[0]!, /not stored/);
+});
+
+test('⚠️ the OBJECT landing and the BOOLEAN failing is reported as not-stored', async () => {
+  // The provisioner looks for the object, so the key is still usable — but the
+  // estate's RECORD is the boolean, and a record that over-claims is the
+  // failure this ordering exists to prevent.
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  db.failKeyFlag = true;
+  const { status, body } = await fileWithKey(db, r2, MEMBER);
+  assert.equal(status, 201);
+  assert.equal(body.reader_key_set, false);
+  assert.equal(db.requests[0]!.reader_key_set, 0);
+  assert.match((body.warnings as string[])[0]!, /not stored/);
+});
+
+test('accept may carry the OWNER’s key — owner/<id>.json, its own boolean', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+
+  const res = await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+    decision: 'accept',
+    sealed_key: envelope({ kid: 'fedcba9876543210' }),
+  });
+  assert.equal(res.status, 200);
+  const decided = (await res.json()) as Record<string, unknown>;
+  assert.equal(decided.owner_key_set, true);
+  assert.equal(decided.reader_key_set, true, 'the reader’s key is still on file and still reported');
+  assert.deepEqual(r2.puts, [`reader/${id}.json`, `owner/${id}.json`], 'two sides, two objects, neither overwritten');
+  assert.equal(db.requests[0]!.owner_key_set, 1);
+  assert.equal(db.requests[0]!.reader_key_set, 1);
+});
+
+test('accept with a key and NO key store refuses in words and decides NOTHING', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+
+  const res = await postKeyed(db, null, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+    decision: 'accept',
+    sealed_key: envelope(),
+  });
+  assert.equal(res.status, 503);
+  assert.equal(((await res.json()) as { error: string }).error, 'key_store_unconfigured');
+  assert.equal(db.requests[0]!.status, 'pending', 'the decision was not half-made');
+});
+
+test('⚠️ a DECLINE cannot carry a key — declining throws keys away', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+
+  const res = await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+    decision: 'decline',
+    reason: 'somewhere else in the estate already',
+    sealed_key: envelope(),
+  });
+  assert.equal(res.status, 400);
+  assert.equal(((await res.json()) as { error: string }).error, 'sealed_key_on_decline');
+  assert.equal(db.requests[0]!.status, 'pending', 'nothing changed');
+  assert.equal(r2.objects.has(`reader/${id}.json`), true, 'and the reader’s key is untouched');
+});
+
+test('🔴 DECLINE deletes BOTH objects and clears BOTH booleans', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+  // Put an owner-side object there too, so the delete is proved on both sides.
+  await r2.put(`owner/${id}.json`, JSON.stringify(envelope()));
+  db.requests[0]!.owner_key_set = 1;
+
+  const res = await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+    decision: 'decline',
+    reason: 'not right now, ask again after the games work',
+  });
+  assert.equal(res.status, 200);
+  const decided = (await res.json()) as Record<string, unknown>;
+  assert.equal(decided.reader_key_set, false);
+  assert.equal(decided.owner_key_set, false);
+  assert.deepEqual(r2.deletes, [`reader/${id}.json`, `owner/${id}.json`]);
+  assert.equal(r2.objects.size, 0, 'the request will never be provisioned — nothing keeps the key here');
+  // ⚠️ The booleans go with the objects: a 1 left standing would tell the queue
+  // a key is on file that nobody can produce.
+  assert.equal(db.requests[0]!.reader_key_set, 0);
+  assert.equal(db.requests[0]!.owner_key_set, 0);
+});
+
+test('🔴 WITHDRAW takes the key back — that is half the point of having one', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+
+  const res = await postKeyed(db, r2, MEMBER, `/estate/catalogs/requests/${id}/withdraw`, {});
+  assert.equal(res.status, 200);
+  const done = (await res.json()) as Record<string, unknown>;
+  assert.equal(done.status, 'cancelled');
+  assert.equal(done.reader_key_set, false);
+  assert.deepEqual(r2.deletes, [`reader/${id}.json`, `owner/${id}.json`]);
+  assert.equal(r2.objects.size, 0);
+  assert.equal(db.requests[0]!.reader_key_set, 0);
+});
+
+test('⚠️ a delete that FAILS does not cost the person their withdrawal', async () => {
+  // The envelope is undecryptable to everyone but the owner's machine, so a
+  // stranded object is housekeeping, never an exposure — and it must not turn a
+  // withdrawal into a 502.
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+  r2.failDelete = true;
+
+  const res = await postKeyed(db, r2, MEMBER, `/estate/catalogs/requests/${id}/withdraw`, {});
+  assert.equal(res.status, 200);
+  assert.equal(db.requests[0]!.status, 'cancelled');
+});
+
+test('🔴 /live LEAVES THE ENVELOPES ALONE unless asked to purge', async () => {
+  // The provisioner deletes each object itself, the moment `wrangler secret
+  // put` has taken the plaintext — the only place that knows the inject
+  // landed. Deleting here would throw the key away on a caller's say-so,
+  // including when the inject FAILED and the envelope is the only copy.
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+  await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, { decision: 'accept' });
+
+  const res = await postKeyed(db, r2, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'amber',
+    provisioned_host: 'amber.heygabi.ai',
+    reader_key_set: true,
+  });
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { keys_purged: boolean }).keys_purged, false);
+  assert.equal(r2.deletes.length, 0, 'nothing was deleted');
+  assert.equal(r2.objects.has(`reader/${id}.json`), true);
+});
+
+test('/live with purge_keys deletes both — the hatch for a run without the library', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+  await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, { decision: 'accept' });
+
+  const res = await postKeyed(db, r2, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'amber',
+    provisioned_host: 'amber.heygabi.ai',
+    purge_keys: true,
+  });
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { keys_purged: boolean }).keys_purged, true);
+  assert.deepEqual(r2.deletes, [`reader/${id}.json`, `owner/${id}.json`]);
+  // ⚠️ And the BOOLEANS SURVIVE a purge, unlike a decline: at /live they are the
+  // provisioner's statement about the INSTANCE ("this catalog has a key"), not
+  // about the bucket. Phase 6's back-seeded live rows are exactly that shape.
+  assert.equal(db.requests[0]!.reader_key_set, 1);
+});
+
+test('🔴 NO ROUTE CAN RETURN AN ENVELOPE — the lists carry booleans and nothing else', async () => {
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const secret = envelope();
+  const { body } = await fileWithKey(db, r2, MEMBER, { ...GOOD, sealed_key: secret });
+  const id = body.id as number;
+  await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+    decision: 'accept',
+    sealed_key: envelope({ kid: 'fedcba9876543210' }),
+  });
+
+  for (const who of [OWNER, MEMBER]) {
+    const read = await catalogRequestRoutes.request(
+      '/estate/catalogs/requests',
+      undefined as never,
+      env(db, who, { CATALOG_KEYS: r2 }),
+    );
+    const text = await read.text();
+    assert.equal(read.status, 200);
+    assert.equal(text.includes(secret.ct), false, `${who} must never be handed the ciphertext`);
+    assert.equal(text.includes(secret.ek), false, `${who} must never be handed the wrapped key`);
+    assert.equal(/"ek"|"ct"|"iv"|"sealed_key"/.test(text), false, `${who}: no envelope field name appears at all`);
+    assert.match(text, /"reader_key_set":true/, 'only the boolean');
+  }
+
+  // The /me half (§4.2) projects six fields and none of them is a key.
+  const mine = await catalogsForMe(db as unknown as D1Database, MEMBER);
+  assert.equal(JSON.stringify(mine).includes(secret.ct), false);
+  assert.equal(/"ek"|"ct"|"reader_key_set"/.test(JSON.stringify(mine)), false);
+});
+
+test('🔴 NOTHING IS LOGGED ABOUT AN ENVELOPE — measured by capturing the console', async () => {
+  // §6.1's table: 🔴 NEVER for logs and `wrangler tail`. This captures every
+  // console method across every route that can touch a key, and asserts that
+  // nothing printed carries any envelope material — the ciphertext, the wrapped
+  // key, the iv, or even the field names.
+  const captured: string[] = [];
+  const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+  const saved = methods.map((m) => console[m]);
+  try {
+    for (const m of methods) {
+      console[m] = (...parts: unknown[]) => {
+        captured.push(parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' '));
+      };
+    }
+    const db = new FakeDB();
+    const r2 = new FakeR2();
+    const secret = envelope();
+    const { body } = await fileWithKey(db, r2, MEMBER, { ...GOOD, sealed_key: secret });
+    const id = body.id as number;
+    await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+      decision: 'accept',
+      sealed_key: envelope({ kid: 'fedcba9876543210' }),
+    });
+    // …and the failure paths, which are where a helpful error message would
+    // most plausibly echo the thing that failed to store.
+    const broken = new FakeR2();
+    broken.failPut = true;
+    await fileWithKey(new FakeDB(), broken, OTHER, { ...GOOD, desired_subdomain: 'amber2', sealed_key: secret });
+    await fileWithKey(new FakeDB(), null, PENDING, { ...GOOD, sealed_key: secret });
+
+    const all = captured.join('\n');
+    for (const needle of [secret.ct, secret.ek, secret.iv, secret.kid]) {
+      assert.equal(all.includes(needle), false, `a log line carried ${needle.slice(0, 8)}…`);
+    }
+    assert.equal(/"ek"|"ct"|sealed_key/.test(all), false, 'no envelope field name was logged either');
+  } finally {
+    methods.forEach((m, i) => {
+      console[m] = saved[i]!;
+    });
+  }
+});
+
+test('🔴 THE WORKER NEVER READS THE BUCKET — no .get(), no .list(), ever', async () => {
+  // The mechanical version of "the owner can never see it": §6.2's closing
+  // line is that the ABSENCE of a decrypt-to-read path, not a policy, is the
+  // guarantee. The stub counts reads; every route that can touch a key runs
+  // here; the count must still be zero.
+  const db = new FakeDB();
+  const r2 = new FakeR2();
+  const { body } = await fileWithKey(db, r2, MEMBER);
+  const id = body.id as number;
+  await postKeyed(db, r2, OWNER, `/estate/catalogs/requests/${id}/decide`, {
+    decision: 'accept',
+    sealed_key: envelope(),
+  });
+  await postKeyed(db, r2, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'amber',
+    provisioned_host: 'amber.heygabi.ai',
+    purge_keys: true,
+  });
+  await catalogRequestRoutes.request(
+    '/estate/catalogs/requests',
+    undefined as never,
+    env(db, OWNER, { CATALOG_KEYS: r2 }),
+  );
+  assert.equal(r2.reads, 0, 'a read here would be a decrypt-to-read path in the making');
+});
+
+test('⚠️ sealed_key is an OPTIONAL field, and null means "left blank"', () => {
+  // A browser form that sends `sealed_key: null` when the box was empty is the
+  // normal shape of a form, not an attempt to attach an empty key.
+  assert.equal('error' in parseSubmitBody({ ...GOOD, sealed_key: null }), false);
+  assert.equal((parseSubmitBody({ ...GOOD, sealed_key: null }) as { sealed_key: unknown }).sealed_key, null);
+  assert.equal((parseSubmitBody(GOOD) as { sealed_key: unknown }).sealed_key, null);
+  // And it is a KNOWN field now — the unknown-field refusal must not eat it.
+  assert.equal('error' in parseSubmitBody({ ...GOOD, sealed_key: envelope() }), false);
 });
