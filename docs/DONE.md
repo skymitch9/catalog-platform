@@ -9,6 +9,49 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 — design §7.6 / §7.2 step 5 understated the auth-worker manual step: nine hand edits, four of them silent
+
+Agent RES, commit `a257366`. **Not moved from `TODO.md`** — this correction was
+its own brief, not a tracked item, and it is filed here so nobody re-derives it.
+**How it was verified:** by reading each symbol in
+`apps/auth-worker/src`, not by grepping for a name. §7.6 row 5 said the games
+manual step was *"`games2` + `vis_games2`"*; §7.2 step 5 listed four sub-steps.
+The measured count is **nine**, now written out in a new **§7.6a** with
+file:symbol and the failure mode of each. The two the old ledgers named
+(`CONSUMER_APPS`, `vis_`) are among the four that fail **silently**; the two
+that were in *no* ledger at all — a `case` arm in `siteForApp()`
+(`estate.ts:118`) and an entry in `BILLING_SITES` (`billing-registry.ts:38`) —
+are the ones that fail the BUILD, because both switches are exhaustive over
+`ConsumerApp` with no `default`. ⚠️ The deepest silence is
+`visibility.ts:45/55/73/84`: `VisibilityFlags` is a separate interface from
+`CATALOGS`, so adding a catalog and forgetting the two mappers type-checks,
+ships, and produces a catalog nobody can be granted, with nothing red anywhere.
+
+**Two STALE-WRONG claims corrected in place** (struck, not deleted), measured by
+reading `boardbuddy/Board_Game_Catalog`:
+
+- §7.6 **row 5b** said the games estate identity *"CANNOT — the id is hard-coded
+  (`env.ts:141`)"* and consequence 1 called it a hard blocker whose absence meant
+  a second instance would be **silently misidentified**. It is BUILT:
+  `apps/worker/src/lib/estate-app.ts` (`ESTATE_APPS = ['games','games2']`,
+  `APP_TOKEN_VAR`, `estateAppToken()`), commit `fc17ea3`, with
+  `estate-app.test.ts` as the same-id build guard and `wrangler.toml:189` setting
+  `ESTATE_APP = "games"` (`:358` carries the commented `games2`). And the failure
+  direction is a deliberate `null` rather than a fall back to `'games'`, so the
+  misidentification the item warned about can no longer happen at all.
+- §7.6 **row 6** said the paired token was *"AUTO only after 5b — blocked by
+  5b"*. Unblocked by the same commit.
+
+Two drifted line anchors in §7.2 step 5 re-measured: `appTokenFor()` is at
+`env.ts:502` (was `478–491`), `EstateUserRow` at `env.ts:373` (was `:349`).
+
+⚠️ **The gap was in the DOCUMENT, not the code.** `Board_Game_Catalog`'s
+`billing-gate.ts` (`billingSite()`) already carried the
+`siteForApp()`/`BILLING_SITES` note, and its `provision-catalog.mjs` prints both
+in the PAUSE #2 runbook. ⚠️ **NOT verified:** no new consumer app was actually
+registered, so the nine-edit list is read off the code, not exercised by a
+provisioning run.
+
 ## 2026-09-05 — `research-queue.mjs` schema drift: CLOSED against the commit it asked to be closed against
 
 Moved whole from `TODO.md` by the 2026-09-05 docs audit (agent AUD-platform).

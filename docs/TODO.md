@@ -484,7 +484,49 @@ and confirm step 10 reports the reader envelope **PRESENT**.
 09:15 Phoenix — moved whole to [`DONE.md`](DONE.md); custody row in
 [`access/RECOVERY.md`](access/RECOVERY.md) §11.3.)
 
-## ☐ Three more BARE-STATUS 401s in the auth Worker (found 2026-09-05 by agent S1)
+☑ **Reserved list — the ORDINAL hostnames a provisioner mints are now refused**
+(agent RES, 2026-09-05, `49f6e59`): `gamecovers<N>` is reserved by SHAPE, because
+a games instance's covers host is ordinal (§7.1(a) — `COVERS_BASE_URL` is written
+into `thumbnail_url` rows) and the second instance takes `gamecovers2` whether or
+not anybody was asked; `bookcovers<N>` too, by anticipation of §7.2 step 2's
+custom-domain tier. Near misses (`gamecoversx`, `gamecover`) stay free.
+🔴 **Rides the SAME BLOCKED `estate-auth` DEPLOY** as the bare-401 fix — see that
+section below; until it ships, `gamecovers2` is still answered "available" live.
+
+## ☑ CODE LANDED 2026-09-05 (agent RES, `01a0eb8`) — Three BARE-STATUS 401s in the auth Worker — 🔴 ☐ NOT DEPLOYED
+
+🔴 **THE ONE STEP LEFT IS A DEPLOY, AND IT NEEDS A HUMAN.** The code, the tests
+and the docs are committed and pushed; `estate-auth` was **not** deployed
+because the deploy command was refused by the permission system for the agent
+that wrote it (`npx wrangler deploy` in `apps/auth-worker`, blocked twice, via
+both shells). **Nothing is live.** Measured 2026-09-05 20:28 UTC, after the
+commit:
+
+```
+curl -s -D - https://auth.heygabi.ai/api/estate/users | head -20
+HTTP/1.1 401 Unauthorized …  Content-Length: 27
+{"error":"unauthenticated"}          ← still bare, exactly the 27-byte body
+```
+
+☐ **The step:** `cd apps/auth-worker && npx wrangler deploy`. ⚠️ **No migration
+is involved** — this change adds no migration and the highest in the tree is
+still `0018_catalog_requests.sql`, so migrate-before-deploy has nothing to do
+here. Then append the `deploys.log` line, re-run the three curls below, and move
+this section WHOLE to [`DONE.md`](DONE.md).
+
+☐ **Verify after deploying** (⚠️ `-I` and `-o NUL` misreport on these hosts —
+use `-D -` and pipe to `head`):
+
+```
+curl -s -D - https://auth.heygabi.ai/api/estate/users        | head -20   # requireApprover
+curl -s -D - -X POST https://auth.heygabi.ai/api/estate/hello | head -20  # self-enrolment
+curl -s -D - -X POST https://auth.heygabi.ai/api/session      | head -20  # mid-sign-in
+```
+
+Each must answer 401 with `"error":"unauthenticated"` **unchanged** and a
+non-empty `"detail"`.
+
+---
 
 The `/api/estate/me` one is fixed and archived in [`DONE.md`](DONE.md). Its three
 siblings answer a bare `{"error":"unauthenticated"}` with no `detail`, which the
@@ -494,8 +536,20 @@ happened, what it needs and how to get it.
 | Where | Who meets it |
 |---|---|
 | `apps/auth-worker/src/middleware/auth.ts:259` — `requireApprover()` | a PERSON, on `/admin` |
-| `apps/auth-worker/src/estate.ts:372` — `POST /estate/seen` | a consumer Worker’s bearer (machine-facing) |
+| ~~`apps/auth-worker/src/estate.ts:372` — `POST /estate/seen` | a consumer Worker’s bearer (machine-facing)~~ | |
+| ⚠️ **Corrected 2026-09-05** — `estate.ts:372` is `POST /estate/hello`, **not** `/estate/seen` | a **PERSON's browser** self-enrolling with their OWN Firebase ID token |
 | `apps/auth-worker/src/session.ts:64` — `POST /session` | a browser mid-sign-in |
+
+⚠️ **The `/estate/seen` misattribution mattered, which is why it is struck rather
+than quietly fixed.** It would have produced the wrong sentence: a machine-facing
+refusal names the header or secret NAME it expected, and that is exactly what a
+person self-enrolling must never be told to go and find. Measured by reading the
+file: `/estate/seen` is a different route at `estate.ts:232`, gated by
+`identifyApp()`, and it answers `unauthorized` — it was never one of the three.
+`estate.ts:372` sits inside `POST /estate/hello`, the browser self-enrolment pipe
+the static audiobook site calls. The shipped wording is written for a person and
+a test asserts the machine vocabulary (`bearer`, `ESTATE_APP_TOKEN`,
+`authorization`) stays out of it.
 
 The fix is the same three lines each, copied from `middleware/auth.ts:141–148`:
 add a worded `detail`, ⚠️ **leave the `error` CODE exactly `unauthenticated`** —
@@ -503,6 +557,20 @@ add a worded `detail`, ⚠️ **leave the `error` CODE exactly `unauthenticated`
 and every page’s failure wording branches on it. S1 did not fix these: they were
 outside its brief, and widening scope mid-task is what the estate’s multi-agent
 rules say not to do.
+
+✅ **Done in `01a0eb8`** — all three carry a three-clause `detail` (what happened
+/ what it needs / how to get it), each written for the audience that actually
+meets it, and every `error` code is unchanged. Auth-worker tests **674 → 677**,
+0 failing, one new test per site asserting BOTH the unchanged code and a
+non-empty `detail`. `npm run probe:estate` re-run: **136 passed, 1 failed**, and
+the failure is pre-existing and unrelated — see the note below.
+
+⚠️ **Unrelated pre-existing probe failure, found while verifying and NOT fixed
+(it is outside this item and outside `apps/auth-worker`):** probe **D5** asserts
+`gabi_books_tools` on `https://discord.heygabi.ai/api/health` is four names; it
+is five, because `count_phrase` was allowlisted on 2026-09-03 (`272ac67`) and
+the probe's expectation was never updated. The probe is right to fail — it is a
+stale assertion in `tools/estate-probes`, not a fault in the Worker.
 
 ## ☑ BUILT + DEPLOYED 2026-09-03 — `count_phrase` allowlisted on Groq — ☐ owner review (one live `@mention`)
 
