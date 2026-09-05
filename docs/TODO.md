@@ -95,6 +95,35 @@ index; her rows become visible to whoever holds `vis_library2` — owner only,
 
 ☐ Owner go/no-go (asked 15:3x Phoenix, notification pushed).
 
+☑ **index side BUILT 2026-09-05 — `a62d7d6` (code + tests + apex) and `25e7a12`
+(migration 0006 + the bare-500 guard)**, agent W4-FED-INDEX. As-built is
+[`info/index-worker-design.md`](info/index-worker-design.md) **§11**; the deploy
+and what was verified live are in [`deploys.log`](deploys.log). Step 1 of the
+three-step plan above is done. ⚠️ **Nothing is visible yet** — step 2 (the
+library Worker's `ESTATE_APP` push source) is a sibling agent's, and step 3's
+`INDEX_PUSH_TOKEN_LIBRARY2` is the owner's to set on both holders.
+
+Three things the build found that the plan above did not anticipate, each
+written up in §11:
+
+- 🔴 **A migration WAS required**, though `wrangler d1 migrations list --remote`
+  correctly said nothing was pending: `entry.source` carries a CHECK constraint
+  listing the three original sources (verified on the live remote schema), so a
+  Worker deployed ahead of it would have answered every `library2` push a bare
+  500. `0006_entry_source_library2.sql` widens it; drilled locally first, all
+  three sources' rows intact through the table rebuild.
+- 🔴 **Federation would have opened a hole in `/api/lookup`**, which is
+  membership-gated but deliberately UNSCOPED — every approved member, and every
+  machine token via `/api/machine/lookup`, could have enumerated Samantha's
+  shelf by title while holding no `library2` grant. Closed fail-shut in the same
+  commit (`read.ts`'s `UNSCOPED_LOOKUP_EXCLUDED`). ❓ **Worth an owner line:
+  widening it later is one line, but it is his call, not a build's.**
+- ⚠️ **`/status` will not show her source once she pushes.** That page keeps its
+  own `INDEX_SOURCE_ORDER` and ignores unknown keys, so nothing breaks — but
+  adding `library2` there needs an `INDEX_THRESHOLDS` cadence nobody has
+  measured, and the row would sit amber/red until her first push. Left as its
+  own decision.
+
 ## ☐ 🔴 OWNER ASK 2026-09-05 12:58 Phoenix — "build it all … check first then build. Also make sure all docs aren't stale" (ALL FOUR REPOS)
 
 Owner, verbatim, after a build-queue summary that listed four items as unbuilt:

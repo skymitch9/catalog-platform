@@ -567,3 +567,144 @@ while the Workers runtime keeps using the platform primitive.
 unkeyed, which is safe and names the missing secret — then mint and set the
 secret on **both** holders, then re-run `npm run probe:estate` and expect
 `I9`/`I10` to report the **401** rather than the 503.
+
+---
+
+## 11. The FOURTH source — `library2` (padhard), federated 2026-09-05
+
+> **Last verified: 2026-09-05.** Measured that day: the live remote
+> `sqlite_master` (the `entry.source` CHECK constraint quoted below), the local
+> migration drill (row counts before and after the rebuild), and the
+> test/typecheck figures. ⚠️ **NOT verified:** nothing has pushed a real
+> `library2` row — padhard's own side is a sibling agent's work and the secret
+> is the owner's, so every claim about what the two tabs SHOW is still
+> inference. See §11.5.
+
+`library2` is padhard — `library_catalog`'s `[env.friend]`, Samantha's
+instance: the same build as the main library Worker, running a different
+collection. It had been a **visibility** value since auth-worker migration 0007
+and an **app** name since §10.3, but never a **source**, so nothing could put a
+row into this index under it. That gap surfaced as the owner's bug report —
+*"in the universe and series tab it's not pulling Padhard library"*. Both tabs
+were rendering an empty truth.
+
+### 11.1 A fourth source id, not a flavour of `library`
+
+The write protocol is a **snapshot replace keyed on `entry.source`** (§5):
+`PUT /api/push/library` deletes every `library` row and re-inserts the body. Two
+instances sharing one source id would therefore **delete each other's catalogue
+on every push** — whichever pushed last would be the whole shelf. One id per
+pushing instance makes that structurally impossible rather than merely
+discouraged, which is the argument §5 already makes for snapshot-replace itself.
+
+It is a **book** source: the only branch in `rows.ts` that reads the value is
+`source === 'game'`, so `library2` inherits `work_fold`, the creator rules and
+the series registry with no extra case — and Samantha's copy of a book lands on
+the same Series page as the household's, joined by the key rather than by a
+guess.
+
+### 11.2 Its own credential, for the reason §10.3 gives
+
+`INDEX_PUSH_TOKEN_LIBRARY2`, **a different value** from
+`INDEX_PUSH_TOKEN_LIBRARY` — exactly the `INDEX_READ_TOKEN_LIBRARY2`
+precedent and for the same reason: the two instances are two callers, so one
+leaked value revokes one instance's write access. The pairing rule holds too —
+the index holds the **suffixed** name, padhard holds it **un-suffixed** as
+`INDEX_PUSH_TOKEN` on `[env.friend]`. Unset is a worded **503** naming the
+secret, never a 404; a wrong value is a **401**. Three distinct refusals, same
+vocabulary as §10.6.
+
+### 11.3 🔴 The migration is the half that is easy to miss
+
+⚠️ **`npx wrangler d1 migrations list --remote` said "No migrations to apply",
+and that was true and not the question.** Nothing was *pending*; a new migration
+was *required*. Migration 0001 wrote the push vocabulary into the **schema** —
+verified against the live remote `sqlite_master`, 2026-09-05:
+
+```sql
+source TEXT NOT NULL CHECK (source IN ('game','library','audiobook'))
+```
+
+A Worker that knows `library2` while the database does not passes every check in
+`push.ts` — known source, matching token, valid snapshot, whole series plan
+computed — and then dies inside `db.batch` on a CHECK constraint failure the
+pusher sees as a **bare 500**. **Migrate before deploy** is the estate's
+standing rule, and this is precisely the case it exists for.
+
+`0006_entry_source_library2.sql` **widens** the constraint rather than dropping
+it: it is a second fence behind `isSource`, and it is the fence that turned this
+into a loud failure instead of a table quietly accumulating rows under a source
+id nothing would ever read. SQLite cannot `ALTER` a CHECK, so it is the standard
+table rebuild — new table, **column-named** copy (a `SELECT *` would silently
+reorder if a column were ever added mid-table), drop, rename, and all four
+**partial** indexes re-created from 0001 and 0004. No foreign keys, triggers or
+views point at `entry`.
+
+**Drilled locally before going near the remote:** 0006 applied clean, an insert
+the old schema rejected was accepted, and the three existing sources came
+through the rebuild intact — audiobook 1,077 / game 836 / library 346, the same
+figures as before. The data here is a **projection, not truth** (`PLATFORM.md`
+§2.2), re-creatable by re-pushing each source, which is what makes rebuilding
+this table an ordinary migration rather than a risk.
+
+`push.ts` also stops answering a bare 500 in that half-applied state: a CHECK
+failure is now a worded 503 `source_not_in_schema` naming the cause and the
+command that fixes it. It **narrows rather than swallows** — any other database
+failure keeps its own words, so nobody is sent to run a migration that is
+already applied.
+
+### 11.4 🔴 Federation would have opened a hole in `/api/lookup`
+
+⚠️ **The leak would have been a side effect of an unrelated change rather than a
+decision anybody made** — the most dangerous shape an access change can take.
+
+`/api/lookup` is membership-gated and **deliberately not visibility-scoped** (an
+owner call; `read.ts`'s header). That was defensible while every source it could
+return belonged to the owner's own household. `library2` is **somebody else's
+collection**, and `vis_library2` is `DEFAULT 0`, hand-granted to the owner
+alone. Without a fence, padhard's first push would have meant:
+
+- every **approved member** could enumerate her shelf by title through
+  `/api/lookup` while holding no `library2` grant at all; and
+- every **machine token** could do the same through `/api/machine/lookup`, which
+  mounts that exact handler (§10.5's one-code-path rule) — straight past a
+  `MACHINE_VISIBILITY` that excludes `library2` **on purpose** (§10.4).
+
+So `read.ts` carries `UNSCOPED_LOOKUP_EXCLUDED` and subtracts it **in the SQL**,
+for the same reason the scoped routes put their scope there: a row that must not
+be returned is a row that is never fetched, so no later refactor can leak it
+back by forgetting a filter. **Fail closed** — widening is one line and an
+owner's decision, whereas a shelf enumerated by everyone cannot be
+un-enumerated.
+
+The fence is on the **lane, not the caller**: not even the owner gets `library2`
+from `/api/lookup`, because a per-caller exception would be a second visibility
+implementation living in the one route that deliberately has none. He sees her
+rows on the **scoped** surfaces, which is where scoping lives.
+
+⚠️ **`MACHINE_VISIBILITY` did NOT gain `library2`**, and `machine-read.test.ts`
+is untouched. §10.4's stance is unchanged by federation: padhard the **app**
+still cannot read padhard the **shelf**.
+
+### 11.5 State — shipped ≠ verified
+
+| | |
+|---|---|
+| **Built** | ✅ `rows.ts` SOURCES · `env.ts` token + `pushTokenFor` · `push.ts` (`known` read from SOURCES; worded CHECK refusal) · `search-route.ts` preset · `read.ts` fence · migration 0006 |
+| **Health** | ✅ needed no code — `SOURCES` drives it, so `library2` lists as `{rows: 0, pushed_at: null}` (the "never pushed" idiom) and cannot turn the route red: `ok` is a constant and the figures are reported, not judged |
+| **Tested** | ✅ index-worker **175/175** (was 162); typecheck clean; root `npm test` **2,964** across the workspaces, 0 fail. `machine-read.test.ts` deliberately unchanged and green |
+| **Apex** | ✅ `universes.js` (games-vs-complement, so a future source can land in the wrong GROUP but never in no group) · `series.js` already named it · `estate-search.js` label |
+| **Secret set** | ❌ owner only — `INDEX_PUSH_TOKEN_LIBRARY2` here, `INDEX_PUSH_TOKEN` on padhard's `[env.friend]`: one value, both holders, one sitting |
+| **Consumer wired** | ❌ the library Worker's push source comes from `ESTATE_APP` — a sibling agent's work, in `library_catalog` |
+| **Rows pushed** | ❌ nothing has ever pushed a `library2` row |
+| **Verified live** | ⚠️ see this federation's line in [`../deploys.log`](../deploys.log) |
+
+⚠️ **A gap this found and did NOT close:** `/status`'s index section iterates
+its **own** list — `INDEX_SOURCE_ORDER = ['audiobook', 'library', 'game']` in
+`sites/heygabi-home/public/status/status.js`. It ignores an unknown extra key,
+so adding `library2` to `/api/health` cannot break that page; but it also means
+**the Health page will not show padhard's source once she pushes.** Adding it
+there needs an `INDEX_THRESHOLDS` entry (a push cadence nobody has measured
+yet), and the row would sit amber or red for as long as she has never pushed —
+so it is deliberately a separate decision rather than a side effect of
+federation.
