@@ -50,6 +50,22 @@ Source: `src/auth-proxy.ts` (Phase 1), `src/session.ts` + `src/session-db.ts`
 + `src/token-signer.ts` (Phase 2). Migration: `migrations/0004_sessions.sql`
 (`estate_session` table — additive, no existing table touched).
 
+⚠️ **THIS TABLE IS THE SSO BUILD'S ROUTES, NOT THE WORKER'S.** `estate-auth`
+serves roughly forty routes across a dozen features, and the table above covers
+four. That is deliberate rather than stale: the estate's convention is that a
+feature's **route contract lives in that feature's own design doc**, one fact
+with one home, and this file owns the SSO phases plus the operating runbooks.
+Where to look for the others — the membership API in
+[`../info/estate-auth-design.md`](../info/estate-auth-design.md) §4.4, the
+"+ add a verse" queue in
+[`../info/universe-add-verse-design.md`](../info/universe-add-verse-design.md)
+§3.5, the spending policy in
+[`../info/llm-billing-control-design.md`](../info/llm-billing-control-design.md),
+and **the "Request a catalog" queue (0018, live 2026-09-05) in
+[`../info/request-a-catalog-design.md`](../info/request-a-catalog-design.md)
+§3.6** — six routes under `/api/estate/catalogs/*`, guarded by the same three
+predicates in `src/middleware/auth.ts` that everything above uses.
+
 ## 3. `TOKEN_SIGNER_KEY` — what it is, what it can do, and how to rotate it
 
 ### 3.1 What it is

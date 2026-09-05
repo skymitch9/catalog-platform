@@ -1,11 +1,19 @@
 # "Request a catalog" — the "+" on the heygabi.ai cards — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
-> **Status:** TRACKED — **DESIGN ONLY. Nothing is built.** No migration, no
-> route, no button. The owner's ask of **2026-09-05 06:26 Phoenix** — *"Remember
-> that doc about requesting a board game or book site? Time to build that."* —
-> moves it from design-only to **being built**; the work log is
-> [`../TODO.md`](../TODO.md)'s top item.
+> **Status:** TRACKED — **BEING BUILT.** ⚠️ The old *"DESIGN ONLY. Nothing is
+> built."* line here was true until **2026-09-05 14:24Z**, when **§10 phases 1
+> and 2 landed and were deployed**: migration `0018_catalog_requests.sql` is
+> applied to remote `estate_auth`, the six routes of §3.6 answer on
+> `auth.heygabi.ai`, and `/api/estate/me` carries `catalogs`. Commits
+> `6b1f686` (migration + names module), `9df0b51` (routes + 52 tests),
+> `2f55065` (`/me`); `estate-auth` version
+> `ecf3f86a-5ac9-44c6-9632-8073133c45fd`; the deploy line with its full
+> verification list is in [`../deploys.log`](../deploys.log). 🔴 **NO SIGNED-IN
+> REQUEST HAS EVER BEEN FILED** — see §10's phase rows for what that leaves
+> unproven. The owner's ask of **2026-09-05 06:26 Phoenix** — *"Remember that
+> doc about requesting a board game or book site? Time to build that."* — is
+> what moved it; the work log is [`../TODO.md`](../TODO.md)'s top item.
 >
 > ✅ **AMENDED the same day, 2026-09-05 ~06:50 Phoenix.** The owner answered the
 > first open question — *"Both"* — so the **Games** card gets the same "+" and
@@ -205,6 +213,21 @@ ciphertext, no value, no hint. §6 is why.
   boardgames, library, padhard, status, admin, api, bookcovers, covers,
   gamecovers`, plus every existing estate route.
 - **Not taken:** no `live` row and no open `pending` holds the name.
+
+✅ **AS BUILT 2026-09-05 — `apps/auth-worker/src/catalog-names.ts` is the one
+module, and it holds the list, the gathering method and the dates.** *"Plus
+every existing estate route"* was resolved by grepping all three repos'
+`wrangler.toml` route/custom-domain blocks and the whole of
+`sites/heygabi-home/` for `*.heygabi.ai`; that added **five** names the list
+above does not carry — `audiobook-api`, `shelf`, `sam` (⚠️ **retired**, the
+second library instance's hostname before `padhard`), `books` (⚠️ reserved
+**because** [`HEYGABI_LAYOUT.md`](HEYGABI_LAYOUT.md) §1.1 decided it must not
+exist) and `search`. ⚠️ **`amber` is deliberately NOT reserved** — it is §7.2's
+worked example, not a routed host. The module names the source of each entry;
+this list is not re-stated there, and that one is not re-stated here.
+⚠️ **The list is a measurement with a date:** a new estate hostname must be
+added to that module in the same commit that routes it, or the first person to
+ask for that name is told it is free.
 
 ⚠️ **ONE reserved list, ONE validator, covering BOTH cards.** The list is a
 property of the `heygabi.ai` namespace, not of a catalog kind — a per-kind copy
@@ -1034,8 +1057,8 @@ owns.
 | Phase | What lands | Repo / layer | Rough effort | "Verified" means |
 |---|---|---|---|---|
 | **0** | This doc + the §9 answers (Q1–Q3 answered 2026-09-05; Q4 back-seed still open) | `catalog-platform/docs/` | done / owner | The questions are answered on the record and this file says so |
-| **1** | Migration `0018` + `catalog_request` **including `kind`**; submit / list / decide / mark-live routes; the reserved-list module; server-side validation incl. the closed `kind` vocabulary | `catalog-platform` `apps/auth-worker` | ~1 day | `node --test` exercises every route incl. refusals **and a bad `kind` returning 400, not a default**; the migration applied to **remote** `estate_auth`; a real row read back out of D1 — **a green deploy is not verification** |
-| **2** | `/api/estate/me` gains `catalogs`, **each entry carrying its `kind`** | same | ~½ day | A signed-in `curl` returns the caller's own array with kinds; an owner's answer is not special-cased into a lie |
+| **1** | ✅ **LANDED + DEPLOYED 2026-09-05 14:24Z** — `6b1f686` migration `0018` + `catalog-names.ts`; `9df0b51` the six routes of §3.6 + three CORS mounts + 52 tests. `estate-auth` `ecf3f86a-5ac9-44c6-9632-8073133c45fd` | `catalog-platform` `apps/auth-worker` | ~1 day (actual: one dispatch) | **MEASURED:** migration applied to **remote** `estate_auth` BEFORE the deploy (one checkbox, 4 commands, 0.87 ms) and read back — `catalog_request` exists with `ix_catalog_request_status` + `ix_catalog_request_kind`, count 0. Suite 594 → **651 pass / 0 fail**, `tsc` clean both projects; a bad `kind` returns 400 and never a default (three tests). Live, `curl -s -D - … -o /dev/null`: unauthenticated `GET /api/estate/catalogs/availability?name=test` → **401 with the worded refusal**, not a bare status; the same on `POST …/requests`; `OPTIONS` preflight from `https://heygabi.ai` → **204** on the bare mount AND the wildcard. 🔴 **NOT VERIFIED: no signed-in request has ever been filed.** Every 200-side path is proven only against an in-memory D1 — a session cannot sign in as a person, and minting an identity against a live gate is not a test |
+| **2** | ✅ **LANDED + DEPLOYED in the same sitting** — `2f55065`. `/api/estate/me` gains `catalogs`, each entry carrying its `kind` | same | ~½ day | ⚠️ **`[]` and ABSENT are opposite answers and are kept apart end to end** — `[]` is "owns nothing" and DRAWS the "+", an absent key is "cannot answer" and leaves it HIDDEN; `catalogsForMe()` returns `undefined` for the second, never throws, and `/seen` passes `null` because it did not ask. The owner is **not** special-cased: capabilities ride the break-glass, `catalogs` is a fact about rows he filed. Nine tests, incl. one pinning the six pre-existing fields unchanged. 🔴 **NOT VERIFIED: no signed-in `curl` has ever read the array** — same reason as phase 1. That, and the owner's own answer, are his step |
 | **3a** | ✅ **LANDED `d475682`** — the Games card is `.card.multi`, no button | `catalog-platform` `sites/heygabi-home` | ~1 h | ⚠️ **What actually changed is where the LINK lives:** the cell is a `div` and the **host row** is now the anchor, laid out full-width so the tap target is the whole line rather than the words. One tab stop, Enter follows it, `.sr-only` "(opens in a new tab)" moved inside the link, and `focus-visible` got its own `--hue` outline because `a.card:focus-visible` no longer matches. Cost paid knowingly, as at `index.html:653–663`: no whole-card tap target, no hover lift, no sheen. `check:home` green. **NOT verified: nothing live** — 3a was never deployed alone |
 | **3b** | ✅ **BUILT `1bfb5ac`** — the "+" bottom-right on **both** cards, the modal, the required review step, the pending pill, fail-hidden, per-kind show/hide. New `sites/heygabi-home/public/assets/apex-request-catalog.js`; styles in `index.html`'s own `<style>` (the `apex-admin-link.js` precedent — that module has no stylesheet either); one `data-catalog-kind` hook per card. ⏳ **NOT DEPLOYED — see the blocker below** | same | ~1 day | **EXERCISED, not reasoned about:** a stub-DOM harness drove the real module through all nine §4.3 rows (signed out · probe 500 · not approved · **`catalogs` field absent** · approved/none · books-live · games-pending · books-accepted · probe-throws) — nine of nine correct; the review gate refusing an empty and a malformed address **in words with zero fetches**; the POST body exactly `{kind, desired_subdomain, display_name, extra:{note}}`; a 409 rendering the route's own sentence verbatim; a thrown fetch rendering the **outage** sentence; the availability debounce firing 0 fetches mid-keystroke and one afterwards with the reserved wording; withdraw arming, POSTing `…/requests/42/withdraw`, restoring the "+". `check:home` green (30 JS · 26 graphs · 14 HTML). ⚠️ **STILL THE BAR: A HUMAN, SIGNED IN, PRESSES BOTH** at <https://heygabi.ai> and files one real request of each kind. Nothing here has ever spoken to a real route |
 | **4** | ✅ **BUILT 2026-09-05 — `7acc497`.** The `/admin` banner + "Catalog requests" section with **kind badges** + two-tap Accept/Decline + the Accept panel with owner-editable fields | `catalog-platform` `sites/heygabi-home/public/admin/` | ~1 day | The owner **renders the section signed in**, sees one row of each kind, edits an address in the panel, and accepts one real request. ⚠️ The verse queue carries the same unrendered-by-a-human debt today — do not repeat it. **See §10.1 below for what was and was not verified** |

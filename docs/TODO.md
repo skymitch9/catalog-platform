@@ -57,6 +57,55 @@ A auth-worker (phases 1+2), B home "+" (3a+3b), C `/admin` (4), D books
 provisioner (7, `library_catalog`), E games prerequisites (8, `Board_Game_Catalog`).
 Then by hand: phase 6 back-seed; then phase 9 games path; then phase 5 sealed key LAST.
 
+### ✅ Phases 1 + 2 — the auth-worker half — BUILT, MIGRATED AND DEPLOYED (agent A, 2026-09-05 14:24Z)
+
+`6b1f686` migration `0018_catalog_requests.sql` + `apps/auth-worker/src/catalog-names.ts`
+(the ONE reserved list and subdomain validator both cards share) · `9df0b51`
+`src/catalog-requests.ts` — the six routes of §3.6 — plus the three `adminCors()`
+mounts and 52 tests · `2f55065` `/api/estate/me` gains `catalogs`.
+**Migrate-before-deploy, in that order:** `npm run db:migrate` applied `0018` to
+**remote** `estate_auth` (4 commands, 0.87 ms, one ✅) before
+`npx wrangler deploy` shipped `estate-auth`
+`ecf3f86a-5ac9-44c6-9632-8073133c45fd`. Deploy line + full verification list:
+[`deploys.log`](deploys.log). As-built rows:
+[`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) §10
+phases 1–2 and §3.3.
+
+✅ **This UNBLOCKS agent C's phase-4 deploy** (item 1 below): the three CORS
+mounts are committed in `9df0b51`, so `cors-coverage.test.ts` is green and
+`npm run deploy:home` can run from a worktree of HEAD.
+
+Measured: suite 594 → **651 pass / 0 fail**, `tsc` clean on both projects.
+Live (`curl -s -D - … -o /dev/null` — ⚠️ `-I` and `-o NUL` misreport on this
+host): unauthenticated `GET /api/estate/catalogs/availability?name=test` and
+`POST …/requests` both **401** with the worded *"You are not signed in…"*
+refusal, never a bare status; `OPTIONS` preflight from `https://heygabi.ai`
+**204** on the bare mount and the wildcard; `/api/health` 200;
+`wrangler d1 execute estate_auth --remote` reads `catalog_request` count **0**
+with both indexes present. Probe suite 136/1 on a clean run, the one failure
+being the **pre-existing** stale `discord:D5` (it asserts four
+`gabi_books_tools` names; there have been five since 2026-09-03).
+
+🔴 **What is left, and it is the whole 200 side:**
+
+1. 🔴 **NO SIGNED-IN REQUEST HAS EVER BEEN FILED.** A session cannot sign in as
+   a person and must not mint an identity against a live gate, so every
+   success path — a real submit, an availability answer for a member, the `/me`
+   `catalogs` array, accept/decline, mark-live, withdraw — is proven **only**
+   against an in-memory D1. **This is the owner's step**, and it is the same
+   one phase 4 needs: file one request of each kind at <https://heygabi.ai>
+   signed in, then accept one at <https://heygabi.ai/admin/>.
+2. ☐ **Phase 6's back-seed is now UNBLOCKED** — `0018` is applied remotely, so
+   the `library` / `padhard` / `boardgames` `live` rows the owner asked for
+   ("Yes back seed", ~07:25 Phoenix) can be inserted. Not done by this agent:
+   it was not in its brief, and it is a data write to the row shape §9 row 4
+   specifies.
+3. ⚠️ **A finding, not a defect:** `docs/access/estate-auth.md` §2's route table
+   covers **four** of the Worker's ~forty routes — it is the SSO build's table,
+   not the Worker's. Rather than duplicate §3.6 into it, §2 now carries a
+   pointer paragraph naming where each feature's route contract lives. One
+   fact, one home.
+
 ### ✅ Phase 4 — the `/admin` queue — BUILT + PUSHED, `7acc497` (agent C, 2026-09-05)
 
 `sites/heygabi-home/public/admin/admin.js` + `admin/index.html`. Banner (§5.2),
