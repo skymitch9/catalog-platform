@@ -1248,6 +1248,23 @@ policy can only deny, so a path under two switches is refused if either
 denies, which fails safe. A test pins the list of double covers so a NEW one
 has to be argued for.
 
+7. ❓ **OWNER DECISION (found 2026-09-05 by agent W2-LIBCLI, design §9 Q5 has
+   the full argument): the Spending panel's cell cannot reach the library CLI
+   scripts.** The scripts' gate (`bbc693b`, `bookbuddy/library_catalog`) asks
+   the SYSTEM door, which resolves `principal_kind='system'` rules only; but
+   `apps/auth-worker/src/billing-registry.ts` declares `cli.backfill`,
+   `research.covers` and `research.isbn` with `principals: ['person']`, so the
+   panel's click writes an `everyone` rule the scripts never see. A `system`
+   rule written via `POST /api/estate/billing/rules` DOES trip the gate today.
+   The one-line fix is `principals: ['person', 'system']` on those three rows
+   (behind the registry pin test) — **not made**, because it adds a clock-icon
+   row to the matrix for each, which is a visible change the owner has not
+   asked for. (a) make it, (b) leave the CLI reachable by API only. ⚠️ Until
+   `ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are exported in the shell that runs
+   the scripts (names only; `library_catalog/docs/access/secrets.md` → "The two
+   NAMES the CLI spending gate reads"), the gate prints "policy UNKNOWN …
+   proceeding" either way.
+
 ### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`) — 🔴 ☐ migrate + deploy (owner), ☐ first real use
 
 Phases 0–3 archived whole in [`DONE.md`](DONE.md). The fixed-order deploy RAN:
