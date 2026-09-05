@@ -10,6 +10,40 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🔴 BUILD — "Request a catalog" (the "+" on the heygabi.ai cards) (owner ask 2026-09-05 06:26 Phoenix)
+
+Owner, verbatim: *"Remember that doc about requesting a board game or book site?
+Time to build that."* — supersedes the 2026-08-24 constraint "ships only after
+dev lanes + more testing".
+
+**Finding: the design had NO repo home.** It existed only as (a) the private
+artifact **"Request a Catalog"** — https://claude.ai/code/artifact/717169ac-af10-4b3a-9598-cf1f2ae38f11
+(cyberpunk 6-step mockup, 2026-08-24, updated the same night with the sealed reader
+key + owner-editable accept), and (b) two Opus research drafts written to a
+scratchpad that no longer exists — recovered 2026-09-05 from the session-5154218d
+transcript (agents `a33af8314947561ad` phase-1 flow/data model, `aefc2df1cbb203f17`
+phase-2 provisioning + sealed-key). Both texts are now to be filed under
+[`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) BEFORE code.
+
+Owner decisions already given 2026-08-24 23:48Z: owner can **edit address/name
+before approving**; the request form carries an **optional LLM key** field; the
+key must be **sealed** so the owner cannot see it and it cannot leak; the owner
+may also set a key at accept. Design answers on record: request row in the
+auth-worker estate D1 (`catalog_requests`, statuses pending/accepted/declined/live/
+cancelled); "+" shown only signed-in + owning zero catalogs; required confirm
+step; Members-page banner + "Catalog requests" section (two-tap accept/decline);
+**Accept never deploys** — it hands the owner a pre-filled provisioning runbook;
+sealed-box key (WebCrypto → private R2 envelope → decrypted only inside the
+owner-run provisioner → `wrangler secret put`), D1 holds booleans only.
+
+Open owner questions (ONE AT A TIME): (1) the **Games card too** — his words say
+"board game or book site", the mockup shows Books only; (2) who may request —
+approved members only?; (3) lock in the sealed-box key design for v1 or defer the
+key field; (4) back-seed the two existing library owners as `live` rows.
+
+Plan: design doc → Opus build of the estate side (migration + API + `/admin`
+section + home-card "+") → provisioning runbook/script → dev-lane test → live.
+
 ## ☐ `count_phrase` sank every converse loop to Haiku — allowlist it on Groq (2026-09-03 12:40)
 
 Measured by the Groq Monitor at 19:12Z (the owner's own review question):
