@@ -739,20 +739,37 @@ project.** Sharing one project is the entire mechanism by which one Google
 account is one person estate-wide.
 
 **5 — Auth-worker consumer registration (⚠️ CODE + MIGRATION).** The heaviest
-step, and it is in *this* repo:
+step, and it is in *this* repo.
+
+⚠️ **Corrected 2026-09-05 — the four sub-steps below are NINE, and the full
+ledger with every file:symbol is [§7.6a](#76a-step-5-in-full--every-hand-edit-with-filefunction).**
+Read that table, not this list. It is kept here, struck where it was
+incomplete, because the *reasoning* attached to each item is still the
+reasoning, and because a reader who follows only these four ships a Worker that
+does not compile (`siteForApp()` and `BILLING_SITES` were missing entirely) —
+or, worse, one that compiles and cannot grant the catalog. **Four of the nine
+fail silently; §7.6a marks which.**
 
 1. add the app id to `CONSUMER_APPS` — verified 2026-09-05, still
    `['library', 'games', 'index', 'audiobook', 'library2']` at
    `apps/auth-worker/src/env.ts:4`;
-2. declare `ESTATE_APP_TOKEN_LIBRARY3?: string` in `Env` (the block at
-   `env.ts:107–184`) and add a `case 'library3'` arm to `appTokenFor()`
-   (`env.ts:478–491`);
-3. add a `vis_library3` column in a new migration following
+2. declare `ESTATE_APP_TOKEN_LIBRARY3?: string` in `Env` (the block around
+   `env.ts:172`) and add a `case 'library3'` arm to `appTokenFor()`
+   (`env.ts:502` — ~~`478–491`~~, re-measured 2026-09-05);
+3. ⚠️ **ALSO** — absent from this list until 2026-09-05 — a `case 'library3'`
+   arm in `siteForApp()` (`estate.ts:118`) and `'library3'` in `BILLING_SITES`
+   (`billing-registry.ts:38`). Both switches are exhaustive over
+   `ConsumerApp`, so omitting either fails the BUILD, not a test;
+4. add a `vis_library3` column in a new migration following
    `0007_vis_library2.sql` — ⚠️ **`DEFAULT 0`, deliberately the opposite of
    0002's `DEFAULT 1`**, because it is another household's shelf, granted by
-   hand — and add the field to `EstateUserRow` (`env.ts:349`, beside
-   `vis_library2` at `:390` and `vis_ebooks` at `:396`);
-4. migrate the auth-worker D1, then deploy the auth Worker.
+   hand — and add the field to `EstateUserRow` (`env.ts:373` — ~~`:349`~~,
+   beside `vis_library2` at `:414` and `vis_ebooks` at `:420`), ⚠️ **and to
+   `CATALOGS`, `VisibilityFlags`, `storedVisibility()` and
+   `visibilityToFlags()` in `visibility.ts:45/55/73/84`** — none of which the
+   compiler enforces, so a catalog added to `CATALOGS` alone ships and can
+   never be granted;
+5. migrate the auth-worker D1, then deploy the auth Worker.
 
 ⚠️ **`vis_library3` is meaningful-to-switch-on, not a gate** — the estate gate
 refuses on `status` only; visibility is cached and logged, never enforced.
@@ -924,9 +941,9 @@ changes is that **five of them have no machinery to run against yet**, because
 | 2 · R2 bucket | AUTO | AUTO — ⚠️ needs its **own third covers hostname**; `gamecovers.heygabi.ai` is taken | A custom domain belongs to exactly one bucket |
 | 3 · Route + DNS + cert | AUTO | **AUTO** — identical, `custom_domain = true` in the new block | no difference |
 | 4 · Firebase authorised domain | 🔴 MANUAL | 🔴 **MANUAL — identical.** Same `audiobook-catalog` project, same absent CLI | no difference; ⚠️ **never a second Firebase project** |
-| 5 · auth-worker `CONSUMER_APPS` + `vis_` | 🔴 MANUAL | 🔴 **MANUAL — identical in this repo**, adding e.g. `games2` + `vis_games2` | ⚠️ but see the row below — the *other* side is not ready |
-| 5b · the app asserting that identity | reads `ESTATE_APP` from its env block | 🔴 **CANNOT — the id is hard-coded** (`env.ts:141`, fixed `ESTATE_APP_TOKEN_GAMES`) | 🔴 **A second games instance would silently assert the FIRST one's identity.** This is not hypothetical: `library_catalog` shipped exactly this bug and ran with it for months |
-| 6 · Paired token | AUTO | **AUTO only after 5b** — the secret NAME is chosen by an app id that is currently a constant | blocked by 5b |
+| 5 · auth-worker `CONSUMER_APPS` + `vis_` | 🔴 MANUAL | 🔴 **MANUAL — identical in this repo.** ⚠️ **It is NINE hand edits, not two** — the full ledger is §7.6a below; ~~`games2` + `vis_games2`~~ named two of them | ⚠️ the two this row used to name are the two that are *not* compile-enforced |
+| 5b · the app asserting that identity | reads `ESTATE_APP` from its env block | ✅ **BUILT — `ESTATE_APP` is config now** (`apps/worker/src/lib/estate-app.ts`, `ESTATE_APPS = ['games','games2']`, commit `fc17ea3`). ~~🔴 **CANNOT — the id is hard-coded** (`env.ts:141`, fixed `ESTATE_APP_TOKEN_GAMES`)~~ | ⚠️ **Corrected 2026-09-05** — measured by reading `estate-app.ts` (`ESTATE_APPS`, `APP_TOKEN_VAR`, `estateAppToken()`) and `apps/worker/wrangler.toml` (`ESTATE_APP = "games"` at `:189`, the commented `games2` at `:358`). The hard-coding, and the silent-misidentification risk it carried, is gone; `estate-app.test.ts` is the same-id build guard |
+| 6 · Paired token | AUTO | **AUTO** | ⚠️ **Corrected 2026-09-05** — ~~AUTO only after 5b; blocked by 5b~~. 5b landed (`fc17ea3`), so the secret NAME now follows `APP_TOKEN_VAR[ESTATE_APP]` rather than a constant, and this row is unblocked |
 | 7 · Per-instance secrets | AUTO | AUTO — a different set (`BGG_API_TOKEN`, `GAMEUPC_API_KEY`), and that repo's `push-secrets.mjs` already has a real allowlist | ⚠️ **port the REFUSAL, not a working bulk path** (§6.4) |
 | 7 · `ANTHROPIC_API_KEY` custody | SPECIAL (§6) | **SPECIAL — identical.** The sealed flow is transport-agnostic | ⚠️ but see the sweep note below |
 | 8 · The env block | AUTO by templating | **AUTO once a block exists to template from** | there is no `[env.friend]` here to copy |
@@ -937,12 +954,19 @@ changes is that **five of them have no machinery to run against yet**, because
 
 **Two consequences worth stating plainly:**
 
-1. 🔴 **Step 5b is a hard blocker and it is in the OTHER repo.** Lifting
-   `"games"` into an `ESTATE_APP` var — with a build guard in the shape of
-   `library_catalog`'s `instance-estate-app.test.ts`, which fails the build if
-   two instances assert the same id — is a **prerequisite**, not a nicety.
-   Without it a second games instance is not merely unconfigured, it is
-   *misidentified*, and misidentification fails **silently**.
+1. ✅ **Step 5b was a hard blocker in the OTHER repo, and it is CLOSED.**
+   ⚠️ **Corrected 2026-09-05** — ~~it is a **prerequisite**, not a nicety;
+   without it a second games instance is not merely unconfigured, it is
+   *misidentified*, and misidentification fails **silently**~~. Measured by
+   reading the code: `"games"` is lifted into an `ESTATE_APP` var
+   (`Board_Game_Catalog/apps/worker/src/lib/estate-app.ts`, `ESTATE_APPS`,
+   `APP_TOKEN_VAR`, `estateAppToken()`; commit `fc17ea3`), the build guard
+   exists beside it as `estate-app.test.ts`, and 🔴 **the failure direction is
+   deliberately `null`, not a fall back to `'games'`** — an unrecognised
+   `ESTATE_APP` makes the Worker say it cannot name its site rather than
+   attributing a second household's spend to the main catalog. The silent
+   misidentification this item warned about can no longer happen. What remains
+   on this row is the *other* repo's nine hand edits — §7.6a.
 2. ⚠️ **The §6 key precedence has a weaker fallback on the games side.** For
    books, "no key from either party" still leaves a **donor-only sweep** healing
    for free against the main library. For games there is no `DONOR_URL` and no
@@ -950,6 +974,50 @@ changes is that **five of them have no machinery to run against yet**, because
    must say that on a games row** rather than reusing the books sentence — the
    mockup's *"the free donor sweep still runs"* is **true for books and false
    for games**.
+
+### 7.6a Step 5 in full — every hand edit, with file:function
+
+⚠️ **Written 2026-09-05 because the ledgers above and §7.2 step 5 both
+UNDERSTATED this step**, and it is the one step that is code review on a
+security surface. §7.6 row 5 said *"`games2` + `vis_games2`"* and §7.2 step 5
+listed four sub-steps; the real count is **nine edits in one repo**
+(`catalog-platform/apps/auth-worker`), and — the part that matters — **the two
+the old ledgers named are among the ones the compiler does NOT catch.**
+
+Measured 2026-09-05 by reading each symbol, not by grepping for a name.
+`<app>` is the new consumer id (`games2`, `library3`, …); `<APP>` is it
+uppercased.
+
+| # | File : symbol | The edit | Missed ⇒ |
+|---|---|---|---|
+| 1 | `src/env.ts:4` — `CONSUMER_APPS` | add `'<app>'` to the array | 🟡 **silent** — the bearer is simply never recognised; `identifyApp()` answers `null` and the consumer gets a 401 it cannot explain |
+| 2 | `src/env.ts:172` area — `interface Env` | declare `ESTATE_APP_TOKEN_<APP>?: string` | 🔴 build fails at edit 3 |
+| 3 | `src/env.ts:502` — `appTokenFor()` | a `case '<app>': return env.ESTATE_APP_TOKEN_<APP>;` arm | 🔴 **build fails** — the `switch` is exhaustive over `ConsumerApp` with no `default` |
+| 4 | `src/estate.ts:118` — `siteForApp()` | a `case '<app>': return '<site>';` arm | 🔴 **build fails** — same exhaustive-switch shape. ⚠️ **This one was missing from every ledger** |
+| 5 | `src/billing-registry.ts:38` — `BILLING_SITES` | add the site id, or edit 4 has no legal value to return | 🔴 build fails at edit 4. ⚠️ **Also missing from every ledger** |
+| 6 | `src/visibility.ts:45` — `CATALOGS` | add `'<app>'` | 🟡 **silent** — the catalog can never be granted or shown |
+| 7 | `src/visibility.ts:55/73/84` — `VisibilityFlags`, `storedVisibility()`, `visibilityToFlags()` | one field and one line in each | 🟡 **SILENT, AND THIS IS THE WORST ONE.** `VisibilityFlags` is a separate interface from `CATALOGS`, so adding the catalog and forgetting these compiles cleanly and the flag is simply never read or written |
+| 8 | `src/env.ts:373` — `EstateUserRow` | a `vis_<app>: number` field beside `vis_library2:414` / `vis_ebooks:420` | 🟡 silent, as 7 |
+| 9 | `migrations/00NN_vis_<app>.sql` | one `ADD COLUMN`, following `0007_vis_library2.sql`. ⚠️ **`DEFAULT 0`**, the opposite of 0002's `DEFAULT 1` — it is another household's shelf, granted by hand. Highest existing migration on 2026-09-05: `0018_catalog_requests.sql` | 🔴 loud at runtime (`no such column`), silent in tests |
+
+Then, and only then: **migrate the auth-worker D1, then deploy the auth
+Worker** (migrate-before-deploy; the directory DB is never migrated
+unattended — §7.4 item 5).
+
+🔴 **The reason this table exists rather than a sentence: four of the nine fail
+SILENTLY.** The three that break the build need no ledger — the compiler is the
+ledger. The four yellow rows are the ones a person has to be told about, and
+`vis_` (rows 7 and 8), which is what the old ledgers *did* name, is exactly
+where the silence is deepest: a `CATALOGS` entry with no `VisibilityFlags` field
+type-checks, ships, and produces a catalog nobody can be granted, with nothing
+red anywhere.
+
+⚠️ **The games side already knows this and says so** — `Board_Game_Catalog`'s
+`apps/worker/src/lib/billing-gate.ts` (`billingSite()`) carries the note *"Adding
+`games2` as a CONSUMER_APP therefore also needs a `games2` arm in `siteForApp()`
+and a `games2` entry in the auth Worker's `BILLING_SITES`, or that repo does not
+compile"*, and `scripts/provision-catalog.mjs` prints both in its PAUSE #2
+runbook. The gap was in **this** document, not in the code.
 
 ---
 
