@@ -85,13 +85,9 @@ PAUSEs for the manual Firebase / auth-worker steps, 68 tests, 2418/0 suite) ·
 already live / already live / games → §8). **No real instance exists; nothing ran
 past `--dry`** — the first real run is the owner's.
 
-☐ **OWNER DECISION (asked 2026-09-05 07:37): instance naming.** The script splits
-names by what can be renamed — host + env/Worker follow the person
-(`amber.heygabi.ai`, `[env.amber]`, `library-catalog-amber`); D1, R2 bucket and the
-estate app id are ORDINAL (`library-catalog-3rd`, `library-3rd-covers`, `library3`)
-because those can never be renamed and the app id is a contract with the
-auth-worker. Design §7.1 wanted everything identity-neutral; `--instance third`
-gives that. Which? (a) split as built (b) all ordinal (c) all follow the person.
+(The instance-naming decision — **(a), the split as built** — was taken
+2026-09-05 08:35 and moved whole to [`DONE.md`](DONE.md); the rule lives in
+design §7.1.)
 
 ### ✅ Phase 8 — games platform prerequisites LANDED + DEPLOYED (agent E, 2026-09-05 ~07:40 Phoenix)
 

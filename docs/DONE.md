@@ -9,6 +9,23 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-09-05 08:35 Phoenix — OWNER DECISION: instance naming is (a), the split as built
+
+Moved whole from `TODO.md` ("Request a catalog" → phase 7 residue). The owner's
+answer, one word: **"A"** — after a full description of the three and my
+recommendation for (a). The rule and the reasons for rejecting (b)/(c) are
+recorded once, in the design doc §7.1 (`docs/info/request-a-catalog-design.md`);
+both provisioners already implement (a) in one `deriveNames()` each, so nothing
+was rebuilt. Original item:
+
+☐ **OWNER DECISION (asked 2026-09-05 07:37): instance naming.** The script splits
+names by what can be renamed — host + env/Worker follow the person
+(`amber.heygabi.ai`, `[env.amber]`, `library-catalog-amber`); D1, R2 bucket and the
+estate app id are ORDINAL (`library-catalog-3rd`, `library-3rd-covers`, `library3`)
+because those can never be renamed and the app id is a contract with the
+auth-worker. Design §7.1 wanted everything identity-neutral; `--instance third`
+gives that. Which? (a) split as built (b) all ordinal (c) all follow the person.
+
 ## 2026-09-05 — `GET /api/estate/me` answered a BARE status; it now says a sentence
 
 Moved whole from `TODO.md` (agent S1), where it read:

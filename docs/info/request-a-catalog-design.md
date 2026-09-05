@@ -661,6 +661,22 @@ Resource names are **identity-neutral on purpose** — env `friend`, D1
 allowed to carry identity, and it has already survived one rename
 (`sam.heygabi.ai` → `padhard.heygabi.ai`) with zero other files touched.
 
+✅ **DECIDED by the owner, 2026-09-05 08:35 Phoenix — option (a), "the split
+as built"**, over (b) all-ordinal and (c) all-follow-the-person. The rule both
+provisioners implement, in one `deriveNames()` each: **a name follows the
+requested subdomain only if it is cheap to rename.** The wrangler env / Worker
+name does (a Worker renames freely and the operator types it a dozen times);
+everything that cannot be cheaply renamed is **ordinal** — D1, R2 bucket, the
+games covers hostname (`gamecovers2.heygabi.ai`, because `COVERS_BASE_URL` is
+written into `thumbnail_url` rows) and the estate app id / token name / `vis_`
+column (a contract with the auth Worker). The hostname stays the only
+identity-bearing name. The §7.2 table's `wrangler env = third` row is therefore
+superseded by the sanitised subdomain; `--instance <name>` still overrides it
+for a single run. Reasons for rejecting the others, for the record: (b) makes
+`--env games3` say nothing about whose data a command is about to touch; (c)
+bakes a member's name into resources that need a migration to rename and into
+a public image hostname.
+
 ### 7.2 The ten steps — `kind = 'books'`, worked as a third library instance
 
 ⚠️ **§7.2 to §7.5 are the BOOKS path.** They are complete because
@@ -672,8 +688,8 @@ Derived from the request row, never asked:
 
 | Derived thing | Example value | Rule |
 |---|---|---|
-| wrangler env | `third` | next free `[env.<name>]`, identity-neutral |
-| Worker name | `library-catalog-third` | `library-catalog-<env>` |
+| wrangler env | `amber` | the sanitised `desired_subdomain` — **decided (a), §7.1**; `--instance` overrides |
+| Worker name | `library-catalog-amber` | `library-catalog-<env>` |
 | D1 name | `library-catalog-3rd` | ordinal, identity-neutral |
 | R2 bucket | `library-3rd-covers` | ordinal |
 | Hostname | `amber.heygabi.ai` | **the only identity-bearing name** |
