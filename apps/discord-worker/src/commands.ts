@@ -206,11 +206,29 @@ export const BASE_COMMANDS = [
  * `MODERATION_ENABLED` is.
  *
  * The reasoning is the one recorded below for `/timeout` and `/cleanup`, and it
- * applies with more force here: `src/club-write.ts` records that the DOCUMENT
- * SHAPES these two write are inferred rather than measured, so until somebody
- * checks them against the site's own writers a person pressing "Coming" would
+ * applied with more force here: `src/club-write.ts` recorded that the DOCUMENT
+ * SHAPES these two write were inferred rather than measured, so until somebody
+ * checked them against the site's own writers a person pressing "Coming" would
  * be told their RSVP was recorded while the club page showed nothing. A command
- * that is not published cannot be pressed by accident.
+ * that is not published cannot be pressed by accident. ✅ The shapes were
+ * measured on **2026-09-02** and the posture was flipped on **2026-09-05**; the
+ * two-switch registry contract is unchanged.
+ *
+ * ## ⚠️ `/progress` HAS NO `percent` OPTION — owner decision, 2026-09-05
+ *
+ * Owner's answer to *"should `/progress` drop `percent`, or learn
+ * `milestonePosition`?"* was **(a) drop `percent` and take a CHAPTER only**. The
+ * club page has no percentage field at all (measured 2026-09-02), so an option
+ * offering one was a control whose only possible outcome was a refusal — the
+ * estate's *"prefer not rendering a control someone cannot use"* rule, applied
+ * to a slash-command option.
+ *
+ * ⚠️ **Dropping it is a REGISTRATION, not an edit** (§4: Discord shows exactly
+ * what was last PUT), and a global command's old shape can linger in a client
+ * for up to an hour. So `interactions.ts` still READS a `percent` value off an
+ * interaction and `club-write.ts` still answers it in words
+ * (`PROGRESS_PERCENT_UNSUPPORTED`) — a stale command must never produce a bare
+ * failure.
  */
 export const CLUB_WRITE_COMMANDS = [
   {
@@ -239,23 +257,38 @@ export const CLUB_WRITE_COMMANDS = [
     options: [
       { name: 'club', type: OPTION.STRING, description: 'Which club', required: true },
       {
-        name: 'percent',
-        type: OPTION.INTEGER,
-        description: 'How far through, 0–100',
-        required: false,
-        min_value: 0,
-        max_value: 100,
-      },
-      {
         name: 'chapter',
         type: OPTION.STRING,
-        description: `Where you are in your own words, e.g. “ch. 14” (max ${CHAPTER_MAX} characters)`,
-        required: false,
+        // ⚠️ REQUIRED since 2026-09-05, because it is now the ONLY thing the
+        // command records: with `percent` gone, a `/progress club:X` carrying
+        // nothing else is a person asking to record nothing, and Discord can
+        // say so before the interaction is ever sent. The runtime
+        // `CLUB_MSG.progressNothing` check stays as the second rail, for a
+        // stale global command and a hand-crafted interaction.
+        // ⚠️ The words say "number" because the club page stores `chapterIndex`,
+        // a NUMBER (measured 2026-09-02) — "about halfway" is refused, so the
+        // option had better not invite it.
+        description: `Which chapter you are on — “ch. 14” or just “14” (max ${CHAPTER_MAX} characters)`,
+        required: true,
         max_length: CHAPTER_MAX,
       },
     ],
   },
 ] as const;
+
+/**
+ * ⚠️ **The option names `/progress` actually PUBLISHES**, read off the registry
+ * above rather than restated — `/api/health`'s `club_write_shapes_verified` asks
+ * `club-write.ts` whether every one of them has a measured destination field,
+ * and a list typed out a second time would go on saying "verified" after
+ * somebody added a third option here.
+ */
+export function progressCommandOptionNames(): string[] {
+  const cmd = CLUB_WRITE_COMMANDS.find((c) => c.name === PROGRESS_COMMAND_NAME) as
+    | { options?: readonly { name: string }[] }
+    | undefined;
+  return (cmd?.options ?? []).map((o) => o.name);
+}
 
 /**
  * The moderation pair — TODO §0 item 4's decided scope, and nothing else.

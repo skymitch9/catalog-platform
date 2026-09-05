@@ -233,7 +233,9 @@ export type RouterDecision =
   | {
       kind: 'progress_command';
       club: string;
-      percent: number | undefined;
+      /** ⚠️ The option was DROPPED on 2026-09-05 (owner decision (a)); this is
+       *  read only so a stale global command lands on a worded refusal. */
+      legacyPercent: number | undefined;
       chapter: string;
       actor: InteractionActor;
     }
@@ -367,7 +369,13 @@ export function routeInteraction(i: Interaction): RouterDecision {
         return {
           kind: 'progress_command',
           club: stringOption(i, 'club'),
-          percent: numberOption(i, 'percent'),
+          // ⚠️ `percent` is no longer an option on the PUBLISHED command (owner
+          // decision 2026-09-05), and it is still read here on purpose: a
+          // global command's old shape can linger in a client for up to an hour
+          // after re-registration, and a person who sends one must get the
+          // worded `PROGRESS_PERCENT_UNSUPPORTED` answer rather than have it
+          // silently dropped and be told "recorded".
+          legacyPercent: numberOption(i, 'percent'),
           chapter: stringOption(i, 'chapter'),
           actor: interactionActor(i),
         };

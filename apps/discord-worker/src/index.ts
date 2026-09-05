@@ -146,11 +146,14 @@ import { judgeGuess, processGuessGame } from './guessgame.js';
 import { processSuggestCommand } from './suggest-command.js';
 import { processReview } from './review.js';
 import {
+  clubWriteShapesVerified,
+  CLUB_WRITE_SHAPES_MEASUREMENT,
   clubWritesOn,
   processProgress,
   processRsvp,
   processRsvpPress,
 } from './club-write.js';
+import { progressCommandOptionNames } from './commands.js';
 import { makeShelfPort } from './shelf-exec.js';
 import { makeBooksPort } from './book-knowledge-exec.js';
 import { resolveIdentity } from '@platform/estate-auth';
@@ -229,13 +232,15 @@ app.get('/api/health', (c) =>
       // public audiobook slice, or the asker's own estate record); "can people
       // browse the shelves from Discord?" is answerable in one curl.
       'fun_menu_read',
-      // ⚠️ Added 2026-09-02, and it is DARK: /rsvp and /progress. Named
-      // separately from the row above precisely because it WRITES, and because
-      // `gabi_club_writes` below says whether it is reachable at all. The name
-      // is here while the posture is `off` for the same reason
-      // `moderation_dark` is: the ships-dark state is VISIBLE rather than
-      // inferred from a command nobody could see.
-      'fun_menu_club_writes_dark',
+      // ⚠️ Added 2026-09-02 as DARK: /rsvp and /progress. Named separately from
+      // the row above precisely because it WRITES, and because
+      // `gabi_club_writes` below says whether it is reachable at all.
+      // ⚠️ **DERIVED from the posture since 2026-09-05, not a literal** — it was
+      // `'fun_menu_club_writes_dark'` unconditionally, which would have gone on
+      // saying "dark" the moment the switch moved. A features row that cannot
+      // change is a row that will eventually lie; this one names the state it is
+      // actually in, the same way `moderation_dark` still honestly names its.
+      clubWritesOn(c.env) ? 'fun_menu_club_writes' : 'fun_menu_club_writes_dark',
     ],
     configured: {
       discord_public_key: Boolean(c.env.DISCORD_PUBLIC_KEY),
@@ -566,16 +571,31 @@ app.get('/api/health', (c) =>
     // commands does Discord actually show?" is answerable without a Discord
     // client.
     fun_menu_commands: ['recent', 'universe', 'review', 'suggest', 'guessgame'],
-    // ⚠️ THE WRITING PAIR, and it ships OFF. `enabled` is the lever; `ready`
-    // adds the one credential the writes need. ⚠️ NEITHER is a claim that the
-    // DOCUMENT SHAPES are right — `club_write_shapes_verified` is that claim,
-    // and it is `false` on purpose until somebody checks them against the
-    // site's own writers (docs/access/discord-bot.md §15). An honest false is
-    // the whole point: it is the one row that says this feature is not
-    // finished, rather than leaving that inferred from a wrangler comment.
+    // ⚠️ THE WRITING PAIR. `enabled` is the lever; `ready` adds the one
+    // credential the writes need. ⚠️ NEITHER is a claim that the DOCUMENT SHAPES
+    // are right — `club_write_shapes_verified` is that claim, and it was a
+    // hard-coded `false` from 2026-09-02 to 2026-09-05.
+    //
+    // ⚠️ **It is now DERIVED, and that is the honest form of it.**
+    // `clubWriteShapesVerified()` compares the live `CLUB_WRITE_SHAPES` against
+    // `CLUB_WRITE_SHAPES_MEASUREMENT` — the frozen record of the 2026-09-02 read
+    // of `audiobook_catalog/site/club-reads.js`, `site/clubs.js` and
+    // `firestore.rules` — and then checks that every option `/progress` actually
+    // publishes has one of those measured fields to land in. That second half is
+    // exactly why the row stayed `false` while the shapes were already right:
+    // `percent` had nowhere to go, and one flag claiming both would have been a
+    // half-truth. Editing either the constant or the command's options without
+    // re-measuring turns this row back to `false` in the DEPLOYED Worker, not
+    // just in CI.
+    //
+    // ⚠️ It is NOT a claim that a real club page has rendered a real write —
+    // that is §15.3 step 7, and only a person looking at the page can close it.
     gabi_club_writes_enabled: clubWritesOn(c.env),
     gabi_club_writes_ready: clubWritesOn(c.env) && Boolean(c.env.FIREBASE_SERVICE_ACCOUNT),
-    club_write_shapes_verified: false,
+    club_write_shapes_verified: clubWriteShapesVerified(progressCommandOptionNames()),
+    /** ⚠️ The DATE the shapes were measured, beside the flag that depends on it —
+     *  a verification with no age is not evidence. */
+    club_write_shapes_measured_on: CLUB_WRITE_SHAPES_MEASUREMENT.measuredOn,
   }),
 );
 
@@ -1314,7 +1334,7 @@ app.post('/interactions', async (c) => {
           sa: parseServiceAccount(c.env.FIREBASE_SERVICE_ACCOUNT),
           discordUserId: decision.actor.user?.id ?? null,
           clubName: decision.club,
-          percent: decision.percent,
+          legacyPercent: decision.legacyPercent,
           chapter: decision.chapter,
           applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
           interactionToken: decision.actor.token,

@@ -1,21 +1,28 @@
 /**
- * `/rsvp` and `/progress` — the dark pair.
+ * `/rsvp` and `/progress` — the pair that shipped dark and was LIT on 2026-09-05.
  *
  * ⚠️ **THE MOST IMPORTANT TEST IN THIS FILE IS `while the posture is off,
- * NOTHING is written and NO network call is made`**, because the reason this
- * pair ships dark is not caution: the DOCUMENT SHAPES were inferred rather than
- * measured, and this Worker's service account bypasses `firestore.rules`, so a
- * wrongly shaped write would SUCCEED and fail silently on somebody else's page.
- * The posture is the thing standing between that and a live club, so it is
- * tested first and hardest.
+ * NOTHING is written and NO network call is made`**, and it stays that way now
+ * that the posture is `on`: the reason this pair shipped dark was not caution —
+ * the DOCUMENT SHAPES were inferred rather than measured, and this Worker's
+ * service account bypasses `firestore.rules`, so a wrongly shaped write would
+ * SUCCEED and fail silently on somebody else's page. The switch is the thing
+ * that stood between that and a live club, and it is also the BACKOUT
+ * (`GABI_CLUB_WRITES = "off"`, deploy), so the off path is tested first and
+ * hardest whichever way the committed value points.
  *
  * ⚠️ **AND THE POSTURE EARNED ITS KEEP ON 2026-09-02.** The shapes were finally
  * read off `audiobook_catalog/site` (read-only) and **four of the seven guesses
  * were wrong** — the RSVP field, its vocabulary, the instant's TYPE, and the
  * club's own meeting field. Every one of them would have been accepted and
  * stored, and counted by nothing. The corrected names are pinned below with
- * their evidence; the posture stays `off` because `/progress percent` still has
- * no destination field and that is an owner decision, not a constant.
+ * their evidence.
+ *
+ * ✅ **The last blocker was an OWNER DECISION, answered 2026-09-05: option (a),
+ * `/progress` drops `percent` and takes a CHAPTER only.** So the option is gone
+ * from the published command, `chapter` is required, and the percentage
+ * REFUSAL PATH stays — a global command's old shape can linger in a client for
+ * up to an hour, and those people must get a sentence, never a bare error.
  *
  * After that, the rules that hold whether or not the posture is on:
  *  - input is REJECTED, never stripped or clamped;
@@ -34,7 +41,9 @@ import {
   CLUB_COLLECTION,
   CLUB_MSG,
   CLUB_WRITE_SHAPES,
+  CLUB_WRITE_SHAPES_MEASUREMENT,
   clubRsvpEnabled,
+  clubWriteShapesVerified,
   clubWritesOn,
   docIdOf,
   isRsvpStatus,
@@ -53,7 +62,12 @@ import {
   SITE_RSVP_RESPONSE,
   validateProgress,
 } from '../src/club-write.js';
-import { CLUB_WRITE_COMMANDS, commandNames, commandsFor } from '../src/commands.js';
+import {
+  CLUB_WRITE_COMMANDS,
+  commandNames,
+  commandsFor,
+  progressCommandOptionNames,
+} from '../src/commands.js';
 import {
   EPHEMERAL,
   PROGRESS_COMMAND_NAME,
@@ -127,8 +141,8 @@ test('⚠️ while the posture is off, NOTHING is written and NO Firestore call 
         sa: fakeSa,
         discordUserId: 'u1',
         clubName: 'Any Club',
-        percent: 40,
-        chapter: '',
+        legacyPercent: undefined,
+        chapter: 'ch. 14',
         applicationId: 'app',
         interactionToken: 'tok',
         enabled: false,
@@ -215,27 +229,26 @@ test('the production lane, and only it — this Worker is not the dev surface', 
 // Input — REJECTED, never stripped
 // ---------------------------------------------------------------------------
 
-test('⚠️ /progress with neither a percent nor a chapter records NOTHING and says why', () => {
+test('⚠️ /progress with no chapter at all records NOTHING and says why', () => {
   const out = validateProgress(undefined, '   ');
   assert.equal(out.ok, false);
   assert.equal(out.ok === false && out.message, CLUB_MSG.progressNothing);
+  // ⚠️ Chapter-only words since the owner's 2026-09-05 decision — a refusal that
+  // told somebody to type `percent:40` would be sending them at an option that
+  // no longer exists.
+  assert.doesNotMatch(CLUB_MSG.progressNothing, /percent/i);
+  assert.match(CLUB_MSG.progressNothing, /chapter/i);
 });
 
-test('⚠️ an out-of-range percent is REFUSED, never rounded or clamped', () => {
-  for (const bad of [-1, 101, 40.5]) {
-    const out = validateProgress(bad, '');
-    assert.equal(out.ok, false, `${bad} must be refused`);
-    assert.equal(out.ok === false && out.message, CLUB_MSG.progressPercent);
-  }
-  assert.match(CLUB_MSG.progressPercent, /does not round a number you did not type/);
-  // ⚠️ AND AN IN-RANGE ONE IS REFUSED TOO SINCE 2026-09-02, for a different
-  // reason and with a different sentence: the range was never the problem —
-  // there is no percentage field on the club page at all. The range check stays
-  // FIRST so "40.5 is not a whole number" is still answered as itself rather
-  // than as "percentages are not supported", which are two different fixes.
-  for (const inRange of [0, 40, 100]) {
-    const out = validateProgress(inRange, '');
-    assert.equal(out.ok, false, `${inRange} has nowhere to go`);
+// ⚠️ EVERY percentage gets the SAME answer since 2026-09-05, in range or out of
+// it, whole or fractional. While the option existed, "40.5 is not a whole
+// number" and "percentages have nowhere to go" were two different fixes and had
+// two different sentences. Now that the option is gone they are one fix, and a
+// range complaint would imply an in-range number would have worked.
+test('⚠️ ANY percent is refused in words — the option is gone and a percentage has nowhere to go', () => {
+  for (const anyPercent of [-1, 0, 40, 40.5, 100, 101]) {
+    const out = validateProgress(anyPercent, '');
+    assert.equal(out.ok, false, `${anyPercent} has nowhere to go`);
     assert.equal(out.ok === false && out.message, PROGRESS_PERCENT_UNSUPPORTED);
   }
 });
@@ -257,13 +270,16 @@ test('⚠️ invalid input is refused BEFORE the club list is walked', async () 
       sa: fakeSa,
       discordUserId: 'u1',
       clubName: 'Book Club',
-      percent: 400,
+      // ⚠️ A STALE COMMAND'S value, with the posture ON — the case that only
+      // became reachable when the option was dropped. It must be answered in
+      // words, before anything is read and without anything being written.
+      legacyPercent: 400,
       chapter: '',
       applicationId: 'app',
       interactionToken: 'tok',
       enabled: true,
     });
-    assert.equal(lastSaid(stub.sent).content, CLUB_MSG.progressPercent);
+    assert.equal(lastSaid(stub.sent).content, PROGRESS_PERCENT_UNSUPPORTED);
   } finally {
     stub.restore();
   }
@@ -471,30 +487,54 @@ test('both commands require a club and are guild-only — an RSVP in a DM has no
   }
 });
 
-test('/progress declares Discord’s own rails as a SECOND rail beside the runtime check', () => {
+// ⚠️ OWNER DECISION 2026-09-05, option (a): `/progress` takes a CHAPTER only.
+// The option is not merely unused — it is not PUBLISHED, so Discord never shows
+// a box whose only possible outcome is a refusal.
+test('⚠️ /progress publishes NO percent option, and chapter is now REQUIRED', () => {
+  assert.deepEqual(progressCommandOptionNames(), ['club', 'chapter']);
   const cmd = CLUB_WRITE_COMMANDS.find((c) => c.name === PROGRESS_COMMAND_NAME) as {
-    options?: readonly { name: string; min_value?: number; max_value?: number; max_length?: number }[];
+    options?: readonly { name: string; required?: boolean; max_length?: number }[];
   };
-  const percent = cmd.options?.find((o) => o.name === 'percent');
-  assert.equal(percent?.min_value, 0);
-  assert.equal(percent?.max_value, 100);
-  assert.equal(cmd.options?.find((o) => o.name === 'chapter')?.max_length, CHAPTER_MAX);
+  assert.equal(cmd.options?.some((o) => o.name === 'percent'), false);
+  const chapter = cmd.options?.find((o) => o.name === 'chapter');
+  // Discord's own rail beside the runtime check: it is the ONLY thing this
+  // command records, so a `/progress` without one cannot even be sent.
+  assert.equal(chapter?.required, true);
+  assert.equal(chapter?.max_length, CHAPTER_MAX);
 });
 
-test('the router carries club, percent and chapter', () => {
+// ⚠️ THE HEALTH ROW, DERIVED. It was a hard-coded `false` from 2026-09-02 to
+// 2026-09-05 — right while the shapes were already measured, because the
+// COMMAND was not yet coherent. Both halves are asserted here so neither can
+// rot into a claim nobody checks.
+test('⚠️ club_write_shapes_verified is TRUE only while the live shapes match the measurement', () => {
+  assert.equal(clubWriteShapesVerified(progressCommandOptionNames()), true);
+  assert.deepEqual(CLUB_WRITE_SHAPES, CLUB_WRITE_SHAPES_MEASUREMENT.shapes);
+  assert.equal(CLUB_WRITE_SHAPES_MEASUREMENT.measuredOn, '2026-09-02');
+  // ⚠️ And it goes back to false the moment an option without a measured
+  // destination reappears — which is the exact state 2026-09-02→05 was in.
+  assert.equal(clubWriteShapesVerified(['club', 'chapter', 'percent']), false);
+  assert.equal(clubWriteShapesVerified(['club', 'milestone']), false);
+});
+
+test('the router carries club and chapter, and still READS a stale percent', () => {
   const decision = routeInteraction({
     type: 2,
     data: {
       name: PROGRESS_COMMAND_NAME,
       options: [
         { name: 'club', type: 3, value: 'Tuesday Book Club' },
+        // ⚠️ The shape a client with the OLD global command still sends, for up
+        // to an hour after re-registration. It is READ so it can be ANSWERED —
+        // dropping it silently would let GABI say "recorded" to somebody who
+        // told her a percentage.
         { name: 'percent', type: 4, value: 40 },
         { name: 'chapter', type: 3, value: 'ch. 14' },
       ],
     },
   });
   assert.equal(decision.kind, 'progress_command');
-  assert.equal(decision.kind === 'progress_command' && decision.percent, 40);
+  assert.equal(decision.kind === 'progress_command' && decision.legacyPercent, 40);
   assert.equal(decision.kind === 'progress_command' && decision.chapter, 'ch. 14');
 });
 

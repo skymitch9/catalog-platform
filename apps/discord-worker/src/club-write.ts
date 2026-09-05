@@ -2,8 +2,11 @@
  * `/rsvp` and `/progress` — the two per-member club writes from Discord
  * (design §2d and §2e), built to `poll-vote.ts`'s shape exactly.
  *
- * ⚠️ **THEY SHIP OFF, BEHIND `GABI_CLUB_WRITES`, AND THAT IS THE WHOLE HEADER.**
- * Read the next section before flipping it.
+ * ⚠️ **THEY SHIPPED OFF BEHIND `GABI_CLUB_WRITES`, AND THE POSTURE WAS FLIPPED
+ * ON 2026-09-05.** Read the next two sections before touching anything here: the
+ * switch is what protected a live club page for three days, and the only reason
+ * it is safe to have moved is that both halves it was protecting against — an
+ * unmeasured shape and an input with no destination — were closed first.
  *
  * ## ⚠️ THE SHAPES ARE NOW MEASURED — AND FOUR OF THE SEVEN GUESSES WERE WRONG
  *
@@ -29,21 +32,32 @@
  * else's surface, and it looks exactly like a bug in their code. The old header
  * predicted this exactly; the measurement found it in four places.
  *
- * ## ⚠️ AND IT IS STILL DARK, DELIBERATELY — ONE OWNER DECISION REMAINS
+ * ## ✅ THE LAST BLOCKER WAS AN OWNER DECISION, AND HE ANSWERED IT (2026-09-05)
  *
- * `/progress percent` has **no destination field**. Correcting a constant cannot
- * fix that, because a percentage is not a milestone index and not a chapter
- * number: converting one to the other would be inventing a value. So the
- * percentage input is now REFUSED in words (`PROGRESS_PERCENT_UNSUPPORTED`)
- * rather than written into a document nothing reads, and the command still
- * carries the option because removing it is a command re-registration.
+ * `/progress percent` had **no destination field**. Correcting a constant could
+ * not fix that, because a percentage is not a milestone index and not a chapter
+ * number: converting one to the other would be inventing a value.
  *
- * ⚠️ **The remaining question is the owner's, not a coder's:** should `/progress`
- * drop `percent` and take a chapter only, or should it also learn
- * `milestonePosition` (which needs the read's milestone list to mean anything)?
- * `docs/access/discord-bot.md` §15 carries the flip checklist; the posture stays
- * `off` until that is answered, exactly as `MODERATION_ENABLED` and
- * `GABI_CONFIRM_T2` stayed off until theirs were.
+ * ⚠️ **Owner decision, 2026-09-05: option (a) — `/progress` DROPS `percent` and
+ * takes a CHAPTER only.** (The alternative, (b), was to also learn
+ * `milestonePosition`, which needs the read's milestone list to mean anything
+ * and is the larger build.) So:
+ *
+ *  - `commands.ts` no longer declares a `percent` option, and `chapter` is now
+ *    REQUIRED — it is the only thing this command records;
+ *  - a chapter LABEL becomes the `chapterIndex` NUMBER the club page reads
+ *    (`"ch. 14"` → `14`), and a label with no number in it is refused in words;
+ *  - ⚠️ **the `percent` REFUSAL PATH STAYS**, because dropping the option is a
+ *    command re-registration and a global command's old shape can linger in a
+ *    Discord client for up to an hour. A person who still has the old form gets
+ *    `PROGRESS_PERCENT_UNSUPPORTED` — a sentence saying what to type instead —
+ *    never a bare error and never a write into a document nothing reads.
+ *
+ * `docs/access/discord-bot.md` §15.3 carries the flip checklist. ⚠️ It has NO
+ * shadow rung: `clubWritesOn` is affirmative-only `"on"`, there is no third
+ * value, and a "shadow" club write is a contradiction — the whole risk is the
+ * WRITE, so a mode that wrote-but-pretended would be the very thing being
+ * guarded against. Off → on, with the two halves above closed first.
  *
  * ## What IS enforced, and is not affected by any of the above
  *
@@ -137,6 +151,90 @@ export const CLUB_WRITE_SHAPES = {
 } as const;
 
 /**
+ * ⚠️ **THE FROZEN RECORD OF WHAT WAS ACTUALLY READ, on the day it was read.**
+ *
+ * `CLUB_WRITE_SHAPES` above is the LIVE constant every write is built from. This
+ * is a second, deliberately separate copy: the names as they were **measured**
+ * on 2026-09-02, off the sources named below. They are not redundant — one is
+ * what the code does, the other is what somebody verified, and
+ * `clubWriteShapesVerified()` is the claim that the two still agree.
+ *
+ * ⚠️ **Editing `CLUB_WRITE_SHAPES` without editing this drops
+ * `club_write_shapes_verified` to `false` in `/api/health`, which is the point.**
+ * A field name on somebody else's page is a persisted key: changing one is a
+ * migration, not an edit, and the health row should stop claiming "verified" the
+ * moment the code stops matching the measurement. Re-measure, then move both.
+ */
+export const CLUB_WRITE_SHAPES_MEASUREMENT = {
+  /** ⚠️ A promise about MEASUREMENT, not a save date. */
+  measuredOn: '2026-09-02',
+  sources: [
+    'audiobook_catalog/site/club-reads.js',
+    'audiobook_catalog/site/clubs.js',
+    'audiobook_catalog/firestore.rules',
+  ],
+  shapes: {
+    rsvpCollection: 'rsvps',
+    rsvpStatusField: 'response',
+    rsvpMeetingField: 'meetingAt',
+    clubMeetingField: 'nextMeetingAt',
+    progressCollection: 'progress',
+    progressMilestoneField: 'milestonePosition',
+    progressChapterField: 'chapterIndex',
+    progressFinishedField: 'finished',
+    progressHistoryField: 'history',
+    displayNameField: 'displayName',
+    updatedAtField: 'updatedAt',
+  },
+} as const;
+
+/**
+ * ⚠️ Every option `/progress` may publish, and the ONLY ones with a measured
+ * destination: `club` picks the document's path, `chapter` becomes
+ * `chapterIndex`. ⚠️ **`percent` is deliberately absent** — that is what made
+ * the command incoherent until 2026-09-05, and listing it here would let the
+ * health flag call a percentage "verified".
+ */
+export const PROGRESS_OPTIONS_WITH_A_DESTINATION = ['club', 'chapter'] as const;
+
+/**
+ * ⚠️ **`club_write_shapes_verified` in `/api/health`, DERIVED rather than
+ * asserted** — it was a hard-coded `false` from 2026-09-02 to 2026-09-05.
+ *
+ * It answers ONE question honestly: *does every club write this Worker can make
+ * land in a field somebody actually measured?* That needs two things, and it is
+ * `false` unless both hold:
+ *
+ *  1. **the shapes still match the measurement** — `CLUB_WRITE_SHAPES` is
+ *     compared, key by key, against `CLUB_WRITE_SHAPES_MEASUREMENT.shapes`, the
+ *     frozen record of the 2026-09-02 read. This is exactly the assertion
+ *     `test/club-write.test.ts`'s pin makes, evaluated at runtime instead of in
+ *     CI, so an edited constant turns the row off in the deployed Worker and not
+ *     only on a test runner;
+ *  2. **every option the command publishes has one of those fields to land in**
+ *     — the half that was missing. From 2026-09-02 the shapes were right and the
+ *     row was still `false` **on purpose**, because `/progress percent` had
+ *     nowhere to go and one flag claiming both would have been a half-truth. The
+ *     owner's 2026-09-05 decision removed the option; passing the command's own
+ *     option list in is what makes the row notice if it ever comes back.
+ *
+ * ⚠️ It is NOT a claim that anything has been written to a real club — that is
+ * the checklist's step 7, which only a person looking at the club PAGE can
+ * close.
+ */
+export function clubWriteShapesVerified(progressOptionNames: readonly string[]): boolean {
+  const measured: Record<string, string> = CLUB_WRITE_SHAPES_MEASUREMENT.shapes;
+  const live: Record<string, string> = CLUB_WRITE_SHAPES;
+  const measuredKeys = Object.keys(measured);
+  if (Object.keys(live).length !== measuredKeys.length) return false;
+  for (const key of measuredKeys) {
+    if (live[key] !== measured[key]) return false;
+  }
+  const allowed = PROGRESS_OPTIONS_WITH_A_DESTINATION as readonly string[];
+  return progressOptionNames.every((name) => allowed.includes(name));
+}
+
+/**
  * ⚠️ **OUR WORD → THEIRS, at the write boundary and nowhere else.**
  *
  * The site's vocabulary is `going` / `maybe` / `cant` (`RSVP_RESPONSES`,
@@ -220,19 +318,27 @@ export type ProgressInput =
   | { ok: false; message: string };
 
 /**
- * ⚠️ **AT LEAST ONE OF THE TWO, AND BOTH ARE OPTIONAL SEPARATELY.** A
- * `/progress` with neither is a person asking to record nothing, and answering
- * "done" to it would be a lie with a tick beside it.
+ * ⚠️ **A CHAPTER, AND NOTHING ELSE — owner decision 2026-09-05.** A `/progress`
+ * with no chapter is a person asking to record nothing, and answering "done" to
+ * it would be a lie with a tick beside it. Discord now refuses that case itself
+ * (`chapter` is a required option); this is the second rail, for the stale
+ * global command and the hand-crafted interaction.
+ *
+ * ⚠️ `legacyPercent` is what a client with the OLD command shape may still send.
+ * It is never written and never converted — it is answered in words. **There is
+ * no range check on it any more, and its absence is deliberate:** while the
+ * option existed, "40.5 is not a whole number" and "percentages have nowhere to
+ * go" were two different fixes and deserved two different sentences. Now that
+ * the option is gone, EVERY percentage has the same one answer, and telling
+ * somebody their number was out of range would imply an in-range one would work.
  */
-export function validateProgress(percent: number | undefined, chapter: string): ProgressInput {
+export function validateProgress(
+  legacyPercent: number | undefined,
+  chapter: string,
+): ProgressInput {
   const label = (chapter ?? '').trim();
-  if (percent === undefined && label.length === 0) {
+  if (legacyPercent === undefined && label.length === 0) {
     return { ok: false, message: CLUB_MSG.progressNothing };
-  }
-  if (percent !== undefined) {
-    if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
-      return { ok: false, message: CLUB_MSG.progressPercent };
-    }
   }
   if (label.length > CHAPTER_MAX) {
     return { ok: false, message: CLUB_MSG.progressChapter(CHAPTER_MAX) };
@@ -243,6 +349,9 @@ export function validateProgress(percent: number | undefined, chapter: string): 
   // page at all. Both were previously written into the document anyway, and
   // because this Worker's service account BYPASSES `firestore.rules` they would
   // have been accepted, stored, and read by nothing.
+  //
+  // ⚠️ A chapter BESIDE a stale percentage is still fine: the chapter is what
+  // gets written, so nothing is lost and nothing is invented.
   const index = label ? chapterIndexOf(label) : null;
   if (label && index === null) {
     return { ok: false, message: CLUB_MSG.progressChapterNumber };
@@ -265,14 +374,19 @@ export function validateProgress(percent: number | undefined, chapter: string): 
  *
  * ⚠️ Worded for the person, per the estate's no-bare-status rule: what happened,
  * what it needs, and how to get it — and never a hint that they did something
- * wrong. The `/percent` option is still on the command because removing it is a
- * command re-registration and an owner decision; until then it is refused
- * honestly rather than written into a void.
+ * wrong. ⚠️ **The option was REMOVED from the command on 2026-09-05** (owner
+ * decision (a)), so nobody should meet this sentence any more — but a global
+ * command's old shape can sit in a Discord client for up to an hour after the
+ * re-registration, and this is what those people get instead of a bare failure.
+ * ⚠️ **Do not delete it when the hour is up.** A stale client is not the only
+ * way in: a hand-crafted interaction can carry any option it likes, and this is
+ * the sentence standing between that and a `percent` field nothing reads.
  */
 export const PROGRESS_PERCENT_UNSUPPORTED =
-  "The club page tracks progress by CHAPTER, not by percentage — so a percentage has nowhere to go " +
+  'The club page tracks progress by CHAPTER, not by percentage — so a percentage has nowhere to go ' +
   'and nothing was recorded. Tell GABI the chapter instead (`chapter:ch. 14`) and it will land ' +
-  'exactly where the club page reads it.';
+  'exactly where the club page reads it. (If Discord still offers you a `percent` box, it is showing ' +
+  'you an old copy of the command — it will catch up on its own within the hour.)';
 
 // ---------------------------------------------------------------------------
 // The words — every refusal says what happened, what it needs, and how to fix it
@@ -317,12 +431,12 @@ export const CLUB_MSG = {
   noActiveRead:
     'This club has no active read at the moment, so there is nowhere to file your progress. Nothing ' +
     'was recorded.',
+  /** ⚠️ Chapter-only since the owner's 2026-09-05 decision. Discord asks for it
+   *  as a required option now, so this answers the stale command and the
+   *  hand-crafted interaction rather than an ordinary mistake. */
   progressNothing:
-    'Tell GABI where you are — a percentage (`percent:40`) or a chapter (`chapter:ch. 14`), or ' +
-    'both. Nothing was recorded, because there was nothing to record.',
-  progressPercent:
-    'A percentage has to be a whole number between 0 and 100. Nothing was recorded — GABI does not ' +
-    'round a number you did not type.',
+    'Tell GABI which chapter you are on — `chapter:ch. 14`, or just `chapter:14`. Nothing was ' +
+    'recorded, because there was nothing to record.',
   /** ⚠️ Measured 2026-09-02: the club page stores `chapterIndex`, a NUMBER. A
    *  label with no number in it cannot become one, and this Worker bypasses
    *  `firestore.rules`, so writing the prose anyway would succeed and be read by
@@ -674,7 +788,11 @@ export interface ProgressContext {
   sa: ServiceAccount | null;
   discordUserId: string | null;
   clubName: string;
-  percent: number | undefined;
+  /** ⚠️ NOT an input any more — the option was dropped on 2026-09-05. It is
+   *  still carried because a stale global command (or a hand-crafted
+   *  interaction) can send one, and it is answered in words rather than
+   *  ignored. Never written. */
+  legacyPercent: number | undefined;
   chapter: string;
   applicationId: string;
   interactionToken: string;
@@ -718,7 +836,7 @@ export async function processProgress(ctx: ProgressContext): Promise<void> {
 
     // ⚠️ VALIDATED BEFORE ANYTHING IS READ. A person whose input cannot be
     // recorded should not have the club list walked in order to be told so.
-    const input = validateProgress(ctx.percent, ctx.chapter);
+    const input = validateProgress(ctx.legacyPercent, ctx.chapter);
     if (!input.ok) return say(input.message);
 
     if (!ctx.sa) return say(CLUB_MSG.notConfigured);
