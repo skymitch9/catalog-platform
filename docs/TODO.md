@@ -110,6 +110,76 @@ donor/peers mechanism for games (books has `[env.friend]` as the drift donor).
 NOT verified: a signed-in tail line showing `app=games` — the owner signs in once at
 <https://boardgames.heygabi.ai> and checks it.
 
+### ✅ Phase 9 — games provisioner BUILT, `--dry` only (agent G, 2026-09-05)
+
+`Board_Game_Catalog` `7b6b049` **`BILLING_SITE` lifted** — phase 8's open item
+closed. The constant became `billingSite(env)`, resolved from `ESTATE_APP`
+through the same `resolveEstateApp()` the gate uses, because the site id and the
+app id are ONE identity: this repo's `siteForApp()` (`apps/auth-worker/src/
+estate.ts:118`) maps `games → games`, and the system door answers for the
+consumer whose bearer was presented. An unrecognised id gives `null`, not
+`games`. ⚠️ **Not deployed and it did not need to be** — `BILLING_POLICY = "off"`
+means neither call site runs, and with `ESTATE_APP = "games"` the function
+returns the identical string. Provable no-op, stated rather than assumed.
+
+`b11a373` **`scripts/provision-catalog.mjs`** — twelve idempotent steps, the same
+CLI and both PAUSEs as the books twin, with the §7.6 games ledger. `ad2258c`
+**74 tests** (suite 220 → **298 pass / 0 fail**). `54faef0` runbook
+`docs/access/provision-catalog.md` + index row + the phase-9 item moved WHOLE to
+that repo's `DONE.md`.
+
+**Four deliberate differences from the books twin, each with its reason in the
+file:** it does **not** deploy (step 11 prints `DEPLOY_HOLDER=<you> npm run
+deploy:<i>`; `--resume` sees the `env=<i>` line in `deploys.log` and continues);
+the env block is **rendered from the committed commented template**, so the
+existing drift guard protects the provisioner too; 🔴 the block is inserted
+**above** that template, never at EOF, because the guard slices banner→EOF and
+requires every line there to be commented; and the covers domain is a real CLI
+step with an **ordinal** hostname (`gamecovers2.`) because `cover-storage.ts`
+writes `COVERS_BASE_URL` into `thumbnail_url` rows.
+
+🔴 **TWO THINGS THIS REPO NEEDS, found by G and not on the books runbook.**
+Adding `games2` to `CONSUMER_APPS` also needs a `case 'games2'` arm in
+`siteForApp()` (`apps/auth-worker/src/estate.ts:118`) and `'games2'` in
+`BILLING_SITES` (`apps/auth-worker/src/billing-registry.ts:38`) — **without both
+this repo does not compile**, because `siteForApp` is exhaustive over
+`ConsumerApp`. Then a decision about which `BILLING_FEATURES` list `games2` in
+their `sites`, or the Spending panel draws an empty matrix. The provisioner
+prints all of it with exact diffs and re-reads five of the seven back out of this
+checkout on `--resume`.
+
+**The seal hook works against S2's real module.** It dynamic-imports
+`scripts/lib/catalog-seal.mjs` through the `platform-repo.mjs` locator and acts
+on `source`; absent and `'none'` are the same outcome (§6.4 row 3) and different
+facts, printed differently; a THROWING inject stops the run rather than falling
+through to the owner's money. 🔴 **The "no key" outcome uses the GAMES sentence,
+not the books one** — there is no donor and no peers, so it says *no AI lookups
+at all on this instance*, and refuses to finish a real provision with no key.
+
+**MEASURED:** `--dry` against the LIVE `estate_auth` D1 — row **#3**
+`boardgames` refused as already live (exit 2), row **#1** `library` refused as a
+BOOKS request pointing at the other repo (exit 2). A fixture accepted row printed
+all twelve steps, both pauses and a 109-line block at exit 0, with the Firebase
+authorised-domain list read live. Four defects were found **by running it**, not
+reading it — a key-only TOML substitution had rewritten `name = "RATE_LIMITER"`
+to the Worker's name; `Number(null)` is 0 so an absent `--request` read as #0;
+`--resume` threw about `games3` when an id was pinned; and the secret plan's
+last-moment guard was unreachable.
+
+⚠️ **NOT verified:** no second games instance exists — no D1, bucket, covers
+hostname, secret or deploy — nothing ran past `--dry`, no envelope was decrypted
+from that side, and nobody signed in. ☐ **Owner decision still open:** the naming
+split — (a) as built (env/Worker follow the person, the rest ordinal), (b) all
+ordinal, (c) all follow the person. Both provisioners are built to (a) so the
+pair agrees, and each keeps it in ONE function, so a flip is one function per
+repo.
+
+**For `admin.js`'s `catalogNextStep()` games branch** (the conductor's edit, not
+G's) — the exact text is in G's report: the command line is
+`npm run provision:catalog -- --request <id> --dry` run from
+`boardbuddy/Board_Game_Catalog`, plus two sentences naming both pauses and the
+no-donor fact.
+
 ### ✅ Phases 1 + 2 — the auth-worker half — BUILT, MIGRATED AND DEPLOYED (agent A, 2026-09-05 14:24Z)
 
 `6b1f686` migration `0018_catalog_requests.sql` + `apps/auth-worker/src/catalog-names.ts`
