@@ -990,11 +990,8 @@ plainly that a games catalog takes longer to stand up.**
 
 ## 9. Open owner questions — ⚠️ ONE AT A TIME, in this order
 
-**These are NOT decided here.** Present them one per message and wait.
-
-1. **Back-seed the two existing library owners** (`library` and `padhard`) as
-   `live` rows, so their "+" hides and the table becomes the single source of
-   truth for *"who owns a catalog"*?
+**All four answered 2026-09-05** — nothing is open. (Kept as a section so the
+one-at-a-time rule's record survives.)
 
 ### ✅ Answered, kept with its date
 
@@ -1003,6 +1000,7 @@ plainly that a games catalog takes longer to stand up.**
 | ~~1~~ | Does the **Games** card get the same "+" and flow? | ✅ **"Both."** Both cards, one `kind` column, one shared product path — §4.6, §7.6, §8 | **2026-09-05 ~06:50 Phoenix** |
 | ~~2~~ | Who may request — approved only, or `pending` too? | ✅ **"Only approved people."** The "+" renders only for estate `status='approved'` (a `pending` or `revoked` member sees no button — and never a bare refusal), AND the submit route refuses anything but `approved` server-side, since the button is a curtain (§4.4). The refusal for a pending member who reaches the route anyway says *what* (not yet approved), *what it needs* (estate approval), *how* (the owner approves in `/admin`). | **2026-09-05 ~06:58 Phoenix** |
 | ~~3~~ | Sealed key in v1, or defer? | ✅ Owner, verbatim: *"Have it fall back to my Claude key for now. Defer it until everything else is built then build it. I want this all done today so the defer is until after the other bits build but not forever."* So: **v1 provisions a new catalog with the OWNER's `ANTHROPIC_API_KEY`** — an explicit owner decision that **supersedes** §6.4's and the drafts' "never silently reuse the estate owner's key" (it is no longer silent: he chose it, on this date). The requester's sealed key (§6) is built as the **LAST phase of the same build**, not dropped; until it lands the form shows no key field, `reader_key_set` stays 0, and `owner_key_set=1` is recorded when the owner's key is set at provision. | **2026-09-05 ~07:03 Phoenix** |
+| ~~4~~ | Back-seed the existing owners as `live` rows? | ✅ **"Yes back seed."** Three rows, inserted by hand after migration 0018 is applied remotely (phase 6): `library` (books, the owner), `padhard` (books, Samantha — email per `library_catalog` `[env.friend]` `OWNER_EMAILS`), `boardgames` (games, the owner). Each carries `status='live'`, `provisioned_instance` = the real wrangler env (`main`/`friend`/main), `provisioned_host` = the real hostname, `decided_by` = the owner's `estate_user.id`, `extra` = `{"backseed":"2026-09-05"}` so the rows are distinguishable from real requests forever. Their "+" then hides **for that kind only** — the owner still sees a Games "+"? No: he owns `boardgames`, so both his hide; Samantha still sees a Games "+". | **2026-09-05 ~07:25 Phoenix** |
 
 ⚠️ **Note what the answer did NOT settle.** It settled *whether*, not *when* —
 the games provisioning prerequisites (§8 items 1–3) are unbuilt, unscheduled and

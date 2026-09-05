@@ -45,11 +45,17 @@ this all done today so the defer is until after the other bits build but not
 forever"** (2026-09-05 ~07:03 Phoenix): v1 provisions with the OWNER's
 `ANTHROPIC_API_KEY` (an explicit owner decision — it supersedes the drafts' "never
 silently reuse the owner's key"); the sealed requester key is the LAST phase of
-today's build, not dropped. Still open: (4) back-seed the two existing library
-owners (+ boardgames) as `live` rows.
+today's build, not dropped. (4) Back-seed — **"Yes back seed"** (2026-09-05 ~07:25
+Phoenix): `library`, `padhard`, `boardgames` inserted as `live` rows by hand once
+0018 is applied remotely (design §9 row 4 has the exact row shape). All four
+questions answered; nothing open.
 
 Plan: design doc → Opus build of the estate side (migration + API + `/admin`
 section + home-card "+") → provisioning runbook/script → dev-lane test → live.
+**Execution 2026-09-05 07:06 Phoenix:** five Opus agents dispatched in parallel —
+A auth-worker (phases 1+2), B home "+" (3a+3b), C `/admin` (4), D books
+provisioner (7, `library_catalog`), E games prerequisites (8, `Board_Game_Catalog`).
+Then by hand: phase 6 back-seed; then phase 9 games path; then phase 5 sealed key LAST.
 
 ## ☐ `count_phrase` sank every converse loop to Haiku — allowlist it on Groq (2026-09-03 12:40)
 
