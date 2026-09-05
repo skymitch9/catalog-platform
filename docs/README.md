@@ -1,9 +1,15 @@
 # catalog-platform — docs map
 
 > **Audience:** Claude/Kiro sessions first, the owner second. **Status:** TRACKED.
-> Last verified: **2026-08-23** — the tree was re-measured that day and `info/`
-> gained `doc-tree-maintenance.md`. ⚠️ The estate-wide claims further down were
-> NOT re-checked.
+> Last verified: **2026-09-05** — ⚠️ **only the two claims re-measured that day**
+> by the docs audit: (1) every path in the tree diagram and both **Start here**
+> tables was `ls`'d and resolves, and (2) the *"What is active right now"* row
+> pointed at a **"KIRO — COMPLETE THIS WORK"** section of `TODO.md` that **no
+> longer exists** (`grep -c KIRO docs/TODO.md` = **0**) — corrected below, and a
+> `DOCS_STANDARD.md` row added in its place. ⚠️ **NOT re-checked on that date:**
+> every estate-wide claim below the tables (the other three repos' doc trees,
+> their gitignore status, the R2 backup and its 2026-08-21 drill), which were
+> last measured **2026-08-23** when `info/` gained `doc-tree-maintenance.md`.
 >
 > 📐 **The rules for this tree — filing, formatting, when to move things — live
 > in [`DOCS_STANDARD.md`](DOCS_STANDARD.md), and ONLY there.** All four repos
@@ -46,7 +52,8 @@ graph TD
 
 | If you want to know… | Read |
 |---|---|
-| **What is active right now** | [`TODO.md`](TODO.md) — including **"KIRO — COMPLETE THIS WORK"**, the ranked hand-off queue |
+| **What is active right now** | [`TODO.md`](TODO.md) — ⚠️ read the BODY of a section, never its heading alone (`info/doc-tree-maintenance.md` is why) |
+| **The rules for this tree** | [`DOCS_STANDARD.md`](DOCS_STANDARD.md) — filing, formatting, when a thing moves |
 | **Is this a bug or deliberate?** | [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) |
 | **How do I deploy / rotate a key / restore a backup** | [`access/README.md`](access/README.md) |
 | **Why is it built this way** | [`info/README.md`](info/README.md) |

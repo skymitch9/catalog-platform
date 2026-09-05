@@ -10,7 +10,20 @@
 > It holds things that ARE wrong, or look wrong, and are deliberately tolerated.
 >
 > - Work in flight → [`TODO.md`](TODO.md)
-> - Traps you fall INTO while working → `info/gotchas.md`
+> - Traps you fall INTO while working → ⚠️ **there is NO `info/gotchas.md` in
+>   this repo.** This line pointed at one from 2026-08-23 until **2026-09-05**,
+>   when the docs audit measured it (`ls docs/info/gotchas.md` → no such file)
+>   and corrected it — it is finding §8 of
+>   [`info/audit-2026-08-findings.md`](info/audit-2026-08-findings.md), named
+>   there as one of the two cheapest wins in the whole audit and open for
+>   thirteen days. **Where the gotchas actually live: with their subject**, in
+>   the `access/` or `info/` doc for the thing that bites you, titled for the
+>   symptom — e.g. *"the fix didn't deploy"* → [`info/worktree-deploys.md`](info/worktree-deploys.md),
+>   a stale status page → [`info/status-pages.md`](info/status-pages.md), a
+>   backup that reported success while missing files → KI-9 below. ⚠️ **Do not
+>   create a `gotchas.md` to satisfy this pointer** — a single bucket for
+>   unrelated traps is a file nobody reads at the moment one would have helped;
+>   the estate's convention is deliberately the opposite.
 > - Finished work → [`DONE.md`](DONE.md)
 >
 > ⚠️ **A gotcha is something you *do* wrong. A known issue is something that

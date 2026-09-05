@@ -35,7 +35,7 @@ that day — step 2 of
 Titles are **bare** — one FILE here is one value, and the file name IS that
 secret's name across the estate, so nothing is holder-scoped. The convention in
 full, and the reason the separator elsewhere is a dot and never a slash, is in
-[`library_catalog/docs/access/secrets.md`](../secrets.md) — one fact, one home.
+`bookbuddy/library_catalog/docs/access/secrets.md` — ⚠️ **a SIBLING repo, not this one, and deliberately NOT linked**: it is a separate checkout that may not be present. This was a broken relative link to a non-existent `docs/access/secrets.md` in THIS repo until 2026-09-05, when the docs audit measured it — one fact, one home.
 
 ```
 node scripts/op-import-keys.mjs --dry-run    # names + actions, no writes

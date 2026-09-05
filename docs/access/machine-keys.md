@@ -1,7 +1,17 @@
 # Machine keys — Access Reference
 
-> **Audience:** Claude sessions. **Status:** TRACKED (this repo is private).
-> Last verified: **2026-08-20**.
+> **Audience:** Claude sessions. **Status:** TRACKED ~~(this repo is private)~~.
+> ⚠️ **Corrected 2026-09-05 (docs audit): THIS REPO IS PUBLIC on GitHub** —
+> measured with `gh repo view` on 2026-08-17 (estate credentials catalog F-1,
+> and `KNOWN_ISSUES.md` KI-2), so this header carried the wrong premise for
+> nineteen days on a file about credentials. The names-only discipline below was
+> never conditional on privacy and nothing here needed changing — but *"it's
+> private, so a name here is fine"* is one short step from *"so a value is
+> fine"*, which is exactly why the premise is corrected rather than quietly
+> dropped. **Treat every commit as published.**
+> Last verified: **2026-08-20** for the key table; **2026-09-05** for the
+> public/private premise only — ⚠️ no key, mode or rotation claim below was
+> re-measured that day.
 
 Every credential the estate holds for a machine, and how each one rotates.
 The live version of this table is **<https://heygabi.ai/status/api>** (devops

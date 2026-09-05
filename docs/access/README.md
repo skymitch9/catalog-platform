@@ -8,14 +8,19 @@
 > discipline was never conditional on that, but the premise is what a session
 > reasons FROM, and "it's private, so a name here is fine" is one short step
 > from "so a value is fine" — in a repo the whole internet can read.
-> Last verified: **2026-08-17**.
+> Last verified: **2026-09-05** for **the index's completeness only** — every
+> `.md` in this folder was checked against the table below and **two files had
+> no row at all**, `gabi-turn-log.md` and `machine-keys.md`; both are added.
+> ⚠️ **NOT re-checked on that date:** anything each row CLAIMS about the system
+> it describes — those rows still carry their own dates, and the public-repo
+> measurement above is still the **2026-08-17** `gh repo view` reading.
 
 *How to reach and operate things.* For how/why the system works, see
-
-> ⚠️ **The estate-wide credentials catalog is LOCAL-ONLY in `audiobook_catalog/docs/access/CREDENTIALS.md`** — every custody store, every paired token, the three env-file patterns, and each rotation procedure, in one place. It is deliberately not tracked in any repo (all four are public and the aggregation is more sensitive than the scattered names-only convention). Names only there too; never a value, anywhere.
 [`../info/`](../info/README.md). For current work, decisions in flight, and
 handoffs, see [`../TODO.md`](../TODO.md) — that stays the single living work
 log. These docs hold **stable** facts only.
+
+> ⚠️ **The estate-wide credentials catalog is LOCAL-ONLY in `audiobook_catalog/docs/access/CREDENTIALS.md`** — every custody store, every paired token, the three env-file patterns, and each rotation procedure, in one place. It is deliberately not tracked in any repo (all four are public and the aggregation is more sensitive than the scattered names-only convention). Names only there too; never a value, anywhere.
 
 | Doc | Covers |
 |---|---|
@@ -32,6 +37,8 @@ log. These docs hold **stable** facts only.
 | [gabi-personality.md](gabi-personality.md) | **GABI's personality + person-keyed conversations** (live 2026-08-18): the eleven owner-locked tropes, how drift walks a wing graph, and the switch to one conversation thread per PERSON rather than per channel. ⚠️ Contains the hidden personality pin — it is deliberately undocumented to end users, so keep it out of user-facing text. Read §6 for the written posture on private context surfacing in public channels, §7 before treating a changed voice as a bug, and ⚠️ §8 for the VISIBILITY answer and the devops set/clear (added 2026-08-18) |
 | [gabi-suggestions.md](gabi-suggestions.md) | **GABI suggests a book, format-aware** (LIVE 2026-08-18): one clarifying question, then THREE DIFFERENT GATES — audio ungated (the public slice), ebook behind the estate's `vis_ebooks`, and ⚠️ physical behind "can this person open the shelf the row came from" (the delegated `whoami`, against library.heygabi.ai — measured, §2). Read §4 first: only 64 of 1,079 rows carry a print format, and she must never call an unreviewed book "unread" |
 | [gabi-shelf.md](gabi-shelf.md) | **GABI knows your shelf** (Tier 0d, LIVE 2026-08-18 — the owner flipped it on; ⚠️ its first live question MISROUTED to the public catalogue and the pre-router fix is in `src/shelf.ts` §shelfIntent): the asker's own TBR, their reviews, and "not reviewed". ⚠️ Read §3 first — the two things that WILL be reported as bugs are a stale display-name join (fix: re-run /link) and any answer that says "unread" when it means "not reviewed". §5 flags a mirrored persisted-key function whose two copies must agree |
+| [machine-keys.md](machine-keys.md) | ⚠️ **ADDED TO THIS INDEX 2026-09-05 — it had no row, which is a finding, not a tidy-up.** Every credential the estate holds for a MACHINE and how each one rotates: the three rotation modes, the per-key table, and the reasoning behind each. ⚠️ **It is the OFFLINE copy — the generated live table at <https://heygabi.ai/status/api> (devops sign-in) is authoritative, and `apps/auth-worker/src/machine-keys.ts` is the source both come from**, so a disagreement means this file is the stale half. ⚠️ Its header claimed *"this repo is private"* until 2026-09-05; corrected in place rather than deleted, because the premise is what a session reasons from |
+| [gabi-turn-log.md](gabi-turn-log.md) | ⚠️ **ADDED TO THIS INDEX 2026-09-05 — it had no row.** The answer to *"why didn't GABI answer me?"*: `GET discord.heygabi.ai/admin/gabi/turnlog` behind the devops gate (devops **or** approver **or** owner, asked of `auth.heygabi.ai/api/estate/me`), the last **40** turns kept on one `gw:turnlog` key inside the gateway Durable Object, surfaced on `/status` → GABI. Contract: `apps/discord-worker/src/turnlog.ts`. ⚠️ §6 is the honest limit — the ring was built 2026-08-18 and **the READ has never been exercised against a live devops sign-in** |
 | [`../../tools/estate-probes/README.md`](../../tools/estate-probes/README.md) | The estate API testing suite (`npm run probe:estate`) — read-only, unauthenticated-edge probes against LIVE production across all five Workers (including the audiobook-worker at audiobook-api.heygabi.ai; the not-yet-deployed discord-worker prints a visible SKIP), the audiobook static site, and the public Firestore doc; what's covered, what's NOT (every signed-in path), and the new-endpoint-gets-a-probe rule |
 
 See also, in sibling repos:

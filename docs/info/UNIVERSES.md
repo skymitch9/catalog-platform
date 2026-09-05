@@ -3,8 +3,8 @@
 > **Audience:** Claude sessions. **Status:** BUILT 2026-08-11 — the file is here,
 > the editor works, all three catalogs' rows resolve through it. Last verified:
 > **2026-08-15**.
-> Data: [`../data/universes.json`](../data/universes.json).
-> Editor: [`../tools/universes.mjs`](../tools/universes.mjs).
+> Data: [`data/universes.json`](../../data/universes.json).
+> Editor: [`tools/universes.mjs`](../../tools/universes.mjs).
 
 A fictional universe is flagged **only where it says something the series (or,
 for board games, the title) name does not already say**. **Sixteen** universes
