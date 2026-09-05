@@ -1,10 +1,12 @@
 # Deploying from a throwaway worktree — and the way it eats `node_modules`
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-08-24** — the teardown order below was executed and
-> measured that night (counts taken either side of every step). ⚠️ The *cause*
-> in §2 is INFERRED from timestamps, not reproduced; §2 says exactly how far
-> the evidence goes.
+> Last verified: **2026-09-05** — §5 was added that day from a guard that
+> genuinely refused a `deploy:home`, with its refusal text quoted from the run.
+> ⚠️ **§1–§4 were NOT re-measured on that date**; their last measurement is
+> **2026-08-24**, when the teardown order was executed with counts taken either
+> side of every step. ⚠️ The *cause* in §2 is INFERRED from timestamps, not
+> reproduced; §2 says exactly how far the evidence goes.
 >
 > Operating steps: [`access/README.md`](../access/README.md). What shipped:
 > `deploys.log`.
@@ -101,3 +103,29 @@ of `HEAD` the answer is honestly "clean", so the flag passes **on its own
 merit** rather than because anything was suppressed. Nothing about the
 junction, the teardown, or `.bin` is guarded mechanically — §3 is a procedure,
 not an enforcement, and it is the weakest link on this page.
+
+## 5. ⚠️ `deploy:home` is gated on the auth WORKER, not just on this site
+
+Added 2026-09-05, after the guard refused a deploy and the refusal was right.
+
+`npm run deploy:home` is `npm test && npm run check:home && wrangler pages
+deploy … && npm run verify:home`, and that **`npm test` is the whole
+workspace** — including `apps/auth-worker/test/cors-coverage.test.ts`, a
+scanner that reads every `/api/estate/*` path named anywhere under
+`sites/heygabi-home/public/**` and fails unless `apps/auth-worker/src/index.ts`
+carries an `app.use(…, cors())` that covers it.
+
+**So a front-end change that calls a NEW auth-Worker path cannot deploy until
+that path's CORS mount is committed** — even though the two live in different
+directories and feel like different jobs. This bites hardest in a parallel
+build, where the page and the route are being written by different hands at
+the same time; the page's commit lands fine and the *deploy* is what blocks.
+
+⚠️ **Do not reach for `ALLOW_DIRTY_DEPLOY=1` or `--ignore-scripts` when this
+fires — it is not that kind of failure, and neither would help.** The thing it
+prevents is the estate's recorded one: a rejected preflight surfaces to JS as a
+**network error**, indistinguishable from the Worker being down, so a page
+shipped ahead of its mount looks exactly like an outage while working
+perfectly. The fix is to land the mount; the wait is the guard doing its job.
+Worked example, with the full refusal text:
+[`request-a-catalog-design.md`](request-a-catalog-design.md) §10.
