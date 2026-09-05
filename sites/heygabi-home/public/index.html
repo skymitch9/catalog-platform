@@ -368,6 +368,163 @@ ul.catalogues {
 .card.multi .host a:focus-visible { outline: 2px solid var(--hue); outline-offset: 3px; border-radius: 6px; }
 .card.multi .host a:hover .arrow { transform: translateX(3px); }
 
+/* ---- "request a catalog" — the "+" on Books and Games ---------------------- */
+/*
+ * Owner ask 2026-09-05; design docs/info/request-a-catalog-design.md §4.
+ * Rendered by assets/apex-request-catalog.js, never present in this HTML —
+ * a signed-out visitor's page carries no button at all, which is the point.
+ * The styles live here rather than in a file of their own because the
+ * precedent they follow does: apex-admin-link.js has no stylesheet either, and
+ * the Admin card it reveals is styled from this block.
+ *
+ * BOTTOM-RIGHT (owner, 2026-08-24 23:26Z), and IN FLOW rather than absolutely
+ * positioned: `margin-top: auto` on a flex-column card puts it at the bottom
+ * whatever the card holds, `align-self: flex-end` puts it at the right, and
+ * nothing can end up sitting on top of the host row or the household links.
+ * The pending pill is wider than the "+" and takes the same slot, which an
+ * absolutely-positioned corner could not have survived.
+ */
+.card-add-slot { display: flex; justify-content: flex-end; margin-top: auto; padding-top: .9rem; }
+.card-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--hue) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hue) 14%, transparent);
+  color: var(--hue);
+  font-family: inherit;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .18s var(--et-ease-out, ease), box-shadow .18s ease, background .18s ease;
+}
+.card-add:hover {
+  background: color-mix(in srgb, var(--hue) 26%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--hue) 18%, transparent);
+  transform: translateY(-1px);
+}
+.card-add:active { transform: translateY(0) scale(.96); }
+.card-add:focus-visible { outline: 2px solid var(--hue); outline-offset: 3px; }
+
+.card-pending { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+.card-pending-text {
+  padding: .2rem .6rem;
+  border: 1px solid color-mix(in srgb, var(--hue) 45%, var(--et-hairline));
+  border-radius: var(--et-radius-pill);
+  background: color-mix(in srgb, var(--hue) 10%, transparent);
+  color: var(--card-muted, var(--et-muted));
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+.card-withdraw {
+  padding: .1rem .2rem;
+  border: 0;
+  background: none;
+  color: var(--card-muted, var(--et-muted));
+  font: inherit;
+  font-size: .6875rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.card-withdraw:hover { color: var(--card-fg, var(--et-fg)); }
+.card-withdraw.armed { color: var(--et-danger, #b3453a); font-weight: 700; }
+.card-withdraw:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; border-radius: 4px; }
+.card-add-note { flex-basis: 100%; margin: .35rem 0 0; color: var(--card-muted, var(--et-muted)); font-size: .75rem; text-align: right; }
+
+/* ---- the request modal ----------------------------------------------------- */
+.rc-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: min(90vh, 48rem);
+  padding: 0;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-xl);
+  background: var(--et-surface, var(--et-bg));
+  color: var(--et-fg);
+  box-shadow: var(--et-shadow-lift, var(--et-shadow));
+}
+.rc-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.rc-panel { display: flex; flex-direction: column; gap: .85rem; padding: 1.35rem 1.3rem 1.2rem; }
+.rc-head { display: flex; align-items: flex-start; gap: 1rem; }
+.rc-title { margin: 0; flex: 1; font-family: var(--et-font-display); font-size: var(--et-text-title, 1.25rem); }
+.rc-x {
+  flex: none;
+  width: 2rem; height: 2rem;
+  padding: 0;
+  border: 1px solid var(--et-hairline);
+  border-radius: 999px;
+  background: none;
+  color: var(--et-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.rc-x:hover { color: var(--et-fg); }
+.rc-x:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+.rc-note { margin: 0; color: var(--et-muted); font-size: .9375rem; text-wrap: pretty; }
+.rc-who { margin: 0; color: var(--et-fg); font-size: .875rem; font-weight: 600; }
+.rc-hint { margin: .25rem 0 0; color: var(--et-muted); font-size: .8125rem; }
+/* Not a refusal and not an error — a cost stated before it is paid. */
+.rc-warn {
+  margin: 0;
+  padding: .6rem .7rem;
+  border: 1px solid color-mix(in srgb, var(--et-warn, #d9a441) 45%, transparent);
+  border-radius: var(--et-radius);
+  background: var(--et-warn-bg, color-mix(in srgb, var(--et-warn, #d9a441) 12%, transparent));
+  color: var(--et-fg);
+  font-size: .8125rem;
+  text-wrap: pretty;
+}
+.rc-field { display: flex; flex-direction: column; gap: .3rem; }
+.rc-label { font-family: var(--et-font-label, inherit); font-size: .8125rem; font-weight: 650; letter-spacing: .02em; }
+.rc-addr { display: flex; align-items: stretch; gap: .35rem; }
+.rc-addr .rc-input { flex: 1; min-width: 0; }
+.rc-suffix { display: flex; align-items: center; color: var(--et-muted); font-family: var(--et-font-mono); font-size: .875rem; white-space: nowrap; }
+.rc-input, .rc-textarea {
+  width: 100%;
+  padding: .55rem .65rem;
+  border: 1px solid var(--et-field-border, var(--et-hairline));
+  border-radius: var(--et-radius);
+  background: var(--et-field-bg, var(--et-bg));
+  color: var(--et-fg);
+  font: inherit;
+  font-size: .9375rem;
+}
+.rc-textarea { resize: vertical; }
+.rc-input:focus-visible, .rc-textarea:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
+.rc-check { margin: .1rem 0 0; font-size: .8125rem; }
+.rc-check[data-tone="ok"] { color: var(--et-ok, #3a7d44); }
+.rc-check[data-tone="block"] { color: var(--et-danger, #b3453a); }
+.rc-check[data-tone="wait"] { color: var(--et-muted); }
+.rc-review { display: grid; grid-template-columns: auto 1fr; gap: .3rem .9rem; margin: 0; }
+.rc-review dt { color: var(--et-muted); font-size: .8125rem; }
+.rc-review dd { margin: 0; font-size: .9375rem; overflow-wrap: anywhere; }
+.rc-actions { display: flex; gap: .6rem; justify-content: flex-end; flex-wrap: wrap; margin-top: .2rem; }
+.rc-btn {
+  min-height: 44px;
+  padding: .5rem 1rem;
+  border: 1px solid var(--et-btn-border, var(--et-accent));
+  border-radius: var(--et-radius);
+  background: var(--et-btn-bg, var(--et-accent));
+  color: var(--et-btn-fg, var(--et-accent-fg, #fff));
+  box-shadow: var(--et-btn-shadow, none);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.rc-btn:focus-visible { outline: 2px solid var(--et-accent); outline-offset: 3px; }
+.rc-btn-quiet { border-color: var(--et-hairline); background: none; color: var(--et-muted); box-shadow: none; }
+.rc-btn-quiet:hover { color: var(--et-fg); }
+.rc-btn[disabled] { opacity: .55; cursor: progress; }
+/* The one place a refusal is spoken. Never a status code, never a raw body. */
+.rc-outcome { margin: 0; color: var(--et-fg); font-size: .875rem; text-wrap: pretty; }
+
 /*
  * The whole card is the tap target — a small link inside a big card is a miss
  * on a phone. Same reasoning as button.row-open in the library app.
@@ -559,6 +716,7 @@ footer a.more:hover svg { transform: translateX(3px); }
   a.card,
   a.card::after,
   .card .host .arrow,
+  .card-add,
   footer a.more svg {
     animation: none !important;
     transition: none !important;
@@ -566,6 +724,7 @@ footer a.more:hover svg { transform: translateX(3px); }
   .rise { opacity: 1; transform: none; }
   h1 .mark { background-position: 50% 50%; }
   a.card:hover { transform: none; }
+  .card-add:hover, .card-add:active { transform: none; }
 }
 </style>
 </head>
@@ -731,7 +890,13 @@ footer a.more:hover svg { transform: translateX(3px); }
 <!-- Two households since 2026-08-16 — a div wearing .card like the Admin
              card, because it holds a destination per library rather than one
              link (owner: "2 buttons now, 1 for Library and 1 for Samantha"). -->
-        <div class="card multi" style="--hue: var(--et-hue-2); --card-bg: var(--et-card-2-bg); --card-fg: var(--et-card-2-fg); --card-muted: var(--et-card-2-muted)">
+        <!-- data-catalog-kind is the ONE hook assets/apex-request-catalog.js
+             looks for (2026-09-05): it appends the "+" — or the "Requested —
+             pending review" pill — into whichever cards declare a kind, and
+             the kind decides which card's answer from /api/estate/me governs
+             it. Removing the attribute removes the affordance and breaks
+             nothing else. -->
+        <div class="card multi" data-catalog-kind="books" style="--hue: var(--et-hue-2); --card-bg: var(--et-card-2-bg); --card-fg: var(--et-card-2-fg); --card-muted: var(--et-card-2-muted)">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
           </span>
@@ -765,7 +930,7 @@ footer a.more:hover svg { transform: translateX(3px); }
              what it was and the keyboard path is unchanged: one tab stop,
              Enter follows it, and the new-tab announcement rides along in the
              same .sr-only span it always did. -->
-        <div class="card multi" style="--hue: var(--et-hue-3); --card-bg: var(--et-card-3-bg); --card-fg: var(--et-card-3-fg); --card-muted: var(--et-card-3-muted)">
+        <div class="card multi" data-catalog-kind="games" style="--hue: var(--et-hue-3); --card-bg: var(--et-card-3-bg); --card-fg: var(--et-card-3-fg); --card-muted: var(--et-card-3-muted)">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
           </span>
@@ -835,5 +1000,11 @@ footer a.more:hover svg { transform: translateX(3px); }
      element. -->
 <script type="module" src="/assets/estate-search.js"></script>
 <script type="module" src="/assets/apex-admin-link.js"></script>
+<!-- The "+" on the Books and Games cards (owner ask 2026-09-05; design
+     docs/info/request-a-catalog-design.md §4). Same seam as the line above —
+     it listens to <estate-search>'s estate-search:auth event — and the same
+     fail-hidden posture: any probe that does not clearly say "approved, and
+     you own none of this kind" leaves the card exactly as it is now. -->
+<script type="module" src="/assets/apex-request-catalog.js"></script>
 </body>
 </html>

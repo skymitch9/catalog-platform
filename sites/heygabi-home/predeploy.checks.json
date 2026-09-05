@@ -15,11 +15,38 @@
   "baseUrl": "https://heygabi.ai",
   "pages": [
     {
+      "_why": [
+        "data-catalog-kind is the ONLY static trace of the 'request a catalog' + (2026-09-05). The button itself",
+        "is injected by assets/apex-request-catalog.js AFTER a signed-in probe, so it can never be asserted from",
+        "here — an unauthenticated fetch sees the hook and nothing else, which is exactly the shape of the gate.",
+        "Both kinds are pinned as a PAIR because the owner's answer was 'Both': a deploy that shipped one card's",
+        "hook and dropped the other would still satisfy a single marker and would leave one card permanently mute."
+      ],
       "path": "/",
       "mustContain": [
         "</html>",
         "ebooks.heygabi.ai",
-        "padhard.heygabi.ai"
+        "padhard.heygabi.ai",
+        "data-catalog-kind=\"books\"",
+        "data-catalog-kind=\"games\"",
+        "/assets/apex-request-catalog.js"
+      ]
+    },
+    {
+      "_why": [
+        "The module behind the '+' on the Books and Games cards (docs/info/request-a-catalog-design.md §4).",
+        "Markers chosen so they DISAPPEAR if the thing breaks: the two route paths it is built against (§3.6),",
+        "the review step that must exist before anything POSTs, the fail-hidden approved check, and the outage",
+        "sentence — a network failure worded as a permissions problem is the defect this file exists to catch."
+      ],
+      "path": "/assets/apex-request-catalog.js",
+      "mustContain": [
+        "/api/estate/catalogs/availability",
+        "/api/estate/catalogs/requests",
+        "buildReview",
+        "Requested — pending review",
+        "that’s an outage, not a permissions problem",
+        "me?.status !== 'approved'"
       ]
     },
     {
