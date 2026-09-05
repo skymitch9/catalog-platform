@@ -10,6 +10,44 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🔴 OWNER ASK 2026-09-05 12:58 Phoenix — "build it all … check first then build. Also make sure all docs aren't stale" (ALL FOUR REPOS)
+
+Owner, verbatim, after a build-queue summary that listed four items as unbuilt:
+*"Yes build it all, I thought we had some of this built so check first then
+build. Also make sure all docs aren't stale."* He was right: the games `/scan`
+target, shelf round 3, the edition note and the `count_phrase` allowlist were
+ALL built and deployed on 09-03/09-04 — their `☐` headings were stale while
+their bodies said BUILT. The conductor had listed them from headings, the
+anti-pattern the global docs rule names.
+
+**Wave 1 (dispatched ~13:10, Opus):** one DOCS AUDIT agent per repo
+(`catalog-platform`, `library_catalog`, `Board_Game_Catalog`,
+`audiobook_catalog`) — every open heading verified against code and the live
+site, finished items moved WHOLE to `DONE.md`, headings corrected to the
+body's truth, `Last verified` re-measured where re-verified (never re-dated
+otherwise), README indexes checked against the folders; each reports the
+GENUINELY unbuilt owner asks with size estimates. Plus one BUILD agent for the
+three "Request a catalog" residues (the three bare-status 401s, the two
+reserved names, design §7.6's manual step).
+**Wave 2:** build what the audits name as genuinely unbuilt.
+Status of the wave is recorded under each repo's own TODO by its agent.
+
+**Owner, 13:11 Phoenix, three more messages (verbatim), which set the END
+CONDITION of the whole run:**
+1. *"Build it all and keep it going. If something needs me notify me while
+   building other things that don't need [me]. I want an empty todo list of
+   all not deferred items unless I said otherwise."* → the target state is a
+   `TODO.md` in every repo holding ONLY (i) items HE deferred in his own words,
+   (ii) items waiting on his decision, (iii) items built and waiting on a human
+   eyeball. Everything else gets built. Audits therefore classify DEFERRED
+   (his words only — a conductor's "wave N" is not a deferral) separately from
+   UNBUILT.
+2. *"After all the builds present me all deferred things and we can decide to
+   build or can[cel]."* → the closing step: the (i) list, one item at a time.
+3. *"Also I recently got some new books, did the pipeline ran when they were
+   detected or at the cron time"* → answered in-session from the pipeline's
+   own state and task definition (see the reply of 13:1x); not a build item.
+
 ## ☐ 🔴 BUILD — "Request a catalog" (the "+" on the heygabi.ai cards) (owner ask 2026-09-05 06:26 Phoenix)
 
 Owner, verbatim: *"Remember that doc about requesting a board game or book site?
