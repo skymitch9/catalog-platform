@@ -89,6 +89,23 @@ with a bare `{"error":"unauthenticated"}` and no `detail` (`apps/auth-worker/src
 — the "never a bare status" rule broken on the most-read route. One-line fix; do it
 after today's build lands (the home page and `/admin` both read this route).
 
+### ✅ Phase 8 — games platform prerequisites LANDED + DEPLOYED (agent E, 2026-09-05 ~07:40 Phoenix)
+
+`Board_Game_Catalog` `fc17ea3` `ESTATE_APP` wrangler var (default `games`) ·
+`30dc045` same-id build guard `scripts/instance-guard.mjs` (tests seen to refuse) ·
+`4db2f2e` `--env` twins `deploy:games2` / `db:migrate:games2` / `secrets:push:games2`
+with the `PER_INSTANCE_SECRETS` refusal · `5ff223a` commented `[env.<instance>]`
+template + drift guard, `docs/access/second-instance.md`, `docs/info/instance-model.md`
+· `9c1dba6` corrects E's own stale "7403 migrations apply" claim · `a812252` deploy
+line. Worker deployed `a349aee1-6437-44b2-9be4-a3185e09ba64`, health 200
+`"estate":{"mode":"enforce","app":"games"}`. Here: `d94f2f2` design §10 row 8.
+**Measured (Cloudflare docs, 2026-09-05): `RATE_LIMITER` namespaces are per-ACCOUNT**,
+so a second instance takes `namespace_id "1002"` and main's `"1001"` never changes.
+Open, for phase 9: `BILLING_SITE` is still the constant `'games'`; there is no
+donor/peers mechanism for games (books has `[env.friend]` as the drift donor).
+NOT verified: a signed-in tail line showing `app=games` — the owner signs in once at
+<https://boardgames.heygabi.ai> and checks it.
+
 ### ✅ Phases 1 + 2 — the auth-worker half — BUILT, MIGRATED AND DEPLOYED (agent A, 2026-09-05 14:24Z)
 
 `6b1f686` migration `0018_catalog_requests.sql` + `apps/auth-worker/src/catalog-names.ts`
