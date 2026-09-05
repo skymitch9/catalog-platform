@@ -508,6 +508,13 @@ HTTP/1.1 401 Unauthorized …  Content-Length: 27
 {"error":"unauthenticated"}          ← still bare, exactly the 27-byte body
 ```
 
+🔴 **OWNER STEP — the conductor was refused too** (13:36 Phoenix, same
+classifier, both shells; a conductor deploy of this Worker had gone through
+earlier in the day for another agent, so the refusal is per-invocation, not
+policy). Owner: from the repo root type `! cd apps/auth-worker && npx wrangler
+deploy` — the `!` prefix runs it in the session and the output lands here, and
+the conductor does the log line, curls and DONE move.
+
 ☐ **The step:** `cd apps/auth-worker && npx wrangler deploy`. ⚠️ **No migration
 is involved** — this change adds no migration and the highest in the tree is
 still `0018_catalog_requests.sql`, so migrate-before-deploy has nothing to do
@@ -629,6 +636,21 @@ and `:106`. ⚠️ **Keep it asserted as a SET, not a count** — the comment at
 travel together and no new tool joins them without a decision, and a length
 check would silently accept a swap. ⚠️ Do NOT relax it to a subset test for the
 same reason.
+
+## ☐ The home site's CSP would BLOCK a provisioned games instance's covers (found 2026-09-05 by agent RES)
+
+`sites/heygabi-home/public/_headers` names `gamecovers.heygabi.ai` explicitly in
+every CSP `img-src`. A games instance provisioned under naming rule (a) serves
+its covers from `gamecovers<N>.heygabi.ai` (design §7.1; ordinal because
+`COVERS_BASE_URL` is written into `thumbnail_url` rows), so the first
+`gamecovers2` catalog's images would be blocked on the apex with nothing in
+the provisioner's runbook saying so. **Fix:** widen the `img-src` entry to the
+pattern the reserved list now guards (`gamecovers*.heygabi.ai`, and
+`bookcovers*.heygabi.ai` for the custom-domain tier of §7.2 step 2 while
+there), verify with `verify:home`'s header check, and add the line to design
+§7.6a step 2 so the next provisioner run reads it. Size: one-file fix, ~40k.
+Also from RES, smaller: `session.ts:69` has a second 401 whose `detail` is the
+technical `'token carries no uid'` — reword for a person in the same pass.
 
 ## ☐ Flip `GABI_CLUB_WRITES` — 5 of 7 steps left, and step 3 is BLOCKED on the `/progress percent` decision below
 
