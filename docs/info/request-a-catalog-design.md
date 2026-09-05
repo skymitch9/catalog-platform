@@ -553,10 +553,14 @@ one secret**:
 |---|---|---|
 | 1 | The requester's sealed key is present | decrypt and set it — **the reader's key wins** |
 | 2 | Else the owner supplied one at Accept | set that, by the same sealed path; D1 gets `owner_key_set = 1` only |
-| 3 | Else neither | leave the secret **unset** — the AI half of the sweep is skipped and the **donor-only** sweep still runs against the main library, healing for free |
+| 3 | Else neither | **v1 (owner decision 2026-09-05, §9 row 3): set the OWNER's `ANTHROPIC_API_KEY`** — the provisioner reads it from the owner's local secret store (never from the repo, never echoed) and pipes it over stdin; D1 gets `owner_key_set = 1`. The original design here was "leave the secret unset, donor-only sweep heals for free"; that remains the fallback once the owner withdraws the key decision |
 
-⚠️ **Never silently reuse the estate owner's own key.** That is a money and
-blast-radius decision: his explicit per-request choice, or nothing.
+⚠️ **Reusing the estate owner's own key is a money and blast-radius decision,
+and it is the owner's to make per request or as a standing choice — never the
+code's default by accident.** Standing choice on record: *"Have it fall back to
+my Claude key for now"* (2026-09-05 ~07:03 Phoenix). The provisioner must still
+LOG that row 3 fired (`owner key used — standing decision 2026-09-05`) so a
+later reader can see which instances spend his key.
 
 ⚠️ **A mechanical guard for this already exists and must not be weakened.**
 `library_catalog/scripts/push-secrets.mjs:314` declares
@@ -964,9 +968,7 @@ plainly that a games catalog takes longer to stand up.**
 
 **These are NOT decided here.** Present them one per message and wait.
 
-1. **Lock in the sealed-box key design for v1, or ship v1 without the key field
-   and add it after?**
-2. **Back-seed the two existing library owners** (`library` and `padhard`) as
+1. **Back-seed the two existing library owners** (`library` and `padhard`) as
    `live` rows, so their "+" hides and the table becomes the single source of
    truth for *"who owns a catalog"*?
 
@@ -976,6 +978,7 @@ plainly that a games catalog takes longer to stand up.**
 |---|---|---|---|
 | ~~1~~ | Does the **Games** card get the same "+" and flow? | ✅ **"Both."** Both cards, one `kind` column, one shared product path — §4.6, §7.6, §8 | **2026-09-05 ~06:50 Phoenix** |
 | ~~2~~ | Who may request — approved only, or `pending` too? | ✅ **"Only approved people."** The "+" renders only for estate `status='approved'` (a `pending` or `revoked` member sees no button — and never a bare refusal), AND the submit route refuses anything but `approved` server-side, since the button is a curtain (§4.4). The refusal for a pending member who reaches the route anyway says *what* (not yet approved), *what it needs* (estate approval), *how* (the owner approves in `/admin`). | **2026-09-05 ~06:58 Phoenix** |
+| ~~3~~ | Sealed key in v1, or defer? | ✅ Owner, verbatim: *"Have it fall back to my Claude key for now. Defer it until everything else is built then build it. I want this all done today so the defer is until after the other bits build but not forever."* So: **v1 provisions a new catalog with the OWNER's `ANTHROPIC_API_KEY`** — an explicit owner decision that **supersedes** §6.4's and the drafts' "never silently reuse the estate owner's key" (it is no longer silent: he chose it, on this date). The requester's sealed key (§6) is built as the **LAST phase of the same build**, not dropped; until it lands the form shows no key field, `reader_key_set` stays 0, and `owner_key_set=1` is recorded when the owner's key is set at provision. | **2026-09-05 ~07:03 Phoenix** |
 
 ⚠️ **Note what the answer did NOT settle.** It settled *whether*, not *when* —
 the games provisioning prerequisites (§8 items 1–3) are unbuilt, unscheduled and
@@ -1002,17 +1005,23 @@ owns.
 
 | Phase | What lands | Repo / layer | Rough effort | "Verified" means |
 |---|---|---|---|---|
-| **0** | This doc + the three remaining answers from §9 | `catalog-platform/docs/` | done / owner | The questions are answered on the record and this file says so |
+| **0** | This doc + the §9 answers (Q1–Q3 answered 2026-09-05; Q4 back-seed still open) | `catalog-platform/docs/` | done / owner | The questions are answered on the record and this file says so |
 | **1** | Migration `0018` + `catalog_request` **including `kind`**; submit / list / decide / mark-live routes; the reserved-list module; server-side validation incl. the closed `kind` vocabulary | `catalog-platform` `apps/auth-worker` | ~1 day | `node --test` exercises every route incl. refusals **and a bad `kind` returning 400, not a default**; the migration applied to **remote** `estate_auth`; a real row read back out of D1 — **a green deploy is not verification** |
 | **2** | `/api/estate/me` gains `catalogs`, **each entry carrying its `kind`** | same | ~½ day | A signed-in `curl` returns the caller's own array with kinds; an owner's answer is not special-cased into a lie |
 | **3a** | ⚠️ **Convert the Games card to `.card.multi`** — no button yet | `catalog-platform` `sites/heygabi-home` | ~1 h | The `boardgames.heygabi.ai` link still works, from a keyboard as well as a tap. **Its own commit**, so a link regression is separable from a button regression |
 | **3b** | The "+" bottom-right on **both** cards, the modal, the required review step, the pending pill, fail-hidden, per-kind show/hide | same | ~1 day | ⚠️ **A HUMAN, SIGNED IN, PRESSES BOTH** at <https://heygabi.ai> and files one real request of each kind. There is no browser harness for this page; `check:home` proves it parses and nothing more |
 | **4** | The `/admin` banner + "Catalog requests" section with **kind badges** + two-tap Accept/Decline + the Accept panel with owner-editable fields | `catalog-platform` `sites/heygabi-home/public/admin/` | ~1 day | The owner **renders the section signed in**, sees one row of each kind, edits an address in the panel, and accepts one real request. ⚠️ The verse queue carries the same unrendered-by-a-human debt today — do not repeat it |
-| **5** | The sealed key: keypair, the browser seal, the private-R2 envelope, the booleans | both halves | ~1 day | A round trip: seal in a browser, decrypt in a script, confirm the decrypted bytes equal the input — **and confirm no code path prints it** |
-| **6** | Back-seed the existing owners as `live` rows *(if §9 Q3 is yes)* — `library`, `padhard`, **and `boardgames`** | D1 data | ~1 h | Each owner's "+" is confirmed hidden **for the right kind only**, signed in as each |
-| **7** | `scripts/provision-catalog.mjs` (§7.4) — the BOOKS path | `library_catalog` | ~2 days | `--dry` prints all ten steps; a **real third instance answers `/api/health?cb=`** and its first sign-in logs `src:"seen"` under the new app id |
+| **6** | Back-seed the existing owners as `live` rows *(if §9 Q4 is yes)* — `library`, `padhard`, **and `boardgames`** | D1 data | ~1 h | Each owner's "+" is confirmed hidden **for the right kind only**, signed in as each |
+| **7** | `scripts/provision-catalog.mjs` (§7.4) — the BOOKS path; **v1 sets the OWNER's `ANTHROPIC_API_KEY`** (§6.4 row 3, owner decision 2026-09-05) | `library_catalog` | ~2 days | `--dry` prints all ten steps; a **real third instance answers `/api/health?cb=`** and its first sign-in logs `src:"seen"` under the new app id |
 | **8** | 🔴 **The GAMES platform prerequisites** — §8 items 1–3: instance-aware deploy guards, `ESTATE_APP` lifted out of source with a same-id build guard, then the first `[env.*]` block | `Board_Game_Catalog` | §8 — the largest single piece, and **not** costed here | The build guard **fails** when two instances are made to assert the same id (a guard never seen to refuse is a guard never tested); then a real second games instance answers `/api/health?cb=` under its own app id |
 | **9** | The GAMES provisioning path in the provisioner (§7.6) | `Board_Game_Catalog` | after 8 | `--dry` prints the games ledger; ⚠️ the `RATE_LIMITER` namespace question is **measured** before two instances share traffic |
+| **5 → LAST** | The sealed key: keypair, the browser seal, the private-R2 envelope, the booleans — **deliberately the final phase** (owner, 2026-09-05: *"Defer it until everything else is built then build it … the defer is until after the other bits build but not forever"*). The number is kept so §6's cross-references stay valid | both halves | ~1 day | A round trip: seal in a browser, decrypt in a script, confirm the decrypted bytes equal the input — **and confirm no code path prints it** |
+
+**Order of execution (2026-09-05):** 1 → 2 → 3a → 3b → 4 → 6 → 7 → 8 → 9 → 5.
+Phases 1+2 (auth-worker), 3a+3b+4 (home site), 7 (library_catalog) and 8 (Board_Game_Catalog)
+are in **different repos or layers** and can run as parallel dispatches once phase 1's
+route contract (§3, §5.5) is committed; 3b/4 mock nothing — they call the real
+routes, so phase 1 lands first.
 
 ⚠️ **Phases 1–2 are worth landing even if the "+" is deferred**, because the
 ownership signal is the thing the estate genuinely lacks and several other

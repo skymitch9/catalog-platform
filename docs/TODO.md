@@ -39,8 +39,14 @@ owner-run provisioner → `wrangler secret put`), D1 holds booleans only.
 Owner answers (asked ONE AT A TIME): (1) Games card too? — **"Both"** (2026-09-05
 ~06:50 Phoenix): the Games card gets the same "+" and flow. (2) Who may request? —
 **"only approved people"** (2026-09-05 ~06:58 Phoenix): estate `status='approved'`
-gate on the "+" AND server-side on submit. Still open: (3) lock in the sealed-box key design for v1 or defer the
-key field; (4) back-seed the two existing library owners as `live` rows.
+gate on the "+" AND server-side on submit. (3) Sealed key — **"Have it fall back to my
+Claude key for now. Defer it until everything else is built then build it. I want
+this all done today so the defer is until after the other bits build but not
+forever"** (2026-09-05 ~07:03 Phoenix): v1 provisions with the OWNER's
+`ANTHROPIC_API_KEY` (an explicit owner decision — it supersedes the drafts' "never
+silently reuse the owner's key"); the sealed requester key is the LAST phase of
+today's build, not dropped. Still open: (4) back-seed the two existing library
+owners (+ boardgames) as `live` rows.
 
 Plan: design doc → Opus build of the estate side (migration + API + `/admin`
 section + home-card "+") → provisioning runbook/script → dev-lane test → live.
