@@ -48,6 +48,28 @@ function newSessionId(): string {
   return b64url(crypto.getRandomValues(new Uint8Array(16)));
 }
 
+/**
+ * The worded refusal for a token that verified but names no account id.
+ *
+ * ⚠️ **It is a named export because it is the only way it can be TESTED.**
+ * Reaching the branch through the route needs a Firebase ID token that passes
+ * a real JWKS verification and yet carries no `sub` — this suite has no such
+ * token and will not mint one, so a test that drove the route could only ever
+ * cover the branches it can already reach. Pinning the sentence here is the
+ * honest instrument: it asserts the wording contract, and `session.test.ts`
+ * says out loud that the branch itself is unexercised.
+ *
+ * Three clauses, in the order the estate's refusal rule names them — what
+ * happened / what it needs / how to get it — and no `uid`, `sub` or `token`,
+ * because none of those is a thing the reader can go and fix.
+ */
+export const SESSION_NO_UID_DETAIL =
+  'Your sign-in was verified but came back without the account id the estate uses to ' +
+  'identify you, so no estate session was created. It needs a Google account this estate ' +
+  'can name — signing in again from the front door at https://heygabi.ai usually settles ' +
+  'it. If it happens twice, ask the estate owner to check your account rather than ' +
+  'retrying, because nothing you can change in this browser will fix it.';
+
 export const sessionRoutes = new Hono<AppBindings>();
 
 // ---------------------------------------------------------------------------
@@ -82,7 +104,19 @@ sessionRoutes.post('/session', async (c) => {
   // guarded here anyway because a session that could name no uid could mint
   // nothing later (session-db.ts's NOT NULL), so failing loudly now beats a
   // confusing failure at mint time.
-  if (!identity.uid) return c.json({ error: 'unauthenticated', detail: 'token carries no uid' }, 401);
+  //
+  // ⚠️ The `error` CODE stays exactly `unauthenticated`, for the same reason as
+  // the branch above: tools/estate-probes asserts it across this Worker's whole
+  // unauthenticated edge and every page's failure wording branches on it.
+  // ⚠️ The `detail` was the technical `'token carries no uid'` until 2026-09-05,
+  // which is a sentence for whoever wrote this file and nobody else. The person
+  // who meets it is a BROWSER MID-SIGN-IN, exactly as above, so it says what
+  // happened, what it needs, and how to get it — in that order — and it does
+  // NOT name `uid`, `sub` or the token, because none of those is a thing the
+  // reader can go and fix. It is deliberately NOT the same sentence as the
+  // branch above: this one survived verification and still cannot be used, so
+  // "sign in again" alone would loop them, and the escalation matters.
+  if (!identity.uid) return c.json({ error: 'unauthenticated', detail: SESSION_NO_UID_DETAIL }, 401);
 
   const email = identity.email.trim().toLowerCase();
   const id = newSessionId();

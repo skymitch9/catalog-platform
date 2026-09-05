@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ServiceAccount } from '../src/firebase-sa.js';
-import { sessionRoutes, SESSION_COOKIE } from '../src/session.js';
+import { sessionRoutes, SESSION_COOKIE, SESSION_NO_UID_DETAIL } from '../src/session.js';
 import type { EstateSessionRow } from '../src/session-db.js';
 
 class FakeSessionDB {
@@ -161,6 +161,36 @@ test('🔴 POST /session: the 401 carries a SENTENCE, never a bare status', asyn
   assert.ok(body.detail!.length > 0, 'an empty detail is a bare status wearing a field name');
   assert.match(body.detail!, /sign in again/i);
   assert.match(body.detail!, /heygabi\.ai/);
+});
+
+test('🔴 POST /session: the SECOND 401 on this route — a verified token naming no account — is a sentence too', async () => {
+  // The sibling of the test above, and the one the 2026-09-05 bare-status sweep
+  // did not reach: `if (!identity.uid)`. Its detail read `'token carries no uid'`
+  // until 2026-09-05 — a sentence written for whoever wrote the file.
+  //
+  // ⚠️ WHAT THIS DOES NOT DO, said plainly: it does not drive the route. Getting
+  // there needs a Firebase ID token that passes a real JWKS verification and yet
+  // carries no `sub`, and this suite holds no token and will not mint one — the
+  // dev bypass always answers `uid: 'dev-uid'` (packages/estate-auth/src/verify.ts).
+  // So the BRANCH is unexercised and the WORDING is pinned, which is why the
+  // string is a named export rather than an inline literal. A test that pretended
+  // otherwise would be worse than this one.
+  assert.equal(typeof SESSION_NO_UID_DETAIL, 'string');
+  assert.ok(SESSION_NO_UID_DETAIL.length > 0, 'an empty detail is a bare status wearing a field name');
+
+  // What happened / what it needs / how to get it — the estate's three clauses.
+  assert.match(SESSION_NO_UID_DETAIL, /no estate session was created/i, 'clause 1: what happened');
+  assert.match(SESSION_NO_UID_DETAIL, /needs a Google account/i, 'clause 2: what it needs');
+  assert.match(SESSION_NO_UID_DETAIL, /heygabi\.ai/, 'clause 3: how to get it — somewhere to go');
+  assert.match(SESSION_NO_UID_DETAIL, /estate owner/i, 'clause 3: and who to ask when going there twice fails');
+
+  // ⚠️ The vocabulary a person can do nothing with must stay OUT. This is the
+  // same assertion shape the machine-vs-person split uses elsewhere in this
+  // Worker: naming `uid`/`sub`/`token` sends somebody hunting for a thing they
+  // cannot see, which is the failure the worded-refusal rule exists to prevent.
+  for (const jargon of [/\buid\b/i, /\bsub\b/i, /\btoken\b/i, /\bJWT\b/i, /\bclaim\b/i]) {
+    assert.doesNotMatch(SESSION_NO_UID_DETAIL, jargon, `${jargon} is developer vocabulary, not a person's`);
+  }
 });
 
 test('POST /session: dev-bypass identity → 200, creates a row, sets the cookie with the §4.3 attributes', async () => {

@@ -1000,6 +1000,8 @@ uppercased.
 | 8 | `src/env.ts:373` — `EstateUserRow` | a `vis_<app>: number` field beside `vis_library2:414` / `vis_ebooks:420` | 🟡 silent, as 7 |
 | 9 | `migrations/00NN_vis_<app>.sql` | one `ADD COLUMN`, following `0007_vis_library2.sql`. ⚠️ **`DEFAULT 0`**, the opposite of 0002's `DEFAULT 1` — it is another household's shelf, granted by hand. Highest existing migration on 2026-09-05: `0018_catalog_requests.sql` | 🔴 loud at runtime (`no such column`), silent in tests |
 
+⚠️ **The apex CSP belongs in this manual ledger too — it is the tenth hand edit, and it is on the OTHER side of the estate:** `sites/heygabi-home/public/_headers` gates every cover the front door renders, and `§7.2 step 2`'s new covers hostname must be loadable from it or the new catalog's thumbnails silently blank on `/`, `/universes`, `/series` and `/admin` (find.js keeps the slot and drops the broken image, so nothing looks wrong). ✅ **For an ordinal host inside our own zone this is now AUTOMATIC** — all seven `img-src` rules carry `https://*.heygabi.ai` since 2026-09-05, so `gamecovers2`/`bookcovers2` need no edit; 🔴 **a covers host on ANY OTHER domain is still a hand edit here**, and CSP cannot express `gamecovers*.heygabi.ai` (a wildcard is only legal as the whole leftmost label — a partial one is an invalid source expression browsers silently drop), so there is no narrower pattern to reach for.
+
 Then, and only then: **migrate the auth-worker D1, then deploy the auth
 Worker** (migrate-before-deploy; the directory DB is never migrated
 unattended — §7.4 item 5).
