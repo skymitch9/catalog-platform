@@ -25,6 +25,7 @@ import {
   BILLING_GROUPS,
   BILLING_GROUP_LABELS,
   BILLING_SITES,
+  billingFeature,
   isBillingFeatureId,
   isBillingSite,
 } from './billing-registry.js';
@@ -173,6 +174,36 @@ billingRoutes.post('/estate/billing/rules', requireApprover(), async (c) => {
       { error: 'invalid_body', detail: `A ${principal_kind} rule needs a principal_value (${principal_kind === 'role' ? 'a rung name' : 'an estate user id'}).` },
       400,
     );
+  }
+
+  // 🔴 A PER-PERSON RULE ON AN UNATTENDED PATH IS A SWITCH NOBODY PRESSED.
+  // `system` RESOLVES ALONE (billing-policy.ts's `rank()`), so a `user` or
+  // `role` row against a feature only a cron can trigger matches nothing, ever:
+  // the cron skips it because it is not a `system` rule, and no person walks
+  // that path at all. Stored, it would sit in the table looking exactly like a
+  // deny that works — the same silent failure §3.2 is written about, and the
+  // same reason a typo'd feature id is refused at the door two checks above.
+  //
+  // ⚠️ It is ALSO §7.2's drawer rule made server-side. The drawer draws a
+  // worded fact instead of a control on these rows, and a UI rule is one fetch
+  // away from being bypassed (§11.2 row 5 made exactly this argument about the
+  // owner's row). `feature = '*'` is deliberately exempt: a wildcard person
+  // rule means "everything on this site a person can trigger", which is a
+  // meaningful thing to say and resolves correctly.
+  if ((principal_kind === 'user' || principal_kind === 'role') && feature !== '*') {
+    const f = billingFeature(feature);
+    if (f && !f.principals.includes('person')) {
+      return c.json(
+        {
+          error: 'principal_not_applicable',
+          detail:
+            `“${f.label}” runs unattended — no person triggers it, so switching it off for one ` +
+            `${principal_kind === 'user' ? 'person' : 'role'} would change nothing at all. ` +
+            'Switch it off for the whole site instead, on the Spending panel.',
+        },
+        400,
+      );
+    }
   }
 
   if (principal_kind === 'user') {

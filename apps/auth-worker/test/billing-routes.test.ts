@@ -382,6 +382,108 @@ test('🔴 THE OWNER CANNOT BE SWITCHED OFF — the break-glass is not narrowabl
   assert.equal(other.status, 200);
 });
 
+test('🔴 a per-PERSON rule on an UNATTENDED path is refused — it would deny nobody', async () => {
+  // Phase 2b (§7.2). `system` resolves ALONE, so a `user` or `role` row against
+  // a feature only a cron triggers can never match: the cron skips it (not a
+  // system rule) and no person walks that path. Stored, it looks exactly like a
+  // switch that works — which is why the drawer draws a worded fact instead of
+  // a control there, and why the DOOR says so too. A UI rule is one fetch away
+  // from being bypassed.
+  const db = new FakeDB();
+  db.users.set(2, { id: 2, email: APPROVER, status: 'approved', is_approver: 0 });
+
+  for (const over of [
+    { principal_kind: 'user', principal_value: '2' },
+    { principal_kind: 'role', principal_value: 'moderator' },
+  ]) {
+    const res = await post(db, {
+      feature: 'sweep.details', // principals: ['system'] — the clock-icon row
+      site: 'games',
+      allow: false,
+      why: 'trying to stop the hourly sweep for one person',
+      ...over,
+    });
+    assert.equal(res.status, 400, JSON.stringify(over));
+    const body = (await res.json()) as any;
+    assert.equal(body.error, 'principal_not_applicable');
+    // Not a bare status: it says what happened AND what to do instead.
+    assert.match(body.detail, /runs unattended/);
+    assert.match(body.detail, /whole site/);
+  }
+  assert.equal(db.rules.length, 0);
+
+  // ⚠️ The same feature IS switchable for the site — the refusal above is about
+  // the principal, not about the feature, and the fix it names must work.
+  const site = await post(db, {
+    feature: 'sweep.details',
+    site: 'games',
+    principal_kind: 'system',
+    allow: false,
+    why: 'eleven cents an hour and nobody is reading the results',
+  });
+  assert.equal(site.status, 200);
+
+  // ⚠️ And a person rule on a feature a person CAN trigger is still fine —
+  // that is the entire point of the per-member drawer.
+  const person = await post(db, {
+    feature: 'research.details',
+    site: 'games',
+    principal_kind: 'user',
+    principal_value: '2',
+    allow: false,
+    why: 'ran forty research runs in a weekend',
+  });
+  assert.equal(person.status, 200);
+  assert.equal(db.rules.length, 2);
+});
+
+test('⚠️ a feature BOTH a person and a cron trigger stays per-person switchable', async () => {
+  // `warnings.web`, `chapters.llm` and `pipeline.run` carry both principals.
+  // Denying the person half is meaningful (it is A3's button); the cron half
+  // needs its own `system` row, and the drawer says so on the line rather than
+  // implying one click covered both.
+  const db = new FakeDB();
+  db.users.set(2, { id: 2, email: APPROVER, status: 'approved', is_approver: 0 });
+  const res = await post(db, {
+    feature: 'warnings.web',
+    site: 'audiobook',
+    principal_kind: 'user',
+    principal_value: '2',
+    allow: false,
+    why: 'asked for warnings on two hundred books in one sitting',
+  });
+  assert.equal(res.status, 200);
+  assert.equal(db.rules.length, 1);
+});
+
+test('a signed-in NON-APPROVER is refused in WORDS on all three doors', async () => {
+  // §9 Q6 gates read AND write behind requireApprover(). A person meets this
+  // one on /admin, so it must never be a bare 403: the four causes stay
+  // distinct, and "you are signed in but this needs an approver account" is a
+  // different instruction from "you are not signed in".
+  const db = new FakeDB();
+  db.users.set(2, { id: 2, email: APPROVER, status: 'approved', is_approver: 0 });
+
+  for (const [path, init] of [
+    ['/estate/billing/rules', {}],
+    ['/estate/billing/rules', { method: 'POST', body: '{}' }],
+    ['/estate/billing/rules/1', { method: 'DELETE' }],
+  ] as const) {
+    const res = await billingRoutes.request(path, init, env(db, { DEV_EMAIL: APPROVER }));
+    assert.equal(res.status, 403, `${path} should refuse a non-approver`);
+    const body = (await res.json()) as any;
+    // ⚠️ The error CODE is asserted by tools/estate-probes and branched on by
+    // every page — it stays `forbidden`. The DETAIL is what a person reads.
+    assert.equal(body.error, 'forbidden');
+    assert.ok(
+      typeof body.detail === 'string' && body.detail.length > 10,
+      `${path} refused without saying why`,
+    );
+    assert.match(body.detail, /approver/);
+  }
+  assert.equal(db.rules.length, 0);
+});
+
 test('a user rule naming nobody in the directory is a 404, not a stored ghost', async () => {
   const db = new FakeDB();
   const res = await post(db, {
