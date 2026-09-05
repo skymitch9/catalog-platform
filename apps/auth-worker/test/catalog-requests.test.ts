@@ -42,6 +42,7 @@ import {
   reservedDetail,
 } from '../src/catalog-names.js';
 import { SEALED_ALG, SEALED_MAX_BYTES, parseSealedEnvelope } from '../src/catalog-keys.js';
+import { insertCatalog } from '../src/estate-catalog.js';
 
 const OWNER = 'owner@example.com';
 const MEMBER = 'member@example.com';
@@ -117,8 +118,22 @@ class FakeDB {
     user(6, DEVOPS, { is_devops: 1 }),
   ];
   requests: CatalogRequestRow[] = [];
+  /** The 0020 registry — what /live writes when it is told the catalog id. */
+  catalogs: {
+    id: string;
+    push_source: string | null;
+    kind: string;
+    label: string;
+    owner_name: string | null;
+    holding: string;
+    shared: number;
+    host: string;
+    request_id: number | null;
+  }[] = [];
   nextId = 1;
   missingTable = false;
+  /** A Worker shipped ahead of 0020 — the registry table does not exist yet. */
+  registryMissing = false;
   /** Make the boolean write fail while the R2 put succeeds — see run(). */
   failKeyFlag = false;
 
@@ -204,8 +219,22 @@ class FakeDB {
         if (/SELECT id, status, requester_email FROM catalog_request WHERE id/.test(sql)) {
           return db.requests.find((r) => r.id === Number(args[0])) ?? null;
         }
+        // ⚠️ WIDENED 2026-09-05 and the ORDER matters: /live now reads `kind`,
+        // `display_name` and `requester_display_name` too, because the registry
+        // row (0020) is built from them. This branch has to sit ABOVE the bare
+        // `SELECT id, status …` one below, which its own prefix would otherwise
+        // never match anyway — kept explicit so a future widening does not
+        // silently fall through and hand /live a null row, which surfaces as a
+        // 404 that reads exactly like a routing bug.
+        if (/SELECT id, status, kind, display_name, requester_display_name FROM catalog_request WHERE id/.test(sql)) {
+          return db.requests.find((r) => r.id === Number(args[0])) ?? null;
+        }
         if (/SELECT id, status FROM catalog_request WHERE id/.test(sql)) {
           return db.requests.find((r) => r.id === Number(args[0])) ?? null;
+        }
+        if (/SELECT id FROM estate_catalog WHERE id/.test(sql)) {
+          if (db.registryMissing) throw new Error('D1_ERROR: no such table: estate_catalog');
+          return db.catalogs.find((r) => r.id === args[0]) ?? null;
         }
         return null;
       },
@@ -279,6 +308,31 @@ class FakeDB {
         if (/SET reader_key_set = 0, owner_key_set = 0/.test(sql)) {
           const row = db.requests.find((r) => r.id === Number(args[0]));
           if (row) Object.assign(row, { reader_key_set: 0, owner_key_set: 0 });
+          return { success: true };
+        }
+        // The registry write (0020). `registryMissing` reproduces a Worker that
+        // shipped ahead of its migration — the state in which /live must still
+        // succeed and must SAY the estate does not know the catalog's name.
+        if (/INSERT INTO estate_catalog/.test(sql)) {
+          if (db.registryMissing) throw new Error('D1_ERROR: no such table: estate_catalog');
+          const [id, push, kind, label, owner, holding, shared, host, requestId] = args as (
+            | string
+            | number
+            | null
+          )[];
+          if (!db.catalogs.some((r) => r.id === id)) {
+            db.catalogs.push({
+              id: id as string,
+              push_source: (push ?? null) as string | null,
+              kind: kind as string,
+              label: label as string,
+              owner_name: (owner ?? null) as string | null,
+              holding: holding as string,
+              shared: Number(shared),
+              host: host as string,
+              request_id: (requestId ?? null) as number | null,
+            });
+          }
           return { success: true };
         }
         return { success: true };
@@ -1081,6 +1135,191 @@ test('marking live is devops-gated — a plain member cannot claim a catalog exi
   });
   assert.equal(res.status, 403);
   assert.equal(db.requests[0]?.status, 'accepted');
+});
+
+// ---------------------------------------------------------------------------
+// The registry row /live writes (0020) — how a `library3` gets a name and an
+// owner without ~28 hand-edits. Survey §7; docs/info/catalog-registry.md.
+// ---------------------------------------------------------------------------
+
+/** Accept a fresh request and hand back its id, ready to be marked live. */
+async function accepted(db: FakeDB, body: unknown = GOOD): Promise<number> {
+  const id = await file(db, MEMBER, body);
+  await post(db, OWNER, `/estate/catalogs/requests/${id}/decide`, { decision: 'accept' });
+  return id;
+}
+
+test('🔴 /live with a catalog_id writes the registry row — label and owner from the REQUEST', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  const res = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { registry: { written: boolean; id: string; detail: string } };
+  assert.equal(body.registry.written, true);
+  assert.equal(body.registry.id, 'library3');
+
+  const row = db.catalogs[0];
+  assert.equal(db.catalogs.length, 1);
+  assert.equal(row?.id, 'library3');
+  // The label is the catalog's display name as the REQUEST recorded it, and the
+  // owner is the requester's display name at submit — the owner's settled rule
+  // that a future library3 is designated "the requester's name, physical".
+  assert.equal(row?.label, 'Amber’s books');
+  assert.equal(row?.owner_name, 'member');
+  assert.equal(row?.holding, 'physical');
+  assert.equal(row?.shared, 0);
+  assert.equal(row?.host, 'amber.heygabi.ai');
+  assert.equal(row?.kind, 'books');
+  // ⚠️ push_source defaults to the catalog id, which is right for every library
+  // instance (`library2` pushes as `library2`) and is overridable for anything
+  // whose push vocabulary this Worker has never measured.
+  assert.equal(row?.push_source, 'library3');
+  assert.equal(row?.request_id, id);
+});
+
+test('a GAMES request lands as kind=games, and the two vocabularies do not get confused', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db, GOOD_GAMES);
+  await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'games2',
+    provisioned_host: 'amber-games.heygabi.ai',
+    catalog_id: 'games2',
+    push_source: 'game2',
+  });
+  assert.equal(db.catalogs[0]?.kind, 'games');
+  // ⚠️ The push source was SENT rather than derived: a second games instance's
+  // push vocabulary is not something this Worker has measured, so it is asked
+  // for. That is the whole reason the field exists.
+  assert.equal(db.catalogs[0]?.push_source, 'game2');
+});
+
+test('🔴 /live WITHOUT a catalog_id writes NO registry row, and says so in words', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  const res = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { registry: { written: boolean; reason: string; detail: string } };
+  assert.equal(body.registry.written, false);
+  assert.equal(body.registry.reason, 'not_asked');
+  // ⚠️ The answer must tell the caller the consequence — nothing will NAME this
+  // catalog — and that the call is repeatable. A silent omission here is how a
+  // live catalog stays invisible on the front door with nobody knowing why.
+  assert.match(body.registry.detail, /catalog_id/);
+  assert.match(body.registry.detail, /again/);
+  assert.equal(db.catalogs.length, 0);
+  assert.equal(db.requests[0]?.status, 'live', 'the catalog is live either way');
+});
+
+test('⚠️ a bad catalog_id is a 400 BEFORE the status moves', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  // ⚠️ A HYPHEN IS REFUSED THOUGH IT IS LEGAL IN A HOSTNAME. The catalog id has
+  // to be a name a `vis_<id>` COLUMN can be called, and `vis_library-3` is not
+  // one — so the id and the subdomain are validated by different rules on
+  // purpose, and `amber-games.heygabi.ai` gets a catalog id like `games2`.
+  for (const bad of ['library_3', 'l', 'library-3', '3library', '']) {
+    const res = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+      provisioned_instance: 'third',
+      provisioned_host: 'amber.heygabi.ai',
+      catalog_id: bad,
+    });
+    assert.equal(res.status, 400, `expected ${JSON.stringify(bad)} to be refused`);
+    assert.equal(((await res.json()) as { error: string }).error, 'bad_catalog_id');
+  }
+  assert.equal(db.requests[0]?.status, 'accepted', 'nothing moved');
+  assert.equal(db.catalogs.length, 0);
+
+  // ⚠️ Trim-and-lowercase IS applied, and that is the estate's ONE sanctioned
+  // normalisation (catalog-names.ts `normaliseSubdomain` states it for the
+  // sibling field). `Library3` is not a different id somebody meant; a column
+  // name has one case. Everything else above is refused rather than repaired.
+  const ok = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: '  Library3  ',
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(db.catalogs[0]?.id, 'library3');
+});
+
+test('the registry write is IDEMPOTENT — a repeated provisioning run says “exists”, not an error', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  const body = { provisioned_instance: 'third', provisioned_host: 'amber.heygabi.ai', catalog_id: 'library3' };
+  await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, body);
+  // The second call is refused as not_accepted (status is live now), which is
+  // the pre-existing rule; the registry itself is exercised directly for the
+  // repeat case, because that is the shape a resumed provisioner produces.
+  const again = await insertCatalog(db as unknown as D1Database, {
+    id: 'library3',
+    push_source: 'library3',
+    kind: 'books',
+    label: 'a different label somebody typed later',
+    owner_name: 'Somebody Else',
+    holding: 'physical',
+    shared: false,
+    host: 'amber.heygabi.ai',
+    request_id: id,
+  });
+  assert.equal(again.written, false);
+  assert.equal(again.written === false ? again.reason : null, 'exists');
+  assert.equal(db.catalogs.length, 1);
+  // 🔴 AND IT DID NOT OVERWRITE. A second run must not silently rename a
+  // catalog somebody has since corrected by hand.
+  assert.equal(db.catalogs[0]?.label, 'Amber’s books');
+  assert.equal(db.catalogs[0]?.owner_name, 'member');
+});
+
+test('🔴 a registry write that FAILS does not fail /live — the catalog is live and the answer says the name is missing', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  db.registryMissing = true; // a Worker shipped ahead of 0020
+  const res = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+  });
+  assert.equal(res.status, 200, 'housekeeping must not fail the answer to “did the provisioning land”');
+  const body = (await res.json()) as { status: string; registry: { written: boolean; reason: string; detail: string } };
+  assert.equal(body.status, 'live');
+  assert.equal(body.registry.written, false);
+  assert.equal(body.registry.reason, 'failed');
+  assert.match(body.registry.detail, /marked live/);
+  assert.equal(db.requests[0]?.status, 'live');
+});
+
+test('⚠️ /live cannot rename a catalog or reassign whose it is', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  const res = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+    // Not fields this route understands: the label comes from the request row.
+    label: 'The Owner’s Own Shelf',
+    display_name: 'The Owner’s Own Shelf',
+  });
+  assert.equal(res.status, 200);
+  assert.equal(db.catalogs[0]?.label, 'Amber’s books');
+});
+
+test('the owner name IS overridable — a display name is a nickname, and the front door is not where you find out', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+    owner_name: 'Amber',
+  });
+  assert.equal(db.catalogs[0]?.owner_name, 'Amber');
 });
 
 test('🔴 the key flags take true/false and NOTHING else', async () => {

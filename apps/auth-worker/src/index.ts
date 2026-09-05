@@ -37,6 +37,7 @@ import { billingRoutes } from './billing.js';
 import { universeRequestRoutes } from './universe-requests.js';
 import { notificationRoutes } from './notifications.js';
 import { catalogRequestRoutes } from './catalog-requests.js';
+import { estateCatalogRoutes } from './estate-catalog.js';
 import { sessionRoutes } from './session.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
@@ -297,10 +298,27 @@ app.route('/api', universeRequestRoutes);
 // The notices those decisions write — a person reads their own, and nobody
 // reads anybody else's. ⚠️ In-app only: nothing here sends mail or DMs.
 app.route('/api', notificationRoutes);
+// THE CATALOG REGISTRY (0020) — which catalogs EXIST, what each is called, and
+// who owns the physical copies. An APP-TOKEN door read by the index Worker,
+// which republishes it at index.heygabi.ai/api/catalogs for everybody else.
+//
+// ⚠️ NO CORS MOUNT, AND THAT IS THE DESIGN, NOT AN OMISSION. Every other route
+// in this file that a browser calls has a line above; this one has none because
+// nothing in a browser calls it. The public copy of this fact lives on the index
+// Worker, cached, in ONE place — a second browser-reachable copy is precisely
+// the drift the registry exists to end (survey §2 F2: seven spellings of two
+// libraries). If a page ever needs it, it calls index.heygabi.ai, not this.
+//
+// ⚠️ MOUNTED BEFORE catalogRequestRoutes, which owns /estate/catalogs/requests
+// and /estate/catalogs/availability. The three paths do not overlap, but the
+// specific-before-parameterised order is the estateDocsRoutes rule and the
+// failure it prevents is a 404 that reads like "never deployed".
+app.route('/api', estateCatalogRoutes);
 // "Request a catalog" — a member asks for <them>.heygabi.ai, an approver
 // decides, a devops session records the real instance once it exists.
 // ⚠️ Nothing here creates a catalog; see catalog-requests.ts. Accept sets a
-// status and hands over a runbook.
+// status and hands over a runbook — and the /live call, made by whoever ran the
+// provisioning, is what writes the registry row above.
 app.route('/api', catalogRequestRoutes);
 app.route('/api', sessionRoutes);
 

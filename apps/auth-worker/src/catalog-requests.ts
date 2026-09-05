@@ -63,6 +63,8 @@ import {
   putEnvelope,
 } from './catalog-keys.js';
 import type { MeCatalog } from './me.js';
+import type { ContentKind, RegistryWrite } from './estate-catalog.js';
+import { CATALOG_ID_RE, insertCatalog } from './estate-catalog.js';
 
 /* ------------------------------------------------------------------ *
  * Rows and the wire shape
@@ -826,6 +828,37 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/decide', requireApprove
  * ⚠️ ONLY FROM `accepted`. Marking a pending or declined request live would put
  * a catalog in the estate's ownership record that nobody said yes to — and this
  * table is what §4.3's per-card show/hide reads.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🔴 THIS IS ALSO WHERE THE CATALOG REGISTRY ROW IS WRITTEN (0020, 2026-09-05)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * The owner's multi-library rule needs a `library3` to arrive with a label, an
+ * owner and a holding rather than as a bare id nobody can render (survey §7
+ * counts ~28 hand-edits a new catalog needs today, of which the provisioner
+ * names 3). Everything the registry needs is already on the request row —
+ * `display_name` is the label, `requester_display_name` is the owner, and a
+ * provisioned catalog is physical and unshared by the owner's settled model —
+ * except the one thing nothing here can derive: **its catalog id**.
+ *
+ * ⚠️ THE ID IS ASKED FOR, NEVER GUESSED, and a call that omits it writes NO
+ * registry row and says so. `provisioned_instance` is the wrangler env block
+ * (padhard's is `friend`), which is not the id; the visibility vocabulary's
+ * next name (`library3`) is computed by the provisioner in the other repo,
+ * against ITS ledger. Inventing one here would produce a registry entry whose
+ * id no `vis_` column will ever match — a grant that can never be given, on a
+ * catalog the front door is already advertising.
+ *
+ * ⚠️ AND THE REGISTRY ROW IS NOT THE GRANT. It publishes a name and an owner;
+ * `vis_<id>` is still its own migration and its own code change (survey §7,
+ * which the provisioner already prints). Access-increasing steps stay where
+ * they are.
+ *
+ * ⚠️ THE REGISTRY WRITE CANNOT FAIL THIS CALL. The status change is the answer
+ * to "did the provisioning land"; a registry hiccup is housekeeping, reported
+ * in `registry` in the response, never a reason to make a devops session
+ * re-run a step that already succeeded. Same stance the sealed envelopes take
+ * three routes up.
  */
 catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(), async (c) => {
   const id = Number(c.req.param('id'));
@@ -871,6 +904,50 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
     if (v === false || v === 0) return 0;
     return -1; // a sentinel the caller turns into a 400
   };
+  // ── The registry half (0020) ───────────────────────────────────────────
+  // ⚠️ VALIDATED BEFORE THE STATUS MOVES, for the same reason every other body
+  // field here is: a 400 must leave the row untouched, so a devops session that
+  // fat-fingers an id can simply call again rather than owning a live row whose
+  // registry entry has to be repaired by hand.
+  const catalogId = typeof obj.catalog_id === 'string' ? obj.catalog_id.trim().toLowerCase() : '';
+  if (obj.catalog_id !== undefined && !CATALOG_ID_RE.test(catalogId)) {
+    return c.json(
+      {
+        error: 'bad_catalog_id',
+        detail:
+          'A catalog id is 2–31 lowercase letters and digits, starting with a letter — it is the estate’s ' +
+          'visibility vocabulary (`library`, `library2`, `games`), and it has to be a name a `vis_<id>` ' +
+          'column can be called. It is NOT the wrangler env block and NOT the hostname. Leave it out ' +
+          'entirely and the catalog is recorded live with no registry row, which is safe: nothing will ' +
+          'name it until one is added.',
+      },
+      400,
+    );
+  }
+  // The owner's name for the shelf. Defaults to the requester's display name at
+  // submit (the owner's settled model: a future `library3…` is designated "the
+  // requester's name"), and is overridable because a display name is a
+  // nickname, and the front door is not the place to discover that.
+  const registryOwnerRaw = typeof obj.owner_name === 'string' ? obj.owner_name.trim() : '';
+  // ⚠️ The push vocabulary, which differs from the visibility one in exactly one
+  // known place (games↔game). Defaulted to the id — right for every library
+  // instance — and overridable because a second GAMES instance's push source is
+  // not something this Worker has ever measured. `null` says "no source of its
+  // own", which is what `ebooks` is.
+  const registryPushSource =
+    obj.push_source === null ? null : typeof obj.push_source === 'string' ? obj.push_source.trim() : undefined;
+  if (registryPushSource !== undefined && registryPushSource !== null && !CATALOG_ID_RE.test(registryPushSource)) {
+    return c.json(
+      {
+        error: 'bad_push_source',
+        detail:
+          'A push source has the same shape as a catalog id — 2–31 lowercase letters and digits. Send ' +
+          'null if this catalog pushes nothing of its own, or leave it out to use the catalog id.',
+      },
+      400,
+    );
+  }
+
   const readerKey = bool(obj.reader_key_set);
   const ownerKey = bool(obj.owner_key_set);
   if (readerKey === -1 || ownerKey === -1) {
@@ -888,9 +965,23 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
   }
 
   try {
-    const existing = await c.env.DB.prepare('SELECT id, status FROM catalog_request WHERE id = ?1')
+    // ⚠️ `kind`, `display_name` and `requester_display_name` are read here
+    // because the registry row (0020) is built from them: the label the estate
+    // shows and the person it designates as owner are what the request already
+    // recorded, snapshotted at submit. Reading them now rather than accepting
+    // them on the wire is deliberate — a devops session marking a catalog live
+    // must not be able to rename it or reassign whose it is in the same call.
+    const existing = await c.env.DB.prepare(
+      'SELECT id, status, kind, display_name, requester_display_name FROM catalog_request WHERE id = ?1',
+    )
       .bind(id)
-      .first<{ id: number; status: string }>();
+      .first<{
+        id: number;
+        status: string;
+        kind: string;
+        display_name: string;
+        requester_display_name: string | null;
+      }>();
     if (!existing) return c.json({ error: 'not_found', detail: `There is no catalog request #${id}.` }, 404);
     if (existing.status !== 'accepted') {
       return c.json(
@@ -925,6 +1016,50 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
     // a catalog that is now live and has its key by another route.
     if (obj.purge_keys === true) await deleteEnvelopes(c.env.CATALOG_KEYS, id);
 
+    // ── The registry row (0020) ─────────────────────────────────────────────
+    // ⚠️ AFTER the status write, and it cannot fail it. `insertCatalog` never
+    // throws; it answers what happened and the caller is told, because "live,
+    // but nothing knows its name" is a real state somebody has to be able to
+    // see and act on.
+    let registry: RegistryWrite | { written: false; id: null; reason: 'not_asked'; detail: string } = {
+      written: false,
+      id: null,
+      reason: 'not_asked',
+      detail:
+        'No `catalog_id` was sent, so no registry row was written and nothing will name this catalog ' +
+        'on the estate’s front door or in a search result yet. That is safe and reversible: call this ' +
+        'route again with `catalog_id` once the visibility id is decided.',
+    };
+    if (catalogId) {
+      registry = await insertCatalog(c.env.DB, {
+        id: catalogId,
+        // Undefined means "not sent" → the id; explicit null means "pushes nothing".
+        push_source: registryPushSource === undefined ? catalogId : registryPushSource,
+        // ⚠️ The two vocabularies overlap here on purpose: a `books` request
+        // provisions a `books` catalog. `audio` exists only for the shared pool,
+        // which no provisioning path creates, so the copy is total.
+        kind: (existing.kind === 'games' ? 'games' : 'books') satisfies ContentKind,
+        label: existing.display_name,
+        // ⚠️ NULL IS POSSIBLE AND IS NOT A BUG: `requester_display_name` is a
+        // nullable snapshot from the SSO profile. A registry row with no owner
+        // and `shared = 0` renders as an unattributed physical shelf, which is
+        // honest — and `owner_name` in the body is how it gets fixed without a
+        // migration.
+        owner_name: registryOwnerRaw || existing.requester_display_name,
+        // ⚠️ The owner's settled model, 2026-09-05: a future `library3…` is
+        // "the requester's name, physical". No provisioning path creates a
+        // shared digital pool, so these two are constants rather than fields —
+        // and if one ever should be, it is an owner decision, not a body field
+        // a devops call can flip.
+        holding: 'physical',
+        shared: false,
+        // The hostname this very call just validated and recorded — one fact,
+        // one home: the registry does not get a second, separately-typed copy.
+        host,
+        request_id: id,
+      });
+    }
+
     return c.json({
       ok: true,
       id,
@@ -932,6 +1067,7 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
       provisioned_instance: instance,
       provisioned_host: host,
       keys_purged: obj.purge_keys === true,
+      registry,
     });
   } catch (err) {
     if (tableMissing(err)) return c.json(TABLE_MISSING, 503);
