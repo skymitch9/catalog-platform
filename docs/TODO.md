@@ -67,6 +67,23 @@ kinds). **To test the "+" he signs in as his second approved account** (`estate_
 #87 `mitchlandtv@gmail.com`), which owns nothing and should see both.
 NOT verified: the hide/show in a browser, signed in as each.
 
+### ✅ Phase 7 — books provisioner BUILT, `--dry` only (agent D, 2026-09-05 ~07:35 Phoenix)
+
+`library_catalog` `b84b39f` `scripts/provision-catalog.mjs` (12 idempotent steps, two
+PAUSEs for the manual Firebase / auth-worker steps, 68 tests, 2418/0 suite) ·
+`bce085e` runbook `docs/access/provision-catalog.md` · `4e0acc8` · here `51e0544`.
+`--dry` exercised against the three REAL back-seeded rows (each refused correctly:
+already live / already live / games → §8). **No real instance exists; nothing ran
+past `--dry`** — the first real run is the owner's.
+
+☐ **OWNER DECISION (asked 2026-09-05 07:37): instance naming.** The script splits
+names by what can be renamed — host + env/Worker follow the person
+(`amber.heygabi.ai`, `[env.amber]`, `library-catalog-amber`); D1, R2 bucket and the
+estate app id are ORDINAL (`library-catalog-3rd`, `library-3rd-covers`, `library3`)
+because those can never be renamed and the app id is a contract with the
+auth-worker. Design §7.1 wanted everything identity-neutral; `--instance third`
+gives that. Which? (a) split as built (b) all ordinal (c) all follow the person.
+
 ☐ **Pre-existing, found by agent A:** `GET /api/estate/me` answers unauthenticated
 with a bare `{"error":"unauthenticated"}` and no `detail` (`apps/auth-worker/src/estate.ts:409`)
 — the "never a bare status" rule broken on the most-read route. One-line fix; do it
