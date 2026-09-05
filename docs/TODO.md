@@ -120,8 +120,11 @@ written up in §11:
   membership-gated but deliberately UNSCOPED — every approved member, and every
   machine token via `/api/machine/lookup`, could have enumerated Samantha's
   shelf by title while holding no `library2` grant. Closed fail-shut in the same
-  commit (`read.ts`'s `UNSCOPED_LOOKUP_EXCLUDED`). ❓ **Worth an owner line:
-  widening it later is one line, but it is his call, not a build's.**
+  commit (`read.ts`'s `UNSCOPED_LOOKUP_EXCLUDED`). ~~❓ **Worth an owner line:
+  widening it later is one line, but it is his call, not a build's.**~~
+  ☑ **Owner decided 2026-09-05 16:08 Phoenix: (a) keep it fenced** — only
+  holders of a `vis_library2` grant see her rows through the lookup door. As
+  built; nothing to change.
 - ⚠️ **`/status` will not show her source once she pushes.** That page keeps its
   own `INDEX_SOURCE_ORDER` and ignores unknown keys, so nothing breaks — but
   adding `library2` there needs an `INDEX_THRESHOLDS` cadence nobody has
