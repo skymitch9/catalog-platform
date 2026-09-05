@@ -1363,7 +1363,7 @@ has to be argued for.
    NAMES the CLI spending gate reads"), the gate prints "policy UNKNOWN …
    proceeding" either way.
 
-### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`) — 🔴 ☐ migrate + deploy (owner), ☐ first real use
+### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`) and its FRONT END DEPLOYED 2026-09-05 (`795f242` / `ba7ddd03`) — 🔴 ☐ migrate + deploy the WORKER (owner), ☐ first real use
 
 Phases 0–3 archived whole in [`DONE.md`](DONE.md). The fixed-order deploy RAN:
 migration `0017` applied to remote `estate_auth` first (`npm run db:migrate`,
@@ -1413,11 +1413,35 @@ Remaining, unchanged:
      npm run db:migrate` (applies `0019` remotely), then `npx wrangler deploy`.
      Batched into the one estate-auth deploy manifest above — the section that
      also carries RES's bare-401 fix and S1's sealed-key phase.
-   - ☐ **No page draws a notice yet.** The routes exist; the front end that
-     renders them is not built, and until it is a requester still learns their
-     answer by visiting <https://heygabi.ai/universes/> and reading the row —
-     ⚠️ which is exactly the person the notice was for: the one who is *not*
-     already looking.
+   - ☑ **A page draws a notice — CODE LANDED + DEPLOYED 2026-09-05 (agent
+     `W3-NOTICES-UI`, `795f242`, heygabi-home deployment `ba7ddd03`).**
+     ~~No page draws a notice yet.~~ `assets/apex-notices.js` +
+     `assets/apex-notices.css` hang a bell on `<estate-search>`'s one
+     extension point (`slot="who-extra"` — the component's own *"Signed in as
+     … · sign out"* line), so **one module and one stylesheet serve both pages
+     that embed the component**: <https://heygabi.ai/> and
+     <https://heygabi.ai/universes/>. Unread badge, notices newest first with
+     the decider's words **verbatim**, mark read, mark all read, and the
+     opt-out toggle. The as-built is
+     [`info/universe-add-verse-design.md`](info/universe-add-verse-design.md)
+     §8.9; `predeploy.checks.json` gained four pins and a **surface owner**
+     entry so a second notices UI fails `check:home` by name.
+     - 🔴 **UNEXERCISED, AND IT CANNOT BE OTHERWISE YET.** Measured live
+       2026-09-05 21:39 UTC: `GET https://auth.heygabi.ai/api/estate/notifications`
+       answers **404 `{"error":"not_found"}`** while `/api/estate/me` on the
+       same host answers **401** with its worded refusal — so the routes
+       genuinely do not exist yet rather than being merely gated. That 404 is
+       the case the module treats as `unavailable`: **no bell is drawn and
+       nothing else on the page changes.** The bell cannot appear for anybody
+       until the owner's two steps below land, and cannot show a *notice* until
+       a first request is filed and decided.
+     - ☐ **Owner review, and it is the only proof that counts:** signed in at
+       <https://heygabi.ai/> (or <https://heygabi.ai/universes/>), look at the
+       *"Signed in as …"* line under the search box — the bell sits to the
+       right of *sign out*. ⚠️ **Nobody has seen it signed in**; a session
+       cannot sign in as a person, so every claim about what a member sees is
+       proven only against the stub-DOM harness
+       (`scripts/test/apex-notices.test.mjs`, 24 cases) and the Worker's source.
    - ☐ **Never exercised.** No notice has ever been written, because no request
      has ever been filed (`SELECT COUNT(*) FROM universe_request` = 0, measured
      2026-09-05). The whole 200 side is proven against an in-memory D1 only.

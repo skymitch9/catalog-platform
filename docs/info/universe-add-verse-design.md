@@ -571,26 +571,40 @@ migration look identical to a person and only one of them is worth a word.
 - ☐ **Deploy `estate-auth` + apply `0019`** — owner steps, in that order
   (migrate before deploy). `npm run db:migrate` from `apps/auth-worker`, then
   `npx wrangler deploy`.
-- ☐ **A surface that draws a notice.** The routes exist; no page reads them yet.
-  Until one does, a requester still learns their answer the way they did on
-  2026-09-02: by visiting <https://heygabi.ai/universes/> and reading the row.
-  ⚠️ **That is a smaller gap than it sounds and a real one all the same** — the
-  notice's value is telling somebody who is *not already looking*.
+- ☑ **A surface that draws a notice — BUILT AND DEPLOYED 2026-09-05**
+  (`795f242`, heygabi-home deployment `ba7ddd03`). ~~The routes exist; no page
+  reads them yet.~~ The bell is on the signed-in line of <https://heygabi.ai/>
+  and <https://heygabi.ai/universes/>; the as-built is **§8.9 below**.
+  ⚠️ **It draws nothing until the Worker deploy above lands** — measured live
+  2026-09-05 21:39 UTC, `GET /api/estate/notifications` answers **404** while
+  `/api/estate/me` answers 401, and a 404 is the case the page treats as
+  "unavailable": no bell, and nothing else on the page changed.
 - ☐ **A real notice has never been written**, because no request has ever been
   filed.
 
 ### 8.9 The front end, as built — 2026-09-05 (agent `W3-NOTICES-UI`)
 
-> **Last verified: 2026-09-05** for **this section only** — `npm test` at the
-> repo root, `npm run check:home` and `npm run verify:home` were run, and the
-> deployed bundle was fetched cache-busted. ⚠️ **NOT verified: nobody has seen
-> the bell signed in.** A session cannot sign in as a person; every claim below
-> about what a *member* sees is proven against the stub-DOM harness and the
-> Worker's source contract, never against a browser. §§1–8.8 were not
-> re-measured.
+> **Last verified: 2026-09-05** for **this section only**, and for exactly
+> these claims: `npm test` at the repo root (scripts 324 → 348 pass / 0 fail,
+> every other workspace unchanged), `npm run check:home` (32 JS, 29 module
+> graphs, 14 HTML, 3 surface owners) and `npm run verify:home` (32 pages, all
+> checks passed, first run); the served `/assets/apex-notices.js` (200,
+> `application/javascript`, 24,064 bytes, all seven pinned strings) and
+> `/assets/apex-notices.css` (200, `text/css`, 6,942 bytes) fetched
+> cache-busted; and — the one that matters most here — `GET
+> https://auth.heygabi.ai/api/estate/notifications` answering **404
+> `{"error":"not_found"}`** at 21:39 UTC while `/api/estate/me` on the same
+> host answered **401**, which is what makes "the routes are not deployed"
+> a measurement rather than an inference.
+>
+> ⚠️ **NOT verified: nobody has seen the bell signed in.** A session cannot
+> sign in as a person; every claim below about what a *member* sees is proven
+> against the stub-DOM harness and the Worker's source contract, never against
+> a browser. §§1–8.8 were not re-measured.
 
-**The second ☐ of §8.8 is closed in code.** `assets/apex-notices.js` +
-`assets/apex-notices.css`, linked from `/` and `/universes/`.
+**The second ☐ of §8.8 is closed.** `assets/apex-notices.js` +
+`assets/apex-notices.css`, linked from `/` and `/universes/`, deployed
+2026-09-05 as heygabi-home `ba7ddd03` from commit `795f242`.
 
 #### 8.9.1 Where it lives, and why there is only one of it
 
