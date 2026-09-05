@@ -10,11 +10,61 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ 🔴 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ❓ go/no-go on federating padhard into the index
+## ☐ 🔴 OWNER ASK 2026-09-05 15:50 Phoenix — "everything in the estate connects to MULTIPLE libraries; libraries designated by who OWNS the physical, or SHARED for digital works"
+
+> **Owner, verbatim:** *"Make sure everything we have that's in the estate
+> connects to multiple libraries and make sure that the libraries are
+> designated by who owns the physical or shared with digital works."*
+
+**What it means, as read by the conductor (❓ confirm — one question, below):**
+every estate surface stops assuming ONE library, and every row/holding is
+labelled by its **ownership model**, which has two kinds:
+
+| Source | Kind | Designation |
+|---|---|---|
+| `library` (library.heygabi.ai) | physical copies | **Skylar's** |
+| `library2` (padhard.heygabi.ai) | physical copies | **Samantha's** |
+| `game` (boardgames.heygabi.ai) | physical copies | **Skylar's** |
+| `audiobook` (audiobooks.heygabi.ai) | digital | **shared** (estate pool) |
+| `ebooks` (ebooks.heygabi.ai) | digital | **shared** (estate pool) |
+| `library3…` (provisioner) | physical | the requester's name, from the catalog request |
+
+**Measured 2026-09-05 15:50 — the labels are hard-coded in FIVE copies and
+already disagree** (one-fact-one-home violated on a SURFACE):
+`sites/heygabi-home/public/assets/estate-search.js:234`, `series/series.js:72`,
+`universes/universes.js:111` (`HOLDER_LABELS`, only `library2`), the library
+repo's `apps/web/public/estate/estate-search.js:234` (a copy), and the games
+repo's copy at `apps/web/public/estate/estate-search.js:234` which **lacks
+`library2` altogether** (`{ game, library, audiobook }`). The auth Worker's
+`catalog-names.ts` knows `CATALOG_KINDS = ['books','games']` and hostnames but
+no owner/holding model; the index Worker's `Source` set is being widened to
+`library2` by W4-FED-INDEX right now.
+
+**Proposed shape (design, not yet built):** ONE registry — the index Worker
+serves `GET /api/catalogs` (`{id, label, owner, holding:'physical'|'digital',
+shared:boolean, host}`) fed from the auth Worker's catalog table (the
+provisioner already writes new libraries there); every surface (apex search /
+series / universes / status, GABI's book knowledge, the library+games copies of
+`estate-search.js`, the audiobook site's estate strip) reads it and the
+hard-coded maps go. `holdingLabel()` becomes "Samantha's (hardcover)" /
+"shared · audiobook". The `estate-search.js` copies become ONE shared
+component synced by script (owner rule 2026-09-03: shared global components).
+
+**Sequence:** ① W4-FED-INDEX + W4-FED-LIB land (padhard rows exist) → ② one
+read-only SURVEY agent (Opus, ~180k) inventories every single-library
+assumption across the four repos → ③ registry + consumer builds, per repo,
+Opus → ④ eyeball. ☐ ① in flight · ☐ ② · ☐ ③ · ☐ ④.
+
+☐ ❓ **Owner confirm (asked 15:5x Phoenix):** is the ownership table above
+right — in particular `game` = Skylar's physical, and BOTH audiobooks and
+ebooks = shared digital?
+
+## ☐ 🔴 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ☑ GO ("A build now", 15:37) — W4-FED-INDEX + W4-FED-LIB in flight
 
 > **Owner, verbatim:** *"let's put this on hold for now, in the universe and
 > series tab it's not pulling Padhard library"* — "this" = the estate-auth
-> deploy (manifest section below), now ON HOLD at his word.
+> deploy (manifest section below), now ON HOLD at his word. ⚠️ Superseded
+> 15:45: the deploy landed and the manifest section moved to `DONE.md`.
 
 **Diagnosis, measured 2026-09-05 15:28 Phoenix (code read, not a live probe):**
 both tabs read the index Worker (`sites/heygabi-home/public/universes/universes.js:472`,
