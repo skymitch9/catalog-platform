@@ -36,8 +36,8 @@ step; Members-page banner + "Catalog requests" section (two-tap accept/decline);
 sealed-box key (WebCrypto → private R2 envelope → decrypted only inside the
 owner-run provisioner → `wrangler secret put`), D1 holds booleans only.
 
-Open owner questions (ONE AT A TIME): (1) the **Games card too** — his words say
-"board game or book site", the mockup shows Books only; (2) who may request —
+Owner answers (asked ONE AT A TIME): (1) Games card too? — **"Both"** (2026-09-05
+~06:50 Phoenix): the Games card gets the same "+" and flow. Still open: (2) who may request —
 approved members only?; (3) lock in the sealed-box key design for v1 or defer the
 key field; (4) back-seed the two existing library owners as `live` rows.
 
