@@ -1,9 +1,18 @@
 # "+ Add a verse" on /universes — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
-> **Status:** TRACKED — **BUILT 2026-09-02, phases 0–3. NOT DEPLOYED, and
+> **Status:** TRACKED — ~~**BUILT 2026-09-02, phases 0–3. NOT DEPLOYED, and
 > migration 0017 is NOT applied.** Phase 4 (notify on a decision) is still
-> unbuilt. The code of record is `apps/auth-worker/src/universe-requests.ts`,
+> unbuilt.~~
+> ⚠️ **Corrected 2026-09-05 (agent W2-VERSE4): both halves of that sentence are
+> stale.** Phases 0–3 were DEPLOYED on 2026-09-02 ~15:00 (migration `0017`
+> applied to remote `estate_auth`, `estate-auth` version
+> `07dbe1b0-a58f-4980-a435-c8c01f909f34`, `heygabi-home` `18df9ec9`), and
+> **PHASE 4 IS NOW BUILT** — commit `f2e7543`, ⚠️ **code landed, NOT deployed
+> and migration `0019` NOT applied** (both are owner steps). What phase 4 is,
+> what it deliberately is not, and the clause of §4 it departs from: **§8
+> below**. The code of record is `apps/auth-worker/src/universe-requests.ts`,
+> `apps/auth-worker/src/notifications.ts`,
 > `sites/heygabi-home/public/universes/universes.js`, the `verse-queue` section
 > of `sites/heygabi-home/public/admin/`, and `createUniverse()` in
 > `tools/lib/universes.mjs`. What remains is on
@@ -334,7 +343,7 @@ discover it at step 11.
 | **1** | Migration 0016, the four request routes, tests, `/admin` list with approve/decline | ~1 day | Q1 (does the CLI grow `create`?) does **not** block this |
 | **2** | The "+" button, the form, live alias check, the pending section on `/universes` | ~1 day | Phase 1 |
 | **3** | `tools/universes.mjs create` (if the owner wants it) + a `apply-request` command that reads a `landed`-bound row | ~½ day | ⚠️ Q1 — owner decision |
-| **4** | Notification when a request is decided (reuse `estate_prefs`/`notify-prefs.ts`) | ~½ day | Phase 1 |
+| **4** | ✅ **BUILT 2026-09-05** (`f2e7543`, not deployed) — notification when a request is decided (reuse `estate_prefs`/`notify-prefs.ts`) — ⚠️ **as-built and its two departures: §8** | ~½ day | Phase 1 |
 
 ⚠️ **Phase 0 stands alone and is worth doing even if the owner says no to the
 whole feature** — the page is currently one universe short and the CLI's help
@@ -436,8 +445,139 @@ access to.
 - **The `/universes` page has not been opened in a browser this session**, so
   the 16-vs-17 discrepancy is proven from source (`UNIVERSE_NAMES.length`) and
   not from what a visitor actually sees.
-</content>
-</invoke>
+
+⚠️ **Two stray XML tags (`</content>`, `</invoke>`) sat here from 2026-08-26
+until 2026-09-05** — a tool artifact that had been rendering as literal text at
+the bottom of the doc. Removed by W2-VERSE4; nothing else in §7 was touched.
+
+---
+
+## 8. Phase 4 as built — 2026-09-05 (`f2e7543`, ⚠️ NOT DEPLOYED)
+
+> **Last verified: 2026-09-05** for **this section only** — the suite was run
+> (`682 → 721 pass / 0 fail`) and `tsc` is clean on both projects. ⚠️ **Nothing
+> was measured live: `estate-auth` was NOT deployed, migration `0019` was NOT
+> applied, and no notice has ever been written** — no verse request has ever
+> been filed (`SELECT COUNT(*) FROM universe_request` = 0, read remote
+> read-only earlier the same day). §§1–7 above were NOT re-measured.
+
+### 8.1 What the one-line clause could and could not be honoured as
+
+§4's phase table says *"reuse `estate_prefs`/`notify-prefs.ts`"*. Half of that
+is exactly what happened, and half of it does not fit:
+
+| Half | Verdict |
+|---|---|
+| The **opt-out** | ✅ **Reused.** One row per person in `estate_prefs` (0014) under `notify:user:<id>`, parsed with `notify-prefs.ts`'s own idioms — defaults filled in, ⚠️ refuses-never-strips on write, and ⚠️ an unreadable row falls back to the DEFAULTS rather than to silence (its argument, quoted: a corrupted value turning notices off without saying so is experienced as *"the estate went quiet"*, which is indistinguishable from *"nothing happened"*) |
+| The **messages** | 🔴 **Could not be.** `estate_prefs` is one row per KEY of owner-set settings that the CONDUCTOR reads. A stream of dated messages addressed to people is not a settings row. So phase 4 needed **migration `0019_estate_notification.sql`**, which the design never named — ⚠️ **said loudly here, in 0019's own header and in the module header**, rather than left for a reader who trusted the phase table to discover |
+
+⚠️ `0019` is **purely additive**: one `CREATE TABLE IF NOT EXISTS` on a new
+object plus one index, no `ALTER`, no `DROP` — the property that made
+0012/0013/0014/0017/0018 safe to apply remotely and unattended.
+
+### 8.2 🔴 What this IS: in-app delivery. Nothing here sends anything.
+
+**No phone buzzes, no email is sent, nobody is DM'd**, and that is a fact about
+the estate rather than an omission in the build: **this Worker holds no
+outbound channel to a member.** `notify-prefs.ts` is the OWNER's phone,
+delivered by the *conductor*, which reads those prefs over its own bearer;
+there is no equivalent for anybody else.
+
+| Channel | Why it is not built |
+|---|---|
+| Email | Needs a mail credential this Worker does not have and no repo holds |
+| A GABI DM | Needs `estate-auth` to hold a Discord bearer **and** `CONSUMER_APPS` to accept one — ⚠️ which `test/dev-access.test.ts` guards against by name, as *"a capability nobody granted it"*. The same blocker `TODO.md`'s billing item records |
+
+Both are **access-INCREASING**, so they are the owner's to mint, not an
+agent's to assume. The queue is built and the channel is **named**; a later
+deliverer drains these rows. Until one exists the estate is honest that a
+notice **waits to be READ** rather than claiming it was **SENT**.
+
+### 8.3 Why this is not a second copy of the /universes queue
+
+The estate's one-fact-one-home rule applies to SURFACES, and it would refuse a
+second place to read the same status. This is not one:
+
+- The **queue** answers *"what is the state of my requests"* — a list you go and
+  look at, always current.
+- A **notice** answers *"what changed since I last looked"* — dated, quoting the
+  decider's words **as they stood at the moment of the decision**, markable
+  read. ⚠️ Rendering it by re-reading the row would make a message about the
+  past change when the past changes, which is how *"you were declined because
+  X"* becomes a sentence nobody ever wrote.
+
+The status is the fact; the notice is the event.
+
+### 8.4 And it is not the worker event ring
+
+`worker-events.ts`'s own header forbids it: *"a noticeboard, not a log … errors,
+refusals worth a human's attention, and deploy markers. **Not requests.**"* It
+is also **per-WORKER** and read behind `requireDevops()`, so a member could
+never see a line addressed to them. ⚠️ **The ring IS used for exactly one
+thing, which is the thing it is for:** when writing a notice FAILS, one `warn`
+line goes to it. A notifier that fails silently is worse than none, because the
+silence is then trusted.
+
+### 8.5 The three refusals, each pinned by a test
+
+1. 🔴 **Nothing is written when there is no requester.** A row authored by a
+   seed, a script or a `system` principal has nobody to tell, and inventing a
+   recipient writes a message nobody is owed into somebody's inbox.
+2. 🔴 **An opt-out means the notice does not EXIST**, not that it is stored and
+   hidden. The switch is consulted by the writer, in the one place a notice is
+   written (`writeNotice()`), so no future caller can route around it.
+3. 🔴 **A FAILED NOTICE NEVER FAILS THE DECISION.** `notify()` is the last
+   statement in the handler, hands its work to `waitUntil`, and swallows every
+   path — the decision is already durable in D1, and throwing would turn a
+   completed approval into a 502 the approver would reasonably retry. ⚠️ **The
+   retry would meet `already_decided`.**
+
+### 8.6 ⚠️ `landed` is notified too, and §4's clause did not ask for it
+
+The clause says *"when a request is **decided**"* and is silent about `landed`.
+This is a **deliberate extension**, and §3.6 is the argument: *"`landed` rows
+disappear from this section, because by then the universe is a real row in the
+list below."* Without a notice, the last thing that ever happens to a request
+from the requester's side is that **it silently vanishes** — and the one moment
+the verse actually exists is the one moment nobody tells them. A `verse_landed`
+notice carries the commit, because that is the checkable half.
+
+⚠️ **`approved` still never reads as done** in any of the three notices — the
+approval notice says *"it is not live yet"* and a test refuses any sentence
+claiming the verse now exists. That is §3.4's fourth status, defended in the
+one place a person actually reads a sentence about it.
+
+### 8.7 The doors
+
+All `requireApprovedMember()`; all apex-CORS-mounted in `index.ts` (⚠️ **a route
+does not imply a mount** — the omission that made the ingestion pause card
+unreachable from a browser while answering `curl` perfectly).
+
+| Route | Does |
+|---|---|
+| `GET /api/estate/notifications` | Your own, newest first, plus an `unread` count and the class list |
+| `POST …/notifications/:id/read` | Yours only. ⚠️ Somebody else's is a **404, not a 403** — a 403 confirms it exists |
+| `POST …/notifications/read-all` | Clears a badge in one call rather than N |
+| `GET \| POST …/notifications/prefs` | Your own switches. Switching your own notices off is access-REDUCING and needs nobody |
+
+⚠️ **An approver gets no special read.** A notice is addressed mail, not a
+queue; the approver's queue is `/admin`, which is a different question with its
+own door. A Worker ahead of `0019` answers **200 with an empty list and the
+fix**, because a page with no notices and a page whose Worker is ahead of its
+migration look identical to a person and only one of them is worth a word.
+
+### 8.8 🔴 What is left, and it is not code
+
+- ☐ **Deploy `estate-auth` + apply `0019`** — owner steps, in that order
+  (migrate before deploy). `npm run db:migrate` from `apps/auth-worker`, then
+  `npx wrangler deploy`.
+- ☐ **A surface that draws a notice.** The routes exist; no page reads them yet.
+  Until one does, a requester still learns their answer the way they did on
+  2026-09-02: by visiting <https://heygabi.ai/universes/> and reading the row.
+  ⚠️ **That is a smaller gap than it sounds and a real one all the same** — the
+  notice's value is telling somebody who is *not already looking*.
+- ☐ **A real notice has never been written**, because no request has ever been
+  filed.
 
 ---
 
