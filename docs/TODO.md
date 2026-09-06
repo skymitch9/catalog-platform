@@ -431,8 +431,28 @@ A PERSON SEES HAS CHANGED YET"* — moved WHOLE to [`DONE.md`](DONE.md) with the
 before/after table, the three decisions worth not re-deriving, and the
 eight-bad-markers finding. Consumers table: [`info/catalog-registry.md`](info/catalog-registry.md) §10a.
 
-☐ ③c **GABI + the audiobook vendor** (survey §10 dispatch 3) and
-☐ ③d **the provisioner + peers** (dispatch 4) are still open, and ☐ ④ is the
+☑ ③c **GABI + the audiobook vendor — DONE 2026-09-06** (survey §10 dispatch 3,
+agent W10-FED-GABI). GABI: `893ca5f`, deployment
+`ae966987-9030-4e4f-a5ae-734ba6fc7c13` (rollback
+`de53160f-95a1-4d78-9b03-b9370d208bfe`) — `apps/discord-worker/src/catalog-registry.ts`
+is her one reader; `LibraryInstance.app` is no longer the closed union
+`'library' | 'library2'`, the asker-relative label **"your own shelf"** is gone
+(it was Samantha's shelf, said to Skylar), and the three typed-in library URLs
+are resolved from the routed shelves. Posture `GABI_CATALOG_REGISTRY = "on"`,
+affirmative-only, one-word backout. **Verified live**: `/api/health` answers
+`gabi_delegated_target_labels: ["Skylar's library", "Samantha's library"]` —
+strings that exist nowhere in this Worker's code, so the row is proof the lookup
+ran rather than a value that agrees by construction. The audiobook vendor:
+`2b4ba2f` in `audiobook_catalog` — `scripts/sync_estate_search.py` + a read-only
+drift test, and the first re-vendor, resolving all four of survey §5's
+divergences (two were user-visible: clicking a cover did nothing, and a second
+household's shelf could not be named). ⚠️ **That half is on the /dev/ lane
+only** — its prod needs `gh workflow run promote.yml`, the owner's explicit
+request, and the commit is not book-only so `auto-promote.yml` will not carry
+it. ⚠️ `PHYSICAL_SOURCE_INSTANCE` was left alone on purpose (it needs
+`audiobook_catalog`'s join to carry an instance). As-built:
+[`info/catalog-registry.md`](info/catalog-registry.md) §10a.
+☐ ③d **the provisioner + peers** (dispatch 4) is still open, and ☐ ④ is the
 owner's eyeball.
 
 ⚠️ **What dispatch 2 measured and did NOT change**, because each is somebody

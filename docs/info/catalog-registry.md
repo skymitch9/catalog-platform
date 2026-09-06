@@ -11,6 +11,11 @@
 > §10a is the new consumers table. Every catalog NAME on `heygabi.ai` comes
 > from this route.
 >
+> ✅ **UPDATED 2026-09-06: DISPATCH 3 HAS LANDED TOO** (agent W10-FED-GABI) —
+> GABI and the audiobook site's vendored component are both consumers now, §10a.
+> The header's *"the other three consumer dispatches … have not run"* below is
+> superseded: **dispatch 4 (the provisioner + `PEERS`) is the one that has not.**
+>
 > ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
 > `predeploy.checks.json`'s live pass fetches unauthenticated, so the
 > scoped-count half of §4 is proven by tests and by this route's own answer, and
@@ -274,6 +279,8 @@ fact. Pinned by probe `A44`.
 | `public/universes/universes.js` | the row subtitle's holder, and `isGameRow()`'s kind | `dee846a` |
 | `public/status/status.js` | the index source ORDER and denominator, every catalog's row name | `dee846a` |
 | `public/admin/admin.js` | ⚠️ **NAMES ONLY** — see below | `94d3e65` |
+| `apps/discord-worker/src/catalog-registry.ts` | **GABI's one reader** — the shelves she offers (`resolveLibraryInstances`, registry rows that are `kind:books` + `holding:physical`) and the words she calls them, incl. the three suggestion shelves. Posture `GABI_CATALOG_REGISTRY`; `panel.ts`'s pre-existing lane now shares this fetch and this memo | `893ca5f` |
+| `audiobook_catalog/site/estate/estate-search.js` | ⚠️ **the fourth copy of `estate-search.js`, and it reads the registry now** — re-vendored 2026-09-06 by that repo's new `scripts/sync_estate_search.py`. It inherits the inline twin below rather than reading it itself | `2b4ba2f` *(audiobook_catalog)* |
 
 ⚠️ **`estate-search.js` carries its own inline copy of the fetch and the label
 helpers and MUST keep it.** `sync-estate-search.mjs` (in both consumer repos)
@@ -302,10 +309,25 @@ estate holds.
 ## 10 · What is NOT done, and what a session should not re-derive
 
 - ✅ ~~**No consumer reads this yet.**~~ **The apex does, since 2026-09-05** —
-  §10a. What is still untouched is the rest of the estate: GABI's
-  `delegated.ts`/`suggest.ts`, the audiobook site's hand-vendored copy of
-  `estate-search.js`, and `library_catalog`'s `PEERS` (its own second, independent
-  registry on a different id vocabulary). Survey §10, dispatches 3 and 4.
+  §10a. ✅ ~~*"What is still untouched … GABI's `delegated.ts`/`suggest.ts`, the
+  audiobook site's hand-vendored copy of `estate-search.js`"*~~ — **both landed
+  2026-09-06 (dispatch 3, agent W10-FED-GABI).** GABI: `893ca5f`, deployment
+  `ae966987-9030-4e4f-a5ae-734ba6fc7c13`; the audiobook vendor: `2b4ba2f` in
+  that repo, on the **/dev/** lane only (see below). **Still untouched:**
+  `library_catalog`'s `PEERS` — its own second, independent registry on a
+  different id vocabulary — which is survey §10 **dispatch 4**.
+- ⚠️ **THE AUDIOBOOK SITE'S COPY IS ON `/dev/` AND NOT ON PROD.** That repo's
+  two-lane deploy moves prod only through `gh workflow run promote.yml`, which
+  is the owner's explicit request, and `auto-promote.yml` carries **book-only**
+  commits — which this is not. So `audiobooks.heygabi.ai` still serves the
+  hand-vendored component with the four measured divergences until somebody
+  promotes. That is a decision, not a gap.
+- ⚠️ **GABI's shelf list is registry-driven; her PRINT GATE is not.**
+  `suggest.ts`'s `PHYSICAL_SOURCE_INSTANCE = 'library'` was deliberately left
+  alone (survey §3.4 calls it the estate's deepest single-library assumption).
+  Which library a print suggestion is gated on needs `audiobook_catalog`'s
+  `LIBRARY_MAPPING_URL` join to carry an instance — another repo's work. This
+  build only NAMES that shelf correctly.
 - ✅ **`READ_ORIGINS` NOW INCLUDES `padhard.heygabi.ai` — the owner said "Yes"
   on 2026-09-06** (00:5x Phoenix, item 3 of the sixteen), and it is deployed:
   `4ef4816`, deployment `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
