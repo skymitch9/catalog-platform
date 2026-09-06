@@ -103,6 +103,79 @@ Plain Node, **zero dependencies** (global `fetch`/`AbortController`, Node
 20+ — matches `tools/`'s existing ethos, see `../README.md`). No build step,
 no `npm install` beyond the repo root. Exits nonzero if any probe fails.
 
+## ⏰ It also runs ITSELF, hourly, in the auth Worker (2026-09-05)
+
+> **Last verified: 2026-09-05** — the refactor was measured by running the CLI
+> after it: **145 passed, 0 failed**, the same count as before. ⚠️ **NOT
+> verified at the time of writing: a cron firing.** The first `:19` had not come
+> round yet, so *"the clock works"* is a claim the `/api/health` field below
+> settles, not one this line makes.
+
+Owner ask 2026-09-05 16:50 Phoenix, candidate #4 of
+[`../../docs/info/scripts-inventory-2026-09-05.md`](../../docs/info/scripts-inventory-2026-09-05.md)
+§7: *"a probe suite with no clock is a stale reading generator"*. The incident
+it names is the 2026-08-16 one in the global rules — a 40-minute-old
+authorised-domain reading quoted as current, against the owner's live report,
+and the reading was right when taken and false when quoted.
+
+| | The CLI | The cron |
+|---|---|---|
+| Entry | `run.mjs` (`npm run probe:estate`) | `apps/auth-worker/src/estate-probes.ts` |
+| Cadence | when a human types it | **`19 * * * *`** — hourly |
+| Reports by | the table + an exit code | one row in D1 -> `/api/health` -> `/status` |
+| Per-request timeout | 15 s | 6 s, with a 120 s whole-run deadline |
+
+**⚠️ THE PROBE LIST IS IN `lib/suite.mjs`, NOT IN `run.mjs`.** The areas, their
+order, `NON_GET_ALLOWLIST` and both discipline audits live there, and BOTH
+runners import them — the inventory's §6 rule (*one implementation, or the
+conversion made the estate worse*). **To add or reorder an area, edit
+`lib/suite.mjs`;** `run.mjs` now owns only the table and the exit code.
+
+**Nothing in `probes/` needed porting**, and that is the contract holding rather
+than luck: the whole tree is `fetch`/`Headers`/`AbortController`/`setTimeout`,
+with no `node:` import, no `process` and no disk anywhere. Two things did change
+in `lib/kit.mjs`, both because a Worker isolate outlives one run:
+
+- **`resetRun()`** — `results`/`passed`/`failed` are module state. Without a
+  reset the second cron run would have reported 290 checks and the tenth 1,450:
+  climbing, plausible, and wrong.
+- **`configure()`** — the timeout and the two log sinks are injectable, with the
+  CLI's old values as the defaults.
+
+⚠️ **Anything added to `probes/` that touches disk, spawns a process or reads an
+env var breaks the cron SILENTLY** — the bundle builds and the scheduled handler
+throws at runtime. A probe that genuinely needs a local resource belongs beside
+[`authorized-domains.mjs`](#authorized-domainsmjs--optional-credentialed), which
+is CLI-only for exactly this reason.
+
+**What the cron does with the result.** One row per run in `estate_probe_run`
+(migration 0021 — one row per RUN, not per probe, with the failure list capped
+at 12 so the worst day is not also the biggest write), the newest exposed on
+`GET https://auth.heygabi.ai/api/health` under `detail.estateProbes`:
+
+```bash
+curl -s https://auth.heygabi.ai/api/health | jq '.detail.estateProbes'
+```
+
+⚠️ **`null` means NO RUN HAS EVER BEEN RECORDED.** It is not a zero and it is
+not a failure — a Worker deployed ahead of migration 0021, or one whose first
+cron has not fired, answers `null` and is perfectly healthy. *"No probe run has
+been recorded"* and *"0 of 145 passed"* are opposite sentences.
+
+⚠️ **`truncated: true` means SOME AREAS WERE NEVER ASKED** and must never render
+as green. A scheduled handler has a wall clock; 145 requests × a per-request
+timeout is not a bound anyone should rely on, and a Cloudflare-terminated
+invocation writes NOTHING — which is indistinguishable from a healthy estate on
+any surface that renders "the newest run". So the suite checks its budget
+between areas and stops with what it has. `9 of 145 checks, ran out of time` is
+a far better answer than silence.
+
+⚠️ **`error` set means THE RUNNER broke, not the estate.** A failing probe is
+the suite *working* — a red row is a finding about production, not a bug in the
+runner — so the two are stored separately and have different fixes. A run that
+throws is recorded with `total: 0` precisely so nothing downstream can read it
+as "0 failures".
+
 ## What this is
 
 Every probe is one of three things, asserted against **production**:

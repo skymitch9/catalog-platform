@@ -410,6 +410,115 @@ outlive the newest-8 window, download the object and keep it somewhere
 durable (the same Drive account already used for the audiobook library, or
 any offline copy).
 
+### 3.1b Retention also runs as a Worker cron now — in SHADOW (2026-09-05)
+
+> **Last verified: 2026-09-05** — the code, the posture value and the cron
+> string were read off the repo and the deployed `wrangler.toml`; the shadow
+> gate below has **NOT** been met yet and **no shadow run had been compared
+> against a dry run at the time of writing**. ⚠️ Nothing here claims a Worker
+> has deleted an object, because none has.
+
+**Retention that depends on somebody remembering is not retention** — the
+verdict of [`../info/scripts-inventory-2026-09-05.md`](../info/scripts-inventory-2026-09-05.md)
+§7, candidate #3 of the owner's *"do the scripts you think are the best for
+routes"* ask. So the same decision now also runs on a clock, in the auth
+Worker, at **`41 10 * * *`** (daily, 10:41 UTC).
+
+| | CI's `retention` job | The Worker cron |
+|---|---|---|
+| Where | `.github/workflows/backup.yml` | `apps/auth-worker/src/r2-prune.ts` |
+| When | every dispatch, incl. the daily 09:12 UTC run | daily 10:41 UTC |
+| Reaches R2 by | Cloudflare REST + `CLOUDFLARE_API_TOKEN` | the `ESTATE_BACKUPS` binding |
+| Status | ✅ **the primary. Unchanged.** | ⏳ **shadow — deletes nothing** |
+
+⚠️ **The Worker is a BACKSTOP, not a replacement.** The failure it is aimed at
+is named in `backup.yml`'s own header: *"GitHub DISABLES scheduled workflows on
+a repo with 60 days of no activity"*. A retention job that stops with the
+workflow it lives in cannot report that it stopped. 10:41 is ~89 minutes after
+CI starts writing — the whole workflow was measured at 144 s — so the two never
+race for the same keys even when GitHub delays a scheduled run.
+
+⚠️ **`scripts/prune-r2-backups.mjs` IS NOT RETIRED and must not be.**
+[`RECOVERY.md`](RECOVERY.md)'s posture is why: recovery runs when the platform
+is down, so a bucket-hygiene tool that needs the estate's own Worker to be
+healthy is no use on the day the estate is not. The script needs Node, a token
+and the public REST API, and nothing else.
+
+**One decision, two transports.** `planRetention()` in
+`scripts/lib/backup-keys.mjs` is the only place the estate decides which
+generations go; the script and the Worker both call it. That is the inventory's
+§6 rule (*"a route and its script share ONE implementation, or the conversion
+has made the estate worse"*) applied to the case where it bites hardest — a
+drifted matcher mismatches a game, a drifted retention rule deletes a backup.
+Eleven unit tests live with the function, in `scripts/test/backup-keys.test.mjs`.
+
+#### 🔴 The shadow gate — what has to be true before `enforce`
+
+`R2_PRUNE_MODE` is `off | shadow | enforce` in `apps/auth-worker/wrangler.toml`,
+committed **`shadow`**. Anything unrecognised — including absent — parses to
+`off`, never `enforce`.
+
+> **Flip to `enforce` only after FIVE shadow runs whose would-delete set matches
+> the script's `--dry-run` KEY FOR KEY, at least one of them non-empty.**
+
+⚠️ **The "at least one non-empty" half is the falsifiable one, and it is the
+half that is easy to skip.** Five agreements on "delete nothing" is
+indistinguishable from an instrument that never ran — the exact
+`0 of 0 — unmeasured, not clean` verdict the audiobook auth soak reached, and
+the reason the index Worker's `BILLING_POLICY` block demands the same second
+condition. Today the bucket sits at depth because CI prunes it every morning,
+so a non-empty comparison has to be arranged: take it in the window **between
+09:12 and 09:15 UTC**, when the night's write has landed and CI's own retention
+job has not yet run, or on any morning CI failed.
+
+**Taking the two readings.** They must be minutes apart, against the same
+bucket, or the comparison is measuring the clock rather than the rule.
+
+```powershell
+# 1. The Worker's plan (dry run; refuses to delete regardless of posture)
+curl -s -X POST -H "Authorization: Bearer <estate ID token>" `
+  "https://auth.heygabi.ai/api/estate/backups/prune?dryRun=1" | jq '[.prefixes[].wouldDelete[]] | sort'
+
+# 2. The script's plan, same rule, different transport
+$env:CLOUDFLARE_API_TOKEN="<token>"; $env:CLOUDFLARE_ACCOUNT_ID="<account>"
+node scripts/prune-r2-backups.mjs estate-backups `
+  d1/library-catalog d1/library-catalog-2nd d1/board-game-catalog d1/index_catalog d1/estate_auth `
+  firestore/audiobook-catalog `
+  r2/library-covers r2/audiobook-covers r2/game-covers r2/ebooks-gated r2/estate-docs-gated `
+  docs/catalog-platform docs/audiobook_catalog docs/library_catalog docs/board_game_catalog `
+  --keep 8 --dry-run
+```
+
+⚠️ **Never run the script without `--dry-run` while gathering evidence.** The
+whole point of the comparison is that nothing has been deleted between the two
+readings.
+
+**The cron's own shadow log**, which is the fifth reading and the one that
+proves the CLOCK works rather than the route:
+
+```powershell
+npx wrangler tail estate-auth --format json | jq 'select(.logs[]?.message[]? | test("r2-prune"))'
+```
+
+⚠️ **The flip is its own deploy.** `R2_PRUNE_MODE = "enforce"` changed on its
+own, never as a side effect of an unrelated deploy, and the backout is the same
+one line. Tracked as an open box in [`../TODO.md`](../TODO.md); **nothing about
+this moves to `DONE.md` until enforce is live and measured.**
+
+#### The on-demand door
+
+`POST /api/estate/backups/prune?dryRun=1` — `requireDevops()`, the same gate and
+the same bucket as `GET /api/estate/backups`.
+
+- **`dryRun` defaults to TRUE.** A POST with no query plans and deletes nothing.
+- **`dryRun=0` is refused with a worded 409 while the posture is not
+  `enforce`** — so today this route *cannot* delete an object whatever it is
+  sent. That is the gate expressed mechanically rather than as a promise.
+- **`dryRun=1` stays a dry run even at `enforce`**: the mode decides what the
+  cron does, the parameter decides what the request does, and the narrower wins.
+- Every refusal names its own fix — an unbound binding says which one, a
+  refused real pass says which var and where the gate is written down.
+
 ### 3.2 ⚠️ One transient Cloudflare 500 used to lose a whole bucket
 
 **Measured 2026-08-18, on the first run after the daily cron landed** (run
@@ -1185,7 +1294,9 @@ else. Note who currently holds either before relying on this path.
 | `scripts/test/*.test.mjs` | The offline proofs for both of the above — `npm run test:scripts`, also run by the root `npm test`. No network, no credential, no write |
 | `scripts/backup-r2.mjs` | The R2-bucket-content dump tool §6 uses — REST API list+get, added 2026-08-15 morning to close the gap this runbook named the night before. ⚠️ **Retries 5xx/429 with backoff as of 2026-08-18** — see §3.2. ⚠️ **429 is handled SEPARATELY, with a much longer wait, `Retry-After` support and request pacing, as of 2026-08-26 — §3.2c** (a rate limit is not a server error, and treating it as one lost `ebooks-gated`). ⚠️ **Applies per-bucket prefix exclusions as of 2026-08-19** (§6's `ebooks-gated` block), and gained a `--dry-run` flag that lists + reports the exclusion accounting without downloading anything |
 | `scripts/lib/backup-exclusions.mjs` | **The prefix exclusions themselves** — which prefixes inside an otherwise-backed-up bucket are skipped, and why. One entry today: `ebooks-gated/transcripts/`. Logged on every run whether it matched or not, and written into every dump's `manifest.json`; an exclusion that swallowed a whole bucket FAILS the backup rather than reporting an empty success. ⚠️ Not the same mechanism as `backup-r2.mjs`'s `REFUSED_BUCKETS` (whole-bucket refusal, `estate-audio`) — its header argues the difference |
-| `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite) |
+| `scripts/prune-r2-backups.mjs` | Retention for the `estate-backups` bucket itself — REST API list+delete, keeps newest 8 per `<kind>/<store>` prefix, added 2026-08-15 (this rewrite). ⚠️ **Not retired and must not be** (RECOVERY.md posture: recovery runs when the platform is down). `--dry-run` added 2026-09-05 — it is half of §3.1b's shadow gate |
+| `scripts/lib/backup-keys.mjs` | ⚠️ **THE retention decision** — `planRetention()`, `generationOf()`, `groupByGeneration()`, shared by the script AND the Worker cron since 2026-09-05, so the rule has one implementation and one set of tests (`scripts/test/backup-keys.test.mjs`) |
+| `apps/auth-worker/src/r2-prune.ts` | The same decision on a clock — daily `41 10 * * *`, plus `POST /api/estate/backups/prune?dryRun=1`. ⚠️ **`R2_PRUNE_MODE = "shadow"`: it deletes nothing.** §3.1b is the gate |
 | `scripts/reorder-d1-dump.mjs` | Makes a `wrangler d1 export` dump replayable (§4b) — added 2026-08-17 by the restore drill, which found two of four exports die half-imported. **A mandatory step of the D1 restore path, with a regression test** (2026-08-18), and the place §4c's `estate_auth` warning is printed |
 | `scripts/seed-estate.mjs` | `estate_auth`'s independent rebuild path, §9 |
 | `docs/access/RECOVERY.md` | The drill-verified 3am runbook: per-store commands with measured times, the live stores with NO backup (`library-catalog-2nd`, `discord_links`, `readingPositions`, four R2 buckets, one KV), and an explicit NOT-verified list |

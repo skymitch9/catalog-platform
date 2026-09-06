@@ -75,12 +75,78 @@ whole time (11 rows, committed 2026-09-04 16:26) — the library had no way to a
 ### Then, ranked (inventory §7)
 
 - [ ] `backfill:series-volumes` — same CSV, same fetch, costs one function
-- [ ] `prune-r2-backups.mjs` → platform cron — retention that needs remembering
-      is not retention
-- [ ] `tools/estate-probes/run.mjs` → platform cron + `/status`
+- [x] **`prune-r2-backups.mjs` → platform cron** — ✅ **BUILT AND DEPLOYED
+      2026-09-05** (`b6ce5f8` the shared decision module, `051dd77` the Worker).
+      `estate-auth`, `41 10 * * *`, ⚠️ **shipped in SHADOW — it deletes
+      nothing.** The script is NOT retired (RECOVERY.md posture) and gained
+      `--dry-run`. Facts:
+      [`access/backup-restore.md` §3.1b](access/backup-restore.md). 🔴 **The
+      enforce flip is still open — see the box below.**
+- [x] **`tools/estate-probes/run.mjs` → platform cron + `/api/health`** — ✅
+      **BUILT AND DEPLOYED 2026-09-05** (`051dd77`). `estate-auth`,
+      `19 * * * *`, hourly. One list in `lib/suite.mjs` that both the CLI and
+      the cron import; CLI re-measured after the refactor at **145 passed, 0
+      failed**. Facts: `tools/estate-probes/README.md`. ⏳ **The `/status` LINE
+      is NOT built — see the box below.**
 - [ ] `check-cover-health.mjs` → library cron
 - [ ] `audit-series-aggregates.mjs` → library cron ("the standing alarm" has no
       clock)
+
+### ☐ 🔴 SHADOW GATE — `R2_PRUNE_MODE` stays `"shadow"` until this is measured
+
+> **Flip to `enforce` only after FIVE shadow runs whose would-delete set matches
+> `scripts/prune-r2-backups.mjs --dry-run` KEY FOR KEY, at least one of them
+> non-empty.**
+
+⚠️ **The "at least one non-empty" half is the falsifiable one and is the easy
+half to skip.** Five agreements on "delete nothing" is indistinguishable from an
+instrument that never ran — the `0 of 0 — unmeasured, not clean` verdict the
+audiobook auth soak reached, and the same second condition the index Worker's
+`BILLING_POLICY` block demands. CI prunes the bucket every morning, so a
+non-empty comparison has to be **arranged**: take it between **09:12 and 09:15
+UTC**, after the night's write and before CI's own retention job, or on any
+morning CI failed.
+
+Both exact commands, and the `wrangler tail` filter that reads the cron's own
+shadow log, are in
+[`access/backup-restore.md` §3.1b](access/backup-restore.md). ⚠️ **Never run
+the script without `--dry-run` while gathering evidence** — the comparison only
+means something if nothing was deleted between the two readings. The flip is
+its OWN deploy, never a side effect of another; the backout is the same one
+line.
+
+**Nothing from the two ticked boxes above moves to `DONE.md` until enforce is
+live and measured.**
+
+### ☐ The apex `/status` line for the probe run — deferred 2026-09-05, deliberately
+
+`GET https://auth.heygabi.ai/api/health` already carries
+`detail.estateProbes`; what is missing is the row that renders it, one line:
+`estate probes: 145/145 green · 17:00`.
+
+⚠️ **NOT BUILT BECAUSE `sites/heygabi-home/` WAS OPEN IN ANOTHER AGENT'S
+WORKING TREE** at the time (W6-APEX was rewriting `status/status.js`'s source
+order; `git status` showed six of its files modified). The estate's rule is that
+you never touch another agent's uncommitted files, and `status.js` is exactly
+the file both changes want.
+
+**What is needed, for whoever picks it up.** `status.js` already fetches
+`${AUTH_ORIGIN}/api/health` into `authHealth` in `refreshAll()`'s
+`Promise.all` — **no new fetch**. It needs one `<div class="row">` in
+`status/index.html` and one `renderWorkerHealthRow`-shaped call reading
+`authHealth.detail.estateProbes`. The three states the row must word
+distinctly, all of which the field already distinguishes:
+
+| Field | Row must say |
+|---|---|
+| `null` | *"no probe run has been recorded"* — ⚠️ **never "0 of 145"**; the Worker is healthy |
+| `truncated: true` | *"N of 145 — the run ran out of time"* — ⚠️ **never green**; the rest were not asked |
+| `error` non-null | *"the probe runner itself failed"* — a different fix from failing probes |
+| `failed > 0` | red, naming `failures[0].area:id` — this is the suite WORKING |
+
+⚠️ **And it is ONE row on the existing page, never a second status surface** —
+the inventory's own §8 refuses that, and *one fact, one home applies to
+SURFACES too*.
 
 ### Two findings that need the owner, not a build
 
