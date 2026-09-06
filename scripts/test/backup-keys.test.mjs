@@ -11,7 +11,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generationOf, groupByGeneration } from '../lib/backup-keys.mjs';
+import { generationOf, groupByGeneration, planRetention } from '../lib/backup-keys.mjs';
 
 test('generationOf reads the stamp off every key shape the estate writes', () => {
   assert.equal(generationOf('d1/estate_auth/20260818T072356Z.sql'), '20260818T072356Z');
@@ -94,4 +94,92 @@ test('⚠️ THE DATA-LOSS CASE: keeping 8 keys would delete real backups; 8 gen
 
 test('an empty prefix groups to nothing rather than throwing', () => {
   assert.deepEqual(groupByGeneration([]), []);
+});
+
+// ---------------------------------------------------------------------------
+// planRetention — THE decision, shared by scripts/prune-r2-backups.mjs and
+// apps/auth-worker/src/r2-prune.ts (2026-09-05). These tests are the reason a
+// second caller was allowed to exist at all: the rule has one implementation,
+// so it has one set of tests, and a change that would delete a backup fails
+// here rather than in the bucket.
+// ---------------------------------------------------------------------------
+
+const nights = (prefix, stamps) => stamps.map((s) => ({ key: `${prefix}/${s}.tar.gz` }));
+
+test('planRetention keeps the newest N generations and drops the rest, newest first', () => {
+  const objects = nights('d1/estate_auth', [
+    '20260901T090000Z',
+    '20260902T090000Z',
+    '20260903T090000Z',
+    '20260904T090000Z',
+  ]);
+  const plan = planRetention(objects, 2);
+
+  assert.equal(plan.generations, 4);
+  assert.equal(plan.objects, 4);
+  assert.deepEqual(plan.keep.map((g) => g.stamp), ['20260904T090000Z', '20260903T090000Z']);
+  assert.deepEqual(plan.drop.map((g) => g.stamp), ['20260902T090000Z', '20260901T090000Z']);
+  assert.deepEqual(plan.dropKeys, [
+    'd1/estate_auth/20260902T090000Z.tar.gz',
+    'd1/estate_auth/20260901T090000Z.tar.gz',
+  ]);
+});
+
+test('planRetention deletes NOTHING when the prefix is at or under depth', () => {
+  const atDepth = planRetention(nights('d1/estate_auth', ['20260901T090000Z', '20260902T090000Z']), 2);
+  assert.deepEqual(atDepth.dropKeys, []);
+  assert.equal(atDepth.keep.length, 2);
+
+  const under = planRetention(nights('d1/estate_auth', ['20260901T090000Z']), 8);
+  assert.deepEqual(under.dropKeys, []);
+  assert.equal(under.keep.length, 1);
+});
+
+test('planRetention on an empty prefix plans nothing — a zero-object store is not a deletion', () => {
+  const plan = planRetention([], 8);
+  assert.deepEqual(plan.dropKeys, []);
+  assert.deepEqual(plan.keep, []);
+  assert.equal(plan.generations, 0);
+  assert.equal(plan.objects, 0);
+});
+
+test('⚠️ planRetention drops a split generation WHOLE — every part or none', () => {
+  const parts = ['aa', 'ab', 'ac'].map((p) => ({
+    key: `r2/audiobook-covers/20260810T090000Z.tar.gz.part-${p}`,
+  }));
+  const objects = [
+    ...parts,
+    ...nights('r2/audiobook-covers', ['20260811T090000Z', '20260812T090000Z']),
+  ];
+  const plan = planRetention(objects, 2);
+
+  assert.equal(plan.generations, 3, 'three nights, one of them split into three objects');
+  assert.equal(plan.objects, 5);
+  assert.equal(plan.drop.length, 1);
+  assert.equal(plan.drop[0].stamp, '20260810T090000Z');
+  // All three parts, in order — a half-deleted generation cannot be
+  // reassembled and must never exist.
+  assert.deepEqual(plan.dropKeys, [
+    'r2/audiobook-covers/20260810T090000Z.tar.gz.part-aa',
+    'r2/audiobook-covers/20260810T090000Z.tar.gz.part-ab',
+    'r2/audiobook-covers/20260810T090000Z.tar.gz.part-ac',
+  ]);
+});
+
+test('⚠️ planRetention keeps a split generation WHOLE when it is the newest', () => {
+  const parts = ['aa', 'ab'].map((p) => ({
+    key: `r2/audiobook-covers/20260818T073345Z.tar.gz.part-${p}`,
+  }));
+  const plan = planRetention([...parts, ...nights('r2/audiobook-covers', ['20260817T090000Z'])], 1);
+  assert.equal(plan.keep.length, 1);
+  assert.equal(plan.keep[0].objects.length, 2, 'both parts survive together');
+  assert.deepEqual(plan.dropKeys, ['r2/audiobook-covers/20260817T090000Z.tar.gz']);
+});
+
+test('planRetention refuses a keep of 0 or a non-integer — never "keep nothing" by accident', () => {
+  const objects = nights('d1/estate_auth', ['20260901T090000Z']);
+  assert.throws(() => planRetention(objects, 0), /positive integer/);
+  assert.throws(() => planRetention(objects, -1), /positive integer/);
+  assert.throws(() => planRetention(objects, 2.5), /positive integer/);
+  assert.throws(() => planRetention(objects, Number.NaN), /positive integer/);
 });

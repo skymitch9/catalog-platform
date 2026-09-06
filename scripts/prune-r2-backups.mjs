@@ -29,6 +29,28 @@
  * objects (nothing to delete, but still logged so a silent zero-object
  * prefix is visible, not silently "nothing happened").
  *
+ * `--dry-run` lists what WOULD be deleted and deletes nothing. It prints one
+ * `would-delete: <key>` line per object and a final `DRY RUN` banner, and it
+ * still exercises every listing call, so a permission problem surfaces here
+ * rather than on the night it matters.
+ *
+ * ## ⚠️ THIS SCRIPT IS NOT RETIRED AND MUST NOT BE — it is the recovery path
+ *
+ * From 2026-09-05 the same retention decision also runs as a Worker cron
+ * (`apps/auth-worker/src/r2-prune.ts`, daily 10:41 UTC). That does NOT make
+ * this file redundant, and `docs/access/RECOVERY.md`'s posture is why: recovery
+ * runs when the platform is down, and a bucket-hygiene tool that needs the
+ * estate's own Worker to be healthy is no use on the day the estate is not.
+ * This script needs nothing but Node, a token and the public Cloudflare REST
+ * API. It stays.
+ *
+ * ⚠️ THE DECISION IS SHARED, THE TRANSPORT IS NOT. `planRetention()` in
+ * `lib/backup-keys.mjs` is the ONE implementation of "which generations go";
+ * this file reaches R2 over the REST API with a Bearer token, the Worker
+ * reaches it over its `ESTATE_BACKUPS` binding. Two transports, one rule —
+ * which is exactly what makes `--dry-run` here comparable to `dryRun=1` there,
+ * and that comparison IS the shadow gate (docs/access/backup-restore.md §3.1).
+ *
  * ## ⚠️ The prefix list lives in backup.yml, and drift is now mechanical
  *
  * This script takes the prefixes as ARGUMENTS; the authoritative list is the
@@ -50,7 +72,7 @@
  * deletion is expected on day nine.
  */
 
-import { groupByGeneration } from './lib/backup-keys.mjs';
+import { planRetention } from './lib/backup-keys.mjs';
 
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -58,7 +80,10 @@ const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const args = process.argv.slice(2);
 const keepIdx = args.indexOf('--keep');
 const KEEP = keepIdx >= 0 ? Number(args[keepIdx + 1]) : 8;
-const positional = args.filter((a, i) => a !== '--keep' && i !== keepIdx + 1);
+const DRY_RUN = args.includes('--dry-run');
+const positional = args.filter(
+  (a, i) => a !== '--keep' && a !== '--dry-run' && i !== keepIdx + 1,
+);
 const [bucket, ...prefixes] = positional;
 
 if (!API_TOKEN) {
@@ -70,7 +95,7 @@ if (!ACCOUNT_ID) {
   process.exit(1);
 }
 if (!bucket || prefixes.length === 0) {
-  console.error('Usage: node scripts/prune-r2-backups.mjs <bucket> <kind/store> [<kind/store> ...] [--keep N]');
+  console.error('Usage: node scripts/prune-r2-backups.mjs <bucket> <kind/store> [<kind/store> ...] [--keep N] [--dry-run]');
   process.exit(1);
 }
 if (!Number.isInteger(KEEP) || KEEP < 1) {
@@ -114,39 +139,46 @@ async function deleteObject(bucket, key) {
   }
 }
 
+if (DRY_RUN) {
+  console.log('DRY RUN — listing only. Nothing will be deleted.\n');
+}
+
 let totalDeleted = 0;
 for (const prefix of prefixes) {
   const objects = await listAllObjects(bucket, `${prefix}/`);
-  // ⚠️ GENERATIONS, not keys. An oversized bucket dump is split into
-  // `<STAMP>.tar.gz.part-aa`, `.part-ab`, … so one generation can be several
-  // objects — counting keys would make 8 "generations" into one night's parts
-  // and delete every real backup behind it. `groupByGeneration` returns newest
-  // first and keeps each generation's parts together, so a whole generation is
-  // always kept or always deleted; a half-deleted generation cannot be
-  // reassembled and must never exist.
-  const generations = groupByGeneration(objects);
-  const keep = generations.slice(0, KEEP);
-  const drop = generations.slice(KEEP);
+  // The decision — and the ONLY place it is made. See planRetention()'s header
+  // in lib/backup-keys.mjs for why it is shared with the Worker cron rather
+  // than written twice, and why it counts GENERATIONS and never keys.
+  const plan = planRetention(objects, KEEP);
 
   console.log(
-    `\n=== ${prefix} — ${generations.length} generation(s) / ${objects.length} object(s), ` +
-      `keeping ${keep.length}, deleting ${drop.length} ===`,
+    `\n=== ${prefix} — ${plan.generations} generation(s) / ${plan.objects} object(s), ` +
+      `keeping ${plan.keep.length}, ${DRY_RUN ? 'would delete' : 'deleting'} ${plan.drop.length} ===`,
   );
-  for (const g of keep) {
+  for (const g of plan.keep) {
     const parts = g.objects.length > 1 ? ` (${g.objects.length} parts)` : '';
     console.log(`  keep:   ${g.stamp}${parts}`);
     for (const o of g.objects) console.log(`            ${o.key}`);
   }
-  for (const g of drop) {
-    for (const o of g.objects) {
-      await deleteObject(bucket, o.key);
-      console.log(`  delete: ${o.key}`);
-      totalDeleted += 1;
+  for (const key of plan.dropKeys) {
+    if (DRY_RUN) {
+      console.log(`  would-delete: ${key}`);
+      continue;
     }
+    await deleteObject(bucket, key);
+    console.log(`  delete: ${key}`);
+    totalDeleted += 1;
   }
+  if (DRY_RUN) totalDeleted += plan.dropKeys.length;
 }
 
 console.log(
-  `\nDone. Deleted ${totalDeleted} object(s) total across ${prefixes.length} prefix(es), ` +
-    `keeping up to ${KEEP} GENERATION(s) each.`,
+  `\nDone. ${DRY_RUN ? 'WOULD HAVE deleted' : 'Deleted'} ${totalDeleted} object(s) total across ` +
+    `${prefixes.length} prefix(es), keeping up to ${KEEP} GENERATION(s) each.`,
 );
+if (DRY_RUN) {
+  // ⚠️ Said again at the bottom on purpose: this output is read by whoever is
+  // comparing it against the Worker's shadow log, and a scrolled-off banner at
+  // the top is how a dry run gets mistaken for a real one (or the reverse).
+  console.log('DRY RUN — nothing above was deleted.');
+}

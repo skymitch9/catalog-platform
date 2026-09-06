@@ -74,6 +74,61 @@ export function groupByGeneration(objects) {
 }
 
 /**
+ * THE RETENTION DECISION ITSELF — "given this listing, which generations stay
+ * and which go?" — and the ONE implementation of it in the estate.
+ *
+ * ⚠️ WHY IT IS ITS OWN FUNCTION, in a file both a Node script and a Worker
+ * import. Until 2026-09-05 the decision lived inline in
+ * `scripts/prune-r2-backups.mjs` (three lines: group, `slice(0, KEEP)`,
+ * `slice(KEEP)`) and there was exactly one caller, so a function bought
+ * nothing. The retention cron in `apps/auth-worker/src/r2-prune.ts` is the
+ * second caller, and the estate's standing rule about second callers is
+ * unambiguous — `docs/info/scripts-inventory-2026-09-05.md` §6: *"A route and
+ * its script share ONE implementation in `packages/core`, or the conversion has
+ * made the estate worse"*, written from three wrong-game matches the games
+ * catalog shipped when a similarity function was copied instead of shared.
+ * A retention rule that drifts does not mismatch a game; it deletes a backup.
+ *
+ * ⚠️ PURE, AND IT MUST STAY PURE: no network, no `fetch`, no bucket, no
+ * `process`, no clock. It takes a listing and returns a plan. That is what lets
+ * the same function run under `node --test` (`scripts/test/backup-keys.test.mjs`)
+ * and inside a Worker isolate with no adapter between them, and it is what makes
+ * the shadow gate meaningful — the script's `--dry-run` and the Worker's
+ * `dryRun=1` are the SAME arithmetic over the same listing, so a divergence can
+ * only be the listing, never the rule.
+ *
+ * @param {{key: string}[]} objects every object under one `<kind>/<store>/` prefix
+ * @param {number} keep how many GENERATIONS to keep (never objects — see above)
+ * @returns {{keep: {stamp: string, objects: {key: string}[]}[],
+ *            drop: {stamp: string, objects: {key: string}[]}[],
+ *            dropKeys: string[], generations: number, objects: number}}
+ */
+export function planRetention(objects, keep) {
+  if (!Number.isInteger(keep) || keep < 1) {
+    throw new Error(`planRetention: keep must be a positive integer, got ${keep}`);
+  }
+  // ⚠️ GENERATIONS, not keys. An oversized bucket dump is split into
+  // `<STAMP>.tar.gz.part-aa`, `.part-ab`, … so one generation can be several
+  // objects — counting keys would make 8 "generations" into one night's parts
+  // and delete every real backup behind it. `groupByGeneration` returns newest
+  // first and keeps each generation's parts together, so a whole generation is
+  // always kept or always deleted; a half-deleted generation cannot be
+  // reassembled and must never exist.
+  const generations = groupByGeneration(objects);
+  const kept = generations.slice(0, keep);
+  const drop = generations.slice(keep);
+  return {
+    keep: kept,
+    drop,
+    // Flattened, in the order they would be deleted — this array IS what the
+    // shadow gate compares between the script and the Worker.
+    dropKeys: drop.flatMap((g) => g.objects.map((o) => o.key)),
+    generations: generations.length,
+    objects: objects.length,
+  };
+}
+
+/**
  * The `<kind>/<store>` prefixes the backup system actually covers, read out of
  * `.github/workflows/backup.yml`'s retention invocation.
  *
