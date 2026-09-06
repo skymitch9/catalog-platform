@@ -21,6 +21,13 @@ name: Deploy (manual)
 # Auth: the CLOUDFLARE_API_TOKEN secret must carry Workers + D1 scope AND
 # Cloudflare Pages: Edit (for heygabi-home) — the plain 'Edit Cloudflare
 # Workers' template does not include Pages. Guards below fail early if absent.
+#
+# ⚠️ TEST GATE, added 2026-09-05 — every deploy job below `needs: tests`.
+# Until then this workflow deployed the auth Worker, the index Worker and the
+# live front door with NO test run at all, while library_catalog and
+# Board_Game_Catalog both gate their CI deploys through `predeploy` → npm test
+# (docs/info/test-inventory-2026-09-05.md §5.1, the survey's highest-value
+# finding). Details on the `tests` job itself.
 
 on:
   workflow_dispatch:
@@ -43,7 +50,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── THE GATE ───────────────────────────────────────────────────────────────
+  # Runs the ROOT suite — `npm test` = `test:scripts` (node --test over
+  # scripts/test) then `npm test --workspaces --if-present` (every app and
+  # package). Measured 2026-09-05: **~39 s for 3,076 cases**, of which 27.3 s
+  # is scripts/test alone, because several of those files spawn the real
+  # scripts as child processes rather than importing them.
+  #
+  # ⚠️ The WHOLE suite, not a per-target subset. The three targets below share
+  # `packages/` and `scripts/`, so a subset gate is exactly how a shared change
+  # ships untested — and at 39 s there is no cost argument for splitting it
+  # (the survey's §3: nothing in this estate is gated on a slow suite).
+  #
+  # No new secrets and no new permissions: the suite is hermetic — no
+  # Cloudflare token, no D1, no network. `apps/discord-worker`'s `pretest`
+  # (sync-gabi-prompt --check) SKIPS loudly with exit 0 when the sibling
+  # library_catalog checkout is absent, which is the CI case, so this workflow
+  # deliberately does NOT check out a second repo the way library's does.
+  # ⚠️ If a test here ever needs a credential, that is the signal it belongs in
+  # tools/estate-probes (which runs against live hosts, by hand), not in a
+  # deploy gate.
+  #
+  # ⚠️ Known trade-off, accepted: the per-job CLOUDFLARE_API_TOKEN guards below
+  # now fire ~40 s later than they used to, because their jobs wait on this
+  # one. A missing token is still reported with the same worded instruction —
+  # it is discovered after the suite instead of before it.
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          # Same version the deploy jobs use; engines says >=20, 22 is LTS.
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run the full suite (root npm test)
+        run: npm test
+      - name: Summary
+        run: echo "::notice::Suite green at ${GITHUB_SHA} — the deploy jobs may proceed."
+
   index-worker:
+    needs: tests
     if: inputs.target == 'index-worker' || inputs.target == 'all'
     runs-on: ubuntu-latest
     env:
@@ -74,6 +123,7 @@ jobs:
         run: echo "::notice::index-worker deployed at ${GITHUB_SHA} → index.heygabi.ai (live)."
 
   auth-worker:
+    needs: tests
     if: inputs.target == 'auth-worker' || inputs.target == 'all'
     runs-on: ubuntu-latest
     env:
@@ -102,6 +152,7 @@ jobs:
         run: echo "::notice::auth-worker deployed at ${GITHUB_SHA} → auth.heygabi.ai (live)."
 
   heygabi-home:
+    needs: tests
     if: inputs.target == 'heygabi-home' || inputs.target == 'all'
     runs-on: ubuntu-latest
     env:
