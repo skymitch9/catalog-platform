@@ -1,0 +1,60 @@
+name: Tests
+
+# ⚠️ THE ONE DEFINITION OF THE TEST GATE. `deploy.yml`'s `tests` job does not
+# repeat these steps — it CALLS this workflow (`uses: ./.github/workflows/tests.yml`,
+# possible because of the `workflow_call:` trigger below). Edit the suite step
+# here and both the push/PR lane and the deploy gate move together; there is
+# deliberately no second copy to drift.
+#
+# Why this file exists (added 2026-09-05): `deploy.yml` is
+# **manual-dispatch-only** by the owner's decision (docs/access/ci-deploy.md §1
+# — do NOT add push triggers or schedules there), so before this workflow there
+# was no way to get CI feedback on this repo without shipping a live deploy, and
+# the test gate itself could never be exercised (ci-deploy.md §4). This workflow
+# is the non-deploying twin: same steps, no secrets, no Cloudflare, nothing that
+# can reach a live host.
+#
+# ⚠️ NO SECRETS AND NO EXTRA PERMISSIONS BELONG HERE. The suite is hermetic —
+# no Cloudflare token, no D1, no network. `apps/discord-worker`'s `pretest`
+# (sync-gabi-prompt --check) SKIPS loudly with exit 0 when the sibling
+# `library_catalog` checkout is absent, which is the CI case, so this workflow
+# deliberately does NOT check out a second repo. If a test here ever needs a
+# credential, that is the signal it belongs in `tools/estate-probes` (run by
+# hand against live hosts), not in a test workflow.
+#
+# Expect KI-1's `Node.js 20 is deprecated … actions/setup-node@v4` annotation on
+# green runs (docs/KNOWN_ISSUES.md) — it is the action's own runtime, not ours,
+# and a run can carry it and still be entirely green.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Lets deploy.yml reuse this exact job as its gate instead of duplicating it.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          # Same version the deploy jobs use; engines says >=20, 22 is LTS.
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # The ROOT suite: `test:scripts` (node --test over scripts/test) then
+      # `npm test --workspaces --if-present` (every app and package).
+      # ⚠️ The WHOLE suite, never a per-target subset — the deploy targets share
+      # `packages/` and `scripts/`, and a subset gate is exactly how a shared
+      # change ships untested.
+      - name: Run the full suite (root npm test)
+        run: npm test
+      - name: Summary
+        run: echo "::notice::Suite green at ${GITHUB_SHA} — the deploy jobs may proceed."
