@@ -70,7 +70,18 @@
 >    at `de8008b` was 73 s / 51 s on the cold npm cache. Both carried KI-1's
 >    Node-20 `setup-node` annotation and were green anyway, exactly as
 >    `ci-deploy.md` §4 predicted);
->    (b) board: route tests for its 16 route files, `admin.ts`/`users.ts` first — W9-BOARD-ROUTES;
+>    (b) ☑ board: route tests for its 16 route files, `admin.ts`/`users.ts` first — W9-BOARD-ROUTES
+>    (Board_Game_Catalog `231d1da`…`775881f`, six commits; **16 files / 387
+>    cases, suite 348 → 735, 0 fail, 3 `.todo`**, re-run by the conductor
+>    2026-09-05 22:41. The library's harness reused, no new dependency.
+>    🔴 **Found two real bugs, fixed neither, filed both** in the board's
+>    `KNOWN_ISSUES.md`: **KI-7 — an `admin` can demote the LAST `owner`**
+>    (the guard on both role-write routes fires only on self-edits; the
+>    library fixed the identical bug in 2026-08 by moving the guard into
+>    `setUserRole`, the board never took it) — conductor's call: PORT IT,
+>    agent W9-KI7 dispatched 22:44; and KI-6, the bare `{"error":"unauthenticated"}`
+>    401 (estate-wide shape — the library's `auth.ts` has the same line). Also
+>    `e2160d2` here: `test-inventory-2026-09-05.md` §5.2 closed);
 >    (c) one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION;
 >    (d) ☑ `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops
 >    skipping it — W9-PLATFORM-CI (`a6f0324`; the key **plus 15 cases**.
