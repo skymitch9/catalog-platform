@@ -42,6 +42,9 @@ import {
   PERSONA_ADMIN_MSG,
   PERSONA_ROSTER_MAX,
   PERSONA_VISIBILITY_MSG,
+  GABI_SLOTS,
+  PERSONALITY_POOL_VERSION,
+  PERSONALITY_POOL_LOCKED_BY,
   TROPES,
   TROPE_NEIGHBOURS,
   TROPE_VOICES,
@@ -51,6 +54,7 @@ import {
 } from '../src/personality.js';
 import { BOOKS_MSG } from '../src/book-knowledge.js';
 import { MEMORY_MSG } from '../src/memory.js';
+import { app } from '../src/index.js';
 
 function repoFile(relative: string): string {
   return readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url).href), 'utf8');
@@ -72,6 +76,206 @@ describe('the roster is the ELEVEN the owner approved', () => {
     assert.equal(isTrope('flirty'), true);
     assert.equal(isTrope('sultry'), false);
     assert.equal(isTrope(7), false);
+  });
+});
+
+// ── 1a. ⚠️ THE SHARED POOL MANIFEST ────────────────────────────────────────
+
+/**
+ * ⚠️ **`src/personality-pool.json` IS THE ESTATE'S CANONICAL ROSTER**, and the
+ * cookout bot (Black Bloc, a separate private repo) carries a synced copy of it.
+ * Design: `black_bot_baf/docs/info/personality-pool-design.md` §4, §5.1.
+ *
+ * ⚠️ **These tests exist to hold TWO things at once, and both matter:**
+ *
+ *  1. the code and the manifest AGREE — that is what makes the manifest a
+ *     description of the running bot rather than a wish about it; and
+ *  2. ⚠️ **what is running is what was running before the manifest existed.**
+ *     Every derived string, every edge and both drift numbers are pinned below as
+ *     **LITERALS**, exactly the way the intensity dial pinned the pre-dial system
+ *     prompt. A checksum would say something moved and nothing about what; these
+ *     literals are the values somebody would revert to. So a manifest edit that
+ *     would change GABI's live wording goes RED here rather than shipping quietly
+ *     — the manifest DESCRIBES what is live, it does not get to change it.
+ */
+describe('⚠️ the shared personality pool manifest describes what is LIVE', () => {
+  const manifest = JSON.parse(repoFile('src/personality-pool.json')) as {
+    version: number;
+    locked_by: string;
+    drift: { every: number; chance: number };
+    tropes: { name: string; label: string; neighbours: string[] }[];
+    clauses: Record<string, string>;
+    slots: string[];
+  };
+
+  it('the TROPES tuple equals the manifest names, IN ORDER', () => {
+    // ⚠️ In order, not as a set: the tuple is the type-level roster the compiler
+    // checks TROPE_VOICES against, and pickTrope walks it index by index.
+    assert.deepEqual(
+      [...TROPES],
+      manifest.tropes.map((t) => t.name),
+    );
+  });
+
+  it('every manifest trope has a voice, and every voice has a manifest trope', () => {
+    assert.deepEqual(
+      Object.keys(TROPE_VOICES).sort(),
+      manifest.tropes.map((t) => t.name).sort(),
+    );
+  });
+
+  it('the LABELS agree — the manifest carries them, the voices restate them', () => {
+    // ⚠️ TROPE_VOICES keeps its own label field (it is her skin, hand-written and
+    // typed), so this is the assertion that keeps the two spellings equal.
+    for (const t of manifest.tropes) {
+      assert.equal(TROPE_VOICES[t.name as Trope]?.label, t.label, `${t.name}'s label drifted`);
+    }
+  });
+
+  it('TROPE_NEIGHBOURS equals the manifest, per trope, in order — and is symmetric', () => {
+    for (const t of manifest.tropes) {
+      assert.deepEqual(
+        [...(TROPE_NEIGHBOURS[t.name as Trope] ?? [])],
+        t.neighbours,
+        `${t.name}'s wings do not match the manifest`,
+      );
+      for (const n of t.neighbours) {
+        assert.ok(
+          manifest.tropes.find((o) => o.name === n)?.neighbours.includes(t.name),
+          `the manifest's ${t.name}→${n} edge is one-way`,
+        );
+      }
+    }
+  });
+
+  it('⚠️ the WHOLE GRAPH, pinned as a literal — the manifest may not quietly re-wire her', () => {
+    assert.deepEqual(
+      Object.fromEntries(manifest.tropes.map((t) => [t.name, t.neighbours])),
+      {
+        peppy: ['dramatic', 'mischievous'],
+        dramatic: ['mischievous', 'peppy'],
+        mischievous: ['flirty', 'dramatic', 'peppy', 'tsundere'],
+        flirty: ['warm', 'mischievous'],
+        warm: ['cozy', 'flirty'],
+        cozy: ['shy', 'warm'],
+        shy: ['cozy'],
+        scholar: ['noir', 'deadpan'],
+        noir: ['deadpan', 'scholar'],
+        deadpan: ['tsundere', 'noir', 'scholar'],
+        tsundere: ['mischievous', 'deadpan'],
+      },
+      'the wing graph moved — this is the owner-approved shape, not a preference',
+    );
+  });
+
+  it('the drift constants come from the manifest, and are still 4 and 0.25', () => {
+    assert.equal(DRIFT_EVERY_EXCHANGES, manifest.drift.every);
+    assert.equal(DRIFT_CHANCE, manifest.drift.chance);
+    // ⚠️ Pinned. Reasoned rather than tuned (design §10) — a manifest edit here
+    // changes how often she moves for BOTH bots.
+    assert.equal(DRIFT_EVERY_EXCHANGES, 4);
+    assert.equal(DRIFT_CHANCE, 0.25);
+  });
+
+  it('GABI_SLOTS fills EXACTLY the slots the manifest declares — no gap, no extra', () => {
+    // ⚠️ A slot the bot does not fill is a test failure, never an empty string
+    // silently left in a live prompt.
+    assert.deepEqual(Object.keys(GABI_SLOTS).sort(), [...manifest.slots].sort());
+    for (const slot of manifest.slots) {
+      assert.equal(typeof GABI_SLOTS[slot], 'string', `${slot} is unfilled`);
+    }
+  });
+
+  it('⚠️ no slot is left unreplaced in either rendered clause', () => {
+    assert.doesNotMatch(PERSONA_INVARIANT, /\{[a-z_]+\}/);
+    assert.doesNotMatch(PERSONA_REGISTER, /\{[a-z_]+\}/);
+  });
+
+  it('⚠️ the INVARIANT clause is BYTE-FOR-BYTE the one that shipped before the manifest', () => {
+    // ⚠️ The literal below is the constant `personality.ts` held on 2026-09-05,
+    // before the manifest replaced it. If this fails, GABI's live prompt changed.
+    assert.equal(
+      PERSONA_INVARIANT,
+      'This is VOICE ONLY. Facts, refusals, quotes, citations, spoiler limits and any sentence a tool ' +
+        'told you to say are unchanged — say them in full and do not soften, dramatise or reword them. ' +
+        'Colour the words AROUND them, never the sentences themselves.',
+    );
+    // …and it is genuinely the manifest's template, filled — not a copy that
+    // happens to match.
+    assert.equal(
+      PERSONA_INVARIANT,
+      (manifest.clauses.invariant ?? '').replace(
+        /\{(\w+)\}/g,
+        (_w, s: string) => GABI_SLOTS[s] as string,
+      ),
+    );
+  });
+
+  it('⚠️ the REGISTER clause is BYTE-FOR-BYTE the one that shipped before the manifest', () => {
+    assert.equal(
+      PERSONA_REGISTER,
+      'PG-13 is your CEILING, not your usual register. Start mild: this is a family server with a range ' +
+        'of ages, and somebody whose tone you have not read yet — or who is reserved — gets the gentle ' +
+        'end. Where somebody is clearly playing along, you may lean in and match their energy: a sharper ' +
+        'barb, a saltier line, a warmer wink. ⚠️ The wiggle only ever goes UP TO PG-13 and never past it — ' +
+        'nothing explicit, nothing crude about anybody, and if somebody pushes past that line you deflect ' +
+        'with grace, stay in character, and do not escalate.',
+    );
+    assert.equal(
+      PERSONA_REGISTER,
+      (manifest.clauses.register ?? '').replace(
+        /\{(\w+)\}/g,
+        (_w, s: string) => GABI_SLOTS[s] as string,
+      ),
+    );
+  });
+
+  it('the version is a whole number and the roster names its owner lock', () => {
+    assert.ok(Number.isInteger(PERSONALITY_POOL_VERSION) && PERSONALITY_POOL_VERSION >= 1);
+    assert.equal(PERSONALITY_POOL_VERSION, manifest.version);
+    assert.equal(PERSONALITY_POOL_LOCKED_BY, manifest.locked_by);
+    assert.match(PERSONALITY_POOL_LOCKED_BY, /owner/i);
+  });
+
+  it('⚠️ /api/health publishes the version AND the roster — the two fields the cookout bot READS', async () => {
+    // ⚠️ THESE TWO NAMES ARE A CROSS-REPO CONTRACT, not a local choice.
+    // `black_bot_baf/black_bloc/selftest.py` reads `gabi_personality_pool_version`
+    // and `gabi_personality_tropes` off this route on every boot to say out loud
+    // which of the two bots is ahead. Renaming either one here silently turns
+    // that check into "GABI does not say its pool version yet" — a PASS — and the
+    // drift this whole design exists to surface goes quiet again.
+    const res = await app.request('/api/health', {}, { DISCORD_PUBLIC_KEY: 'x' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as Record<string, unknown>;
+    assert.equal(body.gabi_personality_pool_version, manifest.version);
+    assert.deepEqual(
+      body.gabi_personality_tropes,
+      manifest.tropes.map((t) => t.name),
+      'the roster on the health route is not the manifest, in roster order',
+    );
+  });
+
+  it('⚠️ the manifest carries NO voice bodies — two bots, two worlds', () => {
+    // Design §6: the skeleton is shared, the skin is not. A voice body reaching
+    // the manifest would flatten both bots into one character with two names.
+    // Structural, not a word search: the invariant clause legitimately says
+    // "This is VOICE ONLY", so what is asserted is that no trope entry CARRIES a
+    // body, and that the manifest's own key set is the agreed one.
+    for (const t of manifest.tropes) {
+      assert.deepEqual(Object.keys(t).sort(), ['label', 'name', 'neighbours'], `${t.name} grew a field`);
+    }
+    assert.deepEqual(Object.keys(manifest).sort(), [
+      'clauses',
+      'drift',
+      'locked_by',
+      'slots',
+      'tropes',
+      'version',
+    ]);
+    // ⚠️ And nothing of HER world: the framing line ("still GABI, the estate's
+    // librarian") stays in code, because the cookout bot's is "still Black Bloc".
+    const raw = repoFile('src/personality-pool.json');
+    assert.doesNotMatch(raw, /GABI|librarian|estate/i, "GABI's world leaked into the shared manifest");
   });
 });
 

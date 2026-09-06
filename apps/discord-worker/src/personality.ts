@@ -30,6 +30,60 @@
  */
 
 import type { Env } from './env.js';
+import POOL from './personality-pool.json';
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE SHARED POOL MANIFEST — the estate's canonical roster/graph/drift
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **`personality-pool.json` IS THE CANONICAL COPY FOR THE WHOLE ESTATE**, and
+ * this Worker is where it lives. Black Bloc (the cookout bot, a separate private
+ * repo) carries a **synced copy** stamped `synced_from: catalog-platform@<commit>`
+ * and derives its own roster from it — so the two bots' rosters, wing graphs and
+ * drift constants can no longer drift apart in silence, which is the entire point
+ * of the file. Design: `black_bot_baf/docs/info/personality-pool-design.md`.
+ *
+ * ⚠️ **It DESCRIBES what is live; it does not change it.** Every string it
+ * produces here was byte-identical to the constant it replaced on 2026-09-05, and
+ * `test/personality.test.ts` pins each of them as a LITERAL so a manifest edit
+ * that would move GABI's live wording goes red rather than shipping.
+ *
+ * ⚠️ **Changing the roster, the graph, the drift numbers or either clause means
+ * bumping `version` here AND re-syncing Black Bloc** (`python
+ * scripts/sync_personality_pool.py` in that repo) — a version that reached one bot
+ * and not the other is half-shipped. `/api/health` reports the version so which
+ * side is ahead is one curl rather than a guess.
+ *
+ * ⚠️ **A JSON IMPORT, deliberately — no fetch, no KV, nothing on the boot path.**
+ * The estate already made this call for the core prompt (`gabi-personality-design.md`
+ * §11.4: a copied prompt naming its source, not a shared package), and a network
+ * read to move data that changes at owner-decision cadence would be the reverse.
+ */
+interface PoolTrope {
+  name: string;
+  label: string;
+  neighbours: readonly string[];
+}
+
+interface PersonalityPool {
+  version: number;
+  locked_by: string;
+  drift: { every: number; chance: number };
+  tropes: readonly PoolTrope[];
+  clauses: Record<string, string>;
+  slots: readonly string[];
+}
+
+const POOL_MANIFEST = POOL as PersonalityPool;
+
+/** ⚠️ Bumped by hand on ANY roster/graph/clause change. Reported on `/api/health`
+ *  as `gabi_personality_pool_version`, which is what Black Bloc's self-test reads
+ *  to say out loud which of the two bots is ahead. */
+export const PERSONALITY_POOL_VERSION = POOL_MANIFEST.version;
+
+/** Provenance of the roster as a whole — the owner reviewed and approved it. */
+export const PERSONALITY_POOL_LOCKED_BY = POOL_MANIFEST.locked_by;
 
 // ---------------------------------------------------------------------------
 // The posture
@@ -53,8 +107,18 @@ export function personalityOn(env: Pick<Env, 'GABI_PERSONALITY'>): boolean {
 // The roster — ELEVEN, locked by the owner 2026-08-18
 // ---------------------------------------------------------------------------
 
-/** ⚠️ The locked set. Adding one is an owner decision, not an edit: the roster
- *  was reviewed and approved as a whole, and `flirty` was his own addition. */
+/**
+ * ⚠️ The locked set. Adding one is an owner decision, not an edit: the roster
+ * was reviewed and approved as a whole, and `flirty` was his own addition.
+ *
+ * ⚠️ **KEPT AS AN `as const` TUPLE IN CODE ON PURPOSE, and NOT derived from the
+ * manifest — do not "simplify" it away.** `Trope` is `(typeof TROPES)[number]`, a
+ * literal union the compiler checks `TROPE_VOICES: Record<Trope, …>` and
+ * `PERSONA_ACK` against, so a trope added without a voice is a type error rather
+ * than a runtime hole. A JSON import is `string[]` and that exhaustiveness check
+ * would be lost. The sync is kept by a TEST instead: `test/personality.test.ts`
+ * asserts this tuple equals `personality-pool.json`'s names **in order**.
+ */
 export const TROPES = [
   'peppy',
   'dramatic',
@@ -76,6 +140,48 @@ export function isTrope(v: unknown): v is Trope {
 }
 
 /**
+ * ⚠️ **GABI'S HALF OF THE TWO SHARED CLAUSES — her nouns, in her world.**
+ *
+ * The manifest carries each clause ONCE, as a template with named slots, because
+ * the RULE is the same in both bots and only the nouns differ: her protected
+ * material is quotes and citations, the cookout's is that server's own notes; her
+ * caller is a Worker `tool`, the cookout's is a slash `command`. Sharing the rule
+ * and splitting the nouns is what keeps one sentence from acquiring two spellings.
+ *
+ * ⚠️ **`warn` exists so neither bot's LIVE wording had to move.** Her register
+ * clause carries an internal `⚠️ ` before *"The wiggle…"* and nothing in the
+ * cookout's prompts uses that marker; a slot is cheaper than editing a shipped
+ * prompt to make two strings agree.
+ *
+ * ⚠️ A slot the manifest asks for and this map does not fill is a **thrown error
+ * at module load**, never an empty string quietly left in a live prompt — and it
+ * can only ever be reached by editing the bundled JSON, so any test run catches it
+ * long before a deploy does. `test/personality.test.ts` asserts this map covers
+ * `slots` exactly.
+ */
+export const GABI_SLOTS: Record<string, string> = {
+  invariant_nouns: 'quotes, citations, spoiler limits',
+  tool_noun: 'tool',
+  audience: 'this is a family server with a range of ages,',
+  warn: '⚠️ ',
+};
+
+/** One shared template, filled with GABI's own nouns. */
+function clause(name: 'invariant' | 'register'): string {
+  const template = POOL_MANIFEST.clauses[name];
+  if (!template) {
+    throw new Error(`personality-pool.json carries no "${name}" clause, so the voice blocks cannot be built`);
+  }
+  return template.replace(/\{(\w+)\}/g, (_whole, slot: string) => {
+    const filled = GABI_SLOTS[slot];
+    if (filled === undefined) {
+      throw new Error(`personality-pool.json's "${name}" clause wants the slot "${slot}", which GABI_SLOTS does not fill`);
+    }
+    return filled;
+  });
+}
+
+/**
  * ⚠️ **THE INVARIANCE CLAUSE, ON EVERY SINGLE VOICE BLOCK.**
  *
  * It is repeated rather than stated once because the voice is what the model is
@@ -83,10 +189,7 @@ export function isTrope(v: unknown): v is Trope {
  * rule that loses to it. This sentence sits in the same breath as the character
  * note, every time.
  */
-const INVARIANT =
-  'This is VOICE ONLY. Facts, refusals, quotes, citations, spoiler limits and any sentence a tool ' +
-  'told you to say are unchanged — say them in full and do not soften, dramatise or reword them. ' +
-  'Colour the words AROUND them, never the sentences themselves.';
+const INVARIANT = clause('invariant');
 
 /**
  * ⚠️ **THE REGISTER CLAUSE — PG-13 IS A CEILING, NOT A SETTING.**
@@ -111,13 +214,7 @@ const INVARIANT =
  * property of how she talks to a person, not a property of one voice — a
  * saltier `noir` and a sharper `tsundere` are the same permission.
  */
-const REGISTER =
-  'PG-13 is your CEILING, not your usual register. Start mild: this is a family server with a range ' +
-  'of ages, and somebody whose tone you have not read yet — or who is reserved — gets the gentle ' +
-  'end. Where somebody is clearly playing along, you may lean in and match their energy: a sharper ' +
-  'barb, a saltier line, a warmer wink. ⚠️ The wiggle only ever goes UP TO PG-13 and never past it — ' +
-  'nothing explicit, nothing crude about anybody, and if somebody pushes past that line you deflect ' +
-  'with grace, stay in character, and do not escalate.';
+const REGISTER = clause('register');
 
 /** One trope: how she sounds, and where it must not go. */
 export interface TropeVoice {
@@ -251,24 +348,19 @@ export const TROPE_VOICES: Record<Trope, TropeVoice> = {
  * ends (`shy` and the dry wing) are five steps apart, so a conversation cannot
  * wander from timid to hard-boiled in an evening. Gradual means gradual.
  */
-export const TROPE_NEIGHBOURS: Record<Trope, readonly Trope[]> = {
-  // quiet wing
-  shy: ['cozy'],
-  cozy: ['shy', 'warm'],
-  warm: ['cozy', 'flirty'],
-  // the bridge the owner asked for
-  flirty: ['warm', 'mischievous'],
-  // loud wing
-  mischievous: ['flirty', 'dramatic', 'peppy', 'tsundere'],
-  dramatic: ['mischievous', 'peppy'],
-  peppy: ['dramatic', 'mischievous'],
-  // the bridge between the loud and dry wings
-  tsundere: ['mischievous', 'deadpan'],
-  // dry wing
-  deadpan: ['tsundere', 'noir', 'scholar'],
-  noir: ['deadpan', 'scholar'],
-  scholar: ['noir', 'deadpan'],
-};
+/**
+ * ⚠️ **DERIVED from `personality-pool.json`, not restated here** — the edges are
+ * the estate's, shared with the cookout bot, and a graph written down in two
+ * repos is a graph that will disagree with itself.
+ *
+ * ⚠️ **ORDER IS LOAD-BEARING, not cosmetic.** `advancePersona` indexes this array
+ * with a roll, so re-ordering one trope's neighbours re-weights nothing but does
+ * change which step a given seeded RNG produces — which is why the test pins the
+ * whole graph as a LITERAL as well as asserting it matches the manifest.
+ */
+export const TROPE_NEIGHBOURS: Record<Trope, readonly Trope[]> = Object.fromEntries(
+  POOL_MANIFEST.tropes.map((t) => [t.name, t.neighbours as readonly Trope[]]),
+) as Record<Trope, readonly Trope[]>;
 
 // ---------------------------------------------------------------------------
 // Selection and drift
@@ -276,9 +368,10 @@ export const TROPE_NEIGHBOURS: Record<Trope, readonly Trope[]> = {
 
 /** ⚠️ Every `N` exchanges, a chance to move ONE step. Reasoned, not tuned —
  *  design §10 says so — and intended to produce roughly one step in a long
- *  conversation. */
-export const DRIFT_EVERY_EXCHANGES = 4;
-export const DRIFT_CHANCE = 0.25;
+ *  conversation. ⚠️ **Both come from `personality-pool.json`**, so the cookout bot
+ *  drifts on the same numbers; the test pins the two values as literals. */
+export const DRIFT_EVERY_EXCHANGES = POOL_MANIFEST.drift.every;
+export const DRIFT_CHANCE = POOL_MANIFEST.drift.chance;
 
 /**
  * ⚠️ **WHO SET THE PIN.** Added 2026-08-18 with the devops set/clear verb.

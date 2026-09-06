@@ -119,7 +119,7 @@ import { GABI_GROQ_MODEL, groqMode } from './gabi-groq.js';
 import { groqInputBudget, GROQ_TPM_LIMIT } from './gabi-groq-tools.js';
 import { CHAT_TOOL_MAX_TOKENS } from './gabi-chat.js';
 import { ARCHIVE_RETENTION_DAYS, RECALL_SCAN_ROWS } from './archive.js';
-import { personalityOn, TROPES } from './personality.js';
+import { personalityOn, PERSONALITY_POOL_VERSION, TROPES } from './personality.js';
 import { edgeMode } from './gabi-prompt.js';
 import { shelfOn } from './shelf.js';
 import { PHYSICAL_SOURCE_INSTANCE, suggestOn } from './suggest.js';
@@ -523,6 +523,16 @@ app.get('/api/health', (c) =>
     // is deliberately NOT named anywhere a person would look, per the owner.
     gabi_personality_enabled: personalityOn(c.env),
     gabi_personality_tropes: TROPES,
+    // ⚠️ **THE SHARED POOL VERSION (2026-09-05) — read straight off the bundled
+    // `personality-pool.json`, which is the estate's CANONICAL roster/graph/drift
+    // manifest.** The cookout bot (Black Bloc, a separate repo) carries a synced
+    // copy and its self-test GETs this route on every boot to compare this number
+    // and the roster above with its own. That comparison is the whole reason the
+    // field exists: without it, the two bots' rosters drift apart in SILENCE, and
+    // nothing anywhere says so. A mismatch names which side is ahead; re-syncing
+    // is `python scripts/sync_personality_pool.py` in that repo.
+    // ⚠️ No fetch, no KV, nothing on the boot path — a JSON import and a number.
+    gabi_personality_pool_version: PERSONALITY_POOL_VERSION,
     // ⚠️ **THE INTENSITY DIAL (2026-09-01) — the POSTURE, not a boolean.**
     // Reported as the COERCED word rather than the raw var, exactly as
     // `gabi_groq` is, so what is READ is what is shown: a typo'd `GABI_EDGE`
