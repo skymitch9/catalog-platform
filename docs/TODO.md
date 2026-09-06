@@ -1799,10 +1799,13 @@ Remaining, unchanged:
      bearer and `CONSUMER_APPS` to accept one, which `test/dev-access.test.ts`
      guards against by name — ⚠️ **access-INCREASING, so the owner's to mint,
      not an agent's to assume.** The queue is built and the channel is named.
-   - ☐ **The owner's two steps, in this order:** `cd apps/auth-worker &&
-     npm run db:migrate` (applies `0019` remotely), then `npx wrangler deploy`.
-     Batched into the one estate-auth deploy manifest above — the section that
-     also carries RES's bare-401 fix and S1's sealed-key phase.
+   - ☑ **The two steps already happened — measured 2026-09-06 13:35 Phoenix**
+     when the owner asked "we need to run another db migration?": `wrangler d1
+     migrations list estate_auth --remote` → *No migrations to apply* (`0019`,
+     `0020`, `0021` all applied), and `deploys.log`'s last `estate-auth` line is
+     `d12d042` at 2026-09-06T02:19Z (W6-CRON-PLATFORM, migrate-before-deploy),
+     which contains `0019` and the `/landed` route; the only later auth-worker
+     commit (`f7b2e1f`) is test-only. Nothing for the owner to run here.
    - ☑ **A page draws a notice — CODE LANDED + DEPLOYED 2026-09-05 (agent
      `W3-NOTICES-UI`, `795f242`, heygabi-home deployment `ba7ddd03`).**
      ~~No page draws a notice yet.~~ `assets/apex-notices.js` +
