@@ -45,14 +45,20 @@ deliberate). The file itself names the fix: a `sync-gabi-prompt.mjs` mirroring
 **Trigger:** the 16:37 ask — *"I added battle mage farmer and it didn't
 associate the audiobook right away."*
 
-**Both docs are written (2026-09-05, DESIGN ONLY — nothing built):**
+**Both docs are written (2026-09-05).** ⚠️ This line read *"DESIGN ONLY —
+nothing built"* until 2026-09-05 21:50, when it was measured stale: the
+audiobook route is **built and deployed to both instances** (in shadow), and so
+are two of the ranked conversions below. Corrected in place rather than deleted
+— the premise is what a reader reasons from.
 
 - 📋 [`info/scripts-inventory-2026-09-05.md`](info/scripts-inventory-2026-09-05.md)
   — all four repos. **186 script files · 9 Windows scheduled tasks · 5 cron
   strings across 3 Workers.** Verdict: **7 ROUTE+CRON · 6 ROUTE-ON-DEMAND ·
   160 STAY-SCRIPT · 4 RETIRE.**
 - 📐 [`info/audiobook-association-route.md`](info/audiobook-association-route.md)
-  — the first build, designed end to end.
+  — the first build, designed end to end. ✅ **BUILT AND DEPLOYED to both
+  instances** (steps 1–14); its header and §9 are now the as-built, including
+  the **eight** places the design was wrong or silent when it met the code.
 
 **⚠️ The answer to the owner's question is NO, and the inventory says why:**
 only **13 of 186** should move. The estate's scripts are overwhelmingly *dated
@@ -69,32 +75,89 @@ whole time (11 rows, committed 2026-09-04 16:26) — the library had no way to a
 
 ### Build steps — the audiobook route (`library_catalog`, every change a PAIR)
 
-- [ ] **1–3 · Extract to `packages/core`** — `audiobook-csv.ts` (parser lifted
+> ✅ **ALL FOURTEEN ARE BUILT AND DEPLOYED TO BOTH INSTANCES** — steps 1–5 by
+> agent **W6-AUDIO-A** (2026-09-05), steps 6–14 by agent **W6-AUDIO-B**
+> (2026-09-06). Reconciled against the code, the commits and `deploys.log` on
+> 2026-09-05 21:50 Phoenix by W8-PREDEPLOY; the boxes below had been left
+> unticked after the work landed.
+>
+> **Deploy pair:** `235010f` main (`b547095d-4ec4-4cd6-b586-d40467f28e62`) +
+> `b1fb406` friend (`9b2b64d2-cffa-4a1d-abcb-7193694b1e31`), both
+> 2026-09-06T01:20Z, `library_catalog/docs/deploys.log`.
+> **As-built:** [`info/audiobook-association-route.md`](info/audiobook-association-route.md)
+> header + §9 (⚠️ it records **eight** places the design was wrong or silent when
+> it met the code). **Operating it:**
+> `library_catalog/docs/access/audiobook-sweep.md`.
+>
+> 🔴 **THE ITEM STAYS OPEN, and the reason is not bookkeeping.** It ships in
+> **SHADOW**: the cron and the on-add hook compute the whole plan and write
+> **nothing**, and STEP 11 of the audiobook pipeline is still doing all the
+> writing. **The owner's original complaint — "I added battle mage farmer and it
+> didn't associate the audiobook right away" — is therefore NOT closed.** Step 14's
+> *"move this item WHOLE to `DONE.md`"* is deliberately not done; it waits on the
+> enforce gate below. ⚠️ **Also unmeasured: no `audiobook_sweep_run` row exists on
+> either instance yet** — no cron tick observed, no on-add hook seen to fire, and
+> the admin route never called with a real bearer.
+
+- [x] **1–3 · Extract to `packages/core`** — `audiobook-csv.ts` (parser lifted
       verbatim from `scripts/lib/audiobooks.mjs`), `series-canon.ts`. ⚠️ The
       **matcher does NOT move** — `packages/core/src/matching.ts` is already
-      pure and already shared. Never copy it.
-- [ ] **4–5 · `planAudiobookSweep`** in `packages/core/src/audiobook-sweep.ts`.
+      pure and already shared. Never copy it. ✅ W6-AUDIO-A.
+- [x] **4–5 · `planAudiobookSweep`** in `packages/core/src/audiobook-sweep.ts`.
       ⚠️ **Returns DATA, never SQL** — the script renders it through `lit()`,
       the route binds it. 🔴 **Gate: the script's dry-run output must be
-      BYTE-IDENTICAL before and after.**
-- [ ] **6 · Migration 0470** — `audiobook_snapshot` + `audiobook_sweep_run`.
-      `db:migrate` **and** `db:migrate:friend`, before any deploy.
-- [ ] **7 · `packages/db/src/audiobook-holdings.ts`** — batch write + change_log
-      **transition** rows only (never one per upsert).
-- [ ] **8 · The run wrapper** with the **three guards**: zero rows = failure ·
-      **>3% row drop = `failed: drift`** · 🔴 the per-work path NEVER stales
-      anything.
-- [ ] **9–10 · Admin route + one `detail.audiobookSweep` key on
-      `/api/health`.** ⚠️ **No second status page** — one fact, one home.
-- [ ] **11 · Second cron `"23 */4 * * *"`** on **both** `[triggers]` blocks,
+      BYTE-IDENTICAL before and after.** ✅ **GATE PASSED on both instances**
+      (`8f38125`; write-up `c62b22a`, *"one planner, two callers"*).
+- [x] **6 · Migration 0470** — `audiobook_snapshot` + `audiobook_sweep_run`.
+      `db:migrate` **and** `db:migrate:friend`, before any deploy. ✅ `3d2d62e`;
+      applied to **both** instances before the deploy pair.
+- [x] **7 · `packages/db/src/audiobook-holdings.ts`** — batch write + change_log
+      **transition** rows only (never one per upsert). ✅ `9ba4beb` (*"ONE
+      rendering, not two"*).
+- [x] **8 · The run wrapper** with the ~~**three guards**~~ **four** — zero rows
+      = failure · **>3% row drop = `failed: drift`** · 🔴 the per-work path NEVER
+      stales anything. ✅ `a37153b`; the fourth guard is one of the eight design
+      corrections recorded in the design doc's §9.
+- [x] **9–10 · Admin route + one `detail.audiobookSweep` key on
+      `/api/health`.** ⚠️ **No second status page** — one fact, one home. ✅
+      `ce281a9` (the admin verbs, *"a refusal somebody can act on"*) + `42a0024`
+      (*"one key on /api/health, not a page"*).
+- [x] **11 · Second cron `"23 */4 * * *"`** on **both** `[triggers]` blocks,
       dispatched on `event.cron`. ⚠️ Same string both instances (a different
-      minute silently disables hers); not `:07` (the details sweep is there).
-- [ ] **12 · On-add hook** in `routes/catalog.ts` + `routes/gabi-delegated.ts`
+      minute silently disables hers); not `:07` (the details sweep is there). ✅
+      `b378a27`; measured 2026-09-05 in `apps/worker/wrangler.toml` — lines 128
+      **and** 502 both read `["7 * * * *", "23 */4 * * *", "47 9 * * *"]`.
+- [x] **12 · On-add hook** in `routes/catalog.ts` + `routes/gabi-delegated.ts`
       via `ctx.waitUntil`; `routes/ingest.ts` **defers and fires ONE** batched
-      call.
-- [ ] **13 · Ship `AUDIOBOOK_SWEEP_MODE = shadow`.** Enforce only on a week of
-      measured zero divergence.
-- [ ] **14 · Deploy pair + docs**, then move this item WHOLE to `DONE.md`.
+      call. ✅ `1d4a80e` (*"the trigger on the other side of the relationship"*).
+- [x] **13 · Ship `AUDIOBOOK_SWEEP_MODE = shadow`** ✅ `235010f`, on both
+      instances, with a test that refuses `enforce`. ⚠️ **Shipped is the whole of
+      it: the flip is the open half — see the gate box below.**
+- [x] **14 · Deploy pair + docs** ✅ `85082f2` (docs + deploy lines), pair landed
+      2026-09-06T01:20Z. ⚠️ **The rest of step 14 — *"then move this item WHOLE
+      to `DONE.md`"* — is NOT done and must not be**, per the box above.
+
+### ☐ 🔴 SHADOW GATE — `AUDIOBOOK_SWEEP_MODE` stays `"shadow"` until this is measured
+
+> **Flip to `enforce` only on a week of measured zero divergence** between the
+> shadow plan and what STEP 11 actually wrote. Until then the route is an
+> observer and the pipeline is still the writer.
+
+⚠️ **There is nothing to compare yet.** Measured 2026-09-06 (the sweep's own
+runbook): `audiobook_sweep_run` is **empty on both instances** — no cron tick
+observed, no on-add hook seen to fire. A week of "zero divergence" over zero runs
+is the same `0 of 0 — unmeasured, not clean` verdict the audiobook auth soak
+reached, and the same trap the `R2_PRUNE_MODE` box below spells out. **The first
+thing to measure is that a run row exists at all**, not that it agrees.
+
+⚠️ **It fails CLOSED** — unset, blank, `"on"`, `"true"` and any typo all resolve
+to `off`, the opposite of `BILLING_POLICY` two lines away in the same file and
+deliberately so: this switch's worst case is the stale sweep marking every
+holding in both catalogs stale at once. Commands, the four `/api/health`
+readings and the backout: `library_catalog/docs/access/audiobook-sweep.md`.
+
+**This item does not move to `DONE.md` until enforce is live and measured** —
+because until then the owner's 16:37 complaint is still true.
 
 ### Then, ranked (inventory §7)
 
@@ -112,9 +175,34 @@ whole time (11 rows, committed 2026-09-04 16:26) — the library had no way to a
       the cron import; CLI re-measured after the refactor at **145 passed, 0
       failed**. Facts: `tools/estate-probes/README.md`. ⏳ **The `/status` LINE
       is NOT built — see the box below.**
-- [ ] `check-cover-health.mjs` → library cron
-- [ ] `audit-series-aggregates.mjs` → library cron ("the standing alarm" has no
-      clock)
+- [x] **`check-cover-health.mjs` → library cron** — ✅ **BUILT AND DEPLOYED TO
+      BOTH 2026-09-06** (agent W6-CRON-LIBRARY). `library_catalog`,
+      `47 9 * * *`, daily; `/api/health` carries `detail.coverHealth`. 🔴 **The
+      cap is 250 URLs a night on a WRAPPING window** — a `LIMIT` would audit the
+      first 250 for ever and report itself clean — and `unreachable` is counted
+      apart from `broken`. ⚠️ **The script STAYS and is the more capable
+      instrument: it has no cap.** Commits `68d320c` (ONE implementation of both
+      audits' rules + migration 0480) · `c519a8c` (the script becomes a thin
+      caller) · `91405d5` (the third cron on BOTH blocks + two health keys) ·
+      `888ffbe` (docs) · `f855b45`/`0fa9ad6` (the first production run).
+      Deploy pair `888ffbe` main (`eadd16b6-143b-4a81-a492-9b4598ef5cac`) +
+      `80f1152` friend (`0408aa25-e757-4b07-b02c-34b25259b578`), 2026-09-06T02:00Z.
+      Facts: `library_catalog/docs/info/audit-routes.md`; runbook
+      `library_catalog/docs/access/audits.md`.
+- [x] **`audit-series-aggregates.mjs` → library cron** ("the standing alarm" had
+      no clock — for three weeks) — ✅ **BUILT AND DEPLOYED TO BOTH 2026-09-06**,
+      the **SAME** cron: one invocation, two audits. `/api/health` carries
+      `detail.seriesAggregates`. Same commits as the row above. 🔴 **Two things
+      the inventory had wrong, measured while building it:** it makes **no
+      network call at all** (which is why the two audits can share a cron — only
+      one spends subrequests), and the script had **no `--friend`**, so the
+      standing alarm had never once looked at padhard. Fixed in `681d681`;
+      padhard measured clean for the first time (309 series names, 4
+      multi-edition works, 0 flagged).
+      ⚠️ **NOT VERIFIED for either audit: no cron tick has been observed.** The
+      first production runs were hand-triggered, and `47 9 * * *` had not yet
+      come round. 🔴 **Neither audit writes anything, ever** — a finding is a
+      question for a person, so there is no shadow gate here and nothing to flip.
 
 ### ☐ 🔴 SHADOW GATE — `R2_PRUNE_MODE` stays `"shadow"` until this is measured
 
@@ -139,8 +227,12 @@ means something if nothing was deleted between the two readings. The flip is
 its OWN deploy, never a side effect of another; the backout is the same one
 line.
 
-**Nothing from the two ticked boxes above moves to `DONE.md` until enforce is
-live and measured.**
+**Neither `prune-r2-backups.mjs` nor `tools/estate-probes/run.mjs` moves to
+`DONE.md` until enforce is live and measured** — ⚠️ *"the two ticked boxes
+above"* was this sentence's original wording and became ambiguous on 2026-09-05
+when the two library-audit rows were ticked as well; they are named here instead.
+The audit rows are NOT covered by this gate: **neither audit writes anything,
+ever**, so there is no shadow to leave.
 
 ### ☑ The apex `/status` line for the probe run — BUILT 2026-09-05 (`bb0ddf0`, live `6476f6ac`)
 
