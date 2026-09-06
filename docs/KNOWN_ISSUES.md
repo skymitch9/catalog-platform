@@ -393,6 +393,48 @@ is wrong, the backout is one line — `GABI_CLUB_WRITES = "off"` and deploy.
 
 ---
 
+## KI-14 · Six `.claude/` project folders are EMPTY — their local state was destroyed — `ACCEPTED` (incident 2026-09-06)
+
+**Symptom.** A repo that had per-project Claude Code state — a
+`.claude/settings.local.json` permission allowlist, project-local agents or
+skills, a `worktrees/` scratch — now has an **empty** `.claude/` folder. Claude
+Code re-prompts for permissions it had been granted, and anything project-local
+is simply absent. Affected: `catalog-platform`, `Board_Game_Catalog`,
+`audiobook_catalog`, `bookbuddy/` (the parent), `Sundance/`,
+`Sundance/Sundance-Buddy/`, `flight-info/flight_info/`.
+
+**What happened.** W9-KILL ran `rm -rf /c/lcw` after removing a throwaway
+worktree at `C:/lcw/k`. `C:\lcw` is not scratch space — it also holds
+`C:\lcw\onedrive-excluded\`, the store `scripts/onedrive-exclude.ps1` moves
+every repo's real `node_modules` **and `.claude`** into, leaving a junction
+behind. The full incident, the measurements and the repair recipe are in
+[`info/worktree-deploys.md`](info/worktree-deploys.md) §0, which is where a
+session about to remove a worktree will actually be reading.
+
+**Why tolerated.** ⚠️ **Nothing tracked was lost** — `git status` was clean in
+all four estate repos before and after, and `.claude/` is gitignored everywhere,
+which is why the deletion left no trace in git. The `node_modules` half was
+fully rebuilt from lockfiles the same hour (verified: platform **3,151** cases,
+identical to the pre-incident baseline; library **2,918**; board **762**).
+What remains lost is untracked convenience state whose only copy was on this
+disk: it was never in git, never in R2 (`scripts/backup-docs.mjs` backs up
+`docs/`, not `.claude/`) and never in OneDrive — the exclusion script had
+deliberately moved it *out* of the syncing folder.
+
+**What would change it.** Two things, and they are different:
+
+1. **The folders refill themselves as they are used** — Claude Code writes
+   `settings.local.json` again the next time a permission is granted. No action
+   is needed for that half; it is a re-prompt, not a defect.
+2. 🔴 **The exposure is that `.claude/` has NO backup at all**, and this incident
+   is the first time that mattered. The number to change: `backup-docs.mjs`
+   archives **4 doc trees** and **0** `.claude` trees. Adding them would cost a
+   few MB a generation. ⚠️ **It is an owner decision, not an obvious win** —
+   `.claude/` can contain a `settings.local.json` naming hosts and paths, and the
+   estate repos are PUBLIC (KI-2), so this must not become a tracked file.
+
+---
+
 ## KI-13 · `git pull --rebase --autostash` can STRAND another agent's work in a shared tree — `WATCHING` (incident 2026-09-05 17:10)
 
 **Symptom.** In a tree shared with concurrent agents, `git pull --rebase

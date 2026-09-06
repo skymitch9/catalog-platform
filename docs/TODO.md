@@ -101,7 +101,37 @@
 >    work already on `origin/main`. **Follow-up dispatched 23:56, W9-KILL:** a
 >    test per survivor, proved both directions in throwaway worktrees, no
 >    production code change — a survivor that is a real bug gets a KI entry, not
->    a silent fix. ☐ pending landing);
+>    a silent fix.
+>    ☑ **LANDED 2026-09-06 — ALL NINE KILLED**, each proved BOTH directions in a
+>    throwaway worktree and recorded with its exit code in
+>    [`info/mutation-run-2026-09-05.md`](info/mutation-run-2026-09-05.md) **§8**
+>    (appended; ⚠️ the run's 51/42/9 headline is NOT rewritten). Five test files,
+>    two `package.json` test globs, **zero production changes**: CP-08 →
+>    `auth-worker/test/gate-wiring.test.ts` (15 cases, the wrapper executed);
+>    CP-24 + CP-25 → `estate-auth/test/workerd/verify-token.test.ts` (13 cases —
+>    🔴 **§5 S1's proposal to widen `getJwks()` into an injectable seam was
+>    DECLINED**; the test mints its own RSA keypair and serves a one-key JWKS
+>    from a stubbed `fetch`, under `--conditions=workerd`, which is the jose
+>    build the Worker actually runs); LC-07 + LC-08 → `billing-denied-shape`
+>    (+13); LC-12 → the library's capability matrix pinned row by row (+16);
+>    BD-11 + BD-12 → `middleware/gate-wiring.test.ts` (16, a real `node:sqlite`
+>    with all 30 migrations behind the real `requireAuth`).
+>    ⚠️ **BD-06 was ALREADY DEAD** — the 16 route-test files from (b) landed
+>    hours after the mutation run and take **157 cases** with it; re-pinned by
+>    name anyway. **No survivor was a real bug, so no KI entry was owed.**
+>    Suites 3,151 → **3,179** / 2,889 → **2,918** / 746 → **762**, typecheck
+>    green in all three, nothing deployed. Commits: `cc4ab68` (board),
+>    `ee9a8ea` (library), + this repo's.
+>    🔴 **One incident, unrelated to the tests, opened `KNOWN_ISSUES.md` KI-14:**
+>    the agent ran `rm -rf /c/lcw` to tidy a worktree away and destroyed the
+>    `onedrive-excluded` store living beside it — 36 junction targets across 9
+>    repos. `node_modules` fully rebuilt from lockfiles and re-excluded the same
+>    hour (the platform suite came back at 3,151, identical); **no tracked file
+>    was lost**; 6 gitignored `.claude/` folders were not recoverable, and 6 git
+>    worktrees on feature branches are now `prunable` (their commits are safe).
+>    Written up in [`info/worktree-deploys.md`](info/worktree-deploys.md) §0;
+>    ☐ **owner: decide whether `.claude/` should join the R2 doc backup** — it
+>    has no backup at all today and the repos are public (KI-2));
 >    (d) ☑ `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops
 >    skipping it — W9-PLATFORM-CI (`a6f0324`; the key **plus 15 cases**.
 >    ⚠️ The judgement call the survey left open is now made and written down:

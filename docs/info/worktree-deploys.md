@@ -1,7 +1,13 @@
 # Deploying from a throwaway worktree — and the way it eats `node_modules`
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-09-05** — §5 was added that day from a guard that
+> Last verified: **2026-09-06** — ⚠️ **§0 only**, and it was written from a real
+> incident that day: every number in its table was measured during the repair
+> (junction inventory, suite counts either side, the 2.96 GB the re-exclusion
+> moved). ⚠️ **§1–§5 were NOT re-measured on that date** and carry their own
+> dates below.
+>
+> Previously verified: **2026-09-05** — §5 was added that day from a guard that
 > genuinely refused a `deploy:home`, with its refusal text quoted from the run.
 > ⚠️ **§1–§4 were NOT re-measured on that date**; their last measurement is
 > **2026-08-24**, when the teardown order was executed with counts taken either
@@ -10,6 +16,54 @@
 >
 > Operating steps: [`access/README.md`](../access/README.md). What shipped:
 > `deploys.log`.
+
+## 0. 🔴 `C:\lcw` IS NOT SCRATCH SPACE — never `rm -rf` it (incident 2026-09-06)
+
+⚠️ **Read this before you tear a worktree down.** `C:\lcw` looks like a scratch
+directory because every worktree in this document lives in it. It is not. It
+also holds **`C:\lcw\onedrive-excluded\`**, which is where
+[`scripts/onedrive-exclude.ps1`](../../scripts/onedrive-exclude.ps1) MOVES every
+repo's real `node_modules` and `.claude` folder, leaving a junction behind in the
+repo. **The estate's dependencies physically live there.**
+
+**Measured 2026-09-06 (W9-KILL).** After removing a worktree at `C:/lcw/k`, the
+agent ran `rm -rf /c/lcw` to tidy up. That deleted:
+
+| What | Recoverable? | How it came back |
+|---|---|---|
+| `node_modules` for **9 repos** (36 junction targets) | ✅ yes | `npm install` per repo (every one has a lockfile), then re-run `scripts/onedrive-exclude.ps1` to move them back out and re-junction — 26 folders, 2.96 GB |
+| **6 `.claude/` project folders** (`catalog-platform`, `Board_Game_Catalog`, `audiobook_catalog`, `bookbuddy/`, `Sundance/` ×2, `flight-info`) | 🔴 **no** | Untracked local state. Gone. See `KNOWN_ISSUES.md` KI-14 |
+| **6 registered git worktrees** on feature branches (4 here, 2 in `audiobook_catalog`) | ⚠️ commits yes, uncommitted no | The branches are intact in the object store; only working-tree edits were lost |
+| Tracked source, anywhere | ✅ **nothing lost** | `git status` was clean in all four estate repos before and after |
+
+⚠️ **Two things made it survivable, and neither was luck you can count on:** the
+`.claude` folders are gitignored (so `git status` stayed clean and no tracked file
+was touched), and every affected repo had a committed lockfile.
+
+**The rules that follow from it:**
+
+1. 🔴 **Delete the WORKTREE, never its parent.** `git worktree remove --force
+   C:/lcw/<name>` and stop there. There is no step after it.
+2. ⚠️ **Before any recursive delete under `C:\lcw`, run
+   `git worktree list` in every estate repo** — other agents' worktrees live
+   beside yours and `rm -rf` does not ask.
+3. **Remove junctions as LINKS first** (§3 already says this) — but note the
+   failure above was the opposite direction: the links were fine, the *target*
+   was deleted out from under them.
+4. **The check that would have caught it in one command:**
+   ```powershell
+   Get-ChildItem C:\lcw -Force -Directory | Select-Object Name
+   ```
+   If `onedrive-excluded` is in that list — and it always is — the directory is
+   not yours to remove.
+
+**If it happens again**, the repair is in that order: recreate the missing target
+directories so the junctions resolve, `npm install` at each repo root (⚠️ **not**
+`npm ci`, which wipes `node_modules` wholesale), delete the now-stale empty
+placeholders under `onedrive-excluded`, then re-run `onedrive-exclude.ps1` to
+move the trees back out of OneDrive. Verified 2026-09-06: the three estate suites
+came back **3,151 / 2,918 / 762** — the platform figure identical to the
+pre-incident baseline.
 
 ## 1. Why a worktree at all
 

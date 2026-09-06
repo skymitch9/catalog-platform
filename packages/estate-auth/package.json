@@ -7,7 +7,9 @@
   "main": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "tsx --test test/*.test.ts"
+    "test": "npm run test:node && npm run test:workerd",
+    "test:node": "tsx --test test/*.test.ts",
+    "test:workerd": "tsx --conditions=workerd --test test/workerd/*.test.ts"
   },
   "dependencies": {
     "jose": "^5.9.6"

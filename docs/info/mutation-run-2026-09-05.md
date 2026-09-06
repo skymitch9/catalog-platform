@@ -8,6 +8,13 @@
 > files run, the result read off the runner's own exit code, and the file
 > restored before the next one. Nothing here is reasoned; all of it was watched.
 >
+> ✅ **[§8](#8-follow-up--the-nine-survivors-killed-2026-09-06) — added
+> 2026-09-06: ALL NINE SURVIVORS ARE KILLED.** ⚠️ **The headline below is NOT
+> restated and NOT recomputed** — 51 · 42 · 9 · 82.4% is what was measured on
+> 2026-09-05 at the commits named further down, and it stays as measured. §8 is
+> a separate, later measurement against tests that did not exist then, with its
+> own commits and its own exit codes. Each §5 row carries a pointer to it.
+>
 > **Why this exists.** [`test-inventory-2026-09-05.md`](test-inventory-2026-09-05.md)
 > §2.7 and §5.6: *"a test count is not evidence — mutate the code and watch"*.
 > The estate's only mutation evidence was **8 mutations from 2026-08-16**, whose
@@ -132,7 +139,7 @@ The real `node_modules/.bin` counts were taken either side and are unchanged:
 | CP-05 | 118 | `memberAllows`: admit `pending` as well as `approved` | ✅ KILLED (3 fail) | *"availability is members-only"* |
 | CP-06 | 170 | Four-causes collapse: the **revoked** refusal answers `estate_pending` | ✅ KILLED (2 fail) | *"⚠️ pending and revoked get DIFFERENT sentences — the fixes are different"* |
 | CP-07 | 160 | Four-causes collapse: the **no-row** refusal answers `estate_pending` | ✅ KILLED (2 fail) | *"somebody with no directory row at all is told how to get one"* |
-| CP-08 | 287 | 🔴 `requireApprover()`: **the gate itself short-circuited** — `if (false && !approverAllows(row, isOwner))` | 🔴 **SURVIVED** (50 pass) | — |
+| CP-08 | 287 | 🔴 `requireApprover()`: **the gate itself short-circuited** — `if (false && !approverAllows(row, isOwner))` | 🔴 SURVIVED (50 pass) → ✅ **KILLED 2026-09-06** (5 fail) | `auth-worker/test/gate-wiring.test.ts` — [§8](#8-follow-up) |
 
 ### 2.2 `apps/auth-worker/src/role-ladder.ts` — the audiobook site ladder
 
@@ -160,8 +167,8 @@ The real `node_modules/.bin` counts were taken either side and are unchanged:
 | CP-21 | `combine.ts:78` | directory unreachable + no admission **fails OPEN** | ✅ KILLED (1 fail) | *"row 8: unreachable + pending/unknown fails CLOSED with the named verdict"* |
 | CP-22 | `combine.ts:74` | estate `pending` + no local standing → `default_grant` instead of the request screen | ✅ KILLED (1 fail) | *"row 6: pending + pending = request screen, as today"* |
 | CP-23 | `verify.ts:90` | dev bypass widened back to `ENVIRONMENT !== 'production'` | ✅ KILLED (1 fail) | *"the old !== production hole is closed: unrecognised environments get REAL auth"* |
-| CP-24 | `verify.ts:117` | 🔴 **the `email_verified === false` refusal deleted** | 🔴 **SURVIVED** (19 pass) | — |
-| CP-25 | `verify.ts:110` | 🔴 **`audience: projectId` dropped from `jwtVerify`** — any Firebase project's token is accepted | 🔴 **SURVIVED** (19 pass) | — |
+| CP-24 | `verify.ts:117` | 🔴 **the `email_verified === false` refusal deleted** | 🔴 SURVIVED (19 pass) → ✅ **KILLED 2026-09-06** (1 fail) | `estate-auth/test/workerd/verify-token.test.ts` — [§8](#8-follow-up) |
+| CP-25 | `verify.ts:110` | 🔴 **`audience: projectId` dropped from `jwtVerify`** — any Firebase project's token is accepted | 🔴 SURVIVED (19 pass) → ✅ **KILLED 2026-09-06** (1 fail) | `estate-auth/test/workerd/verify-token.test.ts` — [§8](#8-follow-up) |
 | CP-26 | `visibility.ts:90` | `parseVisibility` **strips** unknown names instead of refusing the array | ✅ KILLED (3 fail) | *"parseVisibility: canonical order enforced, duplicates collapsed, garbage refused"* |
 
 ### 2.5 `apps/index-worker/` — search scope and the anonymous boundary
@@ -184,12 +191,12 @@ The real `node_modules/.bin` counts were taken either side and are unchanged:
 | LC-04 | `gate.ts:561` | enforce mode stops emitting the 403 on `revoked` | ✅ KILLED (3 fail) | *"enforce / fresh revoked cache → deny 403 WITHOUT a /seen call"* |
 | LC-05 | `gate.ts:553` | `wouldDeny` drops `estate_unreachable` (the soak's greppable gate goes half-blind) | ✅ KILLED (1 fail) | *"estate down + no cache + local pending → would-deny as estate_unreachable, named"* |
 | LC-06 | `gate.ts:255` | `OVERRIDABLE_DEFAULT_ROLES` gains `admin` — one env var could auto-grant admin | ✅ KILLED (1 fail) | *"resolveDefaultRole: unset → posture member; valid override taken; garbage falls back loudly"* |
-| LC-07 | `gate.ts:669` | 🔴 `parseCachedBillingDenied`: a **NULL column answers `[]`** — "unknown" becomes "the directory denied nothing" | 🔴 **SURVIVED** (45 pass) | — |
-| LC-08 | `gate.ts:427` | 🔴 the `SKIPPED` outcome answers `billingDenied: []` instead of `null` — **an OFF gate claims the directory denied nothing** | 🔴 **SURVIVED** (45 pass) | — |
+| LC-07 | `gate.ts:669` | 🔴 `parseCachedBillingDenied`: a **NULL column answers `[]`** — "unknown" becomes "the directory denied nothing" | 🔴 SURVIVED (45 pass) → ✅ **KILLED 2026-09-06** (2 fail) | `estate-auth/test/billing-denied-shape.test.ts` — [§8](#8-follow-up) |
+| LC-08 | `gate.ts:427` | 🔴 the `SKIPPED` outcome answers `billingDenied: []` instead of `null` — **an OFF gate claims the directory denied nothing** | 🔴 SURVIVED (45 pass) → ✅ **KILLED 2026-09-06** (6 fail) | `estate-auth/test/billing-denied-shape.test.ts` — [§8](#8-follow-up) |
 | LC-09 | `packages/core/src/capabilities.ts:112` | `manageUsers` gains `moderator` | ✅ KILLED (2 fail) | *"admin holds manageUsers; moderator does not"* |
 | LC-10 | `capabilities.ts:150` | `canGrantRole`: `<` → `<=` (self-escalation and peer-promotion allowed) | ✅ KILLED (2 fail) | *"admin attempting to grant admin -> FAILS (no self-escalation)"* |
 | LC-11 | `capabilities.ts:149` | a `pending` actor may grant | ✅ KILLED (1 fail) | *"a pending actor grants no real role"* |
-| LC-12 | `capabilities.ts:29` | 🔴 `trackReading` gains `guest` — a guest may write read-state and rate | 🔴 **SURVIVED** (345 pass) | — |
+| LC-12 | `capabilities.ts:29` | 🔴 `trackReading` gains `guest` — a guest may write read-state and rate | 🔴 SURVIVED (345 pass) → ✅ **KILLED 2026-09-06** (2 fail) | `packages/core/test/capabilities.test.ts` — [§8](#8-follow-up) |
 | LC-13 | `apps/worker/src/middleware/auth.ts:308` | `requireCapability` short-circuited (`if (false && …)`) | ✅ KILLED (**206** fail) | *"GET /works/1/accessories refuses BY NAME as 'read'"* — `capability-wiring.test.ts` |
 
 ⚠️ **LC-13 is the most emphatic single result in the run** and it is worth
@@ -209,13 +216,13 @@ real routes through it and 206 cases went red. See §5.
 | BD-03 | `capabilities.ts:99` | `scanPhoto` gains `contributor` — **the money-gated rung widened** | ✅ KILLED (1 fail) | *"scanBarcode (free, contributor+) and scanPhoto (paid, moderator+) are different rows"* |
 | BD-04 | `capabilities.ts:44` | `rate` gains `guest` | ✅ KILLED (1 fail) | *"rate: member and above, not guest"* |
 | BD-05 | `capabilities.ts:128` | `manageUsers` gains `moderator` | ✅ KILLED (2 fail) | *"manageUsers: admin and above"* + *"🔴 only admin and owner get the account emails"* |
-| BD-06 | `apps/worker/src/middleware/auth.ts:93` | 🔴 `requireCapability` short-circuited — **every capability gate in the repo opened** | 🔴 **SURVIVED** (22 pass) | — |
+| BD-06 | `apps/worker/src/middleware/auth.ts:93` | 🔴 `requireCapability` short-circuited — **every capability gate in the repo opened** | 🔴 SURVIVED (22 pass) → ✅ **ALREADY KILLED** by the route tests (157 fail) | `routes/*.test.ts`; re-pinned in `middleware/gate-wiring.test.ts` — [§8](#8-follow-up) |
 | BD-07 | `lib/export-fields.ts:62` | `canExportEmails` returns `true` for every role | ✅ KILLED (1 fail) | *"🔴 only admin and owner get the account emails"* |
 | BD-08 | `lib/export-fields.ts:75` | the ratings query becomes `SELECT ui.*` (default-deny → default-allow) | ✅ KILLED (1 fail) | *"🔴 the ratings query is default-deny — it never selects ui.\*"* |
 | BD-09 | `lib/export-fields.ts:48` | a column dropped from the `USER_ITEM_COLUMNS` allow-list | ✅ KILLED (1 fail) | *"🔴 the allow-list matches the LIVE user_item schema — the drift guard"* |
 | BD-10 | `lib/estate-app.ts:120` | a typo'd `ESTATE_APP` falls back to `games` | ✅ KILLED (2 fail) | *"🔴 a typo does NOT fall back to `games` — that fallback IS the bug"* |
-| BD-11 | `middleware/estate.ts:231` | 🔴 `if (mode === 'shadow') return null` → `'enforce'` — **enforce stops enforcing and shadow starts refusing** | 🔴 **SURVIVED** (28 pass) | — |
-| BD-12 | `middleware/estate.ts:109` | 🔴 `actionFor('revoked')` returns `deny: false` — **a revoked estate member is admitted** | 🔴 **SURVIVED** (28 pass) | — |
+| BD-11 | `middleware/estate.ts:231` | 🔴 `if (mode === 'shadow') return null` → `'enforce'` — **enforce stops enforcing and shadow starts refusing** | 🔴 SURVIVED (28 pass) → ✅ **KILLED 2026-09-06** (6 fail) | `middleware/gate-wiring.test.ts` — [§8](#8-follow-up) |
+| BD-12 | `middleware/estate.ts:109` | 🔴 `actionFor('revoked')` returns `deny: false` — **a revoked estate member is admitted** | 🔴 SURVIVED (28 pass) → ✅ **KILLED 2026-09-06** (2 fail) | `middleware/gate-wiring.test.ts` — [§8](#8-follow-up) |
 
 ⚠️ **BD-08 and BD-09 are the export/projection default-deny pins working
 exactly as designed** — the added-column leak the estate rule warns about is
@@ -228,6 +235,13 @@ mechanically guarded here, in the one repo whose export reaches across a table.
 Ordered by how much a real defect there would cost. **Each entry names the test
 that SHOULD have killed it and PROPOSES a test; none was written — the
 conductor decides.**
+
+> ✅ **ALL NINE ARE NOW KILLED — see the dated [§8 Follow-up](#8-follow-up--the-nine-survivors-killed-2026-09-06)
+> table for the test file, the command and the exit code behind each one.** The
+> proposals below are left exactly as they were written, including the ones that
+> were NOT taken (S1's suggestion to widen `getJwks()` into an injectable seam
+> was declined — §8 says what was done instead and why). ⚠️ Read a proposal here
+> as *what was considered on 2026-09-05*, and §8 as *what shipped*.
 
 ### S1 · 🔴 `verify.ts` — `email_verified` (CP-24) and `audience` (CP-25)
 
@@ -379,3 +393,107 @@ that a future edit could make for real, with nothing to stop it. The two that
 would cost the most are `verify.ts`'s dropped `audience` (§5 S1) and the board
 Worker's `requireCapability` (§5 S2), and both are answerable with one test file
 each.
+
+---
+
+## 8. Follow-up — the nine survivors, KILLED (2026-09-06)
+
+> **Added 2026-09-06 by W9-KILL.** ⚠️ **Nothing above this line was rewritten**
+> — the run's headline (51 · 42 · 9 · 82.4%) is what was measured on 2026-09-05
+> at `1fea14e` / `744f866` / `cbf9cd4` and it stays. The §5 rows gained a
+> pointer to this section and nothing else. This section is what was measured
+> the NEXT day, at different commits, against tests that did not exist then.
+
+### 8.1 The table
+
+Method as §1.1 — one mutation at a time in a **throwaway detached worktree**,
+the real checkout never touched, `git status --short` verified clean before each
+worktree was removed. Each survivor was **re-confirmed alive at today's HEAD
+first** (the board had gained 16 route-test files since the run, so "still a
+survivor" was a question, not an assumption).
+
+| # | Still alive at HEAD? | Test that kills it | With the mutation | Without it |
+|---|---|---|---|---|
+| **CP-08** | yes | `apps/auth-worker/test/gate-wiring.test.ts` (new, 15 cases) | **exit 1** · 5 fail | exit 0 · 15 pass |
+| **CP-24** | yes | `packages/estate-auth/test/workerd/verify-token.test.ts` (new, 13 cases) | **exit 1** · 1 fail | exit 0 · 13 pass |
+| **CP-25** | yes | same file | **exit 1** · 1 fail | exit 0 · 13 pass |
+| **LC-07** | yes | `packages/estate-auth/test/billing-denied-shape.test.ts` (+13 cases) | **exit 1** · 2 fail | exit 0 · 21 pass |
+| **LC-08** | yes | same file | **exit 1** · 6 fail | exit 0 · 21 pass |
+| **LC-12** | yes | `packages/core/test/capabilities.test.ts` (+16 cases) | **exit 1** · 2 fail | exit 0 · 37 pass |
+| **BD-06** | 🔴 **NO — already dead** | `apps/worker/src/routes/*.test.ts` (the W9-BOARD-ROUTES files) | **exit 1** · **157 fail** | exit 0 |
+| **BD-11** | yes | `apps/worker/src/middleware/gate-wiring.test.ts` (new, 16 cases) | **exit 1** · 6 fail | exit 0 · 16 pass |
+| **BD-12** | yes | same file | **exit 1** · 2 fail | exit 0 · 16 pass |
+
+⚠️ **BD-06 is the row worth reading.** It was measured SURVIVED on 2026-09-05
+against `lib/*.test.ts` only; the 16 route-test files (`231d1da`…`a61a51e`,
+`c0e55a0`) landed **hours later on the same day** and take 157 cases with the
+mutation. That is §1's own caveat proving itself — *"a SURVIVED row means the
+test files named in that row all passed, NOT that no test anywhere would have
+caught it"* — and it is why every survivor here was re-run before a line was
+written. It is re-pinned by name in `gate-wiring.test.ts` anyway, so the guard
+does not depend on a route file continuing to exist.
+
+### 8.2 Suite counts, before → after
+
+| Repo | Before | After | Δ | Notes |
+|---|---:|---:|---:|---|
+| `catalog-platform` (root) | 3,151 | **3,179** | +28 | 0 fail, 0 skipped, 0 todo |
+| `bookbuddy/library_catalog` | 2,889 | **2,918** | +29 | 0 fail, 0 skipped |
+| `boardbuddy/Board_Game_Catalog` | 746 | **762** | +16 | 761 pass, 1 `.todo` (KI-6's bare 401, pre-existing) |
+
+`npm run typecheck` green in all three.
+
+### 8.3 🔴 The S1 proposal was NOT taken — and this is the interesting part
+
+§5 S1 proposed making `getJwks()` injectable: *"an optional `jwksFor?`
+parameter or a module-level setter, which is a small, honest widening of the
+seam."* **That was declined.** Changing a security module's shape to suit its
+test is exactly the move that leaves a seam nobody meant to ship, and the brief
+forbade production changes.
+
+What was done instead needs no production change at all:
+
+1. The test generates an RSA keypair with `jose` (already a dependency),
+   publishes the public half as a **one-key JWKS from a stubbed `globalThis.fetch`**,
+   and signs its own tokens. `jwtVerify` then runs for real against a key set
+   the test controls. `verify.ts` is untouched.
+2. ⚠️ **The catch, and why the file lives in `test/workerd/`:** `jose@5` ships
+   two builds. Its **node** build fetches the JWKS with `node:https.get`, which
+   nothing in-process can intercept; its **browser/worker** build uses global
+   `fetch`. So that one directory runs under `--conditions=workerd`
+   (`packages/estate-auth/package.json` → `test:workerd`, a second pass after
+   `test:node`). 🔴 **That is not a fudge — `workerd` is the condition the
+   Cloudflare Worker actually resolves in production**, so these tests exercise
+   the build that ships. Running them WITHOUT the flag would silently reach out
+   to Google's real JWKS and fail on a key that is not there.
+
+**What the two verify tests actually pin**, since this is the estate's most
+load-bearing auth sentence: the same signer with a different `aud` is refused
+(CP-25) *and* the same signer with a different `iss` is refused, each measured
+with the other assertion left CORRECT — so neither can be deleted while the
+other silently covers for it.
+
+### 8.4 One test-wiring change per repo, and why it was needed
+
+Neither is production code; both are globs that were missing a directory.
+
+| Repo | Change | Why |
+|---|---|---|
+| `Board_Game_Catalog` | `package.json` test glob gains `apps/worker/src/middleware/*.test.ts` | It had `lib/`, `routes/`, `packages/db/` and `apps/web/` — **but not `middleware/`**. A test filed correctly beside the middleware would never have run. |
+| `catalog-platform` | `packages/estate-auth` `test` → `test:node && test:workerd` | The second pass is the `--conditions=workerd` directory above. |
+
+### 8.5 ⚠️ What was NOT done
+
+- **No production code was changed anywhere.** Two `package.json` test globs and
+  five test files; nothing else.
+- **No survivor turned out to be a real bug**, so no `KNOWN_ISSUES.md` entry was
+  owed for any of the nine. (An unrelated incident during this work did open
+  KI-14 — see `worktree-deploys.md` §0.)
+- **Nothing was deployed.** Tests only, in all three repos.
+- **The other 42 mutations were not re-run.** They were killed on 2026-09-05 and
+  are assumed still killed; that assumption is untested here.
+- **`audiobook_catalog` is still out of scope** — unchanged from §the headline's
+  caveat.
+- **No live request, no D1, no browser, no minted Firebase token.** The verify
+  tests sign their own; the wiring tests stub D1 (`node:sqlite` with the real
+  migrations on the board, hand stubs on the platform).
