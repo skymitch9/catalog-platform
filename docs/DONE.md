@@ -9,6 +9,76 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ ANSWERED (a) + BUILT 2026-09-05 — OWNER DECISION: the three CLI money paths gain the `system` principal, so the Spending panel can reach them — moved WHOLE from TODO.md
+
+> **The owner's answer, 2026-09-05: option (a) — make it.** He accepted the
+> visible cost the item names (a clock-icon row on three matrix rows) in
+> exchange for the panel's click actually reaching the library CLI scripts.
+>
+> **The item as it stood in `TODO.md`, moved whole and not summarised:**
+>
+> > 7. ❓ **OWNER DECISION (found 2026-09-05 by agent W2-LIBCLI, design §9 Q5 has
+> >    the full argument): the Spending panel's cell cannot reach the library CLI
+> >    scripts.** The scripts' gate (`bbc693b`, `bookbuddy/library_catalog`) asks
+> >    the SYSTEM door, which resolves `principal_kind='system'` rules only; but
+> >    `apps/auth-worker/src/billing-registry.ts` declares `cli.backfill`,
+> >    `research.covers` and `research.isbn` with `principals: ['person']`, so the
+> >    panel's click writes an `everyone` rule the scripts never see. A `system`
+> >    rule written via `POST /api/estate/billing/rules` DOES trip the gate today.
+> >    The one-line fix is `principals: ['person', 'system']` on those three rows
+> >    (behind the registry pin test) — **not made**, because it adds a clock-icon
+> >    row to the matrix for each, which is a visible change the owner has not
+> >    asked for. (a) make it, (b) leave the CLI reachable by API only. ⚠️ Until
+> >    `ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are exported in the shell that runs
+> >    the scripts (names only; `library_catalog/docs/access/secrets.md` → "The two
+> >    NAMES the CLI spending gate reads"), the gate prints "policy UNKNOWN …
+> >    proceeding" either way.
+>
+> **How it was built** (agent W6-SPEND, commits below):
+>
+> - `apps/auth-worker/src/billing-registry.ts` — `cli.backfill`,
+>   `research.covers` and `research.isbn` now declare
+>   `principals: ['person', 'system']`. ⚠️ **`person` is KEPT, not replaced.**
+>   These paths have a human operator, so the API caller must stay deniable;
+>   the two together are what let one click on the panel reach both doors.
+> - 🔴 **The reframing that came out of it, and the reason the three rows were
+>   wrong in the first place: `system` DOES NOT MEAN "unattended" — it means
+>   "asks the SYSTEM door".** A human types these commands and they still
+>   resolve as `system`, because the library CLI gate presents an app token and
+>   `resolveDenied` answers that caller from `principal_kind='system'` rows
+>   only. The field's own docblock now says so, because reading it as *is there
+>   a human* is precisely what produced a switch that reported success and
+>   denied nobody.
+> - **Two pins, catching two different failures.** `test/billing-registry.test.ts`
+>   gains **THE PRINCIPAL PIN** — a literal `deepEqual` over all 18 rows'
+>   principal sets, flattened to `id → person+system` strings so the diff names
+>   the row rather than printing `[Array]`. It catches the opposite failure to
+>   the id pin above it: not a typo, a **widening**. An extra `system` makes the
+>   panel write a row a cron obeys; an extra `person` makes the write door accept
+>   a per-member row `billing.ts`'s `principal_not_applicable` exists to refuse.
+>   Neither errors, neither logs. `test/billing-policy.test.ts` gains the
+>   behavioural half — a `system` row denies the script and **not** the person,
+>   an `everyone` row denies the person and **not** the script.
+> - ⚠️ **The pin was measured falsifiable, not assumed so**: widening
+>   `research.series` to `['person','system']` was tried and the suite failed on
+>   that assertion; the widening was then reverted.
+> - `docs/info/llm-billing-control-design.md` — §3.2's table gains a
+>   **`Principals` column**, read row by row out of the registry. ⚠️ It had never
+>   been written down there at all, which is how three rows sat wrong unnoticed;
+>   §9 Q5's old paragraph is struck through rather than deleted and the as-built
+>   written beneath it.
+>
+> **Verified:** `npm test` in `apps/auth-worker` — **751 pass / 0 fail**;
+> `npm run typecheck` (both tsconfigs) clean.
+>
+> 🔴 **NOT VERIFIED, deliberately stated:** nothing has been clicked and **no
+> script has ever been refused by a policy row**. The Spending panel has still
+> never been rendered signed in since the change, and the CLI gate cannot be
+> exercised at all until `ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are exported
+> in the shell that runs the scripts — until then it prints *"policy UNKNOWN …
+> proceeding"* whatever the registry says. That export is an owner step and
+> stays open under `TODO.md`'s item 5 (the soak).
+
 ## ✅ ANSWERED + BUILT + DEPLOYED 2026-09-05 — OWNER DECISION: `/progress` drops `percent` and takes a CHAPTER only — moved WHOLE from TODO.md
 
 > **The owner's answer, 2026-09-05 16:14 Phoenix: option (a)** — `/progress`

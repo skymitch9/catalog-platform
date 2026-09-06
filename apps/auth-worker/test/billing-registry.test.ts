@@ -104,6 +104,58 @@ test('every group has a label — the matrix draws headings from this map', () =
   }
 });
 
+test('⚠️ THE PRINCIPAL PIN — every spend action’s principal set, spelled out', () => {
+  // ⚠️ THE FAILURE THIS CATCHES IS A WIDENING, NOT A TYPO, and it fails OPEN in
+  // the opposite direction to the id pin above. `principals` decides which DOOR
+  // a policy row is written through and which door a caller is resolved at, so
+  // adding a principal to a row silently changes who a switch reaches: an extra
+  // `system` makes the panel write a row a cron obeys, and an extra `person`
+  // makes `POST /api/estate/billing/rules` accept a per-member row that
+  // `billing.ts`'s `principal_not_applicable` check exists to refuse. Neither
+  // errors, neither logs, and both look exactly like a switch that works.
+  //
+  // So the whole map is pinned literally rather than derived — a derived
+  // assertion agrees with any widening — and it is a `deepEqual` on the FULL
+  // registry rather than per-row `includes`, so a NEW feature also has to be
+  // argued for here before its money path can be reached at all.
+  // Flattened to one string a row, deliberately: `deepEqual` on nested arrays
+  // prints `[Array]` for every element and the diff names no id at all.
+  assert.deepEqual(
+    BILLING_FEATURES.map((f) => `${f.id} → ${[...f.principals].join('+')}`),
+    [
+      'research.details → person',
+      // ⚠️ The three CLI-reachable rows below carry `system` since 2026-09-05
+      // (owner decision (a), design §9 Q5). It is NOT "these run unattended" —
+      // a human types them; it is that the library's CLI gate presents an app
+      // token and so resolves against `principal_kind='system'` rows ONLY.
+      // While they read `person` alone the panel's click wrote an `everyone`
+      // rule the scripts never saw: pressed, and denying nobody.
+      'research.covers → person+system',
+      'research.series → person',
+      'research.tier → person',
+      'research.isbn → person+system',
+      'barcode.paid → person',
+      'warnings.web → person+system',
+      'chapters.llm → person+system',
+      'scan.photo → person',
+      'gabi.panel → person',
+      'gabi.chat → person',
+      'gabi.memory → person',
+      'gabi.confirm → person',
+      // ⚠️ The only two rows with NO person at all. Widening either to include
+      // `person` would let a per-member row be stored against a path no person
+      // walks — `billing.ts`'s `principal_not_applicable` refusal is derived
+      // from exactly this field, so the pin is what keeps that door shut.
+      'sweep.details → system',
+      'authors.match → system',
+      'pipeline.run → person+system',
+      'cli.backfill → person+system',
+      'prompts.generate → person',
+    ],
+    'a principal set changed — a widening reaches callers nobody meant it to, and fails open in silence',
+  );
+});
+
 test('⚠️ the two unattended billers are `system`, and nothing else pretends to be', () => {
   // §2.5: L8 and G7 have no user at all, so a per-person toggle is structurally
   // inapplicable and a `system` rule is the only thing that can stop them.

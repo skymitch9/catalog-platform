@@ -25,11 +25,21 @@
 > the library and games repos, off their own commits and `wrangler.toml`s; (3)
 > ~~"no policy rule has ever been written"~~ — **false since 2026-09-02**, one
 > row exists and §11.3 now says which; (4) the phase table's rows 2 and 3.
+> ⚠️ **Re-verified 2026-09-05 for TWO further claims only** (agent W6-SPEND),
+> both about §3.2's registry and nothing else in this file: (1) the new
+> **`Principals` column** in §3.2's table, read row by row out of
+> `apps/auth-worker/src/billing-registry.ts` — it had never been written down
+> here, which is how §9 Q5's three rows sat wrong unnoticed; (2) **§9 Q5 is
+> CLOSED** — the owner chose (a) and `cli.backfill`, `research.covers` and
+> `research.isbn` now carry `principals: ['person','system']`, behind a new
+> literal pin plus a behavioural resolver test (751/751 green, typecheck clean).
 > ⚠️ **STILL NOT verified:** `billing_denied` has never been seen on a real
 > `/seen` or `/me` answer; **nobody has rendered the Spending panel or its new
-> column signed in**; and no per-person rule has ever been written from a
-> browser. Cost figures are the constants the code itself declares, not
-> invoices. Effort figures are **labelled guesses**.
+> column signed in**; no per-person rule has ever been written from a browser;
+> and **no CLI script has ever been refused by a policy row** — the gate needs
+> `ESTATE_APP_TOKEN_LIBRARY`/`_LIBRARY2` in its shell and prints *"policy
+> UNKNOWN … proceeding"* until then. Cost figures are the constants the code
+> itself declares, not invoices. Effort figures are **labelled guesses**.
 
 The owner's ask, 2026-08-24, verbatim:
 
@@ -223,32 +233,56 @@ consumer the same way `estate-auth` and `universes` already are
 `scripts/sync-universes.mjs` — a build artifact, gitignored, never a second
 source of truth).
 
-| id | Covers | Sites |
-|---|---|---|
-| `research.details` | L1, L7, G6 | library, library2, games |
-| `research.covers` | L2, L9 | library, library2 |
-| `research.series` | L3 | library, library2 |
-| `research.tier` | G5 | games |
-| `research.isbn` | L10 | library, library2 |
-| `scan.photo` | L4, L5, G1, G2, G3, E6 | all |
-| `barcode.paid` | G4 | games |
-| `gabi.panel` | L6 | library, library2 |
-| `gabi.chat` | E1, E2, E3 | estate |
-| `gabi.memory` | E4 | estate |
-| `gabi.confirm` | E5 | estate |
-| `sweep.details` | **L8, G7** | library, library2, games |
-| `warnings.web` | A2, **A3**, **A5** | audiobook |
-| `chapters.llm` | A1 | audiobook |
-| `authors.match` | A4 | audiobook |
-| `prompts.generate` | A7 | audiobook |
-| `pipeline.run` | A8, A9 | audiobook |
-| `cli.backfill` | L9–L13 | library, library2 |
+⚠️ **The `Principals` column was ADDED to this table 2026-09-05** (agent
+W6-SPEND), read out of `apps/auth-worker/src/billing-registry.ts` row by row.
+It had never been written down here at all, which is how three rows sat wrong
+for three days — see the ⚠️ note under the table, and §9 Q5.
+
+| id | Covers | Sites | Principals |
+|---|---|---|---|
+| `research.details` | L1, L7, G6 | library, library2, games | person |
+| `research.covers` | L2, L9 | library, library2 | person + **system** |
+| `research.series` | L3 | library, library2 | person |
+| `research.tier` | G5 | games | person |
+| `research.isbn` | L10 | library, library2 | person + **system** |
+| `scan.photo` | L4, L5, G1, G2, G3, E6 | all | person |
+| `barcode.paid` | G4 | games | person |
+| `gabi.panel` | L6 | library, library2 | person |
+| `gabi.chat` | E1, E2, E3 | estate | person |
+| `gabi.memory` | E4 | estate | person |
+| `gabi.confirm` | E5 | estate | person |
+| `sweep.details` | **L8, G7** | library, library2, games | **system only** |
+| `warnings.web` | A2, **A3**, **A5** | audiobook | person + system |
+| `chapters.llm` | A1 | audiobook | person + system |
+| `authors.match` | A4 | audiobook | **system only** |
+| `prompts.generate` | A7 | audiobook | person |
+| `pipeline.run` | A8, A9 | audiobook | person + system |
+| `cli.backfill` | L9–L13 | library, library2 | person + **system** |
 
 ⚠️ **A test pins each Worker's checked ids against the registry.** A Worker that
 checks `research.cover` (singular) against a registry holding `research.covers`
 fails silently open, forever. This is the same class of bug the audit's §8
 names as its most common shape — *"a flag flipped, the sweep updated three
 places, and the missed copy was always a comment or a README"*.
+
+⚠️ **The `Principals` column is pinned too, and by its own assertion** —
+`test/billing-registry.test.ts` → *"THE PRINCIPAL PIN"*, a literal `deepEqual`
+over all 18 rows, added 2026-09-05 with the change below. It catches the
+opposite failure to the id pin: not a typo, a **widening**. `principals` decides
+which DOOR a rule is written through and which door a caller is resolved at, so
+an extra `system` makes the panel write a row a cron obeys, and an extra
+`person` makes the write door accept a per-member row that
+`billing.ts`'s `principal_not_applicable` check exists to refuse. Neither
+errors and neither logs. Measured falsifiable the same day: widening
+`research.series` to `['person','system']` fails the pin, naming the row.
+
+🔴 **`system` DOES NOT MEAN "unattended" — it means "asks the SYSTEM door".**
+The three bolded rows are typed by a human at a shell and are still `system`,
+because the library's CLI gate presents an app token and `resolveDenied`
+answers that caller from `principal_kind='system'` rows **only**. Reading the
+field as *is there a human* is exactly what left those three unreachable from
+the Spending panel (§9 Q5). The two `system only` rows are the genuinely
+unattended ones (§2.5).
 
 ### 3.3 Resolution — most specific wins, and it can only ever DENY
 
@@ -758,7 +792,11 @@ a guard with a deliberate escape hatch, never a wall. ⚠️ And only a run that
 would actually SPEND is gated: a dry run, an estimate and a `--plan` bill
 nothing and are not the subject of a spending policy.
 
-🔴 **The gap the build found, which Q5 did not anticipate: the panel's own cell
+✅ **CLOSED 2026-09-05 — the owner chose (a), and the change is made.** What
+follows is the gap as it was found, kept because the *why* is the only reason
+to keep history; the fix is the paragraph after it.
+
+~~🔴 **The gap the build found, which Q5 did not anticipate: the panel's own cell
 cannot reach these scripts.** The system door resolves for
 `principal_kind='system'` only (§11.2 departure 1, in both directions), but
 §3.2 registers `cli.backfill`, `research.covers` and `research.isbn` with
@@ -770,7 +808,27 @@ principals), so the switch exists; it is just not the one on the panel. ⚠️ T
 one-line fix is `principals: ['person', 'system']` on those three registry rows
 in `apps/auth-worker/src/billing-registry.ts`, behind the pin test — **not
 made**, because it changes what the matrix draws (a clock-icon row appears) and
-that is the owner's call, not a build agent's.
+that is the owner's call, not a build agent's.~~
+
+**As made (2026-09-05, agent W6-SPEND).** All three rows now carry
+`principals: ['person', 'system']` in
+`apps/auth-worker/src/billing-registry.ts`. `person` is kept, not replaced —
+these paths have a human operator, so the API caller must stay deniable; the
+two together are what let one click on the panel reach both doors. Behind it:
+the new **PRINCIPAL PIN** in `test/billing-registry.test.ts` (§3.2), and a
+behavioural test in `test/billing-policy.test.ts` — *"the CLI rows are
+reachable from the SYSTEM door"* — asserting in both directions that a `system`
+row denies the script and not the person, and an `everyone` row denies the
+person and not the script.
+
+⚠️ **The visible cost the old paragraph named is real and was the owner's to
+accept: a clock icon now appears on three matrix rows.** He accepted it.
+
+🔴 **NOT VERIFIED by that change: nothing has been clicked and no script has
+been refused.** The panel has not been rendered since (its own §7.2 row 1 is
+still unwitnessed), and the CLI gate cannot be exercised at all until
+`ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are exported in the shell that runs
+the scripts — the next paragraph, unchanged.
 
 ⚠️ **Also not closed: no bearer is readable on the owner's machine.**
 `ESTATE_APP_TOKEN_LIBRARY` and `_LIBRARY2` are set on the Workers and absent

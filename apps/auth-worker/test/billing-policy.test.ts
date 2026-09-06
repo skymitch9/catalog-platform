@@ -159,6 +159,31 @@ test('the unattended billers are reachable, and they are the clock-icon rows', (
   assert.ok(!ids.includes('gabi.chat'), 'a Discord turn always has a person');
 });
 
+test('⚠️ the CLI rows are reachable from the SYSTEM door — the panel’s click now lands', () => {
+  // Owner decision (a), 2026-09-05 (design §9 Q5). The library's CLI spending
+  // gate presents an app token, so `resolveDenied` answers it as a `system`
+  // caller and matches `principal_kind='system'` rows and nothing else. While
+  // these three carried `principals: ['person']` the Spending panel wrote an
+  // `everyone` row the scripts could never see — a switch that reported success
+  // and denied nobody.
+  const ids = systemFeatureIds();
+  for (const id of ['cli.backfill', 'research.covers', 'research.isbn']) {
+    assert.ok(ids.includes(id), `${id} must draw a clock-icon row, or the CLI has no switch`);
+  }
+
+  // The behaviour, not just the flag: a system rule reaches the script…
+  const systemOff = [rule({ feature: 'cli.backfill', site: 'library', principal_kind: 'system', allow: 0 })];
+  assert.deepEqual(resolveDenied(systemOff, 'library', CRON), ['cli.backfill']);
+  // …and, per §3.3, still does not leak into a person's request.
+  assert.deepEqual(resolveDenied(systemOff, 'library', ALICE), [], 'a system rule does not reach a person');
+
+  // ⚠️ And the person half is NOT lost by adding `system`: these paths have a
+  // human operator, so the API caller must still be deniable.
+  const everyoneOff = [rule({ feature: 'cli.backfill', site: 'library', principal_kind: 'everyone', allow: 0 })];
+  assert.deepEqual(resolveDenied(everyoneOff, 'library', ALICE), ['cli.backfill']);
+  assert.deepEqual(resolveDenied(everyoneOff, 'library', CRON), [], 'an everyone rule does not reach the system door');
+});
+
 // ---------------------------------------------------------------------------
 // local_role, and the mid-deploy consumer
 // ---------------------------------------------------------------------------

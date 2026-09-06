@@ -56,6 +56,14 @@ export const BILLING_GROUP_LABELS: Record<BillingGroup, string> = {
  * inapplicable to them and a `system` rule is the only thing that can switch
  * one off. A feature can be both: `warnings.web` is a person pressing a button
  * (A3) AND an hourly Action paying for the queue (A5).
+ *
+ * ⚠️ `system` DOES NOT MEAN "unattended" — it means "asks the SYSTEM door".
+ * Corrected 2026-09-05 by the three CLI rows (`cli.backfill`,
+ * `research.covers`, `research.isbn`), which a human types and which
+ * nevertheless resolve as `system`, because the library's CLI gate presents an
+ * app token and `resolveDenied` matches `principal_kind='system'` rows only for
+ * that caller. Read this field as *which DOORS can reach this path*; reading it
+ * as *is there a human* is what left those three unreachable from the panel.
  */
 export type BillingPrincipalKind = 'person' | 'system';
 
@@ -146,7 +154,14 @@ export const BILLING_FEATURES: readonly BillingFeature[] = Object.freeze([
     // if EITHER switch denies. Reproduced verbatim rather than tidied.
     paths: ['L2', 'L9'],
     cost: '6¢ a cover',
-    principals: ['person'],
+    // ⚠️ `system` ADDED 2026-09-05 (owner decision (a), design §9 Q5). L9 is a
+    // command-line script, and the library CLI gate (`bbc693b`,
+    // `bookbuddy/library_catalog`) asks the SYSTEM door — `resolveDenied`
+    // matches `principal_kind='system'` rows and NOTHING else for that caller.
+    // While this row said `['person']` the Spending panel's click wrote an
+    // `everyone` rule the scripts could never see: a switch that looked pressed
+    // and denied nobody, the exact silent shape this file exists to prevent.
+    principals: ['person', 'system'],
   },
   {
     id: 'research.series',
@@ -177,7 +192,9 @@ export const BILLING_FEATURES: readonly BillingFeature[] = Object.freeze([
     // ⚠️ L10 is ALSO under `cli.backfill`, same reading as L9 above.
     paths: ['L10'],
     cost: 'per book, batched',
-    principals: ['person'],
+    // ⚠️ `system` ADDED 2026-09-05 — same reason as `research.covers` above:
+    // L10 runs from the batch script, whose gate resolves `system` rules only.
+    principals: ['person', 'system'],
   },
   {
     id: 'barcode.paid',
@@ -304,7 +321,13 @@ export const BILLING_FEATURES: readonly BillingFeature[] = Object.freeze([
     sites: ['library', 'library2'],
     paths: ['L9', 'L10', 'L11', 'L12', 'L13'],
     cost: 'per book, unbounded batch',
-    principals: ['person'],
+    // ⚠️ `system` ADDED 2026-09-05 (owner decision (a), design §9 Q5). Every
+    // path here is a script an operator runs, and its gate asks the SYSTEM
+    // door. `person` stays because a human IS the one typing the command — the
+    // two together are what let the panel's one click reach both the API caller
+    // and the shell. The visible cost of the decision is a clock icon on this
+    // row, three rows in all; that was the owner's call to make and he made it.
+    principals: ['person', 'system'],
   },
   {
     id: 'prompts.generate',

@@ -1393,22 +1393,15 @@ policy can only deny, so a path under two switches is refused if either
 denies, which fails safe. A test pins the list of double covers so a NEW one
 has to be argued for.
 
-7. ❓ **OWNER DECISION (found 2026-09-05 by agent W2-LIBCLI, design §9 Q5 has
-   the full argument): the Spending panel's cell cannot reach the library CLI
-   scripts.** The scripts' gate (`bbc693b`, `bookbuddy/library_catalog`) asks
-   the SYSTEM door, which resolves `principal_kind='system'` rules only; but
-   `apps/auth-worker/src/billing-registry.ts` declares `cli.backfill`,
-   `research.covers` and `research.isbn` with `principals: ['person']`, so the
-   panel's click writes an `everyone` rule the scripts never see. A `system`
-   rule written via `POST /api/estate/billing/rules` DOES trip the gate today.
-   The one-line fix is `principals: ['person', 'system']` on those three rows
-   (behind the registry pin test) — **not made**, because it adds a clock-icon
-   row to the matrix for each, which is a visible change the owner has not
-   asked for. (a) make it, (b) leave the CLI reachable by API only. ⚠️ Until
-   `ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are exported in the shell that runs
-   the scripts (names only; `library_catalog/docs/access/secrets.md` → "The two
-   NAMES the CLI spending gate reads"), the gate prints "policy UNKNOWN …
-   proceeding" either way.
+7. ✅ **ANSWERED (a) + BUILT + DEPLOYED 2026-09-05 — moved WHOLE to
+   [`DONE.md`](DONE.md)** (agent W6-SPEND). The three CLI rows carry
+   `principals: ['person','system']`, the panel's click now reaches the scripts'
+   SYSTEM door, and two pins guard it. ⚠️ **What it did NOT do, and is still
+   open below:** nothing has been clicked and no script has ever been refused —
+   the gate needs `ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` in its shell (names
+   only; `library_catalog/docs/access/secrets.md` → *"The two NAMES the CLI
+   spending gate reads"*) and prints *"policy UNKNOWN … proceeding"* until they
+   are exported. That export is an owner step and it belongs to item 5's soak.
 
 ### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`) and its FRONT END DEPLOYED 2026-09-05 (`795f242` / `ba7ddd03`) — 🔴 ☐ migrate + deploy the WORKER (owner), ☐ first real use
 
