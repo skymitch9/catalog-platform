@@ -35,7 +35,7 @@ function readOriginsFromToml(): string {
   assert.ok(line, 'READ_ORIGINS must be set EXPLICITLY in wrangler.toml — when it was absent (2026-08-16) the code default applied, the apex alone, and both catalogs were CORS-blocked from the shared index');
   const m = /^\s*READ_ORIGINS\s*=\s*"([^"]*)"/.exec(line!);
   assert.ok(m, `READ_ORIGINS must be a plain double-quoted string: ${line}`);
-  return m![1];
+  return m![1] ?? '';
 }
 
 const READ_ORIGINS = readOriginsFromToml();
