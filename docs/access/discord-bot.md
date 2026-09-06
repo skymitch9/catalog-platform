@@ -5,9 +5,11 @@
 >
 > ⚠️ **ALSO 2026-09-05 — §2 gained the cross-repo health-field note** (the two
 > `gabi_personality_*` fields the estate's other Discord bot reads). ⚠️ **That
-> paragraph is the ONLY thing added or re-checked in that pass**; the pool
-> version field it names is on `feature/personality-pool` and is **not merged
-> and not deployed**, and nothing else in this file was re-measured then.
+> paragraph is the ONLY thing added or re-checked in that pass**, and nothing
+> else in this file was re-measured then. ✅ The pool version field it names is
+> **LIVE** — merged and deployed the same evening as **pool v1** (`de4ef63`,
+> deployment `755cfd54-9cc2-43a0-beab-e9f795c13b02`), read back live at
+> **2026-09-06 02:33Z** as `1`.
 >
 > ⚠️ **UPDATED 2026-09-05 — `GABI_CLUB_WRITES` IS `"on"`.** `/rsvp` and
 > `/progress` are no longer dark: the owner answered the one blocking question
@@ -160,9 +162,10 @@ never the PG-13 ceiling. Full posture and floor:
 
 ⚠️ **Two `/api/health` fields on this Worker are a CROSS-REPO CONTRACT, not
 decoration.** `gabi_personality_tropes` (the roster array, live since
-2026-08-18) and **`gabi_personality_pool_version`** (a number — built
-2026-09-05 on `feature/personality-pool`, ⚠️ **not merged and not deployed**;
-see [`../TODO.md`](../TODO.md)) are read off this route on every boot by the
+2026-08-18) and **`gabi_personality_pool_version`** (a number — **live since
+2026-09-05 as pool v1**, `de4ef63` / `755cfd54-9cc2-43a0-beab-e9f795c13b02`,
+read back live at 02:33Z as `1`; see [`../DONE.md`](../DONE.md)) are read off
+this route on every boot by the
 estate's **other** Discord bot, which carries a synced copy of the shared
 personality manifest and uses them to report which of the two is ahead.
 ⚠️ Renaming or dropping either does **not** fail loudly — it makes that check

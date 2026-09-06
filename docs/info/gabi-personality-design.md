@@ -2,11 +2,15 @@
 
 > **Audience:** Claude sessions. **Status:** TRACKED. Written **2026-08-18**;
 > **§11 (the intensity dial) added 2026-09-01**, built and deployed the same
-> session; **§12 (the shared pool manifest) added 2026-09-05**, built but
-> **NOT merged and NOT deployed**. Last verified: **2026-09-05 for §12 only** —
-> the suite was run (discord-worker 1247 → 1260, workspace 2483 → 2496, 0 fail),
-> typecheck clean, and the bundle checked with `wrangler deploy --dry-run`;
-> ⚠️ **nothing was deployed and no live request was made**, and ⚠️ **§§1–11 were
+> session; **§12 (the shared pool manifest) added 2026-09-05**, built, merged
+> **and deployed the same evening as pool v1**. Last verified: **2026-09-05 for
+> §12 only** — the suite was run (discord-worker 1247 → 1260, workspace 2483 →
+> 2496, 0 fail), typecheck clean, and then it shipped: `de4ef63`, deployment
+> `755cfd54-9cc2-43a0-beab-e9f795c13b02`, with `/api/health` **read live** at
+> 2026-09-06 02:33Z answering `gabi_personality_pool_version: 1` and the eleven
+> tropes. ⚠️ **Nobody has talked to her since** — her voice is unchanged by
+> design (§12) and pinned by literals in the tests, which is not the same as a
+> person hearing her. ⚠️ **§§1–11 were
 > NOT re-measured on that date** (§11 last measured 2026-09-01, §§1–10 on
 > 2026-08-18). ⚠️ Nobody has heard her at `full` yet (§11.7).
 > Owner ask, verbatim: *"we need to give Gabi personality settings, I want you to
@@ -546,9 +550,15 @@ turn. ⚠️ No model call is added, no tool is added, no cap moves.
 
 ## 12. ⚠️ THE SHARED POOL MANIFEST — §§2, 3, 4 and the two clauses are now DESCRIBED by a file (added 2026-09-05)
 
-**Built 2026-09-05 on `feature/personality-pool` (commit `8335357`). ⚠️ NOT
-merged, NOT deployed, NOT verified live.** The work item, with the remaining
-steps, is in [`../TODO.md`](../TODO.md).
+✅ **LIVE as pool v1.** Built 2026-09-05 on `feature/personality-pool`, merged to
+`main` and deployed the same evening at commit **`de4ef63`**, deployment
+**`755cfd54-9cc2-43a0-beab-e9f795c13b02`** — and **verified by a live request**:
+`GET https://discord.heygabi.ai/api/health` at 2026-09-06 02:33Z answered
+`gabi_personality_pool_version: 1` and the eleven tropes in this file's order.
+⚠️ **NOT verified: nobody has talked to her since the deploy** — the clauses
+below are byte-identical by construction and pinned as literals, but that is a
+test, not a person. The finished item, with both deployment ids and the
+rollback, is in [`../DONE.md`](../DONE.md).
 
 **The roster (§2), the wing graph (§3), the drift constants (§4) and the two
 clauses (§1) are no longer stated only in `personality.ts`.** They are stated in

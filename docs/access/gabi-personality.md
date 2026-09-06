@@ -2,10 +2,12 @@
 
 > **Audience:** Claude sessions. **Status:** TRACKED (this repo is PUBLIC).
 > Last verified: **2026-09-05 for ONE claim only** — that `/api/health` answers
-> `gabi_personality_pool_version` (measured by driving the real handler
-> in-process, **not** by a live request), and ⚠️ **that field is on
-> `feature/personality-pool`, which is NOT merged and NOT deployed**, so §1's
-> command does not yet return it against production. §9 (the intensity dial) was
+> `gabi_personality_pool_version`, and it is now **LIVE**: measured by a live
+> request to `https://discord.heygabi.ai/api/health` at **2026-09-06 02:33Z**
+> (2026-09-05 19:33 Phoenix), which returned `1` and the eleven tropes, so §1's
+> command **does** return it against production. It shipped as **pool v1** in
+> deployment `755cfd54-9cc2-43a0-beab-e9f795c13b02` (commit `de4ef63`);
+> `feature/personality-pool` is merged. §9 (the intensity dial) was
 > built, tested and deployed **2026-09-01**; §§1–8 last checked live
 > **2026-08-18** and NOT re-measured since. ⚠️ **Nobody has heard her at `full`
 > yet** (§9.5).
@@ -38,10 +40,12 @@ personality could answer.
 
 Expect `True`, 11 tropes, **`1`**, `person`, and **`full`**.
 
-⚠️ **`gabi_personality_pool_version` is not on `main` yet** — built 2026-09-05 on
-`feature/personality-pool`, **not merged and not deployed**; remaining steps in
-[`../TODO.md`](../TODO.md). Until it ships the field is absent and that column
-comes back blank.
+✅ **`gabi_personality_pool_version` IS on production** — built, merged and
+deployed 2026-09-05 as **pool v1** (`de4ef63`, deployment
+`755cfd54-9cc2-43a0-beab-e9f795c13b02`), and read back live at **02:33Z** as
+`1`. The item is in [`../DONE.md`](../DONE.md). ⚠️ A **rollback** past that
+deployment takes the field away again, and an absent field reads to the other
+bot's check as *"GABI does not say its pool version yet"* — a **pass**.
 
 ⚠️ **It and `gabi_personality_tropes` are a CROSS-REPO CONTRACT.** The estate's
 other Discord bot (**Black Bloc**, the cookout bot, separate private repo) reads

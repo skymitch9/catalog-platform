@@ -9,6 +9,100 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-05 19:33 Phoenix — GABI's half of the ESTATE PERSONALITY POOL, live as pool v1 (de4ef63 · 755cfd54)
+
+> **Landed 2026-09-05 19:33 Phoenix** (2026-09-06 02:33Z). All four boxes below are
+> ticked. **Merge:** `feature/personality-pool` was fast-forwarded onto `main` by the
+> main session right after the docs commit that carries this entry. **Deploy:**
+> `npx wrangler deploy` of `apps/discord-worker` at `de4ef63` ran TWICE, 13 seconds
+> apart, same commit and same code — `519eb2c8-1483-4c6d-8af7-f9c0bc67c842`
+> (02:32:45Z, the Claude session) then **`755cfd54-9cc2-43a0-beab-e9f795c13b02`**
+> (02:32:58Z, run by the owner himself), and **the owner's is the one live**; both ids
+> are recorded so nobody later has to guess which of two deployments of one commit was
+> real. ⚠️ The body below names the build commit **`8335357`**, which was amended into
+> `cc3fa81` and is **not an ancestor of `de4ef63`** — same content, different sha.
+> **Verified live** immediately after, `GET https://discord.heygabi.ai/api/health`:
+> **`gabi_personality_pool_version: 1`** and `gabi_personality_tropes` the eleven in the
+> manifest's own order (peppy, dramatic, mischievous, flirty, warm, cozy, shy, scholar,
+> noir, deadpan, tsundere). ⚠️ **NOT verified: nobody has talked to GABI since the
+> deploy.** Her voice is unchanged *by design* — design §5.1, the clauses render from the
+> manifest with GABI's own slot values and come out byte-identical to the constants they
+> replaced, pinned as literals in `test/personality.test.ts` — but that is a prediction
+> plus a unit test, not a person hearing her. The Black Bloc side's in-step self-test is
+> verified in **that** repo when its **v91** lands; it re-synced its copy the same evening
+> to `synced_from: catalog-platform@de4ef63`. ✅ **The `int(count)` box below was fixed on
+> the BLACK BLOC side the same evening**, where it belonged: `selftest.py:check_pool` no
+> longer calls `int()` on the array — it compares the roster **name by name, in order**.
+> **Rollback:** `613a4363-1c64-44b6-a648-2a8918cbfd2f` (2026-09-05T23:27:37Z, `a063eea`).
+> The deploy line, with what shipped and what was not verified, is in
+> [`deploys.log`](deploys.log).
+
+> Built 2026-09-05 in the worktree `C:/lcw/pool`, branch **`feature/personality-pool`**
+> (commit `8335357`). ⚠️ **Nothing has been merged to `main` and nothing has been
+> deployed** — the main session reviews, merges and deploys. Measured that day:
+> discord-worker **1247 → 1260** tests (13 new), workspace **2483 → 2496**, 0 fail,
+> `npm run typecheck` clean, and the manifest confirmed inlined into the bundle by
+> `npx wrangler deploy --dry-run --outdir`. ⚠️ **NOT verified live** — no deploy, no
+> request to `discord.heygabi.ai`.
+
+**What it is.** `apps/discord-worker/src/personality-pool.json` is now the
+estate's **canonical** machine-readable manifest for the shared persona
+*skeleton*: the eleven owner-locked tropes with their labels, the wing graph, the
+drift constants (`every: 4`, `chance: 0.25`), and the two clauses
+(`INVARIANT`, `REGISTER`) as **templates with four named slots**. `personality.ts`
+imports it and derives the graph, the drift numbers and both clauses from it;
+`TROPE_VOICES` and the `TROPES as const` tuple stay in code on purpose (§5.1 of
+the design — the tuple is what gives the compiler its literal union).
+
+**Why it exists.** The estate's *other* Discord bot — **Black Bloc**, the cookout
+bot, a separate private repo at
+`C:/Users/nbasl/OneDrive/Documents/vs-code-repos/black_bot_baf` — has the same
+eleven tropes, the same graph and the same drift numbers, and has had them since
+its port. They are in step **by accident of timing**, and nothing anywhere would
+say so if either side moved. This makes that drift **visible** instead: Black
+Bloc keeps a synced copy stamped `synced_from: catalog-platform@<commit>`, and
+its self-test GETs `/api/health` here on every boot to compare versions.
+
+- **The design** (all of it, including the three forks the owner decided (a) on
+  2026-09-05): `black_bot_baf/docs/info/personality-pool-design.md` — §4/§4.1 the
+  manifest and its four slots, §5.1 this half, §5.3 the sync convention, §5.4 why
+  the health field earns the whole design. That repo's `docs/` is tracked in its
+  own git, so the path is the reference.
+- **The Black Bloc half is already LIVE** (its v90). This is the second and last
+  half.
+
+**The cross-repo contract — ⚠️ two field names that may not be renamed lightly.**
+`/api/health` now answers **`gabi_personality_pool_version`** (a number) beside
+the pre-existing **`gabi_personality_tropes`** (the roster array). Black Bloc's
+`black_bloc/selftest.py` reads exactly those two. ⚠️ Renaming either turns its
+check into *"GABI does not say its pool version yet"* — a **PASS** — and the drift
+goes quiet again. `test/personality.test.ts` asserts both off the real handler.
+
+**Order of operations for any future roster/graph/clause change** (design §5.3,
+and the reason the version exists): edit the canonical → bump `version` → GABI
+tests → GABI deploy → run `python scripts/sync_personality_pool.py` in
+`black_bot_baf` → Black Bloc tests → Black Bloc deploy. Both `deploys.log` lines
+name the pool version. **A version that reached one bot and not the other is
+half-shipped.**
+
+**What remains:**
+
+- [x] Review + merge `feature/personality-pool` into `main`, and remove the
+      worktree `C:/lcw/pool`.
+- [x] Deploy the Worker — `npx wrangler deploy` from `apps/discord-worker/`
+      ([`access/discord-bot.md`](access/discord-bot.md) §3 step 4), and append the
+      `deploys.log` line naming **pool v1**.
+- [x] Verify live: `(Invoke-RestMethod https://discord.heygabi.ai/api/health) |
+      Select-Object gabi_personality_pool_version, gabi_personality_tropes`
+      → `1` and the eleven.
+- [x] ⚠️ **KNOWN, and it is on the BLACK BLOC side, not this one** —
+      `selftest.py:check_pool` does `int(count)` on `gabi_personality_tropes`,
+      which this route answers as an **array** (it always has, since 2026-08-18).
+      `int([...])` raises `TypeError`. Its *version* comparison is unaffected; its
+      *count* comparison needs `len()` there. ⚠️ Do **not** "fix" it by turning
+      this field into a number — that would break the array shape that has been
+      live for weeks. **The fix belongs in `black_bot_baf`.**
+
 ## ✅ DONE 2026-09-05 18:09 Phoenix — THE OWNER RESOLVED ALL SIX NEAR MISSES (the first signed-in press of the new button)
 
 > **Measured 2026-09-05 18:12 Phoenix** straight from the index D1 (`series_pending`, `series_alias`, `series`, `entry`):
