@@ -13,6 +13,17 @@
 > As-built: [`catalog-registry.md`](catalog-registry.md) §10a. Deploy
 > `58d8efae`; entries in [`../DONE.md`](../DONE.md) and [`../deploys.log`](../deploys.log).
 >
+> ✅ **AND §3.4's `DEFAULT_PANEL_BASE` ROW IS NOW FULLY CLOSED (2026-09-05,
+> later still).** That row's *"the registry work is NOT done — it is still a
+> literal, not a lookup"* was the last open half of the panel-host fix; GABI's
+> `src/panel.ts` now reads the `library` row's `host` from
+> `GET {INDEX_BASE_URL}/api/catalogs` behind `GABI_PANEL_REGISTRY = "on"`, with
+> the constant as the fallback. ⚠️ Nothing widened. Runbook and gotchas:
+> [`../access/discord-bot.md`](../access/discord-bot.md) §16.2. **The rest of
+> §3.4 — the `LibraryInstance` type union, `'your own shelf'` (F2),
+> `PHYSICAL_SOURCE_INSTANCE` and `suggest.ts`'s three rows — is UNTOUCHED and
+> still open.**
+>
 > ⚠️ **The survey text below is left EXACTLY as it was measured** — it is the
 > record of what was true on the morning of 2026-09-05, and editing findings
 > into past tense would destroy the one thing an audit is for. Read a §3 row as
@@ -294,7 +305,7 @@ Mostly done by W4-FED-INDEX. What remains is the shape of adding **catalog N**:
 | `src/suggest.ts:143` `PHYSICAL_SOURCE_INSTANCE = 'library'` | ⚠️ **every print suggestion is gated on the MAIN library**, because `catalog.csv`'s `library_work_id` is a bare integer naming no instance (`:104-135`) | the join must carry an instance, which is a change in `audiobook_catalog` (`LIBRARY_MAPPING_URL`), not here. **This is the deepest single-library assumption in the estate** | L |
 | `src/suggest.ts:753-755` | `'the library, as an ebook'` / `'the library, in print'` | never says WHOSE, and calls a shared ebook "the library". **F3** | S |
 | `src/suggest.ts:592` | `<https://library.heygabi.ai>` as *"the real shelf"* | registry | S |
-| ~~`src/panel.ts:72` `DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai'`~~ **→ `https://library.heygabi.ai`, 2026-09-05** | a relic of the padhard-only pilot; the file's own header records the owner complaining *"why is it showing padhard and not the generic site"* | ✅ **the hard-coded HOST is fixed** (owner "Yes fix" 2026-09-05; `wrangler.toml` + the constant now name the main library). ⚠️ **The registry work is NOT done** — it is still a literal, not a lookup | S |
+| ~~`src/panel.ts:72` `DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai'`~~ **→ `https://library.heygabi.ai`, 2026-09-05** | a relic of the padhard-only pilot; the file's own header records the owner complaining *"why is it showing padhard and not the generic site"* | ✅ **DONE, both halves.** The hard-coded HOST was fixed that morning (owner *"Yes fix"*; `wrangler.toml` + the constant). ~~⚠️ The registry work is NOT done — it is still a literal, not a lookup~~ — **closed the same day**: `resolvePanelBase()` reads the `library` row's `host` from `GET {INDEX_BASE_URL}/api/catalogs` behind `GABI_PANEL_REGISTRY = "on"`, constant as the fallback. ⚠️ Nothing widened: names-only route, no credential, no CORS/origin/permission change. See [`../access/discord-bot.md`](../access/discord-bot.md) §16.2 | S |
 | `src/env.ts:209` | comment: GABI knows `library` and `library2` — "that is measured" | will go stale the moment a third exists | S |
 
 ### 3.5 · `catalog-platform` — `packages/estate-auth`, `apps/audiobook-worker`, `apps/ebooks-door`

@@ -3,6 +3,16 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
 >
+> ✅ **ADDED 2026-09-05 — §16, and it closes TWO hand copies.** (1) GABI's
+> personality prompt is no longer copied text: `scripts/sync-gabi-prompt.mjs`
+> extracts the shared paragraphs from `library_catalog`'s `GABI_SYSTEM` and
+> pins the deliberate deltas by hash, running as `pretest`/`pretypecheck`.
+> (2) The unlinked-asker fallback's HOST is no longer a literal: it is read
+> from the estate registry (`GET {INDEX_BASE_URL}/api/catalogs`) behind
+> `GABI_PANEL_REGISTRY = "on"`, with the constant as the fallback. ⚠️ **Nothing
+> was widened** — names-only route, no credential, no CORS/origin/permission
+> change. **Last verified: 2026-09-05** for §16 only.
+>
 > ⚠️ **UPDATED 2026-09-05 — THE UNLINKED-ASKER FALLBACK IS THE MAIN LIBRARY.**
 > `GABI_PANEL_URL` and `src/panel.ts`'s `DEFAULT_PANEL_BASE` moved
 > `padhard.heygabi.ai` → **`https://library.heygabi.ai`** (owner *"Yes fix"*,
@@ -805,7 +815,7 @@ their linked identity, reusing Tier 1's `whoami` port read-only:
 | `runResearch` on one instance | that instance |
 | `runResearch` on both | the main library |
 | an account, no capability | that instance; on both → the main library |
-| unlinked / unresolved / outage | the configured `GABI_PANEL_URL` — **`https://library.heygabi.ai` since 2026-09-05** |
+| unlinked / unresolved / outage | **the main library** — and since 2026-09-05 that host is **looked up from the estate registry** (§16.2), with `GABI_PANEL_URL` / `DEFAULT_PANEL_BASE` (`https://library.heygabi.ai`) answering only when the directory does not |
 
 ⚠️ **THE FALLBACK MOVED, 2026-09-05 — the same bug, half a step behind.** The
 2026-08-18 fix routed *linked* askers and left the fallback on the pilot host,
@@ -2049,3 +2059,136 @@ modal).
   real write is §15.3 step 7, and the thing to look at is the club **page** —
   `club_write_shapes_verified: true` says the constants match a measurement,
   not that a page has rendered anything.
+
+---
+
+## 16. Two hand copies that stopped being hand copies (2026-09-05)
+
+> **Last verified: 2026-09-05** — both mechanisms exercised on this machine
+> (`--check` made to fail and pass again; 1,279 tests green; typecheck clean).
+> ⚠️ **NOT verified here:** anything about how GABI *sounds* — a test over a
+> prompt string proves an instruction is PRESENT, never that it is obeyed — and
+> nobody has followed a registry-resolved deep link from Discord as an unlinked
+> person (§10.5's second bullet still stands).
+
+Two separate things in this Worker were **a value typed by hand where the
+estate already had an authoritative source**. Both were found by the
+2026-09-05 multi-library survey, both are fixed the same way, and the shape of
+the fix is worth reading once because a third one will turn up.
+
+| What was hand-kept | The authority it now reads | Posture / mechanism |
+|---|---|---|
+| `src/gabi-prompt.ts` `GABI_CORE` — GABI's personality | `library_catalog/packages/research/src/gabi.ts` → `GABI_SYSTEM` | `scripts/sync-gabi-prompt.mjs`, `--check` as `pretest`/`pretypecheck` |
+| `src/panel.ts` `DEFAULT_PANEL_BASE` — where an unplaceable asker's link points | `GET {INDEX_BASE_URL}/api/catalogs` ([`../info/catalog-registry.md`](../info/catalog-registry.md)) | `GABI_PANEL_REGISTRY = "on"`, affirmative-only |
+
+### 16.1 · The personality prompt — `scripts/sync-gabi-prompt.mjs`
+
+**What was wrong.** `gabi-prompt.ts`'s own header said the sync mechanism was
+*"option (a) — copied text with a comment pointing at the canonical source"*
+and that a script *"can be added later"*. It never was. The only test over it
+(`test/gabi-edge.test.ts`'s pin) compared this repo's prompt against **a
+literal the test file kept itself** — so it went red when THIS repo changed and
+stayed green forever when the CANONICAL prompt changed, which is the drift that
+matters.
+
+**Why it is not a whole-file copy.** ⚠️ The two prompts differ **inside** their
+sections, not after them. Measured 2026-09-05, paragraph by paragraph:
+
+| Section | Shared | Discord's deliberate delta |
+|---|---|---|
+| `## Who you are` | 2 of 3 | drops *", on their own site"* |
+| `## What you can do` | 0 of 1 | upstream lists five WRITE tools + the auto/confirm lanes |
+| `## Finding the right book` | 1 of 3 | drops the `find_book` instruction; *"a lookup"* for `find_book` |
+| `## Saying what is true` | 3 of 4 | *"a tool call"* where upstream names `get_book` |
+| `## When something goes wrong` | 2 of 2 | none |
+| `## Remembering` | 0 of 1 | omitted; `DISCORD_SUFFIX` carries this surface's memory rule |
+
+A single generated region would have to contain text this surface **must not
+say** — five tool names it does not have, and an auto-write lane that would be
+a lie next to *"never imply you have changed something"*. So:
+
+- the **8 SHARED paragraphs** are extracted **verbatim** into a marked region
+  of `gabi-prompt.ts` (`// BEGIN generated by scripts/sync-gabi-prompt.mjs` …
+  `// END`). ⚠️ **Committed source, not a gitignored artifact** — unlike
+  `sync-gabi-conversation.mjs`'s output — because this Worker must build in a
+  clone with no sibling library checkout;
+- the **6 DELIBERATE DELTAS** are pinned upstream **by hash**, never copied. A
+  second hand copy would only move the problem. An upstream edit to one of them
+  **fails the sync and prints the new text**, so a human re-decides the delta.
+
+**Commands.**
+
+```bash
+cd apps/discord-worker
+npm run gabi-prompt:sync                    # rewrite the generated region
+node ../../scripts/sync-gabi-prompt.mjs --check   # what pretest runs
+```
+
+**Gotchas, each one a real behaviour and not a warning:**
+
+- ⚠️ **Editing between the markers is silently overwritten.** The edit belongs
+  upstream in `library_catalog`, where the web panel gets it too. `--check`
+  catches a hand edit (exit 1) — that is the only reason it is not silent.
+- ⚠️ **A prompt change means TWO edits in one commit.** The generated region
+  AND `test/gabi-edge.test.ts`'s `STANDARD_PROMPT_AS_SHIPPED`, which is the
+  string the owner would be reverting to if he asked for her to be turned back
+  down. The script says so on every run.
+- **No sibling checkout → SKIP, not fail.** `--check` exits 0 with one loud
+  line, because the region is committed and such a clone is correct.
+  `SYNC_GABI_PROMPT_REQUIRE=1` turns the skip into a failure. Same posture in
+  the test (`gabi-edge.test.ts` §3b), which is where a drift actually goes red.
+- **`LIBRARY_CATALOG_DIR`** overrides the sibling lookup
+  (`scripts/lib/library-repo.mjs` names every path it tried when it fails).
+- 🔴 **`GABI_EDGE_FULL` is NOT synced and must not be.** Both repos have an
+  intensity dial and the two blocks are deliberately different text — the
+  library's own header carries a three-row table of what had to be adapted for
+  a surface with no voice note, no @mentions and a write path. They are
+  near-duplicates that exist **on purpose** and are **NOT interchangeable**.
+
+The whole argument, with the measured table, lives in
+`scripts/lib/gabi-prompt-sync.mjs`.
+
+### 16.2 · The panel host — a registry lookup, not a literal
+
+**What was wrong.** [`../info/multi-library-survey-2026-09-05.md`](../info/multi-library-survey-2026-09-05.md)
+§3.4, on this exact line: *"✅ the hard-coded HOST is fixed … ⚠️ **The registry
+work is NOT done — it is still a literal, not a lookup**"*. The morning's fix
+(§10.3) moved the constant off the pilot host; it did not stop it being a
+constant.
+
+**What it does now.** With `GABI_PANEL_REGISTRY = "on"`, `resolvePanelBase()`
+reads the row whose `id` is `library` from
+`GET {INDEX_BASE_URL}/api/catalogs` — the estate's one directory — and uses its
+`host`. `GABI_PANEL_URL`/`DEFAULT_PANEL_BASE` answer only when the directory
+does not.
+
+🔴 **NOTHING WAS WIDENED, and this is the part to check if you audit it.** The
+route's anonymous branch is **names-only**; no credential is sent (asserted by
+a test), no CORS list, origin allowlist, `vis_` column or permission is touched
+anywhere, and the **destination site still does its own Firebase sign-in and
+its own `runResearch` check** before the panel opens. A hostname is the whole
+payload.
+
+| Behaviour | Why |
+|---|---|
+| **Affirmative-only** (`"on"`; every typo means off) | OFF is byte-for-byte the pre-registry Worker — **no subrequest at all**. It is the one-word backout, it is how you deliberately PIN the host (off + `GABI_PANEL_URL`), and it is why the other ~1,200 tests in this package touch no network |
+| **Every failure falls back, none throws** | directory down, HTTP 503, malformed body, a `host` carrying a scheme/slash/port/space → the configured base. ⚠️ A bad host is **refused, never repaired**: a corrected hostname is a guess, and this one ends up in a link somebody presses |
+| **10-minute isolate-local memo** | the registry's OWN TTL (`catalog-registry.md` §8), so the estate has one number. ⚠️ A host edited in D1 can take up to **20 minutes** to reach a link — fine for a hostname, never for a permission |
+| **The FAILURE is cached too** | otherwise a directory outage becomes a latency outage |
+| **2 s hard timeout** | the link is the useful half of a reply, not the reply |
+
+**Reading it live.** `/api/health` reports the **resolved** base, plus the
+posture that says where it came from — one fact, one surface:
+
+```bash
+curl -sS -D - -o /dev/null https://discord.heygabi.ai/health   # -D -, never -I
+curl -sS https://discord.heygabi.ai/api/health \
+  | python -c "import json,sys; d=json.load(sys.stdin); print(d['gabi_panel_url'], d['gabi_panel_registry'])"
+```
+
+⚠️ **`gabi_panel_url` is the RESOLVED link and it is not proof the lookup ran.**
+Since the morning fix the constant is `https://library.heygabi.ai` too, so the
+registry and the fallback agree today by construction. The row that
+distinguishes them is `gabi_panel_registry`; the only way to see the lookup
+itself is `npx wrangler tail estate-discord` on a turn that emits a link, or a
+registry whose `library` host differs from the constant.
