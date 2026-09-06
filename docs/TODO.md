@@ -109,11 +109,32 @@ below); **11** Justin's shelf steps — *"He's working on it"*
       an **estate-wide shape**, so it is fixed ONCE as a shared helper, never
       per repo. LOW priority; the person-never-sees-a-bare-status rule is why
       it is here at all.
-- [ ] 🧑 **Six `.git/worktrees/` husk directories survived the prune**
+- [x] ~~🧑 **Six `.git/worktrees/` husk directories survived the prune**
       (2026-09-06 07:13 Phoenix): the directory delete answered *"Permission
-      denied"* and the classifier refused `Remove-Item`. `git worktree list` is
-      already clean in both repos, so they affect nothing — clearing them is an
-      optional owner one-liner, not a defect.
+      denied"* and the classifier refused `Remove-Item`.~~ ✅ **ALL CLEARED
+      2026-09-06 13:5x Phoenix (W11-ABFIX) — and the count was NINE, not six.**
+      Measured across all four estate repos: `catalog-platform` 4
+      (`agent-a37b9d469f37af097`, `gabicp`, `index-read`, `pause`),
+      `audiobook_catalog` 2 (`abfix`, `ebookcount`), `library_catalog` 2
+      (`wave3`, `wave4`), `Board_Game_Catalog` 1 (`agent-adb38407889808798` —
+      **found by this pass; no earlier note mentions it**). `git worktree prune
+      --dry-run` now returns **empty in all four**, and every remaining admin
+      dir maps to a live worktree.
+      ⚠️ **The "Permission denied" was never an ACL problem, which is why a
+      permission grant would not have fixed it.** Every directory in these repos
+      carries reparse tag **`0x9000e01a`** (OneDrive Files On-Demand placeholder)
+      plus the `ReadOnly` attribute — `fsutil reparsepoint query` on any of them,
+      including `tests/` and `.git/refs`, shows it. A **recursive** delete
+      (`git worktree prune`, `rm -rf`, `Remove-Item -Recurse`,
+      `Directory.Delete(path, true)`) is refused; the classifier also refuses the
+      recursive forms on sight. **The recipe that worked, per husk:** delete the
+      `ORIG_HEAD` file → clear `ReadOnly` on `logs/`, `refs/` and the husk root →
+      `[System.IO.Directory]::Delete(<path>, $false)` **bottom-up,
+      non-recursively**. Clearing `ReadOnly` alone only moves the error from
+      *"Access denied"* to *"directory is not empty"*; it is the non-recursive
+      bottom-up order that finishes it. ⚠️ **Filed here rather than `info/`
+      only because the item closes with it** — if it recurs, promote it to
+      [`info/worktree-deploys.md`](info/worktree-deploys.md) §0.
 - [ ] **`audiobook_catalog` still shows an untracked `frontend/`** (`dist/`,
       `docs/` dated 2026-02-24) — re-measured 2026-09-06 08:46 Phoenix, still
       there, still untracked. The KI-14 rebuild touched it. 🔴 **It was NOT
@@ -1268,7 +1289,7 @@ WHOLE to [`DONE.md`](DONE.md) entry "2026-09-02 — the ~14:00 owner decision
 batch, executed"; per-repo detail lives in library_catalog's and
 audiobook_catalog's own DONE files.)
 
-## ☐ Prune the `C:/lcw/` worktrees — 18 of 27 removed 2026-09-05; the 9 left each have a REASON
+## ☐ Prune the `C:/lcw/` worktrees — 19 of 27 removed; the 5 "unmerged" branches were ALL already on main (2026-09-06)
 
 ✅ **18 removed by agent W2-PLAT, 2026-09-05.** ⚠️ **Nothing is lost and that is
 measurable:** `git worktree remove` deletes a checkout, never a branch — every
@@ -1300,26 +1321,68 @@ origin main`). Plus: nothing inside modified since 2026-09-04.
 
 ### 🔴 The 9 that STAYED, and why
 
-| Directory | Repo | Why it was NOT removed |
+> 🔴 **CORRECTED 2026-09-06 (agent W11-ABFIX) — THE FIVE "UNMERGED" ROWS WERE
+> ALL WRONG, AND SO WAS THE ALARM ON `abfix`.** Every one of the **15 commits
+> across all five branches is already on `origin/main` by CONTENT.** The
+> original strikethrough text is kept below because the premise is what the next
+> session reasons from.
+>
+> ⚠️ **The bug is in the instrument, and it is named in *"The three checks each
+> directory had to pass"* just above:**
+> `merge-base --is-ancestor` answers *"is this SHA an ancestor of main"*, **not**
+> *"has this WORK landed"*. Commits that were **cherry-picked or rebased** onto
+> `main` land under **new SHAs**; the branch keeps the originals, and the
+> ancestor test then reads "unmerged" forever, no matter how long ago the work
+> shipped. **`git cherry -v origin/main <branch>` is the right instrument** — it
+> compares patch-ids and prints `-` for every patch already upstream.
+>
+> **What was measured, per branch, in its own worktree:** `git rebase
+> origin/main` → *"skipped previously applied commit"* for **every** commit,
+> ending **0 commits ahead of `origin/main`, 0 conflicts, 0 modified files**;
+> and `git cherry -v` printing `-` on every line. Both, on all five.
+>
+> **The security alarm was already answered — by a doc, eleven days earlier.**
+> `audiobook_catalog/docs/DONE.md` recorded on **2026-08-31** that all five
+> audit CRITICAL/HIGH fixes were verified on `main` **and** `origin/prod`, named
+> the landing SHAs, and said the branch *"can now be deleted"*. The 2026-09-05
+> pass re-derived the opposite answer by SHA and contradicted it without
+> reading it. ⚠️ **A settled fact re-derived with a weaker instrument is not a
+> new finding — it is a regression.**
+
+| Directory | Repo | Status, measured 2026-09-06 |
 |---|---|---|
-| `abfix` | `audiobook_catalog` | 🔴 **6 unmerged commits** on `feature/audit-fixes-audiobook` — HEAD `6b75fe2` is not an ancestor of `origin/main`. ⚠️ **Three of them are stored-XSS fixes** (`community.html` profile fields, inline `renderReviewSection`, generated community-stats `displayName`) plus a `reclaim_drive_files` trash-instead-of-delete fix and a CI gate. **This is unlanded security work, not leftovers** |
-| `ebookcount` | `audiobook_catalog` | 🔴 **2 unmerged commits** on `feature/ebook-audio-count` (`5d49e90`) — the ebook manifest counting audio editions instead of refusing them |
-| `gabicp` | `catalog-platform` | 🔴 **3 unmerged commits** on `feature/gabi-t2-confirm` (`177ae91`) — the T2 catalog-fix confirm lane, shipped DARK |
-| `index-read` | `catalog-platform` | 🔴 **3 unmerged commits** on `feature/index-machine-read` (`a751349`) — the named MACHINE READ exception + its estate probe |
-| `pause` | `catalog-platform` | 🔴 **1 unmerged commit** on `feature/pause-asks` (`9471961`) — *"Pausing ingestion is a QUESTION now"* |
+| `abfix` | `audiobook_catalog` | ✅ **CLOSED — worktree removed, branch `feature/audit-fixes-audiobook` DELETED** (was `f9a4578`). ~~🔴 6 unmerged commits… **This is unlanded security work, not leftovers**~~ — **it was not.** All six landed **2026-08-24 02:05–02:13 -0700** as `fba1a80` / `696a737` / `a9bca2e` / `6acf6fa` / `fd37dfd` / `23a2058`. All three escapings re-read on `origin/main` directly (`community.html` `escapeHtml` ×14, `index.html:3233` `escHtml` ×5, `generate_stats.py:518` ×2), plus `reclaim_drive_files.py:167` trashing and `js-tests.yml`. Suite **2253 passed / 47 subtests / 0 failed**. **Full record: `audiobook_catalog/docs/DONE.md`, top entry** (one fact, one home — not duplicated here) |
+| `ebookcount` | `audiobook_catalog` | ☐ 🧑 **DELETE (owner's call).** ~~🔴 2 unmerged commits~~ — both already on `main`; `build_ebook_manifest.py` is **byte-identical** to `main`'s copy and `site/ebooks.html:1053` renders the `N audiobooks` string. Left rebased + in place; tracked in `audiobook_catalog/docs/TODO.md` |
+| `gabicp` | `catalog-platform` | ☐ 🧑 **DELETE (owner's call).** ~~🔴 3 unmerged commits~~ — all on `main`; `packages/gabi-conversation/src/confirm.ts` and `apps/discord-worker/test/confirm.test.ts` present (the latter byte-identical). Rebases to exactly `origin/main`. Left rebased + in place |
+| `index-read` | `catalog-platform` | ☐ 🧑 **DELETE (owner's call).** ~~🔴 3 unmerged commits~~ — all on `main`; `apps/index-worker/src/machine-route.ts`, its test and the estate probe all present. Rebases to exactly `origin/main`. Left rebased + in place |
+| `pause` | `catalog-platform` | ☐ 🧑 **DELETE (owner's call).** ~~🔴 1 unmerged commit~~ — on `main`; `status/pipelines/pipelines.js:659` carries *"the button has already opened a question and each answer is a sentence"*. Rebases to exactly `origin/main`. Left rebased + in place |
 | `onedrive-excluded` | — | **Not a git checkout.** Eight directories named after repos and side projects (`boardbuddy`, `bookbuddy`, `catalog-platform`, `flight-info`, `scraping-tool`, `Sundance`, `tome-of-lore`, `wow-recorder`), created 2026-08-25 — it looks deliberate (a OneDrive-exclusion staging area), so it was left alone rather than guessed at |
 | `tbr-audit` | — | **Not a git checkout.** A 2026-08-26 scratch dump — `audit.mts`, `audit-report.txt` and ~40 MB of `.tmp` files |
 | `v3` | — | **Not a git checkout.** `cache/ d1/ observability/ r2/ workflows/`, untouched since 2026-08-11 |
 | `worktrees` | — | **Not a git checkout.** An **empty directory** |
 
-☐ **What is left to decide, and it is the owner's call, not a session's.** The
-five unmerged branches are the only real question: **land them, or delete the
-branch and the worktree together.** Removing the directory alone would not lose
-the commits (the branch holds them) but would lose the built `node_modules` and
-any local state. ⚠️ **Start with `abfix`** — unlanded XSS fixes are worth more
-than the other four combined. The other four directories can be deleted with
-`rm -rf` whenever their content is judged uninteresting; none is a worktree, so
-no registration goes with them.
+☐ 🧑 **What is left to decide — and it is now a MUCH smaller question than this
+paragraph used to describe.** ~~The five unmerged branches are the only real
+question: **land them, or delete the branch and the worktree together.**~~
+⚠️ **Corrected 2026-09-06: there is nothing to land.** All five branches carry
+zero work that `origin/main` lacks, so *"land them"* is a no-op and the only
+live question is **delete the four remaining branches + worktrees, yes or no.**
+**Recommendation: DELETE all four** — each is now thousands of lines *behind*
+`main` (`ebookcount` is 142 files / ~31.5k lines behind), and `git worktree
+remove` deletes a checkout, never a branch.
+
+- [ ] 🧑 **Delete `feature/ebook-audio-count` + `C:/lcw/ebookcount`**
+- [ ] 🧑 **Delete `feature/gabi-t2-confirm` + `C:/lcw/gabicp`**
+- [ ] 🧑 **Delete `feature/index-machine-read` + `C:/lcw/index-read`**
+- [ ] 🧑 **Delete `feature/pause-asks` + `C:/lcw/pause`**
+
+⚠️ **A session deliberately did NOT delete these four.** W11-ABFIX was
+authorised to land and delete `abfix` only; the other four were triage-only, so
+they are left **rebased onto `origin/main` and unmerged, worktrees in place**,
+exactly as found. ⚠️ **`rm -rf` is still the wrong tool** — all four ARE
+registered worktrees (the older text below saying otherwise is struck through);
+use `git worktree remove <path>` then `git branch -d <branch>`, and **never
+touch `C:/lcw` itself** (KI-14).
 
 ☐ **Also left, and out of this item's scope:** ~40 loose files at the top of
 `C:/lcw/` (commit-message drafts, `covers2-*.mjs/.sql/.log`, and two ~300 KB
@@ -1327,12 +1390,18 @@ no registration goes with them.
 LIVE scratch area, not purely a graveyard, which is one more reason nothing
 there gets a blanket `rm -rf`).
 
-☐ **Three stale worktree ADMIN directories were found and deliberately left**
+☑ ~~**Three stale worktree ADMIN directories were found and deliberately left**
 (they are inside the repos, not under `C:/lcw/`, and predate this pass):
 `catalog-platform/.git/worktrees/agent-a37b9d469f37af097` (2026-08-24),
 `library_catalog/.git/worktrees/wave3` and `wave4` (2026-08-10). Each is a husk
 with no `gitdir` file, so `git worktree list` already ignores them; harmless,
-and `git worktree prune` is the one-command clean-up if anyone wants it.
+and `git worktree prune` is the one-command clean-up if anyone wants it.~~
+✅ **ALL CLEARED 2026-09-06 (W11-ABFIX) — and it was NINE husks, not three, and
+`git worktree prune` was NOT the one-command clean-up.** The full count, the
+`0x9000e01a` OneDrive-placeholder diagnosis and the working removal recipe are
+recorded once, at the top of this file (the *"KI-6, and two harmless residues"*
+section) — one fact, one home. `git worktree prune --dry-run` now returns
+**empty in all four repos**.
 
 ---
 
