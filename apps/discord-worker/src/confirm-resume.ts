@@ -20,7 +20,7 @@ import {
   type ConversationKey,
 } from './conversation.js';
 import { PERSON_SPACE, PERSON_SURFACE } from './personality.js';
-import { libraryInstances } from './delegated.js';
+import { resolveLibraryInstances } from './delegated.js';
 import { makeDelegate } from './delegated-exec.js';
 import { pressConfirm, type ConfirmMemory } from './confirm-flow.js';
 import { CONFIRM_MSG } from './confirm.js';
@@ -95,7 +95,7 @@ export async function resumeConfirm(
       press,
       { discordUserId: key.person },
       { port: delegate, memory: confirmMemory(stub, key), keyMaterial: token },
-      libraryInstances(env),
+      await resolveLibraryInstances(env),
     );
     await say(outcome.content);
   } catch (err) {

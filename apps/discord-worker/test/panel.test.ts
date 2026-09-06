@@ -794,6 +794,15 @@ describe('mainLibraryBaseFrom — validated, never repaired', () => {
     assert.equal(mainLibraryBaseFrom(REGISTRY_BODY), 'https://shelf.example.test');
   });
 
+  /** A COMPLETE registry row. ⚠️ Complete on purpose since 2026-09-06: the
+   *  parser is shared with the rest of the Worker now and refuses a partial
+   *  row outright, so a `{ id, host }` fixture would pass these tests for the
+   *  wrong reason — "the row was malformed" rather than "the host was". */
+  const row = (over: Record<string, unknown>) => ({
+    ...REGISTRY_BODY.catalogs[1],
+    ...over,
+  });
+
   it('⚠️ a host that is not a bare hostname is REFUSED, not fixed', () => {
     // A "corrected" host is a guess, and this one ends up in a link somebody
     // presses. Every one of these returns null so the caller falls back.
@@ -809,7 +818,7 @@ describe('mainLibraryBaseFrom — validated, never repaired', () => {
       'shelf.example.test#f',
     ]) {
       assert.equal(
-        mainLibraryBaseFrom({ catalogs: [{ id: MAIN_LIBRARY_CATALOG_ID, host }] }),
+        mainLibraryBaseFrom({ catalogs: [row({ id: MAIN_LIBRARY_CATALOG_ID, host })] }),
         null,
         `"${host}" was accepted`,
       );
@@ -827,7 +836,7 @@ describe('mainLibraryBaseFrom — validated, never repaired', () => {
     // complaint this whole file was written to end ("why is it showing padhard
     // and not the generic site"). A registry answer with only her row in it
     // must fall back, not resolve.
-    const onlyFriend = { catalogs: [{ id: 'library2', host: 'padhard.heygabi.ai' }] };
+    const onlyFriend = { catalogs: [row({ id: 'library2', host: 'padhard.heygabi.ai' })] };
     assert.equal(mainLibraryBaseFrom(onlyFriend), null);
   });
 });

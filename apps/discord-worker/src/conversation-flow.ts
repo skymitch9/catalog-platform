@@ -53,7 +53,9 @@ import {
   type PendingChoice,
 } from './conversation.js';
 import type { CapVerdict } from './mentions.js';
-import { delegatedWritesOn, libraryInstances, type WriteCapVerdict } from './delegated.js';
+import { delegatedWritesOn, libraryInstancesFrom, type WriteCapVerdict } from './delegated.js';
+import { estateCatalogs } from './catalog-registry.js';
+import { suggestShelvesFrom } from './suggest.js';
 import { makeDelegate } from './delegated-exec.js';
 import { docsOn, type DocsCapVerdict } from './estate-docs.js';
 import { makeDocsPort } from './estate-docs-exec.js';
@@ -310,11 +312,18 @@ export async function resumeConversation(
       ...(memoryPort ? { memory: memoryPort } : {}),
       ...(shelfPort ? { shelf: shelfPort } : {}),
     };
+    // ⚠️ THE ESTATE DIRECTORY, READ ONCE PER TURN. `null` means it did not
+    // answer — never "the estate has one library" — and both derivations below
+    // fall back to this Worker's own configured words when it is.
+    const catalogs = await estateCatalogs(env);
     const cfg = {
       indexBaseUrl: indexBase(env),
       panelUrl: panelDeepLink(await resolvePanelBase(env)),
       catalogBaseUrl: catalogBase(env),
-      instances: libraryInstances(env),
+      // ⚠️ From the estate directory, read ONCE, with the configured pair as
+      // the fallback when it does not answer.
+      instances: libraryInstancesFrom(env, catalogs),
+      shelves: suggestShelvesFrom(catalogs),
       delegatedWrites: delegatedWritesOn(env),
       docsEnabled: docsOn(env),
       booksEnabled: booksOn(env),

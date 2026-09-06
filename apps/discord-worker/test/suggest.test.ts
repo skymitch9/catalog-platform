@@ -23,8 +23,10 @@ import { describe, it } from 'node:test';
 import { resetCatalogCache, type CatalogRow } from '../src/catalog-data.js';
 import {
   buildSuggestions,
+  DEFAULT_SUGGEST_SHELVES,
   formatAsked,
   formatFromProfileNotes,
+  physicalShelfUrl,
   PHYSICAL_SOURCE_INSTANCE,
   PHYSICAL_FORMAT_TOKENS,
   physicalFormatsOf,
@@ -38,12 +40,15 @@ import {
   SUGGEST_MSG,
   SUGGEST_NO_FABRICATION_NOTE,
   SUGGEST_NOTE,
+  suggestShelvesFrom,
 } from '../src/suggest.js';
 import { gatherSuggestions, suggestGate } from '../src/suggest-flow.js';
 import { MENTION_MSG } from '../src/mentions.js';
 import { DONT_KNOW_NOTE, quotableTerm, titleShaped } from '../src/mention-flow.js';
 import type { BooksPort } from '../src/book-knowledge.js';
+import { DEFAULT_LIBRARY_MAIN } from '../src/delegated.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from '../src/delegated.js';
+import type { CatalogEntry } from '../src/catalog-registry.js';
 import type { ReviewRow, TbrRow } from '../src/shelf.js';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
@@ -868,6 +873,8 @@ describe('⚠️ an empty lookup may not become a claim about the world', () => 
   });
 
   it('and it says what she CAN do', () => {
+    // ⚠️ The default is still this Worker's own configured main library, so an
+    // un-routed call keeps a real link rather than an empty one.
     assert.match(SUGGEST_MSG.nothingLeft('physical'), /library\.heygabi\.ai/);
     assert.match(SUGGEST_MSG.nothingLeft('physical'), /audiobook/i);
     assert.match(SUGGEST_MSG.nothingLeft('ebook'), /audiobook/i);
@@ -879,7 +886,37 @@ describe('⚠️ an empty lookup may not become a claim about the world', () => 
       fileURLToPath(new URL('../src/mention-flow.ts', import.meta.url).href),
       'utf8',
     );
-    assert.match(flow, /candidates\.length === 0\) return done\(SUGGEST_MSG\.nothingLeft\(format\)/);
+    // ⚠️ The constant now takes the SHELF'S URL as an argument (2026-09-06) —
+    // resolved from the estate directory rather than typed into the sentence
+    // (survey §3.4, `suggest.ts:592`). The property being pinned is unchanged
+    // and is the one that matters: the empty answer is a CONSTANT the model
+    // never writes, not a sentence it composes.
+    assert.match(flow, /SUGGEST_MSG\.nothingLeft\(format, physicalShelfUrl\(/);
+  });
+
+  it('⚠️ the "real shelf" link is the shelf she LOOKED AT, not a typed-in host', () => {
+    // The URL was `https://library.heygabi.ai`, hard-coded (survey §3.4). A
+    // moved host would have rotted here in silence, and a second library could
+    // never appear in it.
+    const said = SUGGEST_MSG.nothingLeft('physical', 'https://shelf.example.test');
+    assert.match(said, /<https:\/\/shelf\.example\.test>/);
+    assert.doesNotMatch(said, /library\.heygabi\.ai/);
+  });
+
+  it('⚠️ physicalShelfUrl resolves the SAME instance the gate used', () => {
+    // It reads `PHYSICAL_SOURCE_INSTANCE` off the routed list — which comes
+    // from the registry — and does NOT change which shelf that is.
+    assert.equal(
+      physicalShelfUrl([
+        { app: 'library2', label: "Samantha's library", baseUrl: 'https://padhard.test' },
+        { app: 'library', label: "Skylar's library", baseUrl: 'https://main.test' },
+      ]),
+      'https://main.test',
+    );
+    // Nothing routed → this Worker's own configured main library, so the
+    // sentence still carries a real link rather than an empty `<>`.
+    assert.equal(physicalShelfUrl(undefined), DEFAULT_LIBRARY_MAIN);
+    assert.equal(physicalShelfUrl([]), DEFAULT_LIBRARY_MAIN);
   });
 
   it('⚠️ and the grounded turn carries the no-fabrication rule too', () => {

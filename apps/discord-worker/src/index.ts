@@ -84,6 +84,7 @@ import {
 import { indexBase, processHave } from './have.js';
 import { panelDeepLink, processGabi, resolvePanelBase } from './gabi.js';
 import { panelRegistryOn } from './panel.js';
+import { catalogRegistryOn, estateCatalogs } from './catalog-registry.js';
 import { mentionsOn } from './mentions.js';
 import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
@@ -97,7 +98,7 @@ import {
   GROQ_READ_ONLY_TOOL_NAMES,
   MAX_TOOL_ITERATIONS,
 } from './gabi-tools.js';
-import { delegatedWritesOn, libraryInstances } from './delegated.js';
+import { delegatedWritesOn, resolveLibraryInstances } from './delegated.js';
 import { makeDelegate } from './delegated-exec.js';
 import {
   DOCS_BYTES_PER_TURN,
@@ -123,7 +124,7 @@ import { ARCHIVE_RETENTION_DAYS, RECALL_SCAN_ROWS } from './archive.js';
 import { personalityOn, PERSONALITY_POOL_VERSION, TROPES } from './personality.js';
 import { edgeMode } from './gabi-prompt.js';
 import { shelfOn } from './shelf.js';
-import { PHYSICAL_SOURCE_INSTANCE, suggestOn } from './suggest.js';
+import { PHYSICAL_SOURCE_INSTANCE, suggestOn, suggestShelvesFrom } from './suggest.js';
 import { GATEWAY_INTENTS, gatewayStub } from './gateway.js';
 import {
   moderationOn,
@@ -177,8 +178,13 @@ const NO_TOKEN_MSG =
 // Health — same open, no-PII pattern as auth.heygabi.ai / index.heygabi.ai
 // (design doc §1.7). Booleans about which secrets are PRESENT, never values.
 // ---------------------------------------------------------------------------
-app.get('/api/health', async (c) =>
-  c.json({
+app.get('/api/health', async (c) => {
+  // ⚠️ ONE directory read for the shelf rows below (and one only — the shared
+  // memo makes a second call free, but a reader should not have to know that).
+  // With `GABI_CATALOG_REGISTRY` off this makes NO subrequest and answers the
+  // configured pair, which is what the `gabi_catalog_registry` row says.
+  const shelves = await resolveLibraryInstances(c.env);
+  return c.json({
     ok: true,
     service: 'estate-discord',
     features: [
@@ -363,7 +369,13 @@ app.get('/api/health', async (c) =>
     // an existing value, deletes something, or touches a role, the T0–T4 ladder
     // moved and somebody should find that in one curl.
     gabi_delegated_verbs: GABI_DELEGATED_VERB_NAMES,
-    gabi_delegated_targets: libraryInstances(c.env).map((i) => i.baseUrl),
+    // ⚠️ THE SHELVES SHE WOULD ACTUALLY ROUTE TO, resolved from the estate
+    // directory (2026-09-06) with the configured pair as the fallback — so this
+    // row can never disagree with where a write would land. `gabi_catalog_registry`
+    // below says WHICH of the two answered.
+    gabi_delegated_targets: shelves.map((i) => i.baseUrl),
+    gabi_delegated_target_labels: shelves.map((i) => i.label),
+    gabi_catalog_registry: catalogRegistryOn(c.env) ? 'on' : 'off',
     // ⚠️ Stated rather than inferred, because it is the claim the whole design
     // rests on: every door she can be reached through is one Discord delivers
     // content for WITHOUT the Message Content intent. Three now, not one —
@@ -616,8 +628,8 @@ app.get('/api/health', async (c) =>
     /** ⚠️ The DATE the shapes were measured, beside the flag that depends on it —
      *  a verification with no age is not evidence. */
     club_write_shapes_measured_on: CLUB_WRITE_SHAPES_MEASUREMENT.measuredOn,
-  }),
-);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // The identity-link ceremony (design §1.6, phase 2). Everything about it —
@@ -1198,7 +1210,7 @@ app.post('/interactions', async (c) => {
           serviceAccountJson: c.env.FIREBASE_SERVICE_ACCOUNT,
           discordUserId: decision.actor.user?.id ?? null,
           ...(gabiPanelPort
-            ? { panel: { port: gabiPanelPort, instances: libraryInstances(c.env) } }
+            ? { panel: { port: gabiPanelPort, instances: await resolveLibraryInstances(c.env) } }
             : {}),
         }),
       );
@@ -1278,10 +1290,13 @@ app.post('/interactions', async (c) => {
           suggestOn: suggestOn(c.env),
           shelf: makeShelfPort(c.env),
           books: makeBooksPort(c.env),
-          delegated: (() => {
+          delegated: await (async () => {
             const port = makeDelegate(c.env);
-            return port ? { port, instances: libraryInstances(c.env) } : null;
+            return port ? { port, instances: await resolveLibraryInstances(c.env) } : null;
           })(),
+          // ⚠️ WHOSE shelves she is naming, from the estate directory — the
+          // fallback names no owner rather than the wrong one.
+          shelves: suggestShelvesFrom(await estateCatalogs(c.env)),
         }),
       );
       return c.json(deferredEphemeral());

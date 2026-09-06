@@ -459,11 +459,20 @@ export async function tryProposeWith(
  * NOT a reason to return null — the port still exists and simply parses nothing,
  * which is the same dull-GABI ladder the rest of the surface has.
  */
-export function makeConfirmProposer(env: Env): ConfirmProposer | null {
+export function makeConfirmProposer(
+  env: Env,
+  /**
+   * ⚠️ **The shelves, already resolved from the estate directory by the caller**
+   * — this factory is synchronous by contract (a composition root builds it per
+   * message, beside five other ports) and the directory read is a subrequest.
+   * Absent → the configured fallback pair, exactly as before 2026-09-06.
+   */
+  resolved?: readonly LibraryInstance[],
+): ConfirmProposer | null {
   const delegate = makeDelegate(env);
   const token = env.ESTATE_APP_TOKEN_DISCORD;
   if (!delegate || !token) return null;
-  const instances = libraryInstances(env);
+  const instances = resolved && resolved.length > 0 ? resolved : libraryInstances(env);
   if (instances.length === 0) return null;
   const deps: ProposerDeps = {
     port: delegate,

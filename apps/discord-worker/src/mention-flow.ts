@@ -169,6 +169,7 @@ import { gatherRecall } from './recall-flow.js';
 import {
   formatAsked,
   formatFromProfileNotes,
+  physicalShelfUrl,
   PHYSICAL_SOURCE_INSTANCE,
   renderSuggestions,
   suggestFollowUp,
@@ -180,6 +181,7 @@ import {
   SUGGEST_NO_FABRICATION_NOTE,
   SUGGEST_NOTE,
   type SuggestFormat,
+  type SuggestShelves,
 } from './suggest.js';
 import { gatherSuggestions, suggestGate } from './suggest-flow.js';
 import {
@@ -505,6 +507,15 @@ export interface MentionConfig {
    */
   instances?: readonly LibraryInstance[];
   delegatedWrites?: boolean;
+  /**
+   * ⚠️ **WHAT THE THREE SHELVES ARE CALLED** — resolved from the estate
+   * directory at the composition root (the half that holds `env`), because this
+   * file must stay pure of it. Absent → `DEFAULT_SUGGEST_SHELVES`, which names
+   * no owner rather than naming the wrong one, which is what
+   * *"the library, as an ebook"* was doing to a shared digital pool
+   * (`multi-library-survey-2026-09-05.md` §6).
+   */
+  shelves?: SuggestShelves;
   /**
    * ⚠️ **TIER 2 CONFIRM — the `GABI_CONFIRM_T2` posture, affirmative-only, read
    * at the composition root.** Defaults to FALSE so a caller that predates the
@@ -1728,12 +1739,18 @@ async function suggestAnswer(
     ...(format === 'physical' ? { browsed: browsed ? { rows: browsed.rows, total: browsed.total } : null } : {}),
     ...(ctx.shelf ? { shelf: ctx.shelf } : {}),
     ...(cfg.fetchOverride ? { fetchOverride: cfg.fetchOverride } : {}),
+    ...(cfg.shelves ? { shelves: cfg.shelves } : {}),
   });
   // ⚠️ NO CATALOGUE MEANS NO SUGGESTION, and it is worded as our outage. An
   // empty list dressed as an answer would say "there is nothing for you" about a
   // shelf of 1,079 books.
   if (!gathered) return done(SUGGEST_MSG.estateUnreachable, false);
-  if (gathered.candidates.length === 0) return done(SUGGEST_MSG.nothingLeft(format), false);
+  if (gathered.candidates.length === 0) {
+    // ⚠️ The "browse the real shelf" link is the shelf she ACTUALLY looked at,
+    // taken from the routed instance rather than typed into the sentence
+    // (survey §3.4, `suggest.ts:592`).
+    return done(SUGGEST_MSG.nothingLeft(format, physicalShelfUrl(ctx.delegated?.instances)), false);
+  }
 
   // ── 4. ⚠️ GROUNDED ON A CLOSED LIST OF ROWS READ THIS TURN ───────────────
   const moodHints = suggestMoodHints(question);

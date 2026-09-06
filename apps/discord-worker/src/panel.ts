@@ -90,13 +90,24 @@
 
 import type { Env } from './env.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from './delegated.js';
-// ⚠️ ONE function, and it is imported rather than re-derived: `indexBase` is
-// this Worker's single answer to *"where is the estate index"*, and a second
-// copy of that hostname here is exactly the duplicate-constant defect the
-// registry exists to end. It carries no credential (`/have`'s own design
-// decision 4) and the estate-docs seam guard reads this file's source for
-// credential names — none of them arrive with it.
-import { indexBase } from './have.js';
+// ⚠️ ONE reader of the estate directory, and it is imported rather than
+// re-derived. This file had its OWN fetch, its own memo and its own timeout
+// until 2026-09-06, which was fine while it was the only lane; dispatch 3 added
+// a second (the shelf list and the ownership words), and two fetches of one
+// route is exactly the duplicate the registry exists to end. `indexBase` is
+// likewise this Worker's single answer to *"where is the estate index"*. Neither
+// carries a credential (`/have`'s own design decision 4) and the estate-docs
+// seam guard reads this file's source for credential names — none arrive with
+// them.
+import {
+  baseUrlFromHost,
+  loadCatalogs,
+  resetCatalogRegistryCache,
+  CATALOG_REGISTRY_TTL_MS,
+  CATALOG_REGISTRY_TIMEOUT_MS,
+  parseCatalogs,
+  type CatalogRegistryDeps,
+} from './catalog-registry.js';
 
 /** The fallback for somebody the estate cannot place: **the main library**, the
  * same instance this file's own resolution table calls "the estate's default",
@@ -210,30 +221,24 @@ export const MAIN_LIBRARY_CATALOG_ID = 'library';
  * host edited in D1 can therefore take up to twenty minutes to reach a link —
  * fine for a hostname, and the reason §8 says outright never to put a
  * permission behind this cache. */
-export const PANEL_REGISTRY_TTL_MS = 10 * 60 * 1000;
+export const PANEL_REGISTRY_TTL_MS = CATALOG_REGISTRY_TTL_MS;
 
 /** ⚠️ **A hard ceiling, because this sits in front of a person waiting for a
  * message.** The link is the useful half of the reply, not the reply; a
  * directory that is slow must cost a fallback, never a turn. */
-export const PANEL_REGISTRY_TIMEOUT_MS = 2_000;
+export const PANEL_REGISTRY_TIMEOUT_MS = CATALOG_REGISTRY_TIMEOUT_MS;
 
-/** What a caller may inject. Both exist for tests; production passes neither. */
-export interface PanelRegistryDeps {
-  fetch?: typeof fetch;
-  now?: () => number;
-}
+/** What a caller may inject. Both exist for tests; production passes neither.
+ *  ⚠️ Now an alias of the shared client's own deps — one seam, so a test that
+ *  stubs the directory stubs it for every lane that reads it. */
+export type PanelRegistryDeps = CatalogRegistryDeps;
 
-/**
- * ⚠️ **Isolate-local, and it caches the FAILURE too** (as `null`). An
- * unreachable directory that is retried on every turn is a directory outage
- * turned into a latency outage; remembering "it did not answer" for the same
- * ten minutes is what keeps the fallback cheap.
- */
-let registryMemo: { at: number; base: string | null } | null = null;
-
-/** Tests only. Production never calls it — the memo's whole point is to survive. */
+/** Tests only. Production never calls it — the memo's whole point is to survive.
+ *  ⚠️ It resets the SHARED memo (`catalog-registry.ts`), because there is one
+ *  copy of the directory in this Worker and a test that cleared only half of it
+ *  would pass while leaving the other lane holding yesterday's answer. */
 export function resetPanelRegistryCache(): void {
-  registryMemo = null;
+  resetCatalogRegistryCache();
 }
 
 /**
@@ -254,56 +259,28 @@ export async function registryPanelBase(
   env: Pick<Env, 'INDEX_BASE_URL'>,
   deps: PanelRegistryDeps = {},
 ): Promise<string | null> {
-  const now = deps.now ?? Date.now;
-  const at = now();
-  if (registryMemo && at - registryMemo.at < PANEL_REGISTRY_TTL_MS) return registryMemo.base;
-
-  const doFetch = deps.fetch ?? fetch;
-  let base: string | null = null;
-  try {
-    const res = await doFetch(new URL('/api/catalogs', indexBase(env)).toString(), {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(PANEL_REGISTRY_TIMEOUT_MS),
-    });
-    if (res.ok) {
-      const body = (await res.json()) as { catalogs?: unknown };
-      base = mainLibraryBaseFrom(body);
-    } else {
-      console.error(`GABI panel: the estate registry answered HTTP ${res.status}; keeping the configured fallback.`);
-    }
-  } catch (err) {
-    console.error('GABI panel: the estate registry could not be read:', err instanceof Error ? err.message : err);
-  }
-
-  registryMemo = { at, base };
-  return base;
+  const catalogs = await loadCatalogs(env, deps);
+  if (!catalogs) return null;
+  const row = catalogs.find((c) => c.id === MAIN_LIBRARY_CATALOG_ID);
+  return row ? baseUrlFromHost(row.host) : null;
 }
 
 /**
  * The `library` row's host, as a base URL — pure, so every shape of a bad
  * answer is exercised with no network.
+ *
+ * ⚠️ **The validation moved to `catalog-registry.ts` and did not change.** A
+ * bare hostname is the registry's contract (`library.heygabi.ai`); anything
+ * carrying a scheme, a slash, a port, a space or a credential marker is refused
+ * rather than repaired, because a "fixed" host is a guess and this one ends up
+ * in a link a person presses. ⚠️ **A malformed ROW now refuses the whole
+ * answer** rather than only its own — the shared parser's rule, and the safer
+ * direction: half a directory is how a shelf disappears from a menu silently.
  */
 export function mainLibraryBaseFrom(body: unknown): string | null {
-  if (body === null || typeof body !== 'object') return null;
-  const list = (body as { catalogs?: unknown }).catalogs;
-  if (!Array.isArray(list)) return null;
-  for (const raw of list) {
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue;
-    const row = raw as Record<string, unknown>;
-    if (row.id !== MAIN_LIBRARY_CATALOG_ID) continue;
-    const host = typeof row.host === 'string' ? row.host.trim() : '';
-    // ⚠️ A bare hostname is the registry's contract (`library.heygabi.ai`).
-    // Anything carrying a scheme, a slash, a space or a credential marker is
-    // refused rather than repaired: a "fixed" host is a guess, and this one
-    // ends up in a link a person presses.
-    if (!host || /[\s/\\@?#]|:/.test(host)) return null;
-    try {
-      return new URL(`https://${host}`).origin;
-    } catch {
-      return null;
-    }
-  }
-  return null;
+  const catalogs = parseCatalogs(body);
+  const row = catalogs?.find((c) => c.id === MAIN_LIBRARY_CATALOG_ID);
+  return row ? baseUrlFromHost(row.host) : null;
 }
 
 /**

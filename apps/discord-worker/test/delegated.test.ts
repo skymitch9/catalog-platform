@@ -435,7 +435,17 @@ describe('the delegated flow', () => {
       [MAIN, FRIEND],
     );
     assert.match(out.content, /Sign in once/i);
-    assert.match(out.content, /library\.heygabi\.ai/);
+    // ⚠️ **THE SHELVES SHE ACTUALLY ASKED, not two typed-in URLs.** The
+    // sentence used to carry `https://library.heygabi.ai` and
+    // `https://padhard.heygabi.ai` as literals (survey §3.4,
+    // `delegated.ts:482`), so a third shelf could never appear in it and a
+    // moved host would rot here in silence. It names the instances it was
+    // routed over, and NOTHING ELSE — which is the property worth pinning,
+    // because a sentence naming a catalog she did not consult is a lie about
+    // where somebody should go and sign in.
+    assert.match(out.content, /<https:\/\/main\.test>/);
+    assert.match(out.content, /<https:\/\/friend\.test>/);
+    assert.doesNotMatch(out.content, /library\.heygabi\.ai|padhard/);
     assert.deepEqual(rec.calls, []);
   });
 

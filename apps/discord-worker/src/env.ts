@@ -88,6 +88,24 @@ export interface Env {
    * check. Turning it off is also how you PIN the host: off + `GABI_PANEL_URL`
    * is a deliberate operator choice, on is the estate's own answer. */
   GABI_PANEL_REGISTRY?: string;
+  /** ⚠️ **THE REGISTRY LANE for WHICH SHELVES EXIST and WHAT THEY ARE CALLED**
+   * (2026-09-05 owner rule, survey §3.4 dispatch 3). `"on"` and nothing else;
+   * absent, `"true"`, `"1"` and every typo mean OFF, and OFF is byte-for-byte
+   * the pre-registry Worker — no subrequest, `LIBRARY_MAIN_URL` /
+   * `LIBRARY_FRIEND_URL` and the in-code labels answering alone. ON,
+   * `src/catalog-registry.ts` reads `GET {INDEX_BASE_URL}/api/catalogs` (the
+   * anonymous NAMES-ONLY branch, ⚠️ **no credential is sent**, nothing widened)
+   * and `delegated.ts` / `suggest.ts` take the SET of libraries and the
+   * owner/holding words from it.
+   * ⚠️ **It decides WORDS and HOSTNAMES, never a permission** — every
+   * capability is still asked of the destination site per person per call, and
+   * the directory is ten-minute cached at both ends, which is fine for a name
+   * and wrong for a grant (`docs/info/catalog-registry.md` §8).
+   * ⚠️ **Separate from `GABI_PANEL_REGISTRY` on purpose**: that one gates a
+   * single hostname inside a deep link and is also the way to PIN it (off +
+   * `GABI_PANEL_URL`); this one gates the shelves she offers and the names she
+   * gives them. Two different backouts, one shared fetch and one shared memo. */
+  GABI_CATALOG_REGISTRY?: string;
   /** ⚠️ THE AUDIOBOOK SITE, and it exists because the estate index does NOT
    * hold a narrator. Measured 2026-08-18 against `apps/index-worker/migrations/
    * 0001_entry.sql` and the live host: the `entry` table has no narrator, no
@@ -219,19 +237,28 @@ export interface Env {
   ESTATE_APP_TOKEN_DISCORD?: string;
 
   /**
-   * The two library instances GABI may be asked to write to. Vars, not secrets:
-   * they are public hostnames that appear in her own replies.
+   * ⚠️ **THE FALLBACK library instances — no longer the whole answer.** Vars,
+   * not secrets: they are public hostnames that appear in her own replies.
    *
-   * ⚠️ **TWO, because there really are two Workers with two D1 databases** —
-   * `library` (the main shelf) and `library2` (padhard). That is measured
-   * reality, not future-proofing: `library_catalog/docs/access/second-instance.md`
-   * documents one build deploying to two targets, and a build that knew about
-   * only one would silently write the wrong household's catalog for anybody who
-   * holds a role on both.
+   * ⚠️ **They named exactly TWO shelves, and a third could not exist without a
+   * code change** — `delegated.ts`'s `LibraryInstance.app` was the closed union
+   * `'library' | 'library2'`. Since 2026-09-06 the SET of shelves and their
+   * owner labels come from the estate registry when `GABI_CATALOG_REGISTRY` is
+   * on (`resolveLibraryInstances`), and these two vars are what answers when
+   * the directory does not. ⚠️ The old comment here said *"TWO, because there
+   * really are two Workers with two D1 databases"* — still true today, and
+   * still the wrong thing to build a type union out of, which is the owner's
+   * multi-library rule of 2026-09-05.
    *
-   * Absent means that instance is not offered at all — which is the honest
-   * behaviour for a single-instance estate, and the reason these default in
-   * code rather than being required.
+   * ⚠️ **The fallback names no OWNER**, deliberately: ownership is the
+   * registry's fact, and an unreachable directory is not evidence about whose
+   * shelf something is. It falls back to naming a shelf by its address, which
+   * is checkable — never to the asker-relative *"your own shelf"* it used to
+   * say, which was simply wrong for the owner (survey §2 F2, row #7).
+   *
+   * Absent means that instance is not offered at all — the honest behaviour for
+   * a single-instance estate, and the reason these default in code rather than
+   * being required.
    */
   LIBRARY_MAIN_URL?: string;
   LIBRARY_FRIEND_URL?: string;

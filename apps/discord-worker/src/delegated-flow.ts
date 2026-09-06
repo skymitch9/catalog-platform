@@ -119,7 +119,10 @@ export async function runDelegated(
       return plain(
         routing.unreachable
           ? DELEGATE_MSG.siteUnreachable('the catalogs')
-          : DELEGATE_MSG.noAccountAnywhere,
+          : // ⚠️ The shelves she ACTUALLY asked, not a typed-in pair of URLs —
+            // so the sentence can never name a catalog she did not consult, and
+            // a third shelf appears in it with no code change.
+            DELEGATE_MSG.noAccountAnywhere(instances),
       );
     }
 

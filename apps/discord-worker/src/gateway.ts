@@ -122,7 +122,8 @@
 
 import type { Env } from './env.js';
 import { createChannelMessage, getGatewayBot, replyToMessage } from './discord-api.js';
-import { delegatedWritesOn, libraryInstances, writeCapDecision } from './delegated.js';
+import { delegatedWritesOn, libraryInstancesFrom, writeCapDecision } from './delegated.js';
+import { estateCatalogs } from './catalog-registry.js';
 import { makeDelegate } from './delegated-exec.js';
 import { confirmT2On } from './confirm.js';
 import { makeConfirmProposer } from './confirm-propose.js';
@@ -149,7 +150,7 @@ import {
 } from './personality.js';
 import { makeArchivePort, makeMemoryPort } from './memory-exec.js';
 import { shelfOn } from './shelf.js';
-import { suggestOn } from './suggest.js';
+import { suggestOn, suggestShelvesFrom } from './suggest.js';
 import { makeShelfPort } from './shelf-exec.js';
 import {
   distillConversation,
@@ -1455,6 +1456,12 @@ export class GabiGateway {
     // untouched. The port is built per message rather than held on the object
     // because it closes over nothing worth keeping and a stale one would
     // outlive a secret rotation.
+    // ⚠️ THE ESTATE DIRECTORY, READ ONCE PER TURN (and once per isolate per ten
+    // minutes behind the shared memo). `null` means it did not answer — never
+    // "the estate has one library" — and both derivations below then fall back
+    // to this Worker's own configured words.
+    const catalogs = await estateCatalogs(this.env);
+
     const delegate = makeDelegate(this.env);
 
     // ⚠️ TIER 0b. `null` when the estate has not finished the wiring — no
@@ -1491,7 +1498,7 @@ export class GabiGateway {
     // ships-dark state, in which the fix lane is exactly the propose-and-deep-
     // link answer. Even when non-null it is INERT unless `GABI_CONFIRM_T2` is on
     // (`cfg.confirmT2` below): both must be true before a fix message is parsed.
-    const confirmProposer = makeConfirmProposer(this.env);
+    const confirmProposer = makeConfirmProposer(this.env, libraryInstancesFrom(this.env, catalogs));
 
     // ⚠️ PHASE 2 — resolve the asker's Firebase UID for shared memory sync.
     // Uses the same delegate port built above. Degrades gracefully: if the
@@ -1716,7 +1723,12 @@ export class GabiGateway {
         indexBaseUrl: indexBase(this.env),
         panelUrl: panelDeepLink(await resolvePanelBase(this.env)),
         catalogBaseUrl: catalogBase(this.env),
-        instances: libraryInstances(this.env),
+        // ⚠️ THE SHELVES AND THEIR NAMES COME FROM THE ESTATE DIRECTORY
+        // (2026-09-06, owner's multi-library rule). Read ONCE per turn and both
+        // answers derived from it; the configured pair is the fallback when it
+        // does not answer, and the fallback names no owner.
+        instances: libraryInstancesFrom(this.env, catalogs),
+        shelves: suggestShelvesFrom(catalogs),
         delegatedWrites: delegatedWritesOn(this.env),
         // ⚠️ TIER 2 CONFIRM — affirmative-only, ships OFF. With it off the fix
         // lane never parses a message and is byte-for-byte the pre-confirm path.

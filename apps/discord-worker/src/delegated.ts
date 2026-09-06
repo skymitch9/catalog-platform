@@ -66,6 +66,17 @@
  */
 
 import type { Env } from './env.js';
+// ⚠️ ONE reader of the estate directory in this Worker, imported rather than
+// re-derived — a second fetch of `/api/catalogs` here would be a second memo,
+// a second timeout and a second set of words for one fact. It carries no
+// credential (its own header explains why the absent Authorization header IS
+// the scope decision), which is what keeps this module credential-free.
+import {
+  baseUrlFromHost,
+  estateCatalogs,
+  type CatalogEntry,
+  type CatalogRegistryDeps,
+} from './catalog-registry.js';
 import {
   GABI_DELEGATED_VERB_NAMES,
   gabiDelegatedVerbByName,
@@ -97,13 +108,29 @@ export function delegatedWritesOn(env: Pick<Env, 'GABI_DELEGATED_WRITES'>): bool
  * (`ESTATE_APP`), and it is what the *site* reports back — not something this
  * end decides. Recorded here so a reply can say WHICH shelf changed, which is
  * the whole reason routing exists.
+ *
+ * ⚠️ **IT WAS THE CLOSED UNION `'library' | 'library2'` UNTIL 2026-09-06**, and
+ * `multi-library-survey-2026-09-05.md` §3.4 named that as this Worker's deepest
+ * single-library assumption after `PHYSICAL_SOURCE_INSTANCE`: *"exactly two
+ * libraries, as a closed type union … a `library3` is a type change today"*.
+ * It is a `string` now, because the estate's registry decides which catalogs
+ * exist and a type in this repo cannot. ⚠️ **Widening the type does NOT widen
+ * anything else** — every write is still gated by the destination site's own
+ * check of that person's capability, per instance, per call, and a shelf GABI
+ * has never heard of is a shelf that refuses her exactly as it refuses anybody.
  */
 export interface LibraryInstance {
-  app: 'library' | 'library2';
+  app: string;
   /** What she calls it in a sentence. Not a hostname — a place. */
   label: string;
   baseUrl: string;
 }
+
+/** The registry id of the estate's default library, and the one this file's
+ *  routing puts first. ⚠️ It is the same id `panel.ts` calls
+ *  `MAIN_LIBRARY_CATALOG_ID`; that file's copy is the one a reader of the panel
+ *  lane meets, and the two must agree — `test/delegated.test.ts` pins it. */
+export const MAIN_LIBRARY_APP = 'library';
 
 export const DEFAULT_LIBRARY_MAIN = 'https://library.heygabi.ai';
 export const DEFAULT_LIBRARY_FRIEND = 'https://padhard.heygabi.ai';
@@ -111,20 +138,116 @@ export const DEFAULT_LIBRARY_FRIEND = 'https://padhard.heygabi.ai';
 const trimBase = (raw: string | undefined, fallback: string): string =>
   (raw ?? '').trim().replace(/\/+$/, '') || fallback;
 
+/** The host in a base URL, for a label that names a shelf by its address. */
+const hostOf = (baseUrl: string): string => {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
+};
+
 /**
- * The instances this deployment may reach, in the order she offers them.
+ * ⚠️ **THE FALLBACK instance list — what answers when the estate directory does
+ * not.** It was the whole answer until 2026-09-06; `resolveLibraryInstances`
+ * below is the answer now, and this is what it degrades to.
  *
  * ⚠️ **The main library first**, because on a tie the menu's first row is the
  * one people press without reading. That is a wording decision, not an
  * authority one: nothing here decides anything about permission.
+ *
+ * ⚠️ **IT NAMES NO OWNER, and that is the correction.** The second row's label
+ * used to be **`'your own shelf'`** — asker-relative, and therefore a sentence
+ * in which GABI called *Samantha's* library *"your own shelf"* **to Skylar**
+ * (survey §2 F2, row #7, one of seven disagreeing spellings of two libraries).
+ * Ownership is the registry's fact; an unreachable registry is not evidence
+ * about whose shelf something is. So the fallback names a shelf by its
+ * ADDRESS, which is checkable, and lets the registry supply the name.
  */
 export function libraryInstances(
   env: Pick<Env, 'LIBRARY_MAIN_URL' | 'LIBRARY_FRIEND_URL'>,
 ): LibraryInstance[] {
+  const main = trimBase(env.LIBRARY_MAIN_URL, DEFAULT_LIBRARY_MAIN);
+  const friend = trimBase(env.LIBRARY_FRIEND_URL, DEFAULT_LIBRARY_FRIEND);
   return [
-    { app: 'library', label: 'the main library', baseUrl: trimBase(env.LIBRARY_MAIN_URL, DEFAULT_LIBRARY_MAIN) },
-    { app: 'library2', label: 'your own shelf', baseUrl: trimBase(env.LIBRARY_FRIEND_URL, DEFAULT_LIBRARY_FRIEND) },
+    { app: MAIN_LIBRARY_APP, label: 'the main library', baseUrl: main },
+    { app: 'library2', label: `the library at ${hostOf(friend)}`, baseUrl: friend },
   ];
+}
+
+/**
+ * ⚠️ **THE SET OF SHELVES, FROM THE ESTATE'S OWN DIRECTORY** — the owner's rule
+ * of 2026-09-05 (*"everything … connects to multiple libraries … designated by
+ * who owns the physical"*) reaching GABI.
+ *
+ * A library instance is a registry row that is **`kind: 'books'` and
+ * `holding: 'physical'`** — a shelf somebody owns copies on. The shared digital
+ * pools (`audiobook`, `ebooks`) are deliberately NOT instances: there is
+ * nothing to route a write to and nobody whose capability would decide it.
+ *
+ * ⚠️ **Every failure returns `libraryInstances(env)` and says so in the log** —
+ * a worded, non-crashing degradation. `null` from the directory means *"the
+ * registry did not say"*, never *"the estate has one library"*, and the
+ * difference is the whole point of not hard-coding a list here.
+ *
+ * ⚠️ **A registry row is not a grant.** This decides which shelves GABI OFFERS
+ * and what she CALLS them; whether the asker may do anything on one is still
+ * the destination site's own answer, asked per person, per call, exactly as
+ * before (`chooseInstances` below is unchanged).
+ *
+ * ⚠️ **The base URL comes from the registry's `host`**, except for the two
+ * shelves the configured vars name — those keep their configured value, because
+ * `LIBRARY_MAIN_URL`/`LIBRARY_FRIEND_URL` exist so a test or an operator can
+ * point this Worker somewhere deliberately, and a directory must not override
+ * a pin. A shelf the vars do not name (a `library3`) takes the registry's host,
+ * which is how it can exist at all without a code change.
+ */
+export async function resolveLibraryInstances(
+  env: Pick<Env, 'LIBRARY_MAIN_URL' | 'LIBRARY_FRIEND_URL' | 'GABI_CATALOG_REGISTRY' | 'INDEX_BASE_URL'>,
+  deps: CatalogRegistryDeps = {},
+): Promise<LibraryInstance[]> {
+  // ⚠️ `estateCatalogs` asks the posture BEFORE it fetches: off means no
+  // subrequest at all and the pre-registry behaviour byte for byte.
+  return libraryInstancesFrom(env, await estateCatalogs(env, deps));
+}
+
+/**
+ * The same decision, from catalogs a caller has already read — so a composition
+ * root that also needs the shelf NAMES pays for the directory once.
+ *
+ * ⚠️ **Pure**, which is what makes every branch above a unit test with no
+ * network: an empty directory, a malformed host, a directory that names only
+ * digital pools.
+ */
+export function libraryInstancesFrom(
+  env: Pick<Env, 'LIBRARY_MAIN_URL' | 'LIBRARY_FRIEND_URL'>,
+  catalogs: readonly CatalogEntry[] | null,
+): LibraryInstance[] {
+  const fallback = libraryInstances(env);
+  if (!catalogs) return fallback;
+
+  const configured = new Map(fallback.map((i) => [i.app, i.baseUrl]));
+  const out: LibraryInstance[] = [];
+  for (const cat of catalogs) {
+    if (cat.kind !== 'books' || cat.holding !== 'physical') continue;
+    const baseUrl = configured.get(cat.id) ?? baseUrlFromHost(cat.host);
+    // ⚠️ A row whose host we cannot read is SKIPPED, never repaired: a guessed
+    // hostname is a write pointed at somewhere nobody chose.
+    if (!baseUrl) {
+      console.error(`GABI registry: catalog "${cat.id}" carries a host I cannot read; leaving it out of the shelf list.`);
+      continue;
+    }
+    out.push({ app: cat.id, label: cat.label, baseUrl });
+  }
+
+  if (out.length === 0) {
+    console.error('GABI registry: the directory named no physical book catalog; using the configured shelves.');
+    return fallback;
+  }
+
+  // ⚠️ The main library first, for the same reason the fallback puts it first.
+  out.sort((a, b) => Number(b.app === MAIN_LIBRARY_APP) - Number(a.app === MAIN_LIBRARY_APP));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -477,11 +600,33 @@ export const DELEGATE_MSG = {
     `I couldn't reach ${label} just then, so nothing was changed. That's an outage on our side ` +
     'rather than an answer about your account or the book.',
 
-  noAccountAnywhere:
-    "I couldn't find an account for you on either catalog, so I haven't changed anything. Sign " +
-    'in once at <https://library.heygabi.ai> (or <https://padhard.heygabi.ai>) with the same ' +
-    'Google account you linked to Discord — signing in is what creates the account I look for — ' +
-    'and then ask me again.',
+  /**
+   * ⚠️ **THE TWO URLs USED TO BE TYPED INTO THIS SENTENCE** (survey §3.4,
+   * `delegated.ts:482`: *"hard-codes both URLs in a worded sentence"*), so a
+   * third shelf could never appear in it and a moved host would rot here
+   * silently. They are the shelves she actually asked, now — the same list the
+   * routing used one line earlier, so the sentence can never name a catalog she
+   * did not consult.
+   *
+   * ⚠️ It still says "no account", never "no permission": those are two of the
+   * four causes the estate's no-bare-status rule keeps apart, and the fix
+   * differs (sign in, versus ask an approver).
+   */
+  noAccountAnywhere: (instances: readonly LibraryInstance[]) => {
+    const where = instances.map((i) => `<${i.baseUrl}>`);
+    const list =
+      where.length === 0
+        ? 'the catalog site'
+        : where.length === 1
+          ? where[0]!
+          : `${where.slice(0, -1).join(', ')} (or ${where[where.length - 1]})`;
+    const shelves = instances.length === 1 ? 'the catalog' : 'any of the catalogs';
+    return (
+      `I couldn't find an account for you on ${shelves} I can reach, so I haven't changed ` +
+      `anything. Sign in once at ${list} with the same Google account you linked to Discord — ` +
+      'signing in is what creates the account I look for — and then ask me again.'
+    );
+  },
 
   writeCapped:
     "I've made a lot of changes for you today, so I'm going to stop there — that's a cap on my " +

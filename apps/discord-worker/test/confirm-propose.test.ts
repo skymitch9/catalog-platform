@@ -162,7 +162,11 @@ interface PortStub {
 function makePort(opts: {
   uid?: { ok: true; uid: string } | { ok: false; reason: 'unlinked' | 'outage' };
   /** editCatalog per instance app id. */
-  editable?: Partial<Record<'library' | 'library2', boolean>>;
+  // ⚠️ Keyed by `string`, not by a two-member union — `LibraryInstance.app`
+  // stopped being a closed union on 2026-09-06 (the estate decides which
+  // catalogs exist, not a type in this repo). The two ids below are still the
+  // two the fixtures use; a third would simply work.
+  editable?: Partial<Record<string, boolean>>;
   rows?: BrowseWork[];
   browseNull?: boolean;
   fixField?: (req: FixFieldRequest) => FixFieldResult;

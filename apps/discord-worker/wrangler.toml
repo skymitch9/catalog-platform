@@ -239,6 +239,39 @@ GABI_PANEL_URL = "https://library.heygabi.ai"
 # above, so a link can never get worse than it was.
 GABI_PANEL_REGISTRY = "on"
 
+# ⚠️ THE REGISTRY LANE FOR THE SHELVES THEMSELVES (2026-09-06, dispatch 3 of the
+# owner's multi-library rule of 2026-09-05: "everything ... connects to multiple
+# libraries ... designated by who owns the physical or shared with digital
+# works"). The line above resolves ONE hostname in a deep link; this one decides
+# WHICH SHELVES GABI OFFERS and WHAT SHE CALLS THEM, from the same directory:
+# GET {INDEX_BASE_URL}/api/catalogs, docs/info/catalog-registry.md.
+#
+# What it replaces, measured by multi-library-survey-2026-09-05.md §3.4:
+#   - a closed type union `'library' | 'library2'`, so a third shelf could not
+#     exist without a code change;
+#   - the label ⚠️ "your own shelf", which is asker-relative and was therefore
+#     GABI calling SAMANTHA'S library "your own shelf" TO SKYLAR (§2 F2, row #7);
+#   - two library URLs typed into a worded sentence (delegated.ts:482) and one
+#     more in the suggestion lane (suggest.ts:592);
+#   - "the library, as an ebook", which credits a SHARED DIGITAL pool to one
+#     person's physical shelf — the exact attribution the owner's rule forbids.
+#
+# ⚠️ AFFIRMATIVE-ONLY. "on" and nothing else; every typo means OFF, and OFF is
+# byte-for-byte the pre-registry Worker — no subrequest at all, LIBRARY_MAIN_URL
+# and LIBRARY_FRIEND_URL below answering alone with labels that name no owner.
+# That is the one-word backout.
+#
+# ⚠️ IT DECIDES WORDS AND HOSTNAMES, NEVER A PERMISSION. No credential is sent
+# (the route's anonymous branch is names-only), no CORS list, origin allowlist or
+# vis_ column is touched, and every capability is still asked of the destination
+# site per person per call. The directory is ten-minute cached at both ends,
+# which is fine for a name and wrong for a grant (catalog-registry.md §8).
+#
+# ⚠️ PHYSICAL_SOURCE_INSTANCE is deliberately NOT affected: which library a print
+# suggestion is gated on still needs the audiobook_catalog join to carry an
+# instance, which is another repo's work. This only NAMES that shelf correctly.
+GABI_CATALOG_REGISTRY = "on"
+
 # ⚠️ MODERATION KILL-SWITCH (owner order 2026-08-16: "disable her reacting to
 # any admin mod stuff for now until we get further along"). Declared here
 # BEFORE the moderation build existed, so that build would ship DARK behind it

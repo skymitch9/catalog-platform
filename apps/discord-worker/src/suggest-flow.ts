@@ -33,11 +33,13 @@ import type { ShelfPort, ReviewRow, TbrRow } from './shelf.js';
 import {
   bookIdFromTitle,
   buildSuggestions,
+  DEFAULT_SUGGEST_SHELVES,
   PHYSICAL_SOURCE_INSTANCE,
   SUGGEST_MSG,
   SUGGEST_ROWS,
   type SuggestCandidate,
   type SuggestFormat,
+  type SuggestShelves,
 } from './suggest.js';
 
 /** ⚠️ `ok: false` always carries the sentence. There is no path here that
@@ -211,6 +213,10 @@ export async function gatherSuggestions(opts: {
   /** ⚠️ The library's OWN print shelf, already fetched by the caller (which is
    *  the half that holds the delegated port). Present only for `physical`. */
   browsed?: BrowsedPhysical | null;
+  /** ⚠️ What the three shelves are CALLED, resolved from the estate directory
+   *  by the caller (which is the half that holds `env`). Absent → the worded
+   *  fallback, which names no owner rather than naming the wrong one. */
+  shelves?: SuggestShelves;
 }): Promise<GatheredSuggestions | null> {
   const overrides = opts.fetchOverride ? { fetch: opts.fetchOverride } : undefined;
 
@@ -263,7 +269,7 @@ export async function gatherSuggestions(opts: {
       // record the estate keeps. Never "already read".
       .filter((r) => !reviewed.has(bookIdFromTitle(r.title)))
       .slice(0, opts.limit ?? SUGGEST_ROWS)
-      .map((r) => physicalCandidate(r));
+      .map((r) => physicalCandidate(r, opts.shelves));
     return { candidates, shelfUnavailable: shelfNow !== null && !shelfNow.ok };
   }
 
@@ -283,6 +289,7 @@ export async function gatherSuggestions(opts: {
       tbr: shelf?.tbr ?? [],
       format: opts.format,
       limit: opts.limit ?? SUGGEST_ROWS,
+      ...(opts.shelves ? { shelves: opts.shelves } : {}),
     }),
     shelfUnavailable: shelf !== null && !shelf.ok,
   };
@@ -298,14 +305,21 @@ export async function gatherSuggestions(opts: {
  * in yet*. The WHY says so in plain words rather than dropping the book or
  * inventing an edition for it.
  */
-function physicalCandidate(r: BrowseWork): SuggestCandidate {
+function physicalCandidate(
+  r: BrowseWork,
+  shelves: SuggestShelves = DEFAULT_SUGGEST_SHELVES,
+): SuggestCandidate {
   const formats = r.formats.filter(Boolean);
+  // ⚠️ WHOSE shelf, not "the library" — the owner's 2026-09-05 rule on the one
+  // lane where it decides whether the errand ends at a bookcase you can open.
+  // The name comes from the estate directory (`suggestShelvesFrom`) and falls
+  // back to a word that names no owner rather than the wrong one.
   const shelf = formats.length > 0
-    ? `the library, in ${formats.join(' and ').toLowerCase()}`
-    : 'the library — a copy is held, though the edition has not been typed in yet';
+    ? `${shelves.physical}, in ${formats.join(' and ').toLowerCase()}`
+    : `${shelves.physical} — a copy is held, though the edition has not been typed in yet`;
   const why = formats.length > 0
-    ? `it is on the library shelf in ${formats.join(' and ').toLowerCase()} and you have not written about it`
-    : 'the library has a copy on the shelf — the edition is not recorded yet, but the book is there';
+    ? `it is on the shelf at ${shelves.physical} in ${formats.join(' and ').toLowerCase()} and you have not written about it`
+    : `${shelves.physical} has a copy on the shelf — the edition is not recorded yet, but the book is there`;
   return {
     title: r.title,
     // ⚠️ null authors stay unattributed. A sentinel would print as an author.

@@ -64,6 +64,8 @@
  */
 
 import type { CatalogRow } from './catalog-data.js';
+import type { CatalogEntry } from './catalog-registry.js';
+import { DEFAULT_LIBRARY_MAIN, type LibraryInstance } from './delegated.js';
 import type { Env } from './env.js';
 import { bookIdFromTitle, type ReviewRow, type TbrRow } from './shelf.js';
 
@@ -141,6 +143,27 @@ export const EBOOK_FORMAT_TOKENS = ['ebook'] as const;
  * unattributable row could then come from a shelf they cannot open.
  */
 export const PHYSICAL_SOURCE_INSTANCE = 'library' as const;
+
+/**
+ * ⚠️ **THE SHELF THE PRINT LOOKUP ACTUALLY USED, as a URL for a sentence** —
+ * resolved from the routed instances (which come from the estate directory)
+ * rather than typed in. `multi-library-survey-2026-09-05.md` §3.4 named
+ * `suggest.ts:592` for hard-coding `<https://library.heygabi.ai>` as *"the real
+ * shelf"*: a host that moves rots there silently, and a second library could
+ * never appear in it.
+ *
+ * ⚠️ **It resolves the SAME instance the gate used** (`PHYSICAL_SOURCE_INSTANCE`)
+ * and does not change which one that is — see the constant above for why moving
+ * it is another repo's work. The default is this Worker's own configured main
+ * library, so the sentence still carries a real link when nothing was routed.
+ */
+export function physicalShelfUrl(
+  instances: readonly LibraryInstance[] | undefined,
+): string {
+  return (
+    instances?.find((i) => i.app === PHYSICAL_SOURCE_INSTANCE)?.baseUrl ?? DEFAULT_LIBRARY_MAIN
+  );
+}
 
 const parseFormats = (raw: readonly string[]): string[] =>
   raw.flatMap((f) => f.split('|')).map((f) => f.trim().toLowerCase()).filter(Boolean);
@@ -575,7 +598,7 @@ export const SUGGEST_MSG = {
    * can do instead** — and none of them says anything about scanning,
    * cataloguing, ingestion, or what the house does or does not own.
    */
-  nothingLeft: (format: SuggestFormat) =>
+  nothingLeft: (format: SuggestFormat, libraryUrl: string = DEFAULT_LIBRARY_MAIN) =>
     format === 'audio'
       ? "I looked at the audiobook shelf and couldn't find one to put in front of you that you " +
         "haven't already written about — that's my lookup coming back empty, not a verdict on the " +
@@ -586,10 +609,15 @@ export const SUGGEST_MSG = {
           'audiobook meanwhile and I can suggest properly.'
         : // ⚠️ THE ONE THAT WAS FABRICATED. It now names the LIMIT precisely
           // rather than inventing a reason for it.
+          // ⚠️ The URL used to be TYPED INTO THIS SENTENCE (survey §3.4,
+          // `suggest.ts:592` — "`<https://library.heygabi.ai>` as *the real
+          // shelf*"). It is the shelf the print join is measured to point at,
+          // resolved from the estate directory by the caller, so a moved host
+          // cannot rot here silently.
           "My physical lookup came back empty — and I want to be straight about why that's my " +
           'limit rather than your shelves: from here I can only see print copies that the audiobook ' +
           "catalogue has cross-linked, which is a small slice of what's actually on them. Browse " +
-          '<https://library.heygabi.ai> for the real shelf, or ask me for an audiobook and I can ' +
+          `<${libraryUrl}> for the real shelf, or ask me for an audiobook and I can ` +
           'suggest properly.',
 
   estateUnreachable:
@@ -748,11 +776,72 @@ export const SUGGEST_ROWS = 5;
  *  suggesting more of something they merely tolerated. */
 export const LIKED_RATING = 4;
 
-const shelfLabel = (row: CatalogRow, format: SuggestFormat): string => {
-  if (format === 'audio') return 'the audiobook shelf';
-  if (format === 'ebook') return 'the library, as an ebook';
+/**
+ * ⚠️ **WHOSE SHELF SHE IS NAMING** — the owner's rule of 2026-09-05 reaching the
+ * three sentences the survey measured as wrong (§6):
+ *
+ * | Said before | Why it was wrong |
+ * |---|---|
+ * | *"the library, as an ebook"* | 🔴 attributes a **shared digital** work to somebody's physical library — the exact attribution the owner's rule forbids. Ebooks are the estate pool, not a shelf anyone owns |
+ * | *"the library, in print"* | never says **whose**, on the one lane where ownership decides whether the errand ends at a shelf you can open |
+ * | *"the audiobook shelf"* | true, but silent about the pool being shared |
+ *
+ * ⚠️ **The three strings are DATA, not constants, so they can come from the
+ * estate directory** (`suggestShelvesFrom`). The values here are the FALLBACK
+ * for an unreachable directory, and they deliberately name no owner: ownership
+ * is the registry's fact and a directory outage is not evidence about whose
+ * shelf something is. They say what is honest with the registry down — *the
+ * shared ebook pool* is a fact about the estate's own model, `the main library`
+ * is this Worker's own configured default.
+ */
+export interface SuggestShelves {
+  audio: string;
+  ebook: string;
+  physical: string;
+}
+
+export const DEFAULT_SUGGEST_SHELVES: SuggestShelves = {
+  audio: 'the audiobook shelf',
+  ebook: 'the shared ebook pool',
+  physical: 'the main library',
+};
+
+/**
+ * The three shelf names from the estate directory, or the fallback above.
+ *
+ * ⚠️ **`physical` is the row whose id is `PHYSICAL_SOURCE_INSTANCE`** — the
+ * shelf the print join is *measured* to point at. This function NAMES that
+ * shelf correctly; it does not change which one it is, and the constant stays
+ * exactly as it was (see its own header: moving it needs the
+ * `audiobook_catalog` join to carry an instance, which is another repo's work).
+ *
+ * ⚠️ Anything the directory does not name keeps its fallback word rather than
+ * degrading to a database id — `library2` in an English sentence is the defect
+ * the estate's whole label sweep exists to end.
+ */
+export function suggestShelvesFrom(catalogs: readonly CatalogEntry[] | null): SuggestShelves {
+  if (!catalogs) return DEFAULT_SUGGEST_SHELVES;
+  const physical = catalogs.find((c) => c.id === PHYSICAL_SOURCE_INSTANCE);
+  const ebooks = catalogs.find((c) => c.kind === 'books' && c.holding === 'digital' && c.shared);
+  const audio = catalogs.find((c) => c.kind === 'audio');
+  return {
+    audio: audio?.label ?? DEFAULT_SUGGEST_SHELVES.audio,
+    ebook: ebooks?.label ?? DEFAULT_SUGGEST_SHELVES.ebook,
+    physical: physical?.label ?? DEFAULT_SUGGEST_SHELVES.physical,
+  };
+}
+
+const shelfLabel = (
+  row: CatalogRow,
+  format: SuggestFormat,
+  shelves: SuggestShelves = DEFAULT_SUGGEST_SHELVES,
+): string => {
+  if (format === 'audio') return shelves.audio;
+  if (format === 'ebook') return shelves.ebook;
   const formats = physicalFormatsOf(row);
-  return formats.length > 0 ? `the library, in ${formats.join(' and ')}` : 'the library, in print';
+  return formats.length > 0
+    ? `${shelves.physical}, in ${formats.join(' and ')}`
+    : `${shelves.physical}, in print`;
 };
 
 const indexOf = (row: CatalogRow): number => {
@@ -795,6 +884,10 @@ export function buildSuggestions(opts: {
   tbr: readonly TbrRow[];
   format: SuggestFormat;
   limit?: number;
+  /** ⚠️ What the three shelves are CALLED, from the estate directory. Absent →
+   *  `DEFAULT_SUGGEST_SHELVES`, which names no owner rather than naming the
+   *  wrong one. */
+  shelves?: SuggestShelves;
 }): SuggestCandidate[] {
   const limit = opts.limit ?? SUGGEST_ROWS;
   const byId = new Map<string, CatalogRow>();
@@ -836,7 +929,7 @@ export function buildSuggestions(opts: {
       ...(row.narrator ? { narrator: row.narrator } : {}),
       ...(row.duration ? { duration: row.duration } : {}),
       ...(row.universe ? { universe: row.universe } : {}),
-      shelf: shelfLabel(row, opts.format),
+      shelf: shelfLabel(row, opts.format, opts.shelves),
       why,
       basis,
     });

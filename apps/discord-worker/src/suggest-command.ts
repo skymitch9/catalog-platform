@@ -56,11 +56,13 @@ import { editOriginalMessage } from './discord-api.js';
 import { EMBED_COLOR, truncate } from './have.js';
 import type { ShelfPort } from './shelf.js';
 import {
+  physicalShelfUrl,
   PHYSICAL_SOURCE_INSTANCE,
   SUGGEST_MSG,
   suggestMoodHints,
   type SuggestCandidate,
   type SuggestFormat,
+  type SuggestShelves,
 } from './suggest.js';
 import { gatherSuggestions, suggestGate } from './suggest-flow.js';
 
@@ -148,6 +150,10 @@ export interface SuggestCommandContext {
   shelf: ShelfPort | null;
   books: BooksPort | null;
   delegated: { port: DelegatePort; instances: readonly LibraryInstance[] } | null;
+  /** ⚠️ What the three shelves are CALLED, resolved from the estate directory
+   *  by the composition root. Absent → the worded fallback, which names no owner
+   *  rather than the wrong one. */
+  shelves?: SuggestShelves;
   fetchOverride?: typeof fetch;
 }
 
@@ -212,6 +218,7 @@ export async function processSuggestCommand(ctx: SuggestCommandContext): Promise
         : {}),
       ...(ctx.shelf && discordUserId ? { shelf: { port: ctx.shelf, discordUserId } } : {}),
       ...(ctx.fetchOverride ? { fetchOverride: ctx.fetchOverride } : {}),
+      ...(ctx.shelves ? { shelves: ctx.shelves } : {}),
     });
 
     // ⚠️ NO CATALOGUE MEANS NO SUGGESTION, worded as our outage. An empty list
@@ -222,7 +229,11 @@ export async function processSuggestCommand(ctx: SuggestCommandContext): Promise
       return;
     }
     if (gathered.candidates.length === 0) {
-      await say({ content: SUGGEST_MSG.nothingLeft(format) });
+      // ⚠️ The "browse the real shelf" link is the shelf she ACTUALLY
+      // looked at, from the routed instance rather than typed into the sentence.
+      await say({
+        content: SUGGEST_MSG.nothingLeft(format, physicalShelfUrl(ctx.delegated?.instances)),
+      });
       return;
     }
 
