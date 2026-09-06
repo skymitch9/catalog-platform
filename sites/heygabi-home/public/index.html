@@ -638,6 +638,30 @@ a.card .name { color: var(--card-fg, var(--et-fg)); }
   text-wrap: pretty;
 }
 
+/* WHO OWNS IT — the owner's rule of 2026-09-05, on the front door. Written by
+   assets/apex-catalog-cards.js from GET /api/catalogs; the markup carries the
+   fallback words for an unreachable index. Quieter than .what and louder than
+   .host, because "whose shelf is this" sits between "what is it" and "where". */
+.card .holds {
+  margin: .5rem 0 0;
+  color: var(--card-muted, var(--et-muted));
+  font-size: .8125rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  text-wrap: pretty;
+}
+
+/* The unreachable-index sentence. Amber-ish and quiet: it is a caveat about
+   the words below it, not an error about the page. */
+.cat-notice {
+  margin: 0 0 1rem;
+  padding: .6rem .8rem;
+  border-left: 3px solid var(--et-hue-2, currentColor);
+  color: var(--et-muted);
+  font-size: .875rem;
+  text-wrap: pretty;
+}
+
 /* Pushed to the bottom so hosts line up across cards of unequal text length. */
 .card .host {
   display: flex;
@@ -804,7 +828,14 @@ footer a.more:hover svg { transform: translateX(3px); }
     point (slot="who-extra").
   -->
   <section id="find" class="rise" style="animation-delay:.1s" aria-labelledby="find-h">
-    <h2 id="find-h">One question, three shelves</h2>
+    <!-- ⚠️ "three shelves" until 2026-09-05, when the estate had FIVE catalogs
+         and four index sources. It was a number in prose, which is the kind
+         that goes wrong quietly: nothing anywhere failed when `library2` and
+         `ebooks` arrived, the heading just started lying. Survey finding F4.
+         The replacement carries no number at all, so it cannot go stale — and
+         the count that IS worth showing is on the cards below, where it comes
+         from the registry rather than from a person's memory. -->
+    <h2 id="find-h">One question, every shelf</h2>
     <!-- ⚠️ The hint lost its second sentence in the 2026-08-17 estate-wide trim
          (owner: "Only keep what's mandatory and keep all the text short and
          useful"). It said anyone may search audio and members sign in for every
@@ -827,7 +858,26 @@ footer a.more:hover svg { transform: translateX(3px); }
   <section class="rise" style="animation-delay:.18s" aria-labelledby="cat-h">
     <h2 id="cat-h">The catalogues</h2>
 
-    <ul class="catalogues">
+    <!-- ⚠️ ONE WORDED SENTENCE, SHOWN ONLY WHEN THE REGISTRY COULD NOT BE
+         REACHED (assets/apex-catalog-cards.js). It says the cards below are
+         this page's own copy and may be out of date, and it says in words that
+         it is an outage rather than a permissions problem — because
+         mislabelling an outage sends people asking for access they already
+         have. A person never sees the status code. -->
+    <p class="cat-notice" id="cat-notice" role="status" hidden></p>
+
+    <!-- 🔴 THE CARDS BELOW ARE THE FALLBACK, NOT THE SOURCE OF TRUTH.
+         Every `data-catalog-card` cell is re-named and re-designated from
+         `GET https://index.heygabi.ai/api/catalogs` on load — names to
+         everybody, row counts only to a signed-in member and only for the
+         shelves their own grants admit (owner decision 2026-09-05 16:14, "yes
+         name only"). The static words here are what a reader gets when that
+         fetch FAILS, and when it succeeds nothing hand-written survives: the
+         one thing a fallback must never do is quietly stand in for a live
+         answer that arrived. A catalog in the registry with no cell here gets
+         one appended, so a `library3` reaches the front door without an edit.
+         Design: docs/info/catalog-registry.md. -->
+    <ul class="catalogues" id="catalogue-cards">
 
       <li>
         <!-- Universes leads (owner, 2026-08-15): the cross-format view is the
@@ -859,20 +909,21 @@ footer a.more:hover svg { transform: translateX(3px); }
         </div>
       </li>
 
-      <li>
+      <li data-catalog-card="audiobook">
         <a class="card" style="--hue: var(--et-hue-1); --card-bg: var(--et-card-1-bg); --card-fg: var(--et-card-1-fg); --card-muted: var(--et-card-1-muted)" href="https://audiobooks.heygabi.ai" target="_blank" rel="noopener">
           <span class="glyph" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M20 14h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1H19a1 1 0 0 0 1-1z"/></svg>
           </span>
           <span class="name">Audio</span>
           <p class="what">Our audio library — reviews, ratings and book clubs.</p>
+          <p class="holds">Shared across the estate · digital</p>
           <p class="host">audiobooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
       </li>
 
-      <li>
+      <li data-catalog-card="ebooks">
         <!-- Ebooks — its own card and its own hue (owner order 2026-08-17:
              "let it have its own theme and card in heygabi"). Sits beside
              Audio deliberately: the two SHARED-POOL formats together, then
@@ -886,13 +937,14 @@ footer a.more:hover svg { transform: translateX(3px); }
           </span>
           <span class="name">Ebooks</span>
           <p class="what">The shared ebook pool — every epub and pdf, one shelf.</p>
+          <p class="holds">Shared across the estate · digital</p>
           <p class="host">ebooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
           </p>
         </a>
       </li>
 
-      <li>
+      <li data-catalog-card="library library2">
 <!-- Two households since 2026-08-16 — a div wearing .card like the Admin
              card, because it holds a destination per library rather than one
              link (owner: "2 buttons now, 1 for Library and 1 for Samantha"). -->
@@ -907,15 +959,32 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
           </span>
           <span class="name">Books</span>
-          <p class="what">Paper-and-ebook shelves — one per household, linked as one estate.</p>
+          <!-- ⚠️ "Paper-and-ebook shelves" until 2026-09-05. It contradicted
+               the settled ownership model — ebooks are the SHARED pool and
+               have their own card two cells above, so this sentence credited a
+               shared digital work to somebody's physical shelf, which is the
+               one attribution the owner's rule forbids. Survey finding F5. -->
+          <p class="what">Printed books — one shelf per household, linked as one estate.</p>
+          <p class="holds">Skylar’s and Samantha’s · physical copies</p>
+          <!-- 🔴 THE LINK TEXT READ "!Sky" ON THE LIVE FRONT DOOR until
+               2026-09-05 — the estate's highest-visibility line, naming the
+               owner's own library with a stray shell-history "!" on it, beside
+               a sibling that read "Samantha". Survey finding F5, confirmed
+               live. It is now the registry's label for each shelf, so the two
+               households are designated by WHOSE they are and neither can be
+               retyped wrong again: `data-catalog-id` is what
+               assets/apex-catalog-cards.js rewrites from
+               GET /api/catalogs. The words below are the fallback for an
+               unreachable index; scripts/test/apex-catalog-cards.test.mjs and
+               predeploy.checks.json both refuse "!Sky" ever coming back. -->
           <p class="card-links">
-            <a href="https://library.heygabi.ai" target="_blank" rel="noopener">!Sky<span class="sr-only"> (opens in a new tab)</span></a>
-            <a href="https://padhard.heygabi.ai" target="_blank" rel="noopener">Samantha<span class="sr-only"> (opens in a new tab)</span></a>
+            <a href="https://library.heygabi.ai" data-catalog-id="library" target="_blank" rel="noopener">Skylar’s library<span class="sr-only"> (opens in a new tab)</span></a>
+            <a href="https://padhard.heygabi.ai" data-catalog-id="library2" target="_blank" rel="noopener">Samantha’s library<span class="sr-only"> (opens in a new tab)</span></a>
           </p>
         </div>
       </li>
 
-      <li>
+      <li data-catalog-card="games">
         <!-- ⚠️ CONVERTED to .card.multi on 2026-09-05 — its own commit, ahead of
              the "request a catalog" + button (docs/info/request-a-catalog-design.md
              §4.1, §10 phase 3a), so a regression in this link is separable from
@@ -942,6 +1011,12 @@ footer a.more:hover svg { transform: translateX(3px); }
           </span>
           <span class="name">Games</span>
           <p class="what">The game shelf — player counts, weights and who has played what.</p>
+          <!-- ⚠️ The board-game shelf was the estate's one UNDESIGNATED
+               catalog: three surfaces called it "games", "board games" and
+               "Games" and none of them said it is Skylar's physical shelf, so
+               it read as an unowned estate facility (survey finding F3). The
+               owner's table says otherwise, and now so does this line. -->
+          <p class="holds">Skylar’s · physical copies</p>
           <p class="host">
             <a href="https://boardgames.heygabi.ai" target="_blank" rel="noopener">boardgames.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
               <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
@@ -1019,5 +1094,16 @@ footer a.more:hover svg { transform: translateX(3px); }
      (which is what today's undeployed routes answer) draws no bell and changes
      nothing else on the page. -->
 <script type="module" src="/assets/apex-notices.js"></script>
+<!-- The catalogue cards' names, owners and (signed in, in scope) row counts,
+     from GET https://index.heygabi.ai/api/catalogs — owner ask 2026-09-05,
+     "the libraries are designated by who owns the physical or shared with
+     digital works". Fourth user of the estate-search:auth seam, and the only
+     one that draws something for a SIGNED-OUT reader: the registry answers
+     names to anybody (owner decision 16:14, "yes name only"), and the counts
+     are the half that waits for a sign-in.
+     ⚠️ Unlike its three neighbours this one does NOT fail hidden — it fails
+     LOUD, in one sentence, because the words it would have replaced are still
+     on screen and a reader deserves to know they are this page's own copy. -->
+<script type="module" src="/assets/apex-catalog-cards.js"></script>
 </body>
 </html>

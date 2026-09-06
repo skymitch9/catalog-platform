@@ -55,6 +55,45 @@ class StubNode {
     }
   }
 
+  /**
+   * ⚠️ Added 2026-09-05 for assets/apex-catalog-cards.js, which appends a card
+   * for a catalog the page has never heard of and must put it BEFORE the Admin
+   * cell rather than after it. Falls back to append when `ref` is not a child,
+   * which is not what the DOM does — but a stub that threw here would fail a
+   * test for a reason that has nothing to do with the module under test.
+   */
+  insertBefore(node, ref) {
+    const i = this.children.indexOf(ref);
+    if (i === -1) return this.appendChild(node);
+    if (node.parentElement) node.parentElement.removeChild(node);
+    this.children.splice(i, 0, node);
+    node.parentElement = this;
+    return node;
+  }
+
+  /**
+   * The tiny selector language the front-door modules actually use:
+   * `.class`, `[data-foo]` and `tag[data-foo]`. ⚠️ Anything else THROWS —
+   * a stub that silently answered `[]` to a selector it did not understand
+   * would let a module that queries nothing pass here and find nothing in a
+   * browser, which is the failure this whole harness exists to catch.
+   */
+  querySelectorAll(sel) {
+    const s = String(sel).trim();
+    let m = /^\.([A-Za-z0-9_-]+)$/.exec(s);
+    if (m) return this.all().filter((n) => String(n.className).split(/\s+/).includes(m[1]));
+    m = /^([A-Za-z-]*)\[([A-Za-z0-9_-]+)\]$/.exec(s);
+    if (m) {
+      const want = m[1] ? m[1].toUpperCase() : null;
+      return this.all().filter((n) => (!want || n.tagName === want) && n.getAttribute(m[2]) !== null);
+    }
+    throw new Error(`stub-dom: unsupported selector ${sel} — add it deliberately, do not widen this blindly`);
+  }
+
+  querySelector(sel) {
+    return this.querySelectorAll(sel)[0] || null;
+  }
+
   removeChild(child) {
     const i = this.children.indexOf(child);
     if (i !== -1) this.children.splice(i, 1);

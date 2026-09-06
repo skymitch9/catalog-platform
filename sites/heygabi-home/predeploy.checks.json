@@ -20,7 +20,19 @@
         "is injected by assets/apex-request-catalog.js AFTER a signed-in probe, so it can never be asserted from",
         "here — an unauthenticated fetch sees the hook and nothing else, which is exactly the shape of the gate.",
         "Both kinds are pinned as a PAIR because the owner's answer was 'Both': a deploy that shipped one card's",
-        "hook and dropped the other would still satisfy a single marker and would leave one card permanently mute."
+        "hook and dropped the other would still satisfy a single marker and would leave one card permanently mute.",
+        "",
+        "data-catalog-card is the 2026-09-05 registry hook (assets/apex-catalog-cards.js): every catalogue cell",
+        "declares which catalog(s) it stands for, and a cell that lost its attribute would silently keep whatever",
+        "words were hand-typed into it — which is the failure mode this whole build exists to end. All four are",
+        "pinned because the module rewrites per cell, so three right and one stale is a state that would otherwise",
+        "look entirely healthy.",
+        "mustNotContain is the F5 regression check on the LIVE host, and it is the half a unit test cannot do:",
+        "'>!Sky<' was rendering on heygabi.ai for weeks while every test in this repo was green. The other two are",
+        "the same shape — a shelf count in prose that nothing invalidates when a catalog is added, and a sentence",
+        "crediting the shared ebook pool to somebody's physical shelf. Each is matched in its RENDERED form ('>' or",
+        "the full phrase) so the comments in index.html that record what was wrong can stay: deleting the record of",
+        "a bug to satisfy its own regression check would be a poor trade."
       ],
       "path": "/",
       "mustContain": [
@@ -31,7 +43,19 @@
         "data-catalog-kind=\"games\"",
         "/assets/apex-request-catalog.js",
         "/assets/apex-notices.js",
-        "/assets/apex-notices.css"
+        "/assets/apex-notices.css",
+        "/assets/apex-catalog-cards.js",
+        "data-catalog-card=\"library library2\"",
+        "data-catalog-card=\"games\"",
+        "data-catalog-card=\"audiobook\"",
+        "data-catalog-card=\"ebooks\"",
+        "id=\"cat-notice\"",
+        "One question, every shelf"
+      ],
+      "mustNotContain": [
+        ">!Sky<",
+        "One question, three shelves",
+        ">Paper-and-ebook shelves"
       ]
     },
     {
@@ -44,6 +68,24 @@
         "the owner designation the whole build exists for. `catalogForEntry` is pinned because it is the estate's",
         "ONE source+format -> catalog map and the ebook attribution lives inside it."
       ],
+      "_why_cards": [
+        "The front door's catalogue cells, named and designated from the registry (owner ask 2026-09-05).",
+        "Nothing it DRAWS can be asserted from here — the markers are the four behaviours that would disappear",
+        "if the module lost its point: the registry hook it reads, the designation line it writes, the outage",
+        "sentence it shows when the index cannot be reached, and the appended cell that lets a library3 reach the",
+        "front door without an edit."
+      ],
+      "path": "/assets/apex-catalog-cards.js",
+      "mustContain": [
+        "data-catalog-card",
+        "export function holdsLine",
+        "REGISTRY_DOWN_NOTICE",
+        "function newCard",
+        "estate-search:auth",
+        "ABSENT IS NOT ZERO"
+      ]
+    },
+    {
       "path": "/assets/catalog-registry.js",
       "mustContain": [
         "https://index.heygabi.ai/api/catalogs",
