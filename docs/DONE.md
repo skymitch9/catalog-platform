@@ -9,6 +9,127 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-05 22:05 Phoenix — GABI's prompt stops being a hand copy, and the panel host stops being a literal
+
+> **Closed by W8-SYNC-PROMPT (claude-opus-5).** Commits **`824765a`** (the sync
+> script + the pin test's other half), **`04e2882`** (the registry lookup),
+> **`93a3999`** (`access/discord-bot.md` §16 + the survey §3.4 row) and the
+> `deploys.log`/docs line beside this entry. Deployment
+> **`de53160f-95a1-4d78-9b03-b9370d208bfe`**; **rollback
+> `ac1313a7-ceae-4bbe-acf5-6d33c4d616c2`** (W7-PANEL-URL, `6828e6a`, 02:59:45Z)
+> — read off `npx wrangler deployments list` rather than trusted, per the same
+> lesson W7 recorded when its brief's expected id turned out to be wrong.
+>
+> **Tests: 1,261 → 1,279 pass / 0 fail** in `apps/discord-worker` (+3 prompt-sync,
+> +15 panel-registry); `npm run typecheck` clean on both tsconfigs. Deployed from
+> a throwaway `git worktree` of HEAD with five `node_modules` junctions, torn
+> down link-first: **`.bin` 51 before / 51 after the links' `rmdir` / 51 after
+> `git worktree remove`.** No migration — this Worker owns no D1.
+>
+> ### The two things, and they are the same shape
+>
+> **1 · `scripts/sync-gabi-prompt.mjs`.** `gabi-prompt.ts`'s own header had said
+> since 2026-08-20 that the mechanism was *"option (a) — copied text with a
+> comment"* and that a script *"can be added later"*. It never was, and the only
+> test over it compared this repo's prompt against **a literal the test file kept
+> itself** — red when THIS repo changed, green forever when the CANONICAL one
+> did.
+>
+> ⚠️ **It could not be a whole-file copy, and that was the interesting part.**
+> Measured paragraph by paragraph, the two prompts differ INSIDE their sections:
+> `## Who you are` 2 of 3 shared, `## What you can do` **0 of 1** (upstream lists
+> five WRITE tools and an auto-apply lane), `## Finding the right book` 1 of 3,
+> `## Saying what is true` 3 of 4, `## When something goes wrong` 2 of 2,
+> `## Remembering` 0 of 1. A single generated region would have had to contain
+> text this surface **must not say** — tool names it does not have, beside
+> `DISCORD_SUFFIX`'s *"never imply you have changed something"*. So the **8
+> shared paragraphs are extracted verbatim** into a marked region (⚠️ committed
+> source, not a gitignored artifact — this Worker must build in a clone with no
+> sibling checkout) and the **6 deliberate deltas are pinned upstream by hash**,
+> never copied: an upstream edit to one fails the sync and prints the new text so
+> a human re-decides.
+>
+> **2 · `src/panel.ts`'s registry lookup.** `resolvePanelBase()` reads the
+> `library` row's `host` from `GET {INDEX_BASE_URL}/api/catalogs` behind
+> `GABI_PANEL_REGISTRY = "on"` (affirmative-only), constant as the fallback.
+> 🔴 **Nothing was widened** — names-only route, no credential sent (asserted),
+> no CORS list, origin allowlist, `vis_` column or permission touched, and the
+> destination site still does its own Firebase sign-in and `runResearch` check.
+> Every failure falls back and none throws; a `host` carrying a
+> scheme/slash/port/space is **refused, never repaired**. 10-minute isolate-local
+> memo (the registry's own TTL), the **failure cached too** so a directory outage
+> cannot become a latency outage, 2 s hard timeout.
+>
+> ### Verified live — 2026-09-06 05:01:45Z
+>
+> `GET https://discord.heygabi.ai/api/health` → **200**, `ok: true`,
+> `service: "estate-discord"`, `gabi_panel_url: "https://library.heygabi.ai/"`,
+> **`gabi_panel_registry: "on"`** (the new row). `wrangler deploy` printed
+> `env.GABI_PANEL_REGISTRY ("on")` in the bindings table.
+>
+> **And the stronger half, because the row above is not by itself proof.** Since
+> the morning's fix the constant is `library.heygabi.ai` too, so a successful
+> lookup and a fallback produce the *same string*. `npx wrangler tail
+> estate-discord --format json` was run across **six** `/api/health` requests:
+> every event carried `"logs": []` and `"exceptions": []`. `registryPanelBase`
+> logs a `console.error` on every non-ok status and every throw, so the absence
+> is evidence the read did not fall back. The registry's own answer was measured
+> the same hour: `GET https://index.heygabi.ai/api/catalogs` → 200,
+> `id: "library"` → `host: "library.heygabi.ai"`.
+>
+> **Exercised rather than reasoned about:** a hand edit inside the generated
+> markers makes `--check` exit **1**, and restoring the file makes it exit **0**;
+> both SKIP paths (script and test) were run with a bogus `LIBRARY_CATALOG_DIR`;
+> the composition renders **byte-identical** to the old hand copy, proven by the
+> pre-existing `STANDARD_PROMPT_AS_SHIPPED` literal still passing untouched.
+>
+> ### ⚠️ NOT VERIFIED
+>
+> - **How she SOUNDS.** A test over a prompt string proves an instruction is
+>   PRESENT, never that it is obeyed. Her voice is unchanged **by design** (the
+>   byte-identical pin is the mechanical proof) but nobody has taken a Discord
+>   turn on this version.
+> - **Nobody has followed a registry-resolved deep link from Discord as an
+>   unlinked person.** `access/discord-bot.md` §10.5's second bullet still
+>   stands, exactly as W7 left it.
+> - **Whether `library.heygabi.ai`'s panel renders for a signed-in stranger** —
+>   the site's own `runResearch` check is the authority and this end cannot see
+>   it.
+> - **The sync has never fired on a real upstream change.** Every delta hash was
+>   pinned from today's `GABI_SYSTEM`; the first genuine library-side prompt edit
+>   is what proves the failure path prints something a human can act on.
+>
+> ### Two things found and left open
+>
+> - ⚠️ **`https://discord.heygabi.ai/health` is a 404** — measured. The health
+>   route on this Worker is **`/api/health`**, and briefs that name `/health`
+>   will read the 404 as an outage.
+> - **The rest of survey §3.4 is untouched and still open**: the
+>   `LibraryInstance` closed type union, `'your own shelf'` (F2 — asker-relative
+>   and wrong for the owner), `PHYSICAL_SOURCE_INSTANCE` (the deepest
+>   single-library assumption in the estate, and its fix lives in
+>   `audiobook_catalog`), and `suggest.ts`'s three rows.
+>
+> **Files:** `scripts/sync-gabi-prompt.mjs`, `scripts/lib/gabi-prompt-sync.mjs`,
+> `scripts/lib/library-repo.mjs`, `apps/discord-worker/{package.json,wrangler.toml}`,
+> `src/{gabi-prompt.ts,panel.ts,env.ts,gabi.ts,index.ts,gateway.ts,conversation-flow.ts}`,
+> `test/{gabi-edge.test.ts,panel.test.ts}`, `docs/access/discord-bot.md`,
+> `docs/info/multi-library-survey-2026-09-05.md`, `docs/deploys.log`.
+
+**The item as it stood in `TODO.md`:**
+
+### ☐ `scripts/sync-gabi-prompt.mjs` — GABI's personality prompt is a HAND copy (found 2026-09-05)
+
+Same sync check. `apps/discord-worker/src/gabi-prompt.ts` `GABI_CORE` is copied
+text from `library_catalog/packages/research/src/gabi.ts` `GABI_SYSTEM`; the
+pin test (`test/gabi-edge.test.ts`) checks the copy against its own literal,
+never against the library file, so drift is invisible. Measured 2026-09-05: in
+sync in every shared section (the deltas are the panel's write tools, its
+"Remembering" block and `find_book`/`get_book` → "a lookup"/"a tool call" — all
+deliberate). The file itself names the fix: a `sync-gabi-prompt.mjs` mirroring
+`sync-gabi-conversation.mjs` (option b), never built. Backlog #13 in the
+2026-09-05 ready list; not started.
+
 ## ✅ DONE 2026-09-05 21:48 Phoenix — the predeploy markers are dry-run against the working tree BEFORE the upload
 
 > **Closed by W8-PREDEPLOY (claude-opus-5).** `npm run check:home` now asserts

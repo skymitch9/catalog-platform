@@ -22,18 +22,6 @@
 > 21:46; deliverable `docs/info/test-inventory-2026-09-05.md` + the decision
 > list presented as ONE numbered list with recommendations.
 
-## ☐ `scripts/sync-gabi-prompt.mjs` — GABI's personality prompt is a HAND copy (found 2026-09-05)
-
-Same sync check. `apps/discord-worker/src/gabi-prompt.ts` `GABI_CORE` is copied
-text from `library_catalog/packages/research/src/gabi.ts` `GABI_SYSTEM`; the
-pin test (`test/gabi-edge.test.ts`) checks the copy against its own literal,
-never against the library file, so drift is invisible. Measured 2026-09-05: in
-sync in every shared section (the deltas are the panel's write tools, its
-"Remembering" block and `find_book`/`get_book` → "a lookup"/"a tool call" — all
-deliberate). The file itself names the fix: a `sync-gabi-prompt.mjs` mirroring
-`sync-gabi-conversation.mjs` (option b), never built. Backlog #13 in the
-2026-09-05 ready list; not started.
-
 ## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
 
 > **Owner, verbatim (16:50):** *"Should we make all the scripts routes? Or at
