@@ -3,6 +3,21 @@
 > **Audience:** future Claude sessions first, the owner second.
 > **Status:** TRACKED. **Last verified: 2026-09-05.**
 >
+> ✅ **STATUS UPDATE 2026-09-05 (later the same day): DISPATCH 2 (§10) HAS
+> LANDED.** F1, F3, F4 and F5 are **closed on the apex**, F2 is closed for the
+> five apex copies and open for #6 (`library_catalog`'s `PEERS`) and #7 (GABI's
+> `delegated.ts`). Every `catalog-platform` row of §3.1 is done except the nine
+> hand-written `/status` host rows (their NAMES come from the registry now; the
+> row SET does not) and `/admin`'s `CATALOGS`, which is deliberately left as a
+> permissions vocabulary. §3.2–§3.8 are untouched — dispatches 3 and 4.
+> As-built: [`catalog-registry.md`](catalog-registry.md) §10a. Deploy
+> `58d8efae`; entries in [`../DONE.md`](../DONE.md) and [`../deploys.log`](../deploys.log).
+>
+> ⚠️ **The survey text below is left EXACTLY as it was measured** — it is the
+> record of what was true on the morning of 2026-09-05, and editing findings
+> into past tense would destroy the one thing an audit is for. Read a §3 row as
+> "what was there", and the line above as "what has since changed".
+>
 > ⚠️ **This is a READ-ONLY SURVEY. Nothing here was built, changed, deployed or
 > fixed.** Every `file:line` below was read out of source on 2026-09-05 in the
 > four repos named in §0. Two things were measured against the LIVE estate that

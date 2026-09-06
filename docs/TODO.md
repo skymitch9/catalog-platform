@@ -228,22 +228,64 @@ ran zero times. A member gets counts only for the catalogs their own
 visibility admits, so **Samantha's shelf is NAMED to the signed-out internet
 and never COUNTED without `vis_library2`**. Nothing about her rows moved.
 
-🔴 **NOTHING A PERSON SEES HAS CHANGED YET, and that is the point of the
-order.** The seven disagreeing label maps (F2), `FULL_SCOPE_SIZE = 3` (F1),
-`game` designated nobody's (F3), `/status` blind to `library2` (F4) and the
-apex's `!Sky` (F5) are all still exactly as the survey found them. Dispatch 2
-(the apex) is what deletes them, and it is the next one.
+☑ ③b **THE APEX IS DONE AND VERIFIED LIVE — dispatch 2, agent W6-APEX,
+2026-09-05.** Deploy `58d8efae` at `051dd77`; rollback `910d6efe`. F1, F2, F3,
+F4 and F5 are all closed on the apex and each was checked against the live host,
+not against the code that produces it. The paragraph that stood here — *"NOTHING
+A PERSON SEES HAS CHANGED YET"* — moved WHOLE to [`DONE.md`](DONE.md) with the
+before/after table, the three decisions worth not re-deriving, and the
+eight-bad-markers finding. Consumers table: [`info/catalog-registry.md`](info/catalog-registry.md) §10a.
 
-⚠️ **Two things dispatch 2 must check before it ships**, both measured
-2026-09-05 and written up in `catalog-registry.md` §10:
-- the index Worker's `READ_ORIGINS` does **not** include
-  `padhard.heygabi.ai` or `ebooks.heygabi.ai`, so a browser on either cannot
-  read `/api/catalogs` cross-origin. Widening a CORS list is
-  access-increasing — the owner's line, not a build's.
-- `/api/health` **still** reports `library2`'s row count to anybody. It
-  predates the rule, the Health page reads it, and narrowing it is an owner
-  decision about a different surface. ❓ **Worth an owner line eventually:**
-  is a row count itself private? (`library2` sat at 677 rows at 16:03.)
+☐ ③c **GABI + the audiobook vendor** (survey §10 dispatch 3) and
+☐ ③d **the provisioner + peers** (dispatch 4) are still open, and ☐ ④ is the
+owner's eyeball.
+
+⚠️ **What dispatch 2 measured and did NOT change**, because each is somebody
+else's call:
+
+- ❓ **OWNER, access-increasing: should the index Worker's `READ_ORIGINS` gain
+  `padhard.heygabi.ai`?** Measured 2026-09-05 in
+  `apps/index-worker/wrangler.toml:65` — the list is heygabi.ai, library,
+  boardgames, audiobooks. Padhard's site runs the SAME build as the library's,
+  so it mounts `<estate-search>`, and that component cannot read
+  `/api/catalogs` there. ⚠️ **It equally cannot read `/api/search` there
+  today** — this is pre-existing and dispatch 2 made it no worse: the component
+  degrades in words on that host (a worded unknown per shelf plus one caveat
+  line naming the outage) instead of showing database ids or a false claim. The
+  decision is whether Samantha's own site should be able to search the estate
+  index at all. Widening a CORS list is access-increasing, so it is the owner's
+  line and not a build's. `ebooks.heygabi.ai` is the same question and nothing
+  on that host calls the index today.
+- ❓ **OWNER (carried, unchanged): `/api/health` still reports `library2`'s row
+  count to anybody.** It predates the rule, the Health page reads it, and
+  narrowing it is a decision about a different surface with a different
+  consumer. Is a row count itself private? (`library2` sat at 677 rows at
+  16:03 on 2026-09-05.)
+- ☐ **A measured push cadence for `library2` on `/status`.** The index panel
+  now grades only the three sources somebody actually measured; a catalog that
+  joined afterwards has its age SHOWN and deliberately NOT graded, because a
+  colour no measurement backs is exactly what that page is written against.
+  Whoever wants `library2` graded has to watch its pushes first, and the
+  thresholds go in `INDEX_CADENCE` (`status/status.js`).
+- ☐ **`/status`'s NINE hand-written host rows and five per-host health fetches
+  are still hand-written** — survey §3.1's L-sized item. Their NAMES now come
+  from the registry, so no row spells a catalog wrongly any more; the row SET
+  is what a `library3` would still need an edit for.
+- ☐ **`/admin`'s `CATALOGS` is still the third in-repo copy** of
+  `packages/estate-auth`'s canonical array, deliberately: it is a PERMISSIONS
+  vocabulary and the registry is a name service cached ten minutes upstream
+  (`catalog-registry.md` §8 — fine for a name, never for a permission).
+  Consolidating it is a sync-script job like `sync-estate-auth.mjs`, not a
+  fetch.
+- 💡 **PROPOSAL for whoever owns `scripts/predeploy-check.mjs`: dry-run every
+  `predeploy.checks.json` marker against the WORKING TREE inside
+  `npm run check:home`.** `verify:home` asserts the markers AFTER the upload,
+  so a bad marker is found with the page already public. Running the same
+  string checks against `public/` first is ~15 lines and free. Measured
+  2026-09-05: a throwaway version of exactly this caught **eight** markers that
+  would have failed the live run, six of them written minutes earlier. ⚠️ It
+  changes the deploy gate, so it belongs to that script's owner rather than to
+  a page build — the throwaway is in W6-APEX's scratchpad, not the repo.
 
 ☑ ❓ **Owner confirm (asked 15:54 Phoenix):** is the ownership table above
 right — in particular `game` = Skylar's physical, and BOTH audiobooks and

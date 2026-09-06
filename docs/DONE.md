@@ -9,6 +9,76 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ SHIPPED + VERIFIED LIVE 2026-09-05 — THE APEX READS THE CATALOG REGISTRY (dispatch 2 of the multi-library survey, agent W6-APEX) — the sub-item moved WHOLE from TODO.md
+
+> Deploy: `heygabi-home` **58d8efae-f201-40d8-b3b3-7a161bc1c4cd** at commit
+> `051dd77`. Rollback: **910d6efe-948b-49a5-bef6-47f22242c9e2** (`977dba3`).
+> Full line in [`deploys.log`](deploys.log).
+>
+> **The item as it stood in `TODO.md`, moved whole and not summarised:**
+>
+> > 🔴 **NOTHING A PERSON SEES HAS CHANGED YET, and that is the point of the
+> > order.** The seven disagreeing label maps (F2), `FULL_SCOPE_SIZE = 3` (F1),
+> > `game` designated nobody's (F3), `/status` blind to `library2` (F4) and the
+> > apex's `!Sky` (F5) are all still exactly as the survey found them. Dispatch 2
+> > (the apex) is what deletes them, and it is the next one.
+>
+> ⚠️ **That paragraph is now false, which is why it moved.** Every finding it
+> names is closed on the apex, and each was verified against the LIVE host
+> rather than against the code that produces it.
+
+**Owner ask, 2026-09-05 15:50 Phoenix, confirmed 15:58:** *"Make sure everything
+we have that's in the estate connects to multiple libraries and make sure that
+the libraries are designated by who owns the physical or shared with digital
+works."*
+
+**What a person sees change**, each measured live after the deploy:
+
+| Finding | Was | Is |
+|---|---|---|
+| **F5** | the Books card's first link rendered the literal string `!Sky`, beside a sibling reading `Samantha` | `Skylar's library` / `Samantha's library`, both from the registry |
+| **F1** | `FULL_SCOPE_SIZE = 3` on a FIVE-catalog estate whose default grant is exactly three, so every ordinary member was told their search covered *"on any shelf"* while two shelves were never consulted — and the same constant suppressed the sentence written to say otherwise | a SET comparison against the registry. A 3-of-5 member reads *"Searching Shared audiobooks, Skylar's library and Skylar's board games only."* |
+| **F2** | seven disagreeing spellings of two libraries; `SCOPE_LABELS` had three keys of five, so the database word **"library2"** printed in an English sentence | one registry; nine hand-kept tables deleted; an unknown shelf degrades to WORDS, never to an id |
+| **F3** | the games shelf designated nobody's; `series.js` **asserted** that ebooks ride a *library* source | `Skylar's · physical copies`; the ebook attribution lives in one function and the false claim is quoted inside the block that overturns it |
+| **F4** | `/status` read *"N rows across 3 of 3 sources"* — **complete, forever** — while `library2` sat at zero; the front door said *"three shelves"* | order and denominator from the registry; the heading carries no number to go stale |
+| §3.1 | `/universes` named a holder only for `library2`, so an unnamed row meant "the owner's" — correct to exactly one reader | every physical row names its holder, every shared one says "shared" |
+
+**Commits:** `b30e233` (the shared reader + 23 tests) · `dfdb174` (the front
+door's cards, `!Sky`, 17 tests) · `caef55a` (estate-search, F1/F2, 18 tests) ·
+`dee846a` (/series, /universes, /status, 12 tests) · `94d3e65` (/admin, and the
+marker dry run).
+
+**Three decisions worth not re-deriving:**
+
+1. 🔴 **No hard-coded fallback catalog list anywhere**, the same rule the Worker
+   keeps. *"The directory is unreachable"* and *"these are the catalogs"* are
+   different facts; a fallback answering the second makes an outage invisible
+   and can serve a label the owner corrected months ago. Each surface says the
+   index could not be reached, names it an **outage** rather than a permissions
+   problem, shows no status code, and keeps working.
+2. ⚠️ **`estate-search.js` carries an INLINE copy of the registry client and
+   must keep it.** `sync-estate-search.mjs` copies that ONE file into
+   `library_catalog` and `Board_Game_Catalog`; a sibling import would 404 on
+   both and take their search box with it. A test pins the twin's agreement with
+   `assets/catalog-registry.js` on the four facts that could silently diverge.
+3. ⚠️ **`/admin` takes NAMES from the registry and nothing else.** Its
+   `CATALOGS` array stays hand-kept: that array decides which permission
+   controls render, and the registry is a name service cached ten minutes
+   upstream. Driving a grant surface from it would let a stale directory
+   silently remove an admin's ability to grant or revoke.
+
+**The half a unit test could not do.** `predeploy.checks.json` gained a LIVE
+`mustNotContain` on `">!Sky<"`. Every test in this repo was green the whole
+time that string was rendering on the front door, so the regression check that
+matters is the one that fetches the deployed page. ⚠️ A local dry run of every
+marker against the working tree then found **eight** that would have failed
+`verify:home` — six of them newly written — because the comments recording each
+removed constant quoted its declaration verbatim, so the check would have fired
+on the record of the bug rather than the bug. Convention now written into each
+file: a removed declaration is named in backticks, never quoted as a line.
+
+---
+
 ## ✅ ANSWERED (a) + BUILT 2026-09-05 — OWNER DECISION: the three CLI money paths gain the `system` principal, so the Spending panel can reach them — moved WHOLE from TODO.md
 
 > **The owner's answer, 2026-09-05: option (a) — make it.** He accepted the

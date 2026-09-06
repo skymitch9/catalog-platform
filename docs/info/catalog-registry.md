@@ -5,11 +5,17 @@
 > day (commits `40bdd60` auth side, `97ce067` index side), every file:line read
 > out of the tree as it was written, plus the live measurements in §8.
 >
-> ⚠️ **What was NOT verified:** no consumer reads this registry yet. Dispatch 2
-> (the apex) is what deletes the seven label maps; until it ships, every surface
-> in the estate still renders from its own hard-coded copy and nothing a person
-> sees has changed. `/api/catalogs` answering correctly is a fact about the
-> route, not about the front door.
+> ✅ **UPDATED 2026-09-05, same day: THE APEX NOW READS IT** (dispatch 2, agent
+> W6-APEX, deploy `58d8efae`). The header's old warning — *"no consumer reads
+> this registry yet … nothing a person sees has changed"* — is superseded and
+> §10a is the new consumers table. Every catalog NAME on `heygabi.ai` comes
+> from this route.
+>
+> ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
+> `predeploy.checks.json`'s live pass fetches unauthenticated, so the
+> scoped-count half of §4 is proven by tests and by this route's own answer, and
+> by nobody's eyes. And the other three consumer dispatches (GABI, the audiobook
+> vendored component, the provisioner + peers) have not run — §10.
 
 **The one-line version:** the estate now has a table that says *who owns each
 catalog*, the auth Worker serves it to the index Worker, and the index Worker
@@ -257,18 +263,64 @@ fact. Pinned by probe `A44`.
 
 ---
 
+## 10a · Who reads it — the consumers, as built
+
+| Consumer | Reads it for | Landed |
+|---|---|---|
+| `sites/heygabi-home/public/assets/catalog-registry.js` | **the apex's one client** — fetch, validate, memo, and the words (`labelForEntry`, `designation`, `scopeIsEverything`, `catalogForEntry`) | `b30e233` |
+| `public/assets/apex-catalog-cards.js` | the front door's cards: link text, the `.holds` designation line, scoped counts, and a cell for a catalog the page has never heard of | `dfdb174` |
+| `public/assets/estate-search.js` | ⚠️ **an INLINE twin of the client, deliberately** — see below. Hit labels, the scope note, and the "on any shelf" claim | `caef55a` |
+| `public/series/series.js` | `sourceLabel`/`catalogLabel`/`holdingLabel` (the estate's one holding renderer) and `bookish()` | `dee846a` |
+| `public/universes/universes.js` | the row subtitle's holder, and `isGameRow()`'s kind | `dee846a` |
+| `public/status/status.js` | the index source ORDER and denominator, every catalog's row name | `dee846a` |
+| `public/admin/admin.js` | ⚠️ **NAMES ONLY** — see below | `94d3e65` |
+
+⚠️ **`estate-search.js` carries its own inline copy of the fetch and the label
+helpers and MUST keep it.** `sync-estate-search.mjs` (in both consumer repos)
+copies that ONE file into `library_catalog/apps/web/public/estate/` and
+`Board_Game_Catalog/apps/web/public/estate/`; a sibling import would 404 on both
+and take their search box with it. They are near-duplicates that exist on
+purpose and are **NOT interchangeable**;
+`scripts/test/estate-search-registry.test.mjs` pins the four facts both must
+agree on (the route, the unknown wording, the ebook rule, the implied-format
+rule), so changing one and forgetting the other fails `npm test`.
+
+⚠️ **`/admin` takes NAMES from here and NOTHING ELSE.** Its `CATALOGS` array —
+which decides *which permission controls render* — stays hand-kept. This
+registry is a name service with a ten-minute cache and two isolates free to
+disagree inside it (§8, which says it outright: fine for a name, never for a
+permission). Driving a grant surface from it would let a stale or unreachable
+directory silently remove an admin's ability to grant or revoke a catalog: an
+access surface failing closed on a cache miss.
+
+🔴 **And no consumer has a hard-coded fallback list**, which is §8's rule kept on
+the client side. Each surface degrades to a WORDED unknown per shelf plus one
+sentence naming the failure as an **outage rather than a permissions problem**,
+with no status code in front of a person — and never to a guess at what the
+estate holds.
+
 ## 10 · What is NOT done, and what a session should not re-derive
 
-- 🔴 **No consumer reads this yet.** The seven label maps, `FULL_SCOPE_SIZE = 3`,
-  `HOLDER_LABELS`, `INDEX_SOURCE_ORDER`, the apex's `!Sky` — all still exactly as
-  the survey found them. That is dispatch 2.
+- ✅ ~~**No consumer reads this yet.**~~ **The apex does, since 2026-09-05** —
+  §10a. What is still untouched is the rest of the estate: GABI's
+  `delegated.ts`/`suggest.ts`, the audiobook site's hand-vendored copy of
+  `estate-search.js`, and `library_catalog`'s `PEERS` (its own second, independent
+  registry on a different id vocabulary). Survey §10, dispatches 3 and 4.
 - **`READ_ORIGINS` on the index Worker does not include
   `padhard.heygabi.ai` or `ebooks.heygabi.ai`** (measured 2026-09-05 in
-  `apps/index-worker/wrangler.toml`). Pre-existing, and it means a browser on
-  either of those two hosts cannot read `/api/catalogs` cross-origin. Widening a
-  CORS list is access-increasing, so it is the owner's line and not a build's —
-  ⚠️ **and dispatch 2 must check it before shipping a component that needs the
-  registry on padhard's own site.**
+  `apps/index-worker/wrangler.toml:65`; the list is heygabi.ai, library,
+  boardgames, audiobooks). Pre-existing, and it means a browser on either of
+  those two hosts cannot read `/api/catalogs` cross-origin. Widening a CORS list
+  is access-increasing, so it is the owner's line and not a build's.
+  ✅ **CHECKED BY DISPATCH 2, and it changed nothing there.** Padhard runs the
+  same build as the library's site, so it mounts `<estate-search>` — and that
+  component ⚠️ **already could not read `/api/search` on that host either**, by
+  the same list. So the registry made nothing worse: the component degrades on
+  padhard in WORDS (a worded unknown per shelf, plus one caveat line naming the
+  outage) rather than showing database ids or claiming a partial scope was every
+  shelf. The real question the owner has to answer is whether Samantha's own
+  site should be able to search the estate index at all; it is written up as an
+  ❓ owner item in [`../TODO.md`](../TODO.md).
 - **`MACHINE_VISIBILITY` was not touched and must not be.** It is a deliberate
   default-deny (`machine-route.ts`); the registry must never auto-admit a new
   catalog there. Pinned in `machine-read.test.ts` and again in
