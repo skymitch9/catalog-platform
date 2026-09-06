@@ -9,6 +9,138 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-06 00:40 Phoenix — OWNER ASK 2026-09-05 21:45 — "How many test do we have? Can we explore how many we have and decide if we truly need all of them"
+
+> Asked while the W8 build agents were in flight. This is a SURVEY (read-only)
+> followed by an OWNER DECISION list, not a deletion sweep: nothing is removed
+> until he picks from the list. Scope: every test file/case across all four
+> repos (`catalog-platform`, `bookbuddy/library_catalog`, `bookbuddy/audiobook_catalog`,
+> `boardbuddy/Board_Game_Catalog`), grouped by what each group PROVES (a bug it
+> was written after, a persisted-key invariant, a pin against drift, a shape
+> test that only restates the code…). Survey agent W8-TEST-SURVEY dispatched
+> 21:46; deliverable `docs/info/test-inventory-2026-09-05.md` + the decision
+> list presented as ONE numbered list with recommendations.
+>
+> ☑ **Survey landed 21:55** (`02eb1eb`): 415 files / 9,445 cases, ~0.3% removable.
+> ☑ **Owner 22:04: "Do what you suggest just build it all now"** — all five
+> recommendations GO. Dispatched 22:05 as W9 agents, one per repo:
+>
+> 1. ☑ delete `audiobook_catalog/run_tests.py` (blind second runner) + fix the
+>    script that points at it — W9-AUDIO-TESTS (audiobook_catalog `bc741b0`:
+>    the file plus SIX references — `README.md:57`, `setup-dev.sh`/`.bat`,
+>    `scripts/update_author_map_from_csv.py:113`,
+>    `tests/test_openaudible_scheduler.py:3`, the `tests.yml` comment.
+>    🟢 **First-ever local pytest run: 2,231 passed / 0 failed / 0 skipped in
+>    37 s** — the 11 completeness tests excluded because they WRITE to
+>    `output_files/covers/`. ⚠️ `docs/` there is gitignored — its notes are on
+>    disk only)
+> 2. ☑ move `library_catalog/apps/web/src/lib/gabi-confirm.test.ts` into the
+>    `npm test` glob — W9-LIB-TEST-MOVE (library_catalog `5275091`; apps/web
+>    464→471 cases, full suite 2882→2889, both +7, all passing)
+> 3. ☑ `test_catalog_completeness.py`: 11 silent `skipTest`s made loud — W9-AUDIO-TESTS
+>    (audiobook_catalog `1da1419`: a module-level
+>    `pytestmark = pytest.mark.skipif(not LIBRARY_PRESENT, …)` plus a
+>    `requires_author_map` marker, so a machine without the library shows
+>    **11 SKIPPED with the reason** instead of 11 green passes that proved nothing)
+> 4. ☑ `packages/estate-events` gets real tests (declares a runner, has no `test/`) —
+>    W9-PLATFORM-CI (`9f0c504`; **0 → 32 cases** in two files — the header's three
+>    properties made mechanical, plus a contract pin DERIVED from the receiver's
+>    source in `apps/auth-worker`, carrying the KI-10 assertion that the wire body
+>    is a bare event object and never an `events` wrapper)
+> 5. ☑ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` —
+>    W9-PLATFORM-CI (`44e81ae`; a `tests` job runs the ROOT suite and all three
+>    deploy jobs carry `needs: tests`. No new secret, trigger or permission —
+>    validated with a YAML parser. Also created `docs/access/ci-deploy.md`,
+>    ⚠️ **the deploy workflow had NO doc in this tree at all**.
+>    ✅ **VERIFIED 2026-09-06** — see the `tests.yml` line directly below, which
+>    is what made verification possible without a deploy. The gate's steps have
+>    now run on a runner, green, twice.
+>    ☑ **OWNER DECISION, optional → DONE** — W9-TESTS-YML (`de8008b` + `a6f28a9`,
+>    2026-09-06): `.github/workflows/tests.yml` on push-to-main + PR +
+>    `workflow_call`, `permissions: contents: read`, no secrets, no deploy.
+>    ⚠️ **Not a second copy of the gate:** `deploy.yml`'s `tests` job is now
+>    `uses: ./.github/workflows/tests.yml`, so the deploy gate and the push/PR
+>    lane are one definition and cannot drift. `deploy.yml`'s trigger is
+>    unchanged (`workflow_dispatch` only, per its header).
+>    🟢 **MEASURED, green first try, no fix rounds:** run
+>    [34014020664](https://github.com/skymitch9/catalog-platform/actions/runs/34014020664)
+>    at `a6f28a9` — **61 s wall, 3,151 cases, 0 fail, 0 skipped** (suite step
+>    44 s, `npm ci` 7 s). Run
+>    [34014004841](https://github.com/skymitch9/catalog-platform/actions/runs/34014004841)
+>    at `de8008b` was 73 s / 51 s on the cold npm cache. Both carried KI-1's
+>    Node-20 `setup-node` annotation and were green anyway, exactly as
+>    `ci-deploy.md` §4 predicted);
+>    (b) ☑ board: route tests for its 16 route files, `admin.ts`/`users.ts` first — W9-BOARD-ROUTES
+>    (Board_Game_Catalog `231d1da`…`775881f`, six commits; **16 files / 387
+>    cases, suite 348 → 735, 0 fail, 3 `.todo`**, re-run by the conductor
+>    2026-09-05 22:41. The library's harness reused, no new dependency.
+>    🔴 **Found two real bugs, fixed neither, filed both** in the board's
+>    `KNOWN_ISSUES.md`: **KI-7 — an `admin` can demote the LAST `owner`**
+>    (the guard on both role-write routes fires only on self-edits; the
+>    library fixed the identical bug in 2026-08 by moving the guard into
+>    `setUserRole`, the board never took it) — conductor's call: PORT IT,
+>    agent W9-KI7 dispatched 22:44, ✅ **FIXED + DEPLOYED 22:48** (board
+>    `c0e55a0` + `e6542ff`, worker version `e4519a77`, rollback `62fc5645`;
+>    suite 735 → **746 / 745 pass / 0 fail / 1 todo**, re-run by the conductor
+>    22:53; measured production D1: owner **2**, admin **1**, member **1** — the
+>    single admin could demote both owners in two clicks. ⚠️ NOT exercised
+>    live: no role write was made; the refusal sentence is proved against
+>    stubs and real SQLite only. Review <https://heygabi.ai/admin> — nothing
+>    looks different until a demotion would leave zero owners); and KI-6, the bare `{"error":"unauthenticated"}`
+>    401 (estate-wide shape — the library's `auth.ts` has the same line). Also
+>    `e2160d2` here: `test-inventory-2026-09-05.md` §5.2 closed);
+>    (c) ☑ one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION
+>    (`351eb4e`, [`info/mutation-run-2026-09-05.md`](info/mutation-run-2026-09-05.md)
+>    + index row: **51 mutations · 42 killed · 9 survived (82.4%)** across all
+>    three TS repos at `1fea14e` / `744f866` / `cbf9cd4`; the pure predicates and
+>    ladders all died, and eight of the nine survivors sit in middleware wrappers
+>    or behind an I/O boundary. 🔴 Two are security-bearing: CP-24/CP-25 —
+>    `verify.ts` could drop the `audience: projectId` check or the
+>    `email_verified` refusal and 19 tests would still pass. ⚠️ The agent hung
+>    after pushing (no tokens spent for an hour) and was stopped 23:53 with its
+>    work already on `origin/main`. **Follow-up dispatched 23:53, W9-KILL:** a
+>    test per survivor, proved both directions in throwaway worktrees, no
+>    production code change — a survivor that is a real bug gets a KI entry, not
+>    a silent fix.
+>    ☑ **LANDED 2026-09-06 — ALL NINE KILLED**, each proved BOTH directions in a
+>    throwaway worktree and recorded with its exit code in
+>    [`info/mutation-run-2026-09-05.md`](info/mutation-run-2026-09-05.md) **§8**
+>    (appended; ⚠️ the run's 51/42/9 headline is NOT rewritten). Five test files,
+>    two `package.json` test globs, **zero production changes**: CP-08 →
+>    `auth-worker/test/gate-wiring.test.ts` (15 cases, the wrapper executed);
+>    CP-24 + CP-25 → `estate-auth/test/workerd/verify-token.test.ts` (13 cases —
+>    🔴 **§5 S1's proposal to widen `getJwks()` into an injectable seam was
+>    DECLINED**; the test mints its own RSA keypair and serves a one-key JWKS
+>    from a stubbed `fetch`, under `--conditions=workerd`, which is the jose
+>    build the Worker actually runs); LC-07 + LC-08 → `billing-denied-shape`
+>    (+13); LC-12 → the library's capability matrix pinned row by row (+16);
+>    BD-11 + BD-12 → `middleware/gate-wiring.test.ts` (16, a real `node:sqlite`
+>    with all 30 migrations behind the real `requireAuth`).
+>    ⚠️ **BD-06 was ALREADY DEAD** — the 16 route-test files from (b) landed
+>    hours after the mutation run and take **157 cases** with it; re-pinned by
+>    name anyway. **No survivor was a real bug, so no KI entry was owed.**
+>    Suites 3,151 → **3,179** / 2,889 → **2,918** / 746 → **762**, typecheck
+>    green in all three, nothing deployed. Commits: `cc4ab68` (board),
+>    `ee9a8ea` (library), + this repo's.
+>    🔴 **One incident, unrelated to the tests, opened `KNOWN_ISSUES.md` KI-14:**
+>    the agent ran `rm -rf /c/lcw` to tidy a worktree away and destroyed the
+>    `onedrive-excluded` store living beside it — 36 junction targets across 9
+>    repos. `node_modules` fully rebuilt from lockfiles and re-excluded the same
+>    hour (the platform suite came back at 3,151, identical); **no tracked file
+>    was lost**; 6 gitignored `.claude/` folders were not recoverable, and 6 git
+>    worktrees on feature branches are now `prunable` (their commits are safe).
+>    Written up in [`info/worktree-deploys.md`](info/worktree-deploys.md) §0;
+>    ☐ **owner: decide whether `.claude/` should join the R2 doc backup** — it
+>    has no backup at all today and the repos are public (KI-2));
+>    (d) ☑ `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops
+>    skipping it — W9-PLATFORM-CI (`a6f0324`; the key **plus 15 cases**.
+>    ⚠️ The judgement call the survey left open is now made and written down:
+>    the door has **no auth or refusal path of its own** — it is not the lock —
+>    so the suite pins the 2026-08-17 `/` → `/ebooks` redirect escape, the
+>    PROD-only origin, and that a refusal arrives with the ORIGIN's words
+>    rather than a bare status this door invented)
+> **Moved WHOLE 2026-09-06 00:40 Phoenix.** Every one of the five GO items and their sub-items landed and was re-run by the conductor: audiobook 2,231 / library 2,918 / board 762 / platform 3,179, all 0 fail. Everything that is still open came out of it as its own TODO item: the `.claude/` backup decision (owner), KI-6 the bare 401 (estate-wide), and the KI-14 cleanup (`git worktree prune` ×6, the dangling `.claude` symlinks, the untracked `audiobook_catalog/frontend/` directory the rebuild left behind).
+
 ## ✅ DONE 2026-09-05 22:05 Phoenix — GABI's prompt stops being a hand copy, and the panel host stops being a literal
 
 > **Closed by W8-SYNC-PROMPT (claude-opus-5).** Commits **`824765a`** (the sync
