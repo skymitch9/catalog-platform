@@ -193,7 +193,15 @@ export async function runProbeSuite(opts = {}) {
   const log = opts.log ?? ((line) => console.log(line));
 
   resetRun();
-  configure({ timeoutMs: opts.timeoutMs, log: opts.log, logFailure: opts.logFailure });
+  configure({
+    timeoutMs: opts.timeoutMs,
+    log: opts.log,
+    logFailure: opts.logFailure,
+    // ⚠️ The Worker's same-zone transport. See kit.mjs's `fetchImpl` header for
+    // the 522 that made it necessary — a Worker cannot fetch its own zone, and
+    // the CLI passes nothing here and keeps global fetch throughout.
+    fetchImpl: opts.fetchImpl,
+  });
 
   let areasRun = 0;
   let truncated = false;

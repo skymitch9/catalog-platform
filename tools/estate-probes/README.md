@@ -105,11 +105,49 @@ no `npm install` beyond the repo root. Exits nonzero if any probe fails.
 
 ## ⏰ It also runs ITSELF, hourly, in the auth Worker (2026-09-05)
 
-> **Last verified: 2026-09-05** — the refactor was measured by running the CLI
-> after it: **145 passed, 0 failed**, the same count as before. ⚠️ **NOT
-> verified at the time of writing: a cron firing.** The first `:19` had not come
-> round yet, so *"the clock works"* is a claim the `/api/health` field below
-> settles, not one this line makes.
+> **Last verified: 2026-09-06** — the CLI was re-run after every refactor step:
+> **145 passed, 0 failed** each time, the same count as before. ✅ **The cron
+> DOES fire** — measured 01:19:08Z, `trigger: "cron"`, 9/9 areas, row written.
+> 🔴 **And that first run found a real defect, described in the next box.**
+
+### 🔴 A WORKER CANNOT FETCH ITS OWN ZONE — measured 2026-09-06 01:19 UTC
+
+**The first cron run reported `107/142 passed, 35 failed`, and every single
+failure was an `auth.heygabi.ai` URL answering `HTTP 522`** — connection timed
+out. `auth-health:H1`/`H2` and the whole `auth` area. The other seven areas were
+green. The identical suite from a laptop was **145/145** minutes earlier, and
+curl against the same paths answered 200 and a worded 401.
+
+⚠️ **So the red said nothing about production — it said the request never left
+the isolate.** That is the worst possible bug for this suite: a false red, on a
+surface whose entire value is being believed. A row that is red every hour for a
+reason nobody can act on is a row people learn to scroll past, which is exactly
+the failure `D1`–`D5`'s "skip that outlived its reason" note above describes.
+
+**The fix, shipped the same night:** a **self service binding**
+(`[[services]] binding = "SELF"` → `estate-auth`). `apps/auth-worker/src/
+estate-probes.ts`'s `sameZoneFetch()` hands same-origin URLs to `SELF.fetch()`,
+which invokes the Worker's own `fetch` handler directly with no edge hop and so
+no loop to time out; everything else goes out over the network as before. The
+CLI passes no `fetchImpl` and keeps global `fetch` throughout.
+
+⚠️ **THE TWO TRANSPORTS ARE NOT IDENTICAL, AND THAT IS THE THING TO WATCH.** A
+service-binding call skips the Cloudflare edge, so edge-added headers (`CF-RAY`,
+`Server: cloudflare`) are absent. Every assertion in `probes/auth-worker.mjs` is
+a status code, a JSON envelope or a CORS header — and CORS headers are set by
+Hono *inside* the Worker — so none of them should notice. **"Should" is a
+prediction.** If a handful of `auth` rows fail for a NEW reason, that seam is
+why, and ⚠️ **the CLI is the arbiter**, because it always uses the real edge.
+
+⚠️ **The binding grants nothing.** A self-binding reaches only the routes this
+Worker already serves; every gate runs exactly as it does for a browser, and the
+suite holds no credential — every same-zone row it asserts is a 401 or a health
+envelope.
+
+**Why `142` and not `145`:** three assertions never ran, because some probes are
+conditional on an earlier response. ⚠️ **A shrinking total is itself a signal**
+and is why `total` is stored rather than derived — see the `/api/health` notes
+below.
 
 Owner ask 2026-09-05 16:50 Phoenix, candidate #4 of
 [`../../docs/info/scripts-inventory-2026-09-05.md`](../../docs/info/scripts-inventory-2026-09-05.md)

@@ -40,6 +40,14 @@ export interface ProbeSuiteOptions {
   log?: (line: string) => void;
   logFailure?: (line: string) => void;
   now?: () => number;
+  /**
+   * ⚠️ The transport. Absent = global `fetch` (the CLI). The Worker MUST pass
+   * one that routes same-zone URLs through its self service binding: a
+   * Cloudflare Worker cannot fetch its own zone, measured 2026-09-06 01:19 UTC
+   * as 35 probes failing with HTTP 522 while the same suite was 145/145 from a
+   * laptop minutes before. See `kit.mjs`'s `fetchImpl` header.
+   */
+  fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 export interface ProbeSuiteRun {

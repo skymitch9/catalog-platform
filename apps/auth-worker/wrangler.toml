@@ -185,6 +185,27 @@ bucket_name = "estate-docs-gated"
 binding = "CATALOG_KEYS"
 bucket_name = "estate-catalog-keys"
 
+# ⚠️ THIS WORKER, BOUND TO ITSELF — added 2026-09-06, and the reason is a
+# measurement, not a preference: A CLOUDFLARE WORKER CANNOT FETCH ITS OWN ZONE.
+#
+# The estate-probes cron's FIRST run (01:19 UTC) reported 107/142 passed, 35
+# failed, and every failure was an `auth.heygabi.ai` URL answering HTTP 522
+# (connection timed out). The other seven areas were green, and the identical
+# suite from a laptop had been 145/145 minutes earlier. The red said nothing
+# about production — it said the request never left the isolate.
+#
+# `SELF.fetch()` invokes this Worker's own fetch handler directly, no edge hop,
+# so there is no loop to time out. ONE caller: src/estate-probes.ts's
+# sameZoneFetch(), for same-origin probe URLs only.
+#
+# ⚠️ IT GRANTS NOTHING. A self-binding reaches only the routes this Worker
+# already serves, and every gate runs exactly as it does for a browser — the
+# probe suite holds no credential and every same-zone row it asserts is a 401 or
+# a health envelope.
+[[services]]
+binding = "SELF"
+service = "estate-auth"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "estate_auth"

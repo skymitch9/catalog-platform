@@ -115,6 +115,72 @@ export const PROBE_RUNS_KEPT = 48;
 /** Truncation for any single stored string — an `observed` can be a whole body. */
 const MAX_OBSERVED = 400;
 
+/**
+ * ⚠️ A CLOUDFLARE WORKER CANNOT FETCH ITS OWN ZONE — MEASURED 2026-09-06 01:19
+ * UTC, ON THE VERY FIRST CRON RUN, AND IT IS THE REASON THIS FUNCTION EXISTS.
+ *
+ * The hourly run reported **107/142 passed, 35 failed**, and every single
+ * failure was an `auth.heygabi.ai` URL answering **HTTP 522** (connection timed
+ * out) — `auth-health:H1`/`H2` and the whole `auth` area. The other seven areas
+ * were green. Minutes earlier the identical suite from a laptop was **145/145**,
+ * and curl against the same paths answered 200 and a worded 401.
+ *
+ * ⚠️ **So the red was an artifact of WHERE the probe ran, not a fact about
+ * production** — the exact false red that teaches people to ignore a row, on a
+ * row whose entire job is to be believed. Shipping it would have been worse than
+ * shipping nothing.
+ *
+ * The fix is a **self service binding** (`[[services]] binding = "SELF"` ->
+ * `estate-auth`): a same-zone URL is handed to `SELF.fetch()`, which invokes
+ * this Worker's own `fetch` handler directly with no trip through the edge, so
+ * there is no loop to time out. Everything else goes out over the network
+ * normally.
+ *
+ * ⚠️ **THE TWO PATHS ARE NOT IDENTICAL, AND THE DIFFERENCE IS THE ONE THING TO
+ * WATCH.** A service-binding call skips the Cloudflare edge, so edge-added
+ * headers (`CF-RAY`, `Server: cloudflare`) are absent. Every assertion in
+ * `probes/auth-worker.mjs` is about a status code, a JSON envelope or a CORS
+ * header — and CORS headers are set by Hono inside the Worker, not by the edge —
+ * so none of them should notice. **"Should" is a prediction, and the next cron
+ * run is the measurement**: if a handful of auth rows now fail for a NEW reason,
+ * that is this seam, and the CLI (which always uses the real edge) is the
+ * arbiter.
+ *
+ * ⚠️ **ABSENT BINDING FALLS BACK TO GLOBAL `fetch` AND SAYS SO LOUDLY.** Silently
+ * falling back would reproduce the 522s with no clue why.
+ */
+export function sameZoneFetch(
+  self: { fetch: (input: string, init?: RequestInit) => Promise<Response> } | undefined,
+  origin = 'https://auth.heygabi.ai',
+): ((url: string, init: RequestInit) => Promise<Response>) | undefined {
+  if (!self) {
+    console.error(
+      'estate-probes: no SELF service binding, so same-zone probes will go out over the edge and ' +
+        'time out with HTTP 522 — this Worker cannot fetch its own zone. Add ' +
+        '[[services]] binding = "SELF", service = "estate-auth" to wrangler.toml.',
+    );
+    return undefined;
+  }
+  return (url: string, init: RequestInit) => {
+    // ⚠️ PARSED ORIGIN, NOT `startsWith`. A prefix test would route
+    // `https://auth.heygabi.ai.example.test/…` into this Worker's own handler,
+    // because that string genuinely does start with the origin. Every probe URL
+    // is a hardcoded constant today, so this is defence in depth rather than a
+    // live hole — but the whole point of a same-zone router is that it is
+    // certain which requests it swallows, and "certain" is not what a prefix
+    // test gives you.
+    let sameZone = false;
+    try {
+      sameZone = new URL(url).origin === origin;
+    } catch {
+      // An unparseable URL is not same-zone; let the normal transport produce
+      // the normal error rather than inventing one here.
+      sameZone = false;
+    }
+    return sameZone ? self.fetch(url, init) : fetch(url, init);
+  };
+}
+
 export interface StoredProbeFailure {
   area: string;
   id: string;
@@ -301,6 +367,11 @@ export async function runScheduledProbes(
     trigger?: string;
     now?: () => number;
     /**
+     * The self service binding. ⚠️ Without it every `auth.heygabi.ai` probe
+     * fails with HTTP 522 — see `sameZoneFetch()`'s header for the measurement.
+     */
+    self?: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+    /**
      * ⚠️ INJECTED ONLY BY TESTS. The real suite makes ~145 live requests to
      * production, so a unit test that called it would be a probe run with a
      * green tick on it — and the branch worth testing hardest is the one where
@@ -324,6 +395,8 @@ export async function runScheduledProbes(
       log: (line: string) => console.log(`estate-probes ${line}`),
       logFailure: (line: string) => console.error(`estate-probes ${line}`),
       now,
+      // Same-zone URLs go through the service binding or they answer 522.
+      fetchImpl: sameZoneFetch(opts.self),
     });
 
     const row: ProbeRunRow = {

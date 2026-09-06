@@ -75,6 +75,32 @@ export interface Env {
   R2_PRUNE_MODE?: string;
 
   /**
+   * ⚠️ **THIS WORKER, BOUND TO ITSELF** — `[[services]] binding = "SELF"`,
+   * added 2026-09-06 because a Cloudflare Worker CANNOT FETCH ITS OWN ZONE.
+   *
+   * Measured on the estate-probes cron's very first run (01:19 UTC): **107/142
+   * passed, 35 failed, and every failure was an `auth.heygabi.ai` URL answering
+   * HTTP 522** — connection timed out — while the other seven areas were green
+   * and the identical suite from a laptop had been 145/145 minutes earlier. The
+   * red said nothing about production; it said the request never left.
+   *
+   * `SELF.fetch()` invokes this Worker's own `fetch` handler directly, with no
+   * trip through the edge and so no loop to time out. It is used by ONE caller
+   * (`estate-probes.ts`'s `sameZoneFetch`) for same-origin probe URLs only.
+   *
+   * ⚠️ **IT GRANTS NOTHING.** A service binding to yourself can only reach the
+   * routes you already serve, and the probe suite is unauthenticated-edge and
+   * read-only — it holds no token and every same-zone row it asserts is a 401
+   * or a health envelope. Nothing here bypasses a gate: `requireDevops()` runs
+   * exactly as it does for a browser.
+   *
+   * ⚠️ Optional in the type because tests construct an env without it; the
+   * fallback is global `fetch` **with a loud console.error**, never a silent
+   * one, or the 522s would come back with no clue why.
+   */
+  SELF?: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+
+  /**
    * The PRIVATE `estate-docs-gated` R2 bucket — the estate's whole `docs/`
    * corpus as ONE gzipped snapshot, plus its receipt (GABI docs assistant,
    * phase 2; design docs/info/gabi-docs-assistant-design.md).

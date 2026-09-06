@@ -14,6 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  sameZoneFetch,
   PROBE_FAILURES_STORED,
   PROBE_RUNS_KEPT,
   readLatestProbeRun,
@@ -265,6 +266,100 @@ test('⚠️ a crash AND an unwritable table still does not throw — the last l
   } as never);
   assert.match(written.error!, /everything is on fire/);
   assert.equal(db.rows.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// sameZoneFetch — ⚠️ THE FIX FOR A MEASURED FALSE RED
+//
+// The estate-probes cron's FIRST run (2026-09-06 01:19 UTC) reported 107/142
+// passed, 35 failed, and every failure was an `auth.heygabi.ai` URL answering
+// HTTP 522: a Cloudflare Worker cannot fetch its own zone. The same suite from
+// a laptop was 145/145 minutes earlier. These tests pin the routing that keeps
+// a "where it ran" artifact from rendering as a production failure.
+// ---------------------------------------------------------------------------
+
+test('⚠️ same-zone URLs go through the SELF binding, and nothing else does', async () => {
+  const viaSelf: string[] = [];
+  const self = {
+    async fetch(url: string) {
+      viaSelf.push(url);
+      return new Response('{}', { status: 200 });
+    },
+  };
+  const send = sameZoneFetch(self, 'https://auth.heygabi.ai');
+  assert.ok(send);
+
+  await send('https://auth.heygabi.ai/api/health', {});
+  await send('https://auth.heygabi.ai/api/estate/me', {});
+  assert.deepEqual(viaSelf, [
+    'https://auth.heygabi.ai/api/health',
+    'https://auth.heygabi.ai/api/estate/me',
+  ]);
+
+  // A foreign host must NOT be routed through the binding — a self-binding can
+  // only reach this Worker's own routes, so sending index.heygabi.ai down it
+  // would 404 against the wrong Worker and read as an outage.
+  const originalFetch = globalThis.fetch;
+  let networkCalls = 0;
+  globalThis.fetch = (async (u: string) => {
+    networkCalls += 1;
+    assert.equal(u, 'https://index.heygabi.ai/api/health');
+    return new Response('{}', { status: 200 });
+  }) as typeof fetch;
+  try {
+    await send('https://index.heygabi.ai/api/health', {});
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(networkCalls, 1);
+  assert.equal(viaSelf.length, 2, 'the foreign host must not have touched the binding');
+});
+
+test('⚠️ a LOOKALIKE host is not same-zone — the match is a parsed origin, not a prefix', async () => {
+  // `https://auth.heygabi.ai.example.test/` genuinely startsWith the origin, so
+  // a prefix test would hand it to this Worker's own handler. Every probe URL is
+  // a hardcoded constant today, which makes this defence in depth — but a
+  // same-zone router has to be CERTAIN which requests it swallows.
+  const viaSelf: string[] = [];
+  const send = sameZoneFetch(
+    { async fetch(url: string) { viaSelf.push(url); return new Response('{}'); } },
+    'https://auth.heygabi.ai',
+  );
+  assert.ok(send);
+
+  const originalFetch = globalThis.fetch;
+  const viaNetwork: string[] = [];
+  globalThis.fetch = (async (u: string) => {
+    viaNetwork.push(u);
+    return new Response('{}', { status: 200 });
+  }) as typeof fetch;
+  try {
+    await send('https://auth.heygabi.ai.example.test/api/health', {});
+    await send('http://auth.heygabi.ai/api/health', {}); // scheme differs
+    await send('not a url at all', {});
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(viaSelf, [], 'a lookalike, a wrong scheme or a junk URL must never reach the binding');
+  assert.equal(viaNetwork.length, 3);
+});
+
+test('⚠️ an ABSENT binding returns undefined and says so — never a silent fallback', () => {
+  // undefined means "the suite keeps global fetch", which is exactly what
+  // produced the 35 x 522. It must be loud, because the symptom (every
+  // same-zone probe red) looks identical to the estate being down.
+  const errors: string[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args.join(' ')); };
+  try {
+    assert.equal(sameZoneFetch(undefined), undefined);
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(errors.length, 1);
+  assert.match(errors[0]!, /522/);
+  assert.match(errors[0]!, /SELF/);
 });
 
 test('the trigger is recorded, so a hand-run cannot pass as evidence the clock ticks', async () => {

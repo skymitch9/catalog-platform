@@ -476,7 +476,11 @@ async function scheduled(
       return;
     }
     if (event.cron === ESTATE_PROBES_CRON) {
-      await runScheduledProbes(env.DB);
+      // ⚠️ `env.SELF` is NOT optional in practice: without it every
+      // auth.heygabi.ai probe answers HTTP 522, because a Worker cannot fetch
+      // its own zone. Measured on the first cron run, 2026-09-06 01:19 UTC —
+      // 35 of 142 failed, all of them same-zone. See sameZoneFetch().
+      await runScheduledProbes(env.DB, { self: env.SELF });
       return;
     }
     // ⚠️ Loud AND fatal, deliberately. A cron string that reaches here is one

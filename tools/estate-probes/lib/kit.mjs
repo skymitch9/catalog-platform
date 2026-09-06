@@ -45,6 +45,24 @@ let failed = 0;
 let timeoutMs = DEFAULT_TIMEOUT_MS;
 let logLine = (line) => console.log(line);
 let logFail = (line) => console.error(line);
+/**
+ * ⚠️ THE TRANSPORT IS INJECTABLE, AND IT HAD TO BECOME SO — MEASURED
+ * 2026-09-06 01:19 UTC, on the very first cron run.
+ *
+ * A Cloudflare Worker **cannot fetch its own zone.** The hourly run inside
+ * `estate-auth` got **HTTP 522** (connection timed out) from every single
+ * `auth.heygabi.ai` URL — 35 failed of 142 — while all seven other areas
+ * passed. The same suite from a laptop was 145/145 the same evening, and curl
+ * against the same paths answered 200/401 throughout, so ⚠️ **this was an
+ * artifact of WHERE the probe ran, never a fact about production** — precisely
+ * the kind of false red that teaches people to ignore a row.
+ *
+ * The fix is a self service binding: the Worker passes a `fetchImpl` that sends
+ * same-zone URLs through `env.SELF.fetch()` (a direct handler invocation, no
+ * edge loop) and everything else through global `fetch`. The CLI passes
+ * nothing and keeps global `fetch` for all of it.
+ */
+let fetchImpl = null;
 
 /**
  * Clear the run state. ⚠️ REQUIRED BEFORE EVERY RUN IN A LONG-LIVED HOST, and
@@ -62,12 +80,14 @@ export function resetRun() {
  * Per-run knobs, all optional; omitted keys keep their current value.
  *
  * @param {{timeoutMs?: number, log?: (line: string) => void,
- *          logFailure?: (line: string) => void}} opts
+ *          logFailure?: (line: string) => void,
+ *          fetchImpl?: (url: string, init: object) => Promise<Response>}} opts
  */
 export function configure(opts = {}) {
   if (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) timeoutMs = opts.timeoutMs;
   if (typeof opts.log === 'function') logLine = opts.log;
   if (typeof opts.logFailure === 'function') logFail = opts.logFailure;
+  if (typeof opts.fetchImpl === 'function') fetchImpl = opts.fetchImpl;
 }
 
 /** Restore the CLI defaults — used by tests so one run cannot leak into another. */
@@ -75,6 +95,7 @@ export function resetConfig() {
   timeoutMs = DEFAULT_TIMEOUT_MS;
   logLine = (line) => console.log(line);
   logFail = (line) => console.error(line);
+  fetchImpl = null;
 }
 
 /**
@@ -116,7 +137,8 @@ export async function request(method, url, opts = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? timeoutMs);
   try {
-    const resp = await fetch(url, {
+    const send = fetchImpl ?? fetch;
+    const resp = await send(url, {
       method,
       headers: opts.headers,
       body: opts.body,
