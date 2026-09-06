@@ -95,8 +95,8 @@ const INDEX_ORIGIN = 'https://index.heygabi.ai';
  * wrong GROUP, never in no group. `series/series.js`'s `bookish()` already
  * worked this way; this is that rule, kept in both places.
  *
- * ⚠️ AND THE ALLOW-LIST ITSELF WAS A LITERAL until 2026-09-05:
- * `const GAME_SOURCES = new Set(['game'])` — one push-source id standing in
+ * ⚠️ AND THE ALLOW-LIST ITSELF WAS A LITERAL until 2026-09-05 — `GAME_SOURCES`,
+ * a one-element Set holding the string `game`. One push-source id standing in
  * for "is this a games shelf", so a `games2` would have rendered silently as a
  * BOOK, under the "Books & audiobooks" heading, in a series fold beside
  * novels. The registry carries `kind`, which is the fact actually being asked
@@ -113,11 +113,12 @@ const isGameRow = (m) => {
 /**
  * THE CATALOGS, from the estate registry — `GET /api/catalogs`.
  *
- * ⚠️ WHAT WAS HERE UNTIL 2026-09-05:
+ * ⚠️ WHAT WAS HERE UNTIL 2026-09-05: `HOLDER_LABELS`, an object with exactly
+ * ONE key — `library2`. (Neither removed declaration is quoted in this file:
+ * predeploy.checks.json refuses both lines on the live host, and a comment
+ * quoting one would trip its own regression check.)
  *
- *     const HOLDER_LABELS = { library2: "Samantha's library" };
- *
- * ONE key, and its own comment argued for the gap: *"`library` and
+ * Its own comment argued for the gap: *"`library` and
  * `audiobook` are deliberately absent — this is the owner's own page, his
  * shelf is the default."* That is precisely the assumption the owner's rule of
  * 2026-09-05 ends. Under it EVERY physical row names its holder, because "the

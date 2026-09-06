@@ -121,7 +121,7 @@
         "not a permissions problem"
       ],
       "mustNotContain": [
-        "FULL_SCOPE_SIZE"
+        "const FULL_SCOPE_SIZE"
       ]
     },
     {
@@ -685,7 +685,8 @@
         "id=\"users\" class=\"users\"",
         ".dir-group",
         ".dir-empty",
-        "ul.users-list"
+        "ul.users-list",
+        "data-catalog-id=\"library2\""
       ],
       "mustNotContain": [
         ">Audiobook</span>",
@@ -693,7 +694,8 @@
         "Audiobooks/Ebooks role ladder",
         "id=\"role-ladder\"",
         "Site role (both shelves)",
-        "<ul id=\"users\""
+        "<ul id=\"users\"",
+        ">Sam's library<"
       ]
     },
     {
@@ -775,7 +777,9 @@
         "openSpendDrawers",
         "principal_kind: 'user'",
         "unattended — nobody triggers it",
-        "Say why first for"
+        "Say why first for",
+        "catalog-registry.js",
+        "await registryReady;"
       ],
       "mustNotContain": [
         "download-ebooks",
@@ -788,7 +792,8 @@
         "actionBtn",
         "Set role",
         "renderRoleTree",
-        "cat-vis"
+        "cat-vis",
+        "library2: \"Sam's library\""
       ]
     },
     {
@@ -909,7 +914,7 @@
         "pending_detail",
         "catalog-registry.js",
         "holdingLabel",
-        "not a permissions problem"
+        "REGISTRY_DOWN_NOTICE"
       ],
       "mustNotContain": [
         "const SOURCE_LABELS =",

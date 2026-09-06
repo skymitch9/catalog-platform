@@ -209,9 +209,10 @@ const INDEX_CADENCE = {
 /**
  * 🔴 THE INDEX SOURCES, IN THE REGISTRY'S OWN ORDER.
  *
- * ⚠️ WHAT WAS HERE UNTIL 2026-09-05:
- *
- *     const INDEX_SOURCE_ORDER = ['audiobook', 'library', 'game'];
+ * ⚠️ WHAT WAS HERE UNTIL 2026-09-05: `INDEX_SOURCE_ORDER`, a three-entry array
+ * naming audiobook, library and game. (Its declaration is not quoted —
+ * predeploy.checks.json refuses that line on the live host, and a comment
+ * quoting it would trip its own regression check.)
  *
  * `library2` became a real index source on federation day and this array did
  * not know. The consequence was not a missing row — it was the SUMMARY LINE
@@ -306,9 +307,10 @@ function buildWorkerSection() {
   ul.appendChild(makeRow('wk-index', 'Shared search index — index.heygabi.ai'));
   ul.appendChild(makeRow('wk-library', catRow('library', 'API')));
   ul.appendChild(makeRow('wk-games', catRow('games', 'API')));
-  // ⚠️ "Sam's book library API — padhard.heygabi.ai" until 2026-09-05. Two of
-  // the seven disagreeing spellings of one shelf were on this page alone, and
-  // neither is what the registry (or she) calls it.
+  // ⚠️ This row was hand-written as "Sam's book library" until 2026-09-05, and
+  // the site row below said "Sam's library" — two of the seven disagreeing
+  // spellings of one shelf, on one page, and neither is what the registry (or
+  // she) calls it.
   ul.appendChild(makeRow('wk-library2', catRow('library2', 'API')));
   ul.appendChild(makeRow('wk-auth', 'Sign-in & membership directory — auth.heygabi.ai'));
 }

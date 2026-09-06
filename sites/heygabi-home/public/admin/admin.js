@@ -172,6 +172,9 @@ import { confirmBtn } from '../assets/estate-controls.js';
 // chances to get the envelope wrong and the drifted one would be this page,
 // which is exercised least.
 import { SealError, sealSecret, sealSupported } from '../assets/catalog-seal.js';
+// The estate catalog registry — the NAMES only. See CATALOG_LABELS below for
+// the line this page deliberately does NOT cross.
+import { loadCatalogs } from '../assets/catalog-registry.js';
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
@@ -199,9 +202,48 @@ const CATALOG_LABELS = {
   audiobook: 'Audiobooks',
   library: 'Library',
   games: 'Games',
-  library2: "Sam's library",
+  // ⚠️ "Sam's library" until 2026-09-05 — one of SEVEN disagreeing spellings of
+  // this one shelf across the estate (survey F2), and not what she or the
+  // registry calls it. Corrected here as well as replaced below, so the
+  // outage fallback and the live answer say the same thing.
+  library2: "Samantha's library",
   ebooks: 'Ebooks',
 };
+
+/**
+ * 🔴 THE REGISTRY SUPPLIES THE NAMES AND NOTHING ELSE ON THIS PAGE, and the
+ * line is drawn deliberately.
+ *
+ * The labels above are overwritten in place from `GET /api/catalogs` before the
+ * first render, so this page stops being an eighth spelling of two libraries.
+ *
+ * ⚠️ BUT `CATALOGS` STAYS HAND-KEPT AND IS **NOT** REGISTRY-DRIVEN. This is a
+ * PERMISSIONS surface: that array decides which visibility grants render, and
+ * the registry is a NAME service cached ten minutes upstream, with two isolates
+ * free to disagree inside that window (catalog-registry.md §8, which says in as
+ * many words: fine for a name, never for a permission). Driving the checkbox
+ * set from it would mean a stale or unreachable directory could silently remove
+ * an admin's ability to grant or revoke a catalog — an access surface failing
+ * closed on a cache miss. The canonical array is `packages/estate-auth`'s and
+ * this is its third in-repo copy; consolidating THAT is survey §3.1's own item
+ * and is a sync-script job, not a fetch.
+ *
+ * So: unreachable registry ⇒ the words above, which are correct today; every
+ * control still renders and every grant still works.
+ */
+const registryReady = loadCatalogs().then((r) => {
+  if (!r.ok) return r;
+  for (const cat of r.catalogs) {
+    if (Object.prototype.hasOwnProperty.call(CATALOG_LABELS, cat.id)) CATALOG_LABELS[cat.id] = cat.label;
+  }
+  // The two names written into admin/index.html by hand. Same rule as the
+  // labels: the markup carries a fallback, the registry overwrites it.
+  for (const el of document.querySelectorAll('[data-catalog-id]')) {
+    const cat = r.catalogs.find((c) => c.id === el.getAttribute('data-catalog-id'));
+    if (cat) el.textContent = cat.label;
+  }
+  return r;
+});
 
 /**
  * The catalogs that share ONE row (owner order 2026-08-17). Audiobooks and
@@ -233,10 +275,15 @@ const MERGED_ROW = ['audiobook', 'ebooks'];
  * rather than a seed that missed someone. Flagging it would be a warning
  * that can never be cleared.
  */
+/* ⚠️ `label` is a GETTER on each row, so it follows CATALOG_LABELS once the
+   registry lands. A plain string would be read at module-evaluation time —
+   before the fetch — and would freeze the fallback into the page. The KEYS and
+   ORIGINS stay hand-written: they are wiring (which Worker to ask, at which
+   host), not names, and the canonical order across repos is load-bearing. */
 const APPS = [
-  { key: 'library', label: 'library', origin: 'https://library.heygabi.ai', seedGap: true },
-  { key: 'games', label: 'games', origin: 'https://boardgames.heygabi.ai', seedGap: true },
-  { key: 'library2', label: "Sam's library", origin: 'https://padhard.heygabi.ai', seedGap: false },
+  { key: 'library', get label() { return CATALOG_LABELS.library; }, origin: 'https://library.heygabi.ai', seedGap: true },
+  { key: 'games', get label() { return CATALOG_LABELS.games; }, origin: 'https://boardgames.heygabi.ai', seedGap: true },
+  { key: 'library2', get label() { return CATALOG_LABELS.library2; }, origin: 'https://padhard.heygabi.ai', seedGap: false },
 ];
 
 /**
@@ -257,11 +304,17 @@ const APPS = [
  * answers the row's role: the auth Worker's site-roles ladder, or that app's
  * own /api/admin surface in its own vocabulary.
  */
+/* ⚠️ Same getter rule as APPS, and for the same reason — `label:
+   CATALOG_LABELS.library` was evaluated once, at module load, so the registry
+   could never reach these three rows. The merged row keeps its own hand-written
+   name: "Audiobooks/Ebooks" describes a ROW covering two catalogs behind one
+   role ladder (owner order 2026-08-17), which is not a fact the registry
+   carries and not a catalog's label. */
 const SITE_ROWS = [
   { id: 'audiobook', label: 'Audiobooks/Ebooks', catKeys: MERGED_ROW, roleSource: 'audiobook' },
-  { id: 'library', label: CATALOG_LABELS.library, catKeys: ['library'], roleSource: 'app' },
-  { id: 'games', label: CATALOG_LABELS.games, catKeys: ['games'], roleSource: 'app' },
-  { id: 'library2', label: CATALOG_LABELS.library2, catKeys: ['library2'], roleSource: 'app' },
+  { id: 'library', get label() { return CATALOG_LABELS.library; }, catKeys: ['library'], roleSource: 'app' },
+  { id: 'games', get label() { return CATALOG_LABELS.games; }, catKeys: ['games'], roleSource: 'app' },
+  { id: 'library2', get label() { return CATALOG_LABELS.library2; }, catKeys: ['library2'], roleSource: 'app' },
 ];
 
 /**
@@ -924,6 +977,11 @@ async function createMember(email) {
 
 async function loadDirectory() {
   setStatus('Loading…');
+  // ⚠️ The names before the first render. A grid drawn first would carry the
+  // fallback labels and nothing here re-draws it, so the page would look
+  // healthy and quietly disagree with every other surface — which is the exact
+  // failure this whole build is about. loadCatalogs() never rejects.
+  await registryReady;
   // One fetch per app Worker, driven by APPS rather than positional
   // destructuring — adding a fourth managed site is a row in APPS and
   // nothing else. A failed app fetch degrades that column only.

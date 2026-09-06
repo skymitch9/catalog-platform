@@ -233,11 +233,15 @@ export function groupBySeries(rows) {
    * libraries are designated by who owns the physical or shared with digital
    * works."*
    *
-   * ⚠️ WHAT WAS HERE UNTIL TODAY, AND WHY IT WAS THE WORST CODE IN THE ESTATE:
+   * ⚠️ WHAT WAS HERE UNTIL TODAY, AND WHY IT WAS THE WORST CODE IN THE ESTATE —
+   * three constants: `FULL_SCOPE_SIZE` (the number 3), `SOURCE_LABELS` (four
+   * hand-typed shelf names, one of them just "library") and `SCOPE_LABELS`
+   * (three keys of five).
    *
-   *   const FULL_SCOPE_SIZE = 3;
-   *   const SOURCE_LABELS = { game: 'board games', library: 'library', … };
-   *   const SCOPE_LABELS  = { audiobook: 'audiobooks', library: 'the library', … };
+   * ⚠️ Their declarations are quoted NOWHERE in this file, deliberately:
+   * predeploy.checks.json refuses each of their declaration lines on the LIVE
+   * host, and a comment that quoted one would trip its own regression check.
+   * The story belongs here; the syntax does not.
    *
    * The estate has FIVE catalogs. The default grant from migration 0002 is
    * exactly three — `vis_library2` (0007) and `vis_ebooks` (0008) are
