@@ -28,8 +28,9 @@
 >
 > 1. ☐ delete `audiobook_catalog/run_tests.py` (blind second runner) + fix the
 >    script that points at it — W9-AUDIO-TESTS
-> 2. ☐ move `library_catalog/apps/web/src/lib/gabi-confirm.test.ts` into the
->    `npm test` glob — W9-LIB-TEST-MOVE
+> 2. ☑ move `library_catalog/apps/web/src/lib/gabi-confirm.test.ts` into the
+>    `npm test` glob — W9-LIB-TEST-MOVE (library_catalog `5275091`; apps/web
+>    464→471 cases, full suite 2882→2889, both +7, all passing)
 > 3. ☐ `test_catalog_completeness.py`: 11 silent `skipTest`s made loud — W9-AUDIO-TESTS
 > 4. ☐ `packages/estate-events` gets real tests (declares a runner, has no `test/`) — W9-PLATFORM-CI
 > 5. ☐ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` — W9-PLATFORM-CI;
