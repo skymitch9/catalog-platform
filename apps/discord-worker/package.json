@@ -6,8 +6,11 @@
   "description": "The estate Discord bot's HTTP interactions endpoint: Ed25519-verified PING/PONG, a command/component router, and two-way club poll voting. Design: docs/info/discord-bot-design.md (1.3, 2a); mechanics: audiobook_catalog docs/info/discord-poll-sync-research.md.",
   "scripts": {
     "dev": "wrangler dev --port 8797",
+    "pretypecheck": "node ../../scripts/sync-gabi-prompt.mjs --check",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "tsx --test test/*.test.ts"
+    "pretest": "node ../../scripts/sync-gabi-prompt.mjs --check",
+    "test": "tsx --test test/*.test.ts",
+    "gabi-prompt:sync": "node ../../scripts/sync-gabi-prompt.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

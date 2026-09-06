@@ -54,6 +54,39 @@ function repoFile(relative: string): string {
 }
 
 /**
+ * The sync module plus the canonical prompt it reads — or `null`, ONCE, with a
+ * loud line, when there is no sibling `library_catalog` checkout.
+ *
+ * ⚠️ A skip rather than a failure, and the reason is the same one the script's
+ * `--check` gives: the generated region of `src/gabi-prompt.ts` is COMMITTED
+ * SOURCE, so a clone with no sibling repo is a perfectly correct checkout. Set
+ * `SYNC_GABI_PROMPT_REQUIRE=1` and these tests fail instead of skipping.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- an .mjs sibling
+// script with no d.ts; the shapes used below are asserted, not typed.
+let syncCache: { lib: any; system: string } | null | undefined;
+async function loadSync(): Promise<{ lib: any; system: string } | null> {
+  if (syncCache !== undefined) return syncCache;
+  const repo = await import(new URL('../../../scripts/lib/library-repo.mjs', import.meta.url).href);
+  const found = repo.findLibraryRepo();
+  if (!found?.dir) {
+    if (process.env.SYNC_GABI_PROMPT_REQUIRE === '1') {
+      throw new Error(repo.libraryRepoAdvice(found?.tried));
+    }
+    console.log(
+      '⚠️ gabi-edge: SKIPPING the canonical-prompt drift checks — no bookbuddy/library_catalog ' +
+        'checkout beside this repo. The generated region is committed, so this is not a failure. ' +
+        'Set SYNC_GABI_PROMPT_REQUIRE=1 to make it one.',
+    );
+    syncCache = null;
+    return null;
+  }
+  const lib = await import(new URL('../../../scripts/lib/gabi-prompt-sync.mjs', import.meta.url).href);
+  syncCache = { lib, system: lib.readGabiSystem(found.dir) as string };
+  return syncCache;
+}
+
+/**
  * ⚠️ **THE PIN: the entire system prompt as it stood before the dial existed.**
  *
  * It is a LITERAL rather than a checksum on purpose — a hash tells a future
@@ -62,6 +95,13 @@ function repoFile(relative: string): string {
  * down. Regenerate it only when the canonical prompt itself is deliberately
  * re-synced from `library_catalog/packages/research/src/gabi.ts`, and say so in
  * the commit.
+ *
+ * ⚠️ **A LITERAL ALONE WAS NOT ENOUGH, and that was the defect** (found
+ * 2026-09-05). This pin goes red when THIS repo's prompt changes and stays
+ * green forever when the CANONICAL one does — so it could never see the drift
+ * that actually matters. Section 3b below fixes that half: it reads
+ * `GABI_SYSTEM` out of the library checkout and asserts, paragraph by
+ * paragraph, that the shared text here is still byte-identical to it.
  */
 const STANDARD_PROMPT_AS_SHIPPED =`## Who you are
 
@@ -191,6 +231,66 @@ describe('⚠️ standard is the pre-dial prompt, BYTE FOR BYTE', () => {
     ]) {
       assert.ok(assembled.includes(invariant), `turning her up lost: "${invariant}"`);
     }
+  });
+});
+
+// ── 3b. ⚠️ AND THE PIN IS NOW TIED TO THE CANONICAL SOURCE ─────────────────
+//
+// ⚠️ **The half the literal above could never do.** GABI's personality is
+// canonically `GABI_SYSTEM` in `library_catalog/packages/research/src/gabi.ts`;
+// this repo carries the read-capable subset. Until 2026-09-05 that subset was a
+// HAND COPY and this file's only check was against its own literal — a pin that
+// is silent on exactly the drift that matters.
+//
+// `scripts/sync-gabi-prompt.mjs` now extracts the SHARED paragraphs into the
+// generated region of `src/gabi-prompt.ts` and pins the DELIBERATE deltas
+// upstream by hash. These tests exercise that from the test suite, so a drift
+// fails `npm test` rather than waiting for somebody to run a script.
+//
+// ⚠️ **They SKIP, loudly, when there is no sibling `library_catalog` checkout.**
+// The generated region is committed source, so a clone without the sibling
+// still builds, tests and deploys correctly, and failing there would break a
+// repo that has nothing wrong with it. Same posture as the script's `--check`.
+describe('⚠️ the prompt is SYNCED from library_catalog, not hand-copied', () => {
+  it('every shared paragraph is byte-identical to GABI_SYSTEM upstream', async () => {
+    const sync = await loadSync();
+    if (!sync) return;
+    const { lib, system } = sync;
+    for (const { key, anchor } of lib.SHARED) {
+      const upstream = lib.paragraphFor(system, anchor);
+      assert.ok(
+        GABI_DISCORD_SYSTEM.includes(upstream),
+        `the shared paragraph "${key}" has DRIFTED from library_catalog's GABI_SYSTEM. ` +
+          'Run `npm run gabi-prompt:sync` in apps/discord-worker, read the diff, and update ' +
+          'STANDARD_PROMPT_AS_SHIPPED above in the same commit.',
+      );
+    }
+  });
+
+  it('⚠️ the six DELIBERATE deltas are still as last reviewed', async () => {
+    const sync = await loadSync();
+    if (!sync) return;
+    const drift = sync.lib.checkDeltas(sync.system) as { key: string; why: string }[];
+    assert.deepEqual(
+      drift.map((d) => d.key),
+      [],
+      'a paragraph this surface words differently ON PURPOSE was edited upstream. Nothing is ' +
+        'broken — but somebody has to read the new text and decide whether Discord\'s wording ' +
+        'still follows. `node scripts/sync-gabi-prompt.mjs` prints it, and the new hash to pin.',
+    );
+  });
+
+  it('the committed generated region matches what the sync would write', async () => {
+    const sync = await loadSync();
+    if (!sync) return;
+    const { lib, system } = sync;
+    const onDisk = lib.readGenerated(repoFile('src/gabi-prompt.ts'));
+    assert.equal(
+      onDisk,
+      lib.renderGenerated(lib.extractShared(system)),
+      'src/gabi-prompt.ts\'s generated region is stale or was hand-edited. ' +
+        'Fix: `npm run gabi-prompt:sync` in apps/discord-worker.',
+    );
   });
 });
 
