@@ -9,6 +9,78 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ SHIPPED 2026-09-05 — THE `/series/` CONFIRM QUEUE GAINS ITS RESOLVE CONTROL (owner ask 17:34 Phoenix, agent W6-RESOLVE)
+
+> Deploys: `catalog-index` **04bef4e8-9842-4a11-a9ff-7bbd9aa52119** and
+> `heygabi-home` **1f17c1e5**, both at commit `b1a791f`. Rollbacks:
+> **8084b2ba-dd99-4ca6-8036-5d8e2e300949** and **6476f6ac**. Full lines in
+> [`deploys.log`](deploys.log). As-built:
+> [`info/index-worker-design.md` §8.5.2](info/index-worker-design.md).
+>
+> ⚠️ **The BUILD is what moved here. The CLICK did not** — the six real rows are
+> the owner's step and stay in [`TODO.md`](TODO.md) with the review link and the
+> per-row table, because nobody has pressed the button signed in.
+
+**Owner, 2026-09-05 17:34 Phoenix:** the apex `/series/` page's *"A DECISION IS
+WAITING — N near misses"* card gets a resolve control, so the queue is worked
+from the one surface that shows it instead of hand-run POSTs.
+
+**The gap this closed was half of a gap already closed once.** `pending_open`
+was added on 2026-08-17 because *"a queue nobody is told about is a queue nobody
+resolves"* — the registry's first near miss had sat unnoticed. The card then
+announced six of them for weeks and offered no way to act, so the queue was
+worked with `curl` and a copy-pasted bearer: a worse instrument for the same
+irreversible write, with the `into` slug living in a shell history where a typo
+is a wrong merge nobody sees happen.
+
+**The route did not change and its gate did not change.** `POST
+/api/series/pending/:fold` already existed behind `requireOwnerStanding()`.
+`READ_ORIGINS` was not widened. `apps/auth-worker` was not touched. What was
+added is one additive pair of fields on the sibling read — `candidate_entries` /
+`closest_entries` — because `into` is a CHOICE and the counts are its evidence.
+
+⚠️ **The comment worth keeping, because it argued the opposite and was right
+until it was not.** `series.js` carried a deliberate refusal to offer this
+button: *"a write to a persisted key, taken once and kept … that deserves its
+own considered affordance rather than a button bolted to a notice"*. The
+reasoning was sound; what was missing was the affordance, and its absence did
+not prevent the write — it only moved it somewhere less careful. The considered
+part is kept in the built control: the survivor is NAMED in the label, the entry
+counts sit on the button, "they are different series" is offered as the equal
+answer it is, and no refusal is ever a bare status.
+
+🔴 **The decision that a one-way button would have got wrong.** Both merge
+directions occur in the live queue: `once upon a broken heart 1` merges into the
+CLOSEST, while `skyward` and `emily wilde` merge into the CANDIDATE (the plain
+form wins, `data/series-canon.json`'s `canonicalRule`). A control that could only
+merge into `closest_slug` would have silently made the opposite decision on two
+of six rows — and the queue is built never to ask again.
+
+**Where the control lives, and why it broke a convention on purpose.**
+`sites/heygabi-home/public/assets/series-pending.js`, not `series/series.js`.
+That page's stated convention is one page, one script — which holds for
+RENDERING and not for the shape of an irreversible write: `series.js` cannot be
+imported in Node (top-level `getElementById`; `estate-auth.js` pulls the Firebase
+SDK off a CDN), so anything left inside it can only be checked by READING it.
+The module imports nothing and takes its collaborators as arguments, so the tests
+drive the real code with the committed stub DOM.
+
+**Measured:** index Worker 195 → **200 pass / 0 fail**, `tsc` clean on both
+projects; `scripts/test/apex-series-resolve.test.mjs` **26 new cases**; whole
+workspace **3059 pass / 0 fail**; `check:home` green (35 JS, 32 module graphs,
+14 HTML); **all 339 predeploy markers dry-run against the WORKING TREE, 0
+failing** before the commit; `verify:home` green on 37 live pages first run.
+Live, cache-busted (`cf-cache-status: MISS`): `/assets/series-pending.js` 200 at
+12,676 bytes with all four pinned strings, `/series/` 200 carrying the card, and
+an unauthenticated `GET /api/series/pending` answering the worded
+`{"error":"unauthenticated"}` rather than a bare status.
+
+🔴 **NOT verified: nobody has pressed the button signed in**, and no signed-in
+read of the queue exists either — an agent session holds no Firebase token, so
+the counts have been proven against a fake D1 and the live 401 door only. Also
+not verified: the six rows against the live `series_pending` table (they are
+quoted from W6-LIBDATA's read, not re-read), and the rendered card (no browser).
+
 ## ✅ SHIPPED + VERIFIED LIVE 2026-09-05 — THE APEX READS THE CATALOG REGISTRY (dispatch 2 of the multi-library survey, agent W6-APEX) — the sub-item moved WHOLE from TODO.md
 
 > Deploy: `heygabi-home` **58d8efae-f201-40d8-b3b3-7a161bc1c4cd** at commit

@@ -10,6 +10,53 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🧑 OWNER STEP — resolve the six near misses on <https://heygabi.ai/series/> (the button is LIVE)
+
+> **Owner ask, 2026-09-05 17:34 Phoenix:** the `/series/` card's *"A DECISION IS
+> WAITING — N near misses"* gets a resolve control, so the queue is worked from
+> the one surface that shows it instead of hand-run POSTs. ✅ **Built and
+> deployed 2026-09-05** (`b1a791f`; `catalog-index` `04bef4e8`, `heygabi-home`
+> `1f17c1e5`) — the build moved WHOLE to [`DONE.md`](DONE.md); what stands here
+> is the click, which is his and nobody else's.
+
+🔗 **Sign in at <https://heygabi.ai/series/>** → the card at the top of the page
+→ **"Show me which series"** → each row now carries both spellings with their
+entry counts and a **Keep "…"** button per spelling, plus **"They are different
+series"**.
+
+⚠️ **Two of the six merge into the CANDIDATE, not the closest** — the button
+whose label names the surviving spelling is the one to press, and the counts are
+printed on it so the choice has its evidence beside it. The list, read from the
+index's own `series_pending` table by agent W6-LIBDATA and mirrored into the
+card:
+
+| The pair | Press | Why that side |
+|---|---|---|
+| fold `once upon a broken heart 1` | **Keep "Once Upon a Broken Heart"** | cause fixed upstream; 3 entries vs 0 |
+| fold `good girl s guide to murder 2` | **Keep "A Good Girl's Guide to Murder"** | cause fixed; 3 entries vs 0 |
+| fold `good girl s guide to murder 3` | **Keep "A Good Girl's Guide to Murder"** | cause fixed; 3 entries vs 0 |
+| fold `asphodel series` | **Keep "Asphodel"** | cause fixed; 2 entries vs 0 |
+| fold `emily wilde` | **Keep "Emily Wilde"** (the plain form) | `series-canon.json`'s `canonicalRule` |
+| fold `skyward` | **Keep "Skyward"** (the plain form) | ⚠️ this one's source is **`library`**, not padhard |
+
+🔴 **There is no undo.** A merge repoints every entry under the absorbed
+spelling and the queue is built never to ask the question again — a wrong press
+is corrected only by making the opposite decision by hand. The full row list
+with the raw folds lives in the library repo's `docs/TODO.md` (agent
+W6-LIBDATA, item 1).
+
+🔴 **NOT VERIFIED BY ANY AGENT: nobody has pressed the button signed in.** The
+card only renders for an approver and no agent session holds a Firebase token,
+so the whole success path — the queue read with its counts, a merge, a separate,
+the count decrementing, the empty-queue sentence — is proven against a stub DOM
+and a fake D1 only. **This click is both the fix and the first real test.**
+
+☐ **Still separately open (another repo, not this click):** the two
+CROSS-CATALOG folds want a `data/series-canon.json` entry — *"Emily Wilde
+Series"* and *"The Skyward Series"* are the AUDIOBOOK catalog's spellings, and a
+merge in the index does **not** stop it pushing the decorated name. Needs the
+edit here **and** the audiobook repo's `python -m app.tools.sync_series_canon`.
+
 ## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
 
 > **Owner, verbatim (16:50):** *"Should we make all the scripts routes? Or at
