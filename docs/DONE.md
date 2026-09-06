@@ -9,6 +9,70 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-05 20:05 Phoenix — the unlinked-asker deep link points at the main library
+
+> **Closed by W7-PANEL-URL (claude-opus-5).** Commits **`6828e6a`** (the change)
+> and **`c31814f`** (`deploys.log` + the dated header block in
+> `access/discord-bot.md`). Deployment **`ac1313a7-ceae-4bbe-acf5-6d33c4d616c2`**;
+> **rollback `755cfd54-9cc2-43a0-beab-e9f795c13b02`** (pool v1, `de4ef63`) — ⚠️
+> note the brief expected `613a4363` as the top entry and it was NOT: the pool v1
+> deploy landed after it at 02:32:58Z, so the id was read off
+> `wrangler deployments list` rather than trusted.
+>
+> **Tests: 1260 pass / 0 fail before → 1261 pass / 0 fail after** (the *before*
+> was MEASURED at `HEAD` in a throwaway `git worktree`, not inferred). `npm run
+> typecheck` clean across both tsconfigs.
+>
+> **Live, measured 2026-09-06 02:59:53Z:** `GET https://discord.heygabi.ai/api/health`
+> → **200**, `gabi_panel_url: "https://library.heygabi.ai/"`.
+>
+> **Two tests were WEAKENED by the change and were repaired rather than left
+> green.** Once the fallback became `library.heygabi.ai`, *"the link is the main
+> library"* stopped being evidence that the identity resolution had run at all —
+> it is now exactly what a Worker that resolved nothing would also say. So the
+> routing cases in `test/panel.test.ts` §4 and §5 pass a **sentinel** fallback
+> (`https://panel.example/`) that no resolution can produce, and §4 gained a
+> mirror case that resolves somebody onto `padhard` — a host the fallback can no
+> longer reach. The genuinely-on-the-friend-shelf assertions (§5's *"his own
+> shelf"*, `delegated.test.ts:139`, `confirm-propose.test.ts`) were read and left
+> alone: they are about routing, not the fallback.
+>
+> **Files:** `apps/discord-worker/wrangler.toml`, `src/panel.ts`, `src/env.ts`,
+> `test/gabi.test.ts`, `test/panel.test.ts`, `docs/access/discord-bot.md`,
+> `docs/info/multi-library-survey-2026-09-05.md`, `docs/deploys.log`.
+>
+> ⚠️ **NOT VERIFIED:** nobody has clicked the link from Discord as an unlinked
+> person. `access/discord-bot.md` §10.5's second bullet still stands — the
+> hand-off (arrive, sign in, find the speech-bubble button) has never been walked
+> end to end by a human, and this change did not walk it. Also not verified: that
+> `library.heygabi.ai`'s panel renders for a signed-in stranger; the site's own
+> `runResearch` check is the authority and this end cannot see it.
+>
+> **One thing found and left open:** the survey row for `src/panel.ts:72` is now
+> marked *host fixed, registry work NOT done* — the base is still a literal, not
+> a registry lookup (`info/multi-library-survey-2026-09-05.md` §3.4, size S).
+
+**The item as it stood in `TODO.md`:**
+
+### ☐ GABI's unlinked-asker deep link still points at padhard — owner "Yes fix" 2026-09-05 19:50 Phoenix
+
+Found by the 2026-09-05 panel↔Discord sync check (asked: *"make sure the web
+interface and the discord bot are still in sync"*). `apps/discord-worker/wrangler.toml`
+`GABI_PANEL_URL = "https://padhard.heygabi.ai"` and `src/panel.ts`
+`DEFAULT_PANEL_BASE` carry a comment saying *"the main library has it off by
+decision 8"* — **false since `library_catalog` `34f1301` (2026-08-17, the main
+panel went ON for Amber)**; measured tonight both instances answer
+`gabi.panel: true` on `/api/health`. Linked askers are already routed to their
+own instance (`panel.ts`, the *"why is it showing padhard"* fix), so only
+**unlinked** askers and the no-port fallback still land on Samantha's site.
+
+Fix: var + constant → `https://library.heygabi.ai`, comments corrected in
+place (struck, not deleted — the premise is what a reader reasons from), the
+test pins that assert padhard-as-fallback updated (`test/gabi.test.ts:89–90`,
+`test/panel.test.ts` §4/§5 fallback cases), deploy from a clean tree, verify
+`gabi_panel_url` on `/api/health`, `deploys.log` line. Dispatched to Opus
+2026-09-05 19:52 Phoenix.
+
 ## ✅ DONE 2026-09-05 19:33 Phoenix — GABI's half of the ESTATE PERSONALITY POOL, live as pool v1 (de4ef63 · 755cfd54)
 
 > **Landed 2026-09-05 19:33 Phoenix** (2026-09-06 02:33Z). All four boxes below are
