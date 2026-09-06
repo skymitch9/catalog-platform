@@ -9,6 +9,116 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+
+## ✅ 2026-09-06 — Closed by the conductor under the silence rule — reversible
+
+> **Who and why.** Four items the owner was asked about and never answered,
+> closed on his standing rule that silence takes the recommendation. Decided by
+> the conductor 2026-09-06 (agent W11-LOOKUPS) and moved **whole** from
+> [`TODO.md`](TODO.md) — nothing below is summarised. **Every one is reversible**,
+> and each carries the line that says what would reopen it. The `WowClassic.exe`
+> one is not a silence at all: he answered it out loud the same day.
+
+> 🔁 **Decision 2026-09-06 — (b) STAY ON THE FREE TIER. Reversible, and it is a
+> money question, not a build.** Nothing breaks: the ladder falls back to Haiku
+> invisibly, which is what it did throughout the owner's own live test, and the
+> person cannot tell. **What reopens it, and it is an observation, not a
+> judgement:** a live `@mention` showing `count_phrase` **eligible** on Groq and
+> then meeting `429`s — i.e. the mitigations running out of headroom on real
+> traffic. ⚠️ **Only the pay/stay half closes here.** The separate
+> `count_phrase`-allowlist review item (one live `@mention`) stays open on
+> [`TODO.md`](TODO.md); it is the measurement this decision would be reopened by.
+> If the plan is ever bought, `gabi_groq_tpm_limit` (**8,000**, confirmed live
+> 2026-09-05) must be updated with it.
+
+## ❓ OWNER DECISION — pay for Groq's Developer plan, or stay free? (2026-09-02)
+
+**The options: (a) upgrade to Groq's Developer plan** — every mitigation already
+built turns into headroom, `reason:"too_large"` should vanish from the stream,
+and `gabi_groq_tpm_limit` (8,000 today, confirmed live 2026-09-05) needs
+updating; **(b) stay on the free tier** — nothing breaks, busy turns fall back
+to Haiku invisibly, and the person cannot tell. Nothing is blocked either way;
+this is a money question, not a build.
+
+🔴 **The 413 wall the owner met is the FREE TIER, not a bug.** Groq allows
+`openai/gpt-oss-120b` **8,000 tokens per minute** on the free plan and refuses a
+single request bigger than that with `413` rather than queueing it — which is
+the instant ~37 ms refusal he measured. The request was **~7,960 tokens before
+his question**.
+
+The code side is done (lean schemas cut the tool payload 54%, the full 13-tool
+request now fits with ~1,500 tokens to spare, and a pre-flight refuses to send a
+doomed one). But a three-pass tool loop still spends several thousand tokens a
+minute, so on the free plan a busy turn will meet `429`s where it used to meet
+`413`s.
+
+**Upgrading to Groq's Developer plan turns every mitigation into headroom.**
+Nothing breaks if he does not — the ladder falls back to Haiku invisibly, which
+is what it did all through the live test. Measurement + arithmetic:
+[`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
+
+---
+
+> 🔁 **Decision 2026-09-06 — (a) LEAVE IT at 1 book/tick. Reversible.** The
+> standing offer went unanswered for 13 days and nothing is blocked on it; honest
+> and slower beats the silent over-budget behaviour it replaced. ⚠️ **The option
+> that stays refused either way is raising the per-tick budget** — that is what
+> killed the sweep mid-second-book, and the 50-subrequest ceiling has not moved.
+> **What reopens it:** a measured backlog that 1 book/tick cannot clear, at which
+> point the change is the cron FREQUENCY and nothing else.
+
+## ❓ OWNER DECISION — raise the details-sweep cron frequency? (standing offer, 2026-08-24)
+
+**The options: (a) leave it** — 1 book/tick, honest and slower; **(b) raise the
+cron FREQUENCY** to get the old rate back. ⚠️ **Not an option: raising the
+per-tick budget** — it must stay under the 50-subrequest ceiling, which is what
+made it die mid-second-book before.
+
+The library details-sweep now honestly heals **1 book/tick** (was silently
+over-budget at 2 and dying mid-second-book). Raise the cron frequency if you
+want the old rate; do NOT raise the per-tick budget (it must stay under the
+50-subrequest ceiling).
+
+---
+
+> 🔁 **Decision 2026-09-06 — KEEP IT AS IS. Reversible.** `/api/health` goes on
+> reporting `library2`'s row count, for the reason the item itself records: the
+> **main** library's row count is already public on the same endpoint, so
+> narrowing one source and not the other buys no privacy and costs the Health
+> page a field. A row count is a cardinality, not a title list — nothing about
+> *which* books she owns is exposed, and `vis_library2` (owner-only, `DEFAULT 0`)
+> is what actually gates her rows. **What reopens it:** the owner saying a bare
+> count is private, or `/api/health` ever carrying more than a count for a
+> non-owner source.
+
+- [ ] ❓ 🧑 **`/api/health` still reports `library2`'s row count to anybody.**
+      Carried unchanged: it predates the rule, the Health page reads it, and
+      narrowing it is a decision about a different surface with a different
+      consumer. **Is a row count itself private?** (`library2` sat at 677 rows
+      at 16:03 on 2026-09-05.)
+
+---
+
+> 🔁 **Decision 2026-09-06 — CLOSED on the owner's own words. Reversible in one
+> line.** Owner, 2026-09-06: ***"I don't play classic."*** So there is nothing to
+> verify and nothing to change. ⚠️ **Measured 2026-09-06 while closing it: no
+> process list is seeded anywhere in code** — `exempt_processes` is written
+> entirely by whoever types a name on the do-not-disturb card
+> (`apps/auth-worker/src/ops.ts`), so the only **`WowClassic.exe`** strings in
+> the estate are one example in
+> [`info/ingestion-pause-until-gpu-design.md`](info/ingestion-pause-until-gpu-design.md)
+> and one case in `apps/auth-worker/test/ingestion-control.test.ts`. The retail
+> **`Wow.exe`** name stands on its own evidence (read off `tasklist` while the
+> game ran, 2026-09-01). **What reopens it:** him playing Classic — at
+> which point the fix is to read the real image name off `tasklist` while it runs
+> and add that one string, exactly as `Wow.exe` was added.
+
+- ☐ **`WowClassic.exe` is unverified.** `Wow.exe` was read off `tasklist` while
+  the game ran (2026-09-01); the classic-client name was not. If he plays
+  Classic, check the real image name before trusting the suggestion.
+
+---
+
 ## ✅ DONE 2026-09-06 08:46 Phoenix — OWNER ANSWERS 2026-09-06 00:5x Phoenix — the 16-item list after all builds landed
 
 > The conductor presented the sixteen open owner items as ONE numbered list at

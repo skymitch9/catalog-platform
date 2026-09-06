@@ -310,10 +310,18 @@ tomorrow" is true and reads as a different time at 9pm.
   routes need a signed-in devops token, and fabricating an identity to test a
   live gate is not a probe. What WAS checked live that day: the unauthenticated
   `POST` still answers a **worded 401**, and `verify:home` passed.
-- ⚠️ **"WowClassic.exe" is NOT verified.** `Wow.exe` was read off `tasklist` on
-  the owner's own machine while the game ran (2026-09-01); the classic-client
-  name is the documented one and nobody has seen it in a process list here. Both
-  are only *suggestions* on the card — the box takes any name.
+- ⚠️ **"WowClassic.exe" is NOT verified, and it never will be — CLOSED
+  2026-09-06.** Owner, 2026-09-06: ***"I don't play classic."*** So the
+  classic-client name stays unverified on purpose and nothing seeds it: no
+  process list exists in code at all (`exempt_processes` is written entirely by
+  whoever types a name on the card), and the only `WowClassic.exe` strings in
+  the repo are one example in
+  [`ingestion-pause-until-gpu-design.md`](ingestion-pause-until-gpu-design.md)
+  and one test case. `Wow.exe` was read off `tasklist` on the owner's own
+  machine while the game ran (2026-09-01) and stands on that. Both are only
+  *suggestions* on the card — the box takes any name. Full entry:
+  [`DONE.md`](../DONE.md), *"Closed by the conductor under the silence rule —
+  reversible"*.
 - **The reader was uncommitted when this was written** (`ingest_control.py`
   present in `audiobook_catalog`'s working tree, no info doc). If it changed
   after 2026-08-18, re-check §2 and §3 — §3 in particular.

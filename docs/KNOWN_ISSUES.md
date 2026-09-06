@@ -305,10 +305,14 @@ fits with ~1,500 tokens to spare — but the tier is the owner's to raise. The
 ladder falling back to Haiku is the designed behaviour, and the person cannot
 tell.
 
-**What would change it.** Upgrading to Groq's Developer plan (tracked in
-[`TODO.md`](TODO.md) as an owner decision). The number to watch afterwards:
-`reason: "too_large"` should disappear from the stream entirely, and
-`gabi_groq_tpm_limit` on `/api/health` is the value that would need updating.
+**What would change it.** Upgrading to Groq's Developer plan. ⚠️ **Decided
+2026-09-06: (b) STAY FREE** — the pay/stay question was closed by the conductor
+under the owner's silence-takes-the-recommendation rule and moved WHOLE to
+[`DONE.md`](DONE.md) (*"Closed by the conductor under the silence rule —
+reversible"*), so **this waiver is now standing rather than pending a decision.**
+The number to watch afterwards, if it is ever bought: `reason: "too_large"`
+should disappear from the stream entirely, and `gabi_groq_tpm_limit` on
+`/api/health` (**8,000**, live 2026-09-05) is the value that would need updating.
 Arithmetic and evidence: [`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
 
 ---

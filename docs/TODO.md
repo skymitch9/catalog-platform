@@ -10,21 +10,59 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — two owner steps
+## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — ONE owner step left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
-> thirteen of them closed. These two are still his, kept in his own numbering.
-> Items **14** (the federation eyeball), **16**'s forced dry-run and the
-> `ebooks.heygabi.ai` CORS question live with the federation section below,
-> beside the evidence they need.
+> thirteen of them closed. **Item 7 stopped being his on 2026-09-06** — it was
+> looked up rather than asked (see below), so **9** is the only step left that
+> genuinely needs him. Items **14** (the federation eyeball), **16**'s forced
+> dry-run and the `ebooks.heygabi.ai` CORS question live with the federation
+> section below, beside the evidence they need.
 
-- [ ] 🧑 **7 · Space Knight `9781986619233` — which volume does it belong on?**
-      Measured 2026-09-06 07:10 Phoenix on the live main D1: **no edition
-      carries it.** ed#344 (*Book 3*, work 251) was the only row and tier C
-      cleared it at `2026-09-06 02:32:09Z`; Google Books had proposed it for
-      books 5–9. Only *Book 1* (work 249, ed#342) has an ISBN today
-      (`9781986026789`). He names the volume — or says "none" — and it is one
-      manual row edit in `library_catalog`. Nothing is blocked meanwhile.
+- [ ] **7 · Space Knight `9781986619233` — ONE EDIT, ANSWER FOUND: it is BOOK 3.**
+      ⚠️ **No longer an owner question** — resolved by lookup 2026-09-06 (agent
+      W11-LOOKUPS) rather than asked, and **the conductor applies the edit**.
+
+      **The answer, from two independent sources that agree:**
+      | Source | Reads |
+      |---|---|
+      | Open Library edition `OL54710350M` — <https://openlibrary.org/books/OL54710350M.json> (reached via <https://openlibrary.org/isbn/9781986619233.json>) | `"title": "Space Knight 3"`, Michael-Scott Earle (`/authors/OL9663959A`), CreateSpace, **2018**, 698 pp, `isbn_13: ["9781986619233"]` |
+      | isbnsearch.org — <https://isbnsearch.org/isbn/9781986619233> | *Space Knight 3*, Michael-Scott Earle, CreateSpace, published **2018-03-09** |
+
+      ⚠️ Google Books could **not** be re-read on the day: both
+      `googleapis.com/books/v1` (curl, real UA) and the WebFetch path answered
+      **HTTP 429 / `RESOURCE_EXHAUSTED`**, quota `defaultPerDayPerProject`. So
+      the finding rests on Open Library + isbnsearch, not on the source that
+      originally mis-proposed it.
+
+      🔴 **So the row that landed was RIGHT, and tier C cleared a correct
+      value.** `DONE.md` in `library_catalog` (*"the Space Knight
+      one-ISBN-five-volumes title gate"*) records that ed#344 *"was cleared for
+      an unrelated reason — tier C, applied 2026-09-06 02:32:09Z"*, and that
+      **nobody had established which volume it belonged to**. It belonged to the
+      one it was on.
+
+      **Re-measured on the live main D1, 2026-09-06 (read-only,
+      `wrangler d1 execute library-catalog --remote`):** work **251** =
+      *Space Knight Book 3*, series `Space Knight`, `series_index_display` `3`,
+      its only edition **344**, `isbn13` **NULL**. Books 1–9 are works 249–255 +
+      69/70; only *Book 1* (work 249, ed#342) carries an ISBN today
+      (`9781986026789`).
+
+      **The exact single-row edit — table `edition`, column `isbn13`, one row:**
+      ```sql
+      -- run from library_catalog/apps/worker, against the MAIN instance only
+      UPDATE edition SET isbn13 = '9781986619233', updated_at = datetime('now')
+      WHERE id = 344;   -- work 251, "Space Knight Book 3"
+      ```
+      ⚠️ **Main instance only** — this is the owner's copy, not padhard's, so it
+      is deliberately NOT a `db:migrate:both`-style pair. ⚠️ **`idx_edition_isbn13`
+      is UNIQUE catalog-wide**, so the write refuses itself if any other row ever
+      takes that ISBN — that is a backstop, not a gate. ⚠️ **Check the sweep does
+      not clear it again**: tier C cleared this value once already; if it
+      reappears as NULL, the tier-C rule needs the same numbered-title guard the
+      writer got, and that is a new item.
+      🔗 Review after applying: <https://library.heygabi.ai/work/251>
 - [ ] 🧑 **9 · GABI steps 5–7 — he asked for the test, the test was given,
       and the result is what is missing.** The steps are
       [`access/discord-bot.md`](access/discord-bot.md) §15.3 items 5–7, written
@@ -400,11 +438,6 @@ reason row is what would confirm or kill it in one curl.
       about padhard only. Access-increasing, so it is confirmed, never assumed.
       ⚠️ **NOT verified either way: nobody has loaded padhard's search box in a
       browser.**
-- [ ] ❓ 🧑 **`/api/health` still reports `library2`'s row count to anybody.**
-      Carried unchanged: it predates the rule, the Health page reads it, and
-      narrowing it is a decision about a different surface with a different
-      consumer. **Is a row count itself private?** (`library2` sat at 677 rows
-      at 16:03 on 2026-09-05.)
 - [ ] 🧑 **The audiobook re-vendor is on the `/dev/` lane only — its prod
       needs `gh workflow run promote.yml`, and that is the owner's explicit
       request to make.** `2b4ba2f` in `audiobook_catalog`
@@ -1207,32 +1240,6 @@ today's state marked:
 ⚠️ A concurrent agent was working in `audiobook_catalog` on 2026-09-02, which is
 the second reason it was left alone.
 
-## ❓ OWNER DECISION — pay for Groq's Developer plan, or stay free? (2026-09-02)
-
-**The options: (a) upgrade to Groq's Developer plan** — every mitigation already
-built turns into headroom, `reason:"too_large"` should vanish from the stream,
-and `gabi_groq_tpm_limit` (8,000 today, confirmed live 2026-09-05) needs
-updating; **(b) stay on the free tier** — nothing breaks, busy turns fall back
-to Haiku invisibly, and the person cannot tell. Nothing is blocked either way;
-this is a money question, not a build.
-
-🔴 **The 413 wall the owner met is the FREE TIER, not a bug.** Groq allows
-`openai/gpt-oss-120b` **8,000 tokens per minute** on the free plan and refuses a
-single request bigger than that with `413` rather than queueing it — which is
-the instant ~37 ms refusal he measured. The request was **~7,960 tokens before
-his question**.
-
-The code side is done (lean schemas cut the tool payload 54%, the full 13-tool
-request now fits with ~1,500 tokens to spare, and a pre-flight refuses to send a
-doomed one). But a three-pass tool loop still spends several thousand tokens a
-minute, so on the free plan a busy turn will meet `429`s where it used to meet
-`413`s.
-
-**Upgrading to Groq's Developer plan turns every mitigation into headroom.**
-Nothing breaks if he does not — the ladder falls back to Haiku invisibly, which
-is what it did all through the live test. Measurement + arithmetic:
-[`info/gabi-groq-rung.md`](info/gabi-groq-rung.md) §11.
-
 ## ⏸ DEFERRED BY OWNER 2026-09-02 — anything needing the other computer
 
 Owner, verbatim, 2026-09-02: *"Anything needing the other computer is on
@@ -1314,18 +1321,6 @@ there gets a blanket `rm -rf`).
 `library_catalog/.git/worktrees/wave3` and `wave4` (2026-08-10). Each is a husk
 with no `gitdir` file, so `git worktree list` already ignores them; harmless,
 and `git worktree prune` is the one-command clean-up if anyone wants it.
-
-## ❓ OWNER DECISION — raise the details-sweep cron frequency? (standing offer, 2026-08-24)
-
-**The options: (a) leave it** — 1 book/tick, honest and slower; **(b) raise the
-cron FREQUENCY** to get the old rate back. ⚠️ **Not an option: raising the
-per-tick budget** — it must stay under the 50-subrequest ceiling, which is what
-made it die mid-second-book before.
-
-The library details-sweep now honestly heals **1 book/tick** (was silently
-over-budget at 2 and dying mid-second-book). Raise the cron frequency if you
-want the old rate; do NOT raise the per-tick budget (it must stay under the
-50-subrequest ceiling).
 
 ---
 
@@ -1573,9 +1568,6 @@ for itself:
   no session holds, and fabricating one against a live gate is not a test.
   ⚠️ This also finally pays the standing *"the signed-in card has never been
   rendered by a human"* debt (`info/ingestion-pause-controls.md` §6).
-- ☐ **`WowClassic.exe` is unverified.** `Wow.exe` was read off `tasklist` while
-  the game ran (2026-09-01); the classic-client name was not. If he plays
-  Classic, check the real image name before trusting the suggestion.
 
 ### 1. Toggle what can bill the LLM — 🔄 PHASES 0–3 BUILT; 2b CODE-LANDED 2026-09-05, ☐ NOT DEPLOYED
 Design of record: [`info/llm-billing-control-design.md`](info/llm-billing-control-design.md).
