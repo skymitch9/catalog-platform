@@ -390,3 +390,65 @@ list `rsvp` and `progress` with `club_writes_enabled: true`), then opt one club
 in and **look at the club page**: the RSVP must appear **in the tally**, not
 merely as a document, and the chapter must show on the read. ⚠️ If either half
 is wrong, the backout is one line — `GABI_CLUB_WRITES = "off"` and deploy.
+
+---
+
+## KI-13 · `git pull --rebase --autostash` can STRAND another agent's work in a shared tree — `WATCHING` (incident 2026-09-05 17:10)
+
+**Symptom.** In a tree shared with concurrent agents, `git pull --rebase
+--autostash` prints
+
+```
+Created autostash: 2e7aa2c
+error: cannot rebase: You have unstaged changes.
+```
+
+and **stops**. The autostash was created — so the other agent's uncommitted
+work is now *out of the working tree* — but the rebase never started, so it is
+never popped. ⚠️ **`git stash list` is EMPTY**: the autostash is a dangling
+commit, not a stash entry, so the ordinary "check the stash" reflex finds
+nothing and the work looks simply *gone*. `git status` shows the files clean, as
+if the agent had never edited them.
+
+**Measured 2026-09-05 17:10 Phoenix.** W6-INVENTORY ran the command after its
+own commit; the autostash captured **134 insertions across 2 files**
+(`scripts/test/helpers/stub-dom.mjs`, `sites/heygabi-home/public/index.html`)
+belonging to W6-APEX, which was actively working. **Fully recovered** — see the
+recipe below. The push itself had already succeeded, so the pull was not even
+needed.
+
+**Why it happens.** The autostash is taken, and *then* the rebase re-checks the
+tree. A concurrent writer that touches any tracked file in that window
+(here `sites/heygabi-home/predeploy.checks.json`, written by the other agent
+seconds later) makes the tree dirty again, and the rebase refuses **after** the
+stash has already emptied it.
+
+**Why tolerated.** ⚠️ The command is *explicitly sanctioned* by the global rules
+— it is the sanctioned alternative to bare `git stash`, precisely because it
+normally pops its own stash atomically. That reasoning is still right; the
+failure needs a **concurrent writer inside a sub-second window**, and the work is
+**never destroyed**, only detached. Banning the command would cost more than the
+incident does.
+
+**🔧 The recovery, and it is lossless.** The hash is printed in the error output
+— read it off the `Created autostash:` line.
+
+```sh
+git show --stat <hash>                       # what is in it, and whose
+git status --short <paths>                   # MUST be clean first, or you would clobber
+git show <hash>:<path> > <path>              # one line per file
+git hash-object <path>                       # verify: must equal `git rev-parse <hash>:<path>`
+```
+
+⚠️ **Verify before restoring AND after.** Clean-before proves the work is
+genuinely absent rather than redone by the other agent; the hash compare proves
+the restore is byte-exact. And restore **worktree only** — do not stage another
+agent's files.
+
+**What would change it.** A measured second occurrence. Until then the rule is
+behavioural, not mechanical: ⚠️ **do not `pull --rebase` in a shared tree
+speculatively — only when a push has actually been REJECTED.** A push that
+succeeds needs no pull, and this incident's pull was pure ceremony. If it
+recurs, promote the guard to a script per *"Mechanical guards beat written
+advice"*: refuse `--autostash` when `git status --porcelain` names a file the
+current agent did not write.
