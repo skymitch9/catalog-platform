@@ -33,6 +33,8 @@ import { machineKeyRoutes } from './machine-keys.js';
 import { estateDocsRoutes } from './estate-docs.js';
 import { factsRoutes } from './facts.js';
 import { backupsRoutes } from './backups.js';
+import { R2_PRUNE_CRON, r2PruneRoutes, scheduledR2Prune } from './r2-prune.js';
+import { ESTATE_PROBES_CRON, runScheduledProbes } from './estate-probes.js';
 import { billingRoutes } from './billing.js';
 import { universeRequestRoutes } from './universe-requests.js';
 import { notificationRoutes } from './notifications.js';
@@ -223,6 +225,18 @@ app.use('/api/estate/catalogs/requests/*', adminCors());
 // above: the only caller is the status page's Operations section, on the
 // apex. requireDevops()-gated (backups.ts), same tier as /docs and /ops.
 app.use('/api/estate/backups', adminCors());
+// ⚠️ THE WILDCARD IS FOR /estate/backups/prune (2026-09-05), and it is here
+// rather than absent because A CORS MOUNT IS NOT IMPLIED BY A ROUTE — the
+// lesson this file records three times already (the ingestion card, the
+// machine-key registry, the Claude meter), each of which shipped a correct
+// handler that a browser reported as "could not reach the estate", i.e. as an
+// outage. Hono mounts are exact-or-wildcard and never prefix-implicit, so the
+// bare mount above does NOT cover the sub-route. Nothing in a browser calls the
+// prune door today; the mount costs an OPTIONS answer and removes the trap.
+// ⚠️ It widens no capability: the route is requireDevops()-gated in
+// r2-prune.ts, refuses a real prune outright while R2_PRUNE_MODE is not
+// `enforce`, and defaults to a dry run when asked for nothing in particular.
+app.use('/api/estate/backups/*', adminCors());
 
 // CORS on /me alone — the one deliberately WIDER surface (ME_ORIGINS: apex +
 // audiobook site). ⚠️ Mounted BEFORE the route so the tokenless OPTIONS
@@ -291,6 +305,12 @@ app.route('/api', shelfParityRoutes);
 app.route('/api', claudeUsageRoutes);
 app.route('/api', factsRoutes);
 app.route('/api', backupsRoutes);
+// Backup RETENTION's on-demand door (2026-09-05) — the same bucket as the line
+// above, the same requireDevops() gate, and the only DESTRUCTIVE surface in
+// this Worker. ⚠️ Mounted AFTER backupsRoutes and that is safe: the paths are
+// `/estate/backups` and `/estate/backups/prune`, with no parameterised segment
+// between them to swallow one another (the estateDocsRoutes ordering trap).
+app.route('/api', r2PruneRoutes);
 app.route('/api', billingRoutes);
 // "+ add a verse" — a member asks, an approver decides, a devops session says
 // it landed. ⚠️ Nothing here creates a universe; see universe-requests.ts.
@@ -418,6 +438,65 @@ app.onError((err, c) => {
   return c.json({ error: 'internal', detail: err.message }, 500);
 });
 
+// ---------------------------------------------------------------------------
+// THE CRON HANDLER (2026-09-05) — this Worker's first, and its second job.
+//
+// Owner ask 2026-09-05 16:50 Phoenix, *"then do the scripts you think are the
+// best for routes"*: candidates #3 and #4 of
+// docs/info/scripts-inventory-2026-09-05.md §7 both landed here, because both
+// need bindings this Worker already has and no other platform Worker does —
+// ESTATE_BACKUPS for retention, and D1 for the probe suite's run history.
+//
+// ⚠️ THE TWO RULES EVERY `scheduled()` IN THE ESTATE FOLLOWS (inventory §2):
+//
+//   1. DISPATCH ON `event.cron`, and an unrecognised cron does NOTHING,
+//      LOUDLY. The string must match wrangler.toml character for character;
+//      test/crons.test.ts reads the toml and asserts both. The failure this
+//      prevents is silent — a drifted string runs nothing for ever while the
+//      trigger still shows as installed.
+//   2. RETURN the promise AND `ctx.waitUntil` it. `waitUntil` alone is a bug:
+//      a registered task is cancelled ~30s after the handler settles, and the
+//      sibling project measured roughly half its runs silently cancelled that
+//      way, with run rows stuck at `running` for eleven hours.
+//
+// ⚠️ NEITHER JOB THROWS ON A BAD RESULT. A failing probe is the suite WORKING
+// and a failed prefix listing is a finding, not a runner error; both handlers
+// catch, record and return. The ONE thing that does throw is an unrecognised
+// cron, because that is a deploy mistake and nothing downstream will ever
+// notice it otherwise.
+// ---------------------------------------------------------------------------
+async function scheduled(
+  event: ScheduledController,
+  env: AppBindings['Bindings'],
+  ctx: ExecutionContext,
+): Promise<void> {
+  const work = (async () => {
+    if (event.cron === R2_PRUNE_CRON) {
+      await scheduledR2Prune(env);
+      return;
+    }
+    if (event.cron === ESTATE_PROBES_CRON) {
+      await runScheduledProbes(env.DB);
+      return;
+    }
+    // ⚠️ Loud AND fatal, deliberately. A cron string that reaches here is one
+    // that exists in wrangler.toml and matches no dispatch — Cloudflare will
+    // wake this Worker on it every day and it will do nothing at all. Throwing
+    // puts a failed invocation in the dashboard, which is the only signal that
+    // travels; a console line alone would scroll away unread.
+    const message =
+      `estate-auth scheduled(): unrecognised cron "${event.cron}". ` +
+      `Known: "${R2_PRUNE_CRON}" (R2 retention), "${ESTATE_PROBES_CRON}" (estate probes). ` +
+      'A [triggers] entry with no dispatch does nothing, for ever — fix wrangler.toml or index.ts.';
+    console.error(message);
+    throw new Error(message);
+  })();
+
+  ctx.waitUntil(work);
+  return work;
+}
+
 export default {
   fetch: app.fetch,
+  scheduled,
 } satisfies ExportedHandler<AppBindings['Bindings']>;

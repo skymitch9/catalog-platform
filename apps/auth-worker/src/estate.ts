@@ -25,6 +25,9 @@ import { z } from 'zod';
 import { resolveIdentity } from '@platform/estate-auth';
 import type { AppBindings, ConsumerApp, EstateUserRow } from './env.js';
 import { CONSUMER_APPS, appTokenFor, parseOwnerEmails } from './env.js';
+// The hourly probe suite's last run — reported under /health's `detail`
+// (2026-09-05). Read-only here; the writer is the cron in index.ts.
+import { readLatestProbeRun } from './estate-probes.js';
 import {
   decideStatus,
   getUserByEmail,
@@ -798,16 +801,36 @@ estateRoutes.post('/estate/users/:id/visibility', requireApprover(), async (c) =
 export const WORKER_VERSION = '0.1.0';
 
 estateRoutes.get('/health', async (c) => {
+  const nowMs = Date.now();
   const counts = await statusCounts(c.env.DB);
   // The pre-envelope shape, unchanged — nested under `detail` AND kept at
   // the top level (additive transition, see comment above). Spread FIRST so
   // the explicit envelope fields after it are an intentional override, not
   // a silently-shadowed duplicate (tsc flags the reverse order, TS2783).
   const legacy = { ok: true, version: WORKER_VERSION, users: counts };
+
+  // ⚠️ ADDITIVE, AND ONLY UNDER `detail` — added 2026-09-05 with the hourly
+  // estate-probes cron (src/estate-probes.ts). It is deliberately NOT spread
+  // into `legacy`, because `legacy` is also spread at the TOP level: putting it
+  // there would widen the flat envelope every consumer parses, for a key only
+  // one page reads. `detail` is where a Worker's own business goes; that is
+  // what docs/info/health-envelope.md says it is for.
+  //
+  // ⚠️ `null` MEANS "NO RUN HAS EVER BEEN RECORDED", and the page must say so
+  // in those words. It is not a zero and it is not a failure — a Worker
+  // deployed ahead of migration 0021, or one whose first cron has not fired
+  // yet, answers null and is perfectly healthy.
+  //
+  // ⚠️ It costs ONE indexed `ORDER BY id DESC LIMIT 1` on an open route. That is
+  // the price of the row existing at all; the alternative (a second endpoint
+  // for the same fact) is the "one fact, one home applies to SURFACES" rule
+  // broken on purpose.
+  const estateProbes = await readLatestProbeRun(c.env.DB, nowMs);
+
   return c.json({
     ...legacy,
     service: 'estate-auth',
-    time: new Date().toISOString(),
-    detail: legacy,
+    time: new Date(nowMs).toISOString(),
+    detail: { ...legacy, estateProbes },
   });
 });

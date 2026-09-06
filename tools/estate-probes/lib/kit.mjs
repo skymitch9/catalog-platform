@@ -10,6 +10,30 @@
  * `../README.md`: GET, OPTIONS, or a POST that is expected to be refused by
  * an auth gate before any handler runs. Nothing here mints a token, reads a
  * secret, or is allowed to print one.
+ *
+ * ## ⚠️ IT ALSO RUNS INSIDE A WORKER NOW — 2026-09-05
+ *
+ * `apps/auth-worker/src/estate-probes.ts` imports `lib/suite.mjs`, which
+ * imports this file and every module in `probes/`, so the hourly cron and
+ * `npm run probe:estate` run the SAME 145 assertions from one list. Nothing in
+ * this tree was Node-specific to begin with — no `node:` import, no `process`,
+ * no disk — so nothing had to be ported. Two things had to CHANGE, and both are
+ * about a Worker isolate outliving one run:
+ *
+ * 1. **`resetRun()`.** `results`/`passed`/`failed` are module state. A CLI
+ *    process starts fresh every time; a Worker isolate is reused across cron
+ *    firings, so without a reset the second run would report 290 checks and the
+ *    tenth 1,450 — climbing, plausible, and wrong.
+ * 2. **`configure()`.** The 15 s per-request timeout is right for a laptop on
+ *    hotel wifi and far too long for a scheduled handler with 145 requests to
+ *    make; and `console.error` on every failure would fill `wrangler tail`. Both
+ *    are now injectable, with the CLI's old behaviour as the default.
+ *
+ * ⚠️ Anything added here that touches disk, spawns a process or reads an env
+ * var breaks the Worker half SILENTLY — the bundle builds and the cron throws
+ * at runtime. The probe modules are pure `fetch` and must stay that way; a
+ * probe that genuinely needs a local resource belongs in the CLI-only list in
+ * `../README.md`, not in `probes/`.
  */
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -18,6 +42,40 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 export const results = [];
 let passed = 0;
 let failed = 0;
+let timeoutMs = DEFAULT_TIMEOUT_MS;
+let logLine = (line) => console.log(line);
+let logFail = (line) => console.error(line);
+
+/**
+ * Clear the run state. ⚠️ REQUIRED BEFORE EVERY RUN IN A LONG-LIVED HOST, and
+ * harmless in a fresh process. `suite.mjs` calls it; nothing else should need
+ * to. `results` is emptied IN PLACE rather than reassigned, because it is a
+ * `const` export that `run.mjs` and the audits already hold a reference to.
+ */
+export function resetRun() {
+  results.length = 0;
+  passed = 0;
+  failed = 0;
+}
+
+/**
+ * Per-run knobs, all optional; omitted keys keep their current value.
+ *
+ * @param {{timeoutMs?: number, log?: (line: string) => void,
+ *          logFailure?: (line: string) => void}} opts
+ */
+export function configure(opts = {}) {
+  if (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) timeoutMs = opts.timeoutMs;
+  if (typeof opts.log === 'function') logLine = opts.log;
+  if (typeof opts.logFailure === 'function') logFail = opts.logFailure;
+}
+
+/** Restore the CLI defaults — used by tests so one run cannot leak into another. */
+export function resetConfig() {
+  timeoutMs = DEFAULT_TIMEOUT_MS;
+  logLine = (line) => console.log(line);
+  logFail = (line) => console.error(line);
+}
 
 /**
  * Record one assertion and print it immediately (the live-probes.ts idiom:
@@ -37,10 +95,10 @@ export function check(area, id, method, endpoint, assertion, ok, observed = '') 
   results.push(row);
   if (ok) {
     passed += 1;
-    console.log(`  ok  [${area}:${id}] ${method} ${endpoint} — ${assertion}`);
+    logLine(`  ok  [${area}:${id}] ${method} ${endpoint} — ${assertion}`);
   } else {
     failed += 1;
-    console.error(`FAIL  [${area}:${id}] ${method} ${endpoint} — ${assertion}${observed ? `\n        observed: ${observed}` : ''}`);
+    logFail(`FAIL  [${area}:${id}] ${method} ${endpoint} — ${assertion}${observed ? `\n        observed: ${observed}` : ''}`);
   }
   return ok;
 }
@@ -56,7 +114,7 @@ export function counts() {
  */
 export async function request(method, url, opts = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? timeoutMs);
   try {
     const resp = await fetch(url, {
       method,

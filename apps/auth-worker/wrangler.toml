@@ -15,6 +15,50 @@ workers_dev = false
 # Added at deploy time by the dispatcher, 2026-08-13, per the header's gate.
 routes = [{ pattern = "auth.heygabi.ai", custom_domain = true }]
 
+# ⚠️ CRON TRIGGERS — added 2026-09-05, this Worker's first. Owner ask 16:50
+# Phoenix ("then do the scripts you think are the best for routes"); candidates
+# #3 and #4 of docs/info/scripts-inventory-2026-09-05.md §7 both land here
+# because both need a binding this Worker already has and no other platform
+# Worker does.
+#
+# ⚠️ THESE STRINGS ARE DISPATCHED ON, CHARACTER FOR CHARACTER, in src/index.ts's
+# scheduled(), and test/crons.test.ts PARSES THIS FILE and asserts both. That
+# guard exists because the failure is silent: a string that drifts from its
+# dispatch runs NOTHING, for ever, while the trigger still shows as installed in
+# the dashboard. Change a string here and the test fails until index.ts agrees.
+#
+#   "41 10 * * *"  R2 backup retention (src/r2-prune.ts). DAILY because every
+#                  writer is daily — backup.yml's own cron is "12 9 * * *" and
+#                  scripts/backup-docs.mjs runs 03:00 local — and at :41 past
+#                  10 because that is ~89 minutes after CI starts writing, well
+#                  clear of CI's own `retention` job (whole workflow measured at
+#                  144 s) even when GitHub delays a scheduled run. ⚠️ SHIPPED IN
+#                  SHADOW: see R2_PRUNE_MODE below. It is a BACKSTOP, not the
+#                  primary — CI still prunes on every run; this catches the
+#                  failure backup.yml's header names, GitHub disabling a
+#                  scheduled workflow after 60 days of repo inactivity.
+#
+#   "19 * * * *"   The estate probe suite (src/estate-probes.ts, running
+#                  tools/estate-probes' 145 assertions). HOURLY because the
+#                  incident it exists for is drift in somebody else's console —
+#                  a Firebase authorised-domain edit, with no notification
+#                  anywhere — and hourly bounds "how long can the estate be
+#                  broken before anybody knows" at 60 minutes. Daily would bound
+#                  it at 24 hours, which for a broken front door is an obituary,
+#                  not a monitor. Sub-hourly buys nothing measurable and ~3,500
+#                  requests/day already flow from this.
+#
+# ⚠️ Minutes are staggered on purpose and NEITHER IS :00. The estate's other
+# crons sit at "7 * * * *" (both catalog details sweeps), "*/30" and "*/2"
+# (the GABI gateway); :00 is where every scheduler queues its burst. The games
+# Worker's staggering is the precedent (inventory §5.1).
+#
+# ⚠️ The account moved to Workers Paid on 2026-08-17, raising the cron limit
+# from 5 to 250 (apps/discord-worker/wrangler.toml:26 records the refusal under
+# Free that measured it). In use across the estate before these two: 5.
+[triggers]
+crons = ["41 10 * * *", "19 * * * *"]
+
 # ⚠️ `namespace_id` is arbitrary but changing it silently resets every counter.
 # "2001" — deliberately NOT the games catalog's "1001"; separate counters for a
 # separate Worker. Tighter than the catalogs (60/min vs 300/min) because this
@@ -52,6 +96,39 @@ ADMIN_ORIGINS = "https://heygabi.ai"
 # on purpose, and consulted ONLY by the /me CORS; the admin API stays
 # locked to ADMIN_ORIGINS alone.
 ME_ORIGINS = "https://heygabi.ai,https://audiobooks.heygabi.ai"
+# ⚠️ BACKUP RETENTION POSTURE — off | shadow | enforce (src/r2-prune.ts).
+# This Worker's ONE destructive capability: the "41 10 * * *" cron above can
+# delete objects from the private `estate-backups` bucket.
+#
+# ⚠️ THIS VALUE IS "shadow" AND THE COMMITTED FILE MUST KEEP SAYING "shadow"
+# until the gate below is met.
+#   off      the handler returns before the first list() — no subrequest, no cost
+#   shadow   lists, PLANS, logs every would-delete key, and deletes NOTHING
+#   enforce  the plan is executed
+#
+# ⚠️ Anything unrecognised — including absent — parses to `off`, never
+# `enforce` (parseR2PruneMode). A typo must not start deleting backups.
+#
+# Read the shadow log with:
+#   npx wrangler tail estate-auth --format json | jq 'select(.logs[]?.message[]? | test("r2-prune"))'
+#
+# 🔴 THE GATE, and it is unusually strong for a posture flip because an
+# INDEPENDENT ORACLE exists. `node scripts/prune-r2-backups.mjs estate-backups
+# <the same prefixes> --keep 8 --dry-run` prints the same plan, from the same
+# shared planRetention(), over the same bucket. So:
+#
+#   flip to enforce only after FIVE shadow runs whose would-delete set matches
+#   the script's dry run KEY FOR KEY, at least one of them non-empty
+#
+# The "at least one non-empty" half is the falsifiable one, and it is the half
+# that is easy to skip: five agreements on "delete nothing" is indistinguishable
+# from an instrument that never ran — the exact `0 of 0 — unmeasured, not clean`
+# verdict the audiobook auth soak reached, quoted in the index Worker's own
+# BILLING_POLICY block for the same reason. Full runbook:
+# docs/access/backup-restore.md §3.1; tracked in docs/TODO.md.
+#
+# ⚠️ Flip it on its own, never as a side effect of an unrelated deploy.
+R2_PRUNE_MODE = "shadow"
 
 # Unlisted estate documents (0003 devops, 2026-08-15): the HTML fragments
 # GET /api/estate/docs/:slug serves. ⚠️ Content lives HERE and not in the

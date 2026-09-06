@@ -55,5 +55,25 @@ test('GET /health answers the estate envelope AND keeps `users` at the top level
   const legacy = { ok: true, version: WORKER_VERSION, users: { pending: 0, approved: 10, revoked: 0, approvers: 1 } };
   assert.equal(body.version, WORKER_VERSION);
   assert.deepEqual(body.users, legacy.users);
-  assert.deepEqual(body.detail, legacy);
+
+  // ⚠️ `detail` is legacy PLUS `estateProbes`, added 2026-09-05 with the hourly
+  // probe cron. It is deliberately NOT spread into the flat top level: `legacy`
+  // is spread there too, so adding it to `legacy` would widen the envelope every
+  // consumer parses for a key one page reads. `detail` is where a Worker's own
+  // business goes (docs/info/health-envelope.md).
+  assert.deepEqual(body.detail, { ...legacy, estateProbes: null });
+  // ⚠️ AND IT MUST NOT LEAK UPWARDS — this assertion is the guard on that.
+  assert.equal('estateProbes' in body, false);
+});
+
+test('⚠️ detail.estateProbes is NULL when nothing has run, and null is not a zero', async () => {
+  // The FakeDB above answers `first()` with null for every query, which is
+  // exactly a Worker deployed ahead of migration 0021 or one whose first cron
+  // has not fired yet. That Worker is HEALTHY, and the page is required to word
+  // "no probe run has been recorded" rather than "0 of 145 passed" — opposite
+  // sentences that a zero-filled placeholder would collapse into one.
+  const res = await estateRoutes.request('/health', {}, { DB: new FakeDB() as unknown as D1Database });
+  const body = (await res.json()) as any;
+  assert.equal(body.ok, true, 'a Worker with no probe history is still healthy');
+  assert.equal(body.detail.estateProbes, null);
 });

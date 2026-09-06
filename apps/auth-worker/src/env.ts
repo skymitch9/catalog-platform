@@ -27,17 +27,52 @@ export interface Env {
 
   /**
    * The PRIVATE `estate-backups` R2 bucket (owner ask 2026-08-16: surface
-   * backup health on /status). ⚠️ READ-ONLY IN INTENT — backups.ts only ever
-   * calls `.list()` and reads `key`/`uploaded` off each object; nothing in
-   * this Worker calls `.get()` or `.put()` on this binding, and the route it
-   * backs (GET /api/estate/backups, requireDevops()) returns aggregate
-   * counts/timestamps per known prefix only — never an object body, a
-   * signed URL, or a raw key a caller could turn into a fetch of the bucket.
-   * Bound in wrangler.toml as `ESTATE_BACKUPS`; the bucket itself stays
-   * private (no public access, no custom domain) regardless of this
-   * binding — see docs/access/backup-restore.md.
+   * backup health on /status).
+   *
+   * ⚠️ **NO LONGER READ-ONLY IN INTENT — CHANGED 2026-09-05.** This comment
+   * used to say the Worker "never calls `.get()` or `.put()` on this binding",
+   * and leaving that sentence standing would have been the more dangerous half
+   * of the change. `src/r2-prune.ts` now runs the estate's backup RETENTION on
+   * a daily cron and calls `.delete()` here. It is the only destructive call in
+   * this Worker.
+   *
+   * What still holds, and what the posture buys:
+   *
+   * - `backups.ts` is unchanged: `.list()` only, and `GET /api/estate/backups`
+   *   still returns aggregate counts/timestamps per known prefix — never an
+   *   object body, a signed URL, or a raw key a caller could fetch.
+   * - `r2-prune.ts` calls `.list()` and `.delete()` and NEVER `.get()`/`.put()`,
+   *   so nothing in this Worker can read a backup's CONTENTS or write one. The
+   *   read side of a private bucket full of database dumps and key material is
+   *   exactly what must not become reachable, and it has not.
+   * - Deleting is gated by `R2_PRUNE_MODE` (below), shipped `shadow`, which
+   *   plans and logs and deletes nothing.
+   *
+   * The bucket itself stays private (no public access, no custom domain)
+   * regardless of this binding — see docs/access/backup-restore.md.
    */
   ESTATE_BACKUPS?: R2Bucket;
+
+  /**
+   * ⚠️ **BACKUP RETENTION POSTURE — `off` | `shadow` | `enforce`.** Set in
+   * `wrangler.toml`; the committed file says `shadow` and must keep saying it
+   * until the gate in `docs/access/backup-restore.md` §3.1 is met.
+   *
+   *   off      the cron returns immediately — no list, no log, no cost
+   *   shadow   lists, PLANS, logs every would-delete key, deletes NOTHING
+   *   enforce  the plan is executed
+   *
+   * ⚠️ Anything unrecognised — including absent — parses to `off`, never
+   * `enforce` (`parseR2PruneMode`, r2-prune.ts). A typo in a posture var must
+   * not be able to start deleting backups.
+   *
+   * ⚠️ Flip it on its own, never as a side effect of an unrelated deploy. The
+   * evidence required is unusually strong for a posture flip because an
+   * independent oracle exists: `node scripts/prune-r2-backups.mjs … --dry-run`
+   * prints the same plan from the same rule over the same bucket, so a shadow
+   * run and a dry run must agree KEY FOR KEY, N times, before enforce.
+   */
+  R2_PRUNE_MODE?: string;
 
   /**
    * The PRIVATE `estate-docs-gated` R2 bucket — the estate's whole `docs/`

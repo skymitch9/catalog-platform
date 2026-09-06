@@ -4,6 +4,15 @@
  * backups are actually still running... add a row showing the age of the
  * most recent backup").
  *
+ * ⚠️ **THIS MODULE IS STILL READ-ONLY; THE WORKER NO LONGER IS.** From
+ * 2026-09-05 `src/r2-prune.ts` holds the estate's retention cron and calls
+ * `.delete()` on the same `ESTATE_BACKUPS` binding — shipped in `shadow`, which
+ * deletes nothing, but the capability is real and the sentence below used to
+ * imply otherwise for the whole Worker. Nothing in THIS file has changed: it
+ * calls `.list()` and reads `key`/`uploaded`, and it never gets, puts or
+ * deletes. The one destructive call in the Worker lives in one file, behind one
+ * posture var, and that is deliberate — see r2-prune.ts's header.
+ *
  * The bucket (`estate-backups`, written by .github/workflows/backup.yml) is
  * PRIVATE and MUST STAY PRIVATE — the browser can never read it directly.
  * This route is the one narrow window: it returns AGGREGATE METADATA ONLY
@@ -140,17 +149,30 @@ export interface BackupPrefixSummary {
 
 /**
  * The generation stamp a key belongs to — everything up to the first `.` of
- * the basename. ⚠️ Deliberately a second copy of
- * `scripts/lib/backup-keys.mjs`'s `generationOf`, for the same reason
- * KNOWN_BACKUP_PREFIXES is a literal copy: there is no shared module between a
- * Node script and this Worker. If the key grammar ever changes, change both —
- * the test file asserts this function against the same cases.
+ * the basename.
+ *
+ * ✅ **NO LONGER A COPY — 2026-09-05.** This was a hand-maintained second
+ * implementation of `scripts/lib/backup-keys.mjs`'s `generationOf` from
+ * 2026-08-18, and its header said the copy was unavoidable *"for the same
+ * reason KNOWN_BACKUP_PREFIXES is a literal copy: there is no shared module
+ * between a Node script and this Worker"*.
+ *
+ * ⚠️ That premise was only ever true of `tsc`, never of the BUNDLER. Wrangler
+ * builds with esbuild, which follows a relative import out of this directory
+ * into `scripts/lib` without complaint; what refused was TypeScript, which will
+ * not import a `.mjs` with no types under `allowJs: false`. `backup-keys.d.mts`
+ * is the declaration file that answers it, and this line is now a re-export of
+ * the one implementation. `test/backups.test.ts` still imports `generationOf`
+ * from THIS module and still asserts it against the same cases — so the guard
+ * survives the deduplication, which is the point.
+ *
+ * ⚠️ `KNOWN_BACKUP_PREFIXES` above is a DIFFERENT case and stays a literal:
+ * its authority is a shell invocation inside a GitHub Actions YAML file, which
+ * no runtime can import, so it is pinned by a test that PARSES the workflow
+ * instead. Two copies of a list guarded by a parser, one copy of a function.
  */
-export function generationOf(key: string): string {
-  const base = key.slice(key.lastIndexOf('/') + 1);
-  const dot = base.indexOf('.');
-  return dot === -1 ? base : base.slice(0, dot);
-}
+export { generationOf } from '../../../scripts/lib/backup-keys.mjs';
+import { generationOf } from '../../../scripts/lib/backup-keys.mjs';
 
 export interface BackupsSummary {
   prefixes: Record<string, BackupPrefixSummary>;
