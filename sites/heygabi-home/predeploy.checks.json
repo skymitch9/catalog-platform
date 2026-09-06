@@ -36,6 +36,29 @@
     },
     {
       "_why": [
+        "The apex's reader of the estate catalog registry (GET https://index.heygabi.ai/api/catalogs), which",
+        "replaced the seven disagreeing hand-kept label maps the 2026-09-05 survey measured. Design:",
+        "docs/info/catalog-registry.md; survey findings F1/F2/F3.",
+        "The markers are the four that would DISAPPEAR if the file lost its point: the route it reads, the",
+        "set-comparison that replaced FULL_SCOPE_SIZE = 3, the worded unknown that replaced `MAP[x] || x`, and",
+        "the owner designation the whole build exists for. `catalogForEntry` is pinned because it is the estate's",
+        "ONE source+format -> catalog map and the ebook attribution lives inside it."
+      ],
+      "path": "/assets/catalog-registry.js",
+      "mustContain": [
+        "https://index.heygabi.ai/api/catalogs",
+        "export function scopeIsEverything",
+        "export const UNKNOWN_SHELF",
+        "export function designation",
+        "export function catalogForEntry",
+        "not a permissions problem"
+      ],
+      "mustNotContain": [
+        "FULL_SCOPE_SIZE"
+      ]
+    },
+    {
+      "_why": [
         "The notices bell (docs/info/universe-add-verse-design.md §8.9). Like the '+' above it, NOTHING it draws",
         "can be asserted from here: the bell is appended only after a signed-in probe of GET /api/estate/notifications,",
         "so an unauthenticated fetch sees the <script> and the <link> and nothing else. Both are pinned on / and on",
