@@ -19,20 +19,31 @@
 > 1. **`.claude/` joins the R2 doc backup — "Yes."** ☐ build (W10-PLATFORM):
 >    `scripts/backup-docs.mjs` archives the gitignored `.claude/` folders beside
 >    the four doc trees; stays untracked (KI-2).
-> 2. **KI-14 cleanup — "Yes."** ☐ conductor: `git worktree prune` ×6, recreate
->    the three `.claude` junction targets under `C:/lcw/onedrive-excluded/`.
+> 2. **KI-14 cleanup — "Yes."** ☑ 07:13 Phoenix: `git worktree prune` run in
+>    both repos (`git worktree list` clean); the three `.claude` junction targets
+>    already existed EMPTY (recreated by the repair agent at 00:10, so the links
+>    resolve — the contents are what is gone). ⚠️ The six husk directories under
+>    `.git/worktrees/` survived the prune ("Permission denied" on the directory
+>    delete; the classifier refused `Remove-Item`) — harmless, owner can clear
+>    them.
 > 3. ⚠️ **ACCESS-INCREASING — `READ_ORIGINS` gains `padhard.heygabi.ai` —
 >    owner's explicit "Yes" (00:5x Phoenix).** ☐ build + deploy the index Worker
 >    (W10-PLATFORM); the ❓ line further down this file closes with it.
 > 4. **`wow-recorder` `npm install` — "rm from list."** Dropped; not an estate
 >    item. (Its `release/app/node_modules` junction is still empty; his call.)
 > 5. **#507 Book of Mormon tier D — "It's the paper, you can run the command."**
->    ☐ run `fix-foreign-isbns-2026-09-05.mjs --remote --commit --tier D`
->    (conductor tries; relays the `!` line if the write is refused).
+>    ☑ 07:12 Phoenix: `fix-foreign-isbns-2026-09-05.mjs --remote --commit
+>    --tier D` ran — ed#507 `isbn13` → NULL, `change_log` now 56 rows for
+>    `fix-2026-09-05-foreign-isbns`; `--friend` dry-run: nothing to do on
+>    padhard (a result). No refusal.
 > 6. **KI-17 art books (works 516–519) — "No ISBN."** ☐ close KI-17 as settled:
 >    the four Collector's Edition art books carry no ISBN; they stay ISBN-less.
-> 7. **Space Knight `9781986619233` — "Which work is it connected to?"** ☐
->    conductor answers from the live D1, then he says which volume.
+> 7. **Space Knight `9781986619233` — "Which work is it connected to?"**
+>    Measured 07:10 Phoenix on the live main D1: **no edition carries it** —
+>    ed#344 (*Book 3*, work 251) was the only row and tier C cleared it at
+>    2026-09-06 02:32:09Z; Google Books had proposed it for books 5–9. Only
+>    *Book 1* (work 249, ed#342) has an ISBN today (`9781986026789`). ☐ owner
+>    names the volume it belongs on (or "none"); then a one-row manual edit.
 > 8. **Diva's items (#8 / #9 / #605) — "Ignore for now."** ⏸ deferred by owner.
 > 9. **GABI steps 5–7 — "give me test."** ☐ conductor hands him the test (it is
 >    §15.3 steps 5–7 below, condensed).
@@ -46,8 +57,11 @@
 >     check (signed-in `/universes/` + `/series/` + the `/status` probe row).
 > 15. **Admin audit routes / `/gabi` link walk / KI-7 live — "It's good."** ☑
 >     owner accepts; those three ☐ 🧑 lines close.
-> 16. **Enforce `AUDIOBOOK_SWEEP_MODE` — "Yes."** ☐ flip AFTER the 08:23Z tick
->     fills `seriesVolumes.lastRun` (wake-up set for 01:30 Phoenix); deploy PAIR.
+> 16. **Enforce `AUDIOBOOK_SWEEP_MODE` — "Yes."** ☐ W10-LIB-FLIP. ⚠️ The
+>     premise moved: measured 07:14 Phoenix both instances still show
+>     `seriesVolumes.lastRun: null` after the 12:23Z tick (`state: skipped`,
+>     `detail: unchanged`) — the agent verifies the shadow evidence in code
+>     BEFORE flipping, and reports instead of flipping if it is missing.
 >
 > Also found while briefing: the multi-library survey's **dispatch 3 (GABI +
 > the audiobook vendor) and dispatch 4 (the provisioner + peers)** are still
