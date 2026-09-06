@@ -76,6 +76,7 @@
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
 import { groupBySeries } from '../assets/estate-search.js';
+import { catalogForEntry, loadCatalogs } from '../assets/catalog-registry.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
@@ -93,22 +94,45 @@ const INDEX_ORIGIN = 'https://index.heygabi.ai';
  * allow-list plus its complement means a source can only ever land in the
  * wrong GROUP, never in no group. `series/series.js`'s `bookish()` already
  * worked this way; this is that rule, kept in both places.
+ *
+ * ⚠️ AND THE ALLOW-LIST ITSELF WAS A LITERAL until 2026-09-05:
+ * `const GAME_SOURCES = new Set(['game'])` — one push-source id standing in
+ * for "is this a games shelf", so a `games2` would have rendered silently as a
+ * BOOK, under the "Books & audiobooks" heading, in a series fold beside
+ * novels. The registry carries `kind`, which is the fact actually being asked
+ * for. A source the registry does not name stays bookish: the same answer the
+ * literal gave, and the safe direction of the unknown, because this split only
+ * decides a HEADING and a mislabelled heading over books is the cheaper of the
+ * two mistakes.
  */
-const GAME_SOURCES = new Set(['game']);
-const isGameRow = (m) => GAME_SOURCES.has(m.source);
+const isGameRow = (m) => {
+  const cat = catalogForEntry(CATALOGS, m.source, m.format);
+  return !!cat && cat.kind === 'games';
+};
 
 /**
- * entry.source → the words the household uses, matching `series/series.js`'s
- * SOURCE_LABELS (one fact, two pages — the sibling owns the long note).
+ * THE CATALOGS, from the estate registry — `GET /api/catalogs`.
  *
- * ⚠️ Used ONLY to say WHOSE shelf a row is on when that is not already
- * obvious. The two library instances are the case that needs it: both push
- * print formats ("hardcover", "paperback"), so without a holder the reader
- * cannot tell Skylar's copy from Samantha's. `library` and `audiobook` are
- * deliberately absent — this is the owner's own page, his shelf is the
- * default, and the audiobook pool already says "audiobook" in its format.
+ * ⚠️ WHAT WAS HERE UNTIL 2026-09-05:
+ *
+ *     const HOLDER_LABELS = { library2: "Samantha's library" };
+ *
+ * ONE key, and its own comment argued for the gap: *"`library` and
+ * `audiobook` are deliberately absent — this is the owner's own page, his
+ * shelf is the default."* That is precisely the assumption the owner's rule of
+ * 2026-09-05 ends. Under it EVERY physical row names its holder, because "the
+ * default" is a thing only one household can see and this page is read by
+ * more than one. Survey §3.1 and §6.
+ *
+ * `[]` until the registry lands and `[]` if it could not be read; a row whose
+ * shelf we cannot name simply does not claim a holder, which is the honest
+ * degrade — inventing "the default" is what this replaces.
  */
-const HOLDER_LABELS = { library2: "Samantha's library" };
+let CATALOGS = [];
+const registryReady = loadCatalogs().then((r) => {
+  if (r.ok) CATALOGS = r.catalogs;
+  return r;
+});
 
 // ⚠️ Keep in sync with data/universes.json `universes[].name` — see header.
 // 🔴 THIS IS NOW MECHANICALLY ENFORCED. `scripts/test/universe-names-parity.test.mjs`
@@ -242,10 +266,16 @@ function metaBits(row) {
   const bits = [];
   if (row.creator) bits.push(row.creator);
   bits.push(row.format);
-  // WHOSE shelf, but only when the format cannot say it — see HOLDER_LABELS.
-  // Without this a `library2` row reads "Brandon Sanderson · hardcover", which
-  // is indistinguishable from the owner's own copy on his own page.
-  if (HOLDER_LABELS[row.source]) bits.push(HOLDER_LABELS[row.source]);
+  // WHOSE shelf — for EVERY row, not just the second library's.
+  //
+  // ⚠️ Until 2026-09-05 this named `library2` alone, so "Brandon Sanderson ·
+  // hardcover" meant the owner's copy and "… · Samantha's library" meant hers.
+  // That reads correctly only to the one person for whom "unnamed" means "mine",
+  // and the owner's rule is that a holding says whose it is. A digital pool has
+  // no one owner and says "shared" rather than an empty name — which is the
+  // whole distinction the rule draws.
+  const holder = catalogForEntry(CATALOGS, row.source, row.format);
+  if (holder) bits.push(holder.shared ? 'shared' : holder.owner ? `${holder.owner}’s` : 'holder not recorded');
   if (row.kind && row.kind !== 'base') bits.push(row.kind);
   if (row.parent_source_id) bits.push('belongs with a base game');
   if (row.series) bits.push(row.series_index != null ? `${row.series} #${row.series_index}` : row.series);
@@ -390,8 +420,9 @@ function renderUniverseBody(body, data) {
     'Tap through to the owning catalog for owned-versus-wanted.';
   body.appendChild(caveat);
 
-  // Games vs everything-else — see GAME_SOURCES for why the book side is a
-  // complement rather than a second allow-list (`library2`, 2026-09-05).
+  // Games vs everything-else — see isGameRow() for why the book side is a
+  // COMPLEMENT rather than a second allow-list (`library2`, 2026-09-05), and
+  // why the kind now comes from the registry rather than from a literal.
   const gameRows = data.matches.filter(isGameRow);
   const bookRows = data.matches.filter((m) => !isGameRow(m));
   const games = gameRows.filter((m) => !isAccessoryOrPromo(m));
@@ -503,6 +534,12 @@ async function populate(body, name, stillCurrent) {
     body.appendChild(p);
     return;
   }
+
+  // ⚠️ The catalogs must be in hand before a row is drawn — a row rendered
+  // first would claim no holder at all and never redraw. The registry read
+  // starts at module scope, so this awaits a settled promise on a warm page.
+  await registryReady;
+  if (!stillCurrent()) return;
 
   let res;
   try {

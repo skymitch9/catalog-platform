@@ -48,48 +48,54 @@
  */
 
 import { handleRedirectResult, idToken, signIn, signOutUser, watchAuth } from '../assets/estate-auth.js';
+import {
+  REGISTRY_DOWN_NOTICE,
+  catalogForEntry,
+  formatSuffix,
+  labelForCatalog,
+  labelForEntry,
+  loadCatalogs,
+} from '../assets/catalog-registry.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
 /**
- * entry.source (the push vocabulary) → the words the household actually uses
- * for that shelf. The owner's own sentence supplied these; index-worker's
- * SOURCE_FOR_CATALOG (search-route.ts) supplies the keys.
+ * THE CATALOGS, from the estate registry — `GET /api/catalogs`.
  *
- * ⚠️ `library2` and `ebook` were BOTH named here ahead of any rows (measured
- * on the live index 2026-08-17: game 837, library 351, audiobook 1246, and
- * nothing else). ✅ `library2` stopped being speculative on **2026-09-05**,
- * when the index gained it as a fourth push source — this line needed no
- * change on federation day, which is the whole argument for naming a source
- * before its rows arrive. `ebook` is still not an index source at all — the estate's ebooks
- * arrive as `format: 'ebook'` rows under a library source, which
- * holdingLabel() renders as "Skylar's library (ebook)". Naming both here
- * costs nothing and means the first pushed row reads in words instead of in
- * database vocabulary; sourceLabel() falls back to the raw value regardless,
- * so an unfamiliar future source degrades to its own name rather than to a
- * bucket somebody guessed at.
+ * ⚠️ WHAT WAS HERE UNTIL 2026-09-05: `SOURCE_LABELS`, `CATALOG_LABELS` (a
+ * second map re-derived from the first) and `IMPLIED_FORMAT` — three
+ * hand-kept tables, two of the SEVEN disagreeing spellings of two libraries
+ * the survey measured (F2). This page called the games shelf "games" while
+ * the search box called it "board games" and /admin called it "Games", and
+ * none of the three said whose it is.
+ *
+ * 🔴 AND THE HEADER THAT STOOD HERE WAS WORSE THAN MERELY STALE. It asserted:
+ *
+ *     "`ebook` is still not an index source at all — the estate's ebooks
+ *      arrive as `format: 'ebook'` rows under a library source, which
+ *      holdingLabel() renders as 'Skylar's library (ebook)'."
+ *
+ * Measured false on 2026-09-05 (survey F3): ebook rows ride
+ * `PUT /api/push/audiobook` with `format: 'ebook'`, because — audiobook_catalog's
+ * own `app/index_push.py:54` — *"'audiobook' the source means the household's
+ * shared pool"*. So the rendered label was never "Skylar's library (ebook)".
+ * ⚠️ The comment would have had a session "fix" a bug that did not exist, and
+ * it documented exactly the attribution the owner's rule forbids: a SHARED
+ * digital work credited to one person's PHYSICAL shelf. The real mapping now
+ * lives in one place, `catalogForEntry()`, and nowhere else.
+ *
+ * `[]` until the registry lands and `[]` if it could not be read; every
+ * renderer degrades to a worded unknown rather than to a database id, and
+ * `scopeSentence()` says the directory is unreachable instead of listing five
+ * unnamed shelves.
  */
-const SOURCE_LABELS = {
-  library: "Skylar's library",
-  library2: "Samantha's library",
-  audiobook: 'audiobook (shared pool)',
-  ebook: 'ebook (shared pool)',
-  game: 'games',
-};
-
-/** The visibility vocabulary (`scope` on the wire) differs from the push
- *  vocabulary in exactly one place — games↔game — same as the Worker's own
- *  SOURCE_FOR_CATALOG map. Kept separate rather than fudged. */
-const CATALOG_LABELS = {
-  library: SOURCE_LABELS.library,
-  library2: SOURCE_LABELS.library2,
-  audiobook: SOURCE_LABELS.audiobook,
-  games: SOURCE_LABELS.game,
-};
-
-/** A format already implied by the source's own label — saying it twice
- *  ("audiobook (shared pool) (audiobook)") is noise, so it is dropped. */
-const IMPLIED_FORMAT = { audiobook: 'audiobook', ebook: 'ebook', game: 'boardgame' };
+let CATALOGS = [];
+let registryOk = true;
+const registryReady = loadCatalogs().then((r) => {
+  if (r.ok) CATALOGS = r.catalogs;
+  else registryOk = false;
+  return r;
+});
 
 /** ⚠️ THE GAP GUARD. A gap row is synthesised for every integer between the
  *  first and last volume that nobody holds — which is exactly right for a
@@ -176,21 +182,26 @@ signinBtn.addEventListener('click', async () => {
 // Words — the source/format vocabulary, and small English helpers
 // ---------------------------------------------------------------------------
 
-function sourceLabel(source) {
-  return SOURCE_LABELS[source] || source;
+/** A row's shelf, in words. ⚠️ Degrades to a worded unknown, never to the
+ *  database id — printing "library2" at a person is what F2 named. */
+function sourceLabel(source, format) {
+  return labelForEntry(CATALOGS, source, format);
 }
 
+/** A scope/visibility id, in words (`games`, not `game` — the two vocabularies
+ *  differ in exactly that one place and the registry carries both). */
 function catalogLabel(catalog) {
-  return CATALOG_LABELS[catalog] || catalog;
+  return labelForCatalog(CATALOGS, catalog);
 }
 
-/** "Skylar's library (hardcover)" / "audiobook (shared pool)" — who holds it,
- *  in which format, in one phrase. */
+/** "Skylar's library (hardcover)" / "Shared audiobooks" — WHO holds it, in
+ *  which format, in one phrase, with the format dropped when the shelf's own
+ *  name already implies it. */
 function holdingLabel(source, format) {
-  const label = sourceLabel(source);
-  if (!format) return label;
-  if (IMPLIED_FORMAT[source] === format) return label;
-  return `${label} (${format})`;
+  const cat = catalogForEntry(CATALOGS, source, format);
+  const label = cat ? cat.label : sourceLabel(source, format);
+  const suffix = formatSuffix(cat, format);
+  return suffix ? `${label} (${suffix})` : label;
 }
 
 /** ["a", "b", "c"] → "a, b and c". A list a person reads out loud. */
@@ -423,7 +434,17 @@ function volumeRow(index, entries, seriesSources) {
   // format question. A missing-format claim is exactly that question, so the
   // game rows neither make one nor receive one.
   const holders = new Set(entries.map((e) => e.source));
-  const bookish = (s) => s !== 'game';
+  // ⚠️ `s !== 'game'` until 2026-09-05 — one literal push-source id standing
+  // in for "is this a games shelf". A second games catalog would have been
+  // silently treated as bookish, and this page would have told a reader a
+  // novel was "not in" a dice shelf. The registry knows the kind; a source it
+  // does not name is treated as bookish, which is the same answer the literal
+  // gave and the safe direction (the game/book line only ever SUPPRESSES a
+  // missing-format claim).
+  const bookish = (s) => {
+    const cat = catalogForEntry(CATALOGS, s, null);
+    return !cat || cat.kind !== 'games';
+  };
   const missing = [...holders].some(bookish)
     ? [...seriesSources].filter((s) => bookish(s) && !holders.has(s))
     : [];
@@ -568,6 +589,11 @@ function errorNote(status, errCode, what) {
 
 /** One fetch, one place, so both callers get the same error vocabulary. */
 async function callIndex(path) {
+  // ⚠️ THE ONE FUNNEL, so this is the one place that waits. A row drawn before
+  // the catalogs land would name every shelf "a shelf we cannot name" and then
+  // never redraw. The two requests are concurrent — the registry read starts
+  // at module scope — so on a warm page this awaits a settled promise.
+  await registryReady;
   const token = await idToken();
   if (!token) return { error: 'Your sign-in has lapsed — sign in again.' };
   let res;
@@ -596,6 +622,12 @@ async function callIndex(path) {
 // ---------------------------------------------------------------------------
 
 function scopeSentence(scope) {
+  // ⚠️ With no registry every shelf would render as the same worded unknown,
+  // which reads as five identical shelves rather than as a directory we could
+  // not reach. Say the outage instead — and say it is an outage, not a
+  // permissions problem, because mislabelling one sends people asking for
+  // access they already have.
+  if (!registryOk) return REGISTRY_DOWN_NOTICE;
   if (!Array.isArray(scope) || scope.length === 0) return '';
   return `Your view covers ${joinWords(scope.map(catalogLabel))}.`;
 }

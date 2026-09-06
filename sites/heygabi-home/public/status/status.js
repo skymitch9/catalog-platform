@@ -19,8 +19,10 @@
  *      over the plain REST API) and the ebook-lane heartbeat published by
  *      sync step 1b. Both existed before this page did — nothing here is
  *      invented, only read.
- *   4. Workers       — index (reusing #2's fetch), library, games, Sam's
- *      library and estate-auth /api/health.
+ *   4. Workers       — index (reusing #2's fetch), and one row per catalog
+ *      Worker plus estate-auth /api/health. ⚠️ Every catalog NAME on this page
+ *      comes from the estate registry since 2026-09-05; the row SET is still
+ *      hand-written (survey §3.1's L-sized remainder).
  *   5. Sites         — a no-cors reachability probe of the site roots plus
  *      the audiobook site's /dev/ lane.
  *   6. Backups       — devops-gated, from GET /api/estate/backups.
@@ -75,6 +77,61 @@ import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness, str } from '
 import { backupLastWriteText, describeArchive, describeBucket, describeTotals } from './lib/storage-view.js';
 import { mountGate } from './lib/gate.js';
 import { idToken } from '../assets/estate-auth.js';
+import { REGISTRY_DOWN_NOTICE, UNKNOWN_SHELF, loadCatalogs } from '../assets/catalog-registry.js';
+
+/**
+ * THE CATALOGS, from the estate registry — `GET /api/catalogs`.
+ *
+ * This page named the estate's catalogs in NINE hand-written literals and one
+ * three-entry array; the survey (F2/F4) measured two of the seven disagreeing
+ * spellings of Samantha's library right here — "Sam's book library" and "Sam's
+ * library" — neither of which is what she or the registry calls it. Every
+ * label below now comes from the registry.
+ *
+ * ⚠️ THE ROW SET IS STILL HAND-WRITTEN and that is a KNOWN remainder, not an
+ * oversight: nine host rows and five per-host health fetches, each with its own
+ * id and its own variable. Turning those into an iteration over the registry is
+ * survey §3.1's L-sized item and is not this pass. What changed is that none of
+ * them SAYS a catalog's name any more.
+ */
+let CATALOGS = [];
+let registryOk = true;
+
+/**
+ * ⚠️ RACED AGAINST A CEILING. Every section of this page waits for this before
+ * it draws, so an index Worker that accepts the connection and never answers
+ * would leave the operations page blank — which is the one page somebody opens
+ * BECAUSE something is wrong. Three seconds, then the page builds itself with
+ * no catalog names and says so.
+ */
+const REGISTRY_CEILING_MS = 3000;
+const registryReady = Promise.race([
+  loadCatalogs().then((r) => {
+    if (r.ok) CATALOGS = r.catalogs;
+    else registryOk = false;
+    return r;
+  }),
+  new Promise((resolve) => setTimeout(() => { registryOk = CATALOGS.length > 0; resolve(null); }, REGISTRY_CEILING_MS)),
+]);
+
+/** A catalog's name, by its visibility id. Degrades to words, never to an id. */
+function catLabel(id) {
+  const c = CATALOGS.find((x) => x.id === id);
+  return c ? c.label : UNKNOWN_SHELF;
+}
+
+/** A catalog's host, by its visibility id. */
+function catHost(id) {
+  const c = CATALOGS.find((x) => x.id === id);
+  return c ? c.host : '';
+}
+
+/** "Skylar's library — library.heygabi.ai", or just the name when the registry
+ *  could not be read and there is no host to give. */
+function catRow(id, what) {
+  const host = catHost(id);
+  return host ? `${catLabel(id)} ${what} — ${host}` : `${catLabel(id)} ${what}`;
+}
 
 /**
  * The audiobook pipeline's own status doc, read straight over the Firestore
@@ -129,40 +186,96 @@ const EBOOKS_MANIFEST_PROD_URL = `${AUDIO_ORIGIN}/ebooks_status.json`;
  * backstop ceiling plus slack for the hourly check granularity (amber), and
  * two full backstop cycles (red) — round numbers, not measurements.
  */
-const INDEX_THRESHOLDS = {
+const INDEX_CADENCE = {
   audiobook: {
-    label: 'Audiobook catalog → shared search index',
     amberMs: 9 * 3600_000,
     redMs: 17 * 3600_000,
     note: 'See the Book pipeline section below for the pipeline’s own run status — this row is only its index push, a downstream effect of a successful run, not the run itself.',
     guess: false,
   },
   library: {
-    label: 'Book library → shared search index',
     amberMs: 26 * 3600_000,
     redMs: 48 * 3600_000,
     note: 'GUESS — pushes on edit + a 24h backstop riding request traffic, no cron. A long age can mean "quiet," not "broken."',
     guess: true,
   },
   game: {
-    label: 'Board games → shared search index',
     amberMs: 26 * 3600_000,
     redMs: 48 * 3600_000,
     note: 'GUESS — same push design as library (on-edit + a 24h traffic-riding backstop). Same caveat: quiet ≠ broken.',
     guess: true,
   },
 };
-/** Display order — matches the front door's Audio / Books / Games cards. */
-const INDEX_SOURCE_ORDER = ['audiobook', 'library', 'game'];
+/**
+ * 🔴 THE INDEX SOURCES, IN THE REGISTRY'S OWN ORDER.
+ *
+ * ⚠️ WHAT WAS HERE UNTIL 2026-09-05:
+ *
+ *     const INDEX_SOURCE_ORDER = ['audiobook', 'library', 'game'];
+ *
+ * `library2` became a real index source on federation day and this array did
+ * not know. The consequence was not a missing row — it was the SUMMARY LINE
+ * one section down, which reads "N rows across 3 of 3 sources" and would have
+ * said **complete, forever**, while a fourth source sat at zero and nobody was
+ * told. Survey finding F4. A panel that reports itself complete while missing a
+ * source is worse than one that reports nothing.
+ *
+ * Now: every catalog the registry says pushes into the index, in the order the
+ * registry lists them (`ebooks` has no push source of its own — its rows ride
+ * `audiobook` — so it correctly contributes no row here).
+ */
+function indexSourceOrder() {
+  return CATALOGS.filter((c) => c.push_source).map((c) => c.push_source);
+}
+
+/**
+ * One source's row config: the NAME from the registry, the CADENCE from the
+ * measured table above.
+ *
+ * ⚠️ A SOURCE WITH NO MEASURED CADENCE IS REPORTED AND NEVER GRADED. The three
+ * entries in INDEX_CADENCE are the ones somebody measured; a catalog that
+ * joined the index afterwards has no observed push rhythm at all, and inventing
+ * a threshold for it would put a colour on this page that no measurement backs
+ * — which is the trap the whole page is written against. It shows its age and
+ * says the age is not being judged. `docs/TODO.md` carries the ask to measure
+ * one; until then the honest state is ungraded.
+ */
+function indexCfg(source) {
+  const cat = CATALOGS.find((c) => c.push_source === source);
+  const label = `${cat ? cat.label : UNKNOWN_SHELF} → shared search index`;
+  const measured = INDEX_CADENCE[source];
+  if (measured) return { label, ...measured };
+  return {
+    label,
+    amberMs: Infinity,
+    redMs: Infinity,
+    guess: true,
+    note:
+      'NO MEASURED CADENCE. This catalog joined the shared index after the freshness thresholds were set, so ' +
+      'its age is shown and deliberately not graded — a colour here would be a judgement nothing has measured. ' +
+      'Green on this row means "the last push succeeded", never "a push happened recently."',
+  };
+}
+
 function buildIndexSection() {
   const ul = document.getElementById('index-rows');
-  for (const key of INDEX_SOURCE_ORDER) {
-    ul.appendChild(makeRow(`idx-${key}`, INDEX_THRESHOLDS[key].label));
+  const order = indexSourceOrder();
+  if (order.length === 0) {
+    // ⚠️ NOT AN EMPTY PANEL. With no registry we do not know what the index is
+    // supposed to carry, and a panel with no rows reads as "nothing to report"
+    // — a confident claim we have no basis for. One row, saying which fetch
+    // failed and that it is an outage rather than a permissions problem.
+    ul.appendChild(makeRow('idx-registry', 'Shared search index — sources unknown'));
+    updateRow('idx-registry', 'nodata', 'The catalog directory could not be read, so this panel cannot say which sources the index should carry.', REGISTRY_DOWN_NOTICE, Date.now());
+    return;
+  }
+  for (const key of order) {
+    ul.appendChild(makeRow(`idx-${key}`, indexCfg(key).label));
   }
 }
 
 /** 8h Task Scheduler cadence (00:00/08:00/16:00 local) — same amber/red
- *  thresholds INDEX_THRESHOLDS.audiobook already used for the index push,
+ *  thresholds INDEX_CADENCE.audiobook already used for the index push,
  *  now applied to the pipeline's own timestamps instead of a downstream one. */
 const PIPELINE_AMBER_MS = 9 * 3600_000;
 const PIPELINE_RED_MS = 17 * 3600_000;
@@ -191,19 +304,22 @@ function buildPipelineSection() {
 function buildWorkerSection() {
   const ul = document.getElementById('worker-rows');
   ul.appendChild(makeRow('wk-index', 'Shared search index — index.heygabi.ai'));
-  ul.appendChild(makeRow('wk-library', 'Book library API — library.heygabi.ai'));
-  ul.appendChild(makeRow('wk-games', 'Board game catalog API — boardgames.heygabi.ai'));
-  ul.appendChild(makeRow('wk-library2', "Sam's book library API — padhard.heygabi.ai"));
+  ul.appendChild(makeRow('wk-library', catRow('library', 'API')));
+  ul.appendChild(makeRow('wk-games', catRow('games', 'API')));
+  // ⚠️ "Sam's book library API — padhard.heygabi.ai" until 2026-09-05. Two of
+  // the seven disagreeing spellings of one shelf were on this page alone, and
+  // neither is what the registry (or she) calls it.
+  ul.appendChild(makeRow('wk-library2', catRow('library2', 'API')));
   ul.appendChild(makeRow('wk-auth', 'Sign-in & membership directory — auth.heygabi.ai'));
 }
 
 function buildSiteSection() {
   const ul = document.getElementById('site-rows');
-  ul.appendChild(makeRow('site-audio', 'Audiobook site — audiobooks.heygabi.ai'));
+  ul.appendChild(makeRow('site-audio', catRow('audiobook', 'site')));
   ul.appendChild(makeRow('site-audio-dev', 'Audiobook site, /dev/ preview lane'));
-  ul.appendChild(makeRow('site-library', 'Book library site — library.heygabi.ai'));
-  ul.appendChild(makeRow('site-games', 'Board game site — boardgames.heygabi.ai'));
-  ul.appendChild(makeRow('site-library2', "Sam's book library site — padhard.heygabi.ai"));
+  ul.appendChild(makeRow('site-library', catRow('library', 'site')));
+  ul.appendChild(makeRow('site-games', catRow('games', 'site')));
+  ul.appendChild(makeRow('site-library2', catRow('library2', 'site')));
 }
 
 
@@ -228,18 +344,27 @@ function buildSiteSection() {
 // for the Workers section.
 // ---------------------------------------------------------------------------
 
-const DEPLOY_ROWS = [
-  { id: 'dep-index', name: 'Shared search index (index-worker)' },
-  { id: 'dep-library', name: 'Book library (library_catalog worker)' },
-  { id: 'dep-games', name: 'Board games (Board_Game_Catalog worker)' },
-  { id: 'dep-library2', name: "Sam's library (library-catalog-friend)" },
-  { id: 'dep-auth', name: 'Sign-in & membership (auth-worker)' },
-];
+/**
+ * ⚠️ A FUNCTION, NOT A CONST, since 2026-09-05: the catalog names come from the
+ * registry and a module-level array would be built before it lands. The
+ * parenthetical stays hand-written on purpose — it names the WORKER/repo that
+ * ships the row, which is what a reader chasing a version wants and is not a
+ * fact the catalog registry carries.
+ */
+function deployRows() {
+  return [
+    { id: 'dep-index', name: 'Shared search index (index-worker)' },
+    { id: 'dep-library', name: `${catLabel('library')} (library_catalog worker)` },
+    { id: 'dep-games', name: `${catLabel('games')} (Board_Game_Catalog worker)` },
+    { id: 'dep-library2', name: `${catLabel('library2')} (library-catalog-friend)` },
+    { id: 'dep-auth', name: 'Sign-in & membership (auth-worker)' },
+  ];
+}
 
 function buildDeploySection() {
   const ul = document.getElementById('deploy-rows');
   if (!ul) return;
-  for (const row of DEPLOY_ROWS) ul.appendChild(makeRow(row.id, row.name));
+  for (const row of deployRows()) ul.appendChild(makeRow(row.id, row.name));
 }
 
 /**
@@ -285,16 +410,18 @@ function renderDeployRows(health, now) {
 // ---------------------------------------------------------------------------
 
 function renderIndexSection(fetchResult, now) {
+  const order = indexSourceOrder();
+  if (order.length === 0) return; // the "sources unknown" row already says why
   const detail = fetchResult.body ? detailOf(fetchResult.body) : null;
   if (!fetchResult.reached || !fetchResult.httpOk || !detail || !detail.sources) {
-    for (const key of INDEX_SOURCE_ORDER) {
+    for (const key of order) {
       updateRow(`idx-${key}`, 'danger', `index.heygabi.ai did not answer (${fetchResult.error || `HTTP ${fetchResult.status}`}).`, null, now);
     }
     return;
   }
   const sources = detail.sources;
-  for (const key of INDEX_SOURCE_ORDER) {
-    const cfg = INDEX_THRESHOLDS[key];
+  for (const key of order) {
+    const cfg = indexCfg(key);
     const src = sources[key];
 
     // ⚠️ THREE DIFFERENT FACTS USED TO SHARE ONE SENTENCE ("0 rows / never
@@ -384,11 +511,18 @@ function renderIndexWorkerRow(fetchResult, now) {
   // the worker's answer silently contributed 0 rows to a total still described
   // as covering three. The count now comes from the same object the total does,
   // and a shortfall is NAMED rather than absorbed.
-  const present = INDEX_SOURCE_ORDER.filter((k) => sources[k] && typeof sources[k].rows === 'number');
-  const missing = INDEX_SOURCE_ORDER.filter((k) => !present.includes(k));
+  // 🔴 AND THE DENOMINATOR IS NOW THE REGISTRY'S. It was a three-entry array
+  // that did not know about `library2`, so this sentence read "3 of 3 sources"
+  // — complete — while a fourth source sat at zero (F4). With no registry at
+  // all the denominator is what the worker itself reported, which is honest
+  // about being a smaller claim.
+  const order = indexSourceOrder();
+  const known = order.length ? order : Object.keys(sources);
+  const present = known.filter((k) => sources[k] && typeof sources[k].rows === 'number');
+  const missing = known.filter((k) => !present.includes(k));
   const total = present.reduce((sum, k) => sum + sources[k].rows, 0);
   const ok = fetchResult.body.ok !== false;
-  const counted = `${total.toLocaleString()} rows across ${present.length} of ${INDEX_SOURCE_ORDER.length} sources`;
+  const counted = `${total.toLocaleString()} rows across ${present.length} of ${known.length} sources`;
   updateRow(
     'wk-index',
     !ok || missing.length ? 'danger' : 'ok',
@@ -761,24 +895,24 @@ async function refreshAll() {
   // reading the same public document is the right shape — the alternative was
   // this page keeping a variable alive for a section it no longer contains.
   renderDeployRows({ indexHealth, libraryHealth, gamesHealth, library2Health, authHealth }, t);
-  renderWorkerHealthRow('wk-library', 'Library', libraryHealth, t, (b) =>
+  renderWorkerHealthRow('wk-library', catLabel('library'), libraryHealth, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
-  renderWorkerHealthRow('wk-games', 'Games', gamesHealth, t, (b) =>
+  renderWorkerHealthRow('wk-games', catLabel('games'), gamesHealth, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}`);
   // Same Worker code as Library, so the same summary line — read from HER
   // instance's own health, never inferred from ours.
-  renderWorkerHealthRow('wk-library2', "Sam's library", library2Health, t, (b) =>
+  renderWorkerHealthRow('wk-library2', catLabel('library2'), library2Health, t, (b) =>
     `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
   renderWorkerHealthRow('wk-auth', 'Estate auth', authHealth, t, (b) => {
     const u = b.users || {};
     return `${u.approved ?? '?'} approved · ${u.pending ?? '?'} pending · ${u.revoked ?? '?'} revoked · ${u.approvers ?? '?'} approvers`;
   });
 
-  renderSiteRow('site-audio', 'Audio', audioUp, t);
+  renderSiteRow('site-audio', catLabel('audiobook'), audioUp, t);
   renderSiteRow('site-audio-dev', 'Audio /dev/', audioDevUp, t);
-  renderSiteRow('site-library', 'Books', libraryUp, t);
-  renderSiteRow('site-games', 'Games', gamesUp, t);
-  renderSiteRow('site-library2', "Sam's library", library2Up, t);
+  renderSiteRow('site-library', catLabel('library'), libraryUp, t);
+  renderSiteRow('site-games', catLabel('games'), gamesUp, t);
+  renderSiteRow('site-library2', catLabel('library2'), library2Up, t);
 
   // ⚠️ THE SUMMARY LINE USED TO NOT ADD UP, on the most-read sentence of the
   // page: it counted ok/warn/danger "out of N checks" while every row in a
@@ -1498,16 +1632,24 @@ setInterval(() => {
   }
 }, TICK_INTERVAL_MS);
 
-buildDeploySection();
-buildIndexSection();
-buildPipelineSection();
-buildWorkerSection();
-buildSiteSection();
-buildBackupsSection();
+// ⚠️ THE SECTIONS ARE BUILT AFTER THE REGISTRY LANDS, because every row's NAME
+// comes from it and a row built first would carry a placeholder no later pass
+// rewrites. `registryReady` is raced against a 3s ceiling (see its definition),
+// so a hanging directory delays this page by three seconds and never blocks it
+// — which matters here more than anywhere, since this is the page somebody
+// opens BECAUSE something is wrong.
+registryReady.then(() => {
+  buildDeploySection();
+  buildIndexSection();
+  buildPipelineSection();
+  buildWorkerSection();
+  buildSiteSection();
+  buildBackupsSection();
 
-document.getElementById('refresh').addEventListener('click', () => refreshAll());
+  document.getElementById('refresh').addEventListener('click', () => refreshAll());
 
-refreshAll();
+  refreshAll();
+});
 setInterval(tickAll, TICK_INTERVAL_MS);
 
 // Auto-refresh every 60s, but only while the tab is actually visible — a

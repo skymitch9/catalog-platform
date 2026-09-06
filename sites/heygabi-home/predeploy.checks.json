@@ -1,15 +1,15 @@
 {
   "_why": [
-    "What must be TRUE on the live host after a deploy \u2014 the half that closes 'shipped is not verified'.",
+    "What must be TRUE on the live host after a deploy — the half that closes 'shipped is not verified'.",
     "Read by scripts/predeploy-check.mjs --live, which runs automatically as the last step of npm run deploy:home.",
     "Each marker is a string that only appears if the page actually rendered its own content, so a page that",
     "deployed-but-did-not-land fails loudly instead of returning a cheerful 200. Pick markers that would DISAPPEAR",
     "if the thing broke: a heading the page owns, an element id its script fills, a function name in a module.",
-    "A marker that can never fail is worse than no marker \u2014 it buys false confidence. Add a page here the same",
+    "A marker that can never fail is worse than no marker — it buys false confidence. Add a page here the same",
     "day you add it to public/, or it ships unwatched.",
     "NOTE: signed-in surfaces cannot be asserted from here. /status's Operations section, the runbook documents",
     "and /admin's member table are all injected only after Firebase sign-in, which this unauthenticated fetch",
-    "never has. The markers below are therefore the page CHROME and its gate \u2014 proof the shell shipped, never",
+    "never has. The markers below are therefore the page CHROME and its gate — proof the shell shipped, never",
     "proof the gated content works. That still has to be checked by signing in."
   ],
   "baseUrl": "https://heygabi.ai",
@@ -60,15 +60,6 @@
     },
     {
       "_why": [
-        "The apex's reader of the estate catalog registry (GET https://index.heygabi.ai/api/catalogs), which",
-        "replaced the seven disagreeing hand-kept label maps the 2026-09-05 survey measured. Design:",
-        "docs/info/catalog-registry.md; survey findings F1/F2/F3.",
-        "The markers are the four that would DISAPPEAR if the file lost its point: the route it reads, the",
-        "set-comparison that replaced FULL_SCOPE_SIZE = 3, the worded unknown that replaced `MAP[x] || x`, and",
-        "the owner designation the whole build exists for. `catalogForEntry` is pinned because it is the estate's",
-        "ONE source+format -> catalog map and the ebook attribution lives inside it."
-      ],
-      "_why_search": [
         "The shared <estate-search> component — and it had NO live marker at all until 2026-09-05, which is how",
         "`const FULL_SCOPE_SIZE = 3` shipped and stayed: it told every ordinary member (whose default grant is",
         "three catalogs of five) that their search covered 'on any shelf' while two shelves were never consulted,",
@@ -93,7 +84,7 @@
       ]
     },
     {
-      "_why_cards": [
+      "_why": [
         "The front door's catalogue cells, named and designated from the registry (owner ask 2026-09-05).",
         "Nothing it DRAWS can be asserted from here — the markers are the four behaviours that would disappear",
         "if the module lost its point: the registry hook it reads, the designation line it writes, the outage",
@@ -111,6 +102,15 @@
       ]
     },
     {
+      "_why": [
+        "The apex's reader of the estate catalog registry (GET https://index.heygabi.ai/api/catalogs), which",
+        "replaced the seven disagreeing hand-kept label maps the 2026-09-05 survey measured. Design:",
+        "docs/info/catalog-registry.md; survey findings F1/F2/F3.",
+        "The markers are the four that would DISAPPEAR if the file lost its point: the route it reads, the",
+        "set-comparison that replaced FULL_SCOPE_SIZE = 3, the worded unknown that replaced `MAP[x] || x`, and",
+        "the owner designation the whole build exists for. `catalogForEntry` is pinned because it is the estate's",
+        "ONE source+format -> catalog map and the ebook attribution lives inside it."
+      ],
       "path": "/assets/catalog-registry.js",
       "mustContain": [
         "https://index.heygabi.ai/api/catalogs",
@@ -206,13 +206,13 @@
     },
     {
       "_why": [
-        "/status is HEALTH now \u2014 the front door of the four-page split (2026-08-18, owner: 'maybe a health page",
+        "/status is HEALTH now — the front door of the four-page split (2026-08-18, owner: 'maybe a health page",
         "that also has logs for the pods/workers/containers, a page for data processing, a page for running the",
         "pipelines and their logs'). It keeps the two probe lists and the migration runbooks; the run controls",
         "and the ingestion pause card MOVED to /status/pipelines/ and their markers moved with them, to that",
         "page's own entry below. A pin left behind on the old page is worse than no pin: it would fail every",
         "deploy for a control that is working perfectly somewhere else.",
-        "The four nav hrefs are pinned as a SET because the shared shell is the thing the split actually added \u2014",
+        "The four nav hrefs are pinned as a SET because the shared shell is the thing the split actually added —",
         "a page that lost its nav still serves a cheerful 200 and simply strands the reader on one tab with no",
         "way to reach the other three.",
         "mustNotContain pins the REMOVAL half, per the rework precedent: id=ingestion-card is exactly what a",
@@ -244,7 +244,7 @@
     },
     {
       "_why": [
-        "/status/pipelines \u2014 RUN + CONTROL, the page the levers moved to on 2026-08-18. Everything here was",
+        "/status/pipelines — RUN + CONTROL, the page the levers moved to on 2026-08-18. Everything here was",
         "pinned on /status before the split and is pinned here now, unchanged in meaning: the pipeline steps, the",
         "Run levers, and the ingestion pause card.",
         "The ingestion pause card (2026-08-18, owner: 'give me a way to pause and start the process flow on the",
@@ -257,15 +257,15 @@
         "'Phoenix time' is asserted as TEXT, not as an element: a datetime-local input with no zone stated is a",
         "control that silently means a different hour on a travelling phone, and that label is the only thing on",
         "the page saying which zone the picker is read in.",
-        "\u26a0 ADDED 2026-09-01 with the soft pauses, the recurring blockers and the do-not-disturb list. The",
-        "four new ids are the two editors' mounts \u2014 a missing one leaves a heading with silence under it,",
+        "⚠ ADDED 2026-09-01 with the soft pauses, the recurring blockers and the do-not-disturb list. The",
+        "four new ids are the two editors' mounts — a missing one leaves a heading with silence under it,",
         "which reads as 'you have no blockers' rather than as 'this shipped broken'. 'At latest.' is pinned as",
         "TEXT for the same reason 'Phoenix time' is: it is the ONE sentence admitting the pause-until picker is",
         "a ceiling a free GPU can beat, and a card that lost it would be promising a pause it cannot keep.",
-        "\u26a0 ADDED 2026-09-01 (second pass \u2014 the UX condense, owner: 'the time selector is a not my",
+        "⚠ ADDED 2026-09-01 (second pass — the UX condense, owner: 'the time selector is a not my",
         "favorite and its getting to be a lot of menus and buttons'). Every id above SURVIVED the condense,",
         "which is the point of pinning them: the pickers moved behind 'Custom...' and the two editors behind",
-        "one disclosure, and nothing was deleted. The two new ids are the halves that make the condense safe \u2014",
+        "one disclosure, and nothing was deleted. The two new ids are the halves that make the condense safe —",
         "id=ingestion-when is the time drawer the chips are written into (without it 'Until a time...' opens",
         "onto nothing) and id=ingestion-standing is the disclosure. 'Schedules' is its title, pinned as TEXT:",
         "a disclosure whose summary never renders is two standing editors nobody can find."
@@ -274,7 +274,7 @@
       "mustContain": [
         "GABI Knowledge",
         "class=\"statusnav\"",
-        "Run levers \u2014 GitHub Actions",
+        "Run levers — GitHub Actions",
         "id=\"lever-rows\"",
         "id=\"ingestion-card\"",
         "id=\"ingestion-status\"",
@@ -299,15 +299,15 @@
         "pipelines.js (2026-08-18) carries the pause card's LOGIC, moved out of status.js by the split. These",
         "three markers moved with it from the /status/status.js entry below and mean exactly what they meant",
         "there: the route the card reads and writes (a bundle pointing at a route the Worker does not serve would",
-        "leave the card permanently unreadable), buildIngestionCard (the four two-tap buttons \u2014 without it the",
+        "leave the card permanently unreadable), buildIngestionCard (the four two-tap buttons — without it the",
         "card renders a status line and no controls), and the ingestion-time.js import (the two files must ship",
         "together or the page's script dies at parse time with the usual cheerful 200 on the route).",
         "The pure half's own tests still live in scripts/test/ingestion-time.test.mjs and still pass (77 of",
-        "them as of the 2026-09-01 condense) \u2014 the module did not move, only its caller did.",
-        "\u26a0 ADDED 2026-09-01: pause_for_now / recurring_add / exempt_add are the three new writes, and the",
+        "them as of the 2026-09-01 condense) — the module did not move, only its caller did.",
+        "⚠ ADDED 2026-09-01: pause_for_now / recurring_add / exempt_add are the three new writes, and the",
         "two build functions are the editors themselves. A bundle that shipped the status line without them",
-        "would render a card that reads correctly and can change nothing \u2014 the failure this list catches.",
-        "\u26a0 ADDED 2026-09-01 (the condense): buildPauseMenu is the ONE button's four answers, pausePresets is",
+        "would render a card that reads correctly and can change nothing — the failure this list catches.",
+        "⚠ ADDED 2026-09-01 (the condense): buildPauseMenu is the ONE button's four answers, pausePresets is",
         "the chip row that replaced the raw time selector as the front door, and standingSummaryWords is the",
         "counted line on the collapsed disclosure. Each is a way the new card can ship LOOKING fine and doing",
         "nothing: no menu means Pause opens onto silence, no chips means the owner is back on the picker he",
@@ -331,7 +331,7 @@
     },
     {
       "_why": [
-        "/status/agents \u2014 CLAUDE CAPACITY (2026-08-18). Everything on it is PUSHED, so the markers are the",
+        "/status/agents — CLAUDE CAPACITY (2026-08-18). Everything on it is PUSHED, so the markers are the",
         "chrome and the freshness apparatus, never the data.",
         "id=board-fresh is the freshness strip and is the single most important marker on this page: without it a",
         "reader cannot tell a live board from one pushed before lunch, which is the failure the whole page is",
@@ -352,7 +352,7 @@
     },
     {
       "_why": [
-        "agents.js (2026-08-18). fetchBoard is the shared reader in status/lib/board.js \u2014 its name appearing here",
+        "agents.js (2026-08-18). fetchBoard is the shared reader in status/lib/board.js — its name appearing here",
         "proves the module graph actually shipped, since a missing lib/ file takes the page's script down at",
         "parse time while the route still serves 200.",
         "The three usage keys are the estate's own meters and are pinned because a usage block that silently lost",
@@ -371,10 +371,10 @@
     },
     {
       "_why": [
-        "/status/api \u2014 MACHINE KEYS (2026-08-20). The ONLY status page that issues a credential, so the markers",
+        "/status/api — MACHINE KEYS (2026-08-20). The ONLY status page that issues a credential, so the markers",
         "are the gate and the mount point, never a value.",
         "id=ops-signin proves the SHARED gate shipped: every control lives inside a section the gate reveals.",
-        "\u26a0\ufe0f id=keys-mount is EMPTY in the served HTML and that is the point \u2014 every card is built by api.js from",
+        "⚠️ id=keys-mount is EMPTY in the served HTML and that is the point — every card is built by api.js from",
         "the Worker's registry, each key carrying its own info AND its own button. A hardcoded card here would be",
         "a second list of which credentials exist; omitting one is a liar by silence, and offering a button the",
         "route refuses teaches people the page is wrong."
@@ -392,12 +392,12 @@
     {
       "_why": [
         "api.js (2026-08-20). mountGate proves the page uses the SHARED gate rather than a local re-derivation.",
-        "\u26a0\ufe0f clearAllOnce takes a freshly-minted credential OFF THE SCREEN when the gate closes; losing it would",
+        "⚠️ clearAllOnce takes a freshly-minted credential OFF THE SCREEN when the gate closes; losing it would",
         "leave a key visible after sign-out with nothing looking wrong.",
-        "\u26a0\ufe0f createElement('details') + rotateHow together pin the card shape: each key is ONE collapsible whose",
+        "⚠️ createElement('details') + rotateHow together pin the card shape: each key is ONE collapsible whose",
         "header is the collapse point, carrying its description AND its button. Losing it would either drop the",
         "four unrotatable credentials from the inventory or strand a button away from what it does.",
-        "\u26a0\ufe0f window.confirm is pinned because NO ROTATION MAY BE ONE CLICK (owner rule). These buttons look alike",
+        "⚠️ window.confirm is pinned because NO ROTATION MAY BE ONE CLICK (owner rule). These buttons look alike",
         "on purpose; the named confirmation is what stops a mis-click becoming a rotation."
       ],
       "path": "/status/api/api.js",
@@ -415,10 +415,10 @@
     },
     {
       "_why": [
-        "/status/processing \u2014 DATA PROCESSING (2026-08-18, owner: 'which books are being processed right now,",
+        "/status/processing — DATA PROCESSING (2026-08-18, owner: 'which books are being processed right now,",
         "per-book % progress, a history of everything processed, and next to each processed book a label saying",
         "when it became part of GABI's knowledge base').",
-        "\u26a0 THE HOME-MACHINE PUSHER DOES NOT EXIST YET, so this page's four lists render worded empty states",
+        "⚠ THE HOME-MACHINE PUSHER DOES NOT EXIST YET, so this page's four lists render worded empty states",
         "rather than data. That is precisely why the markers are the mount ids and the owner's own sentence: they",
         "prove the page landed, and they would disappear if a later edit 'tidied away' an empty-looking section.",
         "'Joined GABI's knowledge base' is asserted as TEXT because it is the label he asked for by name."
@@ -441,7 +441,7 @@
         "processing.js (2026-08-18). Same module-graph proof as agents.js (fetchBoard), plus the two renderers",
         "whose absence would leave the page's most-asked-for sections silently blank.",
         "normaliseQueue is pinned because it is the tolerance that lets the unbuilt pusher send either shape of",
-        "queue data \u2014 losing it in a refactor would make the queue section empty on the day the pipeline",
+        "queue data — losing it in a refactor would make the queue section empty on the day the pipeline",
         "finally ships, which is the worst possible day to discover it."
       ],
       "path": "/status/processing/processing.js",
@@ -474,9 +474,9 @@
     },
     {
       "_why": [
-        "status/lib/ \u2014 the three modules every page imports (2026-08-18). Pinned SEPARATELY from the pages",
+        "status/lib/ — the three modules every page imports (2026-08-18). Pinned SEPARATELY from the pages",
         "because an ES-module import failure is invisible from the importing page's HTML: the route serves 200,",
-        "the script dies at the import, and nothing renders. gate.js is the one that matters most \u2014 it is the",
+        "the script dies at the import, and nothing renders. gate.js is the one that matters most — it is the",
         "single implementation of the devops gate for all four pages, and four copies of a gate is four chances",
         "for one to fail open."
       ],
@@ -489,10 +489,10 @@
     },
     {
       "_why": [
-        "board.js \u2014 the shared reader and the freshness sentence for both pushed-data pages.",
-        "\u26a0 sectionFreshness and section_pushed_at (2026-08-18) are the fix for the contract's \u00a79 wrinkle: one",
+        "board.js — the shared reader and the freshness sentence for both pushed-data pages.",
+        "⚠ sectionFreshness and section_pushed_at (2026-08-18) are the fix for the contract's §9 wrinkle: one",
         "D1 row, two pushers, each writing the board whole, so the board-wide pushed_at only ever said when",
-        "SOMEBODY pushed \u2014 and /status/agents read 'as of 2 minutes ago' over agent rows hours old. A bundle",
+        "SOMEBODY pushed — and /status/agents read 'as of 2 minutes ago' over agent rows hours old. A bundle",
         "that lost these would go back to a strip that says fresh about stale data, which is the one failure a",
         "freshness strip must not have and the one a cheerful 200 would never reveal."
       ],
@@ -516,14 +516,14 @@
     },
     {
       "_why": [
-        "ebook-lane.js (2026-08-18) \u2014 the ebook row's VERDICT, extracted from status.js with the FOURTH fix to a",
+        "ebook-lane.js (2026-08-18) — the ebook row's VERDICT, extracted from status.js with the FOURTH fix to a",
         "row that had shipped wrong three times. The two markers that used to sit on /status/status.js moved",
         "here WITH the logic, per pins-follow-their-subject: a pin left on the old file fails every deploy for",
         "code that works perfectly one module over, and a pin deleted instead of moved silently stops watching.",
         "ebookLaneVerdict is what the page calls; EBOOK_PRODUCING_TRIGGERS and ebookRunKind are the cross-repo",
         "trigger contract with audiobook_catalog.",
-        "\u26a0 'ebookCount' is pinned as THE SIGNAL ITSELF. The whole fix is that this row compares the published",
-        "shelf COUNT against the count the last run built, instead of comparing timestamps \u2014 a refactor that",
+        "⚠ 'ebookCount' is pinned as THE SIGNAL ITSELF. The whole fix is that this row compares the published",
+        "shelf COUNT against the count the last run built, instead of comparing timestamps — a refactor that",
         "quietly went back to timestamps would reproduce the exact false amber the owner reported three times.",
         "Its behaviour is pinned by scripts/test/ebook-lane.test.mjs against the live payload that produced it."
       ],
@@ -537,12 +537,12 @@
     },
     {
       "_why": [
-        "storage-view.js (2026-08-18) \u2014 the blob-storage panel's WORDS. Pinned separately from status.js for the",
+        "storage-view.js (2026-08-18) — the blob-storage panel's WORDS. Pinned separately from status.js for the",
         "usual ES-module reason: a missing lib/ file takes the importing page's script down at parse time while",
         "the route still serves a cheerful 200.",
-        "\u26a0 'not zero' is pinned as a STRING, not as an identifier, and it is the most important marker here. The",
-        "panel's whole contract is that an unmeasured bucket reads as UNKNOWN \u2014 a size of '\u2014' and a sentence",
-        "saying so \u2014 because rendering a bucket nobody could measure as 0 B is, on the BACKUPS bucket, the most",
+        "⚠ 'not zero' is pinned as a STRING, not as an identifier, and it is the most important marker here. The",
+        "panel's whole contract is that an unmeasured bucket reads as UNKNOWN — a size of '—' and a sentence",
+        "saying so — because rendering a bucket nobody could measure as 0 B is, on the BACKUPS bucket, the most",
         "alarming wrong answer this estate could publish. A refactor that dropped that wording would look",
         "perfectly fine on a page where every bucket happened to answer."
       ],
@@ -558,17 +558,17 @@
     },
     {
       "_why": [
-        "ingestion-time.js (2026-08-18) is the PURE half of the pause card \u2014 the Phoenix conversion and every",
+        "ingestion-time.js (2026-08-18) is the PURE half of the pause card — the Phoenix conversion and every",
         "word the card says. Its correctness is pinned by scripts/test/ingestion-time.test.mjs, so these markers",
         "are about the file having actually SHIPPED: status.js imports it, and a missing module takes the whole",
         "page's script down at parse time with the usual cheerful 200 on the route.",
         "'America/Phoenix' and 'midnight tonight' are the two strings whose disappearance would mean the estate's",
         "timezone or the owner's own phrasing had been refactored away.",
-        "\u26a0 ADDED 2026-09-01: 'the next morning' is the midnight-crossing blocker's own wording (without it",
+        "⚠ ADDED 2026-09-01: 'the next morning' is the midnight-crossing blocker's own wording (without it",
         "a 10pm-2am row reads as twelve hours backwards), 'at latest' is the soft pause's honesty about its own",
         "ceiling, and 'Wow.exe' is the verified suggested program name from the WoW-at-midnight incident.",
-        "\u26a0 ADDED 2026-09-01 (the condense): pausePresets is the chip row's instants and labels, and",
-        "'none set' is the collapsed disclosure refusing to render blank \u2014 a summary that vanished would",
+        "⚠ ADDED 2026-09-01 (the condense): pausePresets is the chip row's instants and labels, and",
+        "'none set' is the collapsed disclosure refusing to render blank — a summary that vanished would",
         "leave two standing editors behind a line saying nothing, which reads as 'there is nothing here'."
       ],
       "path": "/assets/ingestion-time.js",
@@ -588,20 +588,20 @@
     },
     {
       "_why": [
-        "The Drive \u21c4 role parity markers (2026-08-17) pin the row that watches audiobook_catalog pipeline STEP 8 \u2014",
+        "The Drive ⇄ role parity markers (2026-08-17) pin the row that watches audiobook_catalog pipeline STEP 8 —",
         "the one step in the estate that changes a PERSON'S ACCESS unattended. renderDriveParityRow is the row;",
         "driveParityState is the exact Firestore field it READS (the ebook row above is the standing proof of what",
-        "inference costs on this page \u2014 three wrong colours); and 'fuse-tripped' is the state that must never",
+        "inference costs on this page — three wrong colours); and 'fuse-tripped' is the state that must never",
         "silently vanish, since it is the one saying a mass change was REFUSED and is waiting for a human. A bundle",
         "missing any of the three would still serve a cheerful 200 with the row simply absent.",
-        "\u26a0 THE INGESTION PAUSE CARD'S THREE MARKERS LEFT THIS ENTRY on 2026-08-18 with the /status split \u2014 the",
+        "⚠ THE INGESTION PAUSE CARD'S THREE MARKERS LEFT THIS ENTRY on 2026-08-18 with the /status split — the",
         "card now lives in /status/pipelines/pipelines.js and its pins moved to that file's entry above, intact.",
         "They were NOT deleted: a pin that follows its subject keeps failing for the right reason, while a pin",
         "left on the old file fails every deploy for a control that is working perfectly one page over.",
-        "\u26a0 THE EBOOK LANE'S TWO LOGIC MARKERS LEFT THIS ENTRY on 2026-08-18 for the same reason, one layer",
+        "⚠ THE EBOOK LANE'S TWO LOGIC MARKERS LEFT THIS ENTRY on 2026-08-18 for the same reason, one layer",
         "down: ebookRunKind and EBOOK_PRODUCING_TRIGGERS now live in /status/lib/ebook-lane.js and are pinned",
         "on that file's own entry above. renderPipelineEbookRow STAYS here, because the DOM adapter that puts",
-        "the verdict on the row is still this file's job \u2014 and it is the marker whose absence would mean the",
+        "the verdict on the row is still this file's job — and it is the marker whose absence would mean the",
         "row silently stopped rendering at all.",
         "ebook-lane.js is also pinned as an IMPORT below, so a bundle that shipped this file without its new",
         "dependency fails here rather than dying at parse time behind a cheerful 200."
@@ -618,7 +618,15 @@
         "renderPipelineEbookRow",
         "renderDriveParityRow",
         "driveParityState",
-        "fuse-tripped"
+        "fuse-tripped",
+        "indexSourceOrder",
+        "catalog-registry.js",
+        "INDEX_CADENCE"
+      ],
+      "mustNotContain": [
+        "const INDEX_SOURCE_ORDER =",
+        "Sam's book library API",
+        "const INDEX_THRESHOLDS ="
       ]
     },
     {
@@ -638,7 +646,7 @@
     },
     {
       "_why": [
-        "\u26a0\ufe0f REBUILT 2026-08-17 FOR THE CONTROL-GRAMMAR RESHAPE. Owner order: 'auth setting has too many",
+        "⚠️ REBUILT 2026-08-17 FOR THE CONTROL-GRAMMAR RESHAPE. Owner order: 'auth setting has too many",
         "different auth setting experiences, sometimes we double click to confirm sometimes we use the drop",
         "down. also at the top we have a tree for audio and ebooks but not one for the other sites. maybe just",
         "make a full permission map after normalizing everything.' The member table is signed-in-only, but",
@@ -650,12 +658,12 @@
         "(id=role-ladder, 'Audiobooks/Ebooks role ladder') and the old per-site filter wording ('Site role",
         "(both shelves)') are exactly what a stale bundle would still carry while serving a cheerful 200 and",
         "satisfying every mustContain. The two older removals ('>Audiobook</span>' and 'Audiobook role",
-        "ladder', from the 2026-08-17 row merge) are kept \u2014 they cost nothing and still pin real removals.",
-        "\u26a0\ufe0f THE THREE-SECTION DIRECTORY (2026-08-17, owner: 'i revoked access to an account on /admin, its",
+        "ladder', from the 2026-08-17 row merge) are kept — they cost nothing and still pin real removals.",
+        "⚠️ THE THREE-SECTION DIRECTORY (2026-08-17, owner: 'i revoked access to an account on /admin, its",
         "still in the list, lets move these to a revoked section, lets also make the effort to have a pending",
         "area too while we're in here. make pending, revoked, and current members list all collapsable'). The",
         "SECTIONS themselves are drawn by admin.js after sign-in and are pinned in that file's entry below;",
-        "what ships in this HTML and is assertable unauthenticated is the shape they need \u2014 the intro that",
+        "what ships in this HTML and is assertable unauthenticated is the shape they need — the intro that",
         "states the page has three lists, and the .dir-group/.dir-empty/.users-list CSS the sections are built",
         "from. The removal half is the one that matters most here and is a single string: the directory mount",
         "was '<ul id=\"users\"' and is now a <div>, because a <details> is not a legal child of a list. A stale",
@@ -690,10 +698,10 @@
     },
     {
       "_why": [
-        "admin.js \u2014 ONE entry since 2026-08-17 (it was two, both fetching the same file: the library2",
+        "admin.js — ONE entry since 2026-08-17 (it was two, both fetching the same file: the library2",
         "federation and the ebook gate. One file, one marker set, one place to look).",
         "Everything this page RENDERS is injected only after Firebase sign-in, so what CAN be asserted",
-        "unauthenticated is the module's own anatomy \u2014 and after the control-grammar reshape that anatomy is",
+        "unauthenticated is the module's own anatomy — and after the control-grammar reshape that anatomy is",
         "exactly what changed: SITE_ROWS is the one row list that drives the per-member grid, the top",
         "permission map and the filter order; pendingEdits + savePermissions + 'Save permissions' +",
         "perm-staged are the stage-then-Save grammar that replaced four different commit gestures;",
@@ -701,14 +709,14 @@
         "padhard.heygabi.ai/library2/ROLE_FILTER_KEYS keep proving all four sites are federated at all, and",
         "MERGED_ROW keeps proving f7697f4's merged Audiobooks/Ebooks row survived the reshape (now as one",
         "grid row with two boxes).",
-        "\u26a0\ufe0f THE DOWNLOAD FACT SWAPPED SIDES THE SAME DAY, and the markers swapped with it. The owner saw the",
+        "⚠️ THE DOWNLOAD FACT SWAPPED SIDES THE SAME DAY, and the markers swapped with it. The owner saw the",
         "standalone tag live and killed it: 'what is this download: admin + role tag it looks bad and idk",
         "what its trying to tell me.' So 'downloadNoteCell' and 'download: admin+ role' moved from",
-        "mustContain to mustNotContain, and what is asserted instead is where the fact went \u2014",
+        "mustContain to mustNotContain, and what is asserted instead is where the fact went —",
         "EBOOK_DOWNLOAD_RUNG (the documented admin floor) and the sentence the derived capability line now",
         "appends, 'Includes downloading ebook files.' Asserting the old strings would now be exactly",
         "backwards, which is the same trap this file already hit twice on 2026-08-16/17.",
-        "\u26a0\ufe0f mustNotContain pins SEVEN killed idioms, each naming a specific way the page used to disagree",
+        "⚠️ mustNotContain pins SEVEN killed idioms, each naming a specific way the page used to disagree",
         "with itself: saveVisibility wrote a checkbox the instant it was ticked; the one-tap button helper",
         "(actionBtn) made Approve the only status action that did not confirm; 'Set role' was the two-tap",
         "apply button that ONLY the audiobook row had; renderRoleTree drew a ladder for that one site and",
@@ -716,27 +724,27 @@
         "its tag text are the note the owner rejected. A bundle still carrying any of them is a bundle still",
         "shipping the divergence he asked to remove, and it would pass every mustContain above. The four",
         "2026-08-17 download-rework removals are kept for the same reason they were added.",
-        "\u26a0\ufe0f THE THREE-SECTION DIRECTORY (2026-08-17). The sections ARE this module \u2014 the HTML ships only an",
-        "empty mount \u2014 so these are the markers that prove the reshape landed rather than the shell around it.",
+        "⚠️ THE THREE-SECTION DIRECTORY (2026-08-17). The sections ARE this module — the HTML ships only an",
+        "empty mount — so these are the markers that prove the reshape landed rather than the shell around it.",
         "DIRECTORY_GROUPS is the one list that names the three statuses and their defaults; directorySection is",
         "the builder; openGroups is what stops a search keystroke or a mutation re-render slamming a section",
         "the reader opened; 'Current members' is the section header the owner asked for by name; 'Nobody is",
         "waiting.' is the worded empty state (his standing rule: never a bare empty box); and 'hidden by the",
-        "current search or filters' is the OTHER empty state \u2014 the one that must never be confused with the",
+        "current search or filters' is the OTHER empty state — the one that must never be confused with the",
         "first, since printing 'nobody is waiting' while a filter hides a pending person says the opposite of",
         "the truth. A bundle missing any of these renders a flat list again and returns a cheerful 200.",
-        "\u26a0\ufe0f THE SPENDING COLUMN (2026-09-05, llm-billing-control-design.md \u00a77.2 phase 2b) is the grid's",
+        "⚠️ THE SPENDING COLUMN (2026-09-05, llm-billing-control-design.md §7.2 phase 2b) is the grid's",
         "FIFTH column and the per-PERSON axis of the Spending panel above. spendCell and spendLine are the",
         "cell and its drawer; openSpendDrawers is what stops a search keystroke closing a drawer holding a",
         "typed Why; \"principal_kind: 'user'\" is proof it writes through the matrix's OWN door rather than a",
-        "second one; 'unattended \u2014 nobody triggers it' is the worded fact that stands where a control would",
+        "second one; 'unattended — nobody triggers it' is the worded fact that stands where a control would",
         "be on a cron-only money path (a per-person rule there would deny nobody, and the auth Worker refuses",
         "to store one); 'Say why first for' is the refusal that fires BEFORE any of the three systems is",
         "written, so an empty Why box cannot leave a card half-saved. A bundle missing any of these ships a",
         "four-column grid that looks finished.",
         "NOTE (unchanged, and the reason this file's checks can never be enough): the signed-in rendered",
-        "table \u2014 the grid, the Save, the ladders with real data, the three sections and now the Spending",
-        "column \u2014 is invisible to an unauthenticated fetch and still has to be checked by signing in."
+        "table — the grid, the Save, the ladders with real data, the three sections and now the Spending",
+        "column — is invisible to an unauthenticated fetch and still has to be checked by signing in."
       ],
       "path": "/admin/admin.js",
       "mustContain": [
@@ -793,14 +801,14 @@
       "_why": [
         "/docs (2026-08-18, GABI docs assistant phase 6) is a GATED page and, unusually, a CONTENT-FREE one:",
         "every heading, path, snippet and section body arrives from auth.heygabi.ai behind requireDevops(),",
-        "so an unauthenticated fetch can only ever see the shell. That is the point \u2014 view the source signed",
+        "so an unauthenticated fetch can only ever see the shell. That is the point — view the source signed",
         "out and there is no documentation here. So the markers are the SHELL and its GATE, and each is a",
         "piece whose absence would leave a page that still returns a cheerful 200 while doing nothing:",
         "id=q is the search input the owner asked for by name ('make it with a search bar'), id=results is",
         "where hits land, id=snapstrip is the always-visible publish date (a docs page that looks equally",
         "confident when it is nine days behind is worse than none), id=reader/id=reader-body are the section",
-        "view, and id=signin plus the worded gate line are the signed-out state \u2014 never a blank.",
-        "\u26a0\ufe0f The gate line is asserted as TEXT, not only as an element: a bundle that shipped the markup with",
+        "view, and id=signin plus the worded gate line are the signed-out state — never a blank.",
+        "⚠️ The gate line is asserted as TEXT, not only as an element: a bundle that shipped the markup with",
         "an empty gate would satisfy an id-only marker and still show a person a bare box."
       ],
       "path": "/docs/",
@@ -819,14 +827,14 @@
     },
     {
       "_why": [
-        "docs.js \u2014 everything this page DOES lives here, and none of it is visible to an unauthenticated",
+        "docs.js — everything this page DOES lives here, and none of it is visible to an unauthenticated",
         "fetch, so the markers are the module's own anatomy. Each names a decision a stale bundle would",
         "silently lose: the two Worker routes (a page still pointing at the old KV /:slug endpoint would 404",
         "forever and read as 'no docs published'), markText is the result highlighting, renderMarkdown is the",
         "rendered section view, describeFailure is the one place an HTTP outcome becomes a sentence, and",
         "'not your permissions' is the outage wording that must never collapse back into a permission",
-        "refusal \u2014 the estate's standing rule, and the row most easily mislabelled.",
-        "\u26a0\ufe0f mustNotContain pins the one thing this renderer must never acquire. Every node is built with",
+        "refusal — the estate's standing rule, and the row most easily mislabelled.",
+        "⚠️ mustNotContain pins the one thing this renderer must never acquire. Every node is built with",
         "textContent precisely because the corpus is full of angle brackets in shell one-liners and <script>",
         "inside code fences; an innerHTML assignment reappearing here would either execute those or silently",
         "eat them, and would pass every mustContain above."
@@ -869,8 +877,8 @@
         "injected only after a Firebase sign-in this unauthenticated fetch never has. What CAN be asserted",
         "here is the SHELL and its gate: the heading, the back arrow, the ids the script fills, and the",
         "sign-in button that is the signed-out state's whole content. The volume view itself, including the",
-        "gap rows, has to be checked by signing in \u2014 said plainly rather than implied by a green check.",
-        "ser-pending (2026-08-18) is the confirm-queue banner's EMPTY SHELL \u2014 the markup ships hidden and is",
+        "gap rows, has to be checked by signing in — said plainly rather than implied by a green check.",
+        "ser-pending (2026-08-18) is the confirm-queue banner's EMPTY SHELL — the markup ships hidden and is",
         "filled only when GET /api/series answers with pending_detail, which the Worker sends to approvers",
         "alone. So this marker proves the container shipped and nothing more; whether the banner SPEAKS can",
         "only be checked signed in as an approver with a row open in the queue."
@@ -887,20 +895,46 @@
     },
     {
       "_why": [
-        "The page's whole behaviour lives in this module, so the markers are the three things whose absence",
-        "would mean it shipped without its reason to exist: the gap sentence the owner asked for, the",
-        "source\u2192household vocabulary that names who holds a volume, and the detail endpoint it expands with.",
-        "pending_detail (2026-08-18) is the fourth: it is the ONLY thing that makes the confirm-queue banner",
-        "appear, and it is read from the list answer rather than decided here. A bundle that shipped without",
-        "it would show an approver a clean page while a decision sat unresolved \u2014 the exact silence the field",
-        "was added to end."
+        "The series page. SOURCE_LABELS was a marker here until 2026-09-05 — it named one of the seven disagreeing",
+        "label maps the survey measured (F2), and the map is now gone. What replaced it is pinned instead: the",
+        "registry import, holdingLabel() (the estate's one holding renderer, now registry-fed), and the outage",
+        "sentence the page shows when the directory cannot be read.",
+        "mustNotContain is the F2/F3 regression check on the LIVE host: the three hand-kept maps, matched on their",
+        "DECLARATION so the comment recording what each did can stay."
       ],
       "path": "/series/series.js",
       "mustContain": [
         "nobody in the estate has this one",
-        "SOURCE_LABELS",
         "/api/series/",
-        "pending_detail"
+        "pending_detail",
+        "catalog-registry.js",
+        "holdingLabel",
+        "not a permissions problem"
+      ],
+      "mustNotContain": [
+        "const SOURCE_LABELS =",
+        "const CATALOG_LABELS =",
+        "const IMPLIED_FORMAT ="
+      ]
+    },
+    {
+      "_why": [
+        "The universes page. HOLDER_LABELS named ONE catalog (library2) and its own comment argued for the gap —",
+        "\"library and audiobook are deliberately absent: this is the owner's own page, his shelf is the default\" —",
+        "which is exactly the assumption the owner's rule of 2026-09-05 ends. It had no live marker at all before",
+        "today. mustNotContain pins both removed literals on their declaration, so the comments recording what they",
+        "did can stay."
+      ],
+      "path": "/universes/universes.js",
+      "mustContain": [
+        "catalog-registry.js",
+        "isGameRow",
+        "catalogForEntry",
+        "UNIVERSE_NAMES"
+      ],
+      "mustNotContain": [
+        "const HOLDER_LABELS =",
+        "const GAME_SOURCES ="
       ]
     }
   ],
@@ -921,7 +955,7 @@
   "surfaces": [
     {
       "what": "Claude usage / budget meters",
-      "why": "docs/info/status-pages.md \u2014 /status/agents owns the usage figures",
+      "why": "docs/info/status-pages.md — /status/agents owns the usage figures",
       "markers": [
         "usage-block",
         "USAGE_METERS",
@@ -936,7 +970,7 @@
     },
     {
       "what": "Machine-key minting UI",
-      "why": "docs/info/status-pages.md \u2014 API IS THE ONLY PAGE THAT ISSUES A CREDENTIAL",
+      "why": "docs/info/status-pages.md — API IS THE ONLY PAGE THAT ISSUES A CREDENTIAL",
       "markers": [
         "estate/keys",
         "key-info",
