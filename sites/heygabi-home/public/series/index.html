@@ -203,6 +203,22 @@ h2::after {
 .ser-pending-pair { font-weight: 700; text-wrap: pretty; }
 .ser-pending-meta { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-small); text-wrap: pretty; }
 
+/* ---- the resolve control (2026-09-05) ------------------------------------
+   ⚠️ SPACED, NOT CROWDED, AND ON PURPOSE. These three buttons take an
+   IRREVERSIBLE decision — a merge repoints every entry and the queue is built
+   never to ask again — so they are laid out with a real gap between them
+   rather than as a tight toolbar where a mis-tap costs a decision. They keep
+   `find-linkbtn`'s look (the page's one button idiom) instead of inventing a
+   danger colour: nothing here is a fault, and a red button would say one is. */
+.ser-pending-row .ser-pending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .9rem;
+  margin: .45rem 0 0;
+}
+.ser-pending-keep, .ser-pending-separate { text-align: left; }
+.ser-pending-row .ser-pending-actions button[disabled] { opacity: .55; cursor: default; }
+
 /* ---- the filter box ------------------------------------------------------
    PAGE-LOCAL, NO NETWORK: the registry answered 441 slugs on the live index
    (§8.5's own measurement, 2026-08-17), which is too many rows to scroll for

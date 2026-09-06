@@ -56,6 +56,14 @@ import {
   labelForEntry,
   loadCatalogs,
 } from '../assets/catalog-registry.js';
+import {
+  NOT_APPROVER_NOTE,
+  PENDING_PATH_FALLBACK,
+  pendingCard,
+  queueSentence,
+  resolvePathFor,
+  safePendingPath,
+} from '../assets/series-pending.js';
 
 const INDEX_ORIGIN = 'https://index.heygabi.ai';
 
@@ -587,6 +595,42 @@ function errorNote(status, errCode, what) {
   }
 }
 
+/**
+ * The WRITE sibling of callIndex — one POST, the same answer shape, so the
+ * queue's resolve control and the page's reads share an error vocabulary.
+ *
+ * ⚠️ Kept apart from callIndex rather than folded into it with an optional
+ * argument: this one SPENDS a decision. `series_alias` and `entry.series_slug`
+ * are persisted keys and a resolved queue row is deliberately never re-asked,
+ * so the call that writes them is its own named function with its own comment,
+ * not a branch inside the reader.
+ */
+async function postIndex(path, body) {
+  await registryReady;
+  const token = await idToken();
+  if (!token) return { error: 'Your sign-in has lapsed — sign in again.' };
+  let res;
+  try {
+    res = await fetch(`${INDEX_ORIGIN}${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { error: 'The index did not answer (network). Try again shortly.' };
+  }
+  if (!res.ok) {
+    let errBody = null;
+    try {
+      errBody = await res.json();
+    } catch (e) {
+      /* non-JSON error body; the status still speaks through resolveFailureNote */
+    }
+    return { status: res.status, code: errBody?.error || null };
+  }
+  return { data: await res.json() };
+}
+
 /** One fetch, one place, so both callers get the same error vocabulary. */
 async function callIndex(path) {
   // ⚠️ THE ONE FUNNEL, so this is the one place that waits. A row drawn before
@@ -768,16 +812,18 @@ filterInput.addEventListener('input', applyFilter);
  * to know a second endpoint exists"), but a URL out of a response is also a
  * place a bearer token could be sent somewhere it should not go, so only a
  * same-origin absolute path under /api/ is accepted; anything else falls back
- * to the known path rather than fetching what it was handed.
+ * to the known path rather than fetching what it was handed. That guard, the
+ * request shape of a decision and the row's own controls live in
+ * `assets/series-pending.js` — imported rather than inlined, because this file
+ * cannot be imported in Node (top-level getElementById, and estate-auth.js
+ * pulls the Firebase SDK off a CDN), so anything left in here can only be
+ * checked by READING it. The shape of a write is not a thing to check by
+ * reading.
  */
-const PENDING_PATH_FALLBACK = '/api/series/pending';
-
-function safePendingPath(url) {
-  return typeof url === 'string' && /^\/api\/[A-Za-z0-9/_-]*$/.test(url) ? url : PENDING_PATH_FALLBACK;
-}
-
 let pendingPath = PENDING_PATH_FALLBACK;
 let pendingLoaded = false;
+/** How many rows are still open, counted DOWN as each is resolved — see below. */
+let pendingOpenCount = 0;
 
 function hidePending() {
   pendingEl.hidden = true;
@@ -787,6 +833,7 @@ function hidePending() {
   pendingOpenBtn.hidden = false;
   pendingOpenBtn.disabled = false;
   pendingLoaded = false;
+  pendingOpenCount = 0;
 }
 
 /** Renders (or clears) the banner from the list answer the page already has. */
@@ -798,34 +845,47 @@ function renderPending(data) {
     return;
   }
   pendingPath = safePendingPath(data.pending_url);
+  pendingOpenCount = Number(open) || 0;
   pendingDetailEl.textContent = detail;
   pendingEl.hidden = false;
 }
 
-/** One queue row, in words: the two spellings, why they are still two, and
- *  what the estate actually holds under each. Never a bare fold. */
-function pendingRow(row) {
-  const wrap = document.createElement('div');
-  wrap.className = 'ser-pending-row';
-
-  const pair = document.createElement('p');
-  pair.className = 'ser-pending-pair';
-  pair.textContent = `“${row.candidate_display}” and “${row.closest_display}”`;
-  wrap.appendChild(pair);
-
-  // ⚠️ sample_titles is `{ source, title }[]` on the wire (series.ts NewPending),
-  //    NOT an array of strings — a plain join would print "[object Object]".
-  const samples = (Array.isArray(row.sample_titles) ? row.sample_titles : [])
-    .map((s) => (s && typeof s === 'object' ? s.title : s))
-    .filter(Boolean)
-    .slice(0, 3);
-  const sources = (Array.isArray(row.sources) ? row.sources : []).filter(Boolean);
-  const bits = [];
-  if (sources.length) bits.push(`on ${joinWords(sources.map(sourceLabel))}`);
-  if (samples.length) bits.push(`for example ${joinWords(samples.map((t) => `“${t}”`))}`);
-  if (bits.length) wrap.appendChild(noteP(`${bits.join(', ')}.`, 'ser-pending-meta'));
-
-  return wrap;
+/**
+ * One queue row and its decision, built by `assets/series-pending.js`.
+ *
+ * ⚠️ WHAT CHANGED ON 2026-09-05, AND WHY THE OLD COMMENT WAS RIGHT UNTIL IT
+ * WAS NOT. This banner used to READ the queue and refuse to decide from it, on
+ * the reasoning that a merge is "a write to a persisted key, taken once and
+ * kept … that deserves its own considered affordance rather than a button
+ * bolted to a notice". The affordance is what was missing, not the reasoning —
+ * and with no affordance anywhere, the six real rows below it were worked by
+ * hand-run POSTs with a copy-pasted bearer token, which is a worse instrument
+ * for the same irreversible write. The owner asked for the control on the one
+ * surface that already shows the queue (2026-09-05 17:34 Phoenix).
+ *
+ * So the button is here, and the considered part is kept: the survivor is
+ * NAMED in the label (never "merge left"), the entry counts are shown so the
+ * choice has its evidence beside it, "they are different series" is offered as
+ * the equal answer it is, and every refusal is a sentence that says whether the
+ * estate was down or the account may not act.
+ */
+function queueCard(row) {
+  return pendingCard(row, {
+    sourceLabel,
+    resolve: (fold, body) => postIndex(resolvePathFor(pendingPath, fold), body),
+    onResolved: (_row, _data, sentence) => {
+      pendingOpenCount = Math.max(0, pendingOpenCount - 1);
+      // The card's own count, decremented — the header must not stand at the
+      // number the page loaded with once a row has gone.
+      pendingDetailEl.textContent = queueSentence(pendingOpenCount);
+      pendingBodyEl.appendChild(noteP(sentence, 'ser-pending-meta'));
+      if (pendingOpenCount === 0) {
+        pendingBodyEl.appendChild(
+          noteP('The queue is empty. Nothing else is waiting on a decision.', 'ser-pending-meta'),
+        );
+      }
+    },
+  });
 }
 
 pendingOpenBtn.addEventListener('click', async () => {
@@ -846,11 +906,23 @@ pendingOpenBtn.addEventListener('click', async () => {
     return;
   }
   if (r.code !== undefined && r.data === undefined) {
-    pendingBodyEl.appendChild(noteP(errorNote(r.status, r.code, 'the confirm queue'), 'ser-pending-meta'));
+    // ⚠️ Standing gets its OWN sentence rather than the generic one. In
+    // practice the fields that draw this card only reach approvers, so this
+    // fires when standing changed between the list read and the queue read —
+    // and a person who cannot act must be told that in words, next to a card
+    // that carries no buttons, rather than shown a control that refuses.
+    pendingBodyEl.appendChild(
+      noteP(
+        r.code === 'approver_only' ? NOT_APPROVER_NOTE : errorNote(r.status, r.code, 'the confirm queue'),
+        'ser-pending-meta',
+      ),
+    );
     return;
   }
 
   const rows = (r.data.pending || []).filter((p) => p.resolved_at === null);
+  pendingOpenCount = rows.length;
+  pendingDetailEl.textContent = queueSentence(pendingOpenCount);
   if (!rows.length) {
     // The list answer said there were some and the queue says otherwise —
     // somebody resolved them since this page loaded. Said, not hidden.
@@ -861,17 +933,13 @@ pendingOpenBtn.addEventListener('click', async () => {
     return;
   }
 
-  for (const row of rows) pendingBodyEl.appendChild(pendingRow(row));
-  // ⚠️ THIS BANNER READS THE QUEUE; IT DOES NOT DECIDE. Resolving a row is a
-  // POST that either MERGES two series under one key or records that they are
-  // genuinely different — a write to a persisted key, taken once and kept so
-  // the decision is never re-asked. That deserves its own considered
-  // affordance rather than a button bolted to a notice, so this says where the
-  // decision lives instead of offering a one-click merge.
+  for (const row of rows) pendingBodyEl.appendChild(queueCard(row));
   pendingBodyEl.appendChild(
     noteP(
-      'Nothing here merges on its own. Deciding one either joins the two spellings under a single ' +
-        'series or records that they are genuinely different — and the decision is kept, so it is never asked twice.',
+      'Nothing here merges on its own. Keeping a name joins both spellings under it and repoints every ' +
+        'entry; “they are different series” records that they are genuinely two. Either way the decision ' +
+        'is kept, so it is never asked twice — and there is no undo button, only the same decision made ' +
+        'again by hand.',
       'ser-pending-meta',
     ),
   );

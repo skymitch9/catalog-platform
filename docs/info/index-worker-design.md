@@ -383,6 +383,77 @@ undone it — a backfill that resolves differently from the push re-creates
 design §1's drift class. It prints them and names the honest fix: an edit to
 `data/universes.json`.
 
+### 8.5.2 Resolving from the page that shows the queue (2026-09-05)
+
+> **Last verified: 2026-09-05** — the route contract and the counts below were
+> read from `apps/index-worker/src/series-route.ts` and exercised by
+> `apps/index-worker/test/series.test.ts` (200 pass / 0 fail) and
+> `scripts/test/apex-series-resolve.test.mjs` (26 pass / 0 fail).
+> ⚠️ **NOT verified:** nobody has pressed the button signed in — that is the
+> owner's step, and it is what `docs/TODO.md` still carries.
+
+**Owner ask, 2026-09-05 17:34 Phoenix.** §8.5's `pending_open` fixed *"a queue
+nobody is told about"*; this fixes the half it left. The card announced six open
+near misses and offered no way to act on one, so the queue was worked with
+hand-run `POST`s carrying a copy-pasted bearer — a worse instrument for the same
+irreversible write, and one that puts an `into` slug in a shell history where a
+typo is a wrong merge nobody can see happening.
+
+**The route did not change and its gate did not change.** `POST
+/api/series/pending/:fold` already took `{"action":"merge","into":…}` and
+`{"action":"separate"}` behind `requireOwnerStanding()`. What was added is one
+ADDITIVE pair of fields on the sibling read:
+
+| Field | On | Is |
+|---|---|---|
+| `candidate_entries` | each `GET /api/series/pending` row | how many `entry` rows sit under `candidate_slug` |
+| `closest_entries` | ditto | ditto for `closest_slug` |
+
+⚠️ **They exist because `into` is a choice and the counts are its evidence.**
+Four of the six real rows in the live queue were a cause already fixed upstream:
+the variant spelling had stopped being pushed, so one of the two slugs held
+**zero** rows and the merge was a formality. Asking a human to pick a survivor
+without showing them that is asking them to guess, and the queue is built never
+to ask again. `0` is therefore a NUMBER and never an omitted key — a missing
+field would render as "unknown", which is the opposite claim.
+
+⚠️ **The count is UNSCOPED and that is only safe because of who reaches it.**
+Owner standing implies every catalog in the visibility set (`middleware/auth.ts`
+computes it rather than storing it), so nothing here is visible to an approver
+whose scope is narrower — *because there is no such approver*. If
+`requireOwnerStanding()` is ever widened (the §8.5 note about `is_approver`),
+**this query has to be scoped in the same commit**, or a narrower approver
+learns how many rows the private catalogs hold under a name. The empty-queue
+case skips the scan entirely, and a test asserts it never touched `entry`.
+
+**On the apex**, the control lives in `sites/heygabi-home/public/assets/series-pending.js`
+rather than in `series/series.js`, breaking that page's "one page, one script"
+convention on purpose: `series.js` cannot be imported in Node (top-level
+`getElementById`; `estate-auth.js` pulls the Firebase SDK off a CDN), so
+anything left inside it can only be checked by READING it — and the shape of an
+irreversible write is not a thing to check by reading. The module imports
+nothing and takes its collaborators as arguments, so the tests drive the real
+code with a stub DOM.
+
+Four decisions in it worth not re-deriving:
+
+- 🔴 **A control per CANDIDATE, never "merge into the closest".** Both
+  directions occur in the live queue: `once upon a broken heart 1` merges into
+  the closest, while `skyward` and `emily wilde` merge into the CANDIDATE
+  (the plain form wins, `data/series-canon.json`'s `canonicalRule`). A one-way
+  button would have silently made the opposite decision on two of six rows.
+  The label names the survivor — *Keep "Skyward" (4 entries)* — so the words
+  and the wire (`into`) say the same thing.
+- **"They are different series" is offered as the equal answer it is.** A queue
+  you can only merge from forces wrong merges.
+- **The row is removed only AFTER the write lands.** "Optimistic" here means the
+  page does not re-fetch the queue to believe the Worker; it does not mean
+  showing a queue shorter than it is.
+- **Outage and permission are worded apart.** `approver_only` says who can act
+  and never "try again shortly" (retrying will not fix standing); a fetch that
+  never landed says *"a connection problem, not a permissions one"* and never
+  mentions approvers. Mislabelling either sends somebody to the wrong fix.
+
 ## 9. Open questions
 
 1. **Push trigger granularity for games** — per-mutation `waitUntil` vs cron

@@ -219,6 +219,8 @@ class FakeDB {
   aliases = new Map<string, { alias_fold: string; slug: string; alias_display: string; decided_how: string }>();
   pending = new Map<string, PendingRecord>();
   cache = new Map<string, { status: string; checked_at: string; visibility: string | null }>();
+  /** Every SELECT the routes actually ran — so a test can assert one did NOT. */
+  selectCalls: string[] = [];
 
   prepare(sql: string) {
     const self = this;
@@ -264,6 +266,7 @@ class FakeDB {
   }
 
   private select(sql: string, args: unknown[]): unknown[] {
+    this.selectCalls.push(sql);
     if (sql.startsWith('SELECT slug, display_name FROM series')) return [...this.series.values()];
     if (sql.startsWith('SELECT alias_fold, slug FROM series_alias')) return [...this.aliases.values()];
     // ⚠️ `loadRegistry` reads OPEN AND RESOLVED (a decision is never re-asked)
@@ -1029,4 +1032,83 @@ test('a RESOLVED queue row stops announcing itself', async () => {
   assert.equal(body.pending_open, 0,
     'resolved rows are KEPT so the question is never re-asked — they must not keep nagging');
   assert.equal('pending_detail' in body, false);
+});
+
+// ---------------------------------------------------------------------------
+// 6. The entry counts that make the apex's resolve control possible (2026-09-05).
+//
+// ⚠️ Each of these fails on a BEHAVIOUR, not a shape: a survivor chosen with no
+// evidence, a zero silently omitted, an unrelated series' rows counted into the
+// answer, or the counts quietly changing who may read the queue.
+// ---------------------------------------------------------------------------
+
+test('the queue carries an entry count for BOTH slugs — the evidence for which one survives', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+
+  const res = await app.request('/api/series/pending', {}, memberEnv(db, OWNER));
+  assert.equal(res.status, 200);
+  const row = ((await res.json()) as any).pending[0];
+  // "Going Home" folded to `survivalist`; "Surviving Home" registered its own
+  // `survivalist-series`. One row each, and the reader can see that.
+  assert.equal(row.closest_entries, 1);
+  assert.equal(row.candidate_entries, 1);
+});
+
+test('an EMPTY slug counts 0 rather than being omitted — 0 is the whole argument for absorbing it', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+  // The cause is fixed upstream: the variant spelling stops being pushed, so
+  // its slug empties out while the queue row stays. This is four of the six
+  // real rows on the day the control was built.
+  db.entries = db.entries.filter((e) => e.series_slug !== 'survivalist-series');
+
+  const res = await app.request('/api/series/pending', {}, memberEnv(db, OWNER));
+  const row = ((await res.json()) as any).pending[0];
+  assert.equal(row.candidate_entries, 0, 'a missing key would render as "unknown", which is the opposite claim');
+  assert.equal('candidate_entries' in row, true, 'present and zero, never absent');
+  assert.equal(row.closest_entries, 1);
+});
+
+test('the counts are per SLUG — an unrelated series is not counted into either side', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+  await push(prodEnv(db), 'library', 'library-token', [
+    book('Words of Radiance', 'The Stormlight Archive', { format: 'book' }),
+    book('Oathbringer', 'The Stormlight Archive', { format: 'book' }),
+  ]);
+
+  const res = await app.request('/api/series/pending', {}, memberEnv(db, OWNER));
+  const row = ((await res.json()) as any).pending[0];
+  assert.equal(row.closest_entries, 1);
+  assert.equal(row.candidate_entries, 1);
+});
+
+test('the counts did NOT widen the gate: a member still gets the worded 403, not a count', async () => {
+  const db = new FakeDB();
+  await seedNearMiss(db);
+
+  const f = stubSeen({ status: 'approved', visibility: ['audiobook'] });
+  try {
+    const res = await app.request('/api/series/pending', {}, memberEnv(db, 'member@example.com'));
+    assert.equal(res.status, 403);
+    const body = (await res.json()) as any;
+    assert.equal(body.error, 'approver_only');
+    assert.ok(!JSON.stringify(body).includes('_entries'), 'a refusal must leak no part of the answer');
+  } finally {
+    f.restore();
+  }
+});
+
+test('an EMPTY queue asks the entry table nothing — the scan is not paid for zero rows', async () => {
+  const db = new FakeDB();
+  await push(prodEnv(db), 'audiobook', 'audio-token', [book('Going Home', 'The Survivalist')]);
+  assert.equal(db.pending.size, 0, 'fixture guard: this seed must produce no near miss');
+
+  const before = db.selectCalls.length;
+  const res = await app.request('/api/series/pending', {}, memberEnv(db, OWNER));
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as any).count, 0);
+  const scans = db.selectCalls.slice(before).filter((s) => s.includes('FROM entry'));
+  assert.deepEqual(scans, [], 'no queue rows, no reason to scan ~2,400 entries');
 });

@@ -168,6 +168,25 @@ interface PendingRow {
  * Open rows by default; `?include=resolved` also returns what was already
  * decided, because "why are these still two series?" is a question the
  * ANSWERED rows answer.
+ *
+ * ⚠️ SINCE 2026-09-05 EACH ROW ALSO CARRIES `candidate_entries` /
+ * `closest_entries`, and they are the reason the apex can offer a button.
+ * `into` decides which spelling SURVIVES and which is absorbed, and the
+ * evidence for that choice is almost always "one of these two slugs holds
+ * rows and the other holds none" — four of the six real rows in this queue on
+ * the day the control was built were exactly that, a cause already fixed
+ * upstream leaving an empty slug behind. Asking a human to pick a survivor
+ * without showing them the counts is asking them to guess, and the guess is
+ * irreversible. ADDITIVE: no existing field changed, and the gate is
+ * unchanged — this route is `requireOwnerStanding()` as it always was.
+ *
+ * ⚠️ The count is UNSCOPED, deliberately, and it is safe here for a reason
+ * this file's header would otherwise forbid: the only callers that reach it
+ * hold owner standing, and an owner's visibility set is every catalog
+ * (`middleware/auth.ts` computes it rather than storing it). If
+ * `requireOwnerStanding()` is ever widened to a non-owner approver, THIS
+ * QUERY has to be scoped in the same commit, or a narrower approver learns
+ * how many rows the private catalogs hold under a name.
  */
 seriesRoutes.get('/series/pending', async (c) => {
   const includeResolved = c.req.query('include') === 'resolved';
@@ -175,14 +194,21 @@ seriesRoutes.get('/series/pending', async (c) => {
     ? 'SELECT * FROM series_pending ORDER BY created_at DESC'
     : 'SELECT * FROM series_pending WHERE resolved_at IS NULL ORDER BY created_at DESC';
   const { results } = await c.env.DB.prepare(sql).all<PendingRow>();
+  const rows = results ?? [];
 
-  const pending = (results ?? []).map((r) => ({
+  const counts = rows.length > 0 ? await entryCountsBySlug(c) : new Map<string, number>();
+
+  const pending = rows.map((r) => ({
     candidate_fold: r.candidate_fold,
     candidate_display: r.candidate_display,
     candidate_slug: r.candidate_slug,
     closest_slug: r.closest_slug,
     closest_display: r.closest_display,
     near_key: r.near_key,
+    // 0 is a real, load-bearing answer here — "this slug holds nothing, so
+    // absorbing it costs nothing" — so it is a number and never omitted.
+    candidate_entries: counts.get(r.candidate_slug) ?? 0,
+    closest_entries: counts.get(r.closest_slug) ?? 0,
     sample_titles: safeJson(r.sample_titles),
     sources: safeJson(r.sources),
     created_at: r.created_at,
@@ -381,6 +407,27 @@ seriesRoutes.get('/series/:slug', async (c) => {
     media,
   });
 });
+
+/**
+ * How many entries sit under each series slug.
+ *
+ * One plain row scan counted in JS — the same shape `GET /api/series` uses and
+ * for the same stated reason (this file's header): no GROUP BY, no second
+ * index, and simple enough that the tests' fake D1 exercises the REAL SQL
+ * rather than a query shape only production would ever run.
+ */
+async function entryCountsBySlug(
+  c: Context<{ Bindings: Env; Variables: ScopeVariables }>,
+): Promise<Map<string, number>> {
+  const { results } = await c.env.DB.prepare(
+    'SELECT series_slug FROM entry WHERE series_slug IS NOT NULL',
+  ).all<{ series_slug: string }>();
+  const counts = new Map<string, number>();
+  for (const row of results ?? []) {
+    counts.set(row.series_slug, (counts.get(row.series_slug) ?? 0) + 1);
+  }
+  return counts;
+}
 
 /** The slug back to its fold. A bijection — `normaliseTitle` leaves no hyphens to confuse. */
 function foldForSlug(slug: string): string {

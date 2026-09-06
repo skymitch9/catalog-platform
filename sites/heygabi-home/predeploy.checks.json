@@ -164,6 +164,26 @@
     },
     {
       "_why": [
+        "The /series confirm queue's RESOLVE control (2026-09-05, owner ask 17:34 Phoenix). It carries the shape",
+        "of an IRREVERSIBLE write — a merge repoints every entry under the absorbed spelling and the queue is",
+        "built never to ask again — so a deploy that shipped a stale copy of this file would leave a card whose",
+        "buttons take the wrong decision silently. Markers chosen so they DISAPPEAR if the thing breaks: both",
+        "action strings the route accepts, the survivor-naming label (a control that could only merge into the",
+        "closest slug would get `skyward` and `emily wilde` backwards), and BOTH halves of the refusal split —",
+        "an outage worded as a permissions problem, or the reverse, is the defect this file exists to catch."
+      ],
+      "path": "/assets/series-pending.js",
+      "mustContain": [
+        "action: 'merge'",
+        "action: 'separate'",
+        "Keep “",
+        "Resolving is for approvers",
+        "connection problem, not a permissions one",
+        "export function pendingCard"
+      ]
+    },
+    {
+      "_why": [
         "The module behind the '+' on the Books and Games cards (docs/info/request-a-catalog-design.md §4).",
         "Markers chosen so they DISAPPEAR if the thing breaks: the two route paths it is built against (§3.6),",
         "the review step that must exist before anything POSTs, the fail-hidden approved check, and the outage",
@@ -914,7 +934,9 @@
         "pending_detail",
         "catalog-registry.js",
         "holdingLabel",
-        "REGISTRY_DOWN_NOTICE"
+        "REGISTRY_DOWN_NOTICE",
+        "series-pending.js",
+        "async function postIndex"
       ],
       "mustNotContain": [
         "const SOURCE_LABELS =",
