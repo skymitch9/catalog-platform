@@ -465,9 +465,49 @@ deploy.**
 |---|---|---|
 | **0 — extract** | The four modules (§2.2); the script rewired to call them. **No route, no cron.** | 🔴 **The script's dry-run output is BYTE-IDENTICAL before and after.** Capture `npm run backfill:audiobooks -- --remote` to a file on the current code, re-run after the extraction, `diff` must be empty. The report block was written to be read line by line; that is what makes it the diff instrument |
 | **1 — route, dark** | `POST …/sweep` with `dryRun` only. No cron string. | The route's plan on the live snapshot equals the script's plan on the same CSV — same edition keys, same `matched_via`, same rung set, same stale set |
-| **2 — shadow** | Cron string added; handler computes the plan and **writes nothing**, logging what it would have done. STEP 11 still does the writing. | **Zero divergences over a week** (≥42 ticks). A divergence here is almost certainly the §2.4 canon skew — diagnose it, do not wave it through |
+| **2 — shadow** | Cron string added; handler computes the plan and **writes nothing**, logging what it would have done. STEP 11 still does the writing. 🔴 **A shadow tick fetches UNCONDITIONALLY** — see the correction under this table. | **Zero divergences over a week** (≥42 ticks), read off `/api/health` → `detail.audiobookSweep.gate` on **both** instances: `cronPlanTicks ≥ 42` and `seriesVolumeTicks ≥ 42`. ⚠️ `divergences` there is always `null` and `null` means NOT MEASURED — the comparison against the script's dry run is a person's, and stays one. A divergence is almost certainly the §2.4 canon skew — diagnose it, do not wave it through |
 | **3 — enforce** | The cron writes. The on-add hook goes live. **STEP 11 keeps running unchanged.** | STEP 11 finds **nothing to do** on consecutive runs — which is itself the proof the route is working, and costs nothing since the sweep is idempotent |
 | **4 — steady state** | STEP 11 becomes a **verifier**: it runs, and *reports* if it found work to do, because that means the route is failing. | — |
+
+### 🔴 Correction, 2026-09-06 — "a week (≥42 ticks)" was arithmetic that did not hold
+
+**Measured after a day of phase 2: 3 run rows per instance, 1 with a plan, 0
+carrying `seriesVolumes`.** The tick sent `If-None-Match` from the stored
+snapshot and the sibling CSV's etag had not moved since `04:23Z`, so five of six
+ticks returned `304` — and the `304` return sits upstream of the parse, the D1
+read and **both** planners. The mode whose entire purpose is evidence produced
+none while its input was quiet, and at ≈3 CSV changes a day *"a week at
+four-hourly"* was really **~14 days**. A flip to `enforce` was attempted on the
+belief that the evidence was in, and refused on the reading.
+
+Fixed in `library_catalog` `c19fbbf`, deployed to both instances the same day:
+
+1. **A full-scope `shadow` tick sends no `If-None-Match`**, so it cannot be
+   `304`'d and always computes both halves. `enforce` and `off` keep the
+   conditional GET and the short-circuit — there, nothing changed genuinely means
+   nothing to write. The on-add hook keeps it too: a scoped run plans no series
+   volumes at all (guard 3), so 1.4 MB per book added would buy no evidence.
+   Cost: ~17 MB/day across the pair, for as long as shadow lasts.
+2. **`POST …/sweep` takes `force`**, which skips `If-None-Match`. ⚠️ §7.1 calls
+   `dryRun` *"the ONLY way to answer the phase-1 gate"* and **for a day it could
+   not** — it `304`'d like everything else and returned `plan: null`. The two
+   flags are independent: `force` decides what is fetched, `dryRun` and the mode
+   decide what is written.
+3. **`/api/health` publishes the gate's own counters** (§7.2's key gains
+   `gate`), because every other field there reads only the LATEST run row — which
+   is exactly how one `304` hid every plan before it.
+
+⚠️ **The design's assumption worth naming, since it is what made a replay
+impossible:** §3.3 and §4.3 both assume the parsed rows are cached somewhere, and
+migration 0470 caches an `etag`, a `fetched_at` and a `row_count` — *"neither
+table is a cache of the CSV"*, in its own words. There are no rows in the
+database to re-plan over, so re-fetching is the smallest honest way to get a plan
+out of a quiet input. A tick that re-fetches an unchanged body is marked
+`unchanged-replayed` and does **not** re-stamp `fetched_at`, or the freshness
+number would peg at zero and stop being able to say the sibling pipeline had
+died.
+
+Operating it: `library_catalog/docs/access/audiobook-sweep.md` §2, §3 and §6.
 
 🔴 **The script is NEVER retired, and the disk path stays.** Three reasons:
 1. It is the **only** path that works when the Worker is down — which is exactly
