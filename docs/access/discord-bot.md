@@ -97,7 +97,7 @@ mechanics research: `audiobook_catalog/docs/info/discord-poll-sync-research.md`.
 | Identity-link ceremony (OAuth2 `identify`, writes `discord_links/*`) | **Built + deployed 2026-08-17.** ✅ **No longer dark** — `DISCORD_CLIENT_SECRET` is set and `/api/health` reports `link_ready: true` (measured 2026-08-17). ⚠️ `/link` still has to be PUBLISHED (§4) before anyone can type it |
 | `/link`, `/have` and `/gabi` slash commands | **Written, NOT PUBLISHED** — Discord shows only what an app PUTs. ⚠️ None of the three exists in Discord until someone runs §4; `/have` and `/gabi` need nothing else and work the moment they are published |
 | `/have` — "is this book on the estate's shelves?" | **Built + deployed 2026-08-17** (§9). Answers at the PUBLIC audiobook scope for everyone, with **no credential on the call** — that absence IS the scope decision. Needs no switch-on beyond §4 |
-| `/gabi` — the fixer's Discord surface, **shape (b) propose-and-deep-link** | **Built + deployed 2026-08-17** (§10), version `03bd6a3a`. A best-effort answer from the same public slice **plus a deep link into the real GABI panel** on `padhard.heygabi.ai`. ⚠️ **No write, no model call, no new secret** — that is the whole reason it could ship without any of the design's four blockers being solved. Needs no switch-on beyond §4 |
+| `/gabi` — the fixer's Discord surface, **shape (b) propose-and-deep-link** | **Built + deployed 2026-08-17** (§10), version `03bd6a3a`. A best-effort answer from the same public slice **plus a deep link into the real GABI panel** — the asker's own instance since 2026-08-18 (§10.3), falling back to `library.heygabi.ai` (⚠️ was `padhard.heygabi.ai`; corrected 2026-09-05). ⚠️ **No write, no model call, no new secret** — that is the whole reason it could ship without any of the design's four blockers being solved. Needs no switch-on beyond §4 |
 | `/timeout` + `/cleanup` (moderation) | **Built + deployed 2026-08-17, SHIPPING DARK AND UNPUBLISHED** (§9). Every path answers a worded "moderation is switched off" while `MODERATION_ENABLED` is anything but `"on"`, and the two commands are not published to Discord at all until it is |
 | `MODERATION_ENABLED` | **`"off"`** — owner's evidence-gated flip, never an agent's, never a deploy side effect (§9.5) |
 | Bot-posted poll messages with buttons, tally refresh, close propagation (phase 3) | **Built + deployed 2026-08-17, SHIPPING DARK.** `POST /polls/sync` answers a worded 503 until `POLL_SYNC_TOKEN` is minted (§8). Nothing has been posted to any channel yet |
@@ -741,9 +741,12 @@ ever renumbered.)*
    the only surface this Worker can reach. The question is prose, so it is
    reduced to a searchable term first, and the answer **states the term it
    searched** — a bad reduction is then visible rather than mysterious.
-2. **A deep link into the real GABI panel** at `https://padhard.heygabi.ai/`,
-   with the wording *"GABI can dig deeper and propose fixes on the site"*, and
-   **the question quoted back for copy-paste**.
+2. **A deep link into the real GABI panel** — the asker's own instance when the
+   estate can place them (§10.3), and `https://library.heygabi.ai/` when it
+   cannot — with the wording *"GABI can dig deeper and propose fixes on the
+   site"*, and **the question quoted back for copy-paste**.
+   ⚠️ **CORRECTED 2026-09-05**: this said `https://padhard.heygabi.ai/`, the
+   pilot host. See §10.3's fallback note.
 
 | Caller state | What they get |
 |---|---|
@@ -789,7 +792,21 @@ their linked identity, reusing Tier 1's `whoami` port read-only:
 | `runResearch` on one instance | that instance |
 | `runResearch` on both | the main library |
 | an account, no capability | that instance; on both → the main library |
-| unlinked / unresolved / outage | the configured `GABI_PANEL_URL` |
+| unlinked / unresolved / outage | the configured `GABI_PANEL_URL` — **`https://library.heygabi.ai` since 2026-09-05** |
+
+⚠️ **THE FALLBACK MOVED, 2026-09-05 — the same bug, half a step behind.** The
+2026-08-18 fix routed *linked* askers and left the fallback on the pilot host,
+because ~~"the main library has the panel off by decision 8, so linking there
+would offer a panel that does not exist"~~. That premise had been false for a
+day when it was written: `library_catalog` `34f1301` (2026-08-17, *"the main
+catalog's panel goes ON (owner: for Amber)"*) switched it on. Measured
+2026-09-05, **both** `library.heygabi.ai/api/health` and
+`padhard.heygabi.ai/api/health` answer
+`gabi: {"panel": true, "delegated": true, "edge": "full"}`. So an **unlinked**
+asker — and any Worker with no identity port — no longer lands on Samantha's
+shelf; `wrangler.toml`'s `GABI_PANEL_URL` and `src/panel.ts`'s
+`DEFAULT_PANEL_BASE` are both the main library, the estate's default in the
+table above. ⚠️ Still **not** the apex, for the reason stated above.
 
 ⚠️ It is **not** gated on `GABI_DELEGATED_WRITES` (a `whoami` mutates nothing),
 but it **is** gated on the port existing — `estate_app_token_discord` **and**
@@ -921,8 +938,9 @@ which is different from connected-and-quiet.
 ```
 
 Expected: a shelf answer; a short chat reply that admits she cannot change
-anything from Discord; and a propose-and-deep-link reply carrying
-`padhard.heygabi.ai`. With no Anthropic key set, the middle one degrades to a
+anything from Discord; and a propose-and-deep-link reply carrying **the asker's
+own instance** — `library.heygabi.ai` for an unlinked tester (⚠️ was
+`padhard.heygabi.ai`; the fallback moved 2026-09-05, §10.3). With no Anthropic key set, the middle one degrades to a
 worded template — ⚠️ and in **no** case should a channel ever see the words
 "API key", "not configured" or a bare status.
 

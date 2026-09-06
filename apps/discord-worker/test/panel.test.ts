@@ -21,6 +21,20 @@
  *
  * Everything below runs with no network and no secret: the identity port is an
  * interface, which is the entire reason it is one.
+ *
+ * ⚠️ **UPDATED 2026-09-05 — a fifth failure, the same bug half a step behind.**
+ * The 2026-08-18 fix routed *linked* askers and left the FALLBACK on the pilot
+ * host, because ~~"the main library has the panel off by decision 8"~~. That was
+ * already false: `library_catalog` `34f1301` (2026-08-17) turned the main
+ * catalog's panel ON, and both instances measured `gabi.panel: true` on
+ * 2026-09-05. `DEFAULT_PANEL_BASE` is now `library.heygabi.ai`.
+ *
+ * ⚠️ **That change WEAKENED two tests, and both were repaired rather than left
+ * green.** "the link is `library.heygabi.ai`" stopped being evidence that the
+ * resolution ran, because the fallback now says the same thing. The routing
+ * cases in §4 and §5 therefore pass a **sentinel** fallback (`panel.example`)
+ * that no resolution can produce, and §4 gained a mirror case that resolves
+ * somebody onto `padhard` — a host the fallback can no longer reach.
  */
 
 import assert from 'node:assert/strict';
@@ -84,7 +98,10 @@ describe('⚠️ the link carries the question the panel will prefill', () => {
     const url = new URL(panelDeepLink(DEFAULT_PANEL_BASE, 'fix the author on Mistborn'));
     assert.equal(url.searchParams.get('gabi'), 'fix the author on Mistborn');
     assert.equal(url.searchParams.get('q'), null);
-    assert.equal(url.origin + url.pathname, 'https://padhard.heygabi.ai/');
+    // ⚠️ CHANGED 2026-09-05 — the static fallback is the MAIN library now
+    // (`library_catalog` `34f1301` turned its panel on 2026-08-17; the constant
+    // did not move until today). This assertion is about the PATH, not the host.
+    assert.equal(url.origin + url.pathname, 'https://library.heygabi.ai/');
   });
 
   it('encodes what people actually type — ampersands, hashes, quotes, accents', () => {
@@ -174,7 +191,7 @@ describe('⚠️ the destination is the ASKER\'S shelf, not the pilot host', () 
     );
   });
 
-  it('an ACCOUNT but no capability still beats the pilot default', () => {
+  it('an ACCOUNT but no capability still beats the static fallback', () => {
     // The panel may not open — that is the destination's call and this end
     // cannot see the posture — but it is at least their own site, where signing
     // in means something.
@@ -307,11 +324,23 @@ describe('the resolver is cheap, and every failure lands on the fallback', () =>
 // ---------------------------------------------------------------------------
 
 describe('⚠️ /gabi answers with the asker\'s own panel, loaded with their question', () => {
-  /** Runs one `/gabi` turn against stubbed everything and returns what it said. */
-  async function runGabi(panel?: {
-    port: PanelIdentityPort;
-    instances: readonly LibraryInstance[];
-  }): Promise<string> {
+  /**
+   * Runs one `/gabi` turn against stubbed everything and returns what it said.
+   *
+   * ⚠️ **`fallback` is a parameter, and that is load-bearing since 2026-09-05.**
+   * The static fallback became `library.heygabi.ai` that day, which is also the
+   * instance a main-library asker resolves TO — so a test that leaves the
+   * fallback at its default cannot tell "the resolution ran" from "the
+   * resolution never happened". The routing tests pass a SENTINEL host that no
+   * resolution can produce; the fallback tests pass the real default.
+   */
+  async function runGabi(
+    panel?: {
+      port: PanelIdentityPort;
+      instances: readonly LibraryInstance[];
+    },
+    fallback: string = FALLBACK,
+  ): Promise<string> {
     const original = globalThis.fetch;
     let said = '';
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -332,7 +361,7 @@ describe('⚠️ /gabi answers with the asker\'s own panel, loaded with their qu
         applicationId: 'app',
         interactionToken: 'tok',
         indexBaseUrl: 'https://index.test',
-        panelUrl: FALLBACK,
+        panelUrl: fallback,
         discordUserId: 'd1',
         ...(panel ? { panel } : {}),
       });
@@ -342,16 +371,40 @@ describe('⚠️ /gabi answers with the asker\'s own panel, loaded with their qu
     return said;
   }
 
+  /** ⚠️ A host NO resolution can ever return. Every routing assertion below is
+   *  written against this, so "the link is the main library" cannot be
+   *  satisfied by the fallback quietly doing nothing. */
+  const SENTINEL = 'https://panel.example/';
+
   it('with an identity port: HIS shelf, and the question in the URL', async () => {
     const port = portFor({ ok: true, uid: 'uid-1234567' }, (instance) =>
       instance.app === 'library' ? researcher() : stranger(),
     );
-    const said = await runGabi({ port, instances: INSTANCES });
+    // ⚠️ The fallback is the SENTINEL, not the default. Since 2026-09-05 the
+    // default fallback IS `library.heygabi.ai`, so matching that host proves
+    // nothing unless the fallback is somewhere else entirely.
+    const said = await runGabi({ port, instances: INSTANCES }, SENTINEL);
 
-    assert.match(said, /library\.heygabi\.ai/, '⚠️ the pilot host came back');
+    assert.match(said, /library\.heygabi\.ai/, '⚠️ the resolution did not run');
+    assert.doesNotMatch(said, /panel\.example/, '⚠️ it fell back instead of resolving');
     assert.doesNotMatch(said, /padhard\.heygabi\.ai/);
     // The question, encoded into the link — the whole point of the prefill.
     assert.match(said, /gabi=fix\+the\+author|gabi=fix%20the%20author/);
+  });
+
+  it('⚠️ and HER shelf when she is the one asking — routing, not a constant', async () => {
+    // The mirror of the test above, and the half that survives any future move
+    // of the default: `padhard` is now reachable ONLY by resolving somebody
+    // onto it. If the resolution stops running, this fails and that one might
+    // not.
+    const port = portFor({ ok: true, uid: 'uid-7654321' }, (instance) =>
+      instance.app === 'library2' ? researcher() : stranger(),
+    );
+    const said = await runGabi({ port, instances: INSTANCES }, SENTINEL);
+
+    assert.match(said, /padhard\.heygabi\.ai/, 'this asker genuinely IS on that shelf');
+    assert.doesNotMatch(said, /panel\.example/);
+    assert.doesNotMatch(said, /library\.heygabi\.ai/);
   });
 
   it('WITHOUT a port it behaves exactly as it did — static link, same words', async () => {
@@ -359,14 +412,20 @@ describe('⚠️ /gabi answers with the asker\'s own panel, loaded with their qu
     // Worker whose app token or service account is unset. Asker-awareness that
     // broke the command when it was unavailable would be worse than the bug.
     const said = await runGabi();
-    assert.match(said, /padhard\.heygabi\.ai/);
+    assert.match(said, /library\.heygabi\.ai/);
+    assert.doesNotMatch(said, /padhard\.heygabi\.ai/, '⚠️ the pilot default came back');
     assert.match(said, /GABI can dig deeper/);
   });
 
-  it('an unlinked asker keeps the pilot default AND the /link nudge', async () => {
+  it('an unlinked asker gets the MAIN LIBRARY AND the /link nudge', async () => {
+    // ⚠️ CHANGED 2026-09-05 — this used to say "keeps the pilot default", and
+    // the pilot default was a second household's shelf. `library_catalog`
+    // `34f1301` (2026-08-17) turned the main catalog's panel on; both instances
+    // measured `panel: true` on 2026-09-05.
     const port = portFor({ ok: false, reason: 'unlinked' }, () => null);
     const said = await runGabi({ port, instances: INSTANCES });
-    assert.match(said, /padhard\.heygabi\.ai/);
+    assert.match(said, /library\.heygabi\.ai/);
+    assert.doesNotMatch(said, /padhard\.heygabi\.ai/);
     // ⚠️ The wording is unchanged: somebody with no account anywhere gets a
     // real panel that will ask them to sign in, plus the sentence that tells
     // them how to link. Neither half is a dead end.
@@ -378,7 +437,7 @@ describe('⚠️ /gabi answers with the asker\'s own panel, loaded with their qu
     const said = await runGabi({ port, instances: INSTANCES });
     assert.doesNotMatch(said, /not linked to an estate identity/);
     assert.doesNotMatch(said, /\/link. connects them/);
-    assert.match(said, /padhard\.heygabi\.ai/);
+    assert.match(said, /library\.heygabi\.ai/);
   });
 });
 
@@ -392,7 +451,14 @@ describe('⚠️ REGRESSION: a fix-shaped ask points at the asker\'s shelf', () 
    *  lane that produced the padhard link. */
   const HIS_SHAPE = 'the author on Mistborn is wrong';
 
-  async function runMention(delegate: PanelIdentityPort | null): Promise<string> {
+  /** ⚠️ `fallback` defaults to the real static default, but the ROUTING cases
+   *  below pass a sentinel — since 2026-09-05 the default fallback is
+   *  `library.heygabi.ai`, so "the link is the main library" is only evidence of
+   *  resolution when the fallback is somewhere a resolution cannot reach. */
+  async function runMention(
+    delegate: PanelIdentityPort | null,
+    fallback: string = FALLBACK,
+  ): Promise<string> {
     const trigger = mentionTrigger(
       {
         id: '900',
@@ -446,7 +512,7 @@ describe('⚠️ REGRESSION: a fix-shaped ask points at the asker\'s shelf', () 
         trigger,
         {
           indexBaseUrl: 'https://index.test',
-          panelUrl: FALLBACK,
+          panelUrl: fallback,
           instances: INSTANCES,
           // ⚠️ WRITES OFF. Resolving where a link points is a READ, and turning
           // Tier 1 off must not send everybody back to the pilot host.
@@ -477,14 +543,21 @@ describe('⚠️ REGRESSION: a fix-shaped ask points at the asker\'s shelf', () 
     const port = portFor({ ok: true, uid: 'uid-1234567' }, (instance) =>
       instance.app === 'library' ? researcher() : stranger(),
     );
-    const reply = await runMention(port);
+    // ⚠️ The fallback is a SENTINEL. Without it this test would pass on a
+    // Worker whose resolution never ran at all, because since 2026-09-05 the
+    // static fallback is `library.heygabi.ai` too.
+    const reply = await runMention(port, 'https://panel.example/');
     assert.match(reply, /library\.heygabi\.ai/);
+    assert.doesNotMatch(reply, /panel\.example/, '⚠️ it fell back instead of resolving');
     assert.doesNotMatch(reply, /padhard\.heygabi\.ai/, "⚠️ the owner's exact complaint came back");
   });
 
   it('with no identity port the surface is unchanged — the static link, and it works', async () => {
+    // ⚠️ CHANGED 2026-09-05: the static link is the MAIN library now, not the
+    // pilot host — `library_catalog` `34f1301` turned its panel on 2026-08-17.
     const reply = await runMention(null);
-    assert.match(reply, /padhard\.heygabi\.ai/);
+    assert.match(reply, /library\.heygabi\.ai/);
+    assert.doesNotMatch(reply, /padhard\.heygabi\.ai/);
     assert.match(reply, new RegExp(`${PANEL_PREFILL_PARAM}=`), 'the prefill needs no port');
   });
 });

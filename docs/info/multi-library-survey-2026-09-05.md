@@ -294,7 +294,7 @@ Mostly done by W4-FED-INDEX. What remains is the shape of adding **catalog N**:
 | `src/suggest.ts:143` `PHYSICAL_SOURCE_INSTANCE = 'library'` | ⚠️ **every print suggestion is gated on the MAIN library**, because `catalog.csv`'s `library_work_id` is a bare integer naming no instance (`:104-135`) | the join must carry an instance, which is a change in `audiobook_catalog` (`LIBRARY_MAPPING_URL`), not here. **This is the deepest single-library assumption in the estate** | L |
 | `src/suggest.ts:753-755` | `'the library, as an ebook'` / `'the library, in print'` | never says WHOSE, and calls a shared ebook "the library". **F3** | S |
 | `src/suggest.ts:592` | `<https://library.heygabi.ai>` as *"the real shelf"* | registry | S |
-| `src/panel.ts:72` `DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai'` | a relic of the padhard-only pilot; the file's own header records the owner complaining *"why is it showing padhard and not the generic site"* | already partly addressed; verify against the registry | S |
+| ~~`src/panel.ts:72` `DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai'`~~ **→ `https://library.heygabi.ai`, 2026-09-05** | a relic of the padhard-only pilot; the file's own header records the owner complaining *"why is it showing padhard and not the generic site"* | ✅ **the hard-coded HOST is fixed** (owner "Yes fix" 2026-09-05; `wrangler.toml` + the constant now name the main library). ⚠️ **The registry work is NOT done** — it is still a literal, not a lookup | S |
 | `src/env.ts:209` | comment: GABI knows `library` and `library2` — "that is measured" | will go stale the moment a third exists | S |
 
 ### 3.5 · `catalog-platform` — `packages/estate-auth`, `apps/audiobook-worker`, `apps/ebooks-door`

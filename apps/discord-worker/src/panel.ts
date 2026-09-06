@@ -16,6 +16,17 @@
  * hostname. The right answer is **the asker's own catalog**, resolved from the
  * identity they linked themselves.
  *
+ * ⚠️ **THE SAME BUG, HALF A STEP BEHIND — CLOSED 2026-09-05.** The 2026-08-18
+ * fix routed *linked* askers correctly and left the FALLBACK where the pilot
+ * put it, on the reasoning ~~that the main library's panel was off by decision
+ * 8~~. That reasoning had already been false for a day when it was written:
+ * `library_catalog` `34f1301` (2026-08-17) turned the main catalog's panel ON
+ * for Amber. Measured 2026-09-05, both instances answer `gabi: {"panel": true,
+ * "delegated": true, "edge": "full"}`. So an UNLINKED asker — and any Worker
+ * with no identity port — no longer lands on Samantha's shelf; the fallback is
+ * the main library, which is the estate's default in the table below and a real
+ * panel that will ask them to sign in.
+ *
  * ## The resolution, and the machinery it reuses
  *
  * Tier 1 already built the only honest way to ask this question: the
@@ -32,13 +43,14 @@
  * | the capability on both | **the main library**, the estate's default |
  * | no capability, but an account on one | that instance — it is still *their* site |
  * | no capability, accounts on both | the main library |
- * | unlinked, or nothing could be resolved | the configured `GABI_PANEL_URL` |
+ * | unlinked, or nothing could be resolved | the configured `GABI_PANEL_URL` — **the main library** since 2026-09-05 |
  *
  * ⚠️ **The unlinked fallback is deliberate and is NOT a dead end.** Somebody
- * with no account anywhere gets the pilot default, which is a real panel that
- * will ask them to sign in — strictly better than the apex, which has nothing to
- * sign in to. Flows that already word the `/link` nudge keep wording it; this
- * only decides a URL.
+ * with no account anywhere gets **the main library** — the estate's default in
+ * the row above, and a real panel that will ask them to sign in — strictly
+ * better than the apex, which has nothing to sign in to, and better than the
+ * ~~pilot default~~ it replaced, which was a second household's shelf. Flows
+ * that already word the `/link` nudge keep wording it; this only decides a URL.
  *
  * ⚠️ **An outage falls back rather than guessing.** A `whoami` that could not be
  * reached is not evidence that the person has no account there, so it never
@@ -67,9 +79,21 @@
 import type { Env } from './env.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from './delegated.js';
 
-/** Where the pilot pointed, and still the fallback for somebody the estate
- * cannot place. ⚠️ Not the apex: `heygabi.ai` runs no panel. */
-export const DEFAULT_PANEL_BASE = 'https://padhard.heygabi.ai';
+/** The fallback for somebody the estate cannot place: **the main library**, the
+ * same instance this file's own resolution table calls "the estate's default",
+ * and a real panel that will ask them to sign in.
+ *
+ * ⚠️ **CHANGED 2026-09-05**, from `https://padhard.heygabi.ai` — ~~the pilot
+ * host, kept because "the main library has the panel off by decision 8"~~. That
+ * premise died with `library_catalog` `34f1301` (2026-08-17, *"the main
+ * catalog's panel goes ON (owner: for Amber)"*) and nobody moved the constant.
+ * Measured 2026-09-05: both `library.heygabi.ai/api/health` and
+ * `padhard.heygabi.ai/api/health` answer `gabi: {"panel": true, "delegated":
+ * true, "edge": "full"}`, so the fallback no longer has to be somebody else's
+ * shelf.
+ *
+ * ⚠️ Still NOT the apex: `heygabi.ai` runs no panel. */
+export const DEFAULT_PANEL_BASE = 'https://library.heygabi.ai';
 
 /**
  * ⚠️ **MEASURED, not chosen**, and re-measured against the DEPLOYED bundle on
@@ -163,8 +187,8 @@ export interface PanelAnswer {
  * ⚠️ **Capability first, account second.** Somebody with `runResearch` on one
  * shelf and a bare account on the other should land where the panel will
  * actually open for them. Only when nobody can research does an account alone
- * decide it — and that is still better than the pilot default, because it is at
- * least *their* site.
+ * decide it — and that is still better than the static fallback, because it is
+ * at least *their* site.
  */
 export function choosePanelBase(answers: readonly PanelAnswer[], fallbackBase: string): string {
   const known = answers.filter((a) => a.who !== null && a.who.known === true);

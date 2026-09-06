@@ -86,8 +86,12 @@ const PANEL = panelDeepLink(DEFAULT_PANEL_BASE);
 // ===========================================================================
 
 test('the BARE deep link still works — /api/health has no question to give it', () => {
-  assert.equal(panelDeepLink(DEFAULT_PANEL_BASE), 'https://padhard.heygabi.ai/');
-  assert.equal(DEFAULT_PANEL_BASE, 'https://padhard.heygabi.ai');
+  // ⚠️ CHANGED 2026-09-05: the fallback is the MAIN library, not the pilot host.
+  // `library_catalog` `34f1301` (2026-08-17) turned the main catalog's panel on,
+  // so the "padhard is the only panel" premise this constant rested on had been
+  // false for nineteen days. Both instances measured `panel: true` that day.
+  assert.equal(panelDeepLink(DEFAULT_PANEL_BASE), 'https://library.heygabi.ai/');
+  assert.equal(DEFAULT_PANEL_BASE, 'https://library.heygabi.ai');
   // ⚠️ SUPERSEDED 2026-08-18 — this assertion used to be "no query string, and
   // that is measured". The panel half landed; the property that survived is
   // that the argument is OPTIONAL, because the health row calls this with no
