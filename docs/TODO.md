@@ -10,18 +10,35 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — ONE owner step left
+## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
-> thirteen of them closed. **Item 7 stopped being his on 2026-09-06** — it was
-> looked up rather than asked (see below), so **9** is the only step left that
-> genuinely needs him. Items **14** (the federation eyeball), **16**'s forced
-> dry-run and the `ebooks.heygabi.ai` CORS question live with the federation
-> section below, beside the evidence they need.
+> thirteen of them closed. **Item 7's QUESTION was looked up rather than asked
+> on 2026-09-06 (Book 3)** — but the remaining step is a look at the physical
+> book (see below), which only he can take; **9** is the other step that
+> genuinely needs him. Items **14** (the federation eyeball) and **16**'s forced
+> dry-run live with the federation section below, beside the evidence they need.
+> ✅ **The `ebooks.heygabi.ai` CORS question was ANSWERED "1. Yes" at 13:41
+> Phoenix, built and deployed the same afternoon**, and moved WHOLE to
+> [`DONE.md`](DONE.md).
 
-- [ ] **7 · Space Knight `9781986619233` — ONE EDIT, ANSWER FOUND: it is BOOK 3.**
-      ⚠️ **No longer an owner question** — resolved by lookup 2026-09-06 (agent
-      W11-LOOKUPS) rather than asked, and **the conductor applies the edit**.
+- [ ] 🧑 **7 · Space Knight `9781986619233` — the VOLUME is answered (Book 3);
+      whether the row gets it back is a ten-second look at the BOOK.**
+      ⚠️ **Conductor correction, 2026-09-06 14:00 Phoenix — the edit below was
+      NOT applied, and must not be applied on this evidence.** The lookup
+      (W11-LOOKUPS) settled which volume the number belongs to. It did **not**
+      settle why ed#344 lost it: tier C did not clear it as a wrong volume, it
+      cleared it under the owner's standing rule
+      (`library_catalog/docs/info/isbn-ladder.md` §7.6 — *"an in-stock
+      crowdfunded printing with no ISBN has none"*), because ed#344 is his
+      **Crowdfunded print copy** and the value was a research fill, not a
+      number he recorded off the object. `9781986619233` is the CreateSpace
+      trade paperback's ISBN; whether his Kickstarter copy of *Book 3* carries
+      that same number on its back cover is a fact about the physical object.
+      **Owner step (10 s): pick up Book 3 and read the barcode.** If it says
+      `978-1-98661-923-3`, say so and the edit below runs with `source =
+      'manual'`; if it carries no ISBN or a different one, the row stays NULL
+      (or takes the different one) and this item closes.
 
       **The answer, from two independent sources that agree:**
       | Source | Reads |
@@ -35,12 +52,13 @@
       the finding rests on Open Library + isbnsearch, not on the source that
       originally mis-proposed it.
 
-      🔴 **So the row that landed was RIGHT, and tier C cleared a correct
-      value.** `DONE.md` in `library_catalog` (*"the Space Knight
-      one-ISBN-five-volumes title gate"*) records that ed#344 *"was cleared for
-      an unrelated reason — tier C, applied 2026-09-06 02:32:09Z"*, and that
-      **nobody had established which volume it belonged to**. It belonged to the
-      one it was on.
+      **So the VOLUME on the cleared row was right** — `DONE.md` in
+      `library_catalog` (*"the Space Knight one-ISBN-five-volumes title gate"*)
+      records that ed#344 *"was cleared for an unrelated reason — tier C, applied
+      2026-09-06 02:32:09Z"*, and that **nobody had established which volume it
+      belonged to**. It belonged to the one it was on. ⚠️ But "right volume" and
+      "belongs on this row" are different claims — see the correction at the top
+      of this item.
 
       **Re-measured on the live main D1, 2026-09-06 (read-only,
       `wrangler d1 execute library-catalog --remote`):** work **251** =
@@ -406,6 +424,11 @@ window began ~14 minutes later. A directory that is cold-starting when a fresh
 isolate first reads it is exactly the shape that would produce a memo'd failure
 in some isolates and not others. **Nothing measured supports this yet;** the
 reason row is what would confirm or kill it in one curl.
+⚠️ **A SECOND index-worker redeploy has since happened and gives the candidate
+a fresh window to be tested in:** `2fe2fbf` at **20:49:47Z** (the
+`ebooks.heygabi.ai` `READ_ORIGINS` widening, deployment
+`f9c2c1dc-188e-4297-b096-68380229420c`). Nothing was measured about the fallback
+around it — noted only so the next check has two redeploy times, not one.
 
 ---
 
@@ -427,17 +450,6 @@ reason row is what would confirm or kill it in one curl.
       the `library2` row. ⚠️ **Nobody else can do it:** `vis_library2` is
       owner-only (`DEFAULT 0`), so a signed-out or non-owner visitor sees
       exactly what they saw before the build.
-- [ ] ❓ 🧑 **`ebooks.heygabi.ai` and the index Worker's `READ_ORIGINS` — it
-      needs its own "Yes".** `padhard.heygabi.ai` was added on his explicit
-      "Yes" and DEPLOYED (`4ef4816`, index-worker
-      `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
-      `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`); CORS re-measured 2026-09-06
-      07:38 Phoenix — padhard gets `access-control-allow-origin`,
-      `evil.example.com` gets none. `ebooks.heygabi.ai` was **deliberately not
-      added**: nothing on that host calls the index today and he was asked
-      about padhard only. Access-increasing, so it is confirmed, never assumed.
-      ⚠️ **NOT verified either way: nobody has loaded padhard's search box in a
-      browser.**
 - [ ] 🧑 **The audiobook re-vendor is on the `/dev/` lane only — its prod
       needs `gh workflow run promote.yml`, and that is the owner's explicit
       request to make.** `2b4ba2f` in `audiobook_catalog`
