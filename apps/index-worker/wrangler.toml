@@ -80,10 +80,24 @@ BILLING_POLICY = "off"
 # on padhard sees exactly what an anonymous caller on the apex sees, and
 # Samantha's own rows still need `vis_library2`.
 #
-# ⚠️ `ebooks.heygabi.ai` is the SAME question and is deliberately still absent:
-# nothing on that host calls the index today, and the owner was asked about
-# padhard only. Adding it needs its own "Yes".
-READ_ORIGINS = "https://heygabi.ai,https://library.heygabi.ai,https://boardgames.heygabi.ai,https://audiobooks.heygabi.ai,https://padhard.heygabi.ai"
+# ⚠️ ACCESS-INCREASING CHANGE 2026-09-06 (the second of the day) —
+# `https://ebooks.heygabi.ai` added on the owner's explicit "1. Yes" (13:41
+# Phoenix) to the question *"`ebooks.heygabi.ai` into the search Worker's
+# allowed origins — yes or no?"*. It had been carried as its own open ❓ in
+# docs/TODO.md since the padhard widen that morning, which deliberately left it
+# out because he had been asked about padhard only.
+#
+# Why it was asked separately: it is the SAME question with a different answer
+# available — ebooks is the estate's fifth catalog host (`apps/ebooks-door`),
+# and it is the last estate catalog host that could not read the shared index
+# from a browser. ⚠️ Nothing on that host calls /api/* TODAY, so this widening
+# is ahead of a consumer rather than fixing a broken page — the owner's line to
+# draw, and he drew it.
+#
+# ⚠️ It widens which PAGES may ask; it does NOT widen WHAT is returned.
+# Visibility is still decided per-caller inside the Worker — an anonymous caller
+# on ebooks sees exactly what an anonymous caller on the apex sees.
+READ_ORIGINS = "https://heygabi.ai,https://library.heygabi.ai,https://boardgames.heygabi.ai,https://audiobooks.heygabi.ai,https://padhard.heygabi.ai,https://ebooks.heygabi.ai"
 # Break-glass (design §6 row 4): listed emails are served on local standing
 # alone, even with the estate directory unreachable or misconfigured.
 OWNER_EMAILS = "nbaslamking@gmail.com"

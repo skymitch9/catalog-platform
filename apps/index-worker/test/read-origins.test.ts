@@ -8,8 +8,16 @@
  * "Yes" (00:5x Phoenix, item 3 of the sixteen); it had sat as an open ❓ in
  * docs/TODO.md since the 2026-09-05 multi-library survey precisely because
  * widening a CORS list is not a build's decision. A later sweep must not drop
- * it back out silently, and must not slip a fifth host in beside it silently
+ * it back out silently, and must not slip a sixth host in beside it silently
  * either — so the assertion is on the EXACT set, not on "padhard is present".
+ *
+ * ⚠️ `https://ebooks.heygabi.ai` was added LATER THE SAME DAY, on its own
+ * explicit "1. Yes" (13:41 Phoenix) to the question *"ebooks.heygabi.ai into
+ * the search Worker's allowed origins — yes or no?"*. It was deliberately left
+ * out of the padhard change — the file said so in as many words — because he
+ * had been asked about padhard only. ⚠️ Nothing on that host calls `/api/*`
+ * today, so this entry is ahead of its consumer: the tests below prove the
+ * Worker WOULD answer it, and no browser on ebooks has yet asked.
  *
  * ⚠️ The authority is `wrangler.toml`, which no runtime can import, so this
  * file PARSES it — the same shape as apps/auth-worker/test/backups.test.ts
@@ -60,16 +68,20 @@ async function preflight(path: string, origin: string) {
   );
 }
 
-test('⚠️ the deployed READ_ORIGINS is EXACTLY the five estate catalog hosts', () => {
+test('⚠️ the deployed READ_ORIGINS is EXACTLY the six estate catalog hosts', () => {
   assert.deepEqual(ORIGINS, [
     'https://heygabi.ai',
     'https://library.heygabi.ai',
     'https://boardgames.heygabi.ai',
     'https://audiobooks.heygabi.ai',
-    // ⚠️ Owner's explicit "Yes", 2026-09-06 — Samantha's shelf runs the SAME
-    // build as library.heygabi.ai, so it mounts <estate-search> and could reach
-    // neither /api/catalogs nor /api/search from that host.
+    // ⚠️ Owner's explicit "Yes", 2026-09-06 00:5x Phoenix — Samantha's shelf
+    // runs the SAME build as library.heygabi.ai, so it mounts <estate-search>
+    // and could reach neither /api/catalogs nor /api/search from that host.
     'https://padhard.heygabi.ai',
+    // ⚠️ Owner's explicit "1. Yes", 2026-09-06 13:41 Phoenix, asked as its own
+    // question after the padhard widen deliberately left it out. Nothing on
+    // that host calls the index yet — this is ahead of its consumer.
+    'https://ebooks.heygabi.ai',
   ]);
 });
 
@@ -94,6 +106,16 @@ test('padhard gets it on /api/search too — the same mount serves both', async 
   assert.equal(res.headers.get('access-control-allow-origin'), 'https://padhard.heygabi.ai');
 });
 
+test('ebooks gets the ACAO header on /api/catalogs — the thing the owner said "1. Yes" to', async () => {
+  const res = await preflight('/api/catalogs', 'https://ebooks.heygabi.ai');
+  assert.equal(res.headers.get('access-control-allow-origin'), 'https://ebooks.heygabi.ai');
+});
+
+test('ebooks gets it on /api/search too — the same mount serves both', async () => {
+  const res = await preflight('/api/search?q=test', 'https://ebooks.heygabi.ai');
+  assert.equal(res.headers.get('access-control-allow-origin'), 'https://ebooks.heygabi.ai');
+});
+
 test('every listed origin is echoed back, and only itself', async () => {
   for (const origin of ORIGINS) {
     const res = await preflight('/api/catalogs', origin);
@@ -103,8 +125,12 @@ test('every listed origin is echoed back, and only itself', async () => {
 
 test('🔴 AN ORIGIN THAT IS NOT ON THE LIST GETS NO ACAO HEADER AT ALL', async () => {
   for (const origin of [
-    'https://ebooks.heygabi.ai', // an estate host, deliberately not asked about yet
+    // ⚠️ `https://ebooks.heygabi.ai` used to sit here, as "an estate host,
+    // deliberately not asked about yet". It was asked, and the answer was yes
+    // (2026-09-06 13:41 Phoenix) — it now lives in the allowed set above.
     'https://evil.example.com',
+    'https://ebooks.heygabi.ai.evil.example.com', // the newest entry gets the suffix trick too
+    'http://ebooks.heygabi.ai', // wrong scheme, on the newest entry
     'https://heygabi.ai.evil.example.com', // a suffix trick — `includes` is exact, not a suffix match
     'http://heygabi.ai', // wrong scheme
     'https://heygabi.ai/', // trailing slash
