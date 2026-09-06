@@ -306,21 +306,44 @@ estate holds.
   `delegated.ts`/`suggest.ts`, the audiobook site's hand-vendored copy of
   `estate-search.js`, and `library_catalog`'s `PEERS` (its own second, independent
   registry on a different id vocabulary). Survey §10, dispatches 3 and 4.
-- **`READ_ORIGINS` on the index Worker does not include
-  `padhard.heygabi.ai` or `ebooks.heygabi.ai`** (measured 2026-09-05 in
-  `apps/index-worker/wrangler.toml:65`; the list is heygabi.ai, library,
-  boardgames, audiobooks). Pre-existing, and it means a browser on either of
-  those two hosts cannot read `/api/catalogs` cross-origin. Widening a CORS list
-  is access-increasing, so it is the owner's line and not a build's.
+- ✅ **`READ_ORIGINS` NOW INCLUDES `padhard.heygabi.ai` — the owner said "Yes"
+  on 2026-09-06** (00:5x Phoenix, item 3 of the sixteen), and it is deployed:
+  `4ef4816`, deployment `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
+  `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`. **Measured live 14:33Z** with
+  `curl -s -D -`: `/api/catalogs` and `/api/search?q=test` both answer
+  `access-control-allow-origin: https://padhard.heygabi.ai`; before the deploy
+  the same request got 200 with no ACAO at all. ⚠️ **It widens which PAGES may
+  ask, never what is RETURNED** — visibility is still decided per-caller inside
+  the Worker, and Samantha's own rows still need `vis_library2`.
+  🔴 **`ebooks.heygabi.ai` is STILL ABSENT and is the same question**: nothing
+  on that host calls the index today and the owner was asked about padhard only,
+  so it needs its own "Yes". Verified live the same minute that
+  `https://ebooks.heygabi.ai` still gets no ACAO header. The exact set is pinned
+  by `apps/index-worker/test/read-origins.test.ts`, which PARSES `wrangler.toml`
+  so a hard-coded copy cannot drift from the deployed value.
+  ⚠️ **The stale half nobody has fixed yet:**
+  `sites/heygabi-home/public/assets/estate-search.js` still carries a comment
+  saying this call *"is refused by CORS today"* on padhard. It is now wrong, and
+  it lives in a **canonical asset with copies in `library_catalog` and
+  `Board_Game_Catalog`** — so correcting it is a synced-asset change across
+  three repos, not a one-line edit here.
+
+  The original finding, kept because it is what the decision was made from:
+  the list was heygabi.ai, library, boardgames, audiobooks (measured 2026-09-05
+  in `apps/index-worker/wrangler.toml`), so a browser on either of those two
+  hosts could not read `/api/catalogs` cross-origin. Widening a CORS list is
+  access-increasing, so it was the owner's line and not a build's.
   ✅ **CHECKED BY DISPATCH 2, and it changed nothing there.** Padhard runs the
   same build as the library's site, so it mounts `<estate-search>` — and that
   component ⚠️ **already could not read `/api/search` on that host either**, by
   the same list. So the registry made nothing worse: the component degrades on
   padhard in WORDS (a worded unknown per shelf, plus one caveat line naming the
   outage) rather than showing database ids or claiming a partial scope was every
-  shelf. The real question the owner has to answer is whether Samantha's own
-  site should be able to search the estate index at all; it is written up as an
-  ❓ owner item in [`../TODO.md`](../TODO.md).
+  shelf. ✅ **The question — whether Samantha's own site should be able to
+  search the estate index at all — was ANSWERED "Yes" on 2026-09-06** and the
+  ❓ item in [`../TODO.md`](../TODO.md) is closed. ⚠️ **The degradation code is
+  deliberately unchanged**: it is what the component does whenever a registry
+  read fails for any reason, and that path still has to exist.
 - **`MACHINE_VISIBILITY` was not touched and must not be.** It is a deliberate
   default-deny (`machine-route.ts`); the registry must never auto-admit a new
   catalog there. Pinned in `machine-read.test.ts` and again in

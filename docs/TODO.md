@@ -34,8 +34,16 @@
 >    delete; the classifier refused `Remove-Item`) — harmless, owner can clear
 >    them.
 > 3. ⚠️ **ACCESS-INCREASING — `READ_ORIGINS` gains `padhard.heygabi.ai` —
->    owner's explicit "Yes" (00:5x Phoenix).** ☐ build + deploy the index Worker
->    (W10-PLATFORM); the ❓ line further down this file closes with it.
+>    owner's explicit "Yes" (00:5x Phoenix).** ☑ **DEPLOYED 2026-09-06 14:32Z
+>    (W10-PLATFORM).** Commit `4ef4816`, deployment
+>    `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
+>    `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`, `deploys.log` line appended.
+>    **Verified live 14:33Z**: `/api/catalogs` and `/api/search?q=test` both
+>    answer `access-control-allow-origin: https://padhard.heygabi.ai` (before
+>    the deploy: 200, no ACAO); `ebooks.heygabi.ai` and `evil.example.com` still
+>    get no ACAO at all. 🔴 **`ebooks.heygabi.ai` is the SAME question and is
+>    deliberately still absent — it needs its own "Yes."** The ❓ line further
+>    down this file is closed with it.
 > 4. **`wow-recorder` `npm install` — "rm from list."** Dropped; not an estate
 >    item. (Its `release/app/node_modules` junction is still empty; his call.)
 > 5. **#507 Book of Mormon tier D — "It's the paper, you can run the command."**
@@ -430,19 +438,31 @@ owner's eyeball.
 ⚠️ **What dispatch 2 measured and did NOT change**, because each is somebody
 else's call:
 
-- ❓ **OWNER, access-increasing: should the index Worker's `READ_ORIGINS` gain
-  `padhard.heygabi.ai`?** Measured 2026-09-05 in
-  `apps/index-worker/wrangler.toml:65` — the list is heygabi.ai, library,
-  boardgames, audiobooks. Padhard's site runs the SAME build as the library's,
-  so it mounts `<estate-search>`, and that component cannot read
-  `/api/catalogs` there. ⚠️ **It equally cannot read `/api/search` there
-  today** — this is pre-existing and dispatch 2 made it no worse: the component
-  degrades in words on that host (a worded unknown per shelf plus one caveat
-  line naming the outage) instead of showing database ids or a false claim. The
-  decision is whether Samantha's own site should be able to search the estate
-  index at all. Widening a CORS list is access-increasing, so it is the owner's
-  line and not a build's. `ebooks.heygabi.ai` is the same question and nothing
-  on that host calls the index today.
+- ☑ **ANSWERED "Yes" and DEPLOYED 2026-09-06 — the index Worker's
+  `READ_ORIGINS` gained `padhard.heygabi.ai`.** Owner's explicit "Yes" at 00:5x
+  Phoenix (item 3 of the sixteen, at the top of this file); built and shipped by
+  W10-PLATFORM at 14:32Z — commit `4ef4816`, deployment
+  `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
+  `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`, one `deploys.log` line.
+  **Measured live 14:33Z** with `curl -s -D -`: `/api/catalogs` and
+  `/api/search?q=test` from `Origin: https://padhard.heygabi.ai` both answer
+  `access-control-allow-origin: https://padhard.heygabi.ai`; the same request
+  before the deploy got 200 with no ACAO at all. ⚠️ It widens which PAGES may
+  ask, never what is RETURNED — visibility is still per-caller and Samantha's
+  rows still need `vis_library2`. The exact list is now pinned by
+  `apps/index-worker/test/read-origins.test.ts` (it PARSES `wrangler.toml`, so a
+  hard-coded copy cannot drift); write-up moved to
+  [`info/catalog-registry.md`](info/catalog-registry.md) §10.
+  🔴 **STILL OPEN, and it is a separate owner question: `ebooks.heygabi.ai`.**
+  Nothing on that host calls the index today and he was asked about padhard
+  only, so it was deliberately NOT added — verified live the same minute that it
+  still gets no ACAO. It needs its own "Yes".
+  ⚠️ **Also left undone, and it is cross-repo:**
+  `sites/heygabi-home/public/assets/estate-search.js` still comments that this
+  call *"is refused by CORS today"* on padhard. That is now wrong, but the file
+  is a **canonical asset with copies in `library_catalog` and
+  `Board_Game_Catalog`**, so correcting it is a synced-asset change across three
+  repos rather than a one-line edit — left for whoever next touches that sync.
 - ❓ **OWNER (carried, unchanged): `/api/health` still reports `library2`'s row
   count to anybody.** It predates the rule, the Health page reads it, and
   narrowing it is a decision about a different surface with a different
