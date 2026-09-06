@@ -1,12 +1,20 @@
 # Audiobook association as a route — design
 
 > **Audience:** Claude sessions first, the owner second. **Status:** TRACKED —
-> ⚠️ ~~**DESIGN ONLY. NOTHING IS BUILT.**~~ **PHASE 0 IS BUILT** (§9 steps 1–5,
-> 2026-09-05, agent W6-AUDIO-A) — see the ✅ block under §9's table for what
-> landed, what was measured, and the four places this design was wrong or silent
-> when it met the code. **Steps 6–14 are still design only: there is no route,
-> no cron, no migration and nothing deployed.**
-> **Last verified: 2026-09-05.**
+> ⚠️ ~~**DESIGN ONLY. NOTHING IS BUILT.**~~ ~~**PHASE 0 IS BUILT** … **Steps
+> 6–14 are still design only: there is no route, no cron, no migration and
+> nothing deployed.**~~
+> 🔴 **ALL OF §9 IS BUILT AND DEPLOYED TO BOTH INSTANCES — steps 1–5
+> 2026-09-05 (agent W6-AUDIO-A), steps 6–14 2026-09-06 (agent W6-AUDIO-B).**
+> The route, the cron, migration 0470, the on-add hook and the `/api/health`
+> line are all live. 🔴 **It ships in SHADOW: it computes its whole plan and
+> writes NOTHING, and STEP 11 of the audiobook pipeline is still doing all the
+> writing** — so the owner's original complaint is not closed and the library
+> TODO item stays open. The ✅ blocks under §9's table carry what landed, what
+> was measured, and the **eight** places this design was wrong or silent when it
+> met the code. **Operating it:
+> `library_catalog/docs/access/audiobook-sweep.md`.**
+> **Last verified: 2026-09-06.**
 >
 > **Why it exists.** Owner, 2026-09-05 16:37 Phoenix: *"I added battle mage
 > farmer and it didn't associate the audiobook right away."* Then 16:50:
@@ -490,15 +498,15 @@ before deploys. **Commit at each numbered step.**
 | ✅ **3** | Port `canonicalSeries` to TS. **Keep the warn-and-degrade posture** — a missing canon falls back to plain `normaliseTitle` and is reported once, loudly. — **DONE `bb7af18`**, ⚠️ **split in two, see the note below** | ✚ `packages/core/src/series-canon.ts` (the RULE); ✚ `packages/universes/src/series-canon.ts` (the generated DATA); ✎ `scripts/lib/series-canon.mjs` → thin wrapper |
 | ✅ **4** | Extract the planner. Phases 1 and 2 move whole. Add `scope`. **Return data, never SQL.** — **DONE `e2f4aee`** | ✚ `packages/core/src/audiobook-sweep.ts`; ✚ `audiobook-sweep.test.ts` (19) + `audiobook-sweep-scope.test.ts` (10) |
 | ✅ **5** | Rewire the script to `planAudiobookSweep` + render the plan through `lit()`. 🔴 **Prove byte-identical dry-run output** (phase 0 gate). — **DONE `8f38125`; GATE PASSED, both instances, diffs EMPTY** | ✎ `scripts/backfill-audiobook-holdings.mjs`; ✚ `scripts/lib/audiobook-sql.mjs` (⚠️ see below); ✚ `scripts/test/backfill-audiobook-holdings.test.mjs` (9) |
-| **6** | Migration **0470**: `audiobook_snapshot` (`etag`, `fetched_at`, `row_count`) + `audiobook_sweep_run` (`id`, `trigger`, `started_at`, `finished_at`, `state`, `detail_json`). ⚠️ **Migrate both instances before any deploy.** | ✚ `migrations/0470_audiobook_sweep_state.sql` |
-| **7** | The D1 writer: batch of prepared statements + `changeLogInsert` transition rows, in **one** batch. | ✚ `packages/db/src/audiobook-holdings.ts`; ✎ `packages/db/src/index.ts` |
-| **8** | The run wrapper: fetch with `If-None-Match`, the **three guards** of §6.2, run-row bookkeeping. Export `AUDIOBOOK_SWEEP_CRON`. **Never throws** — a scheduled invocation has no response to put an error in. | ✚ `apps/worker/src/lib/audiobook-sweep-run.ts` |
-| **9** | Admin routes (§7.1), `dryRun` supported. | ✚ `apps/worker/src/routes/audiobook-sweep.ts`; ✎ `apps/worker/src/index.ts` (mount) |
-| **10** | `detail.audiobookSweep` on `/api/health`. **Additive only.** | ✎ `apps/worker/src/routes/health.ts` |
-| **11** | Second cron string on **both** `[triggers]` blocks; dispatch on `event.cron` in `scheduled()`, unrecognised cron still errors. | ✎ `apps/worker/wrangler.toml`, `apps/worker/src/index.ts` |
-| **12** | The on-add hook in the two person-facing callers; **`'defer'` + one batched call** in the importer (§4.4). | ✎ `routes/catalog.ts`, `routes/gabi-delegated.ts`, `routes/ingest.ts` |
-| **13** | Shadow flag (`AUDIOBOOK_SWEEP_MODE = off \| shadow \| enforce`), shipped **`shadow`**. | ✎ `apps/worker/wrangler.toml` (both blocks), the run wrapper |
-| **14** | Docs: `library_catalog/docs/info/series-formats-and-audiobooks.md` + `docs/access/` runbook; move the TODO item WHOLE to `DONE.md` at completion. | ✎ per the docs standard — **§4.11 written `c62b22a`**; the runbook and the DONE move are still open |
+| ✅ **6** | Migration **0470**: `audiobook_snapshot` (`etag`, `fetched_at`, `row_count`) + `audiobook_sweep_run` (`id`, `trigger`, `started_at`, `finished_at`, `state`, `detail_json`). ⚠️ **Migrate both instances before any deploy.** — **DONE `3d2d62e`; APPLIED to `library-catalog` AND `library-catalog-2nd` 2026-09-06, before the deploy pair** | ✚ `migrations/0470_audiobook_sweep_state.sql` |
+| ✅ **7** | The D1 writer: batch of prepared statements + `changeLogInsert` transition rows, in **one** batch. — **DONE `9ba4beb`**, ⚠️ **and it went further than this line, see note 5 below** | ✚ `packages/db/src/audiobook-holdings.ts`; ✎ `packages/db/src/index.ts`, `changes.ts`, `scripts/lib/audiobook-sql.mjs`; ✚ `packages/db/test/audiobook-holdings.test.ts` (17) |
+| ✅ **8** | The run wrapper: fetch with `If-None-Match`, the **three guards** of §6.2, run-row bookkeeping. Export `AUDIOBOOK_SWEEP_CRON`. **Never throws.** — **DONE `a37153b`**; ⚠️ **FOUR guards — the zero-WORKS read of note 4 is now one of them** | ✚ `apps/worker/src/lib/audiobook-sweep-run.ts` + `.test.ts` (28) |
+| ✅ **9** | Admin routes (§7.1), `dryRun` supported. — **DONE `ce281a9`** | ✚ `apps/worker/src/routes/audiobook-sweep.ts` + `.test.ts` (15); ✎ `apps/worker/src/index.ts`, `routes/mount-order.test.ts` |
+| ✅ **10** | `detail.audiobookSweep` on `/api/health`. **Additive only.** — **DONE `42a0024`**; a test pins that an un-migrated instance still answers `ok` | ✎ `apps/worker/src/routes/health.ts` |
+| ✅ **11** | Second cron string on **both** `[triggers]` blocks; dispatch on `event.cron` in `scheduled()`, unrecognised cron still errors. — **DONE `b378a27`**, `"23 */4 * * *"` | ✎ `apps/worker/wrangler.toml`, `apps/worker/src/index.ts`; ✚ `apps/worker/src/lib/audiobook-cron.test.ts` (13) |
+| ✅ **12** | The on-add hook in the two person-facing callers; **`'defer'` + one batched call** in the importer (§4.4). — **DONE `1d4a80e`**; ⚠️ **the batched call is not implementable there, see note 6** | ✎ `routes/catalog.ts`, `routes/gabi-delegated.ts`, `routes/ingest.ts`; ✎ the run wrapper (`associateWorkAfterAdd`) |
+| ✅ **13** | Shadow flag (`AUDIOBOOK_SWEEP_MODE = off \| shadow \| enforce`), shipped **`shadow`**. — **DONE `235010f`**, both `[vars]` blocks; ⚠️ it **fails CLOSED**, and `scripts/provision-catalog.mjs` had to learn both the var and the cron | ✎ `apps/worker/wrangler.toml` (both blocks), `env.ts`, the run wrapper, `scripts/provision-catalog.mjs` |
+| ✅ **14** | Docs: `library_catalog/docs/info/series-formats-and-audiobooks.md` + `docs/access/` runbook; ~~move the TODO item WHOLE to `DONE.md` at completion~~. — **DONE `85082f2`**: §4.12 written, ✚ `docs/access/audiobook-sweep.md`, both index READMEs, `deploys.log`. 🔴 **The TODO item STAYS OPEN and did NOT move** — see the gate below | ✎ per the docs standard — §4.11 was `c62b22a`, §4.12 is `85082f2` |
 
 ### ✅ Phase 0 landed 2026-09-05 — what the code said that this design did not
 
@@ -556,6 +564,99 @@ zero-AUDIOBOOK-ROWS path refuses loudly; its zero-WORKS path is a silent
 `process.exit(0)`. Re-running gave the full 411. In a Worker the same empty read
 of `work` would reach the stale sweep with nothing to reproduce. **Guard the
 zero-works read the way §6.2 guards the zero-rows fetch.**
+
+### ✅ Phase B landed 2026-09-06 — steps 6–14, deployed to BOTH instances in SHADOW
+
+> **Measured.** Migration 0470 applied to `library-catalog` **and**
+> `library-catalog-2nd` before the deploy pair. Deployed: MAIN version
+> `b547095d` (rollback `c73b0406`), friend `9b2b64d2` (rollback `82da5112`).
+> Both hosts answer `detail.audiobookSweep.mode = "shadow"`, `editionsLive`
+> 127/123, `rungsLive` 190/140, `seriesCanonEntries` 6. `npm run test` **2697
+> pass / 0 fail**, `npm run typecheck` green.
+>
+> ⚠️ **NOT verified: no `audiobook_sweep_run` row exists on either instance
+> yet.** No cron tick observed (`:23` past every fourth hour, UTC), no on-add
+> hook seen to fire, and the admin route never called with a real bearer — the
+> building session had no Firebase token. Operating it, and the query that
+> settles it: `library_catalog/docs/access/audiobook-sweep.md` §5.
+
+#### ✅ The phase-1 gate is MEASURED and PASSED, on both instances
+
+The gate is *"the route's plan on the live snapshot equals the script's plan on
+the same CSV"*. It did not need a token: both were planned over the live D1s —
+the script's inputs (disk CSV + the LIVE cross-repo canon) against the route's
+(the published URL + the BUILD-GENERATED canon):
+
+| | MAIN | padhard |
+|---|---|---|
+| works / audiobook rows | 411 / 1089 | 677 / 1089 |
+| matched | 122 (114 exact, 8 containment) | 119 (119 exact) |
+| edition upserts / stales | **127 / 0** | **123 / 0** |
+| rung upserts / stales | **190 / 0** | **140 / 0** |
+| statements | 317 | 263 |
+| **script plan vs route plan** | 🟢 **byte-identical** | 🟢 **byte-identical** |
+
+Both halves of §3.2's transport claim re-measured the same day: the live CSV
+(**1,408,735 bytes**, `ETag "4d4d09ade4b45fb1baa48ab7880b7a34"`) and
+`audiobook_catalog/site/catalog.csv` both parse to **1089 rows**, with
+**deep-identical row arrays**. And §2.4's skew is **zero today** — both canons
+hold the same 6 spellings across 3 entries.
+
+⚠️ **What that equality does NOT prove is that the deployed Worker ran.** It
+removes every variable except the Worker's own D1 reads and the guards.
+
+#### 🔴 It is in SHADOW and the TODO item stayed OPEN
+
+The cron and the hook compute the whole plan and **write nothing**; STEP 11 is
+still doing all the writing, so **a book added today still waits for it** and
+the owner's complaint is not closed. §8's phase 2 → 3 gate, as written into
+`library_catalog/docs/TODO.md`: **≥42 shadow ticks (a week at four-hourly) with
+zero divergences vs STEP 11**, measured against
+`npm run backfill:audiobooks -- --remote`. Rollback at any point is one word:
+mode `off`.
+
+#### Four more things the code said that this design did not
+
+**5. §2.3 was read one step too literally, and phase B undid it.** *"The plan is
+DATA, not SQL"* is right about why the planner returns rows — the two callers
+BIND differently. It does **not** follow that each caller should keep its own
+copy of *which columns a sweep writes and in what order*, which is what phase 0
+built (`scripts/lib/audiobook-sql.mjs` beside the step-7 binder). That is the
+shape `matching.ts` opens by warning about, and a drift in it would mean the
+cron and the recovery script quietly disagreeing about what the catalog says.
+There is now **one statement list** — `audiobookSweepStatements` in `@lc/db`, as
+`{ sql, binds }[]` — which the Worker binds and the script renders by
+substituting `lit()` for each `?`. ⚠️ The script's rendered bytes did not move,
+and the whole-string test in `scripts/test/backfill-audiobook-holdings.test.mjs`
+passing unchanged is what proves it.
+
+**6. 🔴 §3.3 and §4.3 assume the parsed ROWS are cached; §9 step 6 does not
+provide for that.** *"The on-add hook must never fetch 1.4 MB — it reads the
+cached snapshot"* and *"no external call at all when the snapshot is warm"* both
+need a row store, and `audiobook_snapshot` — exactly as step 6 specifies it —
+holds the `etag`, the `fetched_at` and the `row_count`. There is nothing warm to
+read. **The scoped run therefore fetches, conditionally, like the cron.** §4.3's
+objection was that fetching would slow the add; `ctx.waitUntil` already answers
+that, because the response has gone out first. The real cost is one conditional
+GET per book added, against a cron that fetches six times a day regardless. **A
+KV row cache is the follow-up**, deliberately not built: a new binding on both
+instances is its own change and shadow had to land first.
+
+**7. §4.4's batched call is not implementable in `routes/ingest.ts`.** Measured:
+that file has exactly **one** route and it creates **one** work per REQUEST, so
+the loop lives in the external importer and a Worker invocation never sees a
+batch begin or end. The `'defer'` is real — no fetch, no run row, no index build,
+pinned by a test — and the batching is the cron's. If that route ever grows a
+multi-row body, that is where the batched call belongs.
+
+**8. §6.3's transitions are not on the phase-0 `SweepPlan`.** The interface here
+lists `transitions: AssociationTransition[]`, and the planner that shipped has no
+such field (phase 0 could not have known what the writer would need). The step-7
+writer derives them instead, by diffing the live `(audio_key, matched_via)` set
+per work against the rows the plan was made from — so a **gain** is `null → {…}`,
+a **loss** is `{…} → null`, and a run that reproduced what was already there
+writes **nothing**. `change_log` gained the entity `'audiobook_holding'`; 0120
+carries no CHECK, so widening the union was the whole migration.
 
 ### Tests to add
 
