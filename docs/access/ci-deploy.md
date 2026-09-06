@@ -2,7 +2,9 @@
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED
 > (secret NAMES only — ⚠️ **this repo is PUBLIC**, `KNOWN_ISSUES.md` KI-2).
-> **Last verified: 2026-09-05.** ⚠️ **CREATED that day, and its absence was
+> **Last verified: 2026-09-06** (§4 re-measured that day against two real
+> Actions runs; §1–§3 still carry their 2026-09-05 reading).
+> ⚠️ **CREATED 2026-09-05, and its absence was
 > the finding that created it:** `docs/access/` described the backup workflow
 > (`backup-restore.md` §3) but **nothing in this tree described the DEPLOY
 > workflow** — `grep -rn "deploy.yml" docs/access/` returned only
@@ -10,10 +12,12 @@
 > claim below was read out of `.github/workflows/deploy.yml` on 2026-09-05,
 > and the 39 s figure is measured (§3).
 >
-> ⚠️ **What was NOT verified:** no run of this workflow was dispatched — it
-> has no non-deploying target (§4), and the session that added the test gate
-> was not authorised to deploy. **The `tests` job has therefore never
-> executed on a runner.** §4 says exactly what its first run will show.
+> ✅ **2026-09-06: the `tests` job HAS now executed on a runner** — twice,
+> green, 61 s / 3,151 cases — because `tests.yml` gives it a non-deploying
+> trigger and this workflow now calls it (§4 has the table).
+> ⚠️ **What is STILL not verified:** no *deploy* job has ever been dispatched
+> from a session authorised to run one, so `needs: tests` in front of a real
+> `wrangler deploy` remains reasoned, not observed (§4, last block).
 >
 > - How the home site's *local* deploy works → [`../../sites/heygabi-home/deploy.md`](../../sites/heygabi-home/deploy.md)
 > - The backup workflow → [`backup-restore.md`](backup-restore.md) §3
@@ -70,7 +74,10 @@ highest-value change in
 
 A `tests` job now runs the **root** `npm test` (`test:scripts` over
 `scripts/test`, then `npm test --workspaces --if-present`) and all three deploy
-jobs carry `needs: tests`. **Measured 2026-09-05: ~39 s for 3,076 cases**
+jobs carry `needs: tests`. ⚠️ **Since 2026-09-06 that job's steps live in
+[`tests.yml`](../../.github/workflows/tests.yml), not in `deploy.yml`** — this
+workflow calls it (§4). Edit the suite there.
+**Measured locally 2026-09-05: ~39 s for 3,076 cases**
 (re-run the same day at 31 s / 3,104 cases after two other agents' work
 landed), of which **27.3 s is `scripts/test` alone** — several of those files
 spawn the real scripts as child processes rather than importing them. The whole
@@ -83,24 +90,49 @@ CI case, so this workflow deliberately does not check out a second repo the way
 library's does. ⚠️ **Accepted trade-off:** the per-job token guards now fire
 ~40 s later, because their jobs wait on the gate.
 
-## 4. ⚠️ There is no way to exercise this workflow without deploying
+## 4. Exercising the gate without deploying — `tests.yml`
 
-Every target is live and the only trigger is `workflow_dispatch`, so a push to
-`main` starts nothing and **there is no dry run**. The consequence to hold on to:
-a change to this file — including the test gate itself — is *shipped* but not
-*verified* until somebody dispatches a real deploy.
+**Until 2026-09-06 there was no way.** Every target is live and the only trigger
+is `workflow_dispatch`, so a push to `main` started nothing, there was no dry
+run, and a change to this file — including the test gate itself — was *shipped*
+but never *verified*. That is fixed, and not by touching this workflow:
 
-**What the first dispatch after 2026-09-05 will show:** a `tests` job appearing
-above the target job(s) in the run's job list; ~10–15 s of `npm ci` (warm npm
-cache), then `Run the full suite (root npm test)` printing each workspace's
-`ℹ tests / ℹ pass / ℹ fail` block and taking ~40 s; then the notice *"Suite
-green at &lt;sha&gt; — the deploy jobs may proceed."*. Only then does the chosen
-deploy job start, unchanged from before. **If the suite is red, the deploy job
-is skipped, not failed** — the run is red overall and nothing reached
-Cloudflare, which is the whole point. Expect KI-1's Node-20 `setup-node`
-annotation on the green run; it is not a failure.
+> **[`.github/workflows/tests.yml`](../../.github/workflows/tests.yml)** — added
+> 2026-09-06 (W9-TESTS-YML, `de8008b` + `a6f28a9`). Runs on **push to `main`,
+> on `pull_request`, and on `workflow_call`**. `permissions: contents: read`,
+> **no secrets, no Cloudflare, no deploy**.
 
-**If someone wants CI feedback without a deploy**, the shape to copy is
-`audiobook_catalog`'s separate `js-tests.yml` (a test-only workflow on
-push/PR, which its `deploy.yml` then `needs:`). That is a *new workflow*, not
-an edit to this one, and it is an owner decision — it has never existed here.
+⚠️ **It is not a second copy of the gate.** This workflow's `tests` job is now
+`uses: ./.github/workflows/tests.yml` — one definition, called from both lanes,
+so the deploy gate and the push/PR lane cannot drift apart. To change what the
+gate runs, edit `tests.yml`; nothing in this file spells the steps out any more.
+⚠️ **This did NOT add a trigger here**: `deploy.yml` is still
+`workflow_dispatch`-only, per §1 and its own header. A called workflow inherits
+this file's `permissions: contents: read` and is passed no secrets.
+
+### 🟢 Measured 2026-09-06 — the first runs of the gate on a runner
+
+Both green on the first try; **no fix rounds were needed**.
+
+| Run | Commit | npm cache | `npm ci` | Suite step | Wall |
+|---|---|---|---|---|---|
+| [34014004841](https://github.com/skymitch9/catalog-platform/actions/runs/34014004841) | `de8008b` | cold | 8 s | **51 s** | **73 s** |
+| [34014020664](https://github.com/skymitch9/catalog-platform/actions/runs/34014020664) | `a6f28a9` | warm | 7 s | **44 s** | **61 s** |
+
+**3,151 cases, `fail 0`, `skipped 0`** — every workspace's
+`ℹ tests / ℹ pass / ℹ fail` block printed, then the notice *"Suite green at
+&lt;sha&gt; — the deploy jobs may proceed."*. ⚠️ The runner is **slower than a
+local run**, not faster: the same suite is ~31–39 s on the owner's machine
+(§3), so budget **~45–50 s** for the gate in CI, not 40.
+
+⚠️ **KI-1's Node-20 `setup-node` annotation appeared on both green runs**, as
+§3 predicted. It is not a failure; do not read a red X off it.
+
+### What is still NOT verified from here
+
+The gate's *steps* are now measured, but the **deploy jobs remain unexercised**
+— they are still `workflow_dispatch`-only against live hosts, so `needs: tests`
+gating a real `wrangler deploy`, and the two-line caller stanza in this file,
+have not run. **If the suite is red the deploy job is skipped, not failed** —
+the run is red overall and nothing reaches Cloudflare — but that path is
+reasoned, not observed. The next real dispatch is its measurement.

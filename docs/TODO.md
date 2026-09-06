@@ -42,14 +42,24 @@
 >    deploy jobs carry `needs: tests`. No new secret, trigger or permission —
 >    validated with a YAML parser. Also created `docs/access/ci-deploy.md`,
 >    ⚠️ **the deploy workflow had NO doc in this tree at all**.
->    🔴 **SHIPPED, NOT VERIFIED — and it cannot be from here:** every target is
->    live and the only trigger is `workflow_dispatch`, so the push started no
->    run and the `tests` job has never executed on a runner. The next dispatch
->    is the measurement; `ci-deploy.md` §4 says exactly what it will show.
->    ☐ **OWNER DECISION, optional:** a separate test-only `tests.yml` on
->    push/PR — the shape `audiobook_catalog` already uses — would give CI
->    feedback without a deploy. A new workflow, deliberately not added
->    unasked);
+>    ✅ **VERIFIED 2026-09-06** — see the `tests.yml` line directly below, which
+>    is what made verification possible without a deploy. The gate's steps have
+>    now run on a runner, green, twice.
+>    ☑ **OWNER DECISION, optional → DONE** — W9-TESTS-YML (`de8008b` + `a6f28a9`,
+>    2026-09-06): `.github/workflows/tests.yml` on push-to-main + PR +
+>    `workflow_call`, `permissions: contents: read`, no secrets, no deploy.
+>    ⚠️ **Not a second copy of the gate:** `deploy.yml`'s `tests` job is now
+>    `uses: ./.github/workflows/tests.yml`, so the deploy gate and the push/PR
+>    lane are one definition and cannot drift. `deploy.yml`'s trigger is
+>    unchanged (`workflow_dispatch` only, per its header).
+>    🟢 **MEASURED, green first try, no fix rounds:** run
+>    [34014020664](https://github.com/skymitch9/catalog-platform/actions/runs/34014020664)
+>    at `a6f28a9` — **61 s wall, 3,151 cases, 0 fail, 0 skipped** (suite step
+>    44 s, `npm ci` 7 s). Run
+>    [34014004841](https://github.com/skymitch9/catalog-platform/actions/runs/34014004841)
+>    at `de8008b` was 73 s / 51 s on the cold npm cache. Both carried KI-1's
+>    Node-20 `setup-node` annotation and were green anyway, exactly as
+>    `ci-deploy.md` §4 predicted);
 >    (b) board: route tests for its 16 route files, `admin.ts`/`users.ts` first — W9-BOARD-ROUTES;
 >    (c) one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION;
 >    (d) ☑ `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops
