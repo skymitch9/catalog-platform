@@ -82,7 +82,8 @@ import {
   roleIsAdmin,
 } from './commands.js';
 import { indexBase, processHave } from './have.js';
-import { panelBase, panelDeepLink, processGabi } from './gabi.js';
+import { panelDeepLink, processGabi, resolvePanelBase } from './gabi.js';
+import { panelRegistryOn } from './panel.js';
 import { mentionsOn } from './mentions.js';
 import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
@@ -176,7 +177,7 @@ const NO_TOKEN_MSG =
 // Health — same open, no-PII pattern as auth.heygabi.ai / index.heygabi.ai
 // (design doc §1.7). Booleans about which secrets are PRESENT, never values.
 // ---------------------------------------------------------------------------
-app.get('/api/health', (c) =>
+app.get('/api/health', async (c) =>
   c.json({
     ok: true,
     service: 'estate-discord',
@@ -329,7 +330,16 @@ app.get('/api/health', (c) =>
     // a decision worth finding in one curl. The URL is a var and public —
     // reporting it leaks nothing and makes a misconfigured link visible.
     gabi_surface: 'propose_and_deep_link',
-    gabi_panel_url: panelDeepLink(panelBase(c.env)),
+    // ⚠️ THE RESOLVED base, not the configured one — `resolvePanelBase`
+    // asks the estate registry when `gabi_panel_registry` below is on, so
+    // this row and the link GABI actually emits cannot disagree. A row that
+    // reported the literal while the bot sent something else would be a
+    // second surface for one fact, which is the defect this build removes.
+    gabi_panel_url: panelDeepLink(await resolvePanelBase(c.env)),
+    // The posture that decides where the row above came from: `on` = the
+    // registry answered (or was asked and did not, and the constant stood in);
+    // anything else = the literal, and no subrequest was made at all.
+    gabi_panel_registry: panelRegistryOn(c.env) ? 'on' : 'off',
     // ⚠️ The conversational kill switch, VISIBLE from outside — same reasoning
     // as `moderation_enabled` above. `false` here is the whole state of the
     // phase-A mention build, checkable in one curl, and it means no gateway
@@ -1184,7 +1194,7 @@ app.post('/interactions', async (c) => {
           applicationId: c.env.DISCORD_APPLICATION_ID || decision.actor.applicationId,
           interactionToken: decision.actor.token,
           indexBaseUrl: indexBase(c.env),
-          panelUrl: panelDeepLink(panelBase(c.env)),
+          panelUrl: panelDeepLink(await resolvePanelBase(c.env)),
           serviceAccountJson: c.env.FIREBASE_SERVICE_ACCOUNT,
           discordUserId: decision.actor.user?.id ?? null,
           ...(gabiPanelPort

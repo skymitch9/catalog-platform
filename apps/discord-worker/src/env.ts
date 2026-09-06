@@ -75,6 +75,19 @@ export interface Env {
    * Firebase sign-in and its own role check, which is exactly why shape (b)
    * needs no new custody. Exists so a test can point elsewhere. */
   GABI_PANEL_URL?: string;
+  /** ⚠️ **THE REGISTRY LANE for the panel host** (2026-09-05, survey §3.4's
+   * *"the registry work is NOT done — it is still a literal, not a lookup"*).
+   * `"on"` and nothing else; absent, `"true"`, `"1"` and every typo mean OFF,
+   * and OFF is byte-for-byte the pre-registry behaviour — no subrequest, and
+   * `GABI_PANEL_URL`/the constant answer alone. ON, `src/panel.ts` reads the
+   * main library's `host` from the estate registry
+   * (`GET {INDEX_BASE_URL}/api/catalogs`, the anonymous NAMES-ONLY branch, no
+   * credential, nothing widened) and falls back to the same constant when the
+   * directory does not answer. ⚠️ It decides a HOSTNAME and never a
+   * permission — the destination site still does its own sign-in and role
+   * check. Turning it off is also how you PIN the host: off + `GABI_PANEL_URL`
+   * is a deliberate operator choice, on is the estate's own answer. */
+  GABI_PANEL_REGISTRY?: string;
   /** ⚠️ THE AUDIOBOOK SITE, and it exists because the estate index does NOT
    * hold a narrator. Measured 2026-08-18 against `apps/index-worker/migrations/
    * 0001_entry.sql` and the live host: the `entry` table has no narrator, no

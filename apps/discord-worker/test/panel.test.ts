@@ -42,12 +42,19 @@ import { describe, it } from 'node:test';
 
 import {
   DEFAULT_PANEL_BASE,
+  MAIN_LIBRARY_CATALOG_ID,
   PANEL_PREFILL_MAX,
   PANEL_PREFILL_PARAM,
+  PANEL_REGISTRY_TTL_MS,
   choosePanelBase,
+  mainLibraryBaseFrom,
+  panelBase,
   panelDeepLink,
   panelLinkFor,
+  panelRegistryOn,
+  resetPanelRegistryCache,
   resolveAskerPanelBase,
+  resolvePanelBase,
   type PanelAnswer,
   type PanelIdentityPort,
 } from '../src/panel.js';
@@ -559,5 +566,276 @@ describe('⚠️ REGRESSION: a fix-shaped ask points at the asker\'s shelf', () 
     assert.match(reply, /library\.heygabi\.ai/);
     assert.doesNotMatch(reply, /padhard\.heygabi\.ai/);
     assert.match(reply, new RegExp(`${PANEL_PREFILL_PARAM}=`), 'the prefill needs no port');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ §5 — THE REGISTRY LOOKUP (2026-09-05, survey §3.4's remaining half)
+// ---------------------------------------------------------------------------
+//
+// The 2026-09-05 morning fix moved `DEFAULT_PANEL_BASE` off the pilot host and
+// onto the main library. `multi-library-survey-2026-09-05.md` §3.4 recorded
+// what it did NOT do, in as many words:
+//
+//   > ✅ the hard-coded HOST is fixed … ⚠️ **The registry work is NOT done — it
+//   > is still a literal, not a lookup.**
+//
+// It is a lookup now: `GET {INDEX_BASE_URL}/api/catalogs`, the row whose `id`
+// is `library`, and its `host`. What these tests exist to keep true:
+//
+//  1. ⚠️ **THE POSTURE IS FAIL-CLOSED AND OFF IS SILENT.** Anything but the
+//     exact word `on` means the pre-registry behaviour, and — asserted, not
+//     assumed — makes NO subrequest at all. That is why the other 1,200 tests
+//     in this package touch no network.
+//  2. ⚠️ **EVERY FAILURE FALLS BACK, and none of them throws.** A dead
+//     directory, a 503, a malformed row, a host with a scheme in it: each ends
+//     at the configured base, so a link can never get WORSE than it was.
+//  3. ⚠️ **IT SENDS NO CREDENTIAL.** The route's anonymous branch is names-only
+//     and this end must keep it that way — no Authorization header, ever.
+//  4. **The memo is real**, because a directory read per turn would turn a
+//     directory outage into a latency outage.
+//
+// ⚠️ The honest limit: these prove the RESOLUTION. Whether the panel opens for
+// the person who follows the link is the destination site's own Firebase
+// sign-in and `runResearch` check, and nothing here can or should assert it.
+
+const REGISTRY_BODY = {
+  ok: true,
+  catalogs: [
+    {
+      id: 'audiobook',
+      push_source: 'audiobook',
+      kind: 'audio',
+      label: 'Shared audiobooks',
+      owner: null,
+      holding: 'digital',
+      shared: true,
+      host: 'audiobooks.heygabi.ai',
+    },
+    {
+      id: MAIN_LIBRARY_CATALOG_ID,
+      push_source: 'library',
+      kind: 'books',
+      label: 'the main library',
+      owner: 'Skylar',
+      holding: 'physical',
+      shared: false,
+      host: 'shelf.example.test',
+    },
+    {
+      id: 'library2',
+      push_source: 'library2',
+      kind: 'books',
+      label: 'the other shelf',
+      owner: 'Samantha',
+      holding: 'physical',
+      shared: false,
+      host: 'padhard.heygabi.ai',
+    },
+  ],
+  counts: 'none',
+};
+
+/** A fetch that records what it was asked and answers `body` with `status`. */
+function registrySaid(
+  body: unknown,
+  status = 200,
+): { fetch: typeof fetch; calls: { url: string; init?: RequestInit }[] } {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), ...(init ? { init } : {}) });
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+  return { fetch: impl, calls };
+}
+
+/** ⚠️ A SENTINEL, not a stub: any call at all fails the test that installed it. */
+const neverCalled = (async () => {
+  throw new Error('the registry was read when it must not have been');
+}) as unknown as typeof fetch;
+
+describe('⚠️ panelRegistryOn — affirmative-only, and OFF is the pre-registry bot', () => {
+  it('only the exact word turns it on; case and whitespace are forgiven', () => {
+    assert.equal(panelRegistryOn({ GABI_PANEL_REGISTRY: 'on' }), true);
+    assert.equal(panelRegistryOn({ GABI_PANEL_REGISTRY: '  ON  ' }), true);
+  });
+
+  it('⚠️ everything else is OFF — absent, empty, affirmative-looking, a typo', () => {
+    // ⚠️ `"true"`, `"1"` and `"yes"` are the dangerous ones: they are what
+    // somebody who knows this Worker's other postures would type, and guessing
+    // them into `on` would start a subrequest by typo rather than by decision.
+    for (const raw of [undefined, '', '   ', 'true', '1', 'yes', 'enabled', 'On!', 'registry']) {
+      assert.equal(
+        panelRegistryOn({ GABI_PANEL_REGISTRY: raw }),
+        false,
+        `"${String(raw)}" must coerce to off`,
+      );
+    }
+  });
+
+  it('⚠️ wrangler.toml declares it, and declares it ON', async () => {
+    // If this goes red somebody pinned the host back to the literal. That may
+    // well be right — it is one word and a deploy, exactly as designed — but it
+    // is a DECISION and it should be visible in a diff rather than discovered
+    // by a link pointing at yesterday's hostname.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const toml = readFileSync(fileURLToPath(new URL('../wrangler.toml', import.meta.url)), 'utf8');
+    assert.match(toml, /^GABI_PANEL_REGISTRY = "on"$/m);
+  });
+});
+
+describe('⚠️ resolvePanelBase — the registry answers, the constant catches', () => {
+  it('⚠️ posture OFF makes NO subrequest and returns the configured base', async () => {
+    resetPanelRegistryCache();
+    assert.equal(await resolvePanelBase({}, { fetch: neverCalled }), DEFAULT_PANEL_BASE);
+    assert.equal(
+      await resolvePanelBase({ GABI_PANEL_URL: 'https://pinned.example' }, { fetch: neverCalled }),
+      'https://pinned.example',
+    );
+  });
+
+  it('posture ON: the main library’s host comes from the registry', async () => {
+    resetPanelRegistryCache();
+    const { fetch: f, calls } = registrySaid(REGISTRY_BODY);
+    const base = await resolvePanelBase(
+      { GABI_PANEL_REGISTRY: 'on', INDEX_BASE_URL: 'https://index.example' },
+      { fetch: f },
+    );
+    // ⚠️ A host NO constant in this repo contains, deliberately: since the
+    // 2026-09-05 morning fix the literal is `library.heygabi.ai` too, so a test
+    // asserting that would pass on a Worker whose lookup never ran.
+    assert.equal(base, 'https://shelf.example.test');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, 'https://index.example/api/catalogs');
+  });
+
+  it('⚠️ and it sends NO credential — the anonymous, names-only branch', async () => {
+    resetPanelRegistryCache();
+    const { fetch: f, calls } = registrySaid(REGISTRY_BODY);
+    await resolvePanelBase({ GABI_PANEL_REGISTRY: 'on' }, { fetch: f });
+    const headers = (calls[0]?.init?.headers ?? {}) as Record<string, string>;
+    for (const key of Object.keys(headers)) {
+      assert.doesNotMatch(key, /authorization|cookie|x-api-key/i, `the registry read sent ${key}`);
+    }
+    assert.equal(JSON.stringify(calls[0]?.init?.body ?? null), 'null', 'it must be a GET with no body');
+  });
+
+  it('the registry never overrides its own default when it is unreachable', async () => {
+    resetPanelRegistryCache();
+    const dead = (async () => {
+      throw new Error('connect ECONNREFUSED');
+    }) as unknown as typeof fetch;
+    assert.equal(
+      await resolvePanelBase(
+        { GABI_PANEL_REGISTRY: 'on', GABI_PANEL_URL: 'https://pinned.example' },
+        { fetch: dead },
+      ),
+      'https://pinned.example',
+    );
+  });
+
+  it('a refusal, an empty body and a missing row all fall back — none of them throw', async () => {
+    for (const [label, body, status] of [
+      ['HTTP 503', { error: 'no directory' }, 503],
+      ['no catalogs key', { ok: true }, 200],
+      ['catalogs is not an array', { catalogs: 'library' }, 200],
+      ['no library row', { catalogs: [{ id: 'games', host: 'boardgames.heygabi.ai' }] }, 200],
+    ] as [string, unknown, number][]) {
+      resetPanelRegistryCache();
+      const { fetch: f } = registrySaid(body, status);
+      assert.equal(
+        await resolvePanelBase({ GABI_PANEL_REGISTRY: 'on' }, { fetch: f }),
+        DEFAULT_PANEL_BASE,
+        `${label} did not fall back`,
+      );
+    }
+  });
+
+  it('⚠️ the memo means one read per isolate, and it expires', async () => {
+    resetPanelRegistryCache();
+    let clock = 1_000_000;
+    const { fetch: f, calls } = registrySaid(REGISTRY_BODY);
+    const env = { GABI_PANEL_REGISTRY: 'on' };
+    const deps = { fetch: f, now: () => clock };
+
+    assert.equal(await resolvePanelBase(env, deps), 'https://shelf.example.test');
+    assert.equal(await resolvePanelBase(env, deps), 'https://shelf.example.test');
+    assert.equal(calls.length, 1, 'a second turn read the directory again');
+
+    // ⚠️ And it expires. A host edited in D1 must eventually reach a link —
+    // "cached forever" would be a different bug wearing this fix's clothes.
+    clock += PANEL_REGISTRY_TTL_MS + 1;
+    await resolvePanelBase(env, deps);
+    assert.equal(calls.length, 2, 'the memo never expired');
+  });
+
+  it('⚠️ a failure is remembered too — an outage must not become a latency outage', async () => {
+    resetPanelRegistryCache();
+    const clock = 2_000_000;
+    let reads = 0;
+    const dead = (async () => {
+      reads += 1;
+      throw new Error('connect ECONNREFUSED');
+    }) as unknown as typeof fetch;
+    const env = { GABI_PANEL_REGISTRY: 'on' };
+    const deps = { fetch: dead, now: () => clock };
+    assert.equal(await resolvePanelBase(env, deps), DEFAULT_PANEL_BASE);
+    assert.equal(await resolvePanelBase(env, deps), DEFAULT_PANEL_BASE);
+    assert.equal(reads, 1, 'the outage was retried inside the TTL');
+  });
+});
+
+describe('mainLibraryBaseFrom — validated, never repaired', () => {
+  it('reads the library row and nobody else’s', () => {
+    assert.equal(mainLibraryBaseFrom(REGISTRY_BODY), 'https://shelf.example.test');
+  });
+
+  it('⚠️ a host that is not a bare hostname is REFUSED, not fixed', () => {
+    // A "corrected" host is a guess, and this one ends up in a link somebody
+    // presses. Every one of these returns null so the caller falls back.
+    for (const host of [
+      '',
+      '   ',
+      'https://shelf.example.test',
+      'shelf.example.test/panel',
+      'shelf.example.test:8443',
+      'evil@shelf.example.test',
+      'shelf example test',
+      'shelf.example.test?next=x',
+      'shelf.example.test#f',
+    ]) {
+      assert.equal(
+        mainLibraryBaseFrom({ catalogs: [{ id: MAIN_LIBRARY_CATALOG_ID, host }] }),
+        null,
+        `"${host}" was accepted`,
+      );
+    }
+  });
+
+  it('a non-object, a null and a string body are all null rather than a throw', () => {
+    for (const body of [null, undefined, 'library.heygabi.ai', 42, []]) {
+      assert.equal(mainLibraryBaseFrom(body), null);
+    }
+  });
+
+  it('⚠️ it reads `library`, never `library2` — that is the original bug', () => {
+    // Sending an unplaceable stranger to Samantha's shelf is the exact
+    // complaint this whole file was written to end ("why is it showing padhard
+    // and not the generic site"). A registry answer with only her row in it
+    // must fall back, not resolve.
+    const onlyFriend = { catalogs: [{ id: 'library2', host: 'padhard.heygabi.ai' }] };
+    assert.equal(mainLibraryBaseFrom(onlyFriend), null);
+  });
+});
+
+describe('panelBase is unchanged — the sync reader the pin still means', () => {
+  it('the configured var, else the constant', () => {
+    assert.equal(panelBase({}), DEFAULT_PANEL_BASE);
+    assert.equal(panelBase({ GABI_PANEL_URL: '   ' }), DEFAULT_PANEL_BASE);
+    assert.equal(panelBase({ GABI_PANEL_URL: 'https://example.test' }), 'https://example.test');
   });
 });

@@ -169,7 +169,7 @@ import { groqRung } from './gabi-groq.js';
  */
 import { edgeBlock, edgeMode } from './gabi-prompt.js';
 import { indexBase } from './have.js';
-import { panelBase, panelDeepLink } from './gabi.js';
+import { panelDeepLink, resolvePanelBase } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
 import {
   capDecision,
@@ -1714,7 +1714,7 @@ export class GabiGateway {
       trigger,
       {
         indexBaseUrl: indexBase(this.env),
-        panelUrl: panelDeepLink(panelBase(this.env)),
+        panelUrl: panelDeepLink(await resolvePanelBase(this.env)),
         catalogBaseUrl: catalogBase(this.env),
         instances: libraryInstances(this.env),
         delegatedWrites: delegatedWritesOn(this.env),

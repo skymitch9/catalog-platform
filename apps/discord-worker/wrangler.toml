@@ -219,6 +219,26 @@ CATALOG_BASE_URL = "https://audiobooks.heygabi.ai"
 # the bare form as a config row.
 GABI_PANEL_URL = "https://library.heygabi.ai"
 
+# ⚠️ THE REGISTRY LANE for that host (2026-09-05). The line above is a LITERAL,
+# and multi-library-survey-2026-09-05.md §3.4 says so in as many words: the host
+# was fixed that morning, and *"the registry work is NOT done — it is still a
+# literal, not a lookup"*. With this ON, src/panel.ts asks the estate's one
+# directory instead — GET {INDEX_BASE_URL}/api/catalogs, the row whose `id` is
+# `library`, and its `host`. docs/info/catalog-registry.md is the design.
+#
+# ⚠️ AFFIRMATIVE-ONLY. "on" and nothing else; every typo means OFF, and OFF is
+# byte-for-byte the pre-registry behaviour — no subrequest at all, GABI_PANEL_URL
+# above answering alone. So OFF + GABI_PANEL_URL is ALSO how you deliberately PIN
+# this bot's links to one host, and it is the one-word backout.
+#
+# ⚠️ It decides a HOSTNAME and NOTHING ELSE: no credential is sent (the route's
+# anonymous branch is names-only), no CORS list, origin allowlist or permission
+# is touched anywhere, and the destination site still does its own Firebase
+# sign-in and its own runResearch check before the panel opens. Every failure
+# path — directory down, malformed row, slow answer — falls back to the line
+# above, so a link can never get worse than it was.
+GABI_PANEL_REGISTRY = "on"
+
 # ⚠️ MODERATION KILL-SWITCH (owner order 2026-08-16: "disable her reacting to
 # any admin mod stuff for now until we get further along"). Declared here
 # BEFORE the moderation build existed, so that build would ship DARK behind it

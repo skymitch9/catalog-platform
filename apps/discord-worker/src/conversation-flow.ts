@@ -41,7 +41,7 @@
 
 import { editOriginalMessage } from './discord-api.js';
 import { indexBase } from './have.js';
-import { panelBase, panelDeepLink } from './gabi.js';
+import { panelDeepLink, resolvePanelBase } from './gabi.js';
 import { catalogBase } from './catalog-data.js';
 import type { Env } from './env.js';
 import { gatewayStub } from './gateway.js';
@@ -312,7 +312,7 @@ export async function resumeConversation(
     };
     const cfg = {
       indexBaseUrl: indexBase(env),
-      panelUrl: panelDeepLink(panelBase(env)),
+      panelUrl: panelDeepLink(await resolvePanelBase(env)),
       catalogBaseUrl: catalogBase(env),
       instances: libraryInstances(env),
       delegatedWrites: delegatedWritesOn(env),

@@ -43,7 +43,19 @@
  * | the capability on both | **the main library**, the estate's default |
  * | no capability, but an account on one | that instance — it is still *their* site |
  * | no capability, accounts on both | the main library |
- * | unlinked, or nothing could be resolved | the configured `GABI_PANEL_URL` — **the main library** since 2026-09-05 |
+ * | unlinked, or nothing could be resolved | **the main library**, and since 2026-09-05 its host is LOOKED UP (see below) rather than typed |
+ *
+ * ⚠️ **AND THE FALLBACK IS NO LONGER A LITERAL — 2026-09-05, the same day, the
+ * other half.** The row above used to end at *"the configured
+ * `GABI_PANEL_URL`"*, and `multi-library-survey-2026-09-05.md` §3.4 said so in
+ * as many words: *"the hard-coded HOST is fixed … the registry work is NOT done
+ * — it is still a literal, not a lookup."* It is a lookup now. With
+ * `GABI_PANEL_REGISTRY = "on"`, `resolvePanelBase` reads the main library's
+ * `host` from the estate's one directory — `GET {INDEX_BASE_URL}/api/catalogs`,
+ * `docs/info/catalog-registry.md` — and the constant is what answers only when
+ * that directory does not. ⚠️ Nothing was widened to do it: the route's
+ * anonymous branch is names-only, no credential is sent, and no CORS list,
+ * origin allowlist or permission was touched.
  *
  * ⚠️ **The unlinked fallback is deliberate and is NOT a dead end.** Somebody
  * with no account anywhere gets **the main library** — the estate's default in
@@ -78,6 +90,13 @@
 
 import type { Env } from './env.js';
 import type { DelegatePort, LibraryInstance, WhoAmI } from './delegated.js';
+// ⚠️ ONE function, and it is imported rather than re-derived: `indexBase` is
+// this Worker's single answer to *"where is the estate index"*, and a second
+// copy of that hostname here is exactly the duplicate-constant defect the
+// registry exists to end. It carries no credential (`/have`'s own design
+// decision 4) and the estate-docs seam guard reads this file's source for
+// credential names — none of them arrive with it.
+import { indexBase } from './have.js';
 
 /** The fallback for somebody the estate cannot place: **the main library**, the
  * same instance this file's own resolution table calls "the estate's default",
@@ -131,6 +150,177 @@ const PANEL_CAPABILITY = 'runResearch' as const;
 export function panelBase(env: Pick<Env, 'GABI_PANEL_URL'>): string {
   const configured = (env.GABI_PANEL_URL ?? '').trim();
   return configured.length > 0 ? configured : DEFAULT_PANEL_BASE;
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ THE REGISTRY — the main library's host, LOOKED UP rather than typed
+// ---------------------------------------------------------------------------
+
+/**
+ * **The other half of the 2026-09-05 fix, and the half the survey said was NOT
+ * done.** `multi-library-survey-2026-09-05.md` §3.4, on this exact line:
+ *
+ * > ✅ *the hard-coded HOST is fixed* … ⚠️ **The registry work is NOT done — it
+ * > is still a literal, not a lookup.**
+ *
+ * The estate now has one answer to *"which catalogs exist and where do they
+ * live"* — `GET https://index.heygabi.ai/api/catalogs`, published from the auth
+ * Worker's `estate_catalog` table (`docs/info/catalog-registry.md`). The main
+ * library's `host` is a row in it. So the fallback asks, and only falls back to
+ * the constant when the answer does not arrive.
+ *
+ * ## ⚠️ WHAT THIS DOES **NOT** DO
+ *
+ * - **It widens nothing.** The route is the anonymous, NAMES-ONLY branch — no
+ *   CORS mount is involved (this is a Worker, not a browser), no bearer is
+ *   sent, no origin list is touched and no permission is decided. A hostname is
+ *   the whole payload.
+ * - **It never decides whether the panel opens.** That was always the
+ *   destination site's own Firebase sign-in and role check, and it still is.
+ * - **It cannot make a link worse than it was.** Every failure path returns
+ *   `panelBase(env)`, which is the value this file shipped with.
+ *
+ * ## ⚠️ AFFIRMATIVE-ONLY, AND IT SHIPS ON
+ *
+ * `GABI_PANEL_REGISTRY = "on"` and nothing else. Every typo, and absence, means
+ * OFF — and OFF is byte-for-byte the pre-registry behaviour: no subrequest, no
+ * cache, `panelBase(env)` and nothing more. That is also **the backout and the
+ * pin**: an operator who wants this bot's links nailed to one host sets the
+ * posture off and `GABI_PANEL_URL` to the host they mean. The same shape
+ * `mentionsOn`, `moderationOn` and `delegatedWritesOn` use, for the same
+ * reason.
+ *
+ * ⚠️ **The posture is why a unit test makes no network call.** Nothing here
+ * fetches unless somebody wrote the word `on`, so the whole suite runs with the
+ * registry lane dark unless a test opts in and injects a `fetch`.
+ */
+export function panelRegistryOn(env: Pick<Env, 'GABI_PANEL_REGISTRY'>): boolean {
+  return (env.GABI_PANEL_REGISTRY ?? '').trim().toLowerCase() === 'on';
+}
+
+/** The registry id of the estate's default library — the one this file's own
+ * resolution table calls *"the main library"*, and the same id
+ * `delegated.ts`'s `LibraryInstance.app` uses. ⚠️ NOT `library2`: that is
+ * Samantha's shelf, and sending an unplaceable stranger there is the bug this
+ * whole file was written to end. */
+export const MAIN_LIBRARY_CATALOG_ID = 'library';
+
+/** ⚠️ **Ten minutes, matching the registry's OWN cache TTL** (`catalog-registry.md`
+ * §8), so the estate has one number to remember rather than two. A label or a
+ * host edited in D1 can therefore take up to twenty minutes to reach a link —
+ * fine for a hostname, and the reason §8 says outright never to put a
+ * permission behind this cache. */
+export const PANEL_REGISTRY_TTL_MS = 10 * 60 * 1000;
+
+/** ⚠️ **A hard ceiling, because this sits in front of a person waiting for a
+ * message.** The link is the useful half of the reply, not the reply; a
+ * directory that is slow must cost a fallback, never a turn. */
+export const PANEL_REGISTRY_TIMEOUT_MS = 2_000;
+
+/** What a caller may inject. Both exist for tests; production passes neither. */
+export interface PanelRegistryDeps {
+  fetch?: typeof fetch;
+  now?: () => number;
+}
+
+/**
+ * ⚠️ **Isolate-local, and it caches the FAILURE too** (as `null`). An
+ * unreachable directory that is retried on every turn is a directory outage
+ * turned into a latency outage; remembering "it did not answer" for the same
+ * ten minutes is what keeps the fallback cheap.
+ */
+let registryMemo: { at: number; base: string | null } | null = null;
+
+/** Tests only. Production never calls it — the memo's whole point is to survive. */
+export function resetPanelRegistryCache(): void {
+  registryMemo = null;
+}
+
+/**
+ * The main library's base URL according to the estate registry, or `null`.
+ *
+ * ⚠️ **`null` means "the registry did not say", and that is NOT the same fact
+ * as "the main library is somewhere else".** It never becomes a host, never
+ * becomes an empty string and never throws — the same distinction `whoami`'s
+ * `null` draws two sections down, and for the same reason.
+ *
+ * ⚠️ **Validated, not trusted**, even though the far end is our own Worker: a
+ * partially-deployed estate is a normal state, and a malformed `host` that
+ * reached a Discord message would be a link somebody clicks. `id` must match
+ * exactly, `host` must be a non-empty string with no scheme and no slash, and
+ * the assembled `https://host` must parse as a URL.
+ */
+export async function registryPanelBase(
+  env: Pick<Env, 'INDEX_BASE_URL'>,
+  deps: PanelRegistryDeps = {},
+): Promise<string | null> {
+  const now = deps.now ?? Date.now;
+  const at = now();
+  if (registryMemo && at - registryMemo.at < PANEL_REGISTRY_TTL_MS) return registryMemo.base;
+
+  const doFetch = deps.fetch ?? fetch;
+  let base: string | null = null;
+  try {
+    const res = await doFetch(new URL('/api/catalogs', indexBase(env)).toString(), {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(PANEL_REGISTRY_TIMEOUT_MS),
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { catalogs?: unknown };
+      base = mainLibraryBaseFrom(body);
+    } else {
+      console.error(`GABI panel: the estate registry answered HTTP ${res.status}; keeping the configured fallback.`);
+    }
+  } catch (err) {
+    console.error('GABI panel: the estate registry could not be read:', err instanceof Error ? err.message : err);
+  }
+
+  registryMemo = { at, base };
+  return base;
+}
+
+/**
+ * The `library` row's host, as a base URL — pure, so every shape of a bad
+ * answer is exercised with no network.
+ */
+export function mainLibraryBaseFrom(body: unknown): string | null {
+  if (body === null || typeof body !== 'object') return null;
+  const list = (body as { catalogs?: unknown }).catalogs;
+  if (!Array.isArray(list)) return null;
+  for (const raw of list) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    if (row.id !== MAIN_LIBRARY_CATALOG_ID) continue;
+    const host = typeof row.host === 'string' ? row.host.trim() : '';
+    // ⚠️ A bare hostname is the registry's contract (`library.heygabi.ai`).
+    // Anything carrying a scheme, a slash, a space or a credential marker is
+    // refused rather than repaired: a "fixed" host is a guess, and this one
+    // ends up in a link a person presses.
+    if (!host || /[\s/\\@?#]|:/.test(host)) return null;
+    try {
+      return new URL(`https://${host}`).origin;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * ⚠️ **THE FALLBACK EVERY SURFACE SHOULD BUILD ITS LINK FROM.** Registry first
+ * when the posture is on, `panelBase(env)` — the configured var, else the
+ * constant — whenever it is off or the directory did not answer.
+ *
+ * `panelBase` remains for callers that must be synchronous and for the pin's
+ * own meaning; this is the resolved truth, and `/api/health` reports THIS one
+ * so the row and the link cannot disagree.
+ */
+export async function resolvePanelBase(
+  env: Pick<Env, 'GABI_PANEL_URL' | 'GABI_PANEL_REGISTRY' | 'INDEX_BASE_URL'>,
+  deps: PanelRegistryDeps = {},
+): Promise<string> {
+  if (!panelRegistryOn(env)) return panelBase(env);
+  return (await registryPanelBase(env, deps)) ?? panelBase(env);
 }
 
 /**

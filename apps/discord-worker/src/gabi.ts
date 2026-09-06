@@ -94,6 +94,7 @@ import {
   panelBase,
   panelDeepLink,
   resolveAskerPanelBase,
+  resolvePanelBase,
   type PanelIdentityPort,
 } from './panel.js';
 
@@ -103,7 +104,7 @@ import {
  * importer keeps working, and the one place that decides where a link points is
  * still one place.
  */
-export { DEFAULT_PANEL_BASE, panelBase, panelDeepLink };
+export { DEFAULT_PANEL_BASE, panelBase, panelDeepLink, resolvePanelBase };
 
 /** Shorter than `/have`'s: a one-word "gabi" is not a question. Still small,
  * because refusing a real question is worse than searching a vague one. */
