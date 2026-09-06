@@ -34,12 +34,25 @@
  * white-screening bundle".)
  *
  * WHAT IT CHECKS
- *   static (default)          JS parses · HTML structurally sound · tree clean
+ *   static (default)          JS parses · module graph resolves · HTML sound ·
+ *                             every predeploy.checks.json marker holds in the
+ *                             WORKING TREE · tree clean
  *   --live [baseUrl]          after deploying: the real URLs serve the real strings
  *
  * The live phase is the half that closes "shipped ≠ verified". Its
  * expectations live in sites/heygabi-home/predeploy.checks.json — a page
  * whose marker is missing is a page that deployed but did not land.
+ *
+ * THE MARKERS ARE DRY-RUN FIRST (2026-09-05). Those same expectations are
+ * asserted against sites/heygabi-home/public/ on every static run, by the same
+ * code (scripts/lib/predeploy-markers.mjs — one function, two sources). Before
+ * this, a wrong marker was only ever discovered by --live, i.e. with the page
+ * already public and another deploy the only remedy; measured that day, a
+ * throwaway version of this check caught EIGHT markers that would have failed
+ * the live run, six of them written minutes earlier. ⚠️ It does NOT replace the
+ * live run: this proves the string is in the file a deploy WOULD upload, while
+ * --live proves it is in the bytes the host ACTUALLY serves, which is the only
+ * thing that catches a failed upload or a stale edge cache.
  *
  * ESCAPE HATCH, deliberately awkward (global rule: an explicit env var, never
  * an easy flag): ALLOW_DIRTY_DEPLOY=1 skips the clean-tree assertion. It
@@ -60,6 +73,8 @@ import { copyFileSync, mkdtempSync, readFileSync, readdirSync, statSync } from '
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { fileForPath, markerMessage, markerProblems } from './lib/predeploy-markers.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SITE = join(REPO, 'sites', 'heygabi-home');
@@ -573,22 +588,68 @@ async function checkLive() {
       continue;
     }
     if (!res.ok) { fail(url, `HTTP ${res.status}`); continue; }
-    for (const needle of page.mustContain ?? []) {
-      if (!body.includes(needle)) fail(url, `served 200 but is MISSING: ${JSON.stringify(needle)}`);
-    }
-    // `mustNotContain` — the mirror, added 2026-08-17 when a control was
-    // REMOVED by owner directive (the ebooks download checkbox) rather than
-    // added. Removal needs a marker too: a stale bundle still carrying the old
-    // control serves 200 and satisfies every mustContain, so without this the
-    // deploy that failed to remove it is indistinguishable from the one that
-    // did. Same failure grammar, opposite sense.
-    for (const needle of page.mustNotContain ?? []) {
-      if (body.includes(needle)) {
-        fail(url, `served 200 but STILL CARRIES what should be gone: ${JSON.stringify(needle)}`);
-      }
+    // The assertion itself is markerProblems(), shared with the static dry-run
+    // below — one implementation, two sources. `mustNotContain` is the mirror
+    // it also carries, added 2026-08-17 when a control was REMOVED by owner
+    // directive (the ebooks download checkbox) rather than added: a stale
+    // bundle still carrying the old control serves 200 and satisfies every
+    // mustContain, so without it the deploy that failed to remove something is
+    // indistinguishable from the one that did.
+    for (const problem of markerProblems(body, page)) {
+      fail(url, `served ${res.status} but ${markerMessage(problem, page.path)}`);
     }
   }
   return config.pages.length;
+}
+
+/* ── 5. Static: the SAME markers, dry-run against the working tree ─────── */
+
+/**
+ * THE MARKER DRY-RUN (2026-09-05) — the pre-deploy half of checkLive().
+ *
+ * Every `mustContain`/`mustNotContain` in predeploy.checks.json, asserted
+ * against the file under public/ that Pages would serve for that path. Same
+ * strings, same comparison, same wording — see scripts/lib/predeploy-markers.mjs
+ * for why it is one function rather than two copies.
+ *
+ * ⚠️ A configured path with NO file behind it is a FAILURE, not a skip. Either
+ * the page moved and its entry needs updating, or the deploy is about to ship a
+ * route the config believes in and the directory does not contain — and a skip
+ * would hide both while looking exactly like a pass.
+ *
+ * ⚠️ HONEST BOUNDARY: this reads the tree, so it cannot see anything the HOST
+ * does — a failed upload, a stale edge cache, a `_headers` or redirect rule
+ * serving something else. `--live` is still the verifier; this is the gate.
+ */
+function checkMarkersStatic() {
+  let config;
+  try {
+    config = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  } catch (err) {
+    fail(rel(CONFIG), `unreadable, so the marker dry-run could not run: ${err.message}`);
+    return 0;
+  }
+  let checked = 0;
+  for (const page of config.pages ?? []) {
+    const file = fileForPath(PUBLIC_DIR, page.path);
+    let body;
+    try {
+      body = readFileSync(file, 'utf8');
+    } catch (err) {
+      fail(
+        rel(file),
+        `predeploy.checks.json pins markers for ${page.path}, but nothing is there (${err.code || err.message}).\n` +
+          '      Either the page moved and its entry needs updating, or this deploy would ship a route\n' +
+          '      with no file behind it. A missing file is not a skip.',
+      );
+      continue;
+    }
+    checked++;
+    for (const problem of markerProblems(body, page)) {
+      fail(rel(file), markerMessage(problem, page.path));
+    }
+  }
+  return checked;
 }
 
 /* ── run ───────────────────────────────────────────────────────────────── */
@@ -668,11 +729,13 @@ if (LIVE) {
   const htmlCount = checkAllHtml(files);
   const themeCount = checkThemeRegistry(files);
   const surfaceCount = checkSurfaceOwnership(files);
+  const markerPages = checkMarkersStatic();
   checkCleanTree();
   console.log(
     `  ${jsCount} JS file(s) parsed · ${graphCount} module graph(s) resolved · ` +
       `${htmlCount} HTML file(s) structurally checked · ` +
-      `${themeCount} theme(s) registered · ${surfaceCount} surface owner(s) enforced · tree checked`,
+      `${themeCount} theme(s) registered · ${surfaceCount} surface owner(s) enforced · ` +
+      `${markerPages} page(s) marker dry-run · tree checked`,
   );
 }
 

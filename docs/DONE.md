@@ -9,6 +9,71 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-05 21:48 Phoenix — the predeploy markers are dry-run against the working tree BEFORE the upload
+
+> **Closed by W8-PREDEPLOY (claude-opus-5).** `npm run check:home` now asserts
+> every `mustContain` / `mustNotContain` in
+> `sites/heygabi-home/predeploy.checks.json` against the file under `public/`
+> that Pages would serve for that path, so a wrong marker fails **before**
+> `wrangler pages deploy` instead of after it.
+>
+> **One implementation, two sources** — the proposal's own requirement. The
+> comparison moved into `scripts/lib/predeploy-markers.mjs`
+> (`markerProblems(body, page)` returns DATA, `markerMessage()` words it,
+> `fileForPath()` maps a live path to its file), and BOTH `checkLive()` and the
+> new `checkMarkersStatic()` call it. The live phase's own inline loops are
+> gone: two implementations of *"does this string appear"* is two chances for
+> the pre-deploy gate to disagree with the post-deploy verifier, and a gate that
+> disagrees with its own verifier teaches people to ignore both.
+>
+> **A pinned path with no file behind it is a FAILURE, not a skip.** Either the
+> page moved and its entry needs updating, or the deploy is about to ship a
+> route the config believes in and the directory does not contain. A skip would
+> hide both while looking exactly like a pass.
+>
+> **Files:** `scripts/lib/predeploy-markers.mjs` (new),
+> `scripts/predeploy-check.mjs`, `scripts/test/predeploy-markers.test.mjs`
+> (new, 10 cases), `sites/heygabi-home/deploy.md` §4.
+>
+> **Measured 2026-09-05 21:48 Phoenix.** `npm run check:home` on the tree:
+> **green**, `37 page(s) marker dry-run` — i.e. every entry in the config
+> resolved to a real file and every marker held. `npm run test:scripts`:
+> **460 pass / 0 fail** (the file contributes 10; the 450 *before* is arithmetic,
+> not a separate measurement). The three failure shapes were exercised in a
+> throwaway COPY of the site under the scratchpad — never in the shared working
+> tree, which other agents were editing — by renaming an id, re-introducing
+> `const FULL_SCOPE_SIZE = 3`, and deleting a pinned asset: **3 problems, exit
+> 1**, each naming the file, the marker and the config entry.
+>
+> ⚠️ **NOT VERIFIED, and deliberately: nothing was deployed.** The dry-run has
+> never run as part of a real `npm run deploy:home`, and its honest boundary is
+> written into both the script and `deploy.md` — it proves the string is in the
+> file a deploy WOULD upload, never in the bytes the host ACTUALLY serves, so it
+> does not replace `verify:home` and the deploy script still runs both. Also not
+> verified: the eight-bad-marker figure below is W6-APEX's measurement, quoted,
+> not re-measured here.
+>
+> ⚠️ **One finding: there is no apex deploy doc in `docs/access/`.** The apex's
+> deploy reference is `sites/heygabi-home/deploy.md`, beside the site it
+> describes; `docs/access/README.md` has no row for it. The behaviour change is
+> documented there, in §4, where a person running the deploy will actually be
+> looking. Whether it should ALSO be indexed from `docs/access/` is a docs-tree
+> question left open rather than answered by moving a file somebody else's
+> pointers name.
+
+**The item as it stood in `TODO.md`** (a bullet under *"⚠️ What dispatch 2
+measured and did NOT change"*, in the 2026-09-05 15:50 multi-library ask):
+
+- 💡 **PROPOSAL for whoever owns `scripts/predeploy-check.mjs`: dry-run every
+  `predeploy.checks.json` marker against the WORKING TREE inside
+  `npm run check:home`.** `verify:home` asserts the markers AFTER the upload,
+  so a bad marker is found with the page already public. Running the same
+  string checks against `public/` first is ~15 lines and free. Measured
+  2026-09-05: a throwaway version of exactly this caught **eight** markers that
+  would have failed the live run, six of them written minutes earlier. ⚠️ It
+  changes the deploy gate, so it belongs to that script's owner rather than to
+  a page build — the throwaway is in W6-APEX's scratchpad, not the repo.
+
 ## ✅ DONE 2026-09-05 20:05 Phoenix — the unlinked-asker deep link points at the main library
 
 > **Closed by W7-PANEL-URL (claude-opus-5).** Commits **`6828e6a`** (the change)

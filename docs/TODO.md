@@ -34,20 +34,6 @@ deliberate). The file itself names the fix: a `sync-gabi-prompt.mjs` mirroring
 `sync-gabi-conversation.mjs` (option b), never built. Backlog #13 in the
 2026-09-05 ready list; not started.
 
-## ☐ `data/series-canon.json` entries for the two cross-catalog folds (emily wilde / skyward) — SMALL, another repo too
-
-> Left behind 2026-09-05 18:12 Phoenix when the six-click item moved to [`DONE.md`](DONE.md). Re-measured after the clicks:
-> `series_alias` now carries `emily wilde series → emily-wilde` and `skyward → skyward-series`, so the index will fold the
-> audiobook push correctly on its own. What the canon entry still buys is the AUDIOBOOK catalog's own display
-> ('Emily Wilde Series' on audiobooks.heygabi.ai) — and note the owner kept **"The Skyward Series"** as the survivor
-> (13 entries: 7 audiobook / 5 library / 1 library2), so a `skyward` canon entry must map TO the decorated form, not away from it.
-
-The original note: the two
-CROSS-CATALOG folds want a `data/series-canon.json` entry — *"Emily Wilde
-Series"* and *"The Skyward Series"* are the AUDIOBOOK catalog's spellings, and a
-merge in the index does **not** stop it pushing the decorated name. Needs the
-edit here **and** the audiobook repo's `python -m app.tools.sync_series_canon`.
-
 ## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
 
 > **Owner, verbatim (16:50):** *"Should we make all the scripts routes? Or at
@@ -321,15 +307,9 @@ else's call:
   (`catalog-registry.md` §8 — fine for a name, never for a permission).
   Consolidating it is a sync-script job like `sync-estate-auth.mjs`, not a
   fetch.
-- 💡 **PROPOSAL for whoever owns `scripts/predeploy-check.mjs`: dry-run every
-  `predeploy.checks.json` marker against the WORKING TREE inside
-  `npm run check:home`.** `verify:home` asserts the markers AFTER the upload,
-  so a bad marker is found with the page already public. Running the same
-  string checks against `public/` first is ~15 lines and free. Measured
-  2026-09-05: a throwaway version of exactly this caught **eight** markers that
-  would have failed the live run, six of them written minutes earlier. ⚠️ It
-  changes the deploy gate, so it belongs to that script's owner rather than to
-  a page build — the throwaway is in W6-APEX's scratchpad, not the repo.
+- ✅ **The marker dry-run proposal is BUILT** — moved WHOLE to
+  [`DONE.md`](DONE.md) (*"the predeploy markers are dry-run before the upload"*,
+  2026-09-05 21:48 Phoenix, agent W8-PREDEPLOY).
 
 ☑ ❓ **Owner confirm (asked 15:54 Phoenix):** is the ownership table above
 right — in particular `game` = Skylar's physical, and BOTH audiobooks and

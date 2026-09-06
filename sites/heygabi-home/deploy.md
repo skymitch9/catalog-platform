@@ -252,9 +252,31 @@ be run alone:
 
 | Command | What it does | Fails when |
 |---|---|---|
-| `npm run check:home` | Every public `.js` parses · every `.html` is structurally sound and has a `<title>` · `public/` is committed-clean | Before anything ships |
+| `npm run check:home` | Every public `.js` parses · the module graph resolves · every `.html` is structurally sound and has a `<title>` · **every `predeploy.checks.json` marker holds in the working tree** · `public/` is committed-clean | Before anything ships |
 | *(the deploy itself)* | `wrangler pages deploy sites/heygabi-home/public …` | Upload fails |
 | `npm run verify:home` | Fetches the live URLs and asserts each page still serves its own markers | After it shipped |
+
+⚠️ **`check:home` now fails BEFORE the upload when a `predeploy.checks.json`
+marker is wrong** (2026-09-05). Until then those markers were asserted in one
+place only — `verify:home`, which runs *after* `wrangler pages deploy` — so a
+mistyped id, a re-worded sentence or a pin left behind on a file the logic moved
+out of was discovered with the page already public, and the only remedy was
+another deploy. The static run now asserts the same `mustContain` /
+`mustNotContain` strings against the file under `public/` that Pages would serve
+for each path (a directory path from its `index.html`), by the same code —
+[`scripts/lib/predeploy-markers.mjs`](../../scripts/lib/predeploy-markers.mjs),
+one function, two sources, so the gate can never disagree with its own verifier.
+A pinned path with **no file behind it is a failure, not a skip**, and the
+failure names the file, the marker and the config entry that pins it. Measured
+the day it was written: a throwaway version of this check caught **eight**
+markers that would have failed the live run, six of them written minutes
+earlier. Rules pinned by `scripts/test/predeploy-markers.test.mjs`.
+
+⚠️ **It does not replace `verify:home`, and the deploy script still runs both.**
+The dry-run proves the string is in the file a deploy *would* upload; only the
+live run proves it is in the bytes the host *actually* serves, which is the sole
+instrument for a failed upload, a stale edge cache, or a `_headers` / redirect
+rule serving something else. Shipped is still not verified.
 
 ⚠️ **Why a guard and not a dev lane** (ruling 2026-08-16, owner asked directly).
 A dev lane's value scales with the cost of a bad deploy, and here that cost is
