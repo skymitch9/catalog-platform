@@ -79,7 +79,14 @@
 >    (the guard on both role-write routes fires only on self-edits; the
 >    library fixed the identical bug in 2026-08 by moving the guard into
 >    `setUserRole`, the board never took it) — conductor's call: PORT IT,
->    agent W9-KI7 dispatched 22:44; and KI-6, the bare `{"error":"unauthenticated"}`
+>    agent W9-KI7 dispatched 22:44, ✅ **FIXED + DEPLOYED 22:48** (board
+>    `c0e55a0` + `e6542ff`, worker version `e4519a77`, rollback `62fc5645`;
+>    suite 735 → **746 / 745 pass / 0 fail / 1 todo**, re-run by the conductor
+>    22:53; measured production D1: owner **2**, admin **1**, member **1** — the
+>    single admin could demote both owners in two clicks. ⚠️ NOT exercised
+>    live: no role write was made; the refusal sentence is proved against
+>    stubs and real SQLite only. Review <https://heygabi.ai/admin> — nothing
+>    looks different until a demotion would leave zero owners); and KI-6, the bare `{"error":"unauthenticated"}`
 >    401 (estate-wide shape — the library's `auth.ts` has the same line). Also
 >    `e2160d2` here: `test-inventory-2026-09-05.md` §5.2 closed);
 >    (c) one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION;
