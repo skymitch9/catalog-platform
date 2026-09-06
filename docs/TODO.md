@@ -21,6 +21,21 @@
 > test that only restates the code…). Survey agent W8-TEST-SURVEY dispatched
 > 21:46; deliverable `docs/info/test-inventory-2026-09-05.md` + the decision
 > list presented as ONE numbered list with recommendations.
+>
+> ☑ **Survey landed 21:55** (`02eb1eb`): 415 files / 9,445 cases, ~0.3% removable.
+> ☑ **Owner 22:04: "Do what you suggest just build it all now"** — all five
+> recommendations GO. Dispatched 22:05 as W9 agents, one per repo:
+>
+> 1. ☐ delete `audiobook_catalog/run_tests.py` (blind second runner) + fix the
+>    script that points at it — W9-AUDIO-TESTS
+> 2. ☐ move `library_catalog/apps/web/src/lib/gabi-confirm.test.ts` into the
+>    `npm test` glob — W9-LIB-TEST-MOVE
+> 3. ☐ `test_catalog_completeness.py`: 11 silent `skipTest`s made loud — W9-AUDIO-TESTS
+> 4. ☐ `packages/estate-events` gets real tests (declares a runner, has no `test/`) — W9-PLATFORM-CI
+> 5. ☐ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` — W9-PLATFORM-CI;
+>    (b) board: route tests for its 16 route files, `admin.ts`/`users.ts` first — W9-BOARD-ROUTES;
+>    (c) one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION;
+>    (d) `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops skipping it — W9-PLATFORM-CI
 
 ## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
 
