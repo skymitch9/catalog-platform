@@ -1724,7 +1724,9 @@ Discord secret (3), the soak (5) and the audiobook Python client (6).
    item 6 below and always was. ⚠️ **Everything ships `"off"`**, so nothing is
    denied anywhere yet — built is not switched on, and the soak in item 5 is
    still the next real step.
-5. ☐ **Phase 4 — the soak, then `enforce` ONE SITE AT A TIME.** Flip
+5. ☐ ⏸ **Phase 4 — the soak, then `enforce` ONE SITE AT A TIME.** ⏸ **Owner
+   2026-09-06 13:41 Phoenix, asked "billing phase 4 — go?": "Later."** Nothing
+   below runs (no shadow flip, no secret mint) until he says go. Flip
    `BILLING_POLICY = "shadow"` first and read the lines:
    `npx wrangler tail catalog-index --format json | jq 'select(.evt=="billing_policy")'`.
    ⚠️ The flip criterion is §4.2's and it has TWO halves: zero `would_deny:true`
