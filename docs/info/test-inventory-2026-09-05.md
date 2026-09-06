@@ -31,6 +31,18 @@
 > - **Nothing was changed, committed or deployed.** This is a read-only survey
 >   plus this one file.
 >
+> ✅ **THREE OF THE FINDINGS WERE FIXED THE SAME EVENING** (owner, 22:04: *"Do
+> what you suggest just build it all now"*), and the rows they belong to are
+> corrected IN PLACE rather than deleted — §1's per-workspace table, §3's gate
+> table, §4.4, §5.1/§5.4/§5.5 and §6. The commits: **`44e81ae`** the CI test
+> gate (with `access/ci-deploy.md`, created because the deploy workflow had no
+> doc at all), **`9f0c504`** `packages/estate-events` (0 → 32 cases),
+> **`a6f0324`** `apps/ebooks-door` (no `test` key → 15 cases). ⚠️ **The
+> catalog-platform total in §1 is therefore now 3,151, not 3,076** — of the
+> +75, **47** are these two new suites and the rest is other agents' work that
+> landed the same evening. ⚠️ **The CI gate is SHIPPED, NOT VERIFIED:** the
+> `tests` job has never executed on a runner, and cannot without a real deploy.
+>
 > ⚠️ **The counts are a moving target.** Two untracked files appeared in
 > `catalog-platform` DURING this survey — `scripts/lib/gabi-prompt-sync.mjs`
 > and `scripts/test/predeploy-markers.test.mjs` — written by another agent
@@ -72,8 +84,8 @@ a thousand cases** — do not use one.
 | `packages/estate-auth` | 5 | **42** | 1.2 s | ″ |
 | `packages/gabi-conversation` | 2 | **34** | 1.0 s | ″ |
 | `packages/firebase-sa` | 1 | **5** | 1.1 s | ″ |
-| `apps/ebooks-door` | 0 | 0 | — | ⚠️ **no test script at all** |
-| `packages/estate-events` | 0 | 0 | — | ⚠️ **declares `"test": "tsx --test test/*.test.ts"` and `test/` does not exist** |
+| `apps/ebooks-door` | ~~0~~ **1** | ~~0~~ **15** | 1.0 s | ✅ **FIXED `a6f0324`** — had ⚠️ *no test script at all*; now has the key and a suite |
+| `packages/estate-events` | ~~0~~ **2** | ~~0~~ **32** | 1.2 s | ✅ **FIXED `9f0c504`** — had ⚠️ *declares `"test": "tsx --test test/*.test.ts"` and `test/` does not exist*; now has both |
 
 **`bookbuddy/library_catalog`** — root `npm test` is one `tsx --test` over eight globs
 
@@ -288,7 +300,7 @@ duplicates; only a mutation run can find tests that pass no matter what.
 | `audiobook_catalog` CI `tests.yml` | `python -m pytest -q` on every push/PR to main | ✅ |
 | `audiobook_catalog` CI `js-tests.yml` | `npm test` (vitest) on every push/PR, and `deploy.yml` needs it | ✅ *"the ONLY guard for client-side regressions"* per its own comment |
 | `library_catalog` / `Board_Game_Catalog` CI `deploy.yml` | `npm run deploy` → fires `predeploy` → tests | ✅ |
-| 🔴 **`catalog-platform` CI `deploy.yml`** | `npm ci` → `db:migrate` → **`npx wrangler deploy`** | 🔴 **NO TEST GATE.** The auth Worker, the index Worker and the home Pages site all deploy from CI without running one test. Only the *local* `npm run deploy:home` path runs `npm test`. |
+| ✅ **`catalog-platform` CI `deploy.yml`** | **`npm ci` → `npm test` (job `tests`)** → then, per target, `npm ci` → `db:migrate` → `npx wrangler deploy` | ✅ **FIXED `44e81ae`** (2026-09-05). Was 🔴 *"NO TEST GATE — the auth Worker, the index Worker and the home Pages site all deploy from CI without running one test."* All three jobs now carry `needs: tests`; a red suite skips them. ⚠️ **Not yet exercised on a runner** — see §5.1 |
 
 ### Where the slowness is
 
@@ -391,6 +403,8 @@ invariant are keep-by-default and none appear below.
   package is the estate event ring, which is referenced in
   `docs/info/worker-event-ring.md` and in `KNOWN_ISSUES.md` KI-10 — it is not
   trivial code, so the honest fix is tests, not deletion of the line.
+- ✅ **DONE `9f0c504`** (2026-09-05): tests, not deletion. 32 cases in
+  `test/estate-events.test.ts` + `test/event-ring-contract.test.ts`. See §5.5.
 - **Risk if wrong:** none from the diagnosis. Deleting the script line loses
   nothing; leaving it as-is keeps a false green.
 - **Confidence:** high.
@@ -435,13 +449,20 @@ deletes zero test cases.** Three of the five *increase* what the suite proves.
 
 *"Do we truly need all of them"* cuts both ways, and this is the larger finding.
 
-1. 🔴 **`catalog-platform`'s CI deploy runs no tests.**
-   `.github/workflows/deploy.yml` deploys `index-worker`, `auth-worker` and the
-   `heygabi-home` Pages site with `npx wrangler deploy` / `wrangler pages
-   deploy` and **never invokes `npm test`** — while `library_catalog` and
-   `Board_Game_Catalog` both gate their CI deploys through `predeploy`. The
-   3,076 tests in this repo protect the *local* deploy path only. This is the
-   single highest-value change in this document.
+1. ✅ **FIXED in `44e81ae`** (2026-09-05) — *"`catalog-platform`'s CI deploy runs
+   no tests."* `.github/workflows/deploy.yml` deployed `index-worker`,
+   `auth-worker` and the `heygabi-home` Pages site with `npx wrangler deploy` /
+   `wrangler pages deploy` and **never invoked `npm test`** — while
+   `library_catalog` and `Board_Game_Catalog` both gate their CI deploys
+   through `predeploy`. The 3,076 tests in this repo protected the *local*
+   deploy path only. This was named the single highest-value change in this
+   document. A `tests` job now runs the root `npm test` and all three deploy
+   jobs carry `needs: tests`; the workflow is documented for the first time in
+   [`../access/ci-deploy.md`](../access/ci-deploy.md), which did not exist
+   either. ⚠️ **Shipped is not verified: the job has never run on a runner.**
+   Every target is live and the only trigger is `workflow_dispatch`, so there
+   is no dry run — the first dispatch is the measurement, and `ci-deploy.md` §4
+   says exactly what it will show.
 2. 🔴 **`Board_Game_Catalog` has 16 route files and zero route tests.**
    `apps/worker/src/routes/` holds `admin.ts`, `users.ts`, `scan-jobs.ts`,
    `export.ts`, `covers.ts`, `vision.ts` and ten more. `library_catalog` tests
@@ -453,13 +474,26 @@ deletes zero test cases.** Three of the five *increase* what the suite proves.
    the other eight are not. `catalog-platform` tests 26 of 22 scripts (more
    test files than scripts) and `library_catalog` 16 — the board repo is the
    outlier.
-4. ⚠️ **`catalog-platform/apps/ebooks-door` has no test script at all** — no
-   `"test"` key in its `package.json`, so `npm test --workspaces` skips it
-   silently. It is a door in front of ebooks; whether it needs tests is a
-   judgement call, but the current state is invisible rather than decided.
-5. ⚠️ **`packages/estate-events` declares a suite that does not exist** (§4.4)
-   — the event ring is the subject of `KNOWN_ISSUES.md` KI-10, and it reports
-   green on nothing.
+4. ✅ **FIXED in `a6f0324`** (2026-09-05) — *"`catalog-platform/apps/ebooks-door`
+   has no test script at all"*: no `"test"` key in its `package.json`, so
+   `npm test --workspaces` skipped it silently, and the state was invisible
+   rather than decided. It now has the key and **15 cases**. ⚠️ **The judgement
+   call, now made and written down:** the door has **no auth or refusal path of
+   its own** — its own header says *"THIS DOOR IS NOT THE LOCK"*, the gate is
+   `apps/audiobook-worker`'s `GET /api/ebooks/manifest`, and no rule added
+   there would protect anything. So the suite pins what the door does decide:
+   the 2026-08-17 `/` → `/ebooks` redirect escape, the PROD-only origin, and
+   verbatim pass-through — including that a refusal arrives with the origin's
+   WORDS rather than a bare status this door invented, and that 401/500/503
+   stay distinguishable from one another.
+5. ✅ **FIXED in `9f0c504`** (2026-09-05) — *"`packages/estate-events` declares a
+   suite that does not exist"* (§4.4): the event ring is the subject of
+   `KNOWN_ISSUES.md` KI-10 and it reported green on nothing. **32 cases** now,
+   in two files: the three properties from the module's own header made
+   mechanical, and a contract pin **derived from the receiver's source** in
+   another workspace (`apps/auth-worker/src/worker-events.ts`) — which
+   includes the KI-10 assertion that what goes on the wire is a bare event
+   object and never an `events` wrapper.
 6. ⚠️ **No mutation run since 2026-08-16, and it covered 8 mutations.** The one
    survivor found a live security bug. The estate's own doc says a test count
    is not evidence; nine days later, the only evidence we have is still those
@@ -486,8 +520,10 @@ hand-kept copies). The removal list is **one file that contains no tests**
 (`run_tests.py`, a blind second runner), and four items that *increase* what
 the suite proves. The suite is also cheap — the entire measured surface runs in
 under a minute, so there is no cost argument for cutting it. **The real
-findings are the gaps:** `catalog-platform` deploys from CI with no test gate,
-the board catalog has 16 untested routes, and the estate's own standing advice
+findings are the gaps:** `catalog-platform` deploys from CI with no test gate
+(✅ **fixed the same evening, `44e81ae`** — §5.1, though the job has not yet run
+on a runner), the board catalog has 16 untested routes, and the estate's own
+standing advice
 — *"a test count is not evidence — mutate the code and watch"* — has not been
 re-run since 2026-08-16, when 1 of 8 mutations survived and led straight to a
 live privilege-retention bug.

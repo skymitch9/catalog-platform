@@ -32,11 +32,33 @@
 >    `npm test` glob — W9-LIB-TEST-MOVE (library_catalog `5275091`; apps/web
 >    464→471 cases, full suite 2882→2889, both +7, all passing)
 > 3. ☐ `test_catalog_completeness.py`: 11 silent `skipTest`s made loud — W9-AUDIO-TESTS
-> 4. ☐ `packages/estate-events` gets real tests (declares a runner, has no `test/`) — W9-PLATFORM-CI
-> 5. ☐ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` — W9-PLATFORM-CI;
+> 4. ☑ `packages/estate-events` gets real tests (declares a runner, has no `test/`) —
+>    W9-PLATFORM-CI (`9f0c504`; **0 → 32 cases** in two files — the header's three
+>    properties made mechanical, plus a contract pin DERIVED from the receiver's
+>    source in `apps/auth-worker`, carrying the KI-10 assertion that the wire body
+>    is a bare event object and never an `events` wrapper)
+> 5. ☑ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` —
+>    W9-PLATFORM-CI (`44e81ae`; a `tests` job runs the ROOT suite and all three
+>    deploy jobs carry `needs: tests`. No new secret, trigger or permission —
+>    validated with a YAML parser. Also created `docs/access/ci-deploy.md`,
+>    ⚠️ **the deploy workflow had NO doc in this tree at all**.
+>    🔴 **SHIPPED, NOT VERIFIED — and it cannot be from here:** every target is
+>    live and the only trigger is `workflow_dispatch`, so the push started no
+>    run and the `tests` job has never executed on a runner. The next dispatch
+>    is the measurement; `ci-deploy.md` §4 says exactly what it will show.
+>    ☐ **OWNER DECISION, optional:** a separate test-only `tests.yml` on
+>    push/PR — the shape `audiobook_catalog` already uses — would give CI
+>    feedback without a deploy. A new workflow, deliberately not added
+>    unasked);
 >    (b) board: route tests for its 16 route files, `admin.ts`/`users.ts` first — W9-BOARD-ROUTES;
 >    (c) one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION;
->    (d) `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops skipping it — W9-PLATFORM-CI
+>    (d) ☑ `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops
+>    skipping it — W9-PLATFORM-CI (`a6f0324`; the key **plus 15 cases**.
+>    ⚠️ The judgement call the survey left open is now made and written down:
+>    the door has **no auth or refusal path of its own** — it is not the lock —
+>    so the suite pins the 2026-08-17 `/` → `/ebooks` redirect escape, the
+>    PROD-only origin, and that a refusal arrives with the ORIGIN's words
+>    rather than a bare status this door invented)
 
 ## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
 
