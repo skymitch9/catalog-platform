@@ -108,7 +108,8 @@ no `npm install` beyond the repo root. Exits nonzero if any probe fails.
 > **Last verified: 2026-09-06** — the CLI was re-run after every refactor step:
 > **145 passed, 0 failed** each time, the same count as before. ✅ **The cron
 > DOES fire** — measured 01:19:08Z, `trigger: "cron"`, 9/9 areas, row written.
-> 🔴 **And that first run found a real defect, described in the next box.**
+> 🔴 **And that first run found a real defect** (next box) — ✅ **fixed and
+> re-measured at 02:19:08Z: `145/145 passed, 0 failed, 9/9 areas`, in 7.7 s.**
 
 ### 🔴 A WORKER CANNOT FETCH ITS OWN ZONE — measured 2026-09-06 01:19 UTC
 
@@ -131,13 +132,20 @@ which invokes the Worker's own `fetch` handler directly with no edge hop and so
 no loop to time out; everything else goes out over the network as before. The
 CLI passes no `fetchImpl` and keeps global `fetch` throughout.
 
-⚠️ **THE TWO TRANSPORTS ARE NOT IDENTICAL, AND THAT IS THE THING TO WATCH.** A
-service-binding call skips the Cloudflare edge, so edge-added headers (`CF-RAY`,
-`Server: cloudflare`) are absent. Every assertion in `probes/auth-worker.mjs` is
-a status code, a JSON envelope or a CORS header — and CORS headers are set by
-Hono *inside* the Worker — so none of them should notice. **"Should" is a
-prediction.** If a handful of `auth` rows fail for a NEW reason, that seam is
-why, and ⚠️ **the CLI is the arbiter**, because it always uses the real edge.
+✅ **MEASURED 2026-09-06 02:19:08Z, THE FIRST RUN AFTER THE FIX: `145 passed,
+0 failed`, 9 of 9 areas, in 7.7 s.** Not merely green — **the same 145 the CLI
+reports**, so every assertion that was skipped as unreachable at 142 came back
+and passed.
+
+⚠️ **THE TWO TRANSPORTS ARE STILL NOT IDENTICAL, AND THAT REMAINS THE THING TO
+WATCH.** A service-binding call skips the Cloudflare edge, so edge-added headers
+(`CF-RAY`, `Server: cloudflare`) are absent. Every assertion in
+`probes/auth-worker.mjs` is a status code, a JSON envelope or a CORS header —
+and CORS headers are set by Hono *inside* the Worker — which is why none of them
+noticed. **What was measured is that today's 145 assertions do not care**, not
+that no future one could: ⚠️ **a new probe asserting an edge-added header would
+pass from the CLI and fail from the cron.** If that ever happens, this seam is
+why, and **the CLI is the arbiter**, because it always uses the real edge.
 
 ⚠️ **The binding grants nothing.** A self-binding reaches only the routes this
 Worker already serves; every gate runs exactly as it does for a browser, and the
