@@ -796,11 +796,12 @@ last-moment guard was unreachable.
 
 ⚠️ **NOT verified:** no second games instance exists — no D1, bucket, covers
 hostname, secret or deploy — nothing ran past `--dry`, no envelope was decrypted
-from that side, and nobody signed in. ☐ **Owner decision still open:** the naming
-split — (a) as built (env/Worker follow the person, the rest ordinal), (b) all
-ordinal, (c) all follow the person. Both provisioners are built to (a) so the
-pair agrees, and each keeps it in ONE function, so a flip is one function per
-repo.
+from that side, and nobody signed in. The naming split is **settled — (a), as
+built** (env/Worker follow the person, the rest ordinal), answered 2026-09-05
+08:35 and recorded above at the Phase 8 note and in `DONE.md`; this paragraph
+used to call it open and was corrected 2026-09-06 (W10-RECONCILE finding). Both
+provisioners are built to (a) so the pair agrees, and each keeps it in ONE
+function, so a flip would be one function per repo.
 
 **For `admin.js`'s `catalogNextStep()` games branch** (the conductor's edit, not
 G's) — the exact text is in G's report: the command line is
