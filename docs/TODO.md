@@ -89,7 +89,19 @@
 >    looks different until a demotion would leave zero owners); and KI-6, the bare `{"error":"unauthenticated"}`
 >    401 (estate-wide shape — the library's `auth.ts` has the same line). Also
 >    `e2160d2` here: `test-inventory-2026-09-05.md` §5.2 closed);
->    (c) one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION;
+>    (c) ☑ one-off mutation run over the auth/roles/gates group in throwaway worktrees — W9-MUTATION
+>    (`351eb4e`, [`info/mutation-run-2026-09-05.md`](info/mutation-run-2026-09-05.md)
+>    + index row: **51 mutations · 42 killed · 9 survived (82.4%)** across all
+>    three TS repos at `1fea14e` / `744f866` / `cbf9cd4`; the pure predicates and
+>    ladders all died, and eight of the nine survivors sit in middleware wrappers
+>    or behind an I/O boundary. 🔴 Two are security-bearing: CP-24/CP-25 —
+>    `verify.ts` could drop the `audience: projectId` check or the
+>    `email_verified` refusal and 19 tests would still pass. ⚠️ The agent hung
+>    after pushing (no tokens spent for an hour) and was stopped 23:53 with its
+>    work already on `origin/main`. **Follow-up dispatched 23:56, W9-KILL:** a
+>    test per survivor, proved both directions in throwaway worktrees, no
+>    production code change — a survivor that is a real bug gets a KI entry, not
+>    a silent fix. ☐ pending landing);
 >    (d) ☑ `apps/ebooks-door` gets a `test` key so `npm test --workspaces` stops
 >    skipping it — W9-PLATFORM-CI (`a6f0324`; the key **plus 15 cases**.
 >    ⚠️ The judgement call the survey left open is now made and written down:
