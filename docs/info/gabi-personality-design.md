@@ -2,9 +2,13 @@
 
 > **Audience:** Claude sessions. **Status:** TRACKED. Written **2026-08-18**;
 > **§11 (the intensity dial) added 2026-09-01**, built and deployed the same
-> session. Last verified: **2026-09-01** for §11 — the suite was run and the
-> Worker deployed; §§1–10 were NOT re-measured. ⚠️ Nobody has heard her at
-> `full` yet (§11.7).
+> session; **§12 (the shared pool manifest) added 2026-09-05**, built but
+> **NOT merged and NOT deployed**. Last verified: **2026-09-05 for §12 only** —
+> the suite was run (discord-worker 1247 → 1260, workspace 2483 → 2496, 0 fail),
+> typecheck clean, and the bundle checked with `wrangler deploy --dry-run`;
+> ⚠️ **nothing was deployed and no live request was made**, and ⚠️ **§§1–11 were
+> NOT re-measured on that date** (§11 last measured 2026-09-01, §§1–10 on
+> 2026-08-18). ⚠️ Nobody has heard her at `full` yet (§11.7).
 > Owner ask, verbatim: *"we need to give Gabi personality settings, I want you to
 > find some common personality tropes like peppy, tsundere, shy, etc for Gabi and
 > then each time a person talks to her she picks a personality. as they talk to
@@ -539,6 +543,90 @@ turn. ⚠️ No model call is added, no tool is added, no cap moves.
 - **Nothing measured how often the mirroring rule fires.** "Somebody asking a
   straight question gets a straight answer with garnish" is a judgement the model
   makes every turn and nothing counts it.
+
+## 12. ⚠️ THE SHARED POOL MANIFEST — §§2, 3, 4 and the two clauses are now DESCRIBED by a file (added 2026-09-05)
+
+**Built 2026-09-05 on `feature/personality-pool` (commit `8335357`). ⚠️ NOT
+merged, NOT deployed, NOT verified live.** The work item, with the remaining
+steps, is in [`../TODO.md`](../TODO.md).
+
+**The roster (§2), the wing graph (§3), the drift constants (§4) and the two
+clauses (§1) are no longer stated only in `personality.ts`.** They are stated in
+`apps/discord-worker/src/personality-pool.json`, and `personality.ts` derives
+them from it. ⚠️ **This changed nothing about how she sounds** — the rendered
+`INVARIANT` and `REGISTER` are byte-for-byte the constants they replaced, and
+the test file pins both as literals so a manifest edit that WOULD move her
+wording goes red rather than shipping.
+
+**Why the file exists at all.** The estate has a second Discord bot — **Black
+Bloc**, the cookout bot, in a separate private repo — carrying the same eleven
+tropes, the same graph and the same two numbers. They are in step **by accident
+of timing**, and if either side moved, nothing anywhere would say so. The
+manifest is the shared *skeleton*; each bot keeps its own *skin*.
+
+| In the manifest (shared) | In code (GABI's own) |
+|---|---|
+| the eleven names + labels, in roster order | `TROPE_VOICES` — every voice body |
+| the wing graph, per trope, **in order** | the framing line (*"still GABI, the estate's librarian"*) |
+| `drift.every` = 4, `drift.chance` = 0.25 | the hidden pin, the roster, the devops verb (§§5, 5a–5c) |
+| both clauses as templates with four named slots | `GABI_EDGE`, the intensity dial (§11) |
+| `version`, `locked_by` | `GABI_SLOTS` — her nouns for the four slots |
+
+⚠️ **`TROPES` stays an `as const` tuple in code, and that is deliberate.** A JSON
+import is `string[]`; the tuple is what gives the compiler the literal union it
+checks `TROPE_VOICES` and `PERSONA_ACK` against. The sync is kept by a **test**
+that asserts the tuple equals the manifest's names **in order** — the compiler
+keeps the exhaustiveness check, the test keeps the sync.
+
+⚠️ **A JSON import, never a fetch.** No KV, no cross-Worker call, nothing new on
+the boot path. This follows §11.4's own precedent (*a copied prompt with a
+comment naming its source, not a shared package*) rather than reversing it, and
+the data changes at owner-decision cadence — months, not minutes. Confirmed
+2026-09-05 that wrangler/esbuild inlines the JSON into the single `index.js`
+bundle with no separate asset (`npx wrangler deploy --dry-run --outdir`).
+
+### 12.1 ⚠️ Changing any of it is a VERSION BUMP and a RE-SYNC, in this order
+
+Editing the roster, the graph, the drift numbers or either clause is **no longer
+one repo's edit**. Order of operations (the pool design's §5.3):
+
+1. edit `apps/discord-worker/src/personality-pool.json`
+2. ⚠️ **bump its `version`** — the field is what makes the drift visible
+3. GABI's tests (`npm test` in `apps/discord-worker`) — the literal pins will go
+   red if the change moves her live wording, which is the point
+4. GABI deploy (`access/discord-bot.md` §3 step 4), `deploys.log` line naming the
+   pool version
+5. in the Black Bloc repo: `python scripts/sync_personality_pool.py`
+6. Black Bloc's tests, then its deploy, its `deploys.log` line naming the version
+
+⚠️ **A version that reached one bot and not the other is HALF-SHIPPED**, exactly
+as the both-catalogs rule says of the two library instances.
+
+### 12.2 The health field — the part that makes drift visible
+
+`/api/health` answers **`gabi_personality_pool_version`** (a number, read
+straight off the bundled manifest) beside the pre-existing
+**`gabi_personality_tropes`** (the roster array). ⚠️ **Those two names are a
+cross-repo contract**: Black Bloc's self-test GETs this route on every boot and
+on every owner-pressed Run to compare them with its own copy, and reports in
+words which side is ahead. Renaming either one here does not fail loudly — it
+turns that check into *"GABI does not say its pool version yet"*, **a pass**, and
+the drift this whole design exists to surface goes quiet again. A test drives the
+real handler and asserts both.
+
+Nothing on GABI's side polls Black Bloc. One direction is enough, and the other
+repo is private.
+
+### 12.3 What was NOT verified
+
+- **Nothing was deployed and no live request was made.** Every measurement above
+  is local: the suite, the typecheck, the dry-run bundle, and one sample of the
+  health payload taken by driving the real handler in-process.
+- **Whether the sync script's output round-trips.** The canonical was confirmed
+  **semantically identical** to Black Bloc's hand-built copy minus its
+  `synced_from` key (compared 2026-09-05 by parsing both), but
+  `scripts/sync_personality_pool.py` was **not run** — this session did not touch
+  that repo.
 
 ## Model guidance (read me if you are Kiro)
 

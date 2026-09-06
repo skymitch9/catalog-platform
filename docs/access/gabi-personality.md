@@ -1,9 +1,14 @@
 # GABI's personality (and person-keyed conversations) — Access Reference
 
 > **Audience:** Claude sessions. **Status:** TRACKED (this repo is PUBLIC).
-> Last verified: **2026-09-01** — §9 (the intensity dial) built, tested and
-> deployed this session; §§1–8 last checked live **2026-08-18** and NOT
-> re-measured today. ⚠️ **Nobody has heard her at `full` yet** (§9.5).
+> Last verified: **2026-09-05 for ONE claim only** — that `/api/health` answers
+> `gabi_personality_pool_version` (measured by driving the real handler
+> in-process, **not** by a live request), and ⚠️ **that field is on
+> `feature/personality-pool`, which is NOT merged and NOT deployed**, so §1's
+> command does not yet return it against production. §9 (the intensity dial) was
+> built, tested and deployed **2026-09-01**; §§1–8 last checked live
+> **2026-08-18** and NOT re-measured since. ⚠️ **Nobody has heard her at `full`
+> yet** (§9.5).
 > ⚠️ **The pin in §4 is deliberately UNDOCUMENTED to end users** — it lives here
 > and in `docs/info/` only. Do not put it in any user-facing text.
 
@@ -27,10 +32,24 @@ personality could answer.
 
 ```powershell
 (Invoke-RestMethod https://discord.heygabi.ai/api/health) |
-  Select-Object gabi_personality_enabled, gabi_personality_tropes, gabi_conversation_scope, gabi_edge
+  Select-Object gabi_personality_enabled, gabi_personality_tropes,
+                gabi_personality_pool_version, gabi_conversation_scope, gabi_edge
 ```
 
-Expect `True`, 11 tropes, `person`, and **`full`**.
+Expect `True`, 11 tropes, **`1`**, `person`, and **`full`**.
+
+⚠️ **`gabi_personality_pool_version` is not on `main` yet** — built 2026-09-05 on
+`feature/personality-pool`, **not merged and not deployed**; remaining steps in
+[`../TODO.md`](../TODO.md). Until it ships the field is absent and that column
+comes back blank.
+
+⚠️ **It and `gabi_personality_tropes` are a CROSS-REPO CONTRACT.** The estate's
+other Discord bot (**Black Bloc**, the cookout bot, separate private repo) reads
+both off this route on every boot to check that its synced copy of the shared
+roster is in step with GABI's. ⚠️ Renaming either one does not fail loudly — it
+makes that check silently *pass*. What the shared manifest is, and the order of
+operations for changing the roster:
+[`../info/gabi-personality-design.md`](../info/gabi-personality-design.md) §12.
 
 ---
 
@@ -41,6 +60,13 @@ Expect `True`, 11 tropes, `person`, and **`full`**.
 
 ⚠️ **Adding or removing one is an owner decision, not an edit.** The set was
 reviewed and approved as a whole, and `flirty` was his own addition.
+
+⚠️ **And since 2026-09-05 it is also not a one-repo edit.** The roster, the wing
+graph in §3 and the two drift numbers live in
+`apps/discord-worker/src/personality-pool.json`, which the cookout bot syncs a
+copy of. Changing any of them means **bumping that file's `version` and
+re-syncing the other bot** — design §12.1 has the six steps in order. A version
+that reached one bot and not the other is half-shipped.
 
 ---
 

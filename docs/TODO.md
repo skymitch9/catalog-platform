@@ -10,6 +10,74 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ GABI's half of the ESTATE PERSONALITY POOL — **BUILT on `feature/personality-pool`, NOT merged, NOT deployed**
+
+> Built 2026-09-05 in the worktree `C:/lcw/pool`, branch **`feature/personality-pool`**
+> (commit `8335357`). ⚠️ **Nothing has been merged to `main` and nothing has been
+> deployed** — the main session reviews, merges and deploys. Measured that day:
+> discord-worker **1247 → 1260** tests (13 new), workspace **2483 → 2496**, 0 fail,
+> `npm run typecheck` clean, and the manifest confirmed inlined into the bundle by
+> `npx wrangler deploy --dry-run --outdir`. ⚠️ **NOT verified live** — no deploy, no
+> request to `discord.heygabi.ai`.
+
+**What it is.** `apps/discord-worker/src/personality-pool.json` is now the
+estate's **canonical** machine-readable manifest for the shared persona
+*skeleton*: the eleven owner-locked tropes with their labels, the wing graph, the
+drift constants (`every: 4`, `chance: 0.25`), and the two clauses
+(`INVARIANT`, `REGISTER`) as **templates with four named slots**. `personality.ts`
+imports it and derives the graph, the drift numbers and both clauses from it;
+`TROPE_VOICES` and the `TROPES as const` tuple stay in code on purpose (§5.1 of
+the design — the tuple is what gives the compiler its literal union).
+
+**Why it exists.** The estate's *other* Discord bot — **Black Bloc**, the cookout
+bot, a separate private repo at
+`C:/Users/nbasl/OneDrive/Documents/vs-code-repos/black_bot_baf` — has the same
+eleven tropes, the same graph and the same drift numbers, and has had them since
+its port. They are in step **by accident of timing**, and nothing anywhere would
+say so if either side moved. This makes that drift **visible** instead: Black
+Bloc keeps a synced copy stamped `synced_from: catalog-platform@<commit>`, and
+its self-test GETs `/api/health` here on every boot to compare versions.
+
+- **The design** (all of it, including the three forks the owner decided (a) on
+  2026-09-05): `black_bot_baf/docs/info/personality-pool-design.md` — §4/§4.1 the
+  manifest and its four slots, §5.1 this half, §5.3 the sync convention, §5.4 why
+  the health field earns the whole design. That repo's `docs/` is tracked in its
+  own git, so the path is the reference.
+- **The Black Bloc half is already LIVE** (its v90). This is the second and last
+  half.
+
+**The cross-repo contract — ⚠️ two field names that may not be renamed lightly.**
+`/api/health` now answers **`gabi_personality_pool_version`** (a number) beside
+the pre-existing **`gabi_personality_tropes`** (the roster array). Black Bloc's
+`black_bloc/selftest.py` reads exactly those two. ⚠️ Renaming either turns its
+check into *"GABI does not say its pool version yet"* — a **PASS** — and the drift
+goes quiet again. `test/personality.test.ts` asserts both off the real handler.
+
+**Order of operations for any future roster/graph/clause change** (design §5.3,
+and the reason the version exists): edit the canonical → bump `version` → GABI
+tests → GABI deploy → run `python scripts/sync_personality_pool.py` in
+`black_bot_baf` → Black Bloc tests → Black Bloc deploy. Both `deploys.log` lines
+name the pool version. **A version that reached one bot and not the other is
+half-shipped.**
+
+**What remains:**
+
+- [ ] Review + merge `feature/personality-pool` into `main`, and remove the
+      worktree `C:/lcw/pool`.
+- [ ] Deploy the Worker — `npx wrangler deploy` from `apps/discord-worker/`
+      ([`access/discord-bot.md`](access/discord-bot.md) §3 step 4), and append the
+      `deploys.log` line naming **pool v1**.
+- [ ] Verify live: `(Invoke-RestMethod https://discord.heygabi.ai/api/health) |
+      Select-Object gabi_personality_pool_version, gabi_personality_tropes`
+      → `1` and the eleven.
+- [ ] ⚠️ **KNOWN, and it is on the BLACK BLOC side, not this one** —
+      `selftest.py:check_pool` does `int(count)` on `gabi_personality_tropes`,
+      which this route answers as an **array** (it always has, since 2026-08-18).
+      `int([...])` raises `TypeError`. Its *version* comparison is unaffected; its
+      *count* comparison needs `len()` there. ⚠️ Do **not** "fix" it by turning
+      this field into a number — that would break the array shape that has been
+      live for weeks. **The fix belongs in `black_bot_baf`.**
+
 ## ☐ `data/series-canon.json` entries for the two cross-catalog folds (emily wilde / skyward) — SMALL, another repo too
 
 > Left behind 2026-09-05 18:12 Phoenix when the six-click item moved to [`DONE.md`](DONE.md). Re-measured after the clicks:

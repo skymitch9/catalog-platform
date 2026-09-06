@@ -3,6 +3,12 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
 >
+> ⚠️ **ALSO 2026-09-05 — §2 gained the cross-repo health-field note** (the two
+> `gabi_personality_*` fields the estate's other Discord bot reads). ⚠️ **That
+> paragraph is the ONLY thing added or re-checked in that pass**; the pool
+> version field it names is on `feature/personality-pool` and is **not merged
+> and not deployed**, and nothing else in this file was re-measured then.
+>
 > ⚠️ **UPDATED 2026-09-05 — `GABI_CLUB_WRITES` IS `"on"`.** `/rsvp` and
 > `/progress` are no longer dark: the owner answered the one blocking question
 > (option (a) — `/progress` drops `percent`, takes a CHAPTER only), the posture
@@ -151,6 +157,18 @@ more flirty… Think of Grok from X in its all go mode."*
 `GABI_PERSONALITY` picked rather than replacing one, and it raises **bite**,
 never the PG-13 ceiling. Full posture and floor:
 [`gabi-personality.md`](gabi-personality.md) §9.
+
+⚠️ **Two `/api/health` fields on this Worker are a CROSS-REPO CONTRACT, not
+decoration.** `gabi_personality_tropes` (the roster array, live since
+2026-08-18) and **`gabi_personality_pool_version`** (a number — built
+2026-09-05 on `feature/personality-pool`, ⚠️ **not merged and not deployed**;
+see [`../TODO.md`](../TODO.md)) are read off this route on every boot by the
+estate's **other** Discord bot, which carries a synced copy of the shared
+personality manifest and uses them to report which of the two is ahead.
+⚠️ Renaming or dropping either does **not** fail loudly — it makes that check
+silently pass, and the drift it exists to surface goes quiet. Details:
+[`gabi-personality.md`](gabi-personality.md) §1 and
+[`../info/gabi-personality-design.md`](../info/gabi-personality-design.md) §12.
 
 ## 3. Owner runbook — Developer Portal steps, in order
 
