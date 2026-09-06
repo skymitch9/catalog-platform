@@ -7,8 +7,8 @@
     "notAUniverse": "A series canon entry says two strings name the same series. A universe (data/universes.json) says a series belongs to a larger fictional continuity. Different questions, kept in different files on purpose — Ascend Online, Harry Potter and Fae & Alchemy are none of them claimed by any universe, and folding their spelling has nothing to do with whether they ever are."
   },
   "_decided": {
-    "canonicalRule": "⚠️ The plain, UNDECORATED form always wins, applied identically every time regardless of which catalog happens to hold it: no bracketed reading-order notes ('[publication order]'), no descriptive parenthetical ('(Full-Cast Editions)'), no redundant 'The … Series' wrapper. In all three seeded entries the plain form happens to be library_catalog's spelling and the decorated form audiobook_catalog's — that is a fact about Audible's naming conventions (which favour disambiguating suffixes), not a rule that library_catalog always wins. A future entry where audiobook_catalog holds the plainer spelling folds the other way.",
-    "provenance": "decidedHow follows data/universes.json's vocabulary — seed (measured + folded by rule, no owner review needed because the rule is mechanical and the evidence is a direct read of both catalogs), human (owner confirmed), llm (proposed, unconfirmed). All three seeded entries are seed: the canonical form is not a judgment call once the rule above is fixed.",
+    "canonicalRule": "⚠️ The plain, UNDECORATED form always wins, applied identically every time regardless of which catalog happens to hold it: no bracketed reading-order notes ('[publication order]'), no descriptive parenthetical ('(Full-Cast Editions)'), no redundant 'The … Series' wrapper. In all three seeded entries the plain form happens to be library_catalog's spelling and the decorated form audiobook_catalog's — that is a fact about Audible's naming conventions (which favour disambiguating suffixes), not a rule that library_catalog always wins. A future entry where audiobook_catalog holds the plainer spelling folds the other way. ⚠️ THE RULE IS MECHANICAL, NOT SOVEREIGN: an entry whose decidedHow is `human` OVERRIDES it, and the canonical spelling is then whatever the owner chose — see 'The Skyward Series', where he kept the decorated form as the survivor when he resolved the index's series_pending queue on 2026-09-05. The rule decides every `seed` entry and nothing else; where a person has already decided, re-deciding by rule would silently overturn them.",
+    "provenance": "decidedHow follows data/universes.json's vocabulary — seed (measured + folded by rule, no owner review needed because the rule is mechanical and the evidence is a direct read of both catalogs), human (owner confirmed), llm (proposed, unconfirmed). The three 2026-08-14 entries and 'Emily Wilde' are seed: the canonical form is not a judgment call once the rule above is fixed. 'The Skyward Series' is human, and that is exactly what the value is FOR — it is the flag that says the rule was not what decided this one, so nobody later 'corrects' it back to the plain form.",
     "whyAFileAndNotAFunction": "Three entries today, will not stay three. A fold RULE (strip brackets, strip parens, strip 'The'/'Series') was tried first, during discovery — see _measured — and it is exactly what finds candidate groups. It is deliberately NOT what a consumer runs at match time: a rule can merge two series that only coincidentally share a decoration pattern, and would need to reproduce identically in Python and in two places in JavaScript (packages/core here, the standalone backfill script) with no shared runtime to keep them honest, the same trap docs/info/UNIVERSES.md §6 already names for resolve_author_link. A flat variant→canonical map, matched EXACTLY like universes.json canonicalNames, has none of that risk — see _lookup."
   },
   "_measured": "2026-08-14. audiobook_catalog/site/catalog.csv `series` column (337 unique spellings, already POST audiobook_catalog's own canonical_series fold — the CSV is a generated build artifact, corrections happen before it is written) diffed against library_catalog D1 `work.series` (114 unique spellings, queried live: `npx wrangler d1 execute library-catalog --config apps/worker/wrangler.toml --remote --command \"SELECT DISTINCT series FROM work WHERE series IS NOT NULL AND series != '' ORDER BY series\" --json`). The diff first folded both lists by the canonicalRule above (strip a trailing `[...]` or `(...)`, strip a leading 'The ', strip a trailing ' Series', then lowercase/trim) and kept every fold-key present in both lists with more than one surviving exact spelling. A second, looser pass — alphanumeric characters only, everything else discarded — was run over both raw lists as a check that nothing was missed by the decoration-shaped rule; it found nothing beyond the three below. Exactly three cross-catalog variant groups exist in the current data.",
@@ -45,6 +45,24 @@
       ],
       "evidence": "audiobook_catalog site/catalog.csv: 'The Fae & Alchemy Series'. library_catalog D1 work.series: 'Fae & Alchemy'. Both measured 2026-08-14.",
       "decidedHow": "seed"
+    },
+    {
+      "canonical": "Emily Wilde",
+      "variants": [
+        "Emily Wilde",
+        "Emily Wilde Series"
+      ],
+      "evidence": "Measured 2026-09-05: audiobook_catalog site/catalog.csv spells it 'Emily Wilde Series' (2 rows, Heather Fawcett); library_catalog D1 work.series on the padhard instance spells it 'Emily Wilde' (2 rows). The plain form wins by _decided.canonicalRule - the redundant 'Series' wrapper is exactly the decoration the rule names.",
+      "decidedHow": "seed"
+    },
+    {
+      "canonical": "The Skyward Series",
+      "variants": [
+        "The Skyward Series",
+        "Skyward"
+      ],
+      "evidence": "⚠️ FOLDS THE OTHER WAY, and deliberately: the OWNER decided it. Resolving the index's series_pending queue on 2026-09-05 ~18:08 Phoenix he kept 'The Skyward Series' (slug skyward-series, 13 entries: 7 audiobook / 5 library / 1 library2) as the survivor rather than the plain 'Skyward' the queue recommended. A human decision outranks the mechanical canonicalRule - see _decided.canonicalRule. Measured 2026-09-05: audiobook_catalog site/catalog.csv 'The Skyward Series' (7 rows, Brandon Sanderson); library_catalog D1 work.series 'Skyward' (5 rows main, 1 row padhard).",
+      "decidedHow": "human"
     }
   ],
   "_shapeNotes": [
@@ -66,9 +84,29 @@
     {
       "date": "2026-08-14",
       "action": "seed",
-      "entries": ["Ascend Online", "Harry Potter", "Fae & Alchemy"],
+      "entries": [
+        "Ascend Online",
+        "Harry Potter",
+        "Fae & Alchemy"
+      ],
       "why": "Normalization item 4 (owner-ordered): these three series each spelled one way in audiobook_catalog and another in library_catalog, which is exactly the shape that makes library_catalog's audiobook-holdings series fold miss them entirely — measured before this file existed as zero audio rungs for all three. Measured against both catalogs' real data 2026-08-14; see _measured for the exact query. Completionist Chronicles was checked as the fourth candidate and excluded — see _completionistChroniclesCheckedAndExcluded.",
       "decidedHow": "seed"
+    },
+    {
+      "date": "2026-09-06",
+      "action": "add-variant",
+      "canonical": "Emily Wilde",
+      "variant": "Emily Wilde Series",
+      "why": "Measured 2026-09-05: audiobook_catalog site/catalog.csv spells it 'Emily Wilde Series' (2 rows, Heather Fawcett); library_catalog D1 work.series on the padhard instance spells it 'Emily Wilde' (2 rows). The plain form wins by _decided.canonicalRule - the redundant 'Series' wrapper is exactly the decoration the rule names.",
+      "decidedHow": "seed"
+    },
+    {
+      "date": "2026-09-06",
+      "action": "add-variant",
+      "canonical": "The Skyward Series",
+      "variant": "Skyward",
+      "why": "⚠️ FOLDS THE OTHER WAY, and deliberately: the OWNER decided it. Resolving the index's series_pending queue on 2026-09-05 ~18:08 Phoenix he kept 'The Skyward Series' (slug skyward-series, 13 entries: 7 audiobook / 5 library / 1 library2) as the survivor rather than the plain 'Skyward' the queue recommended. A human decision outranks the mechanical canonicalRule - see _decided.canonicalRule. Measured 2026-09-05: audiobook_catalog site/catalog.csv 'The Skyward Series' (7 rows, Brandon Sanderson); library_catalog D1 work.series 'Skyward' (5 rows main, 1 row padhard).",
+      "decidedHow": "human"
     }
   ]
 }

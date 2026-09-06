@@ -74,6 +74,73 @@ measured and did NOT change"*, in the 2026-09-05 15:50 multi-library ask):
   changes the deploy gate, so it belongs to that script's owner rather than to
   a page build — the throwaway is in W6-APEX's scratchpad, not the repo.
 
+## ✅ DONE 2026-09-05 21:5x Phoenix — `data/series-canon.json` entries for the two cross-catalog folds (emily wilde / skyward)
+
+> **Closed by W8-CANON.** Both entries added through `node tools/series-canon.mjs
+> add` (never a text editor), `validate` clean, root suite **3076 pass / 0 fail**
+> across nine workspaces. The audiobook side is synced: `python -m
+> app.tools.sync_series_canon --commit` wrote **4 new folds of 10 total** into
+> `audiobook_catalog/scripts/catalog_overrides.json`, and a re-run reports
+> *"Nothing to do"*.
+>
+> **The `_decided` amendment, and why it was needed.** `canonicalRule` said the
+> plain undecorated form ALWAYS wins — which the skyward entry contradicts,
+> because the owner kept the decorated form. Rather than let the file argue with
+> itself, `canonicalRule` and `provenance` now say the rule is **mechanical, not
+> sovereign**: a `decidedHow: "human"` entry overrides it, and `human` is the flag
+> that stops a later session "correcting" skyward back to the plain form.
+>
+> 🔴 **NO PERSISTED KEY MOVES — measured, not reasoned.** The stop condition was
+> whether folding library "Skyward" → "The Skyward Series" (or audiobook "Emily
+> Wilde Series" → "Emily Wilde") moves a `work_key` or a `series_key`. It does
+> not, and each half was measured:
+>
+> | Consumer | What the canon changes | Persisted key? |
+> |---|---|---|
+> | `apps/index-worker/src/series-canon-data.ts` → `planSeries` | **nothing.** `series_alias` already holds `emily wilde series → emily-wilde` and `skyward → skyward-series` (read live off remote `index_catalog`, both `decided_how = human`), and `planSeries` checks the alias map at **step 1**, before the canon at **step 3** — the canon branch never fires. Had it fired it would have produced the identical slugs | no |
+> | `library_catalog` `packages/core/src/audiobook-sweep.ts` | the series fold now MATCHES across catalogs where it did not (`"emily wilde"` vs `"emily wilde series"`; `"skyward"` vs `"skyward series"`) — which is the whole point, and produces new `audiobook_series_rung` ROWS | no — line 466 is explicit: *"It folds for COMPARISON only. What is STORED is our spelling"*; rungs store `series` = the library's spelling and `audiobookSeries` = the audiobook's |
+> | `library_catalog` `packages/core/src/reviews.ts` `workKeyForAudiobookRow` | ⚠️ **the one real risk**, and it is indirect: the sync changes `catalog.csv`'s `series` column on the next pipeline build, and `cleanTitleWithSeries(title, series)` strips that string from the title before `workKeyFor` | **no — 0 of 9 rows move.** Measured by running the REAL `packages/core/src/titles.ts` over every Emily Wilde (2) and Skyward (7) row of `catalog.csv` under both the old and new series spellings: every key identical |
+> | `packages/core/src/matching.ts` `seriesKey` | nothing — it is `normaliseTitle(work.series)` on library rows only and never calls `canonicalSeries` | no |
+>
+> **Only Emily Wilde's CSV spelling actually changes** (`"Emily Wilde Series"` →
+> `"Emily Wilde"`), which is the audiobook-catalog display this item existed to
+> fix. Skyward's CSV spelling is already the canonical one, so the fold is a
+> self-map there and `audiobooks.heygabi.ai` shows exactly what it showed before.
+>
+> **Measured spellings, 2026-09-05, all four stores:**
+>
+> | Store | Emily Wilde | Skyward |
+> |---|---|---|
+> | `audiobook_catalog/site/catalog.csv` | `"Emily Wilde Series"` ×2 | `"The Skyward Series"` ×7 |
+> | `library-catalog` D1 `work.series` | — (none) | `"Skyward"` ×5 |
+> | `library-catalog-2nd` D1 `work.series` (`--env friend`) | `"Emily Wilde"` ×2 | `"Skyward"` ×1 |
+> | index `series` / `series_alias` | `emily-wilde` / `"Emily Wilde"` | `skyward-series` / `"The Skyward Series"` |
+>
+> The 7 + 5 + 1 = **13** matches the entry count the owner saw when he merged.
+>
+> ⚠️ **NOT verified:** nothing was re-pushed or re-built — the audiobook CSV still
+> carries `"Emily Wilde Series"` until the next `python -m app.main` run, and the
+> new rungs do not exist until an audiobook sweep runs. No deploy was made and
+> none is needed for this item. Nobody has looked at
+> <https://audiobooks.heygabi.ai/> to see the display change, because it has not
+> been built yet.
+
+*(moved whole from `TODO.md`; the section as it stood follows)*
+
+### ☐ `data/series-canon.json` entries for the two cross-catalog folds (emily wilde / skyward) — SMALL, another repo too
+
+> Left behind 2026-09-05 18:12 Phoenix when the six-click item moved to [`DONE.md`](DONE.md). Re-measured after the clicks:
+> `series_alias` now carries `emily wilde series → emily-wilde` and `skyward → skyward-series`, so the index will fold the
+> audiobook push correctly on its own. What the canon entry still buys is the AUDIOBOOK catalog's own display
+> ('Emily Wilde Series' on audiobooks.heygabi.ai) — and note the owner kept **"The Skyward Series"** as the survivor
+> (13 entries: 7 audiobook / 5 library / 1 library2), so a `skyward` canon entry must map TO the decorated form, not away from it.
+
+The original note: the two
+CROSS-CATALOG folds want a `data/series-canon.json` entry — *"Emily Wilde
+Series"* and *"The Skyward Series"* are the AUDIOBOOK catalog's spellings, and a
+merge in the index does **not** stop it pushing the decorated name. Needs the
+edit here **and** the audiobook repo's `python -m app.tools.sync_series_canon`.
+
 ## ✅ DONE 2026-09-05 20:05 Phoenix — the unlinked-asker deep link points at the main library
 
 > **Closed by W7-PANEL-URL (claude-opus-5).** Commits **`6828e6a`** (the change)
