@@ -1,7 +1,18 @@
 # Estate scripts inventory — what should become a route (2026-09-05)
 
 > **Audience:** Claude sessions first, the owner second. **Status:** TRACKED.
-> **Last verified: 2026-09-05** — §7 row #2 was rebuilt that day by the agent
+> **Last verified: 2026-09-06** (agent `W10-AUDIOBOOK`) — **§5.2's two findings
+> under the audiobook task table, and NOTHING ELSE.** Re-measured read-only on
+> the box, `schtasks /query /fo LIST /v`, 07:16–07:19 Phoenix: the 🔴 finding's
+> stale-doc claim is now FIXED in the audiobook repo (struck in place there),
+> and the 🟡 finding's *"retired or lost — unknown which"* is answered by
+> measurement — the pair is NEW, its task has never existed, and it still does
+> not (`schtasks /query /tn AudiobookPurchaseAudit` → *"cannot find the file
+> specified"*). ⚠️ **No other row, count, table or classification in this file
+> was re-checked**, and no task's *last run* figure other than the two named
+> above was re-read.
+>
+> Previously **Last verified: 2026-09-05** — §7 row #2 was rebuilt that day by the agent
 > that built it, and every figure in it was measured against BOTH production
 > instances (two `--remote` dry runs each, before and after; the planner run
 > over the route's own inputs beside them; both `/api/health` responses after
@@ -252,11 +263,28 @@ That doc (Phase A) lists **`AudiobookFsWatcher`** and **`AudiobookDrivePoll`** a
 stale by at least one owner action. ⚠️ That repo's `docs/` is gitignored and
 read-only to this agent — the correction is listed as an action in
 [`../TODO.md`](../TODO.md), not made here.
+✅ **The correction WAS made 2026-09-06** (agent `W10-AUDIOBOOK`), in that repo's
+`docs/info/pipeline.md` (Phase A rows + the two *Gaps / no-runner* bullets) and
+`docs/info/reactive-pipeline.md`, struck in place rather than deleted.
+Re-measured that morning, read-only: `AudiobookFsWatcher` Enabled/Ready, 1 min,
+last run **07:16:01 result 0**; `AudiobookDrivePoll` Enabled/Ready, 15 min, last
+run **07:14:01 result 0**. The edits are on that box only — its `docs/` is
+gitignored, so there is no commit to cite.
 
 🟡 **`scripts/run_purchase_audit.bat` exists with no scheduled task.** Eight of
 the nine `.bat`/`.vbs` pairs have a registered task; `run_purchase_audit` does
-not. Either it was retired or its task was lost. **Unknown which** — an owner
-question, not a classification.
+not. ~~Either it was retired or its task was lost. **Unknown which** — an owner
+question, not a classification.~~ ⚠️ **Answered 2026-09-06 (agent
+`W10-AUDIOBOOK`): neither. It is NEW and has never been registered.** The pair
+was built 2026-09-05 (`88e9710` + `2272e59`, agent `W3-AUDIT15`) for the Audible
+purchase audit; its one `schtasks /Create` line has now been **refused by three
+agents' permission classifiers** (2026-09-05 ×2, 2026-09-06 ×1) and is the
+owner's to run. **Still absent when re-measured 2026-09-06 07:19 Phoenix** —
+`schtasks /query /tn AudiobookPurchaseAudit` → *"The system cannot find the file
+specified"*. So the count above is unchanged and the finding stands as a finding;
+what is retired is the guess about *why*. The command, the sibling-matching
+registration pattern and the cadence reasoning are in that repo's
+`docs/access/PIPELINE.md` §Purchase audit (gitignored — local to the owner's box).
 
 ### 5.3 Audiobook — the rest
 
