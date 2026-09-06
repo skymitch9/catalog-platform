@@ -313,6 +313,17 @@ function buildWorkerSection() {
   // she) calls it.
   ul.appendChild(makeRow('wk-library2', catRow('library2', 'API')));
   ul.appendChild(makeRow('wk-auth', 'Sign-in & membership directory — auth.heygabi.ai'));
+  // ⚠️ THE PROBE SUITE'S ROW, ADDED 2026-09-05, AND IT COSTS NO NEW FETCH —
+  // it renders `detail.estateProbes` off the SAME `authHealth` this section
+  // already reads. That is deliberate: "one fact, one home applies to SURFACES
+  // too", and the inventory's own §8 refuses a second status surface for
+  // anything already on /api/health.
+  //
+  // ⚠️ It sits under the auth Worker because that is WHERE THE FACT COMES FROM,
+  // not because the probes are about that Worker — they check all five, plus
+  // both sites and Firestore. The name says what / on what / how often, per the
+  // owner's 2026-08-18 instruction quoted above buildPipelineSection().
+  ul.appendChild(makeRow('wk-probes', 'Estate API probe suite (hourly, run by auth.heygabi.ai)'));
 }
 
 function buildSiteSection() {
@@ -554,6 +565,101 @@ function renderWorkerHealthRow(id, name, fetchResult, now, detailFn) {
   // are eventually dropped.
   const ok = fetchResult.body.ok === true;
   updateRow(id, ok ? 'ok' : 'danger', detailFn(detailOf(fetchResult.body)), null, now);
+}
+
+/**
+ * The estate probe suite's row — `detail.estateProbes` off the auth Worker's
+ * `/api/health`, written hourly by its `19 * * * *` cron (owner ask 2026-09-05,
+ * candidate #4 of `docs/info/scripts-inventory-2026-09-05.md` §7).
+ *
+ * ⚠️ NO NEW FETCH AND NO NEW SURFACE. It renders the `authHealth` this page
+ * already has, per *one fact, one home applies to SURFACES too*.
+ *
+ * ⚠️ THE FOUR STATES ARE FOUR DIFFERENT SENTENCES, and collapsing any two is
+ * the failure this row exists to avoid:
+ *
+ *   null            no run has been RECORDED. Grey, not red — a Worker whose
+ *                   first cron has not fired is healthy, and "0 of 145 passed"
+ *                   is the opposite claim from "nothing has run".
+ *   error set       the RUNNER broke, so the question was never asked. Amber,
+ *                   and worded as such: a different fix from failing probes.
+ *   truncated       some areas were NEVER ASKED. ⚠️ Amber even at 0 failures —
+ *                   the checks that did not run are UNKNOWN, and unknown is not
+ *                   a pass.
+ *   failed > 0      red, naming the first failure. ⚠️ This is the suite
+ *                   WORKING; the finding is about production, not about the row.
+ *
+ * ⚠️ THE ROW OWNS NO THRESHOLD except staleness, and that one is derived from
+ * the cadence rather than picked: hourly, so amber past 2× and red past 4×.
+ * Everything else it renders is decided server-side, the same discipline the
+ * backup rows follow.
+ */
+const PROBES_CADENCE_MS = 3600_000;
+
+function renderEstateProbesRow(fetchResult, now) {
+  if (!fetchResult.reached || !fetchResult.body) {
+    // ⚠️ Its own sentence rather than a silent skip: the auth Worker being
+    // unreachable is already said by `wk-auth` above, and this row must not
+    // imply the probes are fine because it could not ask.
+    updateRow('wk-probes', 'nodata',
+      'Cannot say — auth.heygabi.ai did not answer, so the last probe run could not be read.',
+      'This row is fed by the auth Worker’s own /api/health. See its row above.', now);
+    return;
+  }
+
+  const p = detailOf(fetchResult.body).estateProbes;
+  if (!p) {
+    updateRow('wk-probes', 'nodata',
+      'No probe run has been recorded yet.',
+      '⚠️ This is not “0 of 145 passed”. The suite runs hourly at :19 past; a Worker deployed ' +
+      'within the last hour, or one deployed ahead of migration 0021, has nothing to report and ' +
+      'is perfectly healthy. Run it by hand any time with `npm run probe:estate`.', now);
+    return;
+  }
+
+  const when = Number.isFinite(Date.parse(p.finished_at))
+    ? new Date(p.finished_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '?';
+  const age = typeof p.age_ms === 'number' ? p.age_ms : null;
+  const stale = age !== null && age > PROBES_CADENCE_MS * 2;
+  const veryStale = age !== null && age > PROBES_CADENCE_MS * 4;
+  const staleNote = age === null ? ''
+    : veryStale ? ` — ⚠️ last run ${formatAge(age)}, so the hourly cron is NOT landing`
+    : stale ? ` — last run ${formatAge(age)}, one run missed`
+    : '';
+
+  if (p.error) {
+    updateRow('wk-probes', 'warn',
+      `The probe runner itself failed at ${when}${staleNote}.`,
+      `⚠️ This is not the estate failing a check — the suite could not ask the question at all, ` +
+      `so nothing is known either way. Reported: ${p.error}`, now);
+    return;
+  }
+
+  const counts = `${p.passed}/${p.total} passed`;
+  const first = Array.isArray(p.failures) && p.failures[0]
+    ? ` First: ${p.failures[0].area}:${p.failures[0].id} — ${p.failures[0].assertion}.`
+    : '';
+
+  if (p.failed > 0) {
+    updateRow('wk-probes', 'danger',
+      `${p.failed} of ${p.total} checks FAILING · ${when}${staleNote}`,
+      `⚠️ A failing probe is a finding about production, not a bug in the suite — do not loosen ` +
+      `an assertion to make it pass.${first} Reproduce with \`npm run probe:estate\`.`, now);
+    return;
+  }
+
+  if (p.truncated) {
+    updateRow('wk-probes', 'warn',
+      `${counts}, but only ${p.areas_run} of ${p.areas_total} areas ran · ${when}${staleNote}`,
+      '⚠️ The run hit its wall-clock budget and the remaining areas were NEVER ASKED. Their ' +
+      'result is unknown, and unknown is not a pass — this is usually a slow or unreachable host.', now);
+    return;
+  }
+
+  updateRow('wk-probes', stale ? 'warn' : 'ok',
+    `${counts} · ${when}${staleNote}`,
+    stale ? 'The checks that ran were green; the concern is that they ran too long ago.' : null, now);
 }
 
 /**
@@ -909,6 +1015,8 @@ async function refreshAll() {
     const u = b.users || {};
     return `${u.approved ?? '?'} approved · ${u.pending ?? '?'} pending · ${u.revoked ?? '?'} revoked · ${u.approvers ?? '?'} approvers`;
   });
+  // Same response, second fact — no extra fetch. See renderEstateProbesRow().
+  renderEstateProbesRow(authHealth, t);
 
   renderSiteRow('site-audio', catLabel('audiobook'), audioUp, t);
   renderSiteRow('site-audio-dev', 'Audio /dev/', audioDevUp, t);
