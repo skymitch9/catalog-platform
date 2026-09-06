@@ -110,8 +110,13 @@ export type Capability = (typeof CAPABILITIES)[number];
  *    ⚠️ `manageClub` is knowingly NOT changed here — it has been island-held
  *    at an admin floor since the matrix was written, so a site moderator
  *    still cannot toggle a claimed club's features. That inversion PREDATES
- *    this build; it is flagged for the owner in catalog-platform's TODO
- *    rather than fixed silently, because lowering it is a real widening.
+ *    this build; it was flagged for the owner rather than fixed silently,
+ *    because lowering it is a real widening.
+ *    ✅ DECIDED 2026-09-06 (owner: "Worker floors = today's rules … Do it"):
+ *    it STAYS. firestore.rules' canManageClub() is exactly "manager uid OR
+ *    site admin" — moderators are deliberately operational, never structural
+ *    — so this floor already mirrors the rules. Lowering it to 'moderator'
+ *    would widen beyond the rules and was NOT approved. Do not "fix" it.
  */
 export const CAPABILITY_FLOORS: Record<Capability, LadderRole> = {
   read: 'guest',
