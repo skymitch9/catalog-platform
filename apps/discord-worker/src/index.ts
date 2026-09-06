@@ -84,7 +84,7 @@ import {
 import { indexBase, processHave } from './have.js';
 import { panelDeepLink, processGabi, resolvePanelBase } from './gabi.js';
 import { panelRegistryOn } from './panel.js';
-import { catalogRegistryOn, estateCatalogs } from './catalog-registry.js';
+import { catalogRegistryHealthRows, catalogRegistryOn, estateCatalogs } from './catalog-registry.js';
 import { mentionsOn } from './mentions.js';
 import { catalogBase, CATALOG_PATH } from './catalog-data.js';
 import {
@@ -371,11 +371,29 @@ app.get('/api/health', async (c) => {
     gabi_delegated_verbs: GABI_DELEGATED_VERB_NAMES,
     // ⚠️ THE SHELVES SHE WOULD ACTUALLY ROUTE TO, resolved from the estate
     // directory (2026-09-06) with the configured pair as the fallback — so this
-    // row can never disagree with where a write would land. `gabi_catalog_registry`
-    // below says WHICH of the two answered.
+    // row can never disagree with where a write would land.
+    //
+    // ⚠️ **`gabi_catalog_registry` is the POSTURE and nothing more** — the
+    // comment here used to claim it "says WHICH of the two answered", and it
+    // never did: `on` is true whether the directory answered or the fallback
+    // stood in for it. That false comment cost a measurement session on
+    // 2026-09-06, when the two label sets were seen alternating (~60/40 across
+    // 100 requests from ONE deployment at 100% of traffic) with no row able to
+    // tell them apart. **`gabi_catalog_registry_source` below is the row that
+    // actually answers it**, and `_reason` says why when it is the fallback.
     gabi_delegated_targets: shelves.map((i) => i.baseUrl),
     gabi_delegated_target_labels: shelves.map((i) => i.label),
     gabi_catalog_registry: catalogRegistryOn(c.env) ? 'on' : 'off',
+    // ⚠️ WHERE THE LABELS ABOVE CAME FROM, per isolate, in words:
+    //   `registry` — the estate directory answered and was understood;
+    //   `fallback` — it did not, and `_reason` says what went wrong;
+    //   `off`      — the posture is off, so no subrequest is ever made and the
+    //                configured pair is the whole and correct answer.
+    // ⚠️ These describe THIS ISOLATE's memo, which lives ten minutes
+    // (`CATALOG_REGISTRY_TTL_MS`). Two isolates may legitimately disagree
+    // inside that window, so a distribution across many requests is the
+    // measurement — a single curl is one isolate's opinion.
+    ...catalogRegistryHealthRows(c.env),
     // ⚠️ Stated rather than inferred, because it is the claim the whole design
     // rests on: every door she can be reached through is one Discord delivers
     // content for WITHOUT the Message Content intent. Three now, not one —

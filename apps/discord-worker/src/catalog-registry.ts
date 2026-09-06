@@ -204,16 +204,105 @@ export function baseUrlFromHost(host: unknown): string | null {
 // ---------------------------------------------------------------------------
 
 /**
+ * Where the words in front of a person actually came from.
+ *
+ * `'registry'` — the estate directory answered and was understood.
+ * `'fallback'` — it did not, and each caller's own configured words stood in.
+ */
+export type CatalogRegistrySource = 'registry' | 'fallback';
+
+/**
+ * ⚠️ **WHY the memo holds what it holds** — added 2026-09-06 because the memo
+ * was previously indistinguishable from outside.
+ *
+ * Measured 2026-09-06 07:50–08:00 Phoenix: `/api/health` answered the registry's
+ * labels on ~60% of requests and the configured FALLBACK on ~40%, interleaved,
+ * from one deployment at 100% of traffic — while `wrangler tail` caught 113
+ * events with **zero logs and zero exceptions**. Both facts are consistent
+ * (`console.error` fires once per isolate per failure, and the failure is then
+ * remembered for ten minutes, so the log is almost always OUTSIDE the tail
+ * window that notices the fallback) — but nothing could tell them apart from
+ * outside, so nobody could say whether the directory was timing out, refusing,
+ * or answering a shape we do not parse.
+ *
+ * ⚠️ **This changes NOTHING about behaviour** — not the TTL, not the timeout,
+ * not what a caller falls back to. It only records the answer to *"why?"*
+ * beside the answer itself, so `/api/health` can say it.
+ */
+interface CatalogRegistryMemo {
+  /** ⚠️ **The TTL base, and it is the moment the read STARTED** — unchanged
+   *  from before this instrumentation, deliberately: a memo timed from the end
+   *  of a slow fetch would live longer than ten minutes. */
+  at: number;
+  catalogs: CatalogEntry[] | null;
+  source: CatalogRegistrySource;
+  /** `null` exactly when `source === 'registry'`. Otherwise the WORDED reason:
+   *  `'timeout'`, `'http 503'`, `'shape'` or `'error: <message>'`. */
+  reason: string | null;
+  /** How long the attempt took, in ms. */
+  fetchMs: number;
+  /** When the answer (or the failure) actually ARRIVED — `at + fetchMs`. */
+  fetchedAt: number;
+}
+
+/**
  * ⚠️ **Isolate-local, and it caches the FAILURE too** (as `null`). A directory
  * that is unreachable and retried on every turn turns a directory outage into a
  * latency outage; remembering *"it did not answer"* for the same ten minutes is
  * what keeps the worded fallback cheap.
  */
-let memo: { at: number; catalogs: CatalogEntry[] | null } | null = null;
+let memo: CatalogRegistryMemo | null = null;
 
 /** Tests only. Production never calls it — the memo's whole point is to survive. */
 export function resetCatalogRegistryCache(): void {
   memo = null;
+}
+
+/** What this isolate is holding, and why. `ageMs` is how long it has held it. */
+export interface CatalogRegistryState extends CatalogRegistryMemo {
+  ageMs: number;
+}
+
+/**
+ * ⚠️ **A PURE READER — it never fetches, never populates and never expires the
+ * memo.** It answers *"what is this isolate holding right now, and why?"* and
+ * nothing else, so a health route can report the state without changing it.
+ *
+ * `null` means **this isolate has not read the directory at all** — which on a
+ * posture-off Worker is the permanent and correct answer (no subrequest is ever
+ * made), and on a posture-on one only ever happens before the first read.
+ *
+ * ⚠️ It deliberately does NOT check the posture: the posture is the caller's
+ * (two lanes, two levers — see `loadCatalogs`), and a reader that enforced one
+ * would report the other lane's memo as absent.
+ */
+export function catalogRegistryState(deps: Pick<CatalogRegistryDeps, 'now'> = {}): CatalogRegistryState | null {
+  if (!memo) return null;
+  const now = deps.now ?? Date.now;
+  return { ...memo, ageMs: Math.max(0, now() - memo.at) };
+}
+
+/**
+ * A thrown fetch failure → the worded reason the memo records.
+ *
+ * ⚠️ **`AbortSignal.timeout` is the ONLY thing that aborts this request**, so an
+ * abort of any name is our own two-second ceiling and is reported as `timeout`
+ * rather than as a mysterious error. Runtimes disagree on the name
+ * (`TimeoutError` in Workers, `AbortError` in some Node/undici builds) and on
+ * whether the word reaches the message at all, so all three are checked.
+ *
+ * ⚠️ Anything else keeps its own message, TRUNCATED — a health row is read by a
+ * person, and an unbounded upstream string is how a diagnostic row becomes a
+ * wall. Fetch failure messages carry no credential (this read sends none).
+ */
+export function catalogRegistryFailureReason(err: unknown): string {
+  const name = typeof (err as { name?: unknown })?.name === 'string' ? (err as { name: string }).name : '';
+  if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
+  const message = err instanceof Error ? err.message : String(err);
+  if (/\b(timed out|timeout|aborted)\b/i.test(message)) return 'timeout';
+  const trimmed = message.trim().replace(/\s+/g, ' ');
+  const short = trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed;
+  return `error: ${short || 'no message'}`;
 }
 
 /**
@@ -241,6 +330,10 @@ export async function loadCatalogs(
 
   const doFetch = deps.fetch ?? fetch;
   let catalogs: CatalogEntry[] | null = null;
+  // ⚠️ Set on every failure branch, and the branches are exhaustive: a `null`
+  // answer with a `null` reason would be exactly the un-diagnosable state this
+  // instrumentation exists to end, so the assembly below refuses to produce one.
+  let reason: string | null = null;
   try {
     const res = await doFetch(new URL('/api/catalogs', indexBase(env)).toString(), {
       // ⚠️ NO Authorization header. That absence IS the scope decision — the
@@ -252,16 +345,35 @@ export async function loadCatalogs(
     if (res.ok) {
       catalogs = parseCatalogs(await res.json());
       if (!catalogs) {
+        reason = 'shape';
         console.error('GABI registry: the estate directory answered a shape we do not understand; using the configured fallback.');
       }
     } else {
+      // ⚠️ `http 503`, not `503` — this string is read by a person on
+      // `/api/health`, and a bare number there is a puzzle, not a diagnosis.
+      reason = `http ${res.status}`;
       console.error(`GABI registry: the estate directory answered HTTP ${res.status}; using the configured fallback.`);
     }
   } catch (err) {
-    console.error('GABI registry: the estate directory could not be read:', err instanceof Error ? err.message : err);
+    reason = catalogRegistryFailureReason(err);
+    console.error(
+      `GABI registry: the estate directory could not be read (${reason}):`,
+      err instanceof Error ? err.message : err,
+    );
   }
 
-  memo = { at, catalogs };
+  const fetchedAt = now();
+  memo = {
+    at,
+    catalogs,
+    source: catalogs ? 'registry' : 'fallback',
+    // ⚠️ Belt and braces: a `null` answer ALWAYS carries words. If a future
+    // branch forgets to set one, the health row says so plainly rather than
+    // reporting a reasonless failure.
+    reason: catalogs ? null : (reason ?? 'unknown — the directory answered nothing this code recognises'),
+    fetchMs: Math.max(0, fetchedAt - at),
+    fetchedAt,
+  };
   return catalogs;
 }
 
@@ -281,6 +393,75 @@ export async function estateCatalogs(
 ): Promise<CatalogEntry[] | null> {
   if (!catalogRegistryOn(env)) return null;
   return loadCatalogs(env, deps);
+}
+
+// ---------------------------------------------------------------------------
+// The health rows — the one place that turns the memo into words
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ **THE ROWS `/api/health` PUBLISHES ABOUT THIS LANE**, built here rather
+ * than in `index.ts` so the wording and the memo cannot drift apart, and so
+ * every state is a pure unit test with no network.
+ *
+ * ⚠️ **Every value is words a person can read.** A bare `503` in a health row
+ * is a puzzle; `http 503` is a diagnosis. That rule is why `reason` is a string
+ * and never a status code, and why `off` is a source rather than an absent row.
+ */
+export interface CatalogRegistryHealthRows {
+  /** `registry` = the directory answered · `fallback` = it did not, see the
+   *  reason · `off` = the posture is off and no subrequest is ever made. */
+  gabi_catalog_registry_source: CatalogRegistrySource | 'off';
+  /** `null` exactly when nothing went wrong (`source: 'registry'`). */
+  gabi_catalog_registry_reason: string | null;
+  /** How long THIS ISOLATE has held that answer, whole seconds. `null` when
+   *  there is nothing held. ⚠️ At `CATALOG_REGISTRY_TTL_MS`/1000 = 600 it is
+   *  due to be re-read on the next call. */
+  gabi_catalog_registry_age_s: number | null;
+  /** How long the read that produced it TOOK, in ms — the number that says
+   *  whether the 2 s ceiling is close. `null` when no read was made. */
+  gabi_catalog_registry_fetch_ms: number | null;
+}
+
+/**
+ * The memo, as `/api/health` says it.
+ *
+ * ⚠️ **Reads the memo; never populates it.** A health route that triggered the
+ * fetch would be measuring itself. The caller reads the shelves first (which is
+ * what populates the memo, once per isolate per ten minutes) and this reports
+ * what that left behind.
+ */
+export function catalogRegistryHealthRows(
+  env: Pick<Env, 'GABI_CATALOG_REGISTRY'>,
+  deps: Pick<CatalogRegistryDeps, 'now'> = {},
+): CatalogRegistryHealthRows {
+  if (!catalogRegistryOn(env)) {
+    return {
+      gabi_catalog_registry_source: 'off',
+      gabi_catalog_registry_reason: 'the posture is off, so the estate directory is never read',
+      gabi_catalog_registry_age_s: null,
+      gabi_catalog_registry_fetch_ms: null,
+    };
+  }
+  const state = catalogRegistryState(deps);
+  if (!state) {
+    // ⚠️ Posture on but nothing held — this isolate has not read the directory
+    // yet. On `/api/health` it should be unreachable (the shelves are resolved
+    // before these rows are built), so it is stated honestly rather than
+    // guessed at: it would mean the read order changed.
+    return {
+      gabi_catalog_registry_source: 'fallback',
+      gabi_catalog_registry_reason: 'the estate directory has not been read in this isolate yet',
+      gabi_catalog_registry_age_s: null,
+      gabi_catalog_registry_fetch_ms: null,
+    };
+  }
+  return {
+    gabi_catalog_registry_source: state.source,
+    gabi_catalog_registry_reason: state.reason,
+    gabi_catalog_registry_age_s: Math.round(state.ageMs / 1000),
+    gabi_catalog_registry_fetch_ms: Math.round(state.fetchMs),
+  };
 }
 
 // ---------------------------------------------------------------------------

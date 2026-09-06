@@ -17,10 +17,13 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
+import { app } from '../src/index.js';
 import {
   baseUrlFromHost,
   catalogForEntry,
+  catalogRegistryHealthRows,
   catalogRegistryOn,
+  catalogRegistryState,
   designation,
   estateCatalogs,
   joinWords,
@@ -525,5 +528,250 @@ describe('⚠️ one directory, one memo — however many lanes ask', () => {
     await estateCatalogs(ON, { fetch: f });
     await loadCatalogs(ON, { fetch: f });
     assert.equal(calls.length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. ⚠️ WHY the memo holds what it holds — and the health rows that say it
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 **THE DEFECT THESE DEFEND, measured 2026-09-06 07:50–08:00 Phoenix.**
+ * `GET https://discord.heygabi.ai/api/health` answered
+ * `gabi_delegated_target_labels: ["Skylar's library","Samantha's library"]` on
+ * ~60 of 100 sampled requests and the configured FALLBACK
+ * `["the main library","the library at padhard.heygabi.ai"]` on the other ~40 —
+ * interleaved, from ONE deployment at 100% of traffic, none edge-cached. In the
+ * same four minutes `wrangler tail` captured 113 events, **all `outcome: ok`,
+ * with zero logs and zero exceptions**, so not one of `loadCatalogs`'s
+ * `console.error` lines fired inside the window that saw the fallback.
+ *
+ * Both facts are consistent — the log fires ONCE per isolate per failure and
+ * the failure is then remembered for ten minutes, so it lands outside almost
+ * every window — but **nothing published from outside could tell them apart**,
+ * and `gabi_catalog_registry` (the posture) reads `on` either way. These tests
+ * pin the rows that end that: the SOURCE, and when it is the fallback, WHY.
+ */
+describe('🔴 the memo records WHY, and /api/health publishes it', () => {
+  /** A fetch that fails a given way, and moves the injected clock while it does
+   *  — so `fetchMs` is a measured duration rather than an artefact of a frozen
+   *  test clock. */
+  function slowFailure(kind: 'timeout' | 'abort-message' | 'boom' | 'long', tick: () => void) {
+    return (async () => {
+      tick();
+      if (kind === 'timeout') {
+        const err = new Error('The operation was aborted due to timeout');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+      if (kind === 'abort-message') {
+        // ⚠️ Some runtimes report our own AbortSignal only in the MESSAGE.
+        throw new Error('This operation was aborted');
+      }
+      if (kind === 'long') throw new Error('x'.repeat(400));
+      throw new Error('network');
+    }) as unknown as typeof fetch;
+  }
+
+  /** The injected clock plus a fetch that costs `costMs` of it. */
+  function clockAndFetch(costMs: number, body: unknown, status = 200) {
+    let clock = 1_000_000;
+    const now = () => clock;
+    const impl = (async () => {
+      clock += costMs;
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+    return { now, fetch: impl, advance: (ms: number) => (clock += ms) };
+  }
+
+  it('a directory that answers: source `registry`, NO reason, and a measured fetch time', async () => {
+    const { now, fetch: f, advance } = clockAndFetch(37, BODY);
+    assert.equal((await estateCatalogs(ON, { fetch: f, now }))?.length, 5);
+    advance(90_000);
+    assert.deepEqual(catalogRegistryHealthRows(ON, { now }), {
+      gabi_catalog_registry_source: 'registry',
+      gabi_catalog_registry_reason: null,
+      gabi_catalog_registry_age_s: 90,
+      gabi_catalog_registry_fetch_ms: 37,
+    });
+  });
+
+  it('⚠️ a TIMEOUT says `timeout` — the 2 s ceiling, named rather than guessed at', async () => {
+    let clock = 500;
+    const now = () => clock;
+    await estateCatalogs(ON, { fetch: slowFailure('timeout', () => (clock += 2_000)), now });
+    assert.deepEqual(catalogRegistryHealthRows(ON, { now }), {
+      gabi_catalog_registry_source: 'fallback',
+      gabi_catalog_registry_reason: 'timeout',
+      gabi_catalog_registry_age_s: 2,
+      gabi_catalog_registry_fetch_ms: 2_000,
+    });
+  });
+
+  it('⚠️ an abort reported only in the MESSAGE is still a timeout, not a mystery', async () => {
+    let clock = 0;
+    const now = () => clock;
+    await estateCatalogs(ON, { fetch: slowFailure('abort-message', () => (clock += 2_001)), now });
+    assert.equal(catalogRegistryHealthRows(ON, { now }).gabi_catalog_registry_reason, 'timeout');
+  });
+
+  it('⚠️ a NON-2xx says `http 503` — words plus the code, never a bare number', async () => {
+    // A bare `503` in a health row is a puzzle; `http 503` is a diagnosis.
+    const { now, fetch: f } = clockAndFetch(12, BODY, 503);
+    assert.equal(await estateCatalogs(ON, { fetch: f, now }), null);
+    assert.deepEqual(catalogRegistryHealthRows(ON, { now }), {
+      gabi_catalog_registry_source: 'fallback',
+      gabi_catalog_registry_reason: 'http 503',
+      gabi_catalog_registry_age_s: 0,
+      gabi_catalog_registry_fetch_ms: 12,
+    });
+  });
+
+  it('a 200 carrying a BAD SHAPE says `shape` — a parse refusal, not a network fault', async () => {
+    for (const body of [{}, { catalogs: [] }, { catalogs: 'nope' }, { catalogs: [{ id: 'library' }] }]) {
+      resetCatalogRegistryCache();
+      const { now, fetch: f } = clockAndFetch(5, body);
+      assert.equal(await estateCatalogs(ON, { fetch: f, now }), null);
+      assert.equal(
+        catalogRegistryHealthRows(ON, { now }).gabi_catalog_registry_reason,
+        'shape',
+        `${JSON.stringify(body)} must read as a shape refusal`,
+      );
+    }
+  });
+
+  it('any other throw keeps its own message under `error:`', async () => {
+    let clock = 0;
+    await estateCatalogs(ON, { fetch: slowFailure('boom', () => (clock += 4)), now: () => clock });
+    assert.equal(
+      catalogRegistryHealthRows(ON, { now: () => clock }).gabi_catalog_registry_reason,
+      'error: network',
+    );
+  });
+
+  it('⚠️ a very long upstream message is TRUNCATED — a health row is read by a person', async () => {
+    let clock = 0;
+    await estateCatalogs(ON, { fetch: slowFailure('long', () => (clock += 4)), now: () => clock });
+    const reason = catalogRegistryHealthRows(ON, { now: () => clock }).gabi_catalog_registry_reason!;
+    assert.ok(reason.startsWith('error: xxx'));
+    assert.ok(reason.endsWith('…'));
+    assert.ok(reason.length <= 130, `reason was ${reason.length} chars`);
+  });
+
+  it('⚠️ POSTURE OFF is its own source — not a failure, and no subrequest', async () => {
+    assert.equal(await estateCatalogs({}, { fetch: neverCalled }), null);
+    assert.deepEqual(catalogRegistryHealthRows({}), {
+      gabi_catalog_registry_source: 'off',
+      gabi_catalog_registry_reason: 'the posture is off, so the estate directory is never read',
+      gabi_catalog_registry_age_s: null,
+      gabi_catalog_registry_fetch_ms: null,
+    });
+  });
+
+  it('posture ON with nothing read yet says so in words rather than claiming `registry`', () => {
+    assert.deepEqual(catalogRegistryHealthRows(ON), {
+      gabi_catalog_registry_source: 'fallback',
+      gabi_catalog_registry_reason: 'the estate directory has not been read in this isolate yet',
+      gabi_catalog_registry_age_s: null,
+      gabi_catalog_registry_fetch_ms: null,
+    });
+  });
+
+  it('⚠️ `catalogRegistryState` is a PURE reader — it never fetches or expires', async () => {
+    const { fetch: f, calls } = directorySaid(BODY);
+    assert.equal(catalogRegistryState(), null, 'reading an empty memo must not populate it');
+    assert.equal(calls.length, 0);
+    await estateCatalogs(ON, { fetch: f });
+    for (let i = 0; i < 5; i += 1) assert.equal(catalogRegistryState()?.source, 'registry');
+    assert.equal(calls.length, 1, 'reading the state must never cost a subrequest');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. The same thing END TO END, through the real /api/health handler
+// ---------------------------------------------------------------------------
+
+describe('🔴 GET /api/health tells a reader WHICH of the two answered', () => {
+  const HEALTH_ENV = {
+    DISCORD_PUBLIC_KEY: 'x',
+    GABI_CATALOG_REGISTRY: 'on',
+    INDEX_BASE_URL: 'https://index.test',
+  };
+
+  /** Drive the REAL handler with the global `fetch` stubbed — production passes
+   *  no deps, so the global is the only seam the live path actually has. */
+  async function healthWith(impl: typeof fetch): Promise<Record<string, unknown>> {
+    const real = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+      const res = await app.request('/api/health', {}, HEALTH_ENV);
+      assert.equal(res.status, 200);
+      return (await res.json()) as Record<string, unknown>;
+    } finally {
+      globalThis.fetch = real;
+    }
+  }
+
+  it('the directory answering → `registry`, no reason, and the REGISTRY labels', async () => {
+    const { fetch: f } = directorySaid(BODY);
+    const body = await healthWith(f);
+    assert.equal(body.gabi_catalog_registry, 'on');
+    assert.equal(body.gabi_catalog_registry_source, 'registry');
+    assert.equal(body.gabi_catalog_registry_reason, null);
+    assert.deepEqual(body.gabi_delegated_target_labels, ["Skylar's library", "Samantha's library"]);
+    assert.ok(typeof body.gabi_catalog_registry_age_s === 'number');
+    assert.ok(typeof body.gabi_catalog_registry_fetch_ms === 'number');
+  });
+
+  it('🔴 the directory refusing → `fallback` + `http 503`, WITH the fallback labels', async () => {
+    // This is the exact pairing that was invisible on 2026-09-06: the labels
+    // silently changed and every published row went on saying `on`.
+    const { fetch: f } = directorySaid({}, 503);
+    const body = await healthWith(f);
+    assert.equal(body.gabi_catalog_registry, 'on', 'the posture row is unchanged — it is the posture');
+    assert.equal(body.gabi_catalog_registry_source, 'fallback');
+    assert.equal(body.gabi_catalog_registry_reason, 'http 503');
+    assert.deepEqual(body.gabi_delegated_target_labels, [
+      'the main library',
+      'the library at padhard.heygabi.ai',
+    ]);
+  });
+
+  it('a timeout → `fallback` + `timeout`, the answer that would settle the 2 s question', async () => {
+    const timedOut = (async () => {
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'TimeoutError';
+      throw err;
+    }) as unknown as typeof fetch;
+    const body = await healthWith(timedOut);
+    assert.equal(body.gabi_catalog_registry_source, 'fallback');
+    assert.equal(body.gabi_catalog_registry_reason, 'timeout');
+  });
+
+  it('posture OFF → `off`, worded, and NOT reported as a failure', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = neverCalled;
+    try {
+      const res = await app.request('/api/health', {}, { DISCORD_PUBLIC_KEY: 'x' });
+      const body = (await res.json()) as Record<string, unknown>;
+      assert.equal(body.gabi_catalog_registry, 'off');
+      assert.equal(body.gabi_catalog_registry_source, 'off');
+      assert.match(String(body.gabi_catalog_registry_reason), /posture is off/);
+      assert.equal(body.gabi_catalog_registry_age_s, null);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it('⚠️ every published value is READABLE — no row is a bare number or a code', async () => {
+    const { fetch: f } = directorySaid({}, 418);
+    const body = await healthWith(f);
+    const reason = String(body.gabi_catalog_registry_reason);
+    assert.match(reason, /^http 418$/, 'a status must arrive with the word http in front of it');
+    assert.doesNotMatch(reason, /^\d+$/);
+    assert.match(String(body.gabi_catalog_registry_source), /^(registry|fallback|off)$/);
   });
 });
