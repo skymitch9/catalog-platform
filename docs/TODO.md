@@ -26,18 +26,28 @@
 > ☑ **Owner 22:04: "Do what you suggest just build it all now"** — all five
 > recommendations GO. Dispatched 22:05 as W9 agents, one per repo:
 >
-> 1. ☐ delete `audiobook_catalog/run_tests.py` (blind second runner) + fix the
->    script that points at it — W9-AUDIO-TESTS
+> 1. ☑ delete `audiobook_catalog/run_tests.py` (blind second runner) + fix the
+>    script that points at it — W9-AUDIO-TESTS (audiobook_catalog `bc741b0`:
+>    the file plus SIX references — `README.md:57`, `setup-dev.sh`/`.bat`,
+>    `scripts/update_author_map_from_csv.py:113`,
+>    `tests/test_openaudible_scheduler.py:3`, the `tests.yml` comment.
+>    🟢 **First-ever local pytest run: 2,231 passed / 0 failed / 0 skipped in
+>    37 s** — the 11 completeness tests excluded because they WRITE to
+>    `output_files/covers/`. ⚠️ `docs/` there is gitignored — its notes are on
+>    disk only)
 > 2. ☑ move `library_catalog/apps/web/src/lib/gabi-confirm.test.ts` into the
 >    `npm test` glob — W9-LIB-TEST-MOVE (library_catalog `5275091`; apps/web
 >    464→471 cases, full suite 2882→2889, both +7, all passing)
-> 3. ☐ `test_catalog_completeness.py`: 11 silent `skipTest`s made loud — W9-AUDIO-TESTS
+> 3. ☑ `test_catalog_completeness.py`: 11 silent `skipTest`s made loud — W9-AUDIO-TESTS
+>    (audiobook_catalog `1da1419`: a module-level
+>    `pytestmark = pytest.mark.skipif(not LIBRARY_PRESENT, …)` plus a
+>    `requires_author_map` marker, so a machine without the library shows
+>    **11 SKIPPED with the reason** instead of 11 green passes that proved nothing)
 > 4. ☑ `packages/estate-events` gets real tests (declares a runner, has no `test/`) —
 >    W9-PLATFORM-CI (`9f0c504`; **0 → 32 cases** in two files — the header's three
 >    properties made mechanical, plus a contract pin DERIVED from the receiver's
 >    source in `apps/auth-worker`, carrying the KI-10 assertion that the wire body
->    is a bare event object and never an `events` wrapper)
-> 5. ☑ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` —
+>    is a bare event object and never an `events` wrapper)> 5. ☑ (a) `deploy.yml` runs `npm test` before every `wrangler deploy` —
 >    W9-PLATFORM-CI (`44e81ae`; a `tests` job runs the ROOT suite and all three
 >    deploy jobs carry `needs: tests`. No new secret, trigger or permission —
 >    validated with a YAML parser. Also created `docs/access/ci-deploy.md`,
