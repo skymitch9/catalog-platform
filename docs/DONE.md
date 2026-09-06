@@ -9,6 +9,60 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-05 18:09 Phoenix — THE OWNER RESOLVED ALL SIX NEAR MISSES (the first signed-in press of the new button)
+
+> **Measured 2026-09-05 18:12 Phoenix** straight from the index D1 (`series_pending`, `series_alias`, `series`, `entry`):
+> all six rows `resolved_as = merged`, `resolved_by` = the owner, between 01:07:59Z and 01:09:08Z (18:07–18:09 Phoenix) —
+> the queue is empty (the only other row is `survivalist series → separate`, 2026-08-17). Survivors and entry counts:
+> `once-upon-a-broken-heart` 3 · `good-girl-s-guide-to-murder` 3 · `asphodel` 2 · `emily-wilde` 4 (2 audiobook + 2 library2) ·
+> **`skyward-series` "The Skyward Series" 13 (7 audiobook / 5 library / 1 library2)** — the owner chose the DECORATED form for
+> Skyward, the opposite of the table's recommendation below; that is his call and it is recorded here so nobody "fixes" it.
+> The absorbed slugs are gone from `series`; `series_alias` carries each fold → survivor. The build's success path
+> (queue read with counts, six merges, decrement, empty-queue sentence) is therefore verified LIVE by the owner's own clicks.
+> Owner's word, 18:1x Phoenix: *"Fixed"*.
+
+## 🧑 OWNER STEP — resolve the six near misses on <https://heygabi.ai/series/> (the button is LIVE)
+
+> **Owner ask, 2026-09-05 17:34 Phoenix:** the `/series/` card's *"A DECISION IS
+> WAITING — N near misses"* gets a resolve control, so the queue is worked from
+> the one surface that shows it instead of hand-run POSTs. ✅ **Built and
+> deployed 2026-09-05** (`b1a791f`; `catalog-index` `04bef4e8`, `heygabi-home`
+> `1f17c1e5`) — the build moved WHOLE to [`DONE.md`](DONE.md); what stands here
+> is the click, which is his and nobody else's.
+
+🔗 **Sign in at <https://heygabi.ai/series/>** → the card at the top of the page
+→ **"Show me which series"** → each row now carries both spellings with their
+entry counts and a **Keep "…"** button per spelling, plus **"They are different
+series"**.
+
+⚠️ **Two of the six merge into the CANDIDATE, not the closest** — the button
+whose label names the surviving spelling is the one to press, and the counts are
+printed on it so the choice has its evidence beside it. The list, read from the
+index's own `series_pending` table by agent W6-LIBDATA and mirrored into the
+card:
+
+| The pair | Press | Why that side |
+|---|---|---|
+| fold `once upon a broken heart 1` | **Keep "Once Upon a Broken Heart"** | cause fixed upstream; 3 entries vs 0 |
+| fold `good girl s guide to murder 2` | **Keep "A Good Girl's Guide to Murder"** | cause fixed; 3 entries vs 0 |
+| fold `good girl s guide to murder 3` | **Keep "A Good Girl's Guide to Murder"** | cause fixed; 3 entries vs 0 |
+| fold `asphodel series` | **Keep "Asphodel"** | cause fixed; 2 entries vs 0 |
+| fold `emily wilde` | **Keep "Emily Wilde"** (the plain form) | `series-canon.json`'s `canonicalRule` |
+| fold `skyward` | **Keep "Skyward"** (the plain form) | ⚠️ this one's source is **`library`**, not padhard |
+
+🔴 **There is no undo.** A merge repoints every entry under the absorbed
+spelling and the queue is built never to ask the question again — a wrong press
+is corrected only by making the opposite decision by hand. The full row list
+with the raw folds lives in the library repo's `docs/TODO.md` (agent
+W6-LIBDATA, item 1).
+
+🔴 **NOT VERIFIED BY ANY AGENT: nobody has pressed the button signed in.** The
+card only renders for an approver and no agent session holds a Firebase token,
+so the whole success path — the queue read with its counts, a merge, a separate,
+the count decrementing, the empty-queue sentence — is proven against a stub DOM
+and a fake D1 only. **This click is both the fix and the first real test.**
+
+
 ## ✅ SHIPPED 2026-09-05 — THE `/series/` CONFIRM QUEUE GAINS ITS RESOLVE CONTROL (owner ask 17:34 Phoenix, agent W6-RESOLVE)
 
 > Deploys: `catalog-index` **04bef4e8-9842-4a11-a9ff-7bbd9aa52119** and
