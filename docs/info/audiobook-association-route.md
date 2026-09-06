@@ -1,8 +1,11 @@
 # Audiobook association as a route — design
 
 > **Audience:** Claude sessions first, the owner second. **Status:** TRACKED —
-> ⚠️ **DESIGN ONLY. NOTHING IS BUILT.** No file in `library_catalog` was
-> modified by this work.
+> ⚠️ ~~**DESIGN ONLY. NOTHING IS BUILT.**~~ **PHASE 0 IS BUILT** (§9 steps 1–5,
+> 2026-09-05, agent W6-AUDIO-A) — see the ✅ block under §9's table for what
+> landed, what was measured, and the four places this design was wrong or silent
+> when it met the code. **Steps 6–14 are still design only: there is no route,
+> no cron, no migration and nothing deployed.**
 > **Last verified: 2026-09-05.**
 >
 > **Why it exists.** Owner, 2026-09-05 16:37 Phoenix: *"I added battle mage
@@ -28,8 +31,11 @@
 >
 > ### ⚠️ NOT verified
 >
-> - **No code was run and no database was read** — not `backfill:audiobooks`,
->   not a dry run, not local, not remote, on either instance.
+> - ~~**No code was run and no database was read**~~ — ✅ **superseded
+>   2026-09-05 by phase 0**: `backfill:audiobooks -- --remote` was run as a DRY
+>   run against **both** instances, before and after the extraction, and the
+>   outputs diffed byte for byte (both EMPTY). Still never `--commit`, and still
+>   nothing local. Every claim below this line remains unverified.
 > - **The CPU cost of the matcher inside a Worker is UNMEASURED.** §3.4 states
 >   the budget it must be measured against before phase 3. Treat every timing
 >   claim below as a *bound to prove*, not a fact.
@@ -479,11 +485,11 @@ before deploys. **Commit at each numbered step.**
 
 | # | Step | Files |
 |---|---|---|
-| **1** | Lift the CSV parser + row mapping into core, **verbatim**. Export `parseAudiobookCsv`, `AudiobookRow`. | ✚ `packages/core/src/audiobook-csv.ts`; ✎ `packages/core/src/index.ts` |
-| **2** | Rewire the script's loader to call it. **Nothing else changes.** | ✎ `scripts/lib/audiobooks.mjs` (keeps `existsSync`, `LC_AUDIOBOOK_ROOT`, `AUDIOBOOK_CSV`, `audiobookIndex`, `audiobookCoverPath`) |
-| **3** | Port `canonicalSeries` to TS over `packages/universes/generated/`. **Keep the warn-and-degrade posture** — a missing canon falls back to plain `normaliseTitle` and is reported once, loudly. | ✚ `packages/core/src/series-canon.ts`; ✎ `scripts/lib/series-canon.mjs` → thin wrapper |
-| **4** | Extract the planner. Phases 1 and 2 move whole. Add `scope`. **Return data, never SQL.** | ✚ `packages/core/src/audiobook-sweep.ts` |
-| **5** | Rewire the script to `planAudiobookSweep` + render the plan through `lit()`. 🔴 **Prove byte-identical dry-run output** (phase 0 gate). | ✎ `scripts/backfill-audiobook-holdings.mjs` |
+| ✅ **1** | Lift the CSV parser + row mapping into core, **verbatim**. Export `parseAudiobookCsv`, `AudiobookRow`. — **DONE `965d226`** | ✚ `packages/core/src/audiobook-csv.ts`; ✎ `packages/core/src/index.ts`; ✚ `packages/core/test/audiobook-csv.test.ts` (12) |
+| ✅ **2** | Rewire the script's loader to call it. **Nothing else changes.** — **DONE `e307bc3`** | ✎ `scripts/lib/audiobooks.mjs` (keeps `existsSync`, `LC_AUDIOBOOK_ROOT`, `AUDIOBOOK_CSV`, `audiobookIndex`, `audiobookCoverPath`) |
+| ✅ **3** | Port `canonicalSeries` to TS. **Keep the warn-and-degrade posture** — a missing canon falls back to plain `normaliseTitle` and is reported once, loudly. — **DONE `bb7af18`**, ⚠️ **split in two, see the note below** | ✚ `packages/core/src/series-canon.ts` (the RULE); ✚ `packages/universes/src/series-canon.ts` (the generated DATA); ✎ `scripts/lib/series-canon.mjs` → thin wrapper |
+| ✅ **4** | Extract the planner. Phases 1 and 2 move whole. Add `scope`. **Return data, never SQL.** — **DONE `e2f4aee`** | ✚ `packages/core/src/audiobook-sweep.ts`; ✚ `audiobook-sweep.test.ts` (19) + `audiobook-sweep-scope.test.ts` (10) |
+| ✅ **5** | Rewire the script to `planAudiobookSweep` + render the plan through `lit()`. 🔴 **Prove byte-identical dry-run output** (phase 0 gate). — **DONE `8f38125`; GATE PASSED, both instances, diffs EMPTY** | ✎ `scripts/backfill-audiobook-holdings.mjs`; ✚ `scripts/lib/audiobook-sql.mjs` (⚠️ see below); ✚ `scripts/test/backfill-audiobook-holdings.test.mjs` (9) |
 | **6** | Migration **0470**: `audiobook_snapshot` (`etag`, `fetched_at`, `row_count`) + `audiobook_sweep_run` (`id`, `trigger`, `started_at`, `finished_at`, `state`, `detail_json`). ⚠️ **Migrate both instances before any deploy.** | ✚ `migrations/0470_audiobook_sweep_state.sql` |
 | **7** | The D1 writer: batch of prepared statements + `changeLogInsert` transition rows, in **one** batch. | ✚ `packages/db/src/audiobook-holdings.ts`; ✎ `packages/db/src/index.ts` |
 | **8** | The run wrapper: fetch with `If-None-Match`, the **three guards** of §6.2, run-row bookkeeping. Export `AUDIOBOOK_SWEEP_CRON`. **Never throws** — a scheduled invocation has no response to put an error in. | ✚ `apps/worker/src/lib/audiobook-sweep-run.ts` |
@@ -492,7 +498,64 @@ before deploys. **Commit at each numbered step.**
 | **11** | Second cron string on **both** `[triggers]` blocks; dispatch on `event.cron` in `scheduled()`, unrecognised cron still errors. | ✎ `apps/worker/wrangler.toml`, `apps/worker/src/index.ts` |
 | **12** | The on-add hook in the two person-facing callers; **`'defer'` + one batched call** in the importer (§4.4). | ✎ `routes/catalog.ts`, `routes/gabi-delegated.ts`, `routes/ingest.ts` |
 | **13** | Shadow flag (`AUDIOBOOK_SWEEP_MODE = off \| shadow \| enforce`), shipped **`shadow`**. | ✎ `apps/worker/wrangler.toml` (both blocks), the run wrapper |
-| **14** | Docs: `library_catalog/docs/info/series-formats-and-audiobooks.md` + `docs/access/` runbook; move the TODO item WHOLE to `DONE.md` at completion. | ✎ per the docs standard |
+| **14** | Docs: `library_catalog/docs/info/series-formats-and-audiobooks.md` + `docs/access/` runbook; move the TODO item WHOLE to `DONE.md` at completion. | ✎ per the docs standard — **§4.11 written `c62b22a`**; the runbook and the DONE move are still open |
+
+### ✅ Phase 0 landed 2026-09-05 — what the code said that this design did not
+
+> **Measured:** `npm run backfill:audiobooks -- --remote` captured before step 1
+> and re-run after step 5, on **both** instances. **Both diffs EMPTY** — byte
+> identical, not "identical apart from timestamps", because the report block
+> prints no clock. Main: 561 lines, 411 works, 122 matched, 127 editions, 31
+> series, 317 statements. padhard: 843 lines, 677 works, 263 statements. Dry
+> runs only; `--commit` was never passed. `npm run test` 2610 pass / 0 fail,
+> `npm run typecheck` green. ⚠️ **NOT verified: anything rendered, anything
+> deployed, any Worker behaviour** — phase 0 ships no route, no cron and no
+> migration, and nothing under `apps/worker` was touched.
+
+Three things in §9 turned out to be under-specified or wrong against the code.
+Phase B should read these before starting step 6.
+
+**1. 🔴 Step 3 cannot be one file.** §2.2 B says "port `canonicalSeries` to TS
+over `packages/universes/generated/`", and that is two incompatible requirements
+in one line. `@lc/core` promises *"no I/O — safe to import anywhere"*, and
+`@lc/universes`' own header states that a build-generated file with a cross-repo
+provenance does not belong inside that promise; `@lc/core` also cannot import
+`@lc/universes`, which depends on it. **And binding core to the generated copy
+would have changed the SCRIPT's canon from live to build-time — the exact §2.4
+skew this design says the script must NOT have**, which would have broken the
+phase-0 gate. So: the RULE is `packages/core/src/series-canon.ts` (`normText`,
+`buildSeriesCanonMap`, `canonicalSeriesIn(map, name)` — data-free, both callers
+share it) and the generated BINDING is `packages/universes/src/series-canon.ts`
+(`seriesCanonMap`, `canonicalSeries`, `seriesCanonEntryCount`). `planAudiobookSweep`
+takes `canonicalSeries` as an INPUT. **Phase B imports it from `@lc/universes`,
+not from `@lc/core`.** `seriesCanonEntryCount` already exists for §7.2's status
+line.
+
+**2. ⚠️ §6.2 guard 3 scopes the STALE phases and says nothing about phase 2's
+UPSERTS — and the obvious reading is unsafe.** A scoped run holds a fraction of
+the evidence, so its `fold` verdict is an *absence* of proof rather than a weaker
+proof; since every rung upsert sets `series_matched_via = excluded.series_matched_via`,
+writing it would **downgrade a `work_match` rung a full sweep had already
+earned**. So under `{ kind: 'works' }` the planner emits a rung only where that
+run itself corroborated the series, and names the rest in
+`report.foldSeriesDeferred` for the cron. Decided in phase 0 because it could not
+be deferred; revisit it deliberately if phase B disagrees.
+
+**3. The step-8 table's test needed a file §9 does not list.**
+`scripts/backfill-audiobook-holdings.mjs` reads two databases at import time, so
+nothing can import it — and the test §9 asks for ("the script's rendered SQL for
+a fixture plan is unchanged") therefore had nothing to call. The rendering is now
+`scripts/lib/audiobook-sql.mjs` (`renderSweepStatements(plan)`), the script-side
+twin of the `packages/db/src/audiobook-holdings.ts` binder step 7 will build.
+**Both must be written from the same plan and neither may re-derive anything.**
+
+**4. ⚠️ A hazard for step 8 that §6.2's three guards do not cover.** One
+`--remote` run mid-way returned `0 work(s) in the REMOTE database` and **exited
+0** — wrangler handed back an empty result set with no error. The script's
+zero-AUDIOBOOK-ROWS path refuses loudly; its zero-WORKS path is a silent
+`process.exit(0)`. Re-running gave the full 411. In a Worker the same empty read
+of `work` would reach the stale sweep with nothing to reproduce. **Guard the
+zero-works read the way §6.2 guards the zero-rows fetch.**
 
 ### Tests to add
 
