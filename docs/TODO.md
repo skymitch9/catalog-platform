@@ -118,35 +118,41 @@ line.
 **Nothing from the two ticked boxes above moves to `DONE.md` until enforce is
 live and measured.**
 
-### ☐ The apex `/status` line for the probe run — deferred 2026-09-05, deliberately
+### ☑ The apex `/status` line for the probe run — BUILT 2026-09-05 (`bb0ddf0`, live `6476f6ac`)
 
-`GET https://auth.heygabi.ai/api/health` already carries
-`detail.estateProbes`; what is missing is the row that renders it, one line:
-`estate probes: 145/145 green · 17:00`.
+Deferred at first because `sites/heygabi-home/` was open in another agent's
+working tree (W6-APEX was rewriting `status/status.js`; `git status` showed six
+of its files modified), and you never touch another agent's uncommitted files.
+**It committed and deployed while this work was deploying**, so the row was
+written against a clean tree instead.
 
-⚠️ **NOT BUILT BECAUSE `sites/heygabi-home/` WAS OPEN IN ANOTHER AGENT'S
-WORKING TREE** at the time (W6-APEX was rewriting `status/status.js`'s source
-order; `git status` showed six of its files modified). The estate's rule is that
-you never touch another agent's uncommitted files, and `status.js` is exactly
-the file both changes want.
+**One row, no new fetch, no new surface.** `detail.estateProbes` was already
+arriving in the `authHealth` the page fetches, so the change is one `makeRow`
+in `buildWorkerSection()` and one `renderEstateProbesRow()` beside the `wk-auth`
+row it shares a response with. The inventory's §8 refuses a second status
+surface for anything already on `/api/health`.
 
-**What is needed, for whoever picks it up.** `status.js` already fetches
-`${AUTH_ORIGIN}/api/health` into `authHealth` in `refreshAll()`'s
-`Promise.all` — **no new fetch**. It needs one `<div class="row">` in
-`status/index.html` and one `renderWorkerHealthRow`-shaped call reading
-`authHealth.detail.estateProbes`. The three states the row must word
-distinctly, all of which the field already distinguishes:
+⚠️ **Four states, four sentences** — the reason the row is more than a number:
 
-| Field | Row must say |
+| Field | The row says |
 |---|---|
-| `null` | *"no probe run has been recorded"* — ⚠️ **never "0 of 145"**; the Worker is healthy |
-| `truncated: true` | *"N of 145 — the run ran out of time"* — ⚠️ **never green**; the rest were not asked |
-| `error` non-null | *"the probe runner itself failed"* — a different fix from failing probes |
-| `failed > 0` | red, naming `failures[0].area:id` — this is the suite WORKING |
+| `null` | grey, *"no probe run has been recorded yet"* — ⚠️ **never "0 of 145"**, which is the opposite claim; a Worker whose first cron has not fired is healthy |
+| `error` non-null | amber, *"the probe runner itself failed"* — the question was never asked, which is a different fix from failing probes |
+| `truncated: true` | amber **even at zero failures** — the areas that did not run are unknown, and unknown is not a pass |
+| `failed > 0` | red, naming `failures[0]`, and saying outright that this is the suite WORKING and not to loosen an assertion |
 
-⚠️ **And it is ONE row on the existing page, never a second status surface** —
-the inventory's own §8 refuses that, and *one fact, one home applies to
-SURFACES too*.
+The row owns exactly one threshold — staleness — and derives it from the
+cadence rather than picking it (hourly, so amber past 2× and red past 4×).
+Every other verdict is decided server-side, the discipline the backup rows
+already follow.
+
+🔴 **NOT VERIFIED: nobody has seen it render.** `/status` is gated and no agent
+session holds a Firebase ID token, so the evidence is the served bundle
+(re-read live at 00:45:27Z) plus `verify:home`'s 36 live pages — **not an
+eyeball**. **Owner: open <https://heygabi.ai/status/> and look at the bottom
+row of the Workers section.** Until the first `:19` cron lands it should read
+the grey *"No probe run has been recorded yet."*, which is correct and not a
+fault.
 
 ### Two findings that need the owner, not a build
 
