@@ -452,8 +452,24 @@ request, and the commit is not book-only so `auto-promote.yml` will not carry
 it. ⚠️ `PHYSICAL_SOURCE_INSTANCE` was left alone on purpose (it needs
 `audiobook_catalog`'s join to carry an instance). As-built:
 [`info/catalog-registry.md`](info/catalog-registry.md) §10a.
-☐ ③d **the provisioner + peers** (dispatch 4) is still open, and ☐ ④ is the
-owner's eyeball.
+☑ ③d **THE PROVISIONER + PEERS — dispatch 4, agent W10-FED-PROV, 2026-09-06.**
+So all four §10 dispatches are in; ☐ ④ is the owner's eyeball. Commits: library
+`f472578` (the checklist: §7's ~28 items, of which the script named 3) +
+`bfba496` (`PEERS` is the SET, the registry is the NAMES) + `daa319d` (docs, incl.
+new `info/peer-network.md`); board `c13d694` (🔴 the index push source from
+`ESTATE_APP`) + `7a1ca7c` + `135297a`. Deploys — library PAIR at `09ea0cb`:
+`d950b97d` (main, rollback `c0d40662`) and `7f782b10` (friend, rollback
+`bfec83c1`), both verified live on `?cb=`; board `a20b7aed` at `7a1ca7c`
+(rollback `e4519a77`), verified in a `wrangler tail`. NO migration on any side.
+🔴 **The board fix is the one to know about: `index-push.ts` hard-coded
+`/api/push/game`, and the index write is a snapshot replace keyed on source — a
+second games instance would have DELETED the main catalog's index shelf on its
+first push.** As-built: [`info/catalog-registry.md`](info/catalog-registry.md)
+§10a (the first WRITER rows) and
+[`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) **§7.6b**
+(new — the index's hand-edit ledger). ⚠️ `PEERS` membership is still added by
+hand, deliberately: a directory that enrolled catalogs into peer networks would
+hand another household a read of somebody's shelf with nobody deciding it.
 
 ⚠️ **What dispatch 2 measured and did NOT change**, because each is somebody
 else's call:

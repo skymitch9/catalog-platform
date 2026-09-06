@@ -16,6 +16,17 @@
 > The header's *"the other three consumer dispatches … have not run"* below is
 > superseded: **dispatch 4 (the provisioner + `PEERS`) is the one that has not.**
 >
+> ✅ **UPDATED 2026-09-06, later: DISPATCH 4 HAS LANDED — ALL FOUR ARE IN**
+> (agent W10-FED-PROV). The line above is now superseded in its turn.
+> `library_catalog`'s `PEERS` reads this route for each peer's host and label
+> (`bfba496`, deployed to both instances `d950b97d` / `7f782b10`), and — the
+> half nothing had yet — **both provisioners now WRITE a row here** when they
+> mark a request live, so a provisioned catalog arrives with a name and an owner
+> instead of as an id nothing can render. §10a's table gains its first writer
+> rows. ⚠️ **`PEERS` still decides MEMBERSHIP by hand**: a directory that
+> enrolled catalogs into peer networks would hand another household a read of
+> somebody's shelf with nobody deciding it. §10.
+>
 > ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
 > `predeploy.checks.json`'s live pass fetches unauthenticated, so the
 > scoped-count half of §4 is proven by tests and by this route's own answer, and
@@ -281,6 +292,23 @@ fact. Pinned by probe `A44`.
 | `public/admin/admin.js` | ⚠️ **NAMES ONLY** — see below | `94d3e65` |
 | `apps/discord-worker/src/catalog-registry.ts` | **GABI's one reader** — the shelves she offers (`resolveLibraryInstances`, registry rows that are `kind:books` + `holding:physical`) and the words she calls them, incl. the three suggestion shelves. Posture `GABI_CATALOG_REGISTRY`; `panel.ts`'s pre-existing lane now shares this fetch and this memo | `893ca5f` |
 | `audiobook_catalog/site/estate/estate-search.js` | ⚠️ **the fourth copy of `estate-search.js`, and it reads the registry now** — re-vendored 2026-09-06 by that repo's new `scripts/sync_estate_search.py`. It inherits the inline twin below rather than reading it itself | `2b4ba2f` *(audiobook_catalog)* |
+| `library_catalog/apps/worker/src/lib/peer-push.ts` | **each peer's `host` and `label`** — `resolvePeers()`, with `wrangler.toml`'s `PEERS` as the fallback. 🔴 **NAMES ONLY, never MEMBERSHIP** — see §10a's peer note below | `bfba496` *(library_catalog)* |
+
+**And the first WRITERS, 2026-09-06** — until dispatch 4 the only rows here came
+from 0020's back-seed:
+
+| Writer | Writes | Landed |
+|---|---|---|
+| `apps/auth-worker/src/catalog-requests.ts` `/live` | the canonical write (`insertCatalog`), for a devops session with a browser | `40bdd60` |
+| `library_catalog/scripts/provision-catalog.mjs` step 12 | the same row by `d1 execute`, because the provisioner runs on a **wrangler** login and `/live` is `requireDevops()` (a Firebase ID token) | `f472578` *(library_catalog)* |
+| `Board_Game_Catalog/scripts/provision-catalog.mjs` step 12 | the same, with `push_source` ≠ `id` (`games` ↔ `game`) | `7a1ca7c` *(Board_Game_Catalog)* |
+
+⚠️ **The route and the two scripts are near-duplicates ON PURPOSE and are NOT
+interchangeable** — one is for a browser session, one for the machine that
+actually created the catalog. Change one and the others must change too; both
+sides carry that sentence in their own headers. All three write
+`ON CONFLICT(id) DO NOTHING`, so a repeated provisioning run cannot rename a
+catalog somebody is already using.
 
 ⚠️ **`estate-search.js` carries its own inline copy of the fetch and the label
 helpers and MUST keep it.** `sync-estate-search.mjs` (in both consumer repos)
@@ -313,9 +341,11 @@ estate holds.
   audiobook site's hand-vendored copy of `estate-search.js`"*~~ — **both landed
   2026-09-06 (dispatch 3, agent W10-FED-GABI).** GABI: `893ca5f`, deployment
   `ae966987-9030-4e4f-a5ae-734ba6fc7c13`; the audiobook vendor: `2b4ba2f` in
-  that repo, on the **/dev/** lane only (see below). **Still untouched:**
-  `library_catalog`'s `PEERS` — its own second, independent registry on a
-  different id vocabulary — which is survey §10 **dispatch 4**.
+  that repo, on the **/dev/** lane only (see below). ✅ ~~**Still untouched:**
+  `library_catalog`'s `PEERS`~~ — **landed 2026-09-06 (dispatch 4, agent
+  W10-FED-PROV)**, `bfba496`, deployed to both instances (`d950b97d` /
+  `7f782b10`). ⚠️ It took the NAMES and left the MEMBERSHIP, on purpose — the
+  last bullet of this section says why.
 - ⚠️ **THE AUDIOBOOK SITE'S COPY IS ON `/dev/` AND NOT ON PROD.** That repo's
   two-lane deploy moves prod only through `gh workflow run promote.yml`, which
   is the owner's explicit request, and `auto-promote.yml` carries **book-only**
@@ -371,8 +401,35 @@ estate holds.
   catalog there. Pinned in `machine-read.test.ts` and again in
   `catalogs.test.ts`.
 - **`RESERVED_SUBDOMAINS` and the registry are still the same fact twice**
-  (survey §3.2). The registry now has `host`; nothing feeds the reserved check
-  from it yet. Left for dispatch 4, which is the provisioner's.
-- **Nobody has provisioned a catalog through the `/live` path in production.**
-  The registry write is exercised by tests only; the five rows that exist came
-  from the migration's back-seed.
+  (survey §3.2), and dispatch 4 **deliberately did not join them.** The registry
+  now has `host`; nothing feeds the reserved check from it, and nothing should:
+  🔴 **the two lists answer opposite questions.** The registry says *"these
+  catalogs exist"*; `RESERVED_SUBDOMAINS` says *"nobody may ask for these
+  names"* — and the second is strictly larger, holding retired names (`sam`),
+  decided-against names (`books`, `search`, `shelf`) and hosts nothing routes.
+  Deriving it from the registry would QUIETLY FREE every name in that
+  difference, which is an access-increasing change with no owner behind it, and
+  it fails in the direction where somebody is told a name is available and given
+  it. What dispatch 4 did instead: **both provisioners now PRINT the exact
+  `RESERVED_SUBDOMAINS` line to add** (the games one prints both hostnames), in
+  the same commit that routes the host, which is what that file's own header
+  asks for. The duplication stays; the forgetting is what was fixed.
+- ✅ ~~**Nobody has provisioned a catalog through the `/live` path in
+  production.**~~ Still true of the ROUTE, and now for a sharper reason:
+  🔴 **the provisioners never call `/live` at all.** It is `requireDevops()`,
+  which needs a Firebase ID token from an admin account, and both provisioners
+  run on the owner's **wrangler** login with no browser in the loop. They mark
+  the request live by a direct `d1 execute` against the directory — as they
+  always did — and since 2026-09-06 they write the registry row the same way
+  (§10a's writer table). So `/live` remains exercised by tests only, and the
+  five rows that exist still came from 0020's back-seed. ⚠️ **Nothing has been
+  provisioned by either script either**, so the new write is also unexercised in
+  production; the first real run is the test.
+- ⚠️ **`PEERS` is NOT fed from this registry, and that half is deliberate.**
+  Dispatch 4 took the names and left the membership. A peer entry lets another
+  household read this catalog's holdings and this one read theirs —
+  access-increasing in both directions — so a catalog appearing in a directory
+  must never enrol itself into a peer network. Adding a `library3` is still a
+  line in every existing instance's `PEERS` plus a redeploy of each, which is
+  what the provisioner prints. The reasoning, the match order and the failure
+  wording live in `library_catalog/docs/info/peer-network.md`.

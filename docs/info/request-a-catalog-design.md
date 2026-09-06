@@ -1,6 +1,17 @@
 # "Request a catalog" — the "+" on the heygabi.ai cards — Information Reference
 
 > **Audience:** Claude sessions first, the owner second.
+>
+> ✅ **AMENDED 2026-09-06 (multi-library survey dispatch 4, agent W10-FED-PROV):
+> §7.6b is NEW — the estate INDEX's hand-edit ledger.** §7.6a counted nine edits
+> in the auth Worker and stopped there; the survey counted the estate at **~28
+> across four repos, of which the two provisioners named 3.** §7.6b carries the
+> other eight, headed by the two that do not fail politely (the `entry.source`
+> CHECK migration, whose diagnostic command truthfully answers a different
+> question, and `UNSCOPED_LOOKUP_EXCLUDED`, which fails OPEN). Every one is now
+> PRINTED by both `scripts/provision-catalog.mjs`, and step 12 of each writes
+> the `estate_catalog` registry row — so the apex label maps §7 listed are no
+> longer hand edits at all.
 > **Status:** TRACKED — **BEING BUILT.** ⚠️ The old *"DESIGN ONLY. Nothing is
 > built."* line here was true until **2026-09-05 14:24Z**, when **§10 phases 1
 > and 2 landed and were deployed**: migration `0018_catalog_requests.sql` is
@@ -1020,6 +1031,59 @@ red anywhere.
 and a `games2` entry in the auth Worker's `BILLING_SITES`, or that repo does not
 compile"*, and `scripts/provision-catalog.mjs` prints both in its PAUSE #2
 runbook. The gap was in **this** document, not in the code.
+
+### 7.6b The estate INDEX — the second hand-edit ledger, and the one that fails open
+
+⚠️ **Written 2026-09-06 (multi-library survey dispatch 4) because §7.6a is only
+half the ledger.** It counts nine edits in the **auth** Worker and stops there;
+the multi-library survey's §7 counted the whole estate at **~28 hand-edits
+across four repos, of which the two provisioners named 3.** The rest of the
+auth-side gap (the CORS origin, `RESERVED_SUBDOMAINS`) and the whole of the
+**index** Worker were in no ledger at all.
+
+Everything below is now PRINTED by both `scripts/provision-catalog.mjs`, with
+the exact diff shape, so this table is the reasoning and the scripts are the
+runbook. `<src>` is the new catalog's **push** source — the id itself for a
+library, and ⚠️ **not** the id for games (`games` ↔ `game`, the estate's one
+vocabulary difference, owned by `search-route.ts`'s `SOURCE_FOR_CATALOG`).
+
+| # | File : symbol | Missed ⇒ |
+|---|---|---|
+| 1 | `apps/index-worker/migrations/00NN_entry_source_<src>.sql` | 🔴 **EVERY PUSH IS A BARE 500.** `entry.source` carries a CHECK constraint listing the sources by name (0001, verified against the live remote `sqlite_master` 2026-09-05). The Worker passes `isSource`, the bearer, zod and the whole series plan, then dies inside `db.batch`. ⚠️ **And `wrangler d1 migrations list --remote` says *"No migrations to apply"*, which is TRUE and is not the question** — nothing is pending, one is required. Copy `0006_entry_source_library2.sql` and change one line; keep the column-NAMED copy and all four PARTIAL indexes |
+| 2 | `src/read.ts:69` — `UNSCOPED_LOOKUP_EXCLUDED` | 🔴 **FAILS OPEN.** `/api/lookup` is membership-gated and deliberately NOT visibility-scoped, so this list is an allowlist INVERTED: until the new source is named here, every approved member — and every machine token via `/api/machine/lookup` — can enumerate the new shelf by title while holding no `vis_<app>` grant. Owner decision 2026-09-05 16:08: keep it fenced |
+| 3 | `src/rows.ts:33` — `SOURCES` | the push is refused as an unknown source (worded, not silent). ⚠️ For a second GAMES instance also check `rows.ts`'s only branch on the value, `source === 'game'` — a new games source is folded as a BOOK unless that test becomes a set |
+| 4 | `src/env.ts:187` — `pushTokenFor()` + `INDEX_PUSH_TOKEN_<APP>` | a worded 503 naming the secret. ⚠️ A **different value** per instance: the index resolves the caller FROM the value, so sharing one makes the source name meaningless and one leak revokes both catalogs |
+| 5 | `src/search-route.ts:47,111` — `SOURCE_FOR_CATALOG`, `VALID_SOURCE_PARAMS` | rows land and no scoped search can ask for them |
+| 6 | `src/env.ts:169,173` — `MACHINE_APPS`, `readTokenFor`, `INDEX_READ_TOKEN_<APP>` | ⚠️ **only if** the instance should use the free-details ladder. `MACHINE_VISIBILITY` (`machine-route.ts:118`) stays a default-deny either way — **being an APP is not being a SHELF** |
+| 7 | `apps/auth-worker/src/env.ts:487` — the CORS origin | the new site's browser calls to the auth Worker are refused by the preflight, which reaches the page as a **NETWORK ERROR indistinguishable from the Worker being down.** Nobody debugging that guesses CORS |
+| 8 | `apps/auth-worker/src/catalog-names.ts:109` — `RESERVED_SUBDOMAINS` | the next person to ask for that subdomain is told it is free. That file's header already demands it *"in the same commit that routes it"* — the pause IS that commit. ⚠️ For games, **both** hostnames (site and covers) |
+
+❓ **And one line neither script may apply: `READ_ORIGINS`**
+(`apps/index-worker/wrangler.toml`). It decides whether a browser on the new
+host may read the estate index at all — **access-increasing, therefore the
+owner's line and not a build's.** Both provisioners EMIT the exact line to
+paste and tell him to read the LIVE value first, because pasting a stale
+template would silently **revoke** an origin added since. That warning came
+true within a day of being written: the list gained `padhard.heygabi.ai` on
+2026-09-06 (his explicit "Yes"), hours after the template was composed.
+
+✅ **What no longer needs a hand edit at all.** The survey's §7 also listed the
+apex search labels, the series and universes holding lines and the front-door
+card. Those are registry consumers since 2026-09-05
+([`catalog-registry.md`](catalog-registry.md) §10a), and **step 12 of both
+provisioners now writes the `estate_catalog` row**, so a new catalog is NAMED
+across the estate without anybody editing a label map. ⚠️ Two deliberate
+exceptions stay hand-kept: `/admin`'s `CATALOGS` (a permission surface must not
+fail closed on a cache miss) and `/status`'s `INDEX_THRESHOLDS` (a threshold is
+a MEASURED push cadence; a colour no measurement backs is what that page is
+written against).
+
+🔴 **The pattern across both ledgers is worth stating once.** Of the seventeen
+edits §7.6a and this section list, the ones that break the BUILD need no
+document — the compiler is the ledger. The ones worth writing down are the
+silent ones and the two here that are worse than silent: a bare 500 whose
+diagnostic command answers a different question, and a private shelf that is
+readable until somebody remembers a line.
 
 ---
 

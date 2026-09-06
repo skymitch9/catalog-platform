@@ -24,6 +24,22 @@
 > `PHYSICAL_SOURCE_INSTANCE` and `suggest.ts`'s three rows — is UNTOUCHED and
 > still open.**
 >
+> ✅ **STATUS UPDATE 2026-09-06: DISPATCH 4 HAS LANDED, so all four of §10 are
+> in** (agent W10-FED-PROV). §7's count — *"~28 hand-edits across 4 repos, of
+> which the provisioner today names 3"* — is the line that moved: both
+> `provision-catalog.mjs` scripts now print every item, and step 12 of each
+> writes the `estate_catalog` row so the apex label maps are not hand edits at
+> all. §3.6's `PEERS` row is closed on the NAMES (`resolvePeers()` reads
+> `/api/catalogs`) and deliberately open on the MEMBERSHIP. Two things this
+> dispatch found that the survey did not: 🔴 `Board_Game_Catalog`'s index push
+> hard-coded `/api/push/game`, so a second games instance would have DELETED the
+> main catalog's index shelf on its first push (fixed, deployed `a20b7aed`), and
+> the provisioners **cannot call `/live`** — it is `requireDevops()` and they run
+> on a wrangler login, so they write the registry row by `d1 execute`. Detail:
+> [`catalog-registry.md`](catalog-registry.md) §10a and
+> [`request-a-catalog-design.md`](request-a-catalog-design.md) **§7.6b** (new),
+> plus `library_catalog/docs/info/peer-network.md`.
+>
 > ⚠️ **The survey text below is left EXACTLY as it was measured** — it is the
 > record of what was true on the morning of 2026-09-05, and editing findings
 > into past tense would destroy the one thing an audit is for. Read a §3 row as
