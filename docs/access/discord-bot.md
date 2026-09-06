@@ -2192,3 +2192,123 @@ registry and the fallback agree today by construction. The row that
 distinguishes them is `gabi_panel_registry`; the only way to see the lookup
 itself is `npx wrangler tail estate-discord` on a turn that emits a link, or a
 registry whose `library` host differs from the constant.
+
+---
+
+## 17. "Where did GABI's shelf NAMES come from?" — the four registry-source rows (2026-09-06)
+
+> **Last verified: 2026-09-06** — every row and every number below was read off
+> the live `https://discord.heygabi.ai/api/health` between **15:09:48Z and
+> 15:38:06Z** (221 samples) on deployment
+> `da13647d-c98d-4f48-8a1d-5120f1395dbe`. ⚠️ **NOT verified here:** anything
+> about the PANEL lane (§16 owns `gabi_panel_registry`), and no Discord turn has
+> been taken on this version.
+
+### 17.1 🔴 The question these rows exist to answer, and why it could not be answered before
+
+`GABI_CATALOG_REGISTRY = "on"` makes GABI read the estate directory for the SET
+of shelves she offers and the WORDS she calls them (§16's sibling lane; the
+design is [`info/catalog-registry.md`](../info/catalog-registry.md)). When the
+directory does not answer, each caller degrades to its own configured words —
+deliberately, and in words rather than a crash.
+
+⚠️ **Until 2026-09-06 nothing published from outside could tell those two apart.**
+`gabi_catalog_registry` is the **POSTURE** and reads `on` either way. A comment
+in `src/index.ts` claimed it "says WHICH of the two answered"; **it never did**,
+and that false comment cost a measurement session.
+
+**What it looked like when it bit (measured 2026-09-06 07:50–08:00 Phoenix, on
+the previous deployment `ae966987-9030-4e4f-a5ae-734ba6fc7c13`):**
+
+| Observation | Reading |
+|---|---|
+| 100 samples of `/api/health` over 4 min | ~60% `gabi_delegated_target_labels: ["Skylar's library","Samantha's library"]`, ~40% `["the main library","the library at padhard.heygabi.ai"]` |
+| the two interleaved, all `-PHX`, no `cf-cache-status`/`age` | **not** an edge cache, and **not** two deployments — `wrangler deployments list` showed one version at 100% |
+| `npx wrangler tail estate-discord --format json`, same 4 min | **113 events, all `outcome: ok`, ZERO logs, ZERO exceptions** |
+
+🔴 **Both halves are true at once, and that is the trap.** `loadCatalogs()` logs
+a `console.error` on every failure — **once**, in the isolate that failed — and
+then remembers the failure for `CATALOG_REGISTRY_TTL_MS` = **10 minutes**. So a
+tail window almost never contains the log that explains the fallback it is
+watching. **An empty tail is not evidence the directory answered.**
+
+### 17.2 The rows
+
+`GET https://discord.heygabi.ai/api/health` (⚠️ **`/api/health`, not `/health`** —
+`/health` on this Worker is a 404 and a brief that names it will read the 404 as
+an outage):
+
+| Row | Values | What it means |
+|---|---|---|
+| `gabi_catalog_registry` | `on` \| `off` | **the POSTURE only.** Unchanged, and it still says nothing about whether the directory answered |
+| `gabi_catalog_registry_source` | `registry` \| `fallback` \| `off` | 🔴 **the row that actually answers the question.** `off` = the posture is off, so no subrequest is ever made and the configured pair is the whole correct answer |
+| `gabi_catalog_registry_reason` | `null`, or words | `null` exactly when `source: "registry"`. Otherwise `timeout`, `http <status>`, `shape`, or `error: <message>` |
+| `gabi_catalog_registry_age_s` | seconds, or `null` | how long **this isolate** has held that answer. At **600** it is due to be re-read on the next call |
+| `gabi_catalog_registry_fetch_ms` | ms, or `null` | how long the read that produced it TOOK. ⚠️ The ceiling is **2,000** (`CATALOG_REGISTRY_TIMEOUT_MS`); this is the number that says whether it is close |
+
+**The reason vocabulary, and why each one is words:**
+
+| `reason` | What went wrong | Where to look next |
+|---|---|---|
+| `timeout` | our own 2 s ceiling fired. ⚠️ Reported for an abort of ANY name (`TimeoutError`, `AbortError`, or an abort that reaches us only in the message) because **this code is the only thing that aborts the request** | the directory's own latency — `curl -sS -D - https://index.heygabi.ai/api/catalogs` |
+| `http 503` (any status) | the directory answered and refused | `index-worker`'s own health and its `deploys.log` line. ⚠️ Never a bare `503` — a number alone in a health row is a puzzle, not a diagnosis |
+| `shape` | a **200** whose body `parseCatalogs` refuses. One bad row refuses the whole answer, on purpose | the route's body. A half-parsed directory is how a shelf silently disappears from a menu |
+| `error: <message>` | anything else thrown, message truncated to 120 chars | the message |
+
+### 17.3 Reading it — and ⚠️ why ONE curl is not a measurement
+
+```bash
+# one isolate's opinion
+curl -sS https://discord.heygabi.ai/api/health \
+  | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));
+             console.log(d.gabi_catalog_registry_source, '|', d.gabi_catalog_registry_reason,
+                         '| age', d.gabi_catalog_registry_age_s + 's',
+                         '| fetch', d.gabi_catalog_registry_fetch_ms + 'ms',
+                         '|', JSON.stringify(d.gabi_delegated_target_labels));"
+```
+
+⚠️ **These rows describe the memo of the ONE ISOLATE that served your request.**
+Isolates hold independent memos for ten minutes each, so two consecutive curls
+can legitimately disagree and neither is wrong. **The measurement is a
+DISTRIBUTION**: sample 40+ times over ≥3 minutes and tabulate
+`source` × `reason`. ⚠️ Use `curl`, not Python's default UA and not `-I`/`-o
+/dev/null`/`-o NUL` — all three misreport (`000`/exit 43) on these hosts.
+
+⚠️ **A soak shorter than ~10 minutes only ever sees each isolate's FIRST read.**
+To watch a memo actually EXPIRE and re-read you must cross the 600 s TTL, and
+the way to spot a re-read in the data is `t − age_s` — that difference is the
+memo's birth time and is the only stable identity an isolate has from outside.
+
+### 17.4 ✅ What the instrument measured on the day it shipped — and what it did NOT settle
+
+**Measured 2026-09-06 15:09:48Z → 15:38:06Z (28 min), 221 samples, deployment
+`da13647d-c98d-4f48-8a1d-5120f1395dbe`:**
+
+| | |
+|---|---|
+| `source` × `reason` | **221 / 221 `registry` / no reason. ZERO fallback.** |
+| distinct memos observed | **7** — births 15:09:48, 15:10:03, 15:10:06, 15:19:54, 15:20:09, 15:29:54, 15:30:42 |
+| TTL rollovers actually caught | **4** (15:09:48→15:19:54, 15:10:03→15:20:09, 15:19:54→15:29:54, 15:20:09→15:30:42), each ≈600–633 s apart — **every re-read succeeded** |
+| `fetch_ms` | min **7**, p50 **104**, p95 **214**, max **214** — against a **2,000** ceiling |
+| `wrangler tail`, same window | **326 events, all `outcome: ok`, zero logs, zero exceptions** |
+| labels | 221 / 221 `["Skylar's library","Samantha's library"]` |
+
+🔴 **So the 40% fallback DID NOT REPRODUCE, and `timeout` is NOT the answer on
+this evidence** — the slowest read observed used **10.7% of its budget**. The
+morning's design question ("is the 2 s ceiling too tight for a cold start?") is
+**not confirmed by anything measured here**, and ⚠️ **the timeout was
+deliberately not changed.**
+
+⚠️ **What this does NOT say, and the distinction matters:** it cannot
+distinguish *"the redeploy cleared isolates that were holding a memo'd failure"*
+from *"the fault is intermittent and was quiet for twenty-eight minutes"*. Both
+fit the data. What HAS changed is that the next occurrence names itself: whatever
+the cause, `gabi_catalog_registry_reason` will say it in words on the next curl,
+and nobody has to catch the `console.error` in a tail window to find out.
+
+**Where the code is:** the memo, its `source`/`reason`/`fetchMs`/`fetchedAt`,
+the pure reader `catalogRegistryState()` and the one place that turns them into
+these rows (`catalogRegistryHealthRows()`) are all in
+`apps/discord-worker/src/catalog-registry.ts`. Every state is a unit test with
+no network in `test/catalog-registry.test.ts` §8–§9, including five that drive
+the REAL `/api/health` handler with `globalThis.fetch` stubbed.

@@ -354,6 +354,76 @@ fault.
       nine `.bat`/`.vbs` pairs have one; this does not. Retired, or was its
       task lost? **Unknown — an owner question.**
 
+## ☐ 🔴 GABI's registry lane — the fallback is now VISIBLE; the 40% fallback did NOT reproduce (measured 2026-09-06, W10-GABI-REGISTRY-WHY)
+
+> **Last verified: 2026-09-06.** Every number here was read off the live
+> `https://discord.heygabi.ai/api/health`. ⚠️ **Instrument shipped; cause NOT
+> found.** The doc is [`access/discord-bot.md`](access/discord-bot.md) §17 —
+> read §17.1 before treating an empty `wrangler tail` as evidence.
+
+**What was seen, 07:50–08:00 Phoenix, deployment
+`ae966987-9030-4e4f-a5ae-734ba6fc7c13` (`893ca5f`, one version at 100%).**
+100 samples of `/api/health` over 4 min: ~60% answered
+`gabi_delegated_target_labels: ["Skylar's library","Samantha's library"]` (the
+registry) and ~40% `["the main library","the library at padhard.heygabi.ai"]`
+(the configured FALLBACK), interleaved, all `-PHX`, no `cf-cache-status` — so
+neither an edge cache nor two deployments. `wrangler tail` over the same four
+minutes: 113 events, all `outcome: ok`, **zero logs and zero exceptions.**
+
+🔴 **Both are true at once**, and that is the trap: `loadCatalogs()` logs its
+`console.error` ONCE per isolate per failure and then memoises the failure for
+ten minutes, so the log lands outside almost every window that sees the
+fallback. ⚠️ **An empty tail is not evidence the directory answered.**
+
+**☑ SHIPPED — the memo now records WHY, and `/api/health` says it.** Commit
+`ba16013`, deployment `da13647d-c98d-4f48-8a1d-5120f1395dbe` (rollback
+`ae966987-9030-4e4f-a5ae-734ba6fc7c13`), `deploys.log` line appended. Four new
+rows, and the false comment at `src/index.ts:372-378` — which claimed
+`gabi_catalog_registry` "says WHICH of the two answered", and never did — is
+replaced by one that describes what the rows actually say:
+`gabi_catalog_registry_source` (`registry`/`fallback`/`off`),
+`_reason` (`timeout` / `http <status>` / `shape` / `error: <msg>`), `_age_s`,
+`_fetch_ms`. Behaviour is untouched: same TTL, same 2 s timeout, same fallback.
+Tests 1317 → 1332 / 0 fail, typecheck clean, 90 health fields (was 86, +4).
+
+**🔴 THE MEASUREMENT, 15:09:48Z → 15:38Z, and it is a NEGATIVE result:**
+
+| | |
+|---|---|
+| `source` × `reason`, **221 samples** over 28 min (15:09:48Z → 15:38:06Z) | **221 / 221 `registry`, no reason. ZERO fallback.** |
+| distinct isolate memos observed | **7**, including **4 caught crossing the 600 s TTL and re-reading** — every re-read succeeded |
+| `fetch_ms` | min **7**, p50 **104**, max **214**, against a **2,000 ms** ceiling — the slowest read used **10.7%** of its budget |
+| `wrangler tail` over the window | **326 events**, all `outcome: ok`, zero logs, zero exceptions |
+
+**So `timeout` is NOT the answer on this evidence**, and the morning's design
+question — *is the 2 s ceiling too tight against a cold start?* — is **not
+confirmed by anything measured**. ⚠️ **The timeout was deliberately NOT
+changed.**
+
+**☐ WHAT IS STILL OPEN, and it is one question, not a build.** The measurement
+cannot distinguish:
+
+1. **the redeploy cleared it** — isolates holding a memo'd `null` from a
+   transient failure were destroyed at 15:09Z, and the fault is gone; from
+2. **it is intermittent** and simply did not fire in a 28-minute window.
+
+⚠️ **Do NOT chase this speculatively.** The next occurrence now names itself:
+one curl of `/api/health` gives `source` + `reason` in words. The action is to
+**re-sample when somebody next sees GABI use a fallback label**, or on a
+schedule, and read the reason. The command and the sampling discipline (⚠️ a
+distribution, never one curl; ≥10 min to cross a TTL; `t − age_s` is the only
+isolate identity from outside) are in `access/discord-bot.md` §17.3.
+
+**Candidate worth checking IF it recurs, and it is a candidate, not a finding:**
+`index-worker` was itself redeployed at **14:32Z** (`4ef4816`, the
+`READ_ORIGINS` widening) and `estate-discord` at **14:36:44Z** — the fallback
+window began ~14 minutes later. A directory that is cold-starting when a fresh
+isolate first reads it is exactly the shape that would produce a memo'd failure
+in some isolates and not others. **Nothing measured supports this yet;** the
+reason row is what would confirm or kill it in one curl.
+
+---
+
 ## ☐ 🔴 OWNER ASK 2026-09-05 15:50 Phoenix — "everything in the estate connects to MULTIPLE libraries; libraries designated by who OWNS the physical, or SHARED for digital works" — ☑ table CONFIRMED by the owner 15:58
 
 > **Owner, verbatim:** *"Make sure everything we have that's in the estate
