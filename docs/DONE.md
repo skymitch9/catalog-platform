@@ -9,6 +9,296 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ DONE 2026-09-06 08:46 Phoenix — OWNER ANSWERS 2026-09-06 00:5x Phoenix — the 16-item list after all builds landed
+
+> The conductor presented the sixteen open owner items as ONE numbered list at
+> 00:41 (KI-14 incident disclosed first). The owner answered every line; the
+> answers and what each became, in his numbering:
+>
+> 1. **`.claude/` joins the R2 doc backup — "Yes."** ☑ **BUILT 2026-09-06
+>    (W10-PLATFORM).** `scripts/backup-docs.mjs` now archives each repo's
+>    gitignored `.claude/` beside its `docs/` tree, inside the SAME
+>    `docs/<repo>/<UTC>.json.gz` object tagged `tree: "claude"` — no new R2
+>    prefix, so retention and the `/status` grade are untouched. `worktrees/`
+>    and `.wrangler/` excluded by name; a missing/empty `.claude` is a logged
+>    no-op. Stays untracked (KI-2). Runbook:
+>    [`access/backup-restore.md`](access/backup-restore.md) §6b; KI-14 item 2
+>    closed. ⚠️ **Not verified live:** all four `.claude` folders were still
+>    empty/missing on the day, so no R2 object yet carries one.
+> 2. **KI-14 cleanup — "Yes."** ☑ 07:13 Phoenix: `git worktree prune` run in
+>    both repos (`git worktree list` clean); the three `.claude` junction targets
+>    already existed EMPTY (recreated by the repair agent at 00:10, so the links
+>    resolve — the contents are what is gone). ⚠️ The six husk directories under
+>    `.git/worktrees/` survived the prune ("Permission denied" on the directory
+>    delete; the classifier refused `Remove-Item`) — harmless, owner can clear
+>    them.
+> 3. ⚠️ **ACCESS-INCREASING — `READ_ORIGINS` gains `padhard.heygabi.ai` —
+>    owner's explicit "Yes" (00:5x Phoenix).** ☑ **DEPLOYED 2026-09-06 14:32Z
+>    (W10-PLATFORM).** Commit `4ef4816`, deployment
+>    `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
+>    `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`, `deploys.log` line appended.
+>    **Verified live 14:33Z**: `/api/catalogs` and `/api/search?q=test` both
+>    answer `access-control-allow-origin: https://padhard.heygabi.ai` (before
+>    the deploy: 200, no ACAO); `ebooks.heygabi.ai` and `evil.example.com` still
+>    get no ACAO at all. 🔴 **`ebooks.heygabi.ai` is the SAME question and is
+>    deliberately still absent — it needs its own "Yes."** The ❓ line further
+>    down this file is closed with it.
+> 4. **`wow-recorder` `npm install` — "rm from list."** Dropped; not an estate
+>    item. (Its `release/app/node_modules` junction is still empty; his call.)
+> 5. **#507 Book of Mormon tier D — "It's the paper, you can run the command."**
+>    ☑ 07:12 Phoenix: `fix-foreign-isbns-2026-09-05.mjs --remote --commit
+>    --tier D` ran — ed#507 `isbn13` → NULL, `change_log` now 56 rows for
+>    `fix-2026-09-05-foreign-isbns`; `--friend` dry-run: nothing to do on
+>    padhard (a result). No refusal.
+> 6. **KI-17 art books (works 516–519) — "No ISBN."** ☐ close KI-17 as settled:
+>    the four Collector's Edition art books carry no ISBN; they stay ISBN-less.
+> 7. **Space Knight `9781986619233` — "Which work is it connected to?"**
+>    Measured 07:10 Phoenix on the live main D1: **no edition carries it** —
+>    ed#344 (*Book 3*, work 251) was the only row and tier C cleared it at
+>    2026-09-06 02:32:09Z; Google Books had proposed it for books 5–9. Only
+>    *Book 1* (work 249, ed#342) has an ISBN today (`9781986026789`). ☐ owner
+>    names the volume it belongs on (or "none"); then a one-row manual edit.
+> 8. **Diva's items (#8 / #9 / #605) — "Ignore for now."** ⏸ deferred by owner.
+> 9. **GABI steps 5–7 — "give me test."** ☐ conductor hands him the test (it is
+>    §15.3 steps 5–7 below, condensed).
+> 10. **Export `ESTATE_APP_TOKEN_LIBRARY`/`_LIBRARY2` — "Okay we do later."** ⏸.
+> 11. **Justin's steps — "He's working on it."** ⏸ his side.
+> 12. **Audiobook `pipeline.md` watcher claim — "Do it."** ☐ correct the doc on
+>     disk (that repo's `docs/` is gitignored) — W10-AUDIOBOOK.
+> 13. **`run_purchase_audit.bat` scheduled task — "Do it."** ☐ register it like
+>     the other eight pairs — W10-AUDIOBOOK.
+> 14. **Federation eyeball — "Give me a task to check."** ☐ conductor writes the
+>     check (signed-in `/universes/` + `/series/` + the `/status` probe row).
+> 15. **Admin audit routes / `/gabi` link walk / KI-7 live — "It's good."** ☑
+>     owner accepts; those three ☐ 🧑 lines close.
+> 16. **Enforce `AUDIOBOOK_SWEEP_MODE` — "Yes."** ☐ W10-LIB-FLIP. ⚠️ The
+>     premise moved: measured 07:14 Phoenix both instances still show
+>     `seriesVolumes.lastRun: null` after the 12:23Z tick (`state: skipped`,
+>     `detail: unchanged`) — the agent verifies the shadow evidence in code
+>     BEFORE flipping, and reports instead of flipping if it is missing.
+>
+> Also found while briefing: the multi-library survey's **dispatch 3 (GABI +
+> the audiobook vendor) and dispatch 4 (the provisioner + peers)** are still
+> open non-deferred builds (③c/③d below) — dispatched the same hour as
+> W10-FED-GABI and W10-FED-PROV.
+
+> **Moved WHOLE 2026-09-06 08:46 Phoenix.** Thirteen of the sixteen closed: **1** built (`852925e`, W10-PLATFORM — ⚠️ no R2 object carries a `.claude` file yet, because all four folders are still empty post-KI-14: the no-op path was exercised live and the archiving path drilled on a fixture only); **2** pruned 07:13 Phoenix (`git worktree list` clean in both repos; six `.git/worktrees/` husk directories survive on disk, harmless); **3** deployed (`4ef4816`, index-worker `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`; CORS re-measured by the conductor 07:38 Phoenix — padhard gets ACAO, `evil.example.com` does not. ⚠️ **NOT verified: a browser load of padhard's search box**, and `ebooks.heygabi.ai` was deliberately NOT widened); **4** removed from the list by the owner; **5** run; **6** settled (`a8fee4c` in `library_catalog`); **8**, **10** and **11** deferred in his own words; **12** and **13** done by W10-AUDIOBOOK; **15** accepted. **16 was REFUSED with evidence** — W10-LIB-FLIP measured the gate at 1 shadow plan-tick against a required 42 and flipped nothing — and W10-SWEEP-EVIDENCE then made the gate a reading anybody can take (`audiobookSweep.gate` on `/api/health`, library deploy pair `67554087-3791-495e-bb5f-61f730bc50dd` main / `2fde08ea-4fd0-4363-b3ad-90083ede2f69` friend, re-read on BOTH instances by the conductor at 08:02; earliest honest enforce date **2026-09-13**). Spun out as their own TODO items: **7** (he names the volume the Space Knight ISBN belongs on), **9** (his result from the GABI steps 5–7 test), and — filed with the federation section, where their evidence is — **14** (the eyeball), the `ebooks.heygabi.ai` CORS ❓, and **16's** forced dry-run, which needs his bearer token.
+
+## ✅ DONE 2026-09-06 08:46 Phoenix — Leftovers of the test ask (2026-09-06 00:40 Phoenix) — one owner decision, two estate items
+
+> The 21:45 test ask moved WHOLE to [`DONE.md`](DONE.md) at 00:40. These are the
+> three things it left open, each its own line:
+>
+> 1. ☑ **ANSWERED "Yes" and BUILT 2026-09-06 (W10-PLATFORM)** — the gitignored
+>    `.claude/` folders join the R2 doc backup. Detail on item 1 of the OWNER
+>    ANSWERS block at the top of this file; runbook
+>    [`access/backup-restore.md`](access/backup-restore.md) §6b.
+> 2. ☐ **KI-14 cleanup, mechanical (no owner needed):** `git worktree prune` in
+>    this repo (4 `prunable`: `gabicp`, `index-read`, `pause`, `pool` — commits
+>    safe on their branches, last touched 2026-08-23/24) and `audiobook_catalog`
+>    (2); the three `.claude` symlinks in `catalog-platform`, `Board_Game_Catalog`,
+>    `audiobook_catalog` now DANGLE at `C:/lcw/onedrive-excluded/<repo>/.claude`
+>    (`library_catalog` has none) — recreate the targets or replace the links;
+>    `audiobook_catalog` shows an untracked `frontend/` (`dist/`, `docs/` dated
+>    2026-02-24, dir mtime 00:15 today) — the rebuild touched it, NOT reverted
+>    because the writer is only inferred. Waits on item 1 so the `.claude` fix
+>    is done once.
+> 3. ☐ **KI-6 (board) / same line in the library `auth.ts`:** the 401 leaves as a
+>    bare `{"error":"unauthenticated"}` with no sentence — estate-wide shape,
+>    fix once as a shared helper, not per repo. LOW; the person-never-sees-a-bare-
+>    status rule applies.
+
+> **Moved WHOLE 2026-09-06 08:46 Phoenix.** Two of the three closed. Item 1 — the gitignored `.claude/` folders joining the R2 doc backup — was answered "Yes" and BUILT (`852925e`, W10-PLATFORM); runbook [`access/backup-restore.md`](access/backup-restore.md) §6b. Item 2 — the KI-14 cleanup — ran at 07:13 Phoenix: `git worktree prune` in both repos, `git worktree list` clean afterwards, and the three `.claude` junction targets already existed empty so the links resolve. Item 3 — KI-6, the bare `{"error":"unauthenticated"}` 401 — was not touched and is re-created as its own TODO item, together with the two harmless residues item 2 left behind: the six `.git/worktrees/` husk directories the prune could not delete, and `audiobook_catalog`'s untracked `frontend/`.
+
+## ✅ DONE 2026-09-06 08:46 Phoenix — Two findings that need the owner, not a build — from "OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes"
+
+- [ ] 🔴 **`audiobook_catalog/docs/info/pipeline.md` is stale.** It lists
+      `AudiobookFsWatcher` and `AudiobookDrivePoll` as *"built, NOT registered
+      … inert until the owner registers the task"*. **Measured 2026-09-05: both
+      ARE registered and both ran at 16:59 with result 0.** That repo's `docs/`
+      is gitignored — the correction has to be made there.
+- [ ] 🟡 **`scripts/run_purchase_audit.bat` has no scheduled task.** Eight of
+      nine `.bat`/`.vbs` pairs have one; this does not. Retired, or was its
+      task lost? **Unknown — an owner question.**
+
+> **Moved WHOLE 2026-09-06 08:46 Phoenix.** Both were the owner's *"Do it"* — items **12** and **13** of the sixteen — and both landed the same morning by W10-AUDIOBOOK, on disk in `audiobook_catalog` (that repo's `docs/` is gitignored, so there is nothing to commit there). **12** — `docs/info/pipeline.md` no longer claims `AudiobookFsWatcher` and `AudiobookDrivePoll` are *"built, NOT registered … inert"*; both are registered and ticking, which had been measured on 2026-09-05 and left uncorrected. **13** — `run_purchase_audit.bat` has its scheduled task at last: **`AudiobookPurchaseAudit`, registered by the owner** (three agent sessions were refused `schtasks /Create`; a human ran the one line). First tick **07:46 Phoenix, Result 0** — *"0 new — 1043 items, fresh from audible-cli"*. 🔴 **The 08:01 fire was THROTTLED by a real cadence-floor bug on the first day live:** the floor was measured from the END of the previous audit, so a 14.7-minute gap read as too soon. Fixed in `f9a4578` (`audiobook_catalog` — the tick stamps its START, and the floor gets a minute of slack; +2 tests, suite **2,253 / 0**). **08:16 and 08:31 both ran, so the fix is verified LIVE, not merely deployed.** Nothing spun out.
+
+## ✅ DONE 2026-09-06 08:46 Phoenix — 🔴 OWNER ASK 2026-09-05 15:50 Phoenix — "everything in the estate connects to MULTIPLE libraries; libraries designated by who OWNS the physical, or SHARED for digital works" — ☑ table CONFIRMED by the owner 15:58
+
+> **Owner, verbatim:** *"Make sure everything we have that's in the estate
+> connects to multiple libraries and make sure that the libraries are
+> designated by who owns the physical or shared with digital works."*
+> Asked whether the table below was right; **owner 15:58: "Yes that is
+> correct."** The table is now the settled ownership model.
+
+**What it means, as read by the conductor (confirmed):**
+every estate surface stops assuming ONE library, and every row/holding is
+labelled by its **ownership model**, which has two kinds:
+
+| Source | Kind | Designation |
+|---|---|---|
+| `library` (library.heygabi.ai) | physical copies | **Skylar's** |
+| `library2` (padhard.heygabi.ai) | physical copies | **Samantha's** |
+| `game` (boardgames.heygabi.ai) | physical copies | **Skylar's** |
+| `audiobook` (audiobooks.heygabi.ai) | digital | **shared** (estate pool) |
+| `ebooks` (ebooks.heygabi.ai) | digital | **shared** (estate pool) |
+| `library3…` (provisioner) | physical | the requester's name, from the catalog request |
+
+**Measured 2026-09-05 15:50 — the labels are hard-coded in FIVE copies and
+already disagree** (one-fact-one-home violated on a SURFACE):
+`sites/heygabi-home/public/assets/estate-search.js:234`, `series/series.js:72`,
+`universes/universes.js:111` (`HOLDER_LABELS`, only `library2`), the library
+repo's `apps/web/public/estate/estate-search.js:234` (a copy), and the games
+repo's copy at `apps/web/public/estate/estate-search.js:234` which **lacks
+`library2` altogether** (`{ game, library, audiobook }`). The auth Worker's
+`catalog-names.ts` knows `CATALOG_KINDS = ['books','games']` and hostnames but
+no owner/holding model; the index Worker's `Source` set is being widened to
+`library2` by W4-FED-INDEX right now.
+
+**Proposed shape (design, not yet built):** ONE registry — the index Worker
+serves `GET /api/catalogs` (`{id, label, owner, holding:'physical'|'digital',
+shared:boolean, host}`) fed from the auth Worker's catalog table (the
+provisioner already writes new libraries there); every surface (apex search /
+series / universes / status, GABI's book knowledge, the library+games copies of
+`estate-search.js`, the audiobook site's estate strip) reads it and the
+hard-coded maps go. `holdingLabel()` becomes "Samantha's (hardcover)" /
+"shared · audiobook". The `estate-search.js` copies become ONE shared
+component synced by script (owner rule 2026-09-03: shared global components).
+
+**Sequence:** ① W4-FED-INDEX + W4-FED-LIB land (padhard rows exist) → ② one
+read-only SURVEY agent (Opus, ~180k) inventories every single-library
+assumption across the four repos → ③ registry + consumer builds, per repo,
+Opus → ④ eyeball. ☐ ① W4-FED-LIB landed 15:54 (library side deployed both
+instances; index side still building) · ☐ ② SURVEY dispatched 16:00 as
+W4-MULTILIB-SURVEY (read-only; runs beside ①, does not wait on it) ·
+☑ ③ **registry BUILT `40bdd60` (auth) + `97ce067` (index)** · ☐ ③b–③d (the
+three consumer dispatches) · ☐ ④.
+
+☑ ③ **THE REGISTRY IS BUILT AND DEPLOYED — dispatch 1 of the survey's §10
+split, agent W5-REGISTRY, 2026-09-05.** As-built:
+[`info/catalog-registry.md`](info/catalog-registry.md); deploys in
+[`deploys.log`](deploys.log). The estate now holds the ownership signal §4 of
+the survey measured as entirely absent — `estate_catalog` (auth-worker
+migration **0020**, a new table plus a back-seed of the five catalogs that
+predate the request queue), served to the index Worker on the existing
+`ESTATE_APP_TOKEN_INDEX` pair (**no new secret**), and published at
+<https://index.heygabi.ai/api/catalogs>.
+
+☑ ❓ **Owner decision (16:14 Phoenix): "yes name only"** — an anonymous caller
+gets every catalog's NAME, OWNER, holding and host, and **not one count,
+title or freshness stamp**. Built that way and enforced by control flow: the
+anonymous branch never opens the database, and a test asserts the count query
+ran zero times. A member gets counts only for the catalogs their own
+visibility admits, so **Samantha's shelf is NAMED to the signed-out internet
+and never COUNTED without `vis_library2`**. Nothing about her rows moved.
+
+☑ ③b **THE APEX IS DONE AND VERIFIED LIVE — dispatch 2, agent W6-APEX,
+2026-09-05.** Deploy `58d8efae` at `051dd77`; rollback `910d6efe`. F1, F2, F3,
+F4 and F5 are all closed on the apex and each was checked against the live host,
+not against the code that produces it. The paragraph that stood here — *"NOTHING
+A PERSON SEES HAS CHANGED YET"* — moved WHOLE to [`DONE.md`](DONE.md) with the
+before/after table, the three decisions worth not re-deriving, and the
+eight-bad-markers finding. Consumers table: [`info/catalog-registry.md`](info/catalog-registry.md) §10a.
+
+☑ ③c **GABI + the audiobook vendor — DONE 2026-09-06** (survey §10 dispatch 3,
+agent W10-FED-GABI). GABI: `893ca5f`, deployment
+`ae966987-9030-4e4f-a5ae-734ba6fc7c13` (rollback
+`de53160f-95a1-4d78-9b03-b9370d208bfe`) — `apps/discord-worker/src/catalog-registry.ts`
+is her one reader; `LibraryInstance.app` is no longer the closed union
+`'library' | 'library2'`, the asker-relative label **"your own shelf"** is gone
+(it was Samantha's shelf, said to Skylar), and the three typed-in library URLs
+are resolved from the routed shelves. Posture `GABI_CATALOG_REGISTRY = "on"`,
+affirmative-only, one-word backout. **Verified live**: `/api/health` answers
+`gabi_delegated_target_labels: ["Skylar's library", "Samantha's library"]` —
+strings that exist nowhere in this Worker's code, so the row is proof the lookup
+ran rather than a value that agrees by construction. The audiobook vendor:
+`2b4ba2f` in `audiobook_catalog` — `scripts/sync_estate_search.py` + a read-only
+drift test, and the first re-vendor, resolving all four of survey §5's
+divergences (two were user-visible: clicking a cover did nothing, and a second
+household's shelf could not be named). ⚠️ **That half is on the /dev/ lane
+only** — its prod needs `gh workflow run promote.yml`, the owner's explicit
+request, and the commit is not book-only so `auto-promote.yml` will not carry
+it. ⚠️ `PHYSICAL_SOURCE_INSTANCE` was left alone on purpose (it needs
+`audiobook_catalog`'s join to carry an instance). As-built:
+[`info/catalog-registry.md`](info/catalog-registry.md) §10a.
+☑ ③d **THE PROVISIONER + PEERS — dispatch 4, agent W10-FED-PROV, 2026-09-06.**
+So all four §10 dispatches are in; ☐ ④ is the owner's eyeball. Commits: library
+`f472578` (the checklist: §7's ~28 items, of which the script named 3) +
+`bfba496` (`PEERS` is the SET, the registry is the NAMES) + `daa319d` (docs, incl.
+new `info/peer-network.md`); board `c13d694` (🔴 the index push source from
+`ESTATE_APP`) + `7a1ca7c` + `135297a`. Deploys — library PAIR at `09ea0cb`:
+`d950b97d` (main, rollback `c0d40662`) and `7f782b10` (friend, rollback
+`bfec83c1`), both verified live on `?cb=`; board `a20b7aed` at `7a1ca7c`
+(rollback `e4519a77`), verified in a `wrangler tail`. NO migration on any side.
+🔴 **The board fix is the one to know about: `index-push.ts` hard-coded
+`/api/push/game`, and the index write is a snapshot replace keyed on source — a
+second games instance would have DELETED the main catalog's index shelf on its
+first push.** As-built: [`info/catalog-registry.md`](info/catalog-registry.md)
+§10a (the first WRITER rows) and
+[`info/request-a-catalog-design.md`](info/request-a-catalog-design.md) **§7.6b**
+(new — the index's hand-edit ledger). ⚠️ `PEERS` membership is still added by
+hand, deliberately: a directory that enrolled catalogs into peer networks would
+hand another household a read of somebody's shelf with nobody deciding it.
+
+⚠️ **What dispatch 2 measured and did NOT change**, because each is somebody
+else's call:
+
+- ☑ **ANSWERED "Yes" and DEPLOYED 2026-09-06 — the index Worker's
+  `READ_ORIGINS` gained `padhard.heygabi.ai`.** Owner's explicit "Yes" at 00:5x
+  Phoenix (item 3 of the sixteen, at the top of this file); built and shipped by
+  W10-PLATFORM at 14:32Z — commit `4ef4816`, deployment
+  `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
+  `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`, one `deploys.log` line.
+  **Measured live 14:33Z** with `curl -s -D -`: `/api/catalogs` and
+  `/api/search?q=test` from `Origin: https://padhard.heygabi.ai` both answer
+  `access-control-allow-origin: https://padhard.heygabi.ai`; the same request
+  before the deploy got 200 with no ACAO at all. ⚠️ It widens which PAGES may
+  ask, never what is RETURNED — visibility is still per-caller and Samantha's
+  rows still need `vis_library2`. The exact list is now pinned by
+  `apps/index-worker/test/read-origins.test.ts` (it PARSES `wrangler.toml`, so a
+  hard-coded copy cannot drift); write-up moved to
+  [`info/catalog-registry.md`](info/catalog-registry.md) §10.
+  🔴 **STILL OPEN, and it is a separate owner question: `ebooks.heygabi.ai`.**
+  Nothing on that host calls the index today and he was asked about padhard
+  only, so it was deliberately NOT added — verified live the same minute that it
+  still gets no ACAO. It needs its own "Yes".
+  ⚠️ **Also left undone, and it is cross-repo:**
+  `sites/heygabi-home/public/assets/estate-search.js` still comments that this
+  call *"is refused by CORS today"* on padhard. That is now wrong, but the file
+  is a **canonical asset with copies in `library_catalog` and
+  `Board_Game_Catalog`**, so correcting it is a synced-asset change across three
+  repos rather than a one-line edit — left for whoever next touches that sync.
+- ❓ **OWNER (carried, unchanged): `/api/health` still reports `library2`'s row
+  count to anybody.** It predates the rule, the Health page reads it, and
+  narrowing it is a decision about a different surface with a different
+  consumer. Is a row count itself private? (`library2` sat at 677 rows at
+  16:03 on 2026-09-05.)
+- ☐ **A measured push cadence for `library2` on `/status`.** The index panel
+  now grades only the three sources somebody actually measured; a catalog that
+  joined afterwards has its age SHOWN and deliberately NOT graded, because a
+  colour no measurement backs is exactly what that page is written against.
+  Whoever wants `library2` graded has to watch its pushes first, and the
+  thresholds go in `INDEX_CADENCE` (`status/status.js`).
+- ☐ **`/status`'s NINE hand-written host rows and five per-host health fetches
+  are still hand-written** — survey §3.1's L-sized item. Their NAMES now come
+  from the registry, so no row spells a catalog wrongly any more; the row SET
+  is what a `library3` would still need an edit for.
+- ☐ **`/admin`'s `CATALOGS` is still the third in-repo copy** of
+  `packages/estate-auth`'s canonical array, deliberately: it is a PERMISSIONS
+  vocabulary and the registry is a name service cached ten minutes upstream
+  (`catalog-registry.md` §8 — fine for a name, never for a permission).
+  Consolidating it is a sync-script job like `sync-estate-auth.mjs`, not a
+  fetch.
+- ✅ **The marker dry-run proposal is BUILT** — moved WHOLE to
+  [`DONE.md`](DONE.md) (*"the predeploy markers are dry-run before the upload"*,
+  2026-09-05 21:48 Phoenix, agent W8-PREDEPLOY).
+
+☑ ❓ **Owner confirm (asked 15:54 Phoenix):** is the ownership table above
+right — in particular `game` = Skylar's physical, and BOTH audiobooks and
+ebooks = shared digital? — **☑ 15:58 "Yes that is correct."**
+
+> **Moved WHOLE 2026-09-06 08:46 Phoenix.** All four of survey §10's dispatches are in. ③ the registry (`40bdd60` auth + `97ce067` index, W5-REGISTRY, published at <https://index.heygabi.ai/api/catalogs>); ③b the apex (W6-APEX, deploy `58d8efae`, rollback `910d6efe`); ③c **GABI + the audiobook vendor** (W10-FED-GABI — `893ca5f` and `bf97fca`, discord deployment `ae966987-9030-4e4f-a5ae-734ba6fc7c13`, since superseded by `da13647d-c98d-4f48-8a1d-5120f1395dbe` when W10-GABI-REGISTRY-WHY shipped `ba16013` on top of it; audiobook re-vendor `2b4ba2f`); and ③d **the provisioner + peers** (W10-FED-PROV — library `f472578` / `bfba496` / `f284eb1` / `daa319d`, board `c13d694` / `7a1ca7c` / `a9921ee` / `135297a`, platform `fd0496b`; deploys library PAIR `d950b97d…` main and `7f782b10…` friend, board `a20b7aed…`; **no migration on any side**). The ownership table is the settled model — the owner confirmed it at 15:58. What is still open is re-created as its own TODO section at this position: ④ his eyeball, the `ebooks.heygabi.ai` CORS question, the `library2` row-count question, the audiobook vendor's prod promote, the four surfaces the registry deliberately did NOT consolidate, and the four things dispatch 4's own report says have never been exercised.
+
 ## ✅ DONE 2026-09-06 00:40 Phoenix — OWNER ASK 2026-09-05 21:45 — "How many test do we have? Can we explore how many we have and decide if we truly need all of them"
 
 > Asked while the W8 build agents were in flight. This is a SURVEY (read-only)
