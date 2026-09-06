@@ -10,6 +10,18 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ OWNER ASK 2026-09-05 21:45 Phoenix — "How many test do we have? Can we explore how many we have and decide if we truly need all of them"
+
+> Asked while the W8 build agents were in flight. This is a SURVEY (read-only)
+> followed by an OWNER DECISION list, not a deletion sweep: nothing is removed
+> until he picks from the list. Scope: every test file/case across all four
+> repos (`catalog-platform`, `bookbuddy/library_catalog`, `bookbuddy/audiobook_catalog`,
+> `boardbuddy/Board_Game_Catalog`), grouped by what each group PROVES (a bug it
+> was written after, a persisted-key invariant, a pin against drift, a shape
+> test that only restates the code…). Survey agent W8-TEST-SURVEY dispatched
+> 21:46; deliverable `docs/info/test-inventory-2026-09-05.md` + the decision
+> list presented as ONE numbered list with recommendations.
+
 ## ☐ `scripts/sync-gabi-prompt.mjs` — GABI's personality prompt is a HAND copy (found 2026-09-05)
 
 Same sync check. `apps/discord-worker/src/gabi-prompt.ts` `GABI_CORE` is copied
