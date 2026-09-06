@@ -62,7 +62,28 @@ BILLING_POLICY = "off"
 #
 # ⚠️ Comma-separated, exact scheme+host, no trailing slash, no wildcards —
 # readCors does an exact `allowed.includes(origin)` after trimming.
-READ_ORIGINS = "https://heygabi.ai,https://library.heygabi.ai,https://boardgames.heygabi.ai,https://audiobooks.heygabi.ai"
+#
+# ⚠️ ACCESS-INCREASING CHANGE 2026-09-06 — `https://padhard.heygabi.ai` added on
+# the owner's explicit "Yes" (00:5x Phoenix, item 3 of the sixteen). It is NOT a
+# build's decision to widen a CORS list, and it was carried as an open ❓ in
+# docs/TODO.md from the 2026-09-05 multi-library survey until he answered.
+#
+# Why it was asked at all: padhard (Samantha's shelf, `[env.friend]` of
+# library_catalog) runs the SAME build as library.heygabi.ai, so it mounts
+# `<estate-search>` — and that component could reach neither /api/catalogs nor
+# /api/search from that host. It degraded in words rather than showing database
+# ids, which is why nothing looked broken. Same first-party argument as the
+# other four: it is an estate catalog host the index already serves data ABOUT.
+#
+# ⚠️ It widens which PAGES may ask; it does NOT widen WHAT is returned.
+# Visibility is still decided per-caller inside the Worker — an anonymous caller
+# on padhard sees exactly what an anonymous caller on the apex sees, and
+# Samantha's own rows still need `vis_library2`.
+#
+# ⚠️ `ebooks.heygabi.ai` is the SAME question and is deliberately still absent:
+# nothing on that host calls the index today, and the owner was asked about
+# padhard only. Adding it needs its own "Yes".
+READ_ORIGINS = "https://heygabi.ai,https://library.heygabi.ai,https://boardgames.heygabi.ai,https://audiobooks.heygabi.ai,https://padhard.heygabi.ai"
 # Break-glass (design §6 row 4): listed emails are served on local standing
 # alone, even with the estate directory unreachable or misconfigured.
 OWNER_EMAILS = "nbaslamking@gmail.com"
