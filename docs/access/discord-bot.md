@@ -3,6 +3,19 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values).
 >
+> ⚠️ **UPDATED 2026-09-05 — THE UNLINKED-ASKER FALLBACK IS THE MAIN LIBRARY.**
+> `GABI_PANEL_URL` and `src/panel.ts`'s `DEFAULT_PANEL_BASE` moved
+> `padhard.heygabi.ai` → **`https://library.heygabi.ai`** (owner *"Yes fix"*,
+> 19:50 Phoenix), because the premise they rested on — ~~"the main library has
+> the panel off by decision 8"~~ — died with `library_catalog` `34f1301`
+> (2026-08-17) and nobody moved the constant. See **§10.3**. Shipped `6828e6a`,
+> deployment **`ac1313a7-ceae-4bbe-acf5-6d33c4d616c2`** (rollback:
+> `755cfd54-9cc2-43a0-beab-e9f795c13b02`). Measured live **2026-09-06
+> 02:59:53Z**: `/api/health` **200**, `gabi_panel_url:
+> "https://library.heygabi.ai/"`. 🔴 **That ONE row is all that was re-measured
+> in this pass.** ⚠️ **STILL NOT VERIFIED:** nobody has followed the deep link
+> from Discord as an unlinked person (§10.5's second bullet stands).
+>
 > ⚠️ **ALSO 2026-09-05 — §2 gained the cross-repo health-field note** (the two
 > `gabi_personality_*` fields the estate's other Discord bot reads). ⚠️ **That
 > paragraph is the ONLY thing added or re-checked in that pass**, and nothing
