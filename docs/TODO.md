@@ -10,6 +10,89 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
+
+> **Owner, verbatim (16:50):** *"Should we make all the scripts routes? Or at
+> least the ones we use a lot"*
+>
+> **Owner, verbatim (the decision that followed):** *"Do inventory and
+> audiobook. Then do the scripts you think are the best for routes."*
+
+**Trigger:** the 16:37 ask — *"I added battle mage farmer and it didn't
+associate the audiobook right away."*
+
+**Both docs are written (2026-09-05, DESIGN ONLY — nothing built):**
+
+- 📋 [`info/scripts-inventory-2026-09-05.md`](info/scripts-inventory-2026-09-05.md)
+  — all four repos. **186 script files · 9 Windows scheduled tasks · 5 cron
+  strings across 3 Workers.** Verdict: **7 ROUTE+CRON · 6 ROUTE-ON-DEMAND ·
+  160 STAY-SCRIPT · 4 RETIRE.**
+- 📐 [`info/audiobook-association-route.md`](info/audiobook-association-route.md)
+  — the first build, designed end to end.
+
+**⚠️ The answer to the owner's question is NO, and the inventory says why:**
+only **13 of 186** should move. The estate's scripts are overwhelmingly *dated
+one-offs*, and a one-off's correct shape is a file, not an endpoint that can be
+called twice.
+
+**🔴 The audiobook diagnosis is NOT "nobody runs it".** `npm run
+backfill:audiobooks` is already **STEP 11** of the audiobook pipeline
+(`sync_to_drive.py:3162`), running against **both** library instances every 8
+hours. **The trigger is on the wrong side of the relationship:** it fires when
+the *audiobook* catalog changes; the owner added a book to the *library*, which
+has no trigger at all. *Battle Mage Farmer*'s audiobooks were in the CSV the
+whole time (11 rows, committed 2026-09-04 16:26) — the library had no way to ask.
+
+### Build steps — the audiobook route (`library_catalog`, every change a PAIR)
+
+- [ ] **1–3 · Extract to `packages/core`** — `audiobook-csv.ts` (parser lifted
+      verbatim from `scripts/lib/audiobooks.mjs`), `series-canon.ts`. ⚠️ The
+      **matcher does NOT move** — `packages/core/src/matching.ts` is already
+      pure and already shared. Never copy it.
+- [ ] **4–5 · `planAudiobookSweep`** in `packages/core/src/audiobook-sweep.ts`.
+      ⚠️ **Returns DATA, never SQL** — the script renders it through `lit()`,
+      the route binds it. 🔴 **Gate: the script's dry-run output must be
+      BYTE-IDENTICAL before and after.**
+- [ ] **6 · Migration 0470** — `audiobook_snapshot` + `audiobook_sweep_run`.
+      `db:migrate` **and** `db:migrate:friend`, before any deploy.
+- [ ] **7 · `packages/db/src/audiobook-holdings.ts`** — batch write + change_log
+      **transition** rows only (never one per upsert).
+- [ ] **8 · The run wrapper** with the **three guards**: zero rows = failure ·
+      **>3% row drop = `failed: drift`** · 🔴 the per-work path NEVER stales
+      anything.
+- [ ] **9–10 · Admin route + one `detail.audiobookSweep` key on
+      `/api/health`.** ⚠️ **No second status page** — one fact, one home.
+- [ ] **11 · Second cron `"23 */4 * * *"`** on **both** `[triggers]` blocks,
+      dispatched on `event.cron`. ⚠️ Same string both instances (a different
+      minute silently disables hers); not `:07` (the details sweep is there).
+- [ ] **12 · On-add hook** in `routes/catalog.ts` + `routes/gabi-delegated.ts`
+      via `ctx.waitUntil`; `routes/ingest.ts` **defers and fires ONE** batched
+      call.
+- [ ] **13 · Ship `AUDIOBOOK_SWEEP_MODE = shadow`.** Enforce only on a week of
+      measured zero divergence.
+- [ ] **14 · Deploy pair + docs**, then move this item WHOLE to `DONE.md`.
+
+### Then, ranked (inventory §7)
+
+- [ ] `backfill:series-volumes` — same CSV, same fetch, costs one function
+- [ ] `prune-r2-backups.mjs` → platform cron — retention that needs remembering
+      is not retention
+- [ ] `tools/estate-probes/run.mjs` → platform cron + `/status`
+- [ ] `check-cover-health.mjs` → library cron
+- [ ] `audit-series-aggregates.mjs` → library cron ("the standing alarm" has no
+      clock)
+
+### Two findings that need the owner, not a build
+
+- [ ] 🔴 **`audiobook_catalog/docs/info/pipeline.md` is stale.** It lists
+      `AudiobookFsWatcher` and `AudiobookDrivePoll` as *"built, NOT registered
+      … inert until the owner registers the task"*. **Measured 2026-09-05: both
+      ARE registered and both ran at 16:59 with result 0.** That repo's `docs/`
+      is gitignored — the correction has to be made there.
+- [ ] 🟡 **`scripts/run_purchase_audit.bat` has no scheduled task.** Eight of
+      nine `.bat`/`.vbs` pairs have one; this does not. Retired, or was its
+      task lost? **Unknown — an owner question.**
+
 ## ☐ 🔴 OWNER ASK 2026-09-05 15:50 Phoenix — "everything in the estate connects to MULTIPLE libraries; libraries designated by who OWNS the physical, or SHARED for digital works" — ☑ table CONFIRMED by the owner 15:58
 
 > **Owner, verbatim:** *"Make sure everything we have that's in the estate
