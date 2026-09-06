@@ -16,9 +16,16 @@
 > 00:41 (KI-14 incident disclosed first). The owner answered every line; the
 > answers and what each became, in his numbering:
 >
-> 1. **`.claude/` joins the R2 doc backup — "Yes."** ☐ build (W10-PLATFORM):
->    `scripts/backup-docs.mjs` archives the gitignored `.claude/` folders beside
->    the four doc trees; stays untracked (KI-2).
+> 1. **`.claude/` joins the R2 doc backup — "Yes."** ☑ **BUILT 2026-09-06
+>    (W10-PLATFORM).** `scripts/backup-docs.mjs` now archives each repo's
+>    gitignored `.claude/` beside its `docs/` tree, inside the SAME
+>    `docs/<repo>/<UTC>.json.gz` object tagged `tree: "claude"` — no new R2
+>    prefix, so retention and the `/status` grade are untouched. `worktrees/`
+>    and `.wrangler/` excluded by name; a missing/empty `.claude` is a logged
+>    no-op. Stays untracked (KI-2). Runbook:
+>    [`access/backup-restore.md`](access/backup-restore.md) §6b; KI-14 item 2
+>    closed. ⚠️ **Not verified live:** all four `.claude` folders were still
+>    empty/missing on the day, so no R2 object yet carries one.
 > 2. **KI-14 cleanup — "Yes."** ☑ 07:13 Phoenix: `git worktree prune` run in
 >    both repos (`git worktree list` clean); the three `.claude` junction targets
 >    already existed EMPTY (recreated by the repair agent at 00:10, so the links
@@ -73,11 +80,10 @@
 > The 21:45 test ask moved WHOLE to [`DONE.md`](DONE.md) at 00:40. These are the
 > three things it left open, each its own line:
 >
-> 1. ☐ **OWNER: should the gitignored `.claude/` project folders join the R2 doc
->    backup** (`scripts/backup-docs.mjs` archives 4 doc trees, 0 `.claude` trees)?
->    KI-14 destroyed six of them 2026-09-06 with **no backup anywhere**; they hold
->    permission allowlists and project-local agents. ⚠️ Must stay untracked — 
->    `settings.local.json` can name hosts and paths and the repos are public (KI-2).
+> 1. ☑ **ANSWERED "Yes" and BUILT 2026-09-06 (W10-PLATFORM)** — the gitignored
+>    `.claude/` folders join the R2 doc backup. Detail on item 1 of the OWNER
+>    ANSWERS block at the top of this file; runbook
+>    [`access/backup-restore.md`](access/backup-restore.md) §6b.
 > 2. ☐ **KI-14 cleanup, mechanical (no owner needed):** `git worktree prune` in
 >    this repo (4 `prunable`: `gabicp`, `index-read`, `pause`, `pool` — commits
 >    safe on their branches, last touched 2026-08-23/24) and `audiobook_catalog`

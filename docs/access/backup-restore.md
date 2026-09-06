@@ -20,6 +20,12 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (no secret
 > values — env var / secret NAMES only, per the estate's access-doc rule).
+> Last verified: **2026-09-06** — ⚠️ **§6b ONLY**, and only the half that
+> changed that day: the `.claude/` addition (owner: *"Yes"*), measured by a real
+> `--dry-run` across all four repos and a full build→verify→restore→`diff -r`
+> round trip on a fixture archive carrying both trees. ⚠️ **NOTHING ELSE in this
+> file was re-measured on that date** — every other section still carries its
+> own date, and §6b's own 2026-08-21 drill figures are unchanged and unre-run.
 >
 > ### 🔴 2026-08-19 — the `ebooks-gated` dump is now PARTIAL, on purpose
 >
@@ -1129,11 +1135,103 @@ acceptable bet — or if the transcripts stop being reproducible from the
 machine — the fix is to give them their own bucket with its own backup, **not**
 to re-enable a nightly whole-bucket tar that the 14 GB runner cannot carry.
 
-## 6b. Restoring a `docs/` tree — the folders git does not carry
+## 6b. Restoring a `docs/` tree — and, since 2026-09-06, `.claude/` too
 
 **Owner ask 2026-08-21:** *"for our docs folders we don't want those on git but
 they're so important to our work. Can we get those into blob and or Google
 Drive?"*
+
+### 🔴 The `.claude/` project folders joined on 2026-09-06 — after six were destroyed
+
+**Owner, 2026-09-06 00:5x Phoenix, item 1 of sixteen:** *"Yes."*
+
+`KNOWN_ISSUES.md` **KI-14**: an `rm -rf /c/lcw` destroyed **six** `.claude/`
+project folders across the estate. Nothing TRACKED was lost — and that is
+exactly the problem. `.claude/` is gitignored everywhere, so the deletion left
+no trace in git, and there was no copy anywhere else: never in git, never in R2
+(this script backed up `docs/`, not `.claude/`), and not in OneDrive either,
+because [`scripts/onedrive-exclude.ps1`](../../scripts/onedrive-exclude.ps1) had
+deliberately moved them **out** of the syncing folder to
+`C:\lcw\onedrive-excluded\<repo>\.claude`, leaving a junction behind. The number
+KI-14 named — *"`backup-docs.mjs` archives 4 doc trees and 0 `.claude` trees"* —
+is what this change closes.
+
+| | Before | After (2026-09-06) |
+|---|---|---|
+| Trees archived per repo | `docs/` | `docs/` **+ `.claude/`** |
+| Objects per repo per run | 1 | **still 1** — see below |
+| R2 key | `docs/<repo>/<UTC>.json.gz` | unchanged |
+| Retention, `/status` grading | 8 generations per `docs/<repo>` | unchanged |
+
+⚠️ **KI-2 — THE ESTATE REPOS ARE PUBLIC, SO THIS MUST NEVER BECOME A TRACKED
+FILE.** A `.claude/settings.local.json` can name hosts, paths and machine
+layout. The archive goes to the private `estate-backups` bucket and nowhere
+else; nothing in the backup or restore path stages anything into git, and
+`.claude/` stays gitignored in all four repos. Put a restored copy back **by
+hand**, and never `git add` from inside it — `restore-docs.mjs` prints that
+warning itself whenever it writes `.claude` files.
+
+**What is excluded from `.claude/`, and why — the only two things, both
+announced by name in the run log and in the archive's own manifest:**
+
+| Excluded | Why |
+|---|---|
+| `.claude/worktrees/` | A throwaway git **checkout of the whole repo**. Archiving it would base64 a second copy of the source into the JSON — tens to hundreds of MB a generation, for files git already has |
+| `.claude/.wrangler/` | `wrangler dev` scratch. **KI-3** measured live API keys inside its source maps; `estate-backups` already holds key material knowingly, and should not also hoover up key material nobody decided to put there |
+
+⚠️ **A missing or EMPTY `.claude` is a logged no-op, never a failure.**
+`library_catalog` has none at all, and after KI-14 the other three are junctions
+to empty targets. `docs/` keeps its old refusal (zero files = a moved directory,
+refuse rather than overwrite a good archive with an empty one); `.claude` does
+not, because making the new tree required would mean the incident that motivated
+the feature *also* broke the backup that answers it. The archive records
+`missing` and `empty` as **different** statuses — a file count cannot tell those
+apart, and on restore day the difference matters.
+
+⚠️ **It follows the junction.** Three of the four `.claude` folders are
+junctions to `C:\lcw\onedrive-excluded\`. Node's `readdir`/`stat` follow
+junctions (`lstat` does not), and the walker resolves the tree root with
+`realpathSync` **before** its containment check — so a junctioned folder
+archives normally while a link *inside* it that points somewhere else entirely
+is still refused and logged.
+
+#### ⚠️ Why it rides inside the `docs/<repo>` object instead of a `claude/` prefix
+
+A new `<kind>/<store>` prefix in `estate-backups` is a **three-place
+registration**, not a path string: `KNOWN_BACKUP_PREFIXES` in
+[`../../apps/auth-worker/src/backups.ts`](../../apps/auth-worker/src/backups.ts),
+the retention invocation in `.github/workflows/backup.yml`, and
+`prune-r2-backups.mjs`'s argument list — pinned to each other by
+`apps/auth-worker/test/backups.test.ts`, which parses the workflow. It would
+also put a new **graded row on the live `/status` page**, needing an auth-worker
+deploy to take effect, and would immediately grade a store nothing schedules.
+
+So each repo still produces exactly one object per generation and the `.claude`
+files ride inside it, every entry tagged `tree: "docs"` or `tree: "claude"`.
+Retention, grading and the drilled restore recipe below are all untouched, and
+each `.claude` snapshot is paired with the `docs` snapshot of the same second —
+which is the property you actually want on restore day. ⚠️ **An entry with no
+`tree` field is a pre-2026-09-06 archive and means `docs`**; every archive
+already in the bucket still restores unchanged.
+
+**Where each tree lands under `--into`:**
+
+```
+tree "docs"    ->  <into>/<path>            ⚠️ UNCHANGED — the 2026-08-21 diff -r drill still applies
+tree "claude"  ->  <into>/.claude/<path>
+```
+
+**Measured 2026-09-06** (`node scripts/backup-docs.mjs --dry-run`, nothing
+uploaded): catalog-platform 89 docs files / 3,396 KB → 1,820 KB gz ·
+audiobook_catalog 83 / 1,929 KB → 1,036 KB · library_catalog 63 / 2,953 KB →
+1,422 KB · board_game_catalog 57 / 2,364 KB → 885 KB. 🔴 **All four `.claude`
+trees yielded 0 files that day** — three `EMPTY`, `library_catalog` `MISSING` —
+which is precisely the post-KI-14 state, so the live run exercised the **no-op**
+path and not the archiving path. The archiving path was exercised end to end on
+a fixture instead: build → sha256 verify → restore → `diff -r`, **zero
+differences** on both trees. ⚠️ **Nothing was uploaded to R2 by that exercise**;
+the first real object carrying `.claude` files will be the first hand-run
+backup taken after somebody's `.claude` folder refills itself.
 
 ### ⚠️ First: the R2 docs snapshot is NOT this, and must not be mistaken for it
 
@@ -1165,6 +1263,9 @@ restore-drill project, and the shelf parity token — alongside
   a shared tree.
 - Keeping them IS the intent — RECOVERY.md's rule is that a secret with no
   reachable copy is a named gap — but the handling rule above is the price.
+- ⚠️ **Since 2026-09-06 they also carry each repo's gitignored `.claude/`
+  folder**, which can name hosts, paths and machine layout. That does not
+  change the handling rule; it widens what the rule is protecting.
 
 ### Take a backup
 
@@ -1173,6 +1274,12 @@ cd catalog-platform
 node scripts/backup-docs.mjs --dry-run    # inventory, uploads nothing
 node scripts/backup-docs.mjs              # four objects, one per repo
 ```
+
+⚠️ `--dry-run` still **walks and reads every file** — it is a real inventory,
+not a path check — so it is how you exercise a change to this script without
+touching the bucket. It prints one line per tree per repo, including for a
+`MISSING` or `EMPTY` `.claude`: a no-op that says nothing is indistinguishable
+from a step that never ran.
 
 ⚠️ **It must run on the owner's machine.** Same reason as the snapshot
 publisher: these trees exist there and nowhere else, so a CI run would produce
@@ -1196,7 +1303,8 @@ node scripts/restore-docs.mjs ./docs.json.gz --into ./restored-docs
 
 `--list` re-checks every file against its recorded sha256 and length before
 offering anything — an archive that exists is not the same fact as an archive
-that is intact. `--into` **refuses a non-empty directory** without `--force`,
+that is intact. It prints the per-tree ledger (`docs`/`claude`, and `ok` /
+`empty` / `missing`) and tags every file with the tree it came from. `--into` **refuses a non-empty directory** without `--force`,
 because a restore run over a live tree that is newer than the archive silently
 reverts work. Then delete the restored copy when you are done with it.
 

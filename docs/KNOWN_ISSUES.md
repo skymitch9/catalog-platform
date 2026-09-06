@@ -426,12 +426,23 @@ deliberately moved it *out* of the syncing folder.
 1. **The folders refill themselves as they are used** — Claude Code writes
    `settings.local.json` again the next time a permission is granted. No action
    is needed for that half; it is a re-prompt, not a defect.
-2. 🔴 **The exposure is that `.claude/` has NO backup at all**, and this incident
-   is the first time that mattered. The number to change: `backup-docs.mjs`
-   archives **4 doc trees** and **0** `.claude` trees. Adding them would cost a
-   few MB a generation. ⚠️ **It is an owner decision, not an obvious win** —
-   `.claude/` can contain a `settings.local.json` naming hosts and paths, and the
-   estate repos are PUBLIC (KI-2), so this must not become a tracked file.
+2. ~~🔴 **The exposure is that `.claude/` has NO backup at all**~~ ✅ **CLOSED
+   2026-09-06 — the owner said "Yes" and it is built.** The number that had to
+   change was *"`backup-docs.mjs` archives **4 doc trees** and **0** `.claude`
+   trees"*; it now archives **4 and 4**, each `.claude` riding inside its repo's
+   existing `docs/<repo>/<UTC>.json.gz` object tagged `tree: "claude"` (no new
+   R2 prefix, so retention and the `/status` grade are untouched).
+   `.claude/worktrees/` and `.claude/.wrangler/` are excluded by name — a whole
+   repo checkout, and KI-3's key-bearing source maps. ⚠️ **KI-2 still binds:**
+   the archive goes only to the private `estate-backups` bucket, `.claude/`
+   stays gitignored and untracked, and `restore-docs.mjs` says so when it writes
+   one. Runbook: [`access/backup-restore.md`](access/backup-restore.md) §6b.
+   ⚠️ **What this does NOT yet say:** no R2 object has been written carrying a
+   `.claude` file, because all four folders were still empty or missing on the
+   day (three `EMPTY`, `library_catalog` `MISSING` — measured by a real
+   `--dry-run`). The archiving path was drilled on a fixture (build → sha256
+   verify → restore → `diff -r`, zero differences); the *live* path stays
+   unverified until a `.claude` folder refills and a backup is taken by hand.
 
 ---
 

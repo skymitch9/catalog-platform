@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * BACK UP THE ESTATE'S `docs/` TREES — the ones git does not carry.
+ * BACK UP THE ESTATE'S `docs/` AND `.claude/` TREES — the ones git does not carry.
  *
  * Owner, 2026-08-21: *"for our docs folders we don't want those on git but
  * they're so important to our work. Can we get those into blob and or Google
@@ -40,6 +40,30 @@
  * person, and a restore lands in a scratch directory that then gets deleted —
  * never straight into a shared tree.
  *
+ * ── 🔴 THE `.claude/` FOLDERS JOINED ON 2026-09-06, AFTER LOSING SIX OF THEM ─
+ *
+ * Owner, 2026-09-06 00:5x Phoenix, item 1 of the sixteen: *"Yes."*
+ *
+ * `KNOWN_ISSUES.md` KI-14: an `rm -rf /c/lcw` destroyed six `.claude/` project
+ * folders across the estate. Nothing TRACKED was lost, and that is the whole
+ * problem — `.claude/` is gitignored everywhere, so the deletion left no trace
+ * in git and no copy anywhere else. The folders held permission allowlists and
+ * project-local agents and skills, and `scripts/onedrive-exclude.ps1` had
+ * deliberately moved them OUT of the syncing folder, so OneDrive had no copy
+ * either. This script archived **4 docs trees and 0 `.claude` trees**; that is
+ * the number the owner's "Yes" changes.
+ *
+ * ⚠️ **KI-2 — the repos are PUBLIC, so this must never become a tracked file.**
+ * A `settings.local.json` can name hosts, paths and machine layout. The archive
+ * goes to the private `estate-backups` bucket and nowhere else; nothing here
+ * stages anything into git, and `.claude/` stays gitignored.
+ *
+ * ⚠️ **A missing or EMPTY `.claude` is a logged no-op, never a failure.**
+ * `library_catalog` has none at all, and after KI-14 the other three are
+ * junctions to empty targets. Making the new tree required would mean the
+ * incident that motivated the feature also broke the backup that answers it.
+ * The `docs` tree keeps the old refusal; see `lib/backup-docs-trees.mjs`.
+ *
  * ── WHERE IT GOES, AND WHY THERE ────────────────────────────────────────────
  *
  * `estate-backups`, the private bucket that already holds every D1 export, the
@@ -47,6 +71,17 @@
  * `<kind>/<store>/<UTC-timestamp>.<ext>` shape:
  *
  *     estate-backups/docs/<repo>/<UTC>.json.gz
+ *
+ * ⚠️ ONE OBJECT PER REPO, STILL — the `.claude` files ride INSIDE it, tagged
+ * `tree: "claude"`, rather than getting a `claude/<repo>` prefix of their own.
+ * A new `<kind>/<store>` prefix is a three-place registration pinned by a test
+ * that parses the workflow (`KNOWN_BACKUP_PREFIXES` in
+ * `apps/auth-worker/src/backups.ts`, the retention invocation in
+ * `.github/workflows/backup.yml`, `prune-r2-backups.mjs`'s arguments) AND a new
+ * graded row on the live `/status` page needing an auth-worker deploy. Keeping
+ * one object leaves retention, grading and the drilled restore recipe untouched,
+ * and pairs each `.claude` snapshot with the `docs` snapshot of the same second.
+ * Reasoning in full: `lib/backup-docs-trees.mjs`.
  *
  * ⚠️ NOT `estate-docs-gated`. That bucket is BOUND TO A WORKER and served,
  * gated, to people; putting an unfiltered archive containing CREDENTIALS.md
@@ -66,14 +101,18 @@
  *   node scripts/backup-docs.mjs               # build + upload every repo
  *   node scripts/backup-docs.mjs --out ./tmp   # keep the bundles on disk too
  *
+ * ⚠️ `--dry-run` still WALKS AND READS every file — it is a real inventory, not
+ * a path check — so it is the way to exercise a change to this script without
+ * touching the bucket.
+ *
  * Restore: `docs/access/backup-restore.md` §6b.
  */
 
 import { execFileSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
-import { mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { join, relative, resolve, sep } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { bundleRepo, refusalFor, treeLogLine } from './lib/backup-docs-trees.mjs';
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
@@ -95,142 +134,76 @@ const BUCKET = 'estate-backups';
  * estate's private bucket, with nobody deciding that.
  *
  * A repo joins by being added HERE, with its docs tree named.
+ *
+ * ⚠️ `claude` is the repo's `.claude/` PROJECT folder and is OPTIONAL. In three
+ * of the four it is a JUNCTION to `C:\lcw\onedrive-excluded\<repo>\.claude`
+ * (`scripts/onedrive-exclude.ps1` puts it there); `library_catalog` has none.
+ * Node's `readdir`/`stat` follow junctions, and the walker resolves the tree
+ * root before its containment check, so a junctioned folder archives normally.
+ * A missing or empty one is a logged no-op.
  */
 const REPO_ROOT = resolve(process.cwd(), '..');
 const REPOS = [
-  { name: 'catalog-platform', docs: join(REPO_ROOT, 'catalog-platform', 'docs') },
-  { name: 'audiobook_catalog', docs: join(REPO_ROOT, 'bookbuddy', 'audiobook_catalog', 'docs') },
-  { name: 'library_catalog', docs: join(REPO_ROOT, 'bookbuddy', 'library_catalog', 'docs') },
-  { name: 'board_game_catalog', docs: join(REPO_ROOT, 'boardbuddy', 'Board_Game_Catalog', 'docs') },
+  {
+    name: 'catalog-platform',
+    docs: join(REPO_ROOT, 'catalog-platform', 'docs'),
+    claude: join(REPO_ROOT, 'catalog-platform', '.claude'),
+  },
+  {
+    name: 'audiobook_catalog',
+    docs: join(REPO_ROOT, 'bookbuddy', 'audiobook_catalog', 'docs'),
+    claude: join(REPO_ROOT, 'bookbuddy', 'audiobook_catalog', '.claude'),
+  },
+  {
+    name: 'library_catalog',
+    docs: join(REPO_ROOT, 'bookbuddy', 'library_catalog', 'docs'),
+    claude: join(REPO_ROOT, 'bookbuddy', 'library_catalog', '.claude'),
+  },
+  {
+    name: 'board_game_catalog',
+    docs: join(REPO_ROOT, 'boardbuddy', 'Board_Game_Catalog', 'docs'),
+    claude: join(REPO_ROOT, 'boardbuddy', 'Board_Game_Catalog', '.claude'),
+  },
 ];
 
 /**
- * ⚠️ NO EXTENSION FILTER AND NO DENYLIST. Stated as a decision rather than
- * left to be inferred from an absence: this is the half of the docs story that
- * takes everything, and the snapshot publisher is the half that is careful.
- * A single file skipped here is a file that does not come back.
- *
- * The one thing excluded is a directory that is not documentation at all.
+ * The walker, the tree list and the refusal rule all live in
+ * lib/backup-docs-trees.mjs — a script whose import runs a backup cannot be
+ * imported by a test, and those are the decisions worth pinning. Read that
+ * file for the OneDrive placeholder incident, the .claude junctions, and why
+ * .claude/worktrees and .claude/.wrangler are excluded.
  */
-const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__']);
-/** A single file this large is not a doc; flag it rather than silently ship it. */
-const WARN_FILE_BYTES = 5 * 1024 * 1024;
-
-/**
- * 🔴 ONEDRIVE MAKES REAL FILES LOOK LIKE SYMLINKS, AND AN EARLIER VERSION OF
- * THIS WALKER SILENTLY DROPPED THEM — MEASURED 2026-08-21.
- *
- * These trees live under OneDrive. A file OneDrive has dehydrated into a
- * placeholder (a "cloud file", i.e. a reparse point) is reported by Node as
- * `isSymbolicLink() === true` and `isFile() === false`. The old loop skipped
- * anything that was not `isFile()`, on the reasonable-sounding grounds that
- * symlinks must not be followed out of the tree.
- *
- * The result: `Board_Game_Catalog/docs` held **46 files and the backup archived
- * 27**, reporting complete success. ⚠️ And it was never limited to files
- * somebody had just moved — ANY file OneDrive chooses to free space on becomes
- * invisible to the backup, at a moment nothing here controls.
- *
- * The fix keeps the original protection and drops the false negative: a
- * symlink-ish entry is RESOLVED (`statSync` follows it), and included only if
- * it resolves to something INSIDE this docs tree. A genuine link pointing
- * outside is still refused — that was the real concern and it survives.
- *
- * ⚠️ Nothing is skipped silently. Every skip is collected and printed, because
- * a backup that quietly omits files is worse than one that fails.
- */
-function walk(dir, base, out = [], skipped = []) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch (err) {
-    if (err.code === 'ENOENT') return out;
-    throw err;
-  }
-  const baseReal = realpathSync(base);
-  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const full = join(dir, e.name);
-    if (e.isDirectory()) {
-      if (SKIP_DIRS.has(e.name)) continue;
-      walk(full, base, out, skipped);
-      continue;
-    }
-    if (e.isFile()) {
-      out.push(full);
-      continue;
-    }
-    // Neither a plain file nor a directory: a symlink, a junction, or a
-    // OneDrive placeholder. Resolve it and decide on where it actually points.
-    let real;
-    let st;
-    try {
-      real = realpathSync(full);
-      st = statSync(full); // follows
-    } catch (err) {
-      skipped.push({ path: full, why: `unresolvable (${err.code ?? err.message})` });
-      continue;
-    }
-    if (!real.startsWith(baseReal)) {
-      skipped.push({ path: full, why: `resolves OUTSIDE the docs tree -> ${real}` });
-      continue;
-    }
-    if (st.isDirectory()) walk(full, base, out, skipped);
-    else if (st.isFile()) out.push(full);
-    else skipped.push({ path: full, why: 'not a regular file or directory' });
-  }
-  return out;
-}
-
-function bundleRepo(repo) {
-  const skipped = [];
-  const files = walk(repo.docs, repo.docs, [], skipped);
-  // ⚠️ NO SILENT CAPS. A skip is announced whether or not anyone asked, because
-  // the failure this whole function exists to avoid is a cheerful archive that
-  // is quietly missing files.
-  for (const s of skipped) console.log(`  ⚠️ SKIPPED ${s.path} — ${s.why}`);
-  const entries = [];
-  let bytes = 0;
-  for (const full of files) {
-    const buf = readFileSync(full);
-    // POSIX separators in the archive so a restore is not Windows-shaped.
-    const rel = relative(repo.docs, full).split(sep).join('/');
-    if (buf.length > WARN_FILE_BYTES) {
-      console.log(`  ⚠️ large: ${rel} (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
-    }
-    entries.push({
-      path: rel,
-      bytes: buf.length,
-      sha256: createHash('sha256').update(buf).digest('hex'),
-      // base64 so binary files (the JSON/CSV/HTML fragments, and anything
-      // added later) round-trip byte-exact rather than through a text decode.
-      b64: buf.toString('base64'),
-      mtime: statSync(full).mtime.toISOString(),
-    });
-    bytes += buf.length;
-  }
-  return { entries, bytes, skipped };
-}
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/-(\d{3})Z$/, 'Z');
 const results = [];
 
 for (const repo of REPOS) {
   console.log(`\n=== ${repo.name} — ${repo.docs} ===`);
-  const { entries, bytes, skipped } = bundleRepo(repo);
+  const { entries, bytes, trees, skipped } = bundleRepo(repo, { log: (m) => console.log(m) });
+  // ⚠️ ALWAYS PRINTED, INCLUDING FOR A MISSING OR EMPTY `.claude`. A no-op that
+  // says nothing is indistinguishable from a step that never ran, and after
+  // KI-14 "the .claude folder is empty" is the fact somebody most needs to see.
+  for (const t of trees) console.log(treeLogLine(t));
 
-  // ⚠️ A REPO THAT YIELDS ZERO FILES IS A FAILURE, NOT AN EMPTY BACKUP. Same
-  // rule as backup-r2.mjs's zero-object listing and backup-firestore.mjs's:
-  // the overwhelmingly likely cause is a moved directory or a typo in REPOS,
-  // and quietly writing an empty archive over a good one is how a backup
-  // becomes worse than none.
-  if (entries.length === 0) {
+  // ⚠️ A REQUIRED TREE THAT YIELDS ZERO FILES IS A FAILURE, NOT AN EMPTY
+  // BACKUP. Same rule as backup-r2.mjs's zero-object listing and
+  // backup-firestore.mjs's: the overwhelmingly likely cause is a moved
+  // directory or a typo in REPOS, and quietly writing an empty archive over a
+  // good one is how a backup becomes worse than none.
+  //
+  // ⚠️ Only `docs` is required. `.claude` missing or empty is an ordinary
+  // state (library_catalog has none; KI-14 emptied three) and must not take the
+  // docs backup down with it — see lib/backup-docs-trees.mjs `treesFor`.
+  const refusal = refusalFor(trees);
+  if (refusal) {
     console.error(
-      `REFUSING: ${repo.name} produced 0 files from ${repo.docs}. That is a missing or moved docs ` +
-        `tree, not an empty one — fix the path in REPOS rather than shipping an empty archive.`,
+      `REFUSING: ${repo.name} produced 0 files from its ${refusal.tree} tree at ${refusal.root}. That is a ` +
+        `missing or moved tree, not an empty one — fix the path in REPOS rather than shipping an empty archive.`,
     );
     process.exit(1);
   }
 
+  const claudeTree = trees.find((t) => t.tree === 'claude');
   const payload = {
     repo: repo.name,
     source: repo.docs,
@@ -239,9 +212,26 @@ for (const repo of REPOS) {
     // it in a disaster is not reading the script that made it.
     contains:
       'EVERY file under this docs tree, unfiltered — including access/CREDENTIALS.md AND access/keys/, ' +
-      'which holds RAW SECRET VALUES (service-account JSON, bearer tokens). Treat this archive as key material.',
+      'which holds RAW SECRET VALUES (service-account JSON, bearer tokens). Treat this archive as key material. ' +
+      'Since 2026-09-06 it ALSO carries the repo\'s gitignored .claude/ project folder: every file entry names ' +
+      'its `tree` ("docs" or "claude"), and an entry with no `tree` is a pre-2026-09-06 archive and means "docs". ' +
+      '.claude/ can name hosts, paths and machine layout — the estate repos are PUBLIC (KI-2), so it must never ' +
+      'be restored into a tracked path.',
+    // The per-tree ledger. ⚠️ `missing` and `empty` are DIFFERENT states and are
+    // recorded separately: one says the folder was never there, the other that
+    // it was there and held nothing (the post-KI-14 state of three .claude
+    // folders). A file count alone cannot tell a reader those apart.
+    trees: trees.map(({ tree, root, required, status, file_count, bytes: b }) => ({
+      tree,
+      root,
+      required,
+      status,
+      file_count,
+      bytes: b,
+    })),
     file_count: entries.length,
     total_bytes: bytes,
+    claude_file_count: claudeTree ? claudeTree.file_count : 0,
     // Carried IN the archive: a disaster-day reader must be able to see from
     // the dump itself what it does not contain.
     skipped,
@@ -262,7 +252,7 @@ for (const repo of REPOS) {
 
   if (DRY) {
     console.log(`  DRY RUN — would write ${BUCKET}/${key}`);
-    results.push({ repo: repo.name, key, count: entries.length, bytes: gz.length, uploaded: false });
+    results.push({ repo: repo.name, key, count: entries.length, claude: payload.claude_file_count, bytes: gz.length, uploaded: false });
     continue;
   }
 
@@ -280,16 +270,20 @@ for (const repo of REPOS) {
     shell: process.platform === 'win32',
   });
   console.log(`  wrote ${BUCKET}/${key}`);
-  results.push({ repo: repo.name, key, count: entries.length, bytes: gz.length, uploaded: true });
+  results.push({ repo: repo.name, key, count: entries.length, claude: payload.claude_file_count, bytes: gz.length, uploaded: true });
 }
 
 console.log('\n=== Summary ===');
 for (const r of results) {
-  console.log(`${r.repo}: ${r.count} files, ${(r.bytes / 1024).toFixed(0)} KB -> ${r.key}${r.uploaded ? '' : ' (dry run)'}`);
+  console.log(
+    `${r.repo}: ${r.count} files (${r.claude} from .claude), ${(r.bytes / 1024).toFixed(0)} KB -> ${r.key}${r.uploaded ? '' : ' (dry run)'}`,
+  );
 }
 console.log(
   `\n🔴 These archives are UNFILTERED. They include access/CREDENTIALS.md AND access/keys/ — ` +
-    `i.e. RAW SECRET VALUES (service-account JSON, bearer tokens), not merely their names. ` +
-    `${BUCKET} is bound to no Worker and served to nobody: keep it that way, and restore into a ` +
-    `scratch directory you then delete. Restore: docs/access/backup-restore.md §6b.`,
+    `i.e. RAW SECRET VALUES (service-account JSON, bearer tokens), not merely their names — and, since ` +
+    `2026-09-06, each repo's gitignored .claude/ project folder, which can name hosts, paths and machine ` +
+    `layout. ${BUCKET} is bound to no Worker and served to nobody: keep it that way, and restore into a ` +
+    `scratch directory you then delete. ⚠️ .claude/ stays UNTRACKED (KI-2 — the estate repos are PUBLIC): ` +
+    `restore it back into place by hand, never by staging it. Restore: docs/access/backup-restore.md §6b.`,
 );
