@@ -68,6 +68,31 @@
         "the owner designation the whole build exists for. `catalogForEntry` is pinned because it is the estate's",
         "ONE source+format -> catalog map and the ebook attribution lives inside it."
       ],
+      "_why_search": [
+        "The shared <estate-search> component — and it had NO live marker at all until 2026-09-05, which is how",
+        "`const FULL_SCOPE_SIZE = 3` shipped and stayed: it told every ordinary member (whose default grant is",
+        "three catalogs of five) that their search covered 'on any shelf' while two shelves were never consulted,",
+        "and suppressed the one sentence written to say otherwise. Survey finding F1.",
+        "mustNotContain is the regression check and it is matched on the DECLARATION, not the bare name, so the",
+        "comment recording what the constant did can stay — that comment is the only place the story is written.",
+        "mustContain pins the four behaviours that replaced it: the registry read, the set comparison, the worded",
+        "unknown, and the ebook attribution."
+      ],
+      "path": "/assets/estate-search.js",
+      "mustContain": [
+        "/api/catalogs",
+        "_scopeIsEverything",
+        "a shelf we cannot name",
+        "esCatalogForEntry",
+        "not a permissions problem"
+      ],
+      "mustNotContain": [
+        "const FULL_SCOPE_SIZE =",
+        "const SOURCE_LABELS =",
+        "const SCOPE_LABELS ="
+      ]
+    },
+    {
       "_why_cards": [
         "The front door's catalogue cells, named and designated from the registry (owner ask 2026-09-05).",
         "Nothing it DRAWS can be asserted from here — the markers are the four behaviours that would disappear",
