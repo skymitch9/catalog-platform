@@ -27,6 +27,14 @@
 > enrolled catalogs into peer networks would hand another household a read of
 > somebody's shelf with nobody deciding it. §10.
 >
+> ✅ **UPDATED 2026-09-06 20:50Z: `READ_ORIGINS` IS NOW ALL SIX ESTATE CATALOG
+> HOSTS** (agent W11-EBOOKS-CORS) — `ebooks.heygabi.ai` added on the owner's own
+> separate "1. Yes" (13:41 Phoenix), `2fe2fbf`, deployment
+> `f9c2c1dc-188e-4297-b096-68380229420c`. ⚠️ **Only §10's `READ_ORIGINS` bullet
+> was re-measured on that pass** — the six CORS calls in it were run against the
+> live Worker before and after the deploy. Nothing else on this page was
+> re-checked that hour.
+>
 > ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
 > `predeploy.checks.json`'s live pass fetches unauthenticated, so the
 > scoped-count half of §4 is proven by tests and by this route's own answer, and
@@ -358,21 +366,54 @@ estate holds.
   Which library a print suggestion is gated on needs `audiobook_catalog`'s
   `LIBRARY_MAPPING_URL` join to carry an instance — another repo's work. This
   build only NAMES that shelf correctly.
-- ✅ **`READ_ORIGINS` NOW INCLUDES `padhard.heygabi.ai` — the owner said "Yes"
-  on 2026-09-06** (00:5x Phoenix, item 3 of the sixteen), and it is deployed:
-  `4ef4816`, deployment `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
-  `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`. **Measured live 14:33Z** with
-  `curl -s -D -`: `/api/catalogs` and `/api/search?q=test` both answer
+- ✅ **`READ_ORIGINS` IS NOW ALL SIX ESTATE CATALOG HOSTS — both owner questions
+  were asked separately and both were answered "Yes" on 2026-09-06.** The
+  deployed value is `heygabi.ai, library, boardgames, audiobooks, padhard,
+  ebooks`. This bullet is the one home for that fact; `wrangler.toml`'s comment
+  block carries the same two decisions beside the value itself.
+
+  | Host | Owner's answer | Commit | Deployment | Rollback |
+  |---|---|---|---|---|
+  | `padhard.heygabi.ai` | "Yes", 00:5x Phoenix (item 3 of the sixteen) | `4ef4816` | `a2ed0d67-2d8e-4391-854f-3895ae5bee02` | `04bef4e8-9842-4a11-a9ff-7bbd9aa52119` |
+  | `ebooks.heygabi.ai` | "1. Yes", 13:41 Phoenix, its own question | `2fe2fbf` | `f9c2c1dc-188e-4297-b096-68380229420c` | `a2ed0d67-2d8e-4391-854f-3895ae5bee02` |
+
+  **Padhard, measured live 14:33Z** with `curl -s -D -`: `/api/catalogs` and
+  `/api/search?q=test` both answer
   `access-control-allow-origin: https://padhard.heygabi.ai`; before the deploy
-  the same request got 200 with no ACAO at all. ⚠️ **It widens which PAGES may
-  ask, never what is RETURNED** — visibility is still decided per-caller inside
-  the Worker, and Samantha's own rows still need `vis_library2`.
-  🔴 **`ebooks.heygabi.ai` is STILL ABSENT and is the same question**: nothing
-  on that host calls the index today and the owner was asked about padhard only,
-  so it needs its own "Yes". Verified live the same minute that
-  `https://ebooks.heygabi.ai` still gets no ACAO header. The exact set is pinned
-  by `apps/index-worker/test/read-origins.test.ts`, which PARSES `wrangler.toml`
-  so a hard-coded copy cannot drift from the deployed value.
+  the same request got 200 with no ACAO at all.
+
+  **Ebooks, measured live 20:48–20:50Z** with `curl -sS -D <file> -o <file>`
+  (never `-I`, never `-o /dev/null`/`-o NUL` — they misreport 000/exit 43 on
+  these hosts). BEFORE: `OPTIONS /api/catalogs` from `https://ebooks.heygabi.ai`
+  → 204 with **no** ACAO. AFTER: the same preflight and `OPTIONS
+  /api/search?q=test` both echo the origin, and so do the **real** `GET`s —
+  `/api/catalogs` 200 with `Cache-Control: public, max-age=300` and `Vary:
+  Authorization, Origin`, `/api/search?q=test` 200 with `Vary: Origin`.
+  Padhard and library kept theirs on all four calls; `https://example.com` got
+  200 with **no ACAO header at all** on all four, so the widening is exactly one
+  host.
+
+  ⚠️ **It widens which PAGES may ask, never what is RETURNED**, and on
+  2026-09-06 that stopped being an assertion and became a measurement: the
+  anonymous `/api/search?q=test` body is `"scope":["audiobook"]` from ebooks,
+  from padhard, from library **and from `example.com`** — byte-identical. The
+  only thing CORS changes is whether the browser hands that body to the page.
+  Visibility is still decided per-caller inside the Worker, and Samantha's own
+  rows still need `vis_library2`.
+
+  ⚠️ **The ebooks entry is AHEAD OF ITS CONSUMER, and padhard's was not.**
+  Padhard mounts `<estate-search>` and was visibly degraded by the missing
+  entry; **nothing on `ebooks.heygabi.ai` calls `/api/*` today.** The curl pair
+  above proves the Worker *would* answer that origin — no browser there has
+  asked. That is the honest limit of the evidence.
+
+  The exact set is pinned by `apps/index-worker/test/read-origins.test.ts`,
+  which PARSES `wrangler.toml` so a hard-coded copy cannot drift from the
+  deployed value, and asserts the **exact** list rather than "host X is
+  present" — so a later sweep can neither drop one silently nor slip a seventh
+  in beside them. Each entry also gets its suffix-trick and wrong-scheme
+  negative (`https://<host>.evil.example.com`, `http://<host>`).
+
   ⚠️ **The stale half nobody has fixed yet:**
   `sites/heygabi-home/public/assets/estate-search.js` still carries a comment
   saying this call *"is refused by CORS today"* on padhard. It is now wrong, and

@@ -10,6 +10,78 @@
 > Newest first, preserving the order the entries had in the original file.
 
 
+## ✅ 2026-09-06 — `ebooks.heygabi.ai` is in the index Worker's `READ_ORIGINS` — the second half of a question that was split on purpose
+
+> **The owner's answer, verbatim, 2026-09-06 13:41 Phoenix**, to the question
+> *"`ebooks.heygabi.ai` into the search Worker's allowed origins — yes or no?"*:
+> **"1. Yes"**. Built and deployed the same afternoon by agent W11-EBOOKS-CORS.
+> The ❓ item below is moved **whole** from [`TODO.md`](TODO.md), unedited.
+
+**The item, as it stood in `TODO.md`:**
+
+- [ ] ❓ 🧑 **`ebooks.heygabi.ai` and the index Worker's `READ_ORIGINS` — it
+      needs its own "Yes".** `padhard.heygabi.ai` was added on his explicit
+      "Yes" and DEPLOYED (`4ef4816`, index-worker
+      `a2ed0d67-2d8e-4391-854f-3895ae5bee02`, rollback
+      `04bef4e8-9842-4a11-a9ff-7bbd9aa52119`); CORS re-measured 2026-09-06
+      07:38 Phoenix — padhard gets `access-control-allow-origin`,
+      `evil.example.com` gets none. `ebooks.heygabi.ai` was **deliberately not
+      added**: nothing on that host calls the index today and he was asked
+      about padhard only. Access-increasing, so it is confirmed, never assumed.
+      ⚠️ **NOT verified either way: nobody has loaded padhard's search box in a
+      browser.**
+
+**What shipped.** `2fe2fbf` — `apps/index-worker/wrangler.toml`'s `READ_ORIGINS`
+gains `https://ebooks.heygabi.ai` (six hosts now), and
+`apps/index-worker/test/read-origins.test.ts` gains the two sibling assertions
+padhard already had plus the new host's suffix-trick and wrong-scheme negatives.
+Deployment **`f9c2c1dc-188e-4297-b096-68380229420c`** at 20:49:47Z, **rollback
+`a2ed0d67-2d8e-4391-854f-3895ae5bee02`** (the padhard widen, `4ef4816`,
+2026-09-06T14:32:26Z) — read off `npx wrangler deployments list` before
+deploying, not from memory. **No migration**: `wrangler d1 migrations list
+index_catalog --remote` said *"No migrations to apply"*, measured first. Shipped
+from a throwaway `git worktree add --detach C:/lcw/wt-ebooks HEAD` with four
+`node_modules` junctions, torn down LINK-FIRST — `.bin` 51 → 51 → 51 and
+`C:\lcw\onedrive-excluded` untouched (KI-14). Tests `apps/index-worker`
+206 → 208, root suite 3,256 → 3,258, 0 fail, typecheck clean on both configs.
+
+**The evidence, measured live** with `curl -sS -D <file> -o <file>` (never `-I`,
+never `-o /dev/null`/`-o NUL` — they misreport 000/exit 43 on these hosts):
+
+| When | Call | Origin | `access-control-allow-origin` |
+|---|---|---|---|
+| BEFORE 20:48:27Z | `OPTIONS /api/catalogs` | `ebooks` | 🔴 **absent** (204) |
+| AFTER 20:50:26Z | `OPTIONS /api/catalogs` | `ebooks` | ✅ `https://ebooks.heygabi.ai` |
+| AFTER 20:50:26Z | `OPTIONS /api/search?q=test` | `ebooks` | ✅ `https://ebooks.heygabi.ai` |
+| AFTER 20:50:45Z | `GET /api/catalogs` | `ebooks` | ✅ echoed, 200, `Vary: Authorization, Origin`, `Cache-Control: public, max-age=300` |
+| AFTER 20:50:45Z | `GET /api/search?q=test` | `ebooks` | ✅ echoed, 200, `Vary: Origin` |
+| AFTER, all four calls | — | `padhard`, `library` | ✅ each echoed its own |
+| AFTER, all four calls | — | `example.com` | 🔴 **no header at all** (still 200) |
+
+⚠️ **It widened which PAGES may ask, not what is RETURNED — and on this pass
+that stopped being an assertion.** The anonymous `/api/search?q=test` body came
+back `"scope":["audiobook"]` from ebooks, from padhard, from library **and from
+`example.com`**, byte-identical. CORS only decides whether the browser hands
+that body to the page.
+
+⚠️ **NOT VERIFIED, and it is a different gap from padhard's.** Padhard's item
+above said nobody had loaded its search box; **ebooks has no search box to
+load.** Nothing on `ebooks.heygabi.ai` calls `/api/*` today, so this entry is
+**ahead of its consumer**: the curl pair proves the Worker *would* answer that
+origin, and no browser there has asked. The padhard half of that "NOT verified"
+line also still stands — nobody has loaded padhard's box either.
+
+⚠️ **Left undone and named, unchanged from the padhard deploy:**
+`sites/heygabi-home/public/assets/estate-search.js` still comments that this
+call *"is refused by CORS today"* on padhard. It is now doubly stale, and it is
+a canonical asset with copies in `library_catalog` and `Board_Game_Catalog` — a
+three-repo synced change, not a one-line edit.
+
+**Where the durable facts live:** the deployed list and both decisions are owned
+by [`info/catalog-registry.md`](info/catalog-registry.md) §10 (one fact, one
+home); the deploy line with the full before/after is in `deploys.log`.
+
+
 ## ✅ 2026-09-06 — Closed by the conductor under the silence rule — reversible
 
 > **Who and why.** Four items the owner was asked about and never answered,
