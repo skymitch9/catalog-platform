@@ -10,6 +10,37 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ GABI's unlinked-asker deep link still points at padhard — owner "Yes fix" 2026-09-05 19:50 Phoenix
+
+Found by the 2026-09-05 panel↔Discord sync check (asked: *"make sure the web
+interface and the discord bot are still in sync"*). `apps/discord-worker/wrangler.toml`
+`GABI_PANEL_URL = "https://padhard.heygabi.ai"` and `src/panel.ts`
+`DEFAULT_PANEL_BASE` carry a comment saying *"the main library has it off by
+decision 8"* — **false since `library_catalog` `34f1301` (2026-08-17, the main
+panel went ON for Amber)**; measured tonight both instances answer
+`gabi.panel: true` on `/api/health`. Linked askers are already routed to their
+own instance (`panel.ts`, the *"why is it showing padhard"* fix), so only
+**unlinked** askers and the no-port fallback still land on Samantha's site.
+
+Fix: var + constant → `https://library.heygabi.ai`, comments corrected in
+place (struck, not deleted — the premise is what a reader reasons from), the
+test pins that assert padhard-as-fallback updated (`test/gabi.test.ts:89–90`,
+`test/panel.test.ts` §4/§5 fallback cases), deploy from a clean tree, verify
+`gabi_panel_url` on `/api/health`, `deploys.log` line. Dispatched to Opus
+2026-09-05 19:52 Phoenix.
+
+## ☐ `scripts/sync-gabi-prompt.mjs` — GABI's personality prompt is a HAND copy (found 2026-09-05)
+
+Same sync check. `apps/discord-worker/src/gabi-prompt.ts` `GABI_CORE` is copied
+text from `library_catalog/packages/research/src/gabi.ts` `GABI_SYSTEM`; the
+pin test (`test/gabi-edge.test.ts`) checks the copy against its own literal,
+never against the library file, so drift is invisible. Measured 2026-09-05: in
+sync in every shared section (the deltas are the panel's write tools, its
+"Remembering" block and `find_book`/`get_book` → "a lookup"/"a tool call" — all
+deliberate). The file itself names the fix: a `sync-gabi-prompt.mjs` mirroring
+`sync-gabi-conversation.mjs` (option b), never built. Backlog #13 in the
+2026-09-05 ready list; not started.
+
 ## ☐ `data/series-canon.json` entries for the two cross-catalog folds (emily wilde / skyward) — SMALL, another repo too
 
 > Left behind 2026-09-05 18:12 Phoenix when the six-click item moved to [`DONE.md`](DONE.md). Re-measured after the clicks:
