@@ -6,6 +6,20 @@
 > by running or collecting the suite**, not estimated. The commands are in the
 > table so any of them can be re-run.
 >
+> ✅ **ONE FINDING IS ALREADY CLOSED, later the same day (2026-09-05, agent
+> W9-BOARD-ROUTES): §5.2, the board catalog's 16 untested route files.** It now
+> has **16 route test files / 387 cases**, one per route file, and its suite went
+> **25 files / 348 cases → 41 files / 735 cases**, 59 → 125 suites, 2.6 s. The
+> §1 and §5 numbers below are left AS MEASURED and each carries a dated
+> correction beside it rather than being overwritten — this is an inventory of a
+> moment, and editing the moment away would lose the before-figure the finding
+> was argued from. ⚠️ **Writing those tests also found two real bugs**, one of
+> them a live privilege bug (an `admin` can demote the last `owner`, reaching
+> `countOwners() == 0`): `Board_Game_Catalog/docs/KNOWN_ISSUES.md` KI-6 and
+> KI-7. That is the strongest evidence in this document for §5's argument that
+> the gaps matter more than the count — **the very first tests written into the
+> largest gap found a bug that had been live for weeks.**
+>
 > **The owner's question, verbatim (2026-09-05):** *"How many test do we have?
 > Can we explore how many we have and decide if we truly need all of them"*.
 > **Short answer: 9,445 test cases in 415 files. Roughly 30 cases across 5
@@ -61,8 +75,15 @@
 | `catalog-platform` | **135** | **3,076** | `node --test` + `tsx --test`, per workspace | **~39 s** (27.3 s of it is `scripts/test`) |
 | `bookbuddy/library_catalog` | **134** (133 run + 1 orphan) | **2,816** (+7 orphaned) | `tsx --test`, one glob | **~12 s** measured as 8 separate runs; ⚠️ `pretest` adds 5 sync scripts on top |
 | `bookbuddy/audiobook_catalog` | **121** (82 Python + 39 JS) | **3,205** (2,242 py + 963 js) | `pytest` + `vitest` | JS **4.4 s**; ⚠️ **Python NOT RUN** — collect only, 3.2 s |
-| `boardbuddy/Board_Game_Catalog` | **25** | **348** | `tsx --test`, one glob | **3.1 s** |
-| **TOTAL** | **415** | **9,445** | | |
+| `boardbuddy/Board_Game_Catalog` | **25** ⚠️ now **41** | **348** ⚠️ now **735** | `tsx --test`, one glob | **3.1 s** ⚠️ now **2.6 s** |
+| **TOTAL** | **415** ⚠️ now **431** | **9,445** ⚠️ now **9,832** | | |
+
+⚠️ **The "now" figures are the SAME DAY, hours later** (2026-09-05 evening, agent
+W9-BOARD-ROUTES closing §5.2). The unmarked figures are the survey's own
+measurement and are what §4 and §5 argue from; the marked ones are what a fresh
+run would report. Only the board row moved — the other three repos were not
+re-measured, so the two totals differ by exactly the board delta (+16 files,
++387 cases) and by nothing else.
 
 ⚠️ **9,445 is a count of what the runners actually collected**, which is why it
 is 8–14% higher than a `grep -c "it("` of the same files: several suites are
@@ -463,12 +484,32 @@ deletes zero test cases.** Three of the five *increase* what the suite proves.
    Every target is live and the only trigger is `workflow_dispatch`, so there
    is no dry run — the first dispatch is the measurement, and `ci-deploy.md` §4
    says exactly what it will show.
-2. 🔴 **`Board_Game_Catalog` has 16 route files and zero route tests.**
+2. ✅ **CLOSED the same day** (2026-09-05 evening, agent W9-BOARD-ROUTES) — was:
+   🔴 *"`Board_Game_Catalog` has 16 route files and zero route tests.
    `apps/worker/src/routes/` holds `admin.ts`, `users.ts`, `scan-jobs.ts`,
    `export.ts`, `covers.ts`, `vision.ts` and ten more. `library_catalog` tests
    its routes with 13 files / **519 cases**; the board repo tests its `lib/`
    thoroughly (185 cases) and its routes not at all. `users.ts` and `admin.ts`
-   are role-bearing surfaces.
+   are role-bearing surfaces."*
+
+   **Now 16 route test files / 387 cases**, one per route file, using
+   `library_catalog`'s own harness (a real `Request` through a bare Hono app, a
+   fake `requireAuth` planting a role, `requireCapability` left real, the
+   refusal read off the wire) — the two repos share lineage and the board tests
+   now look like the library's on purpose. Commits `231d1da`, `d335ed1`,
+   `47fb45c`, `975386c`, `a61a51e`; the write-up is that repo's `DONE.md`.
+
+   🔴 **And this is the single best piece of evidence in this whole document for
+   §6's claim that the GAPS matter more than the count: the first tests ever
+   written into the largest gap found TWO REAL BUGS**, one of them live and
+   role-bearing — an `admin` can demote the last `owner`, `countOwners()`
+   reaches 0, and after that no role in the app can mint an `owner` again.
+   `library_catalog` had the identical bug as its 2026-08 audit HIGH and fixed
+   it; the board repo never took the fix. Filed as
+   `Board_Game_Catalog/docs/KNOWN_ISSUES.md` **KI-7** (and **KI-6**, a 401 that
+   leaves as a bare code — which the library's Worker shares). Neither was
+   fixed by the agent that found them: role-bearing changes are the conductor's
+   call.
 3. ⚠️ **`Board_Game_Catalog` scripts: 10 `.mjs`, 2 tested.**
    `provision-catalog` and `push-secrets-instance` are covered (77 cases);
    the other eight are not. `catalog-platform` tests 26 of 22 scripts (more
@@ -522,11 +563,23 @@ the suite proves. The suite is also cheap — the entire measured surface runs i
 under a minute, so there is no cost argument for cutting it. **The real
 findings are the gaps:** `catalog-platform` deploys from CI with no test gate
 (✅ **fixed the same evening, `44e81ae`** — §5.1, though the job has not yet run
-on a runner), the board catalog has 16 untested routes, and the estate's own
+on a runner), the board catalog has 16 untested routes (✅ **also closed the
+same evening** — §5.2, 387 new cases), and the estate's own
 standing advice
 — *"a test count is not evidence — mutate the code and watch"* — has not been
 re-run since 2026-08-16, when 1 of 8 mutations survived and led straight to a
 live privilege-retention bug.
+
+🔴 **Postscript, 2026-09-05 evening — the paragraph above understated its own
+conclusion.** Closing §5.2 did not merely add 387 cases; **the first tests
+written into that gap found a live privilege bug** (an `admin` can demote the
+last `owner` — board `KNOWN_ISSUES.md` KI-7) that had been shipping for weeks,
+and a second, smaller refusal defect beside it. That is the same shape as the
+2026-08-16 mutation run cited at the end of this paragraph: **both times, the
+cheapest possible probe into an untested area found a real privilege bug on the
+first try.** Two data points is not a rate, but it is two more than the count
+of 9,445 provides, and it points the same way — the answer to *"do we need all
+of them"* is that the estate needs the ones it does not have yet.
 
 ---
 
