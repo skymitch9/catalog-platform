@@ -75,21 +75,19 @@ jobs:
   # now fire ~40 s later than they used to, because their jobs wait on this
   # one. A missing token is still reported with the same worded instruction —
   # it is discovered after the suite instead of before it.
+  #
+  # ⚠️ THE STEPS LIVE IN `tests.yml`, NOT HERE. This job CALLS that workflow
+  # (its `workflow_call:` trigger), so the deploy gate and the push/PR lane are
+  # literally the same job definition and cannot drift apart. `tests.yml` also
+  # runs on push to main and on PRs — which is how the gate finally became
+  # exercisable without a live deploy (ci-deploy.md §4). To change what the
+  # gate runs, edit `.github/workflows/tests.yml`.
+  #
+  # ⚠️ This does NOT add a trigger to this workflow: `deploy.yml` remains
+  # workflow_dispatch-only, per the header. A called workflow inherits this
+  # file's `permissions: contents: read` and passes no secrets.
   tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
-        with:
-          # Same version the deploy jobs use; engines says >=20, 22 is LTS.
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Run the full suite (root npm test)
-        run: npm test
-      - name: Summary
-        run: echo "::notice::Suite green at ${GITHUB_SHA} — the deploy jobs may proceed."
+    uses: ./.github/workflows/tests.yml
 
   index-worker:
     needs: tests
