@@ -10,6 +10,50 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ OWNER ANSWERS 2026-09-06 00:5x Phoenix — the 16-item list after all builds landed
+
+> The conductor presented the sixteen open owner items as ONE numbered list at
+> 00:41 (KI-14 incident disclosed first). The owner answered every line; the
+> answers and what each became, in his numbering:
+>
+> 1. **`.claude/` joins the R2 doc backup — "Yes."** ☐ build (W10-PLATFORM):
+>    `scripts/backup-docs.mjs` archives the gitignored `.claude/` folders beside
+>    the four doc trees; stays untracked (KI-2).
+> 2. **KI-14 cleanup — "Yes."** ☐ conductor: `git worktree prune` ×6, recreate
+>    the three `.claude` junction targets under `C:/lcw/onedrive-excluded/`.
+> 3. ⚠️ **ACCESS-INCREASING — `READ_ORIGINS` gains `padhard.heygabi.ai` —
+>    owner's explicit "Yes" (00:5x Phoenix).** ☐ build + deploy the index Worker
+>    (W10-PLATFORM); the ❓ line further down this file closes with it.
+> 4. **`wow-recorder` `npm install` — "rm from list."** Dropped; not an estate
+>    item. (Its `release/app/node_modules` junction is still empty; his call.)
+> 5. **#507 Book of Mormon tier D — "It's the paper, you can run the command."**
+>    ☐ run `fix-foreign-isbns-2026-09-05.mjs --remote --commit --tier D`
+>    (conductor tries; relays the `!` line if the write is refused).
+> 6. **KI-17 art books (works 516–519) — "No ISBN."** ☐ close KI-17 as settled:
+>    the four Collector's Edition art books carry no ISBN; they stay ISBN-less.
+> 7. **Space Knight `9781986619233` — "Which work is it connected to?"** ☐
+>    conductor answers from the live D1, then he says which volume.
+> 8. **Diva's items (#8 / #9 / #605) — "Ignore for now."** ⏸ deferred by owner.
+> 9. **GABI steps 5–7 — "give me test."** ☐ conductor hands him the test (it is
+>    §15.3 steps 5–7 below, condensed).
+> 10. **Export `ESTATE_APP_TOKEN_LIBRARY`/`_LIBRARY2` — "Okay we do later."** ⏸.
+> 11. **Justin's steps — "He's working on it."** ⏸ his side.
+> 12. **Audiobook `pipeline.md` watcher claim — "Do it."** ☐ correct the doc on
+>     disk (that repo's `docs/` is gitignored) — W10-AUDIOBOOK.
+> 13. **`run_purchase_audit.bat` scheduled task — "Do it."** ☐ register it like
+>     the other eight pairs — W10-AUDIOBOOK.
+> 14. **Federation eyeball — "Give me a task to check."** ☐ conductor writes the
+>     check (signed-in `/universes/` + `/series/` + the `/status` probe row).
+> 15. **Admin audit routes / `/gabi` link walk / KI-7 live — "It's good."** ☑
+>     owner accepts; those three ☐ 🧑 lines close.
+> 16. **Enforce `AUDIOBOOK_SWEEP_MODE` — "Yes."** ☐ flip AFTER the 08:23Z tick
+>     fills `seriesVolumes.lastRun` (wake-up set for 01:30 Phoenix); deploy PAIR.
+>
+> Also found while briefing: the multi-library survey's **dispatch 3 (GABI +
+> the audiobook vendor) and dispatch 4 (the provisioner + peers)** are still
+> open non-deferred builds (③c/③d below) — dispatched the same hour as
+> W10-FED-GABI and W10-FED-PROV.
+
 ## ☐ Leftovers of the test ask (2026-09-06 00:40 Phoenix) — one owner decision, two estate items
 
 > The 21:45 test ask moved WHOLE to [`DONE.md`](DONE.md) at 00:40. These are the
