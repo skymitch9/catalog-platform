@@ -34,7 +34,21 @@ that deploys it, table in [`info/catalog-registry.md`](info/catalog-registry.md)
 §2b) → `estate-auth` `df5ea89d` → `catalog-index` `001f87cd` → `heygabi-home`
 `5066cf84`. Commits `11d737d`, `df96056`, plus `library_catalog` `b1ac673` and
 `Board_Game_Catalog` `21938fa` so a provisioned catalog writes both columns and
-gets its three rows with no apex edit. Tests 3,261 → 3,300.
+gets its three rows with no apex edit. Tests **3,300 → 3,334 pass / 0 fail**
+(+34: 28 in `status-host-rows.test.mjs`, 18 → 46; 6 in `estate-catalog.test.ts`;
+3 in `catalog-requests.test.ts`; 2 in `catalogs.test.ts`; and 5 across the two
+sibling repos' provisioner suites).
+
+⚠️ **CORRECTED 2026-09-07 04:55Z, and the correction is worth more than the
+number.** This entry and two `deploys.log` lines first said *"3,261 → 3,300"*.
+Both figures were wrong: the total was summed from a `grep … | head -30`, which
+holds **10 of the 11 workspaces' summary blocks** and silently dropped the
+eleventh (34 tests). The "3,300 after" therefore coincided exactly with the real
+**3,300 before** — a wrong number that looked right because it matched the
+baseline the dispatch brief quoted. ⚠️ **A truncated pipe is a measurement
+instrument with a quiet upper bound**; the re-measure that caught it summed the
+figures with `awk` instead of reading them, which is the shape to prefer. A
+correcting `deploys.log` line was appended rather than the original edited.
 
 **Verified in a browser, before and after.** 25 checks → 27; **every
 previously-ok row still ok with an identical verdict**, 0 warnings and 0 down
