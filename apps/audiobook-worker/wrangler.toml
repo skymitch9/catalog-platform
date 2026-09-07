@@ -87,7 +87,12 @@ ESTATE_CHECK = "enforce"
 # shelf is served through the ebooks-door Worker on its OWN hostname, so
 # without it here the shim's fetch dies as an opaque CORS network error —
 # which looks exactly like the Worker being down, not like a missing origin.
-SITE_ORIGINS = "https://audiobooks.heygabi.ai,https://ebooks.heygabi.ai"
+# ⚠️ heygabi.ai joined 2026-09-07 (owner: "Yes do your suggestion for cors"):
+# the apex /status page probes /api/health from the browser, and once its CSP
+# let it ask (2123fd8) the two audiobook rows read DOWN "network error
+# (offline, or CORS)" — the exact symptom the line above describes. This
+# widens only who may ASK; every /api/* answer is still gated by the token.
+SITE_ORIGINS = "https://audiobooks.heygabi.ai,https://ebooks.heygabi.ai,https://heygabi.ai"
 
 # Not in this file, ever — the secrets. At deploy time (owner/conductor):
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT   (pipe the JSON file in —
