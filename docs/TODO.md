@@ -570,12 +570,6 @@ around it — noted only so the next check has two redeploy times, not one.
       minutes upstream (`catalog-registry.md` §8 — fine for a name, never for a
       permission). Consolidating it is a sync-script job like
       `sync-estate-auth.mjs`, not a fetch.
-- [ ] **`sites/heygabi-home/public/assets/estate-search.js` still comments that
-      the index call *"is refused by CORS today"* on padhard.** That is now
-      wrong, but the file is a **canonical asset with copies in
-      `library_catalog` and `Board_Game_Catalog`**, so correcting it is a
-      synced-asset change across three repos rather than a one-line edit — left
-      for whoever next touches that sync.
 - [ ] **`PHYSICAL_SOURCE_INSTANCE` in the audiobook `suggest.ts` was left alone
       on purpose:** it needs `audiobook_catalog`'s join to carry an instance
       before it can mean anything. Out of dispatch 3's scope, named here so it

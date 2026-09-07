@@ -9,6 +9,70 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-06 — `estate-search.js`'s *"refused by CORS today"* comment corrected — and it was ONE tracked repo, not three
+
+**Moved WHOLE from [`TODO.md`](TODO.md), the item as it stood:**
+
+> - [ ] **`sites/heygabi-home/public/assets/estate-search.js` still comments that
+>       the index call *"is refused by CORS today"* on padhard.** That is now
+>       wrong, but the file is a **canonical asset with copies in
+>       `library_catalog` and `Board_Game_Catalog`**, so correcting it is a
+>       synced-asset change across three repos rather than a one-line edit — left
+>       for whoever next touches that sync.
+
+**Done 2026-09-06 by W13-PLAT-SMALL.** Canonical file corrected here
+(`a90a19c`'s successor); the vendored copies were brought into step **through
+their sync scripts, never by hand**.
+
+🔴 **THE ITEM'S OWN PREMISE WAS WRONG, and the correction is the useful part.**
+It said the change spanned three repos and named `library_catalog` and
+`Board_Game_Catalog`. **Those two are exactly the ones that needed NO commit** —
+their copies at `apps/web/public/estate/estate-search.js` are **gitignored build
+artifacts** rewritten by `sync-estate-search.mjs` on every `prebuild`, `pretest`
+and `pretypecheck` (measured: `git check-ignore -v` names the rule in both, and
+after re-running both scripts `git status` reports nothing).
+
+⚠️ **The repo that DID need a commit was not named: `audiobook_catalog`.** Its
+copy at `site/estate/estate-search.js` is **TRACKED** (hand-vendored, synced by
+`scripts/sync_estate_search.py`), so it carried the stale sentence in git.
+Committed there as `9645ef9`, 9/9 `tests/test_estate_search_vendor.py` passing.
+
+| Repo | Copy | Tracked? | Needed a commit |
+|---|---|---|---|
+| `catalog-platform` | `sites/heygabi-home/public/assets/estate-search.js` | ✅ canonical | **yes** |
+| `audiobook_catalog` | `site/estate/estate-search.js` | ✅ tracked vendor | **yes** |
+| `library_catalog` | `apps/web/public/estate/estate-search.js` | ❌ gitignored artifact | no |
+| `Board_Game_Catalog` | `apps/web/public/estate/estate-search.js` | ❌ gitignored artifact | no |
+
+**Why the comment was wrong.** It claimed the `/api/catalogs` call is refused by
+CORS on `padhard.heygabi.ai` because `READ_ORIGINS` did not list that host —
+true when measured 2026-09-05, false the next day. The owner answered **"Yes"**
+to padhard and, as its own separate question, **"1. Yes"** to `ebooks`, so
+`READ_ORIGINS` is now **all six** estate catalog hosts. One home for that fact:
+[`info/catalog-registry.md`](info/catalog-registry.md) §10.
+
+⚠️ **A stale comment naming a LIMIT is worse than no comment** — it tells the
+next reader not to try something that now works. The replacement therefore says
+what changed, and keeps two things that survive the change: the `[]` fallback is
+**still load-bearing** (an unknown host, a directory outage or a non-200 all
+still land there — a widened allowlist removes one cause, not the need for a
+fallback), and **CORS decides which PAGES may ask, never what is RETURNED**
+(the anonymous `/api/search` body is byte-identical from ebooks, padhard,
+library and `example.com`).
+
+**No deploy was required.** It is comment text; nothing about the component's
+behaviour changed, and the sync mechanism is a build step, not a deploy. ⚠️ The
+one place it will *look* unchanged for a while: `audiobooks.heygabi.ai` serves
+its vendored copy from the **`/dev/` lane only**, and prod moves through
+`gh workflow run promote.yml` (the owner's explicit request), so that host keeps
+the old comment until somebody promotes. A decision, not a gap.
+
+**Tests.** Root suite **3,295** pass / 0 fail (the number is above this agent's
+own 3,270 because W13-PLAT-STATUS's host-rows tests were in the tree);
+audiobook vendor guard 9/9.
+
+---
+
 ## ✅ 2026-09-06 — KI-6 CLOSED ESTATE-WIDE: the bare `{"error":"unauthenticated"}` 401 is a worded refusal on all four Workers, from ONE shared helper
 
 **Moved WHOLE from [`TODO.md`](TODO.md), the item as it stood:**
