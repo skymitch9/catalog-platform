@@ -119,7 +119,7 @@ later"* (it belongs to the billing soak, item 5 of the LLM-billing section
 below); **11** Justin's shelf steps — *"He's working on it"*
 (`audiobook_catalog/docs/TODO.md` → *BLOCKED ON JUSTIN*).
 
-## ☐ Two harmless residues of the KI-14 cleanup (2026-09-06 08:46 Phoenix)
+## ☐ 🧑 Two harmless residues of the KI-14 cleanup (2026-09-06 08:46 Phoenix) — the husks are CLEARED; the `frontend/` writer is NAMED 2026-09-07 and only the OWNER'S disposition is left
 
 > *Leftovers of the test ask* moved WHOLE to [`DONE.md`](DONE.md) at 08:46 when
 > two of its three items closed. ⚠️ **The third — KI-6, the bare
@@ -154,12 +154,84 @@ below); **11** Justin's shelf steps — *"He's working on it"*
       bottom-up order that finishes it. ⚠️ **Filed here rather than `info/`
       only because the item closes with it** — if it recurs, promote it to
       [`info/worktree-deploys.md`](info/worktree-deploys.md) §0.
-- [ ] **`audiobook_catalog` still shows an untracked `frontend/`** (`dist/`,
-      `docs/` dated 2026-02-24) — re-measured 2026-09-06 08:46 Phoenix, still
-      there, still untracked. The KI-14 rebuild touched it. 🔴 **It was NOT
-      reverted and must not be reverted on inference**: nothing has named what
-      wrote it, and the standing rule is that you establish the writer before
-      reverting a dirty file.
+- [ ] 🧑 **`audiobook_catalog`'s untracked `frontend/` — THE WRITER IS NAMED
+      (measured 2026-09-07 10:4x Phoenix, W18-MEASURE, read-only). What is left
+      is the OWNER'S disposition, and nothing else.**
+      ⚠️ **It is TWO writers, not one, and the earlier note ("the KI-14 rebuild
+      touched it") is right about only 87 bytes of it.**
+
+      **Writer A — the SKELETON and `dist/`: the owner, 2026-02-24.** An
+      abandoned Vite/React experiment (`"name": "audiobook-react"`). Ten commits
+      by *Shane Mitchell* between **18:02:37** (`aa943c3` "react test") and
+      **21:00:04** (`7e60b47` "white page fix") −0700, on a line of history that
+      **belongs to no branch and is NOT an ancestor of `main`** — `git branch -a
+      --contains 7e60b47` is empty and `git merge-base --is-ancestor 7e60b47
+      main` says NO, so the whole line is dangling (reset away that evening; the
+      reflog no longer reaches it, Feb being far past the 90-day expiry).
+
+      | Evidence | Reading |
+      |---|---|
+      | `frontend/` CreationTime | **2026-02-24 16:42:48** |
+      | every subdirectory CreationTime | 2026-02-24 **16:43:30–16:44:02** |
+      | every subdirectory LastWriteTime | 2026-02-24 **21:40:08–21:42:05** — ~40 min after the last commit: the moment the tracked files were removed |
+      | `frontend/dist/*` (4 files) | CreationTime 2026-02-24 16:43:30, LastWriteTime **2026-02-17 / 2026-02-05** — copied in with times preserved, never built here |
+      | `git log --all -- frontend/dist` | **empty** — never tracked; `frontend/.gitignore` at `7e60b47` ignores `dist` and `node_modules` |
+      | live tree | **21 directories, 5 files.** `src/`, `public/`, `docs/` and all 13 nested dirs are **EMPTY** |
+
+      ⚠️ **Why the empty directories survived is already measured in the item
+      above:** every directory in these repos carries reparse tag
+      **`0x9000e01a`** + `ReadOnly`, and a recursive/`rmdir` removal is refused —
+      so git removed the files and could not remove the folders. `dist/` and
+      `public/vite.svg` were gitignored, so they were never git's to remove at
+      all. **Nothing in the repo references `frontend/` today** (`REPO_MAP.md`
+      calls it *"experimental frontend"*; `RECOVERY.md` §App lists it).
+
+      **Writer B — `frontend/package-lock.json` ONLY (87 bytes, created AND
+      written 2026-09-06 00:15:59): the KI-14 / W9-KILL repair's `npm install`
+      sweep.** Eight lockfiles across the estate were rewritten in one 4-minute
+      pass and this is the fifth of them, **7 seconds** after the audiobook root:
+
+      | # | Lockfile | LastWriteTime 2026-09-06 | Size |
+      |---|---|---|---|
+      | 1 | `catalog-platform` | 00:12:43 | 180,643 |
+      | 2 | `bookbuddy/library_catalog` | 00:14:19 | 186,992 |
+      | 3 | `boardbuddy/Board_Game_Catalog` | 00:14:36 | 168,119 |
+      | 4 | `bookbuddy/audiobook_catalog` | 00:15:52 | 110,167 |
+      | **5** | **`bookbuddy/audiobook_catalog/frontend`** | **00:15:59** | **87** 🔴 |
+      | 6 | `flight-info/flight_info/frontend` | 00:16:09 | 124,212 |
+      | 7 | `scraping-tool/scraping-tool` | 00:16:25 | 12,292 |
+      | 8 | `Sundance/Sundance-Buddy/strategy_dashboard/frontend` | 00:16:43 | 61,567 |
+
+      The 87 bytes are npm's **no-`package.json` stub**, named after the folder
+      (`{"name":"frontend","lockfileVersion":3,"requires":true,"packages":{}}`)
+      — the real Feb lockfile was 220,682 bytes and named `audiobook-react`. It
+      is the stub precisely because `frontend/package.json` went away with
+      Writer A's reset. ⚠️ **Corroboration that `frontend/node_modules` was one
+      of the 36 destroyed junction targets** (which is why the sweep visited it
+      at all): `C:\lcw\onedrive-excluded\bookbuddy\audiobook_catalog\frontend\`
+      exists, is **EMPTY**, and was created **00:10:55** — exactly
+      [`scripts/onedrive-exclude.ps1`](../scripts/onedrive-exclude.ps1)`:154`'s
+      `New-Item -ItemType Directory -Path (Split-Path $dst)`. The repair window
+      is `C:\lcw\onedrive-excluded`'s own **00:10:55 → 00:20:32**.
+
+      🧑 **PROPOSED DISPOSITION — the owner's call, presented as one question
+      with three answers. NOTHING was deleted or reverted by this pass.**
+      1. **(a) Delete `frontend/` whole.** It is a 6-month-dead experiment,
+         nothing references it, and the tree is 21 empty folders + a 287 KB
+         stale bundle. ⚠️ **Tag the history FIRST or it is gone** — the commits
+         are dangling and a `git gc` will collect them:
+         `git tag archive/react-frontend-2026-02-24 7e60b47` makes the whole line
+         reachable again. The delete then needs the bottom-up **non-recursive**
+         recipe from the item above (clear `ReadOnly`, `[System.IO.Directory]::Delete(<p>, $false)`),
+         because the recursive forms are refused.
+      2. **(b) Delete only `frontend/package-lock.json`** — the 87-byte stub is
+         unambiguously junk written by a repair, names a package that does not
+         exist, and would confuse the next `npm install` sweep. Leaves the Feb
+         skeleton alone.
+      3. **(c) Leave it.** It costs nothing but one `??` line in `git status`.
+      **Recommendation: (a) with the tag first.** ⚠️ Neither delete is an
+      access-reducing emergency; both are reversible only via the tag, which is
+      why the tag comes first.
 
 ## ☐ OWNER ASK 2026-09-05 16:50 Phoenix — scripts → routes
 
@@ -559,6 +631,101 @@ around it — noted only so the next check has two redeploy times, not one.
       a colour no measurement backs is precisely what that page is written
       against. Whoever wants `library2` graded watches its pushes first; the
       thresholds then go in `INDEX_CADENCE` (`status/status.js`).
+
+      🔴 **MEASURED 2026-09-07 10:41–10:44 Phoenix (W18-MEASURE) — and the
+      measurement says DO NOT MAKE THE EDIT YET. The exact edit is written out
+      below; it was deliberately NOT applied.** Three findings, in the order
+      they decide the question.
+
+      **① THERE IS NO PUSH HISTORY ANYWHERE — the store keeps only the latest.**
+      `/status` reads `sources[key].pushed_at` off one GET to
+      `https://index.heygabi.ai/api/health` (`status.js:15`), which is
+      `SELECT source, COUNT(*), MAX(pushed_at) FROM entry GROUP BY source`
+      (`apps/index-worker/src/health.ts:69`). The push is snapshot-replace —
+      `DELETE FROM entry WHERE source = ?` then re-insert
+      (`apps/index-worker/src/push.ts:288`) — so **every row of a source carries
+      the same `pushed_at` and `MIN == MAX`**. The estate event ring is not a
+      second copy either: `apps/index-worker/src/index.ts:178` reports **only
+      unhandled errors**, deliberately, because the ring is capped per worker.
+      ⚠️ **So a gap between the last N pushes cannot be computed today. One age
+      is all that exists.**
+
+      **② THE SINGLE AGE, read live (public, unauthenticated, `200`):**
+
+      | source | rows | `pushed_at` | age at 2026-09-07T17:43:51Z |
+      |---|---|---|---|
+      | audiobook | 1,251 | 2026-09-07T17:38:30.162Z | **0h 05m** |
+      | library | 411 | 2026-09-07T13:13:02.130Z | **4h 30m** |
+      | game | 838 | 2026-09-07T00:19:10.190Z | 17h 24m |
+      | **library2** | **677** | **2026-09-07T00:19:12.578Z** | **17h 24m** |
+
+      ⚠️ **That one timestamp cannot be attributed, which is why it is not a
+      cadence.** `game` and `library2` — two catalogs in two different repos —
+      pushed **2.4 seconds apart**, which is not organic household use; it is one
+      sweep ticking both backstops (or two forced pushes). And it is the ONLY
+      `library2` value that exists.
+
+      **③ WHAT THE CODE SAYS, which is the honest half of the evidence.**
+      `library2` runs the **same file, same constants** as `library` —
+      `library_catalog/apps/worker/src/lib/index-push.ts`, the only per-instance
+      difference being `resolveIndexSource(env.ESTATE_APP)`. Three triggers, and
+      **none of them is a cron**: (1) `indexPushAfterMutation` on a successful
+      catalog write, (2) `indexBackstopOnRequest` — a staleness backstop riding
+      ordinary `/api/*` traffic, `BACKSTOP_MAX_AGE_MS = 24 h` checked at most
+      `BACKSTOP_CHECK_INTERVAL_MS = 1 h` per isolate, (3) the manual
+      `POST /api/admin/index-push`. ⚠️ **The three crons in
+      `[env.friend.triggers]` push NOTHING** — re-read that day, both blocks are
+      `["7 * * * *", "23 */4 * * *", "47 9 * * *"]` = `DETAILS_SWEEP_CRON`
+      (`details-sweep.ts:303`), `AUDIOBOOK_SWEEP_CRON`
+      (`audiobook-sweep-run.ts:155`), `AUDITS_CRON` (`audit-run.ts:73`).
+
+      **THE ARITHMETIC, if the thresholds were inherited:** ceiling =
+      `BACKSTOP_MAX_AGE_MS` **24 h** + one check-interval of granularity **1 h**
+      = **25 h**, + 1 h slack → **amber 26 h**; two full backstop cycles →
+      **red 48 h**. ⚠️ **That is exactly where `INDEX_CADENCE.library`'s 26/48
+      came from** — `status.js:200–211` says so itself: *"round numbers, not
+      measurements"*, `guess: true`. So the bar for entry into that table is
+      **not** "measured"; two of its three rows are declared guesses.
+
+      🔴 **AND YET: the measurement argues AGAINST inheriting 26/48.** The
+      backstop rides traffic, and padhard has almost none. Measured today,
+      `library2` sat at 17h 24m through **three deploys of its own worker** —
+      13:17:14Z, 15:49:28Z, 17:08:24Z (`library_catalog/docs/deploys.log`,
+      `env=friend`) — with the timestamp never moving, because a deploy makes no
+      API request. A 26 h amber would have fired on padhard ~9 h after this
+      reading with the system behaving exactly as designed. `library`'s note
+      already warns *"quiet ≠ broken"*; on a second household's shelf that is
+      the normal case, not the edge one.
+
+      **THE EXACT EDIT — one object literal in
+      `sites/heygabi-home/public/status/status.js`, after the `library` entry in
+      `INDEX_CADENCE` (`:213`). NOT APPLIED:**
+      ```js
+      library2: {
+        amberMs: 26 * 3600_000,
+        redMs: 48 * 3600_000,
+        note: 'GUESS — identical push code to `library` (on-edit + a 24h backstop riding request traffic, no cron), but padhard sees far less traffic. Quiet ≠ broken, more so here than on main.',
+        guess: true,
+      },
+      ```
+      **Why it was not applied, plainly:** (i) the brief's own gate — *a
+      one-constant edit **with an existing test*** — is not met. Nothing tests
+      `INDEX_CADENCE`; `scripts/test/apex-registry-consumers.test.mjs` pins the
+      *wiring* (`indexSourceOrder`, the dead `INDEX_SOURCE_ORDER`, the forbidden
+      literals) and never reads a threshold. (ii) One un-attributable timestamp
+      is not a rhythm, and `indexCfg`'s own comment (`:260`) is the rule this
+      would be bending: *"a colour here would be a judgement nothing has
+      measured."*
+
+      ✅ **WHAT WOULD CLOSE IT, and it is cheap.** The index does not keep a
+      history, so **sample one**: poll the public
+      `https://index.heygabi.ai/api/health` (one unauthenticated GET, no token,
+      no gate) on a schedule and record the **distinct** values of
+      `sources.library2.pushed_at`. The distinct list IS the push history the
+      index throws away. Two weeks of that gives real gaps; amber = observed p95
+      gap + slack, red = 2×. ⚠️ Do **not** "measure" it by hitting a padhard
+      `/api/*` route to provoke a backstop tick — that manufactures the push it
+      claims to observe, and it destroys the one real timestamp on record.
 - [ ] **`PHYSICAL_SOURCE_INSTANCE` in the audiobook `suggest.ts` was left alone
       on purpose:** it needs `audiobook_catalog`'s join to carry an instance
       before it can mean anything. Out of dispatch 3's scope, named here so it
