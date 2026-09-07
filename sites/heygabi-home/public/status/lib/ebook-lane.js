@@ -55,7 +55,36 @@
  */
 
 /**
+ * ⚠️ FIFTH AND LAST FIX, 2026-09-07 (B18): THE TRIGGER STRING IS NO LONGER
+ * THE GATE. The pipeline now RECORDS what STEP 1b did, in
+ * `summary.ebookManifestState` — `built` | `skipped` | `failed` — written by
+ * `app/pipeline_status.ebook_manifest()` in audiobook_catalog and called from
+ * all four of STEP 1b's outcomes plus both paths that skip it by design
+ * (`--rebuild-only`, a single-step run).
+ *
+ * Everything below that reads `trigger` is therefore a FALLBACK for runs whose
+ * status document predates that change, and NOTHING ELSE. It is kept only
+ * until the first run has written the field.
+ *
+ * 🔴 **DELETE `ebookRunKind`, `EBOOK_PRODUCING_TRIGGERS` and every branch
+ * guarded by `state == null` once a run has been observed carrying
+ * `summary.ebookManifestState`** — the first scheduled 8-hourly cycle after
+ * 2026-09-07 writes it. A fallback is how two sources survive, and this one
+ * exists to be removed, not to be maintained: leaving it means the cross-repo
+ * trigger-string contract that caused three false ambers is still live, just
+ * harder to see. The check is one read of `pipeline_status/current`.
+ *
+ * ⚠️ Do NOT delete it on the strength of the date alone. A machine that has
+ * not run the pipeline since, or a lane (`_dev`) whose last run is older,
+ * still serves a pre-B18 document, and removing the fallback would turn that
+ * into a grey row for no reason.
+ */
+
+/**
  * Which run shapes actually REBUILD the ebook manifest.
+ *
+ * ⚠️ SUPERSEDED 2026-09-07 by `summary.ebookManifestState` — see the banner
+ * above. This is the fallback path for pre-B18 status documents.
  *
  * ⚠️ Producers are whitelisted rather than non-producers blacklisted, and an
  * unrecognised trigger returns null = "do not judge": a NEW run shape added
@@ -140,11 +169,83 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
     };
   }
 
-  const kind = ebookRunKind(pipeStatus.trigger, pipeStatus.steps);
   const summary = pipeStatus.summary || {};
   const builtCount = Number(summary.ebookCount);
   const builtAt = Date.parse(summary.ebookManifestAt || '');
   const builtAge = Number.isFinite(builtAt) ? `last built ${formatAge(now - builtAt)}` : 'build time not recorded';
+
+  // ── WHAT STEP 1b ACTUALLY DID (B18, 2026-09-07) ──────────────────────────
+  //
+  // ⚠️ THE MEASUREMENT, AND IT OUTRANKS EVERY INFERENCE BELOW IT. `state` is
+  // written by the pipeline itself; `kind` is this page deducing the same
+  // thing from a trigger string across a repo boundary. Where they disagree
+  // the pipeline is right, because it was there.
+  const state = typeof summary.ebookManifestState === 'string'
+    ? summary.ebookManifestState
+    : null;
+  const stateDetail = typeof summary.ebookManifestDetail === 'string'
+    ? summary.ebookManifestDetail
+    : '';
+
+  // ⚠️ FALLBACK ONLY — delete with `ebookRunKind` once a run has written
+  // `ebookManifestState` (see the banner on that function). It is computed
+  // unconditionally rather than inside the `state == null` branch purely so
+  // its `label` can still supply WORDS to the legacy branches; no colour
+  // depends on it any more when `state` is present.
+  const kind = ebookRunKind(pipeStatus.trigger, pipeStatus.steps);
+
+  // ── 1b FAILED ────────────────────────────────────────────────────────────
+  //
+  // 🔴 A SIGNAL THIS ROW HAS NEVER HAD. Before B18 a failed manifest build
+  // left exactly what a deliberate skip left — no ebook fields at all — so a
+  // real fault was rendered with the harmless green reserved for
+  // "not expected to have moved". Amber, not red: the shelf on the site is
+  // untouched and still serving, so nobody is missing a book *yet*.
+  if (state === 'failed') {
+    return {
+      state: 'warn',
+      detail: `⚠️ ${shelf} · the last run's ebook step FAILED, so nothing new was built${stateDetail ? ` — ${stateDetail}` : ''}`,
+      note:
+        'Amber because the pipeline tried to rebuild the ebook manifest and could not. The published shelf ' +
+        'is whatever the last SUCCESSFUL run left, so no reader has lost anything — but any epub added since ' +
+        'is not on it, and the next run will fail the same way until the cause is fixed. Measured, not ' +
+        `inferred: the pipeline records this in summary.ebookManifestState.${prodNote}`,
+    };
+  }
+
+  // ── 1b SKIPPED, BY DESIGN ────────────────────────────────────────────────
+  //
+  // ⚠️ THIS IS THE CASE THAT PRODUCED THE SECOND FALSE AMBER, and it is now a
+  // READ rather than a deduction from `trigger === 'manual-rebuild'`. Green,
+  // for the same reason as the legacy `kind.produces === false` branch below:
+  // the shelf is not expected to have moved.
+  if (state === 'skipped') {
+    return {
+      state: 'ok',
+      detail: `${shelf} · ${publishedAge} · the last run did not rebuild the manifest${stateDetail ? ` (${stateDetail})` : ''}`,
+      note:
+        'Green because the shelf is not expected to have moved, and this is the PIPELINE saying so rather ' +
+        'than this page deducing it from the run\'s trigger string. Judged against the next full run ' +
+        `instead.${prodNote}`,
+    };
+  }
+
+  // ── 1b RAN, but its timestamp could not be recorded ───────────────────────
+  //
+  // ⚠️ `built` WITHOUT a `generated_at` is a real outcome, not a broken
+  // record: the build can succeed while reading `site/ebooks.json` back fails.
+  // Grey — the step ran, so "not expected to move" (green) would be a lie, and
+  // there is nothing to compare against, so any other colour would be a guess.
+  if (state === 'built' && !Number.isFinite(builtAt)) {
+    return {
+      state: 'nodata',
+      detail: `${shelf} · ${publishedAge} · the last run rebuilt the manifest but did not record when${stateDetail ? ` — ${stateDetail}` : ''}`,
+      note:
+        'Grey, not green: the ebook step DID run, so "not expected to have moved" would be wrong — but ' +
+        'without the manifest\'s own generated_at there is nothing to check the published file against. ' +
+        `This is the pipeline reporting a partial failure of its own bookkeeping, not a silent one.${prodNote}`,
+    };
+  }
 
   // ── DID THE MANIFEST THIS RUN BUILT ACTUALLY REACH THE SITE? ────────────
   //
@@ -165,7 +266,21 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
   // says so in words instead of leaving a reader to wonder why a run that
   // changed nothing is being reported at all. The colour was always green
   // there; what was missing was the sentence.
-  if (Number.isFinite(builtAt) && kind.produces === true) {
+  //
+  // ⚠️ THE GATE CHANGED 2026-09-07 (B18), AND THIS IS THE WHOLE ITEM. It used
+  // to read `Number.isFinite(builtAt) && kind.produces === true` — so even
+  // with the manifest's own timestamp in hand, the row refused to use the
+  // MEASUREMENT unless the TRIGGER STRING was in a whitelist maintained in the
+  // other repo. A rename in `sync_pipeline_8h.bat` silently degraded a row
+  // that had the fact it needed sitting right there.
+  //
+  // `summary.ebookManifestAt` is only ever written when 1b actually built a
+  // manifest, so its presence IS the proof the step ran. `state === 'built'`
+  // is now the primary gate; `kind.produces === true` is retained ONLY as the
+  // fallback for pre-B18 documents, and goes when `ebookRunKind` goes.
+  const ranAndStamped =
+    Number.isFinite(builtAt) && (state === 'built' || (state === null && kind.produces === true));
+  if (ranAndStamped) {
     if (Math.abs(generatedAt - builtAt) < 1000) {
       // ⚠️ THE OWNER'S "no change is not a bug" SENTENCE, and it is anchored to
       // what the RUN REPORTED, not to an inference. `builtCount ===
@@ -275,11 +390,34 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
     };
   }
 
+  // ── An ebookManifestState this reader has never heard of ─────────────────
+  //
+  // ⚠️ FAIL TOWARD SAYING NOTHING, the same rule `ebookRunKind` follows for an
+  // unrecognised trigger. A new state added upstream must not fall through to
+  // the legacy trigger branches below, because those would answer GREEN
+  // ("not expected to have moved") for a value that might mean the opposite —
+  // which is precisely how this row invented three false colours.
+  if (state !== null && state !== 'built') {
+    return {
+      state: 'nodata',
+      detail: `${shelf} · ${publishedAge} · the last run reported an ebook step state this page does not know (${state}).`,
+      note:
+        'Grey on purpose: a new summary.ebookManifestState value was added in audiobook_catalog and this ' +
+        'page has not been taught what it means. Guessing a colour is what this row spent three fixes ' +
+        `learning not to do. Teach it in status/lib/ebook-lane.js.${prodNote}`,
+    };
+  }
+
   // ── No recorded count: say so, do not guess a colour ─────────────────────
   //
   // ⚠️ THE OLD CODE PAINTED AMBER HERE, by comparing the heartbeat's age
   // against the run's start time. That is exactly the false alarm the owner
   // reported: a quiet run leaves the heartbeat older than itself by design.
+  //
+  // ⚠️ FALLBACK, PRE-B18 DOCUMENTS ONLY (2026-09-07) — everything from here
+  // down reads the trigger string and goes with `ebookRunKind`. `state` is
+  // null in this branch by construction (the guard just above returns for
+  // every other value), so nothing here can override a measurement.
   if (kind.produces === false) {
     return {
       state: 'ok',
@@ -296,6 +434,8 @@ export function ebookLaneVerdict({ heartbeat, pipeStatus, prodStampMs = NaN, now
       'Grey, deliberately: without summary.ebookCount from the pipeline there is nothing to compare the ' +
       'published shelf against, and every colour this row could pick would be a guess. It is written by ' +
       "audiobook_catalog's sync_to_drive.py STEP 1b, so this state means a run older than that change or " +
-      `a step that did not reach it (last run: ${kind.label}).${prodNote}`,
+      `a step that did not reach it (last run: ${kind.label}). Since 2026-09-07 the pipeline also records ` +
+      'summary.ebookManifestState, so a run carrying no state at all is a run older than that change ' +
+      `too.${prodNote}`,
   };
 }

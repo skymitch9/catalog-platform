@@ -545,14 +545,24 @@
         "⚠ 'ebookCount' is pinned as THE SIGNAL ITSELF. The whole fix is that this row compares the published",
         "shelf COUNT against the count the last run built, instead of comparing timestamps — a refactor that",
         "quietly went back to timestamps would reproduce the exact false amber the owner reported three times.",
-        "Its behaviour is pinned by scripts/test/ebook-lane.test.mjs against the live payload that produced it."
+        "Its behaviour is pinned by scripts/test/ebook-lane.test.mjs against the live payload that produced it.",
+        "⚠ 'ebookManifestState' JOINED THIS LIST ON 2026-09-07 (B18) AND IS NOW THE PRIMARY SIGNAL. The",
+        "pipeline records what STEP 1b actually did — built | skipped | failed — so the row READS it instead",
+        "of deducing it from the run's trigger string. Losing this marker means the page silently went back to",
+        "the cross-repo string guess that produced all three false ambers, with every test still green because",
+        "the fallback path is still there and still correct.",
+        "⚠ EBOOK_PRODUCING_TRIGGERS and ebookRunKind ARE NOW THE FALLBACK, kept only until a run has written",
+        "ebookManifestState — see the 2026-09-07 banner in the file. When they are deleted, delete them from",
+        "this list in the SAME commit: a pin on removed code fails every deploy, which is the trap the entry",
+        "above this one is about."
       ],
       "path": "/status/lib/ebook-lane.js",
       "mustContain": [
         "ebookLaneVerdict",
         "ebookRunKind",
         "EBOOK_PRODUCING_TRIGGERS",
-        "ebookCount"
+        "ebookCount",
+        "ebookManifestState"
       ]
     },
     {

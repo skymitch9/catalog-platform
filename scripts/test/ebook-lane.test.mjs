@@ -335,3 +335,140 @@ test('⚠️ direction is decided BEFORE the counts — the bug was the branch o
   assert.equal(publishedNewer.state, 'nodata');
   assert.equal(builtNewer.state, 'warn');
 });
+
+// ---------------------------------------------------------------------------
+// B18 (2026-09-07) — the row READS what STEP 1b did instead of guessing
+//
+// ⚠️ EVERY FIXTURE ABOVE THIS LINE IS A PRE-B18 DOCUMENT (no
+// `ebookManifestState`), which is deliberate: they now exercise the FALLBACK
+// path, so the 19 tests above are the regression guarantee that turning the
+// measurement on did not change any verdict for a run that predates it.
+//
+// The pipeline writes the field from `app/pipeline_status.ebook_manifest()` in
+// audiobook_catalog. Its own half is pinned by
+// `tests/test_ebook_manifest_state.py` there — a field written correctly and
+// read wrongly is exactly the class of bug this row keeps producing, so each
+// side of the contract gets a test.
+// ---------------------------------------------------------------------------
+
+/** A post-B18 run: same live payload, plus the verdict the pipeline recorded. */
+const withState = (state, extra = {}) => ({
+  ...LIVE_QUIET_RUN,
+  summary: { ...LIVE_QUIET_RUN.summary, ebookManifestState: state, ...extra },
+});
+
+test('⚠️ B18: `built` REPLACES the trigger-string gate as the primary signal', () => {
+  // THE ITEM ITSELF. The old gate was `Number.isFinite(builtAt) && kind.produces
+  // === true` — so an UNRECOGNISED trigger threw away a measurement the row was
+  // already holding. Here the trigger is nonsense and the verdict is still the
+  // real stamp comparison, because the pipeline SAID the step ran.
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
+    pipeStatus: { ...withState('built'), trigger: 'some-trigger-renamed-next-year' },
+  });
+  assert.equal(v.state, 'ok');
+  assert.match(v.detail, /published manifest is the one the last run built/);
+});
+
+test('⚠️ B18: the same nonsense trigger WITHOUT the state field still says nothing', () => {
+  // The fallback, unchanged — and the proof that the test above is measuring
+  // the new field rather than an accident of the fixture.
+  const v = verdict({
+    heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
+    pipeStatus: { ...LIVE_QUIET_RUN, trigger: 'some-trigger-renamed-next-year' },
+  });
+  assert.equal(v.state, 'nodata');
+});
+
+test('⚠️ B18: a recorded `built` still goes AMBER when the publish did not land', () => {
+  // The measurement must not soften the one reading that found a real defect.
+  const v = verdict({ pipeStatus: withState('built') });
+  assert.equal(v.state, 'warn');
+  assert.match(v.detail, /built a NEWER manifest than the one published/);
+});
+
+test('B18: `skipped` is GREEN and says the PIPELINE said so, not the page', () => {
+  const { ebookCount, ebookManifestAt, ...bare } = LIVE_QUIET_RUN.summary;
+  const v = verdict({
+    pipeStatus: {
+      ...LIVE_QUIET_RUN,
+      trigger: 'manual-rebuild',
+      summary: { ...bare, ebookManifestState: 'skipped', ebookManifestDetail: '--rebuild-only: STEP 1b is excluded by design' },
+    },
+  });
+  assert.equal(v.state, 'ok');
+  assert.match(v.detail, /did not rebuild the manifest/);
+  assert.match(v.detail, /excluded by design/);
+  assert.match(v.note, /this is the PIPELINE saying so rather than this page deducing it/);
+});
+
+test('B18: `skipped` is green even when the trigger says the opposite', () => {
+  // A `scheduled` run that nonetheless skipped 1b would previously have been
+  // judged as a producer and gone amber. The record outranks the inference.
+  const { ebookCount, ebookManifestAt, ...bare } = LIVE_QUIET_RUN.summary;
+  const v = verdict({
+    pipeStatus: { ...LIVE_QUIET_RUN, trigger: 'scheduled', summary: { ...bare, ebookManifestState: 'skipped' } },
+  });
+  assert.equal(v.state, 'ok');
+});
+
+test('🔴 B18: `failed` is AMBER — a signal this row has never had', () => {
+  // Before B18 a failed manifest build left exactly what a deliberate skip
+  // left: no ebook fields at all. So a real fault rendered GREEN.
+  const { ebookCount, ebookManifestAt, ...bare } = LIVE_QUIET_RUN.summary;
+  const failed = {
+    ...LIVE_QUIET_RUN,
+    summary: { ...bare, ebookManifestState: 'failed', ebookManifestDetail: 'build_manifest returned 2' },
+  };
+  const v = verdict({ pipeStatus: failed });
+  assert.equal(v.state, 'warn');
+  assert.match(v.detail, /ebook step FAILED/);
+  assert.match(v.detail, /build_manifest returned 2/);
+  assert.match(v.note, /no reader has lost anything/);
+
+  // ...and it is a DIFFERENT verdict from the skip that used to look identical.
+  const skipped = verdict({
+    pipeStatus: { ...LIVE_QUIET_RUN, summary: { ...bare, ebookManifestState: 'skipped' } },
+  });
+  assert.notEqual(v.state, skipped.state, 'failed and skipped must not render alike');
+});
+
+test('B18: `built` with no recorded stamp is GREY — it ran, so green would lie', () => {
+  // The build succeeded and reading site/ebooks.json back failed. Not green
+  // ("not expected to have moved" is false — it WAS expected to move and did),
+  // not amber (nothing is known to be wrong).
+  const { ebookManifestAt, ...noStamp } = LIVE_QUIET_RUN.summary;
+  const v = verdict({
+    pipeStatus: {
+      ...LIVE_QUIET_RUN,
+      summary: { ...noStamp, ebookManifestState: 'built', ebookManifestDetail: 'built, but site/ebooks.json could not be read back: boom' },
+    },
+  });
+  assert.equal(v.state, 'nodata');
+  assert.match(v.detail, /rebuilt the manifest but did not record when/);
+  assert.match(v.note, /would be wrong/);
+});
+
+test('⚠️ B18: an UNKNOWN state fails toward saying nothing, never toward green', () => {
+  // The same rule ebookRunKind follows for an unrecognised trigger. Falling
+  // through to the legacy branches would have answered GREEN for a value that
+  // might mean the opposite — which is how this row invented three colours.
+  const { ebookCount, ebookManifestAt, ...bare } = LIVE_QUIET_RUN.summary;
+  const v = verdict({
+    pipeStatus: { ...LIVE_QUIET_RUN, trigger: 'manual-rebuild', summary: { ...bare, ebookManifestState: 'partially-armed' } },
+  });
+  assert.equal(v.state, 'nodata');
+  assert.match(v.detail, /state this page does not know \(partially-armed\)/);
+});
+
+test('B18: a non-string state is ignored rather than trusted', () => {
+  // Firestore decoding is not this module's job, and `{}` or `null` arriving
+  // where a string was expected must not become an unknown-state grey.
+  for (const junk of [null, 42, {}, []]) {
+    const v = verdict({
+      heartbeat: { ...LIVE_HEARTBEAT, generated_at: LIVE_QUIET_RUN.summary.ebookManifestAt },
+      pipeStatus: withState(junk),
+    });
+    assert.equal(v.state, 'ok', `junk state ${JSON.stringify(junk)} should fall back cleanly`);
+  }
+});

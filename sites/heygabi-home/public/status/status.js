@@ -935,11 +935,14 @@ function renderPipelineAudioRow(fetchResult, now) {
  * A rename there silently degrades this row to "do not judge"; it cannot
  * produce a wrong colour.
  *
- * The durable fix is for the pipeline to RECORD whether step 1b ran (an
- * `ebookManifestAt` field on pipeline_status/current) so this becomes a read
- * rather than an inference — filed on the audiobook TODO, deliberately not
- * done here, since it changes pipeline code and the standing order is that
- * the pipeline is not touched without asking.
+ * ✅ THE DURABLE FIX LANDED 2026-09-07 (B18), owner-approved — so everything
+ * described above is now the FALLBACK, not the mechanism. The pipeline records
+ * what step 1b did in `summary.ebookManifestState` (`built` | `skipped` |
+ * `failed`, written by `app/pipeline_status.ebook_manifest()` in
+ * audiobook_catalog), and `lib/ebook-lane.js` reads it. The trigger-string
+ * whitelist survives only for status documents written before that date and is
+ * marked for deletion in that file — see its 2026-09-07 banner for the
+ * condition.
  */
 /**
  * ⚠️ FOURTH FIX, 2026-08-18, AND THE FIRST ONE THAT IS TESTED. The verdict now
