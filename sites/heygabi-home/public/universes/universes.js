@@ -414,10 +414,10 @@ function renderUniverseBody(body, data) {
     return;
   }
 
-  // ⚠️ The "A result means it is in the catalog — some entries are wanted, not
-  // owned." caveat was emitted here until 2026-09-07 — grey-paragraph audit
-  // item 187, one of four estate copies of one sentence. The SURVIVING copy is
-  // series/index.html's footer. Do not re-add it per result.
+  // ⚠️ The per-result "wanted, not owned" caveat was emitted here until
+  // 2026-09-07 — grey-paragraph audit item 187, one of FOUR estate copies of
+  // one sentence. The SURVIVING copy is series/index.html's footer. Do not
+  // re-add it per result.
 
   // Games vs everything-else — see isGameRow() for why the book side is a
   // COMPLEMENT rather than a second allow-list (`library2`, 2026-09-05), and
@@ -972,8 +972,9 @@ function openForm() {
   // CLI's --why — tools/universes.mjs: "an entry that cannot say why it exists
   // is refused" — and the form must not be softer than the CLI.
   // Grey-paragraph audit item 225 cut the hint paragraph beneath this field on
-  // 2026-09-07 ("Required. Every entry in the estate's universe list records
-  // why it exists."), on the reasoning that "Required" on the label is enough.
+  // 2026-09-07 — it said the field was required and that every universe entry
+  // records why it exists — on the reasoning that "Required" on the label is
+  // enough.
   // It was NOT on the label at the time; putting it there is what makes the cut
   // safe. Do not drop it from the label to tidy the wording.
   whyLabel.textContent = 'Why (required)';

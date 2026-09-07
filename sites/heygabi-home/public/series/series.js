@@ -520,11 +520,11 @@ function renderSeriesBody(body, data) {
     return;
   }
 
-  // ⚠️ The per-result "A volume listed means it is in a catalog — some entries
-  // are wanted, not owned." caveat was emitted here until 2026-09-07 —
-  // grey-paragraph audit item 187, one of four estate copies of one sentence.
-  // The SURVIVING copy is series/index.html's footer, which is on screen while
-  // this panel is open. Do not re-add it per result; that is what made it four.
+  // ⚠️ The per-result "wanted, not owned" caveat was emitted here until
+  // 2026-09-07 — grey-paragraph audit item 187, one of FOUR estate copies of
+  // one sentence. The SURVIVING copy is series/index.html's footer, which is on
+  // screen while this panel is open. Do not re-add it per result; emitting it
+  // beside every result is what made it four.
 
   const indices = [...numbered.keys()].sort((a, b) => a - b);
   const plan = gapPlan(indices);

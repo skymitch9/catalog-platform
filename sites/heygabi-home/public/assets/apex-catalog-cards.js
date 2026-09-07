@@ -161,9 +161,9 @@ function newCard(cat) {
   a.appendChild(name);
 
   // ⚠️ NO p.what ON A REGISTRY CARD — grey-paragraph audit item 220, cut
-  // 2026-09-07. It read "Joined the estate index — this card is written from
-  // the estate's own catalog registry", which described the MECHANISM that
-  // produced the card rather than the catalog the card points at. The five
+  // 2026-09-07. It announced that the card had been written from the estate's
+  // own catalog registry, which described the MECHANISM that produced the card
+  // rather than the catalog the card points at. The five
   // hand-written cards' taglines went the same day (item 179); only the Admin
   // card keeps one, because it states a gate. A new card should look like the
   // others, so do not reintroduce this line here either.

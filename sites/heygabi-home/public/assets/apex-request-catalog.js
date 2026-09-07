@@ -462,10 +462,10 @@ function buildForm() {
   nameInput.placeholder = 'What this shelf is called on heygabi.ai';
   nameInput.value = draft.displayName;
   nameField.append(nameLabel, nameInput);
-  // The hint "What shows on this page once it exists. Change it freely." was
-  // dropped here 2026-09-07 -- grey-paragraph audit item 223. The label reads
-  // "Display name" and the placeholder reads "What this shelf is called on
-  // heygabi.ai"; a third phrasing of the same idea is not a third fact.
+  // A hint saying this name is what shows on the page and can be changed
+  // freely was dropped here 2026-09-07 -- grey-paragraph audit item 223. The
+  // label reads "Display name" and the placeholder already says where the name
+  // appears; a third phrasing of one idea is not a third fact.
   panel.appendChild(nameField);
 
   /* --- note (optional) -------------------------------------------------- */
