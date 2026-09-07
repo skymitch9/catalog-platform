@@ -9,6 +9,10 @@
 > `apps/audiobook-worker/src/capabilities.ts:115-119` and commit `1bac6b9`.
 > **Nothing else on this page was re-measured that day** — the retention proof,
 > the counts and the query in §1–§3 still carry their 2026-08-17 date.
+> ⚠️ **§3.3 added 2026-09-07:** the query was RUN for the first time and the
+> ledger read back (45 lines, all probes, 0 people); the `tag` filter and the
+> 1,000-event cap gotcha are recorded there. `ESTATE_CHECK` is now
+> `"enforce"`, not the `"shadow"` the paragraph below describes.
 
 **What this is:** the dated addendum to
 [`audiobook-auth-soak-2026-08-16.md`](audiobook-auth-soak-2026-08-16.md).
@@ -272,6 +276,42 @@ members" means zero **on writes that SUCCEEDED**. A would_deny on a write
 today's `firestore.rules` already refused is the gate agreeing, not a
 regression — and counting those as failures was the false-alarm generator the
 pack's blocker 4 predicted.
+
+### 3.3 The 2026-09-07 reading — the first time the query was actually run
+
+Run 2026-09-07 09:34Z from the owner's signed-in dash tab, window
+`2026-09-04T23:28Z → now`, Worker version `e91ea098-93be-498e-8124-a7c84be50d3f`
+(`estate_check: enforce`).
+
+⚠️ **Two things the §3 snippet did not say, learned by running it:**
+
+1. **The service-only filter hits the `limit: 1000` cap.** The Worker logs
+   far more than gate lines, so 1,000 events held only **37** of the 45 shadow
+   lines and the count was silently short. Add a second filter
+   `{ key: 'tag', operation: 'eq', type: 'string', value: 'ab_gate_shadow' }`
+   — then `j.result.events.count` is the true total and no cap applies.
+2. The key is **`tag`** — the parsed JSON's top-level field name. Both
+   `source.tag` and `$metadata.tag` return ZERO, which (again) looks exactly
+   like "nothing retained".
+
+| §3.1 question | Reading |
+|---|---|
+| lines, total | **45** |
+| distinct `action` | `probe` only |
+| distinct `identity_class` | `anonymous` only |
+| household false denials | 0 — **vacuous**, no household line exists |
+| agreed denials | 0 |
+| `succeeded == null` | 45 |
+| `tokened == false` | 45 — all estate-probes cron hits, `reason: unknown_action` |
+| distinct `email_hash` | **0** |
+
+**Verdict against §3.2: not met.** Zero organic decisions in 2½ days — no
+club manager, no site moderator, no household member made a gated write on
+the direct path. The first two clauses hold only because nothing happened;
+the third (both actor kinds exercised) fails outright. The soak was not run,
+so it cannot pass. What changes it is people, not code: one manager and one
+moderator each performing a gated club action signed in, then this query
+again.
 
 ---
 
