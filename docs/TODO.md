@@ -10,6 +10,44 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🔴 OWNER ASK 2026-09-07 ~02:40 Phoenix — "We need a deploy end point so you can take over that job" (audiobook-worker)
+
+**Context.** The 2026-09-07 audiobook-worker deploy took the owner three
+attempts from the phone (the first two never reached the Worker; the third,
+`e91ea098`, landed at 09:22Z and is in `deploys.log`). The owner wants the
+conductor to be able to deploy this Worker itself.
+
+**Finding (checked first, per the mandate).** The endpoint already EXISTS:
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) is a
+`workflow_dispatch` with a `target` choice — but its choices are only
+`index-worker` / `auth-worker` / `heygabi-home` / `all`. **`audiobook-worker`
+is not a target** (nor is `discord-worker`). `gh auth status` → logged in as
+`skymitch9`, so once the target exists the conductor can run
+`gh workflow run deploy.yml -f target=audiobook-worker` from the terminal.
+The rotated `CLOUDFLARE_API_TOKEN` already carries Workers scope (it deploys
+the two sibling Workers today).
+
+**Build (Opus agent W16-AB-DEPLOY-TARGET):**
+- [ ] add an `audiobook-worker` job to `deploy.yml` — copy the `auth-worker`
+      job shape (token guard, checkout, node 22, `npm ci`, `npx wrangler
+      deploy` in `working-directory: apps/audiobook-worker`, Summary notice)
+      **minus the D1 migrate step** — the Worker has no D1 binding (only R2)
+      and no `db:migrate` script; add the choice to the `target` input and
+      to `all`; update the header comment's target list
+- [ ] update [`docs/access/ci-deploy.md`](access/ci-deploy.md) (the doc that
+      describes this workflow) with the new target and the no-migrate reason
+- [ ] `npm test` at the root still green; commit (allowlist), push
+- [ ] **then the conductor runs it**: `gh workflow run deploy.yml -f
+      target=audiobook-worker`, `gh run watch`, verify with `npx wrangler
+      deployments list` (new version id, newest LAST) + `/api/health` 200 +
+      the `/status` audiobook rows going green (that is also the live proof of
+      `27182a0`'s `SITE_ORIGINS` widen and of `3000435`'s enforce routes,
+      neither of which has been deployed yet)
+- [ ] append the `deploys.log` line; move this item WHOLE to `DONE.md`
+
+**Not decided:** whether `discord-worker` gets a target in the same change.
+It is the same shape (it DOES have D1). Owner's call — ask, don't assume.
+
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
