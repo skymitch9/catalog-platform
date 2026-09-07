@@ -764,12 +764,17 @@ export function describeIngestion(control, nowMs) {
         'it clears itself the next time any control here is set.',
     );
   }
-  if (until !== null && until <= nowMs && !pausedFlag) {
-    lines.push(
-      `The pause until ${wordTime(control.paused_until, nowMs)} has finished — ingestion is free to ` +
-        'start again. The expired timer clears itself the next time any control here is set.',
-    );
-  }
+  // ⚠️ AN EXPIRED "pause until" GETS NO LINE — grey-paragraph audit item 230,
+  // cut 2026-09-07. It said the pause had finished, that ingestion was free to
+  // start again, and that the stale timer clears itself the next time a control
+  // is set. All three are housekeeping the card demonstrates: the headline and
+  // badge above already read as running, which IS "the pause has finished", and
+  // the self-clearing is invisible bookkeeping nobody has to act on.
+  // ⚠️ The sibling branch above it — an expired "don't check until" — is left
+  // ALONE, and that is not an oversight either way: the audit listed only this
+  // branch, and an expired dont_check_until is the stronger posture of the two
+  // (it suppresses the check itself, not just the start), so it was not cut on
+  // this one's reasoning. If it should go too, that is a new decision.
   if (soon) {
     const from = wordTime(soon.from, nowMs);
     const to = wordTime(soon.until, nowMs);

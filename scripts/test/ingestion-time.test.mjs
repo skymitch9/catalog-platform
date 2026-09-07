@@ -310,11 +310,24 @@ test('describeIngestion: an unpaused control is unaffected by either mode', () =
   }
 });
 
-test('describeIngestion: an EXPIRED timer reads as running, and says the old value clears itself', () => {
+test('describeIngestion: an EXPIRED timer reads as running, and says NOTHING about itself', () => {
   // Their control_blocks_start() stops matching the instant paused_until
   // passes, so "still paused" would be a claim about a machine that has
-  // already resumed — and "running" with no explanation would leave an
-  // expired timestamp visible on the document with nothing said about it.
+  // already resumed. THE STATE IS THE ASSERTION HERE and always was.
+  //
+  // ⚠️ RE-AIMED 2026-09-07, not deleted — grey-paragraph audit item 230, the
+  // owner's "less grey paragraphs" rule. This test used to also pin two
+  // sentences ("has finished", "clears itself") that the expired branch pushed
+  // onto the card; the branch is gone. The original comment argued that
+  // "running" with no explanation would leave an expired timestamp visible with
+  // nothing said about it. ⚠️ MEASURED 2026-09-07, because that premise is the
+  // whole argument: the only surviving place an expired paused_until is visible
+  // is the "Pause until…" PICKER PREFILL (pipelines.js:986), which sits inside
+  // the collapsed "Schedules & exemptions" disclosure and is an input for a new
+  // value rather than a claim about the current one. Nothing on the card's face
+  // shows it. The assertion below is now the stronger one: an expired timer
+  // contributes no line at all, so re-adding one fails here rather than
+  // silently.
   const d = describeIngestion(
     {
       paused: false,
@@ -326,8 +339,8 @@ test('describeIngestion: an EXPIRED timer reads as running, and says the old val
   );
   assert.equal(d.state, 'running');
   assert.equal(d.badge, 'ok');
-  assert.ok(d.lines.some((l) => l.includes('has finished')));
-  assert.ok(d.lines.some((l) => l.includes('clears itself')));
+  assert.ok(!d.lines.some((l) => l.includes('has finished')));
+  assert.ok(!d.lines.some((l) => l.includes('clears itself')));
 });
 
 test('describeIngestion: "don’t even check until" is its own state when nothing is paused', () => {

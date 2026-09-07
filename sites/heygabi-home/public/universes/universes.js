@@ -968,16 +968,19 @@ function openForm() {
   whyField.className = 'uni-field';
   const whyLabel = document.createElement('span');
   whyLabel.className = 'uni-label';
-  whyLabel.textContent = 'Why';
+  // ⚠️ THE "(required)" IS ON THE LABEL AND IS NOT DECORATION. It mirrors the
+  // CLI's --why — tools/universes.mjs: "an entry that cannot say why it exists
+  // is refused" — and the form must not be softer than the CLI.
+  // Grey-paragraph audit item 225 cut the hint paragraph beneath this field on
+  // 2026-09-07 ("Required. Every entry in the estate's universe list records
+  // why it exists."), on the reasoning that "Required" on the label is enough.
+  // It was NOT on the label at the time; putting it there is what makes the cut
+  // safe. Do not drop it from the label to tidy the wording.
+  whyLabel.textContent = 'Why (required)';
   const whyInput = document.createElement('textarea');
   whyInput.className = 'uni-textarea';
   whyInput.placeholder = 'What makes these one fiction, and why is it worth grouping?';
   whyField.append(whyLabel, whyInput);
-  whyField.appendChild(
-    // ⚠️ Mirrors the CLI's --why. tools/universes.mjs: "an entry that cannot say
-    // why it exists is refused." The form must not be softer than the CLI.
-    note('Required. Every entry in the estate’s universe list records why it exists.', 'uni-hint'),
-  );
   panel.appendChild(whyField);
 
   // --- actions -------------------------------------------------------------

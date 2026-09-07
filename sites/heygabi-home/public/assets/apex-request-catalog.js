@@ -462,7 +462,10 @@ function buildForm() {
   nameInput.placeholder = 'What this shelf is called on heygabi.ai';
   nameInput.value = draft.displayName;
   nameField.append(nameLabel, nameInput);
-  nameField.appendChild(para('What shows on this page once it exists. Change it freely.', 'rc-hint'));
+  // The hint "What shows on this page once it exists. Change it freely." was
+  // dropped here 2026-09-07 -- grey-paragraph audit item 223. The label reads
+  // "Display name" and the placeholder reads "What this shelf is called on
+  // heygabi.ai"; a third phrasing of the same idea is not a third fact.
   panel.appendChild(nameField);
 
   /* --- note (optional) -------------------------------------------------- */
@@ -712,13 +715,13 @@ function buildReview() {
   if (who) row('Admin', who);
   panel.appendChild(dl);
 
+  // ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 222. The load-bearing
+  // half is that the button does NOT build anything, because the page gives no
+  // other sign of that and a person who presses it will otherwise wait for a
+  // catalog to appear. Dropped: who reviews it and that he does it by hand --
+  // outcome facts the request's own status pill reports when there is one.
   panel.appendChild(
-    para(
-      'The estate owner reviews every request before a catalog is created. Nothing is built ' +
-        'by pressing this — it files a request he decides on, and standing one up afterwards is ' +
-        'a job he does by hand.',
-      'rc-note',
-    ),
+    para('This files a request; nothing is built by pressing it.', 'rc-note'),
   );
   if (k.wait) panel.appendChild(para(k.wait, 'rc-warn'));
 
