@@ -37,6 +37,12 @@
  *                          ladder's `download` capability (floor `admin`).
  *                          `Content-Disposition: attachment`, no ranges, no
  *                          budget charge — see its header for each reason.
+ *   GET  /api/ebooks/reconcile
+ *                          the bucket ⇄ manifest RECONCILER (ebook-reconcile.ts).
+ *                          Admin+ (roleAtLeast, not a §6 capability), and
+ *                          ⚠️ REPORT-ONLY: it lists and compares and writes
+ *                          nothing, anywhere — the "fixes" it could apply are
+ *                          all destructive and all a person's call.
  *   GET  /api/audio/status the projection of what is streamable right now
  *                          (audio-status.ts) — bookId/anchor/title/size/since
  *                          and ⚠️ never `path`. Same gate.
@@ -84,6 +90,7 @@ import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
 import { ebookDownloadRoutes } from './ebook-download.js';
 import { ebookFileRoutes } from './ebook-file.js';
+import { ebookReconcileRoutes } from './ebook-reconcile.js';
 import { ebookRoutes } from './ebooks.js';
 import { enforceRoutes } from './enforce-routes.js';
 import { estateStatusFor } from './estate-status.js';
@@ -307,6 +314,14 @@ app.route('/', ebookFileRoutes);
 // deliberate — a person who lacks the shelf hears about the shelf, never about
 // a promotion they do not need. See ebook-download.ts's header.
 app.route('/', ebookDownloadRoutes);
+
+// The bucket ⇄ manifest reconciler (2026-09-06). Admin+, and ⚠️ REPORT-ONLY
+// by construction: there is not one write in that file. It exists because
+// `file_absent` — the 300 MiB wall, a failed ingest, a renamed book's orphan —
+// is otherwise discovered one disappointed reader at a time. Its gate asks
+// roleAtLeast(role,'admin') directly rather than borrowing a §6 capability;
+// see ebook-reconcile.ts's header for why, and for what it cannot check.
+app.route('/', ebookReconcileRoutes);
 
 // The audiobook player's two routes (audio phase 1, 2026-08-18). Same gate as
 // the ebook pair — literally the same function (ebook-gate.ts) — because owner
