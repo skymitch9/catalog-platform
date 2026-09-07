@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import app from '../src/index.js';
 import { toFsFields, type FsValue } from '../src/fs-docs.js';
+import { CLUB_FEATURE_KEYS } from '../src/enforce-routes.js';
 import { resetEstateCache } from '../src/estate-status.js';
 import { resetRoleCache } from '../src/roles.js';
 import type { Env } from '../src/env.js';
@@ -379,6 +380,62 @@ test('enforce: the owner break-glass needs no site_roles doc and survives estate
 });
 
 /* ── club doc: tiered PATCH ────────────────────────────────────────────── */
+
+/**
+ * ⚠️ THE SILENT-DROP GUARD, added 2026-09-06 with Phase 3a's client half.
+ *
+ * `features` is an allow-list, so a key the client sends and this list lacks
+ * is not refused — it is DROPPED, the PATCH answers 200, and the manager's
+ * setting comes back on the next render. `discordQuestions` was in exactly
+ * that state (client since 2026-08-18, absent here) and would have vanished
+ * the first time a manager saved the Edit Club modal on the Worker path.
+ *
+ * This test is the mechanical guard: the list is pinned by MEMBERSHIP and by
+ * COUNT, so adding a key to `site/clubs.js` FEATURE_DEFAULTS without adding it
+ * here fails in CI rather than in somebody's club. The source of truth for the
+ * pairing is `audiobook_catalog/site/clubs.js` FEATURE_DEFAULTS — the two
+ * repos cannot import each other, so this literal is the contract.
+ */
+test('CLUB_FEATURE_KEYS mirrors site/clubs.js FEATURE_DEFAULTS, key for key', () => {
+  assert.deepEqual(
+    [...CLUB_FEATURE_KEYS].sort(),
+    [
+      'blindRatings',
+      'discordAnnouncements',
+      'discordPollAnnouncements',
+      'discordQuestions',
+      'meetingRsvp',
+      'paceGraph',
+      'polls',
+      'readingSchedule',
+    ],
+    'add the key to BOTH site/clubs.js FEATURE_DEFAULTS and enforce-routes.ts',
+  );
+  assert.equal(CLUB_FEATURE_KEYS.length, 8);
+});
+
+test('club PATCH: a live client feature key is SAVED, not silently dropped', async () => {
+  const fake = fakeFirestore({
+    'clubs/c1': {
+      ...clubSeed(),
+      ...toFsFields({ managerUids: { 'dev-uid': { role: 'host', displayName: 'G', claimedAt: 1 } } }),
+    },
+  });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'guesty@example.com' }), 'PATCH', '/api/clubs/c1', {
+      // The exact object club.html:2003 builds, trimmed to the two keys that
+      // matter: one long-standing, one the drift had lost.
+      features: { polls: true, discordQuestions: true },
+    });
+    assert.equal(res.status, 200);
+    const club = fake.docs.get('clubs/c1');
+    const features = (club?.fields['features'] as { mapValue?: { fields?: Record<string, FsValue> } })
+      ?.mapValue?.fields;
+    assert.deepEqual(Object.keys(features ?? {}).sort(), ['discordQuestions', 'polls']);
+  } finally {
+    fake.restore();
+  }
+});
 
 test('club PATCH: a club MANAGER (ladder guest) updates structural fields on their own club', async () => {
   const fake = fakeFirestore({

@@ -116,6 +116,19 @@ export const ENFORCE_ROUTES: readonly EnforceRoute[] = [
  * ⚠️ Keep in step with FEATURE_DEFAULTS in audiobook_catalog/site/clubs.js —
  * the same allow-list that keeps a stale client from stuffing arbitrary data
  * under `features` (updateClubDetails drops unknown keys; so do we).
+ *
+ * ⚠️ AND THE DRIFT IS SILENT IN THE WORST DIRECTION, which is why this note
+ * now exists: a key present on the client and MISSING here is not refused, it
+ * is DROPPED — the manager unticks a box, the PATCH succeeds, and the setting
+ * comes back on the next render. Measured 2026-09-06, wiring Phase 3a's
+ * client half: `discordQuestions` (added to the client 2026-08-18 with GABI's
+ * Discord questions, and a live checkbox at club.html:2003) was absent here
+ * and would have silently vanished the first time a manager saved the Edit
+ * Club modal on the Worker path. Added below.
+ *
+ * The list is 8 keys and the site's `FEATURE_DEFAULTS` is 8 keys; a test in
+ * enforce-routes.test.ts pins both the membership and the count, so the next
+ * feature key added on one side fails here rather than in somebody's club.
  */
 export const CLUB_FEATURE_KEYS = [
   'readingSchedule',
@@ -125,6 +138,9 @@ export const CLUB_FEATURE_KEYS = [
   'blindRatings',
   'meetingRsvp',
   'paceGraph',
+  // Added 2026-09-06 — see the drift note above. `app/club_announcements.py`
+  // and club.html have both read/written it since 2026-08-18.
+  'discordQuestions',
 ] as const;
 
 /** clubs.js isValidDiscordWebhook / rules validClubSettings, one regex. */
