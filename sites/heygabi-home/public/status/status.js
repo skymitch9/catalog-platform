@@ -21,10 +21,14 @@
  *      invented, only read.
  *   4. Workers       — index (reusing #2's fetch), and one row per catalog
  *      Worker plus estate-auth /api/health. ⚠️ Every catalog NAME on this page
- *      comes from the estate registry since 2026-09-05; the row SET is still
- *      hand-written (survey §3.1's L-sized remainder).
- *   5. Sites         — a no-cors reachability probe of the site roots plus
- *      the audiobook site's /dev/ lane.
+ *      comes from the estate registry since 2026-09-05; this section's row SET
+ *      is still hand-written, and `lib/host-rows.js` names the two registry
+ *      fields that would end that (`api_host`, `service`) with the measurement
+ *      that says they are needed. It is not an oversight and not derivable.
+ *   5. Sites         — one row per CATALOG, planned from the registry
+ *      (`lib/host-rows.js`), plus the audiobook site's /dev/ lane. Each row is
+ *      a no-cors reachability probe of that catalog's own host, so a
+ *      provisioned `library3` gets its row and its probe with no edit here.
  *   6. Backups       — devops-gated, from GET /api/estate/backups.
  *
  * ⚠️ WHAT LEFT THIS FILE ON 2026-08-18, and where it went, because a reader
@@ -76,6 +80,13 @@ import { ebookLaneVerdict } from './lib/ebook-lane.js';
 import { BOARD_POLL_MS, fetchBoard, objectSection, renderFreshness, str } from './lib/board.js';
 import { backupLastWriteText, describeArchive, describeBucket, describeTotals } from './lib/storage-view.js';
 import { mountGate } from './lib/gate.js';
+// The SITE row set — pure, and pinned by scripts/test/status-host-rows.test.mjs.
+// It is where the registry-driven half of survey §3.1 lives, and where the
+// registry fields the OTHER half still needs are named.
+import {
+  SITE_REGISTRY_UNKNOWN_DETAIL,
+  siteRowPlan,
+} from './lib/host-rows.js';
 import { idToken } from '../assets/estate-auth.js';
 import { REGISTRY_DOWN_NOTICE, UNKNOWN_SHELF, loadCatalogs } from '../assets/catalog-registry.js';
 
@@ -88,11 +99,23 @@ import { REGISTRY_DOWN_NOTICE, UNKNOWN_SHELF, loadCatalogs } from '../assets/cat
  * library" — neither of which is what she or the registry calls it. Every
  * label below now comes from the registry.
  *
- * ⚠️ THE ROW SET IS STILL HAND-WRITTEN and that is a KNOWN remainder, not an
- * oversight: nine host rows and five per-host health fetches, each with its own
- * id and its own variable. Turning those into an iteration over the registry is
- * survey §3.1's L-sized item and is not this pass. What changed is that none of
- * them SAYS a catalog's name any more.
+ * ⚠️ THE ROW SET IS HALF REGISTRY-DRIVEN AS OF 2026-09-06, and the split is a
+ * fact about the REGISTRY rather than about this page:
+ *
+ *   · **Sites** — planned from the registry, row set AND probe list
+ *     (`lib/host-rows.js`). Needs only `host`, which every row has.
+ *   · **Shared index** — planned from the registry since 2026-09-05
+ *     (`indexSourceOrder()`). Needs only `push_source`.
+ *   · **Workers / Deployed versions** — 🔴 STILL HAND-WRITTEN, because the
+ *     registry cannot yet say which catalogs run an estate API of their own or
+ *     what the deployed Worker is called. Measured, not assumed: two of the five
+ *     registry hosts answer `/api/health` with 200 and the site's HTML, and the
+ *     one Worker that could name its own deploy reports the code's name instead.
+ *     The two fields that would close it — `api_host` and `service` — and the
+ *     measurements behind them are written out in `lib/host-rows.js`.
+ *
+ * What changed on 2026-09-05 and has not changed since: none of these rows SAYS
+ * a catalog's name any more.
  */
 let CATALOGS = [];
 let registryOk = true;
@@ -326,13 +349,22 @@ function buildWorkerSection() {
   ul.appendChild(makeRow('wk-probes', 'Estate API probe suite (hourly, run by auth.heygabi.ai)'));
 }
 
+/**
+ * The sites section's rows AND its probe list, from one plan.
+ *
+ * ⚠️ ONE PLAN, COMPUTED TWICE AND NEVER STORED. `buildSiteSection()` and
+ * `refreshAll()` both call this, which is safe because `CATALOGS` is frozen by
+ * the time either runs (`registryReady` gates the build, and the first refresh
+ * follows it). A cached plan would be a second copy of the registry living for
+ * the life of the page — the thing this whole build is deleting.
+ */
+function sitePlan() {
+  return siteRowPlan(CATALOGS, { audioOrigin: AUDIO_ORIGIN, unknownShelf: UNKNOWN_SHELF });
+}
+
 function buildSiteSection() {
   const ul = document.getElementById('site-rows');
-  ul.appendChild(makeRow('site-audio', catRow('audiobook', 'site')));
-  ul.appendChild(makeRow('site-audio-dev', 'Audiobook site, /dev/ preview lane'));
-  ul.appendChild(makeRow('site-library', catRow('library', 'site')));
-  ul.appendChild(makeRow('site-games', catRow('games', 'site')));
-  ul.appendChild(makeRow('site-library2', catRow('library2', 'site')));
+  for (const row of sitePlan()) ul.appendChild(makeRow(row.id, row.name));
 }
 
 
@@ -968,25 +1000,31 @@ async function refreshAll() {
 
   const now = () => Date.now();
 
+  // ⚠️ THE SITE PROBES ARE NO LONGER A FIXED LIST. They are one probe per row
+  // the registry planned, so the fetch list cannot fall out of step with the
+  // rows the way five hand-written `probeReachable` calls could — and a
+  // provisioned `library3` is probed the moment it has a registry row.
+  const siteTargets = sitePlan();
+
   const [
-    indexHealth, libraryHealth, gamesHealth, library2Health, authHealth,
-    audioUp, audioDevUp, libraryUp, gamesUp, library2Up,
-    pipelineStatus, ebooksDev, ebooksProd,
+    [indexHealth, libraryHealth, gamesHealth, library2Health, authHealth],
+    siteResults,
+    [pipelineStatus, ebooksDev, ebooksProd],
   ] =
     await Promise.all([
-      fetchJSON(`${INDEX_ORIGIN}/api/health`),
-      fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
-      fetchJSON(`${GAMES_ORIGIN}/api/health`),
-      fetchJSON(`${LIBRARY2_ORIGIN}/api/health`),
-      fetchJSON(`${AUTH_ORIGIN}/api/health`),
-      probeReachable(AUDIO_ORIGIN + '/'),
-      probeReachable(AUDIO_ORIGIN + '/dev/'),
-      probeReachable(LIBRARY_ORIGIN + '/'),
-      probeReachable(GAMES_ORIGIN + '/'),
-      probeReachable(LIBRARY2_ORIGIN + '/'),
-      fetchJSON(FIRESTORE_STATUS_URL),
-      fetchJSON(EBOOKS_MANIFEST_DEV_URL),
-      fetchJSON(EBOOKS_MANIFEST_PROD_URL),
+      Promise.all([
+        fetchJSON(`${INDEX_ORIGIN}/api/health`),
+        fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
+        fetchJSON(`${GAMES_ORIGIN}/api/health`),
+        fetchJSON(`${LIBRARY2_ORIGIN}/api/health`),
+        fetchJSON(`${AUTH_ORIGIN}/api/health`),
+      ]),
+      Promise.all(siteTargets.map((row) => (row.url ? probeReachable(row.url) : null))),
+      Promise.all([
+        fetchJSON(FIRESTORE_STATUS_URL),
+        fetchJSON(EBOOKS_MANIFEST_DEV_URL),
+        fetchJSON(EBOOKS_MANIFEST_PROD_URL),
+      ]),
     ]);
 
   const t = now();
@@ -1018,11 +1056,16 @@ async function refreshAll() {
   // Same response, second fact — no extra fetch. See renderEstateProbesRow().
   renderEstateProbesRow(authHealth, t);
 
-  renderSiteRow('site-audio', catLabel('audiobook'), audioUp, t);
-  renderSiteRow('site-audio-dev', 'Audio /dev/', audioDevUp, t);
-  renderSiteRow('site-library', catLabel('library'), libraryUp, t);
-  renderSiteRow('site-games', catLabel('games'), gamesUp, t);
-  renderSiteRow('site-library2', catLabel('library2'), library2Up, t);
+  siteTargets.forEach((row, i) => {
+    if (row.notice) {
+      // The whole section stood in for by one worded row: the directory could
+      // not be read, so this page does not know what the estate's sites ARE.
+      // Grey and in words — never an empty list, and never a bare status.
+      updateRow(row.id, 'nodata', SITE_REGISTRY_UNKNOWN_DETAIL, REGISTRY_DOWN_NOTICE, t);
+      return;
+    }
+    renderSiteRow(row.id, row.name, siteResults[i], t);
+  });
 
   // ⚠️ THE SUMMARY LINE USED TO NOT ADD UP, on the most-read sentence of the
   // page: it counted ok/warn/danger "out of N checks" while every row in a

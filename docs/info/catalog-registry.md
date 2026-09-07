@@ -35,6 +35,13 @@
 > live Worker before and after the deploy. Nothing else on this page was
 > re-checked that hour.
 >
+> ✅ **UPDATED 2026-09-06 (agent W13-PLAT-STATUS): THE FIRST CONSUMER TO TAKE A
+> ROW SET, NOT JUST A NAME** — `/status`'s Sites section is planned from this
+> route (§10a's new `status/lib/host-rows.js` row). ⚠️ **Only §10's new
+> "cannot say which catalogs run an estate API" bullet was measured on that
+> pass** — five live `/api/health` calls, one per registry host. Nothing else on
+> this page was re-checked that hour.
+>
 > ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
 > `predeploy.checks.json`'s live pass fetches unauthenticated, so the
 > scoped-count half of §4 is proven by tests and by this route's own answer, and
@@ -297,6 +304,7 @@ fact. Pinned by probe `A44`.
 | `public/series/series.js` | `sourceLabel`/`catalogLabel`/`holdingLabel` (the estate's one holding renderer) and `bookish()` | `dee846a` |
 | `public/universes/universes.js` | the row subtitle's holder, and `isGameRow()`'s kind | `dee846a` |
 | `public/status/status.js` | the index source ORDER and denominator, every catalog's row name | `dee846a` |
+| `public/status/lib/host-rows.js` | ⚠️ **the first consumer to take a ROW SET rather than a name** — `/status`'s Sites section, rows AND their reachability probes, in the registry's own order. A provisioned `library3` is rowed and probed with no edit; `ebooks` gained the row it never had. The `/dev/` lane stays a hand-written row (a deploy lane is not a shelf) and takes only its name from here | *2026-09-06* |
 | `public/admin/admin.js` | ⚠️ **NAMES ONLY** — see below | `94d3e65` |
 | `apps/discord-worker/src/catalog-registry.ts` | **GABI's one reader** — the shelves she offers (`resolveLibraryInstances`, registry rows that are `kind:books` + `holding:physical`) and the words she calls them, incl. the three suggestion shelves. Posture `GABI_CATALOG_REGISTRY`; `panel.ts`'s pre-existing lane now shares this fetch and this memo | `893ca5f` |
 | `audiobook_catalog/site/estate/estate-search.js` | ⚠️ **the fourth copy of `estate-search.js`, and it reads the registry now** — re-vendored 2026-09-06 by that repo's new `scripts/sync_estate_search.py`. It inherits the inline twin below rather than reading it itself | `2b4ba2f` *(audiobook_catalog)* |
@@ -437,6 +445,32 @@ estate holds.
   ❓ item in [`../TODO.md`](../TODO.md) is closed. ⚠️ **The degradation code is
   deliberately unchanged**: it is what the component does whenever a registry
   read fails for any reason, and that path still has to exist.
+- 🔴 **THE REGISTRY CANNOT SAY WHICH CATALOGS RUN AN ESTATE API, AND THAT IS
+  THE ONE THING BLOCKING `/status`'s LAST TWO HAND-WRITTEN ROW SETS.** Measured
+  2026-09-06 (agent W13-PLAT-STATUS) with `curl -sS -D <file> -o <file>` against
+  `GET https://<host>/api/health` for all five registry hosts:
+
+  | Registry host | `/api/health` answers |
+  |---|---|
+  | `library.heygabi.ai` | the estate envelope, `service: "library-catalog"`, `estate.app: "library"` |
+  | `boardgames.heygabi.ai` | the estate envelope, `service: "board-game-catalog"`, `estate.app: "games"` |
+  | `padhard.heygabi.ai` | the estate envelope, `service: "library-catalog"`, `estate.app: "library2"` |
+  | `audiobooks.heygabi.ai` | ⚠️ **HTTP 200 and the site's HTML** — it is a Pages site |
+  | `ebooks.heygabi.ai` | ⚠️ **HTTP 200 and the site's HTML** — same |
+
+  `host` means *"the hostname it answers on"*, and for the two shared digital
+  pools that host is a SITE — their API is `audiobook-api.heygabi.ai`, which
+  this table does not carry at all. So a consumer iterating `host` to find APIs
+  gets two false Workers rows reading *"Healthy, but reports no version"*.
+  ⚠️ **`holding === 'physical'` happens to select the right three today and must
+  not be used** — it is §5's vocabulary conflation, and it fails silently the
+  first time a shared pool gets a Worker. ⚠️ **The health body cannot supply it
+  either:** `padhard` reports `service: "library-catalog"`, the code's name, not
+  the deployed `library-catalog-friend`. Two columns close it — `api_host TEXT`
+  (NULL when the catalog has no API of its own) and `service TEXT` (the deployed
+  Worker name) — spec and per-catalog values in [`../TODO.md`](../TODO.md).
+  ✅ **The good half:** every Worker already reports `estate.app`, so once the
+  fields exist the join can be *verified* rather than assumed.
 - **`MACHINE_VISIBILITY` was not touched and must not be.** It is a deliberate
   default-deny (`machine-route.ts`); the registry must never auto-admit a new
   catalog there. Pinned in `machine-read.test.ts` and again in

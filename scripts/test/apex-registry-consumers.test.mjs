@@ -131,4 +131,15 @@ describe('status.js — the index panel counts sources from the registry', () =>
     assert.ok(live.includes("from '../assets/catalog-registry.js'") || live.includes("from '/assets/catalog-registry.js'"));
     assert.ok(live.includes('indexSourceOrder'));
   });
+
+  it('🔴 the SITES row set comes from the registry too, since 2026-09-06', () => {
+    // The behaviour is pinned in scripts/test/status-host-rows.test.mjs, which
+    // can ask the plan directly because lib/host-rows.js is pure. What belongs
+    // HERE is the wiring, the same way the two page scripts above are checked.
+    assert.ok(live.includes("from './lib/host-rows.js'"));
+    assert.ok(live.includes('siteRowPlan'));
+    for (const dead of ["'site-audio'", "'site-library'", "'site-games'", "'site-library2'"]) {
+      assert.ok(!live.includes(dead), `status.js still hand-writes the site row ${dead}`);
+    }
+  });
 });

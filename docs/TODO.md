@@ -485,10 +485,52 @@ around it — noted only so the next check has two redeploy times, not one.
       a colour no measurement backs is precisely what that page is written
       against. Whoever wants `library2` graded watches its pushes first; the
       thresholds then go in `INDEX_CADENCE` (`status/status.js`).
-- [ ] **`/status`'s nine hand-written host rows and five per-host health
-      fetches are still hand-written** — survey §3.1's L-sized item. Their
-      NAMES come from the registry now, so no row spells a catalog wrongly any
-      more; the row SET is what a `library3` would still need an edit for.
+- [ ] **`/status`'s row set — survey §3.1's L-sized item, HALF LANDED
+      2026-09-06 (agent W13-PLAT-STATUS).** ✅ **The SITES section is now
+      planned from the registry, row set AND probe list**, in one pure module
+      `sites/heygabi-home/public/status/lib/host-rows.js` (18 behavioural
+      tests, `scripts/test/status-host-rows.test.mjs`). Five hand-written
+      `makeRow` literals and five hand-written `probeReachable` calls are gone;
+      a provisioned `library3` gets its row **and** its probe with no edit
+      there, and `ebooks.heygabi.ai` gained the row it never had. The `/dev/`
+      preview lane stays as its own row — it is a DEPLOY LANE, not a shelf, so
+      it must never enter the registry — but takes its NAME from it. An
+      unreadable directory renders one worded grey row, never an empty panel.
+      ⚠️ The Shared-index panel was already registry-driven (2026-09-05).
+
+      🔴 **What is LEFT: the Workers and Deployed-versions row sets, and they
+      are blocked on TWO REGISTRY FIELDS, not on effort.** Measured live
+      2026-09-06 with `curl -sS -D <file> -o <file>` against
+      `GET https://<host>/api/health` for all five registry hosts:
+      `library`, `boardgames` and `padhard` answer the estate health envelope;
+      **`audiobooks.heygabi.ai` and `ebooks.heygabi.ai` answer HTTP 200 and the
+      site's HTML** — they are Pages sites. So *"does this catalog serve an
+      estate API"* is **not derivable from any field the registry carries**, and
+      a page that iterated all five would print *"Healthy, but reports no
+      version"* for two hosts that run no Worker. ⚠️ Deriving it from
+      `holding === 'physical'` is right today only by coincidence and is the
+      vocabulary conflation `info/catalog-registry.md` §5 warns about. ⚠️ Nor
+      can the health answer supply it: **`padhard.heygabi.ai` reports
+      `service: "library-catalog"`** — the CODE's name, not the deployed
+      `library-catalog-friend` the Deployed-versions row names. A Worker cannot
+      tell you which deploy it is.
+
+      **The two columns that close it**, both `apps/auth-worker` (a migration +
+      `estate-catalog.ts`) plus `apps/index-worker/src/catalogs-route.ts` and
+      the client's `parseCatalogs` — the paths this dispatch was told not to
+      touch, because another agent was writing in them:
+
+      | Field | Meaning | The five values |
+      |---|---|---|
+      | `api_host TEXT` | the host serving this catalog's estate API; `NULL` when it has none of its own | `= host` for library/games/library2 · `audiobook-api.heygabi.ai` for audiobook · `NULL` for ebooks |
+      | `service TEXT` | the DEPLOYED Worker name, for the row's parenthetical | `library-catalog` · `board-game-catalog` · `library-catalog-friend` · `audiobook-worker` · `NULL` |
+
+      ⚠️ **And a free verification once they exist:** each Worker's health body
+      already carries `estate.app` (`library` / `games` / `library2`), so the
+      join back to the registry can be *measured* rather than assumed — a row
+      whose Worker disagrees about which catalog it serves should say so rather
+      than render. The caveat, the measurements and this spec are written into
+      `status/lib/host-rows.js`'s header, which is where the next session reads.
 - [ ] **`/admin`'s `CATALOGS` is still the third in-repo copy** of
       `packages/estate-auth`'s canonical array, and **deliberately so**: it is a
       PERMISSIONS vocabulary while the registry is a name service cached ten
