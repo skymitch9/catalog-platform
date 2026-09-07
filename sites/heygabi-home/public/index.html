@@ -842,11 +842,13 @@ footer a.more:hover svg { transform: translateX(3px); }
          own _scopeNote() prints "Searching audiobooks only. Sign in to search
          every shelf." beside real results, which is the worded gate and stays
          (assets/estate-search.js). Do not restate it here.
-         ⚠️ 2026-09-07, grey-paragraph audit item 178: the hint is now EXPLICITLY
-         EMPTY, not absent. Omitting the attribute restores estate-search.js's own
-         DEFAULT_HINT (`hintAttr !== null ? hintAttr : DEFAULT_HINT`), so
-         hint="" is the only way to hide the line from here without editing the
-         shared component. The placeholder and the button already say the job. -->
+         ⚠️ 2026-09-07, grey-paragraph audit item 178: the hint is EXPLICITLY
+         EMPTY. It had to be, because the shared component fell back to a default
+         line whenever the attribute was absent.
+         ⚠️ CORRECTED the same day (W17-ES-GREY): that fallback is now empty in
+         the component itself, so omitting the attribute would hide the line too.
+         hint="" is kept as the explicit statement of intent, not as the only
+         lever. The placeholder and the button already say the job. -->
     <estate-search
       id="find-search"
       auth="authed"

@@ -10,6 +10,26 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🔴 OWNER RULE 2026-09-07 02:50 Phoenix — the SHARED `estate-search.js` grey-paragraph pass (agent W17-ES-GREY)
+
+> Owner, verbatim: *"We need less grey paragraphs. If a feature isn't self
+> sufficient with just the way it works we should flag it for a paragraph
+> instead of defaulting."* The four SITE passes landed 2026-09-07 (the
+> cross-site tally lives in `library_catalog/docs/TODO.md`); the shared
+> component `sites/heygabi-home/public/assets/estate-search.js` was
+> deliberately excluded from that audit because **one change there lands on all
+> four sites at once**. This item is that pass. ⚠️ **This repo owns the
+> canonical file** — library and games regenerate their copies with
+> `scripts/sync-estate-search.mjs`, the audiobook site keeps a hand-vendored
+> copy with no sync.
+
+- [ ] Cut `DEFAULT_HINT` (the same sentence as audit items 101/178, still
+      shipping to any consumer that takes the defaults) and hide the hint
+      element on empty TEXT rather than on an explicit `hint=""`.
+- [ ] Shorten `_caveatLine` (a fifth copy of item 187's caveat; the apex keeps
+      one full-length copy in `/series`).
+- [ ] Sweep the rest of the file; deploy to all four instances.
+
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
