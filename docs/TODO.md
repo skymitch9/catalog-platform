@@ -1911,11 +1911,11 @@ Discord secret (3), the soak (5) and the audiobook Python client (6).
      `saveSpending()` reported SUCCESS for a cell it had not changed, when the
      deny arrived through a wildcard row it must not delete. It now says which
      rule is holding the cell and changes nothing.
-   - ☐ **DEPLOY — TWO PROJECTS, and they are listed in the deploy manifest
-     section above** (`## ☑ CODE LANDED 2026-09-05 (agent RES …)`): `44492c8`
-     rides the `estate-auth` deploy; `52ab54c` needs `npm run deploy:home` for
-     the `heygabi-home` Pages project. There is no ordering constraint between
-     them — the column works against the Worker that is live today.
+   - ☑ **DEPLOYED — both halves.** `52ab54c` (heygabi-home) has ridden every
+     `heygabi-home` deploy since 2026-09-07 09:56Z (`deploys.log` 148–151; the
+     ☐ here was stale by four deploys when noticed 2026-09-07 11:00 Phoenix);
+     `44492c8` rode the `estate-auth` deploy. There was no ordering constraint
+     between them — the column works against the Worker that is live today.
    - ☐ 🔴 **NOT VERIFIED: nobody has rendered it signed in.** No drawer has
      been opened in a browser and no per-person rule has ever been written from
      one. It was exercised instead by a throwaway stub-DOM harness driving the
