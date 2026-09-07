@@ -790,13 +790,12 @@ footer a.more:hover svg { transform: translateX(3px); }
       <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
     </div>
   </div>
-  <!-- ⚠️ TRIMMED 2026-08-17, owner's estate-wide order ("Let's trim text like
-       this all over each of the sites. Only keep what's mandatory and keep all
-       the text short and useful"). The long form said each catalogue keeps its
-       own look until changed there; that per-site scoping rule's home of record
-       is docs/info/estate-themes.md. One line here, on every page that has this
-       cog — do not grow it back. -->
-  <p class="hg-cog-note">Remembered on this site only.</p>
+  <!-- ⚠️ REMOVED 2026-09-07, owner's rule ("We need less grey paragraphs. If a
+       feature isn't self sufficient with just the way it works we should flag it
+       for a paragraph instead of defaulting") — grey-paragraph audit item 176,
+       ten copies estate-wide. It was TRIMMED first on 2026-08-17 from a longer
+       form; this is the second and final pass. The per-site scoping rule's home
+       of record is docs/info/estate-themes.md — do not grow it back here. -->
 </div>
 
 <main>
@@ -842,12 +841,17 @@ footer a.more:hover svg { transform: translateX(3px); }
          shelf. That fact is NOT lost and is NOT prose any more: the component's
          own _scopeNote() prints "Searching audiobooks only. Sign in to search
          every shelf." beside real results, which is the worded gate and stays
-         (assets/estate-search.js). Do not restate it here. -->
+         (assets/estate-search.js). Do not restate it here.
+         ⚠️ 2026-09-07, grey-paragraph audit item 178: the hint is now EXPLICITLY
+         EMPTY, not absent. Omitting the attribute restores estate-search.js's own
+         DEFAULT_HINT (`hintAttr !== null ? hintAttr : DEFAULT_HINT`), so
+         hint="" is the only way to hide the line from here without editing the
+         shared component. The placeholder and the button already say the job. -->
     <estate-search
       id="find-search"
       auth="authed"
       scan
-      hint="“Do we own this in any format?” — one title, checked against every shelf at once."
+      hint=""
     >
 <!-- The who-extra Admin chip lived here until 2026-08-16 (owner: "remove
            the admin button near the search bar since we have the admin section
@@ -901,7 +905,6 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-22 12 12)"/><circle cx="19.5" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>
           </span>
           <span class="name">Universes &amp; series</span>
-          <p class="what">Every fiction across formats — and every series volume by volume, including the book nobody has.</p>
           <p class="card-links">
             <a href="/universes" target="_blank" rel="noopener">Universes<span class="sr-only"> (opens in a new tab)</span></a>
             <a href="/series" target="_blank" rel="noopener">Series<span class="sr-only"> (opens in a new tab)</span></a>
@@ -915,7 +918,6 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M20 14h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1H19a1 1 0 0 0 1-1z"/></svg>
           </span>
           <span class="name">Audio</span>
-          <p class="what">Our audio library — reviews, ratings and book clubs.</p>
           <p class="holds">Shared across the estate · digital</p>
           <p class="host">audiobooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
@@ -936,7 +938,6 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M18 16H7a2 2 0 0 0-2 2"/><path d="M9 4v7l2.5-1.6L14 11V4"/></svg>
           </span>
           <span class="name">Ebooks</span>
-          <p class="what">The shared ebook pool — every epub and pdf, one shelf.</p>
           <p class="holds">Shared across the estate · digital</p>
           <p class="host">ebooks.heygabi.ai<span class="sr-only"> (opens in a new tab)</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
@@ -959,12 +960,13 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5S10 5 6.5 5 3 6 3 6v12s.5-1 3.5-1 5.5 1.5 5.5 1.5"/><path d="M12 6.5S14 5 17.5 5 21 6 21 6v12s-.5-1-3.5-1-5.5 1.5-5.5 1.5"/><path d="M12 6.5v12"/></svg>
           </span>
           <span class="name">Books</span>
-          <!-- ⚠️ "Paper-and-ebook shelves" until 2026-09-05. It contradicted
-               the settled ownership model — ebooks are the SHARED pool and
-               have their own card two cells above, so this sentence credited a
-               shared digital work to somebody's physical shelf, which is the
-               one attribution the owner's rule forbids. Survey finding F5. -->
-          <p class="what">Printed books — one shelf per household, linked as one estate.</p>
+          <!-- ⚠️ The p.what tagline that stood here is GONE — grey-paragraph
+               audit item 179, cut 2026-09-07. Kept as a record because the line
+               had already been corrected once: it read "Paper-and-ebook
+               shelves" until 2026-09-05, which credited a shared digital work
+               to somebody's physical shelf (survey finding F5). The ownership
+               fact it was fixed to carry is not lost — the .holds line below
+               says it. -->
           <p class="holds">Skylar’s and Samantha’s · physical copies</p>
           <!-- 🔴 THE LINK TEXT READ "!Sky" ON THE LIVE FRONT DOOR until
                2026-09-05 — the estate's highest-visibility line, naming the
@@ -1010,7 +1012,6 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.35" fill="currentColor" stroke="none"/></svg>
           </span>
           <span class="name">Games</span>
-          <p class="what">The game shelf — player counts, weights and who has played what.</p>
           <!-- ⚠️ The board-game shelf was the estate's one UNDESIGNATED
                catalog: three surfaces called it "games", "board games" and
                "Games" and none of them said it is Skylar's physical shelf, so
@@ -1048,6 +1049,14 @@ footer a.more:hover svg { transform: translateX(3px); }
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.4-3.6"/></svg>
           </span>
           <span class="name">Admin</span>
+          <!-- ⚠️ THE LAST SURVIVING p.what ON THIS PAGE, and deliberately so.
+               Grey-paragraph audit item 179 cut the other five card taglines
+               2026-09-07 and named this one the exception: "if any survive, the
+               admin one is the only one stating a gate". It is kept because an
+               admin looking at this card cannot otherwise tell that nobody else
+               sees it — the card is revealed by apex-admin-link.js, so its
+               audience is invisible from inside. Do not restore the other five
+               to keep it company. -->
           <p class="what">The estate's control room — visible to owners and admins only.</p>
           <p class="admin-links">
             <a href="/admin" target="_blank" rel="noopener">Members<span class="sr-only"> (opens in a new tab)</span></a>
@@ -1061,7 +1070,10 @@ footer a.more:hover svg { transform: translateX(3px); }
   </section>
 
   <footer class="rise" style="animation-delay:.26s">
-    <p>Not a shop and not a library — nothing here is for sale or for loan.</p>
+    <!-- "Not a shop and not a library — nothing here is for sale or for loan."
+         stood here until 2026-09-07 — grey-paragraph audit item 180, CUT.
+         Nothing on this page offers a price or a loan, so it answered a
+         question nobody was asking. -->
     <!-- Trimmed 2026-08-17 (owner's estate-wide trim order). The removed half
          explained that each catalogue handles its own sign-in and asks first;
          that is the estate SSO model, whose home of record is

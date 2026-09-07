@@ -491,7 +491,6 @@ footer a { color: var(--et-accent); }
       <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
     </div>
   </div>
-  <p class="hg-cog-note">Remembered on this site only.</p>
 </div>
 
 <main>
@@ -504,17 +503,21 @@ footer a { color: var(--et-accent); }
        this page and the front door's "everything in X" follow-up read the same
        shared index; that shared source is architecture, and its home of record
        is docs/info/index-worker-design.md. -->
-  <p class="sub">
-    Every fiction the estate tracks across formats — tap one to see its books,
-    audiobooks and games together.
-  </p>
+  <!-- The "Every fiction the estate tracks across formats — tap one to see its
+       books, audiobooks and games together." subtitle stood here until
+       2026-09-07 — grey-paragraph audit item 189, CUT. The <h1>, the search box
+       and the universe list say it. -->
   <!-- Sibling view, added with /series on 2026-08-17. Here rather than only
        in the footer because the reader who has just opened a series fold
        below is exactly the reader who wants the volume-level view, and the
-       footer of a sixteen-universe list is a long way down. -->
-  <p class="sub">
-    Chasing one series? <a href="/series">Series</a> lists them volume by volume.
-  </p>
+       footer of a sixteen-universe list is a long way down.
+       ⚠️ 2026-09-07, grey-paragraph audit item 190: it was a SENTENCE
+       ("Chasing one series? Series lists them volume by volume.") and the
+       audit's recommendation was to "make it a link". The destination is the
+       whole point; the question wrapped around it was not. The placement
+       argument above is unchanged, which is why this is a link HERE rather
+       than a link in the footer. -->
+  <p class="sub"><a href="/series">Series, volume by volume &rarr;</a></p>
 
   <!--
     EMBED THE COMPONENT (owner-ordered upgrade #3): the same shared
@@ -572,10 +575,10 @@ footer a { color: var(--et-accent); }
   <ul id="uni-list" class="uni-list" aria-label="Estate universes"></ul>
 
   <footer>
-    <p>
-      A result means it is in the catalog — some entries are wanted, not
-      owned. Tap through to the owning catalog for owned-versus-wanted.
-    </p>
+    <!-- The "A result means it is in the catalog — some entries are wanted, not
+         owned." caveat stood here until 2026-09-07 — grey-paragraph audit item
+         187, one of four estate copies of one sentence. The SURVIVING copy is
+         series/index.html's footer. Do not re-add it here. -->
     <p><a href="/">&larr; back to the front door</a></p>
   </footer>
 </main>

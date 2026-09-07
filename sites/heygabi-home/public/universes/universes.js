@@ -414,12 +414,10 @@ function renderUniverseBody(body, data) {
     return;
   }
 
-  const caveat = document.createElement('p');
-  caveat.className = 'find-caveat';
-  caveat.textContent =
-    'A result means it is in the catalog — some entries are wanted, not owned. ' +
-    'Tap through to the owning catalog for owned-versus-wanted.';
-  body.appendChild(caveat);
+  // ⚠️ The "A result means it is in the catalog — some entries are wanted, not
+  // owned." caveat was emitted here until 2026-09-07 — grey-paragraph audit
+  // item 187, one of four estate copies of one sentence. The SURVIVING copy is
+  // series/index.html's footer. Do not re-add it per result.
 
   // Games vs everything-else — see isGameRow() for why the book side is a
   // COMPLEMENT rather than a second allow-list (`library2`, 2026-09-05), and

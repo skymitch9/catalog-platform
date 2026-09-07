@@ -749,7 +749,8 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
       <button type="button" data-hg-mode="dark" aria-pressed="false">Dark</button>
     </div>
   </div>
-  <p class="hg-cog-note">Your choice is remembered on this site only — each catalogue keeps its own look until you change it there.</p>
+  <!-- Grey-paragraph audit item 177 — removed 2026-09-07 with #176; this was the
+       long form of the same note. See index.html's cog block for the rule. -->
 </div>
 
 <main>
@@ -766,10 +767,14 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
        docs/access/estate-auth.md §9, and the page's own controls carry
        their meanings in tooltips and worded refusals. Do not grow this
        header back — one line, that is the owner's stated appetite. -->
+  <!-- ⚠️ SHORTENED AGAIN 2026-09-07 — grey-paragraph audit item 182, owner rule
+       "less grey paragraphs". Dropped: "revoking shuts every door in minutes"
+       (a claim about the estate, not about this page's controls) and "status
+       buttons take two taps" (the second tap says so itself). What stays is the
+       one thing the controls cannot say: a grant is STAGED, not applied. -->
   <p class="sub">
-    One approval admits a person estate-wide; revoking shuts every door in
-    minutes. Grants stage until the card's <strong>Save permissions</strong>;
-    status buttons take two taps.
+    One approval admits estate-wide. Grants stage until
+    <strong>Save permissions</strong>.
   </p>
 
   <!-- ⚠️ THE THREE SECTIONS, stated where the person using the page reads it
