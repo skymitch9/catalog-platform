@@ -20,6 +20,23 @@ recommendation each; his build/cancel/keep answers land here and each item
 then moves in its own repo. ⚠️ Item 29 of the survey is stale — that promote
 ran at 09:12.
 
+- [ ] ⏸️ **PAUSED by the owner 2026-09-07 14:40 Phoenix** ("let's give time to
+      settle"). Every non-owner-gated build had landed; all trees clean and
+      pushed; no agents, no cron. The decision list sent at 13:44 is still
+      unanswered and is the next session's first move — re-present it as ONE
+      numbered list, recommendations first: (1) KI-3 71-line encoding repair in
+      boardgames DONE.md — rec FIX as the recorded exception; (2) KI-21 library
+      CI 3,026/3,027 — rec LEAVE; (3) ebook "Audio editions" never >1 after the
+      twins call — rec LEAVE; (4) KI-20 ISBN editable — rec accept; (5) KI-1(a)
+      coverless-EPUB count via `build_ebook_manifest.py` (pipeline path) — rec
+      yes; (6) ladder shadow→enforce — owner grants `member` at
+      https://heygabi.ai/admin/ first, then 5 clean cycles; (7) Cloudflare
+      Access External Evaluation — rec defer; (8) contributor uploads/inbox —
+      rec defer; (9) PC restart — rec no; (10) audiobook `CLAUDE.md` — done
+      `3ee2222`/`9c0800f`, no decision; (11) 4 stale stashes in the audiobook
+      tree — rec leave; (12) Leftovers 17 / `PEER_TOKEN` rotation — parked.
+      Also open there: audiobook Phase 5 enforcement (measurement reads 1,127
+      uid-less records — a build, not a decision).
 - [ ] ❓ owner: build / cancel / keep-parked for each of the 15 deferred items
 - [ ] ⚠️ the 27 BUILDABLE-OPEN items contradict the "empty todo of not-deferred
       items" mandate — those that need no decision are being dispatched; the
