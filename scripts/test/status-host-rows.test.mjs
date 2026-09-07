@@ -21,6 +21,9 @@ import { dirname, resolve } from 'node:path';
 
 import {
   DEV_LANE_ROW_ID,
+  NOT_PROBEABLE_DETAIL,
+  NOT_PROBEABLE_NOTE,
+  PROBEABLE_ORIGINS,
   SITE_REGISTRY_ROW_ID,
   SITE_REGISTRY_UNKNOWN_DETAIL,
   SITE_ROW_PREFIX,
@@ -57,15 +60,25 @@ describe('siteRowPlan — the row SET is the registry', () => {
     assert.deepEqual(ids, ['audiobook', 'library', 'games', 'library2', 'ebooks']);
   });
 
-  it('🔴 a catalog the page has never heard of gets a row and a probe with NO edit here', () => {
+  it('🔴 a catalog the page has never heard of gets a ROW with NO edit here', () => {
     // The whole point of the item. `library3` is what a provisioning run
     // produces (catalog-registry.md §7), and nothing in this repo names it.
     const rows = plan([...LIVE_REGISTRY, { id: 'library3', label: "Jordan's library", host: 'jordan.heygabi.ai' }]);
     const row = rows.find((r) => r.catalogId === 'library3');
     assert.ok(row, 'a provisioned catalog must get a site row from the registry alone');
     assert.equal(row.id, 'site-library3');
-    assert.equal(row.url, 'https://jordan.heygabi.ai/');
     assert.equal(row.name, "Jordan's library site — jordan.heygabi.ai");
+  });
+
+  it('⚠️ …but NOT a probe, because a CSP is served before the registry is read', () => {
+    // The honest half, and it is a limit worth stating rather than a bug: the
+    // row set is a runtime fact, `connect-src` is a deploy-time header, and no
+    // page can widen its own CSP by learning something later. So a new catalog
+    // is ROWED for free and PROBED only once _headers names it.
+    const rows = plan([...LIVE_REGISTRY, { id: 'library3', label: "Jordan's library", host: 'jordan.heygabi.ai' }]);
+    const row = rows.find((r) => r.catalogId === 'library3');
+    assert.equal(row.blocked, true);
+    assert.equal(row.url, null, 'a probe this page may not make must never be attempted');
   });
 
   it('does NOT re-sort — a page that ordered the catalogs would be a second opinion', () => {
@@ -90,7 +103,9 @@ describe('siteRowPlan — the row SET is the registry', () => {
       'https://library.heygabi.ai/',
       'https://boardgames.heygabi.ai/',
       'https://padhard.heygabi.ai/',
-      'https://ebooks.heygabi.ai/',
+      // ⚠️ ebooks.heygabi.ai is ROWED and NOT PROBED — this page's CSP does not
+      // name it. Measured live 2026-09-06; see the CSP suite below.
+      null,
     ]);
   });
 
@@ -155,6 +170,57 @@ describe('an unreadable directory — NEVER an empty panel', () => {
   });
 });
 
+describe('🔴 a host this page may not reach is NOT PROBED, and never reads DOWN', () => {
+  it('the ebooks row exists, carries no probe, and is flagged blocked', () => {
+    const row = plan().find((r) => r.catalogId === 'ebooks');
+    assert.ok(row, 'the catalog is real and belongs on the page — only the probe is withheld');
+    assert.equal(row.blocked, true);
+    assert.equal(row.url, null);
+  });
+
+  it('every other catalog row is probed, so the block is exactly one host', () => {
+    const blocked = plan().filter((r) => r.blocked).map((r) => r.catalogId ?? r.id);
+    assert.deepEqual(blocked, ['ebooks']);
+  });
+
+  it('the sentence says "not checked", not "did not answer", and shows no status code', () => {
+    // The incident: probeReachable() cannot tell a refused fetch from a dead
+    // host, so the row said DOWN about a site answering HEAD / with 200. A
+    // permission failure must never be worded as an outage.
+    assert.ok(/[Nn]ot checked/.test(NOT_PROBEABLE_DETAIL));
+    assert.ok(!/did not answer/i.test(NOT_PROBEABLE_DETAIL));
+    assert.ok(!/\b[45]\d\d\b/.test(NOT_PROBEABLE_DETAIL), 'a person must never see a bare HTTP status');
+    // …and it must say the site may be fine, and name the one-line fix.
+    assert.ok(/may be perfectly healthy/.test(NOT_PROBEABLE_NOTE));
+    assert.ok(/_headers/.test(NOT_PROBEABLE_NOTE) && /connect-src/.test(NOT_PROBEABLE_NOTE));
+  });
+
+  it('🔴 PROBEABLE_ORIGINS matches the CSP actually served — parsed from _headers, not copied', () => {
+    // Same discipline as apps/index-worker/test/read-origins.test.ts parsing
+    // wrangler.toml: a hard-coded list nothing checks is how two sources
+    // survive. Both path forms are checked, per the trailing-slash 308 trap
+    // _headers' own header warns about.
+    const headers = readFileSync(resolve(PUBLIC, '_headers'), 'utf8');
+    const rules = headers.split(/\r?\n/);
+    const found = [];
+    for (let i = 0; i < rules.length; i += 1) {
+      if (rules[i].trim() !== '/status' && rules[i].trim() !== '/status/') continue;
+      for (let j = i + 1; j < rules.length && /^\s+\S/.test(rules[j]); j += 1) {
+        const m = /connect-src ([^;]+);/.exec(rules[j]);
+        if (m) found.push({ path: rules[i].trim(), origins: m[1].trim().split(/\s+/) });
+      }
+    }
+    assert.equal(found.length, 2, 'both /status and /status/ must carry a CSP — the 308 trap');
+    for (const rule of found) {
+      const estate = rule.origins.filter((o) => o.endsWith('.heygabi.ai'));
+      assert.deepEqual(
+        [...PROBEABLE_ORIGINS].sort(), [...estate].sort(),
+        `${rule.path}'s connect-src estate hosts and PROBEABLE_ORIGINS have drifted`,
+      );
+    }
+  });
+});
+
 describe('status.js — the sites section is wired to the plan and to nothing else', () => {
   const live = code(STATUS);
 
@@ -173,6 +239,11 @@ describe('status.js — the sites section is wired to the plan and to nothing el
     assert.ok(live.includes('for (const row of sitePlan()) ul.appendChild(makeRow(row.id, row.name));'));
     assert.ok(live.includes('siteTargets.map((row) => (row.url ? probeReachable(row.url) : null))'),
       'the probe list must be derived from the same plan the rows are');
+  });
+
+  it('renders a blocked row as a worded grey state, never as DOWN', () => {
+    assert.ok(live.includes('if (row.blocked) {'));
+    assert.ok(live.includes("updateRow(row.id, 'nodata', NOT_PROBEABLE_DETAIL, NOT_PROBEABLE_NOTE, t);"));
   });
 
   it('⚠️ the Workers and Deployed-versions row sets are STILL hand-written, and the file says why', () => {

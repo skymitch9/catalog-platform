@@ -84,6 +84,8 @@ import { mountGate } from './lib/gate.js';
 // It is where the registry-driven half of survey §3.1 lives, and where the
 // registry fields the OTHER half still needs are named.
 import {
+  NOT_PROBEABLE_DETAIL,
+  NOT_PROBEABLE_NOTE,
   SITE_REGISTRY_UNKNOWN_DETAIL,
   siteRowPlan,
 } from './lib/host-rows.js';
@@ -1062,6 +1064,17 @@ async function refreshAll() {
       // not be read, so this page does not know what the estate's sites ARE.
       // Grey and in words — never an empty list, and never a bare status.
       updateRow(row.id, 'nodata', SITE_REGISTRY_UNKNOWN_DETAIL, REGISTRY_DOWN_NOTICE, t);
+      return;
+    }
+    if (row.blocked) {
+      // 🔴 NOT RED, and this is the whole reason the state exists. Measured
+      // 2026-09-06, the hour this section became registry-driven: ebooks joined
+      // the row set, its probe was refused by this page's own CSP, and the row
+      // read "DOWN — Did not answer within 8s" about a host that answers
+      // `HEAD /` with 200. A permission failure wearing an outage's clothes is
+      // the estate's own rule inverted, and it sends somebody to fix a site
+      // that is fine.
+      updateRow(row.id, 'nodata', NOT_PROBEABLE_DETAIL, NOT_PROBEABLE_NOTE, t);
       return;
     }
     renderSiteRow(row.id, row.name, siteResults[i], t);

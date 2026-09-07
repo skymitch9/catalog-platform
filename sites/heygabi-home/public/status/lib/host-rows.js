@@ -68,6 +68,60 @@
 export const SITE_ROW_PREFIX = 'site-';
 
 /**
+ * 🔴 THE HOSTS THIS PAGE IS PERMITTED TO OPEN A CONNECTION TO — the `connect-src`
+ * of `/status`'s own Content-Security-Policy, in `sites/heygabi-home/public/_headers`.
+ *
+ * ⚠️ **THIS IS THE ONE LIST THAT CANNOT COME FROM THE REGISTRY, EVER, AND THE
+ * REASON IS THE ORDER THINGS HAPPEN IN.** A CSP is a response header chosen by
+ * the CDN before a single byte of this page runs; a registry fetch happens
+ * after. A page cannot widen its own CSP by learning something at runtime — so
+ * a catalog can join the directory and this page still may not ask about it.
+ *
+ * 🔴 **AND IT COST A FALSE RED ROW THE HOUR THE SITES SECTION BECAME
+ * REGISTRY-DRIVEN.** Measured live 2026-09-06: `ebooks.heygabi.ai` arrived in
+ * the row set the moment the registry drove it, its probe was refused by this
+ * CSP, `probeReachable()` saw a thrown fetch exactly as it sees a dead host, and
+ * the row read **"DOWN — Did not answer within 8s"** for a site that answers
+ * `HEAD /` with `HTTP/1.1 200 OK`. That is a permission failure wearing an
+ * outage's clothes — the estate's own rule, inverted: *mislabelling one sends
+ * people to fix a host that is fine.*
+ *
+ * So a host that is not here is **not probed at all** and its row says why.
+ *
+ * ⚠️ **IT MUST NOT DRIFT FROM `_headers`, and that is MECHANICAL, not a
+ * promise:** `scripts/test/status-host-rows.test.mjs` PARSES `_headers` for the
+ * `/status` and `/status/` rules, pulls their `connect-src` out of the real
+ * header, and fails if this array disagrees. Same shape as
+ * `apps/index-worker/test/read-origins.test.ts` parsing `wrangler.toml` — a
+ * hard-coded copy that nothing checks is how two sources survive.
+ */
+export const PROBEABLE_ORIGINS = [
+  'https://index.heygabi.ai',
+  'https://auth.heygabi.ai',
+  'https://library.heygabi.ai',
+  'https://boardgames.heygabi.ai',
+  'https://padhard.heygabi.ai',
+  'https://audiobooks.heygabi.ai',
+];
+
+/**
+ * What a row says when this page's CSP will not let it ask.
+ *
+ * ⚠️ GREY AND UNKNOWN, NEVER RED. "We did not look" and "it did not answer" are
+ * different facts, and only one of them is true here. The sentence names the
+ * limit as this page's own, says the site may be perfectly healthy, and gives
+ * the exact one-line fix — no status code, and no implication that anybody's
+ * access is wrong.
+ */
+export const NOT_PROBEABLE_DETAIL = 'Not checked — this page is not allowed to open a connection to this host.';
+export const NOT_PROBEABLE_NOTE =
+  'The site may be perfectly healthy; this page simply cannot ask. Which hosts it may reach is fixed by the ' +
+  'Content-Security-Policy served WITH the page, so it cannot be learned from the catalog directory the way ' +
+  'the row itself was. Adding this host is one line in sites/heygabi-home/public/_headers — the connect-src ' +
+  'of both the /status and /status/ rules — and it is a security-header change, so it is the owner’s call ' +
+  'rather than a page’s.';
+
+/**
  * The id of the ONE site row that is not a catalog: the audiobook site's `/dev/`
  * preview lane.
  *
@@ -110,10 +164,11 @@ function hostOf(origin) {
  * @param {{audioOrigin: string, unknownShelf?: string}} opts
  * @returns {Array<{
  *   id: string, name: string, url: string|null,
- *   catalogId: string|null, notice: boolean
- * }>} every row the section should carry. A row with a `url` is probed; the row
- *   with `notice: true` is rendered as a worded grey state and probed for
- *   nothing.
+ *   catalogId: string|null, notice: boolean, blocked: boolean
+ * }>} every row the section should carry. A row with a `url` is probed; a row
+ *   with `notice: true` (the directory is unreadable) or `blocked: true` (this
+ *   page's CSP forbids the connection) carries no `url`, is probed for nothing,
+ *   and is rendered as a worded grey state saying which of the two it is.
  *
  * ⚠️ THE ORDER IS THE REGISTRY'S (`sort_order`, then id — migration 0020's
  * covering index), NOT this file's. That is the same rule `indexSourceOrder()`
@@ -133,13 +188,18 @@ export function siteRowPlan(catalogs, { audioOrigin, unknownShelf = null } = {})
   for (const cat of list) {
     if (!cat || typeof cat.id !== 'string' || typeof cat.host !== 'string' || !cat.host) continue;
     const label = typeof cat.label === 'string' && cat.label ? cat.label : (unknownShelf || cat.id);
+    const origin = `https://${cat.host}`;
+    // ⚠️ The row exists either way — the catalog is real and belongs on the
+    // page. Only the PROBE is withheld, and only when this page may not ask.
+    const blocked = !PROBEABLE_ORIGINS.includes(origin);
     rows.push({
       id: `${SITE_ROW_PREFIX}${cat.id}`,
       // Same sentence catRow() built by hand for four catalogs: "<label> site — <host>".
       name: `${label} site — ${cat.host}`,
-      url: `https://${cat.host}/`,
+      url: blocked ? null : `${origin}/`,
       catalogId: cat.id,
       notice: false,
+      blocked,
     });
     if (cat.host === audioHost) rows.push(devLaneRow(label, audioOrigin));
   }
@@ -158,6 +218,7 @@ export function siteRowPlan(catalogs, { audioOrigin, unknownShelf = null } = {})
       url: null,
       catalogId: null,
       notice: true,
+      blocked: false,
     });
   }
 
@@ -165,13 +226,15 @@ export function siteRowPlan(catalogs, { audioOrigin, unknownShelf = null } = {})
 }
 
 function devLaneRow(label, audioOrigin) {
+  const blocked = !PROBEABLE_ORIGINS.includes(String(audioOrigin || '').replace(/\/+$/, ''));
   return {
     id: DEV_LANE_ROW_ID,
     name: label
       ? `${label} site, /dev/ preview lane`
       : `Preview lane (/dev/) — ${hostOf(audioOrigin)}`,
-    url: `${audioOrigin}/dev/`,
+    url: blocked ? null : `${audioOrigin}/dev/`,
     catalogId: null,
     notice: false,
+    blocked,
   };
 }

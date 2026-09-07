@@ -304,7 +304,7 @@ fact. Pinned by probe `A44`.
 | `public/series/series.js` | `sourceLabel`/`catalogLabel`/`holdingLabel` (the estate's one holding renderer) and `bookish()` | `dee846a` |
 | `public/universes/universes.js` | the row subtitle's holder, and `isGameRow()`'s kind | `dee846a` |
 | `public/status/status.js` | the index source ORDER and denominator, every catalog's row name | `dee846a` |
-| `public/status/lib/host-rows.js` | ⚠️ **the first consumer to take a ROW SET rather than a name** — `/status`'s Sites section, rows AND their reachability probes, in the registry's own order. A provisioned `library3` is rowed and probed with no edit; `ebooks` gained the row it never had. The `/dev/` lane stays a hand-written row (a deploy lane is not a shelf) and takes only its name from here | *2026-09-06* |
+| `public/status/lib/host-rows.js` | ⚠️ **the first consumer to take a ROW SET rather than a name** — `/status`'s Sites section, rows AND their reachability probes, in the registry's own order. A provisioned `library3` is **rowed** with no edit; `ebooks` gained the row it never had. The `/dev/` lane stays a hand-written row (a deploy lane is not a shelf) and takes only its name from here. 🔴 **PROBING is a separate permission** — see the CSP bullet in §10 | *2026-09-06* |
 | `public/admin/admin.js` | ⚠️ **NAMES ONLY** — see below | `94d3e65` |
 | `apps/discord-worker/src/catalog-registry.ts` | **GABI's one reader** — the shelves she offers (`resolveLibraryInstances`, registry rows that are `kind:books` + `holding:physical`) and the words she calls them, incl. the three suggestion shelves. Posture `GABI_CATALOG_REGISTRY`; `panel.ts`'s pre-existing lane now shares this fetch and this memo | `893ca5f` |
 | `audiobook_catalog/site/estate/estate-search.js` | ⚠️ **the fourth copy of `estate-search.js`, and it reads the registry now** — re-vendored 2026-09-06 by that repo's new `scripts/sync_estate_search.py`. It inherits the inline twin below rather than reading it itself | `2b4ba2f` *(audiobook_catalog)* |
@@ -445,6 +445,22 @@ estate holds.
   ❓ item in [`../TODO.md`](../TODO.md) is closed. ⚠️ **The degradation code is
   deliberately unchanged**: it is what the component does whenever a registry
   read fails for any reason, and that path still has to exist.
+- 🔴 **A REGISTRY-DRIVEN ROW SET DOES NOT BRING A REGISTRY-DRIVEN PERMISSION TO
+  ASK — and that gap produced a FALSE RED ROW within the hour.** Measured
+  2026-09-06: the moment `/status`'s Sites section was driven from this route,
+  `ebooks.heygabi.ai` arrived in the row set, its reachability probe was
+  **refused by that page's own Content-Security-Policy** (`connect-src` names
+  six estate hosts and not that one), and because a refused `fetch` throws
+  exactly as a dead host does, the row read **"DOWN — Did not answer within
+  8s"** for a site answering `HEAD /` with 200. ⚠️ **A CSP is a response header
+  chosen before the page runs, so a page can NEVER widen its own `connect-src`
+  from something it learns at runtime.** The rule that follows, and it
+  generalises past this page: **a consumer that takes a row set from this
+  registry must decide, per row, whether it is PERMITTED to act on it — and
+  where it is not, say "not checked", never "down".** `/status` now withholds
+  the probe and words the row; adding a host is two lines in
+  `sites/heygabi-home/public/_headers` and is the owner's call. Open question
+  in [`../TODO.md`](../TODO.md).
 - 🔴 **THE REGISTRY CANNOT SAY WHICH CATALOGS RUN AN ESTATE API, AND THAT IS
   THE ONE THING BLOCKING `/status`'s LAST TWO HAND-WRITTEN ROW SETS.** Measured
   2026-09-06 (agent W13-PLAT-STATUS) with `curl -sS -D <file> -o <file>` against

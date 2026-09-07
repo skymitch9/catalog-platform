@@ -489,12 +489,12 @@ around it — noted only so the next check has two redeploy times, not one.
       `sites/heygabi-home/public/status/lib/host-rows.js` (18 behavioural
       tests, `scripts/test/status-host-rows.test.mjs`). Five hand-written
       `makeRow` literals and five hand-written `probeReachable` calls are gone;
-      a provisioned `library3` gets its row **and** its probe with no edit
-      there, and `ebooks.heygabi.ai` gained the row it never had. The `/dev/`
-      preview lane stays as its own row — it is a DEPLOY LANE, not a shelf, so
-      it must never enter the registry — but takes its NAME from it. An
-      unreadable directory renders one worded grey row, never an empty panel.
-      ⚠️ The Shared-index panel was already registry-driven (2026-09-05).
+      a provisioned `library3` gets its row with no edit there, and
+      `ebooks.heygabi.ai` gained the row it never had. The `/dev/` preview lane
+      stays as its own row — it is a DEPLOY LANE, not a shelf, so it must never
+      enter the registry — but takes its NAME from it. An unreadable directory
+      renders one worded grey row, never an empty panel. ⚠️ The Shared-index
+      panel was already registry-driven (2026-09-05).
 
       🔴 **What is LEFT: the Workers and Deployed-versions row sets, and they
       are blocked on TWO REGISTRY FIELDS, not on effort.** Measured live
@@ -529,6 +529,41 @@ around it — noted only so the next check has two redeploy times, not one.
       whose Worker disagrees about which catalog it serves should say so rather
       than render. The caveat, the measurements and this spec are written into
       `status/lib/host-rows.js`'s header, which is where the next session reads.
+
+- [ ] 🧑 **OWNER'S CALL — `/status`'s CSP `connect-src` does not name
+      `ebooks.heygabi.ai`, so the page cannot probe the site row the registry
+      now gives it.** Found by shipping it, 2026-09-06: the moment the Sites
+      section became registry-driven, `ebooks` arrived in the row set, its probe
+      was **refused by this page's own Content-Security-Policy**,
+      `probeReachable()` could not tell a refused fetch from a dead host, and
+      the row read **"DOWN — Did not answer within 8s"** about a site that
+      answers `HEAD /` with `HTTP/1.1 200 OK` (measured with `curl -sS
+      --request HEAD -D <file> -o <file>`; ⚠️ `-w`, `-I` and `-o /dev/null` all
+      misreport `000`/exit 43 on these hosts). ⚠️ **A permission failure worded
+      as an outage sends somebody to fix a host that is fine** — the estate's
+      own rule, inverted.
+
+      ✅ **The lie is fixed and shipped** (the deployment id is the second
+      `heygabi-home` line of 2026-09-06 in `deploys.log`): a host this
+      page may not reach is **not probed at all**, and its row is grey and
+      worded — *"Not checked — this page is not allowed to open a connection to
+      this host"* plus a note saying the site may be perfectly healthy and
+      naming the one-line fix. `PROBEABLE_ORIGINS` in
+      `status/lib/host-rows.js` is now checked against the **real** header by a
+      test that PARSES `sites/heygabi-home/public/_headers` for both the
+      `/status` and `/status/` rules, so the two cannot drift.
+
+      🔴 **What is still open is a DECISION, not a build.** ⚠️ **A CSP is served
+      WITH the page, before any registry read, so a page can never widen its own
+      `connect-src` from a runtime fact.** Every catalog provisioned from now on
+      is therefore **rowed for free and probed only once `_headers` names its
+      host** — two lines (`/status` and `/status/`, per the trailing-slash 308
+      trap that file's own header warns about). It is a security-header change,
+      so it is the owner's to make, not a build's. **The question for him:**
+      *add `https://ebooks.heygabi.ai` to `/status`'s `connect-src` so its site
+      row can be checked — yes or no?* ⚠️ It widens only what THIS page may
+      ask, never what any host returns; a "no" leaves the row honestly grey.
+
 - [ ] **`/admin`'s `CATALOGS` is still the third in-repo copy** of
       `packages/estate-auth`'s canonical array, and **deliberately so**: it is a
       PERMISSIONS vocabulary while the registry is a name service cached ten
