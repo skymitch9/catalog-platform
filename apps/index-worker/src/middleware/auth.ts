@@ -27,6 +27,7 @@ import {
   combineEstateAndLocal,
   declareAuthPosture,
   estateCheck,
+  estateSignInRefusal,
   resolveIdentity,
 } from '@platform/estate-auth';
 import type { Env } from '../env.js';
@@ -54,7 +55,14 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
       // FIREBASE_PROJECT_ID unset: OUR config error, not the caller's 401.
       return c.json({ error: 'misconfigured', detail: (err as Error).message }, 500);
     }
-    if (!identity) return c.json({ error: 'unauthenticated' }, 401);
+    // ⚠️ The `error` CODE stays exactly `unauthenticated` — tools/estate-probes
+    // asserts it across this Worker's whole unauthenticated edge (I1–I…) and
+    // `assets/estate-search.js` branches its status line on the same string.
+    // The WORDS are additive (2026-09-06, the estate-wide KI-6 shape) and come
+    // from the canonical module rather than being written here, so this
+    // Worker, the board catalog's and the library's cannot drift into three
+    // different sentences for one refusal.
+    if (!identity) return c.json(estateSignInRefusal('the estate index'), 401);
 
     const email = identity.email.trim().toLowerCase();
     c.set('email', email); // for requireOwnerStanding() below — verified once, read after
@@ -140,7 +148,21 @@ export function requireEstateMember(): MiddlewareHandler<{ Bindings: Env; Variab
           403,
         );
       case 'revoked':
-        return c.json({ error: 'estate_revoked' }, 403);
+        // Bare until 2026-09-06, for the same reason the 401 above was: no
+        // person was thought to meet it. Same rule, same fix — the CODE is
+        // untouched (`estate-search.js` and `universes.js` branch on it), the
+        // words are additive, and they say who reverses it, because this is
+        // the one refusal the reader genuinely cannot clear alone.
+        return c.json(
+          {
+            error: 'estate_revoked',
+            detail:
+              'Your estate access has been revoked, so the index answered nothing. This needs an ' +
+              'estate approver to reinstate your account. Ask the estate owner to restore it at ' +
+              'https://heygabi.ai/admin/ — signing in again will not clear this on its own.',
+          },
+          403,
+        );
       case 'estate_unreachable':
         // Named so an outage is distinguishable from a denial (§6 row 1).
         return c.json(

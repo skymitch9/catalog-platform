@@ -132,6 +132,29 @@ test('tokenless GET /api/lookup → 401 (blanket before the read routes)', async
   assert.equal((await res.json() as any).error, 'unauthenticated');
 });
 
+// The estate-wide KI-6 shape, closed 2026-09-06. Until then this route
+// answered the bare 27-byte `{"error":"unauthenticated"}` — measured live on
+// index.heygabi.ai the same day — which is the bare status the estate's
+// standing rule forbids. The words come from `@platform/estate-auth`, so these
+// assertions are the index Worker's half of a contract the board catalog's and
+// the library's Workers share; the module's own suite pins the composition.
+test('⚠️ the tokenless 401 is WORDED — what happened, what it needs, how to get it', async () => {
+  const res = await app.request('/api/lookup?title=dune', {}, baseEnv(new FakeDB()));
+  const body = (await res.json()) as any;
+  // The CODE is frozen: estate-probes and estate-search.js both branch on it.
+  assert.equal(body.error, 'unauthenticated');
+  // ⚠️ `detail` alone must carry all three clauses — it is the only field any
+  // live client renders.
+  assert.equal(typeof body.detail, 'string');
+  assert.ok(body.detail.includes('not signed in'), 'what happened');
+  assert.ok(body.detail.includes('the estate index'), 'names the surface refused');
+  assert.ok(body.detail.includes('a signed-in estate account'), 'what it needs');
+  assert.ok(body.detail.includes('https://heygabi.ai'), 'how to get it');
+  // and never again the bare body this replaced
+  assert.notEqual(JSON.stringify(body), '{"error":"unauthenticated"}');
+});
+
+
 test('tokenless GET /api/universe/:name → 401', async () => {
   const res = await app.request('/api/universe/dcc', {}, baseEnv(new FakeDB()));
   assert.equal(res.status, 401);
@@ -247,7 +270,20 @@ test('estate revoked → 403, always — even for OWNER_EMAILS (§3.1 row 1: com
   try {
     const res = await app.request('/api/lookup?title=dune', {}, devEnv(db, OWNER));
     assert.equal(res.status, 403);
-    assert.equal((await res.json() as any).error, 'estate_revoked');
+    const body = (await res.json()) as any;
+    assert.equal(body.error, 'estate_revoked');
+    // ⚠️ Worded 2026-09-06 beside the 401 above, and DELIBERATELY a different
+    // sentence: four causes, four sentences. "Sign in again" is wrong advice
+    // for a revoked member — it loops somebody who cannot clear this alone —
+    // so this one names the approver instead.
+    assert.equal(typeof body.detail, 'string');
+    assert.ok(body.detail.includes('revoked'), 'what happened');
+    assert.ok(body.detail.includes('approver'), 'what it needs');
+    assert.ok(body.detail.includes('https://heygabi.ai/admin/'), 'how to get it');
+    assert.ok(
+      !/sign in again will clear/i.test(body.detail),
+      'must not send a revoked member back to the sign-in loop',
+    );
   } finally {
     f.restore();
   }

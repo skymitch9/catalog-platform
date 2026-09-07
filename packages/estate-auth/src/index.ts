@@ -42,6 +42,13 @@ export {
 } from './visibility.js';
 export { declareAuthPosture, type EstateAuthConfig } from './config.js';
 export {
+  UNAUTHENTICATED,
+  estateSignInRefusal,
+  unauthenticatedRefusal,
+  type RefusalClauses,
+  type UnauthenticatedRefusal,
+} from './refusals.js';
+export {
   runConformanceProbes,
   probesPassed,
   type ProbeTarget,
