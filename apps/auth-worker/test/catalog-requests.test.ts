@@ -1333,6 +1333,8 @@ test('the registry write is IDEMPOTENT — a repeated provisioning run says “e
     holding: 'physical',
     shared: false,
     host: 'amber.heygabi.ai',
+    api_host: 'amber.heygabi.ai',
+    service: null,
     request_id: id,
   });
   assert.equal(again.written, false);

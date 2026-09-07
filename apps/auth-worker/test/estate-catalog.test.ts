@@ -540,6 +540,8 @@ test('insertCatalog writes a row and says what it did', async () => {
     holding: 'physical',
     shared: false,
     host: 'amber.heygabi.ai',
+    api_host: 'amber.heygabi.ai',
+    service: null,
     request_id: 7,
   });
   assert.equal(res.written, true);
@@ -561,6 +563,8 @@ test('🔴 insertCatalog NEVER THROWS — a failure is a worded answer, because 
     holding: 'physical',
     shared: false,
     host: 'amber.heygabi.ai',
+    api_host: 'amber.heygabi.ai',
+    service: null,
     request_id: 7,
   });
   assert.equal(res.written, false);
@@ -579,6 +583,8 @@ test('listCatalogs orders by sort_order then id, so a provisioned catalog lands 
     holding: 'physical',
     shared: false,
     host: 'amber.heygabi.ai',
+    api_host: 'amber.heygabi.ai',
+    service: null,
     request_id: 7,
   });
   const ids = (await listCatalogs(db as unknown as D1Database)).map((r) => r.id);
