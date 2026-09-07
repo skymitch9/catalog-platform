@@ -91,8 +91,16 @@ const LANE_LABELS = {
   audiobook: 'Audiobook',
   epub: 'EPUB',
   'text-pdf': 'Text PDF',
-  'deferred-pdf': 'Deferred PDF (needs OCR)',
+  // ⚠️ TWO LANES, ONE TIER (B17, 2026-09-07). Both are `tier: 6` image-scan
+  // PDFs; what separates them is whether a person has ARMED the book for OCR.
+  // An armed one runs at sort_tier 3.5 — ahead of the reviewed audiobooks —
+  // and calling that "Deferred (needs OCR)" described the next ten minutes of
+  // work as something held back. `ocr-pdf` is emitted by audiobook_catalog's
+  // `ingest_queue_summary.lane_for_item`.
+  'ocr-pdf': 'Image PDF (OCR running)',
+  'deferred-pdf': 'Deferred PDF (not armed for OCR)',
   'needs-ocr': 'Needs OCR',
+  twin: 'Twin (packed from the EPUB)',
 };
 
 function laneLabel(key) {

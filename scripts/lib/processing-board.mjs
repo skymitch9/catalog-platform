@@ -117,6 +117,18 @@ const LANE_BY_SOURCE = {
   transcript: 'audiobook',
 };
 
+// ⚠️ `pdf-ocr` STAYS `deferred-pdf` HERE, and B17 (2026-09-07) deliberately did
+// not change it, even though it added an `ocr-pdf` lane to the QUEUE rows.
+// This map serves two callers with opposite meanings:
+//   · failedRow()  — a `needs-ocr`/`failed` row. Genuinely held. `deferred-pdf`
+//                    is correct, and this is the caller that matters.
+//   · historyRow() — a DONE book, which by definition was not deferred.
+// A source string cannot tell them apart because armed-ness lives in
+// `sort_tier` on the QUEUE item, and a finished state row has no queue item.
+// Splitting this map would fix the history wording and mislabel every held row,
+// which is the worse half. Recorded as a residual rather than left to look
+// like an oversight; closing it means passing the row's own status in.
+
 export function laneForSource(source) {
   if (typeof source !== 'string' || !source) return null;
   return LANE_BY_SOURCE[source] || source; // an unknown lane renders verbatim
@@ -368,6 +380,83 @@ function splitAudiobookLane(queue, summary) {
   ];
 }
 
+/**
+ * The CPU bucket's own lanes, or null to fall back to the arithmetic below.
+ *
+ * 🔴 B17 (2026-09-07) — WHY THIS EXISTS. A book actually being OCR'd tonight
+ * could not be reported honestly by this file at all:
+ *
+ *   · `needsOcr` counts state rows whose status is `needs-ocr`. ARMING a scan
+ *     PDF moves it to `pending`, so an armed book is NOT in that count.
+ *   · The old CPU arithmetic therefore put it in `cpu-work-not-yet-classified`
+ *     — "real queued CPU work this projection cannot split" — while the
+ *     ingester's own exporter knew exactly what it was.
+ *
+ * The ingester now emits `ocr-pdf` (armed, running at sort_tier 3.5) beside
+ * `deferred-pdf` (unarmed, genuinely held) — see `app/core/
+ * ingest_queue_summary.lane_for_item` in audiobook_catalog. Both are tier 6;
+ * `sort_tier` is what tells them apart, which is why no tier→lane map could
+ * ever have got this right and why the reader has to be taught the key.
+ *
+ * ⚠️ THE EQUALITY CHECK IS THE WHOLE GUARANTEE, exactly as it is for
+ * `splitAudiobookLane`: five numbers computed by different code at a different
+ * moment may name these lanes only when they SUM to the CPU bucket the
+ * ingester logged. A `--cpu-only` or `--limit` run, or a summary left over
+ * from an earlier run, fails that check and the old arithmetic answers
+ * instead. Absent, stale, malformed and disagreeing all land on the
+ * pre-2026-09-07 behaviour unchanged.
+ *
+ * ⚠️ `typeof === 'number'`, never `Number(...)`: `Number(null)` is 0, which
+ * would turn "the exporter could not count this lane" into a measured zero.
+ */
+const CPU_LANES = ['epub', 'text-pdf', 'twin', 'ocr-pdf', 'deferred-pdf'];
+
+function splitCpuLanes(queue, summary) {
+  if (!summary || typeof summary !== 'object') return null;
+  const lanes = summary.lanes;
+  if (!lanes || typeof lanes !== 'object') return null;
+
+  const counts = {};
+  let total = 0;
+  for (const lane of CPU_LANES) {
+    const n = lanes[lane];
+    // ⚠️ A MISSING KEY IS NOT ZERO. The exporter writes every lane it knows,
+    // including the empty ones, precisely so absence means "this exporter
+    // predates the lane" — an older ingester has no `ocr-pdf` key, and
+    // treating that as 0 would claim nothing is being OCR'd.
+    if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return null;
+    counts[lane] = n;
+    total += n;
+  }
+  if (total !== queue.cpu) return null;
+
+  return [
+    {
+      lane: 'ocr-pdf',
+      count: counts['ocr-pdf'],
+      note:
+        'Image-scan PDFs somebody has ARMED — they run at sort_tier 3.5, ahead of the reviewed ' +
+        'audiobooks, because OCR is CPU-only and costs ~35 s a book. Counted by the ingester at run ' +
+        `start and checked against the CPU bucket it logged (${total} = ${queue.cpu}).`,
+    },
+    {
+      lane: 'deferred-pdf',
+      count: counts['deferred-pdf'],
+      note:
+        'Image-scan PDFs NOT armed. OCR quality fails silently, so arming is a per-book human ' +
+        'decision — these are held by design, not by a missing capability.',
+    },
+    { lane: 'epub', count: counts.epub, note: 'EPUBs — tier 1, seconds of CPU each.' },
+    { lane: 'text-pdf', count: counts['text-pdf'], note: 'PDFs with a real text layer — tier 2.' },
+    {
+      lane: 'twin',
+      count: counts.twin,
+      note: 'Audiobooks whose work also exists as an EPUB — tier 3, packed from the ebook text ' +
+        'instead of transcribed.',
+    },
+  ];
+}
+
 export function queueRows(queue, needsOcr, summary = null) {
   if (!queue) return [];
   const rows = [];
@@ -387,11 +476,26 @@ export function queueRows(queue, needsOcr, summary = null) {
     });
   }
 
+  // B17 (2026-09-07): the exporter's own CPU lanes, when they reconcile with
+  // the logged bucket. This is the only path that can report `ocr-pdf` at all;
+  // everything below it predates the lane and is kept for an ingester that
+  // does not export it (or an export that does not add up).
+  const cpuSplit = splitCpuLanes(queue, summary);
+  if (cpuSplit) {
+    rows.push(...cpuSplit);
+    return rows;
+  }
+
   if (known !== null && queue.cpu === known) {
     rows.push({
       lane: 'deferred-pdf',
       count: known,
-      note: 'Image-scan PDFs, held back by design. The OCR processor that would clear them is not built.',
+      // ⚠️ CORRECTED 2026-09-07. This said "The OCR processor that would clear
+      // them is not built" — true when written, false since 2026-09-01, when
+      // the processor shipped. What actually holds these books is that arming
+      // is a per-book human decision, because OCR quality fails silently.
+      note: 'Image-scan PDFs, held back by design: OCR is built, but arming a book for it is a ' +
+        'per-book human decision because OCR quality fails silently.',
     });
     rows.push({
       lane: 'epub',
@@ -410,7 +514,9 @@ export function queueRows(queue, needsOcr, summary = null) {
       note:
         known === null
           ? 'From the state file, which did not answer — this is not a claim that none are waiting.'
-          : 'Image-scan PDFs from the state file. The OCR processor that would clear them is not built.',
+          : 'Image-scan PDFs from the state file, counted by status `needs-ocr`. ⚠️ A book somebody ' +
+            'has ARMED for OCR is `pending`, so it is NOT in this number — it lands in the ' +
+            'unclassified row below until the ingester exports its own CPU lanes.',
     });
     rows.push({
       lane: 'cpu-work-not-yet-classified',

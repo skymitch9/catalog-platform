@@ -554,3 +554,120 @@ test('no failures is an empty array, not a missing key', () => {
   assert.ok(Array.isArray(s.failed));
   assert.equal(s.failed.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// B17 (2026-09-07) — a book being OCR'd tonight is not "deferred"
+//
+// ⚠️ THE DEFECT WAS INVISIBLE FROM THIS SIDE, which is why it needs saying:
+// `needsOcr` counts state rows whose status is `needs-ocr`, and ARMING a scan
+// PDF moves it to `pending`. So an armed book was not in that count, did not
+// reach the deferred lane, and fell into `cpu-work-not-yet-classified` — "real
+// queued CPU work this projection cannot split" — while the ingester's own
+// exporter knew exactly what it was.
+//
+// audiobook_catalog now emits `ocr-pdf` (armed, running at sort_tier 3.5)
+// beside `deferred-pdf` (unarmed, genuinely held). Both are tier 6; `sort_tier`
+// is the only thing that separates them, which is why no tier→lane map could
+// have got this right. Its half is pinned by `tests/test_ocr_armed_lane.py`.
+// ---------------------------------------------------------------------------
+
+/** A full export: every CPU lane present, summing to the logged CPU bucket. */
+const FULL_LANES = (over = {}) => ({
+  lanes: {
+    epub: 0,
+    'text-pdf': 0,
+    twin: 0,
+    'ocr-pdf': 4,
+    'deferred-pdf': 12,
+    'audiobook-with-review': 21,
+    audiobook: 1018,
+    ...over,
+  },
+});
+
+test('⚠️ B17: an ARMED OCR book gets its own lane instead of the deferred one', () => {
+  const rows = queueRows({ total: 1055, cpu: 16, gpu: 1039 }, 12, FULL_LANES());
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['ocr-pdf'].count, 4);
+  assert.equal(byLane['deferred-pdf'].count, 12);
+  assert.match(byLane['ocr-pdf'].note, /ARMED/);
+  assert.match(byLane['ocr-pdf'].note, /sort_tier 3\.5/);
+  // ...and it is no longer stranded in the unclassified row.
+  assert.equal(byLane['cpu-work-not-yet-classified'], undefined);
+});
+
+test('⚠️ B17: WITHOUT the export those same 4 armed books are unclassified, not deferred', () => {
+  // The pre-B17 behaviour, kept as the fallback and asserted so the test above
+  // is demonstrably measuring the new lane rather than a fixture accident.
+  const rows = queueRows({ total: 1055, cpu: 16, gpu: 1039 }, 12);
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['ocr-pdf'], undefined);
+  assert.equal(byLane['deferred-pdf'].count, 12, 'only the UNARMED books are in this count');
+  assert.equal(byLane['cpu-work-not-yet-classified'].count, 4);
+});
+
+test('⚠️ B17: CPU lanes that do not SUM to the logged bucket are refused, not shown', () => {
+  // The same guarantee splitAudiobookLane makes: two numbers from different
+  // code at different moments may name a lane only when they agree. Here the
+  // export describes 16 CPU items and the ingester logged 60.
+  const rows = queueRows({ total: 1100, cpu: 60, gpu: 1039 }, 12, FULL_LANES());
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['ocr-pdf'], undefined, 'a disagreeing export must not name a lane');
+  assert.equal(byLane['cpu-work-not-yet-classified'].count, 48);
+});
+
+test('⚠️ B17: a MISSING ocr-pdf key is not zero — an older ingester must not read as "none armed"', () => {
+  // The exporter writes every lane it knows, including empty ones, exactly so
+  // absence means "this exporter predates the lane".
+  const { 'ocr-pdf': _drop, ...noOcrLane } = FULL_LANES().lanes;
+  const rows = queueRows({ total: 1055, cpu: 12, gpu: 1039 }, 12, { lanes: noOcrLane });
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['ocr-pdf'], undefined);
+  // ...and it falls back to the old arithmetic rather than inventing a split.
+  assert.equal(byLane['deferred-pdf'].count, 12);
+  assert.match(byLane.epub.note, /Measured, not assumed/);
+});
+
+test('⚠️ B17: a null CPU lane count is NOT zero', () => {
+  const rows = queueRows({ total: 1055, cpu: 16, gpu: 1039 }, 12, FULL_LANES({ 'ocr-pdf': null }));
+  assert.equal(rows.find((r) => r.lane === 'ocr-pdf'), undefined);
+});
+
+test('B17: zero armed books still renders the lane as a measured 0', () => {
+  const rows = queueRows({ total: 1051, cpu: 12, gpu: 1039 }, 12, FULL_LANES({ 'ocr-pdf': 0 }));
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['ocr-pdf'].count, 0, 'a lane that is genuinely empty is 0, not absent');
+  assert.equal(byLane['deferred-pdf'].count, 12);
+});
+
+test('B17: the CPU split does not disturb the GPU split, and both totals reconcile', () => {
+  const queue = { total: 1055, cpu: 16, gpu: 1039 };
+  const rows = queueRows(queue, 12, FULL_LANES());
+  const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
+  assert.equal(byLane['audiobook-with-review'].count, 21);
+  assert.equal(byLane.audiobook.count, 1018);
+  const sum = rows.reduce((n, r) => n + r.count, 0);
+  assert.equal(sum, queue.cpu + queue.gpu, 'every lane must fold back to the two buckets');
+});
+
+test('⚠️ B17: the deferred lane no longer claims the OCR processor is unbuilt', () => {
+  // It shipped 2026-09-01. What actually holds these books is that arming is a
+  // per-book human decision, because OCR quality fails silently. A note that
+  // names a missing capability sends somebody to build a thing that exists.
+  for (const rows of [
+    queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25),
+    queueRows({ total: 1100, cpu: 60, gpu: 1040 }, 25),
+    queueRows({ total: 1055, cpu: 16, gpu: 1039 }, 12, FULL_LANES()),
+  ]) {
+    for (const row of rows) {
+      assert.doesNotMatch(row.note || '', /is not built/, `stale note on lane ${row.lane}`);
+    }
+  }
+});
+
+test('⚠️ B17: laneForSource is deliberately UNCHANGED — held rows are the caller that matters', () => {
+  // failedRow() and historyRow() share this map and mean opposite things. A
+  // source string cannot tell an armed book from a held one, because armed-ness
+  // lives in `sort_tier` on the QUEUE item and a finished state row has none.
+  assert.equal(laneForSource('pdf-ocr'), 'deferred-pdf');
+});
