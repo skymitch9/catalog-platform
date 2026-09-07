@@ -5,14 +5,20 @@ name: Deploy (manual)
 # lane and no promote step. Do not add push triggers or schedules, and do not
 # copy audiobook_catalog's two-lane machinery here (TODO.md §1.2).
 #
-# Three deployables, chosen by the required `target` input:
-#   index-worker  → apps/index-worker   (wrangler deploy, D1 migrate first)
-#   auth-worker   → apps/auth-worker    (wrangler deploy, D1 migrate first)
-#   heygabi-home  → sites/heygabi-home  (wrangler pages deploy of public/;
-#                    see sites/heygabi-home/deploy.md — the upload root
-#                    sites/heygabi-home/public is load-bearing: anything wider
-#                    publishes this repo's private docs)
-#   all           → all three
+# Four deployables, chosen by the required `target` input:
+#   index-worker     → apps/index-worker   (wrangler deploy, D1 migrate first)
+#   auth-worker      → apps/auth-worker    (wrangler deploy, D1 migrate first)
+#   audiobook-worker → apps/audiobook-worker (wrangler deploy, NO migrate —
+#                       it has no D1 binding, only R2; added 2026-09-07)
+#   heygabi-home     → sites/heygabi-home  (wrangler pages deploy of public/;
+#                       see sites/heygabi-home/deploy.md — the upload root
+#                       sites/heygabi-home/public is load-bearing: anything
+#                       wider publishes this repo's private docs)
+#   all              → all four
+#
+# ⚠️ apps/discord-worker is deliberately NOT a target — whether it gets one is
+# an open owner question (docs/TODO.md, the 2026-09-07 deploy-endpoint item).
+# Do not add it as a side effect of another change.
 #
 # ⚠️ Coupled deploys: TODO.md §2 has a pending change where index-worker and
 # heygabi-home must ship TOGETHER (new find.js against the old Worker 401s).
@@ -39,6 +45,7 @@ on:
         options:
           - index-worker
           - auth-worker
+          - audiobook-worker
           - heygabi-home
           - all
 
@@ -57,7 +64,7 @@ jobs:
   # is scripts/test alone, because several of those files spawn the real
   # scripts as child processes rather than importing them.
   #
-  # ⚠️ The WHOLE suite, not a per-target subset. The three targets below share
+  # ⚠️ The WHOLE suite, not a per-target subset. The four targets below share
   # `packages/` and `scripts/`, so a subset gate is exactly how a shared change
   # ships untested — and at 39 s there is no cost argument for splitting it
   # (the survey's §3: nothing in this estate is gated on a slow suite).
@@ -148,6 +155,39 @@ jobs:
         run: npx wrangler deploy
       - name: Summary
         run: echo "::notice::auth-worker deployed at ${GITHUB_SHA} → auth.heygabi.ai (live)."
+
+  # ⚠️ NO D1 MIGRATE STEP, on purpose: apps/audiobook-worker has no D1 binding
+  # (only the three R2 buckets EBOOKS_GATED / EBOOKS / AUDIO in its
+  # wrangler.toml) and no `db:migrate` script in its package.json, so the
+  # migrate-before-deploy rule has nothing to apply to here. If this Worker
+  # ever gains a database, add the migrate step BEFORE the deploy step, the way
+  # the two jobs above do.
+  audiobook-worker:
+    needs: tests
+    if: inputs.target == 'audiobook-worker' || inputs.target == 'all'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '113be82b840c956b8378a187047ab3ea' }}
+    steps:
+      - name: Guard — CLOUDFLARE_API_TOKEN must exist
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN: repo Settings → Secrets → Actions (or: gh secret set CLOUDFLARE_API_TOKEN --repo skymitch9/catalog-platform). Create it at dash.cloudflare.com/profile/api-tokens with the 'Edit Cloudflare Workers' template PLUS 'Cloudflare Pages: Edit' (account 113be82b840c956b8378a187047ab3ea)."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Deploy audiobook-worker
+        working-directory: apps/audiobook-worker
+        run: npx wrangler deploy
+      - name: Summary
+        run: echo "::notice::audiobook-worker deployed at ${GITHUB_SHA} → audiobook-api.heygabi.ai (live)."
 
   heygabi-home:
     needs: tests

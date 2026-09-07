@@ -2,8 +2,18 @@
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED
 > (secret NAMES only — ⚠️ **this repo is PUBLIC**, `KNOWN_ISSUES.md` KI-2).
-> **Last verified: 2026-09-06** (§4 re-measured that day against two real
-> Actions runs; §1–§3 still carry their 2026-09-05 reading).
+> **Last verified: 2026-09-07** — ⚠️ **for §1's target table and §5 ONLY.**
+> What was measured on that date: the `audiobook-worker` target was ADDED to
+> `.github/workflows/deploy.yml` and the file was **parsed** (PyYAML,
+> `yaml.safe_load` — five jobs, five `target` options, the new job carries
+> `needs: tests`, the `if:` condition and **no migrate step**), the root
+> `npm test` was re-run green, and `apps/audiobook-worker/wrangler.toml` +
+> `package.json` were read to confirm the no-D1 claim in §5.
+> ⚠️ **NOT verified on that date:** the new job has **never run** — no
+> dispatch, no `wrangler deploy`, and whether `CLOUDFLARE_API_TOKEN`'s Workers
+> scope actually reaches *this* Worker is inference from its two siblings, not
+> a measurement. §2–§4 still carry their 2026-09-05/2026-09-06 readings and
+> were not re-checked.
 > ⚠️ **CREATED 2026-09-05, and its absence was
 > the finding that created it:** `docs/access/` described the backup workflow
 > (`backup-restore.md` §3) but **nothing in this tree described the DEPLOY
@@ -36,13 +46,20 @@ says so, and the rule is the owner's, not a style preference.
 |---|---|---|
 | `index-worker` | `apps/index-worker` — D1 migrate, then `wrangler deploy` | `index.heygabi.ai` |
 | `auth-worker` | `apps/auth-worker` — D1 migrate, then `wrangler deploy` | `auth.heygabi.ai` |
+| `audiobook-worker` | `apps/audiobook-worker` — `wrangler deploy`, ⚠️ **no migrate step** (§5) | `audiobook-api.heygabi.ai` |
 | `heygabi-home` | `wrangler pages deploy sites/heygabi-home/public` | `heygabi.ai` |
-| `all` | all three | |
+| `all` | all four | |
+
+⚠️ **`apps/discord-worker` is deliberately NOT a target.** Whether it gets one
+is an open owner question (`TODO.md`, the 2026-09-07 deploy-endpoint item) —
+it is the same shape as the two D1 workers, so it would need the migrate step
+the audiobook job omits. Do not add it as a side effect of another change.
 
 Actions → **Deploy (manual)** → Run workflow → pick a target. Or:
 
 ```sh
 gh workflow run deploy.yml --repo skymitch9/catalog-platform -f target=auth-worker
+gh workflow run deploy.yml --repo skymitch9/catalog-platform -f target=audiobook-worker
 gh run list --repo skymitch9/catalog-platform --limit 3
 ```
 
@@ -73,15 +90,16 @@ highest-value change in
 §5.1.
 
 A `tests` job now runs the **root** `npm test` (`test:scripts` over
-`scripts/test`, then `npm test --workspaces --if-present`) and all three deploy
-jobs carry `needs: tests`. ⚠️ **Since 2026-09-06 that job's steps live in
+`scripts/test`, then `npm test --workspaces --if-present`) and **every** deploy
+job carries `needs: tests` — three when this was written, four since
+`audiobook-worker` joined 2026-09-07 (§5). ⚠️ **Since 2026-09-06 that job's steps live in
 [`tests.yml`](../../.github/workflows/tests.yml), not in `deploy.yml`** — this
 workflow calls it (§4). Edit the suite there.
 **Measured locally 2026-09-05: ~39 s for 3,076 cases**
 (re-run the same day at 31 s / 3,104 cases after two other agents' work
 landed), of which **27.3 s is `scripts/test` alone** — several of those files
 spawn the real scripts as child processes rather than importing them. The whole
-suite runs, never a per-target subset: the three targets share `packages/` and
+suite runs, never a per-target subset: the deploy targets share `packages/` and
 `scripts/`, and a subset gate is how a shared change ships untested. No new
 secret and no new permission were needed — the suite is hermetic, and
 `apps/discord-worker`'s `pretest` (`sync-gabi-prompt --check`) skips loudly
@@ -136,3 +154,57 @@ gating a real `wrangler deploy`, and the two-line caller stanza in this file,
 have not run. **If the suite is red the deploy job is skipped, not failed** —
 the run is red overall and nothing reaches Cloudflare — but that path is
 reasoned, not observed. The next real dispatch is its measurement.
+
+## 5. 🆕 The `audiobook-worker` target — added 2026-09-07
+
+**Why it exists.** The owner's ask, verbatim: *"We need a deploy end point so
+you can take over that job"* (2026-09-07 ~02:40 Phoenix). The 2026-09-07
+audiobook-worker deploy had taken him three attempts from the phone — the first
+two never reached the Worker; the third, `e91ea098`, landed at 09:22Z and is in
+`../deploys.log`. The endpoint already existed; **only this target was
+missing.** `gh auth status` on the owner's machine is logged in as `skymitch9`,
+so from the terminal:
+
+```sh
+gh workflow run deploy.yml --repo skymitch9/catalog-platform -f target=audiobook-worker
+gh run watch --repo skymitch9/catalog-platform
+```
+
+A green run shows **two** jobs in the Summary — the `tests` gate's notice
+*"Suite green at &lt;sha&gt; — the deploy jobs may proceed."*, then
+*"audiobook-worker deployed at &lt;sha&gt; → audiobook-api.heygabi.ai (live)."*
+(the other three deploy jobs are skipped by their `if:`). Verify afterwards the
+way any Worker deploy is verified: `npx wrangler deployments list` from
+`apps/audiobook-worker` (⚠️ **newest is LAST**), `audiobook-api.heygabi.ai/api/health`
+200, and the audiobook rows on <https://heygabi.ai/status/> going green.
+
+### ⚠️ Why this job has NO D1 migrate step
+
+The two Worker jobs above run `npm run db:migrate --workspace @platform/<name>`
+before `wrangler deploy`, per the estate's migrate-before-deploy rule. **This
+job deliberately does not**, and the reason is not a shortcut:
+
+| Checked 2026-09-07 in | Finding |
+|---|---|
+| `apps/audiobook-worker/wrangler.toml` | **No `[[d1_databases]]` block at all.** Its bindings are three R2 buckets — `EBOOKS_GATED` (`ebooks-gated`), `EBOOKS` (`estate-ebooks`), `AUDIO` (`estate-audio`) — plus `[vars]` and `[observability]` |
+| `apps/audiobook-worker/package.json` | Scripts are `dev`, `typecheck`, `test`. **There is no `db:migrate`**, so the sibling jobs' command would fail the run outright |
+
+So there is no schema for new code to meet, and nothing to migrate. ⚠️ **If this
+Worker ever gains a database, the migrate step goes in BEFORE the deploy step**,
+exactly as the two jobs above do — the comment on the job in `deploy.yml` says
+so, so the rule is where a session editing that job will read it.
+
+### What is NOT verified about this target
+
+⚠️ **The job has never run.** Added, parsed and committed only:
+`yaml.safe_load` of the whole workflow succeeds (five jobs; `target` carries
+five options; the new job has `needs: tests`, the
+`inputs.target == 'audiobook-worker' || inputs.target == 'all'` condition, and
+no migrate step), and the root `npm test` is green. **Not measured:** the
+dispatch itself, the deploy, the resulting Worker version, and — the one worth
+naming — **whether `CLOUDFLARE_API_TOKEN`'s Workers scope reaches THIS Worker.**
+It deploys the two sibling Workers today, which is good reason to expect it to,
+but "same account, same scope" is inference; the first dispatch is the
+measurement. If it refuses, the symptom will be an authentication error from
+`wrangler deploy` *after* the green gate, not the guard step (the guard only
+checks the secret is non-empty).
