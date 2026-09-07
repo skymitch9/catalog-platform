@@ -175,14 +175,42 @@ import { SealError, sealSecret, sealSupported } from '../assets/catalog-seal.js'
 // The estate catalog registry — the NAMES only. See CATALOG_LABELS below for
 // the line this page deliberately does NOT cross.
 import { loadCatalogs } from '../assets/catalog-registry.js';
+// The catalog VOCABULARY — generated at build time from
+// packages/estate-auth/src/visibility.ts, never fetched. See the block comment
+// on CATALOGS below for why a permissions surface must not take this from the
+// registry the way it takes its labels.
+import { CATALOGS } from './catalogs.generated.js';
 
 const AUTH_ORIGIN = 'https://auth.heygabi.ai';
 const CANONICAL_ORIGIN = 'https://heygabi.ai';
 
-/** §4.5's canonical catalog order — never re-sorted, never duplicated.
- *  `library2` (0007) is the second library instance — visibility DEFAULTS
- *  TO 0 there, so every row renders it unchecked until deliberately granted. */
-const CATALOGS = ['audiobook', 'library', 'games', 'library2', 'ebooks'];
+/**
+ * §4.5's canonical catalog order — never re-sorted, never duplicated.
+ * `library2` (0007) is the second library instance — visibility DEFAULTS TO 0
+ * there, so every row renders it unchecked until deliberately granted.
+ *
+ * ✅ **NO LONGER A HAND-KEPT THIRD COPY (2026-09-06).** This was
+ * `const CATALOGS = ['audiobook', …]` typed out here — survey §3.1's "third
+ * in-repo copy" of `packages/estate-auth/src/visibility.ts`'s array. It is now
+ * GENERATED from that one source by `node scripts/gen-admin-catalogs.mjs` and
+ * kept honest by `scripts/test/admin-catalogs-generated-parity.test.mjs`, which
+ * regenerates it and diffs — so the copy cannot drift, and `npm test` runs
+ * before every deploy of this site.
+ *
+ * ⚠️ **IT IS A BUILD-TIME SYNC AND NOT A `GET /api/catalogs` FETCH, and that is
+ * deliberate rather than lazy.** The reasoning that justified the hand copy is
+ * still exactly right and is now served properly: this is a PERMISSIONS
+ * surface, that array decides which visibility grants render, and the registry
+ * is a NAME service cached ten minutes upstream with two isolates free to
+ * disagree inside that window (`catalog-registry.md` §8 — fine for a name,
+ * never for a permission). Driving the checkbox set from a runtime fetch would
+ * let a stale or unreachable directory silently remove an admin's ability to
+ * grant or revoke a catalog. What changed is the copy, not the posture.
+ *
+ * The import itself sits with the others at the top of the file; this comment
+ * stays where the array used to be, because this is where a reader looking for
+ * the catalog vocabulary will come.
+ */
 
 /**
  * UI labels only — the wire vocabulary stays the CATALOGS keys above.

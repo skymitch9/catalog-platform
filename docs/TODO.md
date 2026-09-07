@@ -564,12 +564,6 @@ around it — noted only so the next check has two redeploy times, not one.
       row can be checked — yes or no?* ⚠️ It widens only what THIS page may
       ask, never what any host returns; a "no" leaves the row honestly grey.
 
-- [ ] **`/admin`'s `CATALOGS` is still the third in-repo copy** of
-      `packages/estate-auth`'s canonical array, and **deliberately so**: it is a
-      PERMISSIONS vocabulary while the registry is a name service cached ten
-      minutes upstream (`catalog-registry.md` §8 — fine for a name, never for a
-      permission). Consolidating it is a sync-script job like
-      `sync-estate-auth.mjs`, not a fetch.
 - [ ] **`PHYSICAL_SOURCE_INSTANCE` in the audiobook `suggest.ts` was left alone
       on purpose:** it needs `audiobook_catalog`'s join to carry an instance
       before it can mean anything. Out of dispatch 3's scope, named here so it

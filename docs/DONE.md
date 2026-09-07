@@ -9,6 +9,87 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-06 — `/admin`'s `CATALOGS` third copy is GENERATED now — a build-time sync, deliberately not a fetch
+
+**Moved WHOLE from [`TODO.md`](TODO.md), the item as it stood:**
+
+> - [ ] **`/admin`'s `CATALOGS` is still the third in-repo copy** of
+>       `packages/estate-auth`'s canonical array, and **deliberately so**: it is a
+>       PERMISSIONS vocabulary while the registry is a name service cached ten
+>       minutes upstream (`catalog-registry.md` §8 — fine for a name, never for a
+>       permission). Consolidating it is a sync-script job like
+>       `sync-estate-auth.mjs`, not a fetch.
+
+**Done 2026-09-06 by W13-PLAT-SMALL, exactly as the item specified** — a sync
+script, not a fetch.
+
+**What shipped.**
+
+| File | What it is |
+|---|---|
+| `scripts/gen-admin-catalogs.mjs` | the generator, with `--check` |
+| `sites/heygabi-home/public/admin/catalogs.generated.js` | the projection, **checked in** |
+| `scripts/test/admin-catalogs-generated-parity.test.mjs` | 5 tests, the drift guard |
+| `sites/heygabi-home/public/admin/admin.js` | imports it; the literal is gone |
+
+🔴 **THE POSTURE DID NOT CHANGE — only the copy did, and that distinction is
+the whole item.** The reasoning that justified the hand-kept array is still
+right: `/admin` is a PERMISSIONS surface, that array decides which visibility
+grants render, and the registry is a NAME service cached ten minutes upstream
+with two isolates free to disagree inside that window
+([`info/catalog-registry.md`](info/catalog-registry.md) §8). Driving the
+checkbox set from `GET /api/catalogs` would let a stale or unreachable directory
+silently remove an admin's ability to grant or revoke a catalog — **an access
+surface failing closed on a cache miss.** The vocabulary is now fixed at BUILD
+time from the canonical TypeScript instead, so no network call can narrow it.
+
+⚠️ **`CATALOG_LABELS` was deliberately NOT consolidated**, and a test asserts
+it stays that way. A label is a NAME, and a name is precisely what the registry
+IS safe for — it is still overwritten in place from `GET /api/catalogs` before
+the first render. **Keys are the vocabulary; words are the directory's.**
+
+**Why CHECKED IN rather than gitignored** (unlike the sibling repos' synced
+copies): `heygabi-home` is a Pages site deployed by uploading
+`sites/heygabi-home/public` **directly** — there is no build step and no
+prebuild hook in that path, and a directory upload ships whatever is on disk. A
+generated file that exists only after somebody remembers to run a script is an
+`/admin` that white-screens on a fresh clone. Committed + a parity test is the
+only shape that survives both facts. Same reasoning, same shape, as
+`scripts/gen-universe-names.mjs`.
+
+⚠️ **A checked-in generated file is a hand-kept copy the moment nothing proves
+it is current** — how `/universes` went a full day one universe short (DotHack,
+2026-08-25 → 2026-08-26) with nothing going red. So the guard was **exercised,
+not assumed**:
+
+| Drift introduced | Result |
+|---|---|
+| a catalog added to the **generated** file by hand | **2 of 5 tests fail** |
+| a catalog added to **`visibility.ts`**, copy left stale | **3 of 5 tests fail** |
+| both restored | 5/5 pass, `--check` says up to date |
+
+The five tests cover: whole-string parity (regenerating with the *same*
+`renderModule()`, so there is no second projection to drift); a **vacuous-pass**
+guard asserting against the source independently; **ORDER**, entry for entry
+(§4.5's order is what the visibility array is POSTED in, so a re-sorted copy
+would stay green on a membership-only check); that `admin.js` has **no second
+hand-written `CATALOGS`**; and that the labels stayed registry-driven.
+
+⚠️ **The parser is deliberately brittle and LOUD.** It matches the exact
+`export const CATALOGS = [...] as const;` form and **throws with the file path**
+when it cannot find it, rather than returning `[]` — the zero-row-read rule.
+An empty permissions vocabulary would render an `/admin` with no grant controls
+at all, looking complete.
+
+**Tests.** Root suite **3,300** pass / 0 fail (+5). `npm run check:home` parses
+all 37 page scripts and resolves 34 module graphs, so the new import is
+verified to resolve rather than assumed.
+
+**Review:** <https://heygabi.ai/admin/> — the catalog checkbox columns are the
+surface this feeds; they should read exactly as before, which is the point.
+
+---
+
 ## ✅ 2026-09-06 — `estate-search.js`'s *"refused by CORS today"* comment corrected — and it was ONE tracked repo, not three
 
 **Moved WHOLE from [`TODO.md`](TODO.md), the item as it stood:**
