@@ -201,9 +201,16 @@ whole time (11 rows, committed 2026-09-04 16:26) — the library had no way to a
 > writing. **The owner's original complaint — "I added battle mage farmer and it
 > didn't associate the audiobook right away" — is therefore NOT closed.** Step 14's
 > *"move this item WHOLE to `DONE.md`"* is deliberately not done; it waits on the
-> enforce gate below. ⚠️ **Also unmeasured: no `audiobook_sweep_run` row exists on
-> either instance yet** — no cron tick observed, no on-add hook seen to fire, and
-> the admin route never called with a real bearer.
+> enforce gate below. ⚠️ **Corrected 2026-09-06 (W14-DOCS): this line read
+> *"Also unmeasured: no `audiobook_sweep_run` row exists on either instance
+> yet — no cron tick observed"*, and the cron HAS fired.** Measured on both
+> production D1s ~14:20 UTC by W10-LIB-FLIP and recorded in
+> `library_catalog/docs/TODO.md` (*"THE FLIP TO `enforce` WAS REFUSED"*):
+> **3 run rows on each instance**, of which **1 each computed a plan** (MAIN
+> `04:23:18`, padhard `04:23:12`) and **0 carry a `seriesVolumes` object** —
+> ids 2 and 3 both `skipped`/`unchanged` behind a 304. ⚠️ **Still true:** the
+> on-add hook has not been seen to fire, and the admin route has never been
+> called with a real bearer (it answers 401 unauthenticated on both).
 
 - [x] **1–3 · Extract to `packages/core`** — `audiobook-csv.ts` (parser lifted
       verbatim from `scripts/lib/audiobooks.mjs`), `series-canon.ts`. ⚠️ The
@@ -245,16 +252,45 @@ whole time (11 rows, committed 2026-09-04 16:26) — the library had no way to a
 
 ### ☐ 🔴 SHADOW GATE — `AUDIOBOOK_SWEEP_MODE` stays `"shadow"` until this is measured
 
-> **Flip to `enforce` only on a week of measured zero divergence** between the
-> shadow plan and what STEP 11 actually wrote. Until then the route is an
-> observer and the pipeline is still the writer.
+> **The gate is a READING, and it is on `/api/health`.** Flip only when **BOTH**
+> hosts read **`cronPlanTicks ≥ 42` AND `seriesVolumeTicks ≥ 42`**, and the
+> §4/§4a script-vs-route parity comparison has been run by a person:
+>
+> ```
+> curl -s "https://library.heygabi.ai/api/health?cb=$RANDOM" | jq .detail.audiobookSweep.gate
+> curl -s "https://padhard.heygabi.ai/api/health?cb=$RANDOM" | jq .detail.audiobookSweep.gate
+> ```
+>
+> ⚠️ Count `cronPlanTicks`, **not** `planTicks` — the second includes admin
+> `force`d runs, and forty of those in an afternoon are forty readings of one
+> CSV. ⚠️ **`divergences` is `null` and always will be: `null` means NOT
+> MEASURED, never zero** — the Worker has never seen the script's side of that
+> comparison and cannot. **Earliest enforce date: `2026-09-13`** (tick 42 lands
+> `2026-09-13 12:23` UTC), and that is a floor, not a booking.
 
-⚠️ **There is nothing to compare yet.** Measured 2026-09-06 (the sweep's own
-runbook): `audiobook_sweep_run` is **empty on both instances** — no cron tick
-observed, no on-add hook seen to fire. A week of "zero divergence" over zero runs
-is the same `0 of 0 — unmeasured, not clean` verdict the audiobook auth soak
-reached, and the same trap the `R2_PRUNE_MODE` box below spells out. **The first
-thing to measure is that a run row exists at all**, not that it agrees.
+⚠️ **Restated 2026-09-06 (W14-DOCS): this box used to say the gate was *"a week
+of measured zero divergence"* and that `audiobook_sweep_run` was *"empty on both
+instances"*.** Both are superseded. The owner-facing gate now lives whole in
+`library_catalog/docs/TODO.md` → *"✅ 2026-09-06 — the gate is now MEASURABLE,
+and it is on `/api/health`"* (agent W10-SWEEP-EVIDENCE, commit `c19fbbf`) and in
+`library_catalog/docs/access/audiobook-sweep.md` §6; **that section owns these
+numbers and this one links to it.** Three things it settled that the old wording
+got wrong:
+
+- **The cron fires and rows exist** — 3 rows per instance, 1 plan-bearing each,
+  **0** carrying a `seriesVolumes` object. So the achieved count is **1 tick on
+  the holdings half and 0 on the series-volume half**, not zero-of-everything
+  and not anywhere near 42.
+- **A `304` short-circuits the WHOLE tick**, series volumes included, so
+  `seriesVolumes.lastRun: null` meant *"the last tick was a 304"*, not *"it ran
+  and found nothing"*. `shadow` now fetches unconditionally, which is what makes
+  the clock run at all.
+- **"42 ticks = a week at four-hourly" was wrong as a schedule** — only a 200
+  tick computes anything and the sibling CSV changes ≈3×/day, so it is ~14 days.
+
+A gate met over zero plan-bearing runs would be the same `0 of 0 — unmeasured,
+not clean` verdict the audiobook auth soak reached, and the same trap the
+`R2_PRUNE_MODE` box below spells out.
 
 ⚠️ **It fails CLOSED** — unset, blank, `"on"`, `"true"` and any typo all resolve
 to `off`, the opposite of `BILLING_POLICY` two lines away in the same file and
@@ -267,7 +303,26 @@ because until then the owner's 16:37 complaint is still true.
 
 ### Then, ranked (inventory §7)
 
-- [ ] `backfill:series-volumes` — same CSV, same fetch, costs one function
+- [x] **`backfill:series-volumes` → the SAME library cron** — ✅ **BUILT AND
+      DEPLOYED TO BOTH 2026-09-05** (agent W8-SERIES-VOL). ⚠️ **Corrected
+      2026-09-06 (W14-DOCS): this row read *"same CSV, same fetch, costs one
+      function"* and was left unticked for a day after the work landed.** It was
+      right about the shape — the audiobook tick now plans
+      `series_volume`/`series_check` too, so it is **one invocation, two
+      halves**. Commits `e1e5755` (the shared planner + ONE rendering) ·
+      `8cbdc40` (the script becomes a thin caller) · `b2c9931` (the cron half +
+      the health key), all in `library_catalog`; deployed to both instances
+      2026-09-05 (MAIN `6ed4a22b`, friend `c57c5173`; rollback `eadd16b6` /
+      `0408aa25`). Script and route measured identical on both: MAIN 139 series /
+      329 statements, padhard 313 / 453. 🔴 **padhard's `series_volume` was EMPTY
+      (0 rows, 0 checks)** — nobody had ever run that script on her instance.
+      Facts: `library_catalog/docs/info/series-formats-and-audiobooks.md` §4.13;
+      runbook `library_catalog/docs/access/audiobook-sweep.md` §4a.
+      🔴 **There is deliberately NO second switch** — the same
+      `AUDIOBOOK_SWEEP_MODE` decides both halves, so **one flip enforces both**
+      and evidence for one half is NOT evidence for the other. This row is
+      therefore inside the shadow gate above and does not move to `DONE.md`
+      until enforce is live and measured.
 - [x] **`prune-r2-backups.mjs` → platform cron** — ✅ **BUILT AND DEPLOYED
       2026-09-05** (`b6ce5f8` the shared decision module, `051dd77` the Worker).
       `estate-auth`, `41 10 * * *`, ⚠️ **shipped in SHADOW — it deletes
@@ -562,7 +617,19 @@ around it — noted only so the next check has two redeploy times, not one.
       provisioned and no peer push has been watched — a printed checklist is not
       an exercised one.
 
-## ☐ 🔴 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ☑ GO ("A build now", 15:37) — W4-FED-INDEX + W4-FED-LIB in flight
+## ☐ 🧑 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ☑ GO (15:37); ALL THREE BUILD STEPS LANDED 2026-09-05 — only the OWNER'S EYEBALL is left
+
+> ⚠️ **Retitled 2026-09-06 (W14-DOCS). The heading read *"W4-FED-INDEX +
+> W4-FED-LIB in flight"* for a day after both agents landed** — the exact
+> heading-goes-stale-first failure `info/doc-tree-maintenance.md` exists for.
+> Measured against this section's own body and `DONE.md`: **W4-FED-LIB landed
+> 15:54** (library side deployed to both instances — `DONE.md`, *"everything in
+> the estate connects to MULTIPLE libraries"*, sequence ①), the **index side
+> landed** as `a62d7d6` + `25e7a12` (W4-FED-INDEX), the **token pair was set and
+> padhard's first push landed 677 rows at 16:03** (W4-FED-TOKEN), and the
+> **apex was deployed `910d6efe` at 16:08** (W4-APEX-DEPLOY). Nothing is in
+> flight. **The item stays open on ONE thing only: the owner has not looked**
+> — and nobody else can, because `vis_library2` is owner-only (`DEFAULT 0`).
 
 > **Owner, verbatim:** *"let's put this on hold for now, in the universe and
 > series tab it's not pulling Padhard library"* — "this" = the estate-auth
@@ -596,7 +663,15 @@ index; her rows become visible to whoever holds `vis_library2` — owner only,
    push door's 401-vs-400 answers that); first push via `POST /api/admin/index-push`
    on padhard; verify `library2` rows in `/api/health`, then the two tabs.
 
-☐ Owner go/no-go (asked 15:3x Phoenix, notification pushed).
+☑ **Owner go/no-go — ANSWERED "A build now" at 15:37 Phoenix**, which is what
+this section's own heading has recorded since it was written. ⚠️ **This line
+read `☐ Owner go/no-go (asked 15:3x Phoenix, notification pushed)` until
+2026-09-06 (W14-DOCS)** — an open question sitting nine lines under a heading
+that already said ☑ GO, and under three build reports that could only exist
+because the answer was yes. The decision is not re-derivable from a checkbox,
+so the question is kept here answered rather than deleted; **the *build* it
+gated is done and the ask now waits only on the eyeball at the foot of this
+section.**
 
 ☑ **index side BUILT 2026-09-05 — `a62d7d6` (code + tests + apex) and `25e7a12`
 (migration 0006 + the bare-500 guard)**, agent W4-FED-INDEX. As-built is
@@ -1535,7 +1610,27 @@ inventory (names only; the file was **not** opened by this work):
 - **Rough size:** the 30 `NAME=` keys are a short sitting once the config/credential
   sort is made; the four JSON documents are the real work.
 
-## ☐ The three formerly-DESIGNED items — all three now have code SHIPPED; 8 sub-steps left, listed per item
+## ☐ The three formerly-DESIGNED items — all three now have code SHIPPED; 10 sub-steps left, listed per item
+
+> ⚠️ **Count re-derived 2026-09-06 (W14-DOCS) by reading the bodies, not the
+> corrections. The heading said 8 and the body's open boxes said 10.** "8" was
+> the 2026-09-05 audit's figure and it was never re-counted as sub-steps split
+> and closed underneath it. Counted `☐` by `☐`, skipping headings, struck text
+> and narrative back-references:
+>
+> | Item | Open sub-steps |
+> |---|---|
+> | **0** soft pauses | 1 — the live round trip |
+> | **1** LLM billing | 6 — the matrix read-back · the 2b deploy (two projects) · nobody has rendered 2b signed in · the Discord secret · phase 4's soak (⏸ *"Later"*) · phase 5's audiobook Python client |
+> | **2** "+ Add a verse" | 3 — the bell's owner review · no notice ever written · first real use flips `landed` |
+>
+> 🔴 **One box was NOT counted, because it is measured closed:** item 2's
+> *"☐ migrate + deploy the WORKER (owner)"* — `wrangler d1 migrations list
+> estate_auth --remote` said *No migrations to apply* and `deploys.log`'s last
+> `estate-auth` line (`d12d042`, 2026-09-06T02:19Z) contains `0019` and the
+> `/landed` route. That is recorded in item 2's own body at the ☑ sub-bullet;
+> ⚠️ **item 2's `###` heading still carries the stale `🔴 ☐ migrate + deploy the
+> WORKER (owner)` clause and is corrected in place there.**
 
 ⚠️ **Count corrected 2026-09-05 by agent W2-BILL2B, for item 1 only** (the other
 two items were not re-measured): of the eight, **item 1's phase 2b is now
@@ -1759,7 +1854,15 @@ has to be argued for.
    spending gate reads"*) and prints *"policy UNKNOWN … proceeding"* until they
    are exported. That export is an owner step and it belongs to item 5's soak.
 
-### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`) and its FRONT END DEPLOYED 2026-09-05 (`795f242` / `ba7ddd03`) — 🔴 ☐ migrate + deploy the WORKER (owner), ☐ first real use
+### 2. "+ Add a verse" — ✅ phases 0–3 DEPLOYED 2026-09-02; ☑ phase 4 CODE LANDED 2026-09-05 (`f2e7543`), FRONT END DEPLOYED (`795f242` / `ba7ddd03`) and ☑ the WORKER MIGRATED + DEPLOYED — ☐ the bell's owner review, ☐ first real use
+
+⚠️ **Corrected 2026-09-06 (W14-DOCS): this heading carried
+`🔴 ☐ migrate + deploy the WORKER (owner)` while its own body already recorded
+that both had happened** (the ☑ sub-bullet under phase 4, measured 2026-09-06
+13:35 Phoenix: `wrangler d1 migrations list estate_auth --remote` → *No
+migrations to apply*; `deploys.log`'s last `estate-auth` line `d12d042` at
+2026-09-06T02:19Z contains `0019` and the `/landed` route). **Nothing here is
+the owner's to run.** The heading now names what is genuinely left.
 
 Phases 0–3 archived whole in [`DONE.md`](DONE.md). The fixed-order deploy RAN:
 migration `0017` applied to remote `estate_auth` first (`npm run db:migrate`,
@@ -1783,7 +1886,9 @@ link for the human step: <https://heygabi.ai/universes/> to file one, then
 Remaining, unchanged:
 
 5. ☑ **CODE LANDED 2026-09-05 (agent W2-VERSE4, `f2e7543`) — Phase 4, notify on
-   a decision** — 🔴 **☐ deploy + migrate (owner).** ~~Unbuilt; it was never a
+   a decision** — ☑ **deploy + migrate DONE** (⚠️ read `🔴 ☐ deploy + migrate
+   (owner)` until 2026-09-06; measured closed in the ☑ sub-bullet below, and it
+   was never the owner's to run). ~~Unbuilt; it was never a
    recommendation, just a later phase.~~ The as-built, its two departures from
    the design and what is still open are
    [`info/universe-add-verse-design.md`](info/universe-add-verse-design.md) §8.

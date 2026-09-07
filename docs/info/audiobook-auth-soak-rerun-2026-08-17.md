@@ -4,6 +4,11 @@
 > Last verified: **2026-08-17** (worker version
 > `8cdf7c88-50c5-4895-b13d-3cb2f7d35198`; observability read back from the
 > LIVE Worker's settings, not from the toml).
+> ⚠️ **Except §4's closure note, verified 2026-09-06** against
+> `apps/audiobook-worker/src/gate-shadow.ts:155`,
+> `apps/audiobook-worker/src/capabilities.ts:115-119` and commit `1bac6b9`.
+> **Nothing else on this page was re-measured that day** — the retention proof,
+> the counts and the query in §1–§3 still carry their 2026-08-17 date.
 
 **What this is:** the dated addendum to
 [`audiobook-auth-soak-2026-08-16.md`](audiobook-auth-soak-2026-08-16.md).
@@ -287,6 +292,30 @@ mismatch **measurable**, which is the entire justification for closing the
 gap. **The owner decision before any flip:** either lower the floor for this
 action, or route the label away from `read.setSlot` — see enforce-blocker 3
 in [`../TODO.md`](../TODO.md). Do not "fix" it by removing the report.
+
+---
+
+### ✅ CLOSURE NOTE — both questions were DECIDED 2026-09-06, with NO code change
+
+⚠️ **The history above is left exactly as written; this note is the outcome, not
+a rewrite.** The section's title still says the instrumentation *"does not
+decide"*, which was true of the instrumentation and is no longer true of the
+questions. Both were put to the owner and answered on **2026-09-06 ~14:05
+Phoenix** — *"2. Do it"*, i.e. **Worker floors = today's rules**:
+
+| The question §4 raised | The answer, and where it now lives |
+|---|---|
+| **Lower the floor, or route the label away from `read.setSlot`?** | **Neither — there was nothing to change.** `read.setSlot` is `{ kind: 'signedIn' }` in `apps/audiobook-worker/src/gate-shadow.ts:155`, and has been since 2026-08-17. The `manageClub` floor never gated it; the `would_deny` this section predicted came from the shadow gate's own mapping, not from the live surface |
+| **Lower `manageClub` from `admin` to `moderator`, since a site moderator out-ranks a club admin everywhere else?** | **No — it STAYS at `admin`.** `firestore.rules`' `canManageClub()` is exactly *"manager uid OR site admin"*, so the Worker floor already mirrors the rules; lowering it would widen **beyond** them and was not approved |
+
+**The decision is recorded in the code so nobody lowers it later:**
+`apps/audiobook-worker/src/capabilities.ts` **lines 115–119** (*"✅ DECIDED
+2026-09-06 (owner: 'Worker floors = today's rules … Do it'): it STAYS … Do not
+'fix' it."*), landed with `docs/` in commit **`1bac6b9`**.
+
+⚠️ **What this note does NOT claim:** that the enforce flip is unblocked, or
+that a soak has been run since. Nothing about `estate_check` moved — this closes
+the two OWNER DECISIONS §4 raised, and only those.
 
 ---
 
