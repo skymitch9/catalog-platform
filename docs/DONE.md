@@ -9,6 +9,94 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-07 13:40 Phoenix — item 131, the audiobook ROLE LADDER's LAST MILE: the reconciler learns the rungs that already had storage (audiobook `53ba764`)
+
+> **Last verified: 2026-09-07.** What was measured, and only this: this repo's
+> root `npm test` (**green**, run before any change and unchanged by it — no
+> file in this repo was edited except docs), and in `audiobook_catalog` the
+> pure decision path over a synthetic population plus `pytest -q`
+> (**2432 passed / 83 subtests**, the two parity modules 79 → **101**).
+> ⚠️ **NOT verified: anything live.** No deploy, no migration, and the
+> reconciler was deliberately NOT run against live Drive, D1 or Firestore.
+
+**The finding that changed the shape of this work: almost all of item 131 was
+already built, and had been since 2026-08-16.** The dispatch was written on a
+snapshot that said the ladder was "DESIGN, nothing built". It is not, and had
+not been for three weeks:
+
+| Piece | State found |
+|---|---|
+| The ladder itself | ✅ `apps/auth-worker/src/role-ladder.ts` — `ROLE_LADDER`, `roleRank`, `roleAtLeast`, `canGrant`, `effectiveLadderRole`, `ROLE_CAPABILITIES`. One canonical rank function; no near-duplicate checks anywhere |
+| Storage | ✅ Firestore `site_roles/{uid}` holds all four grantable rungs. Migration `0005_role_ladder.sql` (the `site_role_grant_log` audit table) **already applied to local AND remote `estate_auth`** |
+| API | ✅ `GET`/`POST /api/estate/site-roles` + `/tree`. `canGrant` is checked **twice** per POST — against the role being removed and the role being added |
+| "admin cannot grant admin" | ✅ Enforced server-side since day one, and unit-tested by name |
+| Portal UI | ✅ `sites/heygabi-home/public/admin/admin.js` renders only what the server's `grantable` array allows, mirrors rather than re-derives the rule, and renders nothing a caller cannot use |
+| Tests | ✅ `test/role-ladder.test.ts` already covered every case the brief asked for: the cumulative order, `admin → admin` refused, `guest` = no stored row, both owner accounts, and the retired vocabulary |
+
+⚠️ **`viewer`/`reader` in the design are this ladder's `guest`/`member`** —
+renamed on 2026-08-16, deliberately, because in a *book* app "reader" is both
+a synonym for everybody and Google Drive's own word, so `role: reader ⇒ Drive:
+reader` read as a tautology and would have hidden real mapping bugs. Anyone
+reading the design text and grepping for `reader` will conclude nothing was
+built. It was.
+
+**So no storage, API, UI, migration or deploy work was needed, and none was
+done in this repo.** Claiming otherwise would have been the easy and wrong
+report.
+
+**What was genuinely missing was the LAST MILE, one repo over.**
+`audiobook_catalog/scripts/drive_role_parity.py` — the STEP 8 reconciler that
+has auto-applied role→Drive every pipeline cycle since 2026-08-17 — still
+asked `site_role in ("admin", "moderator")`. A stored `member` or
+`contributor` matched no branch and fell through to `ok`, described as
+*"approved (no elevated site role on file)"* — a sentence that had quietly
+become false. **Real drift was sitting behind a green row.** That is what
+`53ba764` fixes; the full write-up lives in that repo's `docs/DONE.md` and
+`docs/access/PIPELINE.md` § STEP 8 (both LOCAL ONLY there).
+
+In short: `contributor` joins `moderator`/`admin` as a **LIVE** enforced rung
+at the Drive `writer` floor, using the existing action, the existing rails and
+the existing `MASS_DRIFT_CAP = 3` fuse. `member` and `guest` are **SHADOW** —
+computed, counted, printed, applied to nothing — and ⚠️ **no new Drive verb
+shipped**.
+
+⚠️ **Why `member`/`guest` are shadow rather than live, since "the storage now
+exists" sounds like it settles it.** Three separate reasons: a `member` with
+no Drive wants a **grant**, which is access-INCREASING (the global rule says
+confirm those) *and* needs a `create` verb `apply_to_drive()` deliberately
+does not have; a `guest` still holding Drive wants a **remove**, which is
+access-reducing and would normally just run — except that population is
+everyone granted Drive **by hand before the ladder existed**, so enforcing
+before the owner grants them `member` revokes real people **in the wrong
+order**; and a `member` over-granted to `writer` needs a downgrade action that
+half also lacks. The estate's own off → shadow → enforce rule covers exactly
+this, and the fuse would not have saved it: a permanently-tripped fuse is a
+row that can never go green, which that script's own 2026-08-17 lesson says
+trains everyone to ignore the colour.
+
+**Two OWNER steps, and they are the reason this item is not wholly closed:**
+
+1. ❓ **Cloudflare Access / External Evaluation for the shelf** — out of scope
+   by instruction (access-increasing infrastructure). Unbuilt, unclaimed.
+2. ❓ **Contributor UPLOADS / inbox / server-side ingest** — out of scope by
+   instruction. ⚠️ Its **two recorded hazards still stand**: rclone `sync`
+   DELETES server-side files absent from Drive (so an upload straight to the
+   shelf is wiped by the next pull), and contributor uploads reach the
+   pipeline's canonical input (so they need an INBOX plus a validate+dedupe
+   promote step, never the live library).
+
+Plus one that is a *decision*, not a build: flipping `member`/`guest` from
+shadow to enforce. Step 1 of that is not a code change — it is the owner
+granting `member` in the portal to everyone who should keep Drive access,
+then watching `shadowWouldRemove` fall across five consecutive cycles.
+Procedure at `LADDER_ENFORCEMENT` in the script.
+
+**Review link:** <https://heygabi.ai/admin/> — the audiobook/ebooks role
+column. The grant control should offer **member · contributor · moderator ·
+admin** (plus *none* to revoke), showing only the rungs the signed-in caller
+may actually grant, and every refusal should read as a sentence naming the
+role needed rather than a bare status code.
+
 ## ✅ 2026-09-07 09:34 Phoenix — OWNER ANSWERED "A keep it": the `/universes` search hint stays (moved WHOLE from TODO.md)
 
 **Moved WHOLE from [`TODO.md`](TODO.md) on completion.** It read as follows while it was open:

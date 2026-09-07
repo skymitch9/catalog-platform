@@ -4,7 +4,18 @@
 > GitHub, so this file deliberately holds NO real names or emails (the design
 > source, `audiobook_catalog/docs/info/ROLES.md`, is LOCAL-ONLY there for
 > exactly that reason and is read-only reference for this build, never
-> copied verbatim). Last verified: **2026-08-16**, the day this was built.
+> copied verbatim). Last verified: **2026-09-07** — ⚠️ **only the new
+> "Who CONSUMES this ladder" section was measured that day**, by reading
+> `role-ladder.ts`, `site-roles.ts`, `admin/admin.js`,
+> `audiobook-worker/src/capabilities.ts` and the audiobook reconciler in the
+> repo, plus running this repo's `npm test` and the audiobook `pytest -q`.
+> It exists because two claims in *"What was NOT built here"* had gone stale:
+> the Drive reconciler it says was not created **was built the next day**.
+> ⚠️ **NOT re-measured on that date:** the ladder table, the granting-rule
+> matrix, the two-owner-concepts section and the firestore.rules limitation —
+> all still carry their **2026-08-16** reading. ⚠️ **Nothing here was checked
+> against live Firestore, live Drive or a live sign-in.**
+> Originally verified: **2026-08-16**, the day this was built.
 > Companions: [`estate-auth-design.md`](estate-auth-design.md) (the
 > membership layer this sits beside — pending/approved/revoked, `is_approver`,
 > `is_devops`), `apps/auth-worker/src/role-ladder.ts` (the implementation —
@@ -193,17 +204,40 @@ route comments) because it is the one place "the API says yes" and "the
 site actually changes behavior" diverge, and that gap is exactly the kind
 of thing that gets missed on the next pass.
 
-## What was NOT built here
+## ⚠️ Who CONSUMES this ladder — updated 2026-09-07
+
+The section below listed what the 2026-08-16 build did not create. Two of
+those things have since been built, so read this table first; the original
+list follows, corrected in place rather than deleted, because a session
+reasoning from *"no reconciler exists"* would draw the wrong conclusion.
+
+| Consumer | State |
+|---|---|
+| The audiobook site's `firestore.rules` | ⚠️ **Still only `admin` and `moderator`.** The limitation section above stands unchanged — `member` and `contributor` still grant nothing *inside Firestore* |
+| **Drive ⇄ role parity** (`ROLES.md §2`) | ✅ **BUILT 2026-08-17**, `audiobook_catalog/scripts/drive_role_parity.py`, auto-applying role→Drive every pipeline cycle as **STEP 8** behind a `MASS_DRIFT_CAP = 3` fuse. ✅ **Reached the new rungs 2026-09-07** (`53ba764`): `contributor` is enforced LIVE at the Drive `writer` floor alongside moderator/admin; `member` and `guest` are computed in **SHADOW** and applied to nothing. ⚠️ **This is the one place `member`/`contributor` have real consequences today** — Drive, not Firestore |
+| `apps/audiobook-worker` | ✅ Consumes it directly — `src/capabilities.ts` imports `roleAtLeast` from this very module, so the Worker's gates and this ladder cannot disagree |
+| Cloudflare Access **External Evaluation** (`ROLES.md §3`) | ❌ **Still unbuilt, and an OWNER step** — it is access-increasing infrastructure. The auth Worker's shape (one source of truth others can ask allow/deny of) is already compatible; nothing here needs to change for it to happen |
+| Contributor **uploads** / inbox / server-side ingest | ❌ **Still unbuilt, and an OWNER step.** ⚠️ Two hazards recorded before it is attempted: rclone `sync` DELETES server-side files absent from Drive, and uploads reach the pipeline's canonical input — so they need a staging INBOX plus a validate+dedupe promote step, never the live library |
+
+⚠️ **The vocabulary trap, restated because it keeps costing time:** the
+owner's design text says `viewer`/`reader`; this ladder says `guest`/`member`.
+They are the same two rungs (renamed 2026-08-16, see above). A session
+grepping either repo for `reader` and finding nothing stored will conclude the
+ladder was never built. It was.
+
+## What was NOT built here (the original 2026-08-16 list)
 
 - The firestore.rules change above (explicitly out of scope; a different
-  repo, owner-gated).
+  repo, owner-gated). **Still true.**
 - `ROLES.md §2` (Drive ⇄ role parity, a reconciler) and `§3`'s actual
   Cloudflare Access External Evaluation policy wiring — read as background
   for how this ladder will eventually be consumed by other systems, but
   no Access policy or Drive reconciler was created by this build. The
   auth Worker's existing shape (a single source of truth other systems can
   ask allow/deny of) is already compatible with that future use; nothing
-  here needs to change for it to happen.
+  here needs to change for it to happen. ⚠️ **HALF SUPERSEDED** — the §2
+  reconciler was built the very next day; only the §3 Access wiring is
+  still outstanding. See the table above.
 
 ## Verification
 

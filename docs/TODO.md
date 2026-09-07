@@ -23,7 +23,18 @@ ran at 09:12.
 - [ ] ❓ owner: build / cancel / keep-parked for each of the 15 deferred items
 - [ ] ⚠️ the 27 BUILDABLE-OPEN items contradict the "empty todo of not-deferred
       items" mandate — those that need no decision are being dispatched; the
-      ones the survey says to ASK first (118, 124-chunking, 131, 137, 113) wait
+      ones the survey says to ASK first (118, 124-chunking, 137, 113) wait
+      — ✅ **131 no longer waits.** The owner settled its one open question on
+      2026-09-07 (**cumulative, one axis**; viewer is the ABSENCE of a stored
+      role; admins may no longer create other admins). The build that follows
+      from it **landed the same day** and moved WHOLE to
+      [`DONE.md`](DONE.md) — *"the audiobook ROLE LADDER's last mile"*. ⚠️ Two
+      halves of item 131 are **deliberately still open** and are OWNER steps,
+      not build steps; they are listed in that DONE entry and repeated in the
+      audiobook repo's own docs: the **Cloudflare Access / External
+      Evaluation** policy work (access-increasing infrastructure) and
+      **contributor UPLOADS / inbox / server-side ingest** (two recorded
+      hazards). Neither was built and neither is claimed
 
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
