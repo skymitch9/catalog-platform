@@ -10,23 +10,6 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ ❓ OWNER — the one un-audited grey line on `/universes` (flagged 2026-09-07 09:05 Phoenix by W17-ES-GREY, asked 09:10)
-
-The 2026-09-07 "fewer grey paragraphs" rule is applied on every host and on the
-shared search component (see [`DONE.md`](DONE.md), *"the shared estate-search
-grey-paragraph pass"*, and the library repo's DONE entry for the cross-site
-tally). One line was deliberately NOT cut because nobody had decided it:
-`sites/heygabi-home/public/universes/index.html:536` opts in with
-`hint="Search across every catalog and format."` under the search box. It is
-the exact shape the rule asks for — an explicit per-page flag, not a default —
-but it was never one of the audit's 230 items.
-
-- [ ] ❓ owner: keep the `/universes` hint (a — it is a deliberate opt-in and
-      says what that page's search does differently) or cut it (b — one edit,
-      `hint=""` → nothing rendered, CI `target=heygabi-home`)
-- ⚠️ Also outstanding on this rule, every host: **nobody has seen a rendered
-  page** — every check was served bytes. Review links are in each repo's report.
-
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
