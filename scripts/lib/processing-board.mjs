@@ -117,20 +117,38 @@ const LANE_BY_SOURCE = {
   transcript: 'audiobook',
 };
 
-// ⚠️ `pdf-ocr` STAYS `deferred-pdf` HERE, and B17 (2026-09-07) deliberately did
-// not change it, even though it added an `ocr-pdf` lane to the QUEUE rows.
-// This map serves two callers with opposite meanings:
+// ⚠️ `pdf-ocr` IS THE ONE SOURCE TWO CALLERS DISAGREE ABOUT, and the row's own
+// STATUS is what settles it (B17 residual, closed 2026-09-07). The map serves:
 //   · failedRow()  — a `needs-ocr`/`failed` row. Genuinely held. `deferred-pdf`
 //                    is correct, and this is the caller that matters.
-//   · historyRow() — a DONE book, which by definition was not deferred.
-// A source string cannot tell them apart because armed-ness lives in
-// `sort_tier` on the QUEUE item, and a finished state row has no queue item.
-// Splitting this map would fix the history wording and mislabel every held row,
-// which is the worse half. Recorded as a residual rather than left to look
-// like an oversight; closing it means passing the row's own status in.
+//   · historyRow() — a DONE book, which by definition was not deferred; it went
+//                    through OCR, so `ocr-pdf`.
+// The SOURCE string cannot tell them apart — armed-ness lives in `sort_tier` on
+// the QUEUE item and a finished state row has no queue item — which is why B17
+// left the map alone rather than splitting it. What B17 did not have to hand,
+// and every caller does, is the entry's `status`.
+//
+// ⚠️ THE ASYMMETRY IS DELIBERATE: ONLY an explicit `done` earns `ocr-pdf`.
+// Absent, empty, `pending` and anything unrecognised all keep `deferred-pdf`.
+// Calling a finished book "deferred" is a wording bug on a row nobody acts on;
+// calling a HELD book "OCR running" tells the owner work is under way that
+// nothing is doing — the worse half, and the one a wrong default must not
+// produce. Pinned by the two `laneForSource` status tests.
+const DONE_STATUS = 'done';
+const LANE_BY_SOURCE_WHEN_DONE = {
+  'pdf-ocr': 'ocr-pdf',
+};
 
-export function laneForSource(source) {
+/**
+ * @param {string} source  the state entry's `source`
+ * @param {string} [status] the state entry's OWN `status`. Optional, and its
+ *        absence is not neutral — see the asymmetry note above.
+ */
+export function laneForSource(source, status) {
   if (typeof source !== 'string' || !source) return null;
+  if (status === DONE_STATUS && LANE_BY_SOURCE_WHEN_DONE[source]) {
+    return LANE_BY_SOURCE_WHEN_DONE[source];
+  }
   return LANE_BY_SOURCE[source] || source; // an unknown lane renders verbatim
 }
 
@@ -540,7 +558,11 @@ function historyRow(bookId, entry, titles) {
     title: title || bookId,
     joined_at: typeof entry.updated_at === 'string' ? entry.updated_at : undefined,
   };
-  const lane = laneForSource(entry.source);
+  // ⚠️ The STATUS travels with the source. historyRow is only ever called for a
+  // `done` book, but passing `entry.status` rather than the literal keeps the
+  // two callers honest: the lane follows the row, not the caller's belief about
+  // the row.
+  const lane = laneForSource(entry.source, entry.status);
   if (lane) row.lane = lane;
   if (Number.isFinite(entry.chunks)) row.chunks = entry.chunks;
   if (entry.ingester_version !== undefined && entry.ingester_version !== null) {
@@ -577,7 +599,7 @@ function failedRow(bookId, entry, titles) {
     status: entry.status,
     at: typeof entry.updated_at === 'string' ? entry.updated_at : undefined,
   };
-  const lane = laneForSource(entry.source);
+  const lane = laneForSource(entry.source, entry.status);
   if (lane) row.lane = lane;
   // `reason` is set by a real failure; `blocker` by the needs-OCR path, which
   // is a NAMED missing capability rather than something that went wrong. Kept

@@ -103,8 +103,24 @@ const LANE_LABELS = {
   twin: 'Twin (packed from the EPUB)',
 };
 
-function laneLabel(key) {
+/**
+ * ⚠️ ONE LANE KEY, TWO TENSES (2026-09-07, closing the B17 residual). The
+ * projection now emits `ocr-pdf` on a FINISHED book too — a done book whose
+ * source is `pdf-ocr` went through OCR, so labelling it "Deferred PDF (not
+ * armed for OCR)" was the bug that residual named. But `Image PDF (OCR
+ * running)` is the QUEUE's sentence, and a history row saying it claims work
+ * is under way on a book that finished days ago. Same key, past tense.
+ *
+ * Only the history list passes `done`; the failed list must NOT, because its
+ * `pdf-ocr` rows are genuinely held and keep `deferred-pdf` anyway.
+ */
+const DONE_LANE_LABELS = {
+  'ocr-pdf': 'Image PDF (OCR’d)',
+};
+
+function laneLabel(key, { done = false } = {}) {
   const k = str(key);
+  if (done && DONE_LANE_LABELS[k]) return DONE_LANE_LABELS[k];
   return LANE_LABELS[k] || k || 'unlabelled lane';
 }
 
@@ -420,7 +436,9 @@ function renderHistory(list, nowMs) {
     const head = el('div', 'proc-head');
     head.append(el('span', 'proc-title', str(b.title) || str(b.id) || 'untitled book'));
     if (str(b.author)) head.append(el('span', 'proc-by', str(b.author)));
-    if (str(b.lane)) head.append(el('span', 'proc-lane', laneLabel(b.lane)));
+    // ⚠️ `done: true` — this list is finished books only, and `ocr-pdf` needs
+    // the past tense here. See DONE_LANE_LABELS.
+    if (str(b.lane)) head.append(el('span', 'proc-lane', laneLabel(b.lane, { done: true })));
     li.append(head);
 
     // The owner's own phrase, and it is the point of the row. A readable date

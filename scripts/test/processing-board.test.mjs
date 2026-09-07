@@ -131,6 +131,38 @@ test('lanes map to the labels the page knows, and an unknown source survives ver
   assert.equal(laneForSource(undefined), null);
 });
 
+test('⚠️ the STATUS decides the pdf-ocr lane — a done book was OCR’d, not deferred', () => {
+  // B17 residual, closed 2026-09-07. `source: 'pdf-ocr'` is written by BOTH a
+  // book still held for OCR and a book that has been through it, so the source
+  // string alone cannot separate the two callers. The row's own status can.
+  assert.equal(laneForSource('pdf-ocr', 'done'), 'ocr-pdf');
+  assert.equal(laneForSource('pdf-ocr', 'needs-ocr'), 'deferred-pdf');
+  assert.equal(laneForSource('pdf-ocr', 'failed'), 'deferred-pdf');
+});
+
+test('⚠️ an ABSENT or unknown status keeps `deferred-pdf` — mislabelling a held row is the worse half', () => {
+  // The asymmetry is the design. Calling a finished book "deferred" is a
+  // wording bug on a row nobody acts on; calling a HELD book "OCR running"
+  // tells the owner work is under way that nothing is doing. So only an
+  // explicit `done` earns `ocr-pdf`, and every other answer — including "the
+  // caller did not say" — lands on the conservative one.
+  assert.equal(laneForSource('pdf-ocr'), 'deferred-pdf');
+  assert.equal(laneForSource('pdf-ocr', undefined), 'deferred-pdf');
+  assert.equal(laneForSource('pdf-ocr', null), 'deferred-pdf');
+  assert.equal(laneForSource('pdf-ocr', 'pending'), 'deferred-pdf');
+  assert.equal(laneForSource('pdf-ocr', ''), 'deferred-pdf');
+});
+
+test('status changes nothing for any other source', () => {
+  for (const status of ['done', 'needs-ocr', 'failed', undefined]) {
+    assert.equal(laneForSource('epub', status), 'epub');
+    assert.equal(laneForSource('pdf-text', status), 'text-pdf');
+    assert.equal(laneForSource('transcript', status), 'audiobook');
+    assert.equal(laneForSource('comic-ocr', status), 'comic-ocr');
+    assert.equal(laneForSource(undefined, status), null);
+  }
+});
+
 test('⚠️ a queue lane reading 0 is MEASURED, and says which measurement said so', () => {
   const rows = queueRows({ total: 1064, cpu: 25, gpu: 1039 }, 25);
   const byLane = Object.fromEntries(rows.map((r) => [r.lane, r]));
@@ -665,9 +697,36 @@ test('⚠️ B17: the deferred lane no longer claims the OCR processor is unbuil
   }
 });
 
-test('⚠️ B17: laneForSource is deliberately UNCHANGED — held rows are the caller that matters', () => {
-  // failedRow() and historyRow() share this map and mean opposite things. A
-  // source string cannot tell an armed book from a held one, because armed-ness
-  // lives in `sort_tier` on the QUEUE item and a finished state row has none.
-  assert.equal(laneForSource('pdf-ocr'), 'deferred-pdf');
+test('⚠️ B17 residual: the two callers now disagree, through the whole section', () => {
+  // The end-to-end shape of the fix. failedRow() and historyRow() share the
+  // map and mean opposite things; each now passes its own row's status, so one
+  // book id in each status produces one lane each — measured off the section,
+  // not off laneForSource, because the wiring is the half that was missing.
+  const s = section({
+    state: {
+      books: {
+        'a-scanned-pdf-already-read': {
+          status: 'done',
+          updated_at: '2026-09-06T04:11:02Z',
+          source: 'pdf-ocr',
+          chunks: 214,
+          ingester_version: 1,
+        },
+        'a-scanned-pdf-nobody-armed': {
+          status: 'needs-ocr',
+          updated_at: '2026-09-06T04:12:44Z',
+          source: 'pdf-ocr',
+          blocker: 'not armed for OCR',
+        },
+      },
+    },
+  });
+
+  assert.equal(s.history.length, 1);
+  assert.equal(s.history[0].id, 'a-scanned-pdf-already-read');
+  assert.equal(s.history[0].lane, 'ocr-pdf', 'a DONE book was not deferred — it was OCR’d');
+
+  assert.equal(s.failed.length, 1);
+  assert.equal(s.failed[0].id, 'a-scanned-pdf-nobody-armed');
+  assert.equal(s.failed[0].lane, 'deferred-pdf', 'the held row is the caller that matters');
 });
