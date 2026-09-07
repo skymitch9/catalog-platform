@@ -1,11 +1,30 @@
 # catalog-platform — Known Issues, Waivers & Exceptions
 
 > **Audience:** Claude/Kiro sessions and the owner. **Status:** TRACKED.
-> Last verified: **2026-09-05** for **two things only** — **KI-6**, whose CSP
-> asymmetry was re-read off the live `Content-Security-Policy` header on all
-> five pages and is unchanged (table inside the entry), and the dangling
+> Last verified: **2026-09-07** for **the NUMBERING and nothing else.** 🔴 **This
+> file carried TWO entries called `KI-13`** — the `/rsvp` + `/progress` one
+> (opened 2026-09-02, rewritten 2026-09-05) and the `--autostash` strand
+> (incident 2026-09-05 17:10), which was written after `KI-14` already existed
+> and reused a taken number. The autostash entry is now **`KI-15`**; the
+> `/rsvp` one keeps `KI-13`, because every inbound reference in the estate
+> means *that* one. Inbound references were checked by grepping the **whole
+> repo**, not just `docs/`: the four live mentions of `KI-13`
+> (`apps/discord-worker/src/book-knowledge.ts:169`,
+> `info/gabi-book-knowledge-design.md:606`,
+> `info/gabi-phrase-count-and-read-state.md:59`, `TODO.md:1475`) all mean the
+> `/progress` entry and are correct unchanged, and
+> `info/multi-library-survey-2026-09-05.md:540` names a **different repo's**
+> KI-13. **Nothing referenced the autostash entry by number**, so the renumber
+> repaired no link — it prevented the next one from being ambiguous.
+> ⚠️ **NOT re-checked on 2026-09-07: every entry's CONTENT.** No symptom was
+> reproduced, no live header read, no dashboard opened, no D1 or Worker
+> queried; each entry still carries its own date below.
+>
+> Previously last verified: **2026-09-05** for **two things only** — **KI-6**,
+> whose CSP asymmetry was re-read off the live `Content-Security-Policy` header
+> on all five pages and is unchanged (table inside the entry), and the dangling
 > `info/gotchas.md` pointer below, which was measured non-existent and
-> corrected. ⚠️ **KI-1 through KI-5 and KI-7 through KI-13 were NOT re-checked
+> corrected. ⚠️ **KI-1 through KI-5 and KI-7 through KI-15 were NOT re-checked
 > on that date** and still carry their own dates; KI-11/KI-12/KI-13 were opened
 > **2026-09-02** from the owner's GABI live test, and KI-8 needs the Cloudflare
 > dashboard, which only the owner can open.
@@ -450,7 +469,14 @@ deliberately moved it *out* of the syncing folder.
 
 ---
 
-## KI-13 · `git pull --rebase --autostash` can STRAND another agent's work in a shared tree — `WATCHING` (incident 2026-09-05 17:10)
+## KI-15 · `git pull --rebase --autostash` can STRAND another agent's work in a shared tree — `WATCHING` (incident 2026-09-05 17:10)
+
+> ⚠️ **RENUMBERED 2026-09-07: this entry was written as a second `KI-13`.** It
+> was opened the same evening as the `/rsvp` rewrite above, after `KI-14`
+> already existed, and took a number that was already in use — so for two days
+> "KI-13" named two different things in one file. **Nothing anywhere referenced
+> it by number** (checked repo-wide), so no link was broken by the move. The
+> content below is unchanged and still carries its own 2026-09-05 measurement.
 
 **Symptom.** In a tree shared with concurrent agents, `git pull --rebase
 --autostash` prints
