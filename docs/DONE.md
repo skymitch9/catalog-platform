@@ -9,6 +9,96 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-06 — KI-6 CLOSED ESTATE-WIDE: the bare `{"error":"unauthenticated"}` 401 is a worded refusal on all four Workers, from ONE shared helper
+
+**Moved WHOLE from [`TODO.md`](TODO.md), the item as it stood:**
+
+> - [ ] **KI-6 (board) / the same line in the library's `auth.ts`:** the 401
+>       leaves as a bare `{"error":"unauthenticated"}` with no sentence. ⚠️ It is
+>       an **estate-wide shape**, so it is fixed ONCE as a shared helper, never
+>       per repo. LOW priority; the person-never-sees-a-bare-status rule is why
+>       it is here at all.
+
+**Done 2026-09-06 by W13-PLAT-SMALL, and done the way the item specified** —
+one helper, not three edits.
+
+🔢 **The defect, measured live BEFORE the change** (`curl -sS -D <file> -o
+<file>`, never `-I`/`-o NUL` which misreport 000/exit 43 on these hosts):
+`GET https://index.heygabi.ai/api/lookup?title=dune` → **401, exactly 27
+bytes**, `{"error":"unauthenticated"}`. No sentence, no route back.
+
+**What shipped.** `packages/estate-auth/src/refusals.ts` — `unauthenticatedRefusal()`
+composing the three clauses a refusal owes a person, and `estateSignInRefusal(surface)`
+for the common case. The two sibling repos inherit it through their existing
+`sync-estate-auth.mjs`, so the fix cannot become the drift it was removing.
+
+| Worker | Repo · commit | Version | Before → after |
+|---|---|---|---|
+| `catalog-index` | this repo `ae6b608` | `c2460941-46e5-4f59-9371-57fc39994b31` | 27 → **489** bytes |
+| `board-game-catalog` | `Board_Game_Catalog` `46212c0` | `c344869a-d215-4773-a67d-91e5914992f0` | 27 → **501** bytes |
+| `library-catalog` | `library_catalog` `f43e0ea` | `c1fd1d87-455f-4f7f-b1c3-9bf06b7538a6` | 27 → **497** bytes |
+| `library-catalog-friend` | same commit, `env=friend` | `13043d2d-23ad-4b36-a7da-89d2fbf2e202` | 27 → **497** bytes |
+
+⚠️ **The two library instances answer BYTE-IDENTICAL bodies** — deployed as a
+pair in one sitting under the both-instances rule. All four rollback ids are in
+`deploys.log`.
+
+**Three design calls worth not re-deriving:**
+
+1. ⚠️ **`detail` carries all three clauses BY ITSELF.** `needs`/`how` also ship
+   as their own fields, but every live consumer prints `detail` and nothing
+   else (`assets/permission-ux.js`, the search box's status line, a curl).
+   Splitting the sentence across three fields reads perfectly in a test and
+   shows a person one third of a refusal.
+2. ⚠️ **The `error` CODE is frozen and a caller cannot change it** (a literal
+   type on the interface). `tools/estate-probes` asserts it across four
+   Workers' whole unauthenticated edge; four front-end files branch on it. The
+   change is purely ADDITIVE.
+3. **`unauthenticatedRefusal()` THROWS on a missing clause** rather than
+   defaulting one — a generic filled-in sentence looks right in review and
+   tells the reader nothing.
+
+**Also worded in the same pass:** the index Worker's `estate_revoked` 403 was
+bare too, and gets a **deliberately different** sentence. Four causes, four
+sentences: *"sign in again"* is wrong advice for a revoked member and would
+loop somebody who cannot clear it alone, so that one names the approver.
+
+**Tests.** Root suite **3,258 → 3,270** pass / 0 fail across 11 workspaces
+(+10 `packages/estate-auth/test/refusals.test.ts`, +2
+`apps/index-worker/test/auth.test.ts`); board **789** pass / 0 fail / **0
+todo** (its KI-6 `.todo`, written to fail on purpose, is a live test now);
+library **2,968 → 2,973**. Typecheck clean everywhere. **Live estate probes
+after the deploy: 145 passed, 0 failed.**
+
+**Two findings in `library_catalog` worth more than the fix:**
+
+1. `sync-estate-auth.mjs`'s `EXPECTED` list **refused the new upstream file**
+   until it had been read and listed — its "deliberate friction" working
+   exactly as its own comment promises.
+2. 🔴 **`apps/worker/src/middleware/*.test.ts` was not in that repo's test glob
+   at all.** A test placed beside the middleware it tests would have run **zero
+   times and reported green**. Nothing was silently passing (no such file
+   existed), but the next person would have been fooled. Glob fixed.
+
+⚠️ **The board's KI-6 demanded a number that NEVER FIRED, and its entry now
+says so.** It said the fix waited on *"ONE non-browser consumer of `/api/*` …
+Today that number is **0**"*. That number is **still 0**. It shipped anyway
+because the estate rule is about the RESPONSE, not about a client being kind
+enough to make up for it, and because the shared helper made the cost three
+lines. **The economics changed, not the evidence** — recorded so nobody
+mis-learns that the counter reached 1.
+
+🔴 **NOT VERIFIED, identically on all four:** **no signed-in request was made
+anywhere** — no agent session holds a Firebase ID token — so every measurement
+is the unauthenticated edge. **Nobody has seen one of these sentences rendered
+in a browser.** The words are proven on the wire, not in a UI.
+
+**Review:** <https://index.heygabi.ai/api/lookup?title=dune> ·
+<https://boardgames.heygabi.ai/api/me> · <https://library.heygabi.ai/api/me> ·
+<https://padhard.heygabi.ai/api/me> — each answers 401 with the worded body.
+
+---
+
 ## ✅ 2026-09-06 — `C:/lcw/` worktree prune CLOSED: the four remaining branches deleted on the owner's word; `C:/lcw` now holds only `onedrive-excluded`
 
 **Owner, 2026-09-06 ~14:05 Phoenix, verbatim: *"1 do it"*** — to *"Delete the

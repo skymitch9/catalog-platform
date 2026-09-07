@@ -98,17 +98,15 @@ later"* (it belongs to the billing soak, item 5 of the LLM-billing section
 below); **11** Justin's shelf steps — *"He's working on it"*
 (`audiobook_catalog/docs/TODO.md` → *BLOCKED ON JUSTIN*).
 
-## ☐ KI-6, and two harmless residues of the KI-14 cleanup (2026-09-06 08:46 Phoenix)
+## ☐ Two harmless residues of the KI-14 cleanup (2026-09-06 08:46 Phoenix)
 
 > *Leftovers of the test ask* moved WHOLE to [`DONE.md`](DONE.md) at 08:46 when
-> two of its three items closed. This is the third, plus what the cleanup left
-> on disk.
+> two of its three items closed. ⚠️ **The third — KI-6, the bare
+> `{"error":"unauthenticated"}` 401 — moved WHOLE to [`DONE.md`](DONE.md) on
+> 2026-09-06 (W13-PLAT-SMALL): fixed as ONE shared helper in
+> `packages/estate-auth/src/refusals.ts` and deployed to all four Workers.**
+> What is left below is what the cleanup left on disk.
 
-- [ ] **KI-6 (board) / the same line in the library's `auth.ts`:** the 401
-      leaves as a bare `{"error":"unauthenticated"}` with no sentence. ⚠️ It is
-      an **estate-wide shape**, so it is fixed ONCE as a shared helper, never
-      per repo. LOW priority; the person-never-sees-a-bare-status rule is why
-      it is here at all.
 - [x] ~~🧑 **Six `.git/worktrees/` husk directories survived the prune**
       (2026-09-06 07:13 Phoenix): the directory delete answered *"Permission
       denied"* and the classifier refused `Remove-Item`.~~ ✅ **ALL CLEARED
