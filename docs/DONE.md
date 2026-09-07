@@ -9,6 +9,120 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-07 — OWNER RULE 02:50 Phoenix "less grey paragraphs", the APEX half (audit items 176–230) — SHIPPED AND VERIFIED LIVE
+
+**Moved WHOLE from [`TODO.md`](TODO.md) at 13:2x Phoenix, the section it was
+opened as at the start of the pass.** What follows is that section verbatim,
+then what it landed as.
+
+> **Owner rule, 2026-09-07 02:50 Phoenix:** *"We need less grey paragraphs. If a
+> feature isn't self sufficient with just the way it works we should flag it for
+> a paragraph instead of defaulting."* He then approved, verbatim **"Yes apply"**,
+> every CUT and SHORTEN recommendation in the estate-wide audit.
+>
+> **The list this repo acts on:** items **176–230** (SITE 4 — apex) of
+> `bookbuddy/library_catalog/docs/archive/2026-09-07-grey-paragraph-audit.md`
+> — **22 KEEP · 19 CUT · 14 SHORTEN**. KEEP items are untouched; the audit's
+> `[prior-trim]` marker on **181** means cutting it would reverse an earlier
+> owner decision, so it stays.
+>
+> **Scope of this agent:** `sites/heygabi-home/public/` only.
+> ⚠️ `assets/estate-search.js` is deliberately EXCLUDED — the shared component is
+> vendored into all four sites and a change there lands on all four at once; the
+> audit's own NOT VERIFIED section says it needs its own pass.
+> ⚠️ Item 176's tenth copy (`library_catalog components/ThemeCog.tsx:136`) belongs
+> to the library repo's agent, not this one.
+
+- [x] Apply 176–230, run `npm test` + `npm run check:home`, deploy via
+      `gh workflow run deploy.yml -f target=heygabi-home`, append `deploys.log`,
+      then move this section WHOLE to `DONE.md`. ✅ **ALL OF IT.**
+
+### What landed
+
+**33 of 33 actionable items applied — 19 CUT + 14 SHORTEN — across 12 files.**
+Nothing was skipped and nothing was not found. Every item was located by TEXT,
+per the audit's own warning that line numbers were spot-checked on ~20 of 230.
+
+| | |
+|---|---|
+| Commits | `ff165d2` (this TODO line) · `844fcea` (176–190) · `d03abda` (191–219, the five `/status` tabs) · `13c0023` (220–230) · `60e9c81` (de-quoting the removal comments) |
+| CI run | [34125859670](https://github.com/skymitch9/catalog-platform/actions/runs/34125859670) — `tests` green, `heygabi-home` success, the other three jobs skipped on their `if:` |
+| Deployment | `50e51bdf-25b7-4505-8768-210a9d330583` (`60e9c81`, 13:11:42Z) |
+| Rollback | `c94f5fdf-b53a-45bd-9a73-4281def3b2df` (`c4a52f5`, 09:56Z) |
+| Tests | 3,413 pass / 0 fail across 11 workspaces |
+| `verify:home --live` | 37 pages against `https://heygabi.ai`, all checks passed |
+
+**🔴 THREE ITEMS WERE NOT PURE DELETIONS, and each is a place where following
+the audit literally would have broken something.** They are the part of this
+entry worth reading in a year:
+
+1. **Item 178 — the front door's search hint is `hint=""`, not absent.**
+   `assets/estate-search.js` does `hintAttr !== null ? hintAttr : DEFAULT_HINT`,
+   so removing the attribute *restores* a default hint carrying the same
+   sentence. Deleting it would have been a no-op wearing a cut's clothes.
+2. **Item 225 moved the word "Required" onto the label**, which read `Why`. The
+   audit cut the hint on the reasoning that *"Required on the label is enough"*
+   — it was not on the label, and cutting the hint alone would have made the
+   form **softer than the CLI**, which that code's own comment forbids
+   (`tools/universes.mjs`: *"an entry that cannot say why it exists is
+   refused"*). It now reads `Why (required)`.
+3. **Item 179 KEPT the Admin card's `p.what`** and cut the other five, which the
+   audit itself allowed. An admin looking at that card cannot otherwise tell
+   that nobody else sees it — `apex-admin-link.js` reveals the card, so its
+   audience is invisible from inside.
+
+**One test was RE-AIMED, not deleted.** `scripts/test/ingestion-time.test.mjs`
+— the only file outside `sites/heygabi-home/public/` this pass touched — pinned
+item 230's two removed sentences by substring. The state assertions
+(`running`/`ok`) were always the valuable half and are untouched; the substring
+checks are now **negated**, so re-adding the line fails there rather than
+silently. ⚠️ That test's original comment argued the line existed because an
+expired timestamp would otherwise sit visible with nothing said about it. **The
+premise was measured before cutting:** the only surviving place an expired
+`paused_until` shows is the *Pause until…* picker prefill
+(`pipelines.js:986`), inside the collapsed *Schedules & exemptions* disclosure
+— an input for a new value, not a claim about the current one.
+
+**⚠️ Every cut leaves a dated comment naming the audit item and saying where the
+fact still lives — and NONE of them quotes the removed sentence.** Commit
+`60e9c81` exists to fix exactly that: sixteen comments originally carried the
+copy verbatim, which made every cut unverifiable. `grep` answered *"still
+there"*, and only opening the file could tell a live paragraph from a comment
+about a dead one. **A grep check that cannot fail is not a check.** The audit
+file is the home of record for the exact wording; one fact, one home.
+
+**Measured live 13:1xZ**, `curl -sS -D <file> -o <file>`, cache-busted: ten
+pages and five JS assets all 200. 19 removed strings grepped over the fetched
+bodies — every one **0** except the three that are correct (*"A volume listed
+means it is in a catalog"* = 1 on `/series`, the one surviving copy of four
+that item 187 keeps; `estate-search.js` keeps its own two). 15 shortened
+strings all present. `class="what"` on `/` = **1**, the Admin card and nothing
+else.
+
+**🔴 NOT VERIFIED: nobody has seen a page render.** No agent session can open a
+browser, so every claim above is about **served bytes, not pixels** — that the
+pages look right without their paragraphs, and that no layout depended on a
+removed `<p>` for its spacing, are unmeasured. Nobody signed in either, so
+`/admin`, the devops-gated half of `/status` and all four sub-tabs were checked
+as their signed-out shells only.
+🧑 **Owner: open <https://heygabi.ai/>, <https://heygabi.ai/status/>,
+<https://heygabi.ai/series/>, <https://heygabi.ai/universes/> and
+<https://heygabi.ai/admin/> and say whether anything reads as broken rather
+than merely quieter.**
+
+**Deliberately out of scope, and it is the audit's own carve-out:**
+`assets/estate-search.js`, the shared component vendored into all four estate
+sites. ⚠️ **Its `DEFAULT_HINT` is the SAME sentence as item 178 and its own
+caveat is a fifth copy of item 187's** — both still shipped to whichever sites
+take the defaults. That is the estate-search pass, not this one. Item 176's
+tenth copy (`library_catalog components/ThemeCog.tsx`) belongs to the library
+repo's agent.
+
+**Two audit paths were wrong:** items 225/226 are in `universes/universes.js`,
+**not** `assets/universes.js` (no such file).
+
+---
+
 ## ✅ 2026-09-07 — OWNER ASK ~02:40 Phoenix — "We need a deploy end point so you can take over that job" (audiobook-worker)
 
 **Context.** The 2026-09-07 audiobook-worker deploy took the owner three

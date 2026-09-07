@@ -10,30 +10,6 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ IN FLIGHT 2026-09-07 — OWNER RULE "less grey paragraphs", the APEX half (audit items 176–230)
-
-> **Owner rule, 2026-09-07 02:50 Phoenix:** *"We need less grey paragraphs. If a
-> feature isn't self sufficient with just the way it works we should flag it for
-> a paragraph instead of defaulting."* He then approved, verbatim **"Yes apply"**,
-> every CUT and SHORTEN recommendation in the estate-wide audit.
->
-> **The list this repo acts on:** items **176–230** (SITE 4 — apex) of
-> `bookbuddy/library_catalog/docs/archive/2026-09-07-grey-paragraph-audit.md`
-> — **22 KEEP · 19 CUT · 14 SHORTEN**. KEEP items are untouched; the audit's
-> `[prior-trim]` marker on **181** means cutting it would reverse an earlier
-> owner decision, so it stays.
->
-> **Scope of this agent:** `sites/heygabi-home/public/` only.
-> ⚠️ `assets/estate-search.js` is deliberately EXCLUDED — the shared component is
-> vendored into all four sites and a change there lands on all four at once; the
-> audit's own NOT VERIFIED section says it needs its own pass.
-> ⚠️ Item 176's tenth copy (`library_catalog components/ThemeCog.tsx:136`) belongs
-> to the library repo's agent, not this one.
-
-- [ ] Apply 176–230, run `npm test` + `npm run check:home`, deploy via
-      `gh workflow run deploy.yml -f target=heygabi-home`, append `deploys.log`,
-      then move this section WHOLE to [`DONE.md`](DONE.md).
-
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
