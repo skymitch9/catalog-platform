@@ -29,6 +29,14 @@
  *                          (ebook-gate.ts), same unconditional posture. ⚠️ It
  *                          gates on the estate's `vis_ebooks` READ grant, NOT
  *                          on the ladder's `download` capability (admin+).
+ *   GET  /api/download/:anchor
+ *                          the ATTACHMENT (Phase 4b, ebook-download.ts) — the
+ *                          only route that hands a whole ebook file over.
+ *                          ⚠️ TWO gates, both required: the same estate
+ *                          `vis_ebooks` grant as every route above, AND the
+ *                          ladder's `download` capability (floor `admin`).
+ *                          `Content-Disposition: attachment`, no ranges, no
+ *                          budget charge — see its header for each reason.
  *   GET  /api/audio/status the projection of what is streamable right now
  *                          (audio-status.ts) — bookId/anchor/title/size/since
  *                          and ⚠️ never `path`. Same gate.
@@ -74,6 +82,7 @@ import { audioStatusRoutes } from './audio-status.js';
 import { appCheckRoutes } from './app-check.js';
 import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
+import { ebookDownloadRoutes } from './ebook-download.js';
 import { ebookFileRoutes } from './ebook-file.js';
 import { ebookRoutes } from './ebooks.js';
 import { enforceRoutes } from './enforce-routes.js';
@@ -290,6 +299,14 @@ app.route('/', ebookRoutes);
 // grant and NOT on the ladder's `download` capability (admin+), which would
 // lock ordinary members out of reading; see ebook-file.ts's header.
 app.route('/', ebookFileRoutes);
+
+// Phase 4b — the ATTACHMENT route (2026-09-06). ⚠️ The one place in this
+// Worker where `can(role, 'download')` is ENFORCED rather than reported: every
+// route above gates on the estate's `vis_ebooks` READ grant alone, and this
+// one asks that question FIRST and the ladder question second. The order is
+// deliberate — a person who lacks the shelf hears about the shelf, never about
+// a promotion they do not need. See ebook-download.ts's header.
+app.route('/', ebookDownloadRoutes);
 
 // The audiobook player's two routes (audio phase 1, 2026-08-18). Same gate as
 // the ebook pair — literally the same function (ebook-gate.ts) — because owner
