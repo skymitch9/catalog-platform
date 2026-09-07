@@ -10,6 +10,21 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ ❓ OWNER — the deferred-items review the mandate asked for ("After all the builds present me all deferred things and we can decide to build or cancel") — presented 2026-09-07 09:50 Phoenix
+
+The full 140-item inventory across all four repos is
+[`archive/2026-09-07-open-items-survey.md`](archive/2026-09-07-open-items-survey.md)
+(15 DEFERRED · 23 ACCESS-INCREASING · 69 OWNER-ONLY · 27 BUILDABLE-OPEN · 6 UNCLEAR).
+The 15 DEFERRED items went to the owner as one numbered list with a
+recommendation each; his build/cancel/keep answers land here and each item
+then moves in its own repo. ⚠️ Item 29 of the survey is stale — that promote
+ran at 09:12.
+
+- [ ] ❓ owner: build / cancel / keep-parked for each of the 15 deferred items
+- [ ] ⚠️ the 27 BUILDABLE-OPEN items contradict the "empty todo of not-deferred
+      items" mandate — those that need no decision are being dispatched; the
+      ones the survey says to ASK first (118, 124-chunking, 131, 137, 113) wait
+
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once
