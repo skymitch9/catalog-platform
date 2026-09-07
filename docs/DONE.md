@@ -9,6 +9,146 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-07 — OWNER RULE 02:50 Phoenix "less grey paragraphs", the SHARED `estate-search.js` component — SHIPPED TO ALL FOUR SITES AND VERIFIED LIVE (agent `W17-ES-GREY`)
+
+**Moved WHOLE from [`TODO.md`](TODO.md) on completion.** It read as follows while it
+was in flight; everything below the rule is what was added at the end.
+
+⚠️ **One claim in the in-flight text below turned out to be STALE and is
+corrected further down, not deleted:** it says the audiobook site *"keeps a
+hand-vendored copy with no sync"*. That was true when
+[`info/multi-library-survey-2026-09-05.md`](info/multi-library-survey-2026-09-05.md)
+§5 measured it and false by the time this ran — see *"Two things the dispatch
+brief had stale"*.
+
+> Owner, verbatim: *"We need less grey paragraphs. If a feature isn't self
+> sufficient with just the way it works we should flag it for a paragraph
+> instead of defaulting."* The four SITE passes landed 2026-09-07 (the
+> cross-site tally lives in `library_catalog/docs/TODO.md`); the shared
+> component `sites/heygabi-home/public/assets/estate-search.js` was
+> deliberately excluded from that audit because **one change there lands on all
+> four sites at once**. This item is that pass. ⚠️ **This repo owns the
+> canonical file** — library and games regenerate their copies with
+> `scripts/sync-estate-search.mjs`, the audiobook site keeps a hand-vendored
+> copy with no sync.
+
+- [x] Cut `DEFAULT_HINT` (the same sentence as audit items 101/178, still
+      shipping to any consumer that takes the defaults) and hide the hint
+      element on empty TEXT rather than on an explicit `hint=""`.
+- [x] Shorten `_caveatLine` (a fifth copy of item 187's caveat; the apex keeps
+      one full-length copy in `/series`).
+- [x] Sweep the rest of the file; deploy to all four instances.
+
+---
+
+### What was actually changed — **5 CUT · 2 SHORTENED · 17 KEPT**
+
+⚠️ **One canonical edit, `09d3d9a`, because this repo owns the file.** The
+other three sites take it by sync; nothing was hand-edited in any of them.
+
+| | The string | Why |
+|---|---|---|
+| **CUT** | `DEFAULT_HINT` — the one-sentence explainer of what the search box is for | Audit items **101** and **178** cut exactly this sentence on the two consumer pages, and both had to do it by passing `hint=""`, because the component fell back to the default whenever the attribute was absent. Suppressing it per-consumer left the DEFAULT still shipping to any site that took the defaults. The constant survives as `''` so the `hint` attribute keeps working for a consumer that wants a line |
+| **CUT** | the hint element's hide condition | It hid only on an explicit `hint=""`; it now hides whenever its TEXT is empty, whether or not the attribute is present. This is the only behaviour change in the pass |
+| **CUT** | the em-dashed tails on the three search-result group headings (how each group was built) | The rows demonstrate it, and `_renderUniverse` already headed its own groups with the bare noun — the two renderers now agree instead of disagreeing |
+| **CUT** | the empty-result status's middle clause, naming which fields are searched and suggesting more letters | The STATE survives (nothing matched, and where it looked) and so does the one clause that would change the answer: signing in widens the scope |
+| **CUT** | the universe sign-in invitation's leading why-clause | What is left names the thing the reader wanted and the single action that gets it |
+| **SHORTENED** | `_caveatLine` — kept *"a result is presence in a catalog, not ownership"*, dropped the sentence telling the reader to open the owning catalog to tell owned from wanted | A **fifth** copy of item **187**; the audit kept exactly one, the apex `/series` footer. Every row here is already a link to that catalog, so the dropped sentence described the click the reader was about to make. ⚠️ The FACT is load-bearing per `find.js`'s own header and stays |
+| **SHORTENED** | the registry-outage caveat, two sentences → one | Both facts survive: what failed, and that it is **not** a permissions problem. That second half is a global rule (an outage worded as a refusal sends people asking for access they already hold) and `predeploy.checks.json` pins the phrase on the live host |
+
+**KEPT, and each for a reason — 17 strings.** Every `_callIndex` refusal
+(`estate_pending`, `estate_revoked`, `estate_unreachable`, `unfoldable_query`,
+`unauthenticated`, the network failure and the `default` branch), the lapsed
+sign-in, `no_catalogs_visible`, `_scopeNote` (the F1 honesty fix — it says which
+shelves were searched), the two camera refusals (this browser will not give a
+camera; permission denied), the invalid-ISBN check-digit line, the
+unresolvable-ISBN line, the members-only shelf-scan refusal with its money
+reason, the unreadable-photo line, and the *"already on the shelf"* result.
+⚠️ **A person still never sees a bare HTTP status**, and every refusal still
+says what happened, what it needs and how to get it.
+
+### Deploys — five instances, four repos
+
+| Instance | Deployment | Rollback |
+|---|---|---|
+| apex `heygabi.ai` | `46f8cfb9-4cd6-4e40-ba4e-7a90b6127251`, CI run [34139683578](https://github.com/skymitch9/catalog-platform/actions/runs/34139683578) | `50e51bdf-25b7-4505-8768-210a9d330583` |
+| `library.heygabi.ai` | `c7dc4b2c-5ae3-48a1-8916-d8652736996c` | `3a1c5474-e4c0-4507-b72b-5c0fbc11e814` |
+| `padhard.heygabi.ai` | `4a206195-ad64-4672-b14e-3484aeb23864` | `582be6b0-047f-4ff0-ae24-c318a9fd2b05` |
+| `boardgames.heygabi.ai` | `79360f3a-3057-42ea-ae3b-0f501b9af26d` | `70dca408-e0ef-4d2b-9ac1-ff51d0c01f1d` |
+| `audiobooks.heygabi.ai/dev/` | run [34140856168](https://github.com/skymitch9/audiobook_catalog/actions/runs/34140856168) | 🔴 **prod NOT moved — it needs the owner's `promote.yml`** |
+
+Both library instances were measured *"No migrations to apply"* **separately**
+before the pair; there is no schema in this change on any site. Commits:
+`09d3d9a` here · `16889b8` `38da7e5` `ddf16d5` `b22df75` in `library_catalog` ·
+`f32b5b8` in `Board_Game_Catalog` · `09a836c` in `audiobook_catalog`.
+
+⚠️ **Two repos have NO code commit for this, and that is correct**, not an
+omission: `library_catalog` and `Board_Game_Catalog` keep the component as a
+**gitignored artifact** regenerated by `scripts/sync-estate-search.mjs` on
+`pretypecheck`/`pretest`/`prebuild`(`/predeploy`). `audiobook_catalog` keeps a
+TRACKED copy — its `site/` is served straight out of the repo — written by
+`scripts/sync_estate_search.py`.
+
+### Two things the dispatch brief had stale, both measured before acting
+
+- 🔴 **The audiobook copy is no longer hand-vendored and has no divergences
+  left.** The brief (quoting [`info/multi-library-survey-2026-09-05.md`](info/multi-library-survey-2026-09-05.md)
+  §5) said to hand-apply the edits, preserve three divergences and add a banner
+  line. Measured before touching it: `2b4ba2f` gave that repo
+  `scripts/sync_estate_search.py` plus a read-only drift test, and the vendored
+  body was **byte-identical to the pre-edit canonical file**. So the correct
+  action was to RUN the script — the banner is generated BY it, and a
+  hand-added line would fail `tests/test_estate_search_vendor.py` on the next
+  run. ⚠️ **Survey §5's table is stale on that row** and should be read with
+  this entry beside it.
+- The apex's `index.html` comment beside `hint=""` claimed that attribute was
+  *"the only way to hide the line"*. True when written, false after this
+  change; corrected in place rather than deleted, because the premise is what a
+  session reasons from.
+
+### Measured live, cache-busted, on every host
+
+Removed strings **0** and the shortened caveat **1** on all five —
+`heygabi.ai/assets/…`, `library…/estate/…`, `padhard…/estate/…`,
+`boardgames…/estate/…`, `audiobooks…/dev/estate/…`. Apex, library and padhard
+are **byte-identical**; games and audiobook are identical below their own
+generated banners. The two live library app bundles are byte-identical
+(`index-BD9I7uKX.js`, 1,010,730 bytes) and the shared-list fact survives in them
+**exactly once** — item 82. One page that mounts `<estate-search>` per site: all
+five **200**. 🔴 Audiobook **prod**, measured the same minute, still serves the
+OLD copy (the cut sentence still `1`) — which is correct, not a fault.
+
+Tests: this repo **3413 pass / 0 fail** and `check:home` green (37 JS parsed, 34
+module graphs, 14 HTML, 5 themes, 3 surface owners, 37 page marker dry-run) —
+run locally before the deploy and again as CI's own gate at `09d3d9a`;
+`library_catalog` **3003 / 0**; `Board_Game_Catalog` the full `predeploy` chain
+(check-clean, deploy-guard, typecheck, `npm test`) green; `audiobook_catalog`
+**2,296 pytest + 47 subtests** and **1,047 vitest**, plus its 9 vendor-drift
+cases.
+
+### 🔴 NOT VERIFIED
+
+- **Nobody has looked at a rendered page, on any of the five hosts.** No agent
+  session has a browser. Whether a layout leaned on a removed `<p>` for spacing
+  is unmeasured everywhere — the same limit all four site passes recorded.
+- **No search was ever run.** Every check is served bytes; no query was typed,
+  so the shortened caveat and the trimmed headings have not been seen inside a
+  real result list.
+- **The audiobook prod lane**, deliberately not moved.
+
+### ☐ What this left open, in other files
+
+- 🧑 **The owner's promote** of the audiobook `/dev/` lane, and 🧑 **one eyeball
+  per site** — tracked in `audiobook_catalog/docs/TODO.md`,
+  `Board_Game_Catalog/docs/TODO.md`, and the cross-site tally in
+  `library_catalog/docs/TODO.md` that the conductor closes.
+- ❓ **One FLAG for the owner, kept rather than cut:**
+  `sites/heygabi-home/public/universes/index.html:536` sets
+  `hint="Search across every catalog and format."` — an explicit consumer
+  opt-in, which is the shape the rule asks for, but nobody has decided whether
+  `/universes` wants a line at all. It was not among the audit's 230 and was
+  left alone rather than cut silently.
+
 ## ✅ 2026-09-07 — OWNER RULE 02:50 Phoenix "less grey paragraphs", the APEX half (audit items 176–230) — SHIPPED AND VERIFIED LIVE
 
 **Moved WHOLE from [`TODO.md`](TODO.md) at 13:2x Phoenix, the section it was
