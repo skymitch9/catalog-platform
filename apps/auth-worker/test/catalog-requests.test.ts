@@ -128,6 +128,8 @@ class FakeDB {
     holding: string;
     shared: number;
     host: string;
+    api_host: string | null;
+    service: string | null;
     request_id: number | null;
   }[] = [];
   nextId = 1;
@@ -315,11 +317,8 @@ class FakeDB {
         // succeed and must SAY the estate does not know the catalog's name.
         if (/INSERT INTO estate_catalog/.test(sql)) {
           if (db.registryMissing) throw new Error('D1_ERROR: no such table: estate_catalog');
-          const [id, push, kind, label, owner, holding, shared, host, requestId] = args as (
-            | string
-            | number
-            | null
-          )[];
+          const [id, push, kind, label, owner, holding, shared, host, apiHost, service, requestId] =
+            args as (string | number | null)[];
           if (!db.catalogs.some((r) => r.id === id)) {
             db.catalogs.push({
               id: id as string,
@@ -330,6 +329,8 @@ class FakeDB {
               holding: holding as string,
               shared: Number(shared),
               host: host as string,
+              api_host: (apiHost ?? null) as string | null,
+              service: (service ?? null) as string | null,
               request_id: (requestId ?? null) as number | null,
             });
           }
@@ -1179,6 +1180,72 @@ test('🔴 /live with a catalog_id writes the registry row — label and owner f
   // whose push vocabulary this Worker has never measured.
   assert.equal(row?.push_source, 'library3');
   assert.equal(row?.request_id, id);
+  // ⚠️ `api_host` DEFAULTS TO THE HOST THIS CALL JUST VALIDATED, and that is a
+  // construction rather than a guess: the ten-step runbook this call ends
+  // creates a Worker and routes that very hostname at it. The registry's two
+  // NULLs are the shared digital pools, which predate the queue entirely.
+  assert.equal(row?.api_host, 'amber.heygabi.ai');
+  // ⚠️ AND `service` IS NULL WHEN NOBODY SENT ONE. Nothing in this Worker can
+  // derive another repo's wrangler.toml, and the Worker itself would report the
+  // CODE's name. NULL renders as "deployed Worker name not recorded".
+  assert.equal(row?.service, null);
+});
+
+test('🔴 /live takes the DEPLOYED Worker name when the provisioner sends it', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+    service: 'library-catalog-third',
+  });
+  assert.equal(db.catalogs[0]?.service, 'library-catalog-third');
+});
+
+test('⚠️ /live accepts an api_host that is NOT the site host, and null for "no API of its own"', async () => {
+  // The `audiobook` shape: the catalog's site and its estate API are two
+  // different machines. And the `ebooks` shape: a catalog with a site and no
+  // estate API at all, where NULL is the answer rather than a gap.
+  const db = new FakeDB();
+  const a = await accepted(db);
+  await post(db, DEVOPS, `/estate/catalogs/requests/${a}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+    api_host: 'amber-api.heygabi.ai',
+  });
+  assert.equal(db.catalogs[0]?.host, 'amber.heygabi.ai');
+  assert.equal(db.catalogs[0]?.api_host, 'amber-api.heygabi.ai');
+
+  const db2 = new FakeDB();
+  const b = await accepted(db2);
+  await post(db2, DEVOPS, `/estate/catalogs/requests/${b}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+    api_host: null,
+  });
+  assert.equal(db2.catalogs[0]?.api_host, null, 'explicit null must not fall back to the host');
+});
+
+test('⚠️ a malformed api_host is a WORDED 400 and the row is left untouched', async () => {
+  const db = new FakeDB();
+  const id = await accepted(db);
+  const res = await post(db, DEVOPS, `/estate/catalogs/requests/${id}/live`, {
+    provisioned_instance: 'third',
+    provisioned_host: 'amber.heygabi.ai',
+    catalog_id: 'library3',
+    api_host: 'not a hostname',
+  });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as { error: string; detail: string };
+  assert.equal(body.error, 'bad_api_host');
+  assert.ok(!/\b[45]\d\d\b/.test(body.detail), 'a person must never see a bare HTTP status');
+  // ⚠️ Validated BEFORE the status moves, like every other body field here: a
+  // 400 must leave the request untouched so the call can simply be repeated.
+  assert.equal(db.catalogs.length, 0);
+  assert.notEqual(db.requests.find((r) => r.id === id)?.status, 'live');
 });
 
 test('a GAMES request lands as kind=games, and the two vocabularies do not get confused', async () => {

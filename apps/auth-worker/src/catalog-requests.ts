@@ -66,6 +66,18 @@ import type { MeCatalog } from './me.js';
 import type { ContentKind, RegistryWrite } from './estate-catalog.js';
 import { CATALOG_ID_RE, insertCatalog } from './estate-catalog.js';
 
+/**
+ * A hostname, as `/live` will accept one.
+ *
+ * ⚠️ ONE CONSTANT, TWO CALLERS — `provisioned_host` and (since 0022) `api_host`.
+ * It was an inline literal until 2026-09-07; the moment a second field needed
+ * the same rule, two copies of a validation regex would have been two rules
+ * free to drift, and the drift would show up as one field accepting a hostname
+ * the other refuses. Deliberately NOT the catalog-id rule: a hyphen is legal
+ * here and illegal there, which is why they are different tests.
+ */
+const HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+
 /* ------------------------------------------------------------------ *
  * Rows and the wire shape
  * ------------------------------------------------------------------ */
@@ -888,7 +900,7 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
       400,
     );
   }
-  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host)) {
+  if (!HOST_RE.test(host)) {
     return c.json(
       {
         error: 'bad_host',
@@ -947,6 +959,39 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
       400,
     );
   }
+  // ── The two API columns (0022) ─────────────────────────────────────────
+  // ⚠️ `api_host` DEFAULTS TO THE PROVISIONED HOST, and that is a construction
+  // rather than a guess: the ten-step runbook this call ends creates a Worker
+  // and routes that very hostname at it, so a queue-provisioned catalog serves
+  // its estate API on its own host by definition. The registry's two NULLs are
+  // the shared digital pools, which predate the queue and were never
+  // provisioned. Send `api_host: null` explicitly for a catalog that runs no
+  // API of its own; send a string to point at somebody else's.
+  const registryApiHost =
+    obj.api_host === null
+      ? null
+      : typeof obj.api_host === 'string'
+        ? obj.api_host.trim().toLowerCase()
+        : undefined;
+  if (registryApiHost !== undefined && registryApiHost !== null && !HOST_RE.test(registryApiHost)) {
+    return c.json(
+      {
+        error: 'bad_api_host',
+        detail:
+          'An api_host is a hostname — the host that answers this catalog’s /api/health, e.g. ' +
+          '`padhard.heygabi.ai`. Send null if this catalog runs no estate API of its own, or leave it ' +
+          'out to use the host you are recording on this call.',
+      },
+      400,
+    );
+  }
+  // ⚠️ THE DEPLOYED WORKER NAME, AND NOTHING HERE CAN DERIVE IT. It lives in
+  // another repo's wrangler.toml, and the Worker itself reports the CODE's name
+  // — padhard answers `library-catalog` while the deploy is
+  // `library-catalog-friend`. So it is accepted from the caller (the
+  // provisioner knows it) and left NULL otherwise; NULL renders as "Worker name
+  // not recorded", never as a guess.
+  const registryService = typeof obj.service === 'string' ? obj.service.trim() : '';
 
   const readerKey = bool(obj.reader_key_set);
   const ownerKey = bool(obj.owner_key_set);
@@ -1056,6 +1101,13 @@ catalogRequestRoutes.post('/estate/catalogs/requests/:id/live', requireDevops(),
         // The hostname this very call just validated and recorded — one fact,
         // one home: the registry does not get a second, separately-typed copy.
         host,
+        // ⚠️ Undefined means "not sent" → the host this call just validated,
+        // because a queue-provisioned catalog serves its API on its own host by
+        // construction. Explicit null means "runs no estate API of its own".
+        api_host: registryApiHost === undefined ? host : registryApiHost,
+        // Empty means not sent, and NULL is what "the deployed Worker name was
+        // never recorded" looks like — never a guess at what it might be.
+        service: registryService || null,
         request_id: id,
       });
     }

@@ -20,14 +20,26 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 import {
+  DEPLOY_REGISTRY_ROW_ID,
+  DEPLOY_REGISTRY_UNKNOWN_DETAIL,
+  DEPLOY_ROW_PREFIX,
   DEV_LANE_ROW_ID,
+  NOT_PROBEABLE_API_NOTE,
   NOT_PROBEABLE_DETAIL,
   NOT_PROBEABLE_NOTE,
   PROBEABLE_ORIGINS,
+  SERVICE_UNRECORDED,
   SITE_REGISTRY_ROW_ID,
   SITE_REGISTRY_UNKNOWN_DETAIL,
   SITE_ROW_PREFIX,
+  WORKER_REGISTRY_ROW_ID,
+  WORKER_REGISTRY_UNKNOWN_DETAIL,
+  WORKER_ROW_PREFIX,
+  apiCatalogs,
+  appDisagreement,
+  deployRowPlan,
   siteRowPlan,
+  workerRowPlan,
 } from '../../sites/heygabi-home/public/status/lib/host-rows.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,11 +57,15 @@ const AUDIO_ORIGIN = 'https://audiobooks.heygabi.ai';
  * does not exist.
  */
 const LIVE_REGISTRY = [
-  { id: 'audiobook', label: 'Shared audiobooks', host: 'audiobooks.heygabi.ai' },
-  { id: 'library', label: "Skylar's library", host: 'library.heygabi.ai' },
-  { id: 'games', label: "Skylar's board games", host: 'boardgames.heygabi.ai' },
-  { id: 'library2', label: "Samantha's library", host: 'padhard.heygabi.ai' },
-  { id: 'ebooks', label: 'Shared ebooks', host: 'ebooks.heygabi.ai' },
+  { id: 'audiobook', label: 'Shared audiobooks', host: 'audiobooks.heygabi.ai', api_host: 'audiobook-api.heygabi.ai', service: 'audiobook-worker' },
+  { id: 'library', label: "Skylar's library", host: 'library.heygabi.ai', api_host: 'library.heygabi.ai', service: 'library-catalog' },
+  { id: 'games', label: "Skylar's board games", host: 'boardgames.heygabi.ai', api_host: 'boardgames.heygabi.ai', service: 'board-game-catalog' },
+  { id: 'library2', label: "Samantha's library", host: 'padhard.heygabi.ai', api_host: 'padhard.heygabi.ai', service: 'library-catalog-friend' },
+  // 🔴 THE ROW THAT MAKES THE WHOLE MECHANISM VISIBLE: `ebooks` has a site and
+  // NO estate API of its own, so it is rowed in Sites and absent from Workers
+  // and Deployed versions. Measured — ebooks.heygabi.ai answers /api/health
+  // with the site's HTML.
+  { id: 'ebooks', label: 'Shared ebooks', host: 'ebooks.heygabi.ai', api_host: null, service: null },
 ];
 
 const plan = (catalogs = LIVE_REGISTRY) => siteRowPlan(catalogs, { audioOrigin: AUDIO_ORIGIN });
@@ -246,14 +262,212 @@ describe('status.js — the sites section is wired to the plan and to nothing el
     assert.ok(live.includes("updateRow(row.id, 'nodata', NOT_PROBEABLE_DETAIL, NOT_PROBEABLE_NOTE, t);"));
   });
 
-  it('⚠️ the Workers and Deployed-versions row sets are STILL hand-written, and the file says why', () => {
-    // Not a failing check — a pin on the honest statement. The registry cannot
-    // yet say which catalogs run an estate API (`api_host`) or what the deployed
-    // Worker is called (`service`); two of the five hosts answer /api/health with
-    // 200 and HTML. If somebody adds those fields and drives these sections from
-    // them, this expectation is what tells them to delete the caveat too.
-    assert.ok(STATUS.includes('STILL HAND-WRITTEN'), 'the remainder must stay named in status.js');
-    assert.ok(STATUS.includes('api_host') && STATUS.includes('service'),
-      'the two missing registry fields must be named where the next session reads');
+  it('🔴 the Workers and Deployed-versions row sets are planned too — no id is spelled here', () => {
+    // ⚠️ THE EXPECTATION THIS REPLACES SAID THE OPPOSITE, deliberately: it
+    // pinned the honest caveat "STILL HAND-WRITTEN" while the registry could
+    // not say which catalogs run an API. Migration 0022 added `api_host` and
+    // `service` and this is the check that the caveat went with them.
+    assert.ok(!live.includes('STILL HAND-WRITTEN'), 'the caveat must go when the thing it describes does');
+    for (const dead of ["'wk-library'", "'wk-games'", "'wk-library2'", "'dep-library'", "'dep-games'", "'dep-library2'"]) {
+      assert.ok(!live.includes(dead), `status.js still hand-writes ${dead}`);
+    }
+    // The lookups-by-hard-coded-id are the subtler half: they LOOK
+    // registry-driven (the label comes from the directory) while the page still
+    // chooses which three ids to ask about.
+    for (const dead of ['catRow(', 'catLabel(', 'catHost(']) {
+      assert.ok(!live.includes(dead), `status.js still looks a catalog up by hard-coded id: ${dead}`);
+    }
+    assert.ok(live.includes('workerRowPlan(') && live.includes('deployRowPlan(') && live.includes('apiCatalogs('));
+  });
+
+  it('fetches each catalog API ONCE and renders it in both sections', () => {
+    // Two independently-built fetch lists is how the Workers section and the
+    // versions section end up disagreeing about which catalogs exist.
+    assert.ok(live.includes('apiTargets.map((row) => (row.url ? fetchJSON(row.url) : null))'));
+    assert.ok(live.includes('renderDeployRows({ indexHealth, authHealth, apiTargets, apiResults }, t)'));
+    for (const dead of ['fetchJSON(`${LIBRARY_ORIGIN}', 'fetchJSON(`${GAMES_ORIGIN}', 'fetchJSON(`${LIBRARY2_ORIGIN}']) {
+      assert.ok(!live.includes(dead), `status.js still hand-writes the health fetch ${dead}`);
+    }
+  });
+
+  it('renders a blocked API row as a worded grey state, never as DOWN', () => {
+    assert.ok(live.includes("updateRow(id, 'nodata', NOT_PROBEABLE_DETAIL, NOT_PROBEABLE_API_NOTE, now);"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 🔴 The Workers and Deployed-versions row sets (migration 0022)
+// ---------------------------------------------------------------------------
+
+const workers = (catalogs = LIVE_REGISTRY) => workerRowPlan(catalogs);
+const deploys = (catalogs = LIVE_REGISTRY) => deployRowPlan(catalogs);
+
+describe('apiCatalogs — `api_host` decides who has a Worker row at all', () => {
+  it('🔴 a catalog with NO api_host is ABSENT from both sections, not grey', () => {
+    // "This shelf runs no API of its own" is a settled fact about the estate,
+    // not something we failed to check — and a permanently grey row saying so
+    // would be noise on a page whose whole job is that grey means UNKNOWN.
+    assert.ok(!workers().some((r) => r.catalogId === 'ebooks'));
+    assert.ok(!deploys().some((r) => r.catalogId === 'ebooks'));
+    // …and it still has its SITE row, which is the distinction the field draws.
+    assert.ok(siteRowPlan(LIVE_REGISTRY, { audioOrigin: AUDIO_ORIGIN }).some((r) => r.catalogId === 'ebooks'));
+  });
+
+  it('🔴 asks the API HOST, not the site host — the row `host` could never have produced', () => {
+    // The measurement that made 0022 necessary: audiobooks.heygabi.ai answers
+    // /api/health with the site's HTML, and the audiobook API is a different
+    // machine the registry did not carry at all.
+    const row = workers().find((r) => r.catalogId === 'audiobook');
+    assert.ok(row, 'the shared audio pool DOES run an estate API and must be rowed');
+    assert.equal(row.apiHost, 'audiobook-api.heygabi.ai');
+    assert.ok(!row.name.includes('audiobooks.heygabi.ai'), 'the row must not name the Pages site');
+  });
+
+  it('⚠️ `holding` would have selected the right three by coincidence — and this is the counter-example', () => {
+    // catalog-registry.md §5's vocabulary conflation, made concrete: audiobook
+    // is shared AND digital AND Worker-backed, so the shortcut is already wrong.
+    const audiobook = apiCatalogs(LIVE_REGISTRY).find((c) => c.catalogId === 'audiobook');
+    assert.ok(audiobook, 'a shared digital pool can and does run a Worker');
+  });
+
+  it('keeps the registry’s own order and never re-sorts', () => {
+    assert.deepEqual(workers().map((r) => r.catalogId), ['audiobook', 'library', 'games', 'library2']);
+    const reversed = [...LIVE_REGISTRY].reverse();
+    assert.deepEqual(workers(reversed).map((r) => r.catalogId), ['library2', 'games', 'library', 'audiobook']);
+  });
+
+  it('🔴 a catalog the page has never heard of gets BOTH rows with no edit here', () => {
+    const grown = [...LIVE_REGISTRY, {
+      id: 'library3', label: "Jordan's library", host: 'jordan.heygabi.ai',
+      api_host: 'jordan.heygabi.ai', service: 'library-catalog-jordan',
+    }];
+    const wk = workers(grown).find((r) => r.catalogId === 'library3');
+    const dep = deploys(grown).find((r) => r.catalogId === 'library3');
+    assert.equal(wk.id, 'wk-library3');
+    assert.equal(wk.name, "Jordan's library API — jordan.heygabi.ai");
+    assert.equal(dep.id, 'dep-library3');
+    assert.equal(dep.name, "Jordan's library (library-catalog-jordan)");
+    // …and NOT a probe, for the same CSP reason the site rows have.
+    assert.equal(wk.blocked, true);
+    assert.equal(wk.url, null);
+  });
+
+  it('every row id is prefixed and unique across both sections', () => {
+    for (const r of workers()) assert.ok(r.id.startsWith(WORKER_ROW_PREFIX), r.id);
+    for (const r of deploys()) assert.ok(r.id.startsWith(DEPLOY_ROW_PREFIX), r.id);
+    const ids = [...workers(), ...deploys()].map((r) => r.id);
+    assert.equal(new Set(ids).size, ids.length);
+  });
+
+  it('skips a malformed entry rather than rowing an API with no host', () => {
+    const rows = workers([...LIVE_REGISTRY, { id: 'broken', label: 'Broken', api_host: '' }, null, { api_host: 'x.y' }]);
+    assert.deepEqual(rows.map((r) => r.catalogId), ['audiobook', 'library', 'games', 'library2']);
+  });
+});
+
+describe('the Deployed-versions parenthetical is the DEPLOYED name', () => {
+  it('🔴 library2 reads `library-catalog-friend`, which its own Worker does NOT report', () => {
+    // Measured 2026-09-07: padhard.heygabi.ai answers `service:
+    // "library-catalog"` — the CODE's name. A Worker cannot tell you which
+    // deploy it is, which is the whole reason `service` is a registry column.
+    assert.equal(deploys().find((r) => r.catalogId === 'library2').name, "Samantha's library (library-catalog-friend)");
+  });
+
+  it('names every row in ONE vocabulary — deploys, not repos', () => {
+    // It used to mix them: "(library_catalog worker)" and
+    // "(Board_Game_Catalog worker)" are REPOS, "(library-catalog-friend)" is a
+    // DEPLOY, in the same list.
+    assert.deepEqual(deploys().map((r) => r.name), [
+      'Shared audiobooks (audiobook-worker)',
+      "Skylar's library (library-catalog)",
+      "Skylar's board games (board-game-catalog)",
+      "Samantha's library (library-catalog-friend)",
+    ]);
+  });
+
+  it('⚠️ says the name is NOT RECORDED rather than guessing one', () => {
+    const rows = deployRowPlan([{ id: 'x', label: 'A shelf', api_host: 'x.heygabi.ai', service: null }]);
+    assert.equal(rows[0].name, `A shelf (${SERVICE_UNRECORDED})`);
+    assert.ok(/not recorded/.test(SERVICE_UNRECORDED));
+  });
+});
+
+describe('🔴 the registry↔Worker join is VERIFIED, not assumed', () => {
+  it('a Worker claiming a different catalog is reported, not rendered', () => {
+    const said = appDisagreement('library2', { estate: { app: 'library' } });
+    assert.ok(said, 'a mismatch must produce a sentence');
+    assert.ok(said.includes('library2') && said.includes('library'));
+    assert.ok(!/\b[45]\d\d\b/.test(said), 'a person must never see a bare HTTP status');
+    assert.ok(/Nothing is broken for anybody/.test(said), 'it must say who is affected — nobody');
+  });
+
+  it('agreement is silence', () => {
+    assert.equal(appDisagreement('library', { estate: { app: 'library' } }), null);
+  });
+
+  it('⚠️ ABSENCE IS NOT DISAGREEMENT — audiobook-worker carries no estate.app', () => {
+    // Measured 2026-09-07: {"ok":true,"service":"audiobook-worker","time":…,
+    // "estate_check":"enforce"} — no `estate` object at all. A Worker that does
+    // not claim an app has not contradicted anything.
+    assert.equal(appDisagreement('audiobook', { ok: true, service: 'audiobook-worker' }), null);
+    assert.equal(appDisagreement('library', {}), null);
+    assert.equal(appDisagreement('library', null), null);
+    assert.equal(appDisagreement('library', { estate: {} }), null);
+  });
+});
+
+describe('an unreadable directory — NEVER a silently shorter panel', () => {
+  for (const [what, value] of [['empty', []], ['missing', undefined], ['not an array', null]]) {
+    it(`both sections say so in words when the registry is ${what}`, () => {
+      const wk = workerRowPlan(value);
+      const dep = deployRowPlan(value);
+      assert.deepEqual(wk.map((r) => [r.id, r.notice, r.url]), [[WORKER_REGISTRY_ROW_ID, true, null]]);
+      assert.deepEqual(dep.map((r) => [r.id, r.notice, r.url]), [[DEPLOY_REGISTRY_ROW_ID, true, null]]);
+      assert.ok(!wk.some((r) => r.catalogId), 'never guess at what the estate runs');
+    });
+  }
+
+  it('the sentences name an OUTAGE, show no status code, and say the estate’s own Workers were checked', () => {
+    for (const s of [WORKER_REGISTRY_UNKNOWN_DETAIL, DEPLOY_REGISTRY_UNKNOWN_DETAIL]) {
+      assert.ok(/could not be read/.test(s));
+      assert.ok(!/\b[45]\d\d\b/.test(s), 'a person must never see a bare HTTP status');
+      // ⚠️ The half a reader needs: index and auth ARE still checked, so an
+      // unreadable directory must not read as "the whole page gave up".
+      assert.ok(/unaffected/.test(s));
+    }
+  });
+});
+
+describe('🔴 a SECOND host this page may not reach — the same rule, a new row', () => {
+  it('audiobook-api.heygabi.ai is rowed in both sections and probed in neither', () => {
+    // Found by building it, 2026-09-07: the moment `api_host` reached the page,
+    // the audiobook Worker arrived in the row set and this page's CSP does not
+    // name its host. The 2026-09-06 incident, one host further on.
+    for (const rows of [workers(), deploys()]) {
+      const row = rows.find((r) => r.catalogId === 'audiobook');
+      assert.equal(row.blocked, true);
+      assert.equal(row.url, null, 'a fetch this page may not make must never be attempted');
+    }
+    assert.ok(!PROBEABLE_ORIGINS.includes('https://audiobook-api.heygabi.ai'));
+  });
+
+  it('every OTHER catalog API is fetched, so the block is exactly one host', () => {
+    assert.deepEqual(workers().filter((r) => r.blocked).map((r) => r.catalogId), ['audiobook']);
+    assert.deepEqual(
+      workers().filter((r) => !r.blocked).map((r) => r.url),
+      [
+        'https://library.heygabi.ai/api/health',
+        'https://boardgames.heygabi.ai/api/health',
+        'https://padhard.heygabi.ai/api/health',
+      ],
+    );
+  });
+
+  it('the Worker note is worded for a WORKER, and still says not-checked rather than down', () => {
+    assert.ok(/[Nn]ot checked/.test(NOT_PROBEABLE_DETAIL));
+    assert.ok(/The Worker may be perfectly healthy/.test(NOT_PROBEABLE_API_NOTE));
+    assert.ok(!/did not answer/i.test(NOT_PROBEABLE_API_NOTE));
+    assert.ok(/_headers/.test(NOT_PROBEABLE_API_NOTE) && /connect-src/.test(NOT_PROBEABLE_API_NOTE));
+    assert.ok(!/\b[45]\d\d\b/.test(NOT_PROBEABLE_API_NOTE), 'a person must never see a bare HTTP status');
   });
 });

@@ -1,0 +1,111 @@
+-- 0022: estate_catalog gains `api_host` and `service` — WHICH CATALOGS RUN AN
+-- ESTATE API OF THEIR OWN, AND WHAT THE DEPLOYED WORKER IS CALLED.
+--
+-- The ask: docs/TODO.md, the "Federation leftovers" item's `/status` row-set
+-- bullet, written by agent W13-PLAT-STATUS on 2026-09-06 after it drove
+-- /status's SITES section from this registry and could NOT drive the Workers or
+-- Deployed-versions sections from it. Design: docs/info/catalog-registry.md §10.
+--
+-- =====================================================================
+-- 🔴 WHY `host` COULD NOT ANSWER IT — MEASURED, NOT ASSUMED
+-- =====================================================================
+--
+-- `host` means "the hostname a PERSON types", and 0020's comment says exactly
+-- that. For three catalogs that host also serves the estate API; for the two
+-- shared digital pools it is a Pages site and the API is somewhere else
+-- entirely. Measured live 2026-09-06 (W13-PLAT-STATUS) and re-measured
+-- 2026-09-07 (W14-STATUS2), `GET https://<host>/api/health`:
+--
+--   library.heygabi.ai       estate envelope · service "library-catalog"      · estate.app "library"
+--   boardgames.heygabi.ai    estate envelope · service "board-game-catalog"   · estate.app "games"
+--   padhard.heygabi.ai       estate envelope · service "library-catalog"      · estate.app "library2"
+--   audiobooks.heygabi.ai    ⚠️ HTTP 200 and the SITE'S HTML — it is a Pages site
+--   ebooks.heygabi.ai        ⚠️ HTTP 200 and the SITE'S HTML — same
+--
+-- So a consumer iterating `host` to find estate APIs renders two rows reading
+-- "Healthy, but reports no version" about two hosts that run no such Worker —
+-- a confident false statement, which is what /status is written against.
+--
+-- ⚠️ `holding = 'physical'` SELECTS THE RIGHT THREE TODAY AND MUST NOT BE USED.
+-- It is the vocabulary conflation catalog-registry.md §5 warns about, and it
+-- fails silently the first time a shared pool gets a Worker — which is exactly
+-- what `audiobook` already is: shared, digital, AND Worker-backed at
+-- audiobook-api.heygabi.ai. The coincidence is already broken.
+--
+-- ⚠️ AND THE HEALTH BODY CANNOT SUPPLY `service` EITHER. Measured the same way:
+-- padhard.heygabi.ai reports `service: "library-catalog"` — the CODE's name,
+-- shared with the main instance — while the DEPLOYED Worker is
+-- `library-catalog-friend` (library_catalog/apps/worker/wrangler.toml:450,
+-- [env.friend]). A Worker cannot tell you which deploy it is, so the deployed
+-- name is a fact about the estate and belongs in the estate's registry.
+--
+-- =====================================================================
+-- ⚠️ THE TWO COLUMNS ARE NULLABLE, AND NULL IS AN ANSWER
+-- =====================================================================
+--
+-- `api_host IS NULL` says "this catalog has no estate API OF ITS OWN", which is
+-- the true statement about `ebooks`: its rows ride the audiobook source
+-- (0020's push_source note) and its gated shelf is served by the audiobook
+-- Worker, not by one of its own. ⚠️ A reader must not "fill this in" with the
+-- catalog's `host`: ebooks.heygabi.ai IS fronted by a Worker (`ebooks-door`,
+-- catalog-platform/apps/ebooks-door/wrangler.toml) but that Worker publishes NO
+-- /api/health and no version, so naming it here would put a permanently amber
+-- row on the estate's health page for something working perfectly.
+--
+-- `service` is only ever meaningful BESIDE an api_host — it names the deploy a
+-- version row is asking about. A row with `api_host IS NULL` therefore carries
+-- `service` NULL too, and nothing renders a deploy row for it.
+--
+-- =====================================================================
+-- ⚠️ THIS MIGRATION IS **NOT** IDEMPOTENT, UNLIKE 0020, AND THAT IS SQLITE
+-- =====================================================================
+--
+-- 0020 was `CREATE TABLE IF NOT EXISTS` + `INSERT OR IGNORE` and could be
+-- re-run. SQLite has NO `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so a second
+-- run of the two ALTERs fails with "duplicate column name". What prevents that
+-- is wrangler's own `d1_migrations` ledger, which records an applied migration
+-- and never offers it again — the same mechanism every migration here relies on
+-- for ordering. ⚠️ Said out loud because 0020's header promises re-runnability
+-- and a reader could reasonably carry that promise forward to its successor.
+-- The UPDATEs below ARE idempotent (keyed on id, absolute values), so a hand
+-- re-run of the second half alone is safe.
+--
+-- The ALTERs are still ADDITIVE — no column is dropped, no type changed, no
+-- existing value rewritten — which is the property that made 0012…0021 safe to
+-- apply remotely and unattended.
+--
+-- ⚠️ WHAT IS IN THIS TABLE IS PUBLISHED (0020's header). Both new columns are
+-- HOSTNAMES AND WORKER NAMES THAT ARE ALREADY PUBLIC: every value below is a
+-- routed `*.heygabi.ai` custom domain answering the anonymous internet, or the
+-- Worker name printed by that host's own open `/api/health`. Nothing here is a
+-- secret, an internal hostname, or an identifier.
+
+ALTER TABLE estate_catalog ADD COLUMN api_host TEXT;
+ALTER TABLE estate_catalog ADD COLUMN service  TEXT;
+
+-- =====================================================================
+-- THE VALUES — every one MEASURED against the live host or read out of the
+-- wrangler.toml that deploys it, on 2026-09-07. None is inferred.
+-- =====================================================================
+--
+--   id         api_host                    service                  evidence
+--   ---------  --------------------------  -----------------------  --------------------------------
+--   audiobook  audiobook-api.heygabi.ai    audiobook-worker         apps/audiobook-worker/wrangler.toml:16,27
+--                                                                   live: {"ok":true,"service":"audiobook-worker",…}
+--   library    library.heygabi.ai          library-catalog          library_catalog/apps/worker/wrangler.toml:1
+--   games      boardgames.heygabi.ai       board-game-catalog       Board_Game_Catalog/apps/worker/wrangler.toml:1
+--   library2   padhard.heygabi.ai          library-catalog-friend   library_catalog/apps/worker/wrangler.toml:450
+--   ebooks     NULL                        NULL                     serves no estate API of its own — see header
+--
+-- ⚠️ `audiobook`'s api_host IS NOT ITS host, and it is the row that proves the
+-- column was needed: audiobooks.heygabi.ai is the Pages site, and the API is a
+-- different hostname the registry did not carry at all.
+--
+-- ⚠️ `library2`'s service IS NOT what its Worker says it is. This is the row
+-- that proves the health body could not have supplied it.
+
+UPDATE estate_catalog SET api_host = 'audiobook-api.heygabi.ai', service = 'audiobook-worker'       WHERE id = 'audiobook';
+UPDATE estate_catalog SET api_host = 'library.heygabi.ai',       service = 'library-catalog'        WHERE id = 'library';
+UPDATE estate_catalog SET api_host = 'boardgames.heygabi.ai',    service = 'board-game-catalog'     WHERE id = 'games';
+UPDATE estate_catalog SET api_host = 'padhard.heygabi.ai',       service = 'library-catalog-friend' WHERE id = 'library2';
+UPDATE estate_catalog SET api_host = NULL,                       service = NULL                     WHERE id = 'ebooks';

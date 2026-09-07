@@ -67,6 +67,23 @@ export interface EstateCatalogRow {
   holding: string;
   shared: number;
   host: string;
+  /**
+   * The hostname serving this catalog's ESTATE API, or NULL when it has none of
+   * its own. ⚠️ NOT derivable from `host` — migration 0022's header carries the
+   * five live measurements that say so, including the row that breaks the
+   * tempting shortcut: `audiobook` is shared AND digital AND Worker-backed, at
+   * a hostname (`audiobook-api.heygabi.ai`) this table did not carry at all.
+   */
+  api_host: string | null;
+  /**
+   * The DEPLOYED Worker name — what a version row's parenthetical says.
+   * ⚠️ NOT what the Worker itself reports: padhard answers
+   * `service: "library-catalog"`, the code's name, while the deploy is
+   * `library-catalog-friend`. A Worker cannot tell you which deploy it is.
+   * NULL exactly when `api_host` is NULL — it names a deploy, and with no API
+   * there is no deploy to ask.
+   */
+  service: string | null;
   sort_order: number;
   request_id: number | null;
   created_at: string;
@@ -86,6 +103,20 @@ export interface EstateCatalogRow {
  * search hit needs to be labelled at all, `kind` is what stops a future `games2`
  * rendering as a book. Neither is a count, a title, a freshness or anything
  * derived from a row on anybody's shelf, which is what "name only" fences.
+ *
+ * ⚠️ AND SO ARE `api_host` AND `service`, ADDED 2026-09-07 (migration 0022) —
+ * same test, same answer. `api_host` is a routed `*.heygabi.ai` custom domain
+ * already answering the anonymous internet on its own open `/api/health`, and
+ * `service` is the Worker name three of those four hosts PRINT in that same
+ * anonymous answer. Neither is a count, a title, a freshness, an internal
+ * hostname or a secret; both are static metadata about an id already listed.
+ *
+ * 🔴 THIS LIST IS THE EXPORT'S ALLOWLIST AND IT IS DEFAULT-DENY. `toWire()`
+ * names every field it copies, one at a time — never `{...row}` minus an
+ * exclusion set. The estate's own rule: an exclusion list leaks the day a
+ * column is added, and this table is read by the anonymous internet.
+ * `estate-catalog.test.ts` asserts the EXACT key set, so a new column reaches
+ * the wire only when somebody writes it here on purpose.
  */
 export interface CatalogWire {
   id: string;
@@ -96,6 +127,8 @@ export interface CatalogWire {
   holding: string;
   shared: boolean;
   host: string;
+  api_host: string | null;
+  service: string | null;
 }
 
 export function toWire(row: EstateCatalogRow): CatalogWire {
@@ -108,6 +141,12 @@ export function toWire(row: EstateCatalogRow): CatalogWire {
     holding: row.holding,
     shared: row.shared === 1,
     host: row.host,
+    // ⚠️ `?? null` rather than a bare copy: a Worker running AHEAD of migration
+    // 0022 selects rows that have no such column, and `undefined` on the wire
+    // becomes a MISSING KEY in JSON — which a consumer cannot tell from "this
+    // catalog has no API". Null says "asked, and the answer is none".
+    api_host: row.api_host ?? null,
+    service: row.service ?? null,
   };
 }
 
@@ -128,13 +167,23 @@ export function toWire(row: EstateCatalogRow): CatalogWire {
  * facts, and a fallback that quietly answered the second would make the
  * migration optional and its absence invisible — the exact silent-staleness
  * shape KNOWN_ISSUES and the docs standard exist to kill.
+ *
+ * ⚠️ `api_host`/`service` HERE MIRROR **0022**, NOT 0020 — the seed rows were
+ * written by 0020 and the two fields filled in by 0022's UPDATEs. The test
+ * scans BOTH files, because a fresh D1 gets its values from the two of them in
+ * order and there is no single file that carries a whole row any more.
  */
 export const SEED_CATALOGS: readonly Omit<EstateCatalogRow, 'created_at' | 'request_id'>[] = [
-  { id: 'audiobook', push_source: 'audiobook', kind: 'audio', label: 'Shared audiobooks', owner_name: null, holding: 'digital', shared: 1, host: 'audiobooks.heygabi.ai', sort_order: 10 },
-  { id: 'library', push_source: 'library', kind: 'books', label: "Skylar's library", owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'library.heygabi.ai', sort_order: 20 },
-  { id: 'games', push_source: 'game', kind: 'games', label: "Skylar's board games", owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'boardgames.heygabi.ai', sort_order: 30 },
-  { id: 'library2', push_source: 'library2', kind: 'books', label: "Samantha's library", owner_name: 'Samantha', holding: 'physical', shared: 0, host: 'padhard.heygabi.ai', sort_order: 40 },
-  { id: 'ebooks', push_source: null, kind: 'books', label: 'Shared ebooks', owner_name: null, holding: 'digital', shared: 1, host: 'ebooks.heygabi.ai', sort_order: 50 },
+  { id: 'audiobook', push_source: 'audiobook', kind: 'audio', label: 'Shared audiobooks', owner_name: null, holding: 'digital', shared: 1, host: 'audiobooks.heygabi.ai', api_host: 'audiobook-api.heygabi.ai', service: 'audiobook-worker', sort_order: 10 },
+  { id: 'library', push_source: 'library', kind: 'books', label: "Skylar's library", owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'library.heygabi.ai', api_host: 'library.heygabi.ai', service: 'library-catalog', sort_order: 20 },
+  { id: 'games', push_source: 'game', kind: 'games', label: "Skylar's board games", owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'boardgames.heygabi.ai', api_host: 'boardgames.heygabi.ai', service: 'board-game-catalog', sort_order: 30 },
+  { id: 'library2', push_source: 'library2', kind: 'books', label: "Samantha's library", owner_name: 'Samantha', holding: 'physical', shared: 0, host: 'padhard.heygabi.ai', api_host: 'padhard.heygabi.ai', service: 'library-catalog-friend', sort_order: 40 },
+  // ⚠️ NULL/NULL, and it is the answer rather than a gap. `ebooks.heygabi.ai`
+  // IS fronted by a Worker (`apps/ebooks-door`) but that Worker publishes no
+  // /api/health and no version; its shelf is served by the audiobook Worker
+  // behind the `ebooks` grant. Naming a deploy here would put a permanently
+  // amber version row on /status for something working perfectly.
+  { id: 'ebooks', push_source: null, kind: 'books', label: 'Shared ebooks', owner_name: null, holding: 'digital', shared: 1, host: 'ebooks.heygabi.ai', api_host: null, service: null, sort_order: 50 },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -194,8 +243,32 @@ export function registryTableMissing(err: unknown): boolean {
   return /no such table/i.test((err as Error)?.message || '');
 }
 
+/**
+ * ⚠️ THE SECOND MIGRATION-LAG SHAPE, AND IT IS A DIFFERENT ONE — added with
+ * 0022. The table can exist and be missing a COLUMN, which is what a deploy
+ * that skipped `db:migrate` looks like from the moment 0022 was written. SQLite
+ * answers "no such column: api_host", the SELECT throws, and without this the
+ * route would report `registry_unreadable` — *an outage* — for a database that
+ * is perfectly healthy and one command behind. Naming the two apart is the
+ * difference between somebody checking Cloudflare's status page and somebody
+ * running one migration.
+ */
+export const REGISTRY_COLUMN_MISSING = {
+  error: 'catalog_registry_column_missing',
+  detail:
+    'The catalog registry exists but is missing a column this Worker reads — the Worker shipped ahead ' +
+    'of its migration. Nothing is broken and nothing was lost; the estate simply cannot answer with ' +
+    'this field until the migration is applied.',
+  fix: 'npm run db:migrate (from apps/auth-worker) applies 0022_estate_catalog_api.sql remotely',
+} as const;
+
+export function registryColumnMissing(err: unknown): boolean {
+  return /no such column/i.test((err as Error)?.message || '');
+}
+
 const SELECT_COLS =
-  'id, push_source, kind, label, owner_name, holding, shared, host, sort_order, request_id, created_at';
+  'id, push_source, kind, label, owner_name, holding, shared, host, api_host, service, ' +
+  'sort_order, request_id, created_at';
 
 /** Every catalog, in render order. Throws on a missing table — callers branch. */
 export async function listCatalogs(db: D1Database): Promise<EstateCatalogRow[]> {
@@ -218,6 +291,21 @@ export interface NewCatalog {
   holding: Holding;
   shared: boolean;
   host: string;
+  /**
+   * ⚠️ DEFAULTED BY THE CALLER, NOT GUESSED HERE. For a catalog that came
+   * through the provisioning queue this equals `host` by construction — the
+   * ten-step runbook creates a Worker and routes that hostname at it — which is
+   * why `/live` defaults it to the host it just validated. The two NULLs in the
+   * registry are the two shared digital pools, which predate the queue.
+   */
+  api_host: string | null;
+  /**
+   * The deployed Worker name. ⚠️ NOTHING IN THIS WORKER KNOWS IT — it is a fact
+   * about the wrangler.toml that shipped the catalog, in another repo — so it
+   * arrives from the caller or it is NULL, and NULL renders as "Worker name not
+   * recorded" rather than as a guess.
+   */
+  service: string | null;
   request_id: number | null;
 }
 
@@ -259,7 +347,8 @@ export async function insertCatalog(db: D1Database, cat: NewCatalog): Promise<Re
     await db
       .prepare(
         'INSERT INTO estate_catalog (id, push_source, kind, label, owner_name, holding, shared, host, ' +
-          'sort_order, request_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 100, ?9, ?10) ' +
+          'api_host, service, sort_order, request_id, created_at) ' +
+          'VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 100, ?11, ?12) ' +
           'ON CONFLICT(id) DO NOTHING',
       )
       .bind(
@@ -271,6 +360,8 @@ export async function insertCatalog(db: D1Database, cat: NewCatalog): Promise<Re
         cat.holding,
         cat.shared ? 1 : 0,
         cat.host,
+        cat.api_host,
+        cat.service,
         cat.request_id,
         new Date().toISOString(),
       )
@@ -367,6 +458,7 @@ estateCatalogRoutes.get('/estate/catalogs', async (c) => {
     });
   } catch (err) {
     if (registryTableMissing(err)) return c.json(REGISTRY_TABLE_MISSING, 503);
+    if (registryColumnMissing(err)) return c.json(REGISTRY_COLUMN_MISSING, 503);
     return c.json(
       {
         error: 'registry_unreadable',

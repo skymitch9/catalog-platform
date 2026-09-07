@@ -10,7 +10,13 @@
  * deployed 2026-09-05 (docs/info/catalog-registry.md). It answers, for every
  * catalog the estate has:
  *
- *   { id, push_source, kind, label, owner, holding, shared, host }
+ *   { id, push_source, kind, label, owner, holding, shared, host,
+ *     api_host, service }
+ *
+ * — the last two since migration 0022 (2026-09-07): the host serving that
+ * catalog's estate API (`null` when it has none of its own) and the DEPLOYED
+ * Worker name. They are what lets `/status` plan its Workers and
+ * Deployed-versions rows from the registry instead of by hand.
  *
  * plus, for a SIGNED-IN member and only for the catalogs their own visibility
  * admits, `rows` and `pushed_at`. An anonymous caller gets names and no counts
@@ -113,7 +119,17 @@ export function parseCatalogs(body) {
     if (typeof raw.shared !== 'boolean') return null;
     if (raw.owner !== null && typeof raw.owner !== 'string') return null;
     if (raw.push_source !== null && typeof raw.push_source !== 'string') return null;
-    out.push({ ...raw });
+    // ⚠️ `api_host`/`service` (migration 0022) are CHECKED-IF-PRESENT, never
+    // required — same stance the index Worker's parseRegistry takes, for the
+    // same reason. This function returning null blanks every shelf name on the
+    // estate's front door; an index Worker that has not yet redeployed must
+    // cost /status two rows, not cost the apex its whole vocabulary.
+    if (raw.api_host !== undefined && raw.api_host !== null && typeof raw.api_host !== 'string') return null;
+    if (raw.service !== undefined && raw.service !== null && typeof raw.service !== 'string') return null;
+    // ⚠️ Normalised at the boundary so "not sent" and "no API of its own" are
+    // ONE value. A missing key is not null anywhere else in this estate; it is
+    // made null here, once, so no consumer has to know the difference.
+    out.push({ ...raw, api_host: raw.api_host ?? null, service: raw.service ?? null });
   }
   return out;
 }

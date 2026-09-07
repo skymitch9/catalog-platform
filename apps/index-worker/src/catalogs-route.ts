@@ -82,6 +82,16 @@ export interface RegistryCatalog {
   holding: string;
   shared: boolean;
   host: string;
+  /**
+   * The host serving this catalog's ESTATE API, or null when it has none of its
+   * own (migration 0022). ⚠️ NOT `host`: two of the five registry hosts are
+   * Pages sites, and `audiobook`'s API is a hostname the registry did not carry
+   * at all until 0022. `/status` plans its Workers and Deployed-versions rows
+   * from this field.
+   */
+  api_host: string | null;
+  /** The DEPLOYED Worker name — what a version row's parenthetical says. */
+  service: string | null;
 }
 
 /**
@@ -92,6 +102,15 @@ export interface RegistryCatalog {
  * KEYS are kept — the registry is expected to grow fields and an older index
  * Worker must pass them through rather than silently truncating tomorrow's
  * schema — but the eight that must be present and well-typed are checked.
+ *
+ * ⚠️ `api_host` AND `service` (0022) ARE CHECKED-IF-PRESENT, NOT REQUIRED, and
+ * the asymmetry is deliberate. Making them mandatory would mean an auth Worker
+ * that has not yet been redeployed fails the WHOLE parse — and this function
+ * returning null blanks every catalog NAME on the estate's front door. A
+ * partially-deployed estate is a normal state here; costing the apex its labels
+ * to insist on a field only /status reads would be a wildly disproportionate
+ * failure. Absent normalises to `null`, which is the same thing the field means
+ * when the far end does send it: "this catalog has no estate API of its own".
  */
 export function parseRegistry(body: unknown): RegistryCatalog[] | null {
   if (body === null || typeof body !== 'object') return null;
@@ -109,6 +128,8 @@ export function parseRegistry(body: unknown): RegistryCatalog[] | null {
     if (typeof c.shared !== 'boolean') return null;
     if (c.owner !== null && typeof c.owner !== 'string') return null;
     if (c.push_source !== null && typeof c.push_source !== 'string') return null;
+    if (c.api_host !== undefined && c.api_host !== null && typeof c.api_host !== 'string') return null;
+    if (c.service !== undefined && c.service !== null && typeof c.service !== 'string') return null;
     out.push({
       ...(c as unknown as RegistryCatalog),
       id: c.id,
@@ -119,6 +140,12 @@ export function parseRegistry(body: unknown): RegistryCatalog[] | null {
       holding: c.holding,
       shared: c.shared,
       host: c.host,
+      // ⚠️ `?? null`, so "the far end is older than 0022" and "this catalog has
+      // no API" arrive as the SAME value rather than as a missing key a
+      // consumer has to guess about. A missing key is not null; here we make it
+      // one, once, at the boundary.
+      api_host: (c.api_host as string | null | undefined) ?? null,
+      service: (c.service as string | null | undefined) ?? null,
     });
   }
   return out;

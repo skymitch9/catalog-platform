@@ -31,13 +31,16 @@ import { MACHINE_VISIBILITY } from '../src/machine-route.js';
 const OWNER = 'owner@example.com';
 const MEMBER = 'member@example.com';
 
-/** The five the auth Worker's 0020 back-seeds, as they come off the wire. */
+/**
+ * The five the auth Worker back-seeds, as they come off the wire — 0020 for the
+ * eight original fields, 0022 for `api_host`/`service`.
+ */
 const REGISTRY: RegistryCatalog[] = [
-  { id: 'audiobook', push_source: 'audiobook', kind: 'audio', label: 'Shared audiobooks', owner: null, holding: 'digital', shared: true, host: 'audiobooks.heygabi.ai' },
-  { id: 'library', push_source: 'library', kind: 'books', label: "Skylar's library", owner: 'Skylar', holding: 'physical', shared: false, host: 'library.heygabi.ai' },
-  { id: 'games', push_source: 'game', kind: 'games', label: "Skylar's board games", owner: 'Skylar', holding: 'physical', shared: false, host: 'boardgames.heygabi.ai' },
-  { id: 'library2', push_source: 'library2', kind: 'books', label: "Samantha's library", owner: 'Samantha', holding: 'physical', shared: false, host: 'padhard.heygabi.ai' },
-  { id: 'ebooks', push_source: null, kind: 'books', label: 'Shared ebooks', owner: null, holding: 'digital', shared: true, host: 'ebooks.heygabi.ai' },
+  { id: 'audiobook', push_source: 'audiobook', kind: 'audio', label: 'Shared audiobooks', owner: null, holding: 'digital', shared: true, host: 'audiobooks.heygabi.ai', api_host: 'audiobook-api.heygabi.ai', service: 'audiobook-worker' },
+  { id: 'library', push_source: 'library', kind: 'books', label: "Skylar's library", owner: 'Skylar', holding: 'physical', shared: false, host: 'library.heygabi.ai', api_host: 'library.heygabi.ai', service: 'library-catalog' },
+  { id: 'games', push_source: 'game', kind: 'games', label: "Skylar's board games", owner: 'Skylar', holding: 'physical', shared: false, host: 'boardgames.heygabi.ai', api_host: 'boardgames.heygabi.ai', service: 'board-game-catalog' },
+  { id: 'library2', push_source: 'library2', kind: 'books', label: "Samantha's library", owner: 'Samantha', holding: 'physical', shared: false, host: 'padhard.heygabi.ai', api_host: 'padhard.heygabi.ai', service: 'library-catalog-friend' },
+  { id: 'ebooks', push_source: null, kind: 'books', label: 'Shared ebooks', owner: null, holding: 'digital', shared: true, host: 'ebooks.heygabi.ai', api_host: null, service: null },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -180,6 +183,17 @@ test('🔴 an ANONYMOUS caller gets every catalog’s NAME and OWNER, and no cou
     assert.equal(body.catalogs[1]?.owner, 'Skylar');
     assert.equal(body.catalogs[3]?.label, "Samantha's library");
     assert.equal(body.catalogs[3]?.owner, 'Samantha');
+
+    // ⚠️ AND THE TWO API FIELDS (0022) REACH THE ANONYMOUS CALLER TOO, because
+    // /status is a signed-out page: it renders its Workers and Deployed-versions
+    // row sets from these. They pass the "name only" test the other eight do —
+    // a routed *.heygabi.ai custom domain already answering the anonymous
+    // internet on its own open /api/health, and the Worker name that host
+    // prints in that same anonymous answer. Neither is derived from a row on
+    // anybody's shelf.
+    assert.equal(body.catalogs[0]?.api_host, 'audiobook-api.heygabi.ai');
+    assert.equal(body.catalogs[0]?.service, 'audiobook-worker');
+    assert.equal(body.catalogs[4]?.api_host, null, 'ebooks runs no estate API of its own');
 
     // 🔴 AND NOT ONE NUMBER. Owner, 16:14: "yes name only".
     for (const c of body.catalogs) {
@@ -455,6 +469,30 @@ test('parseRegistry validates the eight fields and refuses a malformed entry out
   // shared pools have no owner and `ebooks` has no source of its own.
   assert.equal(bad({ owner: null })?.length, 1);
   assert.equal(bad({ push_source: null })?.length, 1);
+  // `api_host`/`service` (0022) are typed when present.
+  assert.equal(bad({ api_host: 7 }), null);
+  assert.equal(bad({ service: [] }), null);
+  assert.equal(bad({ api_host: null, service: null })?.length, 1, 'null is a real answer for both');
+});
+
+test('🔴 api_host/service are CHECKED-IF-PRESENT, never REQUIRED — an older auth Worker must not blank the apex', () => {
+  // ⚠️ THE ASYMMETRY IS DELIBERATE AND IT IS ABOUT BLAST RADIUS. This function
+  // returning null makes the whole answer unparseable, which blanks every
+  // catalog NAME on the estate's front door. A partially-deployed estate is a
+  // normal state here (the auth Worker ships ahead of or behind this one by
+  // minutes), and costing the apex its entire vocabulary to insist on a field
+  // only /status reads would be a wildly disproportionate failure.
+  const legacy = { ...REGISTRY[1] } as Record<string, unknown>;
+  delete legacy.api_host;
+  delete legacy.service;
+  const parsed = parseRegistry({ catalogs: [legacy] });
+  assert.equal(parsed?.length, 1, 'a pre-0022 answer must still parse');
+  // ⚠️ AND IT IS NORMALISED AT THE BOUNDARY: "not sent" and "no API of its own"
+  // arrive as the SAME value, so no consumer has to know the difference. A
+  // missing key is not null anywhere else in this estate; it is made one here.
+  assert.equal(parsed?.[0]?.api_host, null);
+  assert.equal(parsed?.[0]?.service, null);
+  assert.ok('api_host' in (parsed?.[0] ?? {}), 'the key must be PRESENT and null, not absent');
 });
 
 test('⚠️ an unknown FIELD rides through — an older index Worker must not truncate tomorrow’s registry', () => {

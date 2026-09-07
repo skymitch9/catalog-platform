@@ -19,12 +19,12 @@
  *      over the plain REST API) and the ebook-lane heartbeat published by
  *      sync step 1b. Both existed before this page did — nothing here is
  *      invented, only read.
- *   4. Workers       — index (reusing #2's fetch), and one row per catalog
- *      Worker plus estate-auth /api/health. ⚠️ Every catalog NAME on this page
- *      comes from the estate registry since 2026-09-05; this section's row SET
- *      is still hand-written, and `lib/host-rows.js` names the two registry
- *      fields that would end that (`api_host`, `service`) with the measurement
- *      that says they are needed. It is not an oversight and not derivable.
+ *   4. Workers       — index (reusing #2's fetch), estate-auth, the probe
+ *      suite, and ⚠️ one row per catalog that runs an estate API OF ITS OWN,
+ *      planned from the registry's `api_host` (`lib/host-rows.js`) since
+ *      2026-09-07. A catalog with no `api_host` has no row here, which is why
+ *      `ebooks` is absent: it runs no such API. index and auth stay literals —
+ *      they are not catalogs and the registry must not claim they are.
  *   5. Sites         — one row per CATALOG, planned from the registry
  *      (`lib/host-rows.js`), plus the audiobook site's /dev/ lane. Each row is
  *      a no-cors reachability probe of that catalog's own host, so a
@@ -53,10 +53,7 @@
 import {
   AUDIO_ORIGIN,
   AUTH_ORIGIN,
-  GAMES_ORIGIN,
   INDEX_ORIGIN,
-  LIBRARY2_ORIGIN,
-  LIBRARY_ORIGIN,
   REFRESH_INTERVAL_MS,
   TICK_INTERVAL_MS,
   detailOf,
@@ -84,10 +81,17 @@ import { mountGate } from './lib/gate.js';
 // It is where the registry-driven half of survey §3.1 lives, and where the
 // registry fields the OTHER half still needs are named.
 import {
+  DEPLOY_REGISTRY_UNKNOWN_DETAIL,
+  NOT_PROBEABLE_API_NOTE,
   NOT_PROBEABLE_DETAIL,
   NOT_PROBEABLE_NOTE,
   SITE_REGISTRY_UNKNOWN_DETAIL,
+  WORKER_REGISTRY_UNKNOWN_DETAIL,
+  appDisagreement,
+  apiCatalogs,
+  deployRowPlan,
   siteRowPlan,
+  workerRowPlan,
 } from './lib/host-rows.js';
 import { idToken } from '../assets/estate-auth.js';
 import { REGISTRY_DOWN_NOTICE, UNKNOWN_SHELF, loadCatalogs } from '../assets/catalog-registry.js';
@@ -101,20 +105,25 @@ import { REGISTRY_DOWN_NOTICE, UNKNOWN_SHELF, loadCatalogs } from '../assets/cat
  * library" — neither of which is what she or the registry calls it. Every
  * label below now comes from the registry.
  *
- * ⚠️ THE ROW SET IS HALF REGISTRY-DRIVEN AS OF 2026-09-06, and the split is a
- * fact about the REGISTRY rather than about this page:
+ * ✅ EVERY CATALOG ROW SET IS REGISTRY-DRIVEN AS OF 2026-09-07, and each one
+ * needed a different field before it could be:
  *
- *   · **Sites** — planned from the registry, row set AND probe list
- *     (`lib/host-rows.js`). Needs only `host`, which every row has.
- *   · **Shared index** — planned from the registry since 2026-09-05
- *     (`indexSourceOrder()`). Needs only `push_source`.
- *   · **Workers / Deployed versions** — 🔴 STILL HAND-WRITTEN, because the
- *     registry cannot yet say which catalogs run an estate API of their own or
- *     what the deployed Worker is called. Measured, not assumed: two of the five
- *     registry hosts answer `/api/health` with 200 and the site's HTML, and the
- *     one Worker that could name its own deploy reports the code's name instead.
- *     The two fields that would close it — `api_host` and `service` — and the
- *     measurements behind them are written out in `lib/host-rows.js`.
+ *   · **Shared index** — since 2026-09-05 (`indexSourceOrder()`). Needs
+ *     `push_source`.
+ *   · **Sites** — since 2026-09-06, row set AND probe list
+ *     (`siteRowPlan()`). Needs `host`.
+ *   · **Workers / Deployed versions** — since 2026-09-07
+ *     (`workerRowPlan()` / `deployRowPlan()`). Needed `api_host` and `service`,
+ *     which migration 0022 added — because two of the five registry hosts are
+ *     Pages sites answering `/api/health` with the site's HTML, and the one
+ *     Worker that could have named its own deploy reports the CODE's name
+ *     instead. The measurements are in `lib/host-rows.js`.
+ *
+ * 🔴 THE NON-CATALOG WORKERS STAY HAND-WRITTEN AND THAT IS NOT THE SAME GAP:
+ * `catalog-index`, `estate-auth` and the probe-suite row are not catalogs, the
+ * registry does not list them, and it must not — it answers *"which catalogs
+ * exist"*, and a directory that named the sign-in service as a shelf would be
+ * answering a second question badly.
  *
  * What changed on 2026-09-05 and has not changed since: none of these rows SAYS
  * a catalog's name any more.
@@ -139,24 +148,14 @@ const registryReady = Promise.race([
   new Promise((resolve) => setTimeout(() => { registryOk = CATALOGS.length > 0; resolve(null); }, REGISTRY_CEILING_MS)),
 ]);
 
-/** A catalog's name, by its visibility id. Degrades to words, never to an id. */
-function catLabel(id) {
-  const c = CATALOGS.find((x) => x.id === id);
-  return c ? c.label : UNKNOWN_SHELF;
-}
-
-/** A catalog's host, by its visibility id. */
-function catHost(id) {
-  const c = CATALOGS.find((x) => x.id === id);
-  return c ? c.host : '';
-}
-
-/** "Skylar's library — library.heygabi.ai", or just the name when the registry
- *  could not be read and there is no host to give. */
-function catRow(id, what) {
-  const host = catHost(id);
-  return host ? `${catLabel(id)} ${what} — ${host}` : `${catLabel(id)} ${what}`;
-}
+// ⚠️ `catLabel()`, `catHost()` and `catRow()` LIVED HERE UNTIL 2026-09-07 and
+// are deliberately gone. They were LOOKUPS BY HARD-CODED ID — `catRow('library',
+// 'API')` — which is the shape that keeps a hand-written row set alive while
+// looking registry-driven: the NAME came from the directory, but the page still
+// decided which three ids to ask about, so a provisioned catalog got no row and
+// nothing failed. Every catalog row set is now planned from what the registry
+// LISTS (`indexSourceOrder`, `siteRowPlan`, `workerRowPlan`, `deployRowPlan`),
+// and no id is spelled anywhere in this file.
 
 /**
  * The audiobook pipeline's own status doc, read straight over the Firestore
@@ -327,16 +326,36 @@ function buildPipelineSection() {
   ul.appendChild(makeRow('pipe-parity', 'Google Drive sharing vs estate roles (checked every run)'));
 }
 
+/**
+ * The catalog APIs, from one plan — shared by the Workers section and the
+ * Deployed-versions section.
+ *
+ * ⚠️ ONE PLAN, COMPUTED WHERE IT IS NEEDED AND NEVER STORED, for `sitePlan()`'s
+ * reason: `CATALOGS` is frozen by the time anything calls this, and a cached
+ * copy would be a second registry living for the life of the page.
+ *
+ * ⚠️ AND ONE FETCH PER CATALOG, NOT TWO. Both sections ask the same host the
+ * same question, so `refreshAll()` fetches `apiPlan()` once and renders it
+ * twice — the shape the hand-written version already had (libraryHealth fed
+ * `wk-library` and `dep-library`) and the reason the two lists could never be
+ * allowed to diverge.
+ */
+function apiPlan() {
+  return apiCatalogs(CATALOGS, { unknownShelf: UNKNOWN_SHELF });
+}
+
 function buildWorkerSection() {
   const ul = document.getElementById('worker-rows');
+  // ⚠️ NOT A CATALOG, so not from the registry. See the header.
   ul.appendChild(makeRow('wk-index', 'Shared search index — index.heygabi.ai'));
-  ul.appendChild(makeRow('wk-library', catRow('library', 'API')));
-  ul.appendChild(makeRow('wk-games', catRow('games', 'API')));
-  // ⚠️ This row was hand-written as "Sam's book library" until 2026-09-05, and
-  // the site row below said "Sam's library" — two of the seven disagreeing
-  // spellings of one shelf, on one page, and neither is what the registry (or
-  // she) calls it.
-  ul.appendChild(makeRow('wk-library2', catRow('library2', 'API')));
+  // 🔴 THE CATALOG API ROWS, PLANNED FROM `api_host` (0022). Three literals
+  // stood here until 2026-09-07 — library, games and library2 — and `audiobook`
+  // was missing from all of them, because nothing on this page knew the shared
+  // audio pool has a Worker at a DIFFERENT hostname from its site. The registry
+  // knows now, so the row set is whatever the estate actually has.
+  for (const row of workerRowPlan(CATALOGS, { unknownShelf: UNKNOWN_SHELF })) {
+    ul.appendChild(makeRow(row.id, row.name));
+  }
   ul.appendChild(makeRow('wk-auth', 'Sign-in & membership directory — auth.heygabi.ai'));
   // ⚠️ THE PROBE SUITE'S ROW, ADDED 2026-09-05, AND IT COSTS NO NEW FETCH —
   // it renders `detail.estateProbes` off the SAME `authHealth` this section
@@ -393,18 +412,25 @@ function buildSiteSection() {
 
 /**
  * ⚠️ A FUNCTION, NOT A CONST, since 2026-09-05: the catalog names come from the
- * registry and a module-level array would be built before it lands. The
- * parenthetical stays hand-written on purpose — it names the WORKER/repo that
- * ships the row, which is what a reader chasing a version wants and is not a
- * fact the catalog registry carries.
+ * registry and a module-level array would be built before it lands.
+ *
+ * ✅ AND THE PARENTHETICAL COMES FROM THE REGISTRY TOO, SINCE 2026-09-07. It
+ * was hand-written until then, and it was hand-written in TWO VOCABULARIES at
+ * once — "(library_catalog worker)" and "(Board_Game_Catalog worker)" name a
+ * REPO, "(library-catalog-friend)" names a DEPLOY — so the same list answered
+ * two different questions depending on which row you read. `service` (0022) is
+ * the deployed name in every row, which is what `wrangler deployments list`
+ * and a rollback are keyed on, and therefore the one a person chasing a version
+ * can actually use.
  */
 function deployRows() {
   return [
-    { id: 'dep-index', name: 'Shared search index (index-worker)' },
-    { id: 'dep-library', name: `${catLabel('library')} (library_catalog worker)` },
-    { id: 'dep-games', name: `${catLabel('games')} (Board_Game_Catalog worker)` },
-    { id: 'dep-library2', name: `${catLabel('library2')} (library-catalog-friend)` },
-    { id: 'dep-auth', name: 'Sign-in & membership (auth-worker)' },
+    // ⚠️ NOT CATALOGS — see the header. These two bracket the registry rows for
+    // the same reason the Workers section does: the estate's own services first
+    // and last, the household's shelves in the middle.
+    { id: 'dep-index', name: 'Shared search index (catalog-index)' },
+    ...deployRowPlan(CATALOGS, { unknownShelf: UNKNOWN_SHELF }),
+    { id: 'dep-auth', name: 'Sign-in & membership (estate-auth)' },
   ];
 }
 
@@ -445,12 +471,53 @@ function renderDeployRow(id, result, now) {
   updateRow(id, 'ok', `Running v${version}${when}.`, null, now);
 }
 
+/**
+ * The catalog half of both sections, for a row this page may not fetch.
+ *
+ * ⚠️ GREY AND WORDED, NEVER RED — the 2026-09-06 incident, applied to the
+ * second host it now bites. `audiobook-api.heygabi.ai` is a real Worker
+ * answering `/api/health` with JSON (measured 2026-09-07); this page's CSP does
+ * not name it, a refused fetch is indistinguishable from a dead host, and
+ * "DOWN" would send somebody to fix something that is fine.
+ */
+function renderBlockedApiRow(id, now) {
+  updateRow(id, 'nodata', NOT_PROBEABLE_DETAIL, NOT_PROBEABLE_API_NOTE, now);
+}
+
 function renderDeployRows(health, now) {
   renderDeployRow('dep-index', health.indexHealth, now);
-  renderDeployRow('dep-library', health.libraryHealth, now);
-  renderDeployRow('dep-games', health.gamesHealth, now);
-  renderDeployRow('dep-library2', health.library2Health, now);
   renderDeployRow('dep-auth', health.authHealth, now);
+  health.apiTargets.forEach((row, i) => {
+    const id = `dep-${row.catalogId}`;
+    if (!rowRegistry.has(id)) return;
+    if (row.blocked) {
+      renderBlockedApiRow(id, now);
+      return;
+    }
+    // 🔴 THE REGISTRY↔WORKER JOIN, CHECKED BEFORE THE VERSION IS BELIEVED. A
+    // Worker that says it serves a different catalog has not told us the
+    // version of THIS one, and printing it under this shelf's name would be the
+    // row asserting a fact it does not have.
+    const result = health.apiResults[i];
+    const mismatch = result && result.reached && result.body
+      ? appDisagreement(row.catalogId, detailOf(result.body) || {})
+      : null;
+    if (mismatch) {
+      updateRow(id, 'danger', 'The directory and this Worker disagree about which catalog this is.', mismatch, now);
+      return;
+    }
+    renderDeployRow(id, result, now);
+  });
+  // ⚠️ NOT AN EMPTY CATALOG HALF. With no registry these two sections would
+  // still show their index and auth rows and simply say nothing about the
+  // shelves — a panel that looks complete while three catalogs went unreported.
+  // One worded grey row each, naming the failure as an outage.
+  if (rowRegistry.has('dep-registry')) {
+    updateRow('dep-registry', 'nodata', DEPLOY_REGISTRY_UNKNOWN_DETAIL, REGISTRY_DOWN_NOTICE, now);
+  }
+  if (rowRegistry.has('wk-registry')) {
+    updateRow('wk-registry', 'nodata', WORKER_REGISTRY_UNKNOWN_DETAIL, REGISTRY_DOWN_NOTICE, now);
+  }
 }
 // ---------------------------------------------------------------------------
 // Refresh — one pass touches all three sections, independently per row
@@ -599,6 +666,32 @@ function renderWorkerHealthRow(id, name, fetchResult, now, detailFn) {
   // are eventually dropped.
   const ok = fetchResult.body.ok === true;
   updateRow(id, ok ? 'ok' : 'danger', detailFn(detailOf(fetchResult.body)), null, now);
+}
+
+/**
+ * ONE summary sentence for ANY catalog Worker, built from what it reported.
+ *
+ * ⚠️ IT NAMES WHAT IS MISSING RATHER THAN PRINTING `?`. The three hand-written
+ * templates it replaces all said `v${b.version || '?'} · database
+ * ${b.database || '?'}` — and a literal question mark in front of a person is a
+ * bare status code with better manners: it says something is wrong without
+ * saying what. Measured 2026-09-07, this matters immediately:
+ * `audiobook-worker` answers `{ok, service, time, estate_check}` with **no
+ * version and no database at all**, and would have rendered "v? · database ?"
+ * about a Worker that is perfectly healthy and simply does not publish those
+ * two fields.
+ *
+ * ⚠️ AND IT DOES NOT ASSERT WHAT IT WAS NOT TOLD. A field the body does not
+ * carry is left out of the sentence entirely — `universes` appears for the two
+ * library instances and not for the board games, which is how the hand-written
+ * pair differed, except that here nothing has to be kept in step.
+ */
+function catalogWorkerDetail(b) {
+  const parts = [];
+  parts.push(b.version ? `v${b.version}` : 'no version reported');
+  if (b.database) parts.push(`database ${b.database}`);
+  if (b.universes && typeof b.universes.count === 'number') parts.push(`${b.universes.count} universes`);
+  return parts.join(' · ');
 }
 
 /**
@@ -1007,20 +1100,26 @@ async function refreshAll() {
   // rows the way five hand-written `probeReachable` calls could — and a
   // provisioned `library3` is probed the moment it has a registry row.
   const siteTargets = sitePlan();
+  // ⚠️ THE CATALOG HEALTH FETCHES ARE NO LONGER A FIXED LIST EITHER. One per
+  // catalog the registry says runs an estate API, so the Workers rows, the
+  // Deployed-versions rows and the fetches behind both cannot fall out of step
+  // — and a provisioned `library3` is asked for its version the moment its
+  // registry row names an api_host. ⚠️ Three hand-written `fetchJSON` calls
+  // stood here and none of them was `audiobook-api.heygabi.ai`.
+  const apiTargets = apiPlan();
 
   const [
-    [indexHealth, libraryHealth, gamesHealth, library2Health, authHealth],
+    [indexHealth, authHealth],
+    apiResults,
     siteResults,
     [pipelineStatus, ebooksDev, ebooksProd],
   ] =
     await Promise.all([
       Promise.all([
         fetchJSON(`${INDEX_ORIGIN}/api/health`),
-        fetchJSON(`${LIBRARY_ORIGIN}/api/health`),
-        fetchJSON(`${GAMES_ORIGIN}/api/health`),
-        fetchJSON(`${LIBRARY2_ORIGIN}/api/health`),
         fetchJSON(`${AUTH_ORIGIN}/api/health`),
       ]),
+      Promise.all(apiTargets.map((row) => (row.url ? fetchJSON(row.url) : null))),
       Promise.all(siteTargets.map((row) => (row.url ? probeReachable(row.url) : null))),
       Promise.all([
         fetchJSON(FIRESTORE_STATUS_URL),
@@ -1042,15 +1141,31 @@ async function refreshAll() {
   // /status/pipelines/, which reads pipeline_status/current itself. Two pages
   // reading the same public document is the right shape — the alternative was
   // this page keeping a variable alive for a section it no longer contains.
-  renderDeployRows({ indexHealth, libraryHealth, gamesHealth, library2Health, authHealth }, t);
-  renderWorkerHealthRow('wk-library', catLabel('library'), libraryHealth, t, (b) =>
-    `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
-  renderWorkerHealthRow('wk-games', catLabel('games'), gamesHealth, t, (b) =>
-    `v${b.version || '?'} · database ${b.database || '?'}`);
-  // Same Worker code as Library, so the same summary line — read from HER
-  // instance's own health, never inferred from ours.
-  renderWorkerHealthRow('wk-library2', catLabel('library2'), library2Health, t, (b) =>
-    `v${b.version || '?'} · database ${b.database || '?'}${b.universes ? ` · ${b.universes.count} universes` : ''}`);
+  renderDeployRows({ indexHealth, authHealth, apiTargets, apiResults }, t);
+  // 🔴 ONE LOOP, WHERE THREE HAND-WRITTEN CALLS STOOD — and the detail sentence
+  // is built from what the Worker actually reported rather than from a
+  // per-catalog template. Two of those three templates differed only in whether
+  // they printed `universes`, which is a fact about the CODE the catalog runs,
+  // not about the catalog: `games` has no universes and its row said so by
+  // being written differently. A generic renderer says it by not finding the
+  // field, which is the same answer with nothing to keep in step.
+  apiTargets.forEach((row, i) => {
+    const id = `wk-${row.catalogId}`;
+    if (!rowRegistry.has(id)) return;
+    if (row.blocked) {
+      renderBlockedApiRow(id, t);
+      return;
+    }
+    const result = apiResults[i];
+    const mismatch = result && result.reached && result.body
+      ? appDisagreement(row.catalogId, detailOf(result.body) || {})
+      : null;
+    if (mismatch) {
+      updateRow(id, 'danger', 'The directory and this Worker disagree about which catalog this is.', mismatch, t);
+      return;
+    }
+    renderWorkerHealthRow(id, row.label, result, t, catalogWorkerDetail);
+  });
   renderWorkerHealthRow('wk-auth', 'Estate auth', authHealth, t, (b) => {
     const u = b.users || {};
     return `${u.approved ?? '?'} approved · ${u.pending ?? '?'} pending · ${u.revoked ?? '?'} revoked · ${u.approvers ?? '?'} approvers`;

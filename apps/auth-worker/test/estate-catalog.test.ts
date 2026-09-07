@@ -22,6 +22,7 @@ import {
   CATALOG_ID_RE,
   CONTENT_KINDS,
   HOLDINGS,
+  REGISTRY_COLUMN_MISSING,
   REGISTRY_TABLE_MISSING,
   SEED_CATALOGS,
   estateCatalogRoutes,
@@ -29,6 +30,7 @@ import {
   isContentKind,
   isHolding,
   listCatalogs,
+  registryColumnMissing,
   registryTableMissing,
   toWire,
   type EstateCatalogRow,
@@ -72,6 +74,8 @@ function row(over: Partial<EstateCatalogRow> = {}): EstateCatalogRow {
     holding: 'physical',
     shared: 0,
     host: 'library.heygabi.ai',
+    api_host: 'library.heygabi.ai',
+    service: 'library-catalog',
     sort_order: 20,
     request_id: null,
     created_at: '2026-09-05T00:00:00.000Z',
@@ -108,11 +112,8 @@ class FakeDB {
         guard();
         if (db.failInsert) throw new Error('D1_ERROR: write refused');
         if (/INSERT INTO estate_catalog/.test(sql)) {
-          const [id, push, kind, label, owner, holding, shared, host, requestId, createdAt] = args as (
-            | string
-            | number
-            | null
-          )[];
+          const [id, push, kind, label, owner, holding, shared, host, apiHost, service, requestId, createdAt] =
+            args as (string | number | null)[];
           if (!db.rows.some((r) => r.id === id)) {
             db.rows.push(
               row({
@@ -124,6 +125,8 @@ class FakeDB {
                 holding: holding as string,
                 shared: Number(shared),
                 host: host as string,
+                api_host: (apiHost ?? null) as string | null,
+                service: (service ?? null) as string | null,
                 sort_order: 100,
                 request_id: (requestId ?? null) as number | null,
                 created_at: createdAt as string,
@@ -172,6 +175,17 @@ const MIGRATION = readFileSync(
   fileURLToPath(new URL('../migrations/0020_estate_catalog.sql', import.meta.url)),
   'utf8',
 );
+/**
+ * ⚠️ A SECOND FILE SINCE 2026-09-07, and a fresh D1 gets its rows from the two
+ * of them IN ORDER: 0020 INSERTs the five, 0022 ALTERs in `api_host`/`service`
+ * and UPDATEs their values. So there is no longer any single file that carries
+ * a whole seed row, and a test that scanned only 0020 would pass while
+ * `SEED_CATALOGS` claimed two fields nothing had written.
+ */
+const MIGRATION_0022 = readFileSync(
+  fileURLToPath(new URL('../migrations/0022_estate_catalog_api.sql', import.meta.url)),
+  'utf8',
+);
 
 test('🔴 every SEED_CATALOGS row is in 0020, spelled the same, with the same owner and host', () => {
   // ⚠️ Read out of the SQL, not out of a second constant — the point is that the
@@ -193,6 +207,76 @@ test('🔴 every SEED_CATALOGS row is in 0020, spelled the same, with the same o
     if (c.owner_name) assert.ok(values.includes(`'${c.owner_name}'`), `0020 must designate ${c.id}'s owner`);
   }
   assert.equal(SEED_CATALOGS.length, 5, 'five catalogs exist today (survey §4)');
+});
+
+test('🔴 every SEED_CATALOGS api_host and service is in 0022, spelled the same', () => {
+  // Read out of the SQL's UPDATE half only, for the same reason above: the
+  // header prose names these hostnames too, and matching prose would let the
+  // executable half drift while a comment kept the test green.
+  const at = MIGRATION_0022.indexOf('UPDATE estate_catalog');
+  assert.ok(at > 0, '0022 must carry the value UPDATEs');
+  const updates = MIGRATION_0022.slice(at);
+
+  for (const c of SEED_CATALOGS) {
+    const line = updates.split('\n').find((l) => l.includes(`WHERE id = '${c.id}'`));
+    assert.ok(line, `0022 must set the API columns for ${c.id}`);
+    assert.ok(
+      line.includes(c.api_host === null ? 'api_host = NULL' : `api_host = '${c.api_host}'`),
+      `0022 must carry ${c.id}'s api_host: ${String(c.api_host)}`,
+    );
+    assert.ok(
+      line.includes(c.service === null ? 'service = NULL' : `service = '${c.service}'`),
+      `0022 must carry ${c.id}'s service: ${String(c.service)}`,
+    );
+  }
+  // And the columns must actually exist before anything sets them.
+  assert.ok(/ALTER TABLE estate_catalog ADD COLUMN api_host TEXT/.test(MIGRATION_0022));
+  assert.ok(/ALTER TABLE estate_catalog ADD COLUMN service\s+TEXT/.test(MIGRATION_0022));
+});
+
+test('🔴 `api_host` is NOT `host`, and `service` is NOT what the Worker reports', () => {
+  const by = new Map(SEED_CATALOGS.map((c) => [c.id, c]));
+
+  // ⚠️ THE ROW THAT PROVES THE COLUMN WAS NEEDED. Measured 2026-09-06 and
+  // 2026-09-07: audiobooks.heygabi.ai answers /api/health with the SITE'S HTML;
+  // the API is a different machine the registry did not carry at all. A
+  // consumer iterating `host` would have rendered "Healthy, but reports no
+  // version" about a Pages site.
+  assert.equal(by.get('audiobook')?.host, 'audiobooks.heygabi.ai');
+  assert.equal(by.get('audiobook')?.api_host, 'audiobook-api.heygabi.ai');
+  assert.notEqual(by.get('audiobook')?.api_host, by.get('audiobook')?.host);
+
+  // ⚠️ THE ROW THAT PROVES THE HEALTH BODY COULD NOT HAVE SUPPLIED `service`.
+  // padhard.heygabi.ai answers `service: "library-catalog"` — the CODE's name,
+  // shared with the main instance — while the DEPLOY is library-catalog-friend.
+  assert.equal(by.get('library2')?.service, 'library-catalog-friend');
+  assert.equal(by.get('library')?.service, 'library-catalog');
+  assert.notEqual(by.get('library2')?.service, by.get('library')?.service);
+
+  // 🔴 AND `holding === 'physical'` MUST NOT BE USED AS A SUBSTITUTE. It picks
+  // the right THREE and misses the fourth: audiobook is shared AND digital AND
+  // Worker-backed, so the coincidence catalog-registry.md §5 warns about is
+  // already broken today, not hypothetically in future.
+  const byHolding = SEED_CATALOGS.filter((c) => c.holding === 'physical').map((c) => c.id);
+  const byApi = SEED_CATALOGS.filter((c) => c.api_host !== null).map((c) => c.id);
+  assert.deepEqual(byHolding, ['library', 'games', 'library2']);
+  assert.deepEqual([...byApi].sort(), ['audiobook', 'games', 'library', 'library2']);
+  assert.notDeepEqual([...byHolding].sort(), [...byApi].sort());
+});
+
+test('⚠️ `ebooks` carries NULL for both, and NULL is the answer rather than a gap', () => {
+  // ebooks.heygabi.ai IS fronted by a Worker (apps/ebooks-door) but it
+  // publishes no /api/health and no version; the shelf itself is served by the
+  // audiobook Worker behind the `ebooks` grant. Naming a deploy here would put
+  // a permanently amber version row on /status for something working perfectly.
+  const ebooks = SEED_CATALOGS.find((c) => c.id === 'ebooks');
+  assert.equal(ebooks?.api_host, null);
+  assert.equal(ebooks?.service, null);
+  // ⚠️ The invariant that keeps the two honest: `service` names a deploy, and
+  // with no API there is no deploy to ask.
+  for (const c of SEED_CATALOGS) {
+    if (c.api_host === null) assert.equal(c.service, null, `${c.id} names a deploy it cannot be asked about`);
+  }
 });
 
 test('🔴 the seed IS the owner’s confirmed ownership table, item by item', () => {
@@ -286,9 +370,25 @@ test('toWire renames owner_name → owner and turns shared into a boolean', () =
     holding: 'physical',
     shared: false,
     host: 'library.heygabi.ai',
+    api_host: 'library.heygabi.ai',
+    service: 'library-catalog',
   });
   assert.equal(toWire(row({ shared: 1, owner_name: null })).shared, true);
   assert.equal(toWire(row({ shared: 1, owner_name: null })).owner, null);
+});
+
+test('⚠️ toWire normalises a MISSING api_host/service to null, never to undefined', () => {
+  // A Worker running ahead of 0022 selects rows that have no such column, and
+  // `undefined` on the wire becomes a MISSING KEY in JSON — which a consumer
+  // cannot tell from "this catalog has no API". Null says "asked, and the
+  // answer is none".
+  const legacy = row();
+  delete (legacy as Partial<EstateCatalogRow>).api_host;
+  delete (legacy as Partial<EstateCatalogRow>).service;
+  const wire = toWire(legacy);
+  assert.equal(wire.api_host, null);
+  assert.equal(wire.service, null);
+  assert.ok('api_host' in wire && 'service' in wire, 'the keys must be PRESENT and null, not absent');
 });
 
 test('🔴 the wire carries NOTHING derived from a row on anybody’s shelf', () => {
@@ -297,6 +397,13 @@ test('🔴 the wire carries NOTHING derived from a row on anybody’s shelf', ()
   // exhaustively, so a field added to the table cannot reach the wire by
   // accident.
   assert.deepEqual(Object.keys(toWire(row())).sort(), [
+    // ⚠️ `api_host` and `service` (0022) pass the same test the other eight do:
+    // both are STATIC metadata about an id already listed — a routed
+    // *.heygabi.ai custom domain already answering the anonymous internet on
+    // its own open /api/health, and the Worker name three of those hosts PRINT
+    // in that same anonymous answer. Neither is a count, a title, a freshness,
+    // an internal hostname or a secret.
+    'api_host',
     'holding',
     'host',
     'id',
@@ -304,6 +411,7 @@ test('🔴 the wire carries NOTHING derived from a row on anybody’s shelf', ()
     'label',
     'owner',
     'push_source',
+    'service',
     'shared',
   ]);
   for (const forbidden of ['rows', 'pushed_at', 'count', 'titles', 'created_at', 'request_id', 'sort_order']) {
@@ -368,6 +476,34 @@ test('🔴 a Worker ahead of its migration says so, with the command that fixes 
   // "the estate has no catalogs" are different facts, and the second is a
   // confident false statement of exactly the kind the owner's rule is about.
   assert.ok(!('catalogs' in body));
+});
+
+test('🔴 a MISSING COLUMN is its own answer, not "the directory is down"', async () => {
+  // ⚠️ THE SECOND MIGRATION-LAG SHAPE, added with 0022. The table can exist and
+  // be missing a COLUMN — what a deploy that skipped `db:migrate` looks like —
+  // and without this branch the route would report an OUTAGE for a database
+  // that is healthy and one command behind. That mislabelling sends somebody
+  // to check Cloudflare's status page instead of running one migration.
+  const db = seeded();
+  db.prepare = () => {
+    throw new Error('D1_ERROR: no such column: api_host');
+  };
+  const res = await get(db, APP_TOKEN);
+  assert.equal(res.status, 503);
+  const body = (await res.json()) as { error: string; detail: string; fix: string };
+  assert.equal(body.error, REGISTRY_COLUMN_MISSING.error);
+  assert.notEqual(body.error, REGISTRY_TABLE_MISSING.error, 'the two lags must never wear the same clothes');
+  assert.match(body.fix, /0022_estate_catalog_api\.sql/);
+  assert.ok(!('catalogs' in body), 'never an empty list');
+  assert.ok(!/\b[45]\d\d\b/.test(body.detail), 'a person must never see a bare HTTP status');
+});
+
+test('registryColumnMissing recognises D1’s wording and does not swallow the table case', () => {
+  assert.ok(registryColumnMissing(new Error('D1_ERROR: no such column: service')));
+  assert.ok(!registryColumnMissing(new Error('D1_ERROR: no such table: estate_catalog')));
+  assert.ok(!registryTableMissing(new Error('D1_ERROR: no such column: service')));
+  assert.ok(!registryColumnMissing(new Error('anything else')));
+  assert.ok(!registryColumnMissing(null));
 });
 
 test('⚠️ an unreadable database is a 502 that says it is an outage, not a permissions problem', async () => {
