@@ -778,6 +778,11 @@ around it — noted only so the next check has two redeploy times, not one.
       **default-deny** form (known on EVERY routed instance), never fall back to
       `'library'`. Do not build it before the writer exists: it would parse a
       column nothing writes and change a live gate on unmeasured data.
+
+      ⏸️ **DEFERRED by the owner 2026-09-07** ("Sure defer") — the two
+      other-repo halves (mapping row instance tag + `library_link.py`
+      per-instance sources) are not scheduled; this item stays BLOCKED and
+      is re-raised at the next deferred-items review, not before.
 - [ ] 🔴 **What NOBODY has exercised — from dispatch 4's own report, said
       plainly so it does not decay into an assumption:** ~~the provisioners do
       **not** print the `/admin` and `/status` host-row edits a new instance
