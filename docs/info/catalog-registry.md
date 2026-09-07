@@ -42,6 +42,17 @@
 > pass** — five live `/api/health` calls, one per registry host. Nothing else on
 > this page was re-checked that hour.
 >
+> ✅ **UPDATED 2026-09-07 (agent W14-STATUS2): MIGRATION 0022 ADDS `api_host`
+> AND `service`, AND `/status`'s LAST TWO HAND-WRITTEN ROW SETS ARE GONE.** The
+> §10 bullet below that said the registry *"cannot say which catalogs run an
+> estate API"* is **CLOSED** — that is now a column, and the Workers and
+> Deployed-versions sections are planned from it exactly as Sites is. Every
+> value was measured against the live host or read out of the `wrangler.toml`
+> that deploys it; §2b is the new table. Live: `estate-auth` `df5ea89d`,
+> `catalog-index` `001f87cd`, `heygabi-home` `5066cf84`. ⚠️ **Only §2b's five
+> rows, §10's api-column bullet and §10a's `status.js` row were re-measured on
+> that pass.** Nothing else on this page was re-checked that hour.
+
 > ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
 > `predeploy.checks.json`'s live pass fetches unauthenticated, so the
 > scoped-count half of §4 is proven by tests and by this route's own answer, and
@@ -98,6 +109,57 @@ owner; that is the whole distinction the rule draws, and a renderer must print
 
 ---
 
+## 2b · 🔴 `api_host` and `service` — which catalogs run an estate API (0022)
+
+Added **2026-09-07**. Every value below is **measured**, not inferred: the
+`api_host` column against `GET https://<host>/api/health` with
+`curl -sS -D <file> -o <file>`, the `service` column out of the `wrangler.toml`
+that deploys it.
+
+| id | `host` (what a person types) | `api_host` (what serves the API) | `service` (the DEPLOY) | evidence |
+|---|---|---|---|---|
+| `audiobook` | audiobooks.heygabi.ai | **audiobook-api.heygabi.ai** | `audiobook-worker` | `apps/audiobook-worker/wrangler.toml:16,27`; live `{"ok":true,"service":"audiobook-worker",…}` |
+| `library` | library.heygabi.ai | library.heygabi.ai | `library-catalog` | `library_catalog/apps/worker/wrangler.toml:1` |
+| `games` | boardgames.heygabi.ai | boardgames.heygabi.ai | `board-game-catalog` | `Board_Game_Catalog/apps/worker/wrangler.toml:1` |
+| `library2` | padhard.heygabi.ai | padhard.heygabi.ai | **`library-catalog-friend`** | same file, `:450` (`[env.friend]`) |
+| `ebooks` | ebooks.heygabi.ai | **NULL** | **NULL** | serves no estate API of its own — below |
+
+🔴 **Two rows carry the whole argument for the columns existing:**
+
+- **`audiobook`'s `api_host` IS NOT ITS `host`.** `audiobooks.heygabi.ai` is a
+  Pages site and answers `/api/health` with **HTTP 200 and the site's HTML**;
+  the API is a different machine the registry did not carry at all. A consumer
+  iterating `host` printed *"Healthy, but reports no version"* about a site.
+- **`library2`'s `service` IS NOT WHAT ITS WORKER SAYS.** It answers
+  `service: "library-catalog"` — the CODE's name, shared with the main
+  instance — while the deploy is `library-catalog-friend`. ⚠️ **A Worker cannot
+  tell you which deploy it is**, so the deployed name is a fact about the
+  estate and has to live in the estate's registry.
+
+⚠️ **`holding === 'physical'` PICKS THE RIGHT THREE TODAY AND MUST NOT BE
+USED** — it is §5's vocabulary conflation, and **the coincidence is already
+broken**: `audiobook` is shared AND digital AND Worker-backed. Pinned by
+`estate-catalog.test.ts`, which asserts the two selections differ.
+
+⚠️ **`ebooks` is NULL/NULL and NULL is the answer, not a gap.**
+`ebooks.heygabi.ai` **is** fronted by a Worker — `apps/ebooks-door` — but that
+Worker publishes no `/api/health` and no version, and the shelf itself is
+served by the audiobook Worker behind the `ebooks` grant. Naming a deploy here
+would put a permanently amber version row on `/status` for something working
+perfectly. **The invariant:** `service` names a deploy, and with no `api_host`
+there is no deploy to ask; a row with `api_host IS NULL` carries `service` NULL
+too, and a test asserts it.
+
+✅ **The join is VERIFIED, not assumed.** Every catalog Worker reports
+`estate.app` (`library` / `games` / `library2`) — the registry's own `id` — so a
+Worker serving a different catalog than the directory claims **says so** rather
+than rendering its version under somebody else's name
+(`host-rows.js` `appDisagreement()`). ⚠️ **Absence is not disagreement:**
+`audiobook-worker` answers `{ok, service, time, estate_check}` and carries no
+`estate.app` at all, which is a design choice and not a fault.
+
+---
+
 ## 3 · Where it lives
 
 ```
@@ -119,6 +181,7 @@ estate-auth (auth.heygabi.ai)                catalog-index (index.heygabi.ai)
 | Piece | File |
 |---|---|
 | Schema + the back-seed of the five | `apps/auth-worker/migrations/0020_estate_catalog.sql` |
+| `api_host` + `service`, and the five values (§2b) | `apps/auth-worker/migrations/0022_estate_catalog_api.sql` — ⚠️ **NOT idempotent, unlike 0020**: SQLite has no `ADD COLUMN IF NOT EXISTS`, and wrangler's `d1_migrations` ledger is what prevents a re-run. The UPDATE half alone is safe to re-run by hand |
 | Module, the wire shape, the write | `apps/auth-worker/src/estate-catalog.ts` |
 | The provisioner's write site | `apps/auth-worker/src/catalog-requests.ts` (`/live`) |
 | Mount | `apps/auth-worker/src/index.ts` |
@@ -135,7 +198,7 @@ estate-auth (auth.heygabi.ai)                catalog-index (index.heygabi.ai)
 
 | Caller | Gets |
 |---|---|
-| **Anonymous** | `{id, push_source, kind, label, owner, holding, shared, host}` for every catalog, and `counts: "none"` |
+| **Anonymous** | `{id, push_source, kind, label, owner, holding, shared, host, api_host, service}` for every catalog, and `counts: "none"` |
 | **Signed-in member** | the same, plus `rows` and `pushed_at` **only** for the catalogs their own visibility set admits, and `counts: "scoped"` |
 | **Revoked member** | every name, **no** counts, and `counts: "scoped"` — not `"none"` |
 
@@ -226,6 +289,8 @@ provisioning makes — now writes the registry row.
 | `kind` | the request's `kind` (`books`/`games`), copied |
 | `holding` / `shared` | `physical` / `false` — constants, per the owner's model |
 | `host` | the `provisioned_host` the same call validated |
+| `api_host` | defaults to that same host — ⚠️ **by construction, not by guess**: the runbook this call ends creates a Worker and routes that hostname at it. Overridable; send `null` for "runs no estate API of its own" |
+| `service` | ⚠️ **only from the caller, or NULL.** Nothing in the auth Worker can read another repo's `wrangler.toml`, and the Worker itself reports the CODE's name — so the provisioners send `names.workerName` and `/live` accepts `service`. NULL renders as *"deployed Worker name not recorded"*, never as a guess |
 
 ⚠️ **Why the id is asked for.** `provisioned_instance` is the wrangler env block
 (padhard's is `friend`), not the visibility id; the next name in the visibility
@@ -304,7 +369,7 @@ fact. Pinned by probe `A44`.
 | `public/series/series.js` | `sourceLabel`/`catalogLabel`/`holdingLabel` (the estate's one holding renderer) and `bookish()` | `dee846a` |
 | `public/universes/universes.js` | the row subtitle's holder, and `isGameRow()`'s kind | `dee846a` |
 | `public/status/status.js` | the index source ORDER and denominator, every catalog's row name | `dee846a` |
-| `public/status/lib/host-rows.js` | ⚠️ **the first consumer to take a ROW SET rather than a name** — `/status`'s Sites section, rows AND their reachability probes, in the registry's own order. A provisioned `library3` is **rowed** with no edit; `ebooks` gained the row it never had. The `/dev/` lane stays a hand-written row (a deploy lane is not a shelf) and takes only its name from here. 🔴 **PROBING is a separate permission** — see the CSP bullet in §10 | *2026-09-06* |
+| `public/status/lib/host-rows.js` | ⚠️ **the first consumer to take a ROW SET rather than a name, and now the only one taking THREE** — `/status`'s **Sites** section from `host` (2026-09-06), and its **Workers** and **Deployed versions** sections from `api_host` + `service` (2026-09-07, `workerRowPlan()` / `deployRowPlan()`). A provisioned `library3` is **rowed in all three** with no edit here. ⚠️ **A catalog with no `api_host` is ABSENT from the last two, not grey** — "runs no API of its own" is a settled fact, not a thing we failed to check. The `/dev/` lane stays a hand-written row (a deploy lane is not a shelf) and takes only its name from here; so do `catalog-index`, `estate-auth` and the probe-suite row, **which are not catalogs and must never enter this registry**. 🔴 **PROBING is a separate permission** — see the CSP bullet in §10 | *2026-09-06*, extended *2026-09-07* |
 | `public/admin/admin.js` | ⚠️ **NAMES ONLY** — see below | `94d3e65` |
 | `apps/discord-worker/src/catalog-registry.ts` | **GABI's one reader** — the shelves she offers (`resolveLibraryInstances`, registry rows that are `kind:books` + `holding:physical`) and the words she calls them, incl. the three suggestion shelves. Posture `GABI_CATALOG_REGISTRY`; `panel.ts`'s pre-existing lane now shares this fetch and this memo | `893ca5f` |
 | `audiobook_catalog/site/estate/estate-search.js` | ⚠️ **the fourth copy of `estate-search.js`, and it reads the registry now** — re-vendored 2026-09-06 by that repo's new `scripts/sync_estate_search.py`. It inherits the inline twin below rather than reading it itself | `2b4ba2f` *(audiobook_catalog)* |
@@ -461,8 +526,33 @@ estate holds.
   the probe and words the row; adding a host is two lines in
   `sites/heygabi-home/public/_headers` and is the owner's call. Open question
   in [`../TODO.md`](../TODO.md).
-- 🔴 **THE REGISTRY CANNOT SAY WHICH CATALOGS RUN AN ESTATE API, AND THAT IS
-  THE ONE THING BLOCKING `/status`'s LAST TWO HAND-WRITTEN ROW SETS.** Measured
+
+  🔴 **AND IT HAPPENED AGAIN THE NEXT DAY, WHICH IS THE EVIDENCE THAT THIS IS A
+  RULE AND NOT AN ANECDOTE.** 2026-09-07: the moment `api_host` reached the
+  page, `audiobook-api.heygabi.ai` arrived in the Workers and Deployed-versions
+  row sets — a host nothing on this site had ever needed to ask anything, and
+  therefore a host `connect-src` does not name. Both rows came out worded grey,
+  which is the rule above working the first time it was exercised by something
+  other than the incident that created it. ⚠️ **The owner's `_headers` question
+  now carries TWO hosts** — `https://ebooks.heygabi.ai` and
+  `https://audiobook-api.heygabi.ai` — and the pattern to expect from here is:
+  **every catalog provisioned from now on is rowed for free in all three
+  sections and probed in none of them until `_headers` names its host.**
+- ✅ ~~🔴 **THE REGISTRY CANNOT SAY WHICH CATALOGS RUN AN ESTATE API, AND THAT
+  IS THE ONE THING BLOCKING `/status`'s LAST TWO HAND-WRITTEN ROW SETS.**~~
+  🔴 **CLOSED 2026-09-07 (agent W14-STATUS2) — migration 0022 added both
+  columns and `/status` reads them.** The values, the evidence for each and the
+  two rows that prove the columns were necessary are in **§2b**, which is now
+  the one home for that fact. The measurement below is kept because it is what
+  the decision was made from, and because the two Pages-site rows in it are
+  still exactly why `ebooks` carries NULL. ⚠️ **What the close did NOT bring:
+  a permission to ask.** `audiobook-api.heygabi.ai` is now rowed on `/status`
+  and is **not** in that page's `connect-src`, so its two rows read the worded
+  grey state — the second host on the owner's `_headers` question, beside
+  `ebooks.heygabi.ai`. The CSP bullet above generalises past one host, exactly
+  as it said it would.
+
+  The original finding, as measured
   2026-09-06 (agent W13-PLAT-STATUS) with `curl -sS -D <file> -o <file>` against
   `GET https://<host>/api/health` for all five registry hosts:
 
@@ -484,9 +574,12 @@ estate holds.
   either:** `padhard` reports `service: "library-catalog"`, the code's name, not
   the deployed `library-catalog-friend`. Two columns close it — `api_host TEXT`
   (NULL when the catalog has no API of its own) and `service TEXT` (the deployed
-  Worker name) — spec and per-catalog values in [`../TODO.md`](../TODO.md).
-  ✅ **The good half:** every Worker already reports `estate.app`, so once the
-  fields exist the join can be *verified* rather than assumed.
+  Worker name). ✅ **Both shipped 2026-09-07 as migration 0022; the values and
+  the evidence are §2b, and the spec that used to live in `../TODO.md` moved
+  WHOLE to [`../DONE.md`](../DONE.md).**
+  ✅ **The good half came true:** every Worker already reports `estate.app`, so
+  the join is now *verified* rather than assumed — `appDisagreement()` in
+  `status/lib/host-rows.js`, §2b's last paragraph.
 - **`MACHINE_VISIBILITY` was not touched and must not be.** It is a deliberate
   default-deny (`machine-route.ts`); the registry must never auto-admit a new
   catalog there. Pinned in `machine-read.test.ts` and again in

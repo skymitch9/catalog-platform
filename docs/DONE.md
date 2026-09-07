@@ -9,6 +9,113 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-07 — `/status`'s row set is FULLY registry-driven — survey §3.1's L-sized item, closed
+
+**Done by W14-STATUS2.** The item below is moved WHOLE, both halves of it: the
+Sites section (W13-PLAT-STATUS, 2026-09-06) and the Workers + Deployed-versions
+sections (2026-09-07), which needed the two registry columns the item's own spec
+table named. That spec table is preserved verbatim at the bottom of this entry
+— it is the reason the shape is what it is.
+
+**Why it needed a MIGRATION and not a cleverer derivation, kept because it is the
+part a future session would otherwise re-derive:** `host` means *"the hostname a
+person types"*, and for two of the five catalogs that host is a Pages site. A
+consumer iterating it renders *"Healthy, but reports no version"* about two hosts
+that run no Worker. ⚠️ `holding === 'physical'` selects the right three today and
+must not be used — **the coincidence is already broken**, because `audiobook` is
+shared AND digital AND Worker-backed at `audiobook-api.heygabi.ai`. And the health
+body could not supply the deploy's name either: **a Worker cannot tell you which
+deploy it is** (`padhard` says `library-catalog`; the deploy is
+`library-catalog-friend`).
+
+**What shipped.** Migration `0022_estate_catalog_api.sql` (`api_host`, `service`,
+every value measured against the live host or read out of the `wrangler.toml`
+that deploys it, table in [`info/catalog-registry.md`](info/catalog-registry.md)
+§2b) → `estate-auth` `df5ea89d` → `catalog-index` `001f87cd` → `heygabi-home`
+`5066cf84`. Commits `11d737d`, `df96056`, plus `library_catalog` `b1ac673` and
+`Board_Game_Catalog` `21938fa` so a provisioned catalog writes both columns and
+gets its three rows with no apex edit. Tests 3,261 → 3,300.
+
+**Verified in a browser, before and after.** 25 checks → 27; **every
+previously-ok row still ok with an identical verdict**, 0 warnings and 0 down
+unchanged. The two new rows are `wk-audiobook` and `dep-audiobook` — the shared
+audio pool's Worker, which had **no row on this page at all** until today,
+because nothing here knew its API lives on a different hostname from its site.
+The Deployed-versions parentheticals are the DEPLOYED names now
+(`(index-worker)`→`(catalog-index)`, `(library_catalog worker)`→`(library-catalog)`,
+`(Board_Game_Catalog worker)`→`(board-game-catalog)`, `(auth-worker)`→`(estate-auth)`):
+the old column mixed repo names and deploy names, and only the deploy name is what
+a rollback is keyed on.
+
+⚠️ **THE UNKNOWN COUNT WENT 1 → 3, AND THAT IS THE 2026-09-06 CSP FINDING ONE
+HOST FURTHER ON, NOT A REGRESSION.** `audiobook-api.heygabi.ai` is not in
+`/status`'s `connect-src` — nothing had ever needed to ask it anything — so both
+its rows read *"Not checked — this page is not allowed to open a connection to
+this host"*. `curl` says that host answers; the page says it did not look. **The
+owner's `_headers` question now carries two hosts**, and that half stays OPEN in
+[`TODO.md`](TODO.md).
+
+✅ **The free verification the spec promised came true:** every catalog Worker
+reports `estate.app`, so a Worker serving a different catalog than the directory
+claims now SAYS so instead of rendering its version under somebody else's name.
+⚠️ Absence is not disagreement — `audiobook-worker` publishes no `estate.app`.
+
+⚠️ **NOT VERIFIED, and worth carrying forward:** the disagreement row has never
+fired against a real mismatched Worker (unit tests only); the two audiobook rows
+have never been seen in their PROBED state, because the CSP does not allow it;
+and nobody has signed in to `/status` on this version.
+
+**The item as it stood in `TODO.md`, moved whole:**
+
+- [ ] **`/status`'s row set — survey §3.1's L-sized item, HALF LANDED
+      2026-09-06 (agent W13-PLAT-STATUS).** ✅ **The SITES section is now
+      planned from the registry, row set AND probe list**, in one pure module
+      `sites/heygabi-home/public/status/lib/host-rows.js` (18 behavioural
+      tests, `scripts/test/status-host-rows.test.mjs`). Five hand-written
+      `makeRow` literals and five hand-written `probeReachable` calls are gone;
+      a provisioned `library3` gets its row with no edit there, and
+      `ebooks.heygabi.ai` gained the row it never had. The `/dev/` preview lane
+      stays as its own row — it is a DEPLOY LANE, not a shelf, so it must never
+      enter the registry — but takes its NAME from it. An unreadable directory
+      renders one worded grey row, never an empty panel. ⚠️ The Shared-index
+      panel was already registry-driven (2026-09-05).
+
+      🔴 **What is LEFT: the Workers and Deployed-versions row sets, and they
+      are blocked on TWO REGISTRY FIELDS, not on effort.** Measured live
+      2026-09-06 with `curl -sS -D <file> -o <file>` against
+      `GET https://<host>/api/health` for all five registry hosts:
+      `library`, `boardgames` and `padhard` answer the estate health envelope;
+      **`audiobooks.heygabi.ai` and `ebooks.heygabi.ai` answer HTTP 200 and the
+      site's HTML** — they are Pages sites. So *"does this catalog serve an
+      estate API"* is **not derivable from any field the registry carries**, and
+      a page that iterated all five would print *"Healthy, but reports no
+      version"* for two hosts that run no Worker. ⚠️ Deriving it from
+      `holding === 'physical'` is right today only by coincidence and is the
+      vocabulary conflation `info/catalog-registry.md` §5 warns about. ⚠️ Nor
+      can the health answer supply it: **`padhard.heygabi.ai` reports
+      `service: "library-catalog"`** — the CODE's name, not the deployed
+      `library-catalog-friend` the Deployed-versions row names. A Worker cannot
+      tell you which deploy it is.
+
+      **The two columns that close it**, both `apps/auth-worker` (a migration +
+      `estate-catalog.ts`) plus `apps/index-worker/src/catalogs-route.ts` and
+      the client's `parseCatalogs` — the paths this dispatch was told not to
+      touch, because another agent was writing in them:
+
+      | Field | Meaning | The five values |
+      |---|---|---|
+      | `api_host TEXT` | the host serving this catalog's estate API; `NULL` when it has none of its own | `= host` for library/games/library2 · `audiobook-api.heygabi.ai` for audiobook · `NULL` for ebooks |
+      | `service TEXT` | the DEPLOYED Worker name, for the row's parenthetical | `library-catalog` · `board-game-catalog` · `library-catalog-friend` · `audiobook-worker` · `NULL` |
+
+      ⚠️ **And a free verification once they exist:** each Worker's health body
+      already carries `estate.app` (`library` / `games` / `library2`), so the
+      join back to the registry can be *measured* rather than assumed — a row
+      whose Worker disagrees about which catalog it serves should say so rather
+      than render. The caveat, the measurements and this spec are written into
+      `status/lib/host-rows.js`'s header, which is where the next session reads.
+
+---
+
 ## ✅ 2026-09-06 — both provisioners now END with the apex `/admin` + `/status` edits — and they READ them, not quote them
 
 ⚠️ **This closes ONE of three claims in a `TODO.md` bullet, so the bullet stays
