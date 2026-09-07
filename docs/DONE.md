@@ -9,6 +9,55 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-07 — OWNER ASK ~02:40 Phoenix — "We need a deploy end point so you can take over that job" (audiobook-worker)
+
+**Context.** The 2026-09-07 audiobook-worker deploy took the owner three
+attempts from the phone (the first two never reached the Worker; the third,
+`e91ea098`, landed at 09:22Z and is in `deploys.log`). The owner wants the
+conductor to be able to deploy this Worker itself.
+
+**Finding (checked first, per the mandate).** The endpoint already EXISTS:
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) is a
+`workflow_dispatch` with a `target` choice — but its choices are only
+`index-worker` / `auth-worker` / `heygabi-home` / `all`. **`audiobook-worker`
+is not a target** (nor is `discord-worker`). `gh auth status` → logged in as
+`skymitch9`, so once the target exists the conductor can run
+`gh workflow run deploy.yml -f target=audiobook-worker` from the terminal.
+The rotated `CLOUDFLARE_API_TOKEN` already carries Workers scope (it deploys
+the two sibling Workers today).
+
+**Build (Opus agent W16-AB-DEPLOY-TARGET):**
+- [x] add an `audiobook-worker` job to `deploy.yml` — copy the `auth-worker`
+      job shape (token guard, checkout, node 22, `npm ci`, `npx wrangler
+      deploy` in `working-directory: apps/audiobook-worker`, Summary notice)
+      **minus the D1 migrate step** — the Worker has no D1 binding (only R2)
+      and no `db:migrate` script; add the choice to the `target` input and
+      to `all`; update the header comment's target list
+- [x] update [`docs/access/ci-deploy.md`](access/ci-deploy.md) (the doc that
+      describes this workflow) with the new target and the no-migrate reason
+- [x] `npm test` at the root still green; commit (allowlist), push
+- [x] **then the conductor ran it**: `gh workflow run deploy.yml -f
+      target=audiobook-worker`, `gh run watch`, verify with `npx wrangler
+      deployments list` (new version id, newest LAST) + `/api/health` 200 +
+      the `/status` audiobook rows going green (that is also the live proof of
+      `27182a0`'s `SITE_ORIGINS` widen and of `3000435`'s enforce routes,
+      neither of which has been deployed yet)
+- [x] appended the `deploys.log` line (09:49:11Z, `d4e74421`); moved WHOLE here
+
+**Not decided:** whether `discord-worker` gets a target in the same change.
+It is the same shape (it DOES have D1). Owner's call — ask, don't assume.
+
+**Closed 2026-09-07 02:52 Phoenix.** `acf5f59` (W16-AB-DEPLOY-TARGET) added the
+target; the conductor ran `gh workflow run deploy.yml -f target=audiobook-worker`
+→ run `34108000554`: tests green, `audiobook-worker` job success, the other three
+skipped. Live version `d4e74421-8e62-41b2-9c85-3ef54df6785b` (rollback
+`e91ea098`), measured 09:50Z: `/api/health` 200 and, with `Origin:
+https://heygabi.ai`, `Access-Control-Allow-Origin: https://heygabi.ai` — so
+`27182a0`'s CORS widen and `3000435`'s enforce routes are both live. The
+"Not decided" `discord-worker` target is still an open owner question and was
+NOT built; it moves to the Leftovers item, not here. NOT VERIFIED: the `/status`
+audiobook rows rendering green (predicted from the header).
+
 ## ✅ 2026-09-07 — `/status` may now ask about `ebooks.heygabi.ai` and `audiobook-api.heygabi.ai` — the owner's CSP call, TAKEN
 
 **Done by W15-CSP.** The item below was a **DECISION, not a build** — its own
