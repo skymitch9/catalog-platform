@@ -110,14 +110,22 @@ export const SITE_ROW_PREFIX = 'site-';
  *
  * So a host that is not here is **not probed at all** and its row says why.
  *
- * ⚠️ **AND IT GATES THREE SECTIONS NOW, NOT ONE** (2026-09-07). The Workers and
- * Deployed-versions rows read the same list, and it costs a SECOND host:
- * `audiobook-api.heygabi.ai` — the `audiobook` catalog's API, which migration
- * 0022 put in the registry — is not in this `connect-src` either, because until
- * today no page had any reason to ask it anything. Its two rows are therefore
- * worded grey rather than fetched, exactly as `ebooks.heygabi.ai`'s site row
- * is. That is a second line for the owner's `_headers` decision, not a second
- * bug: `curl` says the host answers, and this page says it did not look.
+ * ⚠️ **IT GATES THREE SECTIONS, NOT ONE** (2026-09-07). The Workers and
+ * Deployed-versions rows read the SAME list — one array, three sections — which
+ * is why `audiobook-api.heygabi.ai` (the `audiobook` catalog's API, a different
+ * machine from its site, which migration 0022 put in the registry) blanked two
+ * rows the day it arrived rather than one.
+ *
+ * ✅ **BOTH OF THOSE HOSTS ARE NOW HERE — the owner's `_headers` decision was
+ * taken 2026-09-07 (yes to both), and `docs/TODO.md`'s item moved to
+ * `DONE.md`.** Four rows that had never once been fetched — `site-ebooks`,
+ * `wk-audiobook`, `dep-audiobook`, and the summary's "unknown" count that
+ * carried them — are probed for the first time. ⚠️ **The grey-not-red machinery
+ * below STAYS AND IS NOT DEAD CODE:** it is what any FUTURE catalog gets, because
+ * the ordering argument above has not changed — a `library3` provisioned tomorrow
+ * is rowed from the registry at runtime and cannot be probed until somebody edits
+ * `_headers`. The tests exercise it against exactly that hypothetical now that no
+ * real host is blocked.
  *
  * ⚠️ **IT MUST NOT DRIFT FROM `_headers`, and that is MECHANICAL, not a
  * promise:** `scripts/test/status-host-rows.test.mjs` PARSES `_headers` for the
@@ -133,6 +141,12 @@ export const PROBEABLE_ORIGINS = [
   'https://boardgames.heygabi.ai',
   'https://padhard.heygabi.ai',
   'https://audiobooks.heygabi.ai',
+  // Added 2026-09-07 with the same two lines in `_headers` (/status and
+  // /status/). ⚠️ `ebooks` is the SITE of a catalog that runs no estate API;
+  // `audiobook-api` is the API of a catalog whose SITE is the entry above it.
+  // Two different kinds of host, one CSP.
+  'https://ebooks.heygabi.ai',
+  'https://audiobook-api.heygabi.ai',
 ];
 
 /**
@@ -361,9 +375,10 @@ export function apiCatalogs(catalogs, { unknownShelf = null } = {}) {
       apiHost,
       service: typeof cat.service === 'string' && cat.service ? cat.service : null,
       origin,
-      // ⚠️ Same CSP rule the site rows keep, and it bites a SECOND host now:
-      // `audiobook-api.heygabi.ai` is not in `/status`'s connect-src either, so
-      // its two rows are worded grey rather than fetched and reported DOWN.
+      // ⚠️ Same CSP rule the site rows keep. It blocked `audiobook-api.heygabi.ai`
+      // from 2026-09-07 04:32Z until the `_headers` edit later that day; it now
+      // blocks no host the registry currently names, and is kept for the next one
+      // the registry learns about before this file's `connect-src` does.
       url: PROBEABLE_ORIGINS.includes(origin) ? `${origin}/api/health` : null,
       blocked: !PROBEABLE_ORIGINS.includes(origin),
     });

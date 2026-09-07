@@ -119,9 +119,14 @@ describe('siteRowPlan — the row SET is the registry', () => {
       'https://library.heygabi.ai/',
       'https://boardgames.heygabi.ai/',
       'https://padhard.heygabi.ai/',
-      // ⚠️ ebooks.heygabi.ai is ROWED and NOT PROBED — this page's CSP does not
-      // name it. Measured live 2026-09-06; see the CSP suite below.
-      null,
+      // ⚠️ THIS ENTRY WAS `null` FROM 2026-09-06 TO 2026-09-07 and the change is
+      // a `_headers` edit, not a code one: ebooks.heygabi.ai was ROWED and NOT
+      // PROBED because /status's own connect-src did not name it. The owner
+      // said yes to both withheld hosts on 2026-09-07 (docs/DONE.md), so the
+      // last of the five catalogs is fetched. See the CSP suite below, which
+      // now exercises the withheld-probe machinery against a catalog the
+      // registry could produce tomorrow rather than one it names today.
+      'https://ebooks.heygabi.ai/',
     ]);
   });
 
@@ -187,16 +192,35 @@ describe('an unreadable directory — NEVER an empty panel', () => {
 });
 
 describe('🔴 a host this page may not reach is NOT PROBED, and never reads DOWN', () => {
-  it('the ebooks row exists, carries no probe, and is flagged blocked', () => {
-    const row = plan().find((r) => r.catalogId === 'ebooks');
+  // ⚠️ THIS SUITE USED TO POINT AT `ebooks`, AND THE CHANGE IS THE WHOLE STORY.
+  // From 2026-09-06 to 2026-09-07 `ebooks.heygabi.ai` was a real registry
+  // catalog this page's CSP would not let it ask about, so it was the natural
+  // specimen. The owner said yes to both withheld hosts on 2026-09-07
+  // (`_headers` names all five catalogs now), which leaves the mechanism with
+  // no live subject — so it is pinned against the catalog the registry can
+  // produce at any moment and `_headers` cannot know about in advance. ⚠️ THAT
+  // IS NOT A WEAKER TEST, it is the permanent case: the ordering argument never
+  // changed, and a provisioned `library3` is exactly what walks into it next.
+  const grown = [...LIVE_REGISTRY, { id: 'library3', label: "Jordan's library", host: 'jordan.heygabi.ai' }];
+
+  it('an unnamed catalog’s row exists, carries no probe, and is flagged blocked', () => {
+    const row = plan(grown).find((r) => r.catalogId === 'library3');
     assert.ok(row, 'the catalog is real and belongs on the page — only the probe is withheld');
     assert.equal(row.blocked, true);
     assert.equal(row.url, null);
   });
 
-  it('every other catalog row is probed, so the block is exactly one host', () => {
-    const blocked = plan().filter((r) => r.blocked).map((r) => r.catalogId ?? r.id);
-    assert.deepEqual(blocked, ['ebooks']);
+  it('🔴 every catalog the registry names TODAY is probed — the CSP names all five', () => {
+    // The state the 2026-09-07 `_headers` edit put the page in, asserted as a
+    // fact rather than left implicit: not one of the estate's current catalogs
+    // is withheld, so nobody reads a grey row about a shelf that exists.
+    assert.deepEqual(plan().filter((r) => r.blocked).map((r) => r.catalogId ?? r.id), []);
+    assert.ok(PROBEABLE_ORIGINS.includes('https://ebooks.heygabi.ai'));
+  });
+
+  it('every other row is probed, so the block is exactly the host the CSP omits', () => {
+    const blocked = plan(grown).filter((r) => r.blocked).map((r) => r.catalogId ?? r.id);
+    assert.deepEqual(blocked, ['library3']);
   });
 
   it('the sentence says "not checked", not "did not answer", and shows no status code', () => {
@@ -438,29 +462,51 @@ describe('an unreadable directory — NEVER a silently shorter panel', () => {
   });
 });
 
-describe('🔴 a SECOND host this page may not reach — the same rule, a new row', () => {
-  it('audiobook-api.heygabi.ai is rowed in both sections and probed in neither', () => {
-    // Found by building it, 2026-09-07: the moment `api_host` reached the page,
-    // the audiobook Worker arrived in the row set and this page's CSP does not
-    // name its host. The 2026-09-06 incident, one host further on.
+describe('🔴 the API host the CSP had to learn about — the same rule, a new row', () => {
+  it('✅ audiobook-api.heygabi.ai is rowed in both sections and NOW fetched in both', () => {
+    // Found by building it, 2026-09-07 04:32Z: the moment `api_host` reached
+    // the page, the audiobook Worker arrived in both row sets on a hostname
+    // this page's CSP had never named, and both rows came out grey and worded
+    // rather than red — the 2026-09-06 incident's fix working the first time
+    // something other than the incident exercised it. The owner said yes the
+    // same day, so `_headers` names it and the two rows are asked for the first
+    // time. ⚠️ Its SITE (audiobooks.heygabi.ai) was always probeable and is a
+    // different machine — that asymmetry is why `api_host` exists.
     for (const rows of [workers(), deploys()]) {
       const row = rows.find((r) => r.catalogId === 'audiobook');
-      assert.equal(row.blocked, true);
-      assert.equal(row.url, null, 'a fetch this page may not make must never be attempted');
+      assert.equal(row.blocked, false);
+      assert.equal(row.url, 'https://audiobook-api.heygabi.ai/api/health');
     }
-    assert.ok(!PROBEABLE_ORIGINS.includes('https://audiobook-api.heygabi.ai'));
+    assert.ok(PROBEABLE_ORIGINS.includes('https://audiobook-api.heygabi.ai'));
   });
 
-  it('every OTHER catalog API is fetched, so the block is exactly one host', () => {
-    assert.deepEqual(workers().filter((r) => r.blocked).map((r) => r.catalogId), ['audiobook']);
+  it('🔴 every catalog API the registry names TODAY is fetched — none is withheld', () => {
+    assert.deepEqual(workers().filter((r) => r.blocked).map((r) => r.catalogId), []);
     assert.deepEqual(
-      workers().filter((r) => !r.blocked).map((r) => r.url),
+      workers().map((r) => r.url),
       [
+        'https://audiobook-api.heygabi.ai/api/health',
         'https://library.heygabi.ai/api/health',
         'https://boardgames.heygabi.ai/api/health',
         'https://padhard.heygabi.ai/api/health',
       ],
     );
+  });
+
+  it('⚠️ …and the NEXT api_host the CSP has not learned is still withheld, not called DOWN', () => {
+    // The machinery is kept, not deleted, because the ordering argument is
+    // permanent: a CSP is chosen before the registry is read, so a catalog
+    // provisioned tomorrow is rowed for free and fetched only after a
+    // `_headers` edit. Same hypothetical the sites suite uses.
+    const grown = [...LIVE_REGISTRY, {
+      id: 'library3', label: "Jordan's library", host: 'jordan.heygabi.ai',
+      api_host: 'jordan.heygabi.ai', service: 'library-catalog-jordan',
+    }];
+    for (const rows of [workers(grown), deploys(grown)]) {
+      const row = rows.find((r) => r.catalogId === 'library3');
+      assert.equal(row.blocked, true);
+      assert.equal(row.url, null, 'a fetch this page may not make must never be attempted');
+    }
   });
 
   it('the Worker note is worded for a WORKER, and still says not-checked rather than down', () => {

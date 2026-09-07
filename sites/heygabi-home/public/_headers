@@ -153,8 +153,11 @@
 #               block, no external stylesheet link, so 'self' is not needed.
 #
 # /status (added 2026-08-14, the estate status page — "I want to see all the
-# pipelines"). connect-src names exactly the seven hosts status.js fetches: the
-# five /api/health origins it reads as JSON (index/auth/library/games, plus
+# pipelines"). connect-src names exactly the NINE hosts status.js fetches — it
+# was SEVEN until 2026-09-07; the two additions and the reason they are additions
+# and not a loosening are the paragraph after this one. The seven that were
+# always here: the five /api/health origins it reads as JSON
+# (index/auth/library/games, plus
 # padhard.heygabi.ai — "Sam's library" — added 2026-08-16 with its worker and
 # site rows; her deploy is separate from ours even though the code is shared,
 # so a green library row says nothing about hers), the
@@ -165,6 +168,41 @@
 # SDK needed or added for THAT row: a signed-out GET is enough, same as every
 # other read-only row). No img-src beyond the inline SVG favicon — this page
 # renders no covers. form-action and base-uri stay 'none'.
+#
+# ⚠️ SEVEN → NINE, 2026-09-07 (owner's call, taken; docs/TODO.md's "/status's CSP
+# connect-src does not name ebooks.heygabi.ai OR audiobook-api.heygabi.ai" item,
+# now in DONE.md). Both hosts arrived on this page the same way, a day apart, and
+# NEITHER was ever a hand-written row:
+#   https://ebooks.heygabi.ai        the `ebooks` catalog's SITE. It entered the
+#                                    Sites row set the hour that section became
+#                                    registry-driven (2026-09-06) — a row for a
+#                                    catalog the registry names, on a host this
+#                                    header had never needed.
+#   https://audiobook-api.heygabi.ai the `audiobook` catalog's estate API, on a
+#                                    DIFFERENT machine from its site
+#                                    (audiobooks.heygabi.ai, already above).
+#                                    Migration 0022 gave the registry `api_host`,
+#                                    and the Workers + Deployed-versions sections
+#                                    became registry-driven 2026-09-07; this host
+#                                    arrived in BOTH.
+# ⚠️ WHY IT HAD TO BE A HAND EDIT, and why that is not a defect to be designed
+# away: a CSP is a response header the CDN chooses BEFORE a byte of this page
+# runs, and the registry is read AFTER. A page can never widen its own
+# connect-src from something it learns at runtime — so a catalog joining the
+# directory is ROWED for free and PROBED only once this file names its host. Two
+# lines each, per the trailing-slash 308 trap this file's own header warns about.
+# ⚠️ IT WIDENS ONLY WHAT THIS PAGE MAY ASK, never what any host returns; both
+# were already answering 200 to curl the whole time they read grey here.
+# ⚠️ AND THE THREE ROWS WERE HONEST WHILE IT WAS OPEN — that is the half worth
+# keeping. Before 2026-09-06 a refused fetch was indistinguishable from a dead
+# host and the ebooks row read "DOWN — Did not answer within 8s" about a site
+# answering HEAD / with 200: a permission failure wearing an outage's clothes.
+# The fix shipped that day was to NOT PROBE a host this page may not reach and to
+# say so in words, so the rows sat grey and correct until this edit rather than
+# red and wrong. `PROBEABLE_ORIGINS` in status/lib/host-rows.js is the page's copy
+# of this list and MUST be edited in the same commit —
+# scripts/test/status-host-rows.test.mjs PARSES this file for the /status and
+# /status/ rules and fails if the two disagree.
 #
 # Operations (added 2026-08-15, "make sure the status page has all the
 # pieces to RUN the pipelines"): the page's read-only rows still need no
@@ -258,11 +296,11 @@
 
 /status
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://audiobooks.heygabi.ai https://ebooks.heygabi.ai https://audiobook-api.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /status/
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://audiobooks.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src https://index.heygabi.ai https://auth.heygabi.ai https://library.heygabi.ai https://boardgames.heygabi.ai https://padhard.heygabi.ai https://audiobooks.heygabi.ai https://ebooks.heygabi.ai https://audiobook-api.heygabi.ai https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://audiobook-catalog.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # =========================================================================
 # THE /status SPLIT (2026-08-18) — four sibling pages, each with its own rule.
