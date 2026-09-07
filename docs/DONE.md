@@ -9,6 +9,111 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-07 — `/status` may now ask about `ebooks.heygabi.ai` and `audiobook-api.heygabi.ai` — the owner's CSP call, TAKEN
+
+**Done by W15-CSP.** The item below was a **DECISION, not a build** — its own
+body says so — and the decision is *yes to both hosts*. Commit `2123fd8`,
+deployment `00cd22be-841b-406a-99e0-12286307490f` (rollback
+`5066cf84-505b-4322-a3cc-ca710525109f`, `d5d1386`), `deploys.log`
+2026-09-07T09:19:00Z.
+
+**What shipped:** `connect-src` on **both** the `/status` and `/status/` rules of
+`sites/heygabi-home/public/_headers` goes **seven hosts → nine**, and
+`PROBEABLE_ORIGINS` in `status/lib/host-rows.js` gains the same two in the same
+commit — not optional, because `scripts/test/status-host-rows.test.mjs` PARSES
+`_headers` for both path forms and fails when the page's copy disagrees with the
+header actually served. That guard needed no edit and passed on the first run
+after both files changed, which is it doing its job.
+
+**The three rows it unblocks**, none of which had ever been fetched:
+`site-ebooks`, `wk-audiobook`, `dep-audiobook`. ⚠️ **Both hosts were answering
+`200` the entire time they read grey** — re-measured 09:21Z with `curl -sS -D
+<file> -o <file>`: `https://audiobook-api.heygabi.ai/api/health` →
+`{"ok":true,"service":"audiobook-worker",…}`, `https://ebooks.heygabi.ai/` →
+`200`. Widening `connect-src` changed what this page may **ask**, never what any
+host **returns**.
+
+🔴 **THE GREY-NOT-RED MACHINERY STAYS, AND IS NOT DEAD CODE.** The ordering
+argument that created it is permanent and is the durable half of this item: **a
+CSP is a response header the CDN chooses BEFORE a byte of the page runs, and the
+registry is read AFTER**, so no page can widen its own `connect-src` from a
+runtime fact. A catalog provisioned tomorrow is **ROWED for free and PROBED only
+once `_headers` names its host** — two lines each, per the trailing-slash 308
+trap. Five test expectations that pinned *"ebooks is blocked"* / *"audiobook-api
+is blocked in both sections"* were **re-aimed rather than deleted**: they now
+exercise the mechanism against `library3`, the catalog a provisioning run
+produces and nothing in this repo names. Two NEW assertions pin the state this
+commit creates — that **no catalog the registry names today is withheld**.
+Suite 46 → 48; root 3,372 → 3,374 pass / 0 fail across 11 workspaces.
+
+⚠️ **NOT VERIFIED: nobody has seen the page render.** No agent session can open
+a browser, so the three rows are proven **permitted** and never proven **green** —
+what verdict a live probe produces for them has not been observed, and the
+predicted *"3 unknown" → "0 unknown"* is arithmetic, not a measurement. **Owner:
+open <https://heygabi.ai/status/>** and look at the Sites row *"Shared ebooks
+site — ebooks.heygabi.ai"*, the Workers row *"Shared audiobooks API —
+audiobook-api.heygabi.ai"* and the Deployed-versions row *"Shared audiobooks
+(audiobook-worker)"*, plus the console for CSP violations (expect zero).
+
+**The item, moved whole:**
+
+- [ ] 🧑 **OWNER'S CALL — `/status`'s CSP `connect-src` does not name
+      `ebooks.heygabi.ai` OR `audiobook-api.heygabi.ai`, so the page cannot
+      check three of the rows the registry now gives it.** ⚠️ **TWO hosts as of
+      2026-09-07, not one — and the second arrived exactly as this bullet
+      predicted it would.** Found by shipping it, 2026-09-06: the moment the Sites
+      section became registry-driven, `ebooks` arrived in the row set, its probe
+      was **refused by this page's own Content-Security-Policy**,
+      `probeReachable()` could not tell a refused fetch from a dead host, and
+      the row read **"DOWN — Did not answer within 8s"** about a site that
+      answers `HEAD /` with `HTTP/1.1 200 OK` (measured with `curl -sS
+      --request HEAD -D <file> -o <file>`; ⚠️ `-w`, `-I` and `-o /dev/null` all
+      misreport `000`/exit 43 on these hosts). ⚠️ **A permission failure worded
+      as an outage sends somebody to fix a host that is fine** — the estate's
+      own rule, inverted.
+
+      ✅ **The lie is fixed and shipped** (the deployment id is the second
+      `heygabi-home` line of 2026-09-06 in `deploys.log`): a host this
+      page may not reach is **not probed at all**, and its row is grey and
+      worded — *"Not checked — this page is not allowed to open a connection to
+      this host"* plus a note saying the site may be perfectly healthy and
+      naming the one-line fix. `PROBEABLE_ORIGINS` in
+      `status/lib/host-rows.js` is now checked against the **real** header by a
+      test that PARSES `sites/heygabi-home/public/_headers` for both the
+      `/status` and `/status/` rules, so the two cannot drift.
+
+      🔴 **What is still open is a DECISION, not a build.** ⚠️ **A CSP is served
+      WITH the page, before any registry read, so a page can never widen its own
+      `connect-src` from a runtime fact.** Every catalog provisioned from now on
+      is therefore **rowed for free and probed only once `_headers` names its
+      host** — two lines (`/status` and `/status/`, per the trailing-slash 308
+      trap that file's own header warns about). It is a security-header change,
+      so it is the owner's to make, not a build's.
+
+      🔴 **THE PREDICTION CAME TRUE THE NEXT DAY, WHICH IS WHY THIS IS A RULE
+      AND NOT AN ANECDOTE.** 2026-09-07 (W14-STATUS2): migration 0022 gave the
+      registry `api_host`, `/status`'s Workers and Deployed-versions sections
+      became registry-driven, and **`audiobook-api.heygabi.ai` arrived in both
+      row sets** — the shared audio pool's Worker, on a hostname nothing on this
+      site had ever needed to ask anything. `connect-src` does not name it
+      either. Both its rows came out **grey and worded** rather than red, which
+      is this bullet's fix working the first time it was exercised by something
+      other than the incident that created it. Measured with `curl -sS -D
+      <file> -o <file>` 04:00Z: that host answers
+      `{"ok":true,"service":"audiobook-worker",…}` — so it is healthy and this
+      page simply did not look. The live summary went *"1 unknown"* → *"3
+      unknown"*, 0 warnings and 0 down unchanged.
+
+      **The question for him, now TWO hosts and answerable together or apart:**
+      *add `https://ebooks.heygabi.ai` and/or `https://audiobook-api.heygabi.ai`
+      to `/status`'s `connect-src` so those three rows can be checked — yes or
+      no?* ⚠️ It widens only what THIS page may ask, never what any host
+      returns; a "no" leaves the rows honestly grey, which is a real and
+      acceptable answer. ⚠️ **Each host is two lines** (`/status` and
+      `/status/`), and `scripts/test/status-host-rows.test.mjs` parses the real
+      `_headers` — so `PROBEABLE_ORIGINS` must be updated in the same commit or
+      the test fails, which is the drift guard doing its job.
+
 ## ✅ 2026-09-07 — `/status`'s row set is FULLY registry-driven — survey §3.1's L-sized item, closed
 
 **Done by W14-STATUS2.** The item below is moved WHOLE, both halves of it: the
