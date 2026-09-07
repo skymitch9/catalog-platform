@@ -42,7 +42,11 @@
  */
 
 import type { Context } from 'hono';
-import { resolveIdentity, type EstateStatus } from '@platform/estate-auth';
+import {
+  resolveIdentity,
+  unauthenticatedRefusal,
+  type EstateStatus,
+} from '@platform/estate-auth';
 import { mintAccessToken, parseServiceAccount, type ServiceAccount } from '@platform/firebase-sa';
 import { effectiveLadderRole, type LadderRole } from '../../auth-worker/src/role-ladder.js';
 import { CAPABILITY_FLOORS, CLUB_MANAGER_CAPABILITIES, type Capability } from './capabilities.js';
@@ -200,14 +204,26 @@ export async function runEnforceGate(
     });
     return {
       ok: false,
+      // ⚠️ Composed by the ESTATE'S shared helper (2026-09-07), not by a
+      // sentence of this Worker's own. `@platform/estate-auth`'s
+      // `unauthenticatedRefusal()` is KI-6's "it is an estate-wide shape, so it
+      // is fixed ONCE as a shared helper, never per repo" — six Workers had
+      // grown six versions of this sentence and three still answered a bare
+      // 27-byte `{"error":"unauthenticated"}`. The change here is purely
+      // ADDITIVE: the 401 and the frozen `error: 'unauthenticated'` code are
+      // untouched (probes and every client branch key off that string), and
+      // `what`/`needs`/`how` now ride beside the composed `detail` the site
+      // actually prints.
       response: c.json(
-        {
-          error: 'unauthenticated',
-          detail:
-            'You are not signed in. This action is enforced server-side now — sign in ' +
-            'with Google on the audiobook site (a legacy passphrase session is not ' +
-            'enough) and try again.',
-        },
+        unauthenticatedRefusal({
+          what: 'You are not signed in, so this action was refused and nothing was changed.',
+          needs:
+            'a signed-in Google session on the audiobook site — a legacy passphrase ' +
+            'session is not enough, because it proves no account to enforce against',
+          how:
+            'Sign in with Google at https://audiobooks.heygabi.ai and try again. If it ' +
+            'still refuses, ask the site owner to check your estate access.',
+        }),
         401,
       ),
     };

@@ -47,6 +47,30 @@
  * polls:              POST   /api/clubs/:clubId/polls               operateClub
  *                     PUT    /api/clubs/:clubId/polls/:pollId/status  operateClub
  *                     DELETE /api/clubs/:clubId/polls/:pollId       operateClub
+ * discussion mod:     DELETE /api/clubs/:clubId/reads/:readId/comments/:commentId  operateClub
+ *                     DELETE /api/clubs/:clubId/reads/:readId/quotes/:quoteId      operateClub
+ * content notes:      DELETE /api/warnings/:docId            the note's OWN author (warning.selfDelete)
+ *                     DELETE /api/warnings/:docId/moderate   operateClub (warning.modDelete)
+ *
+ * ## The 2026-09-07 gap close (agent W15-AB-ENFORCE) — the last four
+ *
+ * The bottom four rows are new. They close a gap Phase 3a RECORDED rather than
+ * invented: `comment.modDelete`, `quote.modDelete`, `warning.selfDelete` and
+ * `warning.modDelete` each had an entry in `ACTION_GATES` (gate-shadow.ts) and
+ * NO enforce route, so the soak was measuring a surface enforcement could not
+ * reach. ⚠️ NOT ONE FLOOR MOVED to build them — every route runs the gate the
+ * shadow has been logging, unchanged, exactly as the other eighteen do.
+ *
+ * ⚠️ `review.submit`/`review.update` stay absent, deliberately. They are
+ * `{kind:'signedIn'}` — Phase 5's measurement of the tokenless population, not
+ * a role gate — so a route for them would enforce nothing a browser does not
+ * already have to prove.
+ *
+ * ⚠️ The two DISCUSSION routes are the MODERATION half ONLY, which is what
+ * their action names say. An author deleting their OWN comment or quote is a
+ * member-open write with no shadow action and no rules clause to mirror; it
+ * stays browser-direct on both paths. `user-warnings.js` makes the same split
+ * explicit by carrying two actions, and here it is two routes.
  *
  * (§1 also names `read.setSlot` in the shadow vocabulary; no client write
  * path exists for it today — measured against club-reads.js 2026-08-16 — so
@@ -73,6 +97,7 @@ import {
   reviewsCollectionFor,
   toFsFields,
   toFsValue,
+  userWarningsCollectionFor,
   type FsValue,
   type JsValue,
   type RmwResult,
@@ -108,6 +133,19 @@ export const ENFORCE_ROUTES: readonly EnforceRoute[] = [
   { method: 'POST', path: '/api/clubs/:clubId/polls', action: 'poll.create' },
   { method: 'PUT', path: '/api/clubs/:clubId/polls/:pollId/status', action: 'poll.setStatus' },
   { method: 'DELETE', path: '/api/clubs/:clubId/polls/:pollId', action: 'poll.delete' },
+  // The 2026-09-07 gap close — see the module doc.
+  {
+    method: 'DELETE',
+    path: '/api/clubs/:clubId/reads/:readId/comments/:commentId',
+    action: 'comment.modDelete',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/clubs/:clubId/reads/:readId/quotes/:quoteId',
+    action: 'quote.modDelete',
+  },
+  { method: 'DELETE', path: '/api/warnings/:docId', action: 'warning.selfDelete' },
+  { method: 'DELETE', path: '/api/warnings/:docId/moderate', action: 'warning.modDelete' },
 ] as const;
 
 /* ── shared vocabulary and small helpers ──────────────────────────────── */
@@ -205,14 +243,20 @@ function rmwResponse(c: Ctx, result: RmwResult): Response | null {
 
 export const enforceRoutes = new Hono<{ Bindings: Env }>();
 
-// ⚠️ THE DORMANCY GATE — mounted on BOTH write prefixes, before anything
+// ⚠️ THE DORMANCY GATE — mounted on EVERY write prefix, before anything
 // that could touch Firestore. Deliberately NOT `use('*')`: this router is
 // merged into the main app, and a wildcard here would swallow /api/me and
 // /api/health into the 503 (breaking Phases 0–2 while dormant). Every route
-// below lives under one of these two prefixes; the per-route dormancy tests
+// below lives under one of these three prefixes; the per-route dormancy tests
 // pin that (a route added outside them fails its 503 test immediately).
+//
+// ⚠️ `/api/warnings/*` joined 2026-09-07 WITH the two content-note routes, and
+// that pairing is the whole discipline: a new prefix added without its line
+// here is a route that WRITES IN SHADOW MODE — the one failure the dormancy
+// gate exists to prevent. The dormancy suite catches it, per route, per mode.
 enforceRoutes.use('/api/reviews/*', requireEnforceMode);
 enforceRoutes.use('/api/clubs/*', requireEnforceMode);
+enforceRoutes.use('/api/warnings/*', requireEnforceMode);
 
 /* ── reviews ──────────────────────────────────────────────────────────── */
 
@@ -1049,6 +1093,210 @@ enforceRoutes.delete('/api/clubs/:clubId/polls/:pollId', async (c) => {
     if (!del.ok) return writeOutage(c, del.status);
   }
   const del = await deleteFsDoc(sa, saToken, pollPath);
+  if (!del.ok) return writeOutage(c, del.status);
+  return c.json({ success: true });
+});
+
+/* ── discussion moderation: someone ELSE'S comment / quote ─────────────────
+ *
+ * Added 2026-09-07 (W15-AB-ENFORCE) to close the `comment.modDelete` /
+ * `quote.modDelete` gap — two actions that had a shadow gate and no route.
+ *
+ * ⚠️ MODERATION ONLY, and the route names say so. Deleting your OWN comment or
+ * quote is a member-open write: it has no shadow action, no rules clause to
+ * mirror (`club-reads.js` reports nothing for it) and no route here. A client
+ * that put a self-delete on one of these paths would be asking the Worker to
+ * refuse a member for doing something the rules allow.
+ *
+ * ⚠️ The rules on these two subcollections are SHAPE-ONLY, like members and
+ * requests (§1: "shape-only (presentation roles)"), so — as with the mod-tier
+ * member ops above — the gate here is the §6 matrix the shadow has been
+ * measuring, not a rules mirror. There is no rules clause to mirror.
+ */
+
+/**
+ * DELETE /api/clubs/:clubId/reads/:readId/comments/:commentId — club-reads.js
+ * deleteComment with `opts.asModerator`: delete the comment doc, then take the
+ * read's `commentCount` down by one. Capability: operateClub, island ON (a
+ * bound manager of THIS club moderates it; moderator+ overrides everywhere).
+ *
+ * ⚠️ ONE DOCUMENTED DELTA from the browser path, and it is the third in this
+ * file (see the module doc's list). The client bumps the counter with
+ * Firestore's atomic `increment(-1)`; the REST mirror is a read-modify-write
+ * under the updateTime precondition — the same instrument every other array
+ * mutation here uses, and it is NOT a lost-update risk for that reason. Two
+ * differences follow, both deliberate:
+ *   · the count is FLOORED AT ZERO, where `increment(-1)` would happily write
+ *     -1 and leave a club showing a negative comment count for ever;
+ *   · a MISSING comment is a worded 404 here, where the client's `deleteDoc`
+ *     succeeds on a document that is already gone and then decrements anyway.
+ *     Two moderators clicking the same ✕ decrement twice on the browser path;
+ *     here the second one is told the comment is already gone and the counter
+ *     is left alone.
+ */
+enforceRoutes.delete('/api/clubs/:clubId/reads/:readId/comments/:commentId', async (c) => {
+  const clubId = c.req.param('clubId');
+  const gate = await runEnforceGate(c, 'comment.modDelete', clubId);
+  if (!gate.ok) return gate.response;
+  const { sa, saToken, lane } = gate.ctx;
+  const readPath =
+    `${clubCollectionFor(lane)}/${encodeURIComponent(clubId)}` +
+    `/reads/${encodeURIComponent(c.req.param('readId'))}`;
+  const commentPath = `${readPath}/comments/${encodeURIComponent(c.req.param('commentId'))}`;
+
+  const comment = await getFsDoc(sa, saToken, commentPath);
+  if (!comment.ok) return writeOutage(c, comment.status);
+  if (comment.value === null) return notFound(c, 'Comment');
+
+  const del = await deleteFsDoc(sa, saToken, commentPath);
+  if (!del.ok) return writeOutage(c, del.status);
+
+  const rmw = await readModifyWrite(sa, saToken, readPath, (doc) => {
+    if (doc === null) return { noop: true }; // read gone: nothing to count
+    const current = fsScalar(doc.fields['commentCount']);
+    const count = typeof current === 'number' ? current : 0;
+    const next = Math.max(0, count - 1);
+    if (next === count) return { noop: true };
+    return {
+      patch: { fields: toFsFields({ commentCount: next }), fieldPaths: ['commentCount'] },
+    };
+  });
+  const refusal = rmwResponse(c, rmw);
+  if (refusal) return refusal;
+  return c.json({ success: true });
+});
+
+/**
+ * DELETE /api/clubs/:clubId/reads/:readId/quotes/:quoteId — club-reads.js
+ * deleteQuote with `opts.asModerator`: one document, no counter (quotes are
+ * not counted on the read doc). Capability: operateClub, island ON.
+ */
+enforceRoutes.delete('/api/clubs/:clubId/reads/:readId/quotes/:quoteId', async (c) => {
+  const clubId = c.req.param('clubId');
+  const gate = await runEnforceGate(c, 'quote.modDelete', clubId);
+  if (!gate.ok) return gate.response;
+  const { sa, saToken, lane } = gate.ctx;
+  const quotePath =
+    `${clubCollectionFor(lane)}/${encodeURIComponent(clubId)}` +
+    `/reads/${encodeURIComponent(c.req.param('readId'))}` +
+    `/quotes/${encodeURIComponent(c.req.param('quoteId'))}`;
+
+  const quote = await getFsDoc(sa, saToken, quotePath);
+  if (!quote.ok) return writeOutage(c, quote.status);
+  if (quote.value === null) return notFound(c, 'Quote');
+
+  const del = await deleteFsDoc(sa, saToken, quotePath);
+  if (!del.ok) return writeOutage(c, del.status);
+  return c.json({ success: true });
+});
+
+/* ── reader content notes: the 2026-08-17 delete SPLIT, as two routes ──────
+ *
+ * `user-warnings.js deleteUserWarning` is one function with two gates, and
+ * `ACTION_GATES` has said so since the 2026-08-17 split (soak blocker 3): your
+ * OWN note is `{kind:'signedIn'}`, anyone else's is `cap('operateClub', false)`
+ * — site-wide, island OFF, because a content note is not a club surface.
+ *
+ * ⚠️ TWO ROUTES, NOT ONE, and the reason is `runEnforceGate`: it takes exactly
+ * one action, runs exactly one gate and writes exactly ONE `ab_gate` line. A
+ * single route deciding between the two actions would have to read the note to
+ * learn who wrote it — which needs the service-account token the gate only
+ * mints once it has passed — so it would gate twice and log twice, inflating
+ * the very ledger the flip criterion is counted from.
+ *
+ * ⚠️ Neither route trusts the caller's claim about which one applies. The self
+ * route VERIFIES `authorUid == uid` server-side (firestore.rules'
+ * `warningAuthorIsRequester`), so naming it for somebody else's note is a
+ * worded refusal, not a delete. The moderate route holds the capability floor.
+ * Lying in either direction buys nothing.
+ */
+
+/** The §1e refusal for a note that is not the caller's to self-delete. */
+function notYourNote(c: Ctx, unstamped: boolean): Response {
+  return c.json(
+    {
+      error: 'not_author',
+      needs: 'operateClub',
+      detail: unstamped
+        ? 'This note was added before removals were tied to an account, so nobody ' +
+          'can remove it as its author — not even the person who wrote it. This ' +
+          'needs the site moderator role. Ask a site moderator to take it down, or ' +
+          'add the note again: a note added now is stamped with your account and ' +
+          'becomes yours to remove.'
+        : 'This content note was added by somebody else, so it cannot be removed ' +
+          'from your own account. This needs the "operateClub" capability, which ' +
+          'the moderator role (and above) holds. To get it, ask the site owner to ' +
+          'grant your account that role from the estate admin page.',
+    },
+    403,
+  );
+}
+
+/**
+ * DELETE /api/warnings/:docId — remove YOUR OWN reader content note. Mirrors
+ * `deleteUserWarning` on its `authored` arm, and firestore.rules'
+ * `warningAuthorIsRequester()` (line 797) verbatim: the doc must carry an
+ * `authorUid` and it must equal the caller's live uid.
+ *
+ * ⚠️ Gate `warning.selfDelete` is `{kind:'signedIn'}`, so `gateDecision`
+ * answers before the estate-revoked arm is ever reached — a revoked household
+ * member may still take down their own note. That is not an oversight to
+ * "harden": it is exactly what the shadow has been measuring and exactly what
+ * the rules allow today, and enforce must refuse precisely what shadow said it
+ * would or the soak evidence stops meaning anything. Changing it is a floor
+ * change, and floors are the owner's.
+ *
+ * ⚠️ An UNSTAMPED note (no `authorUid` at all — written by the old prod UI or
+ * a legacy passphrase session) is refused here and is moderator-deletable
+ * only. ROLES.md §1 records that as deliberate, and that both lanes were
+ * measured EMPTY the day the rule shipped, so it stranded nothing.
+ */
+enforceRoutes.delete('/api/warnings/:docId', async (c) => {
+  const gate = await runEnforceGate(c, 'warning.selfDelete', null);
+  if (!gate.ok) return gate.response;
+  const { sa, saToken, lane, uid } = gate.ctx;
+  const notePath =
+    `${userWarningsCollectionFor(lane)}/${encodeURIComponent(c.req.param('docId'))}`;
+
+  const note = await getFsDoc(sa, saToken, notePath);
+  if (!note.ok) return writeOutage(c, note.status);
+  if (note.value === null) return notFound(c, 'Content note');
+
+  const authorUid = fsString(note.value.fields, 'authorUid');
+  if (authorUid === null) return notYourNote(c, true);
+  if (authorUid !== uid) return notYourNote(c, false);
+
+  const del = await deleteFsDoc(sa, saToken, notePath);
+  if (!del.ok) return writeOutage(c, del.status);
+  return c.json({ success: true });
+});
+
+/**
+ * DELETE /api/warnings/:docId/moderate — take down ANYONE'S reader content
+ * note. Mirrors `deleteUserWarning`'s moderator arm and firestore.rules'
+ * `isSiteModerator() || isSiteAdmin()` half of `canDeleteUserWarning()`.
+ *
+ * Capability `operateClub` (moderator floor), island OFF — `ACTION_GATES` says
+ * `cap('operateClub', false)` and it means it: a book's content notes are not
+ * a club surface, so running a club confers nothing here. `runEnforceGate` is
+ * called with a null clubId, so no roster is read at all.
+ *
+ * ⚠️ Unlike the self route, this one IS estate-checked (a capability rule
+ * reaches the revoked arm), which is the whole point of the migration: a
+ * revoked moderator whose `site_roles` doc still stands is refused.
+ */
+enforceRoutes.delete('/api/warnings/:docId/moderate', async (c) => {
+  const gate = await runEnforceGate(c, 'warning.modDelete', null);
+  if (!gate.ok) return gate.response;
+  const { sa, saToken, lane } = gate.ctx;
+  const notePath =
+    `${userWarningsCollectionFor(lane)}/${encodeURIComponent(c.req.param('docId'))}`;
+
+  const note = await getFsDoc(sa, saToken, notePath);
+  if (!note.ok) return writeOutage(c, note.status);
+  if (note.value === null) return notFound(c, 'Content note');
+
+  const del = await deleteFsDoc(sa, saToken, notePath);
   if (!del.ok) return writeOutage(c, del.status);
   return c.json({ success: true });
 });

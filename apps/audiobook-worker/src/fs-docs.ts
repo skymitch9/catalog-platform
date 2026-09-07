@@ -271,3 +271,16 @@ export function laneFrom(raw: string | undefined): Lane {
 export function reviewsCollectionFor(lane: Lane): string {
   return lane === 'dev' ? 'reviews_dev' : 'reviews';
 }
+
+/**
+ * user_content_warnings / user_content_warnings_dev — the READER-ADDED content
+ * notes (audiobook_catalog `site/user-warnings.js`; the `_dev` suffix is that
+ * repo's `col()` helper in `site/fb-env.js`, and firestore.rules carries both
+ * blocks side by side at `/user_content_warnings` and `…_dev`).
+ *
+ * ⚠️ NOT the pipeline's published `site/content_warnings.json`, which is a
+ * static file with no collection behind it and no delete surface at all.
+ */
+export function userWarningsCollectionFor(lane: Lane): string {
+  return lane === 'dev' ? 'user_content_warnings_dev' : 'user_content_warnings';
+}

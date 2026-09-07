@@ -12,8 +12,9 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import app from '../src/index.js';
-import { toFsFields, type FsValue } from '../src/fs-docs.js';
-import { CLUB_FEATURE_KEYS } from '../src/enforce-routes.js';
+import { toFsFields, toFsValue, type FsValue } from '../src/fs-docs.js';
+import { CLUB_FEATURE_KEYS, ENFORCE_ROUTES } from '../src/enforce-routes.js';
+import { ACTION_GATES } from '../src/gate-shadow.js';
 import { resetEstateCache } from '../src/estate-status.js';
 import { resetRoleCache } from '../src/roles.js';
 import type { Env } from '../src/env.js';
@@ -1095,4 +1096,333 @@ test('poll delete: votes swept first, then the poll — club-reads.js deletePoll
   } finally {
     fake.restore();
   }
+});
+
+/* ── discussion moderation + reader content notes (the 2026-09-07 gap close)
+ *
+ * Four actions that had a shadow gate in ACTION_GATES and NO enforce route,
+ * so the soak was measuring a surface enforcement could not reach. The
+ * properties pinned here are the ones a later session would get wrong: the
+ * counter floor, ONE ab_gate line per request, the island being ON for the
+ * club surfaces and OFF for the content notes, and — the important one —
+ * that naming the self route for somebody else's note is VERIFIED server-side
+ * rather than believed.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+test('comment modDelete: the comment goes and commentCount comes down by one', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'clubs/c1': clubSeed(),
+    'clubs/c1/reads/r1': toFsFields({ bookTitle: 'A Book', status: 'active', commentCount: 3 }),
+    'clubs/c1/reads/r1/comments/x': toFsFields({ text: 'off topic', displayName: 'Alice' }),
+  });
+  try {
+    const res = await req(
+      envWith({ DEV_EMAIL: 'mod@example.com' }),
+      'DELETE',
+      '/api/clubs/c1/reads/r1/comments/x',
+    );
+    assert.equal(res.status, 200);
+    assert.ok(!fake.docs.has('clubs/c1/reads/r1/comments/x'));
+    const count = fake.docs.get('clubs/c1/reads/r1')?.fields['commentCount'] as
+      | { integerValue?: string }
+      | undefined;
+    assert.equal(count?.integerValue, '2');
+  } finally {
+    fake.restore();
+  }
+});
+
+test('comment modDelete: the count FLOORS AT ZERO — increment(-1) would write -1', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'clubs/c1': clubSeed(),
+    'clubs/c1/reads/r1': toFsFields({ bookTitle: 'A Book', commentCount: 0 }),
+    'clubs/c1/reads/r1/comments/x': toFsFields({ text: 'hi' }),
+  });
+  try {
+    const res = await req(
+      envWith({ DEV_EMAIL: 'mod@example.com' }),
+      'DELETE',
+      '/api/clubs/c1/reads/r1/comments/x',
+    );
+    assert.equal(res.status, 200);
+    assert.ok(!fake.docs.has('clubs/c1/reads/r1/comments/x'));
+    const count = fake.docs.get('clubs/c1/reads/r1')?.fields['commentCount'] as
+      | { integerValue?: string }
+      | undefined;
+    assert.equal(count?.integerValue, '0', 'a club must never show a negative comment count');
+  } finally {
+    fake.restore();
+  }
+});
+
+test('comment modDelete: an ALREADY-GONE comment is a worded 404 and does NOT decrement', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'clubs/c1': clubSeed(),
+    'clubs/c1/reads/r1': toFsFields({ bookTitle: 'A Book', commentCount: 5 }),
+  });
+  try {
+    const res = await req(
+      envWith({ DEV_EMAIL: 'mod@example.com' }),
+      'DELETE',
+      '/api/clubs/c1/reads/r1/comments/ghost',
+    );
+    assert.equal(res.status, 404);
+    const body = (await res.json()) as { error?: string; detail?: string };
+    assert.equal(body.error, 'not_found');
+    assert.match(body.detail ?? '', /Comment not found/);
+    const count = fake.docs.get('clubs/c1/reads/r1')?.fields['commentCount'] as
+      | { integerValue?: string }
+      | undefined;
+    assert.equal(count?.integerValue, '5', 'the second moderator must not decrement again');
+  } finally {
+    fake.restore();
+  }
+});
+
+test('comment modDelete: a rankless caller is refused in words; the CLUB ISLAND passes', async () => {
+  const fake = fakeFirestore({
+    'clubs/c1': {
+      ...clubSeed(),
+      managerUids: { mapValue: { fields: { 'dev-uid': toFsValue({ role: 'host' }) } } } as FsValue,
+    },
+    'clubs/c2': clubSeed(),
+    'clubs/c1/reads/r1': toFsFields({ commentCount: 1 }),
+    'clubs/c1/reads/r1/comments/x': toFsFields({ text: 'hi' }),
+    'clubs/c2/reads/r1': toFsFields({ commentCount: 1 }),
+    'clubs/c2/reads/r1/comments/x': toFsFields({ text: 'hi' }),
+  });
+  const logs = captureGateLines();
+  try {
+    // A club they do NOT manage, holding no ladder rung: refused, worded.
+    const refused = await req(
+      envWith({ DEV_EMAIL: 'nobody@example.com' }),
+      'DELETE',
+      '/api/clubs/c2/reads/r1/comments/x',
+    );
+    assert.equal(refused.status, 403);
+    const body = (await refused.json()) as { error?: string; needs?: string; detail?: string };
+    assert.equal(body.error, 'insufficient_role');
+    assert.equal(body.needs, 'operateClub');
+    assert.match(body.detail ?? '', /operateClub/);
+    assert.match(body.detail ?? '', /own managers/);
+    assert.ok(fake.docs.has('clubs/c2/reads/r1/comments/x'));
+    assert.equal(logs.lines.length, 1, 'ONE ab_gate line per request, never two');
+    assert.equal(logs.lines[0]?.['reason'], 'lacks_operateClub');
+
+    // Their OWN club: the island holds operateClub, no site-wide rank needed.
+    resetRoleCache();
+    resetEstateCache();
+    const allowed = await req(
+      envWith({ DEV_EMAIL: 'nobody@example.com' }),
+      'DELETE',
+      '/api/clubs/c1/reads/r1/comments/x',
+    );
+    assert.equal(allowed.status, 200);
+    assert.ok(!fake.docs.has('clubs/c1/reads/r1/comments/x'));
+  } finally {
+    logs.restore();
+    fake.restore();
+  }
+});
+
+test('quote modDelete: one document, no counter; a missing quote is a worded 404', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'clubs/c1': clubSeed(),
+    'clubs/c1/reads/r1': toFsFields({ commentCount: 4 }),
+    'clubs/c1/reads/r1/quotes/q1': toFsFields({ text: 'a line', displayName: 'Alice' }),
+  });
+  const env = envWith({ DEV_EMAIL: 'mod@example.com' });
+  try {
+    const res = await req(env, 'DELETE', '/api/clubs/c1/reads/r1/quotes/q1');
+    assert.equal(res.status, 200);
+    assert.ok(!fake.docs.has('clubs/c1/reads/r1/quotes/q1'));
+    const count = fake.docs.get('clubs/c1/reads/r1')?.fields['commentCount'] as
+      | { integerValue?: string }
+      | undefined;
+    assert.equal(count?.integerValue, '4', 'quotes are not counted on the read doc');
+
+    const missing = await req(env, 'DELETE', '/api/clubs/c1/reads/r1/quotes/gone');
+    assert.equal(missing.status, 404);
+    const body = (await missing.json()) as { detail?: string };
+    assert.match(body.detail ?? '', /Quote not found/);
+  } finally {
+    fake.restore();
+  }
+});
+
+test('warning selfDelete: your OWN stamped note goes; nothing else is touched', async () => {
+  const fake = fakeFirestore({
+    'user_content_warnings/n1': toFsFields({ label: 'Gore', authorUid: 'dev-uid' }),
+    'user_content_warnings/n2': toFsFields({ label: 'Gore', authorUid: 'someone-else' }),
+  });
+  try {
+    // ⚠️ NO role doc at all: warning.selfDelete is {kind:'signedIn'}, so a
+    // rankless live session removes its own note — the rules' own author arm.
+    const res = await req(envWith({ DEV_EMAIL: 'nobody@example.com' }), 'DELETE', '/api/warnings/n1');
+    assert.equal(res.status, 200);
+    assert.ok(!fake.docs.has('user_content_warnings/n1'));
+    assert.ok(fake.docs.has('user_content_warnings/n2'));
+  } finally {
+    fake.restore();
+  }
+});
+
+test('⚠️ warning selfDelete on ANOTHER PERSON note is refused — the claim is verified, not believed', async () => {
+  const fake = fakeFirestore({
+    'user_content_warnings/n2': toFsFields({ label: 'Gore', authorUid: 'someone-else' }),
+  });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'nobody@example.com' }), 'DELETE', '/api/warnings/n2');
+    assert.equal(res.status, 403);
+    const body = (await res.json()) as { error?: string; needs?: string; detail?: string };
+    assert.equal(body.error, 'not_author');
+    assert.equal(body.needs, 'operateClub');
+    assert.match(body.detail ?? '', /added by somebody else/);
+    assert.match(body.detail ?? '', /moderator role/);
+    assert.match(body.detail ?? '', /ask the site owner/i);
+    assert.ok(!/\b403\b/.test(body.detail ?? ''), 'no status number in a sentence a person reads');
+    assert.ok(fake.docs.has('user_content_warnings/n2'));
+  } finally {
+    fake.restore();
+  }
+});
+
+test('warning selfDelete: an UNSTAMPED note is moderator-only, and says why in words', async () => {
+  const fake = fakeFirestore({ 'user_content_warnings/old': toFsFields({ label: 'Gore' }) });
+  try {
+    const res = await req(envWith({ DEV_EMAIL: 'nobody@example.com' }), 'DELETE', '/api/warnings/old');
+    assert.equal(res.status, 403);
+    const body = (await res.json()) as { error?: string; detail?: string };
+    assert.equal(body.error, 'not_author');
+    assert.match(body.detail ?? '', /before removals were tied to an account/);
+    assert.match(body.detail ?? '', /add the note again/i);
+    assert.ok(fake.docs.has('user_content_warnings/old'));
+  } finally {
+    fake.restore();
+  }
+});
+
+test('warning modDelete: a moderator takes down anyone note; a rankless caller cannot', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'user_content_warnings/n2': toFsFields({ label: 'Gore', authorUid: 'someone-else' }),
+    'user_content_warnings/n3': toFsFields({ label: 'Gore', authorUid: 'another' }),
+  });
+  try {
+    const res = await req(
+      envWith({ DEV_EMAIL: 'mod@example.com' }),
+      'DELETE',
+      '/api/warnings/n2/moderate',
+    );
+    assert.equal(res.status, 200);
+    assert.ok(!fake.docs.has('user_content_warnings/n2'));
+
+    fake.docs.delete('site_roles/dev-uid');
+    resetRoleCache();
+    resetEstateCache();
+    const refused = await req(
+      envWith({ DEV_EMAIL: 'nobody@example.com' }),
+      'DELETE',
+      '/api/warnings/n3/moderate',
+    );
+    assert.equal(refused.status, 403);
+    const body = (await refused.json()) as { error?: string; needs?: string; detail?: string };
+    assert.equal(body.error, 'insufficient_role');
+    assert.equal(body.needs, 'operateClub');
+    // ⚠️ island OFF: a content note is not a club surface, so the refusal must
+    // NOT offer club managership as a way to hold this.
+    assert.ok(!/own managers/.test(body.detail ?? ''));
+    assert.ok(fake.docs.has('user_content_warnings/n3'));
+  } finally {
+    fake.restore();
+  }
+});
+
+test('🔴 warning modDelete: an ESTATE-REVOKED moderator is refused — the whole point', async () => {
+  const fake = fakeFirestore(
+    {
+      ...asModerator,
+      'user_content_warnings/n2': toFsFields({ label: 'Gore', authorUid: 'someone-else' }),
+    },
+    'revoked',
+  );
+  try {
+    const res = await req(
+      envWith({ DEV_EMAIL: 'mod@example.com' }),
+      'DELETE',
+      '/api/warnings/n2/moderate',
+    );
+    assert.equal(res.status, 403);
+    const body = (await res.json()) as { error?: string; detail?: string };
+    assert.equal(body.error, 'estate_revoked');
+    assert.match(body.detail ?? '', /revoked/);
+    assert.ok(fake.docs.has('user_content_warnings/n2'));
+  } finally {
+    fake.restore();
+  }
+});
+
+test('warnings: a missing note is a worded 404 on BOTH routes, never a bare status', async () => {
+  const fake = fakeFirestore({ ...asModerator });
+  const env = envWith({ DEV_EMAIL: 'mod@example.com' });
+  try {
+    for (const path of ['/api/warnings/nope', '/api/warnings/nope/moderate']) {
+      const res = await req(env, 'DELETE', path);
+      assert.equal(res.status, 404, path);
+      const body = (await res.json()) as { error?: string; detail?: string };
+      assert.equal(body.error, 'not_found');
+      assert.match(body.detail ?? '', /Content note not found/);
+    }
+  } finally {
+    fake.restore();
+  }
+});
+
+test('warnings + discussion: ?lane=dev writes the _dev twins and nothing in prod', async () => {
+  const fake = fakeFirestore({
+    ...asModerator,
+    'user_content_warnings/n1': toFsFields({ label: 'prod', authorUid: 'dev-uid' }),
+    'user_content_warnings_dev/n1': toFsFields({ label: 'dev', authorUid: 'someone-else' }),
+    'clubs/c1/reads/r1/quotes/q1': toFsFields({ text: 'prod' }),
+    'clubs_dev/c1/reads/r1/quotes/q1': toFsFields({ text: 'dev' }),
+  });
+  const env = envWith({ DEV_EMAIL: 'mod@example.com' });
+  try {
+    const note = await req(env, 'DELETE', '/api/warnings/n1/moderate?lane=dev');
+    assert.equal(note.status, 200);
+    assert.ok(!fake.docs.has('user_content_warnings_dev/n1'));
+    assert.ok(fake.docs.has('user_content_warnings/n1'), 'the prod note is untouched');
+
+    const quote = await req(env, 'DELETE', '/api/clubs/c1/reads/r1/quotes/q1?lane=dev');
+    assert.equal(quote.status, 200);
+    assert.ok(!fake.docs.has('clubs_dev/c1/reads/r1/quotes/q1'));
+    assert.ok(fake.docs.has('clubs/c1/reads/r1/quotes/q1'), 'the prod quote is untouched');
+  } finally {
+    fake.restore();
+  }
+});
+
+test('⚠️ every ACTION_GATES entry now has a route, or a NAMED reason not to', () => {
+  // The gap this build closed was invisible because nothing asserted it. This
+  // is the tripwire: an action added to the vocabulary with no route and no
+  // entry below fails HERE rather than measuring in a soak nobody can act on.
+  // ⚠️ Adding a name to this list is a DECISION — write the reason beside it.
+  const DELIBERATELY_ROUTELESS: Record<string, string> = {
+    'review.submit': 'signedIn — Phase 5 measurement of the tokenless population',
+    'review.update': 'signedIn — Phase 5 measurement of the tokenless population',
+    'read.setSlot': 'signedIn — the read-card rename stays every member’s (enforce-routes.ts:51–53)',
+    'club.setNextMeeting': 'served by PATCH /api/clubs/:clubId, whose table row names the structural half',
+  };
+  const routed = new Set<string>(ENFORCE_ROUTES.map((r) => r.action));
+  const missing = Object.keys(ACTION_GATES).filter(
+    (a) => !routed.has(a) && !(a in DELIBERATELY_ROUTELESS),
+  );
+  assert.deepEqual(missing, [], `actions with no enforce route and no stated reason: ${missing}`);
+  // …and the reverse: no route may name an action the vocabulary lacks.
+  const unknown = [...routed].filter((a) => !(a in ACTION_GATES));
+  assert.deepEqual(unknown, [], `routes naming actions outside ACTION_GATES: ${unknown}`);
 });
