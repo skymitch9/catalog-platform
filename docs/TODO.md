@@ -726,10 +726,47 @@ around it — noted only so the next check has two redeploy times, not one.
       gap + slack, red = 2×. ⚠️ Do **not** "measure" it by hitting a padhard
       `/api/*` route to provoke a backstop tick — that manufactures the push it
       claims to observe, and it destroys the one real timestamp on record.
-- [ ] **`PHYSICAL_SOURCE_INSTANCE` in the audiobook `suggest.ts` was left alone
-      on purpose:** it needs `audiobook_catalog`'s join to carry an instance
-      before it can mean anything. Out of dispatch 3's scope, named here so it
-      is not re-discovered as a bug.
+- [ ] **`PHYSICAL_SOURCE_INSTANCE` (`apps/discord-worker/src/suggest.ts:145`)
+      was left alone on purpose:** it needs `audiobook_catalog`'s join to carry
+      an instance before it can mean anything. Named here so it is not
+      re-discovered as a bug.
+
+      🔴 **BLOCKED — traced end to end 2026-09-07 (W19-JOIN), and the blocker is
+      in TWO OTHER REPOS. Nothing in `catalog-platform` can be built first.**
+      Full trace, with the chain table and the id-collision argument:
+      [`info/gabi-suggestions-design.md`](info/gabi-suggestions-design.md) §11.
+      The three named blockers, shortest form:
+
+      1. `library_catalog/apps/worker/src/routes/audiobook-mapping.ts:165-174` —
+         the mapping row is `{ workId, audiobookTitle, foldedTitle, formats }`
+         and **names no instance**. Needs the answering deployment's own
+         `ESTATE_APP` on the row, then a deploy PAIR.
+      2. `audiobook_catalog/app/library_link.py` — `stamp_after_build` (`:386`)
+         and `main` (`:444`) read **one** `LIBRARY_MAPPING_URL` + **one**
+         `LIBRARY_MAPPING_TOKEN`; `stamp_rows` (`:293`) writes exactly two
+         columns (`:369-370`). Needs a per-instance source list and a third
+         column.
+      3. **`catalog.csv` itself.** Measured live 2026-09-07 17:59 UTC
+         (`GET https://audiobooks.heygabi.ai/catalog.csv` → `200`,
+         1,414,828 bytes): **sixteen columns, none of which names a library.**
+         `library_work_id` is a bare integer.
+
+      🔴 **And it is a WRONGNESS blocker, not a missing-feature one.** `work.id`
+      is `INTEGER PRIMARY KEY AUTOINCREMENT`
+      (`library_catalog/migrations/0001_init.sql:70-71`) in **each instance's own
+      D1**, so `workId 233` exists on main *and* on padhard as different books.
+      Pointing the pipeline at a second URL without an instance tag would stamp
+      **wrong** links, not blank ones. ⚠️ `AUDIOBOOK_MAPPING_TOKEN` **is** set on
+      padhard (`library_catalog/docs/access/second-instance.md:100`), so
+      reachability is not what is missing — the response shape and the CSV
+      schema are.
+
+      ✅ **This repo's half is the cheap one and is written out in §11.4** —
+      `catalog-data.ts` gains one column (looked up **by name**, so additive),
+      `suggest.ts` resolves per row, and an empty instance list must take §2.2's
+      **default-deny** form (known on EVERY routed instance), never fall back to
+      `'library'`. Do not build it before the writer exists: it would parse a
+      column nothing writes and change a live gate on unmeasured data.
 - [ ] 🔴 **What NOBODY has exercised — from dispatch 4's own report, said
       plainly so it does not decay into an assumption:** ~~the provisioners do
       **not** print the `/admin` and `/status` host-row edits a new instance

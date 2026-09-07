@@ -343,6 +343,105 @@ A mood improves the PICKS; it is not a format and never becomes one.
 
 ---
 
+## 11. ⚠️ THE JOIN HALF — what would make `PHYSICAL_SOURCE_INSTANCE` mean something, and the three things blocking it (traced 2026-09-07)
+
+> **Why this section exists.** `TODO.md`'s *Federation leftovers* carried the
+> line *"it needs `audiobook_catalog`'s join to carry an instance"* — true, and
+> too vague to act on: a session reading it cannot tell whether the work is one
+> constant here or a build in three repos. It is a build in three repos, and
+> **none of the missing pieces is in `catalog-platform`.** Traced end to end
+> 2026-09-07 by reading each file and fetching the live CSV.
+
+### 11.1 The chain, in the direction the data actually flows
+
+| # | Where | What it does | Carries an instance? |
+|---|---|---|---|
+| ① | `library_catalog/apps/worker/src/routes/audiobook-mapping.ts:125-177` | `GET /api/machine/audiobook-mapping` returns `{ workId, audiobookTitle, foldedTitle, formats }` per matched work | 🔴 **no** — four fields, none of them names the deployment answering |
+| ② | `audiobook_catalog/app/library_link.py:386-397` (`stamp_after_build`) and `:444-448` (`main`) | reads **one** `LIBRARY_MAPPING_URL` + **one** `LIBRARY_MAPPING_TOKEN` from the environment and fetches ① once | 🔴 **no** — one URL, structurally one shelf |
+| ③ | `audiobook_catalog/app/library_link.py:293-375` (`stamp_rows`) | writes `library_work_id` and `library_formats` onto each `catalog.csv` row (`:369-370`) | 🔴 **no** — two columns, no third |
+| ④ | `catalog-platform/apps/discord-worker/src/catalog-data.ts:198-211` (`COLUMNS`) | parses the published CSV; `library_work_id` is parsed and **thrown away** (`:112-116`), `library_formats` is kept as `libraryFormats` | 🔴 **no column to read** |
+| ⑤ | `catalog-platform/apps/discord-worker/src/suggest.ts:145` | `PHYSICAL_SOURCE_INSTANCE = 'library'` — the constant the physical gate resolves through (`physicalShelfUrl:160`, `suggest-flow.ts:131`, `suggest-command.ts:205`, `mention-flow.ts:1729`) | ✅ it is the constant; it is **correct today because ② points at one shelf** |
+
+**Measured live 2026-09-07 17:59 UTC**, `GET https://audiobooks.heygabi.ai/catalog.csv`
+→ `200`, `1,414,828` bytes, header verbatim:
+
+```
+title,series,series_index_display,series_index_sort,author,narrator,year,genre,
+duration_hhmm,cover_href,companion_files,desc,library_work_id,library_formats,
+universe,series_gap
+```
+
+**Sixteen columns and not one of them names a library.** That is the whole
+blocker in one line: the consumer cannot read an instance the writer never
+writes.
+
+### 11.2 🔴 Why merging two mappings without an instance tag is WRONG, not merely incomplete
+
+`work.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`
+(`library_catalog/migrations/0001_init.sql:70-71`) in **each instance's own D1**.
+`library.heygabi.ai` and `padhard.heygabi.ai` are separate deployments with
+separate databases, so **`workId 233` exists in both and is a different book in
+each.** Pointing ② at a second URL and merging the rows would therefore produce
+*wrong* `library_work_id` values, not blank ones — the failure class this lane
+already refuses everywhere else (`stamp_rows`'s own tombstone-rather-than-guess
+posture, `:318-327`).
+
+⚠️ And the route is *reachable* on both today: `AUDIOBOOK_MAPPING_TOKEN` was set
+on padhard by hand 2026-08-25 (`library_catalog/docs/access/second-instance.md:100`,
+`:309`), so ① answers on the friend instance. **Reachability is not the blocker;
+the shape of the response and of the CSV is.**
+
+### 11.3 The three blockers, named
+
+1. **`library_catalog/apps/worker/src/routes/audiobook-mapping.ts`** — the row
+   shape (`:165-174`) must carry the instance that answered, resolved from that
+   Worker's own `ESTATE_APP` the same way `resolveIndexSource(env.ESTATE_APP)`
+   already does for the index push. A deploy PAIR (`deploy` + `deploy:friend`),
+   per the estate's both-instances rule.
+2. **`audiobook_catalog/app/library_link.py`** — `stamp_after_build` /
+   `main` must read a **list** of (instance, URL, token) rather than one
+   `LIBRARY_MAPPING_URL`, and `stamp_rows` must write a third column. The
+   collision handling (`_build_by_title`, `_build_by_folded`,
+   `_catalog_collision_folds`) becomes per-instance, and a title matched on two
+   shelves is a new case that has no answer yet — probably both, since the
+   consumer gate is per-instance.
+3. **`catalog.csv`'s own schema** — one new column (e.g. `library_instances`,
+   pipe-separated like `library_formats`, so a work held on both shelves is
+   expressible). ⚠️ It is the pipeline's file; a column inserted mid-header is
+   safe for this repo (⑤ looks columns up **by name**, `catalog-data.ts:224-233`)
+   but not necessarily for every other reader of that CSV.
+
+### 11.4 What `catalog-platform` would then do — and why it is the cheap half
+
+Only after ①–③ exist:
+
+- `catalog-data.ts` — add `library_instances` to `COLUMNS` and a
+  `libraryInstances: string[]` field beside `libraryFormats`. Additive; a missing
+  column already parses to `''` rather than faking one (`:216-219`).
+- `suggest.ts` — replace the constant with a per-row resolution, and apply
+  §2.2's **default-deny re-derivation**: a row whose instance list is empty (an
+  un-restamped row from before the migration) must require the asker to be known
+  on **every** routed instance, never fall back to `'library'`. An
+  unattributable row could come from a shelf they cannot open.
+- The gate call sites (`suggest-flow.ts:131`, `suggest-command.ts:205`,
+  `mention-flow.ts:1729`) move from "find the instance named by the constant" to
+  "find the instance named by the row".
+
+### 11.5 ⚠️ What was NOT verified on 2026-09-07
+
+- **Nothing was built, changed or deployed** for this section — it is a trace.
+- **`audiobook_catalog/.env` was NOT opened** (house rule). The claim that
+  `LIBRARY_MAPPING_URL` points at `https://library.heygabi.ai` is still §2.2's
+  **2026-08-18** measurement, not a fresh one.
+- **No D1 was read** on either instance; the id-collision argument in §11.2 is
+  from the migration's column definition, not from two live `SELECT`s.
+- **The padhard mapping route was not called.** That it answers is inferred from
+  the secret being recorded as set, not from a request.
+- **No count** of how many rows carry a print format today; §10's *64 of 1,079*
+  is the 2026-08-18 figure and the pipeline republishes roughly daily.
+
+---
+
 ## Model guidance (read me if you are Kiro)
 
 > Kiro: stay on AUTO - it saves the owner credits. When a task names a
