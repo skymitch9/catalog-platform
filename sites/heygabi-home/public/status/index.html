@@ -97,10 +97,14 @@
     <a href="/status/api/">API</a>
   </nav>
 
+  <!-- ⚠️ SHORTENED 2026-09-07 — grey-paragraph audit item 191. Dropped the
+       green/amber/red gloss: the dots are labelled in words beside every row,
+       so the legend restated what each row already says. Kept the provenance
+       (a row is that service's own claim, not this page's judgement) and the
+       Pipelines pointer, which is the only way to find the run controls. -->
   <p class="sub">
-    Every service, read straight from its own public health endpoint. Green
-    means the last check was healthy, amber worth a glance, red stopped
-    answering. Run controls moved to <a href="/status/pipelines/">Pipelines</a>.
+    Read from each service's own health endpoint. Run controls are on
+    <a href="/status/pipelines/">Pipelines</a>.
   </p>
 
   <div class="bar">
@@ -167,18 +171,24 @@
          mildest form: a published present-tense claim keeps asserting whatever
          was true the hour somebody typed it. Re-measure before editing this
          paragraph, and change the STATE rather than deleting the history. -->
-    <p class="section-note">
-      A physical server mirroring the library from Drive, every book at its own
-      URL on <code>shelf.heygabi.ai</code>. Status: <strong>serving, complete,
-      and browsable</strong> — the tunnel was fixed 2026-08-20, and the folder
-      shape was fixed on the box on 2026-08-20/21 with a hardlink shadow tree
-      (one folder per <em>book</em>, which is what Audiobookshelf expects).
-      Measured 2026-08-21: <strong>1,206 items</strong> — every one of them at
-      <code>&lt;Author&gt;/&lt;Title&gt;</code> depth, <strong>zero missing,
-      zero with issues</strong> — holding 1,081 audio tracks across 684 GB, plus
-      <strong>125 items that are ebooks with no audio at all</strong>. The old
-      “409 items” reading is gone. See the runbook §4.
-    </p>
+    <!-- ⚠️ CUT 2026-09-07 — grey-paragraph audit item 192, and the reason is
+         the same one the two comments above already argue at length: this had
+         become a DATED CHANGELOG inside a status page. It carried the 2026-08-20
+         tunnel fix, the 2026-08-20/21 folder-shape fix, a 2026-08-21 item count
+         and the retraction of an older reading — four historical facts on a
+         surface whose whole job is to say what is true right now, and every one
+         of them ageing silently.
+
+         NOTHING MEASURED IS LOST. The live state is the parity row below (fed
+         by GET /api/estate/shelf/parity, which recomputes) and the shelf's own
+         row in the health list. The history's home of record is the runbook,
+         /runbooks/shelf/ §4, linked from the lever list below — the third of
+         the three "read from /api/health" restatements this page carried.
+
+         The two comments above are KEPT deliberately: they record why a
+         present-tense claim on this page goes stale within a day, which is the
+         argument for not writing another one. -->
+
     <!-- PARITY — "is the server still a complete copy of Drive?" (owner ask
          2026-08-20). Filled by status.js from GET /api/estate/shelf/parity.
 
@@ -225,10 +235,13 @@
        cost real time somewhere in this estate. -->
   <section id="commandments-section" aria-labelledby="cmd-h" hidden>
     <h2 id="cmd-h">The AI commandments</h2>
-    <p class="section-note">
-      How this estate works with AI agents — every rule below is a lesson that
-      cost real time first. <em>v2 · 2026-08-25.</em>
-    </p>
+    <!-- The "How this estate works with AI agents — every rule below is a
+         lesson that cost real time first. v2 · 2026-08-25." subtitle stood here
+         until 2026-09-07 — grey-paragraph audit item 193, CUT. The heading and
+         the numbered rules say it. ⚠️ The version stamp is not lost: the list's
+         own content is versioned in docs, and this page is devops-gated so the
+         reader who needs the version can read the source. -->
+
     <details class="cmd-details" open>
       <summary>The rules (tap to collapse)</summary>
       <ol class="cmd-list">
@@ -327,31 +340,34 @@
 
   <section aria-labelledby="idx-h">
     <h2 id="idx-h">Shared index</h2>
-    <!-- The second sentence is an HONESTY MARKER — it stops a fresh-looking age
-         being read as fresh DATA. Kept. -->
-    <p class="section-note">
-      <code>index.heygabi.ai</code> — one cross-catalog pointer table. A row's
-      age is how long since that source last pushed, not how old its data is.
-    </p>
+    <!-- The HONESTY MARKER — it stops a fresh-looking age being read as fresh
+         DATA — is the whole of what is left, and it is what was kept.
+         ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 197: the first
+         sentence named the host and called it "one cross-catalog pointer
+         table", which the heading and the rows below already say. -->
+    <p class="section-note">Age = time since that source last pushed.</p>
     <ul id="index-rows" class="rows"></ul>
   </section>
 
   <section aria-labelledby="pipe-h">
     <h2 id="pipe-h">Book pipeline</h2>
-    <!-- "cannot see the next run" is an HONESTY MARKER and stays. -->
+    <!-- "cannot see the next run" is the HONESTY MARKER and it is what stays.
+         ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 198: dropped the
+         provenance clause (the page's own subtitle already says every row is
+         read from the service's endpoint) and the Pipelines pointer, which the
+         nav at the top of this page carries on every one of these five pages. -->
     <p class="section-note">
-      The audiobook pipeline's own records — its Firestore heartbeat and the
-      ebook-lane manifest — read straight, never inferred. This page cannot see
-      the pipeline's <em>next</em> run (that lives only on the home machine);
-      ages are measured from the last recorded one. Pause it, or run a step,
-      from <a href="/status/pipelines/">Pipelines</a>.
+      Ages are from the last recorded run; the next run is not visible here.
     </p>
     <ul id="pipeline-rows" class="rows"></ul>
   </section>
 
   <section aria-labelledby="wk-h">
     <h2 id="wk-h">Workers</h2>
-    <p class="section-note">Each catalog's own API, reachable straight from its <code>/api/health</code>.</p>
+    <!-- CUT 2026-09-07 — grey-paragraph audit item 199. This was the THIRD
+         "read from /api/health" on one page, after the page subtitle and the
+         Deployed-versions note. One fact, one home. -->
+
     <ul id="worker-rows" class="rows"></ul>
   </section>
 
@@ -378,12 +394,15 @@
        imply. The deep link goes where the logs actually are today. -->
   <section id="events-section" aria-labelledby="log-h" hidden>
     <h2 id="log-h">Recent worker events</h2>
+    <!-- ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 201. The
+         noticeboard-not-a-log distinction is the load-bearing half and stays:
+         this list is CAPPED, so an empty one is not proof of no errors, which is
+         the single most dangerous thing this page could imply (see the section
+         comment above). Dropped: what the rows contain (they say so), and where
+         the pipeline's logs live (their own rows above carry that). -->
     <p class="section-note">
-      Errors, refusals worth seeing and deploy markers, written by the estate&rsquo;s
-      Workers into a capped ring and rendered newest first. This is a
-      <em>noticeboard, not a log</em> &mdash; the full stream is still Cloudflare&rsquo;s
-      (<code>wrangler tail &lt;worker&gt;</code>), and the pipeline&rsquo;s own logs live
-      on the home machine and appear on their rows above.
+      A capped noticeboard, not a log &mdash; the full stream is
+      <code>wrangler tail</code>.
     </p>
     <div id="events-rows"></div>
   </section>

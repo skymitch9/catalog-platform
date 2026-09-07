@@ -77,11 +77,13 @@
     <a href="/status/api/">API</a>
   </nav>
 
+  <!-- ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 214. The PROVENANCE
+       half is load-bearing and stays: this page cannot watch the home machine,
+       so everything below is as fresh as the last push. Dropped the inventory
+       of what is on the page (the three headings list themselves) and "says how
+       old that is" — the freshness strip inside the gate says it, in an age. -->
   <p class="sub">
-    GABI's knowledge base as it grows — what is being processed now, what has
-    already joined, and how deep each lane's queue is. Pushed from the home
-    machine; this page only ever shows what was last published, and says how
-    old that is.
+    Pushed from the home machine — this shows the last published board.
   </p>
 
   <div class="ops-bar">
@@ -100,9 +102,10 @@
       <span class="fresh-age">reading…</span>
       <span class="fresh-note">Asking the estate Worker for the last pushed board.</span>
     </div>
-    <p class="section-note">
-      Re-read every 30 seconds while this tab is open.
-    </p>
+    <!-- "Re-read every 30 seconds while this tab is open." stood here until
+         2026-09-07 — grey-paragraph audit item 202, CUT on both this page and
+         /status/agents. The freshness strip directly above already shows a live
+         age, which is the fact; the interval was the mechanism. -->
 
     <!-- ⚠️ THE HEADLINE COUNT — owner ask 2026-08-18: "also add a completed
          list not just a queue so we know how many things have been finished."
@@ -126,10 +129,11 @@
     <ul id="proc-inflight" class="proc-list"></ul>
 
     <h3 class="step-list-h">Queue depth by lane</h3>
-    <p class="section-note step-section-note">
-      Waiting, not running — audiobook-with-review, EPUB, text PDF and the
-      deferred PDFs that need OCR before they can be read at all.
-    </p>
+    <!-- "Waiting, not running — audiobook-with-review, EPUB, text PDF and the
+         deferred PDFs that need OCR before they can be read at all." stood here
+         until 2026-09-07 — grey-paragraph audit item 216, CUT. The heading says
+         "Queue depth", and every lane the sentence listed is a labelled row
+         directly below it. -->
     <div id="proc-queue"></div>
 
     <h3 class="step-list-h">Packs</h3>
@@ -169,14 +173,15 @@
     <ul id="proc-history" class="proc-list"></ul>
     <div id="proc-history-more" class="proc-more"></div>
 
+    <!-- ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 219. The kept half
+         is the one a button cannot say about itself: pressing it FILES A
+         REQUEST and starts nothing, so nothing appears to happen and that is
+         correct. Dropped: the push script name (this page's subtitle now
+         carries provenance, item 214), and the Pipelines pointer, which the nav
+         at the top of all five tabs carries. -->
     <p class="section-note">
-      Pushed with <code>scripts/push-agent-board.mjs</code> (the
-      <code>processing</code> section of the same board the Agents page reads).
-      ⚠️ The two per-book buttons above are the only things on this page that
-      write anything, and what they write is a <em>request</em> the home machine
-      reads at the start of its next run — they do not start, stop or retry
-      anything themselves. The levers that pause and start the whole flow live
-      on <a href="/status/pipelines/">Pipelines</a>.
+      The two per-book buttons above file a request the machine reads on its
+      next run — they start nothing.
     </p>
   </section>
 

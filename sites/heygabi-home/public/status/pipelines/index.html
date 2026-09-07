@@ -92,11 +92,19 @@
     <a href="/status/api/">API</a>
   </nav>
 
-  <p class="sub">
-    Run controls for the estate's pipelines — devops and approvers only.
-    Everything here writes to the home machine; nothing here runs in the
-    browser. For "is it up", see <a href="/status/">Health</a>.
-  </p>
+  <!-- ⚠️ CUT 2026-09-07 — grey-paragraph audit item 207: this subtitle was
+       DUPLICATED thirteen lines below, by the Operations section note that
+       still says "Run controls — devops and approvers only."
+       Where each half went, so nothing here is lost silently:
+         · the gate ("devops and approvers only") → the section note, which is
+           what a signed-in reader sees, plus #ops-note's worded refusal, which
+           is what anyone else sees. Signed out, the button says "Sign in for
+           run controls" and that is the whole story.
+         · "for is it up, see Health" → the nav directly above, on all 5 tabs.
+         · "writes to the home machine; nothing runs in the browser" → each
+           control's own confirm step says what it is about to do, and the
+           interlock note by the step buttons says it where it bites. -->
+
 
   <div class="ops-bar">
     <button id="ops-signin" class="linkbtn" type="button">Sign in for run controls</button>
@@ -128,16 +136,21 @@
            many of them are on screen at once: ONE contextual button, the times
            as one-tap chips instead of a raw picker, and the two standing
            editors behind one counted disclosure. -->
+      <!-- ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 208. The ONE fact
+           the controls cannot state themselves is which pause kind actually
+           holds, and it stays. Everything else was the card describing its own
+           visible affordances:
+             · "One button: Pause when running, Resume when not" — the button's
+               own label says which it is.
+             · the four pause kinds — the question lists them when you tap.
+             · "two gestures commit every change" — the confirm step is the
+               demonstration.
+             · "every time is read as Phoenix time" — NOT LOST: both pickers
+               carry a literal <span class="ing-tz">Phoenix time</span> label
+               beside them (see below), which is where it bites.
+           ⚠️ Do not restate any of it here. -->
       <p class="section-note step-section-note">
-        Stops and starts the ingestion process flow on the home machine.
-        One button: <strong>Pause</strong> when it is running,
-        <strong>Resume</strong> when it is not. Pause asks what kind —
-        <em>for now</em>, <em>until a time</em>, <em>until I unpause</em>, or
-        <em>don’t even check until a time</em>; only the third survives a quiet
-        GPU and the 12am window. Two gestures still commit every change: the
-        button opens the question and the answer you pick <em>is</em> the
-        confirmation. Every time on this card is read as
-        <strong>Phoenix time</strong>.
+        Only <em>until I unpause</em> survives a quiet GPU and the 12am window.
       </p>
       <div id="ingestion-card" class="ing-card">
         <div id="ingestion-status" class="ing-status" data-state="pending">
@@ -318,11 +331,12 @@
            shows nothing rather than guessing between them. Real per-run history
            is the "Run history" row below, still honestly marked unbuilt. -->
       <h3 class="step-list-h">Pipeline steps</h3>
+      <!-- ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 212. The kept half
+           is the HONESTY MARKER the comment above argues for at length: an
+           outcome under a step is one run, not a record. Dropped: "for recovery
+           work" and the confirm rule, which the second tap demonstrates. -->
       <p class="section-note step-section-note">
-        One stage in isolation, for recovery work. Read-only steps run
-        immediately; everything else needs a second tap to confirm. Where the
-        last run reported on a step, its outcome is shown underneath — that is
-        the most recent run only, not a history.
+        Outcomes shown are the most recent run only, not a history.
       </p>
       <ul id="pipeline-steps" class="step-list"></ul>
       <p id="pipeline-steps-msg" class="ops-run-msg"></p>
@@ -334,10 +348,15 @@
            GitHub token client-side and deliberately never will. They are links
            out, not buttons. -->
       <h3 class="step-list-h">Run levers — GitHub Actions</h3>
+      <!-- ⚠️ SHORTENED 2026-09-07, grey-paragraph audit item 213. Kept: that
+           these are LINKS OUT, and that three rows land on one workflow needing
+           a target choice — the one thing a reader cannot see before tapping.
+           Dropped "this page cannot start, stop or read these runs": the
+           comment above states it for whoever edits, and GitHub's own sign-in
+           states it for whoever taps. -->
       <p class="section-note step-section-note">
-        Each row opens its real workflow on GitHub, gated by GitHub's own
-        sign-in — this page cannot start, stop, or read these runs. The three
-        <code>Deploy</code> rows share one workflow; pick the target there.
+        Opens the real workflow on GitHub; the three <code>Deploy</code> rows
+        share one — pick the target there.
       </p>
       <ul id="lever-rows" class="lever-list"></ul>
 
