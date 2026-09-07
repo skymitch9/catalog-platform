@@ -569,14 +569,22 @@ around it — noted only so the next check has two redeploy times, not one.
       before it can mean anything. Out of dispatch 3's scope, named here so it
       is not re-discovered as a bug.
 - [ ] 🔴 **What NOBODY has exercised — from dispatch 4's own report, said
-      plainly so it does not decay into an assumption:** the provisioners do
+      plainly so it does not decay into an assumption:** ~~the provisioners do
       **not** print the `/admin` and `/status` host-row edits a new instance
-      needs; **no instance has ever been provisioned by either script** (both
+      needs;~~ **no instance has ever been provisioned by either script** (both
       are `--dry` only); and **no live peer push has been watched** against the
       registry. ⚠️ `PEERS` membership is still added by hand, and that is
       deliberate — a directory that enrolled catalogs into peer networks would
       hand another household a read of somebody's shelf with nobody deciding
       it.
+      ⚠️ **ONE of this bullet's three claims closed 2026-09-06 (W13-PLAT-SMALL)
+      and moved to [`DONE.md`](DONE.md); the other two are still true, so the
+      item stays open rather than moving whole.** Both provisioners now END with
+      the apex `/admin` + `/status` edits, READ off the live `_headers` and
+      `host-rows.js` rather than quoted from a template (`library_catalog`
+      `30ed838`, `Board_Game_Catalog` `e273be3`). ⚠️ Still nothing has been
+      provisioned and no peer push has been watched — a printed checklist is not
+      an exercised one.
 
 ## ☐ 🔴 OWNER ASK 2026-09-05 15:27 Phoenix — "in the universe and series tab it's not pulling Padhard library" — ☑ GO ("A build now", 15:37) — W4-FED-INDEX + W4-FED-LIB in flight
 

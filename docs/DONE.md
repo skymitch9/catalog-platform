@@ -9,6 +9,82 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-06 — both provisioners now END with the apex `/admin` + `/status` edits — and they READ them, not quote them
+
+⚠️ **This closes ONE of three claims in a `TODO.md` bullet, so the bullet stays
+open rather than moving whole.** The claim that closed:
+
+> the provisioners do **not** print the `/admin` and `/status` host-row edits a
+> new instance needs
+
+**Still true and still open there:** no instance has ever been provisioned by
+either script (both are `--dry` only), and no live peer push has been watched.
+⚠️ **A printed checklist is not an exercised one.**
+
+**Done 2026-09-06 by W13-PLAT-SMALL.** `apexSurfaceEdits()` in both
+`library_catalog` `30ed838` and `Board_Game_Catalog` `e273be3` — the same
+function, closing each runbook. Last word deliberately: everything before it is
+about making the catalog WORK; this is about the estate's two operator surfaces
+being able to SEE it, which is the half discovered weeks later by somebody
+wondering why a shelf they provisioned has no row.
+
+🔴 **IT READS THE LIVE APEX FILES RATHER THAN QUOTING A TEMPLATE.** The
+`/status` `connect-src` it prints is the CURRENT contents of `_headers` plus the
+one origin to add. A hard-coded *"paste this list"* is how somebody silently
+**REVOKES** an origin another session added since — the trap this runbook
+already records for `READ_ORIGINS`, and not hypothetical: `READ_ORIGINS` gained
+**two hosts on 2026-09-06 alone**. An unreadable checkout **says so and names
+the path**; it never invents a list, and a test pins both halves.
+
+⚠️ **It parses the `_headers` RULE BLOCKS and keeps only `/status` and
+`/status/`.** The file held **eleven** `connect-src` lines; printing all of them
+at somebody standing at a checkpoint is worse than printing none, because they
+cannot tell which two are theirs. Two rules on purpose — the trailing-slash 308
+means a rule covering `/status` does not cover `/status/`.
+
+⚠️ **THE `/admin` HALF WAS CORRECTED IN THE SAME PASS, and that is the lesson.**
+Both runbooks said *"/admin's CATALOGS array stays hand-kept ON PURPOSE"* — true
+until `f60758d` that same day made it GENERATED. **The advice went stale within
+hours of being written.** They print the one command now, and warn that both
+FORGETTING it and hand-editing the generated file fail `npm test`. The POSTURE
+is unchanged and still stated: not a registry consumer, never to become one.
+
+⚠️ **An existing test in each repo went red on that wording — the guard
+working.** Updated with a comment saying what changed, never loosened: a runbook
+telling somebody to hand-edit a generated file sends them to a change the next
+`npm test` rejects. ⚠️ The cross-reference is **letter-free** ("the
+visibility-vocabulary step above") because that edit is `(e)` in the library
+runbook and `(f2)` in the board's — a ported letter was quietly wrong in one of
+the two, briefly, until it was caught.
+
+**Also printed, each with its measurement rather than a vague "someone should":**
+the Sites section needs **no** edit (registry-driven since 2026-09-06); the row
+renders **grey and unprobed** until the CSP names the host, and why that can
+never be automatic; the **false red row** that gap caused on 2026-09-06;
+that `PROBEABLE_ORIGINS` must move with `_headers` or a test fails; and that the
+Workers/Deployed-versions rows are **blocked on two registry fields**
+(`api_host`, `service`) — with the warning not to derive it from `holding`,
+which would be right today only by coincidence.
+
+**Tests.** Library **2,973 → 2,983** (+10), board **829 → 835** (+6), both 0
+fail / 0 todo. ⚠️ **The board's run against the REAL `--dry` output**, not
+against the function: that suite already spawns the script with
+`CATALOG_PLATFORM_DIR` set, so the assertions pin what somebody at the
+checkpoint actually reads. Verified by hand against the real apex too — both
+`/status` rules with their 9 live origins, plus `+ https://quarry.heygabi.ai`.
+
+⚠️ **NOT exercised end-to-end in `library_catalog`:** all three real
+`catalog_request` rows still refuse correctly (#1 and #2 already live, #3 is
+games), so no `--dry` there reaches this block. It was exercised through its
+exported function and its tests.
+
+⚠️ **One wrong assertion worth recording:** *"nothing mentions PAUSE #1 after
+the apex section"* failed — because `--dry` prints a SUMMARY after the runbook
+that names the pauses again. The test asserts ordering against the runbook's own
+landmarks now. **It was checking the wrong text, not finding a real defect.**
+
+---
+
 ## ✅ 2026-09-06 — `/admin`'s `CATALOGS` third copy is GENERATED now — a build-time sync, deliberately not a fetch
 
 **Moved WHOLE from [`TODO.md`](TODO.md), the item as it stood:**
