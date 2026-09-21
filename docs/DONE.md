@@ -9,6 +9,106 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-18 18:02 Phoenix — the main library's registry label is `!Sky` again, by owner order (one D1 row, no code)
+
+> **Owner, 2026-09-18:** *"for my library the name changed away from !Sky
+> change it back to that in the heygabi page."* ⚠️ **This reverses survey
+> finding F5** (`info/multi-library-survey-2026-09-05.md`), which called the
+> live `!Sky` link text *"a stray shell-history '!'"* and a defect; it was the
+> owner's chosen name, and the 2026-09-05 registry seed replaced it with
+> *Skylar's library* without asking. Recorded here so it is not "fixed" a third
+> time.
+>
+> **What changed:** `UPDATE estate_catalog SET label='!Sky' WHERE id='library'
+> AND label='Skylar''s library'` on the live `estate_auth` D1 — `changes: 1`,
+> read back `{'id':'library','label':'!Sky','owner_name':'Skylar'}`.
+> `owner_name` untouched. The apex Books card (`assets/apex-catalog-cards.js`
+> `renameLink` → `textContent = label`) renders whatever the registry says, so
+> nothing on the page had to change; every other registry consumer (the series
+> and universes tabs, the estate search scope words, GABI's shelf names) picks
+> up the same string, because one fact has one home.
+>
+> ⚠️ **NOT verified at the time of writing:** the rendered card — the index
+> Worker caches the directory **ten minutes** (`info/catalog-registry.md` §8),
+> and `GET index.heygabi.ai/api/catalogs` still answered *Skylar's library* one
+> minute after the write. Look at <https://heygabi.ai> after ~18:15 Phoenix.
+> ⚠️ **Two things a future session must know:** the seed in
+> `apps/auth-worker/src/estate-catalog.ts:178` and migration 0020 still say
+> *Skylar's library*, so a rebuild from git restores the old label and this
+> rename must be re-applied (noted on the registry doc's table); and the apex
+> tests + `predeploy.checks.json` still refuse the literal `>!Sky<` in the
+> shipped HTML — that stays, because the page must render the registry's label
+> rather than a typed one.
+
+## ✅ 2026-09-17 18:21 Phoenix — the 1Password vault split: every ESTATE consumer re-verified against the new `Estate` vault (measurement, no code, nothing sent)
+
+> **The change (owner, 2026-09-17 ~18:14 Phoenix):** *"there was a change to
+> the vault to handle sundance being in the estate, i made a new estate vault
+> and renamed the old one."* Measured with `op vault list` and `op item list`
+> (titles only): a NEW vault named **`Estate`** holds **22** items, all
+> stamped that day; the old shared vault is now named **`Sundance`** and holds
+> exactly the **43** `sundance.*` items, so the estate's items were MOVED, not
+> copied — no duplicate master anywhere. Reason recorded in Sundance's own
+> `docs/access/SECRETS.md`: a second developer can be handed the Sundance vault
+> alone.
+>
+> **What was tested, at the owner's ask (*"do all the testing you need to and
+> make sure all functionality was retained"*), and scoped by him mid-run to the
+> estate only, dry-run/read-only throughout:**
+>
+> | Consumer | Command | Result |
+> |---|---|---|
+> | `library_catalog` secret push, both instances | `npm run secrets:push:both:op -- --dry-run` (resolves the whole `.dev.vars.tpl` through `op inject`) | ✅ 13 of 13 references resolved from the new vault; push / skip / refuse plan unchanged; nothing sent |
+> | `catalog-platform` key importer | `node scripts/op-import-keys.mjs --dry-run` | ✅ all three items found as existing |
+> | `catalog-platform` pair rotation | `node scripts/op-rotate-pair.mjs --list` | ✅ four pairs resolve their titles, four live probes answer; nothing minted |
+> | `catalog-provisioning.private.jwk` document | `op item get … --format json` (metadata) | ✅ present, 3,333 bytes = the local file |
+> | `Board_Game_Catalog`, `audiobook_catalog`, GitHub Actions | grep for any `op` / `op://` use | none exists — nothing to break |
+>
+> Every script references items by TITLE, so the new item ids from the move are
+> irrelevant. Docs updated the same hour: `catalog-platform/docs/access/keys/README.md`
+> header and `library_catalog/docs/access/secrets.md` §The vault.
+>
+> ⚠️ **NOT verified:** that the three platform token VALUES in the vault
+> byte-match `docs/access/keys/*.txt`, and that the JWK's bytes match — that
+> comparison raises one Windows Hello prompt per item and the owner had walked
+> away (*"i have to walk away and cant confirm all the windows hello prompts"*),
+> so the check was killed unfinished. The custody doc says the vault wins on a
+> disagreement. ⚠️ **Found and NOT fixed, by the owner's instruction:**
+> `Sundance-Buddy/.env.tpl` still targets `op://Estate/sundance.*`, which now
+> resolves to nothing — parked on [`TODO.md`](TODO.md) under the GCP hygiene item.
+
+## ✅ 2026-09-17 09:45 Phoenix — *"which GCP account is the main?"* and *"can BookBuddy and GameBuddy be removed?"* — answered by measurement, and the answer to the second is NO for BookBuddy
+
+> **Measured, read-only:** the `nbaslamking@gmail.com` Google Cloud resource
+> manager lists three projects outside an org — **BookBuddy**
+> `arcane-argon-499815-v9` (last accessed 2026-09-17), **GameBuddy**
+> `reflected-drake-504914-g5` (number `1079037205011`, last accessed
+> 2026-08-09) and `mitchell-proxi` — plus `My First Project` under the
+> `nbaslamking-org` org. `scripts/credentials.json` in `audiobook_catalog` (read
+> for its `project_id` field only) names **`arcane-argon-499815-v9`**: the
+> pipeline's Drive OAuth Desktop client lives in BookBuddy, which is why that
+> project is touched every day. Nothing in the four repos references either
+> project by name; everything Firebase pins `audiobook-catalog`, which is on
+> `mitchlandtv@gmail.com` along with `estate-restore-drill`, the Firebase service
+> account, `estate-token-minter` and the Google Books key.
+>
+> **Answers given:** the GCP "main" is `mitchlandtv@gmail.com` for Firebase and
+> `audiobook-catalog`, but the split is per SERVICE — BookBuddy on
+> `nbaslamking@gmail.com` is live infrastructure and **must not be deleted**;
+> GameBuddy is probably the Google OAuth web client behind the Zero Trust Google
+> identity provider (created 2026-08-09 for the games catalog's Access login and
+> still used by `shelf.heygabi.ai`) and needs one dashboard check before
+> deletion. Billing advice (projects are free, one billing account can span both
+> accounts, do not migrate the Drive client) recorded with the open item. The
+> durable map is now `audiobook_catalog/docs/access/CONSOLE_URLS.md` gotcha 1
+> (LOCAL ONLY) and the `CREDENTIALS.md` Google-OAuth-client row; the two owner
+> steps are on [`TODO.md`](TODO.md).
+>
+> ⚠️ **NOT verified:** which project's client the Zero Trust Google IdP uses —
+> the Cloudflare dashboard asked for a sign-in and a session does not sign in
+> on the owner's behalf. Nothing was deleted, linked or changed in either
+> Google account.
+
 ## ✅ 2026-09-07 13:40 Phoenix — item 131, the audiobook ROLE LADDER's LAST MILE: the reconciler learns the rungs that already had storage (audiobook `53ba764`)
 
 > **Last verified: 2026-09-07.** What was measured, and only this: this repo's

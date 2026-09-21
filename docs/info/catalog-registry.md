@@ -97,7 +97,7 @@ build.
 | id | push source | kind | label | owner | holding | shared | host |
 |---|---|---|---|---|---|---|---|
 | `audiobook` | `audiobook` | audio | Shared audiobooks | — | digital | ✅ | audiobooks.heygabi.ai |
-| `library` | `library` | books | Skylar's library | Skylar | physical | — | library.heygabi.ai |
+| `library` | `library` | books | ~~Skylar's library~~ **`!Sky`** — ⚠️ **owner order 2026-09-18** (*"for my library the name changed away from !Sky change it back to that"*): the string survey finding F5 called a defect is the owner's CHOSEN name for his shelf. Changed by one `UPDATE estate_catalog SET label` on the live `estate_auth` D1 that day; the seed in `estate-catalog.ts` / migration 0020 still says *Skylar's library* and is what a rebuild would restore, so a rebuild must re-apply the rename. The apex tests and `predeploy.checks.json` still refuse the literal `!Sky` in the shipped HTML — correct, because the page must render the REGISTRY's label, not a typed one | Skylar | physical | — | library.heygabi.ai |
 | `games` | `game` | games | Skylar's board games | Skylar | physical | — | boardgames.heygabi.ai |
 | `library2` | `library2` | books | Samantha's library | Samantha | physical | — | padhard.heygabi.ai |
 | `ebooks` | *(none)* | books | Shared ebooks | — | digital | ✅ | ebooks.heygabi.ai |

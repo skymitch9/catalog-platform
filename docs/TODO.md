@@ -53,6 +53,42 @@ ran at 09:12.
       **contributor UPLOADS / inbox / server-side ingest** (two recorded
       hazards). Neither was built and neither is claimed
 
+## ☐ 🧑 OWNER — Google Cloud account hygiene (asked 2026-09-17 09:45 Phoenix: *"bookbuddy and gamebuddy in nbaslamking can be safely removed?"*) — ONE check, then one decision
+
+> The account-by-service map that answers *"which GCP account is the main?"*
+> lives in `audiobook_catalog/docs/access/CONSOLE_URLS.md` gotcha 1 (LOCAL ONLY
+> — it names which account owns what). Short form: Firebase and
+> `audiobook-catalog` are on `mitchlandtv@gmail.com`; **the pipeline's Drive
+> OAuth client is in project BookBuddy on `nbaslamking@gmail.com`**, measured
+> off the `project_id` in `scripts/credentials.json` and a console listing
+> showing it accessed the same day. Answer given: **BookBuddy is NOT safe to
+> delete** (every Drive upload dies with it); GameBuddy probably is.
+
+- [ ] 🧑 **The GameBuddy check** — Zero Trust → Settings → Authentication →
+      the Google identity provider → read the App ID. If its numeric prefix is
+      **`1079037205011`** (GameBuddy's project number), that project is what
+      `shelf.heygabi.ai`'s Google login uses and deleting it breaks that login
+      (one-time PIN survives). Any other prefix means GameBuddy is unused and
+      can go; GCP keeps a deleted project recoverable for 30 days. ⚠️ A session
+      cannot take this reading — the dashboard asked for a Cloudflare sign-in
+      and a session must not sign in on the owner's behalf.
+- [ ] 🧑 **Billing** (owner, same day: *"I need to set up billing, will it cost
+      more if we keep the separate…"*): recommendation given and not yet acted
+      on — projects are free, only usage bills; create the billing account under
+      `mitchlandtv@gmail.com`, link `audiobook-catalog` alone, leave BookBuddy
+      and GameBuddy unlinked (OAuth clients and the Drive API bill nothing), and
+      do NOT migrate BookBuddy's client (a Testing-status consent screen expires
+      the refresh token weekly). Optional, access-increasing and therefore the
+      owner's own: add `nbaslamking@gmail.com` as Owner on `audiobook-catalog`
+      under IAM to retire the `authuser=1` trap.
+- [ ] ⏸️ **Sundance** (owner, 2026-09-17: *"if it's a sundance failure I'll
+      deal with those later"*): `Sundance-Buddy/.env.tpl` still targets
+      `op://Estate/sundance.*`, and after the vault split those items live in
+      the vault named `Sundance`, so `op inject` there fails whole until the
+      template's vault name changes. Its own `docs/access/SECRETS.md` already
+      records the split. Not the estate's to fix; recorded so nobody
+      re-discovers it.
+
 ## ☐ Leftovers of the sixteen owner answers (2026-09-06 08:46 Phoenix) — TWO owner steps left
 
 > The 00:5x list of sixteen moved WHOLE to [`DONE.md`](DONE.md) at 08:46 once

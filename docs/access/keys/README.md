@@ -2,7 +2,22 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (this file
 > only — **every other file in this folder is gitignored**).
-> Last verified: **2026-08-26** — 🔐 **all three values are now in the 1Password
+> Last verified: **2026-09-17 18:21 Phoenix** — ✅ **the vault was SPLIT that
+> afternoon and the estate's side still works.** The owner created a NEW
+> 1Password vault named `Estate` (22 items) and renamed the old shared one to
+> `Sundance` (43 `sundance.*` items) so a second developer can be given the
+> Sundance vault alone. Measured: `op item list --vault Estate` (titles only)
+> holds all three key items here plus the `catalog-provisioning.private.jwk`
+> document at 3,333 bytes, the local file's size; `node
+> scripts/op-import-keys.mjs --dry-run` finds all three as existing;
+> `scripts/op-rotate-pair.mjs --list` resolves its four pairs. Nothing in this
+> repo names a vault by anything but the title `Estate`, and every script reads
+> items by TITLE, so the new item ids from the move change nothing. ⚠️ **NOT
+> verified:** that the three vault VALUES still byte-match the files here — that
+> comparison needs one Windows Hello prompt per item and the owner was away.
+> The doc says the vault wins on any disagreement, so run `--dry-run` then the
+> importer if it ever matters.
+> Previously verified: **2026-08-26** — 🔐 **all three values are now in the 1Password
 > vault `Estate`** (see the next block). Ignore rules previously proved with real
 > files on **2026-08-18**, not read off `.gitignore`: a probe token file written
 > into this folder does not appear in `git status --untracked-files=all`, and
