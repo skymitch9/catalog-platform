@@ -9,6 +9,76 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-22 08:45 Phoenix — the estate-wide "commit, push, test, promote" sweep of 2026-09-21/22, and the finding that a live deploy is refused before our own guards see it
+
+> **Owner order, 2026-09-21 ~15:30 Phoenix:** *"commit and push everything then
+> run test then promote to prod, make sure all actions pass."* Four repos, one
+> sitting, finished the following morning once the one blocker below was cleared.
+>
+> ⚠️ **Recorded by a documentation session that RAN NOTHING.** Every hash, run
+> id, tag, version and status below was measured by the conducting session and
+> is transcribed here; the only thing re-measured while writing this entry was
+> `~/.claude/settings.json` (read 2026-09-22 08:55 Phoenix).
+>
+> **`catalog-platform`** — commit **`4baaa69`**, four doc files (`DONE.md`,
+> `TODO.md`, `access/keys/README.md`, `info/catalog-registry.md`): the 1Password
+> vault-split verification, the GCP account map, and the `!Sky` label restored.
+> Pushed. `tests.yml` run **35662936911** green. **No deploy** — docs only, and
+> `deploy.yml` here is `workflow_dispatch` only. The untracked
+> `.phase4d_cut.tmp` (a scratch cut from a 2026-09-07 `TODO.md` edit) was
+> deliberately left alone.
+>
+> **`audiobook_catalog`** — commit **`d03b2c2`**, the **paige** audible-cli
+> profile (the third household account) in `app/tools/audit_new_purchases.py`
+> and `app/tools/audible_download.py`, rebased onto the pipeline snapshot
+> **`70570cf`** and pushed. Tests, Lint, JS Tests and Deploy all green on it;
+> `python -m app.tools.audit_site` **PASS for 1,104 books** locally. Promoted:
+> `promote.yml` run **35663551993** (guard + promote both green), tag
+> **`prod-20260921-223658`**, then `deploy.yml` run **35663592262** green. Prod
+> root <https://audiobook-catalog.pages.dev/> → **200**, and the served
+> `catalog.csv` line count is identical to the repo's (**9,545** lines). Its
+> docs are gitignored and were updated in the same sitting.
+>
+> **`library_catalog`** — commit **`78745ec`** (docs, the Asunda insert script,
+> a comment-only `wrangler.toml` correction), `tests.yml` run **35663339107**
+> green. 🔴 **The Worker deploy pair was REFUSED THREE TIMES on 2026-09-21** —
+> see the finding below. On 2026-09-22 it shipped: main **`a273b877`**
+> 15:38:03Z, friend **`3c684023`** 15:39:19Z, both `/api/health` `200`
+> `ok:true` `database:up`, estate enforce as `library` / `library2`. (Both
+> instances, per the estate's every-catalog-change-lands-on-both rule.)
+>
+> **`Board_Game_Catalog`** — clean, nothing ahead of `origin`, **nothing
+> changed and nothing deployed**. Its `npm run deploy` would have met the same
+> refusal; the allow rule added below is global and now covers it, so no
+> per-repo entry was added there.
+>
+> 🔴 **THE FINDING: in `defaultMode: auto`, Claude Code's own command
+> classifier refuses a live deploy BEFORE any of this estate's guards run.**
+> `check-clean`, `deploy-guard` and migrate-before-deploy never got an opinion —
+> the refusal landed first, three times, twice through Bash and once through
+> PowerShell. It is not a repo bug and no repo change fixes it. On 2026-09-22
+> ~08:35 Phoenix **the owner** added `Bash(npm run deploy:*)` and
+> `Bash(npm run deploy)` to `permissions.allow` in `~/.claude/settings.json`,
+> and the pair then ran unimpeded.
+>
+> ⚠️ **Those rules live in the operator's HOME directory — in no repo, no git
+> and no backup — so a machine rebuild loses them silently.** They are now
+> recorded in [`access/RECOVERY.md`](access/RECOVERY.md) **§11.5**, which is
+> their one home (the pre-existing
+> `PowerShell(.\scripts\mint-operator-token.ps1:*)` entry is listed there too),
+> with a pointer from §11.4's *what a rebuild cannot recover* list. The
+> **symptom** — "my deploy was refused and nothing in the repo explains why" —
+> is noted where a blocked session will look for it, in
+> `library_catalog/docs/access/deploy.md` and
+> `Board_Game_Catalog/docs/access/deploys.md`; both name the rule and link to
+> §11.5 rather than restating it.
+>
+> ⚠️ **NOT verified:** nothing rendered was looked at in a browser (the prod
+> `200` and the `/api/health` reads are HTTP, not pixels); the
+> `catalog.csv` comparison is a **line count**, not a diff; no rebuild has ever
+> re-created the `permissions.allow` entries, so §11.5 is documentation, not a
+> drill; and this entry's own transcription was not re-derived from the CI logs.
+
 ## ✅ 2026-09-18 18:02 Phoenix — the main library's registry label is `!Sky` again, by owner order (one D1 row, no code)
 
 > **Owner, 2026-09-18:** *"for my library the name changed away from !Sky

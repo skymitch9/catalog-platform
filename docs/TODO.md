@@ -1,5 +1,17 @@
 # TODO — catalog-platform (ACTIVE work log)
 
+> **Audience:** Claude sessions first, the owner second. **Status:** TRACKED.
+> **Last verified: 2026-09-22** — ⚠️ **for ONE thing only:** that the
+> 2026-09-21/22 estate-wide *"commit, push, test, promote"* sweep is recorded
+> whole in [`DONE.md`](DONE.md) (top entry) and that the machine state it
+> surfaced — the operator's `~/.claude/settings.json` `permissions.allow`
+> rules, which live in no repo — has one home at
+> [`access/RECOVERY.md`](access/RECOVERY.md) **§11.5**. ⚠️ **NOT re-checked on
+> that date:** every item below, all of which still carry their own dates, and
+> nothing was swept from this file to `DONE.md`. ⚠️ **This file carried NO
+> `Last verified` line at all until 2026-09-22**, so nothing was demoted — the
+> standard header is new here, and its absence is the finding.
+>
 > **Cleaned 2026-08-31.** The layered 2026-08-24 conductor/morning-summary
 > handoff blocks that sat above this file's real items were actioned and moved
 > WHOLE to [`DONE.md`](DONE.md) (entry *"2026-08-31 — the 2026-08-24

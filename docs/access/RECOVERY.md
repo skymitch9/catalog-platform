@@ -13,6 +13,13 @@
 > [`../info/request-a-catalog-design.md`](../info/request-a-catalog-design.md)),
 > recorded in §1b, §11.1 and §11.2 step 5 as **deliberately NOT backed up**.
 > That is the only edit of that date; nothing else was re-measured.
+> ⚠️ **AND §11.5 WAS ADDED ON 2026-09-22** — the operator's
+> `~/.claude/settings.json` `permissions.allow`, machine state that lives
+> outside every repo and that a rebuild therefore loses. **Last verified for
+> §11.5 only: 2026-09-22 08:55 Phoenix**, and only by READING that file; the
+> deploy-refusal history it records was measured by the conducting session, not
+> re-run here, and **nothing about it is drilled**. Nothing else on this page
+> was re-checked on that date.
 >
 > **Every command in §§1–10 was executed in a SANDBOX on the drill date.**
 > Drill date: **2026-08-17/18** (restore drill, `target=all` snapshot of
@@ -1522,6 +1529,53 @@ weakness of the current custody design.
   holds values and their holders, not the pairing map, the rotation ORDERING
   rules, or the three env-file patterns — and every 🔴 NONE row in §11.3 is still
   absent from it.
+- ⚠️ **The operator's Claude Code `permissions.allow` rules** — machine state in
+  the HOME directory, in no repo and no backup. §11.5 lists them and why each
+  exists; a rebuilt machine re-adds them **by hand**.
+
+---
+
+### 11.5 Machine state that is NOT in git — the operator's Claude Code settings
+
+> **Added 2026-09-22. Measured that day at 08:55 Phoenix by reading the file,
+> and by nothing else.** ⚠️ **NOT DRILLED** — no rebuild has re-created these,
+> and the refusal history below was measured by the session that hit it
+> (2026-09-21/22), not re-run here.
+
+**The file: `~/.claude/settings.json`** (on this machine
+`C:\Users\nbasl\.claude\settings.json`). 🔴 **It is in the operator's HOME
+directory, not in any of the four repos** — so it is not in git, and it is
+outside every `docs/` tree, which means `scripts/backup-docs.mjs` does not carry
+it either (*inference from its location, not a measured backup inventory*). **A
+machine rebuild loses it, and re-adding it is a hand step nobody is prompted
+for.**
+
+`permissions.defaultMode` is **`auto`**. In that mode the Claude Code **command
+classifier** refuses a command it reads as live/production *before* any of this
+estate's own guards run — so `check-clean`, `deploy-guard` and the migrate-first
+rule never get the chance to have an opinion. The allow list is what lets a
+deploy reach them.
+
+| `permissions.allow` entry | Why it exists | Added |
+|---|---|---|
+| `PowerShell(.\scripts\mint-operator-token.ps1:*)` | Pre-existing — the operator-token minting script | before 2026-09-22 (date unmeasured) |
+| `Bash(npm run deploy:*)` | ⚠️ Without it **the Worker deploy pair cannot run from an auto-mode session at all.** Measured 2026-09-21: `library_catalog`'s pair was refused **three times** by the classifier (twice through Bash, once through PowerShell), each refusal landing *before* `check-clean` or `deploy-guard` | **2026-09-22 ~08:35 Phoenix, by the owner** |
+| `Bash(npm run deploy)` | The unsuffixed form of the same command — the `:*` pattern does not cover it | **2026-09-22 ~08:35 Phoenix, by the owner** |
+
+⚠️ **The rules are GLOBAL, not per-repo.** `Bash(npm run deploy)` is matched by
+command text, so it covers `Board_Game_Catalog` and every other repo whose
+deploy is spelled the same way — one of them does not need its own entry, and
+adding one would be a second home for the same fact.
+
+✅ **What the rules bought, measured by the conducting session on 2026-09-22
+(not re-run here):** the library pair then ran — main `a273b877` at 15:38:03Z
+and friend `3c684023` at 15:39:19Z, both `/api/health` answering `200`
+`ok:true` `database:up`.
+
+📖 The symptom, written where a blocked session will look for it:
+`library_catalog/docs/access/deploy.md` and
+`Board_Game_Catalog/docs/access/deploys.md`. **This section is the rule's home**
+— those two name it and link here rather than restating it.
 
 ---
 
