@@ -23,7 +23,10 @@ import { test } from 'node:test';
 import {
   AGENT_BOARD_MAX_BYTES,
   AGENT_BOARD_ROW_ID,
+  agentBoardRoutes,
+  carryProjectSections,
   checkConductorAuth,
+  isProjectSection,
   conductorRefusal,
   parseAgentBoard,
   parseDeclaredSections,
@@ -328,4 +331,132 @@ test('the stamps and the board move TOGETHER — a section is never aged by anot
   stamps = stampSections(board, later, stamps, T2);
   assert.equal(stamps.agents, T1, 'STILL this morning, twelve hours on');
   assert.equal(stamps.processing, T2);
+});
+
+// ---------------------------------------------------------------------------
+// Per-project sections (contract §11, owner ask 2026-09-26: every project's
+// agents on one page). Many projects share ONE row; a `project_<slug>` section
+// changes only on a push that DECLARES it, so no pusher can roll another
+// project's card back from a stale draft.
+// ---------------------------------------------------------------------------
+
+test('isProjectSection: project_<slug>, slug [a-z0-9-]{1,40}, nothing else', () => {
+  assert.ok(isProjectSection('project_black-bloc'));
+  assert.ok(isProjectSection('project_a'));
+  assert.ok(isProjectSection(`project_${'a'.repeat(40)}`));
+  assert.ok(!isProjectSection(`project_${'a'.repeat(41)}`));
+  assert.ok(!isProjectSection('project_'));
+  assert.ok(!isProjectSection('project_Black'));
+  assert.ok(!isProjectSection('project_a b'));
+  assert.ok(!isProjectSection('agents'));
+  assert.ok(!isProjectSection('projects'));
+});
+
+test('carryProjectSections: an undeclared project is kept from the STORED board, not the body', () => {
+  const prev = { agents: [1], project_a: { phase: 'new' } };
+  const body = { agents: [2], project_a: { phase: 'stale draft copy' } };
+  const out = carryProjectSections(prev, body, ['agents']);
+  assert.deepEqual(out.board, { agents: [2], project_a: { phase: 'new' } });
+  assert.deepEqual(out.carried, ['project_a']);
+});
+
+test('carryProjectSections: a whole-board push that lacks a project does not delete it', () => {
+  // ⚠️ THE BUG THIS EXISTS FOR: the processing pusher writes the draft whole
+  // every 15 minutes, and a draft that never saw project_b would have wiped it.
+  const prev = { processing: { a: 1 }, project_b: { name: 'B' } };
+  const out = carryProjectSections(prev, { processing: { a: 2 } }, ['processing']);
+  assert.deepEqual(out.board, { processing: { a: 2 }, project_b: { name: 'B' } });
+});
+
+test('carryProjectSections: a declared project absent from the body is REMOVED (the retire path)', () => {
+  const out = carryProjectSections({ project_a: { name: 'A' }, agents: [] }, { agents: [] }, ['project_a']);
+  assert.deepEqual(out.board, { agents: [] });
+});
+
+test('carryProjectSections: a project only the body knows is kept (a draft healing a lost race)', () => {
+  const out = carryProjectSections({ agents: [] }, { agents: [], project_c: { name: 'C' } }, []);
+  assert.deepEqual(out.board, { agents: [], project_c: { name: 'C' } });
+});
+
+test('carryProjectSections: non-project sections keep whole-board last-write-wins', () => {
+  // The rule is scoped to project_* and must not become a general partial
+  // update — contract §9 still holds for agents/events/usage/processing.
+  const out = carryProjectSections({ agents: [1], events: [1] }, { agents: [2] }, []);
+  assert.deepEqual(out.board, { agents: [2] });
+});
+
+/** A one-row D1 double that speaks the two statements the route uses. */
+function fakeD1() {
+  let row: { board: string; pushed_at: string; pushed_by: string | null; section_pushed_at: string | null } | null = null;
+  return {
+    get row() { return row; },
+    prepare(sql: string) {
+      let args: unknown[] = [];
+      const stmt = {
+        bind(...a: unknown[]) { args = a; return stmt; },
+        async first() { return /^SELECT/i.test(sql) && row ? { ...row } : null; },
+        async run() {
+          if (/^INSERT/i.test(sql)) {
+            row = {
+              board: String(args[1]),
+              pushed_at: String(args[2]),
+              pushed_by: (args[3] as string | null) ?? null,
+              section_pushed_at: (args[4] as string | null) ?? null,
+            };
+          }
+          return { success: true };
+        },
+      };
+      return stmt;
+    },
+  };
+}
+
+async function push(db: ReturnType<typeof fakeD1>, board: unknown, sections: string) {
+  const res = await agentBoardRoutes.request(
+    '/estate/ops/agent-board',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json', 'X-Estate-Sections': sections },
+      body: JSON.stringify(board),
+    },
+    { DB: db, ESTATE_CONDUCTOR_TOKEN: SECRET } as never,
+  );
+  assert.equal(res.status, 200, await res.clone().text());
+  return (await res.json()) as { section_pushed_at: Record<string, string>; project_sections_carried: string[] };
+}
+
+test('⚠️ THE MERGE, end to end through the route: two projects push, both survive; a third push replaces only its own', async () => {
+  const db = fakeD1();
+  await push(db, { agents: [{ name: 'conductor' }] }, 'agents');
+
+  // Project A pushes from a draft that knows only itself and the conductor.
+  await push(db, { agents: [{ name: 'conductor' }], project_a: { name: 'A', phase: 'one' } }, 'project_a');
+  // Project B pushes from a draft that never saw A.
+  const b = await push(db, { agents: [{ name: 'conductor' }], project_b: { name: 'B', phase: 'one' } }, 'project_b');
+  assert.deepEqual(b.project_sections_carried, ['project_a']);
+
+  let stored = JSON.parse(db.row!.board);
+  assert.deepEqual(stored.project_a, { name: 'A', phase: 'one' });
+  assert.deepEqual(stored.project_b, { name: 'B', phase: 'one' });
+  assert.deepEqual(stored.agents, [{ name: 'conductor' }]);
+
+  // A pushes again, carrying a STALE copy of B in its body: only A moves.
+  const stampsBefore = JSON.parse(db.row!.section_pushed_at!);
+  await new Promise((r) => setTimeout(r, 5));
+  const a2 = await push(
+    db,
+    { agents: [{ name: 'conductor' }], project_a: { name: 'A', phase: 'two' }, project_b: { name: 'B', phase: 'STALE' } },
+    'project_a',
+  );
+  stored = JSON.parse(db.row!.board);
+  assert.deepEqual(stored.project_a, { name: 'A', phase: 'two' });
+  assert.deepEqual(stored.project_b, { name: 'B', phase: 'one' }, 'an undeclared project is never rewritten');
+  assert.notEqual(a2.section_pushed_at.project_a, stampsBefore.project_a, 'the declared project is restamped');
+  assert.equal(a2.section_pushed_at.project_b, stampsBefore.project_b, 'the carried project keeps its own age');
+
+  // A processing push of a draft holding NO projects deletes nothing.
+  await push(db, { agents: [{ name: 'conductor' }], processing: { packs: {} } }, 'processing');
+  stored = JSON.parse(db.row!.board);
+  assert.deepEqual(Object.keys(stored).sort(), ['agents', 'processing', 'project_a', 'project_b']);
 });
