@@ -18,7 +18,7 @@ devops check.
 | **`/status`** Health | *Is everything up?* | worker/site/index rows read from public `/api/health` endpoints, the Book & ebook pipeline rows, Drive⇄role parity, deploy versions, backup freshness, the migration runbooks and the commandments |
 | **`/status/processing`** GABI Knowledge | *GABI's knowledge base as it grows* | in-flight books + %, queue depth per lane, pack counts + ingester version, and "joined GABI's knowledge base &lt;date&gt;" per book |
 | **`/status/pipelines`** Pipelines | *Run it, and control it* | the ingestion **pause/timers card**, the pipeline steps + Run button, the Run levers (GitHub Actions), the shelf-server push, the nightly-window clock |
-| **`/status/agents`** Agents | *Claude capacity* | running agents + model, the dispatched/landed/failed feed, and the **usage figures** |
+| **`/status/agents`** Agents | *Claude capacity* | running agents + model, **every project's card** (`project_*`, contract §11, 2026-09-27), the dispatched/landed/failed feed, and the **usage figures** |
 | **`/status/api`** API | *Every machine credential the estate holds* | all nine keys with scope + blast radius; mint/rotate the three that are self-service; the exact command for the rest |
 
 ⚠️ **API IS THE ONLY PAGE THAT ISSUES A CREDENTIAL** (added 2026-08-20).
