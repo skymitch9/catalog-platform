@@ -1,7 +1,11 @@
 # Agent board — the pushed state blob   (Information Reference)
 
 > **Audience:** Claude sessions and whoever writes the next pusher.
-> **Status:** TRACKED. Last verified: **2026-08-18** — the shapes below were
+> **Status:** TRACKED. Last verified: **2026-09-27** for §11 only (per-project
+> sections) — read off `project-cards.js`, `push-project-board.mjs` and
+> `carryProjectSections()`, all exercised by tests and a headless render with a
+> stubbed board; ⚠️ NOT yet against the live Worker (auth-worker not deployed
+> with it at the time of writing). §1–§10 last verified **2026-08-18** — the shapes below were
 > read off the code that consumes them (`status/lib/board.js`,
 > `status/agents/agents.js`, `status/processing/processing.js`) and the code
 > that stores them (`apps/auth-worker/src/agent-board.ts`), not off a design
@@ -23,7 +27,7 @@ One JSON object, pushed by a machine, rendered by two pages.
 | **Pusher** | [`scripts/push-agent-board.mjs`](../../scripts/push-agent-board.mjs) — the one implementation of the POST |
 | **`processing` pusher** | [`scripts/push-processing-board.mjs`](../../scripts/push-processing-board.mjs) — projects this machine's ingestion artefacts, merges, and execs the above |
 | **Custody** | [`docs/access/agent-board.md`](../access/agent-board.md) |
-| **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) (`agents`, `events`, `usage`) · [/status/processing](https://heygabi.ai/status/processing/) — titled **GABI Knowledge** since 2026-08-18, URL unchanged — (`processing`) |
+| **Renders on** | [/status/agents](https://heygabi.ai/status/agents/) (`agents`, `events`, `usage`, every `project_*` — §11) · [/status/processing](https://heygabi.ai/status/processing/) — titled **GABI Knowledge** since 2026-08-18, URL unchanged — (`processing`) |
 
 ---
 
@@ -338,7 +342,7 @@ four times an hour, and the page would render that correctly and honestly as
 | | |
 |---|---|
 | **Canonical board file** | `.local/agent-board.json` — **gitignored**, this repo is public |
-| **Rule** | every pusher READ-MODIFY-WRITES it and pushes it **whole** |
+| **Rule** | every pusher READ-MODIFY-WRITES it and pushes it **whole** — ⚠️ except that `project_*` sections are protected by the Worker (§11) |
 | **Who owns what** | conductor → `agents`, `events`, `usage` · home pipeline → `processing` |
 
 ⚠️ **You cannot recover a section you did not write.** The read door is
@@ -438,6 +442,96 @@ phone that buzzes for every routine success is a phone that gets silenced, and a
 silenced phone misses the red one too. The page distinguishes *"nobody has chosen
 yet, these are the defaults"* from *"he chose these"*, because a default
 presented as a decision is a decision nobody made.
+
+## 11. `project_<slug>` — one card per project (added 2026-09-27)
+
+Owner ask 2026-09-26 (verbatim in `docs/TODO.md`'s estate-wide agent board
+section): *"port in all agents from all our projects … might be nice to see live
+progress in the site"*. Every project in the estate pushes its OWN top-level
+section; /status/agents draws one card group per section with four panels.
+
+| | |
+|---|---|
+| **Key** | `project_<slug>`, slug `[a-z0-9-]{1,40}` — e.g. `project_black-bloc`. Enforced by the Worker (`PROJECT_SECTION_RE`) AND the wrapper (`scripts/lib/project-board.mjs` `SLUG_RE`) — ⚠️ change both together |
+| **Pusher** | [`scripts/push-project-board.mjs`](../../scripts/push-project-board.mjs) `<slug> <section.json>` — how to call it from another repo: [`access/agent-board.md`](../access/agent-board.md) § Using it from another repo |
+| **Renderer** | `sites/heygabi-home/public/status/lib/project-cards.js`, pinned by `scripts/test/project-cards.test.mjs` |
+
+```json
+"project_black-bloc": {
+  "name": "Black Bloc", "repo": "black_bot_baf", "phase": "v178 live",
+  "updated_at": "…", "usage_stamp": "session 41% / weekly 12% / Fable 9% · Sun 14:05 Phoenix",
+  "agents":       [ { "name": "…", "state": "running", "model": "opus", "task": "…",
+                      "started_at": "…", "tokens": 182000, "link": "https://…" } ],
+  "stuck":        [ { "what": "…", "since": "…", "why": "…" } ],
+  "questions":    [ { "text": "…", "asked_at": "…", "default": "Sonnet" | null,
+                      "needs_owner": true, "kind": "reversible" | "public" | "access" | "money" } ],
+  "deliverables": [ { "what": "…", "url": "https://…", "at": "…" } ]
+}
+```
+
+**Every field is optional and read defensively; unknown fields are ignored.**
+`agents[]` uses exactly §3's row (same dots, same model badge — the conductor's
+"Running now" rows and every project's Progress panel are drawn by one function,
+`agentRow()`), plus an optional `link`.
+
+| Panel | From | Silences, each its own sentence |
+|---|---|---|
+| **Progress** | `agents` | key absent → *"The last push did not list agents."* · `[]` → *"Nothing running — the last push listed no agents."* |
+| **Stuck** | `stuck` | absent → *"did not say whether anything is stuck"* · `[]` → *"Nothing stuck."* |
+| **Needs you** | `questions` | absent → *"did not list questions"* · `[]` → *"Nothing waiting on you."* |
+| **Latest** | `deliverables`, **newest first by `at`**, 5 shown, the rest folded | absent → *"did not list deliverables"* · `[]` → *"Nothing delivered yet."* |
+
+A section that is not an object says so in its card; a list field that is not
+a list says so in its panel; a board with no `project_*` key says *"No project
+has pushed a card yet"*. None is ever a blank.
+
+⚠️ **A DEFAULT IS SHOWN ONLY FOR `kind: "reversible"`.** The owner's rule:
+defaults are allowed only for choices that can be undone. `public`, `access` and
+`money` render *"Waiting on you — no default"* **whatever `default` says**, and
+so does a question with **no or an unknown `kind`** — an unmarked question is
+not known to be reversible, and the safe error is "waiting on you". A default
+that was sent but suppressed is SAID to have been suppressed. The page lists
+questions; it does not replace asking — questions still go to the owner as push
+notifications, one at a time.
+
+⚠️ **"updated N ago" is per project, and names its clock.** It is the Worker's
+`section_pushed_at["project_<slug>"]` (the wrapper declares the section, so
+every push restamps it). Only when that stamp is missing does it fall back to
+the push's own `updated_at`, and then the line says *"by the project's own
+clock; the board has no stamp for it"*. Neither → *"update time unknown"*. The
+freshness strip at the top does NOT measure project sections.
+
+Links (`agents[].link`, `deliverables[].url`) are drawn only for `http(s)://`
+URLs; everything is `textContent`.
+
+### The merge — why many projects can share one row
+
+§9's rule was *every pusher writes the board whole from the shared draft*. With
+a dozen projects pushing from their own sessions, that would let the processing
+pusher (every 15 minutes) roll every project card back to whatever the draft
+last saw. So the **Worker** now protects project sections
+(`carryProjectSections()` in `apps/auth-worker/src/agent-board.ts`):
+
+| In the push | Stored result |
+|---|---|
+| `project_x` **declared** in `X-Estate-Sections`, present in the body | the body's copy — the update |
+| `project_x` declared, **absent** from the body | removed — the one way to retire a project |
+| `project_x` **undeclared**, already stored | the **stored** copy, whatever the body says |
+| `project_x` undeclared, only in the body | the body's copy (a draft healing a lost race) |
+| any non-project key | the body, exactly as §9 — whole-board last-write-wins, unchanged |
+
+Carried sections keep their stamps (content unchanged), so a processing push
+never makes a project look fresh. The POST's answer lists
+`project_sections_carried`. Pinned end to end through the route in
+`apps/auth-worker/test/agent-board.test.ts` (two projects push, both survive; a
+third push of one replaces only that one, even when its body carries a stale
+copy of the other).
+
+⚠️ **Honest limits, not fixed:** the Worker's read-then-write is not a
+transaction, so two pushes landing in the same few milliseconds can still lose
+one project's update until that project pushes again (the draft copy usually
+heals it via row 4). And the wrapper still writes the shared draft, so every
+§9 rule about that file stands.
 
 ## Model guidance (read me if you are Kiro)
 

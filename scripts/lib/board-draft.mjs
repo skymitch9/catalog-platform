@@ -29,9 +29,10 @@ const execFileAsync = promisify(execFile);
  * @param {string} o.root      repo root
  * @param {object} o.sections  { [name]: value } — the sections THIS pusher owns
  * @param {string} o.by        X-Estate-Pushed-By
+ * @param {string} [o.tokenFile] absolute custody path handed to the pusher as --token-file
  * @returns {Promise<number>}  process exit code
  */
-export async function mergeAndPush({ root, sections, by }) {
+export async function mergeAndPush({ root, sections, by, tokenFile }) {
   const draft = path.join(root, '.local', 'agent-board.json');
   fs.mkdirSync(path.dirname(draft), { recursive: true });
 
@@ -70,6 +71,7 @@ export async function mergeAndPush({ root, sections, by }) {
     // Declaring the sections makes the Worker restamp exactly these and leave
     // every other section's age alone (contract §9).
     '--sections', Object.keys(sections).join(','),
+    ...(tokenFile ? ['--token-file', tokenFile] : []),
   ];
   try {
     const { stdout } = await execFileAsync(process.execPath, args, { cwd: root, timeout: 120_000 });

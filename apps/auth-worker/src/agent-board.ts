@@ -307,6 +307,63 @@ export function parseDeclaredSections(header: string | null | undefined): string
 }
 
 /**
+ * A per-project section key: `project_<slug>`, slug `[a-z0-9-]{1,40}`.
+ * Contract §11. Anything else is an ordinary section with the old rules.
+ */
+export const PROJECT_SECTION_RE = /^project_[a-z0-9-]{1,40}$/;
+
+export function isProjectSection(key: string): boolean {
+  return PROJECT_SECTION_RE.test(key);
+}
+
+/**
+ * The board a push actually stores, once `project_*` sections are protected.
+ *
+ * ⚠️ THE RULE (contract §11): a `project_<slug>` section changes ONLY on a push
+ * that DECLARES it in `X-Estate-Sections`. Every project in the estate pushes
+ * its own section from its own session, and every other pusher (conductor,
+ * processing every 15 minutes, storage, logs) writes the board whole from a
+ * draft that may not hold the latest copy of anyone's project. Without this, a
+ * processing push would silently roll every project card back to whatever the
+ * draft last saw — or delete it.
+ *
+ *   declared project key, present in the body  → the body's copy (the update)
+ *   declared project key, absent from the body  → removed (the one way to retire a project)
+ *   undeclared project key, in the stored board → the STORED copy, whatever the body says
+ *   undeclared project key, only in the body    → the body's copy (a draft healing a lost race)
+ *   every non-project key                       → the body, exactly as before this rule
+ *
+ * ⚠️ NON-PROJECT SECTIONS ARE UNTOUCHED BY THIS — whole-board last-write-wins,
+ * as contract §9 has always said. This is the smallest change that lets many
+ * projects share one row; it is not a general partial-update mechanism.
+ */
+export function carryProjectSections(
+  previousBoard: unknown,
+  nextBoard: Record<string, unknown>,
+  declared: string[] = [],
+): { board: Record<string, unknown>; carried: string[] } {
+  const prev = previousBoard && typeof previousBoard === 'object' && !Array.isArray(previousBoard)
+    ? (previousBoard as Record<string, unknown>)
+    : {};
+  const declaredSet = new Set(declared.filter(isProjectSection));
+  const out: Record<string, unknown> = {};
+  const carried: string[] = [];
+  for (const [key, value] of Object.entries(nextBoard)) {
+    if (!isProjectSection(key) || declaredSet.has(key)) out[key] = value;
+    else if (key in prev) {
+      out[key] = prev[key];
+      carried.push(key);
+    } else out[key] = value;
+  }
+  for (const [key, value] of Object.entries(prev)) {
+    if (!isProjectSection(key) || declaredSet.has(key) || key in out) continue;
+    out[key] = value;
+    carried.push(key);
+  }
+  return { board: out, carried: carried.sort() };
+}
+
+/**
  * Bearer comparison, in constant time and with the four causes kept apart —
  * they have four different fixes and a page that says "unauthorized" to all of
  * them sends someone hunting the wrong one (the estate's standing rule: never
@@ -543,16 +600,30 @@ agentBoardRoutes.post('/estate/ops/agent-board', async (c: Context<AppBindings>)
   } catch {
     previousBoard = null;
   }
+  const declared = parseDeclaredSections(c.req.header('X-Estate-Sections'));
+  const merged = carryProjectSections(previousBoard, parsed.board as Record<string, unknown>, declared);
+  const storedText = JSON.stringify(merged.board);
+  if (new TextEncoder().encode(storedText).length > AGENT_BOARD_MAX_BYTES) {
+    return c.json(
+      {
+        error: 'board_too_large',
+        detail:
+          `With every project section carried over, that board would be ${new TextEncoder().encode(storedText).length} bytes ` +
+          `and the limit is ${AGENT_BOARD_MAX_BYTES}. Trim a project's deliverables or the event feed and push again.`,
+      },
+      400,
+    );
+  }
   const sectionStamps = stampSections(
     previousBoard,
-    parsed.board,
+    merged.board,
     parseSectionStamps(previous?.section_pushed_at),
     pushedAt,
-    parseDeclaredSections(c.req.header('X-Estate-Sections')),
+    declared,
   );
 
   try {
-    await writeRow(c.env.DB, JSON.stringify(parsed.board), pushedAt, pushedBy, JSON.stringify(sectionStamps));
+    await writeRow(c.env.DB, storedText, pushedAt, pushedBy, JSON.stringify(sectionStamps));
   } catch (err) {
     const message = (err as Error).message || '';
     if (/no such table/i.test(message)) {
@@ -595,5 +666,6 @@ agentBoardRoutes.post('/estate/ops/agent-board', async (c: Context<AppBindings>)
     pushed_by: pushedBy,
     section_pushed_at: sectionStamps,
     sections_moved: Object.keys(sectionStamps).filter((k) => sectionStamps[k] === pushedAt),
+    project_sections_carried: merged.carried,
   });
 });

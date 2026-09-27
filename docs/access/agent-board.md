@@ -2,7 +2,10 @@
 
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (this file
 > names the secret; the VALUE lives only in the gitignored custody file below).
-> Last verified: **2026-08-18** — every command here was RUN on that date, not
+> Last verified: **2026-09-27** for §8 only — the wrapper's `--check` and every
+> refusal RUN (no token needed); a real push was NOT run (no token in the build
+> worktree, and the Worker change was not yet deployed). §1–§7 last verified
+> **2026-08-18** — every command here was RUN on that date, not
 > transcribed: the secret was minted and stored, the migration applied, the
 > Worker deployed, all three refusal paths exercised against the live host, and
 > a real board pushed and read back out of D1. **§7 added later the same day**
@@ -289,3 +292,62 @@ lock does not cover hand-run chains, so two transcriptions could in principle
 overlap and the file would describe whichever wrote last. It always describes a
 *real, currently-running* book — just not necessarily the only one.
 `source_m4b` names which.
+
+## 8. Using it from another repo (added 2026-09-27)
+
+Every project's session publishes its OWN card on
+[/status/agents](https://heygabi.ai/status/agents/) — agents in flight, what is
+stuck, what needs the owner, what landed. The section's shape is
+[contract §11](../info/agent-board-contract.md); this is how to push it.
+
+**Call the wrapper by its ABSOLUTE path in the catalog-platform MAIN checkout**
+— it resolves the draft, the pusher and the token custody file from its own
+repo, never from your cwd, so it works from any repo on this machine:
+
+```powershell
+# write the section body (NOT wrapped in project_<slug> — the wrapper adds that)
+node C:\Users\nbasl\OneDrive\Documents\vs-code-repos\catalog-platform\scripts\push-project-board.mjs black-bloc .local\board-section.json --check
+node C:\Users\nbasl\OneDrive\Documents\vs-code-repos\catalog-platform\scripts\push-project-board.mjs black-bloc .local\board-section.json --by "black-bloc@home-pc"
+```
+
+| | |
+|---|---|
+| **Slug** | `[a-z0-9-]{1,40}` → section `project_<slug>`. Anything else is refused in words |
+| **File** | a JSON **object** (the section body). An array, a bare value or bad JSON is refused. A BOM is stripped |
+| **`--check`** | dry run: prints the section name, its bytes, the whole-draft payload bytes against the 256 KB cap, and whether a token is available — **never the token**. Writes nothing, sends nothing |
+| **Token** | `$ESTATE_CONDUCTOR_TOKEN`, else the custody file `docs/access/keys/estate-conductor-token.txt` of the checkout the script lives in. Missing both → refused before anything is written |
+| **`--by`** | defaults to `<slug>@<hostname>` |
+| **What it does** | sets `project_<slug>` in `.local/agent-board.json` and execs `push-agent-board.mjs --sections project_<slug>`. The Worker changes a project section only on a push that declares it, so this never touches another project's card |
+
+⚠️ **Never paste the token** into a prompt, a file in your repo, an env line in a
+script, or a command line (there is no `--token` flag, on purpose). A worktree of
+catalog-platform does NOT have the custody file — call the MAIN checkout's copy.
+
+⚠️ **Keep the section file out of git** in the calling repo (`.local/` or a
+gitignored scratch path) — it names in-flight work.
+
+**The moments to push** — the moments a session already updates its project's
+TODO, so no extra agent and no timer:
+
+| Moment | What changes in the section |
+|---|---|
+| **dispatch** | an `agents[]` row, `state: "running"`, `model`, `started_at` |
+| **landing** | that row → `landed` (or `failed`), `tokens`; a `deliverables[]` row |
+| **merge** | a `deliverables[]` row (commit / branch link) |
+| **deploy** | a `deliverables[]` row with the live URL; `phase` |
+| **question raised** | a `questions[]` row — `kind` honestly set; `default` only for `reversible`. It still goes to the owner by push notification too |
+| **question answered** | remove that row |
+| **stuck / unstuck** | a `stuck[]` row with `since` and `why` / remove it |
+| **end of day** | the whole section refreshed; `usage_stamp`; landed agents cleared |
+
+**Retiring a project's card:** push a board file that does NOT contain
+`project_<slug>` with `node scripts/push-agent-board.mjs <file> --sections
+project_<slug>` — a declared-but-absent project section is removed (contract
+§11). Also delete the key from `.local/agent-board.json`, or the next whole-draft
+push can bring it back.
+
+⚠️ **This section needs `auth-worker` deployed with `carryProjectSections()`**
+(branch `agent-board-projects`, 2026-09-27). Against an older Worker a project
+push still works — the wrapper pushes the whole draft, which carries every
+project this machine has pushed — but the protection against a stale draft is
+the Worker's, not the wrapper's.

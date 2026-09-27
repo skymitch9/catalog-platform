@@ -94,6 +94,13 @@ class StubNode {
     return this.querySelectorAll(sel)[0] || null;
   }
 
+  /** Added 2026-09-27 for status/lib/project-cards.js, which repaints its
+   *  mount on every poll. Same semantics as the DOM: drop all, append these. */
+  replaceChildren(...nodes) {
+    for (const c of [...this.children]) this.removeChild(c);
+    this.append(...nodes);
+  }
+
   removeChild(child) {
     const i = this.children.indexOf(child);
     if (i !== -1) this.children.splice(i, 1);

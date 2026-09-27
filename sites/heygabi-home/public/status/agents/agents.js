@@ -36,6 +36,7 @@ import {
   renderFreshness,
   str,
 } from '../lib/board.js';
+import { agentRow, renderProjects, sayProjectsUnavailable } from '../lib/project-cards.js';
 import { idToken } from '../../assets/estate-auth.js';
 
 /**
@@ -56,6 +57,7 @@ const agentListEl = document.getElementById('agent-rows');
 const eventListEl = document.getElementById('event-rows');
 const usageEl = document.getElementById('usage-block');
 const prefsEl = document.getElementById('notify-prefs');
+const projectsEl = document.getElementById('project-groups');
 
 /** The last SUCCESSFUL read, kept whole. Two jobs: a failed poll can say how
  *  old the picture on screen is instead of pretending there is none, and the
@@ -68,13 +70,11 @@ let lastGood = null;
 // ---------------------------------------------------------------------------
 
 /**
- * The four states the dot understands. Anything else renders grey with its own
- * word shown verbatim — an unknown state is information ("the conductor is
- * saying something new"), not an error, and flattening it to "unknown" would
- * throw that away.
+ * The conductor's own agents. Each row is drawn by project-cards.js's
+ * agentRow() — the same row every project card uses, so a state dot or a model
+ * badge cannot mean one thing here and another in a project's Progress panel.
+ * An unknown state renders grey with its own word shown verbatim.
  */
-const KNOWN_AGENT_STATES = new Set(['running', 'queued', 'landed', 'failed']);
-
 function renderAgents(list, nowMs) {
   if (!agentListEl) return;
   if (!list.length) {
@@ -85,42 +85,10 @@ function renderAgents(list, nowMs) {
     return;
   }
   agentListEl.replaceChildren();
-  for (const raw of list) {
-    const a = raw && typeof raw === 'object' ? raw : {};
-    const state = str(a.state) || 'unknown';
-
-    const li = el('li', 'agent-row');
-    li.dataset.state = KNOWN_AGENT_STATES.has(state) ? state : 'unknown';
-    li.append(el('span', 'dot'));
-    li.lastChild.setAttribute('aria-hidden', 'true');
-
-    const body = el('div', 'agent-body');
-    const head = el('div', 'agent-head');
-    head.append(el('span', 'agent-name', str(a.name) || str(a.id) || 'unnamed agent'));
-    head.append(el('span', 'badge', state));
-    if (str(a.model)) head.append(el('span', 'badge', str(a.model)));
-    body.append(head);
-
-    if (str(a.task)) body.append(el('p', 'agent-task', str(a.task)));
-
-    // ⚠️ "started 40m ago" and nothing else: this page never converts an age
-    // into a verdict ("probably stuck"). The conductor knows what a long run
-    // means for a given task; a browser does not.
-    const started = ageOf(a.started_at, nowMs);
-    const bits = [];
-    if (started) bits.push(`started ${started}`);
-    if (str(a.id)) bits.push(`id ${str(a.id)}`);
-    if (Number.isFinite(Number(a.tokens))) bits.push(`${Number(a.tokens).toLocaleString()} tokens`);
-    if (bits.length) body.append(el('p', 'agent-meta', bits.join(' · ')));
-    else if (!str(a.started_at)) {
-      // A missing start time is worth SAYING, because "how long has this been
-      // going" is the single question a running-agent row exists to answer.
-      body.append(el('p', 'agent-meta', 'no start time in the push'));
-    }
-
-    li.append(body);
-    agentListEl.append(li);
-  }
+  // ⚠️ "started 40m ago" and nothing else: this page never converts an age
+  // into a verdict ("probably stuck"). The conductor knows what a long run
+  // means for a given task; a browser does not.
+  for (const raw of list) agentListEl.append(agentRow(raw, nowMs));
 }
 
 // ---------------------------------------------------------------------------
@@ -513,12 +481,16 @@ async function refreshBoard() {
       if (result.status === 'never') {
         sayEmpty(agentListEl, 'Nothing has been pushed to the agent board yet, so there is nothing to show — not "no agents".');
         sayEmpty(eventListEl, 'No events yet — the conductor has not pushed a board.');
+        sayProjectsUnavailable(projectsEl, 'never');
         loadUsage(now);
       }
       return;
     }
 
     lastGood = result;
+    // Per-project cards (contract §11) — each measured against the Worker's
+    // stamp for its OWN section, never against the strip above.
+    renderProjects(projectsEl, result.board, result.sectionPushedAt, now);
     renderAgents(arraySection(result.board, 'agents'), now);
     renderEvents(arraySection(result.board, 'events'), now);
     loadUsage(now);
