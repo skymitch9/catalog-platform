@@ -22,7 +22,7 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ 🔨 OWNER ASK 2026-09-26 21:3x Phoenix — the ESTATE-WIDE live agent board on /status/agents (build Sun 2026-09-27 after the 16:00 weekly reset)
+## ☐ 🔨 OWNER ASK 2026-09-26 21:3x Phoenix — the ESTATE-WIDE live agent board on /status/agents (build Sun 2026-09-27 **14:00 Phoenix** — owner 21:4x: *"Start building this at 2pm, 2 hour before reset"*; a one-shot timer is set in the Black Bloc session, which dies if that session closes — if nothing started by 14:15, start it by hand)
 
 Owner, verbatim (from the Black Bloc session, after reviewing a Twitter "dashboard-builder subagent" prompt): *"Do it your way, we technically have a page in heygabi under agents. Can we use that page to do this work? Id want it to port in all agents from all our projects so this would need to be a global rule. Can we make this work with the suggestions you made? As for styling you know my themes, just keep our default theme selector. Might be nice to see live progress in the site"*.
 
