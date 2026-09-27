@@ -655,6 +655,59 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 .agent-task { margin: .3rem 0 0; font-size: var(--et-text-small); text-wrap: pretty; }
 .agent-meta { margin: .25rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); font-family: var(--et-font-mono); }
 
+/* --- Agents: one card group per project (contract §11) ------------------- */
+.proj-groups { display: grid; gap: .9rem; margin-bottom: 1.2rem; }
+.proj-summary { margin: 0; color: var(--et-muted); font-size: var(--et-text-small); }
+.proj {
+  padding: .85rem .95rem;
+  border: var(--et-border-w) solid var(--et-panel-border, var(--et-hairline));
+  border-radius: var(--et-radius-lg);
+  background: var(--et-surface);
+  min-width: 0;
+}
+.proj-head { margin-bottom: .6rem; }
+.proj-title-row { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.proj-name { margin: 0; font-size: var(--et-text-body); font-weight: 700; overflow-wrap: anywhere; }
+.proj-sub, .proj-usage { margin: .2rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); overflow-wrap: anywhere; }
+.proj-usage { font-family: var(--et-font-mono); }
+.proj-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .6rem; }
+.proj-panel {
+  min-width: 0;
+  padding: .6rem .7rem;
+  border: 1px solid var(--et-hairline);
+  border-left-width: 3px;
+  border-radius: var(--et-radius);
+}
+.proj-panel[data-tone="warn"]   { border-left-color: var(--et-warn); }
+.proj-panel[data-tone="accent"] { border-left-color: var(--et-accent); }
+.proj-panel-h {
+  display: flex; align-items: center; gap: .4rem;
+  margin: 0 0 .45rem;
+  color: var(--et-muted); font-size: var(--et-text-micro); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+}
+.proj-count {
+  padding: 0 .45em;
+  border-radius: var(--et-radius-pill);
+  background: color-mix(in srgb, var(--et-muted) 20%, transparent);
+  color: var(--et-fg);
+  letter-spacing: 0;
+}
+.proj-panel[data-tone="accent"] .proj-count { background: var(--et-accent); color: var(--et-accent-fg, var(--et-bg)); }
+.proj-panel .agent-list { gap: .4rem; }
+.proj-panel .agent-row { padding: .5rem .6rem; }
+.proj-panel .empty-say { margin: 0; padding: .4rem .5rem; }
+.proj-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.proj-item { min-width: 0; }
+.proj-what { display: block; margin: 0; font-size: var(--et-text-small); text-wrap: pretty; overflow-wrap: anywhere; }
+.proj-default { margin: .15rem 0 0; font-size: var(--et-text-small); font-weight: 600; }
+.proj-question[data-default="no"] .proj-default { color: var(--et-accent); }
+.proj-meta { margin: .1rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); font-family: var(--et-font-mono); overflow-wrap: anywhere; }
+.proj-link { color: var(--et-accent); }
+.agent-head .proj-link { font-size: var(--et-text-micro); }
+.proj-more { margin-top: .4rem; font-size: var(--et-text-small); }
+.proj-more summary { cursor: pointer; color: var(--et-muted); }
+.proj-more .proj-list { margin-top: .4rem; }
+
 /* --- Agents: the event feed ---------------------------------------------- */
 .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
 .feed-row {

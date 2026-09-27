@@ -367,7 +367,8 @@
         "id=\"agent-rows\"",
         "id=\"event-rows\"",
         "id=\"usage-block\"",
-        "id=\"ops-signin\""
+        "id=\"ops-signin\"",
+        "id=\"project-groups\""
       ]
     },
     {
@@ -383,6 +384,7 @@
         "fetchBoard",
         "renderFreshness",
         "PAGE_SECTIONS",
+        "renderProjects",
         "/api/estate/ops/notify-prefs",
         "session_pct",
         "weekly_pct",
@@ -990,6 +992,20 @@
     "by every page on purpose, so a class name there is not a second surface."
   ],
   "surfaces": [
+    {
+      "what": "Per-project agent cards (Progress / Stuck / Needs you / Latest)",
+      "why": "docs/info/agent-board-contract.md §11 — /status/agents is the ONE page that draws project cards, via status/lib/project-cards.js; a second copy elsewhere is a second answer to 'what is each project doing'",
+      "markers": [
+        "project-groups",
+        "renderProjects",
+        "questionDefault"
+      ],
+      "ownedBy": [
+        "status/agents/index.html",
+        "status/agents/agents.js",
+        "status/lib/project-cards.js"
+      ]
+    },
     {
       "what": "Claude usage / budget meters",
       "why": "docs/info/status-pages.md — /status/agents owns the usage figures",

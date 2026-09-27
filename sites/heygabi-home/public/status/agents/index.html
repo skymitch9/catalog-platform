@@ -85,7 +85,7 @@
        (the three headings below list themselves) and "says how old that is" —
        the freshness strip inside the gate says it, in an age. -->
   <p class="sub">
-    Pushed from the conductor session — this shows the last published board.
+    Pushed from the conductor and each project's session — this shows the last published board.
   </p>
 
   <div class="ops-bar">
@@ -110,6 +110,15 @@
          grey-paragraph audit item 202, CUT on both this page and
          /status/processing. The freshness strip directly above already shows a
          live age, which is the fact; the interval was the mechanism. -->
+
+    <!-- EVERY PROJECT'S CARD (owner ask 2026-09-26: "port in all agents from
+         all our projects"). Each repo's session pushes its own project_<slug>
+         section with scripts/push-project-board.mjs; project-cards.js draws one
+         group per section — Progress, Stuck, Needs you, Latest — each with its
+         own "updated" age from the Worker's stamp for THAT section. The strip
+         above does not measure these. Contract §11. -->
+    <h3 class="step-list-h">Projects</h3>
+    <div id="project-groups" class="proj-groups"></div>
 
     <h3 class="step-list-h">Running now</h3>
     <ul id="agent-rows" class="agent-list"></ul>
