@@ -1,0 +1,50 @@
+-- 0023: the two owner-ordered LABEL renames, so a rebuild keeps them.
+--
+-- The ask: owner, 2026-09-27 (Phoenix evening): "update Samantha's Library to
+-- just Samantha." Design: docs/info/catalog-registry.md §2. The label is what
+-- a person is SHOWN — the card link on heygabi.ai, the "WHOSE · format" line
+-- on a search hit, the series/universes holder subtitle, the shelf name GABI
+-- says in Discord, /status's row names — and every one of those reads this
+-- row through GET index.heygabi.ai/api/catalogs. Nothing else has to change
+-- for the word to change everywhere: one fact, one home.
+--
+-- =====================================================================
+-- 🔴 WHY A MIGRATION AND NOT ANOTHER HAND `UPDATE` — THE 2026-09-18 GAP
+-- =====================================================================
+--
+-- The main library was renamed to `!Sky` on 2026-09-18 by the owner's order
+-- ("for my library the name changed away from !Sky change it back to that")
+-- with ONE `UPDATE` on the live D1 and NO code change. docs/DONE.md recorded
+-- the cost of doing it that way in so many words: "the seed in
+-- estate-catalog.ts and migration 0020 still say Skylar's library, so a rebuild
+-- from git restores the old label and this rename must be re-applied." A
+-- disaster-day restore that follows RECOVERY.md would have silently reverted
+-- an owner's decision nine days old, and nothing in the tree would have said so.
+--
+-- So this file carries BOTH renames. The `!Sky` line is not a new decision: it
+-- writes down the one already made and applied live, so that the ledger
+-- (`d1_migrations`) rather than a DONE.md paragraph is what remembers it. On
+-- the LIVE database the first UPDATE matches nothing (the row already says
+-- `!Sky`) and that is the intended, idempotent result; on a FRESH database
+-- built from 0020 it is what makes the rebuild agree with production.
+--
+-- ⚠️ `SEED_CATALOGS` in src/estate-catalog.ts mirrors the FINAL labels, and
+-- test/estate-catalog.test.ts now scans THIS file for labels before falling
+-- back to 0020 — the same shape 0022 uses for api_host/service. A fresh D1
+-- gets its values from the three files in order, and no single file carries a
+-- whole row any more.
+--
+-- ⚠️ `owner_name` is NOT touched by either line. "Samantha" as the LABEL and
+-- "Samantha" as the OWNER are two columns that happen to hold the same word
+-- today; the designation line ("Samantha's · physical copies") is built from
+-- `owner_name`, the link text from `label`, and the survey's whole point was
+-- that those are different facts.
+--
+-- ⚠️ The apex tests and predeploy.checks.json still refuse the literal `>!Sky<`
+-- in the SHIPPED HTML. That is correct and unchanged: the page must render the
+-- registry's label, never a typed one, and this file is the registry's side.
+--
+-- Idempotent: keyed on id, and re-running it re-asserts the same two words.
+
+UPDATE estate_catalog SET label = 'Samantha' WHERE id = 'library2';
+UPDATE estate_catalog SET label = '!Sky'     WHERE id = 'library';

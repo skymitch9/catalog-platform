@@ -233,8 +233,9 @@ const CATALOG_LABELS = {
   // ⚠️ "Sam's library" until 2026-09-05 — one of SEVEN disagreeing spellings of
   // this one shelf across the estate (survey F2), and not what she or the
   // registry calls it. Corrected here as well as replaced below, so the
-  // outage fallback and the live answer say the same thing.
-  library2: "Samantha's library",
+  // outage fallback and the live answer say the same thing. "Samantha" since
+  // 2026-09-27 by owner order (migration 0023) — same reason, same rule.
+  library2: 'Samantha',
   ebooks: 'Ebooks',
 };
 

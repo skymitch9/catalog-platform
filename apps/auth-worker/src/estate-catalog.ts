@@ -172,12 +172,22 @@ export function toWire(row: EstateCatalogRow): CatalogWire {
  * written by 0020 and the two fields filled in by 0022's UPDATEs. The test
  * scans BOTH files, because a fresh D1 gets its values from the two of them in
  * order and there is no single file that carries a whole row any more.
+ *
+ * ⚠️ And `label` for `library` and `library2` MIRRORS **0023**, NOT 0020 — the
+ * two owner-ordered renames (`!Sky`, 2026-09-18; `Samantha`, 2026-09-27) are
+ * UPDATEs in 0023 so a rebuild keeps them. The test scans 0023 for a label
+ * first and 0020 only for a row 0023 does not rename. Three files, in order.
  */
 export const SEED_CATALOGS: readonly Omit<EstateCatalogRow, 'created_at' | 'request_id'>[] = [
   { id: 'audiobook', push_source: 'audiobook', kind: 'audio', label: 'Shared audiobooks', owner_name: null, holding: 'digital', shared: 1, host: 'audiobooks.heygabi.ai', api_host: 'audiobook-api.heygabi.ai', service: 'audiobook-worker', sort_order: 10 },
-  { id: 'library', push_source: 'library', kind: 'books', label: "Skylar's library", owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'library.heygabi.ai', api_host: 'library.heygabi.ai', service: 'library-catalog', sort_order: 20 },
+  // ⚠️ `!Sky` is the owner's CHOSEN name for his shelf (order 2026-09-18), not
+  // a stray shell character — survey F5 called it a defect and was wrong. The
+  // apex refuses the literal in shipped HTML precisely so the page renders
+  // THIS row rather than a typed copy of it.
+  { id: 'library', push_source: 'library', kind: 'books', label: '!Sky', owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'library.heygabi.ai', api_host: 'library.heygabi.ai', service: 'library-catalog', sort_order: 20 },
   { id: 'games', push_source: 'game', kind: 'games', label: "Skylar's board games", owner_name: 'Skylar', holding: 'physical', shared: 0, host: 'boardgames.heygabi.ai', api_host: 'boardgames.heygabi.ai', service: 'board-game-catalog', sort_order: 30 },
-  { id: 'library2', push_source: 'library2', kind: 'books', label: "Samantha's library", owner_name: 'Samantha', holding: 'physical', shared: 0, host: 'padhard.heygabi.ai', api_host: 'padhard.heygabi.ai', service: 'library-catalog-friend', sort_order: 40 },
+  // Owner order 2026-09-27: "update Samantha's Library to just Samantha."
+  { id: 'library2', push_source: 'library2', kind: 'books', label: 'Samantha', owner_name: 'Samantha', holding: 'physical', shared: 0, host: 'padhard.heygabi.ai', api_host: 'padhard.heygabi.ai', service: 'library-catalog-friend', sort_order: 40 },
   // ⚠️ NULL/NULL, and it is the answer rather than a gap. `ebooks.heygabi.ai`
   // IS fronted by a Worker (`apps/ebooks-door`) but that Worker publishes no
   // /api/health and no version; its shelf is served by the audiobook Worker

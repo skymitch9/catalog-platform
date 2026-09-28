@@ -117,7 +117,7 @@ function installDom() {
     holds: 'Skylar’s and Samantha’s · physical copies',
     links: [
       ['https://library.heygabi.ai', 'library', 'Skylar’s library'],
-      ['https://padhard.heygabi.ai', 'library2', 'Samantha’s library'],
+      ['https://padhard.heygabi.ai', 'library2', 'Samantha'],
     ],
   });
   add('games', { holds: 'Skylar’s · physical copies', host: 'boardgames.heygabi.ai' });

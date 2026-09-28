@@ -52,6 +52,14 @@
 > `catalog-index` `001f87cd`, `heygabi-home` `5066cf84`. ⚠️ **Only §2b's five
 > rows, §10's api-column bullet and §10a's `status.js` row were re-measured on
 > that pass.** Nothing else on this page was re-checked that hour.
+>
+> ✅ **UPDATED 2026-09-27 (Fable, main loop): `library2`'s label is `Samantha`
+> by owner order, and the renames now live in a MIGRATION.** §2's `library2`
+> row and §3's new `0023_estate_catalog_labels.sql` row. The 2026-09-18 `!Sky`
+> rename had no file behind it and §2 said outright that a rebuild would revert
+> it; 0023 carries both renames so it no longer would. ⚠️ **Only §2's two
+> renamed rows, §3's table and the live `/api/catalogs` answer were touched or
+> re-read on that pass.** Nothing else on this page was re-checked that evening.
 
 > ⚠️ **Still NOT verified:** anything a SIGNED-IN person sees.
 > `predeploy.checks.json`'s live pass fetches unauthenticated, so the
@@ -97,9 +105,9 @@ build.
 | id | push source | kind | label | owner | holding | shared | host |
 |---|---|---|---|---|---|---|---|
 | `audiobook` | `audiobook` | audio | Shared audiobooks | — | digital | ✅ | audiobooks.heygabi.ai |
-| `library` | `library` | books | ~~Skylar's library~~ **`!Sky`** — ⚠️ **owner order 2026-09-18** (*"for my library the name changed away from !Sky change it back to that"*): the string survey finding F5 called a defect is the owner's CHOSEN name for his shelf. Changed by one `UPDATE estate_catalog SET label` on the live `estate_auth` D1 that day; the seed in `estate-catalog.ts` / migration 0020 still says *Skylar's library* and is what a rebuild would restore, so a rebuild must re-apply the rename. The apex tests and `predeploy.checks.json` still refuse the literal `!Sky` in the shipped HTML — correct, because the page must render the REGISTRY's label, not a typed one | Skylar | physical | — | library.heygabi.ai |
+| `library` | `library` | books | ~~Skylar's library~~ **`!Sky`** — ⚠️ **owner order 2026-09-18** (*"for my library the name changed away from !Sky change it back to that"*): the string survey finding F5 called a defect is the owner's CHOSEN name for his shelf. Changed by one `UPDATE estate_catalog SET label` on the live `estate_auth` D1 that day with no file behind it, so until 2026-09-27 a rebuild from git would have restored *Skylar's library*. ✅ **Closed 2026-09-27: migration `0023_estate_catalog_labels.sql` carries the rename** and `SEED_CATALOGS` mirrors it, so the ledger remembers it rather than a DONE.md paragraph. The apex tests and `predeploy.checks.json` still refuse the literal `!Sky` in the shipped HTML — correct, because the page must render the REGISTRY's label, not a typed one | Skylar | physical | — | library.heygabi.ai |
 | `games` | `game` | games | Skylar's board games | Skylar | physical | — | boardgames.heygabi.ai |
-| `library2` | `library2` | books | Samantha's library | Samantha | physical | — | padhard.heygabi.ai |
+| `library2` | `library2` | books | ~~Samantha's library~~ **Samantha** — ⚠️ **owner order 2026-09-27** (*"update Samantha's Library to just Samantha"*). Renamed by migration **0023** (applied to the live `estate_auth` D1 the same evening), mirrored in `SEED_CATALOGS`, and the three apex outage fallbacks (`index.html` card link, `admin.js` `CATALOG_LABELS`, `admin/index.html` chip + filter label) retyped to the same word so an unreachable index says what the registry says. `owner_name` untouched: the designation line still reads *Samantha's · physical copies* from the OWNER column, the link text *Samantha* from the LABEL column | Samantha | physical | — | padhard.heygabi.ai |
 | `ebooks` | *(none)* | books | Shared ebooks | — | digital | ✅ | ebooks.heygabi.ai |
 | `library3…` | the id | books | from the request | the requester | physical | — | from the request |
 
@@ -182,6 +190,7 @@ estate-auth (auth.heygabi.ai)                catalog-index (index.heygabi.ai)
 |---|---|
 | Schema + the back-seed of the five | `apps/auth-worker/migrations/0020_estate_catalog.sql` |
 | `api_host` + `service`, and the five values (§2b) | `apps/auth-worker/migrations/0022_estate_catalog_api.sql` — ⚠️ **NOT idempotent, unlike 0020**: SQLite has no `ADD COLUMN IF NOT EXISTS`, and wrangler's `d1_migrations` ledger is what prevents a re-run. The UPDATE half alone is safe to re-run by hand |
+| The two owner-ordered label renames — `library` → `!Sky` (2026-09-18), `library2` → `Samantha` (2026-09-27) | `apps/auth-worker/migrations/0023_estate_catalog_labels.sql` — two `UPDATE … SET label` lines keyed on id, idempotent, `owner_name` untouched. Exists so a rebuild from 0020 agrees with production; `test/estate-catalog.test.ts` reads a label out of 0023 first and 0020 only for a row 0023 does not rename |
 | Module, the wire shape, the write | `apps/auth-worker/src/estate-catalog.ts` |
 | The provisioner's write site | `apps/auth-worker/src/catalog-requests.ts` (`/live`) |
 | Mount | `apps/auth-worker/src/index.ts` |

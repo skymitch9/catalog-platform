@@ -186,6 +186,29 @@ const MIGRATION_0022 = readFileSync(
   fileURLToPath(new URL('../migrations/0022_estate_catalog_api.sql', import.meta.url)),
   'utf8',
 );
+/**
+ * ⚠️ A THIRD FILE SINCE 2026-09-27: 0023 carries the two owner-ordered LABEL
+ * renames (`!Sky` 2026-09-18, `Samantha` 2026-09-27) as UPDATEs, so a rebuild
+ * keeps them. A label is therefore "what 0023 says, else what 0020 seeded",
+ * and `SEED_CATALOGS` mirrors the FINAL word. The 2026-09-18 rename was a hand
+ * UPDATE on the live D1 with no file behind it, and DONE.md had to carry the
+ * warning that a rebuild would revert it — this file is what retires that.
+ */
+const MIGRATION_0023 = readFileSync(
+  fileURLToPath(new URL('../migrations/0023_estate_catalog_labels.sql', import.meta.url)),
+  'utf8',
+);
+
+/** The labels 0023 renames, read out of its UPDATE lines: id → label. */
+function labelsRenamedBy0023(): Map<string, string> {
+  const at = MIGRATION_0023.indexOf('UPDATE estate_catalog');
+  assert.ok(at > 0, '0023 must carry the label UPDATEs');
+  const out = new Map<string, string>();
+  for (const m of MIGRATION_0023.slice(at).matchAll(/SET label = '((?:[^']|'')*)'\s+WHERE id = '([^']+)'/g)) {
+    out.set(m[2]!, m[1]!.replace(/''/g, "'"));
+  }
+  return out;
+}
 
 test('🔴 every SEED_CATALOGS row is in 0020, spelled the same, with the same owner and host', () => {
   // ⚠️ Read out of the SQL, not out of a second constant — the point is that the
@@ -195,18 +218,41 @@ test('🔴 every SEED_CATALOGS row is in 0020, spelled the same, with the same o
   const insertAt = MIGRATION.indexOf('INSERT OR IGNORE INTO estate_catalog');
   assert.ok(insertAt > 0, '0020 must carry the back-seed');
   const values = MIGRATION.slice(insertAt);
+  const renamed = labelsRenamedBy0023();
 
   for (const c of SEED_CATALOGS) {
     assert.ok(values.includes(`'${c.id}'`), `0020 must seed the catalog id ${c.id}`);
-    // SQLite escapes a literal apostrophe by doubling it.
-    assert.ok(
-      values.includes(`'${c.label.replace(/'/g, "''")}'`),
-      `0020 must carry the label for ${c.id}: ${c.label}`,
-    );
+    // A row 0023 renames is checked against 0023 below; 0020 holds its ORIGINAL
+    // label and must keep it — rewriting history in a migration that already ran
+    // is the one edit a migration never gets.
+    if (!renamed.has(c.id)) {
+      // SQLite escapes a literal apostrophe by doubling it.
+      assert.ok(
+        values.includes(`'${c.label.replace(/'/g, "''")}'`),
+        `0020 must carry the label for ${c.id}: ${c.label}`,
+      );
+    }
     assert.ok(values.includes(`'${c.host}'`), `0020 must carry the host for ${c.id}`);
     if (c.owner_name) assert.ok(values.includes(`'${c.owner_name}'`), `0020 must designate ${c.id}'s owner`);
   }
   assert.equal(SEED_CATALOGS.length, 5, 'five catalogs exist today (survey §4)');
+});
+
+test('🔴 every label 0023 renames is what SEED_CATALOGS says, and 0023 renames only rows 0020 seeded', () => {
+  const renamed = labelsRenamedBy0023();
+  assert.equal(renamed.size, 2, '0023 carries exactly the two owner-ordered renames');
+  const by = new Map(SEED_CATALOGS.map((c) => [c.id, c]));
+  for (const [id, label] of renamed) {
+    const c = by.get(id);
+    assert.ok(c, `0023 renames ${id}, which SEED_CATALOGS does not know`);
+    assert.equal(c.label, label, `SEED_CATALOGS must mirror 0023's label for ${id}`);
+    assert.ok(MIGRATION.includes(`'${id}'`), `0023 must only rename a row 0020 seeded: ${id}`);
+  }
+  // The two decisions, by name, so a third rename is a deliberate edit here too.
+  assert.equal(renamed.get('library'), '!Sky', 'owner order 2026-09-18');
+  assert.equal(renamed.get('library2'), 'Samantha', 'owner order 2026-09-27');
+  // ⚠️ owner_name is a different fact from label and 0023 must not touch it.
+  assert.ok(!/owner_name/.test(MIGRATION_0023.slice(MIGRATION_0023.indexOf('UPDATE estate_catalog'))));
 });
 
 test('🔴 every SEED_CATALOGS api_host and service is in 0022, spelled the same', () => {
