@@ -651,6 +651,13 @@ code { font-family: var(--et-font-mono); font-size: .9em; }
 .agent-row[data-state="landed"]  .dot { background: var(--et-muted); }
 .agent-body { flex: 1 1 auto; min-width: 0; }
 .agent-head { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.agent-head .badge,
+.proj-head .badge {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border-radius: .7em;
+}
 .agent-name { font-weight: 700; }
 .agent-task { margin: .3rem 0 0; font-size: var(--et-text-small); text-wrap: pretty; }
 .agent-meta { margin: .25rem 0 0; color: var(--et-muted); font-size: var(--et-text-micro); font-family: var(--et-font-mono); }
