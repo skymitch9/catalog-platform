@@ -9,6 +9,66 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-09-27 20:32 Phoenix — `library2`'s registry label is `Samantha`, by owner order — and the two label renames now live in a migration
+
+> **Owner, 2026-09-27 (evening):** *"read all docs, then update Samantha's
+> Library to just Samantha."*
+>
+> **Where the word lives:** one row, `estate_catalog` in the live `estate_auth`
+> D1, published by `GET index.heygabi.ai/api/catalogs` to every surface (the
+> apex card link, the *WHOSE · format* line on a search hit, the series /
+> universes holder subtitle, GABI's shelf names, `/status`'s row names). So the
+> change is one `UPDATE` — the same shape as the 2026-09-18 `!Sky` rename below.
+>
+> **What changed (commit `fe3e68b`):**
+> - **Migration `apps/auth-worker/migrations/0023_estate_catalog_labels.sql`**
+>   — two idempotent `UPDATE … SET label` lines keyed on id: `library2` →
+>   `Samantha` (this order) and `library` → `!Sky` (the 2026-09-18 order, which
+>   was a hand `UPDATE` with no file behind it; the entry below had to warn that
+>   a rebuild from 0020 would silently revert it — 0023 retires that warning).
+>   `owner_name` untouched: the designation line still reads *Samantha's ·
+>   physical copies* from the OWNER column, the link *Samantha* from LABEL.
+>   Drilled on the local D1 first (came up from 0020's seed, produced both
+>   words), then **applied `--remote` at 03:15:20Z, 3 commands**, read back
+>   `{library2, Samantha, Samantha}` and `{library, !Sky, Skylar}`.
+> - `SEED_CATALOGS` in `src/estate-catalog.ts` mirrors the final words;
+>   `test/estate-catalog.test.ts` reads a label out of 0023 first and 0020 only
+>   for a row 0023 does not rename (the 0022 shape), plus a new test that pins
+>   the two renames by name and that 0023 never touches `owner_name`.
+> - The three apex **outage fallbacks** — `index.html`'s card link, `admin.js`
+>   `CATALOG_LABELS`, `admin/index.html`'s chip and filter label — retyped to
+>   `Samantha`, per `admin.js`'s own rule that the fallback and the live answer
+>   say the same thing. Deployed `096f4c8b` via `npm run deploy:home` (full
+>   workspace suite + `check:home` 37 markers + `verify:home` live 37 pages, all
+>   green); line in `deploys.log`. The auth Worker was **not** redeployed and
+>   did not need to be — nothing at runtime reads the seed.
+> - Docs: `info/catalog-registry.md` §2 (both renamed rows), §3 (the 0023 row),
+>   header.
+>
+> **Tests:** auth-worker 823/823, root scripts 573/573, `tsc` clean. Test
+> fixtures elsewhere that carry *Samantha's library* as synthetic registry data
+> (discord-worker, index-worker, `scripts/test/*`, `library_catalog`'s
+> `peer-push.test.ts`) were deliberately left: they test that a label flows
+> through, not what it is. **Sibling repos hold no live copy of the label** —
+> grepped all three; only fixtures and comments.
+>
+> **VERIFIED LIVE:** `heygabi.ai/` and `/admin/` serve `>Samantha<` at
+> `data-catalog-id="library2"` (curl, 03:16Z); the rendered Books card read
+> **`!Sky` · `Samantha`** with *Skylar's (425) and Samantha's (707) · physical
+> copies* in the browser, signed in as the owner (20:18 Phoenix) — the `!Sky`
+> link proves the text came from the registry, not the fallback. The index
+> memo: 3 reads at 03:17Z answered **both** spellings (two isolates, §8's
+> ten-minute window, exactly as documented); **15 of 15 reads at 03:32Z answered
+> `Samantha`, `stale: false`**. Review: <https://heygabi.ai/> (Books card).
+>
+> ⚠️ **NOT verified:** any signed-in surface other than the front door (series,
+> universes, `/status`, `/admin` rendered), GABI's Discord wording (proven on
+> the registry row, not in a message — no Discord turn taken), and the padhard
+> instance itself (nothing there carries the label). ⚠️ The apex tests and
+> `predeploy.checks.json` still refuse the literal `>!Sky<` in shipped HTML —
+> unchanged and correct; `index.html`'s `library` fallback still reads *Skylar's
+> library* for that reason.
+
 ## 2026-09-27 — the estate-wide live agent board: a card per project on /status/agents
 
 ✅ **LIVE 2026-09-27 14:1x–14:2x Phoenix.** Built by one local Opus agent (branch `agent-board-projects`, 233k; commits `4201a42` Worker merge, `856970b` wrapper, `9ec56e2` page, `ef98297` CSS, `642f129` docs), merged as **`f49e0ab`**; `npm test` exit 0 — **3,443 passed, 0 failed**; `npm run check:home` all passed. Deployed by the manual workflow: **`auth-worker`** (run `36351153213`, success — the Worker now carries undeclared `project_*` sections so one project's push never rewrites another's) then **`heygabi-home`** (run `36351308389`, success). Live proof: `/status/agents/` serves `id="project-groups"`, `status/lib/project-cards.js` 200 (13,657 bytes); the first real push `push-project-board.mjs black-bloc … --by conductor@black-bloc` stored at 2026-09-27T21:21:56.756Z (163,405-byte board); the page, signed in, renders **Projects — 1 project** with the **Black Bloc** card (Progress / Stuck / Needs you — the public question shows *Waiting on you — no default* — / Latest with v178, v177, v176). The GLOBAL RULE is written into `~/.claude/CLAUDE.md` (*The live agent board — every project pushes its own card*). NOT verified: two pushes within the same few ms can still lose one (read-then-write, no transaction — contract §11); no second project has pushed yet; a 390 px viewport not rendered (headless stopped at 492 px).
