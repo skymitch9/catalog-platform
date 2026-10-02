@@ -22,6 +22,26 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ FINDING 2026-10-02 16:5x Phoenix — the off-Cloudflare mirror has NEVER mirrored the four `docs/*` backups (STEP 10 warns every run, since 2026-08-21)
+
+> Seen while verifying unrelated ebook work in `audiobook_catalog`'s pipeline
+> log. **Not investigated, not fixed** — logged so it is not lost.
+
+- [ ] Every pipeline run's STEP 10 (`scripts/mirror-estate-backups.mjs`) prints
+      `[WARN] docs/<repo>: NO complete generation in the 10 run(s) scanned. Not
+      mirrored this cycle.` for all four of `docs/catalog-platform`,
+      `docs/audiobook_catalog`, `docs/library_catalog`, `docs/board_game_catalog`.
+      **Measured:** 583 such lines in `audiobook_catalog/output_files/pipeline_8h.log`,
+      the first in the run of **2026-08-21 16:00**; still present in the
+      2026-10-02 16:44 run. **Inferred, not checked:** discovery reads
+      `backup.yml` workflow runs (`listBackupRuns` → `discoverLatest`), but the
+      `docs/*` objects are written by the LOCAL `EstateDocsBackupR2` task
+      (`scripts/backup-docs.mjs`), so no workflow run ever logs them and they
+      can never count as "complete". If so, the estate's docs — three of the
+      four trees exist only on this machine + R2 — have no off-Cloudflare copy.
+      First step: `node scripts/mirror-estate-backups.mjs --dry-run` and read
+      how `docs/*` prefixes get into the expected list.
+
 ## ☐ ❓ OWNER — the deferred-items review the mandate asked for ("After all the builds present me all deferred things and we can decide to build or cancel") — presented 2026-09-07 09:50 Phoenix
 
 The full 140-item inventory across all four repos is
