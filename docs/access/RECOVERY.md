@@ -289,6 +289,21 @@ store in a new folder called GABI_backup on drive"*.
 bucket's own key grammar — `<kind>/<store>/<STAMP><suffix>` — so a mirrored
 file *is* the object, byte for byte, under the name you would have fetched.
 
+⚠️ **The four `docs/*` stores were NOT in the mirror until 2026-10-02.** The
+mirror finds keys by reading `backup.yml` run logs, and the docs backups are
+written by the local `EstateDocsBackupR2` task, so no log ever named them:
+every cycle from 2026-08-21 warned `NO complete generation` and skipped them.
+Since `catalog-platform` commit *docs-backup ledger* (2026-10-02),
+`scripts/backup-docs.mjs` appends each uploaded key + sha256 to
+`.local/docs-backup-ledger.jsonl` (gitignored) and the mirror reads that for
+`docs/*`, checking every fetched file's sha256 against it. **Measured the same
+day:** a hand-run backup (stamp `2026-10-03T00-43-20Z`) → mirror *"stores
+mirrored: 15/15"*, exit 0 → `mirror_to_drive.py` *"uploaded: 6 object(s),
+5912897 bytes … failed: 0"* (the four docs archives + the mirror manifest).
+⚠️ The ledger is ONE machine's record: rebuilding this PC loses it, and the
+mirror then names the docs stores as missing until the next nightly backup
+writes a fresh line — self-healing, but say so on the rebuild.
+
 ### Restoring from the mirror
 
 **Every recipe in this file works unchanged; you simply skip the fetch.**

@@ -9,6 +9,58 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-10-02 17:45 Phoenix — FIXED: the four `docs/*` backups now reach the off-Cloudflare mirror (local + OneDrive + Google Drive)
+
+> **Last verified: 2026-10-02 17:45 Phoenix.** Owner, on being told the gap:
+> *"do we need to fix that gap"* → recommendation (fix, not silence) →
+> *"okay fix it"*.
+>
+> **Cause, confirmed by reading the code** (it was an inference in the
+> finding): `mirror-estate-backups.mjs` takes its EXPECTED stores from
+> backup.yml's retention line — which names the four `docs/<repo>` prefixes —
+> but DISCOVERS keys only from backup.yml run logs, and the docs backups are
+> written by the local `EstateDocsBackupR2` task (`scripts/backup-docs.mjs`).
+>
+> **Fix:** `scripts/lib/docs-backup-ledger.mjs` (new) — `backup-docs.mjs`
+> appends `{key, bytes, sha256, written_at}` to `.local/docs-backup-ledger.jsonl`
+> after each successful put; the mirror satisfies `docs/*` from it (workflow
+> logs for everything else, unchanged) and REJECTS a fetched file whose sha256
+> differs from the ledger. Tests: `scripts/test/docs-backup-ledger.test.mjs`
+> (7); `npm run test:scripts` 580/580.
+>
+> **Exercised, not reasoned about:** hand-run `node scripts/backup-docs.mjs`
+> (wrote the four `…/2026-10-03T00-43-20Z.json.gz`, ledger 4 lines) → `node
+> scripts/mirror-estate-backups.mjs`: *"Docs ledger: 4 entries; satisfied 4/4"*,
+> four fetches, *"stores mirrored: 15/15"*, exit 0 → `audiobook_catalog`
+> `scripts/mirror_to_drive.py`: *"uploaded: 6 object(s), 5912897 bytes …
+> failed: 0"* — the four archives (5,912,475 B) + the 422-byte mirror
+> manifest. ⚠️ Not yet observed: a NIGHTLY task run writing the ledger
+> unattended, and the pipeline's own STEP 10 running clean. Runbook note:
+> `access/RECOVERY.md` "Where the copies are".
+>
+> The finding as it stood in `TODO.md`, moved whole:
+>
+> ## ☐ FINDING 2026-10-02 16:5x Phoenix — the off-Cloudflare mirror has NEVER mirrored the four `docs/*` backups (STEP 10 warns every run, since 2026-08-21)
+>
+> > Seen while verifying unrelated ebook work in `audiobook_catalog`'s pipeline
+> > log. **Not investigated, not fixed** — logged so it is not lost.
+>
+> - [ ] Every pipeline run's STEP 10 (`scripts/mirror-estate-backups.mjs`) prints
+>       `[WARN] docs/<repo>: NO complete generation in the 10 run(s) scanned. Not
+>       mirrored this cycle.` for all four of `docs/catalog-platform`,
+>       `docs/audiobook_catalog`, `docs/library_catalog`, `docs/board_game_catalog`.
+>       **Measured:** 583 such lines in `audiobook_catalog/output_files/pipeline_8h.log`,
+>       the first in the run of **2026-08-21 16:00**; still present in the
+>       2026-10-02 16:44 run. **Inferred, not checked:** discovery reads
+>       `backup.yml` workflow runs (`listBackupRuns` → `discoverLatest`), but the
+>       `docs/*` objects are written by the LOCAL `EstateDocsBackupR2` task
+>       (`scripts/backup-docs.mjs`), so no workflow run ever logs them and they
+>       can never count as "complete". If so, the estate's docs — three of the
+>       four trees exist only on this machine + R2 — have no off-Cloudflare copy.
+>       First step: `node scripts/mirror-estate-backups.mjs --dry-run` and read
+>       how `docs/*` prefixes get into the expected list.
+>
+
 ## ✅ 2026-09-27 20:32 Phoenix — `library2`'s registry label is `Samantha`, by owner order — and the two label renames now live in a migration
 
 > **Owner, 2026-09-27 (evening):** *"read all docs, then update Samantha's

@@ -109,10 +109,21 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { bundleRepo, refusalFor, treeLogLine } from './lib/backup-docs-trees.mjs';
+import { appendLedger } from './lib/docs-backup-ledger.mjs';
+
+/**
+ * Where each successful upload is recorded for the off-Cloudflare mirror —
+ * see lib/docs-backup-ledger.mjs for why (the mirror cannot otherwise learn
+ * these keys). Resolved from this file, not the cwd, so the scheduled task and
+ * a hand run write the same ledger.
+ */
+const LEDGER_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'docs-backup-ledger.jsonl');
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
@@ -270,6 +281,14 @@ for (const repo of REPOS) {
     shell: process.platform === 'win32',
   });
   console.log(`  wrote ${BUCKET}/${key}`);
+  // Recorded only AFTER the put succeeded (execFileSync throws otherwise), so
+  // the mirror is never told about an object that was not written.
+  appendLedger(LEDGER_PATH, {
+    key,
+    bytes: gz.length,
+    sha256: createHash('sha256').update(gz).digest('hex'),
+    written_at: new Date().toISOString(),
+  });
   results.push({ repo: repo.name, key, count: entries.length, claude: payload.claude_file_count, bytes: gz.length, uploaded: true });
 }
 

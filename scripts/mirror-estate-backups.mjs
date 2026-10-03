@@ -106,8 +106,17 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { groupByGeneration, readWorkflowPrefixes } from './lib/backup-keys.mjs';
+import { latestFromLedger, readLedger } from './lib/docs-backup-ledger.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * The `docs/*` stores are written by the LOCAL `backup-docs.mjs`, never by a
+ * workflow run, so no run log names them. That script records each upload
+ * here; the mirror reads it for those prefixes only (2026-10-02 — until then
+ * all four were `NO complete generation` on every cycle). lib/docs-backup-ledger.mjs.
+ */
+const DOCS_LEDGER_PATH = join(REPO_ROOT, '.local', 'docs-backup-ledger.jsonl');
 
 const BUCKET = 'estate-backups';
 const GH_REPO = process.env.ESTATE_BACKUP_REPO || 'skymitch9/catalog-platform';
@@ -302,12 +311,31 @@ async function main() {
 
   console.log('\n--- Discovering the newest complete generation per store ---');
   const runs = listBackupRuns(MAX_RUNS);
-  const { found, scanned } = discoverLatest(prefixes, runs);
+  const docsPrefixes = prefixes.filter((p) => p.startsWith('docs/'));
+  const workflowPrefixes = prefixes.filter((p) => !p.startsWith('docs/'));
+  const { found, scanned } = discoverLatest(workflowPrefixes, runs);
   console.log(`Scanned ${scanned} run(s) of ${runs.length} available.`);
+
+  // The docs stores, from the local ledger (see DOCS_LEDGER_PATH).
+  const { entries: ledgerEntries, bad: ledgerBad } = readLedger(DOCS_LEDGER_PATH);
+  const fromLedger = latestFromLedger(docsPrefixes, ledgerEntries);
+  const expectedSha = new Map();
+  for (const [prefix, gen] of fromLedger) {
+    found.set(prefix, gen);
+    for (const [key, sha] of Object.entries(gen.sha256)) expectedSha.set(key, sha);
+  }
+  console.log(
+    `Docs ledger: ${ledgerEntries.length} entr${ledgerEntries.length === 1 ? 'y' : 'ies'}` +
+      `${ledgerBad ? `, ${ledgerBad} unreadable line(s) skipped` : ''}; satisfied ${fromLedger.size}/${docsPrefixes.length} docs store(s).`,
+  );
 
   const missing = prefixes.filter((p) => !found.has(p));
   for (const p of missing) {
-    console.log(`  [WARN] ${p}: NO complete generation in the ${scanned} run(s) scanned. Not mirrored this cycle.`);
+    console.log(
+      p.startsWith('docs/')
+        ? `  [WARN] ${p}: no entry in the docs ledger (${DOCS_LEDGER_PATH}) — the next backup-docs.mjs run writes one. Not mirrored this cycle.`
+        : `  [WARN] ${p}: NO complete generation in the ${scanned} run(s) scanned. Not mirrored this cycle.`,
+    );
   }
 
   const manifest = loadManifest();
@@ -337,7 +365,15 @@ async function main() {
         process.stdout.write(`  fetch ${key} ...`);
         fetchObject(key, dest);
         const size = statSync(dest).size;
-        manifest.files[key] = { bytes: size, sha256: sha256(dest), mirrored_at: new Date().toISOString() };
+        const got = sha256(dest);
+        // A ledgered key carries the hash its writer computed: the fetched
+        // bytes must match it, or the "mirror" would hold something else.
+        const want = expectedSha.get(key);
+        if (want && want !== got) {
+          rmSync(dest);
+          throw new Error(`sha256 mismatch against the docs ledger (want ${want.slice(0, 12)}, got ${got.slice(0, 12)})`);
+        }
+        manifest.files[key] = { bytes: size, sha256: got, mirrored_at: new Date().toISOString() };
         downloaded += 1;
         bytes += size;
         console.log(` ${size} bytes`);
