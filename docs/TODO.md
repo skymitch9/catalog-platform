@@ -22,6 +22,31 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ ❓ OWNER ASK 2026-10-09 08:13 Phoenix — "does patreon have an api we can access?" — ANSWERED (yes); what it is FOR is the open question
+
+Answer given the same morning, read off <https://docs.patreon.com/> (not from
+memory): **yes — APIv2, OAuth 2.0, free, no app review.** Registering a client
+at <https://www.patreon.com/portal/registration/register-clients> needs a
+**creator** account and hands back a Creator's Access Token that carries every
+v2 scope, so our own campaign can be read with no OAuth dance. Endpoints are
+read-only for identity / campaigns / members / posts (`/api/oauth2/v2/...`),
+plus webhooks (`members:*`, `members:pledge:*`, `posts:*`). Limits: 100 req
+per 2 s per client, 100 req/min per token, a 403 without a `User-Agent`.
+⚠️ **v1 retires 2026-10-07** — two days before this ask — so anything built
+is v2 from the start. ⚠️ **What the API does NOT do:** reach another
+creator's posts or media (the forum thread *"Still no valid path to /posts
+content for subscribers?"*, 2026-08-28, is open), create posts, or see gifted
+pledges (open thread 2026-09-29). The one Patreon fact already in the estate is
+`data/universes.json`'s *Invent Short Story* (a Krout Patreon exclusive) — if
+the ask is about pulling exclusives like that, the API cannot; that is a
+download from the member page by hand.
+
+- [ ] ❓ owner: what is the Patreon API for — (a) gating estate access on
+      being a patron of OUR campaign (identity.memberships + webhooks — this is
+      what the API is built for), (b) listing our own supporters somewhere,
+      or (c) pulling exclusives we are patrons OF (not possible via API)?
+      Nothing is built until this is answered.
+
 ## ☐ ❓ OWNER — the deferred-items review the mandate asked for ("After all the builds present me all deferred things and we can decide to build or cancel") — presented 2026-09-07 09:50 Phoenix
 
 The full 140-item inventory across all four repos is
