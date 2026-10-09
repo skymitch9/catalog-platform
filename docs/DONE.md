@@ -9,6 +9,39 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-10-09 — OWNER ASK 08:13 Phoenix — "does patreon have an api we can access?" — answered YES, then CANCELLED by the owner at 08:2x ("c so nvm then")
+
+Answer given the same morning, read off <https://docs.patreon.com/> (not from
+memory): **yes — APIv2, OAuth 2.0, free, no app review.** Registering a client
+at <https://www.patreon.com/portal/registration/register-clients> needs a
+**creator** account and hands back a Creator's Access Token that carries every
+v2 scope, so our own campaign can be read with no OAuth dance. Endpoints are
+read-only for identity / campaigns / members / posts (`/api/oauth2/v2/...`),
+plus webhooks (`members:*`, `members:pledge:*`, `posts:*`). Limits: 100 req
+per 2 s per client, 100 req/min per token, a 403 without a `User-Agent`.
+⚠️ **v1 retires 2026-10-07** — two days before this ask — so anything built
+is v2 from the start. ⚠️ **What the API does NOT do:** reach another
+creator's posts or media (the forum thread *"Still no valid path to /posts
+content for subscribers?"*, 2026-08-28, is open), create posts, or see gifted
+pledges (open thread 2026-09-29). The one Patreon fact already in the estate is
+`data/universes.json`'s *Invent Short Story* (a Krout Patreon exclusive) — if
+the ask is about pulling exclusives like that, the API cannot; that is a
+download from the member page by hand.
+
+- [x] ❓ owner: what is the Patreon API for — (a) gating estate access on
+      being a patron of OUR campaign (identity.memberships + webhooks — this is
+      what the API is built for), (b) listing our own supporters somewhere,
+      or (c) pulling exclusives we are patrons OF (not possible via API)?
+      Nothing is built until this is answered.
+
+**Outcome.** The owner answered **(c)** — he wanted to pull exclusives from
+creators he is a patron OF. The API cannot do that (no path to another
+creator's post content or media), so he cancelled: *"c so nvm then"*. Nothing
+built, no client registered, no secret minted. ⚠️ Kept here so the next
+session that meets a Patreon exclusive in a catalog does not re-ask: the
+answer is a manual download from the member page, and the one such item on
+record is *Invent Short Story* in `data/universes.json`.
+
 ## ✅ 2026-10-02 17:45 Phoenix — FIXED: the four `docs/*` backups now reach the off-Cloudflare mirror (local + OneDrive + Google Drive)
 
 > **Last verified: 2026-10-02 17:45 Phoenix.** Owner, on being told the gap:
