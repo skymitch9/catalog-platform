@@ -22,22 +22,6 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ 🧑 OWNER (later) — book ingestion vs the vgc-meta gated sim (logged 2026-10-14 18:20 Phoenix from the vgcplanner session)
-
-Owner, verbatim: *"do we need to update the heygabi rules for ingestion? if so add line to the todo.md in that project for me to deal with later"*.
-vgc-meta (vgcplanner/vgc-meta) is getting a **gated sim runner** that copies ingestion's guard: no start while a listed game
-(`Wow.exe`, `WowClassic.exe`) runs, start only when the machine is idle, stop when a game launches, resume later.
-It saturates the **CPU** (31 worker processes, `node.exe`) for up to ~16 h spread across idle periods, and uses no GPU.
-
-- **Gap:** ingestion's start guard (`bookbuddy/audiobook_catalog/app/core/ingest_control.py`, design
-  [`info/ingestion-pause-until-gpu-design.md`](info/ingestion-pause-until-gpu-design.md) §4a) reads only the GPU and
-  `exempt_processes`, so it will **start beside a running sim** and the two share the CPU inside the 12am–8am window.
-  Not measured: how much a saturated CPU slows ingestion.
-- **Decide:** (a) leave both alone and let them share; (b) ingestion yields — add a CPU-busy check or a "sim running"
-  marker to its guard; (c) the sim yields to ingestion — the vgc-meta runner treats an active ingestion run as busy
-  (that change lives in vgc-meta, not here).
-- **Also:** if more PC games join either list, keep the two lists the same, or have one read the other.
-
 ## ☐ ❓ OWNER — the deferred-items review the mandate asked for ("After all the builds present me all deferred things and we can decide to build or cancel") — presented 2026-09-07 09:50 Phoenix
 
 The full 140-item inventory across all four repos is

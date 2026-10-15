@@ -9,6 +9,29 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## 2026-10-14 — book ingestion vs the vgc-meta gated sim: DECIDED (c), the sim yields — nothing changes here
+
+Owner, verbatim (2026-10-14 18:35 Phoenix): *"sim should probably wait for ingestion, ingestion is sporadic and not very many books these days once we got through the library."*
+Resolution: option (c). The vgc-meta gated runner treats a held, live ingestion lock as busy — `bookbuddy/audiobook_catalog/output_files/ingest_books.lock` or `pipeline.lock` (JSON with `pid`; a lock whose pid is dead is ignored, as both lock owners treat it) — and waits. Ingestion code and rules are untouched. The work lives in vgcplanner/vgc-meta.
+
+The item as it stood in TODO.md:
+
+> ## ☐ 🧑 OWNER (later) — book ingestion vs the vgc-meta gated sim (logged 2026-10-14 18:20 Phoenix from the vgcplanner session)
+> 
+> Owner, verbatim: *"do we need to update the heygabi rules for ingestion? if so add line to the todo.md in that project for me to deal with later"*.
+> vgc-meta (vgcplanner/vgc-meta) is getting a **gated sim runner** that copies ingestion's guard: no start while a listed game
+> (`Wow.exe`, `WowClassic.exe`) runs, start only when the machine is idle, stop when a game launches, resume later.
+> It saturates the **CPU** (31 worker processes, `node.exe`) for up to ~16 h spread across idle periods, and uses no GPU.
+> 
+> - **Gap:** ingestion's start guard (`bookbuddy/audiobook_catalog/app/core/ingest_control.py`, design
+>   [`info/ingestion-pause-until-gpu-design.md`](info/ingestion-pause-until-gpu-design.md) §4a) reads only the GPU and
+>   `exempt_processes`, so it will **start beside a running sim** and the two share the CPU inside the 12am–8am window.
+>   Not measured: how much a saturated CPU slows ingestion.
+> - **Decide:** (a) leave both alone and let them share; (b) ingestion yields — add a CPU-busy check or a "sim running"
+>   marker to its guard; (c) the sim yields to ingestion — the vgc-meta runner treats an active ingestion run as busy
+>   (that change lives in vgc-meta, not here).
+> - **Also:** if more PC games join either list, keep the two lists the same, or have one read the other.
+
 ## 2026-10-09 — OWNER ASK 08:13 Phoenix — "does patreon have an api we can access?" — answered YES, then CANCELLED by the owner at 08:2x ("c so nvm then")
 
 Answer given the same morning, read off <https://docs.patreon.com/> (not from
