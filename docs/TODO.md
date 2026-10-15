@@ -40,6 +40,8 @@ It saturates the **CPU** (31 worker processes, `node.exe`) for up to ~16 h sprea
   (that change lives in vgc-meta, not here).
 - **Also:** if more PC games join either list, keep the two lists the same, or have one read the other.
 
+> **Owner decision 2026-10-14 19:00 Phoenix:** *"can we use the same controls as Hey Gabi? … I don't want it to get messy"* → *"share both"*. The vgc-meta sim now READS this dashboard's do-not-disturb list (`exempt_processes`) and weekly quiet hours (`recurring_windows`) through `read_control()` (read-only; vgc-meta PR #45). ⚠️ **So editing either on the GABI dashboard now changes BOTH ingestion and the sim.** The dashboard's pause stays ingestion-only. Nothing in this repo or bookbuddy was changed.
+
 ## ☐ ❓ OWNER — the deferred-items review the mandate asked for ("After all the builds present me all deferred things and we can decide to build or cancel") — presented 2026-09-07 09:50 Phoenix
 
 The full 140-item inventory across all four repos is
