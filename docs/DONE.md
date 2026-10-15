@@ -9,6 +9,34 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-10-14 22:11 Phoenix — GameBuddy check: the Zero Trust Google login IS GameBuddy's OAuth client — do NOT delete the project
+
+> **Last verified: 2026-10-14 22:11 Phoenix.** Owner signed into the Cloudflare
+> dashboard in a session tab (*"open cloudflare gamebuddy for me ill sign in"*);
+> the session read the Google identity provider's **Client ID** off
+> Zero Trust → Integrations → Identity providers → Google (the old
+> *Settings → Authentication* path now 404s — the dashboard moved it).
+> Value: `1079037205011-19aapmml0a2t3a545bi6nluuouuka68l.apps.googleusercontent.com`
+> (a public OAuth client id, not a secret). Prefix **`1079037205011` =
+> GameBuddy** (`reflected-drake-504914-g5`, `nbaslamking@gmail.com`). The
+> org has three providers — Cloudflare, One-time PIN (`board-game-catalog`),
+> Google — so deleting GameBuddy kills Google sign-in for EVERY Access-gated
+> surface on the estate (runbooks, status pages, shelf), leaving one-time
+> PIN. **Answer to the 2026-09-17 question: neither BookBuddy nor GameBuddy
+> can be removed.** Billing remains the open decision in `TODO.md`.
+> **Not verified:** whether any other project also references this client.
+>
+> The bullet this closes, moved whole from `TODO.md`:
+>
+> - [ ] 🧑 **The GameBuddy check** — Zero Trust → Settings → Authentication →
+>       the Google identity provider → read the App ID. If its numeric prefix is
+>       **`1079037205011`** (GameBuddy's project number), that project is what
+>       `shelf.heygabi.ai`'s Google login uses and deleting it breaks that login
+>       (one-time PIN survives). Any other prefix means GameBuddy is unused and
+>       can go; GCP keeps a deleted project recoverable for 30 days. ⚠️ A session
+>       cannot take this reading — the dashboard asked for a Cloudflare sign-in
+>       and a session must not sign in on the owner's behalf.
+
 ## 2026-10-09 — OWNER ASK 08:13 Phoenix — "does patreon have an api we can access?" — answered YES, then CANCELLED by the owner at 08:2x ("c so nvm then")
 
 Answer given the same morning, read off <https://docs.patreon.com/> (not from

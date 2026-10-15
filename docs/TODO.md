@@ -94,16 +94,12 @@ ran at 09:12.
 > OAuth client is in project BookBuddy on `nbaslamking@gmail.com`**, measured
 > off the `project_id` in `scripts/credentials.json` and a console listing
 > showing it accessed the same day. Answer given: **BookBuddy is NOT safe to
-> delete** (every Drive upload dies with it); GameBuddy probably is.
+> delete** (every Drive upload dies with it); GameBuddy **is not either** (measured 2026-10-14, see DONE).
 
-- [ ] 🧑 **The GameBuddy check** — Zero Trust → Settings → Authentication →
-      the Google identity provider → read the App ID. If its numeric prefix is
-      **`1079037205011`** (GameBuddy's project number), that project is what
-      `shelf.heygabi.ai`'s Google login uses and deleting it breaks that login
-      (one-time PIN survives). Any other prefix means GameBuddy is unused and
-      can go; GCP keeps a deleted project recoverable for 30 days. ⚠️ A session
-      cannot take this reading — the dashboard asked for a Cloudflare sign-in
-      and a session must not sign in on the owner's behalf.
+- [x] **The GameBuddy check — MEASURED 2026-10-14 22:11 Phoenix: prefix IS
+      `1079037205011`. GameBuddy is the Google login for the whole Zero Trust
+      org — NOT safe to delete.** Moved whole to DONE; the only remaining
+      decision here is Billing below.
 - [ ] 🧑 **Billing** (owner, same day: *"I need to set up billing, will it cost
       more if we keep the separate…"*): recommendation given and not yet acted
       on — projects are free, only usage bills; create the billing account under
