@@ -24,6 +24,8 @@
 
 ## ☐ 🧑 OWNER (later) — book ingestion vs the vgc-meta gated sim (logged 2026-10-14 18:20 Phoenix from the vgcplanner session)
 
+> **Owner decision 2026-10-14 18:39 Phoenix:** *"sim should probably wait for ingestion, ingestion is sporadic and not very many books these days once we got through the library."* → option **(c)**. The vgc-meta runner will treat a held, live `output_files/ingest_books.lock` or `pipeline.lock` (dead pid = ignored) as busy and wait. No ingestion change is planned. **Kept here on purpose for the owner's own check** (owner, 2026-10-14 18:39: putting it in DONE "means it'll get skipped when i do a check"). Close it when he has reviewed it.
+
 Owner, verbatim: *"do we need to update the heygabi rules for ingestion? if so add line to the todo.md in that project for me to deal with later"*.
 vgc-meta (vgcplanner/vgc-meta) is getting a **gated sim runner** that copies ingestion's guard: no start while a listed game
 (`Wow.exe`, `WowClassic.exe`) runs, start only when the machine is idle, stop when a game launches, resume later.
