@@ -52,7 +52,7 @@ Owner, verbatim: *"Add anyone with access to audiobook catalog"* then *"Let's do
   Include is OR, so the owner always passes. The edit was refused by the
   auto-mode classifier (account/standing-rule change), so it waits on the owner's
   explicit go. Keys URL re-checked live 200 at 23:33.
-  ✅ **Flipped 2026-10-16 ~00:0x Phoenix** (owner: *"Yes"*). PUT 200, read
+  ✅ **Flipped 2026-10-16 07:18 Phoenix** (owner: *"Yes"*). PUT 200, read
   back: include = [external_evaluation → the two `auth.heygabi.ai` URLs,
   owner's 2 emails]. Before: 11 emails. **Rollback** = put the list back
   (`SELECT email FROM estate_user WHERE status='approved' AND vis_audiobook=1`).
