@@ -36,8 +36,15 @@ Owner, verbatim: *"Add anyone with access to audiobook catalog"* then *"Let's do
   fired. Access calls `auth.heygabi.ai` at each login, and the Worker answers
   allow/deny from `estate_user`. A static **break-glass** policy holding
   only the owner's email stays beside it.
-- ☐ Build (agent): evaluate + keys endpoints on `apps/auth-worker`, a signing
-  key secret, tests, deploy. ☐ Then the conductor flips the policy:
+- ✅ Build (agent, 2026-10-15/16): evaluate + keys endpoints on
+  `apps/auth-worker` (`14eb090`), docs + probes (`5ff3c7a`, `b9de021`),
+  secret `ACCESS_EVAL_SIGNING_JWK` set (kid `shelf-eval-2026-10`), deployed
+  via `deploy:auth` (see `deploys.log`). Evaluate URL
+  `https://auth.heygabi.ai/api/access/shelf/evaluate`, Keys URL
+  `https://auth.heygabi.ai/api/access/shelf/keys`. Runbook + decision-log
+  query: [`access/shelf-access-eval.md`](access/shelf-access-eval.md).
+  ⚠️ Not verified: a real Access login through the rule.
+  ☐ Then the conductor flips the policy:
   add break-glass → swap the include to External Evaluation → verify a login
   → remove the email list.
 
