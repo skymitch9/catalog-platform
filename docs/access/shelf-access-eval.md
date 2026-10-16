@@ -104,6 +104,10 @@ real logins is the gate.
 
 ## Probes
 
-`npm run probe:estate` rows `auth:A45` (keys serves only public fields),
-`auth:A46` (garbage token → 403, nothing signed), `auth:A47` (no CORS on
-evaluate).
+`npm run probe:estate` rows `auth:A45` (keys serves only public fields) and
+`auth:A46` (no CORS on evaluate). ⚠️ There is deliberately NO probe that
+POSTs to evaluate: every call writes a DENY row to the decision ring, and the
+suite runs hourly on a cron — it would bury the real logins. To check the
+refusal by hand (writes one `bad-token` row):
+`curl -sS -D - -X POST -H 'content-type: application/json' -d '{"token":"not.a.jwt"}' https://auth.heygabi.ai/api/access/shelf/evaluate`
+→ 403 `bad_token`.

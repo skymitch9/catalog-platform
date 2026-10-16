@@ -518,7 +518,7 @@ export async function probeAuthWorker() {
   // Cloudflare Access calls these, never a browser: the keys route is PUBLIC
   // by design (it serves a public key), and evaluate's auth is the Access
   // JWT's signature. So the probes ask: does keys serve ONLY public material,
-  // and does evaluate refuse an unverifiable token without signing anything?
+  // and is evaluate free of CORS? (Its token refusal is NOT probed — see below.)
   // Runbook: docs/access/shelf-access-eval.md.
   const evalKeysUrl = `${AUTH_ORIGIN}/api/access/shelf/keys`;
   const ek = await get(evalKeysUrl);
@@ -543,32 +543,19 @@ export async function probeAuthWorker() {
     );
   }
 
+  // ⚠️ NO POST PROBE OF evaluate, ON PURPOSE. Every evaluate call — even a
+  // garbage token — writes a DENY row to the estate-auth/shelf-eval ring, and
+  // this suite runs hourly on a cron: 24 noise rows a day would evict the real
+  // login decisions the shadow phase is read from. The garbage-token refusal
+  // is covered by test/access-eval.test.ts and was curl-verified at deploy.
   const evalUrl = `${AUTH_ORIGIN}/api/access/shelf/evaluate`;
-  const ev = await post(evalUrl, {
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token: 'not.a.jwt' }),
-  });
-  if (!ev.ok) {
-    check(AREA, 'A46', 'POST', evalUrl, 'garbage token → 403 bad_token, no signed answer', false, `request failed: ${ev.error}`);
-  } else {
-    check(
-      AREA,
-      'A46',
-      'POST',
-      evalUrl,
-      'garbage token → 403 bad_token, no signed answer',
-      ev.status === 403 && ev.json?.error === 'bad_token' && ev.json?.success === false && ev.json?.token === undefined,
-      `status=${ev.status} body=${(ev.text || '').slice(0, 200)}`,
-    );
-  }
-
   const evApex = await options(evalUrl, {
     headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'POST' },
   });
   if (!evApex.ok) {
-    check(AREA, 'A47', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN}`, false, `request failed: ${evApex.error}`);
+    check(AREA, 'A46', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN}`, false, `request failed: ${evApex.error}`);
   } else {
     const acao = header(evApex, 'access-control-allow-origin');
-    check(AREA, 'A47', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (Cloudflare calls it, not browsers)`, acao === null, `ACAO=${acao}`);
+    check(AREA, 'A46', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (Cloudflare calls it, not browsers)`, acao === null, `ACAO=${acao}`);
   }
 }
