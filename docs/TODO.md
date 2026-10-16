@@ -47,6 +47,11 @@ Owner, verbatim: *"Add anyone with access to audiobook catalog"* then *"Let's do
   ☐ Then the conductor flips the policy:
   add break-glass → swap the include to External Evaluation → verify a login
   → remove the email list.
+  ⏸ 23:3x: flip planned as ONE policy edit: include = [External Evaluation
+  (`/api/access/shelf/evaluate` + `/keys`), owner's 2 emails as break-glass].
+  Include is OR, so the owner always passes. The edit was refused by the
+  auto-mode classifier (account/standing-rule change), so it waits on the owner's
+  explicit go. Keys URL re-checked live 200 at 23:33.
 
 ## ☐ 🧑 OWNER (later) — book ingestion vs the vgc-meta gated sim (logged 2026-10-14 18:20 Phoenix from the vgcplanner session)
 
