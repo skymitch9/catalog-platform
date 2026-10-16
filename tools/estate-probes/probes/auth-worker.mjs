@@ -512,4 +512,63 @@ export async function probeAuthWorker() {
     const acao = header(registryApex, 'access-control-allow-origin');
     check(AREA, 'A44', 'OPTIONS', registryUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (the public copy is on index.heygabi.ai)`, acao === null, `ACAO=${acao}`);
   }
+
+  // --- SHELF ACCESS External Evaluation (2026-10-15, ROLES.md §3b) ---------
+  //
+  // Cloudflare Access calls these, never a browser: the keys route is PUBLIC
+  // by design (it serves a public key), and evaluate's auth is the Access
+  // JWT's signature. So the probes ask: does keys serve ONLY public material,
+  // and does evaluate refuse an unverifiable token without signing anything?
+  // Runbook: docs/access/shelf-access-eval.md.
+  const evalKeysUrl = `${AUTH_ORIGIN}/api/access/shelf/keys`;
+  const ek = await get(evalKeysUrl);
+  if (!ek.ok) {
+    check(AREA, 'A45', 'GET', evalKeysUrl, 'JWKS with one RS256 public key, kid set, NO private fields', false, `request failed: ${ek.error}`);
+  } else {
+    const k = Array.isArray(ek.json?.keys) ? ek.json.keys[0] : undefined;
+    check(
+      AREA,
+      'A45',
+      'GET',
+      evalKeysUrl,
+      'JWKS with one RS256 public key, kid set, NO private fields',
+      ek.status === 200 &&
+        ek.json.keys.length >= 1 &&
+        k?.kty === 'RSA' &&
+        k?.alg === 'RS256' &&
+        typeof k?.kid === 'string' &&
+        typeof k?.n === 'string' &&
+        ['d', 'p', 'q', 'dp', 'dq', 'qi'].every((f) => k[f] === undefined),
+      `status=${ek.status} kid=${k?.kid} fields=${k ? Object.keys(k).sort().join(',') : 'none'}`,
+    );
+  }
+
+  const evalUrl = `${AUTH_ORIGIN}/api/access/shelf/evaluate`;
+  const ev = await post(evalUrl, {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: 'not.a.jwt' }),
+  });
+  if (!ev.ok) {
+    check(AREA, 'A46', 'POST', evalUrl, 'garbage token → 403 bad_token, no signed answer', false, `request failed: ${ev.error}`);
+  } else {
+    check(
+      AREA,
+      'A46',
+      'POST',
+      evalUrl,
+      'garbage token → 403 bad_token, no signed answer',
+      ev.status === 403 && ev.json?.error === 'bad_token' && ev.json?.success === false && ev.json?.token === undefined,
+      `status=${ev.status} body=${(ev.text || '').slice(0, 200)}`,
+    );
+  }
+
+  const evApex = await options(evalUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'POST' },
+  });
+  if (!evApex.ok) {
+    check(AREA, 'A47', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN}`, false, `request failed: ${evApex.error}`);
+  } else {
+    const acao = header(evApex, 'access-control-allow-origin');
+    check(AREA, 'A47', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (Cloudflare calls it, not browsers)`, acao === null, `ACAO=${acao}`);
+  }
 }
