@@ -22,6 +22,25 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ Shelf access follows the estate automatically — Access External Evaluation (asked 2026-10-15 22:2x Phoenix)
+
+Owner, verbatim: *"Add anyone with access to audiobook catalog"* then *"Let's do the auto update todo now"*.
+
+- ✅ 22:3x: the `Shelf access` Cloudflare policy (`7e09bb53-…`, used by BOTH
+  shelf apps: gate-1 self-hosted `shelf` + the SaaS `Audiobookshelf` OIDC app)
+  now lists all **11** `estate_user` rows with `status='approved' AND
+  vis_audiobook=1` (was 3). Read back via the dash API. That is a one-time
+  copy, so it drifts.
+- The fix is the design already written in `bookbuddy/audiobook_catalog/docs/info/ROLES.md`
+  §3b. Its §3 revisit trigger (*"the allowlist passes ~10 people"*) has now
+  fired. Access calls `auth.heygabi.ai` at each login, and the Worker answers
+  allow/deny from `estate_user`. A static **break-glass** policy holding
+  only the owner's email stays beside it.
+- ☐ Build (agent): evaluate + keys endpoints on `apps/auth-worker`, a signing
+  key secret, tests, deploy. ☐ Then the conductor flips the policy:
+  add break-glass → swap the include to External Evaluation → verify a login
+  → remove the email list.
+
 ## ☐ 🧑 OWNER (later) — book ingestion vs the vgc-meta gated sim (logged 2026-10-14 18:20 Phoenix from the vgcplanner session)
 
 > **Owner decision 2026-10-14 18:39 Phoenix:** *"sim should probably wait for ingestion, ingestion is sporadic and not very many books these days once we got through the library."* → option **(c)**. The vgc-meta runner will treat a held, live `output_files/ingest_books.lock` or `pipeline.lock` (dead pid = ignored) as busy and wait. No ingestion change is planned. **Kept here on purpose for the owner's own check** (owner, 2026-10-14 18:39: putting it in DONE "means it'll get skipped when i do a check"). Close it when he has reviewed it.
