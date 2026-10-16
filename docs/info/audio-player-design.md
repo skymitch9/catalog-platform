@@ -1,5 +1,13 @@
 # In-browser audiobook player — Feasibility study & design
 
+> 🗄️ **RETIRED 2026-10-16 — the player this design describes was removed.**
+> Owner: *"decom the listen to audiobooks from cloudflare service and just use
+> shelf. I don't want to pay cloudflare to play audio."* (Measured that day:
+> streaming cost ~1¢/month; the ~$10 is the `archive/` backup, kept.) Worker
+> routes + binding removed in `a541645`, site in audiobook_catalog `89c4e92`.
+> Rollback: tag `rollback/pre-listen-decom-2026-10-16` in both repos. Kept as
+> the design record; nothing below is live.
+
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (this repo is
 > public — no household names, no secret values).
 > Last verified: **2026-08-18**.
