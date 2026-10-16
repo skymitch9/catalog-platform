@@ -428,6 +428,22 @@ export interface Env {
    * take a capability away, it was to stop handing the bigger one out.
    */
   ESTATE_EVENTS_TOKEN?: string;
+
+  /**
+   * The shelf's Access External Evaluation SIGNING KEY (2026-10-15) — an
+   * RSA-2048 PRIVATE key as a JWK carrying its `kid` (first kid:
+   * `shelf-eval-2026-10`). `src/access-eval.ts` signs its allow/deny answers
+   * with it and derives the PUBLIC JWK it serves at /api/access/shelf/keys.
+   *
+   * Custody: Worker secret ONLY — no copy anywhere, and none is needed: a lost
+   * key is re-minted (new keypair → `wrangler secret put`), and Access fetches
+   * the new public key from the keys URL. Runbook:
+   * docs/access/shelf-access-eval.md.
+   *
+   * ⚠️ UNSET ⇒ evaluate answers 503 (it cannot sign), which Access treats as
+   * DENY; the owner's static break-glass policy is what keeps him in.
+   */
+  ACCESS_EVAL_SIGNING_JWK?: string;
 }
 
 /** The row estate.ts reads and writes. */

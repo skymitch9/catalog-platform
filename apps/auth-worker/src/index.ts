@@ -41,12 +41,15 @@ import { notificationRoutes } from './notifications.js';
 import { catalogRequestRoutes } from './catalog-requests.js';
 import { estateCatalogRoutes } from './estate-catalog.js';
 import { sessionRoutes } from './session.js';
+import { accessEvalRoutes } from './access-eval.js';
 import { proxyFirebaseAuth } from './auth-proxy.js';
 import { rateLimit } from './middleware/rate-limit.js';
 
 /**
  * The greppable posture declaration (owner decision #1). Not public: every
- * route except /api/health carries a credential check. No defaultRole — the
+ * route except /api/health carries a credential check (the two
+ * /api/access/shelf/* routes check a Cloudflare Access JWT signature instead
+ * of a session — see access-eval.ts). No defaultRole — the
  * directory has no role vocabulary to grant.
  */
 export const AUTH_POSTURE = declareAuthPosture({
@@ -341,6 +344,12 @@ app.route('/api', estateCatalogRoutes);
 // provisioning, is what writes the registry row above.
 app.route('/api', catalogRequestRoutes);
 app.route('/api', sessionRoutes);
+// SHELF ACCESS — Cloudflare Access External Evaluation (2026-10-15,
+// ROLES.md §3b). ⚠️ NO CORS MOUNT AND NO SESSION GATE, BY DESIGN: Cloudflare's
+// servers call these, never a browser, and the incoming Access JWT's signature
+// IS the auth. The /api/* rate limiter above still covers them. See
+// access-eval.ts's header and docs/access/shelf-access-eval.md.
+app.route('/api', accessEvalRoutes);
 
 function adminCors() {
   return cors({
