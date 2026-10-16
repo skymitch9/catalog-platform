@@ -52,7 +52,7 @@ test('OPTIONS preflight on /api/me is answered by the middleware, tokenless', as
 
 /* ── the PLAYER's preflight contract (design §3.2 item 4) ───────────────── */
 
-test('🔴 the audio byte route preflights `Authorization` AND `Range` — both, or playback dies opaquely', async () => {
+test('🔴 the ebook byte route preflights `Authorization` AND `Range` — both, or playback dies opaquely', async () => {
   // audio-player-design.md §3.2 item 4, and the phase-2 handoff's item 2. The
   // `<audio>` element's ranges get their bearer from a SERVICE WORKER, so every
   // one is a cross-origin credentialed request and every one preflights.
@@ -64,7 +64,7 @@ test('🔴 the audio byte route preflights `Authorization` AND `Range` — both,
   // "the Worker is down" (ebook-viewer-phase1.md §2.4), and which the media
   // element reports to the page as a bare `error` event with no status at all.
   const res = await app.request(
-    '/api/audio/b-aud0001/file',
+    '/api/ebook/b-aud0001/file',
     {
       method: 'OPTIONS',
       headers: {
@@ -95,7 +95,7 @@ test('`Access-Control-Max-Age` is set, and it is at least Chromium\'s two-hour c
   // ⚠️ It caches the PREFLIGHT ANSWER, never an authorisation: the gate still
   // runs on every real request.
   const res = await app.request(
-    '/api/audio/b-aud0001/file',
+    '/api/ebook/b-aud0001/file',
     {
       method: 'OPTIONS',
       headers: {

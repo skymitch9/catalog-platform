@@ -43,18 +43,8 @@
  *                          ⚠️ REPORT-ONLY: it lists and compares and writes
  *                          nothing, anywhere — the "fixes" it could apply are
  *                          all destructive and all a person's call.
- *   GET  /api/audio/status the projection of what is streamable right now
- *                          (audio-status.ts) — bookId/anchor/title/size/since
- *                          and ⚠️ never `path`. Same gate.
- *   GET|HEAD /api/audio/:anchor/file
- *                          the audiobook BYTE STREAM (audio-file.ts), a
- *                          near-copy of the ebook one per design §7.2: shares
- *                          range.ts and the gate, copies the rest. ⚠️ Gated on
- *                          the SAME `vis_ebooks` grant — owner decision 1,
- *                          2026-08-17: "MIRROR EBOOK if they can read an ebook
- *                          they can listen to an audio." Its own budget
- *                          (listen-budget.ts), sized for hours of ranges
- *                          instead of one book-open.
+ *   (the /api/audio/* player routes were RETIRED 2026-10-16 — owner: "just
+ *                          use shelf". Rollback: tag rollback/pre-listen-decom-2026-10-16.)
  *   GET  /api/books/available   what is in GABI's knowledge base RIGHT NOW
  *                          (book-routes.ts) — an R2 LISTING, not a compiled-in
  *                          list, so a book ingested overnight is answerable in
@@ -83,8 +73,6 @@ import { cors } from 'hono/cors';
 import { declareAuthPosture, resolveIdentity } from '@platform/estate-auth';
 import { reportEvent } from '@platform/estate-events';
 import { parseServiceAccount } from '@platform/firebase-sa';
-import { audioFileRoutes } from './audio-file.js';
-import { audioStatusRoutes } from './audio-status.js';
 import { appCheckRoutes } from './app-check.js';
 import { bookRoutes } from './book-routes.js';
 import { estateCheckMode, parseOwnerEmails, parseSiteOrigins, type Env } from './env.js';
@@ -323,37 +311,14 @@ app.route('/', ebookDownloadRoutes);
 // see ebook-reconcile.ts's header for why, and for what it cannot check.
 app.route('/', ebookReconcileRoutes);
 
-// The audiobook player's two routes (audio phase 1, 2026-08-18). Same gate as
-// the ebook pair — literally the same function (ebook-gate.ts) — because owner
-// decision 1 fused the grants: one `vis_ebooks` means "may consume the estate's
-// book files", reading OR listening. ⚠️ Seeing the audiobook SITE is still
-// `vis_audiobook` and is untouched; this is a gate on the BYTES.
-//
-// ⚠️ The status route is a PROJECTION, not the manifest — `path` never leaves
-// (audio-status.ts's header). And the byte route carries its OWN budget
-// (listen-budget.ts), because sharing read-budget.ts's counters would let a
-// 13-hour listen exhaust a reader's page turns and vice versa.
-app.route('/', audioStatusRoutes);
-app.route('/', audioFileRoutes);
-
-// ⚠️ THERE IS NO `POST /api/audio/:anchor/stream-ping` ANY MORE, and its
-// absence is the design (audio-player-design.md §10.1 + the phase-2 handoff).
-// The route existed here from 2026-08-19; the eviction stamp it wrote now
-// happens INSIDE the byte route above (src/stream-stamp.ts), because:
-//
-//   · a client-driven ping is SPOOFABLE, and a stamp is exactly the thing that
-//     keeps a file from being evicted;
-//   · it cost one request per listener where the byte route costs zero;
-//   · it had NO CALLER — audiobook_catalog's tests/test_listen_page.py asserts
-//     that no site JavaScript mentions it, and the WIP that did call it was
-//     replaced on 2026-09-02;
-//   · it wrote the caller's EMAIL into a collection whose firestore.rules say
-//     `allow read: if true`;
-//   · and it carried its own copy of the SA JWT signing, the OAuth exchange
-//     and the datastore scope string (audit findings F12 + L9), rather than
-//     @platform/firebase-sa.
-//
-// Restoring it needs an argument against all six, not just a git revert.
+// ⚠️ NO AUDIO ROUTES. `/api/audio/status` and `/api/audio/:anchor/file` (the
+// in-browser player, 2026-08-18) were RETIRED 2026-10-16 at the owner's order:
+// "decom the listen to audiobooks from cloudflare service and just use shelf".
+// Listening is Audiobookshelf's job (shelf.heygabi.ai). The `AUDIO` binding to
+// `estate-audio` went with them, so this Worker can no longer read that bucket
+// at all — it now holds only the `archive/` BACKUP. Restoring the player is
+// `git show rollback/pre-listen-decom-2026-10-16` plus the binding, not a revert
+// of one file.
 
 // The book-knowledge retrieval routes (design phase 3, 2026-08-18). Same gate as
 // every route above — literally the same function (ebook-gate.ts) — because the
