@@ -186,7 +186,7 @@ job deliberately does not**, and the reason is not a shortcut:
 
 | Checked 2026-09-07 in | Finding |
 |---|---|
-| `apps/audiobook-worker/wrangler.toml` | **No `[[d1_databases]]` block at all.** Its bindings are three R2 buckets — `EBOOKS_GATED` (`ebooks-gated`), `EBOOKS` (`estate-ebooks`), `AUDIO` (`estate-audio`) — plus `[vars]` and `[observability]` |
+| `apps/audiobook-worker/wrangler.toml` | **No `[[d1_databases]]` block at all.** Its bindings are two R2 buckets — `EBOOKS_GATED` (`ebooks-gated`), `EBOOKS` (`estate-ebooks`) — plus (the `AUDIO` → `estate-audio` binding was removed 2026-10-16, `a541645`, with the retired player) `[vars]` and `[observability]` |
 | `apps/audiobook-worker/package.json` | Scripts are `dev`, `typecheck`, `test`. **There is no `db:migrate`**, so the sibling jobs' command would fail the run outright |
 
 So there is no schema for new code to meet, and nothing to migrate. ⚠️ **If this

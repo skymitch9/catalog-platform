@@ -1343,7 +1343,7 @@ those counts go stale within days.
 |---|---|---|
 | `estate-auth` | `auth.heygabi.ai` | D1 `estate_auth`, R2 `estate-backups`, R2 `estate-docs-gated`, R2 `estate-catalog-keys` (⚠️ not backed up, by design — §1b), KV `estate_docs` |
 | `catalog-index` | `index.heygabi.ai` | D1 `index_catalog` |
-| `audiobook-worker` | `audiobook-api.heygabi.ai` | R2 `ebooks-gated`, R2 `estate-ebooks`, R2 `estate-audio` |
+| `audiobook-worker` | `audiobook-api.heygabi.ai` | R2 `ebooks-gated`, R2 `estate-ebooks` (the `estate-audio` binding was removed 2026-10-16; the bucket stays as the audio archive, §8 row) |
 | `estate-discord` | `discord.heygabi.ai` | Firestore (via SA); cron `*/2 * * * *` |
 | `ebooks-door` | `ebooks.heygabi.ai` | — (gate in front of `ebooks-gated`) |
 
