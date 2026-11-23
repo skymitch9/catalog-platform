@@ -9,6 +9,22 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-11-19 07:50 Phoenix — Estate secret-exposure check — public files + browser console (asked 2026-11-19 07:2x Phoenix)
+
+Owner, verbatim: *"Also Check to make sure none of my API keys or secrets keys are available in browser console or in visible files"*.
+
+- Scope: all four PUBLIC repos (tracked files + history), what an anonymous
+  visitor can fetch from each live host, and the signed-in browser console.
+- A re-measure of [`info/secrets-review-2026-08-26.md`](info/secrets-review-2026-08-26.md)
+  with a wider pattern set; that review never looked at the deployed/browser side.
+- Rule: no value is printed anywhere; read-only; nothing rotated or fixed
+  without the owner. Result goes to a dated audit in `info/`.
+
+**Result (2026-11-19):** no live credential found in any public repo (HEAD or all 3,389 commits), on any live site fetched anonymously, or in the signed-in browser console/storage on 8 pages. The one real value in history is the already-known, rotated `PEER_TOKEN` (`library_catalog` `79036d3`). No source maps served. Read-only; nothing changed.
+
+**Not checked:** it is a shape scan, not a search for the actual master values; Actions logs/issues/PRs; the shelf behind Access; other members' sessions. Full audit: [`info/secret-exposure-check-2026-11-19.md`](info/secret-exposure-check-2026-11-19.md).
+
+
 ## ✅ 2026-10-14 22:11 Phoenix — GameBuddy check: the Zero Trust Google login IS GameBuddy's OAuth client — do NOT delete the project
 
 > **Last verified: 2026-10-14 22:11 Phoenix.** Owner signed into the Cloudflare
