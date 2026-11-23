@@ -3,6 +3,11 @@
 > **Audience:** Claude sessions and the owner. **Status:** TRACKED (secret
 > NAMES only, never values — this repo is public on GitHub, so this
 > discipline is load-bearing here, not just habit).
+> Last verified: **2026-11-22** for §2's `GET /api/estate/members` row ONLY —
+> by the auth-worker unit suite and typecheck on its branch, nothing more.
+> ⚠️ **Nothing live**: not deployed, no request made to `auth.heygabi.ai`,
+> probes `A47`–`A49` never run, and the presence of the two library secrets on
+> `estate-auth` was not re-measured (it is quoted from `RECOVERY.md`).
 > Last verified: **2026-09-05** for §9 **and §11** — §11 is new that day (the
 > private `estate-catalog-keys` bucket the sealed Claude key lands in), measured
 > by creating the bucket, reading its public-access setting back and deploying
@@ -87,6 +92,17 @@ and which is a shared digital pool. One route joins the table above:
 row**, when the caller supplies `catalog_id`. Omitting it is safe and says so;
 the write can never fail the `/live` answer. It grants nothing — `vis_<id>` is
 still its own migration.
+
+⚠️ **And the MEMBER ROSTER (2026-11-22, branch
+`feature/estate-members-roster`, NOT deployed)** — lets the two library Workers
+record a loan to an approved estate member who has never signed into that
+library. No migration (it reads `estate_user` as it stands). Source:
+`apps/auth-worker/src/estate-members.ts`; tests `test/estate-members.test.ts`.
+The consumer half is in `bookbuddy/library_catalog/docs/TODO.md`.
+
+| Route | Auth | Notes |
+|---|---|---|
+| `GET /api/estate/members` | app-token, **`ESTATE_APP_TOKEN_LIBRARY` or `ESTATE_APP_TOKEN_LIBRARY2` ONLY** — an explicit two-app allowlist; a valid games / index / audiobook token is refused like a wrong one | `200 { members: [{ id, email, display_name }] }` — **approved rows only** (pending and revoked never), exactly those three fields (explicit SELECT and mapper), email lower-cased, sorted by display name case-insensitively then email, members with no display name last. Refusals: `401 unauthorized` (missing / wrong / other-app bearer, with `detail` + `fix`); `503 app_tokens_unset` when NEITHER library secret is set on this Worker (judged on those two only — GAMES/INDEX being set does not count); `429 rate_limited` from the global per-IP `/api/*` limiter. 🔴 **It carries email addresses, so it is SERVER-TO-SERVER ONLY: no CORS mount, deliberately.** Probes `A47`–`A49` pin the refusal and the CORS absence. **No new secret**: both are already set on `estate-auth` per `RECOVERY.md`'s secrets table (not re-measured 2026-11-22). |
 
 ## 3. `TOKEN_SIGNER_KEY` — what it is, what it can do, and how to rotate it
 
