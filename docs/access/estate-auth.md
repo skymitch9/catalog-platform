@@ -4,7 +4,8 @@
 > NAMES only, never values — this repo is public on GitHub, so this
 > discipline is load-bearing here, not just habit).
 > Last verified: **2026-11-22** for §2's `GET /api/estate/members` row ONLY —
-> by the auth-worker unit suite and typecheck on its branch, nothing more.
+> by the auth-worker unit suite and typecheck on its branch (including the
+> composed Worker's mount and its CORS absence, in-process), nothing more.
 > ⚠️ **Nothing live**: not deployed, no request made to `auth.heygabi.ai`,
 > probes `A47`–`A49` never run, and the presence of the two library secrets on
 > `estate-auth` was not re-measured (it is quoted from `RECOVERY.md`).
@@ -102,7 +103,7 @@ The consumer half is in `bookbuddy/library_catalog/docs/TODO.md`.
 
 | Route | Auth | Notes |
 |---|---|---|
-| `GET /api/estate/members` | app-token, **`ESTATE_APP_TOKEN_LIBRARY` or `ESTATE_APP_TOKEN_LIBRARY2` ONLY** — an explicit two-app allowlist; a valid games / index / audiobook token is refused like a wrong one | `200 { members: [{ id, email, display_name }] }` — **approved rows only** (pending and revoked never), exactly those three fields (explicit SELECT and mapper), email lower-cased, sorted by display name case-insensitively then email, members with no display name last. Refusals: `401 unauthorized` (missing / wrong / other-app bearer, with `detail` + `fix`); `503 app_tokens_unset` when NEITHER library secret is set on this Worker (judged on those two only — GAMES/INDEX being set does not count); `429 rate_limited` from the global per-IP `/api/*` limiter. 🔴 **It carries email addresses, so it is SERVER-TO-SERVER ONLY: no CORS mount, deliberately.** Probes `A47`–`A49` pin the refusal and the CORS absence. **No new secret**: both are already set on `estate-auth` per `RECOVERY.md`'s secrets table (not re-measured 2026-11-22). |
+| `GET /api/estate/members` | app-token, **`ESTATE_APP_TOKEN_LIBRARY` or `ESTATE_APP_TOKEN_LIBRARY2` ONLY** — an explicit two-app allowlist; a valid games / index / audiobook token is refused like a wrong one | `200 { members: [{ id, email, display_name }] }` — **approved rows only** (pending and revoked never), exactly those three fields (explicit SELECT and mapper), email lower-cased, sorted by display name case-insensitively then email, members with no display name last. Refusals: `401 unauthorized` (missing / wrong / other-app bearer, with `detail` + `fix`); `503 app_tokens_unset` when NEITHER library secret is set on this Worker (judged on those two only — GAMES/INDEX being set does not count); `429 rate_limited` from the global per-IP `/api/*` limiter. 🔴 **It carries email addresses, so it is SERVER-TO-SERVER ONLY: no CORS mount, deliberately.** Probes `A47`–`A49` pin the refusal and the CORS absence. **No new secret.** `RECOVERY.md`'s secrets table lists both as PAIRED secrets on `estate-auth`: `ESTATE_APP_TOKEN_LIBRARY2` was *"verified present 2026-08-26"*, and the `ESTATE_APP_TOKEN_LIBRARY` row carries no measured date. ⚠️ Neither was re-measured 2026-11-22. |
 
 ## 3. `TOKEN_SIGNER_KEY` — what it is, what it can do, and how to rotate it
 

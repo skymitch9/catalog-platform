@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { estateMembersRoutes, sortRoster } from '../src/estate-members.js';
+import worker from '../src/index.js';
 
 // ---------------------------------------------------------------------------
 // ⚠️ THE SAME WORKERS-RUNTIME SHIM billing-routes.test.ts carries:
@@ -256,4 +257,50 @@ test('sortRoster does not mutate its input, and a case-only name tie falls to em
   const out = sortRoster(input);
   assert.deepEqual(out.map((m) => m.id), [1, 2]);
   assert.deepEqual(input.map((m) => m.id), [2, 1]);
+});
+
+// ---------------------------------------------------------------------------
+// The COMPOSED Worker — the mount in index.ts, not just the sub-router
+// ---------------------------------------------------------------------------
+
+const noCtx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+
+test('the real Worker serves /api/estate/members (a worded 401, not a 404) and a library bearer gets 200', async () => {
+  const db = new FakeDB();
+  const env = { DB: db as unknown as D1Database, ...TOKENS } as never;
+  const anon = await worker.fetch(new Request('https://auth.example/api/estate/members'), env, noCtx);
+  assert.equal(anon.status, 401);
+  assert.equal(((await anon.json()) as any).error, 'unauthorized');
+
+  const ok = await worker.fetch(
+    new Request('https://auth.example/api/estate/members', { headers: { authorization: 'Bearer library-token' } }),
+    env,
+    noCtx,
+  );
+  assert.equal(ok.status, 200);
+  assert.equal(((await ok.json()) as any).members.length, 5);
+});
+
+test('⚠️ NO CORS: an apex-origin preflight and an apex-origin GET get no access-control-allow-origin', async () => {
+  const db = new FakeDB();
+  const env = { DB: db as unknown as D1Database, ...TOKENS, ADMIN_ORIGINS: 'https://heygabi.ai' } as never;
+  const pre = await worker.fetch(
+    new Request('https://auth.example/api/estate/members', {
+      method: 'OPTIONS',
+      headers: { origin: 'https://heygabi.ai', 'access-control-request-method': 'GET' },
+    }),
+    env,
+    noCtx,
+  );
+  assert.equal(pre.headers.get('access-control-allow-origin'), null);
+
+  const got = await worker.fetch(
+    new Request('https://auth.example/api/estate/members', {
+      headers: { origin: 'https://heygabi.ai', authorization: 'Bearer library-token' },
+    }),
+    env,
+    noCtx,
+  );
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get('access-control-allow-origin'), null);
 });
