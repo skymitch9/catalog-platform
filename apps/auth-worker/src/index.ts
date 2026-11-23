@@ -36,6 +36,7 @@ import { backupsRoutes } from './backups.js';
 import { R2_PRUNE_CRON, r2PruneRoutes, scheduledR2Prune } from './r2-prune.js';
 import { ESTATE_PROBES_CRON, runScheduledProbes } from './estate-probes.js';
 import { billingRoutes } from './billing.js';
+import { estateMembersRoutes } from './estate-members.js';
 import { universeRequestRoutes } from './universe-requests.js';
 import { notificationRoutes } from './notifications.js';
 import { catalogRequestRoutes } from './catalog-requests.js';
@@ -315,6 +316,13 @@ app.route('/api', backupsRoutes);
 // between them to swallow one another (the estateDocsRoutes ordering trap).
 app.route('/api', r2PruneRoutes);
 app.route('/api', billingRoutes);
+// THE MEMBER ROSTER (2026-11-22) — approved members' id/email/display_name,
+// read by the two library Workers with their own app token so the owner can
+// lend a book to a member who has never signed into that library.
+// ⚠️ NO CORS MOUNT, DELIBERATELY: server-to-server only, and the answer carries
+// email addresses — a CORS line would be a browser-reachable copy of the list.
+// The global rateLimit() on /api/* above applies as everywhere else.
+app.route('/api', estateMembersRoutes);
 // "+ add a verse" — a member asks, an approver decides, a devops session says
 // it landed. ⚠️ Nothing here creates a universe; see universe-requests.ts.
 app.route('/api', universeRequestRoutes);
