@@ -9,6 +9,43 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-11-22 17:51 Phoenix — LANDED: `GET /api/estate/members` live on `estate-auth` `139ca396` (`6868136`)
+
+Merged `feature/estate-members-roster`, deployed with `npm run deploy:auth`
+(migrations: none), `deploys.log` line committed in `fb15515`. Live checks:
+no bearer and a garbage bearer both answer 401 `unauthorized` in words with no
+allow-origin header; `/api/health` 200. Consumed for real by the main library
+at 17:53 (its picker listed all 11 approved members). Both library tokens were
+confirmed present by name 17:50. NOT run: probes A47–A49 (`probe:estate`).
+The three leftover 2026-11-19 secret-check docs were committed unchanged first
+(`369220c`, owner: "Commit them"). The work-log section follows WHOLE.
+
+## ✅ `GET /api/estate/members` — an app-bearer roster so the library can lend to any estate member (owner ask 2026-11-22 17:0x Phoenix)
+
+Owner, verbatim (in the library's context): *"I want you to write code to allow
+me to lend books to estate members even if they can't view it. Pulling accounts
+from estate is fine for assignment"*. This repo's half is ONE new auth-Worker
+route: per-app bearer (`ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` only, default
+deny for every other app), approved members only, explicit field list
+`{id, email, display_name}`, modelled on `GET /api/estate/billing/policy`.
+The full design and the library half live in
+`bookbuddy/library_catalog/docs/TODO.md` (same date) — one fact, one home.
+**Status 17:15: BUILT on branch `feature/estate-members-roster`
+(`b5ceb46`, `db8624c`, `0d00eef`, pushed) — NOT merged, NOT deployed, nothing
+live checked.** Agent-reported, not re-run by the conductor: typecheck clean,
+auth-worker suite 852/852 (839 on main before), 13 new tests, no migration, no
+new secret. As built: only the `LIBRARY` / `LIBRARY2` bearers are accepted
+(401 `unauthorized` for any other app's token, 503 `app_tokens_unset` when
+neither library secret is set), body `{members:[{id,email,display_name}]}`,
+approved rows only, no CORS. The route table is in `access/estate-auth.md` §2
+on that branch. ⚠️ Probes A47–A49 were added and will read 404 on every
+`probe:estate` run until the route is deployed. ⚠️ NOT measured: whether
+`ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are set on live `estate-auth`.
+Ship = merge to main, then `npm run deploy:auth` (§7a). ⚠️ Deploy is blocked: wrangler
+on this box is *Not logged in*, and this tree holds three uncommitted doc files
+from an earlier session (`docs/DONE.md`, `docs/info/README.md`,
+`docs/info/secret-exposure-check-2026-11-19.md`) that check-clean will refuse.
+
 ## ✅ 2026-11-19 07:50 Phoenix — Estate secret-exposure check — public files + browser console (asked 2026-11-19 07:2x Phoenix)
 
 Owner, verbatim: *"Also Check to make sure none of my API keys or secrets keys are available in browser console or in visible files"*.

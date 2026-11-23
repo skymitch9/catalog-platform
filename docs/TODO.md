@@ -22,32 +22,6 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
-## ☐ `GET /api/estate/members` — an app-bearer roster so the library can lend to any estate member (owner ask 2026-11-22 17:0x Phoenix)
-
-Owner, verbatim (in the library's context): *"I want you to write code to allow
-me to lend books to estate members even if they can't view it. Pulling accounts
-from estate is fine for assignment"*. This repo's half is ONE new auth-Worker
-route: per-app bearer (`ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` only, default
-deny for every other app), approved members only, explicit field list
-`{id, email, display_name}`, modelled on `GET /api/estate/billing/policy`.
-The full design and the library half live in
-`bookbuddy/library_catalog/docs/TODO.md` (same date) — one fact, one home.
-**Status 17:15: BUILT on branch `feature/estate-members-roster`
-(`b5ceb46`, `db8624c`, `0d00eef`, pushed) — NOT merged, NOT deployed, nothing
-live checked.** Agent-reported, not re-run by the conductor: typecheck clean,
-auth-worker suite 852/852 (839 on main before), 13 new tests, no migration, no
-new secret. As built: only the `LIBRARY` / `LIBRARY2` bearers are accepted
-(401 `unauthorized` for any other app's token, 503 `app_tokens_unset` when
-neither library secret is set), body `{members:[{id,email,display_name}]}`,
-approved rows only, no CORS. The route table is in `access/estate-auth.md` §2
-on that branch. ⚠️ Probes A47–A49 were added and will read 404 on every
-`probe:estate` run until the route is deployed. ⚠️ NOT measured: whether
-`ESTATE_APP_TOKEN_LIBRARY` / `_LIBRARY2` are set on live `estate-auth`.
-Ship = merge to main, then `npm run deploy:auth` (§7a). ⚠️ Deploy is blocked: wrangler
-on this box is *Not logged in*, and this tree holds three uncommitted doc files
-from an earlier session (`docs/DONE.md`, `docs/info/README.md`,
-`docs/info/secret-exposure-check-2026-11-19.md`) that check-clean will refuse.
-
 ## ☐ Shelf access follows the estate automatically — Access External Evaluation (asked 2026-10-15 22:2x Phoenix)
 
 Owner, verbatim: *"Add anyone with access to audiobook catalog"* then *"Let's do the auto update todo now"*.
