@@ -558,4 +558,51 @@ export async function probeAuthWorker() {
     const acao = header(evApex, 'access-control-allow-origin');
     check(AREA, 'A46', 'OPTIONS', evalUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (Cloudflare calls it, not browsers)`, acao === null, `ACAO=${acao}`);
   }
+
+  // --- GET /api/estate/members — THE MEMBER ROSTER (2026-11-22) -----------
+  //
+  // 🔴 THIS ANSWER CARRIES EMAIL ADDRESSES. It is read by the two library
+  // Workers with their own app token (LIBRARY / LIBRARY2 only) and by nothing
+  // else. So the probes pin the door SHUT to a tokenless and a garbage-bearer
+  // caller — with no `members` array on the refusal — and its CORS ABSENT.
+  // ⚠️ If both library secrets were ever unset on estate-auth, A47/A48 would
+  // read 503 `app_tokens_unset` instead of 401; that is a real finding (the
+  // libraries could not lend), not a flaky probe.
+  const membersUrl = `${AUTH_ORIGIN}/api/estate/members`;
+  for (const [id, label, init] of [
+    ['A47', 'no bearer', {}],
+    ['A48', 'a garbage bearer', { headers: { Authorization: GARBAGE_BEARER } }],
+  ]) {
+    const r = await get(membersUrl, init);
+    if (!r.ok) {
+      check(AREA, id, 'GET', membersUrl, `${label} → 401, worded, and no members array`, false, `request failed: ${r.error}`);
+      continue;
+    }
+    const body = JSON.stringify(r.json ?? r.text ?? '');
+    check(
+      AREA,
+      id,
+      'GET',
+      membersUrl,
+      `${label} → 401 { error: "unauthorized", detail: <worded> } and NO members array`,
+      r.status === 401 &&
+        r.json?.error === 'unauthorized' &&
+        typeof r.json?.detail === 'string' &&
+        r.json.detail.length > 0 &&
+        r.json?.members === undefined &&
+        // Not one address on a refusal.
+        !body.includes('@'),
+      `status=${r.status} body=${body.slice(0, 240)}`,
+    );
+  }
+
+  const membersApex = await options(membersUrl, {
+    headers: { Origin: APEX_ORIGIN, 'Access-Control-Request-Method': 'GET' },
+  });
+  if (!membersApex.ok) {
+    check(AREA, 'A49', 'OPTIONS', membersUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN}`, false, `request failed: ${membersApex.error}`);
+  } else {
+    const acao = header(membersApex, 'access-control-allow-origin');
+    check(AREA, 'A49', 'OPTIONS', membersUrl, `no access-control-allow-origin, even for ${APEX_ORIGIN} (server-to-server; it carries email)`, acao === null, `ACAO=${acao}`);
+  }
 }
