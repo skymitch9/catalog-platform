@@ -9,6 +9,41 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-11-25 10:57 Phoenix — VERIFIED: the estate works after the move out of OneDrive (tests + one pipeline run)
+
+Owner, verbatim: *"Read all docs and make sure that everything is working now
+that we're not in OneDrive. Run all test and then run the pipeline"*. The repos
+moved to `C:\Users\nbasl\repos\` at 09:43:41 and the old paths are junctions.
+The inventory and the risk are in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) **KI-16**;
+the open owner decision (re-point the tasks) is in `TODO.md`.
+
+- **Tests**, run one suite per repo from `C:\Users\nbasl\repos\…`, `git status`
+  checked before and after: catalog-platform `npm test` **3,442/3,442**;
+  library_catalog `npm test` **3,082/3,082**; Board_Game_Catalog `npm test`
+  **932/932**; audiobook_catalog `.venv` `python -m pytest -q` **2,580 passed,
+  3 skipped, 83 subtests**, plus `vitest --run` **929/929** (40 files). No suite
+  left a file changed.
+- **Pipeline**, run by hand 10:50:20 → ~10:57 from the real path: the two lines
+  `sync_pipeline_8h.bat` runs, with `PYTHONIOENCODING=utf-8` and
+  `SYNC_NON_INTERACTIVE=1` (trigger defaults to manual). The lock was free first
+  and released after. Log: `audiobook_catalog/output_files/manual_pipeline_2026-11-25.log`
+  (7,419 lines). Acquire: 1,139 items, 0 missing. STEP 2: 0 new files. STEP 5.75:
+  232 ebooks, 0 to upload. STEP 5.8: 232 published. STEP 7: index push OK, 1,412 rows
+  (1,180 audiobook + 232 ebook). STEP 8: parity in sync, nothing applied. STEP 9:
+  docs snapshot 214 docs, no change in the included set. STEP 10: mirror uploaded
+  21 objects (~996 MB), skipped 5,536, failed 0. STEP 11: both sibling links
+  applied 297 statements each. Paths in the log read `C:\Users\nbasl\repos\…`.
+  ⚠️ No new book existed, so the sort → upload → rebuild → commit half ran but had
+  nothing to do. No commit was made (`origin/main` still `b60ffd2`). The
+  `pipeline-exit=0` line in the log is cmd's parse-time `%errorlevel%`, NOT a
+  measurement; the step lines above are the evidence.
+- **Also checked:** `backup-docs.mjs --dry-run` from the old path (the
+  `EstateDocsBackupR2` *Start In*) walked 303 files across the 4 trees, nothing skipped.
+- ⚠️ **NOT verified:** a scheduled task run against the real path (they all still
+  go through the junction), a real new book end to end, and any rendered page.
+  `site/ebooks_status.json` was already modified before this pass (pipeline
+  output) and was left alone.
+
 ## ✅ 2026-11-22 17:51 Phoenix — LANDED: `GET /api/estate/members` live on `estate-auth` `139ca396` (`6868136`)
 
 Merged `feature/estate-members-roster`, deployed with `npm run deploy:auth`

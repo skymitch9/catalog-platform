@@ -213,6 +213,10 @@ walks the tree does not see it. `readdirSync(..., {withFileTypes:true})` reports
 **Why tolerated.** It is how OneDrive "free up space" works — the file becomes a
 reparse point until something opens it. Nothing here controls when OneDrive
 decides to do it, and every estate repo lives under OneDrive.
+⚠️ **Since 2026-11-25 that is no longer true.** The repos live in
+`C:\Users\nbasl\repos\`, outside OneDrive, and the old paths are junctions
+(KI-16). The guard stays: the old paths still resolve through a reparse point,
+and the `.claude` junctions still need it.
 
 **What would change it.** Nothing upstream. 🔴 **The guard is in the code, and
 any new tree-walker needs the same one:** resolve the entry with `realpathSync`
@@ -535,3 +539,66 @@ succeeds needs no pull, and this incident's pull was pure ceremony. If it
 recurs, promote the guard to a script per *"Mechanical guards beat written
 advice"*: refuse `--autostash` when `git status --porcelain` names a file the
 current agent did not write.
+
+---
+
+## KI-16 · The estate runs from `C:\Users\nbasl\repos\` only through OneDrive COMPATIBILITY JUNCTIONS — `WATCHING` (move measured 2026-11-25)
+
+**What changed.** On **2026-11-25 09:43:41 Phoenix** (the junctions' `CreationTime`)
+every repo under `C:\Users\nbasl\OneDrive\Documents\vs-code-repos\` was moved to
+`C:\Users\nbasl\repos\`. Each old folder is now a **directory junction** to its
+new home: `bookbuddy`, `boardbuddy`, `catalog-platform` (and the non-estate
+repos too). `vgcplanner` was NOT moved; it is still a real folder in OneDrive.
+There is **one** tree per repo, not two copies.
+
+**Symptom.** None today, which is the trap. Every hardcoded path still says
+`OneDrive\Documents\vs-code-repos\…` and still works, because the junction
+carries it. Delete or rename the old `vs-code-repos` folder and all of these
+break **silently** (Task Scheduler reports `wscript.exe`'s exit code, not the
+`.bat`'s):
+
+| What | Count | Example |
+|---|---|---|
+| Scheduled tasks whose action names the old path | **10** | `AudiobookSyncPipeline`, `AudiobookFsWatcher`, `AudiobookDrivePoll`, `AudiobookPipelineWatcher`, `AudiobookPurchaseAudit`, `AudiobookIngestNightly`, `AudiobookDriveAudit`, `AudiobookArchiveR2`, `EstateProcessingBoardPush`, `EstateDocsBackupR2` (its *Start In*) |
+| `audiobook_catalog/scripts/*.bat` + `*_hidden.vbs` | 20 | every `cd /d` and `batPath =` line |
+| catalog-platform scripts with the literal path | 5 | `push-processing-board.mjs:61`, `op-import-keys.mjs:55`, `op-rotate-pair.mjs:83`, `audit/estate-audit.workflow.mjs:14`, `onedrive-exclude.ps1:39` |
+| venvs created at the old path | 2 | `bookbuddy/.venv`, `audiobook_catalog/.venv` (their `Scripts\*.exe` shims embed it) |
+| Git worktrees whose `.git` file points via the old path | 2 | `C:\lcw\cp-agent-board`, `C:\lcw\wt-badge` |
+| Operator files outside every repo | 1+ | `~/.claude/CLAUDE.md`'s agent-board command |
+
+⚠️ **Deliberately still in OneDrive and NOT a defect:**
+`C:\Users\nbasl\OneDrive\Documents\estate-backups-mirror\` (`mirror-estate-backups.mjs`,
+`mirror_to_drive.py`). OneDrive syncing it IS the free second cloud
+(`access/RECOVERY.md` §2a). The `node_modules` / `.claude` junctions into
+`C:\lcw\onedrive-excluded\…` also still resolve.
+
+**Measured working after the move, 2026-11-25:**
+- Per-tick jobs wrote fresh entries after 09:43: purchase audit (10:46), Drive poll (10:44),
+  board push (10:45), ingest (10:32), R2 audio archive (10:05). Every task's last result is `0x0`.
+- `backup-docs.mjs --dry-run`, run from the task's own *Start In* (the junction path):
+  all 4 trees, 93 + 85 + 65 + 60 = **303 files, nothing skipped**. The KI-9 walker
+  resolves the junction through `realpathSync(base)`, as designed.
+- Test suites: catalog-platform **3,442/3,442**, library_catalog **3,082/3,082**,
+  Board_Game_Catalog **932/932**, audiobook pytest **2,580 passed, 3 skipped**,
+  audiobook vitest **929/929**. No tree was dirtied by any suite.
+- The pipeline was run by hand from `C:\Users\nbasl\repos\…`; its result is in `DONE.md` (2026-11-25).
+
+🔴 **One thing the move cost, measured and not recoverable from here.** The
+per-tick logs have a hole from **~06:16 to ~08:45** (purchase audit 06:16 → 08:46,
+Drive poll 06:14 → 08:59). `AudiobookSyncPipeline` reports a successful run at
+**08:00:01**, but `pipeline_8h.log` has no 08:00 header (last header 00:00:23).
+So writes landed in the original folder during the copy and were gone when it was
+replaced by the junction. `origin/main` has no commit after 2026-11-24 19:38, so
+**no commit was lost**. Whether the 08:00 run moved or uploaded any files is
+**unknown**: its log is gone.
+
+⚠️ **The gitignored audiobook `docs/` lost a copy.** It used to be synced to
+OneDrive as well as backed up to R2. Now the daily `EstateDocsBackupR2` archive is
+its ONLY off-machine copy (`bookbuddy/audiobook_catalog/docs/KNOWN_ISSUES.md` KI-5).
+
+**Why tolerated.** It works, and re-pointing ten scheduled tasks is a change to
+persistent machine config that waits on the owner (`TODO.md`, same date).
+
+**What would change it.** The owner's yes to re-point the tasks, scripts and
+venvs at `C:\Users\nbasl\repos\`, then one full tick of every task with the old
+folder renamed aside, to prove the junction is no longer load-bearing.

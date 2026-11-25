@@ -22,6 +22,24 @@
 > per-repo deploys. The still-open remnants were extracted into the items
 > below.
 
+## ☐ 🧑 OWNER — re-point the estate at `C:\Users\nbasl\repos\` so the OneDrive junctions stop being load-bearing (logged 2026-11-25 Phoenix)
+
+Owner, verbatim: *"Read all docs and make sure that everything is working now
+that we're not in OneDrive. Run all test and then run the pipeline"*.
+
+- ✅ Measured working through the junctions: per-tick jobs, the docs-backup dry
+  run, all five test suites green, and a manual pipeline run. The figures are in
+  [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) **KI-16**, and the run is in `DONE.md`.
+- ☐ ❓ **Owner decision:** re-point the 10 scheduled tasks, the 20 audiobook
+  `.bat`/`.vbs` wrappers, 5 catalog-platform scripts, 2 venvs and 2 `C:\lcw`
+  worktrees at `C:\Users\nbasl\repos\`? Changing scheduled tasks is persistent
+  machine config, so it is not done without a yes. The full inventory is in KI-16.
+- ☐ After that: one tick of every task with the old `vs-code-repos` folder
+  renamed aside, to prove nothing still needs it.
+- Out of this estate's scope, but seen in the same pass: `BlackBloc DB backup`,
+  `vgc-meta nightly feed` and `vgc-meta night 2026-10-12` also still name
+  OneDrive paths. `vgcplanner` was not moved at all.
+
 ## ☐ Shelf access follows the estate automatically — Access External Evaluation (asked 2026-10-15 22:2x Phoenix)
 
 Owner, verbatim: *"Add anyone with access to audiobook catalog"* then *"Let's do the auto update todo now"*.
