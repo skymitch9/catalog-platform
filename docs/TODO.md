@@ -37,10 +37,8 @@ that we're not in OneDrive. Run all test and then run the pipeline"*.
   a `pipeline_8h.log` header at 16:00 and a clean end.
 - ☐ **~2026-12-02:** rename the old `vs-code-repos` folder aside for one full day
   of ticks, the three pipeline slots included. Zero failures, then the junctions go.
-- ☐ ❓ **Owner decision:** copy the Claude Code project memories (13 + 32 + 2
-  files, under the old OneDrive-path slugs in `~/.claude/projects/`) to the
-  new-path slugs? Sessions started at `C:\Users\nbasl\repos\…` currently load none
-  of them. See KI-16.
+- ✅ **Claude Code project memories copied 2026-11-25** (owner: *"Copy"*):
+  13 + 32 + 2 files now under the new-path slugs, verified identical. KI-16 has the detail.
 - Out of this estate's scope, but seen in the same pass: `BlackBloc DB backup`,
   `vgc-meta nightly feed` and `vgc-meta night 2026-10-12` also still name
   OneDrive paths. `vgcplanner` was not moved at all.
