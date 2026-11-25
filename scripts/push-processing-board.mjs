@@ -58,7 +58,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TRAINING_ROOT = process.env.ESTATE_TRAINING_ROOT || 'C:\\Users\\nbasl\\estate-training-data';
 const CATALOG_ROOT =
   process.env.AUDIOBOOK_CATALOG_ROOT ||
-  'C:\\Users\\nbasl\\OneDrive\\Documents\\vs-code-repos\\bookbuddy\\audiobook_catalog';
+  'C:\\Users\\nbasl\\repos\\bookbuddy\\audiobook_catalog'; // OneDrive\Documents\vs-code-repos until 2026-11-25
 
 const STATE_PATH = join(TRAINING_ROOT, 'ingest_state.json');
 const INDEX_PATH = join(TRAINING_ROOT, 'packs', '_index.json.gz');

@@ -11,7 +11,7 @@ export const meta = {
 }
 
 // args: { repos: [{ name, path }], planDoc, allowFable: boolean, weeklyCeiling: number }
-const ROOT = 'C:/Users/nbasl/OneDrive/Documents/vs-code-repos'
+const ROOT = 'C:/Users/nbasl/repos' // OneDrive/Documents/vs-code-repos until 2026-11-25
 const REPOS = args?.repos ?? [
   { name: 'catalog-platform', path: `${ROOT}/catalog-platform` },
   { name: 'library_catalog', path: `${ROOT}/bookbuddy/library_catalog` },

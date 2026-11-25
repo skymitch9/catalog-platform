@@ -52,7 +52,7 @@ const CANDIDATES = [
   process.env.LIBRARY_CATALOG_DIR,
   join(root, '..', 'bookbuddy', 'library_catalog'),
   join(root, '..', 'library_catalog'),
-  'C:\\Users\\nbasl\\OneDrive\\Documents\\vs-code-repos\\bookbuddy\\library_catalog',
+  'C:\\Users\\nbasl\\repos\\bookbuddy\\library_catalog', // OneDrive\Documents\vs-code-repos until 2026-11-25
 ].filter(Boolean);
 
 const SCRIPT = 'scripts/op-import-dev-vars.mjs';
