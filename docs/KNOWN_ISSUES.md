@@ -544,8 +544,19 @@ current agent did not write.
 
 ## KI-16 · The estate runs from `C:\Users\nbasl\repos\` only through OneDrive COMPATIBILITY JUNCTIONS — `WATCHING` (move measured 2026-11-25)
 
-**What changed.** On **2026-11-25 09:43:41 Phoenix** (the junctions' `CreationTime`)
-every repo under `C:\Users\nbasl\OneDrive\Documents\vs-code-repos\` was moved to
+> 🔴 **Corrected 2026-11-25 ~11:10, the same morning it was written (`dd8ecd7`).**
+> The first version said the move happened at 09:43:41, that the 06:16–08:45 log
+> hole was writes lost in the move, and that there were 20 wrappers. **All three
+> were wrong.** Measured since: the junctions were created at **08:52:19**
+> (`boardbuddy`), **08:52:56** (`catalog-platform`) and **09:43:41** (`bookbuddy`),
+> so the move ran over about an hour. The audiobook logs in the CURRENT tree hold
+> entries from 08:46 to 09:31, so the hole predates bookbuddy's cutover and is
+> **UNEXPLAINED**. The System log shows no sleep/wake/boot event between 05:30 and
+> 09:50, and no Task Scheduler history was found for the 08:00 run. The wrappers
+> are **18** (9 `.bat` + 9 `_hidden.vbs`). Text below corrected in place.
+
+**What changed.** On **2026-11-25 between 08:52 and 09:43 Phoenix** (the
+junctions' `CreationTime`) every repo under `C:\Users\nbasl\OneDrive\Documents\vs-code-repos\` was moved to
 `C:\Users\nbasl\repos\`. Each old folder is now a **directory junction** to its
 new home: `bookbuddy`, `boardbuddy`, `catalog-platform` (and the non-estate
 repos too). `vgcplanner` was NOT moved; it is still a real folder in OneDrive.
@@ -560,11 +571,12 @@ break **silently** (Task Scheduler reports `wscript.exe`'s exit code, not the
 | What | Count | Example |
 |---|---|---|
 | Scheduled tasks whose action names the old path | **10** | `AudiobookSyncPipeline`, `AudiobookFsWatcher`, `AudiobookDrivePoll`, `AudiobookPipelineWatcher`, `AudiobookPurchaseAudit`, `AudiobookIngestNightly`, `AudiobookDriveAudit`, `AudiobookArchiveR2`, `EstateProcessingBoardPush`, `EstateDocsBackupR2` (its *Start In*) |
-| `audiobook_catalog/scripts/*.bat` + `*_hidden.vbs` | 20 | every `cd /d` and `batPath =` line |
+| `audiobook_catalog/scripts/*.bat` + `*_hidden.vbs` | 18 | every `cd /d` and `batPath =` line |
 | catalog-platform scripts with the literal path | 5 | `push-processing-board.mjs:61`, `op-import-keys.mjs:55`, `op-rotate-pair.mjs:83`, `audit/estate-audit.workflow.mjs:14`, `onedrive-exclude.ps1:39` |
 | venvs created at the old path | 2 | `bookbuddy/.venv`, `audiobook_catalog/.venv` (their `Scripts\*.exe` shims embed it) |
 | Git worktrees whose `.git` file points via the old path | 2 | `C:\lcw\cp-agent-board`, `C:\lcw\wt-badge` |
 | Operator files outside every repo | 1+ | `~/.claude/CLAUDE.md`'s agent-board command |
+| 🔴 Claude Code project memory, keyed by the launch path | 3 folders | A session started at the NEW path loads NONE of the old memories. Measured 2026-11-25: `~/.claude/projects/C--Users-nbasl-OneDrive-Documents-vs-code-repos-catalog-platform/memory` holds **13** files, `…-bookbuddy` **32**, `…-boardbuddy-Board-Game-Catalog` **2**; `C--Users-nbasl-repos-catalog-platform/memory` holds **0**. NOT migrated (owner's call) |
 
 ⚠️ **Deliberately still in OneDrive and NOT a defect:**
 `C:\Users\nbasl\OneDrive\Documents\estate-backups-mirror\` (`mirror-estate-backups.mjs`,
@@ -583,14 +595,15 @@ break **silently** (Task Scheduler reports `wscript.exe`'s exit code, not the
   audiobook vitest **929/929**. No tree was dirtied by any suite.
 - The pipeline was run by hand from `C:\Users\nbasl\repos\…`; its result is in `DONE.md` (2026-11-25).
 
-🔴 **One thing the move cost, measured and not recoverable from here.** The
+🔴 **An unexplained hole the same morning, possibly NOT the move.** The
 per-tick logs have a hole from **~06:16 to ~08:45** (purchase audit 06:16 → 08:46,
 Drive poll 06:14 → 08:59). `AudiobookSyncPipeline` reports a successful run at
 **08:00:01**, but `pipeline_8h.log` has no 08:00 header (last header 00:00:23).
-So writes landed in the original folder during the copy and were gone when it was
-replaced by the junction. `origin/main` has no commit after 2026-11-24 19:38, so
-**no commit was lost**. Whether the 08:00 run moved or uploaded any files is
-**unknown**: its log is gone.
+⚠️ **Cause unknown.** Bookbuddy's cutover was 09:43 and the current tree has
+entries from 08:46 on, so "lost in the copy" does not fit. No power event was
+logged, and Task Scheduler's operational history had nothing for that run.
+`origin/main` has no commit after 2026-11-24 19:38, so **no commit was lost**.
+Whether the 08:00 run did anything at all is **unknown**.
 
 ⚠️ **The gitignored audiobook `docs/` lost a copy.** It used to be synced to
 OneDrive as well as backed up to R2. Now the daily `EstateDocsBackupR2` archive is

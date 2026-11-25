@@ -9,6 +9,21 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ⚠️ 2026-11-25 ~11:10 Phoenix — SUPERSEDES PART of the 10:57 entry below (same session)
+
+The entry below and its commit `dd8ecd7` got two facts wrong; they are not edited,
+per this file's rule. **(1) The move time.** It was not "09:43:41". The junctions
+were created at 08:52:19 (`boardbuddy`), 08:52:56 (`catalog-platform`) and
+09:43:41 (`bookbuddy`). **(2) The 06:16–08:45 log hole** is not explained by the
+move; it is unexplained (KI-16, corrected). The commit message's "20 wrappers"
+is **18**. **The test and pipeline figures stand.** The 3 pytest skips are
+accounted for: two need `audible_cli`/`audible`, which live in the Store Python
+3.12 rather than `.venv` (as `PIPELINE.md` says). The third,
+`test_publish_audio_manifest.py:173`, compares against
+`catalog-platform/apps/audiobook-worker/src/audio-manifest.ts`, which was deleted
+in `a541645`, so it skips on EVERY machine. That is a stale test, not a move
+casualty, and is logged in that repo's TODO.
+
 ## ✅ 2026-11-25 10:57 Phoenix — VERIFIED: the estate works after the move out of OneDrive (tests + one pipeline run)
 
 Owner, verbatim: *"Read all docs and make sure that everything is working now

@@ -30,12 +30,16 @@ that we're not in OneDrive. Run all test and then run the pipeline"*.
 - ✅ Measured working through the junctions: per-tick jobs, the docs-backup dry
   run, all five test suites green, and a manual pipeline run. The figures are in
   [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) **KI-16**, and the run is in `DONE.md`.
-- ☐ ❓ **Owner decision:** re-point the 10 scheduled tasks, the 20 audiobook
+- ☐ ❓ **Owner decision:** re-point the 10 scheduled tasks, the 18 audiobook
   `.bat`/`.vbs` wrappers, 5 catalog-platform scripts, 2 venvs and 2 `C:\lcw`
   worktrees at `C:\Users\nbasl\repos\`? Changing scheduled tasks is persistent
   machine config, so it is not done without a yes. The full inventory is in KI-16.
 - ☐ After that: one tick of every task with the old `vs-code-repos` folder
   renamed aside, to prove nothing still needs it.
+- ☐ ❓ **Owner decision:** copy the Claude Code project memories (13 + 32 + 2
+  files, under the old OneDrive-path slugs in `~/.claude/projects/`) to the
+  new-path slugs? Sessions started at `C:\Users\nbasl\repos\…` currently load none
+  of them. See KI-16.
 - Out of this estate's scope, but seen in the same pass: `BlackBloc DB backup`,
   `vgc-meta nightly feed` and `vgc-meta night 2026-10-12` also still name
   OneDrive paths. `vgcplanner` was not moved at all.
