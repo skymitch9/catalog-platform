@@ -30,12 +30,13 @@ that we're not in OneDrive. Run all test and then run the pipeline"*.
 - ✅ Measured working through the junctions: per-tick jobs, the docs-backup dry
   run, all five test suites green, and a manual pipeline run. The figures are in
   [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) **KI-16**, and the run is in `DONE.md`.
-- ☐ ❓ **Owner decision:** re-point the 10 scheduled tasks, the 18 audiobook
-  `.bat`/`.vbs` wrappers, 5 catalog-platform scripts, 2 venvs and 2 `C:\lcw`
-  worktrees at `C:\Users\nbasl\repos\`? Changing scheduled tasks is persistent
-  machine config, so it is not done without a yes. The full inventory is in KI-16.
-- ☐ After that: one tick of every task with the old `vs-code-repos` folder
-  renamed aside, to prove nothing still needs it.
+- ✅ **Re-pointed 2026-11-25 11:38–11:44** (owner, 11:2x: *"Go with your plan"*):
+  18 wrappers made self-locating (`f54884c`), 4 scripts (`920c317`), all 10 tasks,
+  and both `C:\lcw` worktrees. Detail and rollback: KI-16.
+- ☐ **Check the 16:00 `AudiobookSyncPipeline` run**, the first from the real path:
+  a `pipeline_8h.log` header at 16:00 and a clean end.
+- ☐ **~2026-12-02:** rename the old `vs-code-repos` folder aside for one full day
+  of ticks, the three pipeline slots included. Zero failures, then the junctions go.
 - ☐ ❓ **Owner decision:** copy the Claude Code project memories (13 + 32 + 2
   files, under the old OneDrive-path slugs in `~/.claude/projects/`) to the
   new-path slugs? Sessions started at `C:\Users\nbasl\repos\…` currently load none

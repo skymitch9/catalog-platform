@@ -609,9 +609,35 @@ Whether the 08:00 run did anything at all is **unknown**.
 OneDrive as well as backed up to R2. Now the daily `EstateDocsBackupR2` archive is
 its ONLY off-machine copy (`bookbuddy/audiobook_catalog/docs/KNOWN_ISSUES.md` KI-5).
 
-**Why tolerated.** It works, and re-pointing ten scheduled tasks is a change to
-persistent machine config that waits on the owner (`TODO.md`, same date).
+**✅ Re-pointed 2026-11-25 11:38–11:44 Phoenix (owner: "Go with your plan").**
+- **The 18 wrappers no longer name any path** (audiobook `f54884c`). Each
+  `_hidden.vbs` finds its `.bat` through `WScript.ScriptFullName`; each `.bat`
+  does `cd /d "%~dp0.."` and reaches `.venv\` and `..\..\catalog-platform\`
+  relatively. The next move needs no edit to them.
+- **4 catalog-platform scripts** now default to `C:\Users\nbasl\repos\…` (`920c317`).
+  `onedrive-exclude.ps1` was left alone: it is a OneDrive tool, and its default
+  root is still the old path.
+- **All 10 scheduled tasks** were re-pointed one at a time, each run by
+  `Start-ScheduledTask` and its log read: FsWatcher, PipelineWatcher, DrivePoll,
+  PurchaseAudit, ProcessingBoardPush and DriveAudit returned `0x0`. IngestNightly
+  and ArchiveR2 were seen starting and writing a fresh header (still running when
+  checked). EstateDocsBackupR2 got a dry run from its new *Start In* (303 files).
+  ⚠️ **AudiobookSyncPipeline was re-pointed but NOT started**; its first run from
+  the real path is the 16:00 slot. The pre-change XML of all 10 is in
+  `C:\lcw\scheduled-tasks-before-repoint-2026-11-25\` (local; it carries the
+  account SID, so not in this public repo). Roll back with
+  `Register-ScheduledTask -Xml (Get-Content <file> -Raw) -TaskName <name> -Force`
+(⚠️ the rollback is untested).
+- **Both `C:\lcw` worktrees'** `.git` files now name the real path
+  (`git worktree repair` treated the old path as valid and left it).
+- **Still on the old path, deliberately or out of scope:** the 2 venvs' `Scripts\*.exe`
+  shims (nothing scheduled calls them; `python.exe` works as is), docs that quote
+  `cd C:/Users/nbasl/OneDrive/...` commands, `~/.claude/CLAUDE.md`'s agent-board
+  command (operator file), and the non-estate tasks `BlackBloc DB backup`,
+  `vgc-meta nightly feed` and `vgc-meta night 2026-10-12`.
 
-**What would change it.** The owner's yes to re-point the tasks, scripts and
-venvs at `C:\Users\nbasl\repos\`, then one full tick of every task with the old
-folder renamed aside, to prove the junction is no longer load-bearing.
+**Why still `WATCHING`.** Nothing has yet run with the old folder ABSENT.
+
+**What would change it.** After about a week, rename the old `vs-code-repos`
+folder aside for one full day of ticks, the 00:00/08:00/16:00 pipeline runs
+included. Zero failures closes this entry and the junctions can go.

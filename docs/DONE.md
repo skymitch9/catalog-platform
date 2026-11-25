@@ -9,6 +9,28 @@
 >
 > Newest first, preserving the order the entries had in the original file.
 
+## ✅ 2026-11-25 11:44 Phoenix — RE-POINTED: wrappers, scripts, the 10 scheduled tasks and 2 worktrees now use `C:\Users\nbasl\repos\`
+
+Owner, verbatim: *"What do you suggest"* → (plan: self-locating wrappers, then
+tasks one at a time, keep the junctions a week) → *"Go with your plan"*.
+
+- Audiobook `f54884c`: 9 `.bat` + 9 `_hidden.vbs` no longer name any path.
+  Exercised by hand from the new path first (`cscript` drive poll + board push,
+  both exit 0; the board push read its token from `C:\Users\nbasl\repos\…`).
+  pytest 2,580 passed / 3 skipped before the commit.
+- catalog-platform `920c317`: `push-processing-board.mjs`, `op-import-keys.mjs`,
+  `op-rotate-pair.mjs` and `audit/estate-audit.workflow.mjs` default to the real
+  path. `node --check` clean; `test:scripts` 580/580.
+- Tasks: each re-pointed, then `Start-ScheduledTask` and its log read. Results
+  per task are in KI-16. `AudiobookSyncPipeline` was re-pointed only; its 16:00
+  run is the open check in `TODO.md`. Pre-change XML is in
+  `C:\lcw\scheduled-tasks-before-repoint-2026-11-25\`.
+- Worktrees `C:\lcw\cp-agent-board` and `C:\lcw\wt-badge`: their `.git` files were
+  rewritten to the real path, and `git status` was the same before and after.
+  `wt-badge`'s uncommitted `docs/deploys.log` was not touched.
+- ⚠️ NOT verified: any task with the old folder absent, the 16:00 pipeline slot,
+  the IngestNightly / ArchiveR2 runs to completion, and the XML rollback.
+
 ## ⚠️ 2026-11-25 ~11:10 Phoenix — SUPERSEDES PART of the 10:57 entry below (same session)
 
 The entry below and its commit `dd8ecd7` got two facts wrong; they are not edited,
